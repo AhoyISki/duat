@@ -137,6 +137,13 @@ impl TsParser {
         self.0.as_ref().map(|inner| inner.tree.root_node())
     }
 
+    /// Logs the root node with the [`context::debug`] macro
+    pub fn debug_root(&self) {
+        if let Some(inner) = self.0.as_ref() {
+            context::debug!("{}", format_root(inner.tree.root_node()));
+        }
+    }
+
     /// Gets the requested indentation level on a given [`Point`]
     ///
     /// Will be [`None`] if the [`filetype`] hasn't been set yet or if
@@ -159,8 +166,11 @@ impl<U: Ui> file::Parser<U> for TsParser {
         if let Some(inner) = self.0.as_mut()
             && let Some(within) = within
         {
+            context::info!("began highlighting");
             let range = within.start.byte()..within.end.byte();
             inner.highlight_and_inject(parts.bytes, &mut parts.tags, range);
+            // context::warn!("{}",
+            // format_root(inner.tree.root_node()));
         }
     }
 
@@ -172,7 +182,15 @@ impl<U: Ui> file::Parser<U> for TsParser {
         fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
-                    list.add(range.start_byte..range.end_byte);
+                    context::debug!(
+                        "{:?}\n{:?}",
+                        range.start_byte + parser.range.start..range.end_byte + parser.range.start,
+                        range.start_point.row + parser.offset.row
+                            ..range.end_point.row + parser.offset.row
+                    );
+                    list.add(
+                        range.start_byte + parser.range.start..range.end_byte + parser.range.start,
+                    );
                 }
 
                 for st in parser.sub_trees.iter() {
@@ -329,7 +347,7 @@ impl InnerTsParser {
             .tree
             .root_node_with_offset(self.range.start, self.offset);
 
-        let sub_trees_to_add = {
+        let injections = {
             type SubTreeToAdd = (Range<usize>, TSPoint, LangParts<'static>);
             let mut to_add: Vec<SubTreeToAdd> = Vec::new();
 
@@ -386,47 +404,44 @@ impl InnerTsParser {
             to_add
         };
 
-        let buf = TsBuf(bytes);
-        cursor.set_byte_range(start..end);
-        let mut hi_captures = cursor.captures(highlights, root, buf);
-        while let Some((qm, _)) = hi_captures.next() {
-            for cap in qm.captures.iter() {
-                let range = cap.node.range();
-                let (start, end) = (range.start_byte, range.end_byte);
-                let (form, priority) = self.forms[cap.index as usize];
-                if start != end {
-                    tags.insert(self.tagger, start..end, form.to_tag(priority));
-                }
-            }
-        }
+        let mut ranges = Ranges::empty();
+        ranges.add(start..end);
 
         // If a tree was not in sub_trees_to_add, but is part of the affected
         // range, that means it was removed.
         self.sub_trees.retain_mut(|st| {
-            if let Some((.., lp)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
+            if let Some((.., lp)) = injections.iter().find(|(range, ..)| *range == st.range) {
+                // For any newly added subtree, we should highlight them entirely.
                 let hi_range = (st.range.start + 1).min(st.range.end)..st.range.end;
+                let _ = ranges.remove(hi_range.clone());
                 if lp.0 == st.lang_parts.0 {
+                    // If the tree already existed, just highlight it.
                     st.highlight_and_inject(bytes, tags, hi_range);
                     true
                 } else {
-                    if !(st.range.start >= start && st.range.end <= end) {
-                        tags.remove(self.tagger, hi_range);
-                    }
+                    // Otherwise, remove the old one and try to highlight
+                    // a new one.
                     false
                 }
             // If the sub tree is not in sub_trees_to_add, but its
             // range was parsed, it has been declared as deleted.
-            } else if st.range.start >= start && st.range.end <= end {
+            } else if is_grazed_by(st.range.clone(), range.clone()) {
+                // In that case, it is also a good idea to highlight the range.
+                tags.remove(self.tagger, st.range.clone());
+                ranges.add(st.range.clone());
                 false
             } else {
-                st.highlight_and_inject(bytes, tags, range.clone());
+                let start = range.start.max(st.range.start.min(range.end));
+                let end = range.end.min(st.range.end.max(range.start));
+                let _ = ranges.remove(start..end);
+                st.highlight_and_inject(bytes, tags, start..end);
                 true
             }
         });
 
         // In the end, we add the sub trees that weren't already in there.
         // This should automatically handle all of the sub trees's sub trees.
-        for (st_range, offset, lang_parts) in sub_trees_to_add {
+        for (st_range, offset, lang_parts) in injections {
             let key_fn = |st: &InnerTsParser| st.range.start;
 
             let Err(i) = self.sub_trees.binary_search_by_key(&st_range.start, key_fn) else {
@@ -434,10 +449,43 @@ impl InnerTsParser {
             };
 
             let form_parts = forms_from_lang_parts(&lang_parts);
-            let hi_range = (st_range.start + 1).min(st_range.end)..st_range.end;
             let mut st = InnerTsParser::new(bytes, st_range, offset, lang_parts, form_parts);
-            st.highlight_and_inject(bytes, tags, hi_range);
+
+            st.highlight_and_inject(bytes, tags, st.range.clone());
+            let _ = ranges.remove(st.range.clone());
+
             self.sub_trees.insert(i, st)
+        }
+
+        // The last thing that is done is highlighting of the parent tree.
+        // This is because the subtrees will have removed part chunks of the
+        // range to be highlighted, and we should only seek to highlight
+        // regions which don't belong to any injected trees.
+        for range in ranges {
+            let buf = TsBuf(bytes);
+            cursor.set_byte_range(range);
+            let mut hi_captures = cursor.captures(highlights, root, buf);
+            while let Some((qm, _)) = hi_captures.next() {
+                for cap in qm.captures.iter() {
+                    let ts_range = cap.node.range();
+
+                    // Assume that an empty range must take up the whole line
+                    // Cuz sometimes it be like that
+                    let (form, priority) = self.forms[cap.index as usize];
+                    let range = if ts_range.start_byte == ts_range.end_byte
+                        && ts_range.start_point.column == 0
+                    {
+                        let range = ts_range.start_byte
+                            ..bytes.point_at_line(ts_range.end_point.row + 1).byte();
+                        context::info!("yep {form:?}, {range:?}");
+                        range
+                    } else {
+                        ts_range.start_byte..ts_range.end_byte
+                    };
+
+                    tags.insert(self.tagger, range, form.to_tag(priority));
+                }
+            }
         }
     }
 
@@ -468,7 +516,10 @@ impl InnerTsParser {
         }
 
         self.sub_trees.retain_mut(|st| {
-            if change_clips(change, st.range.clone()) {
+            if is_clipped_by(
+                st.range.clone(),
+                change.start().byte()..change.taken_end().byte(),
+            ) {
                 false
             } else {
                 st.apply_sub_tree_change(change, bytes);
@@ -510,6 +561,9 @@ impl InnerTsParser {
 
         let mut sub_trees_to_remove = Vec::new();
         let mut sub_trees = self.sub_trees.iter_mut().enumerate().peekable();
+        // This list exists because of the possibility of multiple changes
+        // happening on the same line, thus causing a change in the column,
+        // that a simple "shift" variable wouldn't be able to keep track of.
         let mut last_changes: Vec<Change<&str>> = Vec::new();
         let (mut sh_from, mut shift) = (0, [0; 3]);
 
@@ -528,7 +582,7 @@ impl InnerTsParser {
                 } else {
                     st.range.end
                 };
-                end < start.byte()
+                end <= start.byte()
             }) {
                 if i == sh_from {
                     st.shift_tree(shift);
@@ -550,7 +604,7 @@ impl InnerTsParser {
                 } else {
                     st.range.clone()
                 };
-                change_clips(change, range)
+                is_clipped_by(range, change.start().byte()..change.taken_end().byte())
             }) {
                 sub_trees_to_remove.push(i);
                 sh_from = i + 1;
@@ -576,9 +630,8 @@ impl InnerTsParser {
                     last_changes.push(change);
                 } else {
                     shift = last_changes
-                        .drain(..)
+                        .splice(.., [change])
                         .fold(shift, |sh, change| add_shifts(sh, change.shift()));
-                    last_changes = vec![change];
                 };
             }
         }
@@ -1056,14 +1109,6 @@ fn input_edit(change: Change<&str>, bytes: &Bytes, offset: TSPoint, r_start: usi
     }
 }
 
-fn change_clips(change: Change<&str>, range: Range<usize>) -> bool {
-    let start = change.start();
-    let taken = change.taken_end();
-
-    (start.byte() <= range.start && range.start < taken.byte())
-        || (start.byte() < range.end && range.end <= taken.byte())
-}
-
 /// Returns a new [`Query`] for a given language and kind
 ///
 /// If the [`Query`] in question does not exist, returns an emtpy
@@ -1244,4 +1289,16 @@ fn format_root(node: Node) -> Text {
     format_node(node, 0, 1, &mut builder, None);
 
     builder.build()
+}
+
+/// Wether the `range` is clipped by `by`
+fn is_clipped_by(range: Range<usize>, by: Range<usize>) -> bool {
+    (by.start <= range.start && range.start < by.end)
+        || (by.start < range.end && range.end <= by.end)
+}
+
+/// Wether the `range` is grazed by `by`
+fn is_grazed_by(range: Range<usize>, by: Range<usize>) -> bool {
+    (by.start <= range.start && range.start <= by.end)
+        || (by.start <= range.end && range.end <= by.end)
 }
