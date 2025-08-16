@@ -166,11 +166,8 @@ impl<U: Ui> file::Parser<U> for TsParser {
         if let Some(inner) = self.0.as_mut()
             && let Some(within) = within
         {
-            context::info!("began highlighting");
             let range = within.start.byte()..within.end.byte();
             inner.highlight_and_inject(parts.bytes, &mut parts.tags, range);
-            // context::warn!("{}",
-            // format_root(inner.tree.root_node()));
         }
     }
 
@@ -182,12 +179,6 @@ impl<U: Ui> file::Parser<U> for TsParser {
         fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
-                    context::debug!(
-                        "{:?}\n{:?}",
-                        range.start_byte + parser.range.start..range.end_byte + parser.range.start,
-                        range.start_point.row + parser.offset.row
-                            ..range.end_point.row + parser.offset.row
-                    );
                     list.add(
                         range.start_byte + parser.range.start..range.end_byte + parser.range.start,
                     );
@@ -199,7 +190,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
             }
         }
 
-        inner.apply_changes(snap.bytes, snap.moment);
+        let ranges = inner.apply_changes(snap.bytes, snap.moment, ranges);
 
         if let Some(ranges) = ranges {
             // This initial check might find larger, somewhat self contained nodes
@@ -335,11 +326,6 @@ impl InnerTsParser {
         let buf = TsBuf(bytes);
 
         tags.remove(self.tagger, range.clone());
-        // Include a little bit of overhang, in order to deal with some loose
-        // ends, mostly related to comments.
-        // There should be no tag duplication, since Duat does not allow that.
-        let start = range.start.saturating_sub(1).max(self.range.start);
-        let end = (range.end + 1).min(bytes.len().byte()).min(self.range.end);
 
         let mut cursor = QueryCursor::new();
         cursor.set_byte_range(range.clone());
@@ -405,7 +391,7 @@ impl InnerTsParser {
         };
 
         let mut ranges = Ranges::empty();
-        ranges.add(start..end);
+        ranges.add(range.clone());
 
         // If a tree was not in sub_trees_to_add, but is part of the affected
         // range, that means it was removed.
@@ -423,18 +409,14 @@ impl InnerTsParser {
                     // a new one.
                     false
                 }
-            // If the sub tree is not in sub_trees_to_add, but its
-            // range was parsed, it has been declared as deleted.
-            } else if is_grazed_by(st.range.clone(), range.clone()) {
-                // In that case, it is also a good idea to highlight the range.
-                tags.remove(self.tagger, st.range.clone());
-                ranges.add(st.range.clone());
-                false
             } else {
-                let start = range.start.max(st.range.start.min(range.end));
-                let end = range.end.min(st.range.end.max(range.start));
-                let _ = ranges.remove(start..end);
-                st.highlight_and_inject(bytes, tags, start..end);
+                if is_clipped_by(st.range.clone(), range.clone()) {
+                    let start = range.start.max(st.range.start.min(range.end));
+                    let end = range.end.min(st.range.end.max(range.start));
+                    let _ = ranges.remove(start..end);
+                    st.highlight_and_inject(bytes, tags, start..end);
+                }
+
                 true
             }
         });
@@ -477,7 +459,6 @@ impl InnerTsParser {
                     {
                         let range = ts_range.start_byte
                             ..bytes.point_at_line(ts_range.end_point.row + 1).byte();
-                        context::info!("yep {form:?}, {range:?}");
                         range
                     } else {
                         ts_range.start_byte..ts_range.end_byte
@@ -552,11 +533,31 @@ impl InnerTsParser {
         }
     }
 
-    fn apply_changes(&mut self, bytes: &Bytes, moment: Moment) {
-        fn changes_b_shift(changes: &[Change<&str>]) -> i32 {
-            changes
-                .iter()
-                .fold(0, |b_sh, change| b_sh + change.shift()[0])
+    fn apply_changes<'a>(
+        &mut self,
+        bytes: &Bytes,
+        moment: Moment,
+        mut ranges: Option<&'a mut Ranges>,
+    ) -> Option<&'a mut Ranges> {
+        fn shifted_range(
+            range: Range<usize>,
+            last_changes: &[Change<&str>],
+            sh_from: usize,
+            shift: [i32; 3],
+            i: usize,
+        ) -> Range<usize> {
+            if i == sh_from {
+                let shift = shift[0]
+                    + last_changes
+                        .iter()
+                        .fold(0, |b_sh, change| b_sh + change.shift()[0]);
+
+                let start = (range.start as i32 + shift) as usize;
+                let end = (range.end as i32 + shift) as usize;
+                start..end
+            } else {
+                range
+            }
         }
 
         let mut sub_trees_to_remove = Vec::new();
@@ -568,7 +569,18 @@ impl InnerTsParser {
         let (mut sh_from, mut shift) = (0, [0; 3]);
 
         for change in moment.changes() {
-            let start = change.start();
+            if let Some(ranges) = &mut ranges {
+                ranges.shift_by(change.start().byte(), change.shift()[0]);
+            }
+
+            let full_line_range = {
+                let start = bytes.point_at_line(change.start().line());
+                let end = (change.taken_end() < bytes.len())
+                    .then(|| bytes.point_at_line(change.taken_end().line() + 1))
+                    .unwrap_or(bytes.len());
+
+                start.byte()..end.byte()
+            };
 
             let input_edit = input_edit(change, bytes, self.offset, self.range.start);
             self.tree.edit(&input_edit);
@@ -577,12 +589,8 @@ impl InnerTsParser {
 
             // First, deal with all sub trees before the Change.
             while let Some((i, st)) = sub_trees.next_if(|(i, st)| {
-                let end = if *i >= sh_from {
-                    (st.range.end as i32 + shift[0] + changes_b_shift(&last_changes)) as usize
-                } else {
-                    st.range.end
-                };
-                end <= start.byte()
+                let sh_range = shifted_range(st.range.clone(), &last_changes, sh_from, shift, *i);
+                sh_range.end < change.start().byte()
             }) {
                 if i == sh_from {
                     st.shift_tree(shift);
@@ -595,23 +603,26 @@ impl InnerTsParser {
             }
 
             // Then, get rid of consecutively clipped sub trees.
-            while let Some((i, _)) = sub_trees.next_if(|(i, st)| {
-                let range = if *i == sh_from {
-                    let shift = shift[0] + changes_b_shift(&last_changes);
-                    let start = (st.range.start as i32 + shift) as usize;
-                    let end = (st.range.end as i32 + shift) as usize;
-                    start..end
-                } else {
-                    st.range.clone()
-                };
-                is_clipped_by(range, change.start().byte()..change.taken_end().byte())
+            while let Some((i, st)) = sub_trees.next_if(|(i, st)| {
+                let sh_range = shifted_range(st.range.clone(), &last_changes, sh_from, shift, *i);
+                // The theory is that a subtree addition/removal will only take place,
+                // at most, as far away as lines immediately in contact with the line
+                // where a change took place.
+                is_clipped_by(sh_range, change.start().byte()..change.taken_end().byte())
             }) {
+                // If an injected tree is removed, it should be added to the regions
+                // to be highlighted.
+                let sh_range = shifted_range(st.range.clone(), &last_changes, sh_from, shift, i);
+                if let Some(ranges) = &mut ranges {
+                    ranges.add(sh_range);
+                }
+
                 sub_trees_to_remove.push(i);
                 sh_from = i + 1;
             }
 
-            // Now, this sub tree should either contain the change or be ahead of
-            // it.
+            // Now, this sub tree should either contain the change or be the first
+            // one ahead of it.
             if let Some((i, st)) = sub_trees.peek_mut() {
                 if *i == sh_from {
                     st.shift_tree(shift);
@@ -624,7 +635,7 @@ impl InnerTsParser {
                 sh_from = *i + 1;
 
                 if let Some(last) = last_changes.last()
-                    && (last.taken_end().line() == start.line()
+                    && (last.taken_end().line() == change.start().line()
                         || last.taken_end().byte() > st.range.start)
                 {
                     last_changes.push(change);
@@ -633,6 +644,17 @@ impl InnerTsParser {
                         .splice(.., [change])
                         .fold(shift, |sh, change| add_shifts(sh, change.shift()));
                 };
+
+                // At this point in time, if the subtree "touches" the line where the
+                // change took place, this subtree should be removed and its range
+                // checked, since Tree::changed_ranges doesnt' catch everything.
+                if is_grazed_by(st.range.clone(), full_line_range) {
+                    if let Some(ranges) = &mut ranges {
+                        ranges.add(st.range.clone());
+                    }
+                    sub_trees_to_remove.push(*i);
+                    sub_trees.next();
+                }
             }
         }
 
@@ -659,6 +681,8 @@ impl InnerTsParser {
         }
 
         self.reparse_sub_trees(bytes);
+
+        ranges
     }
 
     fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
