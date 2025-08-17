@@ -38,18 +38,19 @@ use duat_core::{
     form::FormId,
     mode::Cursor,
     prelude::*,
-    text::{Builder, Bytes, Change, Matcheable, Moment, Point, Tags},
+    text::{Builder, Bytes, Change, Matcheable, Point, Tags},
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
-    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCapture as QueryCap,
+    InputEdit, Language, Node, Parser, Point as TsPoint, Query, QueryCapture as QueryCap,
     QueryCursor, QueryMatch, TextProvider, Tree,
 };
 
-use crate::languages::parser_is_compiled;
+use self::{injections::InjectedTree, languages::parser_is_compiled};
 
 mod cursor;
+mod injections;
 mod languages;
 
 /// The [tree-sitter] plugin for Duat
@@ -134,13 +135,13 @@ impl TsParser {
 
     /// The root [`Node`] of the syntax tree
     pub fn root(&self) -> Option<Node<'_>> {
-        self.0.as_ref().map(|inner| inner.tree.root_node())
+        self.0.as_ref().map(|parser| parser.tree.root_node())
     }
 
     /// Logs the root node with the [`context::debug`] macro
     pub fn debug_root(&self) {
-        if let Some(inner) = self.0.as_ref() {
-            context::debug!("{}", format_root(inner.tree.root_node()));
+        if let Some(parser) = self.0.as_ref() {
+            context::debug!("{}", format_root(parser.tree.root_node()));
         }
     }
 
@@ -153,7 +154,7 @@ impl TsParser {
     pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
         self.0
             .as_ref()
-            .and_then(|inner| inner.indent_on(p, bytes, cfg))
+            .and_then(|parser| parser.indent_on(p, bytes, cfg))
     }
 }
 
@@ -163,54 +164,97 @@ impl<U: Ui> file::Parser<U> for TsParser {
     }
 
     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
-        if let Some(inner) = self.0.as_mut()
+        if let Some(parser) = self.0.as_mut()
             && let Some(within) = within
         {
             let range = within.start.byte()..within.end.byte();
-            inner.highlight_and_inject(parts.bytes, &mut parts.tags, range);
+            parser.highlight_and_inject(parts.bytes, &mut parts.tags, range);
         }
     }
 
     fn parse_remote(&mut self, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
-        let Some(inner) = self.0.as_mut() else {
+        // In this function, the changes will be applied and the Ranges will
+        // be updated to include the following regions to be updated:
+        //
+        // - The ranges returned by Parser::changed_ranges,
+        // - All lines that contain any of the Changes in the Moment,
+        // - All ranges where an injection was added or removed, which will be
+        //   acquired through the injections query, applied on the two
+        //   previous range lists,
+        let Some(parser) = self.0.as_mut() else {
             return;
         };
 
-        fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
-            if let Some(old_tree) = parser.old_tree.as_ref() {
-                for range in parser.tree.changed_ranges(old_tree) {
-                    list.add(
-                        range.start_byte + parser.range.start..range.end_byte + parser.range.start,
-                    );
-                }
+        for change in snap.moment.changes() {
+            let input_edit = input_edit(change, snap.bytes);
+            parser.tree.edit(&input_edit);
 
-                for st in parser.sub_trees.iter() {
-                    merge_tree_changed_ranges(st, list)
-                }
+            for inj in parser.injections.iter_mut() {
+                inj.edit(&input_edit);
             }
         }
 
-        let ranges = inner.apply_changes(snap.bytes, snap.moment, ranges);
+        let tree = parser
+            .parser
+            .parse_with_options(&mut parser_fn(snap.bytes), Some(&parser.tree), None)
+            .unwrap();
+        parser.old_tree = Some(std::mem::replace(&mut parser.tree, tree));
 
-        if let Some(ranges) = ranges {
-            // This initial check might find larger, somewhat self contained nodes
-            // that have changed, e.g. an identifier that is now recognized as a
-            // function, things of that sort.
-            merge_tree_changed_ranges(inner, ranges);
-
-            // However, `changed_ranges` doesn't catch everything, so another
-            // check is done. At a minimum, at least the lines where the changes
-            // took place should be updated.
-            for change in snap.moment.changes() {
-                let start = change.start();
-                let added = change.added_end();
-                let start = snap.bytes.point_at_line(start.line());
-                let end = snap
-                    .bytes
-                    .point_at_line((added.line() + 1).min(snap.bytes.len().line()));
-                ranges.add(start.byte()..end.byte());
-            }
+        for inj in parser.injections.iter_mut() {
+            inj.update_tree(snap.bytes);
         }
+
+        let Some(ranges) = ranges else {
+            return;
+        };
+
+        let mut new_ranges = Ranges::empty();
+        // `changed_ranges` should mostly be able to catch any big additions
+        // to the tree structure.
+        for range in parser
+            .old_tree
+            .as_ref()
+            .unwrap()
+            .changed_ranges(&parser.tree)
+            .chain(
+                parser
+                    .injections
+                    .iter()
+                    .flat_map(InjectedTree::changed_ranges),
+            )
+        {
+            let start = snap.bytes.point_at_line(range.start_point.row).byte();
+            let end = snap.bytes.point_at_line(range.end_point.row + 1).byte();
+            new_ranges.add(start..end);
+        }
+
+        // However, `changed_ranges` doesn't catch everything, so another
+        // check is done. At a minimum, at least the lines where the changes
+        // took place should be updated.
+        for change in snap.moment.changes() {
+            let start = change.start();
+            let added = change.added_end();
+
+            let start = snap.bytes.point_at_line(start.line());
+            let end = snap
+                .bytes
+                .point_at_line((added.line() + 1).min(snap.bytes.len().line()));
+
+            new_ranges.add(start.byte()..end.byte());
+        }
+
+        // Finally, in order to properly catch injection changes, a final
+        // comparison is done between the old tree and the new tree, in
+        // regards to injection captures. This is done on every range in
+        // new_ranges.
+        refactor_injections(
+            &mut new_ranges,
+            (parser.lang_parts, &mut parser.injections),
+            (parser.old_tree.as_ref(), &parser.tree),
+            snap.bytes,
+        );
+
+        ranges.merge(new_ranges);
     }
 
     fn make_remote(&self) -> bool
@@ -219,7 +263,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
     {
         self.0
             .as_ref()
-            .is_some_and(|inner| inner.tree.root_node().is_error())
+            .is_some_and(|parser| parser.tree.root_node().is_error())
     }
 }
 
@@ -241,29 +285,17 @@ impl<U: Ui> ParserCfg<U> for TsParser {
         };
 
         const MAX_LEN_FOR_LOCAL: usize = 100_000;
-        let offset = TSPoint::default();
-        let len = file.bytes().len();
 
         if parser_is_compiled(filetype)? && file.bytes().len().byte() <= MAX_LEN_FOR_LOCAL {
-            let lang_parts = lang_parts(filetype)?;
-            let form_parts = forms_from_lang_parts(&lang_parts);
-
-            let inner =
-                InnerTsParser::new(file.bytes(), 0..len.byte(), offset, lang_parts, form_parts);
-
-            Ok(ParserBox::new(file, Self(Some(inner))))
+            let lang_parts = lang_parts_of(filetype)?;
+            Ok(ParserBox::new(
+                file,
+                Self(Some(InnerTsParser::new(file.bytes(), lang_parts))),
+            ))
         } else {
             Ok(ParserBox::new_remote(file, move |bytes| {
-                let lang_parts = lang_parts(filetype)?;
-                let form_parts = forms_from_lang_parts(&lang_parts);
-
-                Ok(Self(Some(InnerTsParser::new(
-                    bytes,
-                    0..len.byte(),
-                    offset,
-                    lang_parts,
-                    form_parts,
-                ))))
+                let lang_parts = lang_parts_of(filetype)?;
+                Ok(Self(Some(InnerTsParser::new(bytes, lang_parts))))
             }))
         }
     }
@@ -277,440 +309,69 @@ impl Default for TsParser {
 
 struct InnerTsParser {
     parser: Parser,
-    range: Range<usize>,
-    offset: TSPoint,
     lang_parts: LangParts<'static>,
     forms: &'static [(FormId, u8)],
     tree: Tree,
     old_tree: Option<Tree>,
-    sub_trees: Vec<InnerTsParser>,
-    tagger: Tagger,
+    injections: Vec<InjectedTree>,
 }
 
 impl InnerTsParser {
-    fn new(
-        bytes: &Bytes,
-        range: Range<usize>,
-        offset: TSPoint,
-        lang_parts: LangParts<'static>,
-        forms: &'static [(FormId, u8)],
-    ) -> InnerTsParser {
+    /// Returns a new [`InnerTsParser`]
+    fn new(bytes: &Bytes, lang_parts: LangParts<'static>) -> InnerTsParser {
         let (.., lang, _) = &lang_parts;
+        let forms = forms_from_lang_parts(lang_parts);
 
         let mut parser = Parser::new();
         parser.set_language(lang).unwrap();
 
         let tree = parser
-            .parse_with_options(&mut buf_parse(bytes, range.clone()), None, None)
+            .parse_with_options(&mut parser_fn(bytes), None, None)
             .unwrap();
 
         InnerTsParser {
             parser,
-            range,
-            offset,
             lang_parts,
             forms,
             tree,
             old_tree: None,
-            sub_trees: Vec::new(),
-            tagger: ts_tagger(),
+            injections: Vec::new(),
         }
     }
 
+    /// Highlights and injects based on the [`LangParts`] queries
     fn highlight_and_inject(&mut self, bytes: &Bytes, tags: &mut Tags, range: Range<usize>) {
-        if range.start >= self.range.end || range.end <= self.range.start {
-            return;
-        }
+        tags.remove(ts_tagger(), range.clone());
 
-        let (.., Queries { highlights, injections, .. }) = &self.lang_parts;
-        let buf = TsBuf(bytes);
-
-        tags.remove(self.tagger, range.clone());
-
-        let mut cursor = QueryCursor::new();
-        cursor.set_byte_range(range.clone());
-        let root = self
-            .tree
-            .root_node_with_offset(self.range.start, self.offset);
-
-        let injections = {
-            type SubTreeToAdd = (Range<usize>, TSPoint, LangParts<'static>);
-            let mut to_add: Vec<SubTreeToAdd> = Vec::new();
-
-            let mut inj_captures = cursor.captures(injections, root, buf);
-            let cn = injections.capture_names();
-
-            let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
-            let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
-
-            while let Some((qm, _)) = inj_captures.next() {
-                let Some(cap) = qm.captures.iter().find(is_content) else {
-                    continue;
-                };
-
-                let props = injections.property_settings(qm.pattern_index);
-                let lang = props
-                    .iter()
-                    .find_map(|p| {
-                        (p.key.as_ref() == "injection.language")
-                            .then_some(p.value.as_ref().unwrap().to_string())
-                    })
-                    .or_else(|| {
-                        let cap = qm.captures.iter().find(is_language)?;
-                        Some(
-                            bytes
-                                .buffers(cap.node.byte_range())
-                                .try_to_string()
-                                .unwrap(),
-                        )
-                    });
-
-                let range = cap.node.byte_range();
-                let key_fn = |(range, ..): &(Range<usize>, _, _)| range.start;
-                if let Some(lang) = lang
-                    && let Ok(mut lang_parts) = lang_parts(&lang)
-                    && let Err(i) = to_add.binary_search_by_key(&range.start, key_fn)
-                {
-                    let start = cap.node.start_position();
-
-                    // You may want to set a new injections query, only for this capture.
-                    if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
-                        && let Some(value) = prop.value.as_ref()
-                    {
-                        match query_from_path(&lang, value, lang_parts.1) {
-                            Ok(injections) => lang_parts.2.injections = injections,
-                            Err(err) => context::error!("{err}"),
-                        }
-                    }
-
-                    to_add.insert(i, (range, start, lang_parts));
-                }
-            }
-
-            to_add
-        };
-
-        let mut ranges = Ranges::empty();
-        ranges.add(range.clone());
-
-        // If a tree was not in sub_trees_to_add, but is part of the affected
-        // range, that means it was removed.
-        self.sub_trees.retain_mut(|st| {
-            if let Some((.., lp)) = injections.iter().find(|(range, ..)| *range == st.range) {
-                // For any newly added subtree, we should highlight them entirely.
-                let hi_range = (st.range.start + 1).min(st.range.end)..st.range.end;
-                let _ = ranges.remove(hi_range.clone());
-                if lp.0 == st.lang_parts.0 {
-                    // If the tree already existed, just highlight it.
-                    st.highlight_and_inject(bytes, tags, hi_range);
-                    true
-                } else {
-                    // Otherwise, remove the old one and try to highlight
-                    // a new one.
-                    false
-                }
-            } else {
-                if is_clipped_by(st.range.clone(), range.clone()) {
-                    let start = range.start.max(st.range.start.min(range.end));
-                    let end = range.end.min(st.range.end.max(range.start));
-                    let _ = ranges.remove(start..end);
-                    st.highlight_and_inject(bytes, tags, start..end);
-                }
-
-                true
-            }
-        });
-
-        // In the end, we add the sub trees that weren't already in there.
-        // This should automatically handle all of the sub trees's sub trees.
-        for (st_range, offset, lang_parts) in injections {
-            let key_fn = |st: &InnerTsParser| st.range.start;
-
-            let Err(i) = self.sub_trees.binary_search_by_key(&st_range.start, key_fn) else {
-                continue;
-            };
-
-            let form_parts = forms_from_lang_parts(&lang_parts);
-            let mut st = InnerTsParser::new(bytes, st_range, offset, lang_parts, form_parts);
-
-            st.highlight_and_inject(bytes, tags, st.range.clone());
-            let _ = ranges.remove(st.range.clone());
-
-            self.sub_trees.insert(i, st)
-        }
-
-        // The last thing that is done is highlighting of the parent tree.
-        // This is because the subtrees will have removed part chunks of the
-        // range to be highlighted, and we should only seek to highlight
-        // regions which don't belong to any injected trees.
-        for range in ranges {
-            let buf = TsBuf(bytes);
-            cursor.set_byte_range(range);
-            let mut hi_captures = cursor.captures(highlights, root, buf);
-            while let Some((qm, _)) = hi_captures.next() {
-                for cap in qm.captures.iter() {
-                    let ts_range = cap.node.range();
-
-                    // Assume that an empty range must take up the whole line
-                    // Cuz sometimes it be like that
-                    let (form, priority) = self.forms[cap.index as usize];
-                    let range = if ts_range.start_byte == ts_range.end_byte
-                        && ts_range.start_point.column == 0
-                    {
-                        let range = ts_range.start_byte
-                            ..bytes.point_at_line(ts_range.end_point.row + 1).byte();
-                        range
-                    } else {
-                        ts_range.start_byte..ts_range.end_byte
-                    };
-
-                    tags.insert(self.tagger, range, form.to_tag(priority));
-                }
-            }
-        }
+        highlight_and_inject(
+            self.tree.root_node(),
+            &mut self.injections,
+            (self.lang_parts, self.forms),
+            (bytes, tags),
+            range.start.saturating_sub(1)..(range.end + 1).min(bytes.len().byte()),
+        );
     }
 
-    fn apply_sub_tree_change(&mut self, change: Change<&str>, bytes: &Bytes) {
-        let start = change.start();
-        let added = change.added_end();
-        let taken = change.taken_end();
+    ////////// Querying functions
 
-        // By this point, if this tree were to be clipped by the change, it
-        // would have been removed already.
-        if start.byte() < self.range.start && taken.byte() <= self.range.start {
-            let ts_start = ts_point(start, bytes);
-            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_str());
-            let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_str());
-
-            self.range.start = (self.range.start as i32 + change.shift()[0]) as usize;
-            self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
-            self.offset = deoffset(self.offset, ts_taken_end);
-            self.offset = reoffset(self.offset, ts_added_end);
-        } else if taken.byte() <= self.range.end {
-            let edit = input_edit(change, bytes, self.offset, self.range.start);
-            self.tree.edit(&edit);
-            self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
-            self.old_tree = None;
-        } else {
-            // If this sub tree wasn't affected, neither will any of its children.
-            return;
-        }
-
-        self.sub_trees.retain_mut(|st| {
-            if is_clipped_by(
-                st.range.clone(),
-                change.start().byte()..change.taken_end().byte(),
-            ) {
-                false
-            } else {
-                st.apply_sub_tree_change(change, bytes);
-                true
-            }
-        });
-    }
-
-    fn shift_tree(&mut self, shift: [i32; 3]) {
-        self.range.start = (self.range.start as i32 + shift[0]) as usize;
-        self.range.end = (self.range.end as i32 + shift[0]) as usize;
-        self.offset.row = (self.offset.row as i32 + shift[2]) as usize;
-        for st in self.sub_trees.iter_mut() {
-            st.shift_tree(shift);
-        }
-    }
-
-    fn reparse_sub_trees(&mut self, bytes: &Bytes) {
-        for st in self.sub_trees.iter_mut() {
-            st.reparse_sub_trees(bytes);
-            if st.old_tree.is_none() {
-                let mut parse_fn = buf_parse(bytes, st.range.clone());
-                let tree = st
-                    .parser
-                    .parse_with_options(&mut parse_fn, Some(&st.tree), None)
-                    .unwrap();
-
-                st.old_tree = Some(std::mem::replace(&mut st.tree, tree));
-            }
-        }
-    }
-
-    fn apply_changes<'a>(
-        &mut self,
-        bytes: &Bytes,
-        moment: Moment,
-        mut ranges: Option<&'a mut Ranges>,
-    ) -> Option<&'a mut Ranges> {
-        fn shifted_range(
-            range: Range<usize>,
-            last_changes: &[Change<&str>],
-            sh_from: usize,
-            shift: [i32; 3],
-            i: usize,
-        ) -> Range<usize> {
-            if i == sh_from {
-                let shift = shift[0]
-                    + last_changes
-                        .iter()
-                        .fold(0, |b_sh, change| b_sh + change.shift()[0]);
-
-                let start = (range.start as i32 + shift) as usize;
-                let end = (range.end as i32 + shift) as usize;
-                start..end
-            } else {
-                range
-            }
-        }
-
-        let mut sub_trees_to_remove = Vec::new();
-        let mut sub_trees = self.sub_trees.iter_mut().enumerate().peekable();
-        // This list exists because of the possibility of multiple changes
-        // happening on the same line, thus causing a change in the column,
-        // that a simple "shift" variable wouldn't be able to keep track of.
-        let mut last_changes: Vec<Change<&str>> = Vec::new();
-        let (mut sh_from, mut shift) = (0, [0; 3]);
-
-        for change in moment.changes() {
-            if let Some(ranges) = &mut ranges {
-                ranges.shift_by(change.start().byte(), change.shift()[0]);
-            }
-
-            let full_line_range = {
-                let start = bytes.point_at_line(change.start().line());
-                let end = (change.taken_end() < bytes.len())
-                    .then(|| bytes.point_at_line(change.taken_end().line() + 1))
-                    .unwrap_or(bytes.len());
-
-                start.byte()..end.byte()
-            };
-
-            let input_edit = input_edit(change, bytes, self.offset, self.range.start);
-            self.tree.edit(&input_edit);
-
-            self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
-
-            // First, deal with all sub trees before the Change.
-            while let Some((i, st)) = sub_trees.next_if(|(i, st)| {
-                let sh_range = shifted_range(st.range.clone(), &last_changes, sh_from, shift, *i);
-                sh_range.end < change.start().byte()
-            }) {
-                if i == sh_from {
-                    st.shift_tree(shift);
-                    for change in last_changes.iter() {
-                        st.apply_sub_tree_change(*change, bytes);
-                    }
-                }
-
-                sh_from = i + 1;
-            }
-
-            // Then, get rid of consecutively clipped sub trees.
-            while let Some((i, st)) = sub_trees.next_if(|(i, st)| {
-                let sh_range = shifted_range(st.range.clone(), &last_changes, sh_from, shift, *i);
-                // The theory is that a subtree addition/removal will only take place,
-                // at most, as far away as lines immediately in contact with the line
-                // where a change took place.
-                is_clipped_by(sh_range, change.start().byte()..change.taken_end().byte())
-            }) {
-                // If an injected tree is removed, it should be added to the regions
-                // to be highlighted.
-                let sh_range = shifted_range(st.range.clone(), &last_changes, sh_from, shift, i);
-                if let Some(ranges) = &mut ranges {
-                    ranges.add(sh_range);
-                }
-
-                sub_trees_to_remove.push(i);
-                sh_from = i + 1;
-            }
-
-            // Now, this sub tree should either contain the change or be the first
-            // one ahead of it.
-            if let Some((i, st)) = sub_trees.peek_mut() {
-                if *i == sh_from {
-                    st.shift_tree(shift);
-                    for change in last_changes.iter() {
-                        st.apply_sub_tree_change(*change, bytes);
-                    }
-                }
-
-                st.apply_sub_tree_change(change, bytes);
-                sh_from = *i + 1;
-
-                if let Some(last) = last_changes.last()
-                    && (last.taken_end().line() == change.start().line()
-                        || last.taken_end().byte() > st.range.start)
-                {
-                    last_changes.push(change);
-                } else {
-                    shift = last_changes
-                        .splice(.., [change])
-                        .fold(shift, |sh, change| add_shifts(sh, change.shift()));
-                };
-
-                // At this point in time, if the subtree "touches" the line where the
-                // change took place, this subtree should be removed and its range
-                // checked, since Tree::changed_ranges doesnt' catch everything.
-                if is_grazed_by(st.range.clone(), full_line_range) {
-                    if let Some(ranges) = &mut ranges {
-                        ranges.add(st.range.clone());
-                    }
-                    sub_trees_to_remove.push(*i);
-                    sub_trees.next();
-                }
-            }
-        }
-
-        for (i, st) in sub_trees {
-            if i >= sh_from {
-                st.shift_tree(shift);
-                for change in last_changes.iter() {
-                    st.apply_sub_tree_change(*change, bytes);
-                }
-            }
-        }
-
-        let mut parse_fn = buf_parse(bytes, self.range.clone());
-        let tree = self
-            .parser
-            .parse_with_options(&mut parse_fn, Some(&self.tree), None)
-            .unwrap();
-
-        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
-        drop(parse_fn);
-
-        for i in sub_trees_to_remove.into_iter().rev() {
-            self.sub_trees.remove(i);
-        }
-
-        self.reparse_sub_trees(bytes);
-
-        ranges
-    }
-
+    /// The expected level of indentation on a given [`Point`]
     fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
-        fn smallest_around(
-            ts: &InnerTsParser,
-            b: usize,
-        ) -> (Node<'_>, &Query, [usize; 2], impl Fn(usize) -> usize) {
-            if let Some(sub) = ts
-                .sub_trees
-                .iter()
-                .find(|sub| sub.range.contains(&b) && sub.lang_parts.0 != "comment")
-            {
-                return smallest_around(sub, b);
-            }
+        let start = bytes.point_at_line(p.line());
+        let (root, indents, range) = self
+            .injections
+            .iter()
+            .find_map(|inj| {
+                inj.included_ranges()
+                    .find(|range| range.contains(&start.byte()))
+                    .map(|range| (inj.root_node(), inj.lang_parts().2.indents, range))
+            })
+            .unwrap_or((
+                self.tree.root_node(),
+                self.lang_parts.2.indents,
+                0..bytes.len().byte(),
+            ));
 
-            let offset = [ts.range.start, ts.offset.row];
-            let col_off = |line: usize| ts.offset.column * (line == ts.offset.row) as usize;
-
-            (
-                ts.tree.root_node(),
-                ts.lang_parts.2.indents,
-                offset,
-                col_off,
-            )
-        }
-
-        let [start, _] = bytes.points_of_line(p.line());
-        let (root, indents, [byte_off, line_off], col_off) = smallest_around(self, start.byte());
+        let first_line = bytes.point_at_byte(range.start).line();
 
         // The query could be empty.
         if indents.pattern_count() == 0 {
@@ -770,14 +431,14 @@ impl InnerTsParser {
             .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
 
         let mut opt_node = if let Some(indented_start) = indented_start {
-            Some(descendant_in(root, indented_start.byte(), byte_off))
+            Some(descendant_in(root, indented_start.byte()))
         // If the line is empty, look behind for another.
         } else {
             // Find last previous empty line.
             let mut lines = bytes.lines(..start).rev();
             let Some((prev_l, line)) = lines
                 .find(|(_, line)| !(line.reg_matches(r"^\s*$", ..).unwrap()))
-                .filter(|(l, _)| *l >= line_off)
+                .filter(|(l, _)| *l >= first_line)
             else {
                 // If there is no previous non empty line, align to 0.
                 return Some(0);
@@ -785,19 +446,19 @@ impl InnerTsParser {
             let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
 
             let [prev_start, prev_end] = bytes.points_of_line(prev_l);
-            let mut node = descendant_in(root, prev_end.byte() - (trail + 1), byte_off);
+            let mut node = descendant_in(root, prev_end.byte() - (trail + 1));
             if node.kind().contains("comment") {
                 // Unless the whole line is a comment, try to find the last node
                 // before the comment.
                 // This technically fails if there are multiple block comments.
-                let first_node = descendant_in(root, prev_start.byte(), byte_off);
+                let first_node = descendant_in(root, prev_start.byte());
                 if first_node.id() != node.id() {
-                    node = descendant_in(root, node.start_byte() - 1, 0)
+                    node = descendant_in(root, node.start_byte() - 1)
                 }
             }
 
             Some(if q(&caps, node, &["end"]) {
-                descendant_in(root, start.byte(), byte_off)
+                descendant_in(root, start.byte())
             } else {
                 node
             })
@@ -808,16 +469,16 @@ impl InnerTsParser {
         }
 
         let tab = cfg.tab_stops.size() as i32;
-        let mut indent = if root.start_byte() + byte_off != 0 {
-            bytes.indent(bytes.point_at_byte(root.start_byte() + byte_off), cfg) as i32
+        let mut indent = if root.start_byte() != 0 {
+            bytes.indent(bytes.point_at_byte(root.start_byte()), cfg) as i32
         } else {
             0
         };
 
         let mut processed_lines = Vec::new();
         while let Some(node) = opt_node {
-            let s_line = node.start_position().row + line_off;
-            let e_line = node.end_position().row + line_off;
+            let s_line = node.start_position().row;
+            let e_line = node.end_position().row;
 
             // If a node is not an indent and is marked as auto or ignore, act
             // accordingly.
@@ -867,8 +528,8 @@ impl InnerTsParser {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
-                    let [_, end] = bytes.points_of_line(child.start_position().row + line_off);
-                    let range = child.range().start_byte + byte_off..end.byte();
+                    let [_, end] = bytes.points_of_line(child.start_position().row);
+                    let range = child.range().start_byte..end.byte();
 
                     let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
                         line.split_whitespace().any(|w| w != delim)
@@ -899,9 +560,9 @@ impl InnerTsParser {
                     .unwrap_or((Some(node), false));
 
                 if let Some(o_delim_node) = o_delim_node {
-                    let o_s_line = o_delim_node.start_position().row + line_off;
-                    let o_s_col = o_delim_node.start_position().column + col_off(o_s_line);
-                    let c_s_line = c_delim_node.map(|n| n.start_position().row + line_off);
+                    let o_s_line = o_delim_node.start_position().row;
+                    let o_s_col = o_delim_node.start_position().column;
+                    let c_s_line = c_delim_node.map(|n| n.start_position().row);
 
                     // If the previous line was marked with an open_delimiter, treat it
                     // like an indent.
@@ -957,25 +618,21 @@ impl InnerTsParser {
 
 impl std::fmt::Debug for InnerTsParser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let start = self.range.start;
         f.debug_struct("TsParser")
-            .field("range", &self.range)
-            .field("offset", &self.offset)
-            .field("tree", &self.tree.root_node_with_offset(start, self.offset))
+            .field("tree", &self.tree)
             .field("old_tree", &self.old_tree)
-            .field("sub_trees", &self.sub_trees)
+            .field("injections", &self.injections)
             .finish_non_exhaustive()
     }
 }
 
 #[track_caller]
-fn descendant_in(node: Node, byte: usize, offset: usize) -> Node {
-    node.descendant_for_byte_range(byte - offset, byte + 1 - offset)
-        .unwrap()
+fn descendant_in(node: Node, byte: usize) -> Node {
+    node.descendant_for_byte_range(byte, byte + 1).unwrap()
 }
 
-fn buf_parse<'a>(bytes: &'a Bytes, range: Range<usize>) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
-    let [s0, s1] = bytes.buffers(range).to_array();
+fn parser_fn<'a>(bytes: &'a Bytes) -> impl FnMut(usize, TsPoint) -> &'a [u8] {
+    let [s0, s1] = bytes.buffers(..).to_array();
     |byte, _point| {
         if byte < s0.len() {
             &s0[byte..]
@@ -985,26 +642,26 @@ fn buf_parse<'a>(bytes: &'a Bytes, range: Range<usize>) -> impl FnMut(usize, TSP
     }
 }
 
-fn ts_point(point: Point, buffer: &Bytes) -> TSPoint {
+fn ts_point(point: Point, buffer: &Bytes) -> TsPoint {
     let strs = buffer.strs(..point.byte()).unwrap();
     let iter = strs.into_iter().flat_map(str::chars).rev();
     let col = iter.take_while(|&b| b != '\n').count();
 
-    TSPoint::new(point.line(), col)
+    TsPoint::new(point.line(), col)
 }
 
-fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
+fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TsPoint {
     let col = if to.line() == from.line() {
         col + str.chars().count()
     } else {
         str.chars().rev().take_while(|&b| b != '\n').count()
     };
 
-    TSPoint::new(to.line(), col)
+    TsPoint::new(to.line(), col)
 }
 
 fn forms_from_lang_parts(
-    (lang, _, Queries { highlights, .. }): &LangParts<'static>,
+    (lang, _, Queries { highlights, .. }): LangParts<'static>,
 ) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
     const PRIORITIES: &[&str] = &[
@@ -1053,7 +710,7 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
     }
 }
 
-fn lang_parts(lang: &str) -> Result<LangParts<'static>, Text> {
+fn lang_parts_of(lang: &str) -> Result<LangParts<'static>, Text> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
 
     let mut maps = MAPS.lock().unwrap();
@@ -1092,29 +749,7 @@ fn ts_tagger() -> Tagger {
     *TAGGER
 }
 
-fn deoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
-    if ts_point.row == offset.row {
-        TSPoint::new(
-            ts_point.row - offset.row,
-            ts_point
-                .column
-                .checked_sub(offset.column)
-                .unwrap_or_else(|| panic!("{ts_point:?}, {offset:?}")),
-        )
-    } else {
-        TSPoint::new(ts_point.row - offset.row, ts_point.column)
-    }
-}
-
-fn reoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
-    if ts_point.row == 0 {
-        TSPoint::new(ts_point.row + offset.row, ts_point.column + offset.column)
-    } else {
-        TSPoint::new(ts_point.row + offset.row, ts_point.column)
-    }
-}
-
-fn input_edit(change: Change<&str>, bytes: &Bytes, offset: TSPoint, r_start: usize) -> InputEdit {
+fn input_edit(change: Change<&str>, bytes: &Bytes) -> InputEdit {
     let start = change.start();
     let added = change.added_end();
     let taken = change.taken_end();
@@ -1124,12 +759,12 @@ fn input_edit(change: Change<&str>, bytes: &Bytes, offset: TSPoint, r_start: usi
     let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_str());
 
     InputEdit {
-        start_byte: start.byte() - r_start,
-        old_end_byte: taken.byte() - r_start,
-        new_end_byte: added.byte() - r_start,
-        start_position: deoffset(ts_start, offset),
-        old_end_position: deoffset(ts_taken_end, offset),
-        new_end_position: deoffset(ts_added_end, offset),
+        start_byte: start.byte(),
+        old_end_byte: taken.byte(),
+        new_end_byte: added.byte(),
+        start_position: ts_start,
+        old_end_position: ts_taken_end,
+        new_end_position: ts_added_end,
     }
 }
 
@@ -1238,14 +873,6 @@ impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
     }
 }
 
-/// Adds two shifts together
-fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
-    let b = lhs[0] + rhs[0];
-    let c = lhs[1] + rhs[1];
-    let l = lhs[2] + rhs[2];
-    [b, c, l]
-}
-
 #[allow(unused)]
 fn format_root(node: Node) -> Text {
     fn format_range(node: Node, builder: &mut Builder) {
@@ -1315,14 +942,153 @@ fn format_root(node: Node) -> Text {
     builder.build()
 }
 
-/// Wether the `range` is clipped by `by`
-fn is_clipped_by(range: Range<usize>, by: Range<usize>) -> bool {
-    (by.start <= range.start && range.start < by.end)
-        || (by.start < range.end && range.end <= by.end)
+fn highlight_and_inject(
+    root: Node,
+    injected_trees: &mut Vec<InjectedTree>,
+    (lang_parts, forms): (LangParts<'static>, &'static [(FormId, u8)]),
+    (bytes, tags): (&Bytes, &mut Tags),
+    range: Range<usize>,
+) {
+    let tagger = ts_tagger();
+    let (.., Queries { highlights, injections, .. }) = &lang_parts;
+
+    let mut cursor = QueryCursor::new();
+    cursor.set_byte_range(range.clone());
+    let buf = TsBuf(bytes);
+
+    let cn = injections.capture_names();
+    let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
+    let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
+
+    let mut inj_captures = cursor.captures(injections, root, buf);
+    while let Some((qm, _)) = inj_captures.next() {
+        let Some(cap) = qm.captures.iter().find(is_content) else {
+            continue;
+        };
+        let cap_range = cap.node.byte_range();
+
+        let props = injections.property_settings(qm.pattern_index);
+        let Some(lang) = props
+            .iter()
+            .find_map(|p| {
+                (p.key.as_ref() == "injection.language")
+                    .then_some(p.value.as_ref().unwrap().to_string())
+            })
+            .or_else(|| {
+                let cap = qm.captures.iter().find(is_language)?;
+                Some(
+                    bytes
+                        .buffers(cap.node.byte_range())
+                        .try_to_string()
+                        .unwrap(),
+                )
+            })
+        else {
+            continue;
+        };
+
+        let Ok(mut lang_parts) = lang_parts_of(&lang) else {
+            continue;
+        };
+
+        // You may want to set a new injections query, only for this capture.
+        if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
+            && let Some(value) = prop.value.as_ref()
+        {
+            match query_from_path(&lang, value, lang_parts.1) {
+                Ok(injections) => {
+                    lang_parts.2.injections = injections;
+                }
+                Err(err) => context::error!("{err}"),
+            }
+        };
+
+        if let Some(inj) = injected_trees
+            .iter_mut()
+            .find(|inj| inj.lang_parts().0 == lang_parts.0)
+        {
+            // If this range is brand new, add it to the Ranges to be updated.
+            inj.add_range(cap_range.clone());
+        } else {
+            injected_trees.push(InjectedTree::new(bytes, lang_parts, cap_range.clone()));
+        }
+    }
+
+    let mut hi_captures = cursor.captures(highlights, root, buf);
+    while let Some((qm, _)) = hi_captures.next() {
+        let qm: &QueryMatch = qm;
+        for cap in qm.captures.iter() {
+            let ts_range = cap.node.range();
+
+            // Assume that an empty range must take up the whole line
+            // Cuz sometimes it be like that
+            let (form, priority) = forms[cap.index as usize];
+            let range = ts_range.start_byte..ts_range.end_byte;
+
+            tags.insert(tagger, range, form.to_tag(priority));
+        }
+    }
+
+    injected_trees.retain_mut(|inj| {
+        if inj.is_empty() {
+            false
+        } else {
+            inj.update_tree(bytes);
+            inj.highlight_and_inject(bytes, tags, range.clone());
+            true
+        }
+    });
 }
 
-/// Wether the `range` is grazed by `by`
-fn is_grazed_by(range: Range<usize>, by: Range<usize>) -> bool {
-    (by.start <= range.start && range.start <= by.end)
-        || (by.start <= range.end && range.end <= by.end)
+/// Figures out injection changes
+///
+/// This function does not actually modify the injections (beyond
+/// removing deinjected areas), as that will be done by the
+/// highlight_and_inject function.
+///
+/// Its main purpose is to find the regions where changes have taken
+/// place and add them to the ranges to update.
+fn refactor_injections(
+    ranges: &mut Ranges,
+    (lang_parts, injected_trees): (LangParts, &mut Vec<InjectedTree>),
+    (old, new): (Option<&Tree>, &Tree),
+    bytes: &Bytes,
+) {
+    let buf = TsBuf(bytes);
+    let (.., Queries { injections, .. }) = lang_parts;
+    let mut cursor = QueryCursor::new();
+
+    let cn = injections.capture_names();
+    let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
+
+    let mut inj_ranges = Ranges::empty();
+
+    for range in ranges.iter() {
+        cursor.set_byte_range(range.clone());
+
+        if let Some(old) = old {
+            let mut inj_captures = cursor.captures(injections, old.root_node(), buf);
+            while let Some((qm, _)) = inj_captures.next() {
+                if let Some(cap) = qm.captures.iter().find(is_content) {
+                    inj_ranges.add(cap.node.byte_range());
+                    for inj in injected_trees.iter_mut() {
+                        inj.remove_range(cap.node.byte_range());
+                    }
+                }
+            }
+        }
+
+        let mut inj_captures = cursor.captures(injections, new.root_node(), buf);
+        while let Some((qm, _)) = inj_captures.next() {
+            if let Some(cap) = qm.captures.iter().find(is_content) {
+                inj_ranges.add(cap.node.byte_range());
+            }
+        }
+    }
+
+    for inj in injected_trees.iter_mut() {
+        inj.refactor_injections(ranges, bytes);
+    }
+
+    ranges.merge(inj_ranges);
 }

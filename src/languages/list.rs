@@ -553,9 +553,12 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/tree-sitter/tree-sitter-javascript",
             &["@steelsojka"],
         ),
-        LanguageOptions::pair("jq", "https://github.com/flurie/tree-sitter-jq", &[
-            "@ObserverOfTime",
-        ]),
+        LanguageOptions::pairs_with_symbol(
+            "jq",
+            "https://github.com/flurie/tree-sitter-jq",
+            &[("language", true)],
+            &["@ObserverOfTime"],
+        ),
         LanguageOptions::pair(
             "jsdoc",
             "https://github.com/tree-sitter/tree-sitter-jsdoc",
@@ -1095,7 +1098,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/GordianDziwis/tree-sitter-sparql",
             &["@GordianDziwis"],
         ),
-        LanguageOptions::pair("sql", "https://github.com/derekstride/tree-sitter-sql", &[
+        LanguageOptions::pair("sql", "https://github.com/DerekStride/tree-sitter-sql", &[
             "@derekstride",
         ]),
         LanguageOptions::pair(
@@ -1275,10 +1278,12 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/Teddytrombone/tree-sitter-typoscript",
             &["@Teddytrombone"],
         ),
-        LanguageOptions::pair("typst", "https://github.com/uben0/tree-sitter-typst", &[
-            "@uben0",
-            "@RaafatTurki",
-        ]),
+        LanguageOptions::pairs_with_symbol(
+            "typst",
+            "https://github.com/uben0/tree-sitter-typst",
+            &[("language", true)],
+            &["@uben0", "@RaafatTurki"],
+        ),
         LanguageOptions::pair(
             "udev",
             "https://github.com/ObserverOfTime/tree-sitter-udev",
@@ -1317,7 +1322,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         ]),
         LanguageOptions::pair(
             "verilog",
-            "https://github.com/gmlarumbe/tree-sitter-systemverilog",
+            "https://github.com/tree-sitter/tree-sitter-verilog",
             &["@zhangwwpeng"],
         ),
         LanguageOptions::pair(
