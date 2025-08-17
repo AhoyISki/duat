@@ -224,7 +224,10 @@ impl<U: Ui> file::Parser<U> for TsParser {
             )
         {
             let start = snap.bytes.point_at_line(range.start_point.row).byte();
-            let end = snap.bytes.point_at_line(range.end_point.row + 1).byte();
+            let end = snap
+                .bytes
+                .point_at_line((range.end_point.row + 1).min(snap.bytes.len().line()))
+                .byte();
             new_ranges.add(start..end);
         }
 
@@ -1014,6 +1017,16 @@ fn highlight_and_inject(
         }
     }
 
+    injected_trees.retain_mut(|inj| {
+        if inj.is_empty() {
+            false
+        } else {
+            inj.update_tree(bytes);
+            inj.highlight_and_inject(bytes, tags, range.clone());
+            true
+        }
+    });
+
     let mut hi_captures = cursor.captures(highlights, root, buf);
     while let Some((qm, _)) = hi_captures.next() {
         let qm: &QueryMatch = qm;
@@ -1028,16 +1041,6 @@ fn highlight_and_inject(
             tags.insert(tagger, range, form.to_tag(priority));
         }
     }
-
-    injected_trees.retain_mut(|inj| {
-        if inj.is_empty() {
-            false
-        } else {
-            inj.update_tree(bytes);
-            inj.highlight_and_inject(bytes, tags, range.clone());
-            true
-        }
-    });
 }
 
 /// Figures out injection changes

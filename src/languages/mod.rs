@@ -154,7 +154,7 @@ struct LanguageOptions {
 }
 
 impl LanguageOptions {
-    fn pair(
+    fn pair_const(
         lang: &'static str,
         git: &'static str,
         _maintainers: &'static [&'static str],
@@ -162,6 +162,21 @@ impl LanguageOptions {
         let options = Self {
             git,
             symbols: &[("LANGUAGE", false)],
+            crate_name: crate_name(lang),
+            _maintainers,
+        };
+
+        (lang, options)
+    }
+    
+    fn pair_fn(
+        lang: &'static str,
+        git: &'static str,
+        _maintainers: &'static [&'static str],
+    ) -> (&'static str, Self) {
+        let options = Self {
+            git,
+            symbols: &[("language", true)],
             crate_name: crate_name(lang),
             _maintainers,
         };
