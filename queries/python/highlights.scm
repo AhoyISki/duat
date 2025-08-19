@@ -25,7 +25,7 @@
 
 ((attribute
   attribute: (identifier) @variable.member)
-  (#match? @variable.member "^[%l_].*$"))
+  (#match? @variable.member "^[a-z_].*$"))
 
 ((assignment
   left: (identifier) @type.definition
@@ -49,12 +49,12 @@
 
 ((call
   function: (identifier) @constructor)
-  (#match? @constructor "^%u"))
+  (#match? @constructor "^[A-Z]"))
 
 ((call
   function: (attribute
     attribute: (identifier) @constructor))
-  (#match? @constructor "^%u"))
+  (#match? @constructor "^[A-Z]"))
 
 ; Decorators
 ((decorator
@@ -413,7 +413,7 @@
     (expression_statement
       (assignment
         left: (identifier) @variable.member))))
-  (#match? @variable.member "^[%l_].*$"))
+  (#match? @variable.member "^[a-z_].*$"))
 
 ((class_definition
   body: (block
@@ -421,7 +421,7 @@
       (assignment
         left: (_
           (identifier) @variable.member)))))
-  (#match? @variable.member "^[%l_].*$"))
+  (#match? @variable.member "^[a-z_].*$"))
 
 ((class_definition
   (block

@@ -115,9 +115,8 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("node.field", "variable.member"),
         );
 
-        hook::add_grouped::<File<U>, U>("TreeSitter", |_, (mut cfg, _)| {
-            cfg.add_parser(TsParser::new());
-            cfg
+        hook::add_grouped::<File<U>, U>("TreeSitter", |_, (cfg, _)| {
+            cfg.with_parser(TsParser::new())
         });
     }
 }

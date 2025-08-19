@@ -77,7 +77,7 @@
 ;
 (if_statement
   condition: (parenthesized_expression) @indent.align
-  (#match? @indent.align "^%([^\n]")
+  (#match? @indent.align "^\\([^\n]")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
@@ -90,7 +90,7 @@
 ;
 (while_statement
   condition: (parenthesized_expression) @indent.align
-  (#match? @indent.align "[^\n ]%)$")
+  (#match? @indent.align "[^\n ]\\)$")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
@@ -103,7 +103,7 @@
 ;
 (if_statement
   condition: (parenthesized_expression) @indent.align
-  (#match? @indent.align "[^\n ]%)$")
+  (#match? @indent.align "[^\n ]\\)$")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
@@ -124,7 +124,7 @@
   (#set! indent.close_delimiter ")"))
 
 ((parameters) @indent.align
-  (#match? @indent.align "[^\n ]%)$")
+  (#match? @indent.align "[^\n ]\\)$")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
