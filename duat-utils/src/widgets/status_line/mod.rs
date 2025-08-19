@@ -148,7 +148,7 @@ impl<U: Ui> StatusLineCfg<U> {
     }
 
     /// Replaces the previous formatting with a new one
-    pub fn formatted(self, new: Self) -> Self {
+    pub fn fmt(self, new: Self) -> Self {
         Self { specs: self.specs, ..new }
     }
 
