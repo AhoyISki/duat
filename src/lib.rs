@@ -358,7 +358,6 @@
 //! [Changes]: prelude::print::wrap_on_edge
 //! [Removes]: prelude::hook::remove
 //! [group]: prelude::hook::add_grouped
-//! [Pushes]: prelude::ui::FileBuilder::push
 //! [vertical rule]: prelude::VertRule
 //! [line numbers]: prelude::LineNumbers
 //! [custom status line]: prelude::status
@@ -538,7 +537,8 @@ pub mod hook {
     //! These are the default [hook groups]:
     //!
     //! - `"FileWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
-    //!   to new [`File`]s, via [`OnFileOpen`].
+    //!   to new [`File`]s, via [`WidgetCreated`], (using [`File`] as
+    //!   an alias for [`WidgetCreated<File>`]).
     //! - `"WindowWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
     //!   and [`Notifications`] to new windows, via [`WindowCreated`].
     //! - `"HidePromptLine"`: Is responsible for [hiding] the
@@ -587,7 +587,7 @@ pub mod hook {
     //! [`PromptLine`]: crate::prelude::PromptLine
     //! [`Notifications`]: crate::prelude::Notifications
     //! [`WindowCreated`]: crate::prelude::WindowCreated
-    //! [hiding]: crate::prelude::RawArea::constrain_ver
+    //! [hiding]: duat_core::ui::Area::constrain_ver
     //! [cfg]: crate::prelude::Widget::Cfg
     //! [`File`]: crate::prelude::File
     //! [`LineNumbers`]: crate::prelude::LineNumbers
@@ -599,6 +599,7 @@ pub mod hook {
     //! [`Mode`]: crate::mode::Mode
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
+    //! [tabstop]: duat_core::cfg::PrintCfg::set_tabstop
     use duat_core::data::Pass;
     pub use duat_core::hook::*;
     pub use duat_utils::hooks::*;
@@ -747,13 +748,14 @@ pub mod hook {
     ///
     /// By default, this is [hook]
     ///
-    /// [cfg]: crate::ui::Widget::Cfg
-    /// [`WidgetCfg`]: crate::ui::WidgetCfg
+    /// [cfg]: crate::widgets::Widget::Cfg
+    /// [`WidgetCfg`]: crate::widgets::WidgetCfg
     /// [hook]: self
-    /// [direction]: crate::ui::PushSpecs
+    /// [direction]: duat_core::ui::PushSpecs
     /// [`LineNumbers`]: duat_utils::widgets::LineNumbers
     /// [`VertRule`]: duat_term::VertRule
     /// [`Widget`]: duat_core::ui::Widget
+    /// [`UiBuilder`]: duat_core::ui::UiBuilder
     pub type WidgetCreated<W> = duat_core::hook::WidgetCreated<W, Ui>;
 
     /// [`Hookable`]: Triggers when a new window is opened
@@ -773,7 +775,7 @@ pub mod hook {
     ///
     /// [`File`]: crate::prelude::File
     /// [`Widget`]: crate::prelude::Widget
-    /// [builder]: crate::prelude::ui::WindowBuilder
+    /// [builder]: crate::prelude::ui::UiBuilder
     /// [hook]: self
     pub type WindowCreated = duat_core::hook::WindowCreated<Ui>;
 
@@ -1176,9 +1178,9 @@ compile_error!("No ui has been chosen to compile Duat with.");
 #[cfg(feature = "term-ui")]
 pub type Ui = duat_term::Ui;
 #[cfg(feature = "term-ui")]
-/// The [`RawArea`] of the [`Ui`]
+/// The [`ui::Area`] of the [`Ui`]
 ///
-/// [`RawArea`]: duat_core::ui::RawArea
+/// [`ui::Area`]: duat_core::ui::Area
 pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
 
 /// A function that sets the [`SessionCfg`].
