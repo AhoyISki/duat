@@ -223,13 +223,6 @@ impl<T: ?Sized> RwData<T> {
             .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
     }
 
-    /// Reads the data without updating its read state, might be
-    /// removed, idk
-    pub(crate) fn read_raw<'a>(&'a self, _: &'a Pass) -> &'a T {
-        // SAFETY: Same as Self::read
-        unsafe { &*self.value.get() }
-    }
-
     ////////// Writing functions
 
     /// Writes to the value within using a [`Pass`]
@@ -577,7 +570,7 @@ impl Pass {
     /// Returns a new instance of [`Pass`]
     ///
     /// Be careful when using this!
-    pub(crate) unsafe fn new() -> Self {
+    pub(crate) const unsafe fn new() -> Self {
         Pass(PhantomData)
     }
 }

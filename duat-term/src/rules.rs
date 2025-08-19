@@ -130,14 +130,14 @@ impl VertRuleCfg {
     pub fn new() -> Self {
         Self {
             sep_char: SepChar::Uniform('│'),
-            specs: PushSpecs::left().with_hor_len(1.0),
+            specs: PushSpecs::left().hor_len(1.0),
         }
     }
 
     /// Puts this [`VertRule`] on the right
     pub fn on_the_right(self) -> Self {
         Self {
-            specs: PushSpecs::right().with_hor_len(1.0),
+            specs: PushSpecs::right().hor_len(1.0),
             ..self
         }
     }

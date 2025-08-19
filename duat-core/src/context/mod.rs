@@ -28,7 +28,7 @@ mod global {
         },
     };
 
-    use super::{CurFile, CurWidget};
+    use super::{CurFile, CurWidget, DynFile};
     use crate::{
         context::Handle,
         data::{DataMap, Pass, RwData},
@@ -91,8 +91,8 @@ mod global {
     /// [`fixed_file`].
     ///
     /// [`File`]: crate::file::File
-    pub fn dyn_file<U: Ui>(pa: &Pass) -> CurFile<U> {
-        cur_file(pa).clone()
+    pub fn dyn_file<U: Ui>(pa: &Pass) -> Result<DynFile<U>, Text> {
+        cur_file(pa).dynamic(pa)
     }
 
     /// Gets the [`Widget`] from a [`U::Area`]
@@ -265,26 +265,130 @@ impl<U: Ui> CurFile<U> {
     /// [`WidgetCreated<File>`] hook.
     ///
     /// [`WidgetCreated<File>`]: crate::hook::WidgetCreated
-    pub fn fixed(&self, pa: &Pass) -> Result<Handle<File<U>, U>, Text> {
+    fn fixed(&self, pa: &Pass) -> Result<Handle<File<U>, U>, Text> {
         self.0
             .read(pa)
             .clone()
             .ok_or_else(|| txt!("No file yet").build())
     }
 
-    /// Wether the current [`File`] has been changed _or_ swapped
-    pub fn has_changed(&self, pa: &Pass) -> bool {
-        self.0.has_changed()
-            || self
-                .0
-                .read_raw(pa)
-                .as_ref()
-                .is_some_and(|handle| handle.has_changed())
+    /// Returns a new "dynamic" "[`Handle<File>`]", in the form of
+    /// [`DynFile`]
+    ///
+    /// This can fail if there is no [`File`] open yet, which can
+    /// happen right as Duat is starting up, such as in a
+    /// [`WidgetCreated<File>`] hook.
+    ///
+    /// [`WidgetCreated<File>`]: crate::hook::WidgetCreated
+    fn dynamic(&self, pa: &Pass) -> Result<DynFile<U>, Text> {
+        Ok(DynFile {
+            file: RwData::new(self.0.read(pa).clone().ok_or_else(|| txt!("No file yet"))?),
+            cur_file: self.clone(),
+        })
     }
 
     /// Wether the current [`File`] has been swapped
     pub fn has_swapped(&self) -> bool {
         self.0.has_changed()
+    }
+}
+
+/// A "dynamic" [`Handle`] wrapper for [`File`]s
+///
+/// This [`Handle`] wrapper will always point to the presently active
+/// [`File`]. It can also detect when that [`File`] has been changed
+/// or when another [`File`] becomes the active [`File`].
+///
+/// [`read`]: DynFile::read
+/// [`write`]: DynFile::write
+pub struct DynFile<U: Ui> {
+    file: RwData<Handle<File<U>, U>>,
+    cur_file: CurFile<U>,
+}
+
+impl<U: Ui> DynFile<U> {
+    /// Wether the [`File`] pointed to has changed or swapped with
+    /// another
+    pub fn has_changed(&self, pa: &Pass) -> bool {
+        if self.cur_file.has_swapped() {
+            true
+        } else {
+            self.file.read(pa).has_changed()
+        }
+    }
+
+    /// Swaps the [`DynFile`] to the currently active [`File`]
+    pub fn swap_to_current(&mut self) {
+        // SAFETY: Since this struct doesn't implement Clone, mutable access
+        // ensures that nothing is holding a reference to the RwData.
+        let pa = unsafe { &mut Pass::new() };
+        if self.cur_file.has_swapped() {
+            *self.file.write(pa) = self.cur_file.fixed(pa).unwrap();
+        }
+    }
+
+    /// Reads the presently active [`File`]
+    pub fn read<'a>(&'a mut self, pa: &'a Pass) -> &'a File<U> {
+        self.file.read(pa).read(pa)
+    }
+
+    /// The [`Handle<File>`] currently being pointed to
+    pub fn handle(&self) -> &Handle<File<U>, U> {
+        // SAFETY: Since this struct doesn't implement Clone, no mutable
+        // references to the RwData exist.
+        static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
+        self.file.read(INTERNAL_PASS)
+    }
+
+    /// Simulates a [`read`] without actually reading
+    ///
+    /// This is useful if you want to tell Duat that you don't want
+    /// [`has_changed`] to return `true`, but you don't have a
+    /// [`Pass`] available to [`read`] the value.
+    ///
+    /// This assumes that you don't care about the active [`File`]
+    /// possibly being swapped.
+    ///
+    /// [`read`]: Self::read
+    /// [`has_changed`]: Self::has_changed
+    pub fn declare_as_read(&self) {
+        self.file.declare_as_read();
+        self.cur_file.0.declare_as_read();
+    }
+
+    ////////// Writing functions
+
+    /// Reads the presently active [`File`]
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut File<U> {
+        // SAFETY: Because I already got a &mut Pass, the RwData can't be
+        // accessed anyways.
+        static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
+
+        self.file.read(INTERNAL_PASS).write(pa)
+    }
+
+    /// Writes to the [`File`] and [`Area`], making use of a
+    /// [`Pass`]
+    ///
+    /// [`Area`]: crate::ui::Ui::Area
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut File<U>, &'a U::Area) {
+        // SAFETY: Because I already got a &mut Pass, the RwData can't be
+        // accessed anyways.
+        static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
+
+        self.file.read(INTERNAL_PASS).write_with_area(pa)
+    }
+
+    /// Simulates a [`write`] without actually writing
+    ///
+    /// This is useful if you want to tell Duat that you want
+    /// [`has_changed`] to return `true`, but you don't have a
+    /// [`Pass`] available to [`write`] the value with.
+    ///
+    /// [`write`]: Self::write
+    /// [`has_changed`]: Self::has_changed
+    pub fn declare_written(&self) {
+        self.file.declare_written();
     }
 }
 

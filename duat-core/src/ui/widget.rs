@@ -17,7 +17,7 @@
 //!
 //! ```rust
 //! # use duat_core::ui::PushSpecs;
-//! let specs = PushSpecs::left().with_hor_min(10.0).with_ver_len(2.0);
+//! let specs = PushSpecs::left().hor_min(10.0).ver_len(2.0);
 //! ```
 //!
 //! When pushing a widget with these `specs` to another widget, Duat
@@ -111,7 +111,7 @@ use crate::{
 ///     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
 ///         let checker = PeriodicChecker::new(std::time::Duration::from_secs(1));
 ///         let widget = UpTime(Text::new(), checker);
-///         let specs = PushSpecs::below().with_ver_len(1.0);
+///         let specs = PushSpecs::below().ver_len(1.0);
 ///
 ///         (widget, specs)
 ///     }
@@ -262,7 +262,7 @@ use crate::{
 ///         // change the periodicity
 ///         let checker = PeriodicChecker::new(Duration::from_secs(1));
 ///         let widget = UpTime(Text::new(), checker);
-///         let specs = PushSpecs::below().with_ver_len(1.0);
+///         let specs = PushSpecs::below().ver_len(1.0);
 ///
 ///         (widget, specs)
 ///     }

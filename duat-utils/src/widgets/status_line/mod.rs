@@ -15,7 +15,7 @@
 //! [data]: crate::data
 mod state;
 
-use duat_core::{context::CurFile, prelude::*, text::Builder, ui::Side};
+use duat_core::{context::DynFile, prelude::*, text::Builder, ui::Side};
 
 pub use self::{macros::status, state::State};
 use crate::state::{file_txt, main_txt, mode_txt, sels_txt};
@@ -93,28 +93,32 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
+        if let FileHandle::Dynamic(dyn_file) = &mut handle.write(pa).file_handle {
+            dyn_file.swap_to_current();
+        }
+
         let sl = handle.read(pa);
 
         handle.write(pa).text = match &sl.file_handle {
             FileHandle::Fixed(file) => (sl.text_fn)(pa, file),
-            FileHandle::Dynamic(cur_file) => match cur_file.fixed(pa) {
-                Ok(file) => (sl.text_fn)(pa, &file),
-                Err(_) => Text::default(),
-            },
+            FileHandle::Dynamic(dyn_file) => (sl.text_fn)(pa, dyn_file.handle()),
         };
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
         let file_changed = match &self.file_handle {
             FileHandle::Fixed(handle) => handle.has_changed(),
-            FileHandle::Dynamic(cur_file) => cur_file.has_changed(pa),
+            FileHandle::Dynamic(dyn_file) => dyn_file.has_changed(pa),
         };
 
         file_changed || (self.checker)(pa)
     }
 
     fn cfg() -> Self::Cfg {
-        Self::Cfg::default()
+        Self::Cfg {
+            fns: None,
+            specs: PushSpecs::below().ver_len(1.0),
+        }
     }
 
     fn text(&self) -> &Text {
@@ -155,7 +159,7 @@ impl<U: Ui> StatusLineCfg<U> {
     /// Puts the [`StatusLine`] above, as opposed to below
     pub fn above(self) -> Self {
         Self {
-            specs: PushSpecs::above().with_ver_len(1.0),
+            specs: PushSpecs::above().ver_len(1.0),
             ..self
         }
     }
@@ -163,7 +167,7 @@ impl<U: Ui> StatusLineCfg<U> {
     /// Puts the [`StatusLine`] below, this is the default
     pub fn below(self) -> Self {
         Self {
-            specs: PushSpecs::below().with_ver_len(1.0),
+            specs: PushSpecs::below().ver_len(1.0),
             ..self
         }
     }
@@ -177,7 +181,7 @@ impl<U: Ui> StatusLineCfg<U> {
     /// [`Notifications`]: super::Notifications
     pub fn right_ratioed(self, den: u16, div: u16) -> Self {
         Self {
-            specs: self.specs.to_right().with_hor_ratio(den, div),
+            specs: self.specs.to_right().hor_ratio(den, div),
             ..self
         }
     }
@@ -212,7 +216,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
         let widget = StatusLine {
             file_handle: match info.file() {
                 Some(handle) => FileHandle::Fixed(handle),
-                None => FileHandle::Dynamic(context::dyn_file(pa)),
+                None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
             },
             text_fn: Box::new(move |pa, fh| {
                 let builder = Text::builder();
@@ -412,7 +416,7 @@ mod macros {
                 }),
                 Box::new(checker)
             ),
-            PushSpecs::below().with_ver_len(1.0),
+            PushSpecs::below().ver_len(1.0),
         )
     }}
 }
@@ -423,5 +427,5 @@ type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;
 
 enum FileHandle<U: Ui> {
     Fixed(Handle<File<U>, U>),
-    Dynamic(CurFile<U>),
+    Dynamic(DynFile<U>),
 }

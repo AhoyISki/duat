@@ -124,7 +124,7 @@
 //!         line_nums.align_right().align_main_left()
 //!     });
 //!
-//!     hook::remove("WindowWidgets");
+//!     hook::remove("FooterWidgets");
 //!     hook::add::<WindowCreated>(|pa, builder| {
 //!         let upper_mode = mode_name(pa).map(pa, |m| match m.split_once('<') {
 //!             Some((no_generics, _)) => no_generics.to_uppercase(),
@@ -152,7 +152,7 @@
 //! - [Maps] jk to esc in the `Insert` mode;
 //! - [Changes] the wrapping;
 //! - Changes the alignment of the [`LineNumbers`] [`Widget`];
-//! - [Removes] the hook group "WindowWidgets";
+//! - [Removes] the hook group "FooterWidgets";
 //! - Pushes a [custom status line] (with a [Spacer] for 2 separate
 //!   sides, and a reformatted [`mode_name`]), a [command line], and a
 //!   [notifications widget] to the bottom of the screen through a
@@ -539,7 +539,7 @@ pub mod hook {
     //! - `"FileWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
     //!   to new [`File`]s, via [`WidgetCreated`], (using [`File`] as
     //!   an alias for [`WidgetCreated<File>`]).
-    //! - `"WindowWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
+    //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
     //!   and [`Notifications`] to new windows, via [`WindowCreated`].
     //! - `"HidePromptLine"`: Is responsible for [hiding] the
     //!   [`PromptLine`] when it is not in use, giving way to the
@@ -771,7 +771,7 @@ pub mod hook {
     /// need all that power, you can check out [`WidgetCreated`],
     /// which is a more straightforward form of changing
     /// [`Widget`]s, and doesn't interfere with the default hooks
-    /// of `"FileWidgets"` and `"WindowWidgets"`, preset by Duat.
+    /// of `"FileWidgets"` and `"FooterWidgets"`, preset by Duat.
     ///
     /// [`File`]: crate::prelude::File
     /// [`Widget`]: crate::prelude::Widget

@@ -190,14 +190,10 @@ impl<U: Ui> Session<U> {
                 mode_fn(pa);
             }
 
-            // After five seconds of inactivity, switch to a dormant state.
-            let event = if idle_count > 250 {
-                duat_rx.recv().ok()
-            } else {
-                duat_rx.recv_timeout(Duration::from_millis(12)).ok()
-            };
+			// After one second, switch to a slower regime
+            let timeout = if idle_count > 100 { 100 } else { 10 };
 
-            if let Some(event) = event {
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(timeout)) {
                 idle_count = 0;
                 match event {
                     DuatEvent::Tagger(key) => mode::send_key(pa, key),

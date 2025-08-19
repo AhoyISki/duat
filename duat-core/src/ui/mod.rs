@@ -577,7 +577,7 @@ impl Sender {
 ///
 /// ```rust
 /// use duat_core::ui::PushSpecs;
-/// let specs = PushSpecs::left().with_hor_len(3.0).with_ver_ratio(2, 3);
+/// let specs = PushSpecs::left().hor_len(3.0).ver_ratio(2, 3);
 /// ```
 ///
 /// Then the widget should be pushed to the left, with a width of 3,
@@ -635,14 +635,14 @@ impl PushSpecs {
     /// Turns this [`Widget`] hidden by default
     ///
     /// Hiding [`Widget`]s, as opposed to calling something like
-    /// [`PushSpecs::with_hor_len(0.0)`] has a few advantages.
+    /// [`PushSpecs::hor_len(0.0)`] has a few advantages.
     ///
     /// - Can be undone just by calling [`Area::reveal`]
     /// - Can be redone just by calling [`Area::hide`]
     /// - Is agnostic to other [`Constraint`]s, i.e., kind of
     ///   memorizes what they should be before being hidden.
     ///
-    /// [`PushSpecs::with_hor_len(0.0)`]: PushSpecs::with_hor_len
+    /// [`PushSpecs::hor_len(0.0)`]: PushSpecs::hor_len
     pub const fn hidden(self) -> Self {
         Self { is_hidden: true, ..self }
     }
@@ -668,50 +668,70 @@ impl PushSpecs {
     }
 
     /// Sets the required vertical length
-    pub const fn with_ver_len(mut self, len: f32) -> Self {
+    pub const fn ver_len(mut self, len: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Len(len));
         self
     }
 
     /// Sets the minimum vertical length
-    pub const fn with_ver_min(mut self, min: f32) -> Self {
+    pub const fn ver_min(mut self, min: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Min(min));
         self
     }
 
     /// Sets the maximum vertical length
-    pub const fn with_ver_max(mut self, max: f32) -> Self {
+    pub const fn ver_max(mut self, max: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Max(max));
         self
     }
 
     /// Sets the vertical ratio between it and its parent
-    pub const fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
+    pub const fn ver_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
         self
     }
 
+    /// Adds a vertical [`Constraint`] directly
+    ///
+    /// Use this if you want to dinamically work with multiple kinds
+    /// of [`Constraint`]. Otherwise, the other `ver_*` methods are
+    /// more readable.
+    pub const fn constrain_ver(mut self, con: Constraint) -> Self {
+        constrain(&mut self.ver_cons, con);
+        self
+    }
+
     /// Sets the required horizontal length
-    pub const fn with_hor_len(mut self, len: f32) -> Self {
+    pub const fn hor_len(mut self, len: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Len(len));
         self
     }
 
     /// Sets the minimum horizontal length
-    pub const fn with_hor_min(mut self, min: f32) -> Self {
+    pub const fn hor_min(mut self, min: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Min(min));
         self
     }
 
     /// Sets the maximum horizontal length
-    pub const fn with_hor_max(mut self, max: f32) -> Self {
+    pub const fn hor_max(mut self, max: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Max(max));
         self
     }
 
     /// Sets the horizontal ratio between it and its parent
-    pub const fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
+    pub const fn hor_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
+        self
+    }
+
+    /// Adds a horizontal [`Constraint`] directly
+    ///
+    /// Use this if you want to dinamically work with multiple kinds
+    /// of [`Constraint`]. Otherwise, the other `hor_*` methods are
+    /// more readable.
+    pub const fn constrain_hor(mut self, con: Constraint) -> Self {
+        constrain(&mut self.hor_cons, con);
         self
     }
 
@@ -815,49 +835,49 @@ impl SpawnSpecs {
     }
 
     /// Sets the required vertical length
-    pub fn with_ver_len(mut self, len: f32) -> Self {
+    pub fn ver_len(mut self, len: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Len(len));
         self
     }
 
     /// Sets the minimum vertical length
-    pub fn with_ver_min(mut self, min: f32) -> Self {
+    pub fn ver_min(mut self, min: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Min(min));
         self
     }
 
     /// Sets the maximum vertical length
-    pub fn with_ver_max(mut self, max: f32) -> Self {
+    pub fn ver_max(mut self, max: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Max(max));
         self
     }
 
     /// Sets the vertical ratio between it and its parent
-    pub fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
+    pub fn ver_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
         self
     }
 
     /// Sets the required horizontal length
-    pub fn with_hor_len(mut self, len: f32) -> Self {
+    pub fn hor_len(mut self, len: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Len(len));
         self
     }
 
     /// Sets the minimum horizontal length
-    pub fn with_hor_min(mut self, min: f32) -> Self {
+    pub fn hor_min(mut self, min: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Min(min));
         self
     }
 
     /// Sets the maximum horizontal length
-    pub fn with_hor_max(mut self, max: f32) -> Self {
+    pub fn hor_max(mut self, max: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Max(max));
         self
     }
 
     /// Sets the horizontal ratio between it and its parent
-    pub fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
+    pub fn hor_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
         self
     }

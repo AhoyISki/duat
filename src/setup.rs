@@ -74,7 +74,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
         cfg
     });
 
-    hook::add_grouped::<WindowCreated>("WindowWidgets", |_, builder| {
+    hook::add_grouped::<WindowCreated>("FooterWidgets", |_, builder| {
         builder.push(FooterWidgets::default());
     });
 

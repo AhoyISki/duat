@@ -79,7 +79,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
     fn cfg() -> Self::Cfg {
         Self::Cfg {
             prompts: HashMap::new(),
-            specs: PushSpecs::below().with_ver_len(1.0),
+            specs: PushSpecs::below().ver_len(1.0),
             _ghost: PhantomData,
         }
     }
@@ -106,7 +106,7 @@ impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
 
     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let specs = if hook::group_exists("HidePromptLine") {
-            self.specs.with_ver_len(0.0)
+            self.specs.ver_len(0.0)
         } else {
             self.specs
         };
@@ -141,7 +141,7 @@ impl<U: Ui> PromptLineCfg<U> {
     /// Places the [`PromptLine`] above, as opposed to below
     pub fn above(self) -> Self {
         Self {
-            specs: PushSpecs::above().with_ver_len(1.0),
+            specs: PushSpecs::above().ver_len(1.0),
             ..self
         }
     }
@@ -149,7 +149,7 @@ impl<U: Ui> PromptLineCfg<U> {
     /// Places the [`PromptLine`] below, this is the default
     pub fn below(self) -> Self {
         Self {
-            specs: PushSpecs::below().with_ver_len(1.0),
+            specs: PushSpecs::below().ver_len(1.0),
             ..self
         }
     }
@@ -162,7 +162,7 @@ impl<U: Ui> PromptLineCfg<U> {
     /// Pushes this [`PromptLine`] to the left
     pub fn left_ratioed(self, den: u16, div: u16) -> Self {
         Self {
-            specs: PushSpecs::left().with_hor_ratio(den, div),
+            specs: PushSpecs::left().hor_ratio(den, div),
             ..self
         }
     }

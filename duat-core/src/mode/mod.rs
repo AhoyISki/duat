@@ -258,7 +258,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///         let mut widget = Menu::default();
 ///         widget.build_text();
 ///
-///         let specs = PushSpecs::left().with_hor_len(10.0).with_ver_len(5.0);
+///         let specs = PushSpecs::left().hor_len(10.0).ver_len(5.0);
 ///
 ///         (widget, specs)
 ///     }

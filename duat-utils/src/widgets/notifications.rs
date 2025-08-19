@@ -205,7 +205,7 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
             _ghost: PhantomData,
         };
 
-        (widget, PushSpecs::below().with_ver_len(1.0))
+        (widget, PushSpecs::below().ver_len(1.0))
     }
 }
 
