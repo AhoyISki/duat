@@ -844,20 +844,17 @@ alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 <p>The most relevant parts for pretty much every <code>StatusLine</code> are the following.</p>
 <p>Formatted status parts:</p>
 <ul>
-<li><code>file_fmt</code>: Prints the <code>File</code>'s name and some info about it's newness.
+<li><code>file_fmt</code>: Prints the <code>File</code>'s name and some info about it's newness.</li>
+<li>Uses the forms <code>file</code>, <code>file.new</code>, <code>file.new.scratch</code> and <code>file.unsaved</code>.</li>
+<li><code>mode_fmt</code>: The lowercased name of the <code>Mode</code>, e.g. "insert", "normal".
 <ul>
-<li>Uses the forms <code>file</code>, <code>file.new</code>, <code>file.new.scratch</code> and <code>file.unsaved</code></li>
-</ul>
-</li>
-<li><code>mode_fmt</code>: The lowercased name of the <code>Mode</code>, e.g. "insert", "normal.
-<ul>
-<li>Uses the form <code>mode</code></li>
+<li>Uses the form <code>mode</code>.</li>
 </ul>
 </li>
 <li><code>main_fmt</code>: Prints the main selection's column and line, and the number of
 lines. 1 indexed.
 <ul>
-<li>Uses the forms <code>coord</code> and <code>separator</code></li>
+<li>Uses the forms <code>coord</code> and <code>separator</code>.</li>
 </ul>
 </li>
 <li><code>sels_fmt</code>: Prints the number of selections.
@@ -875,7 +872,7 @@ lines. 1 indexed.
 <ul>
 <li><code>main_byte</code>, <code>main_char</code>, <code>main_line</code>, <code>main_col</code>: Parts of the main cursor.</li>
 <li><code>mode_name</code>: The raw type name of the mode. Could look something like
-<code>Prompt&lt;IncSearcher&lt;SearchFwd&gt;, Ui&gt;, Ui&gt;</code></li>
+<code>Prompt&lt;IncSearcher&lt;SearchFwd&gt;, Ui&gt;, Ui&gt;</code>.</li>
 <li><code>selections</code>: The number of selections, no formatting.</li>
 <li><code>last_key</code>: The last key that was typed. Useful for asciinema demonstrations.</li>
 </ul>
