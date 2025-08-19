@@ -23,10 +23,97 @@ pub struct LineNumbers<U: Ui> {
     handle: Handle<File<U>, U>,
     text: Text,
     /// The options of these [`LineNumbers`]
-    pub opts: LineNumbersOptions<U>,
+    opts: LineNumbersCfg<U>,
 }
 
 impl<U: Ui> LineNumbers<U> {
+    /// Absolute numbering, first line is 1, second is 2, etc
+    pub fn absolute(&mut self) -> &mut Self {
+        self.opts = self.opts.absolute();
+        self
+    }
+
+    /// Relative numbering, cursor line is 0, surrounding is 1, etc
+    pub fn relative(&mut self) -> &mut Self {
+        self.opts = self.opts.relative();
+        self
+    }
+
+    /// A mix between [`relative`] and [`absolute`] numbering
+    ///
+    /// Will show the line number of the main cursor's line, while
+    /// showing the distance to it on every other line.
+    ///
+    /// [`relative`]: Self::relative
+    /// [`absolute`]: Self::absolute
+    pub fn rel_abs(&mut self) -> &mut Self {
+        self.opts = self.opts.rel_abs();
+        self
+    }
+
+    /// Aligns _all_ numbers left
+    ///
+    /// If you want the main line's number to be aligned differently,
+    /// call one of the [`align_main_*`] functions _after_ this one.
+    ///
+    /// [`align_main_*`]: Self::align_main_right
+    pub fn align_left(&mut self) -> &mut Self {
+        self.opts = self.opts.align_left();
+        self
+    }
+
+    /// Aligns _all_ numbers to the center
+    ///
+    /// If you want the main line's number to be aligned differently,
+    /// call one of the [`align_main_*`] functions _after_ this one.
+    ///
+    /// [`align_main_*`]: Self::align_main_right
+    pub fn align_center(&mut self) -> &mut Self {
+        self.opts = self.opts.align_center();
+        self
+    }
+
+    /// Aligns _all_ numbers right
+    ///
+    /// If you want the main line's number to be aligned differently,
+    /// call one of the [`align_main_*`] functions _after_ this one.
+    ///
+    /// [`align_main_*`]: Self::align_main_left
+    pub fn align_right(&mut self) -> &mut Self {
+        self.opts = self.opts.align_right();
+        self
+    }
+
+    /// Aligns onle the main line's number to the left
+    pub fn align_main_left(&mut self) -> &mut Self {
+        self.opts = self.opts.align_main_left();
+        self
+    }
+
+    /// Aligns onle the main line's number to the center
+    pub fn align_main_center(&mut self) -> &mut Self {
+        self.opts = self.opts.align_main_center();
+        self
+    }
+
+    /// Aligns onle the main line's number to the right
+    pub fn align_main_right(&mut self) -> &mut Self {
+        self.opts = self.opts.align_main_right();
+        self
+    }
+
+    /// Shows wrapping lines, is `false` by default
+    pub fn show_wraps(&mut self) -> &mut Self {
+        self.opts = self.opts.show_wraps();
+        self
+    }
+
+    /// Hides wrapping lines, is `true` by default
+    pub fn hide_wraps(&mut self) -> &mut Self {
+        self.opts = self.opts.hide_wraps();
+        self
+    }
+
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&self, pa: &Pass) -> f32 {
         let len = self.handle.read(pa).text().len().line();
@@ -73,20 +160,10 @@ impl<U: Ui> LineNumbers<U> {
 
         builder.build()
     }
-
-    /// The options for these [`LineNumbers`]
-    pub fn options(&self) -> &LineNumbersOptions<U> {
-        &self.opts
-    }
-
-    /// The mutable options for these [`LineNumbers`]
-    pub fn options_mut(&mut self) -> &mut LineNumbersOptions<U> {
-        &mut self.opts
-    }
 }
 
 impl<U: Ui> Widget<U> for LineNumbers<U> {
-    type Cfg = LineNumbersOptions<U>;
+    type Cfg = LineNumbersCfg<U>;
 
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let width = handle.read(pa).calculate_width(pa);
@@ -104,7 +181,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 
     fn cfg() -> Self::Cfg {
         Self::Cfg {
-            num_rel: LineNum::Abs,
+            numbering: Numbering::Abs,
             align: Alignment::Left,
             main_align: Alignment::Right,
             show_wraps: false,
@@ -129,27 +206,30 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
     }
 }
 
-/// Configuration options for the [`LineNumbers`] widget.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct LineNumbersOptions<U> {
-    num_rel: LineNum = LineNum::Abs,
+/// [`WidgetCfg`] for the [`LineNumbers`] widget
+///
+/// Contains a [`LineNumbersOptions`], which, unlike
+/// [`LineNumbersCfg`], is modified by the `&mut` version of the
+/// builder pattern.
+#[derive(Debug, Clone)]
+pub struct LineNumbersCfg<_U> {
+    numbering: Numbering = Numbering::Abs,
     align: Alignment = Alignment::Left,
     main_align: Alignment = Alignment::Right,
     show_wraps: bool = false,
     specs: PushSpecs = PushSpecs::left(),
-    _ghost: PhantomData<U> = PhantomData,
+    _ghost: PhantomData<_U>
 }
 
-impl<U> LineNumbersOptions<U> {
+impl<_U> LineNumbersCfg<_U> {
     /// Absolute numbering, first line is 1, second is 2, etc
     pub fn absolute(self) -> Self {
-        Self { num_rel: LineNum::Abs, ..self }
+        Self { numbering: Numbering::Abs, ..self }
     }
 
     /// Relative numbering, cursor line is 0, surrounding is 1, etc
     pub fn relative(self) -> Self {
-        Self { num_rel: LineNum::Rel, ..self }
+        Self { numbering: Numbering::Rel, ..self }
     }
 
     /// A mix between [`relative`] and [`absolute`] numbering
@@ -160,7 +240,7 @@ impl<U> LineNumbersOptions<U> {
     /// [`relative`]: Self::relative
     /// [`absolute`]: Self::absolute
     pub fn rel_abs(self) -> Self {
-        Self { num_rel: LineNum::RelAbs, ..self }
+        Self { numbering: Numbering::RelAbs, ..self }
     }
 
     /// Aligns _all_ numbers left
@@ -171,8 +251,8 @@ impl<U> LineNumbersOptions<U> {
     /// [`align_main_*`]: Self::align_main_right
     pub fn align_left(self) -> Self {
         Self {
-            main_align: Alignment::Left,
             align: Alignment::Left,
+            main_align: Alignment::Left,
             ..self
         }
     }
@@ -185,8 +265,8 @@ impl<U> LineNumbersOptions<U> {
     /// [`align_main_*`]: Self::align_main_right
     pub fn align_center(self) -> Self {
         Self {
-            main_align: Alignment::Center,
             align: Alignment::Center,
+            main_align: Alignment::Center,
             ..self
         }
     }
@@ -199,8 +279,8 @@ impl<U> LineNumbersOptions<U> {
     /// [`align_main_*`]: Self::align_main_left
     pub fn align_right(self) -> Self {
         Self {
-            main_align: Alignment::Right,
             align: Alignment::Right,
+            main_align: Alignment::Right,
             ..self
         }
     }
@@ -238,7 +318,7 @@ impl<U> LineNumbersOptions<U> {
     }
 }
 
-impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
     type Widget = LineNumbers<U>;
 
     fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
@@ -258,19 +338,21 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     }
 }
 
+impl<U: Ui> Copy for LineNumbersCfg<U> {}
+
 /// Writes the text of the line number to a given [`String`].
-fn push_text<U>(
+fn push_text<_U>(
     b: &mut Builder,
     line: usize,
     main: usize,
     is_wrapped: bool,
-    cfg: &LineNumbersOptions<U>,
+    cfg: &LineNumbersCfg<_U>,
 ) {
     if (!is_wrapped || cfg.show_wraps) && main != usize::MAX {
-        let num = match cfg.num_rel {
-            LineNum::Abs => line + 1,
-            LineNum::Rel => line.abs_diff(main),
-            LineNum::RelAbs => {
+        let num = match cfg.numbering {
+            Numbering::Abs => line + 1,
+            Numbering::Rel => line.abs_diff(main),
+            Numbering::RelAbs => {
                 if line != main {
                     line.abs_diff(main)
                 } else {
@@ -295,7 +377,7 @@ fn align(b: &mut Builder, alignment: Alignment) {
 
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Clone, Copy)]
-enum LineNum {
+enum Numbering {
     #[default]
     /// Line numbers relative to the beginning of the file.
     Abs,

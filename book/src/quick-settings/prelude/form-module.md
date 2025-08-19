@@ -45,6 +45,15 @@ The other main function that you will use from this module is the
 a previously named one:
 
 ```rust
+# mod catppuccin {
+#     pub struct Catppuccin;
+#     impl Catppuccin {
+#         pub fn new() -> Self { Self }
+#     }
+#     impl duat::prelude::Plugin<duat::Ui> for Catppuccin {
+#         fn plug(self) { todo!() }
+#     }
+# }
 setup_duat!(setup);
 use duat::prelude::*;
 use catppuccin::Catppuccin;

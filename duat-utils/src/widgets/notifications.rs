@@ -69,7 +69,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     type Cfg = NotificationsCfg<U>;
 
     fn cfg() -> Self::Cfg {
-        NotificationsCfg {
+        Self::Cfg {
             format_rec: Box::new(|rec| {
                 txt!(
                     "[notifs.target]{}[notifs.colon]: {}",

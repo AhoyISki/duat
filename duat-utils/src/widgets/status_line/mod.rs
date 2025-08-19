@@ -115,7 +115,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn cfg() -> Self::Cfg {
-        Self::Cfg {
+        StatusLineCfg {
             fns: None,
             specs: PushSpecs::below().ver_len(1.0),
         }

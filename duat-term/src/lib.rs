@@ -154,7 +154,7 @@ impl ui::Ui for Ui {
     }
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
-        ms.lock().unwrap().cur_printer().update(false);
+        ms.lock().unwrap().cur_printer().update(true);
     }
 
     fn load(_ms: &'static Self::MetaStatics) {
@@ -237,6 +237,8 @@ pub struct MetaStatics {
 impl MetaStatics {
     fn cur_printer(&self) -> Arc<Printer> {
         if let Some((_, printer)) = self.windows.get(self.win) {
+            // On switching, the window size could've changed, so take that into account
+            printer.update(true);
             printer.clone()
         } else {
             unreachable!("Started printing before a window was created");

@@ -41,24 +41,31 @@ This is the default:
 
 ```rust
 # use duat::prelude::*;
-status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}");
+hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
+    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 ```
 
-If you want a one sided `StatusLine`:
+If you want a one sided `StatusLine`, you can do this:
 
 ```rust
 # use duat::prelude::*;
-status!("{Spacer}{file_fmt} {mode_fmt} {sels_fmt} {main_fmt}");
+hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
+    cfg.fmt(status!("{Spacer}{file_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 ```
 
 Customized `main_fmt`:
 
 ```rust
 # use duat::prelude::*;
-status!(
-    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt}[coord]c{main_col} l{main_line}[separator]|[coord]{}",
-    |file: &File| file.text().len().line()
-);
+hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
+    cfg.fmt(status!(
+        "{file_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
+        mode_txt(pa),
+        |file: &File| file.text().len().line()
+    ))
+});
 ```
 
 Customized `file_fmt`:
@@ -80,11 +87,13 @@ fn file_fmt(file: &File) -> Text {
             b.push(txt!("[[🦀]]"));
         }
     } else {
-        b.push(txt!("[file.new.scratch]?!?!?!")));
+        b.push(txt!("[file.new.scratch]?!?!?!"));
     }
 
     b.build()
 }
 
-status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}");
+hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
+    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 ```

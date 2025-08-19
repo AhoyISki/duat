@@ -1185,3 +1185,9 @@ pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
 
 /// A function that sets the [`SessionCfg`].
 type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
+
+/// For testing mdBook examples.
+#[cfg(doc)]
+#[doc(hidden)]
+#[path = "../book/book-examples.rs"]
+mod book;

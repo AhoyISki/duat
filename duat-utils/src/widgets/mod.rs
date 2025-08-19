@@ -19,7 +19,7 @@ use duat_core::{
 };
 
 pub use self::{
-    line_numbers::{LineNumbers, LineNumbersOptions},
+    line_numbers::{LineNumbers, LineNumbersCfg},
     log_book::{LogBook, LogBookCfg},
     notifications::{Notifications, NotificationsCfg},
     prompt_line::{PromptLine, PromptLineCfg},

@@ -11,7 +11,7 @@ use crate::setup::PRINT_CFG;
 ///
 /// [`File`]: crate::widgets::File
 #[inline(never)]
-pub fn no_wrapping() {
+pub fn dont_wrap() {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -40,7 +40,7 @@ pub fn wrap_on_edge() {
 /// [`File`]: crate::widgets::File
 /// [word]: word_chars!
 #[inline(never)]
-pub fn wrap_on_words() {
+pub fn wrap_on_word() {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -57,7 +57,7 @@ pub fn wrap_on_words() {
 ///
 /// [`File`]: crate::widgets::File
 #[inline(never)]
-pub fn wrap_on_cap(cap: u8) {
+pub fn wrap_at(cap: u8) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 

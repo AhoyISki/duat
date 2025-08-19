@@ -1,13 +1,14 @@
 # `print`: How duat prints files
 
-The print module has a bunch of simple functions to change how duat should print `File` widgets:
+The print module has a bunch of simple functions to change how duat should 
+print `File` widgets:
 
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    print::no_wrapping();
+    print::dont_wrap();
     print::indent_wraps(true);
     print::tabstop(4);
     print::scrolloff(3, 3);
@@ -27,11 +28,11 @@ chapter.
 
 This is the current list of options in this module:
 
-- `print::no_wrapping`: The default, don't wrap text at all;
+- `print::dont_wrap`: The default, don't wrap text at all;
 - `print::wrap_on_edge`: Wraps the text on the edge of its area;
-- `print::wrap_on_cap`: Wraps at a distance from the left edge, can go over 
-  the right edge;
-- `print::wrap_on_words`: Wraps on word termination, instead of any character;
+- `print::wrap_at`: Wraps at a distance from the left edge, can go over   the 
+  right edge;
+- `print::wrap_on_word`: Wraps on word termination, instead of any character;
 - `print::indent_wraps`: Copies the indentation on wrapped lines, can be used 
   with the other options;
 - `print::tabstop`: The width of tabs, is also used to determine how many 
@@ -41,14 +42,15 @@ This is the current list of options in this module:
 - `print::trailing_new_line`: What character to print when printing `'\n'`s 
   that are preceeded by spaces. Is not set by default;
 
-## `print::word_chars!`
+## The `print::word_chars!` macro
 
-`print::word_chars!` is a macro that determines which characters should be part 
-of a word. This is used by `wrap_on_words` and tends to also be used to modify 
-text (in the `<Ctrl-Backspace>` key in most editors, for example).
+The `print::word_chars!` macro determines which characters should be part of a 
+word. This is used by `wrap_on_words` and tends to also be used to modify text 
+(in the `<Ctrl-Backspace>` key in most editors, for example).
 
 This macro is evaluated at compile time, so you don't have to worry about it 
-being correct or not, and the syntax is the same as in regex, like this:
+being correct or not, and the syntax is similar to regex, but only with ranges, 
+like this:
 
 ```rust
 setup_duat!(setup);

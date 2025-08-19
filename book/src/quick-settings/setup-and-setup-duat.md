@@ -19,6 +19,30 @@ example, you could separate the plugins into a separate function, if you think
 that will look cleaner:
 
 ```rust
+# mod treesitter {
+#     pub struct TreeSitter;
+#     impl duat::prelude::Plugin<duat::Ui> for TreeSitter {
+#         fn plug(self) { todo!() }
+#     }
+# }
+# mod kak {
+#     pub struct Kak;
+#     impl Kak {
+#         pub fn new() -> Self { Self }
+#     }
+#     impl duat::prelude::Plugin<duat::Ui> for Kak {
+#         fn plug(self) { todo!() }
+#     }
+# }
+# mod catppuccin {
+#     pub struct Catppuccin;
+#     impl Catppuccin {
+#         pub fn new() -> Self { Self }
+#     }
+#     impl duat::prelude::Plugin<duat::Ui> for Catppuccin {
+#         fn plug(self) { todo!() }
+#     }
+# }
 setup_duat!(setup);
 use duat::prelude::*;
 
@@ -42,6 +66,17 @@ will have its own configuration options, that you will need to look at their
 documentation to figure out. But they should all be configured in the same way:
 
 ```rust
+# mod kak {
+#     pub struct Kak;
+#     impl Kak {
+#         pub fn new() -> Self { Self }
+#         pub fn f_and_t_set_search(self) -> Self { Self }
+#         pub fn with_no_indent_on_capital_i(self) -> Self { Self }
+#     }
+#     impl duat::prelude::Plugin<duat::Ui> for Kak {
+#         fn plug(self) { todo!() }
+#     }
+# }
 setup_duat!(setup);
 use duat::prelude::*;
 

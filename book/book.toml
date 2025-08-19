@@ -21,3 +21,9 @@ enable = true
 level = 1
 
 [preprocessor.alerts]
+
+[preprocessor.keeper]
+command = "mdbook-keeper"
+manifest_dir = "../"
+externs = ["duat"]
+target_dir = "../target/"

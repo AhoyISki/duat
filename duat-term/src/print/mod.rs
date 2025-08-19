@@ -135,6 +135,7 @@ impl Printer {
         let changes = {
             let mut ss = self.sync_solver.lock().unwrap();
             ss.update(change_max, self.max).unwrap();
+
             ss.fetch_changes().to_vec()
         };
 

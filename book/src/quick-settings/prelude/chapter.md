@@ -19,6 +19,7 @@ When calling `use duat::prelude::*`, most imported things will be in the form
 of modules, like this:
 
 ```rust
+# use duat::prelude::*;
 use duat::print;
 ```
 
@@ -26,12 +27,13 @@ This is importing the `print` module, as opposed to importing its items
 directly, like this:
 
 ```rust
+# use duat::prelude::*;
 use duat::print::*;
 ```
 
 This means that, for most options, their path is made up of a 
-`{module}::{function}` combo. This means that the usual `config` crate should 
-look something like this:
+`{module}::{function}` combo. So the usual `setup` function should look 
+something like this:
 
 ```rust
 # mod kak {
@@ -53,25 +55,26 @@ look something like this:
 #     }
 # }
 setup_duat!(setup);
-use duat::print::*;
+use duat::prelude::*;
 
 fn setup() {
-    plug!(Kak::new());
-    
-    print::wrap_on_cap(150);
+    plug!(kak::Kak::new());
+
+    print::wrap_at(150);
     print::trailing_new_line('󱁐');
     
     form::set("caret.main", Form::yellow());
     
-    cmd::add!("set-rel-lines", |pa, ln: Handles<LineNumbers<Ui>>| {
+    cmd::add!("set-rel-lines", |pa, ln: cmd::Handles<LineNumbers<Ui>>| {
         ln.on_flags(pa, |pa, handle| {
-            handle.write(pa, |ln, _| ln.options = ln.options.rel_abs());
+            handle.write(pa).rel_abs();
         });
+        
+        Ok(Some(txt!("Lines were set to [a]relative absolute").build()))
     });
     
-    map::<Insert>("jk", "<Esc>:w<Enter>");
+    map::<kak::Insert>("jk", "<Esc>:w<Enter>");
 }
-
 ```
 
 The exceptions to this are the `map` and `alias` functions, as well as the 

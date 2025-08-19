@@ -91,7 +91,7 @@ pub struct PagerSearch<W: Widget<U>, U: Ui> {
 }
 
 impl<W: Widget<U>, U: Ui> PagerSearch<W, U> {
-    fn new(pa: &Pass, handle: &Handle<W, U>, is_fwd: bool) -> Prompt<Self, U> {
+    fn new(pa: &Pass, handle: &Handle<W, U>, is_fwd: bool) -> Prompt<U, Self> {
         Prompt::new(Self {
             is_fwd,
             prev: String::new(),

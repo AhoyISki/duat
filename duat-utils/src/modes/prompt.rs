@@ -34,9 +34,9 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 /// [`Parameter`]: cmd::Parameter
 /// [`Selection`]: mode::Selection
 #[derive(Clone)]
-pub struct Prompt<M: PromptMode<U>, U: Ui>(M, PhantomData<U>);
+pub struct Prompt<U: Ui, M: PromptMode<U> = RunCommands>(M, PhantomData<U>);
 
-impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
+impl<M: PromptMode<U>, U: Ui> Prompt<U, M> {
     /// Returns a new [`Prompt`] from this [`PromptMode`]
     ///
     /// For convenience, you should make it so `new` methods in
@@ -47,7 +47,7 @@ impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
     }
 }
 
-impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
+impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<U, M> {
     type Widget = PromptLine<U>;
 
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
@@ -270,7 +270,7 @@ pub struct RunCommands;
 
 impl RunCommands {
     /// Crates a new [`RunCommands`]
-    pub fn new<U: Ui>() -> Prompt<Self, U> {
+    pub fn new<U: Ui>() -> Prompt<U, Self> {
         Prompt::new(Self)
     }
 }
@@ -348,7 +348,7 @@ pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
     /// Returns a [`Prompt`] with [`IncSearch<I, U>`] as its
     /// [`PromptMode`]
-    pub fn new(inc: I) -> Prompt<Self, U> {
+    pub fn new(inc: I) -> Prompt<U, Self> {
         Prompt::new(Self {
             inc,
             orig: None,
@@ -458,7 +458,7 @@ pub struct PipeSelections<U>(PhantomData<U>);
 impl<U: Ui> PipeSelections<U> {
     /// Returns a [`Prompt`] with [`PipeSelections`] as its
     /// [`PromptMode`]
-    pub fn new() -> Prompt<Self, U> {
+    pub fn new() -> Prompt<U, Self> {
         Prompt::new(Self(PhantomData))
     }
 }

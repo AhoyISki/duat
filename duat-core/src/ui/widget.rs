@@ -289,6 +289,13 @@ use crate::{
 /// [`File`]: crate::file::File
 pub trait Widget<U: Ui>: Send + 'static {
     /// The configuration type
+    ///
+    /// This configuration type is used when pushing [`Widget`]s
+    /// around the screen. It should follow the builder pattern,
+    /// making it very easy to concatenatively (?) modify it before
+    /// adding it in.
+    /// 
+    /// When implementing this, you are free to remove the `where` clause.
     type Cfg: WidgetCfg<U, Widget = Self>
     where
         Self: Sized;
@@ -315,7 +322,9 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///     });
     /// }
     /// ```
-    ///
+    /// 
+    /// When implementing this, you are free to remove the `where` clause.
+    /// 
     /// [hooks]: crate::hook
     /// [`WidgetCreated`]: crate::hook::WidgetCreated
     fn cfg() -> Self::Cfg
@@ -337,6 +346,8 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// changes that have taken place in this [`Widget`], so you
     /// should avoid depending on state which may become
     /// desynchronized.
+    /// 
+    /// When implementing this, you are free to remove the `where` clause.
     ///
     /// [hooks]: crate::hook
     /// [commands]: crate::cmd
@@ -348,6 +359,8 @@ pub trait Widget<U: Ui>: Send + 'static {
         Self: Sized;
 
     /// Actions to do whenever this [`Widget`] is focused
+    /// 
+    /// When implementing this, you are free to remove the `where` clause.
     #[allow(unused)]
     fn on_focus(pa: &mut Pass, handle: &Handle<Self, U>)
     where
@@ -356,6 +369,8 @@ pub trait Widget<U: Ui>: Send + 'static {
     }
 
     /// Actions to do whenever this [`Widget`] is unfocused
+    /// 
+    /// When implementing this, you are free to remove the `where` clause.
     #[allow(unused)]
     fn on_unfocus(pa: &mut Pass, handle: &Handle<Self, U>)
     where
@@ -440,6 +455,8 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///
     /// Examples of things that should go in here are [`form`]
     /// functions, [hooks], [commands] you want executed only once
+    /// 
+    /// When implementing this, you are free to remove the `where` clause.
     ///
     /// [hooks]: crate::hook
     /// [commands]: crate::cmd
