@@ -82,9 +82,9 @@ config it is just `kak`.
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
+use kak::Kak;
 use match_pairs::MatchPairs;
 use treesitter::TreeSitter;
-use kak::Kak;
 
 fn setup() {
     plug!(TreeSitter, MatchPairs, Kak::new());
@@ -97,14 +97,14 @@ fn setup() {
     });
 
     hook::remove("WindowWidgets");
-    hook::add::<OnWindowOpen>(|pa, builder| {
-        let upper_mode = mode_name().map(|m| match m.split_once('<') {
+    hook::add::<WindowCreated>(|pa, builder| {
+        let upper_mode = mode_name(pa).map(pa, |m| match m.split_once('<') {
             Some((no_generics, _)) => no_generics.to_uppercase(),
             None => m.to_uppercase(),
         });
-        let status_line = status!("[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}");
+        let status_line = status!("[Mode]{upper_mode}{Spacer}{file_txt} {sels_txt} {main_txt}");
 
-        builder.push(pa, FooterWidgets::new(status_line));
+        builder.push(FooterWidgets::new(status_line));
     });
 
     hook::add::<ModeSwitched>(|_, (_, new)| match new {
@@ -138,11 +138,12 @@ notice some things that can be done with these simple options:
 
 ```rust
 use duat::prelude::*;
-hook::add::<OnFileOpen>(|pa, builder| {
-    builder.push(pa, VertRule::cfg());
-    builder.push(pa, LineNumbers::cfg());
-    builder.push(pa, VertRule::cfg().on_the_right());
-    builder.push(pa, LineNumbers::cfg().on_the_right());
+hook::add::<File>(|_, (cfg, builder)| {
+    builder.push(VertRule::cfg());
+    builder.push(LineNumbers::cfg());
+    builder.push(VertRule::cfg().on_the_right());
+    builder.push(LineNumbers::cfg().on_the_right());
+    cfg
 });
 ```
 
@@ -154,7 +155,7 @@ Duat also comes with a fully fledged [text creation system][__link18], which
 significantly eases the creation of widgets:
 
 ```rust
-let text = txt!("[my_form]Waow it's my form![]not anymore 😢");
+let text = txt!("[my_form]Waow it's my form![]not anymore 😢").build();
 ```
 
 In this example, I’m using the “my_form” form in order to style
@@ -318,7 +319,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG3VMV7WLxmjUGxpTfD4ttYzYG_EVE44ul27wG8rTF_0sMf5gYXKEGyy2SsfQOXaWG1l_CL30QahsG14Ptr9X3rp4GwiYHT-gV-zZYWSCgmRkdWF0ZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4x
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG3VMV7WLxmjUGxpTfD4ttYzYG_EVE44ul27wG8rTF_0sMf5gYXKEG-SAm_sLmByhGys7gv1RfQ1FG7-kGz42x2-8G-__u9DeTqX_YWSCgmRkdWF0ZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4x
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
  [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode_name

@@ -22,8 +22,8 @@ in order to extend Duat:
     [`Widget`][__link3] is [`File`][__link4], which displays the contents of a file.
   * [`WidgetCfg`][__link5]s: These are [`Widget`][__link6] builders. They are used
     in the `setup` function of Duat’s config, through the
-    [`OnFileOpen`][__link7] and [`OnWindowOpen`][__link8] [hook][__link9]s.
-  * [`Ui`][__link10] and [`RawArea`][__link11]s: These are used if you want to create
+    [`WidgetCreated`][__link7] and [`WindowCreated`][__link8] [hook][__link9]s.
+  * [`Ui`][__link10] and [`Area`][__link11]s: These are used if you want to create
     your own interface for Duat. Very much a work in progress, so
     I wouldn’t recommend trying that yet.
 * [`text`][__link12]: Defines the struct used to show characters on screen
@@ -224,8 +224,8 @@ fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
     // where a change starts.
     // ahead_of_change is the part of the line after the end of
     // the Change
-    let mut behind_change = bytes.strs(start..change.start()).to_string();
-    let ahead_of_change = bytes.strs(change.added_end()..end);
+    let mut behind_change = bytes.strs(start..change.start()).unwrap().to_string();
+    let ahead_of_change = bytes.strs(change.added_end()..end).unwrap();
     // change.taken_str() is the &str that was taken by the Change
     behind_change.push_str(change.taken_str());
     // By adding these three together, I now have:
@@ -265,9 +265,10 @@ struct WordCounter {
 impl<U: Ui> Parser<U> for WordCounter {
     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, _: Option<&mut Ranges>) {
         // Rust iterators are magic 🪄
-        let diff: i32 = moment
+        let diff: i32 = snap
+            .moment
             .changes()
-            .map(|change| word_diff(self.regex, &mut snap.bytes, change))
+            .map(|change| word_diff(self.regex, &snap.bytes, change))
             .sum();
 
         self.words = (self.words as i32 + diff) as usize;
@@ -290,32 +291,30 @@ struct WordCounterCfg(bool);
 impl<U: Ui> ParserCfg<U> for WordCounterCfg {
     type Parser = WordCounter;
 
-    fn init(self, bytes: &Bytes, path: PathKind) -> Result<ParserBox<U>, Text> {
+    fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
         let regex = if self.0 { r"\S+" } else { r"\w+" };
+        let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 
-        let words = bytes.search_fwd(regex, ..).unwrap().count();
-
-        Ok(ParserBox::new_local(bytes, WordCounter { words, regex }))
+        let word_counter = WordCounter { words, regex };
+        Ok(ParserBox::new(file, word_counter))
     }
 }
 ```
 
 In this function, I am returning the `WordCounter`, with a
 precalculated number of words (since I have to calculate this
-value at some point), based on the [`Bytes`][__link108] of the [`File`][__link109]’s
-[`Text`][__link110].
+value at some point), based on the current state of the [`File`][__link108].
 
-The [`ParserBox`][__link111] return value is a wrapper for “constructing the
-[`Parser`][__link112]”. If you use a function like [`ParserBox::new_send`][__link113],
-you’d enable out-of-thread updating for the [`Parser`][__link114]. If you
-used [`ParserBox::new_remote`][__link115], the [`Parser`][__link116] itself would be
-constructed out of thread. In this case, because we are using
-[`new_local`][__link117], the [`Parser`][__link118] won’t ever be sent to other threads.
-This is almost always what you want.
+The [`ParserBox`][__link109] return value is a wrapper for “constructing the
+[`Parser`][__link110]”. To create a [`ParserBox`][__link111], there are two functions:
+[`new`][__link112] and [`new_remote`][__link113]. The first one is essentially just a
+wrapper around the [`Parser`][__link114]. The second one takes a closure that
+will build the [`Parser`][__link115] in a second thread, this can be useful
+if you want to create your [`Parser`][__link116] remotely.
 
-One thing to note is that the [`Parser`][__link119] and [`ParserCfg`][__link120] can be
+One thing to note is that the [`Parser`][__link117] and [`ParserCfg`][__link118] can be
 the same struct, it all depends on your constraints. For most
-[`Parser`][__link121] implementations, that may not be the case, but for this
+[`Parser`][__link119] implementations, that may not be the case, but for this
 one, instead of storing a `bool` in `WordCounterCfg`, I could’ve
 just stored the regex directly, like this:
 
@@ -332,22 +331,22 @@ impl WordCounter {
 impl<U: Ui> ParserCfg<U> for WordCounter {
     type Parser = Self;
 
-    fn init(self, bytes: &Bytes, path: PathKind) -> Result<ParserBox<U>, Text> {
-        let words = bytes.search_fwd(self.regex, ..).unwrap().count();
+    fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+        let words = file.bytes().search_fwd(self.regex, ..).unwrap().count();
 
-        Ok(ParserBox::new_local(bytes, Self { words, ..self }))
+        Ok(ParserBox::new(file, Self { words, ..self }))
     }
 }
 ```
 
 But the former is done for the purpose of demonstration, since (I
-don’t think) this will be the case for most [`Parser`][__link122]s.
+don’t think) this will be the case for most [`Parser`][__link120]s.
 
-Now, to wrap this all up, the plugin needs to add this [`Parser`][__link123]
-to every opened [`File`][__link124]. We do this through the use of a [hook][__link125]:
+Now, to wrap this all up, the plugin needs to add this [`Parser`][__link121]
+to every opened [`File`][__link122]. We do this through the use of a [hook][__link123]:
 
 ```rust
-use duat_core::{hook::OnFileOpen, prelude::*};
+use duat_core::prelude::*;
 
 /// A [`Plugin`] to count the number of words in [`File`]s
 pub struct WordCount(bool);
@@ -368,19 +367,19 @@ impl<U: Ui> Plugin<U> for WordCount {
     fn plug(self) {
         let not_whitespace = self.0;
 
-        hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
-            builder.add_parser(pa, WordCounterCfg(not_whitespace));
+        hook::add::<File<U>, U>(move |pa, (mut cfg, builder)| {
+            cfg.with_parser(WordCounterCfg(not_whitespace))
         });
     }
 }
 ```
 
-Now, whenever a [`File`][__link126] is opened, this [`Parser`][__link127] will be added
-to it. This is just one out of many types of [hook][__link128] that Duat
-provides by default. In Duat, you can even [create your own][__link129], and
-[choose when to trigger them][__link130].
+Now, whenever a [`File`][__link124] is opened, this [`Parser`][__link125] will be added
+to it. This is just one out of many types of [hook][__link126] that Duat
+provides by default. In Duat, you can even [create your own][__link127], and
+[choose when to trigger them][__link128].
 
-However, while we have added the [`Parser`][__link131], how is the user
+However, while we have added the [`Parser`][__link129], how is the user
 supposed to access this value? Well, one convenient way to do this
 is through a simple function:
 
@@ -397,7 +396,7 @@ pub fn file_words<U: Ui>(file: &File<U>) -> usize {
 Now, we have a finished plugin:
 
 ```rust
-use duat_core::{hook::OnFileOpen, prelude::*, text::Change};
+use duat_core::{prelude::*, text::Change};
 
 /// A [`Plugin`] to count the number of words in [`File`]s
 pub struct WordCount(bool);
@@ -418,8 +417,8 @@ impl<U: Ui> Plugin<U> for WordCount {
     fn plug(self) {
         let not_whitespace = self.0;
 
-        hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
-            builder.add_parser(pa, WordCounterCfg(not_whitespace));
+        hook::add::<File<U>, U>(move |_, (mut cfg, _)| {
+            cfg.with_parser(WordCounterCfg(not_whitespace))
         });
     }
 }
@@ -438,9 +437,10 @@ struct WordCounter {
 
 impl<U: Ui> Parser<U> for WordCounter {
     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, _: Option<&mut Ranges>) {
-        let diff: i32 = moment
+        let diff: i32 = snap
+            .moment
             .changes()
-            .map(|change| word_diff(self.regex, &mut bytes, change))
+            .map(|change| word_diff(self.regex, &snap.bytes, change))
             .sum();
 
         self.words = (self.words as i32 + diff) as usize;
@@ -452,12 +452,12 @@ struct WordCounterCfg(bool);
 impl<U: Ui> ParserCfg<U> for WordCounterCfg {
     type Parser = WordCounter;
 
-    fn init(self, bytes: &Bytes, _: PathKind) -> Result<ParserBox<U>, Text> {
+    fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
         let regex = if self.0 { r"\S+" } else { r"\w+" };
 
-        let words = bytes.search_fwd(regex, ..).unwrap().count();
+        let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 
-        Ok(ParserBox::new_local(bytes, WordCounter { words, regex }))
+        Ok(ParserBox::new(file, WordCounter { words, regex }))
     }
 }
 
@@ -466,9 +466,9 @@ fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
     let [_, end] = bytes.points_of_line(change.added_end().line());
 
     // Recreate the line as it was before the change
-    let mut line_before = bytes.strs(start..change.start()).to_string();
+    let mut line_before = bytes.strs(start..change.start()).unwrap().to_string();
     line_before.push_str(change.taken_str());
-    line_before.extend(bytes.strs(change.added_end()..end));
+    line_before.extend(bytes.strs(change.added_end()..end).unwrap());
 
     let words_before = line_before.search_fwd(regex, ..).unwrap().count();
     let words_after = bytes.search_fwd(regex, start..end).unwrap().count();
@@ -478,9 +478,9 @@ fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
 ```
 
 Once you’re done modifying your plugin, you should be ready to
-publish it to [crates.io][__link132]. This is the common registry for
+publish it to [crates.io][__link130]. This is the common registry for
 packages (crates in Rust), and is also where Duat will pull
-plugins from. Before publishing, try to follow [these guidelines][__link133]
+plugins from. Before publishing, try to follow [these guidelines][__link131]
 in order to improve the usability of the plugin. Now, you should
 be able to just do this in the `duat-word-count` directory:
 
@@ -492,7 +492,7 @@ Ok, it’s published, but how does one use it?
 
 ### Using plugins
 
-Assuming that you’ve already [installed duat][__link134], you should have a
+Assuming that you’ve already [installed duat][__link132], you should have a
 config crate in `~/.config/duat` (or `$XDG_CONFIG_HOME/duat`), in
 it, you can call the following command:
 
@@ -512,20 +512,20 @@ fn setup() {
 
     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
         sl.replace(status!(
-            "{file_fmt} has [wc]{file_words}[] words{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
+            "{file_txt} has [wc]{file_words}[] words{Spacer}{mode_txt} {sels_txt} {main_txt}"
         ))
     });
 }
 ```
 
-Now, the default [`StatusLine`][__link135] should have word count added in,
+Now, the default [`StatusLine`][__link133] should have word count added in,
 alongside the other usual things in there. It’s been added in the
 `{file_words}` part of the string, which just interpolated that
 function, imported by `use word_count::*;`, into the status line.
 
 There are many other things that plugins can do, like create
-custom [`Widget`][__link136]s, [`Mode`][__link137]s that can change how Duat
-behaves, customized [commands][__link138] and [hook][__link139]s, and many such things
+custom [`Widget`][__link134]s, [`Mode`][__link135]s that can change how Duat
+behaves, customized [commands][__link136] and [hook][__link137]s, and many such things
 
 
 # Plugin examples
@@ -539,7 +539,7 @@ screen by searching through character sequences.
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEGxTdpOge3VgEG6ecxzjzgI60GzzVN5F_59etG1xxu7wu-ZZSYWSBg2lkdWF0LWNvcmVlMC41LjNpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG0chwLXeKpc1G2WhHuey3UUVG7EslRd9cDr6G0QBUbBae_aVYWSBg2lkdWF0LWNvcmVlMC41LjNpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.5.3/duat_core/ui/index.html
  [__link10]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Ui
@@ -551,41 +551,39 @@ screen by searching through character sequences.
  [__link105]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
  [__link106]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserCfg
  [__link107]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link108]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Bytes
- [__link109]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link11]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::RawArea
- [__link110]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
+ [__link108]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
+ [__link109]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox
+ [__link11]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Area
+ [__link110]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
  [__link111]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox
- [__link112]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link113]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox::new_send
+ [__link112]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox::new
+ [__link113]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox::new_remote
  [__link114]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link115]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox::new_remote
+ [__link115]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
  [__link116]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link117]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox::new_local
- [__link118]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
+ [__link117]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
+ [__link118]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserCfg
  [__link119]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
  [__link12]: https://docs.rs/duat-core/0.5.3/duat_core/text/index.html
- [__link120]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserCfg
+ [__link120]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
  [__link121]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link122]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link123]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
+ [__link122]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
+ [__link123]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
  [__link124]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link125]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
- [__link126]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link127]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link128]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
- [__link129]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::Hookable
+ [__link125]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
+ [__link126]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
+ [__link127]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::Hookable
+ [__link128]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::trigger
+ [__link129]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
  [__link13]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
- [__link130]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::trigger
- [__link131]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link132]: https://crates.io
- [__link133]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
- [__link134]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
- [__link135]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
- [__link136]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Widget
- [__link137]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode
- [__link138]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd
- [__link139]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
+ [__link130]: https://crates.io
+ [__link131]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
+ [__link132]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
+ [__link133]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
+ [__link134]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Widget
+ [__link135]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode
+ [__link136]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd
+ [__link137]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
  [__link14]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Ui
  [__link15]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Tag
  [__link16]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
@@ -647,7 +645,7 @@ screen by searching through character sequences.
  [__link67]: https://docs.rs/duat/latest/duat/prelude/macro.plug.html
  [__link68]: https://docs.rs/duat-core/0.5.3/duat_core/trait.Plugin.html
  [__link69]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link7]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::OnFileOpen
+ [__link7]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::WidgetCreated
  [__link70]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
  [__link71]: https://docs.rs/duat-core/0.5.3/duat_core/trait.Plugin.html
  [__link72]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
@@ -658,7 +656,7 @@ screen by searching through character sequences.
  [__link77]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
  [__link78]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
  [__link79]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link8]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::OnWindowOpen
+ [__link8]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::WindowCreated
  [__link80]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Moment
  [__link81]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change
  [__link82]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Moment
