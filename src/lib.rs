@@ -3,17 +3,15 @@
 //! This [`Plugin`] is included by default, as it is considered a core
 //! utility of duat. It adds the two following traits:
 //!
-//! - [`FileType`]: This trait grants the [`filetype`] method, which
-//!   lets you access the filetype directly. Its implementors are the
-//!   [`File`] widget, [`String`] and [`&str`] and [`PathBuf`] and
-//!   [`Path`].
+//! - [`FileType`]: This trait grants the [`filetype`]
+//!   method, which lets you access the filetype directly. Its
+//!   implementors are the [`File`] widget, [`String`] and [`&str`]
+//!   and [`PathBuf`] and [`Path`].
 //! - [`PassFileType`]: This trait also has a
 //!   [`filetype`](PassFileType::filetype) method, but it requires a
 //!   [`Pass`], bypassing the need to, for example, [`read`] a
 //!   [`Handle<File<Ui>, Ui>`]. Its implementors are
 //!   [`RwData<File<Ui>>`], [`Handle<File<Ui>, Ui>`],
-//!   [`FileHandle<Ui>`] and [`FileBuilder<Ui>`], from the
-//!   [`OnFileOpen`] [hook].
 //!
 //! Both of these traits are included by default in Duat's
 //! [`prelude`], but if you want to use them in a plugin, first, add
@@ -47,9 +45,6 @@
 //! [`read`]: duat_core::prelude::Handle::read
 //! [`Handle<File<Ui>, Ui>`]: duat_core::prelude::Handle
 //! [`RwData<File<Ui>>`]: duat_core::prelude::RwData
-//! [`FileHandle<Ui>`]: duat_core::prelude::FileHandle
-//! [`FileBuilder<Ui>`]: duat_core::ui::FileBuilder
-//! [`OnFileOpen`]: duat_core::hook::OnFileOpen
 //! [hook]: duat_core::hook
 //! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
 #![feature(decl_macro)]
