@@ -89,6 +89,22 @@ impl Tags<'_> {
         self.0.remove_from(taggers, range)
     }
 
+    /// Just like [`Tags::remove`] but excludes ends on the start and
+    /// starts on the end
+    ///
+    /// In the regular [`remove`] function, if you remove from a range
+    /// `x..y`, tag ranges that end in `x` or start in `y - 1`
+    /// (exclusive range) will also be removed.
+    ///
+    /// If you don't want that to happen, you can use this function
+    /// instead.
+    ///
+    /// [`remove`]: Self::remove
+    pub fn remove_excl(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
+        let range = range.to_range(self.0.len_bytes());
+        self.0.remove_from_excl(taggers, range);
+    }
+
     /// Removes all [`Tag`]s
     ///
     /// Refrain from using this function on [`File`]s, as there may be
@@ -130,7 +146,7 @@ pub struct InnerTags {
 
 impl InnerTags {
     /// Creates a new [`InnerTags`] with a given len
-    pub fn new(max: usize) -> Self {
+    pub(super) fn new(max: usize) -> Self {
         Self {
             list: ShiftList::new(max as i32),
             ghosts: Vec::new(),
@@ -141,7 +157,7 @@ impl InnerTags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
+    pub(super) fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
         fn insert_id(tags: &mut InnerTags, id: Option<TagId>) -> Option<ToggleId> {
             match id {
                 Some(TagId::Ghost(id, ghost)) => {
@@ -162,7 +178,7 @@ impl InnerTags {
             end: Option<(usize, RawTag)>,
         ) -> bool {
             if let Some((e_b, e_tag)) = end
-                && s_b != e_b
+                && s_b < e_b
             {
                 let (s_i, e_i) = match (
                     tags.list.find_by_key((s_b as u32, s_tag), |t| t),
@@ -179,19 +195,22 @@ impl InnerTags {
 
                 tags.bounds
                     .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
+
+                tags.extents.insert(s_tag.tagger(), s_b);
+                tags.extents.insert(s_tag.tagger(), e_b);
+
+                true
             } else if end.is_none() {
                 let (Ok(i) | Err(i)) = tags.list.find_by_key((s_b as u32, s_tag), |s| s);
                 tags.list.insert(i, (s_b as u32, s_tag));
 
                 tags.bounds.shift_by(i, [1, 0]);
-            }
 
-            tags.extents.insert(s_tag.tagger(), s_b);
-            if let Some((s_at, _)) = end {
-                tags.extents.insert(s_tag.tagger(), s_at);
+                tags.extents.insert(s_tag.tagger(), s_b);
+                true
+            } else {
+                false
             }
-
-            true
         }
 
         let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), tagger);
@@ -203,7 +222,7 @@ impl InnerTags {
     }
 
     /// Insert another [`InnerTags`] into this one
-    pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
+    pub(super) fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
@@ -211,10 +230,7 @@ impl InnerTags {
             match tag {
                 PushForm(..) => starts.push((b, tag)),
                 PopForm(tagger, id) => {
-                    let i = starts
-                        .iter()
-                        .rposition(|(_, t)| t.ends_with(&tag))
-                        .unwrap_or_else(|| panic!("{starts:#?},{self:#?},{other:#?}"));
+                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
                     self.insert(tagger, sb..b, id.to_tag(tag.priority()));
                 }
@@ -257,7 +273,7 @@ impl InnerTags {
     }
 
     /// Extends this [`InnerTags`] with another one
-    pub fn extend(&mut self, other: InnerTags) {
+    pub(super) fn extend(&mut self, other: InnerTags) {
         self.list.extend(other.list);
         self.ghosts.extend(other.ghosts);
         self.toggles.extend(other.toggles);
@@ -266,14 +282,34 @@ impl InnerTags {
     }
 
     /// Removes all [`RawTag`]s of a give [`Taggers`]
-    pub fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
+    pub(super) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let (start, end) = crate::get_ends(within, self.len_bytes());
 
         for range in self
             .extents
             .remove_range(start..end, |tagger| taggers.contains_tagger(tagger))
         {
-            self.remove_from_if(range, |tag| taggers.contains_tagger(tag.tagger()));
+            self.remove_from_if(range, |(_, tag)| taggers.contains_tagger(tag.tagger()));
+        }
+    }
+
+    fn remove_from_excl(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
+        let (start, end) = crate::get_ends(within, self.len_bytes());
+        // In this case, this would be an empty range, and returning is
+        // appropriate.
+        let Some(excl_end) = end.checked_sub(1).filter(|e| *e >= start) else {
+            return;
+        };
+
+        for range in self
+            .extents
+            .remove_range(start..end, |tagger| taggers.contains_tagger(tagger))
+        {
+            self.remove_from_if(range, |(b, tag)| {
+                taggers.contains_tagger(tag.tagger())
+                    && ((b > start as u32 || !tag.is_end())
+                        && (b < excl_end as u32 && !tag.is_start()))
+            });
         }
     }
 
@@ -284,7 +320,11 @@ impl InnerTags {
     /// of the [`Bounds`], WILL NOT shift [`TaggerExtents`], since
     /// there is no byte shifting, WILL NOT shift the bytes of the
     /// [`Bounds`]
-    fn remove_from_if(&mut self, range: Range<usize>, filter: impl Fn(RawTag) -> bool + Copy) {
+    fn remove_from_if(
+        &mut self,
+        range: Range<usize>,
+        filter: impl Fn((u32, RawTag)) -> bool + Copy,
+    ) {
         for i in self
             .bounds
             .remove_intersecting(range.clone(), filter)
@@ -306,7 +346,7 @@ impl InnerTags {
         let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as u32, |(b, _)| b);
 
         self.list
-            .extract_if_while(start..end, |_, (_, tag)| Some(filter(tag)))
+            .extract_if_while(start..end, |_, entry| Some(filter(entry)))
             .for_each(|(i, (_, tag))| {
                 removed += 1;
                 self.bounds.shift_by(i, [-1, 0]);
@@ -536,11 +576,11 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
 
             for (i, (b, tag)) in self.0.list.iter_fwd(..) {
                 nesting = nesting.saturating_sub(tag.is_end() as usize);
-                if (start as u32..end as u32).contains(&b) {
+                if (start as u32..=end as u32).contains(&b) {
                     let space = " ".repeat(nesting);
-                    let n_fmt = format!("n: {i}");
-                    let b_fmt = format!("b: {b}");
-                    writeln!(f, "    ({n_fmt:<n_spc$}, {b_fmt:<b_spc$}): {space}{tag:?}")?;
+                    let n_txt = format!("n: {i}");
+                    let b_txt = format!("b: {b}");
+                    writeln!(f, "    ({n_txt:<n_spc$}, {b_txt:<b_spc$}): {space}{tag:?}")?;
                 }
                 nesting += tag.is_start() as usize;
             }

@@ -78,7 +78,7 @@ impl Cache {
     ///
     /// The cache will be stored under
     /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
-    /// The cache will then later be loaded by [`load_cache`].
+    /// The cache can then later be loaded by [`Cache::load`].
     pub fn store<C: Encode + 'static>(
         &self,
         path: impl Into<PathBuf>,

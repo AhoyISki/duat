@@ -40,8 +40,9 @@ use crate::{
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<OnFileOpen>(|pa, builder| {
-///         builder.push(pa, LineNumbers::cfg());
+///     hook::add::<File>(|_, (cfg, builder)| {
+///         builder.push(LineNumbers::cfg());
+///         cfg
 ///     });
 /// }
 /// ```
@@ -56,9 +57,10 @@ use crate::{
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<OnFileOpen>(|pa, builder| {
+///     hook::add::<File>(|_, (cfg, builder)| {
 ///         let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///         builder.push(pa, line_numbers_cfg);
+///         builder.push(line_numbers_cfg);
+///         cfg
 ///     });
 /// }
 /// ```
@@ -78,19 +80,18 @@ use crate::{
 ///
 /// fn setup() {
 ///     hook::remove("FileWidgets");
-///     hook::add::<OnFileOpen>(|pa, builder| {
-///         let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///         builder.push(pa, line_numbers_cfg);
+///     hook::add::<File>(|_, (cfg, builder)| {
+///         builder.push(LineNumbers::cfg().relative().on_the_right());
 ///         // Push a StatusLine to the bottom.
-///         builder.push(pa, StatusLine::cfg());
+///         builder.push(StatusLine::cfg());
 ///         // Push a PromptLine to the bottom.
-///         builder.push(pa, PromptLine::cfg());
+///         builder.push(PromptLine::cfg());
+///         cfg
 ///     });
 /// }
 /// ```
 ///
 /// [`File`]: crate::file::File
-/// [`OnFileOpen`]: crate::hook::OnFileOpen
 /// [`LineNumbers`]: https://crates.io/duat-utils/latest/duat_utils/wigets/struct.LineNumbers.html
 /// [hook group]: crate::hook::add_grouped
 /// [`hook::remove`]: crate::hook::remove
@@ -149,12 +150,11 @@ impl<U: Ui> UiBuilder<U> {
 
     /// Pushes a widget to the main area of the [`UiBuilder`]
     ///
-    /// If this [`Widget`] is being pushed to a [`File`]'s group
-    /// (indicated on the [`WidgetCreated`] [hook] by the
-    /// [`FileHandle`] being [`Some`]), then this [`Widget`] will be
-    /// included in that [`File`]'s group. This means that, if that
-    /// [`File`] is moved around or deleted, this [`Widget`] (and all
-    /// others in its group) will follow suit.
+    /// If this [`Widget`] is being pushed to a [`File`]'s group,
+    /// then this [`Widget`] will be included in that [`File`]'s
+    /// group. This means that, if that [`File`] is moved around
+    /// or deleted, this [`Widget`] (and all others in its group)
+    /// will follow suit.
     ///
     /// When you push a [`Widget`], it is placed on an edge of the
     /// area, and a new parent area may be created to hold both
@@ -183,19 +183,18 @@ impl<U: Ui> UiBuilder<U> {
     ///
     /// fn setup() {
     ///     hook::remove("FileWidgets");
-    ///     hook::add::<OnFileOpen>(|pa, builder| {
-    ///         let line_numbers_cfg = LineNumbers::cfg().rel_abs();
-    ///         builder.push(pa, line_numbers_cfg);
-    ///
-    ///         let status_line_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
-    ///         builder.push(pa, status_line_cfg);
+    ///     hook::add::<File>(|_, (cfg, builder)| {
+    ///         builder.push(LineNumbers::cfg().rel_abs());
+    ///         builder.push(status!("{file_txt} {selections_txt} {main_txt}"));
+    ///         cfg
     ///     });
     /// }
     /// ```
     ///
     /// In this case, each file will have [`LineNumbers`] with
     /// relative/absolute numbering, and a [`StatusLine`] showing
-    /// the file's name and how many selections are in it.
+    /// the file's name, how many selections are in it, and its main
+    /// selection.
     ///
     /// [`File`]: crate::file::File
     /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
@@ -222,14 +221,15 @@ impl<U: Ui> UiBuilder<U> {
     ///
     /// fn setup() {
     ///     hook::remove("FileWidgets");
-    ///     hook::add::<OnFileOpen>(|_, builder| {
+    ///     hook::add::<File>(|_, (cfg, builder)| {
     ///         builder.push(LineNumbers::cfg());
     ///
-    ///         let status_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
-    ///         let (child, _) = builder.push(status_cfg);
+    ///         let status_cfg = status!("{file_txt} {selections_txt} {main_txt}");
+    ///         let child = builder.push(status_cfg);
     ///         let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
-    ///         let (child, _) = builder.push_to(child, prompt_cfg);
+    ///         let child = builder.push_to(child, prompt_cfg);
     ///         builder.push_to(child, Notifications::cfg());
+    ///         cfg
     ///     });
     /// }
     /// ```
@@ -245,11 +245,12 @@ impl<U: Ui> UiBuilder<U> {
     /// [`U::Area`]: Ui::Area
     /// [hook group]: crate::hook::add_grouped
     /// [`FooterWidgets`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.FooterWidgets.html
+    /// [`duat-utils`]: https://docs.rs/duat-utils/latest/duat_utils
     pub fn push_to<Cfg: WidgetCfg<U>>(&mut self, area: AreaId, cfg: Cfg) -> AreaId {
         RawUiBuilder(self).push_to(area, cfg)
     }
 
-    /// The [`FileHandle`] of this [`UiBuilder`], if there is one
+    /// The [`Handle<File>`] of this [`UiBuilder`], if there is one
     ///
     /// This will be [`Some`] when this [`Widget`] is being pushed
     /// around a [`File`], and [`None`] otherwise.

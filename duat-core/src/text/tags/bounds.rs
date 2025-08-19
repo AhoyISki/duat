@@ -103,7 +103,7 @@ impl Bounds {
     pub fn remove_intersecting(
         &mut self,
         range: Range<usize>,
-        filter: impl Fn(RawTag) -> bool,
+        filter: impl Fn((u32, RawTag)) -> bool,
     ) -> Vec<usize> {
         let (Ok(s) | Err(s)) = self.list.find_by_key(range.start as u32, |([_, c], ..)| c);
         let (Ok(e) | Err(e)) = self.list.find_by_key(range.end as u32, |([_, c], ..)| c);
@@ -113,7 +113,7 @@ impl Bounds {
         let mut ends = Vec::new();
 
         self.list
-            .extract_if_while(s..e, |_, (_, tag, _)| Some(filter(tag)))
+            .extract_if_while(s..e, |_, ([_, b], tag, _)| Some(filter((b, tag))))
             .for_each(|(_, ([n, _], tag, id))| {
                 removed.push(n as usize);
                 if tag.is_start() {

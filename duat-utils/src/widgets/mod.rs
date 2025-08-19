@@ -9,8 +9,7 @@
 //! [`Widget`]: duat_core::ui::Widget
 //! [`Text`]: duat_core::text::Text
 //! [`File`]: duat_core::file::File
-//! [`OnFileOpen`]: duat_core::hook::OnFileOpen
-//! [`OnWindowOpen`]: duat_core::hook::OnWindowOpen
+//! [`WindowCreated`]: duat_core::hook::WindowCreated
 //! [`Constraint`]: duat_core::ui::Constraint
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
@@ -24,7 +23,7 @@ pub use self::{
     log_book::{LogBook, LogBookCfg},
     notifications::{Notifications, NotificationsCfg},
     prompt_line::{PromptLine, PromptLineCfg},
-    status_line::{FromWithPass, State, StatusLine, StatusLineCfg, status},
+    status_line::{State, StatusLine, StatusLineCfg, status},
 };
 
 mod line_numbers;
@@ -41,20 +40,18 @@ mod status_line;
 /// they can also be placed around individual [`File`]s:
 ///
 /// ```rust
-/// use duat_core::{hook::OnFileOpen, prelude::*};
-/// use duat_utils::{
-///     state::*,
-///     widgets::{FooterWidgets, status},
-/// };
+/// # use duat_core::doc_duat as duat;
+/// setup_duat!(setup);
+/// use duat::prelude::*;
+/// use duat_utils::widgets::{FooterWidgets, status};
 ///
-/// fn setup_generic_over_ui<U: Ui>() {
-///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
-///         builder.push(
-///             pa,
-///             FooterWidgets::new(status!(
-///                 "{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
-///             )),
-///         );
+/// fn setup() {
+///     hook::add::<File>(|pa, (cfg, builder)| {
+///         builder.push(FooterWidgets::new(status!(
+///             "{file_txt}{Spacer}{} {sels_txt} {main_txt}",
+///             mode_txt(pa)
+///         )));
+///         cfg
 ///     });
 /// }
 /// ```
@@ -73,8 +70,8 @@ mod status_line;
 /// Additionally, you can call the [`above`] method in order to place
 /// the footer as a header instead.
 ///
-/// [around the window]: duat_core::hook::OnWindowOpen
-/// [`File`]: duat_core::hook::OnFileOpen
+/// [around the window]: duat_core::hook::WindowCreated
+/// [`File`]: duat_core::file::File
 /// [`one_line`]: FooterWidgets::one_line
 /// [`prompt`]: FooterWidgets::prompt
 /// [`notifs`]: FooterWidgets::notifs

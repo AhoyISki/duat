@@ -36,16 +36,7 @@ impl History {
         Self::default()
     }
 
-    /// Adds a [`Change`] without moving the ones ahead to comply
-    ///
-    /// # Safety
-    ///
-    /// This function should only be used by the [`EditHelper`], as it
-    /// is expected that, after using it, you will call
-    /// [`shift_range`] in order to keep the [`Change`]s ahead synced
-    /// with the one being added.
-    ///
-    /// [`EditHelper`]: crate::mode::EditHelper
+    /// Adds a [`Change`] to the [`History`]
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
         let (changes, shift_state) = self.unproc_changes.get_mut().get_or_insert_default();
         add_change(changes, guess_i, change.clone(), shift_state);

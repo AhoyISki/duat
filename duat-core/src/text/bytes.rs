@@ -108,7 +108,11 @@ impl Bytes {
     /// # let (p0, p1) = (Point::default(), Point::default());
     /// # let text = Text::new();
     /// let bytes = text.bytes();
-    /// bytes.strs(p0..p1).flat_map(str::chars);
+    /// let chars = bytes.strs(p0..p1).unwrap().chars();
+    ///
+    /// for char in chars {
+    ///     todo!();
+    /// }
     /// ```
     ///
     /// Do note that you should avoid iterators like [`str::lines`],
@@ -122,12 +126,10 @@ impl Bytes {
     /// ];
     /// ```
     ///
-    /// # [`TextRange`] behavior:
+    /// This is one way that the inner [`GapBuffer`] could be set up,
+    /// where one of the lines is split among the two slices.
     ///
-    /// If you give a single [`usize`]/[`Point`], it will be
-    /// interpreted as a range from.
-    ///
-    /// If you want the two full [`&str`]s, see [`strs`]
+    /// If you wish to iterate over the lines, see [`Bytes::lines`].
     ///
     /// [`&str`]: str
     /// [`Text`]: super::Text
@@ -524,12 +526,7 @@ impl Bytes {
     /// Returns [`None`] if the gap of the inner buffer was within the
     /// given range *OR*.
     ///
-    /// You can ensure that the gap is outside of that range by
-    /// calling [`make_contiguous`], although that requires a mutable
-    /// reference.
-    ///
     /// [`&str`]: str
-    /// [`make_contiguous`]: Self::make_contiguous
     pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
         let range = range.to_range(self.len().byte());
         let [s0, s1] = self.strs_inner(..).unwrap();
@@ -650,42 +647,20 @@ impl<'a> Buffers<'a> {
         Ok([str::from_utf8(s0)?, str::from_utf8(s1)?].join(""))
     }
 
-    /// Iterates over the `char`s in the [`Buffers`]
-    ///
-    /// You will want to use this function iff you don't have access
-    /// to a character range, otherwise, you should just use
-    /// [`bytes.strs({char_range}).chars()`] instead.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the bounds of the slices
-    /// don't correspond to utf8 character boundaries, or if the gap
-    /// within these slices doesn't correspond to a utf8 character
-    /// boundary.
-    ///
-    /// If you expect _for sure_ that the slice is valid utf8, you can
-    /// use [`Buffers::chars_unchecked`] instead.
-    pub fn chars(self) -> Result<impl Iterator<Item = char>, Utf8Error> {
-        let [s0, s1] = self.0.map(|arr| arr.as_slice());
-        Ok([str::from_utf8(s0)?, str::from_utf8(s1)?]
-            .into_iter()
-            .flat_map(str::chars))
-    }
-
     /// Treats the inner slices as `&str`s and iterates over their
     /// characters
     ///
-    /// You will want to use this function iff you don't have access
-    /// to a character range, otherwise, you should just use
-    /// [`bytes.strs({char_range}).chars()`] instead.
+    /// You will want to use this function iff you don't want to check
+    /// for character boundaries at the edges (very rarely). Otherwise
+    /// [`bytes.strs({byte_range}).chars()`] instead.
     ///
     /// # Safety
     ///
     /// You must ensure that the [`Buffers`] were acquired from valid
     /// byte ranges which coincide with character terminations. If you
-    /// are unsure of that, you should use [`Buffers::chars`] instead.
+    /// are unsure of that, you should use [`Strs::chars`] instead.
     ///
-    /// [`bytes.strs({char_range}).chars()`]: Bytes::strs
+    /// [`bytes.strs({byte_range}).chars()`]: Bytes::strs
     pub unsafe fn chars_unchecked(self) -> impl Iterator<Item = char> {
         self.0
             .into_iter()

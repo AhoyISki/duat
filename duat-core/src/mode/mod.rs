@@ -247,16 +247,14 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # impl Menu {
 /// #     fn build_text(&mut self) { todo!(); }
 /// # }
-/// use std::marker::PhantomData;
-///
 /// use duat_core::prelude::*;
 ///
-/// struct MenuCfg<U>(PhantomData<U>);
+/// struct MenuCfg;
 ///
-/// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
+/// impl<U: Ui> WidgetCfg<U> for MenuCfg {
 ///     type Widget = Menu;
 ///
-///     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) {
+///     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Menu, PushSpecs) {
 ///         let mut widget = Menu::default();
 ///         widget.build_text();
 ///
@@ -267,11 +265,11 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// }
 ///
 /// impl<U: Ui> Widget<U> for Menu {
-///     type Cfg = MenuCfg<U>;
+///     type Cfg = MenuCfg;
 ///
-///     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
+///     fn update(_: &mut Pass, handle: &Handle<Self, U>) {}
 ///
-///     fn needs_update(&self) -> bool {
+///     fn needs_update(&self, _: &Pass) -> bool {
 ///         false
 ///     }
 ///
@@ -284,7 +282,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///     }
 ///
 ///     fn cfg() -> Self::Cfg {
-///         MenuCfg(PhantomData)
+///         MenuCfg
 ///     }
 ///
 ///     fn once() -> Result<(), Text> {
@@ -306,7 +304,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// are the [`on_focus`] and [`on_unfocus`] methods:
 ///
 /// ```rust
-/// # use std::marker::PhantomData;
 /// # use duat_core::prelude::*;
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -314,25 +311,25 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// #     selected_entry: usize,
 /// #     active_entry: Option<usize>,
 /// # }
-/// # struct MenuCfg<U>(PhantomData<U>);
-/// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
+/// # struct MenuCfg;
+/// # impl<U: Ui> WidgetCfg<U> for MenuCfg {
 /// #     type Widget = Menu;
-/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
+/// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Menu, PushSpecs) { todo!() }
 /// # }
 /// impl<U: Ui> Widget<U> for Menu {
-/// #     type Cfg = MenuCfg<U>;
+/// #     type Cfg = MenuCfg;
 /// #     fn cfg() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
-/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
+/// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
 ///     // ...
-///     fn on_focus(_: &mut Pass, handle: Handle<Self, U>) {
+///     fn on_focus(_: &mut Pass, handle: &Handle<Self, U>) {
 ///         handle.set_mask("inactive");
 ///     }
 ///
-///     fn on_unfocus(_: &mut Pass, handle: Handle<Self, U>) {
+///     fn on_unfocus(_: &mut Pass, handle: &Handle<Self, U>) {
 ///         handle.set_mask("inactive");
 ///     }
 /// }
@@ -353,7 +350,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// need to create an empty struct and call the methods of the `Menu`:
 ///
 /// ```rust
-/// # use std::marker::PhantomData;
 /// # use duat_core::prelude::*;
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -366,19 +362,19 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// #     pub fn toggle(&mut self) {}
 /// #     fn build_text(&mut self) {}
 /// # }
-/// # struct MenuCfg<U>(PhantomData<U>);
-/// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
+/// # struct MenuCfg;
+/// # impl<U: Ui> WidgetCfg<U> for MenuCfg {
 /// #     type Widget = Menu;
-/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
+/// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Menu, PushSpecs) { todo!() }
 /// # }
 /// # impl<U: Ui> Widget<U> for Menu {
-/// #     type Cfg = MenuCfg<U>;
+/// #     type Cfg = MenuCfg;
 /// #     fn cfg() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
-/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
+/// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
 /// # }
 /// #[derive(Clone)]
 /// struct MenuInput;
@@ -389,14 +385,13 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
 ///         use KeyCode::*;
 ///
-///         handle.write(pa, |menu, _| {
-///             match key {
-///                 key!(Down) => menu.shift_selection(1),
-///                 key!(Up) => menu.shift_selection(-1),
-///                 key!(Enter | Tab | Char(' ')) => menu.toggle(),
-///                 _ => {}
-///             }
-///         });
+///         let menu = handle.write(pa);
+///         match key {
+///             key!(Down) => menu.shift_selection(1),
+///             key!(Up) => menu.shift_selection(-1),
+///             key!(Enter | Tab | Char(' ')) => menu.toggle(),
+///             _ => {}
+///         }
 ///     }
 /// }
 /// ```

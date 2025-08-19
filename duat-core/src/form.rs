@@ -85,6 +85,7 @@ mod global {
     /// reference another form by its name:
     ///
     /// ```rust
+    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// # use duat_core::form::{self, Form};
     /// // Creates a regular form
     /// let reg_id = form::set("my_regular_form", Form::red());
@@ -126,6 +127,7 @@ mod global {
     /// [`form::set`] are called:
     ///
     /// ```rust
+    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// use duat_core::form::{self, Form};
     ///
     /// // Creates a form "weakly"
@@ -187,6 +189,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form, Color};
+    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// form::set("caret.main", Form::black().on("rgb 240 210 200"));
     /// ```
     ///
@@ -213,6 +216,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form, Color};
+    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// form::set("caret.extra", Form::black().on_cyan());
     /// ```
     ///
@@ -286,6 +290,7 @@ mod global {
     /// how it works:
     ///
     /// ```rust
+    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// use duat_core::prelude::*;
     /// fn test<W: Widget<U>, U: Ui>(pa: &mut Pass, handle: Handle<W, U>) {
     ///     // Assume that a Form with the given name exists
@@ -294,10 +299,8 @@ mod global {
     ///     // If I create a second Form like this one, they are separate
     ///     form::set("my_form.suffix", Form::undercurled());
     ///
-    ///     handle.replace_text(
-    ///         pa,
-    ///         txt!("[my_form]This text is red on blue[], [my_form.suffix]and this is undercurled"),
-    ///     );
+    ///     *handle.text_mut(pa) =
+    ///         txt!("[my_form]This is red on blue[], [my_form.suffix]undercurled").build();
     ///
     ///     // But if I enable the "suffix" mask that's at the end of the second Form
     ///     form::enable_mask("suffix");
@@ -306,9 +309,8 @@ mod global {
     ///     handle.set_mask("suffix");
     ///
     ///     // So when the widget is printed, it'd be equivalent to this:
-    ///     let text = txt!(
-    ///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and this is undercurled"
-    ///     );
+    ///     *handle.text_mut(pa) =
+    ///         txt!("[my_form.suffix]This is red on blue[], [my_form.suffix]undercurled").build();
     /// }
     /// ```
     ///
@@ -1254,10 +1256,8 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
 ///     // If I create a second Form like this one, they are separate
 ///     form::set("my_form.suffix", Form::undercurled());
 ///
-///     handle.replace_text(
-///         pa,
-///         txt!("[my_form]This text is red on blue[], [my_form.suffix]and this is undercurled"),
-///     );
+///     *handle.text_mut(pa) =
+///         txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled").build();
 ///
 ///     // But if I enable the "suffix" mask that's at the end of the second Form
 ///     form::enable_mask("suffix");
@@ -1266,9 +1266,8 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
 ///     handle.set_mask("suffix");
 ///
 ///     // So when the widget is printed, it'd be equivalent to this:
-///     let text = txt!(
-///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and this is undercurled"
-///     );
+///     *handle.text_mut(pa) =
+///         txt!("[my_form.suffix]This text is red on blue[], [my_form.suffix]undercurled").build();
 /// }
 /// ```
 ///

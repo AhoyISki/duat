@@ -39,6 +39,7 @@ impl<U: Ui> Windows<U> {
         ms: &'static U::MetaStatics,
         file_cfg: FileCfg<U>,
         layout: Box<dyn Layout<U>>,
+        set_cur: bool,
     ) -> Node<U> {
         let widget_id = AreaId::new();
         let (file_cfg, builder) = {
@@ -59,6 +60,10 @@ impl<U: Ui> Windows<U> {
         let inner = self.0.write(pa);
         inner.windows.push(window);
         inner.areas.push((node.area_id(), area.clone()));
+
+        if set_cur {
+            context::set_cur(pa, node.try_downcast(), node.clone());
+        }
 
         let files_id = builder.finish_around_widget(pa, None, node.handle().clone());
 
@@ -235,6 +240,7 @@ impl<U: Ui> Windows<U> {
                     ms,
                     default_file_cfg.open_path(PathBuf::from(name)),
                     layout,
+                    false,
                 );
             }
         };
@@ -750,6 +756,7 @@ pub(super) mod id {
     /// [hook]: crate::hook
     /// [`UiBuilder::push`]: super::UiBuilder::push
     /// [`UiBuilder::push_to`]: super::UiBuilder::push_to
+    /// [`Handle`]: crate::context::Handle
     #[derive(Clone, Copy, Debug, Eq)]
     pub struct AreaId(usize);
 

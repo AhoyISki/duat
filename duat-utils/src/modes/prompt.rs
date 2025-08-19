@@ -194,7 +194,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 ///     }
 ///
 ///     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
-///         self.initial = Some(context::fixed_file::<U>(pa).unwrap().name(pa));
+///         self.initial = Some(context::fixed_file::<U>(pa).unwrap().read(pa).name());
 ///         self.current = self.initial.clone();
 ///
 ///         text

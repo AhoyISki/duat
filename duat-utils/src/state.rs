@@ -4,8 +4,8 @@
 //! them inside a [`status!`] macro, and they will be understood with
 //! no other meddling.
 //!
-//! Examples of functions in here are [`main_fmt`], which will show a
-//! formatted version of the main [`Cursor`], and [`mode_fmt`] which
+//! Examples of functions in here are [`main_txt`], which will show a
+//! formatted version of the main [`Cursor`], and [`mode_txt`] which
 //! will show a formatted version of the current [`Mode`] of Duat.
 //!
 //! [`StatusLine`]: crate::widgets::StatusLine
@@ -42,7 +42,7 @@ use duat_core::{
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn file_fmt(file: &File<impl Ui>) -> Text {
+pub fn file_txt(file: &File<impl Ui>) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
@@ -72,16 +72,26 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
 /// simple trick is this:
 ///
 /// ```rust
-/// # fn test() {
-/// use duat_utils::state;
-/// let mode = state::mode_name().map(|mode| {
-///     let mode = match mode.split_once('<') {
-///         Some((mode, _)) => mode,
-///         None => mode,
-///     };
-///     // Further processing...
-/// });
-/// # }
+/// # use duat_core::doc_duat as duat;
+/// # use duat_utils::{state, widgets::status};
+/// setup_duat!(setup);
+/// use duat::prelude::*;
+///
+/// fn setup() {
+///     hook::add::<WindowCreated>(|pa, builder| {
+///         let mode_upper = state::mode_name(pa).map(pa, |mode| {
+///             let mode = match mode.split_once('<') {
+///                 Some((mode, _)) => mode,
+///                 None => mode,
+///             };
+///             txt!("[mode]{}", mode.to_uppercase()).build()
+///         });
+///
+///         builder.push(status!(
+///             "{file_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
+///         ));
+///     });
+/// }
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
@@ -100,7 +110,7 @@ pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn mode_fmt(pa: &Pass) -> DataMap<&'static str, Text> {
+pub fn mode_txt(pa: &Pass) -> DataMap<&'static str, Text> {
     context::mode_name(pa).map(pa, |mode| {
         let mode = mode.to_lowercase();
         let mode = match mode.split_once('<') {
@@ -149,7 +159,7 @@ pub fn main_col<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_fmt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
+pub fn main_txt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
     txt!(
         "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
         main_col(file, area),
@@ -184,7 +194,7 @@ pub fn selections(file: &File<impl Ui>) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: duat_core::mode::Cursor
-pub fn sels_fmt(file: &File<impl Ui>) -> Text {
+pub fn sels_txt(file: &File<impl Ui>) -> Text {
     if file.selections().len() == 1 {
         txt!("[selections]1 sel").build()
     } else {
@@ -210,7 +220,7 @@ pub fn sels_fmt(file: &File<impl Ui>) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [keys]: KeyEvent
-pub fn cur_map_fmt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
+pub fn cur_map_txt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
     mode::cur_sequence(pa).map(pa, |(keys, is_alias)| {
         if is_alias {
             Text::default()

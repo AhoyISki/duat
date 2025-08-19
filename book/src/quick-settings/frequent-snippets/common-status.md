@@ -5,12 +5,12 @@ The most relevant parts for pretty much every `StatusLine` are the following.
 Formatted status parts:
 
 - `file_fmt`: Prints the `File`'s name and some info about it's newness.
-  - Uses the forms `file`, `file.new`, `file.new.scratch` and `file.unsaved` 
-- `mode_fmt`: The lowercased name of the `Mode`, e.g. "insert", "normal.
-  - Uses the form `mode`
+- Uses the forms `file`, `file.new`, `file.new.scratch` and `file.unsaved`.
+- `mode_fmt`: The lowercased name of the `Mode`, e.g. "insert", "normal".
+  - Uses the form `mode`.
 - `main_fmt`: Prints the main selection's column and line, and the number of 
   lines. 1 indexed.
-  - Uses the forms `coord` and `separator`
+  - Uses the forms `coord` and `separator`.
 - `sels_fmt`: Prints the number of selections.
   - Uses the form `selections`;
 - `cur_map_fmt`: Prints the keys being mapped.
@@ -20,7 +20,7 @@ Unformatted status parts:
 
 - `main_byte`, `main_char`, `main_line`, `main_col`: Parts of the main cursor.
 - `mode_name`: The raw type name of the mode. Could look something like 
-  `Prompt<IncSearcher<SearchFwd>, Ui>, Ui>`
+  `Prompt<IncSearcher<SearchFwd>, Ui>, Ui>`.
 - `selections`: The number of selections, no formatting.
 - `last_key`: The last key that was typed. Useful for asciinema demonstrations. 
 

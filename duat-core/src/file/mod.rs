@@ -16,7 +16,7 @@ use std::{fs, marker::PhantomData, path::PathBuf};
 use self::parser::InnerParsers;
 pub use self::parser::{FileParts, FileSnapshot, Parser, ParserBox, ParserCfg, Parsers};
 use crate::{
-    cfg::PrintCfg,
+    cfg::{NewLine, PrintCfg, ScrollOff, TabStops, WordChars, WrapMethod},
     context::{self, Cache, Handle},
     data::Pass,
     form::Painter,
@@ -48,7 +48,7 @@ impl<U: Ui> FileCfg<U> {
     }
 
     /// Adds a [`Parser`] to the [`File`]
-    pub fn add_parser(&mut self, parser_cfg: impl ParserCfg<U> + 'static) {
+    pub fn with_parser(mut self, parser_cfg: impl ParserCfg<U> + 'static) -> Self {
         let add_parsers = std::mem::take(&mut self.add_parsers);
         self.add_parsers = Some(Box::new(move |file| {
             if let Some(prev_add_parsers) = add_parsers {
@@ -59,11 +59,127 @@ impl<U: Ui> FileCfg<U> {
                 context::error!("{err}");
             }
         }));
+
+        self
     }
 
-    /// Sets the [`PrintCfg`]
+    ////////// PrintCfg functions
+
+    /// A mutable reference to the [`PrintCfg`]
+    ///
+    /// You mostly won't need this, as you can just use the other
+    /// [`PrintCfg`] derived methods for the [`FileCfg`].
     pub fn print_cfg(&mut self) -> &mut PrintCfg {
         &mut self.print_cfg
+    }
+
+    /// Don't wrap when reaching the end of the area
+    pub const fn dont_wrap(mut self) -> Self {
+        self.print_cfg.dont_wrap();
+        self
+    }
+
+    /// Wrap on the right edge of the area
+    pub const fn wrap_on_edge(mut self) -> Self {
+        self.print_cfg.wrap_method = WrapMethod::Edge;
+        self
+    }
+
+    /// Wrap on [word] terminations
+    ///
+    /// [word]: word_chars
+    pub const fn wrap_on_word(mut self) -> Self {
+        self.print_cfg.wrap_method = WrapMethod::Edge;
+        self
+    }
+
+    /// Wrap on a given distance from the left edge
+    ///
+    /// This can wrap beyond the screen, being a mix of [`unwrapped`]
+    /// and [`edge_wrapped`].
+    ///
+    /// [`unwrapped`]: Self::unwrapped
+    /// [`edge_wrapped`]: Self::edge_wrapped
+    pub const fn wrap_at(mut self, cap: u8) -> Self {
+        self.print_cfg.wrap_method = WrapMethod::Capped(cap);
+        self
+    }
+
+    /// Reindent wrapped lines to the same level of indentation
+    pub const fn indent_wraps(mut self, value: bool) -> Self {
+        self.print_cfg.indent_wrapped = value;
+        self
+    }
+
+    /// Sets the size of tabs
+    pub const fn tabstop(mut self, tabstop: u8) -> Self {
+        self.print_cfg.tab_stops = TabStops(tabstop);
+        self
+    }
+
+    /// Sets a character to replace `'\n'`s with
+    pub const fn new_line_as(mut self, char: char) -> Self {
+        self.print_cfg.new_line = NewLine::AlwaysAs(char);
+        self
+    }
+
+    /// Sets a character to replace `'\n'` only with trailing white
+    /// space
+    pub const fn trailing_new_line_as(mut self, char: char) -> Self {
+        self.print_cfg.new_line = NewLine::AfterSpaceAs(char);
+        self
+    }
+
+    /// Sets the horizontal and vertical scrolloff, respectively
+    pub const fn scrolloff(mut self, x: u8, y: u8) -> Self {
+        self.print_cfg.scrolloff = ScrollOff { x, y };
+        self
+    }
+
+    /// Sets the horizontal scrolloff
+    pub const fn x_scrolloff(mut self, x: u8) -> Self {
+        self.print_cfg.scrolloff = ScrollOff { y: self.print_cfg.scrolloff.y, x };
+        self
+    }
+
+    /// Sets the vertical scrolloff
+    pub const fn y_scrolloff(mut self, y: u8) -> Self {
+        self.print_cfg.scrolloff = ScrollOff { y, x: self.print_cfg.scrolloff.x };
+        self
+    }
+
+    /// Sets the [`WordChars`]
+    pub const fn word_chars(mut self, word_chars: WordChars) -> Self {
+        self.print_cfg.word_chars = word_chars;
+        self
+    }
+
+    /// Sets a forced horizontal scrolloff
+    ///
+    /// Without forced horizontal scrolloff, when you reach the end of
+    /// a long line of text, the cursor will also reach the edge of
+    /// the screen. With this enabled, Duat will keep a distance
+    /// between the cursor and the edge of the screen.
+    ///
+    /// This is particularly useful in a situation like the
+    /// [`PromptLine`] widget, in order to keep good visibility of the
+    /// command.
+    ///
+    /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+    pub const fn forced_horizontal_scrolloff(mut self, value: bool) -> Self {
+        self.print_cfg.force_scrolloff = value;
+        self
+    }
+
+    ////////// Path functions
+
+    /// The path that the [`File`] will open with, if it was set
+    pub fn path_set(&self) -> Option<String> {
+        match &self.text_op {
+            TextOp::TakeBuf(_, PathKind::NotSet(_), _) | TextOp::NewBuffer => None,
+            TextOp::TakeBuf(_, PathKind::SetExists(path) | PathKind::SetAbsent(path), _)
+            | TextOp::OpenPath(path) => Some(path.to_str()?.to_string()),
+        }
     }
 
     /// Changes the path of this cfg
@@ -81,16 +197,6 @@ impl<U: Ui> FileCfg<U> {
         Self {
             text_op: TextOp::TakeBuf(bytes, pk, has_unsaved_changes),
             ..self
-        }
-    }
-
-    ////////// Querying functions
-
-    pub fn path_set(&self) -> Option<String> {
-        match &self.text_op {
-            TextOp::TakeBuf(_, PathKind::NotSet(_), _) | TextOp::NewBuffer => None,
-            TextOp::TakeBuf(_, PathKind::SetExists(path) | PathKind::SetAbsent(path), _)
-            | TextOp::OpenPath(path) => Some(path.to_str()?.to_string()),
         }
     }
 }

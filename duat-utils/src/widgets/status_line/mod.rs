@@ -17,39 +17,36 @@ mod state;
 
 use duat_core::{context::CurFile, prelude::*, text::Builder, ui::Side};
 
-pub use self::{
-    macros::status,
-    state::{FromWithPass, State},
-};
-use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
+pub use self::{macros::status, state::State};
+use crate::state::{file_txt, main_txt, mode_txt, sels_txt};
 
 /// A widget to show information, usually about a [`File`]
 ///
 /// This widget is updated whenever any of its parts needs to be
 /// updated, and it also automatically adjusts to where it was pushed.
-/// For example, if you push it with [`OnFileOpen`], it's information
-/// will point to the [`File`] to which it was pushed. However, if you
-/// push it with [`OnWindowOpen`], it will always point to the
-/// currently active [`File`]:
+/// For example, if you push it to a file (via `hook::add::<File>`,
+/// for example), it's information will point to the [`File`] to which
+/// it was pushed. However, if you push it with [`WindowCreated`], it
+/// will always point to the currently active [`File`]:
 ///
 /// ```rust
-/// use duat_core::{
-///     hook::{OnFileOpen, OnWindowOpen},
-///     prelude::*,
-/// };
-/// use duat_utils::{state::*, widgets::*};
+/// # use duat_core::doc_duat as duat;
+/// # use duat_utils::widgets::{FooterWidgets, status};
+/// setup_duat!(setup);
+/// use duat::prelude::*;
 ///
-/// fn setup_generic_over_ui<U: Ui>() {
-///     hook::remove("FileWidgets");
-///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
-///         builder.push(pa, LineNumbers::cfg());
-///         builder.push(pa, status!("{file_fmt}").above());
+/// fn setup() {
+///     hook::add::<File>(|_, (cfg, builder)| {
+///         builder.push(status!("{file_txt}").above());
+///         cfg
 ///     });
 ///
 ///     hook::remove("WindowWidgets");
-///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
-///         let footer = FooterWidgets::new(status!("{mode_fmt} {sels_fmt} {main_fmt}"));
-///         builder.push(pa, footer);
+///     hook::add::<WindowCreated>(|pa, builder| {
+///         builder.push(FooterWidgets::new(status!(
+///             "{} {sels_txt} {main_txt}",
+///             mode_txt(pa)
+///         )));
 ///     });
 /// }
 /// ```
@@ -65,21 +62,23 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 /// Although, if you want the regular status line, you can just:
 ///
 /// ```rust
-/// use duat_core::{hook::OnFileOpen, prelude::*};
-/// use duat_utils::widgets::*;
+/// # use duat_core::doc_duat as duat;
+/// # use duat_utils::widgets::{LineNumbers, StatusLine};
+/// setup_duat!(setup);
+/// use duat::prelude::*;
 ///
-/// fn setup_generic_over_ui<U: Ui>() {
+/// fn setup() {
 ///     hook::remove("FileWidgets");
-///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
-///         builder.push(pa, LineNumbers::cfg());
-///         builder.push(pa, StatusLine::cfg().above());
+///     hook::add::<File>(|_, (cfg, builder)| {
+///         builder.push(LineNumbers::cfg());
+///         builder.push(StatusLine::cfg().above());
+///         cfg
 ///     });
 /// }
 /// ```
 ///
 /// [`File`]: duat_core::file::File
-/// [`OnFileOpen`]: duat_core::hook::OnFileOpen
-/// [`OnWindowOpen`]: duat_core::hook::OnWindowOpen
+/// [`WindowCreated`]: duat_core::hook::WindowCreated
 /// [`PromptLine`]: super::PromptLine
 /// [`Notifications`]: super::Notifications
 /// [`FooterWidgets`]: super::FooterWidgets
@@ -115,7 +114,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn cfg() -> Self::Cfg {
-        macros::status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}")
+        Self::Cfg::default()
     }
 
     fn text(&self) -> &Text {
@@ -138,14 +137,14 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
 /// The [`WidgetCfg`] for a [`StatusLine`]
 pub struct StatusLineCfg<U: Ui> {
-    constructor: Option<ConstructorFn<U>>,
+    fns: Option<(BuilderFn<U>, CheckerFn)>,
     specs: PushSpecs,
 }
 
 impl<U: Ui> StatusLineCfg<U> {
     #[doc(hidden)]
-    pub fn new_with(constructor: ConstructorFn<U>, specs: PushSpecs) -> Self {
-        Self { constructor: Some(constructor), specs }
+    pub fn new_with(fns: (BuilderFn<U>, CheckerFn), specs: PushSpecs) -> Self {
+        Self { fns: Some(fns), specs }
     }
 
     /// Replaces the previous formatting with a new one
@@ -193,28 +192,21 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
     fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-        let (text_fn, checker) = match self.constructor {
-            Some(constructor) => constructor(pa),
-            None => {
-                let cfg = match self.specs.side() {
-                    Side::Above | Side::Below => {
-                        let mode_upper_fmt = mode_name(pa).map(pa, |mode| {
-                            let mode = match mode.split_once('<') {
-                                Some((mode, _)) => mode,
-                                None => mode,
-                            };
-                            txt!("[mode]{}", mode.to_uppercase()).build()
-                        });
-                        macros::status!("{mode_upper_fmt}{Spacer}{file_fmt} {sels_fmt} {main_fmt}")
-                    }
-                    Side::Right => {
-                        macros::status!("{AlignRight}{file_fmt} {mode_fmt} {sels_fmt} {main_fmt}")
-                    }
-                    Side::Left => unreachable!(),
-                };
+        let (builder_fn, checker_fn) = if let Some((builder, checker)) = self.fns {
+            (builder, checker)
+        } else {
+            let mode_txt = mode_txt(pa);
+            let cfg = match self.specs.side() {
+                Side::Above | Side::Below => {
+                    macros::status!("{mode_txt}{Spacer}{file_txt} {sels_txt} {main_txt}")
+                }
+                Side::Right => {
+                    macros::status!("{AlignRight}{file_txt} {mode_txt} {sels_txt} {main_txt}",)
+                }
+                Side::Left => unreachable!(),
+            };
 
-                (cfg.constructor.unwrap())(pa)
-            }
+            cfg.fns.unwrap()
         };
 
         let widget = StatusLine {
@@ -224,10 +216,10 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             },
             text_fn: Box::new(move |pa, fh| {
                 let builder = Text::builder();
-                text_fn(pa, builder, fh)
+                builder_fn(pa, builder, fh)
             }),
             text: Text::default(),
-            checker: Box::new(checker),
+            checker: Box::new(checker_fn),
         };
         (widget, self.specs)
     }
@@ -249,30 +241,41 @@ mod macros {
     ///
     /// The macro will mostly read from the [`File`] widget and its
     /// related structs. In order to do that, it will accept functions
-    /// as arguments. These functions take the following
-    /// parameters:
+    /// as arguments. These functions take the following parameters:
     ///
     /// * The [`&File`] widget;
-    /// * The [`&Selections`] of the [`File`]
     /// * A specific [`&impl Widget`], which is glued to the [`File`];
+    ///
+    /// Both of these can also have a second argument of type
+    /// [`&Area`]. This will include the [`Widget`]'s [`Area`] when
+    /// creating the status part. Additionally, you may include a
+    /// first argument of type [`&Pass`] (e.g. `fn(&Pass, &File)`,
+    /// `fn(&Pass, &Widget, &Area), etc.), giving you _non mutating_
+    /// access to global state.
     ///
     /// Here's some examples:
     ///
     /// ```rust
-    /// use duat_core::{hook::OnWindowOpen, prelude::*};
-    /// use duat_utils::widgets::status;
+    /// # use duat_core::doc_duat as duat;
+    /// # use duat_utils::widgets::status;
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
     ///
-    /// fn name_but_funky<U: Ui>(file: &File<U>) -> String {
-    ///     let mut name = String::new();
-    ///
-    ///     for byte in unsafe { name.as_bytes_mut().iter_mut().step_by(2) } {
-    ///         *byte = byte.to_ascii_uppercase();
-    ///     }
-    ///
-    ///     name
+    /// fn name_but_funky(file: &File) -> String {
+    ///     file.name()
+    ///         .chars()
+    ///         .enumerate()
+    ///         .map(|(i, char)| {
+    ///             if i % 2 == 1 {
+    ///                 char.to_uppercase().to_string()
+    ///             } else {
+    ///                 char.to_lowercase().to_string()
+    ///             }
+    ///         })
+    ///         .collect()
     /// }
     ///
-    /// fn powerline_main_fmt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
+    /// fn powerline_main_txt(file: &File, area: &Area) -> Text {
     ///     let selections = file.selections();
     ///     let cfg = file.print_cfg();
     ///     let v_caret = selections
@@ -289,9 +292,9 @@ mod macros {
     ///     .build()
     /// }
     ///
-    /// fn setup_generic_over_ui<U: Ui>() {
-    ///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
-    ///         builder.push(pa, status!("[file]{name_but_funky}[] {powerline_main_fmt}"));
+    /// fn setup() {
+    ///     hook::add::<WindowCreated>(|_, builder| {
+    ///         builder.push(status!("[file]{name_but_funky}[] {powerline_main_txt}"));
     ///     });
     /// }
     /// ```
@@ -302,52 +305,65 @@ mod macros {
     /// following types of arguments update independently or not
     /// at all:
     ///
-    /// - A [`Text`] argument can include [`Form`]s and buttons;
-    /// - Any [`impl Display`], such as numbers, strings, chars, etc;
+    /// - A [`Text`] argument, which can be formatted in a similar way
+    ///   throught the [`txt!`] macro;
+    /// - Any [`impl Display`], such as numbers, strings, chars, etc.
+    ///   [`impl Debug`] types also work, when including the usual
+    ///   `":?"` and derived suffixes;
     /// - [`RwData`] or [`DataMap`]s of the previous two types. These
     ///   will update whenever the data inside is changed;
-    /// - An [`(FnMut() -> Text | impl Display, FnMut() -> bool)`]
+    /// - An [`(Fn(&Pass) -> Text/Display/Debug, Fn(&Pass) -> bool)`]
     ///   tuple. The first function returns what will be shown, while
-    ///   the second function tells it to update;
+    ///   the second function checks for updates, which will call the
+    ///   first function again;
     ///
     /// Here's an examples:
     ///
     /// ```rust
+    /// # use duat_core::doc_duat as duat;
+    /// # use duat_utils::widgets::status;
+    /// setup_duat!(setup);
     /// use std::sync::atomic::{AtomicUsize, Ordering};
     ///
-    /// use duat_core::{data::RwData, hook::OnWindowOpen, prelude::*};
-    /// use duat_utils::widgets::status;
+    /// use duat::prelude::*;
     ///
-    /// # fn test<U: Ui>() {
-    /// let changing_text = RwData::new(txt!("Prev text").build());
+    /// fn setup() {
+    ///     let changing_str = RwData::new("Initial text".to_string());
     ///
-    /// fn counter(pa: &Pass) -> usize {
-    ///     static COUNT: AtomicUsize = AtomicUsize::new(0);
-    ///     COUNT.fetch_add(1, Ordering::Relaxed)
-    /// }
-    ///
-    /// hook::add::<OnWindowOpen<U>, U>({
-    ///     let changing_text = changing_text.clone();
-    ///     move |pa, builder| {
-    ///         let changing_text = changing_text.clone();
-    ///         let checker = changing_text.checker();
-    ///
-    ///         let text = txt!("Static text").build();
-    ///
-    ///         builder.push(
-    ///             pa,
-    ///             status!("{changing_text} [counter]{}[] {text}", (counter, checker)),
-    ///         );
+    ///     fn counter(update: bool) -> usize {
+    ///         static COUNT: AtomicUsize = AtomicUsize::new(0);
+    ///         if update {
+    ///             COUNT.fetch_add(1, Ordering::Relaxed) + 1
+    ///         } else {
+    ///             COUNT.load(Ordering::Relaxed)
+    ///         }
     ///     }
-    /// });
-    /// # }
+    ///
+    ///     hook::add::<WindowCreated>({
+    ///         let changing_str = changing_str.clone();
+    ///         move |_, builder| {
+    ///             let changing_str = changing_str.clone();
+    ///             let checker = changing_str.checker();
+    ///
+    ///             let text = txt!("Static text").build();
+    ///
+    ///             let counter = move |_: &File| counter(checker());
+    ///
+    ///             builder.push(status!("{changing_str} [counter]{counter}[] {text}",));
+    ///         }
+    ///     });
+    ///
+    ///     cmd::add!("set-text", |pa, new: &str| {
+    ///         *changing_str.write(pa) = new.to_string();
+    ///         Ok(None)
+    ///     })
+    /// }
     /// ```
     ///
     /// In the above example, I added some dynamic [`Text`], through
     /// the usage of an [`RwData<Text>`], I added some static
     /// [`Text`], some [`Form`]s (`"counter"` and `"default"`) and
-    /// even a counter, which will update whenever `changing_text`
-    /// is altered.
+    /// even a counter,.
     ///
     /// [`StatusLine`]: super::StatusLine
     /// [`txt!`]: duat_core::text::txt
@@ -356,13 +372,18 @@ mod macros {
     /// [`&Selections`]: duat_core::mode::Selections
     /// [`&impl Widget`]: duat_core::ui::Widget
     /// [`impl Display`]: std::fmt::Display
+    /// [`impl Debug`]: std::fmt::Debug
     /// [`Text`]: duat_core::text::Text
     /// [`RwData`]: duat_core::data::RwData
     /// [`DataMap`]: duat_core::data::DataMap
-    /// [`FnMut() -> Arg`]: FnMut
-    /// [`(FnMut() -> Text | impl Display, FnMut() -> bool)`]: FnMut
+    /// [`FnOnce(&Pass) -> RwData/DataMap`]: FnOnce
+    /// [`(Fn(&Pass) -> Text/Display/Debug, Fn(&Pass) -> bool)`]: Fn
     /// [`RwData<Text>`]: duat_core::data::RwData
     /// [`Form`]: duat_core::form::Form
+    /// [`&Area`]: duat_core::ui::Area
+    /// [`Area`]: duat_core::ui::Area
+    /// [`Widget`]: duat_core::ui::Widget
+    /// [`&Pass`]: duat_core::data::Pass
     pub macro status($($parts:tt)*) {{
         #[allow(unused_imports)]
         use $crate::{
@@ -373,26 +394,24 @@ mod macros {
             widgets::StatusLineCfg,
         };
 
+        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<File<_>, _>| {};
+        let checker = |_: &Pass| false;
+
+        let (text_fn, checker) = format_like!(
+            parse_str,
+            [('{', parse_status_part, false), ('[', parse_form, true)],
+            (text_fn, checker),
+            $($parts)*
+        );
+
         StatusLineCfg::new_with(
-            Box::new(move |pa| {
-                let text_fn= |_: &Pass, _: &mut Builder, _: &Handle<File<_>, _>| {};
-                let checker = |_: &Pass| false;
-
-                let (_, text_fn, checker) = format_like!(
-                    parse_str,
-                    [('{', parse_status_part, false), ('[', parse_form, true)],
-                    (pa, text_fn, checker),
-                    $($parts)*
-                );
-
-                (
-                    Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<File<_>, _>| {
-                        text_fn(pa, &mut builder, &handle);
-                        builder.build()
-                    }),
-                    Box::new(checker),
-                )
-            }),
+            (
+                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<File<_>, _>| {
+                    text_fn(pa, &mut builder, &handle);
+                    builder.build()
+                }),
+                Box::new(checker)
+            ),
             PushSpecs::below().with_ver_len(1.0),
         )
     }}
@@ -400,7 +419,6 @@ mod macros {
 
 type TextFn<U> = Box<dyn Fn(&Pass, &Handle<File<U>, U>) -> Text + Send>;
 type BuilderFn<U> = Box<dyn Fn(&Pass, Builder, &Handle<File<U>, U>) -> Text + Send>;
-type ConstructorFn<U> = Box<dyn FnOnce(&Pass) -> (BuilderFn<U>, CheckerFn)>;
 type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;
 
 enum FileHandle<U: Ui> {

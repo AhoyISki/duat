@@ -61,6 +61,7 @@
 //! functions:
 //!
 //! ```rust
+//! # duat_core::form::set_initial(duat_core::form::get_initial());
 //! # use duat_core::prelude::*;
 //! let mut prompted = txt!("[prompt]type a key: ").build();
 //! let end = prompted.len();
@@ -273,7 +274,6 @@ impl Text {
     /// to call this method.
     ///
     /// [regex searching]: Bytes::search_fwd
-    /// [getting contiguous `&str`s]: Bytes::contiguous
     pub fn bytes(&self) -> &Bytes {
         &self.0.bytes
     }
@@ -316,7 +316,7 @@ impl Text {
     /// position.
     ///
     /// [points]: TwoPoints
-    /// [point]: Bytes::point_at
+    /// [point]: Bytes::point_at_byte
     #[inline(always)]
     pub fn ghost_max_points_at(&self, b: usize) -> (Point, Option<Point>) {
         let point = self.point_at_byte(b);

@@ -112,14 +112,14 @@ pub mod prelude {
     };
     pub use crate::{
         Plugin, clipboard, context,
-        data::{self, Pass},
+        data::{self, Pass, RwData},
         file,
         form::{self, CursorShape, Form},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
             Text, txt,
         },
-        ui::{self, Area, Widget, WidgetCfg},
+        ui::{self, Area as AreaTrait, Widget, WidgetCfg},
     };
 
     pub macro setup_duat($setup:ident) {
@@ -143,6 +143,38 @@ pub mod prelude {
     pub fn plug_inner(_: impl Plugin<Ui>) {}
 
     pub type Handle<W> = crate::context::Handle<W, Ui>;
+
+    #[doc(hidden)]
+    pub trait DocFileType {
+        fn filetype(&self) -> Option<&'static str> {
+            Some("This code is only meant for documentation!")
+        }
+    }
+
+    impl DocFileType for File {}
+
+    impl DocFileType for crate::file::FileCfg<Ui> {}
+
+    impl DocFileType for String {}
+
+    impl DocFileType for &'_ str {}
+
+    impl DocFileType for std::path::PathBuf {}
+
+    impl DocFileType for &'_ std::path::Path {}
+
+    #[doc(hidden)]
+    pub trait DocPassFileType {
+        fn filetype(&self, _: &Pass) -> Option<&'static str> {
+            Some("This code is only meant for documentation!")
+        }
+    }
+
+    impl DocPassFileType for RwData<File> {}
+
+    impl DocPassFileType for Handle<File> {}
+
+    impl DocPassFileType for crate::context::CurFile<Ui> {}
 }
 
 pub mod doc_cmd {
@@ -249,11 +281,11 @@ mod doc_state {
     use crossterm::event::KeyEvent;
     use crate::{data::{DataMap, Pass, RwData}, file::File, text::Text, ui::Ui};
 
-    pub fn file_fmt(_: &File<impl Ui>) -> Text { Text::default() }
+    pub fn file_txt(_: &File<impl Ui>) -> Text { Text::default() }
     pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
         RwData::default().map(pa, |_| "")
     }
-    pub fn mode_fmt(pa: &Pass) -> DataMap<&'static str, Text> {
+    pub fn mode_txt(pa: &Pass) -> DataMap<&'static str, Text> {
         RwData::default().map(pa, |_| Text::new())
     }
     pub fn main_byte(_: &File<impl Ui>) -> usize { 0 }
@@ -261,10 +293,10 @@ mod doc_state {
     pub fn main_line(_: &File<impl Ui>) -> usize { 0 }
     pub fn main_col<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
     pub fn main_dwcol<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
-    pub fn main_fmt<U: Ui>(_: &File<U>, _: &U::Area) -> Text { Text::default() }
+    pub fn main_txt<U: Ui>(_: &File<U>, _: &U::Area) -> Text { Text::default() }
     pub fn selections(_: &File<impl Ui>) -> usize { 0 }
-    pub fn sels_fmt(_: &File<impl Ui>) -> Text { Text::default() }
-    pub fn cur_map_fmt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
+    pub fn sels_txt(_: &File<impl Ui>) -> Text { Text::default() }
+    pub fn cur_map_txt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
         RwData::default().map(pa, |_| Text::new())
     }
     pub fn last_key() -> RwData<String> { RwData::default() }
@@ -532,4 +564,6 @@ mod doc_widgets {
         pub fn on_the_left(self) -> Self { self }
         pub fn above(self) -> Self { self }
     }
+
+    pub type File = crate::file::File<super::doc_ui::Ui>;
 }

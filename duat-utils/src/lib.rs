@@ -264,46 +264,25 @@ mod private_exports {
     pub use duat_core;
     pub use format_like::format_like;
 
-    pub macro parse_str($pass_appender_checker:expr, $str:literal) {{
+    pub macro parse_str($appender_checker:expr, $str:literal) {{
         use crate::{
             private_exports::duat_core::{context::Handle, data::Pass, file::File, text::Builder},
-            widgets::{FromWithPass, State},
+            widgets::State,
         };
 
-        let (pa, mut appender, checker) = $pass_appender_checker;
-        let (mut ap, _) = State::from_with_pass(pa, $str).fns();
+        let (mut appender, checker) = $appender_checker;
+        let (mut ap, _) = State::from($str).fns();
 
         let appender = move |pa: &Pass, builder: &mut Builder, reader: &Handle<File<_>, _>| {
             appender(pa, builder, reader);
             ap(pa, builder, reader);
         };
 
-        (pa, appender, checker)
+        (appender, checker)
     }}
 
     pub macro parse_status_part {
-        ($pass_appender_checker:expr, "", $part:expr) => {{
-            use crate::{
-                private_exports::duat_core::{
-                    context::Handle, data::Pass, file::File, text::Builder
-                },
-                widgets::State, widgets::FromWithPass,
-            };
-
-			#[allow(unused_mut)]
-            let (pa, mut appender, checker) = $pass_appender_checker;
-            let (ap, ch) = State::from_with_pass(pa, $part).fns();
-
-            let checker = move |pa: &Pass| checker(pa) || ch(pa);
-
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
-                appender(pa, builder, handle);
-                ap(pa, builder, handle);
-            };
-
-            (pa, appender, checker)
-        }},
-        ($pass_appender_checker:expr, $modif:literal, $part:expr) => {{
+        ($appender_checker:expr, "", $part:expr) => {{
             use crate::{
                 private_exports::duat_core::{
                     context::Handle, data::Pass, file::File, text::Builder
@@ -311,9 +290,9 @@ mod private_exports {
                 widgets::State,
             };
 
-            let (pa, mut appender, checker) = $pass_appender_checker;
-            let (ap, ch) =
-                State::from_with_pass(pa, format!(concat!("{:", $modif, "}"), $part)).fns();
+			#[allow(unused_mut)]
+            let (mut appender, checker) = $appender_checker;
+            let (ap, ch) = State::from($part).fns();
 
             let checker = move |pa: &Pass| checker(pa) || ch(pa);
 
@@ -322,30 +301,50 @@ mod private_exports {
                 ap(pa, builder, handle);
             };
 
-            (pa, appender, checker)
+            (appender, checker)
+        }},
+        ($appender_checker:expr, $modif:literal, $part:expr) => {{
+            use crate::{
+                private_exports::duat_core::{
+                    context::Handle, data::Pass, file::File, text::Builder
+                },
+                widgets::State,
+            };
+
+            let (mut appender, checker) = $appender_checker;
+            let (ap, ch) = State::from(format!(concat!("{:", $modif, "}"), $part)).fns();
+
+            let checker = move |pa: &Pass| checker(pa) || ch(pa);
+
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
+                appender(pa, builder, handle);
+                ap(pa, builder, handle);
+            };
+
+            (appender, checker)
         }}
     }
 
     pub macro parse_form {
-        ($pass_appender_checker:expr, "",) => {{
+        ($appender_checker:expr, "",) => {{
             use crate::private_exports::duat_core::{
                 context::Handle, data::Pass, file::File, form, text::Builder
             };
 
-            let (pa, appender, checker) = $pass_appender_checker;
+            let (appender, checker) = $appender_checker;
             let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
                 appender(pa, builder, handle);
                 builder.push(form::DEFAULT_ID);
             };
 
-            (pa, appender, checker)
+            (appender, checker)
         }},
-        ($pass_appender_checker:expr, "", $($form:tt)*) => {{
+        ($appender_checker:expr, "", $($form:tt)*) => {{
             use crate::private_exports::duat_core::{
                 context::Handle, data::Pass, file::File, form, text::Builder
             };
 
-            let (pa, appender, checker) = $pass_appender_checker;
+            let (appender, checker) = $appender_checker;
             let id = form::id_of!(concat!($(stringify!($form)),*));
 
             let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
@@ -353,7 +352,7 @@ mod private_exports {
                 builder.push(id);
             };
 
-            (pa, appender, checker)
+            (appender, checker)
         }},
         ($pre_fn_and_checker:expr, $modif:literal, $($form:ident).*) => {{
             compile_error!(concat!(

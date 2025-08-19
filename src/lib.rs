@@ -125,14 +125,14 @@
 //!     });
 //!
 //!     hook::remove("WindowWidgets");
-//!     hook::add::<OnWindowOpen>(|pa, builder| {
-//!         let upper_mode = mode_name().map(|m| match m.split_once('<') {
+//!     hook::add::<WindowCreated>(|pa, builder| {
+//!         let upper_mode = mode_name(pa).map(pa, |m| match m.split_once('<') {
 //!             Some((no_generics, _)) => no_generics.to_uppercase(),
 //!             None => m.to_uppercase(),
 //!         });
-//!         let status_line = status!("[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}");
+//!         let status_line = status!("[Mode]{upper_mode}{Spacer}{file_txt} {sels_txt} {main_txt}");
 //!
-//!         builder.push(pa, FooterWidgets::new(status_line));
+//!         builder.push(FooterWidgets::new(status_line));
 //!     });
 //!
 //!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
@@ -167,11 +167,12 @@
 //! ```rust
 //! use duat::prelude::*;
 //! # fn test() {
-//! hook::add::<OnFileOpen>(|pa, builder| {
-//!     builder.push(pa, VertRule::cfg());
-//!     builder.push(pa, LineNumbers::cfg());
-//!     builder.push(pa, VertRule::cfg().on_the_right());
-//!     builder.push(pa, LineNumbers::cfg().on_the_right());
+//! hook::add::<File>(|_, (cfg, builder)| {
+//!     builder.push(VertRule::cfg());
+//!     builder.push(LineNumbers::cfg());
+//!     builder.push(VertRule::cfg().on_the_right());
+//!     builder.push(LineNumbers::cfg().on_the_right());
+//!     cfg
 //! });
 //! # }
 //! ```
@@ -185,7 +186,9 @@
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! let text = txt!("[my_form]Waow it's my form![]not anymore 😢");
+//! # fn test() {
+//! let text = txt!("[my_form]Waow it's my form![]not anymore 😢").build();
+//! # }
 //! ```
 //!
 //! In this example, I'm using the "my_form" form in order to style
@@ -383,7 +386,7 @@
 //! [`plug!`]: prelude::plug
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [#9]: https://github.com/AhoyISki/duat/issues/9
-#![feature(decl_macro, let_chains)]
+#![feature(decl_macro)]
 
 use std::sync::RwLock;
 
@@ -473,8 +476,9 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<OnFileOpen>(|pa, builder| {
-    //!         builder.push(pa, status!("{file_fmt} {main_fmt}").above());
+    //!     hook::add::<File>(|_, (cfg, builder)| {
+    //!         builder.push(status!("{file_txt} {main_txt}").above());
+    //!         cfg
     //!     });
     //! }
     //! ```
@@ -484,9 +488,31 @@ pub mod hook {
     //! [`StatusLine`] on top of the [`File`], which displays the
     //! [file's name], as well as its [main `Selection`].
     //!
-    //! Do note that this is not the only [`Widget`] that will be
+    //! Do note that this won't be the only [`Widget`] that will be
     //! pushed around the [`File`], since there are some predefined
     //! [hook groups] in Duat.
+    //!
+    //! From the `cfg` argument, you can also change settings on that
+    //! [`File`], in a similar vein to the [`print`](crate::print)
+    //! module:
+    //!
+    //! ```rust
+    //! setup_duat!(setup);
+    //! use duat::prelude::*;
+    //!
+    //! fn setup() {
+    //!     hook::add::<File>(|_, (mut cfg, _)| {
+    //!         if let Some("yaml" | "json") = cfg.filetype() {
+    //!             cfg.tabstop(2)
+    //!         } else {
+    //!             cfg
+    //!         }
+    //!     });
+    //! }
+    //! ```
+    //!
+    //! The hook above will change the [tabstop] value to `2` on
+    //! `"yaml"` and `"json"` files.
     //!
     //! # Default hook groups
     //!
@@ -514,7 +540,7 @@ pub mod hook {
     //! - `"FileWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
     //!   to new [`File`]s, via [`OnFileOpen`].
     //! - `"WindowWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
-    //!   and [`Notifications`] to new windows, via [`OnWindowOpen`].
+    //!   and [`Notifications`] to new windows, via [`WindowCreated`].
     //! - `"HidePromptLine"`: Is responsible for [hiding] the
     //!   [`PromptLine`] when it is not in use, giving way to the
     //!   [`Notifications`], via [`FocusedOn`] and [`UnfocusedFrom`].
@@ -531,11 +557,9 @@ pub mod hook {
     //!   crate.
     //! - [`ExitedDuat`] triggers after Duat has exited.
     //! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is
-    //!   created, letting you change it, [`Widget`] can be used as
-    //!   its [alias]
-    //! - [`OnFileOpen`], which lets you push widgets around a
-    //!   [`File`].
-    //! - [`OnWindowOpen`], which lets you push widgets around the
+    //!   created, letting you change it, the [`Widget`] can be used
+    //!   as its [alias]
+    //! - [`WindowCreated`], which lets you push widgets around the
     //!   window.
     //! - [`FocusedOn`] lets you act on a [`Widget`] when focused.
     //! - [`UnfocusedFrom`] lets you act on a [`Widget`] when
@@ -554,15 +578,15 @@ pub mod hook {
     //!
     //! [alias]: duat_core::hook::HookAlias
     //! [hook above]: WidgetCreated
-    //! [That hook]: OnFileOpen
+    //! [That hook]: crate::prelude::WidgetCreated
     //! [`StatusLine`]: crate::prelude::StatusLine
-    //! [file's name]: crate::prelude::file_fmt
-    //! [main `Selection`]: crate::prelude::main_fmt
+    //! [file's name]: crate::prelude::file_txt
+    //! [main `Selection`]: crate::prelude::main_txt
     //! [hook groups]: crate::hook::add_grouped
     //! [`VertRule`]: crate::prelude::VertRule
     //! [`PromptLine`]: crate::prelude::PromptLine
     //! [`Notifications`]: crate::prelude::Notifications
-    //! [`OnWindowOpen`]: crate::prelude::OnWindowOpen
+    //! [`WindowCreated`]: crate::prelude::WindowCreated
     //! [hiding]: crate::prelude::RawArea::constrain_ver
     //! [cfg]: crate::prelude::Widget::Cfg
     //! [`File`]: crate::prelude::File
@@ -683,24 +707,25 @@ pub mod hook {
     /// this:
     ///
     /// ```rust
-    /// # pub struct VertRule<U: Ui>(Text, std::marker::PhantomData<U>);
-    /// # impl<U: Ui> Widget<U> for VertRule<U> {
-    /// #     type Cfg = VertRuleCfg<U>;
-    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
+    /// # use duat_core::prelude::{BuildInfo, PushSpecs};
+    /// # pub struct VertRule(Text);
+    /// # impl Widget<Ui> for VertRule {
+    /// #     type Cfg = VertRuleCfg;
+    /// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
     /// #     fn needs_update(&self, _: &Pass) -> bool { false }
-    /// #     fn cfg() -> Self::Cfg { VertRuleCfg(PhantomData) }
+    /// #     fn cfg() -> Self::Cfg { VertRuleCfg }
     /// #     fn text(&self) -> &Text { &self.0 }
     /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
     /// #     fn once() -> Result<(), Text> { Ok(()) }
     /// # }
-    /// # pub struct VertRuleCfg<U>(std::marker::PhantomData<U>);
-    /// # impl<U> VertRuleCfg<U> {
+    /// # pub struct VertRuleCfg;
+    /// # impl VertRuleCfg {
     /// #     pub fn on_the_right(self) -> Self { self }
     /// # }
-    /// # impl<U: Ui> WidgetCfg<U> for VertRuleCfg<U> {
-    /// #     type Widget = VertRule<U>;
-    /// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-    /// #         (VertRule(Text::new(), PhantomData), PushSpecs::left())
+    /// # impl WidgetCfg<Ui> for VertRuleCfg {
+    /// #     type Widget = VertRule;
+    /// #     fn build(self, _: &mut Pass, _: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
+    /// #         (VertRule(Text::new()), PushSpecs::left())
     /// #     }
     /// # }
     /// # use duat_core::doc_duat as duat;

@@ -59,15 +59,13 @@ impl<U: Ui> SessionCfg<U> {
             self.file_cfg.clone()
         };
 
-        let node = context::windows().new_window(pa, ms, file_cfg, (self.layout_fn)());
+        context::windows().new_window(pa, ms, file_cfg, (self.layout_fn)(), true);
 
         let session = Session {
             ms,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
         };
-
-        context::set_cur(pa, node.try_downcast(), node.clone());
 
         for file in args {
             session.open_file_from_path(pa, context::cur_window(), PathBuf::from(file));
@@ -111,15 +109,21 @@ impl<U: Ui> SessionCfg<U> {
         for (win, mut cfgs) in inherited_cfgs {
             let (file_cfg, is_active) = cfgs.next().unwrap();
 
-            let node = context::windows().new_window(pa, ms, file_cfg, (session.layout_fn)());
+            let node = context::windows().new_window(
+                pa,
+                ms,
+                file_cfg,
+                (session.layout_fn)(),
+                hasnt_set_cur,
+            );
+            hasnt_set_cur = false;
 
-            if is_active || hasnt_set_cur {
+            if is_active {
                 context::set_cur(pa, node.try_downcast(), node.clone());
                 if win != context::cur_window() {
                     context::set_cur_window(win);
                     U::switch_window(session.ms, win);
                 }
-                hasnt_set_cur = false;
             }
 
             for (file_cfg, is_active) in cfgs {

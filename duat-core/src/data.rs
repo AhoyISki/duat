@@ -106,6 +106,7 @@ use crate::ui::{Ui, Widget};
 /// [`Arc<Mutex>`]: std::sync::Arc
 /// [`Mutex`]: std::sync::Mutex
 /// [`Parser`]: crate::file::Parser
+/// [`Text`]: crate::text::Text
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {
     value: Arc<UnsafeCell<T>>,
@@ -141,11 +142,11 @@ impl<T: ?Sized> RwData<T> {
     /// do this:
     ///
     /// ```rust
-    /// use std::{cell::RefCell, fmt::Display, rc::Arc};
+    /// use std::{cell::UnsafeCell, fmt::Display, sync::Arc};
     ///
     /// use duat_core::{data::RwData, prelude::*};
     /// let rw_data: RwData<dyn Display> =
-    ///     unsafe { RwData::new_unsized::<String>(Arc::new(RefCell::new("testing".to_string()))) };
+    ///     unsafe { RwData::new_unsized::<String>(Arc::new(UnsafeCell::new("test".to_string()))) };
     /// ```
     ///
     /// This ensures that methods such as [`read_as`] and [`write_as`]
@@ -388,7 +389,7 @@ impl<T: ?Sized> RwData<T> {
 }
 
 impl<W> RwData<W> {
-    /// Downcasts [`RwData<impl Widget<U>`] to [`RwData<dyn
+    /// Downcasts [`RwData<impl Widget<U>>`] to [`RwData<dyn
     /// Widget<U>>`]
     pub fn to_dyn_widget<U: Ui>(&self) -> RwData<dyn Widget<U>>
     where
@@ -570,13 +571,6 @@ impl PeriodicChecker {
 /// [`RwData<T>`]s of different `T`s, for example) does not seem
 /// feasible without the use of unfinished features, which I am not
 /// willing to use.
-///
-/// Do note that you can still ignore this if you want, by use of
-/// [`read_unsafe`] and [`write_unsafe`], but this might cause a panic
-/// in Duat because of the [`RefCell`]s under the hood.
-///
-/// [`read_unsafe`]: RwData::read_unsafe
-/// [`write_unsafe`]: RwData::write_unsafe
 pub struct Pass(PhantomData<()>);
 
 impl Pass {

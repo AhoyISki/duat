@@ -7,7 +7,7 @@ use duat_core::{prelude::*, text::Searcher};
 
 use crate::{
     hooks::{SearchPerformed, SearchUpdated},
-    modes::{Prompt, PromptMode},
+    modes::{Prompt, PromptMode, RunCommands},
 };
 
 static SEARCH: Mutex<String> = Mutex::new(String::new());
@@ -29,15 +29,11 @@ impl<W: Widget<U>, U: Ui> Mode<U> for Pager<W, U> {
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
         use KeyCode::*;
         match (key, duat_core::mode::alt_is_reverse()) {
-            (key!(Char('j') | Down), _) => {
-                handle.scroll_ver(pa, 1);
-            }
-            (key!(Char('k') | Up), _) => {
-                handle.scroll_ver(pa, -1);
-            }
-            (key!(Char('/')), _) => {
-                mode::set::<U>(PagerSearch::new(pa, &handle, true));
-            }
+            (key!(Char('j') | Down), _) => handle.scroll_ver(pa, 1),
+            (key!(Char('J')) | key!(Down, KeyMod::SHIFT), _) => handle.scroll_ver(pa, i32::MAX),
+            (key!(Char('k') | Up), _) => handle.scroll_ver(pa, -1),
+            (key!(Char('K')) | key!(Down, KeyMod::SHIFT), _) => handle.scroll_ver(pa, i32::MIN),
+            (key!(Char('/')), _) => mode::set::<U>(PagerSearch::new(pa, &handle, true)),
             (key!(Char('/'), KeyMod::ALT), true) | (key!(Char('?')), false) => {
                 mode::set::<U>(PagerSearch::new(pa, &handle, false));
             }
@@ -68,6 +64,7 @@ impl<W: Widget<U>, U: Ui> Mode<U> for Pager<W, U> {
                 handle.scroll_to_points(pa, point);
             }
             (key!(Esc), _) => mode::reset::<File<U>, U>(),
+            (key!(Char(':')), _) => mode::set::<U>(RunCommands::new()),
             _ => {}
         }
     }

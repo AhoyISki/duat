@@ -7,6 +7,7 @@
 //! use (usually when these become visible).
 //!
 //! [`Ui`]: crate::ui::Ui
+//! [`Change`]: crate::text::Change
 use std::{
     any::TypeId,
     cell::RefCell,
@@ -125,20 +126,6 @@ pub trait Parser<U: Ui>: Send + 'static {
     /// to are the [`Bytes`], [`PrintCfg`] and the latest [`Moment`]
     /// of the [`File`] that was updated, all within
     /// the [`FileSnapshot`].
-    ///
-    /// # Warning
-    ///
-    /// You should *NEVER* try to get over the lack of access to
-    /// Duat's global state, by using something like
-    /// [`RwData::read_unsafe`]. That's because Duat's global state is
-    /// only meant to be accessed from the main thread, since the
-    /// constructs are _not_ thread safe.
-    ///
-    /// You can still do things like queue [commands] and [hooks],
-    /// which can access global state since they are triggered on the
-    /// main thread. But don't try to use [`RwData::read_unsafe`]
-    /// or [`RwData::write_unsafe`] outside of the main thread.
-    /// That's not their purpose!
     ///
     /// [`parse`]: Parser::parse
     /// [commands]: crate::cmd::queue
@@ -433,7 +420,7 @@ impl<U: Ui> ParserBox<U> {
                 parser: Box::new(reader),
                 bytes: file.bytes().clone(),
                 receiver,
-                ranges: Ranges::full(file.text().len().byte()),
+                ranges: Ranges::new(0..file.text().len().byte()),
                 state,
             })),
             ty: TypeId::of::<Rd>(),
@@ -470,7 +457,7 @@ impl<U: Ui> ParserBox<U> {
                         }
                     });
 
-                    let ranges = Ranges::full(bytes.len().byte());
+                    let ranges = Ranges::new(0..bytes.len().byte());
 
                     let mut sp = SendParser {
                         parser: reader,
@@ -679,7 +666,7 @@ fn get_ranges<'a>(
 
         Some(ranges)
     } else {
-        *ranges = Ranges::full(bytes.len().byte());
+        *ranges = Ranges::new(0..bytes.len().byte());
         None
     }
 }
@@ -707,6 +694,10 @@ fn type_eq<U: Ui, Rd: Parser<U>>(pb: &ParserBox<U>) -> bool {
 ///
 /// [`File`]: super::File
 /// [`Tag`]: crate::text::Tag
+/// [`parts.bytes`]: FileParts::bytes
+/// [`parts.tags`]: FileParts::tags
+/// [`parts.selections`]: FileParts::selections
+/// [`parts.parsers`]: FileParts::parsers
 pub struct FileParts<'a, U: Ui> {
     /// The [`Bytes`] of the [`File`]
     ///

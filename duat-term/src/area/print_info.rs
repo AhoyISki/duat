@@ -116,7 +116,8 @@ impl PrintInfo {
         if by > 0 {
             let line_start = print_iter(text.iter_fwd(s_points), cap, cfg, s_points)
                 .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-                .nth(by as usize)
+                .take(by as usize + 1)
+                .last()
                 .unwrap_or_default();
 
             let max_s_points = max_s_points(text, cfg, coords.height(), cap);

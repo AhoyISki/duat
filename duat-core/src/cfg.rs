@@ -22,7 +22,7 @@
 //! [`File`]: crate::file::File
 //! [`Widget`]: crate::ui::Widget
 //! [`Area`]: crate::ui::Ui::Area
-//! [forced_scrolloff]: PrintCfg::with_forced_horizontal_scrolloff
+//! [forced_scrolloff]: PrintCfg::set_forced_horizontal_scrolloff
 //! [show_ghosts]: PrintCfg::show_ghosts
 use std::{ops::RangeInclusive, sync::LazyLock};
 
@@ -277,11 +277,11 @@ impl PrintCfg {
 
     /// Wrap on a given distance from the left edge
     ///
-    /// This can wrap beyond the screen, being a mix of [`unwrapped`]
-    /// and [`edge_wrapped`].
+    /// This can wrap beyond the screen, being a mix of [`dont_wrap`]
+    /// and [`wrap_on_edge`].
     ///
-    /// [`unwrapped`]: Self::unwrapped
-    /// [`edge_wrapped`]: Self::edge_wrapped
+    /// [`dont_wrap`]: Self::dont_wrap
+    /// [`wrap_on_edge`]: Self::wrap_on_edge
     pub const fn wrap_at(&mut self, cap: u8) -> &mut Self {
         self.wrap_method = WrapMethod::Capped(cap);
         self

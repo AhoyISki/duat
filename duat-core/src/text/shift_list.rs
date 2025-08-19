@@ -278,6 +278,8 @@ pub(super) trait Shift: Default + Copy + Eq + std::fmt::Debug {
 
 impl<S: Shiftable + std::fmt::Debug> std::fmt::Debug for ShiftList<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        assert_eq!(self.iter_fwd(..).count(), self.len());
+
         f.debug_struct("ShiftList")
             .field("buf", &DebugBuf(&self.buf, self.from, self.by))
             .field("from", &self.from)
@@ -293,6 +295,7 @@ impl<'a, S: Shiftable> std::fmt::Debug for DebugBuf<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() && !self.0.is_empty() {
             writeln!(f, "[")?;
+
             for (i, elem) in self.0.iter().enumerate() {
                 let elem = if i >= self.1 {
                     elem.shift(self.2)

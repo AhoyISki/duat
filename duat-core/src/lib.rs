@@ -19,7 +19,7 @@
 //!     [`Widget`] is [`File`], which displays the contents of a file.
 //!   - [`WidgetCfg`]s: These are [`Widget`] builders. They are used
 //!     in the `setup` function of Duat's config, through the
-//!     [`OnFileOpen`] and [`WindowCreated`] [hook]s.
+//!     [`WidgetCreated`] and [`WindowCreated`] [hook]s.
 //!   - [`Ui`] and [`Area`]s: These are used if you want to create
 //!     your own interface for Duat. Very much a work in progress, so
 //!     I wouldn't recommend trying that yet.
@@ -221,8 +221,8 @@
 //!     // where a change starts.
 //!     // ahead_of_change is the part of the line after the end of
 //!     // the Change
-//!     let mut behind_change = bytes.strs(start..change.start()).to_string();
-//!     let ahead_of_change = bytes.strs(change.added_end()..end);
+//!     let mut behind_change = bytes.strs(start..change.start()).unwrap().to_string();
+//!     let ahead_of_change = bytes.strs(change.added_end()..end).unwrap();
 //!     // change.taken_str() is the &str that was taken by the Change
 //!     behind_change.push_str(change.taken_str());
 //!     // By adding these three together, I now have:
@@ -301,7 +301,7 @@
 //!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
 //!         let word_counter = WordCounter { words, regex };
-//!         Ok(ParserBox::new_local(file, word_counter))
+//!         Ok(ParserBox::new(file, word_counter))
 //!     }
 //! }
 //! ```
@@ -311,12 +311,11 @@
 //! value at some point), based on the current state of the [`File`].
 //!
 //! The [`ParserBox`] return value is a wrapper for "constructing the
-//! [`Parser`]". If you use a function like [`ParserBox::new_send`],
-//! you'd enable out-of-thread updating for the [`Parser`]. If you
-//! used [`ParserBox::new_remote`], the [`Parser`] itself would be
-//! constructed out of thread. In this case, because we are using
-//! [`new_local`], the [`Parser`] won't ever be sent to other threads.
-//! This is almost always what you want.
+//! [`Parser`]". To create a [`ParserBox`], there are two functions:
+//! [`new`] and [`new_remote`]. The first one is essentially just a
+//! wrapper around the [`Parser`]. The second one takes a closure that
+//! will build the [`Parser`] in a second thread, this can be useful
+//! if you want to create your [`Parser`] remotely.
 //!
 //! One thing to note is that the [`Parser`] and [`ParserCfg`] can be
 //! the same struct, it all depends on your constraints. For most
@@ -349,7 +348,7 @@
 //!     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
 //!         let words = file.bytes().search_fwd(self.regex, ..).unwrap().count();
 //!
-//!         Ok(ParserBox::new_local(file, Self { words, ..self }))
+//!         Ok(ParserBox::new(file, Self { words, ..self }))
 //!     }
 //! }
 //! ```
@@ -374,7 +373,7 @@
 //! # impl<U: Ui> Parser<U> for WordCounter {
 //! #    fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {}
 //! # }
-//! use duat_core::{hook::OnFileOpen, prelude::*};
+//! use duat_core::prelude::*;
 //!
 //! /// A [`Plugin`] to count the number of words in [`File`]s
 //! pub struct WordCount(bool);
@@ -395,8 +394,8 @@
 //!     fn plug(self) {
 //!         let not_whitespace = self.0;
 //!
-//!         hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
-//!             builder.add_parser(pa, WordCounterCfg(not_whitespace));
+//!         hook::add::<File<U>, U>(move |pa, (mut cfg, builder)| {
+//!             cfg.with_parser(WordCounterCfg(not_whitespace))
 //!         });
 //!     }
 //! }
@@ -437,7 +436,7 @@
 //! Now, we have a finished plugin:
 //!
 //! ```rust
-//! use duat_core::{hook::OnFileOpen, prelude::*, text::Change};
+//! use duat_core::{prelude::*, text::Change};
 //!
 //! /// A [`Plugin`] to count the number of words in [`File`]s
 //! pub struct WordCount(bool);
@@ -458,8 +457,8 @@
 //!     fn plug(self) {
 //!         let not_whitespace = self.0;
 //!
-//!         hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
-//!             builder.add_parser(pa, WordCounterCfg(not_whitespace));
+//!         hook::add::<File<U>, U>(move |_, (mut cfg, _)| {
+//!             cfg.with_parser(WordCounterCfg(not_whitespace))
 //!         });
 //!     }
 //! }
@@ -498,7 +497,7 @@
 //!
 //!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
-//!         Ok(ParserBox::new_local(file, WordCounter { words, regex }))
+//!         Ok(ParserBox::new(file, WordCounter { words, regex }))
 //!     }
 //! }
 //!
@@ -507,9 +506,9 @@
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
 //!     // Recreate the line as it was before the change
-//!     let mut line_before = bytes.strs(start..change.start()).to_string();
+//!     let mut line_before = bytes.strs(start..change.start()).unwrap().to_string();
 //!     line_before.push_str(change.taken_str());
-//!     line_before.extend(bytes.strs(change.added_end()..end));
+//!     line_before.extend(bytes.strs(change.added_end()..end).unwrap());
 //!
 //!     let words_before = line_before.search_fwd(regex, ..).unwrap().count();
 //!     let words_after = bytes.search_fwd(regex, start..end).unwrap().count();
@@ -565,7 +564,7 @@
 //!
 //!     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
 //!         sl.replace(status!(
-//!             "{file_fmt} has [wc]{file_words}[] words{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
+//!             "{file_txt} has [wc]{file_words}[] words{Spacer}{mode_txt} {sels_txt} {main_txt}"
 //!         ))
 //!     });
 //! }
@@ -580,8 +579,10 @@
 //! custom [`Widget`]s, [`Mode`](mode::Mode)s that can change how Duat
 //! behaves, customized [commands] and [hook]s, and many such things
 //!
+//! [`Widget`]: crate::ui::Widget
+//! [`File`]: crate::file::File
 //! [`WidgetCfg`]: crate::ui::WidgetCfg
-//! [`OnFileOpen`]: crate::hook::OnFileOpen
+//! [`WidgetCreated`]: crate::hook::WidgetCreated
 //! [`WindowCreated`]: crate::hook::WindowCreated
 //! [`Area`]: crate::ui::Area
 //! [`send_key`]: crate::mode::Mode::send_key
@@ -635,9 +636,8 @@
 //! [commands]: crate::cmd
 //! [`RwData<Self>`]: crate::data::RwData
 //! [`ParserBox`]: crate::file::ParserBox
-//! [`ParserBox::new_send`]: crate::file::ParserBox::new_send
-//! [`ParserBox::new_remote`]: crate::file::ParserBox::new_remote
-//! [`new_local`]: crate::file::ParserBox::new_local
+//! [`new_remote`]: crate::file::ParserBox::new_remote
+//! [`new`]: crate::file::ParserBox::new
 //! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
 //! [`parse`]: crate::file::Parser::parse
 //! [`FileSnapshot`]: crate::file::FileSnapshot
@@ -775,7 +775,7 @@ mod ranges {
     /// the [`Text`] when it changes in a [`File`].
     ///
     /// [`Text`]: crate::text::Text
-    /// [`File`]: crate::File
+    /// [`File`]: crate::prelude::File
     /// [`Parser`]: crate::file::Parser
     #[derive(Clone, Default, Debug)]
     pub struct Ranges {
@@ -785,13 +785,11 @@ mod ranges {
     }
 
     impl Ranges {
-        /// Return a new instance of [`Ranges`]
-        ///
-        /// This assumes that `max` is the total "length" of the
-        /// element in use.
-        pub fn full(max: usize) -> Self {
+        /// Return a new instance of [`Ranges`] with an initial
+        /// [`Range`]
+        pub fn new(range: Range<usize>) -> Self {
             Self {
-                list: gap_buffer![0..max],
+                list: gap_buffer![range],
                 ..Self::empty()
             }
         }
@@ -831,6 +829,8 @@ mod ranges {
         /// ranges within, without allowing for the existance
         /// of intersecting ranges.
         pub fn add(&mut self, new: Range<usize>) {
+            assert_range(&new);
+
             let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
@@ -871,6 +871,8 @@ mod ranges {
             &mut self,
             within: Range<usize>,
         ) -> impl ExactSizeIterator<Item = Range<usize>> + '_ {
+            assert_range(&within);
+
             let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
@@ -927,6 +929,10 @@ mod ranges {
         }
 
         /// Shifts the [`Range<usize>`]s by a list of [`Change`]s
+        ///
+        /// If the `diff` is negative (i.e. a part of the ranges were
+        /// removed), then ranges will be removed ahead of `from`
+        /// accordingly.
         ///
         /// [`Change`]: crate::text::Change
         pub fn shift_by(&mut self, from: usize, diff: i32) {
@@ -994,6 +1000,50 @@ mod ranges {
         pub fn is_empty(&self) -> bool {
             self.list.is_empty()
         }
+
+        /// An [`Iterator`] over the [`Range`]s in this list
+        pub fn iter(&self) -> impl Iterator<Item = Range<usize>> {
+            let (shift_from, diff) = self.shift_state;
+            self.list.iter().enumerate().map(move |(i, range)| {
+                if i >= shift_from {
+                    sh(range.start, diff)..sh(range.end, diff)
+                } else {
+                    range.clone()
+                }
+            })
+        }
+
+        /// The same as [`Ranges::remove`], but without removing, just
+        /// iterating over the relevant ranges
+        pub fn iter_over(&self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
+            assert_range(&within);
+
+            let (shift_from, total_diff) = self.shift_state;
+            let m_range = merging_range_by_guess_and_lazy_shift(
+                (&self.list, self.list.len()),
+                (shift_from, [within.start, within.end]),
+                (shift_from, total_diff, 0, sh),
+                (|r| r.start, |r| r.end),
+            );
+
+            let (s0, s1) = self.list.range(m_range.clone()).as_slices();
+            s0.iter().chain(s1).enumerate().map(move |(i, range)| {
+                let mut range = if i + m_range.start > shift_from {
+                    sh(range.start, total_diff)..sh(range.end, total_diff)
+                } else {
+                    range.clone()
+                };
+
+                if i == 0 {
+                    range.start = range.start.max(within.start);
+                }
+                if i == m_range.len() - 1 {
+                    range.end = range.end.min(within.end);
+                }
+
+                range
+            })
+        }
     }
 
     impl IntoIterator for Ranges {
@@ -1003,16 +1053,12 @@ mod ranges {
         #[define_opaque(IntoIter)]
         fn into_iter(self) -> Self::IntoIter {
             let (shift_from, diff) = self.shift_state;
-
-            let mut i = 0;
-            self.list.into_iter().map(move |mut range| {
+            self.list.into_iter().enumerate().map(move |(i, range)| {
                 if i >= shift_from {
-                    range.start = sh(range.start, diff);
-                    range.end = sh(range.end, diff);
+                    sh(range.start, diff)..sh(range.end, diff)
+                } else {
+                    range
                 }
-                i += 1;
-
-                range
             })
         }
     }
@@ -1023,6 +1069,15 @@ mod ranges {
     }
 
     pub type IntoIter = impl ExactSizeIterator<Item = Range<usize>>;
+
+    fn assert_range(range: &Range<usize>) {
+        assert!(
+            range.start <= range.end,
+            "range starts at {} but ends at {}",
+            range.start,
+            range.end
+        );
+    }
 }
 
 mod main_thread_only {

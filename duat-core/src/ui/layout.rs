@@ -21,15 +21,15 @@
 //!     fn new_file(
 //!         &mut self,
 //!         file: &File<U>,
-//!         prev: Vec<(Handle<File<U>, U>, FileId<U>)>,
-//!     ) -> Result<(FileId<U>, PushSpecs), Text> {
+//!         prev: Vec<Handle<File<U>, U>>,
+//!     ) -> Result<(Handle<File<U>, U>, PushSpecs), Text> {
 //!         // One File is always open.
-//!         let (_, last) = prev.last().unwrap();
+//!         let last = prev.last().unwrap().clone();
 //!         match prev.len() % 4 {
-//!             1 => Ok((last.clone(), PushSpecs::right())),
-//!             2 => Ok((last.clone(), PushSpecs::below())),
-//!             3 => Ok((last.clone(), PushSpecs::left())),
-//!             4 => Ok((last.clone(), PushSpecs::above())),
+//!             1 => Ok((last, PushSpecs::right())),
+//!             2 => Ok((last, PushSpecs::below())),
+//!             3 => Ok((last, PushSpecs::left())),
+//!             4 => Ok((last, PushSpecs::above())),
 //!             _ => unreachable!("That's not how math works, man!"),
 //!         }
 //!     }
@@ -51,15 +51,15 @@ where
 {
     /// Opens a new [`File`]
     ///
-    /// The returned [`Ok(FileId, PushSpecs)`] value represents
+    /// The returned [`Ok(Handle<File>, PushSpecs)`] value represents
     /// the [`PushSpecs`] to use when pushing this new [`File`],
-    /// and the [`FileId`] representing which [`File`] to push
+    /// and the [`Handle<File>`] representing which [`File`] to push
     /// this [`File`] to.
     ///
     /// There will _always_ be at least one [`File`] open, since the
     /// first opened [`File`] doesn't follow layouts.
     ///
-    /// [`Ok(FileId, PushSpecs)`]: FileId
+    /// [`Ok(Handle<File>, PushSpecs)`]: Handle
     fn new_file(
         &mut self,
         file: &File<U>,

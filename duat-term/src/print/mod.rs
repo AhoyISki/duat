@@ -911,7 +911,7 @@ impl Gaps {
             return Vec::new();
         };
         let mut enough_space = space;
-        while enough_space % bytes.len() as u32 > 0 {
+        while !enough_space.is_multiple_of(bytes.len() as u32) {
             enough_space += 1;
         }
         let diff = enough_space - space;

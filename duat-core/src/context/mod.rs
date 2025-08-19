@@ -62,7 +62,7 @@ mod global {
         MODE_NAME.clone()
     }
 
-    /// Returns a [`FileHandle`] for a [`File`] with the given name
+    /// Returns a [`Handle`] for a [`File`] with the given name
     ///
     /// [`File`]: crate::file::File
     pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<Handle<File<U>, U>, Text> {
@@ -72,11 +72,10 @@ mod global {
         Ok(handle)
     }
 
-    /// Returns a "fixed" [`FileHandle`] for the currently active
-    /// [`File`]
+    /// Returns a "fixed" [`Handle`] for the currently active [`File`]
     ///
-    /// This [`FileHandle`] will always point to the same [`File`],
-    /// even when it is not active. If you want a [`FileHandle`] that
+    /// This [`Handle`] will always point to the same [`File`],
+    /// even when it is not active. If you want a [`Handle`] that
     /// always points to the current [`File`], see [`dyn_file`]
     ///
     /// [`File`]: crate::file::File
@@ -84,12 +83,12 @@ mod global {
         cur_file(pa).fixed(pa)
     }
 
-    /// Returns a "dynamic" [`FileHandle`] for the active [`File`]
+    /// Returns a "dynamic" [`Handle`] for the active [`File`]
     ///
-    /// This [`FileHandle`] will change to point to the current
-    /// [`File`], whenever the user swicthes which [`File`] is active.
-    /// If you want a [`FileHandle`] that will stay on the current
-    /// [`File`], see [`fixed_file`].
+    /// This [`Handle`] will change to point to the current [`File`],
+    /// whenever the user swicthes which [`File`] is active. If you
+    /// want a [`Handle`] that will stay on the current [`File`], see
+    /// [`fixed_file`].
     ///
     /// [`File`]: crate::file::File
     pub fn dyn_file<U: Ui>(pa: &Pass) -> CurFile<U> {

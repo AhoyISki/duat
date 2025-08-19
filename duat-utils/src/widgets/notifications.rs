@@ -28,12 +28,14 @@ use duat_core::{
 /// vice-versa. This is the default behaviour of Duat.
 ///
 /// ```rust
-/// use duat_core::{hook::OnWindowOpen, prelude::*};
-/// use duat_utils::{state::*, widgets::*};
+/// # use duat_core::doc_duat as duat;
+/// # use duat_utils::widgets::{Notifications, FooterWidgets};
+/// setup_duat!(setup);
+/// use duat::prelude::*;
 ///
-/// fn setup_generic_over_ui<U: Ui>() {
+/// fn setup() {
 ///     hook::remove("WindowWidgets");
-///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
+///     hook::add::<WindowCreated>(|_, builder| {
 ///         let footer = FooterWidgets::default().notifs(Notifications::cfg().formatted(|rec| {
 ///             txt!(
 ///                 "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
@@ -41,7 +43,7 @@ use duat_core::{
 ///                 rec.text().clone()
 ///             )
 ///         }));
-///         builder.push(pa, footer);
+///         builder.push(footer);
 ///     });
 /// }
 /// ```

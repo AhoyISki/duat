@@ -18,7 +18,7 @@
 //! main [`Ui::Area`] that was split many times over.
 //!
 //! The [`Ui`] also supports the concept of "clustering", that is,
-//! when you push a [`Widget`] to a [`File`] via the [`OnFileOpen`]
+//! when you push a [`Widget`] to a [`File`] via the [`WidgetCreated`]
 //! [`hook`], it gets "clustered" to that [`File`]. This means a few
 //! things. For one, if you close a [`File`], all of its clustered
 //! [`Widget`]s will also close. If you swap two [`File`]s, what you
@@ -29,8 +29,9 @@
 //! determine where to draw borders between [`Ui::Area`]s, and it
 //! should be used like that in other [`Ui`] implementations as well.
 //!
-//! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`hook`]: crate::hook
+//! [`File`]: crate::file::File
+//! [`WidgetCreated`]: crate::hook::WidgetCreated
 use std::{fmt::Debug, sync::mpsc, time::Instant};
 
 use bincode::{Decode, Encode};
@@ -489,12 +490,20 @@ pub enum DuatEvent {
     /// [`Form`]: crate::form::Form
     FormChange,
     /// Open a new [`File`]
+    ///
+    /// [`File`]: crate::file::File
     OpenFile(String),
     /// Close an open [`File`]
+    ///
+    /// [`File`]: crate::file::File
     CloseFile(String),
     /// Swap two [`File`]s
+    ///
+    /// [`File`]: crate::file::File
     SwapFiles(String, String),
     /// Open a new window with a [`File`]
+    ///
+    /// [`File`]: crate::file::File
     OpenWindow(String),
     /// Switch to the n'th window
     SwitchWindow(usize),
@@ -530,11 +539,17 @@ impl Sender {
     }
 
     /// Triggers the [`FocusedOnDuat`] [`hook`]
+    ///
+    /// [`FocusedOnDuat`]: crate::hook::FocusedOnDuat
+    /// [`hook`]: crate::hook
     pub fn send_focused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::FocusedOnDuat)
     }
 
     /// Triggers the [`UnfocusedFromDuat`] [`hook`]
+    ///
+    /// [`UnfocusedFromDuat`]: crate::hook::UnfocusedFromDuat
+    /// [`hook`]: crate::hook
     pub fn send_unfocused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::UnfocusedFromDuat)
     }

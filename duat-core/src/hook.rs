@@ -7,39 +7,35 @@
 //! whenever said [`Hookable`] is triggered:
 //!
 //! ```rust
-//! # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
-//! # impl<U: Ui> Widget<U> for LineNumbers<U> {
-//! #     type Cfg = LineNumbersOptions<U>;
-//! #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
-//! #     fn needs_update(&self) -> bool { todo!(); }
-//! #     fn cfg() -> Self::Cfg { todo!() }
-//! #     fn text(&self) -> &Text { todo!(); }
-//! #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-//! #     fn once() -> Result<(), Text> { Ok(()) }
-//! # }
-//! # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
-//! # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
-//! #     type Widget = LineNumbers<U>;
-//! #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-//! #         todo!();
-//! #     }
-//! # }
-//! use duat_core::{hook::OnFileOpen, prelude::*};
+//! # use duat_core::doc_duat as duat;
+//! setup_duat!(setup);
+//! use duat::prelude::*;
 //!
-//! fn test_with_ui<U: Ui>() {
-//!     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+//! fn setup() {
+//!     hook::add::<File>(|pa: &mut Pass, (cfg, builder)| {
 //!         // `LineNumbers` comes from duat-utils
-//!         builder.push(pa, LineNumbers::cfg());
+//!         builder.push(LineNumbers::cfg());
+//!
+//!         if let Some("lisp") = cfg.filetype() {
+//!             cfg.dont_wrap()
+//!         } else {
+//!             cfg
+//!         }
 //!     });
 //! }
 //! ```
 //!
-//! The hook above is an example of a specialized use. [`OnFileOpen`]
-//! lets you push widgets around a [`File`] whenever one is opened. In
-//! the case above, I've pushed the [`LineNumbers`] widget to the
-//! [`File`].
+//! The hook above is triggered whenever a [`File`] widget is opened.
+//! Like every other hook, it gives you access to the global state via
+//! the [`Pass`], and this one also gets you a [`UiBuilder`] and a
+//! [`Widget::Cfg`] argument. The [`UiBuilder`] lets you push new
+//! [`Widget`]s around the [`File`], while the [`Widget::Cfg`]
+//! argument lets you modify a [`Widget`] before it gets added in. You
+//! can call this hook with any [`Widget`], not just the [`File`].
 //!
-//! Currently, these are the existing hooks in `duat-core`:
+//! This is just one of many built-in [`Hookable`]s. Currently, these
+//! are the existing hooks in `duat-core`, but you can also make your
+//! own:
 //!
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
@@ -48,7 +44,6 @@
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is created,
 //!   letting you change it, [`Widget`] can be used as its [alias]
-//! - [`OnFileOpen`], which lets you push widgets around a [`File`].
 //! - [`WindowCreated`], which lets you push widgets around the
 //!   window.
 //! - [`OnFileClose`] triggers on every file upon closing Duat.
@@ -406,24 +401,25 @@ impl Hookable for UnfocusedFromDuat {
 /// [`LineNumbers`] comes with a [`VertRule`] on the right, like this:
 ///
 /// ```rust
-/// # pub struct VertRule<U: Ui>(Text, std::marker::PhantomData<U>);
-/// # impl<U: Ui> Widget<U> for VertRule<U> {
-/// #     type Cfg = VertRuleCfg<U>;
-/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
+/// # use duat_core::prelude::{BuildInfo, PushSpecs};
+/// # pub struct VertRule(Text);
+/// # impl Widget<Ui> for VertRule {
+/// #     type Cfg = VertRuleCfg;
+/// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
 /// #     fn needs_update(&self, _: &Pass) -> bool { false }
-/// #     fn cfg() -> Self::Cfg { VertRuleCfg(PhantomData) }
+/// #     fn cfg() -> Self::Cfg { VertRuleCfg }
 /// #     fn text(&self) -> &Text { &self.0 }
 /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
 /// # }
-/// # pub struct VertRuleCfg<U>(std::marker::PhantomData<U>);
-/// # impl<U> VertRuleCfg<U> {
+/// # pub struct VertRuleCfg;
+/// # impl VertRuleCfg {
 /// #     pub fn on_the_right(self) -> Self { self }
 /// # }
-/// # impl<U: Ui> WidgetCfg<U> for VertRuleCfg<U> {
-/// #     type Widget = VertRule<U>;
-/// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-/// #         (VertRule(Text::new(), PhantomData), PushSpecs::left())
+/// # impl WidgetCfg<Ui> for VertRuleCfg {
+/// #     type Widget = VertRule;
+/// #     fn build(self, _: &mut Pass, _: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
+/// #         (VertRule(Text::new()), PushSpecs::left())
 /// #     }
 /// # }
 /// # use duat_core::doc_duat as duat;
@@ -478,7 +474,7 @@ impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
 /// interfere with the default hooks of `"FileWidgets"` and
 /// `"WindowWidgets"`, preset by Duat.
 ///
-/// [builder]: crate::ui::WindowBuilder
+/// [builder]: crate::ui::UiBuilder
 /// [hook]: self
 pub struct WindowCreated<U: Ui>(pub(crate) UiBuilder<U>);
 
@@ -734,7 +730,7 @@ impl Hookable for ColorSchemeSet {
     }
 }
 
-/// [`Hookable`]: Triggers after [`File::write`] or [`File::write_to`]
+/// [`Hookable`]: Triggers after [`File::save`] or [`File::save_to`]
 ///
 /// Only triggers if the file was actually updated.
 ///
@@ -745,8 +741,8 @@ impl Hookable for ColorSchemeSet {
 /// - Wether Duat is in the process of quitting (happens when calling
 ///   the `wq` or `waq` commands)
 ///
-/// [`File::write`]: crate::file::File::write
-/// [`File::write_to`]: crate::file::File::write_to
+/// [`File::save`]: crate::file::File::save
+/// [`File::save_to`]: crate::file::File::save_to
 pub struct FileWritten(pub(crate) (String, usize, bool));
 
 impl Hookable for FileWritten {
@@ -871,7 +867,7 @@ impl InnerHooks {
             .lock()
             .unwrap()
             .insert(TypeId::of::<H>(), unsafe {
-                Box::from_raw(Box::into_raw(hooks_of) as *mut (dyn HookHolder))
+                Box::from_raw(Box::into_raw(hooks_of) as *mut dyn HookHolder)
             });
 
         hookable
@@ -912,7 +908,7 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 }
 
 type InnerHookFn<H> =
-    &'static RefCell<(dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> <H as Hookable>::Output)>;
+    &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> <H as Hookable>::Output>;
 
 /// An alias for a [`Hookable`]
 ///

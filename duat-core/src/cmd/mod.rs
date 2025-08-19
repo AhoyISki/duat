@@ -718,13 +718,13 @@ mod global {
     ///
     ///     let var_clone = var.clone();
     ///     cmd::add!("set-var", |pa: &mut Pass, value: usize| {
-    ///         var_clone.replace(&mut pa, value);
+    ///         *var_clone.write(pa) = value;
     ///         Ok(None)
     ///     });
     ///
     ///     hook::add::<WindowCreated>(move |mut pa, builder| {
     ///         // status! macro is from duat-utils.
-    ///         builder.push(&mut pa, status!("The value is currently {var}"));
+    ///         builder.push(status!("The value is currently {var}").above());
     ///     });
     /// }
     /// ```
@@ -735,9 +735,7 @@ mod global {
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     /// [`RwData`]: crate::data::RwData
     /// [`Parameter`]: super::Parameter
-    pub macro add(
-        $callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:tt
-    ) {{
+    pub macro add($callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block) {{
         use std::{sync::Arc, cell::UnsafeCell};
         #[allow(unused_imports)]
         use $crate::{
