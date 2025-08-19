@@ -233,22 +233,29 @@ all evaluated at compile time.</li>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}");
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 <span class="boring">}</span></code></pre></pre>
-<p>If you want a one sided <code>StatusLine</code>:</p>
+<p>If you want a one sided <code>StatusLine</code>, you can do this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>status!("{Spacer}{file_fmt} {mode_fmt} {sels_fmt} {main_fmt}");
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!("{Spacer}{file_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>main_fmt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>status!(
-    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt}[coord]c{main_col} l{main_line}[separator]|[coord]{}",
-    |file: &amp;File| file.text().len().line()
-);
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!(
+        "{file_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
+        mode_txt(pa),
+        |file: &amp;File| file.text().len().line()
+    ))
+});
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>file_fmt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -269,13 +276,15 @@ fn file_fmt(file: &amp;File) -&gt; Text {
             b.push(txt!("[[🦀]]"));
         }
     } else {
-        b.push(txt!("[file.new.scratch]?!?!?!")));
+        b.push(txt!("[file.new.scratch]?!?!?!"));
     }
 
     b.build()
 }
 
-status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}");
+hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 <span class="boring">}</span></code></pre></pre>
 
                     </main>

@@ -239,6 +239,30 @@ example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod treesitter {
+</span><span class="boring">    pub struct TreeSitter;
+</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for TreeSitter {
+</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    }
+</span><span class="boring">}
+</span><span class="boring">mod kak {
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    }
+</span><span class="boring">}
+</span><span class="boring">mod catppuccin {
+</span><span class="boring">    pub struct Catppuccin;
+</span><span class="boring">    impl Catppuccin {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Catppuccin {
+</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
@@ -260,6 +284,17 @@ will have its own configuration options, that you will need to look at their
 documentation to figure out. But they should all be configured in the same way:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">        pub fn f_and_t_set_search(self) -&gt; Self { Self }
+</span><span class="boring">        pub fn with_no_indent_on_capital_i(self) -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
@@ -298,17 +333,19 @@ other crates that you may want to import (such as plugins).</p>
 of modules, like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
 </span>use duat::print;
 <span class="boring">}</span></code></pre></pre>
 <p>This is importing the <code>print</code> module, as opposed to importing its items
 directly, like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
 </span>use duat::print::*;
 <span class="boring">}</span></code></pre></pre>
 <p>This means that, for most options, their path is made up of a
-<code>{module}::{function}</code> combo. This means that the usual <code>config</code> crate should
-look something like this:</p>
+<code>{module}::{function}</code> combo. So the usual <code>setup</code> function should look
+something like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">mod kak {
@@ -330,39 +367,41 @@ look something like this:</p>
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
-use duat::print::*;
+use duat::prelude::*;
 
 fn setup() {
-    plug!(Kak::new());
-    
-    print::wrap_on_cap(150);
+    plug!(kak::Kak::new());
+
+    print::wrap_at(150);
     print::trailing_new_line('󱁐');
     
     form::set("caret.main", Form::yellow());
     
-    cmd::add!("set-rel-lines", |pa, ln: Handles&lt;LineNumbers&lt;Ui&gt;&gt;| {
+    cmd::add!("set-rel-lines", |pa, ln: cmd::Handles&lt;LineNumbers&lt;Ui&gt;&gt;| {
         ln.on_flags(pa, |pa, handle| {
-            handle.write(pa, |ln, _| ln.options = ln.options.rel_abs());
+            handle.write(pa).rel_abs();
         });
+        
+        Ok(Some(txt!("Lines were set to [a]relative absolute").build()))
     });
     
-    map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
+    map::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }
-
 <span class="boring">}</span></code></pre></pre>
 <p>The exceptions to this are the <code>map</code> and <code>alias</code> functions, as well as the
 <code>plug!</code> and <code>setup_duat!</code> macros. These items are imported directly.</p>
 <p>The following chapters should give a quick overview of these items imported
 from the prelude module.</p>
 <h1 id="print-how-duat-prints-files"><a class="header" href="#print-how-duat-prints-files"><code>print</code>: How duat prints files</a></h1>
-<p>The print module has a bunch of simple functions to change how duat should print <code>File</code> widgets:</p>
+<p>The print module has a bunch of simple functions to change how duat should
+print <code>File</code> widgets:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    print::no_wrapping();
+    print::dont_wrap();
     print::indent_wraps(true);
     print::tabstop(4);
     print::scrolloff(3, 3);
@@ -379,11 +418,11 @@ to do that on a <code>File</code> by <code>File</code> basis, again, see the <a 
 chapter.</p>
 <p>This is the current list of options in this module:</p>
 <ul>
-<li><code>print::no_wrapping</code>: The default, don't wrap text at all;</li>
+<li><code>print::dont_wrap</code>: The default, don't wrap text at all;</li>
 <li><code>print::wrap_on_edge</code>: Wraps the text on the edge of its area;</li>
-<li><code>print::wrap_on_cap</code>: Wraps at a distance from the left edge, can go over
-the right edge;</li>
-<li><code>print::wrap_on_words</code>: Wraps on word termination, instead of any character;</li>
+<li><code>print::wrap_at</code>: Wraps at a distance from the left edge, can go over   the
+right edge;</li>
+<li><code>print::wrap_on_word</code>: Wraps on word termination, instead of any character;</li>
 <li><code>print::indent_wraps</code>: Copies the indentation on wrapped lines, can be used
 with the other options;</li>
 <li><code>print::tabstop</code>: The width of tabs, is also used to determine how many
@@ -393,12 +432,13 @@ default;</li>
 <li><code>print::trailing_new_line</code>: What character to print when printing <code>'\n'</code>s
 that are preceeded by spaces. Is not set by default;</li>
 </ul>
-<h2 id="printword_chars"><a class="header" href="#printword_chars"><code>print::word_chars!</code></a></h2>
-<p><code>print::word_chars!</code> is a macro that determines which characters should be part
-of a word. This is used by <code>wrap_on_words</code> and tends to also be used to modify
-text (in the <code>&lt;Ctrl-Backspace&gt;</code> key in most editors, for example).</p>
+<h2 id="the-printword_chars-macro"><a class="header" href="#the-printword_chars-macro">The <code>print::word_chars!</code> macro</a></h2>
+<p>The <code>print::word_chars!</code> macro determines which characters should be part of a
+word. This is used by <code>wrap_on_words</code> and tends to also be used to modify text
+(in the <code>&lt;Ctrl-Backspace&gt;</code> key in most editors, for example).</p>
 <p>This macro is evaluated at compile time, so you don't have to worry about it
-being correct or not, and the syntax is the same as in regex, like this:</p>
+being correct or not, and the syntax is similar to regex, but only with ranges,
+like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
@@ -451,6 +491,15 @@ like <code>default.StatusLine</code>, which will change the <code>default</code>
 a previously named one:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod catppuccin {
+</span><span class="boring">    pub struct Catppuccin;
+</span><span class="boring">    impl Catppuccin {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Catppuccin {
+</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 use catppuccin::Catppuccin;
@@ -493,17 +542,34 @@ chapter</a></p>
 works:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
-use kak::Kak;
 
 fn setup() {
     // Adds kakoune-like editing modes, like Insert, Normal and OneKey
-    plug!(Kak::new());
+    plug!(kak::Kak::new());
   
     map::&lt;User&gt;("f", "&lt;Esc&gt;|fold -s&lt;Enter&gt;");
-    alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-    alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;Prompt&lt;Ui&gt;&gt;("jk", "&lt;Esc&gt;");
 }
 <span class="boring">}</span></code></pre></pre>
 <p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take
@@ -521,35 +587,72 @@ On <code>duat-kak</code>, by default, this mode is entered by pressing the space
 While you <em>can</em> change that like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Normal;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Normal {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
-use kak::Kak;
 
 fn setup() {
-    plug!(Kak::new());
+    plug!(kak::Kak::new());
   
-    map::&lt;Normal&gt;(" ", "");
+    map::&lt;kak::Normal&gt;(" ", "");
     // In rust, you have to escap a backslash
-    map::&lt;Normal&gt;("\\", " ");
+    map::&lt;kak::Normal&gt;("\\", " ");
 }
 <span class="boring">}</span></code></pre></pre>
-<p>You <em>can</em> also do this:</p>
+<p>You <em>should</em> prefer doing this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Normal;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Normal {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 use kak::Kak;
 
 fn setup() {
-    plug!(Kak::new());
+    plug!(kak::Kak::new());
   
-    map::&lt;Normal&gt;(" ", "");
-    map::&lt;Normal&gt;("\\", User);
+    map::&lt;kak::Normal&gt;(" ", "");
+    map::&lt;kak::Normal&gt;("\\", User);
 }
 <span class="boring">}</span></code></pre></pre>
+<p>In this case, instead of putting a sequence of keys to replace the mapped ones,
+I placed the mode directly.</p>
 <p>This is allowed in order to support custom <code>Mode</code>s. That way, you can just
-place the <code>Mode</code> as the second argument, and the mapping will switch modes,
-instead of sending keys. This also works with <code>alias</code>.</p>
+place the <code>Mode</code> as the second argument, and the mapping will switch modes
+instead of sending keys. This also works with <code>alias</code>es.</p>
 <blockquote>
 <p>[!NOTE]
 In this case, since <code>User</code> is a struct with no fields, I could just put
@@ -810,34 +913,96 @@ fn setup() {
 <p>This one is pretty simple. Assuming you are using some sort of <code>Insert</code> <code>Mode</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert; // Or vim::Insert, or helix::Insert, when those come out.
-
-map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>This will not print out the <code>'j'</code> to the screen unless the following key is not
-<code>'k'</code>. If you wish to print <code>'j'</code> to the screen, use this:</p>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>// Or vim::Insert, or helix::Insert, when those come out.
+map::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
+<p>This won't print anything to the screen while you're typing, making it seem
+like the <code>j</code> key has a bit of delay. If you wish to print <code>'j'</code> to the screen,
+use this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
 <p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
-<span class="boring">}</span></code></pre></pre>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
 <p>If you want to, you can also make this happen on the <code>PromptLine</code>, i.e., while writing commands and searches:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>alias::&lt;Prompt&lt;Ui&gt;&gt;("jk", "&lt;Esc&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
 <h1 id="statusline-on-each-file"><a class="header" href="#statusline-on-each-file">StatusLine on each File</a></h1>
 <h1 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and Status on same line</a></h1>
 <h1 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h1>
@@ -892,22 +1057,29 @@ all evaluated at compile time.</li>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}");
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 <span class="boring">}</span></code></pre></pre>
-<p>If you want a one sided <code>StatusLine</code>:</p>
+<p>If you want a one sided <code>StatusLine</code>, you can do this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>status!("{Spacer}{file_fmt} {mode_fmt} {sels_fmt} {main_fmt}");
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!("{Spacer}{file_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>main_fmt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>status!(
-    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt}[coord]c{main_col} l{main_line}[separator]|[coord]{}",
-    |file: &amp;File| file.text().len().line()
-);
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!(
+        "{file_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
+        mode_txt(pa),
+        |file: &amp;File| file.text().len().line()
+    ))
+});
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>file_fmt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -928,13 +1100,15 @@ fn file_fmt(file: &amp;File) -&gt; Text {
             b.push(txt!("[[🦀]]"));
         }
     } else {
-        b.push(txt!("[file.new.scratch]?!?!?!")));
+        b.push(txt!("[file.new.scratch]?!?!?!"));
     }
 
     b.build()
 }
 
-status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}");
+hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+});
 <span class="boring">}</span></code></pre></pre>
 <h1 id="relative-and-aligned-linenumbers"><a class="header" href="#relative-and-aligned-linenumbers">Relative and aligned LineNumbers</a></h1>
 <h1 id="file-wise-tabstops"><a class="header" href="#file-wise-tabstops">File wise tabstops</a></h1>

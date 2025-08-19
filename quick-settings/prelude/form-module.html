@@ -222,6 +222,15 @@ like <code>default.StatusLine</code>, which will change the <code>default</code>
 a previously named one:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod catppuccin {
+</span><span class="boring">    pub struct Catppuccin;
+</span><span class="boring">    impl Catppuccin {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Catppuccin {
+</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 use catppuccin::Catppuccin;

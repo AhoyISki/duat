@@ -182,14 +182,15 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="print-how-duat-prints-files"><a class="header" href="#print-how-duat-prints-files"><code>print</code>: How duat prints files</a></h1>
-<p>The print module has a bunch of simple functions to change how duat should print <code>File</code> widgets:</p>
+<p>The print module has a bunch of simple functions to change how duat should
+print <code>File</code> widgets:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    print::no_wrapping();
+    print::dont_wrap();
     print::indent_wraps(true);
     print::tabstop(4);
     print::scrolloff(3, 3);
@@ -206,11 +207,11 @@ to do that on a <code>File</code> by <code>File</code> basis, again, see the <a 
 chapter.</p>
 <p>This is the current list of options in this module:</p>
 <ul>
-<li><code>print::no_wrapping</code>: The default, don't wrap text at all;</li>
+<li><code>print::dont_wrap</code>: The default, don't wrap text at all;</li>
 <li><code>print::wrap_on_edge</code>: Wraps the text on the edge of its area;</li>
-<li><code>print::wrap_on_cap</code>: Wraps at a distance from the left edge, can go over
-the right edge;</li>
-<li><code>print::wrap_on_words</code>: Wraps on word termination, instead of any character;</li>
+<li><code>print::wrap_at</code>: Wraps at a distance from the left edge, can go over   the
+right edge;</li>
+<li><code>print::wrap_on_word</code>: Wraps on word termination, instead of any character;</li>
 <li><code>print::indent_wraps</code>: Copies the indentation on wrapped lines, can be used
 with the other options;</li>
 <li><code>print::tabstop</code>: The width of tabs, is also used to determine how many
@@ -220,12 +221,13 @@ default;</li>
 <li><code>print::trailing_new_line</code>: What character to print when printing <code>'\n'</code>s
 that are preceeded by spaces. Is not set by default;</li>
 </ul>
-<h2 id="printword_chars"><a class="header" href="#printword_chars"><code>print::word_chars!</code></a></h2>
-<p><code>print::word_chars!</code> is a macro that determines which characters should be part
-of a word. This is used by <code>wrap_on_words</code> and tends to also be used to modify
-text (in the <code>&lt;Ctrl-Backspace&gt;</code> key in most editors, for example).</p>
+<h2 id="the-printword_chars-macro"><a class="header" href="#the-printword_chars-macro">The <code>print::word_chars!</code> macro</a></h2>
+<p>The <code>print::word_chars!</code> macro determines which characters should be part of a
+word. This is used by <code>wrap_on_words</code> and tends to also be used to modify text
+(in the <code>&lt;Ctrl-Backspace&gt;</code> key in most editors, for example).</p>
 <p>This macro is evaluated at compile time, so you don't have to worry about it
-being correct or not, and the syntax is the same as in regex, like this:</p>
+being correct or not, and the syntax is similar to regex, but only with ranges,
+like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);

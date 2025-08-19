@@ -186,17 +186,34 @@
 works:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
-use kak::Kak;
 
 fn setup() {
     // Adds kakoune-like editing modes, like Insert, Normal and OneKey
-    plug!(Kak::new());
+    plug!(kak::Kak::new());
   
     map::&lt;User&gt;("f", "&lt;Esc&gt;|fold -s&lt;Enter&gt;");
-    alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-    alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;Prompt&lt;Ui&gt;&gt;("jk", "&lt;Esc&gt;");
 }
 <span class="boring">}</span></code></pre></pre>
 <p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take
@@ -214,35 +231,72 @@ On <code>duat-kak</code>, by default, this mode is entered by pressing the space
 While you <em>can</em> change that like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Normal;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Normal {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
-use kak::Kak;
 
 fn setup() {
-    plug!(Kak::new());
+    plug!(kak::Kak::new());
   
-    map::&lt;Normal&gt;(" ", "");
+    map::&lt;kak::Normal&gt;(" ", "");
     // In rust, you have to escap a backslash
-    map::&lt;Normal&gt;("\\", " ");
+    map::&lt;kak::Normal&gt;("\\", " ");
 }
 <span class="boring">}</span></code></pre></pre>
-<p>You <em>can</em> also do this:</p>
+<p>You <em>should</em> prefer doing this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Normal;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Normal {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 use kak::Kak;
 
 fn setup() {
-    plug!(Kak::new());
+    plug!(kak::Kak::new());
   
-    map::&lt;Normal&gt;(" ", "");
-    map::&lt;Normal&gt;("\\", User);
+    map::&lt;kak::Normal&gt;(" ", "");
+    map::&lt;kak::Normal&gt;("\\", User);
 }
 <span class="boring">}</span></code></pre></pre>
+<p>In this case, instead of putting a sequence of keys to replace the mapped ones,
+I placed the mode directly.</p>
 <p>This is allowed in order to support custom <code>Mode</code>s. That way, you can just
-place the <code>Mode</code> as the second argument, and the mapping will switch modes,
-instead of sending keys. This also works with <code>alias</code>.</p>
+place the <code>Mode</code> as the second argument, and the mapping will switch modes
+instead of sending keys. This also works with <code>alias</code>es.</p>
 <blockquote>
 <p>[!NOTE]
 In this case, since <code>User</code> is a struct with no fields, I could just put

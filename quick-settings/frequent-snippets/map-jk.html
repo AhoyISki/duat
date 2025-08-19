@@ -185,34 +185,96 @@
 <p>This one is pretty simple. Assuming you are using some sort of <code>Insert</code> <code>Mode</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert; // Or vim::Insert, or helix::Insert, when those come out.
-
-map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>This will not print out the <code>'j'</code> to the screen unless the following key is not
-<code>'k'</code>. If you wish to print <code>'j'</code> to the screen, use this:</p>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>// Or vim::Insert, or helix::Insert, when those come out.
+map::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
+<p>This won't print anything to the screen while you're typing, making it seem
+like the <code>j</code> key has a bit of delay. If you wish to print <code>'j'</code> to the screen,
+use this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
 <p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
-<span class="boring">}</span></code></pre></pre>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
 <p>If you want to, you can also make this happen on the <code>PromptLine</code>, i.e., while writing commands and searches:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
+</span><span class="boring">setup_duat!(setup);
+</span><span class="boring">fn setup() {
+</span>alias::&lt;Prompt&lt;Ui&gt;&gt;("jk", "&lt;Esc&gt;");
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
 
                     </main>
 
