@@ -231,9 +231,9 @@ use duat::prelude::*;
 fn setup() {}
 <span class="boring">}</span></code></pre></pre>
 <p>That's because Duat will call the <code>setup</code> function (after some initial setup,
-and before some final setup) in order to do the initial setup for duat. For all
-intents and purposes, treat the <code>setup</code> function as if it were the <code>init.lus</code>
-on a neovim configuration, as it will do all the setup for Duat.</p>
+and before some final setup) in order configure Duat. For all intents and
+purposes, treat the <code>setup</code> function as if it were the <code>init.lua</code> on a neovim
+configuration.</p>
 <p>Of course, not everything needs to be placed inside of this function. For
 example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
@@ -257,7 +257,7 @@ fn add_plugins() {
 <h3 id="the-plug-macro"><a class="header" href="#the-plug-macro">The <code>plug!</code> macro</a></h3>
 <p>The <code>plug!</code> macro serves the purpose of adding plugins to Duat. Every plugin
 will have its own configuration options, that you will need to look at their
-documentation to understand. But they should all be configured in the same way:</p>
+documentation to figure out. But they should all be configured in the same way:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
@@ -274,7 +274,7 @@ fn setup() {
 <p>In this case, the <code>Kak</code> plugin (from <a href="https://github.com/AhoyISki/duat-kak"><code>duat-kak</code></a>) is being modified via the
 builder pattern in order to have the following settings:</p>
 <ul>
-<li>The <code>f</code> and <code>t</code> keys will set the search pattern, so <code>n</code> will look for it.</li>
+<li>The <code>f</code> and <code>t</code> keys will set the search pattern, so <code>n</code> will match them.</li>
 <li>When pressing <code>I</code>, don't reindent.</li>
 </ul>
 <p>Then, it is being added to Duat. The <code>f_and_t_set_search</code> and
