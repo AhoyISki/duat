@@ -273,6 +273,10 @@
 //! [Redoes]: duat_core::text::Text::redo
 //! [`File`]: duat_core::file::File
 //! [`Cargo.toml`'s `dependencies` section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
+//! [`IncSearch`]: duat_utils::modes::IncSearch
+//! [`IncSearcher`]: duat_utils::modes::IncSearcher
+//! [`PipeSelections`]: duat_utils::modes::PipeSelections
+//! [mapping]: duat_core::mode::map
 #![feature(iter_map_windows, if_let_guard, iter_array_chunks, iter_intersperse)]
 
 use std::{
@@ -316,7 +320,7 @@ mod one_key;
 /// If you don't want the [`Form`]s to change, see
 /// [`Kak::dont_set_cursor_forms`].
 ///
-/// [`Form`]: duat_core::Form
+/// [`Form`]: duat_core::form::Form
 pub struct Kak {
     set_cursor_forms: bool,
     insert_tabs: bool,

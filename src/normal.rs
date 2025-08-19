@@ -121,7 +121,6 @@ impl<U: Ui> Mode<U> for Normal {
                 set_anchor_if_needed(event.code == Char('J'), &mut c);
                 c.move_ver(1);
                 let v_caret = c.v_caret();
-                context::debug!("{v_caret:#?}");
                 if c.char() == '\n'
                     && v_caret.char_col() > 0
                     && self.sel_type != SelType::ToEndOfLine
