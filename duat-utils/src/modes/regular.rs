@@ -1,7 +1,7 @@
 use duat_core::{
     data::Pass,
     file::File,
-    mode::{self, KeyCode, KeyEvent, KeyMod, key},
+    mode::{self, KeyCode::*, KeyEvent, KeyMod as Mod, key},
     prelude::Handle,
     ui::Ui,
 };
@@ -18,68 +18,79 @@ impl<U: Ui> mode::Mode<U> for Regular {
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
         match key {
             // Characters
-            key!(KeyCode::Char(char)) => handle.edit_all(pa, |mut e| {
+            key!(Char(char)) => handle.edit_all(pa, |mut e| {
                 e.insert(char);
                 e.move_hor(1);
             }),
-            key!(KeyCode::Enter) => handle.edit_all(pa, |mut e| {
+            key!(Enter) => handle.edit_all(pa, |mut e| {
                 e.insert('\n');
                 e.move_hor(1);
             }),
 
             // Text Removal
-            key!(KeyCode::Backspace) => handle.edit_all(pa, |mut e| {
+            key!(Backspace) => handle.edit_all(pa, |mut e| {
                 if e.anchor().is_some() {
                     e.replace("");
                     e.unset_anchor();
                 } else {
                     e.move_hor(-1);
+                    e.set_anchor();
                     e.replace("");
+                    e.unset_anchor();
                 }
             }),
-            key!(KeyCode::Delete) => handle.edit_all(pa, |mut e| {
+            key!(Delete) => handle.edit_all(pa, |mut e| {
+                e.set_anchor_if_needed();
                 e.replace("");
                 e.unset_anchor();
             }),
 
             // Movement
-            key!(KeyCode::Left, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
-                e.set_anchor_if_needed();
+            key!(Left) => handle.edit_all(pa, |mut e| {
+                e.unset_anchor();
                 e.move_hor(-1);
             }),
-            key!(KeyCode::Right, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
-                e.set_anchor_if_needed();
+            key!(Right) => handle.edit_all(pa, |mut e| {
+                e.unset_anchor();
                 e.move_hor(1);
             }),
-            key!(KeyCode::Up, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
-                e.set_anchor_if_needed();
+            key!(Up) => handle.edit_all(pa, |mut e| {
+                e.unset_anchor();
                 e.move_ver(-1);
             }),
-            key!(KeyCode::Down, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
-                e.set_anchor_if_needed();
+            key!(Down) => handle.edit_all(pa, |mut e| {
+                e.unset_anchor();
                 e.move_ver(1);
             }),
-            key!(KeyCode::Left, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
-                e.unset_anchor();
+            key!(Left, Mod::SHIFT) => handle.edit_all(pa, |mut e| {
+                e.set_anchor_if_needed();
                 e.move_hor(-1);
             }),
-            key!(KeyCode::Right, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
-                e.unset_anchor();
+            key!(Right, Mod::SHIFT) => handle.edit_all(pa, |mut e| {
+                e.set_anchor_if_needed();
                 e.move_hor(1);
             }),
-            key!(KeyCode::Up, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
-                e.unset_anchor();
+            key!(Up, Mod::SHIFT) => handle.edit_all(pa, |mut e| {
+                e.set_anchor_if_needed();
                 e.move_ver(-1);
             }),
-            key!(KeyCode::Down, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
-                e.unset_anchor();
+            key!(Down, Mod::SHIFT) => handle.edit_all(pa, |mut e| {
+                e.set_anchor_if_needed();
                 e.move_ver(1);
             }),
 
+            // Copying and pasting
+            key!(Char('c'), Mod::CONTROL) => handle.edit_main(pa, |e| {
+                duat_core::clipboard::set_text(e.selection());
+            }),
+            key!(Char('v'), Mod::CONTROL) => handle.edit_main(pa, |e| {
+                duat_core::clipboard::set_text(e.selection());
+            }),
+
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => mode::set::<U>(RunCommands::new()),
-            key!(KeyCode::Char('f'), KeyMod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
-            key!(KeyCode::Char('F'), KeyMod::CONTROL) => mode::set::<U>(IncSearch::new(SearchRev)),
+            key!(Char('p'), Mod::CONTROL) => mode::set::<U>(RunCommands::new()),
+            key!(Char('f'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
+            key!(Char('F'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchRev)),
 
             _ => {}
         }

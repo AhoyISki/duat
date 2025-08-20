@@ -51,10 +51,10 @@ fn setup() {
     // The WindowWidgets hook group defines Widgets to be placed on
     // windows. I can get rid of it, and push my own Widgets instead
     hook::remove("WindowWidgets");
-    hook::add::<OnWindowOpen>(|pa, builder| {
+    hook::add::<WindowCreated>(|pa, builder| {
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
-        let mode = mode_name().map(|mode| match mode.split_once('<') {
+        let mode = mode_name(pa).map(pa, |mode| match mode.split_once('<') {
             Some((mode, _)) => txt!("[mode]{}", mode.to_uppercase()).build(),
             None => txt!("[mode]{}", mode.to_uppercase()).build(),
         });
@@ -63,9 +63,8 @@ fn setup() {
         // bottom
         // Square bracket pairs change the Form of text.
         builder.push(
-            pa,
             FooterWidgets::new(status!(
-                "[mode]{mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}"
+                "[mode]{mode}{Spacer}{name_txt} {sels_txt} {main_txt}"
             )),
             // FooterWidgets also has the `one_line` method, if you want a one line combo,
             // instead of the usual two. Uncomment this for that
@@ -90,7 +89,7 @@ fn setup() {
 
 /// This function is included in Duat, but it is implemented
 /// here as a demonstration
-fn file_fmt(file: &File) -> Text {
+fn name_txt(file: &File) -> Text {
     if let Some(name) = file.name_set() {
         // A TextBuilder lets you build Text incrementally.
         let mut builder = Text::builder();
