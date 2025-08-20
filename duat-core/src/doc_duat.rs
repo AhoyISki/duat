@@ -281,7 +281,7 @@ mod doc_state {
     use crossterm::event::KeyEvent;
     use crate::{data::{DataMap, Pass, RwData}, file::File, text::Text, ui::Ui};
 
-    pub fn file_txt(_: &File<impl Ui>) -> Text { Text::default() }
+    pub fn name_txt(_: &File<impl Ui>) -> Text { Text::default() }
     pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
         RwData::default().map(pa, |_| "")
     }

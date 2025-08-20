@@ -42,7 +42,7 @@ use duat_core::{
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn file_txt(file: &File<impl Ui>) -> Text {
+pub fn name_txt(file: &File<impl Ui>) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
@@ -88,7 +88,7 @@ pub fn file_txt(file: &File<impl Ui>) -> Text {
 ///         });
 ///
 ///         builder.push(status!(
-///             "{file_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
+///             "{name_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
 ///         ));
 ///     });
 /// }

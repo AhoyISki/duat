@@ -185,7 +185,7 @@ impl<U: Ui> UiBuilder<U> {
     ///     hook::remove("FileWidgets");
     ///     hook::add::<File>(|_, (cfg, builder)| {
     ///         builder.push(LineNumbers::cfg().rel_abs());
-    ///         builder.push(status!("{file_txt} {selections_txt} {main_txt}"));
+    ///         builder.push(status!("{name_txt} {selections_txt} {main_txt}"));
     ///         cfg
     ///     });
     /// }
@@ -224,7 +224,7 @@ impl<U: Ui> UiBuilder<U> {
     ///     hook::add::<File>(|_, (cfg, builder)| {
     ///         builder.push(LineNumbers::cfg());
     ///
-    ///         let status_cfg = status!("{file_txt} {selections_txt} {main_txt}");
+    ///         let status_cfg = status!("{name_txt} {selections_txt} {main_txt}");
     ///         let child = builder.push(status_cfg);
     ///         let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
     ///         let child = builder.push_to(child, prompt_cfg);

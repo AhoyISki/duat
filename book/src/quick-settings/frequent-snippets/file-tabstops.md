@@ -6,15 +6,11 @@ following  snippet:
 ```rust
 # use duat::prelude::*;
 
-hook::add::<OnFileOpen>(|pa, builder| {
-    builder.write(pa, |file, _| match file.filetype() {
-        Some("markdown" | "bash" | "lua" | "javascript" | "lisp") => {
-            file.cfg.set_tabstop(2);
-        } 
-        _ => {
-            file.cfg.set_tabstop(4);
-        }
-    })
+hook::add::<File>(|_, (cfg, _)| {
+    match cfg.filetype() {
+        Some("markdown" | "bash" | "lua" | "javascript" | "lisp") => cfg.tabstop(2), 
+        _ => cfg.tabstop(4)
+    }
 });
 ```
 
@@ -25,18 +21,14 @@ should be a part of words. In this case, I'm adding `'-'` to the list:
 ```rust
 # use duat::prelude::*;
 
-hook::add::<OnFileOpen>(|pa, builder| {
-    builder.write(pa, |file, _| match file.filetype() {
+hook::add::<File>(|_, (cfg, _)| {
+    match cfg.filetype() {
         Some("lisp" | "scheme" | "markdown" | "css" | "html") => {
-            let wc = word_chars!("A-Za-z0-9_-_---");
-            file.cfg.set_tabstops(2).set_word_chars(wc);
+            let wc = print::w_chars!("A-Za-z0-9_-_---");
+            cfg.tabstop(2).word_chars(wc)
         }
-        Some("bash" | "lua" | "javascript" | "typescript") => {
-            file.cfg.set_tabstops(2);
-        }
-        _ => {
-            file.cfg.set_tabstops(4);
-        }
+        Some("bash" | "lua" | "javascript" | "typescript") => cfg.tabstop(2),
+        _ => cfg.tabstop(4)
     }
 });
 ```

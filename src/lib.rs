@@ -130,7 +130,7 @@
 //!             Some((no_generics, _)) => no_generics.to_uppercase(),
 //!             None => m.to_uppercase(),
 //!         });
-//!         let status_line = status!("[Mode]{upper_mode}{Spacer}{file_txt} {sels_txt} {main_txt}");
+//!         let status_line = status!("[Mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}");
 //!
 //!         builder.push(FooterWidgets::new(status_line));
 //!     });
@@ -476,7 +476,7 @@ pub mod hook {
     //!
     //! fn setup() {
     //!     hook::add::<File>(|_, (cfg, builder)| {
-    //!         builder.push(status!("{file_txt} {main_txt}").above());
+    //!         builder.push(status!("{name_txt} {main_txt}").above());
     //!         cfg
     //!     });
     //! }
@@ -580,7 +580,7 @@ pub mod hook {
     //! [hook above]: WidgetCreated
     //! [That hook]: crate::prelude::WidgetCreated
     //! [`StatusLine`]: crate::prelude::StatusLine
-    //! [file's name]: crate::prelude::file_txt
+    //! [file's name]: crate::prelude::name_txt
     //! [main `Selection`]: crate::prelude::main_txt
     //! [hook groups]: crate::hook::add_grouped
     //! [`VertRule`]: crate::prelude::VertRule

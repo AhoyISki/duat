@@ -42,7 +42,7 @@ This is the default:
 ```rust
 # use duat::prelude::*;
 hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
-    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 ```
 
@@ -51,7 +51,7 @@ If you want a one sided `StatusLine`, you can do this:
 ```rust
 # use duat::prelude::*;
 hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
-    cfg.fmt(status!("{Spacer}{file_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{Spacer}{name_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 ```
 
@@ -61,7 +61,7 @@ Customized `main_fmt`:
 # use duat::prelude::*;
 hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
     cfg.fmt(status!(
-        "{file_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
+        "{name_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
         mode_txt(pa),
         |file: &File| file.text().len().line()
     ))
@@ -94,6 +94,6 @@ fn file_fmt(file: &File) -> Text {
 }
 
 hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
-    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 ```

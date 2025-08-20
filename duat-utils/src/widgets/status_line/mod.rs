@@ -18,7 +18,7 @@ mod state;
 use duat_core::{context::DynFile, prelude::*, text::Builder, ui::Side};
 
 pub use self::{macros::status, state::State};
-use crate::state::{file_txt, main_txt, mode_txt, sels_txt};
+use crate::state::{name_txt, main_txt, mode_txt, sels_txt};
 
 /// A widget to show information, usually about a [`File`]
 ///
@@ -37,7 +37,7 @@ use crate::state::{file_txt, main_txt, mode_txt, sels_txt};
 ///
 /// fn setup() {
 ///     hook::add::<File>(|_, (cfg, builder)| {
-///         builder.push(status!("{file_txt}").above());
+///         builder.push(status!("{name_txt}").above());
 ///         cfg
 ///     });
 ///
@@ -202,10 +202,10 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             let mode_txt = mode_txt(pa);
             let cfg = match self.specs.side() {
                 Side::Above | Side::Below => {
-                    macros::status!("{mode_txt}{Spacer}{file_txt} {sels_txt} {main_txt}")
+                    macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
                 }
                 Side::Right => {
-                    macros::status!("{AlignRight}{file_txt} {mode_txt} {sels_txt} {main_txt}",)
+                    macros::status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
                 }
                 Side::Left => unreachable!(),
             };

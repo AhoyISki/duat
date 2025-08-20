@@ -48,7 +48,7 @@ mod status_line;
 /// fn setup() {
 ///     hook::add::<File>(|pa, (cfg, builder)| {
 ///         builder.push(FooterWidgets::new(status!(
-///             "{file_txt}{Spacer}{} {sels_txt} {main_txt}",
+///             "{name_txt}{Spacer}{} {sels_txt} {main_txt}",
 ///             mode_txt(pa)
 ///         )));
 ///         cfg

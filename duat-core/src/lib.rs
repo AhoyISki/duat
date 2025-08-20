@@ -564,7 +564,7 @@
 //!
 //!     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
 //!         sl.replace(status!(
-//!             "{file_txt} has [wc]{file_words}[] words{Spacer}{mode_txt} {sels_txt} {main_txt}"
+//!             "{name_txt} has [wc]{file_words}[] words{Spacer}{mode_txt} {sels_txt} {main_txt}"
 //!         ))
 //!     });
 //! }

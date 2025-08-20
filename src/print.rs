@@ -2,7 +2,7 @@
 //!
 //! [`File`]: crate::widgets::File
 #[allow(unused_imports)]
-use duat_core::cfg::word_chars as w_chars;
+pub use duat_core::cfg::word_chars as w_chars;
 pub use duat_core::cfg::{PrintCfg, WordChars};
 
 use crate::setup::PRINT_CFG;
@@ -132,8 +132,10 @@ pub fn scrolloff(x: u8, y: u8) {
     })
 }
 
-/// Returns a new [`WordChars`] composed of inclusive ranges of
-/// [`char`]s
+/// Sets the [`w_chars!`] for all [`File`]s
+///
+/// You can use the [`w_chars!`] macro to set it to individual files
+/// if you wish to.
 ///
 /// The syntax (as well as the default definition) is as follows:
 ///
@@ -141,6 +143,8 @@ pub fn scrolloff(x: u8, y: u8) {
 /// # use duat::print::word_chars;
 /// word_chars!("a-zA-Z0-9_-_");
 /// ```
+///
+/// [`File`]: crate::prelude::File
 pub macro word_chars($($w_chars:tt)+) {
     set_word_chars(w_chars!($($w_chars)+))
 }

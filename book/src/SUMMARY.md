@@ -21,6 +21,7 @@
     - [Relative and aligned LineNumbers](quick-settings/frequent-snippets/rel-align-linenums.md)
     - [File wise tabstops](quick-settings/frequent-snippets/file-tabstops.md)
     - [Nerdfonts StatusLine](quick-settings/frequent-snippets/nerd-status.md)
+    - [Status on files and on window](quick-settings/frequent-snippets/file-window-status.md)
 - [Scripting Duat](scripting-duat/chapter.md)
   - [The Pass and Duat's global state](scripting-duat/pass.md)
   - [The hook module](scripting-duat/hook-module.md)
