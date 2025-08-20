@@ -18,6 +18,7 @@ fn setup() {
         treesitter::TreeSitter,
         match_pairs::MatchPairs::new(),
         // This plugin sets the mode to Kakoune's Normal.
+        // If you want a regular editing mode, you can remove this line.
         kak::Kak::new(),
         // This one adds the Catppuccin colorschemes.
         // The modify function gives you access to the

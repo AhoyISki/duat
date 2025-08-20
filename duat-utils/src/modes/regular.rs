@@ -83,8 +83,10 @@ impl<U: Ui> mode::Mode<U> for Regular {
             key!(Char('c'), Mod::CONTROL) => handle.edit_main(pa, |e| {
                 duat_core::clipboard::set_text(e.selection());
             }),
-            key!(Char('v'), Mod::CONTROL) => handle.edit_main(pa, |e| {
-                duat_core::clipboard::set_text(e.selection());
+            key!(Char('v'), Mod::CONTROL) => handle.edit_all(pa, |mut e| {
+                if let Some(text) = duat_core::clipboard::get_text() {
+                    e.replace(text);
+                }
             }),
 
             // Control
