@@ -184,9 +184,11 @@ impl Text {
         has_unsaved_changes: bool,
     ) -> Self {
         let selections = if let Some(selection) = selections.get_main()
-            && let Some(_) = bytes.char_at(selection.caret())
+            && bytes.len() > selection.caret()
         {
-            selections
+            let caret = bytes.point_at_byte(selection.caret().byte());
+            let anchor = selection.anchor().map(|p| p.min(bytes.last_point()));
+            Selections::new(Selection::new(caret, anchor))
         } else {
             Selections::new(Selection::default())
         };
@@ -667,7 +669,7 @@ impl Text {
         }
     }
 
-	/// Removes the [`Tag`]s for all [`Selection`]s
+    /// Removes the [`Tag`]s for all [`Selection`]s
     pub(crate) fn remove_selections(&mut self) {
         self.remove_tags(Tagger::for_selections(), ..);
     }
