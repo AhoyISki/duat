@@ -1127,9 +1127,13 @@ pub mod clipboard {
 
     impl Default for Clipboard {
         fn default() -> Self {
-            match arboard::Clipboard::new() {
-                Ok(clipb) => Self::Platform(clipb),
-                Err(_) => Self::Local(String::new()),
+            if cfg!(target_os = "android") {
+                Self::Local(String::new())
+            } else {
+                match arboard::Clipboard::new() {
+                    Ok(clipb) => Self::Platform(clipb),
+                    Err(_) => Self::Local(String::new()),
+                }
             }
         }
     }
@@ -1442,7 +1446,6 @@ fn binary_search_by_key_and_index<T, K>(
 where
     K: PartialEq + Eq + PartialOrd + Ord,
 {
-   
     let mut size = len;
     let mut left = 0;
     let mut right = size;
@@ -1467,9 +1470,6 @@ where
 /// Converts a string to a valid priority
 #[doc(hidden)]
 pub const fn priority(priority: &str) -> u8 {
-    
-    
-    
     let mut bytes = priority.as_bytes();
     let mut val = 0;
 
