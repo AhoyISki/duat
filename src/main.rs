@@ -60,7 +60,8 @@ fn main() {
             "target/release"
         });
 
-        let libconfig_path = so_dir.join("libconfig.so");
+        let libconfig_str = resolve_config_file();
+        let libconfig_path = so_dir.join(libconfig_str);
 
         if let Ok(false) | Err(_) = libconfig_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
@@ -141,11 +142,12 @@ fn spawn_watcher(
         let reload_tx = reload_tx.clone();
         let duat_tx = duat_tx.clone();
         let mut sent_reload = false;
+        let libconfig_str = resolve_config_file();
 
         move |res| match res {
             Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
-                if let Some(so_path) = paths.iter().find(|p| p.ends_with("libconfig.so")) {
-                    let on_release = so_path.ends_with("release/libconfig.so");
+                if let Some(so_path) = paths.iter().find(|p| p.ends_with(&libconfig_str)) {
+                    let on_release = so_path.ends_with(format!("release/{libconfig_str}"));
                     reload_tx.send((so_path.clone(), on_release)).unwrap();
                     sent_reload = true;
                 }
@@ -199,6 +201,22 @@ fn run_cargo(
 
 fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
     unsafe { lib.get::<RunFn>(b"run").ok() }
+}
+
+
+#[cfg(target_os = "macos")]
+fn resolve_config_file() -> String {
+    "libconfig.dylib".into()
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_config_file() -> String {
+    "libconfig.so".into()
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_config_file() -> String {
+    "config.dll".into()
 }
 
 type RunFn = fn(
