@@ -44,32 +44,22 @@ fn setup() {
 
     //// Hooks
     // Changes every LineNumbers Widget.
-    hook::add::<WidgetCreated<LineNumbers<Ui>>>(|_, (ln, _)| {
-        ln.align_right().align_main_left().rel_abs()
-    });
+    hook::add::<LineNumbers<Ui>>(|_, (ln, _)| ln.align_right().align_main_left().rel_abs());
 
     // The WindowWidgets hook group defines Widgets to be placed on
     // windows. I can get rid of it, and push my own Widgets instead
     hook::remove("WindowWidgets");
-    hook::add::<WindowCreated>(|pa, builder| {
+    hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
-        let mode = mode_name(pa).map(pa, |mode| match mode.split_once('<') {
+        let mode_upper = mode_name(pa).map(pa, |mode| match mode.split_once('<') {
             Some((mode, _)) => txt!("[mode]{}", mode.to_uppercase()).build(),
             None => txt!("[mode]{}", mode.to_uppercase()).build(),
         });
 
-        // Pushes a StatusLine, PromptLine, and Notifications combo to the
-        // bottom
-        // Square bracket pairs change the Form of text.
-        builder.push(
-            FooterWidgets::new(status!(
-                "[mode]{mode}{Spacer}{name_txt} {sels_txt} {main_txt}"
-            )),
-            // FooterWidgets also has the `one_line` method, if you want a one line combo,
-            // instead of the usual two. Uncomment this for that
-            // FooterWidgets::default().one_line()
-        );
+        cfg.fmt(status!(
+            "[mode]{mode_upper}{Spacer}{name_txt} {sels_txt} {main_txt}"
+        ))
     });
     // // See what happens when you uncomment this hook removal:
     // hook::remove("HidePromptLine");
