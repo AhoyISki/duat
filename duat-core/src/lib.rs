@@ -1121,20 +1121,23 @@ pub mod clipboard {
     /// A clipboard for Duat, can be platform based, or local
     #[doc(hidden)]
     pub enum Clipboard {
-        Platform(arboard::Clipboard),
+        #[cfg(target_os = "android")]
+        Platform,
+        #[cfg(not(target_os = "android"))]
+        Platform(clipboard::Clipboard),
         Local(String),
     }
 
     impl Default for Clipboard {
         fn default() -> Self {
-            if cfg!(target_os = "android") {
-                Self::Local(String::new())
-            } else {
-                match arboard::Clipboard::new() {
-                    Ok(clipb) => Self::Platform(clipb),
-                    Err(_) => Self::Local(String::new()),
-                }
+            #[cfg(not(target_os = "android"))]
+            match clipboard::Clipboard::new() {
+                Ok(clipb) => Self::Platform(clipb),
+                Err(_) => Self::Local(String::new()),
             }
+
+            #[cfg(target_os = "android")]
+            Self::Platform
         }
     }
 
@@ -1149,6 +1152,11 @@ pub mod clipboard {
     pub fn get_text() -> Option<String> {
         let mut clipb = CLIPB.get().unwrap().lock().unwrap();
         match &mut *clipb {
+            #[cfg(target_os = "android")]
+            Clipboard::Platform => clipboard::get_text()
+                .map_err(|err| crate::context::error!("{err}"))
+                .ok(),
+            #[cfg(not(target_os = "android"))]
             Clipboard::Platform(clipb) => clipb.get_text().ok(),
             Clipboard::Local(clipb) => Some(clipb.clone()).filter(String::is_empty),
         }
@@ -1158,6 +1166,13 @@ pub mod clipboard {
     pub fn set_text(text: impl std::fmt::Display) {
         let mut clipb = CLIPB.get().unwrap().lock().unwrap();
         match &mut *clipb {
+            #[cfg(target_os = "android")]
+            Clipboard::Platform => {
+                if let Err(err) = clipboard::set_text(text.to_string()) {
+                    crate::context::error!("{err}");
+                }
+            }
+            #[cfg(not(target_os = "android"))]
             Clipboard::Platform(clipb) => clipb.set_text(text.to_string()).unwrap(),
             Clipboard::Local(clipb) => *clipb = text.to_string(),
         }
