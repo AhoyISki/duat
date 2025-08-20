@@ -158,38 +158,61 @@ mod global {
     pub fn keys_to_string(keys: &[KeyEvent]) -> String {
         use std::fmt::Write;
 
-        use crossterm::event::KeyCode::*;
+        use crossterm::event::{KeyCode::*, KeyModifiers as Mod};
         let mut seq = String::new();
 
         for key in keys {
+            if !key.modifiers.is_empty() {
+                seq.push('<');
+                for modif in key.modifiers.iter() {
+                    seq.push_str(match modif {
+                        Mod::SHIFT => "S",
+                        Mod::CONTROL => "C",
+                        Mod::ALT => "A",
+                        Mod::SUPER => "Super",
+                        Mod::HYPER => "Hyper",
+                        Mod::META => "Meta",
+                        _ => "",
+                    });
+                }
+                seq.push('-');
+            } else if !matches!(key.code, Char(_)) {
+                seq.push('<');
+            }
+
             match key.code {
-                Backspace => seq.push_str("<BS>"),
-                Enter => seq.push_str("<Enter>"),
-                Left => seq.push_str("<Left>"),
-                Right => seq.push_str("<Right>"),
-                Up => seq.push_str("<Up>"),
-                Down => seq.push_str("<Down>"),
-                Home => seq.push_str("<Home>"),
-                End => seq.push_str("<End>"),
-                PageUp => seq.push_str("<PageU>"),
-                PageDown => seq.push_str("<PageD>"),
-                Tab => seq.push_str("<Tab>"),
-                BackTab => seq.push_str("<BTab>"),
-                Delete => seq.push_str("<Del>"),
-                Insert => seq.push_str("<Ins>"),
-                F(num) => write!(seq, "<F{num}>").unwrap(),
-                Char(char) => write!(seq, "{char}").unwrap(),
-                Null => seq.push_str("<Null>"),
-                Esc => seq.push_str("<Esc>"),
-                CapsLock => seq.push_str("<CapsL>"),
-                ScrollLock => seq.push_str("<ScrollL>"),
-                NumLock => seq.push_str("<NumL>"),
-                PrintScreen => seq.push_str("<PrSc>"),
-                Pause => seq.push_str("<Pause>"),
-                Menu => seq.push_str("<Menu>"),
-                KeypadBegin => seq.push_str("<KeypadBeg>"),
-                Media(m_code) => write!(seq, "<Media{m_code}>").unwrap(),
-                Modifier(m_code) => write!(seq, "<Mod{m_code}>").unwrap(),
+                Backspace => seq.push_str("BS>"),
+                Enter => seq.push_str("Enter>"),
+                Left => seq.push_str("Left>"),
+                Right => seq.push_str("Right>"),
+                Up => seq.push_str("Up>"),
+                Down => seq.push_str("Down>"),
+                Home => seq.push_str("Home>"),
+                End => seq.push_str("End>"),
+                PageUp => seq.push_str("PageU>"),
+                PageDown => seq.push_str("PageD>"),
+                Tab => seq.push_str("Tab>"),
+                BackTab => seq.push_str("BTab>"),
+                Delete => seq.push_str("Del>"),
+                Insert => seq.push_str("Ins>"),
+                F(num) => write!(seq, "F{num}>").unwrap(),
+                Char(char) => {
+                    write!(seq, "{char}").unwrap();
+                    if !key.modifiers.is_empty() {
+                        seq.push('>');
+                    }
+                }
+                Null => seq.push_str("Null>"),
+                Esc => seq.push_str("Esc>"),
+                CapsLock => seq.push_str("CapsL>"),
+                ScrollLock => seq.push_str("ScrollL>"),
+                NumLock => seq.push_str("NumL>"),
+                PrintScreen => seq.push_str("PrSc>"),
+                Pause => seq.push_str("Pause>"),
+                Menu => seq.push_str("Menu>"),
+                KeypadBegin => seq.push_str("KeypadBeg>"),
+                Media(m_code) => write!(seq, "Media{m_code}>").unwrap(),
+                Modifier(m_code) => write!(seq, "Mod{m_code}>").unwrap(),
             }
         }
 
