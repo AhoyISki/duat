@@ -754,11 +754,11 @@ set all three forms.</p>
 <p><code>StatusLine</code>:</p>
 <ul>
 <li><code>file</code>, <code>file.new</code>, <code>file.unsaved</code>, <code>file.new.scratch</code>: Are all used by
-<a href="https://docs.rs/duat/latest/duat/state/fn.file_fmt.html"><code>file_fmt</code></a>, which shows the <code>File</code>'s name and some other info.</li>
-<li><code>mode</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.mode_fmt.html"><code>mode_fmt</code></a>.</li>
-<li><code>coord</code> and <code>separator</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.main_fmt.html"><code>main_fmt</code></a>.</li>
-<li><code>selections</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.selections_fmt.html"><code>selections_fmt</code></a>.</li>
-<li><code>key</code> and <code>key.special</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.cur_map_fmt.html"><code>cur_map_fmt</code></a>.</li>
+<a href="https://docs.rs/duat/latest/duat/state/fn.name_txt.html"><code>name_txt</code></a>, which shows the <code>File</code>'s name and some other info.</li>
+<li><code>mode</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.mode_txt.html"><code>mode_txt</code></a>.</li>
+<li><code>coord</code> and <code>separator</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.main_txt.html"><code>main_txt</code></a>.</li>
+<li><code>selections</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.selections_txt.html"><code>selections_txt</code></a>.</li>
+<li><code>key</code> and <code>key.special</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.cur_map_txt.html"><code>cur_map_txt</code></a>.</li>
 </ul>
 </li>
 <li>
@@ -1043,25 +1043,25 @@ hook::add::&lt;File&gt;(|pa, (cfg, builder)| {
 <p>The most relevant parts for pretty much every <code>StatusLine</code> are the following.</p>
 <p>Formatted status parts:</p>
 <ul>
-<li><code>file_fmt</code>: Prints the <code>File</code>'s name and some info about it's newness.</li>
+<li><code>name_txt</code>: Prints the <code>File</code>'s name and some info about it's newness.</li>
 <li>Uses the forms <code>file</code>, <code>file.new</code>, <code>file.new.scratch</code> and <code>file.unsaved</code>.</li>
-<li><code>mode_fmt</code>: The lowercased name of the <code>Mode</code>, e.g. "insert", "normal".
+<li><code>mode_txt</code>: The lowercased name of the <code>Mode</code>, e.g. "insert", "normal".
 <ul>
 <li>Uses the form <code>mode</code>.</li>
 </ul>
 </li>
-<li><code>main_fmt</code>: Prints the main selection's column and line, and the number of
+<li><code>main_txt</code>: Prints the main selection's column and line, and the number of
 lines. 1 indexed.
 <ul>
 <li>Uses the forms <code>coord</code> and <code>separator</code>.</li>
 </ul>
 </li>
-<li><code>sels_fmt</code>: Prints the number of selections.
+<li><code>sels_txt</code>: Prints the number of selections.
 <ul>
 <li>Uses the form <code>selections</code>;</li>
 </ul>
 </li>
-<li><code>cur_map_fmt</code>: Prints the keys being mapped.
+<li><code>cur_map_txt</code>: Prints the keys being mapped.
 <ul>
 <li>Uses the forms <code>key</code> and <code>key.special</code></li>
 </ul>
@@ -1103,7 +1103,7 @@ all evaluated at compile time.</li>
     cfg.fmt(status!("{Spacer}{name_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 <span class="boring">}</span></code></pre></pre>
-<p>Customized <code>main_fmt</code>:</p>
+<p>Customized <code>main_txt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
@@ -1115,12 +1115,12 @@ all evaluated at compile time.</li>
     ))
 });
 <span class="boring">}</span></code></pre></pre>
-<p>Customized <code>file_fmt</code>:</p>
+<p>Customized <code>name_txt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>
-fn file_fmt(file: &amp;File) -&gt; Text {
+fn name_txt(file: &amp;File) -&gt; Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
