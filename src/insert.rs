@@ -5,7 +5,7 @@ use duat_core::{
     prelude::*,
 };
 
-use crate::{reindent, set_anchor_if_needed, Normal};
+use crate::{Normal, reindent, set_anchor_if_needed};
 
 #[derive(Clone)]
 pub struct Insert {
@@ -104,19 +104,20 @@ impl<U: Ui> Mode<U> for Insert {
                 let prev_caret = c.caret();
                 let prev_anchor = c.unset_anchor();
 
-                c.move_hor(-1);
-                c.set_anchor();
-                c.replace("");
-                c.unset_anchor();
-
-                if let Some(prev_anchor) = prev_anchor {
+                if c.move_hor(-1) < 0 {
                     c.set_anchor();
-                    if prev_anchor > prev_caret {
-                        c.move_hor((prev_anchor.char() - prev_caret.char()) as i32);
-                    } else {
-                        c.move_to(prev_anchor);
+                    c.replace("");
+                    c.unset_anchor();
+
+                    if let Some(prev_anchor) = prev_anchor {
+                        c.set_anchor();
+                        if prev_anchor > prev_caret {
+                            c.move_hor((prev_anchor.char() - prev_caret.char()) as i32);
+                        } else {
+                            c.move_to(prev_anchor);
+                        }
+                        c.swap_ends();
                     }
-                    c.swap_ends();
                 }
             }),
             key!(Delete) => handle.edit_all(pa, |mut c| {
