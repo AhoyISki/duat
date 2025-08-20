@@ -96,13 +96,13 @@ fn setup() {
         line_nums.align_right().align_main_left()
     });
 
-    hook::remove("WindowWidgets");
+    hook::remove("FooterWidgets");
     hook::add::<WindowCreated>(|pa, builder| {
         let upper_mode = mode_name(pa).map(pa, |m| match m.split_once('<') {
             Some((no_generics, _)) => no_generics.to_uppercase(),
             None => m.to_uppercase(),
         });
-        let status_line = status!("[Mode]{upper_mode}{Spacer}{file_txt} {sels_txt} {main_txt}");
+        let status_line = status!("[Mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}");
 
         builder.push(FooterWidgets::new(status_line));
     });
@@ -124,7 +124,7 @@ This configuration does the following things:
 * [Maps][__link3] jk to esc in the `Insert` mode;
 * [Changes][__link4] the wrapping;
 * Changes the alignment of the [`LineNumbers`][__link5] [`Widget`][__link6];
-* [Removes][__link7] the hook group “WindowWidgets”;
+* [Removes][__link7] the hook group “FooterWidgets”;
 * Pushes a [custom status line][__link8] (with a [Spacer][__link9] for 2 separate
   sides, and a reformatted [`mode_name`][__link10]), a [command line][__link11], and a
   [notifications widget][__link12] to the bottom of the screen through a
@@ -319,37 +319,37 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG3VMV7WLxmjUGxpTfD4ttYzYG_EVE44ul27wG8rTF_0sMf5gYXKEG-SAm_sLmByhGys7gv1RfQ1FG7-kGz42x2-8G-__u9DeTqX_YWSCgmRkdWF0ZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4x
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG3VMV7WLxmjUGxpTfD4ttYzYG_EVE44ul27wG8rTF_0sMf5gYXKEG3YWedrcx3-AG7PW_bBu7C6kGyDmFDghCeVhG4ZIE54zAa7XYWSCgmRkdWF0ZTAuNi4xgmpkdWF0X3V0aWxzZTAuNi4w
  [__link0]: https://www.rust-lang.org/tools/install
- [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
- [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode_name
- [__link11]: https://docs.rs/duat/0.5.3/duat/?search=prelude::PromptLine
- [__link12]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Notifications
- [__link13]: https://docs.rs/duat/0.5.3/duat/?search=prelude::FooterWidgets
- [__link14]: https://docs.rs/duat/0.5.3/duat/?search=prelude::hook::add
- [__link15]: https://docs.rs/duat/0.5.3/duat/?search=prelude::hook::ModeSwitched
- [__link16]: https://docs.rs/duat/0.5.3/duat/?search=form::set
- [__link17]: https://docs.rs/duat/0.5.3/duat/?search=prelude::form::Form
- [__link18]: https://docs.rs/duat/0.5.3/duat/?search=prelude::text::txt
+ [__link1]: https://docs.rs/duat/0.6.1/duat/?search=prelude::plug
+ [__link10]: https://docs.rs/duat/0.6.1/duat/?search=prelude::mode_name
+ [__link11]: https://docs.rs/duat/0.6.1/duat/?search=prelude::PromptLine
+ [__link12]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Notifications
+ [__link13]: https://docs.rs/duat/0.6.1/duat/?search=prelude::FooterWidgets
+ [__link14]: https://docs.rs/duat/0.6.1/duat/?search=prelude::hook::add
+ [__link15]: https://docs.rs/duat/0.6.1/duat/?search=prelude::hook::ModeSwitched
+ [__link16]: https://docs.rs/duat/0.6.1/duat/?search=form::set
+ [__link17]: https://docs.rs/duat/0.6.1/duat/?search=prelude::form::Form
+ [__link18]: https://docs.rs/duat/0.6.1/duat/?search=prelude::text::txt
  [__link19]: https://doc.rust-lang.org/stable/std/macro.println.html
- [__link2]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode::set_default
- [__link20]: https://docs.rs/duat/0.5.3/duat/?search=prelude::status
- [__link21]: https://docs.rs/duat_utils/0.2.1/duat_utils/?search=widgets::LineNumbersOptions::rel_abs
- [__link22]: https://docs.rs/duat/0.5.3/duat/?search=prelude::LineNumbers
+ [__link2]: https://docs.rs/duat/0.6.1/duat/?search=prelude::mode::set_default
+ [__link20]: https://docs.rs/duat/0.6.1/duat/?search=prelude::status
+ [__link21]: https://docs.rs/duat_utils/0.6.0/duat_utils/?search=widgets::LineNumbersCfg::rel_abs
+ [__link22]: https://docs.rs/duat/0.6.1/duat/?search=prelude::LineNumbers
  [__link23]: https://github.com/AhoyISki/duat/issues/9
  [__link24]: https://github.com/AhoyISki/duat-kak
  [__link25]: https://github.com/mawww/kakoune
  [__link26]: https://github.com/AhoyISki/duat-catppuccin
  [__link27]: https://catppuccin.com
- [__link28]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Form
+ [__link28]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Form
  [__link29]: https://github.com/AhoyISki/duat-treesitter
- [__link3]: https://docs.rs/duat/0.5.3/duat/?search=prelude::map
+ [__link3]: https://docs.rs/duat/0.6.1/duat/?search=prelude::map
  [__link30]: https://tree-sitter.github.io/tree-sitter
- [__link31]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
+ [__link31]: https://docs.rs/duat/0.6.1/duat/?search=prelude::plug
  [__link32]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
- [__link4]: https://docs.rs/duat/0.5.3/duat/?search=prelude::print::wrap_on_edge
- [__link5]: https://docs.rs/duat/0.5.3/duat/?search=prelude::LineNumbers
- [__link6]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Widget
- [__link7]: https://docs.rs/duat/0.5.3/duat/?search=prelude::hook::remove
- [__link8]: https://docs.rs/duat/0.5.3/duat/?search=prelude::status
- [__link9]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Spacer
+ [__link4]: https://docs.rs/duat/0.6.1/duat/?search=prelude::print::wrap_on_edge
+ [__link5]: https://docs.rs/duat/0.6.1/duat/?search=prelude::LineNumbers
+ [__link6]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Widget
+ [__link7]: https://docs.rs/duat/0.6.1/duat/?search=prelude::hook::remove
+ [__link8]: https://docs.rs/duat/0.6.1/duat/?search=prelude::status
+ [__link9]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Spacer

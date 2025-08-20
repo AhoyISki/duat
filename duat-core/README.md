@@ -677,4 +677,4 @@ screen by searching through character sequences.
  [__link96]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change
  [__link97]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Bytes::points_of_line
  [__link98]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Point
- [__link99]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change::taken_str
+ [__link99]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change::taken_st
