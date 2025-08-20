@@ -52,7 +52,7 @@ pub fn wrap_on_word() {
 
 /// Wraps [`File`]s a certain distance from the left edge
 ///
-/// This can wrap beyond the screen, being a mix of [`no_wrapping`]
+/// This can wrap beyond the screen, being a mix of [`dont_wrap`]
 /// and [`wrap_on_edge`].
 ///
 /// [`File`]: crate::widgets::File

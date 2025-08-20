@@ -208,7 +208,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 
 /// [`WidgetCfg`] for the [`LineNumbers`] widget
 ///
-/// Contains a [`LineNumbersOptions`], which, unlike
+/// Contains a [`LineNumbersCfg`], which, unlike
 /// [`LineNumbersCfg`], is modified by the `&mut` version of the
 /// builder pattern.
 #[derive(Debug, Clone)]

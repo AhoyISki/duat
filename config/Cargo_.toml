@@ -21,29 +21,24 @@ lto = "off"
 # You can get rid of this one, if you don't want the duat-kak editor.
 [dependencies.kak]
 git = "https://github.com/AhoyISki/duat-kak"
-version = "0.5.0"
+version = "0.6.0"
 package = "duat-kak"
 
 [dependencies.treesitter]
 git = "https://github.com/AhoyISki/duat-treesitter"
-version = "0.2.0"
+version = "0.3.0"
 package = "duat-treesitter"
 
 [dependencies.match-pairs]
 git = "https://github.com/AhoyISki/duat-match-pairs"
-version = "0.1.0"
+version = "0.2.0"
 package = "duat-match-pairs"
 
 [dependencies.catppuccin]
 git = "https://github.com/AhoyISki/duat-catppuccin"
-version = "0.2.0"
+version = "0.3.0"
 package = "duat-catppuccin"
 
 [dependencies.duat]
 git = "https://github.com/AhoyISki/duat"
-version = "0.5.1"
-
-# 
-#[patch.crates-io.duat-core]
-#git = "https://github.com/AhoyISki/duat"
-#version = "0.4.0"
+version = "0.6.0"

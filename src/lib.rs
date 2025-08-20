@@ -371,7 +371,7 @@
 //! [style]: prelude::form::Form
 //! [text creation system]: prelude::text::txt
 //! [`status!`]: prelude::status
-//! [numbering]: duat_utils::widgets::LineNumbersOptions::rel_abs
+//! [numbering]: duat_utils::widgets::LineNumbersCfg::rel_abs
 //! [`LineNumbers`]: prelude::LineNumbers
 //! [`Widget`]: prelude::Widget
 //! [tags]: duat_core::text::Tag
@@ -1187,7 +1187,7 @@ pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
 type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 
 /// For testing mdBook examples.
-#[cfg(doc)]
+#[cfg(doctest)]
 #[doc(hidden)]
 #[path = "../book/book-examples.rs"]
 mod book;
