@@ -1,3 +1,83 @@
+//! A simple [`Plugin`] to match pairs of parentheses
+//!
+//! # Installation
+//!
+//! This [`Plugin`] is added on the config crate by default, there is
+//! no need to install it. However, if you have uninstalled it and
+//! need to reinstall, you can do the following:
+//!
+//! ```bash
+//! cargo add duat-match-pairs@"*" --rename match-pairs
+//! ```
+//!
+//! Or, if you are using a `--git-deps` version of duat, do this:
+//!
+//! ```bash
+//! cargo add --git https://github.com/AhoyISki/duat-match-pairs --rename match-pairs
+//! ```
+//!
+//! # Usage
+//!
+//! In order to make use of it, just add the following to your `setup`
+//! function:
+//!
+//! ```rust
+//! # use duat_core::doc_duat as duat;
+//! # use duat_match_pairs as match_pairs;
+//! setup_duat!(setup);
+//! use duat::prelude::*;
+//!
+//! fn setup() {
+//!     plug!(match_pairs::MatchPairs::new());
+//! }
+//! ```
+//!
+//! In this plugin, there are two types of "pairs", these are the
+//! normal pairs and the treesitter pairs. The normal pairs match
+//! based on the content of the text itself, so for example, in this
+//! situation:
+//!
+//! ```rust
+//! let my_string = "(this is my string)";
+//! ```
+//!
+//! There is a normal pair within the string of `(`,`)`. However,
+//! there is no treesitter pair in there, because a treesitter pair
+//! only matches if the pairs are on the language's syntax tree.
+//!
+//! This distinction allows for some combination of pairings that can
+//! also be used as non pairs. For example, in Rust, `<`,`>` is a pair
+//! only on type arguments and things of the sort, in other cases, it
+//! is just a comparison operator. That's where the treesitter pairs
+//! come in, as they can identify when it is an actual pair, or just
+//! the operator.
+//!
+//! In order to change what counts as a normal pair and what counts as
+//! a treesitter pair, you can add the following to the setup
+//! function:
+//!
+//! ```rust
+//! # use duat_core::doc_duat as duat;
+//! # use duat_match_pairs as match_pairs;
+//! setup_duat!(setup);
+//! use duat::prelude::*;
+//!
+//! fn setup() {
+//!     plug!(
+//!         match_pairs::MatchPairs::new()
+//!             .match_pairs([["\\(", "\\)"], ["\\{", "\\}"], ["\\[", "\\]"]])
+//!             .match_ts_pairs([["<", ">"], ["|", "|"]])
+//!     );
+//! }
+//! ```
+//!
+//! Two things to note here:
+//!
+//! - For now, normal pairs only support one character regexes.
+//! - Also for now, normal pairs use regex, while treesitter pairs use
+//!   strings.
+//!
+//! [`Plugin`]: duat_core::Plugin
 use std::{
     collections::HashMap,
     ops::Range,
