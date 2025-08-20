@@ -79,9 +79,7 @@ impl MatchPairs {
 
 impl<U: Ui> Plugin<U> for MatchPairs {
     fn plug(self) {
-        hook::add::<File<U>, U>(|_, (mut cfg, _)| {
-            cfg.with_parser(MatchPairs::new())
-        })
+        hook::add::<File<U>, U>(|_, (cfg, _)| cfg.with_parser(MatchPairs::new()))
     }
 }
 
