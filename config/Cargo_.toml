@@ -1,0 +1,49 @@
+[package]
+# Don't change the package's name. Duat depends on it.
+name = "config"
+version = "1.0.0"
+edition = "2024"
+# Please don't post your configuration crate to crates.io.
+# If you want to keep it somewhere, try a repository website,
+# like github or gitlab
+publish = false
+
+[lib]
+crate-type = ["dylib"]
+
+[profile.release]
+split-debuginfo = "unpacked"
+incremental = true
+lto = "off"
+
+[dependencies]
+
+# You can get rid of this one, if you don't want the duat-kak editor.
+[dependencies.kak]
+git = "https://github.com/AhoyISki/duat-kak"
+version = "0.5.0"
+package = "duat-kak"
+
+[dependencies.treesitter]
+git = "https://github.com/AhoyISki/duat-treesitter"
+version = "0.2.0"
+package = "duat-treesitter"
+
+[dependencies.match-pairs]
+git = "https://github.com/AhoyISki/duat-match-pairs"
+version = "0.1.0"
+package = "duat-match-pairs"
+
+[dependencies.catppuccin]
+git = "https://github.com/AhoyISki/duat-catppuccin"
+version = "0.2.0"
+package = "duat-catppuccin"
+
+[dependencies.duat]
+git = "https://github.com/AhoyISki/duat"
+version = "0.5.1"
+
+# 
+#[patch.crates-io.duat-core]
+#git = "https://github.com/AhoyISki/duat"
+#version = "0.4.0"
