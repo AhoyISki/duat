@@ -112,7 +112,8 @@ impl Cache {
             };
 
             let src = cache_dir.join("duat/structs").join(cached_file_name);
-            std::fs::remove_dir_all(src).unwrap();
+            // It could fail if the directory doesn't exist, but we don't really care.
+            let _ = std::fs::remove_dir_all(src);
         }
 
         delete_cache_inner(path.into());
