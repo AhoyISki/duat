@@ -1005,6 +1005,40 @@ use this:</p>
 </span><span class="boring">}</span></code></pre></pre>
 <h1 id="statusline-on-each-file"><a class="header" href="#statusline-on-each-file">StatusLine on each File</a></h1>
 <h1 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and Status on same line</a></h1>
+<p>In the Kakoune text editor, the status line occupies the same line as the
+command line and notifications. If you want this behavior in Duat, the
+following snippet is enough:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span>hook::remove("FooterWidgets");
+hook::add::&lt;WindowCreated&gt;(|pa, builder| {
+    builder.push(FooterWidgets::default().one_line());
+});
+<span class="boring">}</span></code></pre></pre>
+<p>If you want one of these on each file, you can do this instead:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span>hook::remove("FooterWidgets");
+hook::add::&lt;File&gt;(|pa, (cfg, builder)| {
+    builder.push(FooterWidgets::default().one_line());
+    cfg
+});
+<span class="boring">}</span></code></pre></pre>
+<p>With both of these, you can still modify the <code>StatusLine</code> with the usual
+<code>hook</code>s:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
+    let mode_upper = mode_txt(pa).map(pa, |mode| 
+        txt!("[mode]{}", mode.to_string().to_uppercase()).build()
+    );
+
+    cfg.fmt(status!("{Spacer}{name_txt} {mode_upper} {sels_txt} {main_txt}"))
+});
+<span class="boring">}</span></code></pre></pre>
 <h1 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h1>
 <p>The most relevant parts for pretty much every <code>StatusLine</code> are the following.</p>
 <p>Formatted status parts:</p>
@@ -1058,7 +1092,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 <span class="boring">}</span></code></pre></pre>
 <p>If you want a one sided <code>StatusLine</code>, you can do this:</p>
@@ -1066,7 +1100,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{Spacer}{file_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{Spacer}{name_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>main_fmt</code>:</p>
@@ -1075,7 +1109,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">use duat::prelude::*;
 </span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
     cfg.fmt(status!(
-        "{file_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
+        "{name_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
         mode_txt(pa),
         |file: &amp;File| file.text().len().line()
     ))
@@ -1107,7 +1141,7 @@ fn file_fmt(file: &amp;File) -&gt; Text {
 }
 
 hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 <span class="boring">}</span></code></pre></pre>
 <h1 id="relative-and-aligned-linenumbers"><a class="header" href="#relative-and-aligned-linenumbers">Relative and aligned LineNumbers</a></h1>
@@ -1118,15 +1152,11 @@ following  snippet:</p>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>
-hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
-    builder.write(pa, |file, _| match file.filetype() {
-        Some("markdown" | "bash" | "lua" | "javascript" | "lisp") =&gt; {
-            file.cfg.set_tabstop(2);
-        } 
-        _ =&gt; {
-            file.cfg.set_tabstop(4);
-        }
-    })
+hook::add::&lt;File&gt;(|_, (cfg, _)| {
+    match cfg.filetype() {
+        Some("markdown" | "bash" | "lua" | "javascript" | "lisp") =&gt; cfg.tabstop(2), 
+        _ =&gt; cfg.tabstop(4)
+    }
 });
 <span class="boring">}</span></code></pre></pre>
 <p>If you want, you can also set other options with this, like which characters
@@ -1135,18 +1165,14 @@ should be a part of words. In this case, I'm adding <code>'-'</code> to the list
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>
-hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
-    builder.write(pa, |file, _| match file.filetype() {
+hook::add::&lt;File&gt;(|_, (cfg, _)| {
+    match cfg.filetype() {
         Some("lisp" | "scheme" | "markdown" | "css" | "html") =&gt; {
-            let wc = word_chars!("A-Za-z0-9_-_---");
-            file.cfg.set_tabstops(2).set_word_chars(wc);
+            let wc = print::w_chars!("A-Za-z0-9_-_---");
+            cfg.tabstop(2).word_chars(wc)
         }
-        Some("bash" | "lua" | "javascript" | "typescript") =&gt; {
-            file.cfg.set_tabstops(2);
-        }
-        _ =&gt; {
-            file.cfg.set_tabstops(4);
-        }
+        Some("bash" | "lua" | "javascript" | "typescript") =&gt; cfg.tabstop(2),
+        _ =&gt; cfg.tabstop(4)
     }
 });
 <span class="boring">}</span></code></pre></pre>
@@ -1156,30 +1182,31 @@ hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
 <p>This chapter assumes that you are using some kind of <a href="https://www.nerdfonts.com/font-downloads">nerd font</a> in your
 <code>Ui</code>. This also goes for this page in the book. If you are not using
 some kind of nerd font in your browser, you will not be able to see the
-characters being displayed. For that, I will provide pictures.</p>
+characters being displayed.</p>
 </blockquote>
-<p>If you want to nerd-fontify your <code>StatusLine</code>, you should probably redefine
-some of the status line parts:</p>
+<p>If you want to nerd-fontify your <code>StatusLine</code>, you can just redefine some of
+the status line parts:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*
-</span>fn file_fmt(file: &amp;File) -&gt; Text {
+</span><span class="boring">use duat::prelude::*;
+</span>fn name_txt(file: &amp;File) -&gt; Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
         b.push(txt!("[file]{name}"));
         if !file.exists() {
-            b.push(txt!("[file.new]󰎔 "));
+            b.push(txt!(" [file.new]󰎔 "));
         } else if file.text().has_unsaved_changes() {
-            b.push(txt!("[file.unsaved] "));
+            b.push(txt!(" [file.unsaved] "));
         }
     } else {
-        b.push(txt!("[file.new.scratch]{}󰏫 ", file.name())));
+        b.push(txt!(" [file.new.scratch]{}󰏫 ", file.name()));
     }
 
     b.build()
 }
 <span class="boring">}</span></code></pre></pre>
+<h1 id="status-on-files-and-on-window"><a class="header" href="#status-on-files-and-on-window">Status on files and on window</a></h1>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
 <h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat's global state</a></h1>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>

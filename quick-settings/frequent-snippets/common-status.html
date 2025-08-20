@@ -234,7 +234,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 <span class="boring">}</span></code></pre></pre>
 <p>If you want a one sided <code>StatusLine</code>, you can do this:</p>
@@ -242,7 +242,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{Spacer}{file_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{Spacer}{name_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>main_fmt</code>:</p>
@@ -251,7 +251,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">use duat::prelude::*;
 </span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
     cfg.fmt(status!(
-        "{file_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
+        "{name_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
         mode_txt(pa),
         |file: &amp;File| file.text().len().line()
     ))
@@ -283,7 +283,7 @@ fn file_fmt(file: &amp;File) -&gt; Text {
 }
 
 hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{file_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
+    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
 });
 <span class="boring">}</span></code></pre></pre>
 

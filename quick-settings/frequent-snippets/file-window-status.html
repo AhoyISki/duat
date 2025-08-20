@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Prompt and Status on same line - The Duat text editor</title>
+        <title>Status on files and on window - The Duat text editor</title>
 
 
         <!-- Custom HTML head -->
@@ -147,7 +147,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/frequent-snippets/prompt-status-line.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/frequent-snippets/file-window-status.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -181,51 +181,17 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and Status on same line</a></h1>
-<p>In the Kakoune text editor, the status line occupies the same line as the
-command line and notifications. If you want this behavior in Duat, the
-following snippet is enough:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::remove("FooterWidgets");
-hook::add::&lt;WindowCreated&gt;(|pa, builder| {
-    builder.push(FooterWidgets::default().one_line());
-});
-<span class="boring">}</span></code></pre></pre>
-<p>If you want one of these on each file, you can do this instead:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::remove("FooterWidgets");
-hook::add::&lt;File&gt;(|pa, (cfg, builder)| {
-    builder.push(FooterWidgets::default().one_line());
-    cfg
-});
-<span class="boring">}</span></code></pre></pre>
-<p>With both of these, you can still modify the <code>StatusLine</code> with the usual
-<code>hook</code>s:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    let mode_upper = mode_txt(pa).map(pa, |mode| 
-        txt!("[mode]{}", mode.to_string().to_uppercase()).build()
-    );
-
-    cfg.fmt(status!("{Spacer}{name_txt} {mode_upper} {sels_txt} {main_txt}"))
-});
-<span class="boring">}</span></code></pre></pre>
+                        <h1 id="status-on-files-and-on-window"><a class="header" href="#status-on-files-and-on-window">Status on files and on window</a></h1>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../../quick-settings/frequent-snippets/status-per-file.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../quick-settings/frequent-snippets/nerd-status.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../quick-settings/frequent-snippets/common-status.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../scripting-duat/chapter.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -235,11 +201,11 @@ hook::add::&lt;File&gt;(|pa, (cfg, builder)| {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../../quick-settings/frequent-snippets/status-per-file.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../quick-settings/frequent-snippets/nerd-status.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../quick-settings/frequent-snippets/common-status.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../scripting-duat/chapter.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

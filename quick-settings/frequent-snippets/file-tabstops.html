@@ -188,15 +188,11 @@ following  snippet:</p>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>
-hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
-    builder.write(pa, |file, _| match file.filetype() {
-        Some("markdown" | "bash" | "lua" | "javascript" | "lisp") =&gt; {
-            file.cfg.set_tabstop(2);
-        } 
-        _ =&gt; {
-            file.cfg.set_tabstop(4);
-        }
-    })
+hook::add::&lt;File&gt;(|_, (cfg, _)| {
+    match cfg.filetype() {
+        Some("markdown" | "bash" | "lua" | "javascript" | "lisp") =&gt; cfg.tabstop(2), 
+        _ =&gt; cfg.tabstop(4)
+    }
 });
 <span class="boring">}</span></code></pre></pre>
 <p>If you want, you can also set other options with this, like which characters
@@ -205,18 +201,14 @@ should be a part of words. In this case, I'm adding <code>'-'</code> to the list
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>
-hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
-    builder.write(pa, |file, _| match file.filetype() {
+hook::add::&lt;File&gt;(|_, (cfg, _)| {
+    match cfg.filetype() {
         Some("lisp" | "scheme" | "markdown" | "css" | "html") =&gt; {
-            let wc = word_chars!("A-Za-z0-9_-_---");
-            file.cfg.set_tabstops(2).set_word_chars(wc);
+            let wc = print::w_chars!("A-Za-z0-9_-_---");
+            cfg.tabstop(2).word_chars(wc)
         }
-        Some("bash" | "lua" | "javascript" | "typescript") =&gt; {
-            file.cfg.set_tabstops(2);
-        }
-        _ =&gt; {
-            file.cfg.set_tabstops(4);
-        }
+        Some("bash" | "lua" | "javascript" | "typescript") =&gt; cfg.tabstop(2),
+        _ =&gt; cfg.tabstop(4)
     }
 });
 <span class="boring">}</span></code></pre></pre>

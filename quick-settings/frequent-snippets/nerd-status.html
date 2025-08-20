@@ -187,25 +187,25 @@
 <p>This chapter assumes that you are using some kind of <a href="https://www.nerdfonts.com/font-downloads">nerd font</a> in your
 <code>Ui</code>. This also goes for this page in the book. If you are not using
 some kind of nerd font in your browser, you will not be able to see the
-characters being displayed. For that, I will provide pictures.</p>
+characters being displayed.</p>
 </blockquote>
-<p>If you want to nerd-fontify your <code>StatusLine</code>, you should probably redefine
-some of the status line parts:</p>
+<p>If you want to nerd-fontify your <code>StatusLine</code>, you can just redefine some of
+the status line parts:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*
-</span>fn file_fmt(file: &amp;File) -&gt; Text {
+</span><span class="boring">use duat::prelude::*;
+</span>fn name_txt(file: &amp;File) -&gt; Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
         b.push(txt!("[file]{name}"));
         if !file.exists() {
-            b.push(txt!("[file.new]󰎔 "));
+            b.push(txt!(" [file.new]󰎔 "));
         } else if file.text().has_unsaved_changes() {
-            b.push(txt!("[file.unsaved] "));
+            b.push(txt!(" [file.unsaved] "));
         }
     } else {
-        b.push(txt!("[file.new.scratch]{}󰏫 ", file.name())));
+        b.push(txt!(" [file.new.scratch]{}󰏫 ", file.name()));
     }
 
     b.build()
@@ -220,7 +220,7 @@ some of the status line parts:</p>
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../scripting-duat/chapter.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../quick-settings/frequent-snippets/file-window-status.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -234,7 +234,7 @@ some of the status line parts:</p>
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../scripting-duat/chapter.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../quick-settings/frequent-snippets/file-window-status.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
