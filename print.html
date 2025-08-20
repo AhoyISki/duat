@@ -1207,6 +1207,42 @@ the status line parts:</p>
 }
 <span class="boring">}</span></code></pre></pre>
 <h1 id="status-on-files-and-on-window"><a class="header" href="#status-on-files-and-on-window">Status on files and on window</a></h1>
+<p>In these snippets, you might have noticed that I'm mapping <em>all</em> <code>StatusLine</code>s,
+not just some of them. So how would one map only the <code>StatusLine</code>s belonging to
+files then? Or depending on other factors?</p>
+<p>You could just replace all hooks for <code>File</code>s and <code>WindowCreated</code>, but that is
+rather tedious and verbose. Instead, you can just do the following:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|_, (cfg, builder)| {
+    if builder.file().is_some() {
+        cfg.fmt(status!("{Spacer}{name_txt}"))
+    } else {
+        cfg
+    }
+});
+<span class="boring">}</span></code></pre></pre>
+<p>The snippet above will only remap the <code>StatusLine</code> when it is pushe onto a
+<code>File</code>.</p>
+<p>You can go even further, by, e.g. checking on the filetype:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, builder)| {
+    if let Some(file) = builder.file() {
+        if let Some("rust") = file.filetype(pa)
+            &amp;&amp; file.read(pa).path().contains(".config/duat")
+        {
+            cfg.fmt(status!("[config] {Spacer}{name_txt}"))
+        } else {
+            cfg.fmt(status!("{Spacer}{name_txt}"))
+        }
+    } else {
+        cfg
+    }
+});
+<span class="boring">}</span></code></pre></pre>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
 <h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat's global state</a></h1>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
