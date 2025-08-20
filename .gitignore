@@ -7,3 +7,4 @@ README.j2
 .cargo/*
 .mod*
 book/book/*
+book/doctest_cache/*
