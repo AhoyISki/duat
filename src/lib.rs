@@ -54,7 +54,7 @@ use std::{
     sync::LazyLock,
 };
 
-use duat_core::{context::CurFile, file::FileCfg, prelude::*};
+use duat_core::{file::FileCfg, prelude::*};
 use regex::RegexSet;
 
 pub trait FileType {
@@ -120,12 +120,6 @@ impl<U: Ui> PassFileType for RwData<File<U>> {
 impl<U: Ui> PassFileType for Handle<File<U>, U> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa).filetype()
-    }
-}
-
-impl<U: Ui> PassFileType for CurFile<U> {
-    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.fixed(pa).ok()?.read(pa).filetype()
     }
 }
 
