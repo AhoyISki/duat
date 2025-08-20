@@ -21,6 +21,7 @@ pub struct InjectedTree {
     old_tree: Option<Tree>,
     ranges: Ranges,
     injections: Vec<InjectedTree>,
+    has_changes: bool,
 }
 
 impl InjectedTree {
@@ -47,11 +48,13 @@ impl InjectedTree {
             old_tree: None,
             ranges: Ranges::new(range),
             injections: Vec::new(),
+            has_changes: true,
         }
     }
 
     /// Edits the [`Tree`] within
     pub(crate) fn edit(&mut self, edit: &InputEdit) {
+        self.has_changes = true;
         self.ranges.shift_by(
             edit.start_byte,
             edit.new_end_byte as i32 - edit.old_end_byte as i32,
@@ -68,22 +71,25 @@ impl InjectedTree {
     ///
     /// [`Change`]: duat_core::text::Change
     pub(crate) fn update_tree(&mut self, bytes: &Bytes) {
-        let ranges: Vec<TsRange> = self
-            .ranges
-            .iter()
-            .map(|range| ts_range_from_range(bytes, range))
-            .collect();
-        self.parser.set_included_ranges(&ranges).unwrap();
+        if self.has_changes {
+            let ranges: Vec<TsRange> = self
+                .ranges
+                .iter()
+                .map(|range| ts_range_from_range(bytes, range))
+                .collect();
+            self.parser.set_included_ranges(&ranges).unwrap();
 
-        let tree = self
-            .parser
-            .parse_with_options(&mut parser_fn(bytes), Some(&self.tree), None)
-            .unwrap();
-        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+            let tree = self
+                .parser
+                .parse_with_options(&mut parser_fn(bytes), Some(&self.tree), None)
+                .unwrap();
+            self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
 
-        for inj in self.injections.iter_mut() {
-            inj.update_tree(bytes);
+            for inj in self.injections.iter_mut() {
+                inj.update_tree(bytes);
+            }
         }
+        self.has_changes = false;
     }
 
     /// Adds another [`Range`] to be parsed with this [`InjectedTree`]
@@ -91,11 +97,15 @@ impl InjectedTree {
     /// Returns `true` if the [`Range`] was added, `false` if it
     /// was already in the list.
     pub(crate) fn add_range(&mut self, range: Range<usize>) {
-        self.ranges.add(range);
+        if !self.ranges.iter().any(|r| r == range) {
+            self.has_changes = true;
+            self.ranges.add(range);
+        }
     }
 
     /// Removes a [`Range`] from the list of parsed [`Range`]s
     pub(crate) fn remove_range(&mut self, range: Range<usize>) {
+        self.has_changes = true;
         let _ = self.ranges.remove(range.clone());
 
         for inj in self.injections.iter_mut() {

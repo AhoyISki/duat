@@ -1009,7 +1009,6 @@ fn highlight_and_inject(
             .iter_mut()
             .find(|inj| inj.lang_parts().0 == lang_parts.0)
         {
-            // If this range is brand new, add it to the Ranges to be updated.
             inj.add_range(cap_range.clone());
         } else {
             injected_trees.push(InjectedTree::new(bytes, lang_parts, cap_range.clone()));
