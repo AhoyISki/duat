@@ -35,11 +35,11 @@ Some other forms are used by specific `Widgets`
 
 - `StatusLine`:
   - `file`, `file.new`, `file.unsaved`, `file.new.scratch`: Are all used by 
-    [`file_fmt`], which shows the `File`'s name and some other info.
-  - `mode`: Is used by [`mode_fmt`].
-  - `coord` and `separator`: Are used by [`main_fmt`].
-  - `selections`: Is used by [`selections_fmt`].
-  - `key` and `key.special`: Are used by [`cur_map_fmt`].
+    [`name_txt`], which shows the `File`'s name and some other info.
+  - `mode`: Is used by [`mode_txt`].
+  - `coord` and `separator`: Are used by [`main_txt`].
+  - `selections`: Is used by [`selections_txt`].
+  - `key` and `key.special`: Are used by [`cur_map_txt`].
 
 - `Notifications`:
   - `notifs.target`: The form for the "target" of the notification.
@@ -168,8 +168,8 @@ And finally, there are also all the forms used by `duat-treesitter`. Since the q
 [masks]: ../../scripting-duat/masks.md
 [map and alias]: prelude/map-and-alias.md
 [form inheritance]: form-module.md#form-inheritance
-[`file_fmt`]: https://docs.rs/duat/latest/duat/state/fn.file_fmt.html
-[`mode_fmt`]: https://docs.rs/duat/latest/duat/state/fn.mode_fmt.html
-[`main_fmt`]: https://docs.rs/duat/latest/duat/state/fn.main_fmt.html
-[`selections_fmt`]: https://docs.rs/duat/latest/duat/state/fn.selections_fmt.html
-[`cur_map_fmt`]: https://docs.rs/duat/latest/duat/state/fn.cur_map_fmt.html
+[`name_txt`]: https://docs.rs/duat/latest/duat/state/fn.name_txt.html
+[`mode_txt`]: https://docs.rs/duat/latest/duat/state/fn.mode_txt.html
+[`main_txt`]: https://docs.rs/duat/latest/duat/state/fn.main_txt.html
+[`selections_txt`]: https://docs.rs/duat/latest/duat/state/fn.selections_txt.html
+[`cur_map_txt`]: https://docs.rs/duat/latest/duat/state/fn.cur_map_txt.html

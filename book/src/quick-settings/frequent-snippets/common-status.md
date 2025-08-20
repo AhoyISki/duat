@@ -4,16 +4,16 @@ The most relevant parts for pretty much every `StatusLine` are the following.
 
 Formatted status parts:
 
-- `file_fmt`: Prints the `File`'s name and some info about it's newness.
+- `name_txt`: Prints the `File`'s name and some info about it's newness.
 - Uses the forms `file`, `file.new`, `file.new.scratch` and `file.unsaved`.
-- `mode_fmt`: The lowercased name of the `Mode`, e.g. "insert", "normal".
+- `mode_txt`: The lowercased name of the `Mode`, e.g. "insert", "normal".
   - Uses the form `mode`.
-- `main_fmt`: Prints the main selection's column and line, and the number of 
+- `main_txt`: Prints the main selection's column and line, and the number of 
   lines. 1 indexed.
   - Uses the forms `coord` and `separator`.
-- `sels_fmt`: Prints the number of selections.
+- `sels_txt`: Prints the number of selections.
   - Uses the form `selections`;
-- `cur_map_fmt`: Prints the keys being mapped.
+- `cur_map_txt`: Prints the keys being mapped.
   - Uses the forms `key` and `key.special`
 
 Unformatted status parts:
@@ -55,7 +55,7 @@ hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
 });
 ```
 
-Customized `main_fmt`:
+Customized `main_txt`:
 
 ```rust
 # use duat::prelude::*;
@@ -68,12 +68,12 @@ hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
 });
 ```
 
-Customized `file_fmt`:
+Customized `name_txt`:
 
 ```rust
 # use duat::prelude::*;
 
-fn file_fmt(file: &File) -> Text {
+fn name_txt(file: &File) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
