@@ -1442,6 +1442,7 @@ fn binary_search_by_key_and_index<T, K>(
 where
     K: PartialEq + Eq + PartialOrd + Ord,
 {
+   
     let mut size = len;
     let mut left = 0;
     let mut right = size;
@@ -1466,6 +1467,9 @@ where
 /// Converts a string to a valid priority
 #[doc(hidden)]
 pub const fn priority(priority: &str) -> u8 {
+    
+    
+    
     let mut bytes = priority.as_bytes();
     let mut val = 0;
 

@@ -34,7 +34,7 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 /// [`Parameter`]: cmd::Parameter
 /// [`Selection`]: mode::Selection
 #[derive(Clone)]
-pub struct Prompt<U: Ui, M: PromptMode<U> = RunCommands>(M, PhantomData<U>);
+pub struct Prompt<U: Ui, M: PromptMode<U> = RunCommands>(M, String, PhantomData<U>);
 
 impl<M: PromptMode<U>, U: Ui> Prompt<U, M> {
     /// Returns a new [`Prompt`] from this [`PromptMode`]
@@ -43,7 +43,12 @@ impl<M: PromptMode<U>, U: Ui> Prompt<U, M> {
     /// [`PromptMode`] implementors return a [`Prompt<Self, U>`],
     /// rather than the [`PromptMode`] itself.
     pub fn new(mode: M) -> Self {
-        Self(mode, PhantomData)
+        Self(mode, String::new(), PhantomData)
+    }
+
+	/// Returns a new [`Prompt`] with some initial text
+    pub fn new_with(mode: M, initial: impl ToString) -> Self {
+        Self(mode, initial.to_string(), PhantomData)
     }
 }
 
@@ -136,6 +141,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<U, M> {
         let text = {
             let pl = handle.write(pa);
             *pl.text_mut() = Text::new_with_selections();
+            pl.text_mut().replace_range(0..0, &self.1);
             run_once::<M, U>();
 
             let tag = Ghost(match pl.prompt_of::<M>() {
@@ -272,6 +278,11 @@ impl RunCommands {
     /// Crates a new [`RunCommands`]
     pub fn new<U: Ui>() -> Prompt<U, Self> {
         Prompt::new(Self)
+    }
+
+    /// Opens a [`RunCommands`] with some initial text
+    pub fn new_with<U: Ui>(initial: impl ToString) -> Prompt<U, Self> {
+        Prompt::new_with(Self, initial)
     }
 }
 
