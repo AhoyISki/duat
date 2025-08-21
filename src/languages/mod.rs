@@ -222,17 +222,17 @@ fn crate_name(lang: &'static str) -> &'static str {
 }
 
 #[cfg(target_os = "macos")]
-const fn resolve_lib_file(lang: &str) -> String {
+fn resolve_lib_file(lang: &str) -> String {
     format!("lib{lang}.dylib")
 }
 
 #[cfg(target_os = "windows")]
-const fn resolve_lib_file(lang: &str) -> String {
+fn resolve_lib_file(lang: &str) -> String {
     format!("{lang}.dll")
 }
 
 #[cfg(not(target_os = "windows", target_os = "macos"))]
-const fn resolve_lib_file(lang: &str) -> String {
+fn resolve_lib_file(lang: &str) -> String {
     format!("lib{lang}.so")
 }
 
