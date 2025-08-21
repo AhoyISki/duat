@@ -205,17 +205,17 @@ fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
 
 
 #[cfg(target_os = "macos")]
-const fn resolve_config_file() -> &str {
+const fn resolve_config_file() -> &'static str {
     "libconfig.dylib"
 }
 
 #[cfg(target_os = "windows")]
-const fn resolve_config_file() -> &str {
+const fn resolve_config_file() -> &'static str {
     "config.dll"
 }
 
 #[cfg(not(target_os = "windows", target_os = "macos"))]
-const fn resolve_config_file() -> &str {
+const fn resolve_config_file() -> &'static str {
     "libconfig.so"
 }
 
