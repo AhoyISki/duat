@@ -38,7 +38,7 @@ impl TaggerExtents {
                 tagger,
                 Extent::Sparse({
                     let mut list = ShiftList::new(self.max as i32);
-                    list.insert(0, byte as u32);
+                    list.insert(0, byte as i32);
                     list
                 }),
             ));
@@ -145,7 +145,7 @@ impl TaggerExtents {
 /// [`InnerTags`]: super::InnerTags
 #[derive(Clone, Debug)]
 enum Extent {
-    Sparse(ShiftList<u32>),
+    Sparse(ShiftList<i32>),
     Rampant,
 }
 
@@ -153,7 +153,7 @@ impl Extent {
     /// Shifts the indices within
     fn shift_by(&mut self, c: usize, by: i32) {
         if let Extent::Sparse(list) = self {
-            let (Ok(i) | Err(i)) = list.find_by_key(c as u32, |c| c);
+            let (Ok(i) | Err(i)) = list.find_by_key(c as i32, |c| c);
             list.shift_by(i, by);
         }
     }
@@ -165,10 +165,10 @@ impl Extent {
         const MAX_FOR_SPARSE: usize = 1024;
 
         if let Self::Sparse(list) = self
-            && let Err(i) = list.find_by_key(c as u32, |c| c)
+            && let Err(i) = list.find_by_key(c as i32, |c| c)
         {
             if list.len() < MAX_FOR_SPARSE {
-                list.insert(i, c as u32);
+                list.insert(i, c as i32);
             } else {
                 *self = Extent::Rampant;
             }
@@ -183,8 +183,8 @@ impl Extent {
             return None;
         };
 
-        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as u32, |c| c);
-        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as u32, |c| c);
+        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as i32, |c| c);
+        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as i32, |c| c);
 
         Some(
             list.extract_if_while(s_i..e_i, |_, _| Some(true))
@@ -193,11 +193,11 @@ impl Extent {
     }
 }
 
-impl Shiftable for u32 {
+impl Shiftable for i32 {
     type Shift = i32;
 
     fn shift(self, by: Self::Shift) -> Self {
-        (self as i32 + by) as u32
+        self + by
     }
 }
 

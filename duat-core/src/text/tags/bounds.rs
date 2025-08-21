@@ -19,7 +19,7 @@ const MIN_FOR_RANGE: usize = 16;
 /// A struct to keep better track of very long [`RawTag`] ranges
 #[derive(Debug, Clone)]
 pub struct Bounds {
-    list: ShiftList<([u32; 2], RawTag, RangeId)>,
+    list: ShiftList<([i32; 2], RawTag, RangeId)>,
     ranges_to_update: Ranges,
     min_len: usize,
 }
@@ -46,10 +46,10 @@ impl Bounds {
         if e_n - s_n >= self.min_len {
             let id = RangeId::new();
 
-            self.list.insert(s_i, ([s_n as u32, s_b as u32], s_tag, id));
+            self.list.insert(s_i, ([s_n as i32, s_b as i32], s_tag, id));
 
             let e_i = self.shift_by(e_n, [1, 0]);
-            self.list.insert(e_i, ([e_n as u32, e_b as u32], e_tag, id));
+            self.list.insert(e_i, ([e_n as i32, e_b as i32], e_tag, id));
         } else {
             self.shift_by(e_n, [1, 0]);
         }
@@ -57,8 +57,8 @@ impl Bounds {
 
     /// Represents the given range in the list, if it wasn't there
     /// already
-    pub fn represent(&mut self, [s, e]: [([u32; 2], RawTag); 2]) {
-        let before_id = |(bound, tag, _): ([u32; 2], RawTag, _)| (bound, tag);
+    pub fn represent(&mut self, [s, e]: [([i32; 2], RawTag); 2]) {
+        let before_id = |(bound, tag, _): ([i32; 2], RawTag, _)| (bound, tag);
 
         let (Err(s_i), Err(e_i)) = (
             self.list.find_by_key(s, before_id),
@@ -79,7 +79,7 @@ impl Bounds {
     /// Shifts the bounds within by a difference in a position,
     /// returns the insertion point of that shift
     pub fn shift_by(&mut self, n: usize, [n_diff, b_diff]: [i32; 2]) -> usize {
-        let (Ok(i) | Err(i)) = self.list.find_by_key(n as u32, |([n, _], ..)| n);
+        let (Ok(i) | Err(i)) = self.list.find_by_key(n as i32, |([n, _], ..)| n);
         self.list.shift_by(i, [n_diff, b_diff]);
 
         self.ranges_to_update.shift_by(n, n_diff);
@@ -103,10 +103,10 @@ impl Bounds {
     pub fn remove_intersecting(
         &mut self,
         range: Range<usize>,
-        filter: impl Fn((u32, RawTag)) -> bool,
+        filter: impl Fn((i32, RawTag)) -> bool,
     ) -> Vec<usize> {
-        let (Ok(s) | Err(s)) = self.list.find_by_key(range.start as u32, |([_, c], ..)| c);
-        let (Ok(e) | Err(e)) = self.list.find_by_key(range.end as u32, |([_, c], ..)| c);
+        let (Ok(s) | Err(s)) = self.list.find_by_key(range.start as i32, |([_, c], ..)| c);
+        let (Ok(e) | Err(e)) = self.list.find_by_key(range.end as i32, |([_, c], ..)| c);
 
         let mut removed = Vec::new();
         let mut starts = Vec::new();
@@ -177,7 +177,7 @@ impl Bounds {
                 let is_matching = |(_, (.., lhs)): &(_, (_, _, RangeId))| *lhs == id;
                 let (j, ([n1, _], ..)) = self.list.iter_fwd(i + 1..).find(is_matching).unwrap();
 
-                if n1 - n0 < self.min_len as u32 {
+                if n1 - n0 < self.min_len as i32 {
                     for k in [i, j] {
                         let (Ok(l) | Err(l)) = bounds_to_remove.binary_search(&k);
                         bounds_to_remove.insert(l, k);
@@ -224,9 +224,9 @@ impl Bounds {
 
     /// Try to find the match for a RawTag at a given index
     pub fn match_of(&self, n: usize) -> Option<([usize; 2], RawTag)> {
-        let i = self.list.find_by_key(n as u32, |([n, _], ..)| n).ok()?;
+        let i = self.list.find_by_key(n as i32, |([n, _], ..)| n).ok()?;
 
-        let is_matching = |(_, ([n, b], tag, id)): (_, ([u32; 2], _, RangeId))| {
+        let is_matching = |(_, ([n, b], tag, id)): (_, ([i32; 2], _, RangeId))| {
             (id == self.list.get(i).unwrap().2).then_some(([n as usize, b as usize], tag))
         };
 
@@ -260,12 +260,11 @@ impl std::fmt::Debug for DebugBounds<'_> {
     }
 }
 
-impl Shiftable for ([u32; 2], RawTag, RangeId) {
+impl Shiftable for ([i32; 2], RawTag, RangeId) {
     type Shift = [i32; 2];
 
     fn shift(self, by: Self::Shift) -> Self {
-        let sh = |i: usize| (self.0[i] as i32 + by[i]) as u32;
-        ([sh(0), sh(1)], self.1, self.2)
+        ([self.0[0] + by[0], self.0[1] + by[1]], self.1, self.2)
     }
 }
 

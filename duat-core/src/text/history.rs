@@ -11,7 +11,7 @@
 //!
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 use bincode::{Decode, Encode};
 use parking_lot::Mutex;
@@ -20,71 +20,56 @@ use super::{Point, Text};
 use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
-    new_changes: Option<(Vec<Change>, (usize, [i32; 3]))>,
-    /// Used to update ranges on the File
-    unproc_changes: Mutex<Option<(Vec<Change>, (usize, [i32; 3]))>>,
-    unproc_moments: Mutex<Vec<Moment>>,
+    remote_moments: Arc<Mutex<Vec<Moment>>>,
 }
 
 impl History {
     /// Creates a new [`History`]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            moments: vec![Moment::default()],
+            cur_moment: 0,
+            remote_moments: Arc::default(),
+        }
     }
 
     /// Adds a [`Change`] to the [`History`]
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
-        let (changes, shift_state) = self.unproc_changes.get_mut().get_or_insert_default();
-        add_change(changes, guess_i, change.clone(), shift_state);
+        self.moments.truncate(self.cur_moment + 1);
 
-        let (changes, shift_state) = self.new_changes.get_or_insert_default();
-        add_change(changes, guess_i, change, shift_state)
+        let mut remote = self.remote_moments.lock();
+        for moment in remote.iter_mut() {
+            moment.add_change(guess_i, change.clone());
+        }
+
+        self.moments[self.cur_moment].add_change(guess_i, change)
     }
 
     /// Declares that the current moment is complete and starts a
     /// new one
     pub fn new_moment(&mut self) {
-        let Some((mut new_changes, (sh_from, shift))) = self.new_changes.take() else {
-            return;
-        };
-        finish_shifting(&mut new_changes, sh_from, shift);
-
-        if let Some((mut unproc_changes, (sh_from, shift))) = self.unproc_changes.get_mut().take() {
-            finish_shifting(&mut unproc_changes, sh_from, shift);
-            self.unproc_moments.get_mut().push(Moment {
-                changes: Box::leak(Box::from(unproc_changes)),
-                is_rev: false,
-            });
+        if !self.moments[self.cur_moment].is_empty() {
+            self.moments.truncate(self.cur_moment + 1);
+            self.moments.push(Moment::default());
+            self.cur_moment += 1;
         }
-
-        self.moments.truncate(self.cur_moment);
-
-        self.moments.push(Moment {
-            changes: Box::leak(Box::from(new_changes)),
-            is_rev: false,
-        });
-        self.cur_moment += 1;
     }
 
     /// Redoes the next [`Moment`], returning its [`Change`]s
     ///
     /// Applying these [`Change`]s in the order that they're given
     /// will result in a correct redoing.
-    pub fn move_forward(&mut self) -> Option<Moment> {
-        self.new_moment();
+    pub(super) fn move_forward(&mut self) -> Option<impl ExactSizeIterator<Item = Change<&str>>> {
         if self.cur_moment == self.moments.len() {
             None
         } else {
             self.cur_moment += 1;
 
-            let moment = self.moments[self.cur_moment - 1];
-            self.unproc_moments.get_mut().push(moment);
-
-            Some(moment)
+            Some(self.moments[self.cur_moment - 1].changes())
         }
     }
 
@@ -93,41 +78,20 @@ impl History {
     /// These [`Change`]s will already be shifted corectly, such that
     /// applying them in sequential order, without further
     /// modifications, will result in a correct undoing.
-    pub fn move_backwards(&mut self) -> Option<Moment> {
-        self.new_moment();
+    pub(super) fn move_backwards(&mut self) -> Option<impl ExactSizeIterator<Item = Change<&str>>> {
         if self.cur_moment == 0 {
             None
         } else {
             self.cur_moment -= 1;
 
-            let mut moment = self.moments[self.cur_moment];
-            moment.is_rev = true;
-            self.unproc_moments.get_mut().push(moment);
-
-            Some(moment)
+            let mut shift = [0; 3];
+            Some(self.moments[self.cur_moment].changes().map(move |change| {
+                let mut change = change.reverse();
+                change.shift_by(shift);
+                shift = add_shifts(shift, change.shift());
+                change
+            }))
         }
-    }
-
-	/// The list of moments that have yet to be processed
-    pub(crate) fn unprocessed_moments(&self) -> Vec<Moment> {
-        let fresh_moment =
-            self.unproc_changes
-                .lock()
-                .take()
-                .map(|(mut changes, (sh_from, shift))| {
-                    finish_shifting(&mut changes, sh_from, shift);
-
-                    Moment {
-                        changes: Box::leak(Box::from(changes)),
-                        is_rev: false,
-                    }
-                });
-
-        let mut unproc_moments = self.unproc_moments.lock();
-
-        unproc_moments.extend(fresh_moment);
-
-        std::mem::take(&mut unproc_moments)
     }
 }
 
@@ -138,9 +102,7 @@ impl Encode for History {
     ) -> Result<(), bincode::error::EncodeError> {
         Encode::encode(&self.moments, encoder)?;
         Encode::encode(&self.cur_moment, encoder)?;
-        Encode::encode(&self.new_changes, encoder)?;
-        Encode::encode(&*self.unproc_changes.lock(), encoder)?;
-        Encode::encode(&*self.unproc_moments.lock(), encoder)?;
+        Encode::encode(&*self.remote_moments.lock(), encoder)?;
         Ok(())
     }
 }
@@ -152,9 +114,7 @@ impl<Context> Decode<Context> for History {
         Ok(History {
             moments: Decode::decode(decoder)?,
             cur_moment: Decode::decode(decoder)?,
-            new_changes: Decode::decode(decoder)?,
-            unproc_changes: Mutex::new(Decode::decode(decoder)?),
-            unproc_moments: Mutex::new(Decode::decode(decoder)?),
+            remote_moments: Arc::new(Mutex::new(Decode::decode(decoder)?)),
         })
     }
 }
@@ -164,9 +124,7 @@ impl Clone for History {
         Self {
             moments: self.moments.clone(),
             cur_moment: self.cur_moment,
-            new_changes: self.new_changes.clone(),
-            unproc_changes: Mutex::new(self.unproc_changes.lock().clone()),
-            unproc_moments: Mutex::new(self.unproc_moments.lock().clone()),
+            remote_moments: Arc::default(),
         }
     }
 }
@@ -176,30 +134,76 @@ impl Clone for History {
 ///
 /// It also contains information about how to print the file, so that
 /// going back in time is less jarring.
-#[derive(Clone, Copy, Default, Debug, Encode)]
+#[derive(Clone, Default, Debug, Encode, Decode)]
 pub struct Moment {
-    changes: &'static [Change],
-    is_rev: bool,
+    changes: Vec<Change>,
+    shift_state: (usize, [i32; 3]),
 }
 
 impl Moment {
+    /// First try to merge this change with as many changes as
+    /// possible, then add it in
+    fn add_change(&mut self, guess_i: Option<usize>, mut change: Change) -> usize {
+        let (from, shift) = self.shift_state;
+        let new_shift = change.shift();
+
+        // The range of changes that will be drained
+        let m_range = merging_range_by_guess_and_lazy_shift(
+            (&self.changes, self.changes.len()),
+            (guess_i.unwrap_or(0), [change.start(), change.taken_end()]),
+            (from, shift, [0; 3], Point::shift_by),
+            (Change::start, Change::added_end),
+        );
+
+        // If sh_from < c_range.end, I need to shift the changes between the
+        // two, so that they match the shifting of the changes before sh_from
+        if from < m_range.end && shift != [0; 3] {
+            for change in &mut self.changes[from..m_range.end] {
+                change.shift_by(shift);
+            }
+        // Otherwise, the shifting will happen in reverse, and `from`
+        // will be moved backwards until the point where m_range ends.
+        // This is better for localized Changes.
+        } else if from > m_range.end && new_shift != [0; 3] {
+            for change in &mut self.changes[m_range.end..from] {
+                change.shift_by([-shift[0], -shift[1], -shift[2]]);
+            }
+        }
+
+        for c in self.changes.drain(m_range.clone()).rev() {
+            change.try_merge(c);
+        }
+
+        // Don't add empty Changes
+        let (from, shift) = if !(change.added_str() == "" && change.taken_str() == "") {
+            let change_shift = change.shift();
+            self.changes.insert(m_range.start, change);
+            (m_range.start + 1, add_shifts(shift, change_shift))
+        } else {
+            (m_range.start, shift)
+        };
+
+        if from < self.changes.len() {
+            self.shift_state = (from, shift);
+        } else {
+            self.shift_state = (0, [0; 3]);
+        }
+
+        m_range.start
+    }
+
     /// An [`Iterator`] over the [`Change`]s in this [`Moment`]
     ///
     /// These may represent forward or backwards [`Change`]s, forward
     /// for newly introduced [`Change`]s and backwards when undoing.
     pub fn changes(&self) -> impl ExactSizeIterator<Item = Change<&str>> + '_ {
-        let mut shift = [0; 3];
-        self.changes.iter().map(move |change| {
-            if self.is_rev {
-                let mut change = change.as_ref().reverse();
+        let (from, shift) = self.shift_state;
+        self.changes.iter().enumerate().map(move |(i, change)| {
+            let mut change = change.as_ref();
+            if i > from {
                 change.shift_by(shift);
-
-                shift = add_shifts(shift, change.shift());
-
-                change
-            } else {
-                change.as_ref()
             }
+            change
         })
     }
 
@@ -223,75 +227,6 @@ impl Moment {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-}
-
-impl<Context> Decode<Context> for Moment {
-    fn decode<D: bincode::de::Decoder<Context = Context>>(
-        decoder: &mut D,
-    ) -> Result<Self, bincode::error::DecodeError> {
-        Ok(Moment {
-            changes: Vec::decode(decoder)?.leak(),
-            is_rev: Decode::decode(decoder)?,
-        })
-    }
-}
-
-/// First try to merge this change with as many changes as
-/// possible, then add it in
-fn add_change(
-    changes: &mut Vec<Change>,
-    guess_i: Option<usize>,
-    mut change: Change,
-    shift_state: &mut (usize, [i32; 3]),
-) -> usize {
-    let (sh_from, shift) = std::mem::take(shift_state);
-    let new_shift = change.shift();
-
-    // The range of changes that will be drained
-    let c_range = merging_range_by_guess_and_lazy_shift(
-        (changes, changes.len()),
-        (guess_i.unwrap_or(0), [change.start(), change.taken_end()]),
-        (sh_from, shift, [0; 3], Point::shift_by),
-        (Change::start, Change::added_end),
-    );
-
-    // If sh_from < c_range.end, I need to shift the changes between the
-    // two, so that they match the shifting of the changes before sh_from
-    if sh_from < c_range.end && shift != [0; 3] {
-        for change in &mut changes[sh_from..c_range.end] {
-            change.shift_by(shift);
-        }
-    // If sh_from > c_range.end, There are now three shifted
-    // states among ranges: The ones before c_range.start, between
-    // c_range.end and sh_from, and after c_range.end.
-    // I will update the second group so that it is shifted by
-    // shift + change.shift(), that way, it will be shifted like
-    // the first group.
-    } else if sh_from > c_range.end && new_shift != [0; 3] {
-        let shift = change.shift();
-        for change in &mut changes[c_range.end..sh_from] {
-            change.shift_by(shift);
-        }
-    }
-
-    for c in changes.drain(c_range.clone()).rev() {
-        change.try_merge(c);
-    }
-
-    let changes_taken = c_range.clone().count();
-    let new_sh_from = if !(change.added_str() == "" && change.taken_str() == "") {
-        changes.insert(c_range.start, change);
-        sh_from.saturating_sub(changes_taken).max(c_range.start) + 1
-    } else {
-        sh_from.saturating_sub(changes_taken).max(c_range.start)
-    };
-    // If there are no more Changes after this, don't set the shift_state.
-    if new_sh_from < changes.len() {
-        let shift = add_shifts(shift, new_shift);
-        *shift_state = (new_sh_from, shift);
-    }
-
-    c_range.start
 }
 
 /// A change in a file, with a start, taken text, and added text
@@ -467,10 +402,23 @@ fn has_start_of(lhs: Range<Point>, rhs: Range<Point>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
 }
 
-fn finish_shifting(changes: &mut [Change], sh_from: usize, shift: [i32; 3]) {
-    if shift != [0; 3] {
-        for change in changes[sh_from..].iter_mut() {
-            change.shift_by(shift);
-        }
+/// Can fetch the latest [`Moment`]
+///
+/// This struct is used to track the [`Change`]s throughout a
+/// [`Text`].
+pub(crate) struct MomentFetcher {
+    change_lists: Arc<Mutex<Vec<Moment>>>,
+    index: usize,
+}
+
+impl MomentFetcher {
+    /// Gets the latest [`Moment`], emptying the list of [`Change`]s
+    pub(crate) fn get_moment(&self) -> Moment {
+        std::mem::take(&mut self.change_lists.lock()[self.index])
+    }
+
+    /// Wether there are any [`Change`]s remaining
+    pub(crate) fn is_empty(&self) -> bool {
+        self.change_lists.lock()[self.index].is_empty()
     }
 }

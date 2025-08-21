@@ -485,9 +485,9 @@ impl Text {
         let mut history = self.0.history.take();
 
         if let Some(history) = history.as_mut()
-            && let Some(moment) = history.move_backwards()
+            && let Some(changes) = history.move_backwards()
         {
-            self.apply_and_process_changes(moment);
+            self.apply_and_process_changes(changes);
             self.0.has_changed = true;
         }
 
@@ -499,9 +499,9 @@ impl Text {
         let mut history = self.0.history.take();
 
         if let Some(history) = history.as_mut()
-            && let Some(moment) = history.move_forward()
+            && let Some(changes) = history.move_forward()
         {
-            self.apply_and_process_changes(moment);
+            self.apply_and_process_changes(changes);
             self.0.has_changed = true;
         }
 
@@ -515,19 +515,14 @@ impl Text {
         }
     }
 
-    /// Returns a [`Moment`] containing all [`Change`]s since the last
-    /// call to this function
-    ///
-    /// This is useful if you want to figure out what has changed
-    /// after a certain period of time has passed.
-    pub fn unprocessed_moments(&self) -> Option<Vec<Moment>> {
-        self.0.history.as_ref().map(|h| h.unprocessed_moments())
-    }
-
-    fn apply_and_process_changes(&mut self, moment: Moment) {
+    fn apply_and_process_changes<'a>(
+        &mut self,
+        changes: impl ExactSizeIterator<Item = Change<&'a str>>,
+    ) {
         self.0.selections.clear();
 
-        for (i, change) in moment.changes().enumerate() {
+        let len = changes.len();
+        for (i, change) in changes.enumerate() {
             self.apply_change_inner(0, change);
 
             let start = change.start();
@@ -537,9 +532,7 @@ impl Text {
             };
 
             let selection = Selection::new(added_end, (start != added_end).then_some(start));
-            self.0
-                .selections
-                .insert(i, selection, i == moment.len() - 1);
+            self.0.selections.insert(i, selection, i == len - 1);
         }
     }
 
