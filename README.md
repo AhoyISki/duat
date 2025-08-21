@@ -6,7 +6,7 @@
 [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat)
 [![github pages](https://github.com/AhoyISki/duat/actions/workflows/mdbook.yml/badge.svg?branch=master)](https://ahoyiski.github.io/duat)
 
-![new demonstration](./assets/new-demonstration.gif)
+![](./assets/duat-demo.gif)
 
 Duat is a text editor meant to have as much modularity as
 possible, while keeping a sensible default configuration. It is
@@ -319,7 +319,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG3VMV7WLxmjUGxpTfD4ttYzYG_EVE44ul27wG8rTF_0sMf5gYXKEG3YWedrcx3-AG7PW_bBu7C6kGyDmFDghCeVhG4ZIE54zAa7XYWSCgmRkdWF0ZTAuNi4xgmpkdWF0X3V0aWxzZTAuNi4w
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG3YWedrcx3-AG7PW_bBu7C6kGyDmFDghCeVhG4ZIE54zAa7XYWSCgmRkdWF0ZTAuNi4xgmpkdWF0X3V0aWxzZTAuNi4w
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.6.1/duat/?search=prelude::plug
  [__link10]: https://docs.rs/duat/0.6.1/duat/?search=prelude::mode_name
