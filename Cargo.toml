@@ -48,6 +48,6 @@ path = "src/lib.rs"
 [build-dependencies]
 dirs-next = "2.0.0"
 
-[profile.profiling]
-inherits = "dev"
-debug = true
+[profile.lto-optimized]
+codegen-units = 1
+lto = true

@@ -10,11 +10,10 @@
 //! When you first run Duat, and whenever you update the
 //! configuration, it will be compiled and reloaded automatically, so
 //! you can see the changes in *almost* real time. Initially, building
-//! Duat and its configuration crate might take a few minutes. And the
-//! first reload might also take a similar amount of time. But
-//! whenever you make new changes, the next reloads should take only
-//! about a second (for debug profile) and ~3 seconds (for release
-//! profile).
+//! Duat and its configuration crate might take a while. But while
+//! reloading Duat, in my (somewhat old) computer, it takes ~0.7 (for
+//! small changes) to ~2.3 seconds (for bigger changes) to reload
+//! the config.
 //!
 //! Note that this is an alpha project, so there may be some quirks
 //! and bugs. So if you have a problem, or something seems confusing,
@@ -23,16 +22,37 @@
 //!
 //! ## Getting started
 //!
+//! > [:NOTE]
+//! >
+//! > On this section, I will be referring to duat's configuration by
+//! > `~/.config/duat/`, but you should replace that with that of your
+//! > operating system.
+//!
 //! To install Duat, I am assuming that you have `cargo` installed on
-//! your system, if you don't, [install it]. Additionally, you're
-//! going to need the nightly toolchain installed, since Duat requires
-//! many nightly features:
+//! your system, if you don't, [install it].
+//!
+//! After installing `cargo`, you will also need to install the
+//! `nightly` toolchain:
+//!
+//! ### On unix-like operating systems
 //!
 //! ```bash
 //! rustup install nightly
 //! ```
 //!
-//! Also, in order to run duat, you should add `~/.cargo/bin/` to your
+//! ### On Windows
+//!
+//! ```bash
+//! rustup install nightly-x86_64-pc-windows-gnu
+//! ```
+//!
+//! To install Duat, another dependency that you will need is `gcc`.
+//! On unix-like operating systems, that should already be installed.
+//! But on Windows (of course) you need to (very) manually install it.
+//! You can follow the instructions on [this guide] in order to do
+//! that. You can skip the prerequesits section, it's vscode specific.
+//!
+//! Next, in order to run duat, you should add `~/.cargo/bin/` to your
 //! `$PATH` variable. Alternatively, you can just add
 //! `~/.cargo/bin/duat`, if you want to add just `duat` to the
 //! `$PATH`. Now, you can install duat:
@@ -120,24 +140,21 @@
 //!
 //!     print::wrap_on_edge();
 //!
-//!     hook::add::<LineNumbers<Ui>>(|pa, (line_nums, _)| {
-//!         line_nums.align_right().align_main_left()
-//!     });
+//!     hook::add::<LineNumbers<Ui>>(|pa, (cfg, _)| cfg.align_right());
 //!
-//!     hook::remove("FooterWidgets");
-//!     hook::add::<WindowCreated>(|pa, builder| {
+//!     hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
 //!         let upper_mode = mode_name(pa).map(pa, |m| match m.split_once('<') {
 //!             Some((no_generics, _)) => no_generics.to_uppercase(),
 //!             None => m.to_uppercase(),
 //!         });
-//!         let status_line = status!("[Mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}");
-//!
-//!         builder.push(FooterWidgets::new(status_line));
+//!         cfg.fmt(status!(
+//!             "[Mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}"
+//!         ))
 //!     });
 //!
 //!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
 //!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
-//!         _ => cursor::set_main(CursorShape::SteadyBlock),
+//!         _ => cursor::unset(),
 //!     });
 //!
 //!     form::set("Mode", Form::dark_magenta());
@@ -153,33 +170,18 @@
 //! - [Changes] the wrapping;
 //! - Changes the alignment of the [`LineNumbers`] [`Widget`];
 //! - [Removes] the hook group "FooterWidgets";
-//! - Pushes a [custom status line] (with a [Spacer] for 2 separate
-//!   sides, and a reformatted [`mode_name`]), a [command line], and a
-//!   [notifications widget] to the bottom of the screen through a
-//!   [widget combo];
-//! - [Adds] hooks for [mode changes] in Duat;
+//! - Changes the [status line] (with a [Spacer] for 2 separate sides,
+//!   and a reformatted [`mode_name`]);
+//! - [Adds] hooks for [mode changes] in Duat, which change the shape
+//!   of the cursor;
 //! - [Changes](form::set) the [style] of the mode printed on the
 //!   status line;
 //!
-//! These are some of the ways you can configure Duat. You might
-//! notice some things that can be done with these simple options:
-//!
-//! ```rust
-//! use duat::prelude::*;
-//! # fn test() {
-//! hook::add::<File>(|_, (cfg, builder)| {
-//!     builder.push(VertRule::cfg());
-//!     builder.push(LineNumbers::cfg());
-//!     builder.push(VertRule::cfg().on_the_right());
-//!     builder.push(LineNumbers::cfg().on_the_right());
-//!     cfg
-//! });
-//! # }
-//! ```
-//!
-//! Now, every file will open with two lines of numbers, one on each
-//! side. Would you ever want to do this? ...No, not really, but it
-//! shows how configurable Duat can be.
+//! These are only some of the options available to configure Duat,
+//! you can also add [custom commands], place widgets around other
+//! [`Widget`](crate::hook::WidgetCreated)s and [windows], create
+//! [`Parser`]s that can track every change on a [`File`], and many
+//! other things.
 //!
 //! Duat also comes with a fully fledged [text creation system], which
 //! significantly eases the creation of widgets:
@@ -193,13 +195,8 @@
 //!
 //! In this example, I'm using the "my_form" form in order to style
 //! the text, while `[]` reverts back to the "default" form. Double
-//! `[[` and `]]` escape the `[` and `]`, just like in [`println!`].
-//! The [`status!`] macro works similarly.
-//!
-//! Duat also has a simple command system, that lets you add commands
-//! with arguments supported by Rust's type system. As an example,
-//! this command will change the [numbering] of a [`LineNumbers`]
-//! widget, switching between absolute and relative numbering.
+//! `[[` and `]]` escape the `[` and `]`, just like `{{` and `}}` in
+//! [`println!`]. The [`status!`] macro works similarly.
 //!
 //! # Troubleshooting
 //!
@@ -221,14 +218,6 @@
 //!
 //! In this case, you should open an issue with the error message that
 //! `cargo build --release` sent you.
-//!
-//! ## It's segfaulting sometimes when I reload
-//!
-//! For now, since duat is using `dlopen`, it's unfortunatelly just
-//! going to happen from time to time. It should work correctly if you
-//! reopen though.
-//!
-//! This should be a problem of the past with [#9], however.
 //!
 //! ## It's still segfaulting as I reopen!
 //!
@@ -267,23 +256,23 @@
 //! Duat provides a lot of features, trying to be as configurable as
 //! possible, here are some of the things that Duat is capable of:
 //!
-//! - Completely custom modes, with full Vim style remapping
-//! - Completely custom widgets, with user created modes
-//! - Arbitrary concealment of text, and arbitrary ghost text
-//! - Custom hooks, whose activation is up to the creator
-//! - Custom commands, with customizable parameters supported by
-//!   Rust's robust type system
+//! - Completely custom modes, with full Vim style remapping;
+//! - Completely custom widgets, with user created modes;
+//! - Arbitrary concealment of text, and arbitrary ghost text;
+//! - Custom hooks, whose activation is up to the creator;
+//! - Custom commands, with customizable parameters supported by;
+//!   Rust's robust type system;
 //! - Multi UI adaptability, although for now, only a terminal UI has
-//!   been made
-//! - And many others still being planned
+//!   been made;
+//! - And many others still being planned;
 //!
 //! Additionally, by choosing Rust as its configuration language, Duat
 //! also gains the following features:
 //!
-//! - Complete type safety
+//! - Complete type safety;
 //! - A very functional programming language, with lots of native
-//!   features
-//! - Cargo is the plugin manager
+//!   features;
+//! - Cargo is the plugin manager;
 //!
 //! ## Roadmap
 //!
@@ -360,7 +349,7 @@
 //! [group]: prelude::hook::add_grouped
 //! [vertical rule]: prelude::VertRule
 //! [line numbers]: prelude::LineNumbers
-//! [custom status line]: prelude::status
+//! [status line]: prelude::status
 //! [Spacer]: prelude::Spacer
 //! [`mode_name`]: prelude::mode_name
 //! [command line]: prelude::PromptLine
@@ -384,7 +373,11 @@
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 //! [`plug!`]: prelude::plug
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
-//! [#9]: https://github.com/AhoyISki/duat/issues/9
+//! [custom commands]: crate::prelude::cmd
+//! [windows]: crate::hook::WindowCreated
+//! [`Parser`]: duat_core::file::Parser
+//! [`File`]: crate::prelude::File
+//! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #![feature(decl_macro)]
 
 use std::sync::RwLock;
