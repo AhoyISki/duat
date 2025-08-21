@@ -214,7 +214,7 @@ const fn resolve_config_file() -> &'static str {
     "config.dll"
 }
 
-#[cfg(not(target_os = "windows", target_os = "macos"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 const fn resolve_config_file() -> &'static str {
     "libconfig.so"
 }
