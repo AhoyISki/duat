@@ -146,7 +146,7 @@ fn spawn_watcher(
 
         move |res| match res {
             Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
-                if let Some(so_path) = paths.iter().find(|p| p.ends_with(&libconfig_str)) {
+                if let Some(so_path) = paths.iter().find(|p| p.ends_with(libconfig_str)) {
                     let on_release = so_path.ends_with(format!("release/{libconfig_str}"));
                     reload_tx.send((so_path.clone(), on_release)).unwrap();
                     sent_reload = true;

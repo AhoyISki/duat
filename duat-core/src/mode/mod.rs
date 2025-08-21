@@ -22,7 +22,7 @@
 use core::str;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub use crossterm::event::{KeyCode, KeyEvent};
+pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;
@@ -503,11 +503,26 @@ impl<U: Ui> Mode<U> for &'static str {
 /// ```
 pub macro key {
     ($code:pat) => {
-        KeyEvent { code: $code, modifiers: KeyMod::NONE, .. }
+        KeyEvent {
+            code: $code,
+            modifiers: KeyMod::NONE,
+            kind: KeyEventKind::Press | KeyEventKind::Repeat,
+            ..
+        }
     },
-
     ($code:pat, $modifiers:pat) => {
-        KeyEvent { code: $code, modifiers: $modifiers, .. }
+        KeyEvent {
+            code: $code,
+            modifiers: $modifiers,
+            kind: KeyEventKind::Press | KeyEventKind::Repeat,
+            ..
+        }
+    },
+    ($code:pat, $modifiers:pat, $kind:pat) => {
+        KeyEvent { code: $code, modifiers: $modifiers, kind: $kind .. }
+    },
+    ($code:pat, $modifiers:pat, $kind:pat, $state:pat) => {
+        KeyEvent { code: $code, modifiers: $modifiers, kind: $kind, state: $state }
     }
 }
 
