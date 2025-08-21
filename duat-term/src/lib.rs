@@ -309,6 +309,7 @@ impl std::fmt::Debug for AreaId {
 
 type Equality = cassowary::Constraint;
 
+#[cfg(unix)]
 fn print_style(
     w: &mut impl Write,
     style: ContentStyle,
