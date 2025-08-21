@@ -1,4 +1,4 @@
-# duat-core ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat-core on crates.io](https://img.shields.io/crates/v/duat-core)](https://crates.io/crates/duat-core) [![duat-core on docs.rs](https://docs.rs/duat-core/badge.svg)](https://docs.rs/duat-core) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat/tree/master/duat-core)
+# duat-core ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue) [![duat-core on crates.io](https://img.shields.io/crates/v/duat-core)](https://crates.io/crates/duat-core) [![duat-core on docs.rs](https://docs.rs/duat-core/badge.svg)](https://docs.rs/duat-core) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat/tree/master/duat-core)
 
 The core of Duat, this crate is meant to be used only for the
 creation of plugins for Duat.
@@ -512,7 +512,7 @@ fn setup() {
 
     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
         sl.replace(status!(
-            "{file_txt} has [wc]{file_words}[] words{Spacer}{mode_txt} {sels_txt} {main_txt}"
+            "{name_txt} has [wc]{file_words}[] words{Spacer}{mode_txt} {sels_txt} {main_txt}"
         ))
     });
 }
@@ -539,142 +539,142 @@ screen by searching through character sequences.
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG0chwLXeKpc1G2WhHuey3UUVG7EslRd9cDr6G0QBUbBae_aVYWSBg2lkdWF0LWNvcmVlMC41LjNpZHVhdF9jb3Jl
- [__link0]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Ui
- [__link1]: https://docs.rs/duat-core/0.5.3/duat_core/ui/index.html
- [__link10]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Ui
- [__link100]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change::added_str
- [__link101]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser::parse
- [__link102]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link103]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link104]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link105]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link106]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserCfg
- [__link107]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link108]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link109]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox
- [__link11]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Area
- [__link110]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link111]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox
- [__link112]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox::new
- [__link113]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserBox::new_remote
- [__link114]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link115]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link116]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link117]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link118]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::ParserCfg
- [__link119]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link12]: https://docs.rs/duat-core/0.5.3/duat_core/text/index.html
- [__link120]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link121]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link122]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link123]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
- [__link124]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link125]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link126]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
- [__link127]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::Hookable
- [__link128]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::trigger
- [__link129]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link13]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG_1nwxwrEdLLG1lO-819fa6GG4M7Ls2N6pRGG63blOPE9YRnYWSBg2lkdWF0LWNvcmVlMC42LjBpZHVhdF9jb3Jl
+ [__link0]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Ui
+ [__link1]: https://docs.rs/duat-core/0.6.0/duat_core/ui/index.html
+ [__link10]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Ui
+ [__link100]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change::added_str
+ [__link101]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser::parse
+ [__link102]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link103]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link104]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link105]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link106]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserCfg
+ [__link107]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link108]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link109]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox
+ [__link11]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Area
+ [__link110]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link111]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox
+ [__link112]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox::new
+ [__link113]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox::new_remote
+ [__link114]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link115]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link116]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link117]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link118]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserCfg
+ [__link119]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link12]: https://docs.rs/duat-core/0.6.0/duat_core/text/index.html
+ [__link120]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link121]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link122]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link123]: https://docs.rs/duat-core/0.6.0/duat_core/hook/index.html
+ [__link124]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link125]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link126]: https://docs.rs/duat-core/0.6.0/duat_core/hook/index.html
+ [__link127]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::Hookable
+ [__link128]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::trigger
+ [__link129]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link13]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
  [__link130]: https://crates.io
  [__link131]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
  [__link132]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
  [__link133]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
- [__link134]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Widget
- [__link135]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode
- [__link136]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd
- [__link137]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
- [__link14]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Ui
- [__link15]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Tag
- [__link16]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
+ [__link134]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Widget
+ [__link135]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::Mode
+ [__link136]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd
+ [__link137]: https://docs.rs/duat-core/0.6.0/duat_core/hook/index.html
+ [__link14]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Ui
+ [__link15]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Tag
+ [__link16]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
  [__link17]: `txt!`
  [__link18]: https://doc.rust-lang.org/stable/std/macro.format.html
  [__link19]: https://doc.rust-lang.org/stable/std
- [__link2]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Widget
- [__link20]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
- [__link21]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Builder
- [__link22]: https://docs.rs/duat-core/0.5.3/duat_core/mode/index.html
- [__link23]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Widget
- [__link24]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode
- [__link25]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode::send_key
- [__link26]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::KeyEvent
- [__link27]: https://docs.rs/duat-core/0.5.3/duat_core/?search=context::Handle
- [__link28]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode
- [__link29]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::map
- [__link3]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Widget
- [__link30]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::alias
- [__link31]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode
- [__link32]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::KeyEvent
- [__link33]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::set
- [__link34]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::set_default
- [__link35]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::reset
- [__link36]: https://docs.rs/duat-core/0.5.3/duat_core/?search=mode::Mode
- [__link37]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
- [__link38]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::Hookable
- [__link39]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::add
- [__link4]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link40]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::add_grouped
- [__link41]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::remove
- [__link42]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::Hookable
- [__link43]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::Hookable
- [__link44]: https://docs.rs/duat-core/0.5.3/duat_core/cmd/index.html
- [__link45]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::add
- [__link46]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::Parameter
- [__link47]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::Parameter
- [__link48]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::Parameter
+ [__link2]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Widget
+ [__link20]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
+ [__link21]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Builder
+ [__link22]: https://docs.rs/duat-core/0.6.0/duat_core/mode/index.html
+ [__link23]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Widget
+ [__link24]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::Mode
+ [__link25]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::Mode::send_key
+ [__link26]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::KeyEvent
+ [__link27]: https://docs.rs/duat-core/0.6.0/duat_core/?search=context::Handle
+ [__link28]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::Mode
+ [__link29]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::map
+ [__link3]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Widget
+ [__link30]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::alias
+ [__link31]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::Mode
+ [__link32]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::KeyEvent
+ [__link33]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::set
+ [__link34]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::set_default
+ [__link35]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::reset
+ [__link36]: https://docs.rs/duat-core/0.6.0/duat_core/?search=mode::Mode
+ [__link37]: https://docs.rs/duat-core/0.6.0/duat_core/hook/index.html
+ [__link38]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::Hookable
+ [__link39]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::add
+ [__link4]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link40]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::add_grouped
+ [__link41]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::remove
+ [__link42]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::Hookable
+ [__link43]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::Hookable
+ [__link44]: https://docs.rs/duat-core/0.6.0/duat_core/cmd/index.html
+ [__link45]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::add
+ [__link46]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::Parameter
+ [__link47]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::Parameter
+ [__link48]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::Parameter
  [__link49]: https://doc.rust-lang.org/stable/std/vec/struct.Vec.html
- [__link5]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::WidgetCfg
- [__link50]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::Parameter
- [__link51]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::call
- [__link52]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::queue
- [__link53]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::call_notify
- [__link54]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd::queue_and
- [__link55]: https://docs.rs/duat-core/0.5.3/duat_core/form/index.html
- [__link56]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
- [__link57]: https://docs.rs/duat-core/0.5.3/duat_core/?search=form::Form
- [__link58]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
- [__link59]: https://docs.rs/duat-core/0.5.3/duat_core/?search=form::set
- [__link6]: https://docs.rs/duat-core/0.5.3/duat_core/?search=ui::Widget
- [__link60]: https://docs.rs/duat-core/0.5.3/duat_core/?search=form::set_weak
- [__link61]: https://docs.rs/duat-core/0.5.3/duat_core/?search=form::Form
- [__link62]: https://docs.rs/duat-core/0.5.3/duat_core/?search=form::ColorScheme
- [__link63]: https://docs.rs/duat-core/0.5.3/duat_core/?search=form::Form
- [__link64]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cmd
- [__link65]: https://docs.rs/duat-core/0.5.3/duat_core/prelude/index.html
- [__link66]: https://docs.rs/duat-core/0.5.3/duat_core/trait.Plugin.html
+ [__link5]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::WidgetCfg
+ [__link50]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::Parameter
+ [__link51]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::call
+ [__link52]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::queue
+ [__link53]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::call_notify
+ [__link54]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd::queue_and
+ [__link55]: https://docs.rs/duat-core/0.6.0/duat_core/form/index.html
+ [__link56]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
+ [__link57]: https://docs.rs/duat-core/0.6.0/duat_core/?search=form::Form
+ [__link58]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
+ [__link59]: https://docs.rs/duat-core/0.6.0/duat_core/?search=form::set
+ [__link6]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Widget
+ [__link60]: https://docs.rs/duat-core/0.6.0/duat_core/?search=form::set_weak
+ [__link61]: https://docs.rs/duat-core/0.6.0/duat_core/?search=form::Form
+ [__link62]: https://docs.rs/duat-core/0.6.0/duat_core/?search=form::ColorScheme
+ [__link63]: https://docs.rs/duat-core/0.6.0/duat_core/?search=form::Form
+ [__link64]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cmd
+ [__link65]: https://docs.rs/duat-core/0.6.0/duat_core/prelude/index.html
+ [__link66]: https://docs.rs/duat-core/0.6.0/duat_core/trait.Plugin.html
  [__link67]: https://docs.rs/duat/latest/duat/prelude/macro.plug.html
- [__link68]: https://docs.rs/duat-core/0.5.3/duat_core/trait.Plugin.html
- [__link69]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link7]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::WidgetCreated
- [__link70]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link71]: https://docs.rs/duat-core/0.5.3/duat_core/trait.Plugin.html
+ [__link68]: https://docs.rs/duat-core/0.6.0/duat_core/trait.Plugin.html
+ [__link69]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link7]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::WidgetCreated
+ [__link70]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link71]: https://docs.rs/duat-core/0.6.0/duat_core/trait.Plugin.html
  [__link72]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
- [__link73]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link74]: https://docs.rs/duat-core/0.5.3/duat_core/trait.Plugin.html
- [__link75]: https://docs.rs/duat-core/0.5.3/duat_core/trait.Plugin.html
- [__link76]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link77]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link78]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link79]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link8]: https://docs.rs/duat-core/0.5.3/duat_core/?search=hook::WindowCreated
- [__link80]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Moment
- [__link81]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change
- [__link82]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Moment
- [__link83]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::FileSnapshot
- [__link84]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser::parse
- [__link85]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::Parser
- [__link86]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change
- [__link87]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::FileSnapshot
- [__link88]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link89]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Moment
- [__link9]: https://docs.rs/duat-core/0.5.3/duat_core/hook/index.html
- [__link90]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Moment
- [__link91]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Bytes
- [__link92]: https://docs.rs/duat-core/0.5.3/duat_core/?search=file::File
- [__link93]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Text
- [__link94]: https://docs.rs/duat-core/0.5.3/duat_core/?search=cfg::PrintCfg
- [__link95]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change
- [__link96]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change
- [__link97]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Bytes::points_of_line
- [__link98]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Point
- [__link99]: https://docs.rs/duat-core/0.5.3/duat_core/?search=text::Change::taken_st
+ [__link73]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link74]: https://docs.rs/duat-core/0.6.0/duat_core/trait.Plugin.html
+ [__link75]: https://docs.rs/duat-core/0.6.0/duat_core/trait.Plugin.html
+ [__link76]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link77]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link78]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link79]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link8]: https://docs.rs/duat-core/0.6.0/duat_core/?search=hook::WindowCreated
+ [__link80]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Moment
+ [__link81]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change
+ [__link82]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Moment
+ [__link83]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::FileSnapshot
+ [__link84]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser::parse
+ [__link85]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
+ [__link86]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change
+ [__link87]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::FileSnapshot
+ [__link88]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link89]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Moment
+ [__link9]: https://docs.rs/duat-core/0.6.0/duat_core/hook/index.html
+ [__link90]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Moment
+ [__link91]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Bytes
+ [__link92]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
+ [__link93]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
+ [__link94]: https://docs.rs/duat-core/0.6.0/duat_core/?search=cfg::PrintCfg
+ [__link95]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change
+ [__link96]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change
+ [__link97]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Bytes::points_of_line
+ [__link98]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Point
+ [__link99]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change::taken_str

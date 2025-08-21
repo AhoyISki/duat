@@ -1,6 +1,6 @@
 # duat
 
-![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
+![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
 [![duat on crates.io](https://img.shields.io/crates/v/duat)](https://crates.io/crates/duat)
 [![duat on docs.rs](https://docs.rs/duat/badge.svg)](https://docs.rs/duat)
 [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat)
