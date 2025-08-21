@@ -19,7 +19,7 @@ pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
         .ok_or_else(|| txt!("There is no tree-sitter grammar for [a].{filetype}[] files"))?;
 
     let lib = options.crate_name.replace("-", "_");
-    let so_path = get_workspace_dir()?.join(format!("parsers/lib/{}", resolve_lib_file(lib)));
+    let so_path = get_workspace_dir()?.join(format!("parsers/lib/{}", resolve_lib_file(&lib)));
 
     Ok(so_path.try_exists()?)
 }
@@ -37,7 +37,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
     let manifest_path = crate_dir.join("Cargo.toml");
 
     let lib = options.crate_name.replace("-", "_");
-    let so_path = lib_dir.join(resolve_lib_file(lib));
+    let so_path = lib_dir.join(resolve_lib_file(&lib));
 
     if let Ok(lib) = unsafe { Library::new(so_path) } {
         context::debug!("Loading tree-sitter parser for [a]{filetype}");
@@ -222,17 +222,17 @@ fn crate_name(lang: &'static str) -> &'static str {
 }
 
 #[cfg(target_os = "macos")]
-fn resolve_lib_file(lang: String) -> String {
+fn resolve_lib_file(lang: &str) -> String {
     format!("lib{lang}.dylib")
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_lib_file(lang: String) -> String {
+fn resolve_lib_file(lang: &str) -> String {
     format!("{lang}.dll")
 }
 
 #[cfg(not(target_os = "windows", target_os = "macos"))]
-fn resolve_lib_file(lang: String) -> String {
+fn resolve_lib_file(lang: &str) -> String {
     format!("lib{lang}.so")
 }
 
