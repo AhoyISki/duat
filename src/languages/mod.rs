@@ -37,7 +37,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
     let manifest_path = crate_dir.join("Cargo.toml");
 
     let lib = options.crate_name.replace("-", "_");
-    let so_path = lib_dir.join(resolve_lib_file(lib));
+    let so_path = lib_dir.join(&resolve_lib_file(lib));
 
     if let Ok(lib) = unsafe { Library::new(so_path) } {
         context::debug!("Loading tree-sitter parser for [a]{filetype}");
