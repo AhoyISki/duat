@@ -22,7 +22,7 @@
 //!
 //! ## Getting started
 //!
-//! > [:NOTE]
+//! > [!NOTE]
 //! >
 //! > On this section, I will be referring to duat's configuration by
 //! > `~/.config/duat/`, but you should replace that with that of your
