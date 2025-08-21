@@ -231,7 +231,7 @@ fn resolve_lib_file(lang: &str) -> String {
     format!("{lang}.dll")
 }
 
-#[cfg(not(target_os = "windows", target_os = "macos"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn resolve_lib_file(lang: &str) -> String {
     format!("lib{lang}.so")
 }
