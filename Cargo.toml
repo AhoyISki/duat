@@ -51,3 +51,4 @@ dirs-next = "2.0.0"
 [profile.lto-optimized]
 codegen-units = 1
 lto = true
+inherits = "release"
