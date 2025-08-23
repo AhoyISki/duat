@@ -14,88 +14,208 @@ use std::{
     ops::Range,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
-        mpsc,
+        atomic::{AtomicBool, Ordering},
     },
-    thread,
 };
+
+use parking_lot::Mutex;
 
 use super::File;
 use crate::{
     cfg::PrintCfg,
-    context,
+    context::Handle,
     data::Pass,
-    mode::Selections,
     prelude::Ranges,
-    text::{Bytes, Moment, Point, Tags, Text, TextParts, txt},
-    ui::{Ui, Widget},
+    text::{Bytes, Change, Moment, MomentFetcher, Point, Text, TextRange, txt},
+    ui::Ui,
 };
 
-/// A [`Text`] reader, modifying it whenever [`Moment`]s happen
+/// A [`File`] parser, that can keep up with every [`Change`] that
+/// took place
+///
+/// A parser's purpose is generally to look out for changes to the
+/// [`File`]'s [`Bytes`], and update some internal state that
+/// represents them. Examples of things that should be implemented as
+/// [`Parser`]s are:
+///
+/// - A tree-sitter parser, or other syntax tree representations as
+///   well;
+/// - Regex parsers;
+/// - Language server protocols;
+///
+/// But [`Parser`]s don't have to necessarily do "big and complex"
+/// things like creating a language tree, they can be more simple,
+/// by, for example, acting on each [`Selection`] on the screen.
+///
+/// If you want a walkthrough on how to make a [`Parser`], I would
+/// recommend reading the book (TODO). The rest of the documentation
+/// here is mostly just describing a final implementation, not
+/// walking through its creation.
+///
+/// # Parsing strategies
+///
+/// From the [`FileTracker`] that is given to the [`ParserCfg`] when
+/// calling [`ParserCfg::build`], three main parsing strategies
+/// emerge:
+///
+/// - Parsing synchronously;
+/// - Parsing asynchronously (via threads);
+/// - Not parsing at all;
+///
+/// You should reach out for these in the following circumstances:
+///
+/// - If you care about [`Change`]s, you should almost always do
+///   synchronous parsing, since multithreading is often not really
+///   faster than using single threaded code;
+/// - If you care about [`Change`]s and you know that your [`Parser`]
+///   can be _really_ slow (very unlikely), then you should use
+///   asynchronous parsing;
+/// - If you don't care about [`Change`]s, then don't parse at all;
+///
+/// Keep in mind that the picked strategy could change, depending
+/// on the circumstance.
+///
+/// ## Synchronous parsing
+///
+/// Synchronous parsing is done by calling the
+/// [`FileTracker::update`] function _once_ per call to
+/// [`Parser::parse`]. If you don't continue parsing on another
+/// thread, it is guaranteed that the [`File`] will not change
+/// until the next call to [`Parser::parse`], so
+/// [`FileTracker::bytes`] is equal to the [`File`]'s [`Bytes`].
+///
+/// Generally, this is the rough structure of synchronous parsing
+///
+/// ```rust
+/// use duat_core::prelude::*;
+///
+/// struct MyParser {
+///     tracker: FileTracker,
+///     // Other fields.
+/// };
+///
+/// impl MyParser {
+///     /// this function represents some update to the internal
+///     /// state of the Parser, in order to reflect the Changes
+///     /// that took place.
+///     fn parse_bytes_and_moment(&mut self, pa: &Pass, bytes: &Bytes, moment: &Moment) {
+///         todo!();
+///     }
+///
+///     /// In this function, you add Ranges to be updated when
+///     /// calling Parser::update. This is done because Parsers
+///     /// should try to only update the things that are actually
+///     /// visible on screen, in order to not slow the whole
+///     /// program down.
+///     ///
+///     /// If you want more information about this, you can check
+///     /// out the documentation for Parser::update.
+///     fn add_ranges(&mut self, bytes: &Bytes, moment: &Moment) {
+///         todo!();
+///     }
+///
+///     /// this function should make the requested changes to the
+///     /// File, like adding Tags, inserting or removing text,
+///     /// resizing the Area, etc.
+///     ///
+///     /// The Range argument is a soft limit on where you should
+///     /// limit those changes to. For example, if you are adding
+///     /// Tags on every instance of the word "the", you should
+///     /// limit the search to the given range.
+///     fn update_file(&mut self, file: &mut File, area: &Area, on: Range<Point>) {
+///         todo!();
+///     }
+/// }
+///
+/// impl<U: Ui> Parser<U> for MyParser {
+///     // You are not given a &mut Pass, because while parsing,
+///     // you aren't supposed to be changing the File.
+///     fn parse(&mut self) -> bool {
+///         // Updates the internal Bytes and Moment to the latest.
+///         self.tracker.update();
+///
+///         let bytes = self.tracker.bytes();
+///         let moment = self.tracker.moment();
+///
+///         // If there were no Changes, there's usually no reason to
+///         // parse again.
+///         if !moment.is_empty() {
+///             self.parse_bytes_and_moment(pa, bytes, moment);
+///             self.add_ranges(bytes, moment);
+///         }
+///
+///         // The true here means that this Parser is ready to call
+///         // Parser::update. This should be true if you want mutate
+///         // the File.
+///         true
+///     }
+///
+///     // Since you have &mut Pass, you can actually do any sort of
+///     // mutation, not just limited to this File in particular.
+///     fn update(&mut self, pa: &mut Pass, handle: Handle<File<U>>, on: Range<Point>) {
+///         let (file, area) = handle.write_with_area(pa);
+///
+///         /// Addition of Tags, modification of the text, etc.
+///         self.update_file(file, area, on);
+///     }
+///
+///     // This is usually what you'd want to do in this scenario
+///     fn before_read(&mut self) {
+///         self.parse(pa);
+///     }
+///
+///     // Same thing here. Since the parsing is always done
+///     fn before_try_read(&mut self) -> bool {
+///         self.parse(pa);
+///         true
+///     }
+/// }
+/// ```
+///
+/// # Asynchronous parsing
+///
+/// TODO: Document this
+///
+/// # No parsing
+///
+/// TODO: Document this
 ///
 /// [`Change`]: crate::text::Change
+/// [`Selection`]: crate::mode::Selection
 #[allow(unused_variables)]
 pub trait Parser<U: Ui>: Send + 'static {
-    /// Parses the [`File`] after a [`Moment`] takes place
+    /// Parses the [`Bytes`] of the [`File`]
     ///
-    /// After this point, even if no other functions are called, the
-    /// state of this [`Parser`] should reflect the state of the
-    /// [`FileSnapshot`] that were passed.
-    ///
-    /// The [`FileSnapshot`] has three item in it: The [`Bytes`] after
-    /// the [`Moment`] was applied, the [`Moment`] itself, and the
-    /// [`PrintCfg`] of the [`File`] _at that point in time_.
-    ///
-    /// The `ranges` argument, if given, represents the [`Ranges`]
-    /// in the [`Text`] that [`Parser::update_range`] should care
-    /// about updating. You can [add] and [remove]
-    /// [`Range<usize>`]s from it, and later, when these byte
-    /// ranges are printed to the screen, Duat will request that
-    /// this reader update that them via [`Parser::update_range`],
-    /// allowing for efficient updating only when it would matter.
-    /// If the argument is [`None`], you don't need to care about
-    /// that.
-    ///
-    /// # Notes
-    ///
-    /// This is not where [`Tag`]s will be added or removed, as you
-    /// can see by the lack of an appropriate argument for that (that
-    /// argument would be [`Tags`]). That is instead done in
-    /// [`Parser::update_range`].
-    ///
-    /// And while you _could_ still do that because of the [`Pass`],
-    /// this is not recommended, since [`update_range`] gives you the
-    /// exact span that you need to care about in order to update
-    /// efficiently.
-    ///
-    /// # Note
-    ///
-    /// You _can_ access the [`File`] _as it is right now_ via the
-    /// [`Pass`] argument, but there is no guarantee of synchronicity
-    /// between the [`Bytes`] of the [`File`] and the [`Bytes`] in
-    /// the [`FileSnapshot`].
+    /// This function is called every time the [`File`] is updated,
+    /// and it's where you should update the internal state of the
+    /// [`Parser`] to reflect any [`Change`]s that took place.
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`Change`]: crate::text::Change
     /// [`File`]: crate::file::File
     /// [add]: Ranges::add
     /// [remove]: Ranges::remove
-    /// [`update_range`]: Parser::update_range
-    fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, ranges: Option<&mut Ranges>) {}
+    /// [`update`]: Parser::update
+    fn parse(&mut self) -> bool;
 
-    /// Updates in a given [`Range`]
+    /// Updates the [`File`] in some given [`Range<Point>`]s
     ///
-    /// This function, unlike [`parse`] and
-    /// [`parse_remote`] does *not* give you a snapshot of the
-    /// [`File`]. Since it is supposed to add and remove [`Tag`]s, it
-    /// gives you direct access to the [`File`]'s [parts], like a
-    /// [`Pass`] would.
+    /// As this function is called, the state of the [`Parser`] needs
+    /// to already be synced up with the latest [`Change`]s to the
+    /// [`File`].
     ///
-    /// The `within`
+    /// The list of [`Range`]s is the collection of [`Range`]s that
+    /// were requested to be updated and are within the printed region
+    /// of the [`File`].
+    ///
+    /// Do note that, if more regions become visible on the screen
+    /// (this could happen if a [`Conceal`] tag is placed, for
+    /// example), this function will be called again, until the whole
+    /// screen has been parsed by every [`Parser`]
     ///
     /// # NOTES
     ///
-    /// One other thing to note is that the `within` [range] is just a
+    /// One other thing to note is that the `on` [range] is just a
     /// suggestion. In most circumstances, it would be a little
     /// convenient to go slightly over that range. For example, a
     /// regex searcher should look only at the range provided, but if
@@ -115,35 +235,39 @@ pub trait Parser<U: Ui>: Send + 'static {
     /// [range]: std::ops::Range
     /// [`parse`]: Parser::parse
     /// [`parse_remote`]: Parser::parse_remote
-    fn update_range(&mut self, parts: FileParts<U>, within: Option<Range<Point>>) {}
+    /// [`Conceal`]: crate::text::Conceal
+    fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>);
 
-    /// Same as [`parse`], but on another thread
+    /// Prepare this [`Parser`] before [`File::read_parser`] call
     ///
-    /// The biggest difference between this function and
-    /// [`parse`] is that, since this one doesn't take place
-    /// on the main thread, you lose access to Duat's shared state
-    /// afforded by the [`Pass`], the only things you will have access
-    /// to are the [`Bytes`], [`PrintCfg`] and the latest [`Moment`]
-    /// of the [`File`] that was updated, all within
-    /// the [`FileSnapshot`].
+    /// The [`File::read_parser`] blocks the current thread until the
+    /// [`Parser`] is available. Therefore, [`before_read`] should
+    /// finish _all_ parsing, so if the parsing is taking place in
+    /// another thread, you're gonna want to join said thread and
+    /// finish the parsing.
     ///
-    /// [`parse`]: Parser::parse
-    /// [commands]: crate::cmd::queue
-    /// [hooks]: crate::hook::queue
-    /// [`File`]: super::File
-    fn parse_remote(&mut self, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
-        panic!("Parser was sent to another thread, but parse_remote wasn't implemented");
-    }
+    /// If the [`Parser`]'s availability doesn't rely on other threads
+    /// (which should be the case for almost every single [`Parser`]),
+    /// then this function can just be left empty.
+    ///
+    /// [`before_read`]: Parser::before_read
+    fn before_read(&mut self);
 
-    /// Wether this [`Parser`] should be sent to update its internal
-    /// state in another thread
+    /// Prepare the [`Parser`] before [`File::try_read_parser`] call
     ///
-    /// This should pretty much never be used, unless in very specific
-    /// circumstances, such as with very large files, or with broken
-    /// syntax trees, whose update time has become slow
-    fn make_remote(&self) -> bool {
-        false
-    }
+    /// The purpose of [`try_read_parser`], unlike [`read_parser`], is
+    /// to _only_ call the function passed if the [`Parser`] is ready
+    /// to be read. If it relies on a thread finishing its processing,
+    /// this function should return `true` _only_ if said thread is
+    /// ready to be merged.
+    ///
+    /// If the [`Parser`]'s availability doesn't rely on other threads
+    /// (which should be the case for almost every single [`Parser`]),
+    /// then this function should just return `true` all the time.
+    ///
+    /// [`try_read_parser`]: File::try_read_parser
+    /// [`read_parser`]: File::read_parser
+    fn before_try_read(&mut self) -> bool;
 }
 
 /// A [`Parser`] builder struct
@@ -151,595 +275,313 @@ pub trait ParserCfg<U: Ui> {
     /// The [`Parser`] that this [`ParserCfg`] will construct
     type Parser: Parser<U>;
 
-    /// Constructs the [`Parser`]
+    /// Builds the [`Parser`]
     ///
-    /// The `path` may be one of three types:
-    /// - Set with an existing file.
-    /// - Set, but with no existing file yet.
-    /// - Unset, in which case it would be called something like
-    ///   `"*scratch file#{num}*"`.
-    fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text>;
+    /// The [`FileTracker`] argument is very important for parsing.
+    /// You are going to keep track of [`Change`]s to the [`File`], as
+    /// well as where the [`File`] needs updates, through methods in
+    /// the [`FileTracker`].
+    ///
+    /// # Ranges to update
+    ///
+    /// In order to update the [`File`], you will need to tell Duat
+    /// which byte/[`Point`] ranges need to be updated. This can be
+    /// done manually through the [`FileTracker::add_range`]
+    /// function, which will tell Duat that the added range should be
+    /// updated by calling [`Parser::update`].
+    ///
+    /// However, the [`FileTracker`] can also _automatically_ decide
+    /// which [`Range`]s need to be updated. This is done through the
+    /// following methods:
+    ///
+    /// - [`FileTracker::track_changed_ranges`]: Will add every
+    ///   [`Change::added_range`] to the list of [`Ranges`] to update.
+    /// - [`FileTracker::track_changed_lines`]: Will add every line
+    ///   that was changed to the list. This can be useful for, for
+    ///   example, single line limited regex parsing, where you know
+    ///   that matches won't cross lines.
+    /// - [`FileTracker::track_area`]: Instead of tracking which
+    ///   ranges need updating, it will instead track the range that
+    ///   was printed to the screen. You can use this, for example,
+    ///   highlight every occurance of a word on screen.
+    /// - [`FileTracker::turn_off_tracking`]: Disables the automatic
+    ///   tracking feature.
+    ///
+    /// Of course, with automatic tracking, you can still manually add
+    /// ranges.
+    ///
+    /// This all means that you should decide which tracking strategy
+    /// you want to use. You can change it later, but I don't really
+    /// see a purpose to that to be honest.
+    fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text>;
 }
 
 #[derive(Default)]
-pub(super) struct InnerParsers<U: Ui>(RefCell<Vec<ParserBox<U>>>);
+pub(super) struct Parsers<U: Ui> {
+    list: RefCell<Vec<ParserParts<U>>>,
+}
 
-impl<U: Ui> InnerParsers<U> {
+impl<U: Ui> Parsers<U> {
     /// Attempts to add  a [`Parser`]
-    pub(super) fn add<Rd: ParserCfg<U>>(&self, file: &File<U>, reader_cfg: Rd) -> Result<(), Text> {
-        let mut parsers = self.0.borrow_mut();
-        if parsers.iter().any(|rb| rb.ty == TypeId::of::<Rd::Parser>()) {
+    pub(super) fn add<Cfg: ParserCfg<U>>(&self, file: &File<U>, cfg: Cfg) -> Result<(), Text> {
+        let mut parsers = self.list.borrow_mut();
+        if parsers
+            .iter()
+            .any(|rb| rb.ty == TypeId::of::<Cfg::Parser>())
+        {
             Err(txt!(
                 "There is already a reader of type [a]{}",
-                crate::duat_name::<Rd::Parser>()
+                crate::duat_name::<Cfg::Parser>()
             ))?;
         }
 
-        parsers.push(reader_cfg.init(file)?);
+        let update_requested = Arc::new(AtomicBool::new(false));
+        let ranges = Arc::new(Mutex::new(RangesTracker::Manual(Ranges::new(
+            0..file.bytes().len().byte(),
+        ))));
+
+        let tracker = FileTracker {
+            bytes: file.bytes().clone(),
+            cfg: file.cfg.clone(),
+            fetcher: file.text.history().unwrap().new_fetcher(),
+            moment: Moment::default(),
+            ranges: ranges.clone(),
+            update_requested: update_requested.clone(),
+        };
+
+        parsers.push(ParserParts {
+            parser: Some(Box::new(cfg.build(file, tracker)?)),
+            ranges: ranges.clone(),
+            update_requested,
+            ty: TypeId::of::<Cfg::Parser>(),
+        });
 
         Ok(())
     }
 
     /// Reads a specific [`Parser`]
-    pub(super) fn read_parser<Rd: Parser<U>, Ret>(
+    pub(super) fn read_parser<P: Parser<U>, Ret>(
         &self,
-        read: impl FnOnce(&Rd) -> Ret,
+        read: impl FnOnce(&P) -> Ret,
     ) -> Option<Ret> {
-        if TypeId::of::<Rd>() == TypeId::of::<()>() {
+        if TypeId::of::<P>() == TypeId::of::<()>() {
             return None;
         }
-        let mut parsers = self.0.borrow_mut();
 
-        let position = parsers.iter().position(type_eq::<U, Rd>);
+        let position = self.list.borrow().iter().position(type_eq::<U, P>);
         if let Some(i) = position {
-            let status = parsers[i].status.take()?;
+            let mut parser = self.list.borrow_mut()[i].parser.take()?;
+            parser.before_read();
 
-            let (status, ret) = status_from_read(read, status);
+            let ret = read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap());
 
-            parsers[i].status = Some(status);
+            self.list.borrow_mut()[i].parser = Some(parser);
 
-            ret
+            Some(ret)
         } else {
             None
         }
     }
 
     /// Tries to read a specific [`Parser`]. Fails if it was sent
-    pub(super) fn try_read_parser<Rd: Parser<U>, Ret>(
+    pub(super) fn try_read_parser<P: Parser<U>, Ret>(
         &self,
-        read: impl FnOnce(&Rd) -> Ret,
+        read: impl FnOnce(&P) -> Ret,
     ) -> Option<Ret> {
-        if TypeId::of::<Rd>() == TypeId::of::<()>() {
+        if TypeId::of::<P>() == TypeId::of::<()>() {
             return None;
         }
 
-        let mut parsers = self.0.borrow_mut();
-
-        let position = parsers.iter().position(type_eq::<U, Rd>);
+        let position = self.list.borrow().iter().position(type_eq::<U, P>);
         if let Some(i) = position {
-            let status = parsers[i].status.take()?;
+            let mut parser = self.list.borrow_mut()[i].parser.take()?;
 
-            let (status, ret) = status_from_try_read(read, status);
+            let ret = parser
+                .before_try_read()
+                .then(|| read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap()));
 
-            parsers[i].status = Some(status);
+            self.list.borrow_mut()[i].parser = Some(parser);
 
             ret
         } else {
             None
-        }
-    }
-
-    /// Makes each [`Parser`] process a [`Moment`]
-    pub(super) fn process_moment(&self, pa: &mut Pass, moment: Moment, cfg: PrintCfg) {
-        let mut parsers = self.0.borrow_mut();
-
-        for reader_box in parsers.iter_mut() {
-            let status = reader_box.status.take().unwrap();
-
-            reader_box.status = Some(match status {
-                ParserStatus::Present(mut ms, mut sp) => {
-                    if sp.parser.make_remote() {
-                        ms.latest_state += 1;
-                        ms.sender.send(Some((moment, cfg))).unwrap();
-
-                        let jh = thread::spawn(move || {
-                            while let Some((moment, cfg)) = sp.receiver.recv().unwrap() {
-                                parse(&mut sp, (moment, cfg), None);
-                            }
-
-                            sp
-                        });
-
-                        ParserStatus::Sent(ms, jh)
-                    } else {
-                        ms.latest_state += 1;
-                        parse(&mut sp, (moment, cfg), Some(pa));
-
-                        ParserStatus::Present(ms, sp)
-                    }
-                }
-                ParserStatus::Sent(mut ms, jh) => {
-                    ms.latest_state += 1;
-                    ms.sender.send(Some((moment, cfg))).unwrap();
-
-                    ParserStatus::Sent(ms, jh)
-                }
-                ParserStatus::BeingBuilt(mut ms, jh) => {
-                    ms.latest_state += 1;
-                    ms.sender.send(Some((moment, cfg))).unwrap();
-                    ParserStatus::BeingBuilt(ms, jh)
-                }
-                ParserStatus::MarkedForDeletion => ParserStatus::MarkedForDeletion,
-            })
         }
     }
 
     /// Updates the [`Parser`]s on a given range
-    pub(super) fn update_range(&self, text: &mut Text, within: Range<Point>) {
-        fn update<U: Ui>(
-            text: &mut Text,
-            parser: &mut dyn Parser<U>,
-            ranges: &mut Ranges,
-            parsers: &mut [ParserBox<U>],
-            within: Range<Point>,
-        ) {
-            let to_remove = ranges.remove(within.start.byte()..within.end.byte());
+    // TODO: Deal with reparsing if Changes took place.
+    pub(super) fn update(&self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Range<usize>) {
+        for i in 0..self.list.borrow().len() {
+            let mut parts = self.list.borrow_mut().remove(i);
+            let parser = parts.parser.as_mut().unwrap();
 
-            if to_remove.len() == 0 {
-                let parts = FileParts::new(text, Parsers(parsers), within);
-                parser.update_range(parts, None);
-                drop(to_remove);
-            } else {
-                for range in to_remove {
-                    let parts = FileParts::new(text, Parsers(parsers), within.clone());
-                    let start = parts.bytes.point_at_byte(range.start);
-                    let end = parts.bytes.point_at_byte(range.end);
+            if parser.parse() {
+                let ranges_to_update = parts
+                    .ranges
+                    .lock()
+                    .remove(on.clone(), handle.read(pa).bytes());
 
-                    parser.update_range(parts, Some(start..end));
-                }
+                parser.update(pa, handle, ranges_to_update)
             }
-        }
 
-        let mut parsers = self.0.borrow_mut();
+            parts.update_requested.store(false, Ordering::Relaxed);
 
-        for i in 0..parsers.len() {
-            let status = parsers[i].status.take().unwrap();
-
-            parsers[i].status = Some(match status {
-                ParserStatus::Present(ms, mut sp) => {
-                    let parser = &mut *sp.parser;
-                    let ranges = &mut sp.ranges;
-                    update(text, parser, ranges, &mut parsers, within.clone());
-                    ParserStatus::Present(ms, sp)
-                }
-                ParserStatus::Sent(ms, jh) => {
-                    // In this case, all moments have been processed, and we can bring the
-                    // Parser back in order to update it.
-                    if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
-                        ms.sender.send(None).unwrap();
-                        let mut sp = jh.join().unwrap();
-                        let reader = &mut *sp.parser;
-                        let ranges = &mut sp.ranges;
-                        update(text, reader, ranges, &mut parsers, within.clone());
-                        ParserStatus::Present(ms, sp)
-                    } else {
-                        ParserStatus::Sent(ms, jh)
-                    }
-                }
-                ParserStatus::BeingBuilt(ms, jh) => {
-                    if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
-                        let _ = ms.sender.send(None);
-                        match jh.join().unwrap() {
-                            Ok(mut sp) => {
-                                let reader = &mut *sp.parser;
-                                let ranges = &mut sp.ranges;
-                                update(text, reader, ranges, &mut parsers, within.clone());
-                                ParserStatus::Present(ms, sp)
-                            }
-                            Err(err) => {
-                                context::error!("{err}");
-                                ParserStatus::MarkedForDeletion
-                            }
-                        }
-                    } else {
-                        ParserStatus::BeingBuilt(ms, jh)
-                    }
-                }
-                ParserStatus::MarkedForDeletion => ParserStatus::MarkedForDeletion,
-            });
+            self.list.borrow_mut().insert(i, parts)
         }
     }
 
-    /// Wether this [`InnerParsers`] is ready to be updated
+    /// Wether this [`Parsers`] is ready to be updated
     pub fn needs_update(&self) -> bool {
-        let parsers = self.0.borrow_mut();
+        let parsers = self.list.borrow();
 
-        parsers.iter().any(|reader_box| {
-            let status = reader_box.status.as_ref();
-            if let Some(ParserStatus::Sent(ms, _) | ParserStatus::BeingBuilt(ms, ..)) = status {
-                ms.latest_state == ms.remote_state.load(Ordering::Relaxed)
-            } else {
-                false
-            }
-        })
+        parsers
+            .iter()
+            .any(|parts| parts.update_requested.load(Ordering::Relaxed))
     }
 }
 
-fn parse<U: Ui>(sp: &mut SendParser<U>, (moment, cfg): (Moment, PrintCfg), pa: Option<&mut Pass>) {
-    for change in moment.changes() {
-        sp.bytes.apply_change(change);
-    }
-
-    let ranges = get_ranges(&mut sp.ranges, &sp.bytes, moment);
-
-    let snap = FileSnapshot { bytes: &sp.bytes, cfg, moment };
-
-    if let Some(pa) = pa {
-        sp.parser.parse(pa, snap, ranges);
-    } else {
-        sp.parser.parse_remote(snap, ranges);
-    }
-    sp.state.fetch_add(1, Ordering::Relaxed);
-}
-
-/// A container for a [`Parser`]
-///
-/// This struct should be created inside of the [`ParserCfg::init`]
-/// function, and nowhere else really.
-///
-/// This is used internally by Duat to coordinate how [`Parser`]s
-/// should be updated. Externally, it can be created in two ways:
-///
-/// - [`ParserBox::new`]: Use this to create a [`Parser`] locally.
-///   This should be used 99% of the time.
-/// - [`ParserBox::new_remote`]: Like the previous function, but the
-///   [`Parser`] will be created in another thread entirely. This
-///   means that you can free up the main thread for faster startup
-///   for example. This does also mean that the effects of the
-///   [`Parser`] won't be immediate, just like with other times where
-///   the [`Parser`] is made to be remote.
-pub struct ParserBox<U: Ui> {
-    status: Option<ParserStatus<U>>,
+/// Things related to an individual [`Parser`]
+struct ParserParts<U: Ui> {
+    parser: Option<Box<dyn Parser<U>>>,
+    ranges: Arc<Mutex<RangesTracker>>,
+    update_requested: Arc<AtomicBool>,
     ty: TypeId,
 }
 
-impl<U: Ui> ParserBox<U> {
-    /// Sends a built [`Parser`]
-    pub fn new<Rd: Parser<U>>(file: &File<U>, reader: Rd) -> ParserBox<U> {
-        let (sender, receiver) = mpsc::channel();
-
-        let state = Arc::new(AtomicUsize::new(1));
-        let moment_sender = MomentSender {
-            sender,
-            latest_state: 1,
-            remote_state: state.clone(),
-        };
-
-        ParserBox {
-            status: Some(ParserStatus::Present(moment_sender, SendParser {
-                parser: Box::new(reader),
-                bytes: file.bytes().clone(),
-                receiver,
-                ranges: Ranges::new(0..file.text().len().byte()),
-                state,
-            })),
-            ty: TypeId::of::<Rd>(),
-        }
-    }
-
-    /// Sends a [`Parser`] to be built on another thread
-    pub fn new_remote<Rd: Parser<U>>(
-        file: &File<U>,
-        f: impl FnOnce(&Bytes) -> Result<Rd, Text> + Send + 'static,
-    ) -> ParserBox<U> {
-        let (sender, receiver) = mpsc::channel();
-        let bytes = file.bytes().clone();
-
-        let state = Arc::new(AtomicUsize::new(0));
-        let moment_sender = MomentSender {
-            sender,
-            latest_state: 1,
-            remote_state: state.clone(),
-        };
-
-        ParserBox {
-            status: Some(ParserStatus::BeingBuilt(
-                moment_sender,
-                thread::spawn(move || {
-                    let reader = Box::new(match f(&bytes) {
-                        Ok(reader) => {
-                            state.fetch_add(1, Ordering::Relaxed);
-                            reader
-                        }
-                        Err(err) => {
-                            state.fetch_add(1, Ordering::Relaxed);
-                            return Err(err);
-                        }
-                    });
-
-                    let ranges = Ranges::new(0..bytes.len().byte());
-
-                    let mut sp = SendParser {
-                        parser: reader,
-                        bytes,
-                        receiver,
-                        ranges,
-                        state,
-                    };
-
-                    while let Some(moment) = sp.receiver.recv().unwrap() {
-                        parse(&mut sp, moment, None);
-                    }
-
-                    Ok(sp)
-                }),
-            )),
-            ty: TypeId::of::<Rd>(),
-        }
-    }
-}
-
-enum ParserStatus<U: Ui> {
-    Present(MomentSender, SendParser<U>),
-    Sent(MomentSender, thread::JoinHandle<SendParser<U>>),
-    BeingBuilt(
-        MomentSender,
-        thread::JoinHandle<Result<SendParser<U>, Text>>,
-    ),
-    MarkedForDeletion,
-}
-
-struct MomentSender {
-    sender: mpsc::Sender<Option<(Moment, PrintCfg)>>,
-    latest_state: usize,
-    remote_state: Arc<AtomicUsize>,
-}
-
-struct SendParser<U: Ui> {
-    parser: Box<dyn Parser<U> + Send>,
+/// A tracker for [`Change`]s that happen to a [`File`]
+///
+/// [`Change`]: crate::text::Change
+#[derive(Debug)]
+pub struct FileTracker {
     bytes: Bytes,
-    receiver: mpsc::Receiver<Option<(Moment, PrintCfg)>>,
-    ranges: Ranges,
-    state: Arc<AtomicUsize>,
-}
-
-/// A list of the _other_ [`Parser`]s for reading
-///
-/// This struct lets you read other [`Parser`]s, if you want to gather
-/// information for [`Parser::update_range`].
-///
-/// Those [`Parser`]s could be in another thread, updating. If you
-/// want to wait for them to return, see [`Parsers::read`]. If you
-/// wish to call the passed function only if the [`Parser`] is not
-/// currently updating, see [`Parsers::try_read`].
-pub struct Parsers<'a, U: Ui>(&'a mut [ParserBox<U>]);
-
-impl<U: Ui> Parsers<'_, U> {
-    /// Reads a specific [`Parser`], if it was [added]
-    ///
-    /// If the [`Parser`] was sent to another thread, this function
-    /// will block until it returns to this thread. If you don't wish
-    /// for this behaviour, see [`File::try_read_parser`].
-    ///
-    /// This function will never return [`Some`] if you call it from a
-    /// [`Parser`] that is the same as the requested one.
-    ///
-    /// [added]: crate::context::Handle::add_parser
-    /// [`File::try_read_parser`]: super::File::try_read_parser
-    pub fn read<Rd: Parser<U>, Ret>(&mut self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
-        if let Some(reader_box) = self.0.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
-            let status = reader_box.status.take()?;
-
-            let (status, ret) = status_from_read(read, status);
-
-            reader_box.status = Some(status);
-
-            ret
-        } else {
-            None
-        }
-    }
-
-    /// Tries to read a specific [`Parser`], if it was [added]
-    ///
-    /// Not only does it not trigger if the [`Parser`] doesn't exist,
-    /// also will not trigger if it was sent to another thread, and
-    /// isn't ready to be brought back. If you wish to wait for the
-    ///
-    /// This function will never return [`Some`] if you call it from a
-    /// [`Parser`] that is the same as the requested one.
-    ///
-    /// [added]: crate::context::Handle::add_parser
-    pub fn try_read<Rd: Parser<U>, Ret>(&mut self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
-        if let Some(reader_box) = self.0.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
-            let status = reader_box.status.take()?;
-
-            let (status, ret) = status_from_try_read(read, status);
-
-            reader_box.status = Some(status);
-
-            ret
-        } else {
-            None
-        }
-    }
-}
-
-fn status_from_read<Rd: Parser<U>, Ret, U: Ui>(
-    read: impl FnOnce(&Rd) -> Ret,
-    status: ParserStatus<U>,
-) -> (ParserStatus<U>, Option<Ret>) {
-    match status {
-        ParserStatus::Present(sender, sp) => {
-            let ptr = Box::as_ptr(&sp.parser);
-            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-            (ParserStatus::Present(sender, sp), Some(ret))
-        }
-        ParserStatus::Sent(ms, jh) => {
-            ms.sender.send(None).unwrap();
-            let sp = jh.join().unwrap();
-
-            let ptr = Box::as_ptr(&sp.parser);
-            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-            (ParserStatus::Present(ms, sp), Some(ret))
-        }
-        ParserStatus::BeingBuilt(ms, jh) => {
-            let _ = ms.sender.send(None);
-            match jh.join().unwrap() {
-                Ok(sp) => {
-                    let ptr = Box::as_ptr(&sp.parser);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-                    (ParserStatus::Present(ms, sp), Some(ret))
-                }
-                Err(err) => {
-                    context::error!("{err}");
-                    (ParserStatus::MarkedForDeletion, None)
-                }
-            }
-        }
-        ParserStatus::MarkedForDeletion => (ParserStatus::MarkedForDeletion, None),
-    }
-}
-
-fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
-    read: impl FnOnce(&Rd) -> Ret,
-    status: ParserStatus<U>,
-) -> (ParserStatus<U>, Option<Ret>) {
-    match status {
-        ParserStatus::Present(sender, sp) => {
-            let ptr = Box::as_ptr(&sp.parser);
-            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-            (ParserStatus::Present(sender, sp), Some(ret))
-        }
-        ParserStatus::Sent(ms, jh) => {
-            if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
-                ms.sender.send(None).unwrap();
-                let sp = jh.join().unwrap();
-
-                let ptr = Box::as_ptr(&sp.parser);
-                let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-                (ParserStatus::Present(ms, sp), Some(ret))
-            } else {
-                (ParserStatus::Sent(ms, jh), None)
-            }
-        }
-        ParserStatus::BeingBuilt(ms, jh) => {
-            if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
-                ms.sender.send(None).unwrap();
-                match jh.join().unwrap() {
-                    Ok(sp) => {
-                        let ptr = Box::as_ptr(&sp.parser);
-                        let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-                        (ParserStatus::Present(ms, sp), Some(ret))
-                    }
-                    Err(err) => {
-                        context::error!("{err}");
-                        (ParserStatus::MarkedForDeletion, None)
-                    }
-                }
-            } else {
-                (ParserStatus::BeingBuilt(ms, jh), None)
-            }
-        }
-        ParserStatus::MarkedForDeletion => (ParserStatus::MarkedForDeletion, None),
-    }
-}
-
-/// Decides wether a [`Ranges`] should be used or not
-fn get_ranges<'a>(
-    ranges: &'a mut Ranges,
-    bytes: &'a Bytes,
+    cfg: Arc<Mutex<PrintCfg>>,
+    fetcher: MomentFetcher,
     moment: Moment,
-) -> Option<&'a mut Ranges> {
-    const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
-    const MAX_CHANGES_TO_CONSIDER: usize = 100;
+    ranges: Arc<Mutex<RangesTracker>>,
+    update_requested: Arc<AtomicBool>,
+}
 
-    if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
-        for change in moment.changes() {
-            let diff = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
-            ranges.shift_by(change.start().byte(), diff);
+impl FileTracker {
+    /// Updates the inner [`Bytes`] and retrieves latest [`Moment`]
+    ///
+    /// If there were no new [`Change`]s, the [`Moment`] returned by
+    /// [`Self::moment`] will stay the same, and this function will
+    /// return `false`. Otherwise, the [`Bytes`] will be updated and
+    /// the function will return `true`.
+    ///
+    /// [`Change`]: crate::text::Change
+    pub fn update(&mut self) -> bool {
+        let moment = self.fetcher.get_moment();
+        if moment.is_empty() {
+            false
+        } else {
+            for change in moment.changes() {
+                self.bytes.apply_change(change);
+                self.ranges.lock().apply_change(change, &self.bytes);
+            }
+            self.moment = moment;
+            true
         }
-
-        Some(ranges)
-    } else {
-        *ranges = Ranges::new(0..bytes.len().byte());
-        None
     }
-}
 
-fn type_eq<U: Ui, Rd: Parser<U>>(pb: &ParserBox<U>) -> bool {
-    pb.ty == TypeId::of::<Rd>()
-}
+    /// Request for the [`File`] to call [`Parser::parse`]
+    ///
+    /// This will prompt the [`File`] to be updated and only update
+    /// relevant [`Range`]s, i.e., those that actually show up on
+    /// area and that have been added by to the [`FileTracker`] via
+    /// [`add_range`].
+    pub fn request_parse(&self) {
+        self.update_requested.store(true, Ordering::Relaxed);
+    }
 
-/// The parts of a [`File`], primarily for updating [`Tags`]
-///
-/// This struct consists of the following:
-///
-/// - [`parts.bytes`]: The [`Bytes`] of the [`File`].
-/// - [`parts.tags`]: The [`Tags`] of the [`File`], this is the
-///   primary things that [`Parser`]s should update.
-/// - [`parts.selections`]: The [`Selections`] of the [`File`].
-/// - [`parts.parsers`]: An immutable reference to all the other
-///   [`Parser`]s of the [`File`].
-///
-/// You should use these, as well as the internally updated state of
-/// the [`Parser`] through the [`Parser::parse`] and
-/// [`Parser::parse_remote`], in order to update the
-/// [`File`]'s [`Tag`]s. Or other things outside of the [`File`], it
-/// depends on what you're doing really.
-///
-/// [`File`]: super::File
-/// [`Tag`]: crate::text::Tag
-/// [`parts.bytes`]: FileParts::bytes
-/// [`parts.tags`]: FileParts::tags
-/// [`parts.selections`]: FileParts::selections
-/// [`parts.parsers`]: FileParts::parsers
-pub struct FileParts<'a, U: Ui> {
-    /// The [`Bytes`] of the [`File`]
+    ////////// Range tracking functions
+
+    /// Adds a byte/[`Point`] [`Range`] to be updated on
+    /// [`Parser::update`]
     ///
-    /// [`File`]: super::File
-    pub bytes: &'a Bytes,
-    /// The [`Tags`] of the [`File`]
+    /// This [`Range`] will be merged with other [`Ranges`] on the
+    /// list, and when an [update is requested], the intersections
+    /// between the [`Ranges`] sent to this method and the [`Range`]
+    /// of the [`Text`] shown on area will be updated.
     ///
-    /// This is the primary purpose of (most) [`Parser`]s, they read
-    /// the [`File`]'s [`Bytes`] and add or remove [`Tag`]s through
-    /// the [`update_range`] method.
+    /// For example, if you add the ranges  `3..20` and `50..87`, and
+    /// the range shown on area is `17..61`, then two calls to
+    /// [`Parser::update`] will be made, one with the range
+    /// `17..20` and one with the range `50..61`. After that, the
+    /// ranges `3..17` and `61..87` will remain on the list of
+    /// [`Range`]s to be updated
     ///
-    /// [`File`]: super::File
-    /// [`Tag`]: crate::text::Tag
-    /// [`update_range`]: Parser::update_range
-    pub tags: Tags<'a>,
-    /// The [`Selections`] of the [`File`]
+    /// [update is requested]: Self::request_update
+    pub fn add_range(&mut self, range: impl TextRange) {
+        let range = range.to_range(self.bytes.len().byte());
+        self.ranges.lock().add_range(range);
+    }
+
+    /// Automatically add every [`Change`]'s [added range] to update
     ///
-    /// Unlike [`Change`]s in [`Moment`]s, the movement of
-    /// [`Selection`]s is not "tracked" and kept up to date via a
-    /// [`Parser::parse`] analogue. Instead, if you want to
-    /// add [`Tag`]s in the [`Parser::update_range`] function based on
-    /// the [`Selections`], I recommend something like the following:
+    /// This function turns on automatic [`Range`] addition for every
+    /// [`Change`] that takes place. You can still add [`Range`]s
+    /// manually through [`add_range`].
+    ///
+    /// [added range]: Change::added_range
+    /// [`add_range`]: FileTracker::add_range
+    pub fn track_changed_ranges(&mut self) {
+        let mut tracker = self.ranges.lock();
+        *tracker = RangesTracker::ChangedRanges(tracker.take_ranges());
+    }
+
+    /// Automatically add every changed line to the ranges to update
+    ///
+    /// This function turns on automatic [`Range`] addition for every
+    /// line that a [`Change`]'s [added range] belongs to. You can
+    /// still add [`Range`]s manually through [`add_range`].
+    ///
+    /// It's probably the most common type of automatic range tracking
+    /// that you'd want, since, for example, regex patterns are very
+    /// convenient to separate line-wise, since most of them don't
+    /// tend to go over lines.
+    ///
+    /// Additionally, this option will also make it so only _whole
+    /// lines_ are updated. For example, if a line is partially cutoff
+    /// from the area, the range passed to [`Parser::update`] will
+    /// include the parts of the line that are outside of the area.
+    /// For the other tracking options, this won't be the case.
+    ///
+    /// [added range]: Change::added_range
+    /// [`add_range`]: FileTracker::add_range
+    pub fn track_changed_lines(&mut self) {
+        let mut tracker = self.ranges.lock();
+        *tracker = RangesTracker::ChangedLines(tracker.take_ranges());
+    }
+
+    /// Always update the whole area
+    ///
+    /// This function basically turns off [`Range`] tracking and
+    /// assumes that you want to update the whole printed area.
+    ///
+    /// One very common usecase of this is to do with parsing the
+    /// [`Selections`]. You may want to, for example, do something for
+    /// every selection that is visible on screen, maybe something
+    /// like this:
     ///
     /// ```rust
     /// use std::ops::Range;
     ///
     /// use duat_core::prelude::*;
     ///
+    /// // When construction the SelectionLen, I turned on area tracking
     /// struct SelectionLen {
+    ///     _tracker: RangesTracker,
     ///     tagger: Tagger,
     /// }
     ///
     /// impl<U: Ui> Parser<U> for SelectionLen {
-    ///     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
+    ///     fn update(&mut self, pa: &mut Pass, handle: &Handle<File>, on: Range<usize>) {
+    ///         let parts = handle.write(pa).text_mut().parts();
     ///         // This is efficient even in very large `Text`s.
     ///         parts.tags.remove(self.tagger, ..);
     ///
-    ///         // Here, since we don't check for Changes, `within` will always
-    ///         // be `None`, so no need to check it anyways.
-    ///         let within = parts.suggested_max_range;
-    ///
-    ///         for (_, selection, is_main) in parts.selections.iter_within(within) {
+    ///         for (_, selection, is_main) in parts.selections.iter_within(on) {
     ///             let range = selection.range(&parts.bytes);
     ///             let (start, end) = (range.start, range.end);
     ///             let len = end - start;
@@ -760,95 +602,63 @@ pub struct FileParts<'a, U: Ui> {
     /// }
     /// ```
     ///
-    /// For every [`Selection`] on screen, the [`Parser`] above will
-    /// print the length of the selection, in bytes, at the start of
-    /// the each [`Selection`] with a length greater than 2.
+    /// This function will make it so, for every visible
+    /// [`Selection`], its length in bytes will be displayed within
+    /// that selection with the `"sel_len"` [`Form`].
     ///
-    /// The [`parts.suggested_max_range`] is a visible portion of the
-    /// screen. Adding [`Tag`]s that don't intersect with this
-    /// [`Range`] is pointless, since they won't be visible anyway.
+    /// > [!NOTE]
+    /// >
+    /// > This function is actually incorrect. It doesn't take into
+    /// > account the possibility of intercepting newlines or the
+    /// > number being outside the printed area. The corrected version
+    /// > would be much too long for a simple example.
     ///
-    /// [`File`]: super::File
-    /// [`Change`]: crate::text::Change
-    /// [`Tag`]: crate::text::Tag
     /// [`Selection`]: crate::mode::Selection
-    /// [`parts.suggested_max_range`]: FileParts::suggested_max_range
-    pub selections: &'a Selections,
-    /// Other [`Parser`]s that were added to this [`File`]
-    ///
-    /// This can be useful if you want to access the state of other
-    /// [`Parser`]s, a particular [`Parser`] this can  be useful is
-    /// with the [`TsParser`] [`Parser`], which can grant you
-    /// access to a syntax tree, letting you do queries and such.
-    ///
-    /// [`File`]: super::File
-    /// [`TsParser`]: https://https://docs.rs/duat-treesitter/latest/duat_treesitter/struct.TsParser.html
-    pub parsers: Parsers<'a, U>,
-    /// The suggested maximum [`Range`] for [inserting] and [removing]
-    /// [`Tag`]s
-    ///
-    /// This [`Range`] represents a "visible" portion of the screen,
-    /// going over it is not recommended, since the added [`Tag`]s
-    /// won't be visible anyway. The only exception is for ranged
-    /// [`Tag`]s which "contain" this [`Range`], such as a very large
-    /// [`FormId`] [tag].
-    ///
-    /// [inserting]: Tags::insert
-    /// [removing]: Tags::remove
-    /// [`Tag`]: crate::text::Tag
-    /// [`FormId`]: crate::form::FormId
-    /// [tag]: crate::form::FormId::to_tag
-    pub suggested_max_range: Range<Point>,
-}
-
-impl<'a, U: Ui> FileParts<'a, U> {
-    /// Returns a new [`FileParts`]
-    pub fn new(text: &'a mut Text, parsers: Parsers<'a, U>, range: Range<Point>) -> Self {
-        let TextParts { bytes, tags, selections } = text.parts();
-        Self {
-            bytes,
-            tags,
-            selections,
-            parsers,
-            suggested_max_range: range,
-        }
+    /// [`Form`]: crate::form::Form
+    pub fn track_area(&mut self) {
+        *self.ranges.lock() = RangesTracker::Area;
     }
-}
 
-/// What the [`File`]'s [`Bytes`] and [`PrintCfg`] looked like at a
-/// point in time, as well as the last [`Moment`] applied
-///
-/// This struct is sent to [`Parser`]'s [`parse`] and
-/// [`parse_remote`], and represents what the [`File`] looked
-/// like _after_ the [`Moment`] was applied to the [`Bytes`].
-///
-/// # Note
-///
-/// In [`parse`], you _can_ access the current state of the
-/// [`File`], since you have a [`Pass`], however, there is no
-/// guarantee of synchronicity between the [`File`] gotten from
-/// something like [`context::file_named`] and the [`Bytes`] and
-/// [`PrintCfg`] within [`FileSnapshot`].
-///
-/// [`File`]: super::File
-/// [`parse`]: Parser::parse
-/// [`parse_remote`]: Parser::parse_remote
-pub struct FileSnapshot<'a> {
-    /// The [`Bytes`] of the [`File`] at _this_ moment in time
+    /// Disable the automatic [`Change`] tracking functionality
     ///
-    /// [`File`]: super::File
-    pub bytes: &'a Bytes,
-    /// The [`PrintCfg`] of the [`File`] at _this_ moment in time
+    /// This makes it so no [`Range`]s to update are added
+    /// automatically whenever a [`Change`] takes place. Instead, they
+    /// all must be added through [`add_range`].
     ///
-    /// [`File`]: super::File
-    pub cfg: PrintCfg,
-    /// The last [`Moment`] applied to the [`Bytes`], getting them to
-    /// their state in this snapshot
-    pub moment: Moment,
-}
+    /// [`add_range`]: FileTracker::add_range
+    pub fn turn_off_tracking(&mut self) {
+        let mut tracker = self.ranges.lock();
+        *tracker = RangesTracker::Manual(tracker.take_ranges());
+    }
 
-impl FileSnapshot<'_> {
-    /// The indentation in the current line
+    ////////// Querying functions
+
+    /// The [`Bytes`], as they are since the last call to [`update`]
+    ///
+    /// Do note that, because this tracks calls to [`update`], this
+    /// version of the [`Bytes`] may not reflect what the [`Bytes`]
+    /// look like in the [`File`] _right now_, as more [`Change`]s
+    /// could have taken place since the last call.
+    ///
+    /// [`update`]: Self::update
+    /// [`Change`]: crate::text::Change
+    pub fn bytes(&self) -> &Bytes {
+        &self.bytes
+    }
+
+    /// The last [`Moment`] that was processed
+    ///
+    /// This is **not** the last [`Moment`] sent to the [`File`], nor
+    /// does it necessarily correspond to a [`Moment`] in the
+    /// [`Text`]'s history. It's just a collection of [`Change`]s that
+    /// took place in between calls to [`Self::update`].
+    ///
+    /// [`Change`]: crate::text::Change
+    pub fn moment(&self) -> &Moment {
+        &self.moment
+    }
+
+    /// The indentation in the line at a [`Point`]
     ///
     /// This value only takes ascii spaces and tabs into account,
     /// which may differ from the value from [`Text::indent`],
@@ -859,6 +669,85 @@ impl FileSnapshot<'_> {
     /// [`Area`]: crate::ui::Area
     /// [`TabStops`]: crate::cfg::TabStops
     pub fn indent(&self, p: Point) -> usize {
-        self.bytes.indent(p, self.cfg)
+        self.bytes.indent(p, *self.cfg.lock())
     }
+
+    /// The [`PrintCfg`] of the [`File`]
+    ///
+    /// Unlike the other parts of this struct, the [`PrintCfg`] will
+    /// always be up to date with what it currently is in the [`File`]
+    pub fn cfg(&self) -> PrintCfg {
+        *self.cfg.lock()
+    }
+}
+
+/// Tracker for which [`Range`]s to update
+#[derive(Debug)]
+enum RangesTracker {
+    Manual(Ranges),
+    ChangedRanges(Ranges),
+    ChangedLines(Ranges),
+    Area,
+}
+
+impl RangesTracker {
+    /// Manually adds a [`Range`] to be tracked
+    fn add_range(&mut self, range: Range<usize>) {
+        match self {
+            RangesTracker::Manual(ranges)
+            | RangesTracker::ChangedRanges(ranges)
+            | RangesTracker::ChangedLines(ranges) => ranges.add(range),
+            RangesTracker::Area => {}
+        }
+    }
+
+    /// Applies a [`Change`] to the [`Range`]s within
+    fn apply_change(&mut self, change: Change<&str>, bytes: &Bytes) {
+        match self {
+            RangesTracker::Manual(ranges) => {
+                ranges.shift_by(change.start().byte(), change.shift()[0])
+            }
+            RangesTracker::ChangedRanges(ranges) => {
+                ranges.shift_by(change.start().byte(), change.shift()[0]);
+                ranges.add(change.start().byte()..change.added_end().byte())
+            }
+            RangesTracker::ChangedLines(ranges) => {
+                ranges.shift_by(change.start().byte(), change.shift()[0]);
+                let start = bytes.point_at_line(change.start().line());
+                let end = bytes.point_at_line(change.added_end().line() + 1);
+                ranges.add(start.byte()..end.byte());
+            }
+            RangesTracker::Area => {}
+        }
+    }
+
+    /// Takes the [`Ranges`] from the tracker
+    fn take_ranges(&mut self) -> Ranges {
+        match self {
+            RangesTracker::Manual(ranges)
+            | RangesTracker::ChangedRanges(ranges)
+            | RangesTracker::ChangedLines(ranges) => std::mem::take(ranges),
+            RangesTracker::Area => Ranges::empty(),
+        }
+    }
+
+    /// Gets the list of [`Range`]s that need to be updated
+    fn remove(&mut self, range: Range<usize>, bytes: &Bytes) -> Vec<Range<Point>> {
+        match self {
+            RangesTracker::Manual(ranges)
+            | RangesTracker::ChangedRanges(ranges)
+            | RangesTracker::ChangedLines(ranges) => ranges
+                .remove(range)
+                .map(|r| bytes.point_at_byte(r.start)..bytes.point_at_byte(r.end))
+                .collect(),
+            RangesTracker::Area => {
+                vec![bytes.point_at_byte(range.start)..bytes.point_at_byte(range.end)]
+            }
+        }
+    }
+}
+
+/// Wether the type of the [`ParserParts`]'s parser is `P`
+fn type_eq<U: Ui, P: 'static>(parts: &ParserParts<U>) -> bool {
+    parts.ty == TypeId::of::<P>()
 }

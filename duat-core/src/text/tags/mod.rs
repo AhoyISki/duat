@@ -451,7 +451,7 @@ impl InnerTags {
             let mut starts = Vec::new();
             for (i, (b, tag)) in self.list.iter_fwd(range) {
                 if tag.is_start() {
-                    starts.push((i as i32, b as i32, tag));
+                    starts.push((i as i32, b, tag));
                 } else if tag.is_end()
                     && let Some(j) = starts.iter().rposition(|(.., lhs)| lhs.ends_with(&tag))
                 {

@@ -747,7 +747,7 @@ pub mod prelude {
         cmd,
         context::{self, Handle},
         data::{Pass, RwData},
-        file::{File, FileParts, FileSnapshot, Parser, ParserBox, ParserCfg},
+        file::{File, FileTracker, Parser, ParserCfg},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
@@ -779,8 +779,9 @@ mod ranges {
     /// [`Parser`]: crate::file::Parser
     #[derive(Clone, Default, Debug)]
     pub struct Ranges {
-        list: GapBuffer<Range<usize>>,
-        shift_state: (usize, i32),
+        list: GapBuffer<Range<i32>>,
+        from: usize,
+        shift: i32,
         min_len: usize,
     }
 
@@ -789,7 +790,7 @@ mod ranges {
         /// [`Range`]
         pub fn new(range: Range<usize>) -> Self {
             Self {
-                list: gap_buffer![range],
+                list: gap_buffer![range.start as i32..range.end as i32],
                 ..Self::empty()
             }
         }
@@ -798,7 +799,8 @@ mod ranges {
         pub fn empty() -> Self {
             Self {
                 list: GapBuffer::new(),
-                shift_state: (0, 0),
+                from: 0,
+                shift: 0,
                 min_len: 1,
             }
         }
@@ -812,8 +814,8 @@ mod ranges {
                 i += 1;
 
                 if range.len() < self.min_len {
-                    if i - 1 < self.shift_state.0 {
-                        self.shift_state.0 -= 1;
+                    if i - 1 < self.from {
+                        self.from -= 1;
                     }
                     false
                 } else {
@@ -830,20 +832,20 @@ mod ranges {
         /// of intersecting ranges.
         pub fn add(&mut self, new: Range<usize>) {
             assert_range(&new);
+            let new = new.start as i32..new.end as i32;
 
-            let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
-                (shift_from, [new.start, new.end]),
-                (shift_from, total_diff, 0, sh),
+                (self.from, [new.start, new.end]),
+                (self.from, self.shift, 0, std::ops::Add::add),
                 (|r| r.start, |r| r.end),
             );
 
             // The ranges in this region have not been callibrated yet.
-            if shift_from <= m_range.end {
-                for range in self.list.range_mut(shift_from..m_range.end).iter_mut() {
-                    range.start = sh(range.start, total_diff);
-                    range.end = sh(range.end, total_diff);
+            if self.from <= m_range.end {
+                for range in self.list.range_mut(self.from..m_range.end).iter_mut() {
+                    range.start += self.shift;
+                    range.end += self.shift;
                 }
             }
 
@@ -857,9 +859,12 @@ mod ranges {
                 first.start.min(new.start)..last.end.max(new.end)
             };
 
-            let shift_from = shift_from.saturating_sub(m_range.len()).max(m_range.start) + 1;
-            if shift_from < self.list.len() + 1 - m_range.len() {
-                self.shift_state = (shift_from, total_diff);
+            let new_from = self.from.saturating_sub(m_range.len()).max(m_range.start) + 1;
+            if new_from < self.list.len() + 1 - m_range.len() {
+                self.from = new_from;
+            } else {
+                self.from = 0;
+                self.shift = 0;
             }
 
             self.list.splice(m_range.clone(), [added_range]);
@@ -872,20 +877,20 @@ mod ranges {
             within: Range<usize>,
         ) -> impl ExactSizeIterator<Item = Range<usize>> + '_ {
             assert_range(&within);
+            let within = within.start as i32..within.end as i32;
 
-            let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
-                (shift_from, [within.start, within.end]),
-                (shift_from, total_diff, 0, sh),
+                (self.from, [within.start, within.end]),
+                (self.from, self.shift, 0, std::ops::Add::add),
                 (|r| r.start, |r| r.end),
             );
 
             // The ranges in this region have not been callibrated yet.
-            if shift_from <= m_range.end {
-                for range in self.list.range_mut(shift_from..m_range.end).iter_mut() {
-                    range.start = sh(range.start, total_diff);
-                    range.end = sh(range.end, total_diff);
+            if self.from <= m_range.end {
+                for range in self.list.range_mut(self.from..m_range.end).iter_mut() {
+                    range.start += self.shift;
+                    range.end += self.shift;
                 }
             }
 
@@ -904,19 +909,24 @@ mod ranges {
                     within.end..last.end
                 });
 
-                let min_len = |range: &Range<usize>| range.len() >= self.min_len;
+                let min_len = |range: &Range<i32>| range.len() >= self.min_len;
 
                 [split_start.filter(min_len), split_end.filter(min_len)]
             };
 
             let added = split_off.iter().flatten().count();
 
-            let shift_from = shift_from.saturating_sub(m_range.len()).max(m_range.start) + added;
-            if shift_from < self.list.len() + added - m_range.len() {
-                self.shift_state = (shift_from, total_diff);
+            let new_from = self.from.saturating_sub(m_range.len()).max(m_range.start) + added;
+            if new_from < self.list.len() + added - m_range.len() {
+                self.from = new_from;
+            } else {
+                self.from = 0;
+                self.shift = 0;
             }
 
-            self.list.splice(m_range, split_off.into_iter().flatten())
+            self.list
+                .splice(m_range, split_off.into_iter().flatten())
+                .map(|r| r.start as usize..r.end as usize)
         }
 
         /// Applies the [`add`] function to another [`Ranges`]s
@@ -924,11 +934,11 @@ mod ranges {
         /// [`add`]: Self::add
         pub fn merge(&mut self, other: Self) {
             for range in other.list {
-                self.add(range)
+                self.add(range.start as usize..range.end as usize)
             }
         }
 
-        /// Shifts the [`Range<usize>`]s by a list of [`Change`]s
+        /// Shifts the [`Range`]s within by a [`Change`]
         ///
         /// If the `diff` is negative (i.e. a part of the ranges were
         /// removed), then ranges will be removed ahead of `from`
@@ -936,36 +946,32 @@ mod ranges {
         ///
         /// [`Change`]: crate::text::Change
         pub fn shift_by(&mut self, from: usize, diff: i32) {
-            let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
+            let from = from as i32;
 
             // The range of changes that will be drained
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
-                (shift_from, [from, from + ((-diff.min(0)) as usize)]),
-                (shift_from, total_diff, 0, sh),
+                (self.from, [from, from - diff.min(0)]),
+                (self.from, self.shift, 0, std::ops::Add::add),
                 (|r| r.start, |r| r.end),
             );
 
-            // If shift_from < m_range.end, I need to shift the changes between
+            // If self.from < m_range.end, I need to shift the changes between
             // the two, so that they match the shifting of the changes
-            // before shift_from
-            if shift_from < m_range.end && total_diff != 0 {
-                for range in self.list.range_mut(shift_from..m_range.end).iter_mut() {
-                    range.start = sh(range.start, total_diff);
-                    range.end = sh(range.end, total_diff);
+            // before self.from.
+            if self.from < m_range.end && self.shift != 0 {
+                for range in self.list.range_mut(self.from..m_range.end).iter_mut() {
+                    range.start += self.shift;
+                    range.end += self.shift;
                 }
-            // If shift_from > m_range.end, There are now three
-            // shifted states among ranges: The ones
-            // before m_range.end, between m_range.end
-            // and shift_from, and after shift_from. I
-            // will update the second group so that it is
-            // shifted by shift + change. shift(), that
-            // way, it will be shifted like
-            // the first group.
-            } else if shift_from > m_range.end && diff != 0 {
-                for range in &mut self.list.range_mut(m_range.end..shift_from) {
-                    range.start = sh(range.start, diff);
-                    range.end = sh(range.end, diff);
+            // If self.from > m_range.end, then I shift the ranges
+            // inbetween by -self.shift, in order to keep the ranges
+            // after m_range.start equally unshifted by self.shift +
+            // diff.
+            } else if self.from > m_range.end && self.shift != 0 {
+                for range in &mut self.list.range_mut(m_range.end..self.from) {
+                    range.start -= self.shift;
+                    range.end -= self.shift;
                 }
             }
 
@@ -975,17 +981,18 @@ mod ranges {
 
                 iter.next().and_then(|first| {
                     let last = iter.next_back().unwrap_or(first);
-                    let range = first.start.min(from)..sh(last.end, diff).max(from);
+                    let range = first.start.min(from)..(last.end + diff).max(from);
 
                     (range.len() >= self.min_len).then_some(range)
                 })
             };
 
-            let added = range_left.is_some() as usize;
-
-            let shift_from = shift_from.saturating_sub(m_range.len()).max(m_range.start) + added;
-            if shift_from < self.list.len() + added - m_range.len() {
-                self.shift_state = (shift_from, total_diff + diff);
+            let new_from = m_range.start + range_left.is_some() as usize;
+            if new_from < self.list.len() - 1 {
+                self.from = new_from;
+            } else {
+                self.from = 0;
+                self.shift = 0;
             }
 
             self.list.splice(m_range.clone(), range_left);
@@ -1003,12 +1010,11 @@ mod ranges {
 
         /// An [`Iterator`] over the [`Range`]s in this list
         pub fn iter(&self) -> impl Iterator<Item = Range<usize>> {
-            let (shift_from, diff) = self.shift_state;
             self.list.iter().enumerate().map(move |(i, range)| {
-                if i >= shift_from {
-                    sh(range.start, diff)..sh(range.end, diff)
+                if i >= self.from {
+                    (range.start + self.shift) as usize..(range.end + self.shift) as usize
                 } else {
-                    range.clone()
+                    range.start as usize..range.end as usize
                 }
             })
         }
@@ -1017,19 +1023,19 @@ mod ranges {
         /// iterating over the relevant ranges
         pub fn iter_over(&self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
             assert_range(&within);
+            let within = within.start as i32..within.end as i32;
 
-            let (shift_from, total_diff) = self.shift_state;
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
-                (shift_from, [within.start, within.end]),
-                (shift_from, total_diff, 0, sh),
+                (self.from, [within.start, within.end]),
+                (self.from, self.shift, 0, std::ops::Add::add),
                 (|r| r.start, |r| r.end),
             );
 
             let (s0, s1) = self.list.range(m_range.clone()).as_slices();
             s0.iter().chain(s1).enumerate().map(move |(i, range)| {
-                let mut range = if i + m_range.start > shift_from {
-                    sh(range.start, total_diff)..sh(range.end, total_diff)
+                let mut range = if i + m_range.start > self.from {
+                    range.start + self.shift..range.end + self.shift
                 } else {
                     range.clone()
                 };
@@ -1041,7 +1047,7 @@ mod ranges {
                     range.end = range.end.min(within.end);
                 }
 
-                range
+                range.start as usize..range.end as usize
             })
         }
     }
@@ -1052,20 +1058,14 @@ mod ranges {
 
         #[define_opaque(IntoIter)]
         fn into_iter(self) -> Self::IntoIter {
-            let (shift_from, diff) = self.shift_state;
             self.list.into_iter().enumerate().map(move |(i, range)| {
-                if i >= shift_from {
-                    sh(range.start, diff)..sh(range.end, diff)
+                if i >= self.from {
+                    (range.start + self.shift) as usize..(range.end + self.shift) as usize
                 } else {
-                    range
+                    range.start as usize..range.end as usize
                 }
             })
         }
-    }
-
-    /// Shorthand to shift a [`usize`] by an [`i32`]
-    fn sh(n: usize, diff: i32) -> usize {
-        (n as i32 + diff) as usize
     }
 
     pub type IntoIter = impl ExactSizeIterator<Item = Range<usize>>;

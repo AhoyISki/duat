@@ -11,10 +11,12 @@
 //!
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
-use std::{fs, marker::PhantomData, path::PathBuf};
+use std::{fs, marker::PhantomData, path::PathBuf, sync::Arc};
 
-use self::parser::InnerParsers;
-pub use self::parser::{FileParts, FileSnapshot, Parser, ParserBox, ParserCfg, Parsers};
+use parking_lot::Mutex;
+
+use self::parser::Parsers;
+pub use self::parser::{FileTracker, Parser, ParserCfg};
 use crate::{
     cfg::{NewLine, PrintCfg, ScrollOff, TabStops, WordChars, WrapMethod},
     context::{self, Cache, Handle},
@@ -246,9 +248,9 @@ impl<U: Ui> WidgetCfg<U> for FileCfg<U> {
         let mut file = File {
             path,
             text,
-            cfg: self.print_cfg,
+            cfg: Arc::new(Mutex::new(self.print_cfg)),
             printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
-            parsers: InnerParsers::default(),
+            parsers: Parsers::default(),
             layout_order: 0,
             _ghost: PhantomData,
         };
@@ -277,9 +279,9 @@ pub struct File<U: Ui> {
     path: PathKind,
     text: Text,
     printed_lines: Vec<(usize, bool)>,
-    parsers: InnerParsers<U>,
+    parsers: Parsers<U>,
     /// The [`PrintCfg`] of this [`File`]
-    pub cfg: PrintCfg,
+    cfg: Arc<Mutex<PrintCfg>>,
     pub(crate) layout_order: usize,
     _ghost: PhantomData<U>,
 }
@@ -450,25 +452,6 @@ impl<U: Ui> File<U> {
     ///
     /// [added]: Handle::add_parser
     pub fn read_parser<Rd: Parser<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
-        // SAFETY: The Pass is never borrowed at the same time that the `read`
-        // function is called
-        let pa = &mut unsafe { Pass::new() };
-
-        // In theory, it's possible to call try_read_parser or read_parser
-        // from within this function, which would call
-        // self.text.unprocessed_moments.
-        // Because of the Option::take of the Rd within,
-        // self.parsers.process_moment would panic.
-        // However, self.text.unprocessed_moments should only return Some on
-        // the first call, i.e., before any Option::take calls, so it
-        // shouldn't be a problem.
-        if let Some(moments) = self.text.unprocessed_moments() {
-            let cfg = self.print_cfg();
-            for moment in moments {
-                self.parsers.process_moment(pa, moment, cfg);
-            }
-        }
-
         self.parsers.read_parser(read)
     }
 
@@ -489,17 +472,6 @@ impl<U: Ui> File<U> {
         &self,
         read: impl FnOnce(&Rd) -> Ret,
     ) -> Option<Ret> {
-        // SAFETY: The Pass is never borrowed at the same time that the `read`
-        // function is called
-        let pa = &mut unsafe { Pass::new() };
-
-        if let Some(moments) = self.text.unprocessed_moments() {
-            let cfg = self.print_cfg();
-            for moment in moments {
-                self.parsers.process_moment(pa, moment, cfg);
-            }
-        }
-
         self.parsers.try_read_parser(read)
     }
 }
@@ -528,11 +500,7 @@ impl<U: Ui> Widget<U> for File<U> {
         let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
         let file = handle.read(pa);
-        let cfg = file.cfg;
-
-        for moment in file.text.unprocessed_moments().into_iter().flatten() {
-            parsers.process_moment(pa, moment, cfg);
-        }
+        let cfg = file.print_cfg();
 
         let (file, area) = handle.write_with_area(pa);
 
@@ -540,10 +508,12 @@ impl<U: Ui> Widget<U> for File<U> {
             area.scroll_around_point(file.text(), main.caret(), file.print_cfg());
         }
 
-        let (start, _) = area.start_points(&file.text, file.cfg);
-        let (end, _) = area.end_points(&file.text, file.cfg);
+        let (start, _) = area.start_points(&file.text, cfg);
+        let (end, _) = area.end_points(&file.text, cfg);
 
-        parsers.update_range(&mut file.text, start..end);
+        parsers.update(pa, handle, start.byte()..end.byte());
+
+        let file = handle.write(pa);
         file.parsers = parsers;
 
         file.text.update_bounds();
@@ -562,14 +532,15 @@ impl<U: Ui> Widget<U> for File<U> {
     }
 
     fn print_cfg(&self) -> PrintCfg {
-        self.cfg
+        *self.cfg.lock()
     }
 
     fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
-        let (start, _) = area.start_points(&self.text, self.cfg);
+        let cfg = *self.cfg.lock();
+        let (start, _) = area.start_points(&self.text, cfg);
 
         let mut last_line = area
-            .rev_print_iter(self.text.iter_rev(start), self.cfg)
+            .rev_print_iter(self.text.iter_rev(start), cfg)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         self.printed_lines.clear();
@@ -577,7 +548,7 @@ impl<U: Ui> Widget<U> for File<U> {
 
         let mut has_wrapped = false;
 
-        area.print_with(&mut self.text, self.cfg, painter, move |caret, item| {
+        area.print_with(&mut self.text, cfg, painter, move |caret, item| {
             has_wrapped |= caret.wrap;
             if has_wrapped && item.part.is_char() {
                 has_wrapped = false;

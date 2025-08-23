@@ -17,14 +17,14 @@ use bincode::{Decode, Encode};
 use parking_lot::Mutex;
 
 use super::{Point, Text};
-use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
+use crate::{add_shifts as add, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
 #[derive(Debug)]
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
-    remote_moments: Arc<Mutex<Vec<Moment>>>,
+    fetcher_moments: Arc<Mutex<Vec<FetcherState>>>,
 }
 
 impl History {
@@ -33,7 +33,7 @@ impl History {
         Self {
             moments: vec![Moment::default()],
             cur_moment: 0,
-            remote_moments: Arc::default(),
+            fetcher_moments: Arc::default(),
         }
     }
 
@@ -41,9 +41,9 @@ impl History {
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
         self.moments.truncate(self.cur_moment + 1);
 
-        let mut remote = self.remote_moments.lock();
-        for moment in remote.iter_mut() {
-            moment.add_change(guess_i, change.clone());
+        let mut remote = self.fetcher_moments.lock();
+        for state in remote.iter_mut() {
+            state.add_change(change.clone());
         }
 
         self.moments[self.cur_moment].add_change(guess_i, change)
@@ -88,9 +88,19 @@ impl History {
             Some(self.moments[self.cur_moment].changes().map(move |change| {
                 let mut change = change.reverse();
                 change.shift_by(shift);
-                shift = add_shifts(shift, change.shift());
+                shift = add(shift, change.shift());
                 change
             }))
+        }
+    }
+
+    /// Returns a new [`MomentFetcher`]
+    pub(crate) fn new_fetcher(&self) -> MomentFetcher {
+        let mut remote = self.fetcher_moments.lock();
+        remote.push(FetcherState::Alive(Moment::default()));
+        MomentFetcher {
+            list: self.fetcher_moments.clone(),
+            index: remote.len() - 1,
         }
     }
 }
@@ -102,7 +112,7 @@ impl Encode for History {
     ) -> Result<(), bincode::error::EncodeError> {
         Encode::encode(&self.moments, encoder)?;
         Encode::encode(&self.cur_moment, encoder)?;
-        Encode::encode(&*self.remote_moments.lock(), encoder)?;
+        Encode::encode(&*self.fetcher_moments.lock(), encoder)?;
         Ok(())
     }
 }
@@ -114,7 +124,7 @@ impl<Context> Decode<Context> for History {
         Ok(History {
             moments: Decode::decode(decoder)?,
             cur_moment: Decode::decode(decoder)?,
-            remote_moments: Arc::new(Mutex::new(Decode::decode(decoder)?)),
+            fetcher_moments: Arc::new(Mutex::new(Decode::decode(decoder)?)),
         })
     }
 }
@@ -124,8 +134,14 @@ impl Clone for History {
         Self {
             moments: self.moments.clone(),
             cur_moment: self.cur_moment,
-            remote_moments: Arc::default(),
+            fetcher_moments: Arc::default(),
         }
+    }
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -178,7 +194,7 @@ impl Moment {
         let (from, shift) = if !(change.added_str() == "" && change.taken_str() == "") {
             let change_shift = change.shift();
             self.changes.insert(m_range.start, change);
-            (m_range.start + 1, add_shifts(shift, change_shift))
+            (m_range.start + 1, add(shift, change_shift))
         } else {
             (m_range.start, shift)
         };
@@ -200,7 +216,7 @@ impl Moment {
         let (from, shift) = self.shift_state;
         self.changes.iter().enumerate().map(move |(i, change)| {
             let mut change = change.as_ref();
-            if i > from {
+            if i >= from {
                 change.shift_by(shift);
             }
             change
@@ -232,11 +248,11 @@ impl Moment {
 /// A change in a file, with a start, taken text, and added text
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
 pub struct Change<S = String> {
-    start: Point,
+    start: [i32; 3],
     added: S,
     taken: S,
-    added_end: Point,
-    taken_end: Point,
+    added_end: [i32; 3],
+    taken_end: [i32; 3],
 }
 
 impl Change {
@@ -253,13 +269,13 @@ impl Change {
         };
 
         let taken = text.strs(p0..p1).unwrap().collect();
-        let added_end = p0 + Point::len_of(&added);
+        let added_end = add(p0.as_signed(), Point::len_of(&added).as_signed());
         Change {
-            start: p0,
+            start: p0.as_signed(),
             added,
             taken,
             added_end,
-            taken_end: p1,
+            taken_end: p1.as_signed(),
         }
     }
 
@@ -282,31 +298,31 @@ impl Change {
         if has_start_of(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end());
 
-            let start = self.start - older.start;
-            let end = fixed_end - older.start;
-            let range = start.byte()..end.byte();
+            let start = sub(self.start, older.start);
+            let end = sub(fixed_end.as_signed(), older.start);
+            let range = start[0] as usize..end[0] as usize;
             older.added.replace_range(range, &self.added);
 
-            let range = (fixed_end.byte() - self.start.byte())..;
+            let range = (fixed_end.byte() - self.start[0] as usize)..;
             older.taken.push_str(&self.taken[range]);
 
             *self = older;
         } else if has_start_of(self.taken_range(), older.added_range()) {
             let fixed_end = self.taken_end().min(older.added_end());
 
-            let start = older.start - self.start;
-            let end = fixed_end - self.start;
-            let range = start.byte()..end.byte();
+            let start = sub(older.start, self.start);
+            let end = sub(fixed_end.as_signed(), self.start);
+            let range = start[0] as usize..end[0] as usize;
             self.taken.replace_range(range, &older.taken);
 
-            let range = (fixed_end.byte() - older.start.byte())..;
+            let range = (fixed_end.byte() - older.start[0] as usize)..;
 
             self.added.push_str(&older.added[range]);
         } else {
             unreachable!("Changes chosen that don't interact");
         }
-        self.added_end = self.start + Point::len_of(&self.added);
-        self.taken_end = self.start + Point::len_of(&self.taken);
+        self.added_end = add(self.start, Point::len_of(&self.added).as_signed());
+        self.taken_end = add(self.start, Point::len_of(&self.taken).as_signed());
     }
 }
 
@@ -314,21 +330,21 @@ impl<'a> Change<&'a str> {
     /// Returns a new copyable [`Change`] from an insertion.
     pub fn str_insert(added_str: &'a str, start: Point) -> Self {
         Self {
-            start,
+            start: start.as_signed(),
             added: added_str,
             taken: "",
-            added_end: start + Point::len_of(added_str),
-            taken_end: start,
+            added_end: (start + Point::len_of(added_str)).as_signed(),
+            taken_end: start.as_signed(),
         }
     }
 
     pub(super) fn remove_last_nl(len: Point) -> Self {
         Self {
-            start: len.rev('\n'),
+            start: len.rev('\n').as_signed(),
             added: "",
             taken: "\n",
-            added_end: len.rev('\n'),
-            taken_end: len,
+            added_end: len.rev('\n').as_signed(),
+            taken_end: len.as_signed(),
         }
     }
 }
@@ -347,34 +363,34 @@ impl<S: std::borrow::Borrow<str>> Change<S> {
 
     /// The [`Point`] at the start of the change
     pub fn start(&self) -> Point {
-        self.start
+        to_point(self.start)
     }
 
     /// Shifts the [`Change`] by a "signed point"
     pub(crate) fn shift_by(&mut self, shift: [i32; 3]) {
-        self.start = self.start.shift_by(shift);
-        self.added_end = self.added_end.shift_by(shift);
-        self.taken_end = self.taken_end.shift_by(shift);
+        self.start = add(self.start, shift);
+        self.added_end = add(self.added_end, shift);
+        self.taken_end = add(self.taken_end, shift);
     }
 
     /// Returns the end of the [`Change`], before it was applied
     pub fn taken_end(&self) -> Point {
-        self.taken_end
+        to_point(self.taken_end)
     }
 
     /// Returns the end of the [`Change`], after it was applied
     pub fn added_end(&self) -> Point {
-        self.added_end
+        to_point(self.added_end)
     }
 
     /// Returns the taken [`Range`]
     pub fn taken_range(&self) -> Range<Point> {
-        self.start..self.taken_end()
+        self.start()..self.taken_end()
     }
 
     /// Returns the added [`Range`]
     pub fn added_range(&self) -> Range<Point> {
-        self.start..self.added_end()
+        self.start()..self.added_end()
     }
 
     /// The text that was taken on this [`Change`]
@@ -406,19 +422,64 @@ fn has_start_of(lhs: Range<Point>, rhs: Range<Point>) -> bool {
 ///
 /// This struct is used to track the [`Change`]s throughout a
 /// [`Text`].
+#[derive(Debug)]
 pub(crate) struct MomentFetcher {
-    change_lists: Arc<Mutex<Vec<Moment>>>,
+    list: Arc<Mutex<Vec<FetcherState>>>,
     index: usize,
 }
 
 impl MomentFetcher {
     /// Gets the latest [`Moment`], emptying the list of [`Change`]s
     pub(crate) fn get_moment(&self) -> Moment {
-        std::mem::take(&mut self.change_lists.lock()[self.index])
+        self.list.lock()[self.index].take().expect(
+            "This should only return None if the MomentFetcher has been dropped, at which point \
+             calling this function should not be possible.",
+        )
+    }
+}
+
+// This is done in order to prevent unnecessary updates to a Moment
+// that will never be read, since its reader is gone.
+impl Drop for MomentFetcher {
+    fn drop(&mut self) {
+        self.list.lock()[self.index] = FetcherState::Dead;
+    }
+}
+
+/// The state of a [`MomentFetcher`], can be alive or dead
+#[derive(Clone, Debug, Encode, Decode)]
+enum FetcherState {
+    Alive(Moment),
+    Dead,
+}
+
+impl FetcherState {
+    /// Takes the [`Moment`] from this [`FetcherState`] if it's still
+    /// alive, that is
+    fn take(&mut self) -> Option<Moment> {
+        match self {
+            FetcherState::Alive(moment) => Some(std::mem::take(moment)),
+            FetcherState::Dead => None,
+        }
     }
 
-    /// Wether there are any [`Change`]s remaining
-    pub(crate) fn is_empty(&self) -> bool {
-        self.change_lists.lock()[self.index].is_empty()
+    /// Adds a [`Change`] to this [`FetcherState`]
+    fn add_change(&mut self, change: Change) {
+        match self {
+            FetcherState::Alive(moment) => {
+                moment.add_change(None, change);
+            }
+            FetcherState::Dead => {}
+        }
     }
+}
+
+/// Subtracts two `i32` arrays
+fn sub(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
+    [lhs[0] - rhs[0], lhs[1] - rhs[1], lhs[2] - rhs[2]]
+}
+
+/// Converts an `[i32; 3]` to a [`Point`]
+fn to_point(signed: [i32; 3]) -> Point {
+    Point::from_raw(signed[0] as usize, signed[1] as usize, signed[2] as usize)
 }

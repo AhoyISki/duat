@@ -106,6 +106,7 @@ use std::{
     },
 };
 
+pub(crate) use self::history::MomentFetcher;
 use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
     builder::{Builder, BuilderPart, txt},

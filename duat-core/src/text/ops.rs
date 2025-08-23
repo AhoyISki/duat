@@ -72,9 +72,10 @@ impl Point {
     /// file). Indexed at 0
     ///
     /// This is the primary value used when indexing the [`Text`] and
-    /// [`Bytes`]. That is, the [`Bytes::point_at_byte`], [`Bytes::strs`],
-    /// and most other [`Bytes`] functions rely on a character indices
-    /// (or [`Point`]s) for indexing a [`Text`].
+    /// [`Bytes`]. That is, the [`Bytes::point_at_byte`],
+    /// [`Bytes::strs`], and most other [`Bytes`] functions rely
+    /// on a character indices (or [`Point`]s) for indexing a
+    /// [`Text`].
     ///
     /// [`Text`]: super::Text
     /// [`Bytes`]: super::Bytes
@@ -136,6 +137,14 @@ impl Point {
             c: (self.c as i32 + c) as u32,
             l: (self.l as i32 + l) as u32,
         }
+    }
+
+    /// Returns a signed representation of this [`Point`]
+    ///
+    /// In this representation, the indices 0, 1 and 2 are the byte,
+    /// char and line, respectively.
+    pub(crate) fn as_signed(self) -> [i32; 3] {
+        [self.b as i32, self.c as i32, self.l as i32]
     }
 }
 

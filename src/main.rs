@@ -203,7 +203,6 @@ fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
     unsafe { lib.get::<RunFn>(b"run").ok() }
 }
 
-
 #[cfg(target_os = "macos")]
 const fn resolve_config_file() -> &'static str {
     "libconfig.dylib"
