@@ -832,6 +832,10 @@ mod ranges {
         /// of intersecting ranges.
         pub fn add(&mut self, new: Range<usize>) {
             assert_range(&new);
+            if new.len() < self.min_len {
+                return;
+            }
+
             let new = new.start as i32..new.end as i32;
 
             let m_range = merging_range_by_guess_and_lazy_shift(
@@ -945,13 +949,13 @@ mod ranges {
         /// accordingly.
         ///
         /// [`Change`]: crate::text::Change
-        pub fn shift_by(&mut self, from: usize, diff: i32) {
+        pub fn shift_by(&mut self, from: usize, shift: i32) {
             let from = from as i32;
 
             // The range of changes that will be drained
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
-                (self.from, [from, from - diff.min(0)]),
+                (self.from, [from, from - shift.min(0)]),
                 (self.from, self.shift, 0, std::ops::Add::add),
                 (|r| r.start, |r| r.end),
             );
@@ -967,7 +971,7 @@ mod ranges {
             // If self.from > m_range.end, then I shift the ranges
             // inbetween by -self.shift, in order to keep the ranges
             // after m_range.start equally unshifted by self.shift +
-            // diff.
+            // shift.
             } else if self.from > m_range.end && self.shift != 0 {
                 for range in &mut self.list.range_mut(m_range.end..self.from) {
                     range.start -= self.shift;
@@ -981,21 +985,23 @@ mod ranges {
 
                 iter.next().and_then(|first| {
                     let last = iter.next_back().unwrap_or(first);
-                    let range = first.start.min(from)..(last.end + diff).max(from);
+                    let range = first.start.min(from)..(last.end + shift).max(from);
 
                     (range.len() >= self.min_len).then_some(range)
                 })
             };
 
             let new_from = m_range.start + range_left.is_some() as usize;
-            if new_from < self.list.len() - 1 {
+
+            self.list.splice(m_range.clone(), range_left);
+
+            if new_from < self.list.len() {
                 self.from = new_from;
+                self.shift += shift;
             } else {
                 self.from = 0;
                 self.shift = 0;
             }
-
-            self.list.splice(m_range.clone(), range_left);
         }
 
         /// Returns the number of [`Range<usize>`]s

@@ -371,6 +371,7 @@ impl<U: Ui> Parsers<U> {
         let position = self.list.borrow().iter().position(type_eq::<U, P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
+
             parser.before_read();
 
             let ret = read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap());
@@ -395,7 +396,6 @@ impl<U: Ui> Parsers<U> {
         let position = self.list.borrow().iter().position(type_eq::<U, P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
-
             let ret = parser
                 .before_try_read()
                 .then(|| read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap()));
@@ -411,7 +411,8 @@ impl<U: Ui> Parsers<U> {
     /// Updates the [`Parser`]s on a given range
     // TODO: Deal with reparsing if Changes took place.
     pub(super) fn update(&self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Range<usize>) {
-        for i in 0..self.list.borrow().len() {
+        let len = self.list.borrow().len();
+        for i in 0..len {
             let mut parts = self.list.borrow_mut().remove(i);
             let parser = parts.parser.as_mut().unwrap();
 
@@ -464,23 +465,12 @@ pub struct FileTracker {
 impl FileTracker {
     /// Updates the inner [`Bytes`] and retrieves latest [`Moment`]
     ///
-    /// If there were no new [`Change`]s, the [`Moment`] returned by
-    /// [`Self::moment`] will stay the same, and this function will
-    /// return `false`. Otherwise, the [`Bytes`] will be updated and
-    /// the function will return `true`.
-    ///
     /// [`Change`]: crate::text::Change
-    pub fn update(&mut self) -> bool {
-        let moment = self.fetcher.get_moment();
-        if moment.is_empty() {
-            false
-        } else {
-            for change in moment.changes() {
-                self.bytes.apply_change(change);
-                self.ranges.lock().apply_change(change, &self.bytes);
-            }
-            self.moment = moment;
-            true
+    pub fn update(&mut self) {
+        self.moment = self.fetcher.get_moment();
+        for change in self.moment.changes() {
+            self.bytes.apply_change(change);
+            self.ranges.lock().apply_change(change, &self.bytes);
         }
     }
 
@@ -515,6 +505,17 @@ impl FileTracker {
     pub fn add_range(&mut self, range: impl TextRange) {
         let range = range.to_range(self.bytes.len().byte());
         self.ranges.lock().add_range(range);
+    }
+
+    /// Same as [`add_range`], but add many [`Range`]s at once
+    ///
+    /// [`add_range`]: Self::add_range
+    pub fn add_ranges<R: TextRange>(&mut self, new_ranges: impl IntoIterator<Item = R>) {
+        let mut ranges = self.ranges.lock();
+        for range in new_ranges {
+            let range = range.to_range(self.bytes.len().byte());
+            ranges.add_range(range);
+        }
     }
 
     /// Automatically add every [`Change`]'s [added range] to update
