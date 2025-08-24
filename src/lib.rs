@@ -29,8 +29,12 @@ use std::{
     collections::HashMap,
     fs,
     ops::Range,
+    panic::AssertUnwindSafe,
     path::PathBuf,
-    sync::{LazyLock, Mutex},
+    sync::{
+        Arc, LazyLock, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use duat_core::{
@@ -124,7 +128,7 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
 /// [`Parser`] that parses [`File`]'s as [tree-sitter] syntax trees
 ///
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-pub struct TsParser(Option<InnerTsParser>);
+pub struct TsParser(Option<ParserState>);
 
 impl TsParser {
     /// Returns a new instance of a [`TsParser`]
@@ -134,14 +138,22 @@ impl TsParser {
 
     /// The root [`Node`] of the syntax tree
     pub fn root(&self) -> Option<Node<'_>> {
-        self.0.as_ref().map(|parser| parser.tree.root_node())
+        let ParserState::Present(parser) = self.0.as_ref().unwrap() else {
+            context::warn!("Called function that shouldn't be possible without present parser");
+            return None;
+        };
+
+        Some(parser.tree.root_node())
     }
 
     /// Logs the root node with the [`context::debug`] macro
     pub fn debug_root(&self) {
-        if let Some(parser) = self.0.as_ref() {
-            context::debug!("{}", format_root(parser.tree.root_node()));
-        }
+        let ParserState::Present(parser) = self.0.as_ref().unwrap() else {
+            context::warn!("Called function that shouldn't be possible without present parser");
+            return;
+        };
+
+        context::debug!("{}", format_root(parser.tree.root_node()));
     }
 
     /// Gets the requested indentation level on a given [`Point`]
@@ -151,128 +163,84 @@ impl TsParser {
     ///
     /// [`filetype`]: FileType::filetype
     pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
-        self.0
-            .as_ref()
-            .and_then(|parser| parser.indent_on(p, bytes, cfg))
+        let ParserState::Present(parser) = self.0.as_ref().unwrap() else {
+            context::warn!("Called function that shouldn't be possible without present parser");
+            return None;
+        };
+
+        parser.indent_on(p, bytes, cfg)
     }
 }
 
 impl<U: Ui> file::Parser<U> for TsParser {
-    fn parse(&mut self, _: &mut Pass, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
-        file::Parser::<U>::parse_remote(self, snap, ranges);
-    }
-
-    fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
-        if let Some(parser) = self.0.as_mut()
-            && let Some(within) = within
-        {
-            let range = within.start.byte()..within.end.byte();
-            parser.highlight_and_inject(parts.bytes, &mut parts.tags, range);
-        }
-    }
-
-    fn parse_remote(&mut self, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
+    fn parse(&mut self) -> bool {
         // In this function, the changes will be applied and the Ranges will
         // be updated to include the following regions to be updated:
         //
         // - The ranges returned by Parser::changed_ranges,
-        // - All lines that contain any of the Changes in the Moment,
         // - All ranges where an injection was added or removed, which will be
         //   acquired through the injections query, applied on the two
         //   previous range lists,
-        let Some(parser) = self.0.as_mut() else {
-            return;
-        };
+        let mut parser_state = self.0.take().unwrap();
 
-        for change in snap.moment.changes() {
-            let input_edit = input_edit(change, snap.bytes);
-            parser.tree.edit(&input_edit);
+        let do_update = parser_state.parse();
 
-            for inj in parser.injections.iter_mut() {
-                inj.edit(&input_edit);
-            }
-        }
+        self.0 = Some(parser_state);
 
-        let tree = parser
-            .parser
-            .parse_with_options(&mut parser_fn(snap.bytes), Some(&parser.tree), None)
-            .unwrap();
-        parser.old_tree = Some(std::mem::replace(&mut parser.tree, tree));
-
-        for inj in parser.injections.iter_mut() {
-            inj.update_tree(snap.bytes);
-        }
-
-        let Some(ranges) = ranges else {
-            return;
-        };
-
-        let mut new_ranges = Ranges::empty();
-        // `changed_ranges` should mostly be able to catch any big additions
-        // to the tree structure.
-        for range in parser
-            .old_tree
-            .as_ref()
-            .unwrap()
-            .changed_ranges(&parser.tree)
-            .chain(
-                parser
-                    .injections
-                    .iter()
-                    .flat_map(InjectedTree::changed_ranges),
-            )
-        {
-            let start = snap.bytes.point_at_line(range.start_point.row).byte();
-            let end = snap
-                .bytes
-                .point_at_line((range.end_point.row + 1).min(snap.bytes.len().line()))
-                .byte();
-            new_ranges.add(start..end);
-        }
-
-        // However, `changed_ranges` doesn't catch everything, so another
-        // check is done. At a minimum, at least the lines where the changes
-        // took place should be updated.
-        for change in snap.moment.changes() {
-            let start = change.start();
-            let added = change.added_end();
-
-            let start = snap.bytes.point_at_line(start.line());
-            let end = snap
-                .bytes
-                .point_at_line((added.line() + 1).min(snap.bytes.len().line()));
-
-            new_ranges.add(start.byte()..end.byte());
-        }
-
-        // Finally, in order to properly catch injection changes, a final
-        // comparison is done between the old tree and the new tree, in
-        // regards to injection captures. This is done on every range in
-        // new_ranges.
-        refactor_injections(
-            &mut new_ranges,
-            (parser.lang_parts, &mut parser.injections),
-            (parser.old_tree.as_ref(), &parser.tree),
-            snap.bytes,
-        );
-
-        ranges.merge(new_ranges);
+        do_update
     }
 
-    fn make_remote(&self) -> bool
-    where
-        Self: Send,
-    {
-        self.0
-            .as_ref()
-            .is_some_and(|parser| parser.tree.root_node().is_error())
+    fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+        match self.0.as_mut().unwrap() {
+            ParserState::Present(parser) => {
+                let mut parts = file.write(pa).text_mut().parts();
+
+                for range in on {
+                    let range = range.start.byte()..range.end.byte();
+                    parser.highlight_and_inject(parts.bytes, &mut parts.tags, range);
+                }
+            }
+            ParserState::Remote(..) => {
+                context::warn!("Tried updating parser while it is still remote");
+            }
+            _ => (),
+        }
+    }
+
+    fn before_read(&mut self) {
+        let parser_state = self.0.take().unwrap();
+
+        if let ParserState::Remote((_, join_handle)) = parser_state {
+            self.0 = Some(ParserState::Present(join_handle.join().unwrap()));
+        } else {
+            self.0 = Some(parser_state);
+        }
+    }
+
+    fn before_try_read(&mut self) -> bool {
+        let parser_state = self.0.take().unwrap();
+
+        if let ParserState::Remote((is_done, join_handle)) = parser_state {
+            if is_done.load(Ordering::Relaxed) {
+                self.0 = Some(ParserState::Present(join_handle.join().unwrap()));
+                file::Parser::<U>::parse(self)
+            } else {
+                self.0 = Some(ParserState::Remote((is_done, join_handle)));
+                false
+            }
+        } else {
+            self.0 = Some(parser_state);
+            true
+        }
     }
 }
 
 impl<U: Ui> ParserCfg<U> for TsParser {
     type Parser = Self;
 
-    fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+    fn build(self, file: &File<U>, mut tracker: FileTracker) -> Result<Self::Parser, Text> {
+        tracker.track_changed_lines();
+
         let path = file.path_kind();
         let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
             && let Some(filetype) = path.filetype()
@@ -283,22 +251,37 @@ impl<U: Ui> ParserCfg<U> for TsParser {
                 "No filetype set for {}, will try again once one is set",
                 path.name_txt()
             );
-            return Ok(ParserBox::new(file, self));
+            return Ok(Self(Some(ParserState::NotSet(tracker))));
         };
 
         const MAX_LEN_FOR_LOCAL: usize = 100_000;
 
+        let lang_parts = lang_parts_of(filetype)?;
+
         if parser_is_compiled(filetype)? && file.bytes().len().byte() <= MAX_LEN_FOR_LOCAL {
-            let lang_parts = lang_parts_of(filetype)?;
-            Ok(ParserBox::new(
-                file,
-                Self(Some(InnerTsParser::new(file.bytes(), lang_parts))),
-            ))
+            Ok(Self(Some(ParserState::Present(InnerTsParser::new(
+                lang_parts, tracker,
+            )))))
         } else {
-            Ok(ParserBox::new_remote(file, move |bytes| {
-                let lang_parts = lang_parts_of(filetype)?;
-                Ok(Self(Some(InnerTsParser::new(bytes, lang_parts))))
-            }))
+            let is_done = Arc::new(AtomicBool::new(false));
+            Ok(Self(Some(ParserState::Remote((
+                is_done.clone(),
+                std::thread::spawn(move || {
+                    let mut parser = InnerTsParser::new(lang_parts, tracker);
+
+                    loop {
+                        parser.tracker.update();
+
+                        if parser.tracker.moment().is_empty() {
+                            break;
+                        }
+                    }
+
+                    parser.tracker.request_parse();
+                    is_done.store(true, Ordering::Relaxed);
+                    parser
+                }),
+            )))))
         }
     }
 }
@@ -316,11 +299,12 @@ struct InnerTsParser {
     tree: Tree,
     old_tree: Option<Tree>,
     injections: Vec<InjectedTree>,
+    tracker: FileTracker,
 }
 
 impl InnerTsParser {
     /// Returns a new [`InnerTsParser`]
-    fn new(bytes: &Bytes, lang_parts: LangParts<'static>) -> InnerTsParser {
+    fn new(lang_parts: LangParts<'static>, tracker: FileTracker) -> InnerTsParser {
         let (.., lang, _) = &lang_parts;
         let forms = forms_from_lang_parts(lang_parts);
 
@@ -328,7 +312,7 @@ impl InnerTsParser {
         parser.set_language(lang).unwrap();
 
         let tree = parser
-            .parse_with_options(&mut parser_fn(bytes), None, None)
+            .parse_with_options(&mut parser_fn(tracker.bytes()), None, None)
             .unwrap();
 
         InnerTsParser {
@@ -338,7 +322,76 @@ impl InnerTsParser {
             tree,
             old_tree: None,
             injections: Vec::new(),
+            tracker,
         }
+    }
+
+    fn parse(&mut self) {
+        self.tracker.update();
+        let bytes = self.tracker.bytes();
+        let moment = self.tracker.moment();
+
+        if moment.is_empty() {
+            return;
+        }
+
+        for change in moment.changes() {
+            let input_edit = input_edit(change, bytes);
+            self.tree.edit(&input_edit);
+
+            for inj in self.injections.iter_mut() {
+                inj.edit(&input_edit);
+            }
+        }
+
+        let tree = self
+            .parser
+            .parse_with_options(&mut parser_fn(bytes), Some(&self.tree), None)
+            .unwrap();
+
+        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+
+        for inj in self.injections.iter_mut() {
+            inj.update_tree(bytes);
+        }
+
+        let mut new_ranges = Ranges::empty();
+        // `changed_ranges` should mostly be able to catch any big additions
+        // to the tree structure.
+        for range in self
+            .old_tree
+            .as_ref()
+            .unwrap()
+            .changed_ranges(&self.tree)
+            .chain(
+                self.injections
+                    .iter()
+                    .flat_map(InjectedTree::changed_ranges),
+            )
+        {
+            let start = bytes.point_at_line(range.start_point.row).byte();
+            let end = bytes
+                .point_at_line((range.end_point.row + 1).min(bytes.len().line()))
+                .byte();
+            if let Err(_) =
+                std::panic::catch_unwind(AssertUnwindSafe(|| new_ranges.add(start..end)))
+            {
+                panic!("{range:?}, {start}, {end}");
+            }
+        }
+
+        // Finally, in order to properly catch injection changes, a final
+        // comparison is done between the old tree and the new tree, in
+        // regards to injection captures. This is done on every range in
+        // new_ranges.
+        refactor_injections(
+            &mut new_ranges,
+            (self.lang_parts, &mut self.injections),
+            (self.old_tree.as_ref(), &self.tree),
+            bytes,
+        );
+
+        self.tracker.add_ranges(new_ranges);
     }
 
     /// Highlights and injects based on the [`LangParts`] queries
@@ -359,14 +412,11 @@ impl InnerTsParser {
     /// The expected level of indentation on a given [`Point`]
     fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
         let start = bytes.point_at_line(p.line());
+
         let (root, indents, range) = self
             .injections
             .iter()
-            .find_map(|inj| {
-                inj.included_ranges()
-                    .find(|range| range.contains(&start.byte()))
-                    .map(|range| (inj.root_node(), inj.lang_parts().2.indents, range))
-            })
+            .find_map(|inj| inj.get_injection_indent_parts(start.byte()))
             .unwrap_or((
                 self.tree.root_node(),
                 self.lang_parts.2.indents,
@@ -628,6 +678,47 @@ impl std::fmt::Debug for InnerTsParser {
     }
 }
 
+#[derive(Clone, Copy)]
+struct TsBuf<'a>(&'a Bytes);
+
+impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
+    type I = std::array::IntoIter<&'a [u8], 2>;
+
+    fn text(&mut self, node: tree_sitter::Node) -> Self::I {
+        let range = node.range();
+        let buffers = self.0.buffers(range.start_byte..range.end_byte);
+        buffers.to_array().into_iter()
+    }
+}
+
+type LangParts<'a> = (&'a str, &'a Language, Queries<'a>);
+
+#[derive(Clone, Copy)]
+struct Queries<'a> {
+    highlights: &'a Query,
+    indents: &'a Query,
+    injections: &'a Query,
+}
+
+enum ParserState {
+    Present(InnerTsParser),
+    Remote((Arc<AtomicBool>, std::thread::JoinHandle<InnerTsParser>)),
+    NotSet(FileTracker),
+}
+
+impl ParserState {
+    fn parse(&mut self) -> bool {
+        match self {
+            ParserState::Present(parser) => {
+                parser.parse();
+                true
+            }
+            ParserState::Remote(_) => todo!(),
+            ParserState::NotSet(_) => false,
+        }
+    }
+}
+
 #[track_caller]
 fn descendant_in(node: Node, byte: usize) -> Node {
     node.descendant_for_byte_range(byte, byte + 1).unwrap()
@@ -699,19 +790,6 @@ fn forms_from_lang_parts(
     }
 }
 
-#[derive(Clone, Copy)]
-struct TsBuf<'a>(&'a Bytes);
-
-impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
-    type I = std::array::IntoIter<&'a [u8], 2>;
-
-    fn text(&mut self, node: tree_sitter::Node) -> Self::I {
-        let range = node.range();
-        let buffers = self.0.buffers(range.start_byte..range.end_byte);
-        buffers.to_array().into_iter()
-    }
-}
-
 fn lang_parts_of(lang: &str) -> Result<LangParts<'static>, Text> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
 
@@ -734,15 +812,6 @@ fn lang_parts_of(lang: &str) -> Result<LangParts<'static>, Text> {
 
         (lang, language, queries)
     })
-}
-
-type LangParts<'a> = (&'a str, &'a Language, Queries<'a>);
-
-#[derive(Clone, Copy)]
-struct Queries<'a> {
-    highlights: &'a Query,
-    indents: &'a Query,
-    injections: &'a Query,
 }
 
 /// The Key for tree-sitter

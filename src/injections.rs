@@ -5,7 +5,7 @@ use duat_core::{
     prelude::Ranges,
     text::{Bytes, Tags},
 };
-use tree_sitter::{InputEdit, Node, Parser, Point as TsPoint, Range as TsRange, Tree};
+use tree_sitter::{InputEdit, Node, Parser, Point as TsPoint, Query, Range as TsRange, Tree};
 
 use crate::{
     LangParts, forms_from_lang_parts, highlight_and_inject, parser_fn, refactor_injections,
@@ -101,9 +101,7 @@ impl InjectedTree {
     /// In addition, this will also mark this [`Range`] as one to be
     /// parsed
     pub(crate) fn add_range(&mut self, range: Range<usize>) {
-        if !self.ranges.iter().any(|r| r == range) {
-            self.ranges.add(range.clone());
-        }
+        self.ranges.add(range.clone());
         self.ranges_to_parse.add(range);
     }
 
@@ -178,19 +176,28 @@ impl InjectedTree {
         self.ranges.is_empty()
     }
 
-    /// The ranges included in this [`InjectedTree`]
-    pub(crate) fn included_ranges(&self) -> impl Iterator<Item = Range<usize>> {
-        self.ranges.iter()
-    }
-
-    /// The root [`Node`] of the [`Tree`] within
-    pub(crate) fn root_node(&self) -> Node<'_> {
-        self.tree.root_node()
-    }
-
     /// The [`LangParts`] used by this [`InjectedTree`]
     pub(crate) fn lang_parts(&self) -> LangParts<'static> {
         self.lang_parts
+    }
+
+    /// Gets the parts of the [`InjectedTree`] needed for indentation
+    pub(crate) fn get_injection_indent_parts(
+        &self,
+        start_byte: usize,
+    ) -> Option<(Node<'_>, &'static Query, Range<usize>)> {
+        if let Some(range) = self.ranges.iter().find(|r| r.contains(&start_byte)) {
+            self.injections
+                .iter()
+                .find_map(|inj| inj.get_injection_indent_parts(start_byte))
+                .or(Some((
+                    self.tree.root_node(),
+                    self.lang_parts.2.injections,
+                    range.clone(),
+                )))
+        } else {
+            None
+        }
     }
 }
 
