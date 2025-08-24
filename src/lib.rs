@@ -164,17 +164,29 @@ impl<U: Ui> Plugin<U> for MatchPairs {
 }
 
 impl<U: Ui> Parser<U> for MatchPairs {
-    fn update_range(&mut self, mut parts: FileParts<U>, _: Option<Range<Point>>) {
+    fn parse(&mut self) -> bool {
+        true
+    }
+
+    fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
         }
-        parts.tags.remove(*PAREN_TAGGER, ..);
+        let file = handle.write(pa);
 
-        let within = parts.suggested_max_range;
+        file.text_mut().remove_tags(*PAREN_TAGGER, ..);
 
-        'selections: for (_, selection, is_main) in parts.selections.iter_within(within) {
-            let range = selection.range(parts.bytes);
-            let str: Vec<u8> = parts.bytes.buffers(range.clone()).collect();
+        let selections: Vec<(Range<usize>, bool)> = on
+            .into_iter()
+            .flat_map(|r| {
+                file.selections()
+                    .iter_within(r)
+                    .map(|(_, sel, is_main)| (sel.range(file.bytes()), is_main))
+            })
+            .collect();
+
+        'selections: for (range, is_main) in selections {
+            let str: Vec<u8> = file.bytes().buffers(range.clone()).collect();
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.ts_and_bytes.iter().position(ends(&str)) {
@@ -186,7 +198,7 @@ impl<U: Ui> Parser<U> for MatchPairs {
             };
 
             let (start_range, end_range) = if let Some(Some(ranges)) =
-                parts.parsers.try_read(|ts: &TsParser| {
+                file.try_read_parser(|ts: &TsParser| {
                     let node = ts
                         .root()
                         .and_then(|root| root.descendant_for_byte_range(range.start, range.end))
@@ -217,7 +229,7 @@ impl<U: Ui> Parser<U> for MatchPairs {
                 ranges
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
-                    let mut iter = parts.bytes.search_fwd(escaped, range.start..).unwrap();
+                    let mut iter = file.bytes().search_fwd(escaped, range.start..).unwrap();
                     let mut bounds = 0;
 
                     loop {
@@ -230,7 +242,7 @@ impl<U: Ui> Parser<U> for MatchPairs {
                         }
                     }
                 } else {
-                    let mut iter = parts.bytes.search_rev(escaped, ..range.end).unwrap();
+                    let mut iter = file.bytes().search_rev(escaped, ..range.end).unwrap();
                     let mut bounds = 0;
 
                     loop {
@@ -252,22 +264,30 @@ impl<U: Ui> Parser<U> for MatchPairs {
             } else {
                 form::id_of!("matched_pair.extra.start")
             };
-            parts.tags.insert(*PAREN_TAGGER, start_range, id.to_tag(99));
+            file.text_mut()
+                .insert_tag(*PAREN_TAGGER, start_range, id.to_tag(99));
 
             let id = if is_main {
                 form::id_of!("matched_pair.main.end")
             } else {
                 form::id_of!("matched_pair.extra.end")
             };
-            parts.tags.insert(*PAREN_TAGGER, end_range, id.to_tag(99));
+            file.text_mut()
+                .insert_tag(*PAREN_TAGGER, end_range, id.to_tag(99));
         }
+    }
+
+    fn before_read(&mut self) {}
+
+    fn before_try_read(&mut self) -> bool {
+        true
     }
 }
 
 impl<U: Ui> ParserCfg<U> for MatchPairs {
     type Parser = Self;
 
-    fn init(mut self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+    fn build(mut self, file: &File<U>, mut tracker: FileTracker) -> Result<Self::Parser, Text> {
         if let Some(path) = file.path_set()
             && let Some(path) = path.filetype()
         {
@@ -277,7 +297,9 @@ impl<U: Ui> ParserCfg<U> for MatchPairs {
             }
         };
 
-        Ok(ParserBox::new(file, self))
+        tracker.track_area();
+
+        Ok(self)
     }
 }
 
