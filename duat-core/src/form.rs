@@ -101,16 +101,16 @@ mod global {
     ///
     /// [`form::set_weak`]: set_weak
     pub fn set(name: impl ToString, form: impl FormFmt) -> FormId {
-        let kind = form.kind();
-        let name: &'static str = name.to_string().leak();
+        let name = name.to_string();
+        let cloned_name = name.clone();
 
-        match kind {
-            Kind::Form(form) => queue(move || PALETTE.get().unwrap().set_form(name, form)),
-            Kind::Ref(refed) => queue(move || PALETTE.get().unwrap().set_ref(name, refed)),
+        match form.kind() {
+            Kind::Form(form) => queue(move || PALETTE.get().unwrap().set_form(cloned_name, form)),
+            Kind::Ref(refed) => queue(move || PALETTE.get().unwrap().set_ref(cloned_name, refed)),
         };
 
         let mut forms = FORMS.get().unwrap().lock().unwrap();
-        if let Kind::Ref(refed) = kind {
+        if let Kind::Ref(refed) = form.kind() {
             position_of_name(&mut forms, refed);
         }
         FormId(position_of_name(&mut forms, name) as u16)
@@ -142,16 +142,20 @@ mod global {
     ///
     /// [`form::set`]: set
     pub fn set_weak(name: impl ToString, form: impl FormFmt) -> FormId {
-        let kind = form.kind();
-        let name: &'static str = name.to_string().leak();
+        let name = name.to_string();
+        let cloned_name = name.clone();
 
-        match kind {
-            Kind::Form(form) => queue(move || PALETTE.get().unwrap().set_weak_form(name, form)),
-            Kind::Ref(refed) => queue(move || PALETTE.get().unwrap().set_weak_ref(name, refed)),
+        match form.kind() {
+            Kind::Form(form) => {
+                queue(move || PALETTE.get().unwrap().set_weak_form(cloned_name, form))
+            }
+            Kind::Ref(refed) => {
+                queue(move || PALETTE.get().unwrap().set_weak_ref(cloned_name, refed))
+            }
         };
 
         let mut forms = FORMS.get().unwrap().lock().unwrap();
-        if let Kind::Ref(refed) = kind {
+        if let Kind::Ref(refed) = form.kind() {
             position_of_name(&mut forms, refed);
         }
         FormId(position_of_name(&mut forms, name) as u16)
@@ -340,8 +344,9 @@ mod global {
     /// [hooks]: crate::hook
     /// [`File`]: crate::file::File
     /// [`Text`]: crate::text::Text
-    pub fn enable_mask(mask: &'static str) {
+    pub fn enable_mask(mask: impl AsRef<str> + Send + Sync + 'static) {
         queue(move || {
+            let mask = mask.as_ref();
             let mut inner = PALETTE.get().unwrap().0.write().unwrap();
             if !inner.masks.iter().any(|(m, _)| *m == mask) {
                 let mut remaps: Vec<u16> = (0..inner.forms.len() as u16).collect();
@@ -355,7 +360,7 @@ mod global {
                     }
                 }
 
-                inner.masks.push((mask, remaps));
+                inner.masks.push((mask.to_string().leak(), remaps));
             }
         })
     }
@@ -395,8 +400,8 @@ mod global {
 
             static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
             *ID.get_or_init(|| {
-                let name: &'static str = $form;
-                let id = id_from_name(name);
+                let name = $form.to_string();
+                let id = id_from_name(&name);
                 add_forms(vec![name]);
                 id
             })
@@ -423,10 +428,10 @@ mod global {
     /// case, you should try to find a way to memoize around this
     /// issue (usually with something like a [`HashMap`]).
     pub fn id_of_non_static(name: impl ToString) -> FormId {
-        let name = name.to_string().leak();
+        let name = name.to_string();
 
         let mut forms = FORMS.get().unwrap().lock().unwrap();
-        let id = FormId(position_of_name(&mut forms, name) as u16);
+        let id = FormId(position_of_name(&mut forms, &name) as u16);
         add_forms(vec![name]);
         id
     }
@@ -438,13 +443,7 @@ mod global {
     /// case, you should try to find a way to memoize around this
     /// issue (usually with something like a [`HashMap`]).
     pub fn ids_of_non_static(names: impl IntoIterator<Item = impl ToString>) -> Vec<FormId> {
-        let names: Vec<&str> = names
-            .into_iter()
-            .map(|n| {
-                let str: &'static str = n.to_string().leak();
-                str
-            })
-            .collect();
+        let names: Vec<String> = names.into_iter().map(|n| n.to_string()).collect();
 
         let mut ids = Vec::new();
         let mut forms = FORMS.get().unwrap().lock().unwrap();
@@ -457,13 +456,13 @@ mod global {
 
     /// Returns the [`FormId`] of the form's name
     #[doc(hidden)]
-    pub fn id_from_name(name: &'static str) -> FormId {
+    pub fn id_from_name(name: impl AsRef<str>) -> FormId {
         let mut forms = FORMS.get().unwrap().lock().unwrap();
         FormId(position_of_name(&mut forms, name) as u16)
     }
 
     #[doc(hidden)]
-    pub fn add_forms(names: Vec<&'static str>) {
+    pub fn add_forms(names: Vec<String>) {
         queue(move || PALETTE.get().unwrap().set_many(names.as_ref()));
     }
 
@@ -538,23 +537,24 @@ mod global {
         if let Some(id) = ids.get(&type_id) {
             *id
         } else {
-            let name: &'static str = format!("default.{type_name}").leak();
-            let id = id_from_name(name);
+            let name = format!("default.{type_name}");
+            let id = id_from_name(&name);
             add_forms(vec![name]);
             ids.insert(type_id, id);
             id
         }
     }
 
-    fn position_of_name(names: &mut Vec<&'static str>, name: &'static str) -> usize {
+    fn position_of_name(names: &mut Vec<&'static str>, name: impl AsRef<str>) -> usize {
+        let name = name.as_ref();
         if let Some((i, _)) = names.iter().enumerate().find(|(_, rhs)| **rhs == name) {
             i
         } else if let Some((refed, _)) = name.rsplit_once('.') {
             position_of_name(names, refed);
-            names.push(name);
+            names.push(name.to_string().leak());
             names.len() - 1
         } else {
-            names.push(name);
+            names.push(name.to_string().leak());
             names.len() - 1
         }
     }
@@ -612,20 +612,10 @@ mod global {
         PALETTE.set(palette).expect("Forms setup ran twice");
     }
 
-    /// Clears the [`Form`]s from the list
-    ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
-    #[doc(hidden)]
-    pub fn clear() {
-        *FORMS.get().unwrap().lock().unwrap() = BASE_FORMS.iter().map(|(n, ..)| *n).collect();
-        PALETTE.get().unwrap().reset();
-    }
-
     /// A kind of [`Form`]
-    #[derive(Clone, Copy)]
     enum Kind {
         Form(Form),
-        Ref(&'static str),
+        Ref(String),
     }
 
     /// So [`Form`]s and [`impl ToString`]s are arguments for [`set`]
@@ -633,36 +623,36 @@ mod global {
     /// [`impl ToString`]: ToString
     trait InnerFormFmt {
         /// The kind of [`Form`] that this type represents
-        fn kind(self) -> Kind;
+        fn kind(&self) -> Kind;
     }
 
     impl InnerFormFmt for Form {
-        fn kind(self) -> Kind {
-            Kind::Form(self)
+        fn kind(&self) -> Kind {
+            Kind::Form(*self)
         }
     }
 
     impl InnerFormFmt for BuiltForm {
-        fn kind(self) -> Kind {
+        fn kind(&self) -> Kind {
             Kind::Form(self.0)
         }
     }
 
     impl InnerFormFmt for &str {
-        fn kind(self) -> Kind {
-            Kind::Ref(self.to_string().leak())
+        fn kind(&self) -> Kind {
+            Kind::Ref(self.to_string())
         }
     }
 
     impl InnerFormFmt for &mut str {
-        fn kind(self) -> Kind {
-            Kind::Ref(self.to_string().leak())
+        fn kind(&self) -> Kind {
+            Kind::Ref(self.to_string())
         }
     }
 
     impl InnerFormFmt for String {
-        fn kind(self) -> Kind {
-            Kind::Ref(self.leak())
+        fn kind(&self) -> Kind {
+            Kind::Ref(self.clone())
         }
     }
 }
@@ -1025,16 +1015,21 @@ impl Palette {
             main_cursor,
             extra_cursor: main_cursor,
             forms: BASE_FORMS.to_vec(),
-            masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
+            masks: vec![(
+                "".to_string().leak(),
+                (0..BASE_FORMS.len() as u16).collect(),
+            )],
         }))
     }
 
     /// Sets a [`Form`]
-    fn set_form(&self, name: &'static str, form: Form) {
+    fn set_form(&self, name: impl AsRef<str>, form: Form) {
+        let name = name.as_ref();
         let mut inner = self.0.write().unwrap();
         let (i, _) = position_and_form(&mut inner.forms, name);
 
-        inner.forms[i] = (name, form, FormType::Normal);
+        inner.forms[i].1 = form;
+        inner.forms[i].2 = FormType::Normal;
 
         for refed in refs_of(&inner, i) {
             inner.forms[refed].1 = form;
@@ -1045,11 +1040,13 @@ impl Palette {
         }
 
         mask_form(name, i, &mut inner);
-        hook::queue(FormSet((name, FormId(i as u16), form)));
+        hook::queue(FormSet((inner.forms[i].0, FormId(i as u16), form)));
     }
 
     /// Sets a [`Form`] "weakly"
-    fn set_weak_form(&self, name: &'static str, form: Form) {
+    fn set_weak_form(&self, name: impl AsRef<str>, form: Form) {
+        let name = name.as_ref();
+
         let mut inner = self.0.write().unwrap();
         let (i, _) = position_and_form(&mut inner.forms, name);
 
@@ -1070,20 +1067,22 @@ impl Palette {
     }
 
     /// Makes a [`Form`] reference another
-    fn set_ref(&self, name: &'static str, refed: &'static str) {
+    fn set_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
+        let (name, refed) = (name.as_ref(), refed.as_ref());
         let mut inner = self.0.write().unwrap();
         let (refed, form) = position_and_form(&mut inner.forms, refed);
         let (i, _) = position_and_form(&mut inner.forms, name);
 
+        inner.forms[i].1 = form;
         for refed in refs_of(&inner, i) {
             inner.forms[refed].1 = form;
         }
 
         // If it would be circular, we just don't reference anything.
         if would_be_circular(&inner, i, refed) {
-            inner.forms[i] = (name, form, FormType::Normal);
+            inner.forms[i].2 = FormType::Normal;
         } else {
-            inner.forms[i] = (name, form, FormType::Ref(refed));
+            inner.forms[i].2 = FormType::Ref(refed);
         }
 
         if let Some(sender) = SENDER.get() {
@@ -1091,11 +1090,12 @@ impl Palette {
         }
 
         mask_form(name, i, &mut inner);
-        hook::queue(FormSet((name, FormId(i as u16), form)));
+        hook::queue(FormSet((inner.forms[i].0, FormId(i as u16), form)));
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&self, name: &'static str, refed: &'static str) {
+    fn set_weak_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
+        let (name, refed) = (name.as_ref(), refed.as_ref());
         let mut inner = self.0.write().unwrap();
         let (refed, form) = position_and_form(&mut inner.forms, refed);
         let (i, _) = position_and_form(&mut inner.forms, name);
@@ -1119,13 +1119,13 @@ impl Palette {
     }
 
     /// Sets many [`Form`]s
-    fn set_many(&self, names: &[&'static str]) {
+    fn set_many<S: AsRef<str>>(&self, names: &[S]) {
         let mut inner = self.0.write().unwrap();
         let form_indices: Vec<(usize, &str)> = names
             .iter()
             .map(|name| {
-                let (i, _) = position_and_form(&mut inner.forms, name);
-                (i, *name)
+                let (i, _) = position_and_form(&mut inner.forms, name.as_ref());
+                (i, inner.forms[i].0)
             })
             .collect();
 
@@ -1213,20 +1213,10 @@ impl Palette {
             reset_attrs: false,
         }
     }
-
-    fn reset(&self) {
-        let main_cursor = Some(CursorShape::DefaultUserShape);
-        *self.0.write().unwrap() = InnerPalette {
-            main_cursor,
-            extra_cursor: main_cursor,
-            forms: BASE_FORMS.to_vec(),
-            masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
-        };
-    }
 }
 
 /// If setting a form with an existing mask suffix, mask its prefix
-fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
+fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
     if inner.masks[0].1.len() < inner.forms.len() {
         for (_, remaps) in inner.masks.iter_mut() {
             remaps.extend(remaps.len() as u16..inner.forms.len() as u16);
@@ -1510,15 +1500,19 @@ fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool
     }
 }
 
-fn position_and_form(forms: &mut Vec<(&str, Form, FormType)>, name: &'static str) -> (usize, Form) {
+fn position_and_form(
+    forms: &mut Vec<(&str, Form, FormType)>,
+    name: impl AsRef<str>,
+) -> (usize, Form) {
+    let name = name.as_ref();
     if let Some((i, (_, form, _))) = forms.iter().enumerate().find(|(_, (lhs, ..))| *lhs == name) {
         (i, *form)
     } else if let Some((refed, _)) = name.rsplit_once('.') {
         let (i, form) = position_and_form(forms, refed);
-        forms.push((name, form, FormType::WeakestRef(i)));
+        forms.push((name.to_string().leak(), form, FormType::WeakestRef(i)));
         (forms.len() - 1, form)
     } else {
-        forms.push((name, Form::new().0, FormType::Weakest));
+        forms.push((name.to_string().leak(), Form::new().0, FormType::Weakest));
         (forms.len() - 1, Form::new().0)
     }
 }

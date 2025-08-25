@@ -463,6 +463,9 @@ impl Drop for MomentFetcher {
 }
 
 /// The state of a [`MomentFetcher`], can be alive or dead
+///
+/// This is used to prevent updates to [`Moment`]s that will never be
+/// read.
 #[derive(Clone, Debug, Encode, Decode)]
 enum FetcherState {
     Alive(Moment),

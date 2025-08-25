@@ -517,11 +517,38 @@ pub(crate) fn add_session_commands<U: Ui>() {
         cargo.stdout(std::process::Stdio::null());
         cargo.stderr(std::process::Stdio::piped());
 
+        // On Windows, you can't remove open dlls, so I need to work around
+        // that by creating new output directories.
+        let out_dir = if cfg!(target_os = "windows") {
+            let out_dir = crate_dir.join("target/out");
+            // I assume here that out/libconfig.dll already exists, so
+            // no need to check for that.
+            let next_i = std::fs::read_dir(&out_dir)?
+                .flatten()
+                .filter_map(|entry| entry.file_name().into_string().ok().zip(Some(entry.path())))
+                .filter_map(|(dll_dir, path)| {
+                    dll_dir.parse::<usize>().ok().inspect(|_| {
+                        // Try to remove the directory in order to save storage.
+                        // If the dll is still in use, Windows should prevent this.
+                        let _ = std::fs::remove_dir_all(path);
+                    })
+                })
+                .map(|i| i + 1)
+                .max()
+                .unwrap_or(0);
+
+            let dll_dir = out_dir.join(next_i.to_string());
+            std::fs::create_dir_all(&dll_dir)?;
+            dll_dir
+        } else {
+            crate_dir.join("target/out")
+        };
+
         cargo
             .args(["build", "--manifest-path"])
             .arg(toml_path)
             .args(["-Zunstable-options", "--artifact-dir"])
-            .arg(crate_dir.join("target/out"));
+            .arg(out_dir);
 
         match cargo.spawn() {
             Ok(child) => {
