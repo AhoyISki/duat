@@ -158,7 +158,7 @@ impl Area {
                         }
                         match char {
                             '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
-                            '\n' => {}
+                            '\n' | '\r' => {}
                             char => lines.push_char(char, len),
                         }
                         if let Some(cursor) = cursor.take() {
