@@ -1,6 +1,10 @@
 use std::{
     path::PathBuf,
-    sync::{Mutex, mpsc},
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 
@@ -151,6 +155,7 @@ impl<U: Ui> Session<U> {
     pub fn start(
         self,
         duat_rx: mpsc::Receiver<DuatEvent>,
+        spawn_count: &'static AtomicUsize,
     ) -> (
         Vec<Vec<FileRet>>,
         mpsc::Receiver<DuatEvent>,
@@ -190,7 +195,7 @@ impl<U: Ui> Session<U> {
                 mode_fn(pa);
             }
 
-			// After one second, switch to a slower regime
+            // After one second, switch to a slower regime
             let timeout = if idle_count > 100 { 100 } else { 10 };
 
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(timeout)) {
@@ -224,6 +229,7 @@ impl<U: Ui> Session<U> {
                     DuatEvent::ReloadConfig => {
                         hook::trigger(pa, ConfigUnloaded(()));
                         context::order_reload_or_quit();
+                        wait_for_threads_to_end(spawn_count);
 
                         for handle in context::windows::<U>().file_handles(wins_pa) {
                             hook::trigger(pa, OnFileReload((handle, Cache::new())));
@@ -238,6 +244,7 @@ impl<U: Ui> Session<U> {
                         hook::trigger(pa, ConfigUnloaded(()));
                         hook::trigger(pa, ExitedDuat(()));
                         context::order_reload_or_quit();
+                        wait_for_threads_to_end(spawn_count);
 
                         for handle in context::windows::<U>().file_handles(wins_pa) {
                             hook::trigger(pa, OnFileClose((handle, Cache::new())));
@@ -367,5 +374,11 @@ impl FileRet {
             is_active,
             has_unsaved_changes,
         }
+    }
+}
+
+fn wait_for_threads_to_end(spawn_count: &'static AtomicUsize) {
+    while spawn_count.load(Ordering::Relaxed) > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }

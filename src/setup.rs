@@ -46,6 +46,8 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>) {
+    let spawn_count = start_counting_spawned_threads();
+
     if let Some((logs, forms_init)) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
@@ -180,7 +182,7 @@ pub fn run_duat(
     } else {
         cfg.session_from_prev(ui_ms, prev)
     };
-    session.start(duat_rx)
+    session.start(duat_rx, &SPAWN_COUNT)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
@@ -193,3 +195,28 @@ pub type MetaStatics = (
 );
 #[doc(hidden)]
 pub type Initials = (Logs, (&'static Mutex<Vec<&'static str>>, &'static Palette));
+
+fn start_counting_spawned_threads() {
+    thread_local! {
+        static SPAWN_COUNTER: SpawnCounter = SpawnCounter::new();
+    }
+
+    std::thread::add_spawn_hook(|_| || SPAWN_COUNTER.with(|_| {}));
+
+    struct SpawnCounter;
+
+    impl SpawnCounter {
+        fn new() -> Self {
+            SPAWN_COUNT.fetch_add(1, Ordering::Relaxed);
+            Self
+        }
+    }
+
+    impl Drop for SpawnCounter {
+        fn drop(&mut self) {
+            SPAWN_COUNT.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+}
+
+static SPAWN_COUNT: AtomicUsize = AtomicUsize::new(0);

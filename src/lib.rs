@@ -378,7 +378,7 @@
 //! [`Parser`]: duat_core::file::Parser
 //! [`File`]: crate::prelude::File
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
-#![feature(decl_macro)]
+#![feature(decl_macro, thread_spawn_hook)]
 
 use std::sync::RwLock;
 
