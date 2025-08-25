@@ -224,7 +224,6 @@ impl<U: Ui> Session<U> {
                     DuatEvent::ReloadConfig => {
                         hook::trigger(pa, ConfigUnloaded(()));
                         context::order_reload_or_quit();
-                        wait_for_threads_to_despawn();
 
                         for handle in context::windows::<U>().file_handles(wins_pa) {
                             hook::trigger(pa, OnFileReload((handle, Cache::new())));
@@ -239,7 +238,6 @@ impl<U: Ui> Session<U> {
                         hook::trigger(pa, ConfigUnloaded(()));
                         hook::trigger(pa, ExitedDuat(()));
                         context::order_reload_or_quit();
-                        wait_for_threads_to_despawn();
 
                         for handle in context::windows::<U>().file_handles(wins_pa) {
                             hook::trigger(pa, OnFileClose((handle, Cache::new())));
@@ -351,22 +349,6 @@ impl<U: Ui> Session<U> {
             (self.layout_fn)(),
             self.file_cfg.clone(),
         );
-    }
-}
-
-fn wait_for_threads_to_despawn() {
-    loop {
-        if let Some(count) = thread_count::thread_count() {
-            if count.get() > 5 {
-                std::thread::sleep(std::time::Duration::from_millis(10))
-            } else {
-                break;
-            }
-        } else {
-            // Precautionary cushioning for when thread_amount is not supported.
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            break;
-        }
     }
 }
 

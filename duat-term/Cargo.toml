@@ -14,7 +14,12 @@ categories = ["command-line-utilities", "text-editors", "config"]
 duat-core = { path = "../duat-core/", version = "0.6.0" }
 
 unicode-width = "0.2.1"
-crossterm = "0.29.0"
 smallvec = "1.15.1"
 cassowary = "0.3.0"
 micromap = "0.1.0"
+
+[dependencies.crossterm]
+version = "0.29.0"
+no-default-features = true
+features = ["events", "bracketed-paste"]
+

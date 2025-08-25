@@ -80,7 +80,13 @@ impl ui::Ui for Ui {
             loop {
                 if let Ok(true) = ct_poll(Duration::from_millis(20)) {
                     let res = match ct_read().unwrap() {
-                        CtEvent::Key(key) => tx.send_key(key),
+                        CtEvent::Key(key) => {
+                            if key.kind.is_press() {
+                                tx.send_key(key)
+                            } else {
+                                Ok(())
+                            }
+                        }
                         CtEvent::Resize(..) => {
                             printer.update(true);
                             tx.send_resize()
@@ -107,6 +113,14 @@ impl ui::Ui for Ui {
 
     fn close(ms: &'static Self::MetaStatics) {
         ms.lock().unwrap().tx.send(Event::Quit).unwrap();
+        
+        if let Ok(true) = terminal::supports_keyboard_enhancement() {
+            queue!(
+                io::stdout(),
+                event::PopKeyboardEnhancementFlags
+            );
+        }
+        
         execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),
@@ -115,10 +129,10 @@ impl ui::Ui for Ui {
             event::DisableBracketedPaste,
             event::DisableFocusChange,
             event::DisableMouseCapture,
-            event::PopKeyboardEnhancementFlags,
             cursor::Show,
         )
         .unwrap();
+
         terminal::disable_raw_mode().unwrap();
     }
 
@@ -309,7 +323,6 @@ impl std::fmt::Debug for AreaId {
 
 type Equality = cassowary::Constraint;
 
-#[cfg(unix)]
 fn print_style(
     w: &mut impl Write,
     style: ContentStyle,
@@ -472,10 +485,7 @@ macro queue($writer:expr $(, $command:expr)* $(,)?) {
 }
 
 macro style($lines:expr, $ansi_codes:expr, $style:expr) {{
-    #[cfg(unix)]
     print_style(&mut $lines, $style, $ansi_codes);
-    #[cfg(not(unix))]
-    queue!($lines, crossterm::style::SetStyle($style));
 }}
 
 #[rustfmt::skip]

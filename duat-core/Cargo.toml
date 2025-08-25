@@ -25,7 +25,6 @@ bincode = "2.0.1"
 lender = { version = "0.3.2", default-features = false }
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 format-like = "0.3.0"
-thread-count = "0.3.1"
 log = "0.4.27"
 parking_lot = "0.12.4"
 regex-cursor = { version = "0.1.5", default-features = false, features = ["perf-inline"] }
