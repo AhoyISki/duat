@@ -148,12 +148,13 @@ fn spawn_watcher(
         let duat_tx = duat_tx.clone();
         let mut sent_reload = false;
         let libconfig_str = resolve_config_file();
+        let out_dir = crate_dir.join("target/out");
 
         move |res| match res {
             Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
                 if let Some(out_path) = paths
                     .iter()
-                    .find(|p| p.ends_with(format!("out/{libconfig_str}")))
+                    .find(|p| p.starts_with(out_dir) && p.ends_with(libconfig_str))
                 {
                     let on_release = out_path.ends_with(libconfig_str);
                     reload_tx.send((out_path.clone(), on_release)).unwrap();
