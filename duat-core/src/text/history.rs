@@ -90,11 +90,9 @@ impl History {
 
             let mut shift = [0; 3];
             Some(self.moments[self.cur_moment].changes().map(move |change| {
-                crate::context::debug!("before shift: {change:?}");
                 let mut change = change.reverse();
                 change.shift_by(shift);
                 shift = add(shift, change.shift());
-                crate::context::debug!("after shift: {change:?}");
 
                 for state in remote.iter_mut() {
                     state.add_change(change.to_string_change());
