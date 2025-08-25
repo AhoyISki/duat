@@ -46,7 +46,7 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>) {
-    let spawn_count = start_counting_spawned_threads();
+    start_counting_spawned_threads();
 
     if let Some((logs, forms_init)) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
@@ -196,6 +196,7 @@ pub type MetaStatics = (
 #[doc(hidden)]
 pub type Initials = (Logs, (&'static Mutex<Vec<&'static str>>, &'static Palette));
 
+/// Starts counting how many threads are running
 fn start_counting_spawned_threads() {
     thread_local! {
         static SPAWN_COUNTER: SpawnCounter = SpawnCounter::new();

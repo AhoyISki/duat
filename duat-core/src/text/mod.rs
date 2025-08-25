@@ -218,7 +218,7 @@ impl Text {
             bytes,
             tags,
             selections,
-            history: with_history.then(History::new),
+            history: with_history.then(History::default),
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
         }))

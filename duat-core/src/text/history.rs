@@ -20,43 +20,35 @@ use super::{Point, Text};
 use crate::{add_shifts as add, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct History {
+    new_moment: Moment,
     moments: Vec<Moment>,
     cur_moment: usize,
     fetcher_moments: Arc<Mutex<Vec<FetcherState>>>,
 }
 
 impl History {
-    /// Creates a new [`History`]
-    pub fn new() -> Self {
-        Self {
-            moments: vec![Moment::default()],
-            cur_moment: 0,
-            fetcher_moments: Arc::default(),
-        }
-    }
-
     /// Adds a [`Change`] to the [`History`]
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
-        self.moments.truncate(self.cur_moment + 1);
-
         let mut remote = self.fetcher_moments.lock();
         for state in remote.iter_mut() {
             state.add_change(change.clone());
         }
 
-        self.moments[self.cur_moment].add_change(guess_i, change)
+        self.new_moment.add_change(guess_i, change)
     }
 
     /// Declares that the current moment is complete and starts a
     /// new one
     pub fn new_moment(&mut self) {
-        if !self.moments[self.cur_moment].is_empty() {
-            self.moments.truncate(self.cur_moment + 1);
-            self.moments.push(Moment::default());
-            self.cur_moment += 1;
+        if self.new_moment.is_empty() {
+            return;
         }
+        
+        self.moments.truncate(self.cur_moment);
+        self.moments.push(std::mem::take(&mut self.new_moment));
+        self.cur_moment += 1;
     }
 
     /// Redoes the next [`Moment`], returning its [`Change`]s
@@ -64,12 +56,22 @@ impl History {
     /// Applying these [`Change`]s in the order that they're given
     /// will result in a correct redoing.
     pub(super) fn move_forward(&mut self) -> Option<impl ExactSizeIterator<Item = Change<&str>>> {
+        self.new_moment();
         if self.cur_moment == self.moments.len() {
             None
         } else {
+            let mut remote = self.fetcher_moments.lock();
             self.cur_moment += 1;
 
-            Some(self.moments[self.cur_moment - 1].changes())
+            Some(
+                self.moments[self.cur_moment - 1]
+                    .changes()
+                    .inspect(move |change| {
+                        for state in remote.iter_mut() {
+                            state.add_change(change.to_string_change());
+                        }
+                    }),
+            )
         }
     }
 
@@ -79,9 +81,11 @@ impl History {
     /// applying them in sequential order, without further
     /// modifications, will result in a correct undoing.
     pub(super) fn move_backwards(&mut self) -> Option<impl ExactSizeIterator<Item = Change<&str>>> {
+        self.new_moment();
         if self.cur_moment == 0 {
             None
         } else {
+            let mut remote = self.fetcher_moments.lock();
             self.cur_moment -= 1;
 
             let mut shift = [0; 3];
@@ -89,6 +93,11 @@ impl History {
                 let mut change = change.reverse();
                 change.shift_by(shift);
                 shift = add(shift, change.shift());
+
+                for state in remote.iter_mut() {
+                    state.add_change(change.to_string_change());
+                }
+
                 change
             }))
         }
@@ -122,6 +131,7 @@ impl<Context> Decode<Context> for History {
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(History {
+            new_moment: Decode::decode(decoder)?,
             moments: Decode::decode(decoder)?,
             cur_moment: Decode::decode(decoder)?,
             fetcher_moments: Arc::new(Mutex::new(Decode::decode(decoder)?)),
@@ -132,16 +142,11 @@ impl<Context> Decode<Context> for History {
 impl Clone for History {
     fn clone(&self) -> Self {
         Self {
+            new_moment: self.new_moment.clone(),
             moments: self.moments.clone(),
             cur_moment: self.cur_moment,
             fetcher_moments: Arc::default(),
         }
-    }
-}
-
-impl Default for History {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -327,6 +332,17 @@ impl Change {
 }
 
 impl<'a> Change<&'a str> {
+    /// Creates a [`Change<String>`] from a [`Change<&str>`]
+    pub fn to_string_change(&self) -> Change {
+        Change {
+            start: self.start,
+            added: self.added.to_string(),
+            taken: self.taken.to_string(),
+            added_end: self.added_end,
+            taken_end: self.taken_end,
+        }
+    }
+
     /// Returns a new copyable [`Change`] from an insertion.
     pub fn str_insert(added_str: &'a str, start: Point) -> Self {
         Self {
