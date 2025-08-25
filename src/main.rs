@@ -2,7 +2,7 @@
 #![feature(decl_macro)]
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     sync::{
         LazyLock, Mutex,
@@ -45,8 +45,23 @@ fn main() {
     let ms: &'static <Ui as ui::Ui>::MetaStatics =
         Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
 
+    // The watcher is returned as to not be dropped.
+    let (reload_tx, reload_rx) = mpsc::channel();
+
     // Assert that the configuration crate actually exists.
-    let Some(crate_dir) = duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
+    let Some((crate_dir, _watcher)) = duat_core::crate_dir()
+        .ok()
+        .filter(|cd| cd.exists())
+        .and_then(
+            |crate_dir| match spawn_watcher(reload_tx, duat_tx, crate_dir) {
+                Ok(_watcher) => Some((crate_dir, _watcher)),
+                Err(err) => {
+                    context::error!("{err}");
+                    None
+                }
+            },
+        )
+    else {
         context::error!("No config crate found, loading default config");
         pre_setup(None, duat_tx);
         run_duat((ms, &CLIPB), Vec::new(), duat_rx);
@@ -54,19 +69,12 @@ fn main() {
     };
 
     let mut lib = {
-        let so_dir = crate_dir.join(if cfg!(debug_assertions) {
-            "target/debug"
-        } else {
-            "target/release"
-        });
-
-        let libconfig_str = resolve_config_file();
-        let libconfig_path = so_dir.join(libconfig_str);
+        let out_dir = crate_dir.join("target/out");
+        let libconfig_path = out_dir.join(resolve_config_file());
 
         if let Ok(false) | Err(_) = libconfig_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
-            let toml_path = crate_dir.join("Cargo.toml");
-            if let Ok(status) = run_cargo(toml_path.clone(), true, true)
+            if let Ok(status) = run_cargo(crate_dir, true, true)
                 && status.success()
             {
                 context::info!("Compiled [a]release[] profile");
@@ -77,10 +85,6 @@ fn main() {
 
         Some(unsafe { Library::new(libconfig_path) }.unwrap())
     };
-
-    // The watcher is returned as to not be dropped.
-    let (reload_tx, reload_rx) = mpsc::channel();
-    let _watcher = spawn_watcher(reload_tx, duat_tx, crate_dir);
 
     Ui::open(ms, ui::Sender::new(duat_tx));
 
@@ -134,9 +138,10 @@ fn spawn_watcher(
     reload_tx: mpsc::Sender<(PathBuf, bool)>,
     duat_tx: &mpsc::Sender<DuatEvent>,
     crate_dir: &'static std::path::Path,
-) -> (notify::RecommendedWatcher, &'static std::path::Path) {
-    std::fs::create_dir_all(crate_dir.join("target/debug")).unwrap();
-    std::fs::create_dir_all(crate_dir.join("target/release")).unwrap();
+) -> Result<(notify::RecommendedWatcher, &'static std::path::Path), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(crate_dir.join("target/out"))?;
+    std::fs::create_dir_all(crate_dir.join("target/debug"))?;
+    std::fs::create_dir_all(crate_dir.join("target/release"))?;
 
     let mut watcher = notify::recommended_watcher({
         let reload_tx = reload_tx.clone();
@@ -146,9 +151,12 @@ fn spawn_watcher(
 
         move |res| match res {
             Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
-                if let Some(so_path) = paths.iter().find(|p| p.ends_with(libconfig_str)) {
-                    let on_release = so_path.ends_with(format!("release/{libconfig_str}"));
-                    reload_tx.send((so_path.clone(), on_release)).unwrap();
+                if let Some(out_path) = paths
+                    .iter()
+                    .find(|p| p.ends_with(format!("out/{libconfig_str}")))
+                {
+                    let on_release = out_path.ends_with(libconfig_str);
+                    reload_tx.send((out_path.clone(), on_release)).unwrap();
                     sent_reload = true;
                 }
             }
@@ -162,25 +170,35 @@ fn spawn_watcher(
             }
             _ => {}
         }
-    })
-    .unwrap();
+    })?;
+
+    // The first two are used in case the user rebuilds without
+    // "--artifact-dir out" set.
     let debug_dir = crate_dir.join("target/debug");
     let release_dir = crate_dir.join("target/release");
-    watcher.watch(&debug_dir, NonRecursive).unwrap();
-    watcher.watch(&release_dir, NonRecursive).unwrap();
-    (watcher, crate_dir)
+    let out_dir = crate_dir.join("target/out");
+
+    watcher.watch(&debug_dir, NonRecursive)?;
+    watcher.watch(&release_dir, NonRecursive)?;
+    watcher.watch(&out_dir, Recursive)?;
+
+    Ok((watcher, crate_dir))
 }
 
 fn run_cargo(
-    toml_path: PathBuf,
+    crate_dir: &'static Path,
     on_release: bool,
     print: bool,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
-    cargo.args(["build", "--manifest-path", toml_path.to_str().unwrap()]);
+    cargo
+        .args(["build", "--manifest-path"])
+        .arg(crate_dir.join("Cargo.toml"))
+        .args(["-Zunstable-options", "--artifact-dir"])
+        .arg(crate_dir.join("target/out"));
 
     if !cfg!(debug_assertions) && on_release {
-        cargo.args(["--release"]);
+        cargo.arg("--release");
     }
 
     #[cfg(feature = "deadlocks")]

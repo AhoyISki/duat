@@ -500,6 +500,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
         }
 
         if flags.word("clear") || flags.word("update") {
+            clear_path(crate_dir.join("target/out"));
             clear_path(crate_dir.join("target/release"));
             clear_path(crate_dir.join("target/debug"));
 
@@ -515,12 +516,12 @@ pub(crate) fn add_session_commands<U: Ui>() {
         cargo.stdin(std::process::Stdio::null());
         cargo.stdout(std::process::Stdio::null());
         cargo.stderr(std::process::Stdio::piped());
-        cargo.args([
-            "build",
-            "--release",
-            "--manifest-path",
-            toml_path.to_str().unwrap(),
-        ]);
+
+        cargo
+            .args(["build", "--manifest-path"])
+            .arg(toml_path)
+            .args(["-Zunstable-options", "--artifact-dir"])
+            .arg(crate_dir.join("target/out"));
 
         match cargo.spawn() {
             Ok(child) => {

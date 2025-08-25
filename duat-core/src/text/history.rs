@@ -119,6 +119,7 @@ impl Encode for History {
         &self,
         encoder: &mut E,
     ) -> Result<(), bincode::error::EncodeError> {
+        Encode::encode(&self.new_moment, encoder)?;
         Encode::encode(&self.moments, encoder)?;
         Encode::encode(&self.cur_moment, encoder)?;
         Encode::encode(&*self.fetcher_moments.lock(), encoder)?;
