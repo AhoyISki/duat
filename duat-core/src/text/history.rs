@@ -45,7 +45,7 @@ impl History {
         if self.new_moment.is_empty() {
             return;
         }
-        
+
         self.moments.truncate(self.cur_moment);
         self.moments.push(std::mem::take(&mut self.new_moment));
         self.cur_moment += 1;
@@ -90,9 +90,11 @@ impl History {
 
             let mut shift = [0; 3];
             Some(self.moments[self.cur_moment].changes().map(move |change| {
+                crate::context::debug!("before shift: {change:?}");
                 let mut change = change.reverse();
                 change.shift_by(shift);
                 shift = add(shift, change.shift());
+                crate::context::debug!("after shift: {change:?}");
 
                 for state in remote.iter_mut() {
                     state.add_change(change.to_string_change());
@@ -166,8 +168,8 @@ impl Moment {
     /// First try to merge this change with as many changes as
     /// possible, then add it in
     fn add_change(&mut self, guess_i: Option<usize>, mut change: Change) -> usize {
-        let (from, shift) = self.shift_state;
         let new_shift = change.shift();
+        let (from, shift) = self.shift_state;
 
         // The range of changes that will be drained
         let m_range = merging_range_by_guess_and_lazy_shift(
@@ -186,9 +188,9 @@ impl Moment {
         // Otherwise, the shifting will happen in reverse, and `from`
         // will be moved backwards until the point where m_range ends.
         // This is better for localized Changes.
-        } else if from > m_range.end && new_shift != [0; 3] {
+        } else if from > m_range.end && shift != [0; 3] {
             for change in &mut self.changes[m_range.end..from] {
-                change.shift_by([-shift[0], -shift[1], -shift[2]]);
+                change.shift_by(shift.map(|i| -i));
             }
         }
 
@@ -198,9 +200,8 @@ impl Moment {
 
         // Don't add empty Changes
         let (from, shift) = if !(change.added_str() == "" && change.taken_str() == "") {
-            let change_shift = change.shift();
             self.changes.insert(m_range.start, change);
-            (m_range.start + 1, add(shift, change_shift))
+            (m_range.start + 1, add(shift, new_shift))
         } else {
             (m_range.start, shift)
         };
@@ -423,9 +424,9 @@ impl<S: std::borrow::Borrow<str>> Change<S> {
     /// The total shift caused by this [`Change`]
     pub fn shift(&self) -> [i32; 3] {
         [
-            self.added_end().byte() as i32 - self.taken_end().byte() as i32,
-            self.added_end().char() as i32 - self.taken_end().char() as i32,
-            self.added_end().line() as i32 - self.taken_end().line() as i32,
+            self.added_end[0] - self.taken_end[0],
+            self.added_end[1] - self.taken_end[1],
+            self.added_end[2] - self.taken_end[2],
         ]
     }
 }
