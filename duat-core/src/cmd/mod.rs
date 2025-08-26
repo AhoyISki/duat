@@ -500,7 +500,6 @@ pub(crate) fn add_session_commands<U: Ui>() {
         }
 
         if flags.word("clear") || flags.word("update") {
-            clear_path(crate_dir.join("target/out"));
             clear_path(crate_dir.join("target/release"));
             clear_path(crate_dir.join("target/debug"));
 
@@ -512,57 +511,47 @@ pub(crate) fn add_session_commands<U: Ui>() {
             }
         }
 
-        let mut cargo = std::process::Command::new("cargo");
+        let mut cargo = std::process::Command::new("cargo".to_string());
         cargo.stdin(std::process::Stdio::null());
         cargo.stdout(std::process::Stdio::null());
-        cargo.stderr(std::process::Stdio::piped());
-
-        // On Windows, you can't remove open dlls, so I need to work around
-        // that by creating new output directories.
-        let out_dir = if cfg!(target_os = "windows") {
-            let out_dir = crate_dir.join("target/out");
-            let next_i = std::fs::read_dir(&out_dir)?
-                .flatten()
-                .filter_map(|entry| entry.file_name().into_string().ok().zip(Some(entry.path())))
-                .filter_map(|(dll_dir, path)| {
-                    dll_dir.parse::<usize>().ok().inspect(|_| {
-                        // Try to remove the directory in order to save storage.
-                        // If the dll is still in use, Windows should prevent this.
-                        let _ = std::fs::remove_dir_all(path);
-                    })
-                })
-                .map(|i| i + 1)
-                .max()
-                .unwrap_or(0);
-        
-            let dll_dir = out_dir.join(next_i.to_string());
-            dll_dir
-        } else {
-            crate_dir.join("target/out")
-        };
-
-        cargo
-            .args(["build", "--release", "--manifest-path"])
-            .arg(toml_path)
-            .args(["-Zunstable-options", "--artifact-dir"])
-            .arg(out_dir);
-
+        cargo.stderr(std::process::Stdio::inherit());
+        cargo.args(["build".to_string(), "--release".to_string(), "--manifest-path".to_string()]).arg(toml_path);
+    
+        std::fs::write("log.txt", &[]);
+    
         match cargo.spawn() {
             Ok(child) => {
                 sender()
                     .send(DuatEvent::ReloadStarted(Instant::now()))
                     .unwrap();
-                std::thread::spawn(|| {
-                    match child.wait_with_output() {
-                        Ok(out) => {
-                            if !out.stderr.is_empty() {
-                                context::warn!("{}",String::from_utf8_lossy(&out.stderr));
-                            }
-                        }
-                        Err(err) => context::error!("cargo failed: [a]{err}"),
-                    };
-                    IS_UPDATING.store(false, Ordering::Relaxed);
-                });
+                let thread_builder = if cfg!(target_os = "windows") {
+                    // On Windows, since loaded dlls can't be removed,
+                    // I need to unload the config crate immediately.
+                    // The no_hooks part is to allow the Session::start()
+                    // function to end without waiting for this thread to
+                    // finish.
+                    sender().send(DuatEvent::ReloadConfig).unwrap();
+                    std::thread::Builder::new().name("reload".to_string()).no_hooks()
+                } else {
+                    std::thread::Builder::new().name("reload".to_string())
+                };
+        
+                let log_txt = "log.txt".to_string();
+                // thread_builder.spawn(move || {
+                //     match child.wait_with_output() {
+                //         Ok(out) => {
+                //             std::fs::write(&log_txt, String::from_utf8_lossy(&out.stderr).as_bytes());
+                //             // if !out.stderr.is_empty() {
+                //             //     context::warn!("{}", String::from_utf8_lossy(&out.stderr));
+                //             // }
+                //         }
+                //         Err(err) => {
+                //             std::fs::write(&log_txt, err.to_string().as_bytes());
+                //             // context::error!("cargo failed: {err}")
+                //         },
+                //     };
+                //     IS_UPDATING.store(false, Ordering::Relaxed);
+                // });
                 Ok(Some(txt!("Started config recompilation").build()))
             }
             Err(err) => {

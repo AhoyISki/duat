@@ -40,12 +40,12 @@
 //! [`Cursor`]: duat_core::mode::Cursor
 pub use self::{
     inc_search::{ExtendFwd, ExtendRev, IncSearcher, SearchFwd, SearchRev},
+    pager::{Pager, PagerSearch},
     prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
     regular::Regular,
-    pager::{Pager, PagerSearch}
 };
 
 mod inc_search;
+mod pager;
 mod prompt;
 mod regular;
-mod pager;

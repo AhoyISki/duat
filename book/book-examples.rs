@@ -1,5 +1,5 @@
 //! Tests for the duat book
-//! 
+//!
 //! Items are sorted by the order they show up in the book.
 macro test($path:literal, $name:ident { $($module:tt)* }) {
     #[doc = include_str!(concat!("src/", $path, ".md"))]
@@ -25,7 +25,7 @@ test!("quick-settings/chapter", quick_settings {
         test!("quick-settings/prelude/map-and-alias", map_and_alias {});
         test!("quick-settings/prelude/cursor-module", cursor_module {});
     });
-    
+
     test!("quick-settings/frequent-snippets/chapter", frequent_snippets {
         use crate::book::test;
         test!("quick-settings/frequent-snippets/map-jk", map_jk {});
@@ -37,7 +37,7 @@ test!("quick-settings/chapter", quick_settings {
         test!("quick-settings/frequent-snippets/nerd-status", nerd_status {});
         test!("quick-settings/frequent-snippets/file-window-status", file_window_status {});
     });
-    
+
     test!("quick-settings/list-of-forms", list_of_forms {});
 });
 
@@ -45,13 +45,13 @@ test!("scripting-duat/chapter", scripting_duat {
     use crate::book::test;
     test!("scripting-duat/pass", pass {});
     test!("scripting-duat/hook-module", hook_module {});
-    
+
     test!("scripting-duat/text/chapter", text {
         use crate::book::test;
         test!("scripting-duat/text/builder-and-txt", builder_and_txt {});
         test!("scripting-duat/text/tags", tags {});
     });
-    
+
     test!("scripting-duat/mod-status", mod_status {});
     test!("scripting-duat/context-module", context_module {});
     test!("scripting-duat/cmd-module", cmd_module {});

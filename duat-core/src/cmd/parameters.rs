@@ -278,7 +278,7 @@ impl<U: Ui> Parameter<'_> for ValidFile<U> {
         let form = if crate::context::windows::<U>()
             .file_handles(pa)
             .map(|handle| handle.read(pa).path())
-            .any(|p| PathBuf::from(p) == path)
+            .any(|p| p == path)
         {
             form::id_of!("param.file.open")
         } else if let Ok(true) = path.try_exists() {

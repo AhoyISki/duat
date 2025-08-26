@@ -19,12 +19,7 @@ use duat_core::{
     ui::{self, DuatEvent, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
-use notify::{
-    Event, EventKind,
-    RecursiveMode::*,
-    Watcher,
-    event::{AccessKind, AccessMode},
-};
+use notify::{Event, EventKind, RecursiveMode::*, Watcher};
 
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
@@ -56,28 +51,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
 
-    let _watcher = match spawn_watcher(reload_tx, duat_tx, crate_dir) {
-        Ok(_watcher) => Some(_watcher),
-        Err(err) => {
-            context::error!("Failed to spawn watcher, [a]reloading will be disabled[]: {err}");
-            None
-        }
-    };
-
     let mut lib = {
-        let out_dir = crate_dir.join("target/out");
-        let mut libconfig_path = if cfg!(target_os = "windows") {
-            get_last_out_dir(&out_dir, false)?.join(resolve_config_file())
+        let libconfig_path = crate_dir.join(if cfg!(debug_assertions) {
+            format!("target/debug/{}", resolve_config_file())
         } else {
-            out_dir.join(resolve_config_file())
-        };
+            format!("target/release/{}", resolve_config_file())
+        });
 
         if let Ok(false) | Err(_) = libconfig_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
-            if let Ok((status, out_path)) = run_cargo(crate_dir, true, true)
+            if let Ok(status) = run_cargo(crate_dir, true, true)
                 && status.success()
             {
-                libconfig_path = out_path;
                 context::info!("Compiled [a]release[] profile");
             } else {
                 context::error!("Failed to compile [a]release[] profile");
@@ -87,8 +72,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(unsafe { Library::new(libconfig_path)? })
     };
 
+    let _watcher = match spawn_watcher(reload_tx, duat_tx, crate_dir) {
+        Ok(_watcher) => Some(_watcher),
+        Err(err) => {
+            context::error!("Failed to spawn watcher, [a]reloading will be disabled[]: {err}");
+            None
+        }
+    };
+
     Ui::open(ms, ui::Sender::new(duat_tx));
 
+    let mut i = 0;
     let mut prev = Vec::new();
     loop {
         let running_lib = lib.take().unwrap();
@@ -110,21 +104,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .join()
             .unwrap()
         });
-
+        
         running_lib.close().unwrap();
-
+        
         if prev.is_empty() {
             break;
         }
+        
+        std::thread::sleep(std::time::Duration::from_secs(4));
 
-        let (so_path, on_release) = reload_rx.recv().unwrap();
+        let (so_path, profile) = reload_rx.recv().unwrap();
 
         let time = match reload_instant {
             Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
             None => Text::builder(),
         };
-        context::info!("Configuration reloaded{time}");
+        context::info!("[a]{profile}[] profile reloaded{time}");
         lib = unsafe { Library::new(so_path) }.ok();
+        i += 1;
     }
 
     Ui::close(ms);
@@ -133,44 +130,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn spawn_watcher(
-    reload_tx: mpsc::Sender<(PathBuf, bool)>,
+    reload_tx: mpsc::Sender<(PathBuf, String)>,
     duat_tx: &mpsc::Sender<DuatEvent>,
     crate_dir: &'static std::path::Path,
 ) -> Result<notify::RecommendedWatcher, Box<dyn std::error::Error>> {
-    std::fs::create_dir_all(crate_dir.join("target/out"))?;
-    std::fs::create_dir_all(crate_dir.join("target/debug"))?;
-    std::fs::create_dir_all(crate_dir.join("target/release"))?;
+    let debug_dir = crate_dir.join("target/debug");
+    let release_dir = crate_dir.join("target/release");
+    std::fs::create_dir_all(&debug_dir);
+    std::fs::create_dir_all(&release_dir);
+    //std::fs::write("log.txt", &[]).unwrap();
 
     let mut watcher = notify::recommended_watcher({
         let reload_tx = reload_tx.clone();
         let duat_tx = duat_tx.clone();
         let libconfig_str = resolve_config_file();
-        let out_dir = crate_dir.join("target/out");
 
-        move |res| match res {
-            Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
-                if let Some(out_path) = paths
-                    .iter()
-                    .find(|p| p.starts_with(&out_dir) && p.ends_with(libconfig_str))
+        move |res| {
+      //       let mut file = std::fs::OpenOptions::new().append(true).open("log.txt").unwrap();
+      //       std::io::Write::write_all(&mut file, format!("{res:#?}").as_bytes()).unwrap();
+            if let Ok(Event { kind: EventKind::Create(_), paths, .. }) = res
+                && let Some(out_path) = paths.iter().find(|p| p.ends_with(libconfig_str))
+            {
+                let profile = if let Some(parent) = out_path.parent()
+                    && let Some(parent) = parent.file_name()
                 {
-                    let on_release = out_path.ends_with(libconfig_str);
-                    reload_tx.send((out_path.clone(), on_release)).unwrap();
+                    parent.to_string_lossy().to_string()
+                } else {
+                    "release".to_string()
+                };
+                
+                reload_tx.send((out_path.clone(), profile)).unwrap();
+                // On Windows, we need to unload the dll before reloading
+                // This means that this event should be sent as "reload" is
+                // called, not here.
+                if !cfg!(target_os = "windows") {
                     duat_tx.send(DuatEvent::ReloadConfig).unwrap();
                 }
             }
-            _ => {}
         }
     })?;
 
-    // The first two are used in case the user rebuilds without
-    // "--artifact-dir out" set.
-    let debug_dir = crate_dir.join("target/debug");
-    let release_dir = crate_dir.join("target/release");
-    let out_dir = crate_dir.join("target/out");
-
     watcher.watch(&debug_dir, NonRecursive)?;
     watcher.watch(&release_dir, NonRecursive)?;
-    watcher.watch(&out_dir, Recursive)?;
 
     Ok(watcher)
 }
@@ -179,19 +180,11 @@ fn run_cargo(
     crate_dir: &'static Path,
     on_release: bool,
     print: bool,
-) -> Result<(std::process::ExitStatus, PathBuf), std::io::Error> {
-    let out_dir = if cfg!(target_os = "windows") {
-        get_last_out_dir(&crate_dir.join("target/out"), true)?
-    } else {
-        crate_dir.join("target/out")
-    };
-
+) -> Result<std::process::ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo
         .args(["build", "--manifest-path"])
-        .arg(crate_dir.join("Cargo.toml"))
-        .args(["-Zunstable-options", "--artifact-dir"])
-        .arg(&out_dir);
+        .arg(crate_dir.join("Cargo.toml"));
 
     if !cfg!(debug_assertions) && on_release {
         cargo.arg("--release");
@@ -201,48 +194,20 @@ fn run_cargo(
     cargo.args(["--features", "deadlocks"]);
 
     if print {
-        cargo
-            .status()
-            .map(|status| (status, out_dir.join(resolve_config_file())))
+        cargo.status()
     } else {
         cargo.output().map(|out| {
             if !out.status.success() {
                 context::error!("{}", String::from_utf8_lossy(&out.stderr));
             }
 
-            (out.status, out_dir.join(resolve_config_file()))
+            out.status
         })
     }
 }
 
 fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
     unsafe { lib.get::<RunFn>(b"run").ok() }
-}
-
-/// Get the latest version of the out dir's libconfig.dll
-fn get_last_out_dir(out_dir: &Path, create_new: bool) -> Result<PathBuf, std::io::Error> {
-    let i = std::fs::read_dir(out_dir)?
-        .flatten()
-        .filter_map(|entry| entry.file_name().into_string().ok().zip(Some(entry.path())))
-        .filter_map(|(dll_dir, path)| dll_dir.parse::<usize>().ok())
-        .max()
-        .map(|i| i + create_new as usize)
-        .unwrap_or(0);
-
-    for (file_name, path) in std::fs::read_dir(out_dir)? 
-        .flatten()
-        .filter_map(|entry| entry.file_name().into_string().ok().zip(Some(entry.path())))
-    {
-        // Try to remove the directory in order to save storage.
-        // If the dll is still in use, Windows should prevent this.
-        if let Ok(j) = file_name.parse::<usize>()
-            && j != i
-        {
-            let _ = std::fs::remove_dir_all(path);
-        }
-    }
-
-    Ok(out_dir.join(format!("{i}")))
 }
 
 #[cfg(target_os = "macos")]

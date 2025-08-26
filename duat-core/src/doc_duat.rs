@@ -1,6 +1,7 @@
 //! A fake `duat` crate, for the purpose of documentation
 //!
-//! *THIS MODULE IS FOR DOCUMENTATION TESTS ONLY, DO NOT USE IT ON CODE*
+//! *THIS MODULE IS FOR DOCUMENTATION TESTS ONLY, DO NOT USE IT ON
+//! CODE*
 //!
 //! Very frequently, you're going to want to document things
 //! inside of [`Plugin`]s from the perspective of the end user.

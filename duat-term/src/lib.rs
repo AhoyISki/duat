@@ -113,23 +113,20 @@ impl ui::Ui for Ui {
 
     fn close(ms: &'static Self::MetaStatics) {
         ms.lock().unwrap().tx.send(Event::Quit).unwrap();
-        
+
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
-            queue!(
-                io::stdout(),
-                event::PopKeyboardEnhancementFlags
-            );
+            queue!(io::stdout(), event::PopKeyboardEnhancementFlags);
         }
-        
+
         execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),
-            terminal::LeaveAlternateScreen,
             terminal::EnableLineWrap,
             event::DisableBracketedPaste,
             event::DisableFocusChange,
             event::DisableMouseCapture,
             cursor::Show,
+            terminal::LeaveAlternateScreen,
         )
         .unwrap();
 

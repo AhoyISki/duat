@@ -18,7 +18,7 @@ mod state;
 use duat_core::{context::DynFile, prelude::*, text::Builder, ui::Side};
 
 pub use self::{macros::status, state::State};
-use crate::state::{name_txt, main_txt, mode_txt, sels_txt};
+use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 
 /// A widget to show information, usually about a [`File`]
 ///

@@ -46,7 +46,7 @@ impl<M: PromptMode<U>, U: Ui> Prompt<U, M> {
         Self(mode, String::new(), PhantomData)
     }
 
-	/// Returns a new [`Prompt`] with some initial text
+    /// Returns a new [`Prompt`] with some initial text
     pub fn new_with(mode: M, initial: impl ToString) -> Self {
         Self(mode, initial.to_string(), PhantomData)
     }
