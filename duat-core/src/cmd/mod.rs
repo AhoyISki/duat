@@ -521,8 +521,6 @@ pub(crate) fn add_session_commands<U: Ui>() {
         // that by creating new output directories.
         let out_dir = if cfg!(target_os = "windows") {
             let out_dir = crate_dir.join("target/out");
-            // I assume here that out/libconfig.dll already exists, so
-            // no need to check for that.
             let next_i = std::fs::read_dir(&out_dir)?
                 .flatten()
                 .filter_map(|entry| entry.file_name().into_string().ok().zip(Some(entry.path())))
@@ -536,16 +534,15 @@ pub(crate) fn add_session_commands<U: Ui>() {
                 .map(|i| i + 1)
                 .max()
                 .unwrap_or(0);
-
+        
             let dll_dir = out_dir.join(next_i.to_string());
-            std::fs::create_dir_all(&dll_dir)?;
             dll_dir
         } else {
             crate_dir.join("target/out")
         };
 
         cargo
-            .args(["build", "--manifest-path"])
+            .args(["build", "--release", "--manifest-path"])
             .arg(toml_path)
             .args(["-Zunstable-options", "--artifact-dir"])
             .arg(out_dir);
@@ -558,11 +555,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
                 std::thread::spawn(|| {
                     match child.wait_with_output() {
                         Ok(out) => {
-                            if out.status.code() != Some(0) {
-                                context::info!(
-                                    "Couldn't compile config crate:\n{}",
-                                    String::from_utf8_lossy(&out.stderr)
-                                );
+                            if !out.stderr.is_empty() {
+                                context::warn!("{}",String::from_utf8_lossy(&out.stderr));
                             }
                         }
                         Err(err) => context::error!("cargo failed: [a]{err}"),

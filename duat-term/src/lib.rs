@@ -52,8 +52,6 @@ impl ui::Ui for Ui {
                 unreachable!("Failed to load the Ui");
             };
 
-            terminal::enable_raw_mode().unwrap();
-
             // Initial terminal setup
             // Some key chords (like alt+shift+o for some reason) don't work
             // without this.
@@ -76,6 +74,8 @@ impl ui::Ui for Ui {
                 event::EnableMouseCapture
             )
             .unwrap();
+
+            terminal::enable_raw_mode().unwrap();
 
             loop {
                 if let Ok(true) = ct_poll(Duration::from_millis(20)) {

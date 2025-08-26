@@ -119,12 +119,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let (so_path, on_release) = reload_rx.recv().unwrap();
 
-        let profile = if on_release { "Release" } else { "Debug" };
         let time = match reload_instant {
             Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
             None => Text::builder(),
         };
-        context::info!("[a]{profile}[] profile reloaded{time}");
+        context::info!("Configuration reloaded{time}");
         lib = unsafe { Library::new(so_path) }.ok();
     }
 
@@ -145,7 +144,6 @@ fn spawn_watcher(
     let mut watcher = notify::recommended_watcher({
         let reload_tx = reload_tx.clone();
         let duat_tx = duat_tx.clone();
-        let mut sent_reload = false;
         let libconfig_str = resolve_config_file();
         let out_dir = crate_dir.join("target/out");
 
@@ -157,16 +155,8 @@ fn spawn_watcher(
                 {
                     let on_release = out_path.ends_with(libconfig_str);
                     reload_tx.send((out_path.clone(), on_release)).unwrap();
-                    sent_reload = true;
+                    duat_tx.send(DuatEvent::ReloadConfig).unwrap();
                 }
-            }
-            Ok(Event {
-                kind: EventKind::Access(AccessKind::Close(AccessMode::Write)),
-                paths,
-                ..
-            }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) && sent_reload => {
-                duat_tx.send(DuatEvent::ReloadConfig).unwrap();
-                sent_reload = false;
             }
             _ => {}
         }
@@ -213,7 +203,7 @@ fn run_cargo(
     if print {
         cargo
             .status()
-            .map(|status| (status, out_dir.join(resolve_config_file())))
+            .map(|status| (status, out_dir.join(resolve_config_file())))
     } else {
         cargo.output().map(|out| {
             if !out.status.success() {
@@ -234,16 +224,23 @@ fn get_last_out_dir(out_dir: &Path, create_new: bool) -> Result<PathBuf, std::io
     let i = std::fs::read_dir(out_dir)?
         .flatten()
         .filter_map(|entry| entry.file_name().into_string().ok().zip(Some(entry.path())))
-        .filter_map(|(dll_dir, path)| {
-            dll_dir.parse::<usize>().ok().inspect(|_| {
-                // Try to remove the directory in order to save storage.
-                // If the dll is still in use, Windows should prevent this.
-                let _ = std::fs::remove_dir_all(path);
-            })
-        })
+        .filter_map(|(dll_dir, path)| dll_dir.parse::<usize>().ok())
         .max()
         .map(|i| i + create_new as usize)
         .unwrap_or(0);
+
+    for (file_name, path) in std::fs::read_dir(out_dir)? 
+        .flatten()
+        .filter_map(|entry| entry.file_name().into_string().ok().zip(Some(entry.path())))
+    {
+        // Try to remove the directory in order to save storage.
+        // If the dll is still in use, Windows should prevent this.
+        if let Ok(j) = file_name.parse::<usize>()
+            && j != i
+        {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
 
     Ok(out_dir.join(format!("{i}")))
 }
