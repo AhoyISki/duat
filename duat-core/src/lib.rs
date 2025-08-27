@@ -663,7 +663,7 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, RwLock},
+    sync::{LazyLock, OnceLock, RwLock},
 };
 
 #[allow(unused_imports)]
@@ -1324,18 +1324,24 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     src_crate_inner(TypeId::of::<T>(), std::any::type_name::<T>())
 }
 
+static CRATE_DIR: OnceLock<Option<&Path>> = OnceLock::new();
+
+/// Sets the crate directory
+///
+/// **FOR USE BY THE DUAT EXECUTABLE ONLY**
+#[doc(hidden)]
+pub fn set_crate_dir(dir: Option<&'static Path>) {
+    CRATE_DIR
+        .set(dir)
+        .expect("Crate directory set multiple times.");
+}
+
 /// The path for the config crate of Duat
 pub fn crate_dir() -> Result<&'static Path, Text> {
-    static CRATE_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
-        dirs_next::config_dir().map(|config_dir| {
-            let path: &'static str = config_dir.join("duat").to_string_lossy().to_string().leak();
-
-            std::fs::create_dir_all(path).unwrap();
-            Path::new(path)
-        })
-    });
-
-    CRATE_DIR.ok_or_else(|| txt!("Config directory is [a]undefined").build())
+    CRATE_DIR
+        .get()
+        .expect("Config not set yet")
+        .ok_or_else(|| txt!("Config directory is [a]undefined").build())
 }
 
 /// The path for a plugin's auxiliary files

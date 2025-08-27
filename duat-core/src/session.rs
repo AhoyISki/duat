@@ -17,7 +17,7 @@ use crate::{
     file::{File, FileCfg, PathKind},
     form,
     hook::{
-        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusedOnDuat, OnFileClose, OnFileReload,
+        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileClosed, FileReloaded, FocusedOnDuat,
         UnfocusedFromDuat,
     },
     mode,
@@ -52,7 +52,7 @@ impl<U: Ui> SessionCfg<U> {
         let pa = unsafe { &mut Pass::new() };
 
         context::set_windows::<U>(Windows::new());
-        
+
         cmd::add_session_commands::<U>();
 
         let file_cfg = self.file_cfg.clone();
@@ -196,7 +196,7 @@ impl<U: Ui> Session<U> {
                         wait_for_threads_to_end(spawn_count);
 
                         for handle in context::windows::<U>().file_handles(wins_pa) {
-                            hook::trigger(pa, OnFileReload((handle, Cache::new())));
+                            hook::trigger(pa, FileReloaded((handle, Cache::new())));
                         }
 
                         let ms = self.ms;
@@ -211,7 +211,7 @@ impl<U: Ui> Session<U> {
                         wait_for_threads_to_end(spawn_count);
 
                         for handle in context::windows::<U>().file_handles(wins_pa) {
-                            hook::trigger(pa, OnFileClose((handle, Cache::new())));
+                            hook::trigger(pa, FileClosed((handle, Cache::new())));
                         }
 
                         return (Vec::new(), duat_rx, None);
@@ -367,7 +367,9 @@ impl FileParts {
 }
 
 fn wait_for_threads_to_end(spawn_count: &'static AtomicUsize) {
-    while spawn_count.load(Ordering::Relaxed) > 0 {
+    let mut count = spawn_count.load(Ordering::Relaxed);
+    while count > 0 {
         std::thread::sleep(std::time::Duration::from_millis(10));
+        count = spawn_count.load(Ordering::Relaxed);
     }
 }

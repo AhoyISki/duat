@@ -45,7 +45,7 @@ impl<U: Ui> Widget<U> for LogBook {
             }),
             close_on_unfocus: true,
             hidden: true,
-            side: Side::Below,
+            side: Side::Right,
             height: Ratio(1, 4),
             width: Ratio(2, 7),
             _ghost: PhantomData,
@@ -86,6 +86,7 @@ impl<U: Ui> Widget<U> for LogBook {
     }
 
     fn once() -> Result<(), Text> {
+        form::set_weak("default.LogBook", Form::on_dark_grey());
         form::set_weak("log_book.error", "default.error");
         form::set_weak("log_book.warn", "default.warn");
         form::set_weak("log_book.info", "default.info");
@@ -164,6 +165,11 @@ impl<U> LogBookCfg<U> {
     /// Pushes the [`LogBook`] above, as opposed to below
     pub fn above(self) -> Self {
         Self { side: Side::Above, ..self }
+    }
+
+    /// Pushes the [`LogBook`] above, as opposed to below
+    pub fn below(self) -> Self {
+        Self { side: Side::Below, ..self }
     }
 
     /// Sets the height of the [`LogBook`]

@@ -349,9 +349,15 @@ impl From<PathBuf> for BuilderPart {
     }
 }
 
-impl From<&PathBuf> for BuilderPart {
-    fn from(value: &PathBuf) -> Self {
-        BuilderPart::ToString(value.to_string_lossy().to_string())
+impl<'a> From<&'a PathBuf> for BuilderPart<std::borrow::Cow<'a, str>> {
+    fn from(value: &'a PathBuf) -> Self {
+        BuilderPart::ToString(value.to_string_lossy())
+    }
+}
+
+impl<'a> From<&'a std::path::Path> for BuilderPart<std::borrow::Cow<'a, str>> {
+    fn from(value: &'a std::path::Path) -> Self {
+        BuilderPart::ToString(value.to_string_lossy())
     }
 }
 

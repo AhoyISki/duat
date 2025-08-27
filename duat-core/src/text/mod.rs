@@ -817,9 +817,16 @@ impl From<Box<dyn std::error::Error>> for Text {
     }
 }
 
-impl From<&std::path::PathBuf> for Text {
-    fn from(value: &std::path::PathBuf) -> Self {
-        let value = value.to_str().unwrap_or("");
+impl From<std::path::PathBuf> for Text {
+    fn from(value: std::path::PathBuf) -> Self {
+        let value = value.to_string_lossy();
+        Self::from(value)
+    }
+}
+
+impl From<&std::path::Path> for Text {
+    fn from(value: &std::path::Path) -> Self {
+        let value = value.to_string_lossy();
         Self::from(value)
     }
 }
@@ -862,6 +869,7 @@ impl_from_to_string!(String);
 impl_from_to_string!(Box<str>);
 impl_from_to_string!(Rc<str>);
 impl_from_to_string!(Arc<str>);
+impl_from_to_string!(std::borrow::Cow<'_, str>);
 
 /// Implements [`From<$t>`] for [`Text`]
 macro impl_from_to_string($t:ty) {

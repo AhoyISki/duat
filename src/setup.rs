@@ -32,7 +32,7 @@ use duat_utils::{
 
 use crate::{
     CfgFn, Ui, form,
-    hook::{self, OnFileClose, OnFileReload, WindowCreated},
+    hook::{self, FileClosed, FileReloaded, WindowCreated},
     mode,
     prelude::{FileWritten, LineNumbers},
     widgets::File,
@@ -45,13 +45,17 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
-pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>) {
+pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<&'static Sender<DuatEvent>>) {
     start_counting_spawned_threads();
 
     if let Some((logs, forms_init)) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
         duat_core::form::set_initial(forms_init);
+    }
+
+    if let Some(duat_tx) = duat_tx {
+        duat_core::context::set_sender(duat_tx);
     }
 
     // State statics.
@@ -65,8 +69,6 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
         CUR_WINDOW.load(Ordering::Relaxed),
     );
 
-    duat_core::context::set_sender(duat_tx);
-
     mode::set_default(Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 
@@ -74,6 +76,10 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
         builder.push(VertRule::cfg());
         builder.push(LineNumbers::cfg());
         cfg
+    });
+
+    hook::add_grouped::<WindowCreated>("LogBook", |_, builder| {
+        builder.push(LogBook::cfg());
     });
 
     hook::add_grouped::<WindowCreated>("FooterWidgets", |_, builder| {
@@ -90,7 +96,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
         }
     });
 
-    hook::add_grouped::<OnFileReload>("SaveCacheOnReload", |pa, (handle, cache)| {
+    hook::add::<FileReloaded>(|pa, (handle, cache)| {
         let (file, area) = handle.write_with_area(pa);
 
         let path = file.path();
@@ -115,7 +121,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
         }
     });
 
-    hook::add_grouped::<OnFileClose>("DeleteHistoryOnClose", |pa, (handle, cache)| {
+    hook::add::<FileClosed>(|pa, (handle, cache)| {
         let file = handle.write(pa);
 
         let path = file.path();
@@ -125,7 +131,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
         }
     });
 
-    hook::add_grouped::<OnFileClose>("SaveCacheOnClose", |pa, (handle, cache)| {
+    hook::add_grouped::<FileClosed>("CacheCursorPosition", |pa, (handle, cache)| {
         let (file, area) = handle.write_with_area(pa);
 
         let path = file.path();

@@ -20,28 +20,39 @@ use duat_core::{
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
 
-static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
+static CLIPBOARD: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
     /// Files to open
     files: Vec<PathBuf>,
-    /// Open N windows [default: one per file]
-    #[arg(short, long, value_parser = clap::value_parser!(u16).range(1..))]
-    open: Option<u16>,
     /// Open the config's src/lib.rs
     #[arg(long)]
     cfg: bool,
     /// Open the config's Cargo.toml
     #[arg(long)]
     cfg_manifest: bool,
-    /// Path to config [default: ~/.config/duat]
+    #[cfg_attr(
+        not(any(target_os = "macos", target_os = "windows")),
+        doc = "Config crate path [default: ~/.config/duat]"
+    )]
+    #[cfg_attr(
+        target_os = "macos",
+        doc = "Config crate path [default: ~/Library/Application Support/duat]"
+    )]
+    #[cfg_attr(
+        target_os = "windows",
+        doc = r"Config crate path [default: ~\AppData\Roaming\duat]"
+    )]
     #[arg(short, long)]
     load: Option<PathBuf>,
     /// Profile to load
     #[arg(long, default_value = "release")]
     profile: String,
+    /// Open N windows [default: one per file]
+    #[arg(short, long, value_name = "N", value_parser = clap::value_parser!(u16).range(1..))]
+    open: Option<u16>,
     /// Recompile the config crate
     #[arg(long)]
     reload: bool,
@@ -75,11 +86,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (reload_tx, reload_rx) = mpsc::channel();
 
     // Assert that the configuration crate actually exists.
-    let Some(crate_dir) = args.duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
-        context::error!("Config crate not fou");
-        pre_setup(None, duat_tx);
-        run_duat((ms, &CLIPB), Vec::new(), duat_rx);
-        return Ok(());
+    let crate_dir = {
+        let crate_dir = args
+            .load
+            .map(|crate_dir| {
+                let path: &'static std::path::Path = crate_dir.leak();
+                path
+            })
+            .or_else(|| {
+                let config_dir = dirs_next::config_dir()?;
+                let path: &'static str =
+                    config_dir.join("duat").to_string_lossy().to_string().leak();
+
+                std::fs::create_dir_all(path).ok()?;
+                Some(std::path::Path::new(path))
+            });
+
+        duat_core::set_crate_dir(crate_dir);
+
+        if let Some(crate_dir) = crate_dir {
+            crate_dir
+        } else {
+            Ui::open(ms, ui::Sender::new(duat_tx));
+            context::error!("Failed to find config crate, loading default");
+            pre_setup(None, None);
+            run_duat(
+                (ms, &CLIPBOARD),
+                vec![vec![FileParts::by_args(None, true).unwrap()]],
+                duat_rx,
+            );
+            Ui::close(ms);
+            return Ok(());
+        }
     };
 
     if args.clean {
@@ -126,7 +164,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
 
         if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
-            println!("Compiling config crate for the first time, this might take a while...");
+            if !args.reload {
+                println!("Compiling config crate for the first time, this might take a while...");
+            }
             if let Ok(status) = cargo::build(crate_dir, &args.profile, true)
                 && status.success()
             {
@@ -136,7 +176,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        Some(unsafe { Library::new(libconfig_path)? })
+        unsafe { Library::new(libconfig_path).ok() }
     };
 
     // The watcher is returned as to not be dropped.
@@ -183,33 +223,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     loop {
-        let running_lib = lib.take().unwrap();
-        let mut run_fn = find_run_duat(&running_lib);
+        let running_lib = lib.take();
+        let mut run_fn = running_lib.as_ref().and_then(find_run_duat);
 
         let reload_instant;
         (files, duat_rx, reload_instant) = std::thread::scope(|s| {
+            // Initialize now in order to prevent thread activation after the
+            // thread counter hook sets in.
+            let clipb = &*CLIPBOARD;
             s.spawn(|| {
                 if let Some(run_duat) = run_fn.take() {
                     let initials = (logs.clone(), forms_init);
                     let channel = (duat_tx, duat_rx);
-                    run_duat(initials, (ms, &CLIPB), files, channel)
+                    run_duat(initials, (ms, clipb), files, channel)
                 } else {
-                    context::error!("Failed to load config crate");
-                    pre_setup(None, duat_tx);
-                    run_duat((ms, &CLIPB), files, duat_rx)
+                    context::error!("Config crate not found at [a]{crate_dir}[], loading default");
+                    pre_setup(None, None);
+                    run_duat((ms, clipb), files, duat_rx)
                 }
             })
             .join()
             .unwrap()
         });
 
+        let Some(running_lib) = running_lib else {
+            break;
+        };
         running_lib.close().unwrap();
 
         if files.is_empty() {
             break;
         }
-
-        std::thread::sleep(std::time::Duration::from_secs(4));
 
         let (config_path, profile) = reload_rx.recv().unwrap();
 
@@ -282,7 +326,7 @@ mod cargo {
 
         let mut cargo = Command::new("cargo");
         cargo
-            .args(["build", "--manifest-path", "--profile", profile])
+            .args(["build", "--profile", profile, "--manifest-path"])
             .arg(manifest_path);
 
         #[cfg(feature = "deadlocks")]

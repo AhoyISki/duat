@@ -782,12 +782,12 @@ pub mod hook {
     ///   Duat.
     ///
     /// This will not trigger upon reloading Duat. For that, see
-    /// [`OnFileClose`].
+    /// [`FileClosed`].
     ///
     /// [`File`]: crate::prelude::File
     /// [`Handle`]: crate::prelude::Handle
     /// [`Cache`]: duat_core::context::Cache
-    pub type OnFileClose = duat_core::hook::OnFileClose<Ui>;
+    pub type FileClosed = duat_core::hook::FileClosed<Ui>;
 
     /// [`Hookable`]: Triggers before reloading a [`File`]
     ///
@@ -799,12 +799,12 @@ pub mod hook {
     ///   Duat.
     ///
     /// This will not trigger upon closing Duat. For that, see
-    /// [`OnFileClose`].
+    /// [`FileClosed`].
     ///
     /// [`File`]: crate::prelude::File
     /// [`Handle`]: crate::prelude::Handle
     /// [`Cache`]: duat_core::context::Cache
-    pub type OnFileReload = duat_core::hook::OnFileReload<Ui>;
+    pub type FileReloaded = duat_core::hook::FileReloaded<Ui>;
 
     /// [`Hookable`]: Triggers when the [`Widget`] is focused
     ///
@@ -997,7 +997,7 @@ pub macro setup_duat($setup:expr) {
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
-        pre_setup(Some(initials), duat_tx);
+        pre_setup(Some(initials), Some(duat_tx));
         $setup();
         run_duat(ms, files, duat_rx)
     }

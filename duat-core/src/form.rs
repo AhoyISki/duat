@@ -584,7 +584,7 @@ mod global {
         tx.send(f).unwrap();
         *sender = Some(tx);
 
-        thread::spawn(move || {
+        std::thread::spawn(move || {
             while let Ok(f) = rx.recv_timeout(Duration::from_micros(500)) {
                 f();
             }

@@ -135,6 +135,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         form::set_weak("coord", Form::dark_yellow());
         form::set_weak("separator", Form::cyan());
         form::set_weak("mode", Form::green());
+        form::set_weak("default.StatusLine", Form::on_dark_grey());
         Ok(())
     }
 }

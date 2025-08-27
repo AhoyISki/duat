@@ -1,4 +1,4 @@
-#![feature(decl_macro, debug_closure_helpers)]
+#![feature(decl_macro, debug_closure_helpers, thread_spawn_hook)]
 use std::{
     cell::RefCell,
     fmt::Debug,
@@ -42,7 +42,9 @@ impl ui::Ui for Ui {
     fn open(ms: &'static Self::MetaStatics, tx: Sender) {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
 
-        let thread = std::thread::Builder::new().name("print loop".to_string());
+        let thread = std::thread::Builder::new()
+            .no_hooks()
+            .name("print loop".to_string());
         let rx = ms.lock().unwrap().rx.take().unwrap();
 
         let _ = thread.spawn(move || {

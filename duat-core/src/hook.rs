@@ -46,8 +46,9 @@
 //!   letting you change it, [`Widget`] can be used as its [alias]
 //! - [`WindowCreated`], which lets you push widgets around the
 //!   window.
-//! - [`OnFileClose`] triggers on every file upon closing Duat.
-//! - [`OnFileReload`] triggers on every file upon reloading Duat.
+//! - [`FileWritten`] triggers after the [`File`] is written.
+//! - [`FileClosed`] triggers on every file upon closing Duat.
+//! - [`FileReloaded`] triggers on every file upon reloading Duat.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
 //! - [`KeysSent`] lets you act on a [dyn Widget], given a [key].
@@ -55,7 +56,6 @@
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
-//! - [`FileWritten`] triggers after the [`File`] is written.
 //! - [`SearchPerformed`] (from `duat-utils`) triggers after a search
 //!   is performed.
 //! - [`SearchUpdated`] (from `duat-utils`) triggers after a search
@@ -495,10 +495,10 @@ impl<U: Ui> Hookable for WindowCreated<U> {
 ///   some things will be reloaded on the next opening of Duat.
 ///
 /// This will not trigger upon reloading Duat. For that, see
-/// [`OnFileClose`].
-pub struct OnFileClose<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
+/// [`FileClosed`].
+pub struct FileClosed<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
 
-impl<U: Ui> Hookable for OnFileClose<U> {
+impl<U: Ui> Hookable for FileClosed<U> {
     type Input<'h> = &'h (Handle<File<U>, U>, Cache);
 
     fn get_input(&mut self) -> Self::Input<'_> {
@@ -515,10 +515,10 @@ impl<U: Ui> Hookable for OnFileClose<U> {
 ///   some things will be reloaded on the next opening of Duat.
 ///
 /// This will not trigger upon closing Duat. For that, see
-/// [`OnFileClose`].
-pub struct OnFileReload<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
+/// [`FileClosed`].
+pub struct FileReloaded<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
 
-impl<U: Ui> Hookable for OnFileReload<U> {
+impl<U: Ui> Hookable for FileReloaded<U> {
     type Input<'h> = &'h (Handle<File<U>, U>, Cache);
 
     fn get_input(&mut self) -> Self::Input<'_> {

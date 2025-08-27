@@ -10,7 +10,7 @@ use crate::{
     data::{Pass, RwData},
     duat_name,
     file::{File, FileCfg},
-    hook::{self, OnFileClose, WidgetCreated, WindowCreated},
+    hook::{self, FileClosed, WidgetCreated, WindowCreated},
     mode,
     text::{Text, txt},
     ui::{MutArea, PushSpecs, WidgetCfg},
@@ -142,7 +142,7 @@ impl<U: Ui> Windows<U> {
                 .filter_map(Node::try_downcast)
                 .collect();
 
-            hook::trigger(pa, OnFileClose((lhs.clone(), Cache::new())));
+            hook::trigger(pa, FileClosed((lhs.clone(), Cache::new())));
 
             (lhs_win, lhs, nodes)
         };
