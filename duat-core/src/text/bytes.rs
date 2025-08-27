@@ -16,7 +16,10 @@ pub struct Bytes {
 }
 
 impl Bytes {
-    /// Returns a new instance of a [`Buffer`]
+    /// Returns a new instance of [`Bytes`]
+    ///
+    /// Not intended for public use, it is necessary in duat
+    #[doc(hidden)]
     pub(crate) fn new(string: &str) -> Self {
         let buf = GapBuffer::from_iter(string.bytes());
 

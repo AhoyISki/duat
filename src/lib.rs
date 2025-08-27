@@ -975,7 +975,7 @@ pub mod widgets {
 }
 
 #[allow(unused_imports)]
-use duat_core::{session::FileRet, ui::DuatEvent};
+use duat_core::{session::FileParts, ui::DuatEvent};
 
 /// Pre and post setup for Duat
 ///

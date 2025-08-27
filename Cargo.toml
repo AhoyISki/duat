@@ -27,9 +27,10 @@ duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-fil
 duat-term = { version = "0.6.0", path = "duat-term", optional = true }
 
 dirs-next = "2.0.0"
-notify = "8.2.0"
 log = "0.4.27"
 libloading = "0.8.8"
+notify = "8.2.0"
+clap = { version = "4.5.46", features = ["derive"] }
 
 [features]
 default = ["term-ui"]

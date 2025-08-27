@@ -584,7 +584,7 @@ pub enum PathKind {
 
 impl PathKind {
     /// Returns a new unset [`PathBuf`]
-    fn new_unset() -> PathKind {
+    pub(crate) fn new_unset() -> PathKind {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
 

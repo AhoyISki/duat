@@ -19,7 +19,7 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     form::Palette,
-    session::{FileRet, SessionCfg},
+    session::{FileParts, SessionCfg},
     text::History,
     ui::{self, Area, DuatEvent, Widget},
 };
@@ -160,9 +160,9 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
 #[doc(hidden)]
 pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
-    prev: Vec<Vec<FileRet>>,
+    files: Vec<Vec<FileParts>>,
     duat_rx: Receiver<DuatEvent>,
-) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>) {
+) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>, Option<Instant>) {
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 
@@ -177,12 +177,7 @@ pub fn run_duat(
 
     cfg.set_print_cfg(print_cfg);
 
-    let session = if prev.is_empty() {
-        cfg.session_from_args(ui_ms)
-    } else {
-        cfg.session_from_prev(ui_ms, prev)
-    };
-    session.start(duat_rx, &SPAWN_COUNT)
+    cfg.build(ui_ms, files).start(duat_rx, &SPAWN_COUNT)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;

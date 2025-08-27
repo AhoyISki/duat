@@ -1,5 +1,5 @@
 //! The runner for Duat
-#![feature(decl_macro)]
+#![feature(decl_macro, iterator_try_collect, iter_array_chunks)]
 
 use std::{
     path::{Path, PathBuf},
@@ -15,7 +15,7 @@ use duat::{DuatChannel, Initials, MetaStatics, pre_setup, prelude::*, run_duat};
 use duat_core::{
     clipboard::Clipboard,
     context,
-    session::FileRet,
+    session::FileParts,
     ui::{self, DuatEvent, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
@@ -23,7 +23,28 @@ use notify::{Event, EventKind, RecursiveMode::*, Watcher};
 
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
+#[derive(Debug, clap::Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Files to open
+    files: Vec<PathBuf>,
+    /// Open N windows [default: one per file]
+    #[arg(short, long, value_parser = clap::value_parser!(u16).range(1..))]
+    open: Option<u16>,
+    /// Open the config's src/lib.rs
+    #[arg(long)]
+    cfg: bool,
+    /// Open the config's Cargo.toml
+    #[arg(long)]
+    cfg_manifest: bool,
+    /// Profile to load
+    #[arg(long, default_value = "release")]
+    profile: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = <Args as clap::Parser>::parse();
+
     // Initializers for access to static variables across two different
     // "duat-core instances"
     let logs = duat_core::context::Logs::new();
@@ -40,7 +61,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ms: &'static <Ui as ui::Ui>::MetaStatics =
         Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
 
-    // The watcher is returned as to not be dropped.
     let (reload_tx, reload_rx) = mpsc::channel();
 
     // Assert that the configuration crate actually exists.
@@ -60,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Ok(false) | Err(_) = libconfig_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
-            if let Ok(status) = run_cargo(crate_dir, true, true)
+            if let Ok(status) = run_cargo(crate_dir, &args.profile, true, true)
                 && status.success()
             {
                 context::info!("Compiled [a]release[] profile");
@@ -72,6 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(unsafe { Library::new(libconfig_path)? })
     };
 
+    // The watcher is returned as to not be dropped.
     let _watcher = match spawn_watcher(reload_tx, duat_tx, crate_dir) {
         Ok(_watcher) => Some(_watcher),
         Err(err) => {
@@ -82,46 +103,71 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ui::open(ms, ui::Sender::new(duat_tx));
 
-    let mut i = 0;
-    let mut prev = Vec::new();
+    let mut files = {
+        let files: Vec<FileParts> = args
+            .cfg
+            .then(|| crate_dir.join("src/lib.rs"))
+            .into_iter()
+            .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
+            .chain(args.files)
+            .enumerate()
+            .map(|(i, path)| FileParts::by_args(Some(path), i == 0))
+            .try_collect()?;
+
+        if files.is_empty() {
+            vec![vec![FileParts::by_args(None, true).unwrap()]]
+        } else {
+            let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
+            let mut files_per_window = Vec::new();
+
+            for (i, file) in files.into_iter().enumerate() {
+                if i % n == 0 {
+                    files_per_window.push(Vec::new());
+                }
+                files_per_window.last_mut().unwrap().push(file);
+            }
+
+            files_per_window
+        }
+    };
+
     loop {
         let running_lib = lib.take().unwrap();
         let mut run_fn = find_run_duat(&running_lib);
 
         let reload_instant;
-        (prev, duat_rx, reload_instant) = std::thread::scope(|s| {
+        (files, duat_rx, reload_instant) = std::thread::scope(|s| {
             s.spawn(|| {
                 if let Some(run_duat) = run_fn.take() {
                     let initials = (logs.clone(), forms_init);
                     let channel = (duat_tx, duat_rx);
-                    run_duat(initials, (ms, &CLIPB), prev, channel)
+                    run_duat(initials, (ms, &CLIPB), files, channel)
                 } else {
                     context::error!("Failed to load config crate");
                     pre_setup(None, duat_tx);
-                    run_duat((ms, &CLIPB), prev, duat_rx)
+                    run_duat((ms, &CLIPB), files, duat_rx)
                 }
             })
             .join()
             .unwrap()
         });
-        
+
         running_lib.close().unwrap();
-        
-        if prev.is_empty() {
+
+        if files.is_empty() {
             break;
         }
-        
+
         std::thread::sleep(std::time::Duration::from_secs(4));
 
-        let (so_path, profile) = reload_rx.recv().unwrap();
+        let (config_path, profile) = reload_rx.recv().unwrap();
 
         let time = match reload_instant {
             Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
             None => Text::builder(),
         };
         context::info!("[a]{profile}[] profile reloaded{time}");
-        lib = unsafe { Library::new(so_path) }.ok();
-        i += 1;
+        lib = unsafe { Library::new(config_path) }.ok();
     }
 
     Ui::close(ms);
@@ -134,11 +180,8 @@ fn spawn_watcher(
     duat_tx: &mpsc::Sender<DuatEvent>,
     crate_dir: &'static std::path::Path,
 ) -> Result<notify::RecommendedWatcher, Box<dyn std::error::Error>> {
-    let debug_dir = crate_dir.join("target/debug");
-    let release_dir = crate_dir.join("target/release");
-    std::fs::create_dir_all(&debug_dir);
-    std::fs::create_dir_all(&release_dir);
-    //std::fs::write("log.txt", &[]).unwrap();
+    let target_dir = crate_dir.join("target");
+    std::fs::create_dir_all(&target_dir)?;
 
     let mut watcher = notify::recommended_watcher({
         let reload_tx = reload_tx.clone();
@@ -146,8 +189,6 @@ fn spawn_watcher(
         let libconfig_str = resolve_config_file();
 
         move |res| {
-      //       let mut file = std::fs::OpenOptions::new().append(true).open("log.txt").unwrap();
-      //       std::io::Write::write_all(&mut file, format!("{res:#?}").as_bytes()).unwrap();
             if let Ok(Event { kind: EventKind::Create(_), paths, .. }) = res
                 && let Some(out_path) = paths.iter().find(|p| p.ends_with(libconfig_str))
             {
@@ -158,7 +199,7 @@ fn spawn_watcher(
                 } else {
                     "release".to_string()
                 };
-                
+
                 reload_tx.send((out_path.clone(), profile)).unwrap();
                 // On Windows, we need to unload the dll before reloading
                 // This means that this event should be sent as "reload" is
@@ -170,25 +211,29 @@ fn spawn_watcher(
         }
     })?;
 
-    watcher.watch(&debug_dir, NonRecursive)?;
-    watcher.watch(&release_dir, NonRecursive)?;
+    watcher.watch(&target_dir, Recursive)?;
 
     Ok(watcher)
 }
 
 fn run_cargo(
     crate_dir: &'static Path,
-    on_release: bool,
+    profile: &str,
     print: bool,
+    clean: bool,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
+    let manifest_path = crate_dir.join("Cargo.toml");
+
+    if clean {
+        let mut cargo = Command::new("cargo");
+        cargo.arg("clean").arg(&manifest_path);
+        cargo.spawn()?.wait_with_output()?;
+    }
+
     let mut cargo = Command::new("cargo");
     cargo
-        .args(["build", "--manifest-path"])
-        .arg(crate_dir.join("Cargo.toml"));
-
-    if !cfg!(debug_assertions) && on_release {
-        cargo.arg("--release");
-    }
+        .args(["build", "--manifest-path", "--profile", profile])
+        .arg(manifest_path);
 
     #[cfg(feature = "deadlocks")]
     cargo.args(["--features", "deadlocks"]);
@@ -228,6 +273,6 @@ const fn resolve_config_file() -> &'static str {
 type RunFn = fn(
     Initials,
     MetaStatics,
-    Vec<Vec<FileRet>>,
+    Vec<Vec<FileParts>>,
     DuatChannel,
-) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>);
+) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>, Option<Instant>);

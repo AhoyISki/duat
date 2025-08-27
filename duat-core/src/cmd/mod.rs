@@ -511,14 +511,14 @@ pub(crate) fn add_session_commands<U: Ui>() {
             }
         }
 
-        let mut cargo = std::process::Command::new("cargo".to_string());
+        let mut cargo = std::process::Command::new("cargo");
         cargo.stdin(std::process::Stdio::null());
         cargo.stdout(std::process::Stdio::null());
         cargo.stderr(std::process::Stdio::inherit());
-        cargo.args(["build".to_string(), "--release".to_string(), "--manifest-path".to_string()]).arg(toml_path);
-    
-        std::fs::write("log.txt", &[]);
-    
+        cargo
+            .args(["build", "--release", "--manifest-path"])
+            .arg(toml_path);
+
         match cargo.spawn() {
             Ok(child) => {
                 sender()
@@ -531,20 +531,23 @@ pub(crate) fn add_session_commands<U: Ui>() {
                     // function to end without waiting for this thread to
                     // finish.
                     sender().send(DuatEvent::ReloadConfig).unwrap();
-                    std::thread::Builder::new().name("reload".to_string()).no_hooks()
+                    std::thread::Builder::new()
+                        .name("reload".to_string())
+                        .no_hooks()
                 } else {
                     std::thread::Builder::new().name("reload".to_string())
                 };
-        
+
                 let log_txt = "log.txt".to_string();
                 // thread_builder.spawn(move || {
                 //     match child.wait_with_output() {
                 //         Ok(out) => {
-                //             std::fs::write(&log_txt, String::from_utf8_lossy(&out.stderr).as_bytes());
+                //             std::fs::write(&log_txt,
+                // String::from_utf8_lossy(&out.stderr).as_bytes());
                 //             // if !out.stderr.is_empty() {
-                //             //     context::warn!("{}", String::from_utf8_lossy(&out.stderr));
-                //             // }
-                //         }
+                //             //     context::warn!("{}",
+                // String::from_utf8_lossy(&out.stderr));             
+                // // }         }
                 //         Err(err) => {
                 //             std::fs::write(&log_txt, err.to_string().as_bytes());
                 //             // context::error!("cargo failed: {err}")

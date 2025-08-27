@@ -28,6 +28,7 @@ use crate::{
     },
 };
 
+/// Configuration for a session of Duat
 #[doc(hidden)]
 pub struct SessionCfg<U: Ui> {
     file_cfg: FileCfg<U>,
@@ -44,55 +45,18 @@ impl<U: Ui> SessionCfg<U> {
         }
     }
 
-    pub fn session_from_args(self, ms: &'static U::MetaStatics) -> Session<U> {
-        // SAFETY: This function is only called from the main thread in
-        // ../src/setup.rs, and from there, there are no other active
-        // Passs, so this is fine.
-        let pa = unsafe { &mut Pass::new() };
-
-        context::set_windows(Windows::<U>::new());
-
-        cmd::add_session_commands::<U>();
-
-        let mut args = std::env::args();
-        let first = args.nth(1).map(PathBuf::from);
-
-        let file_cfg = if let Some(name) = first {
-            self.file_cfg.clone().open_path(name)
-        } else {
-            self.file_cfg.clone()
-        };
-
-        context::windows().new_window(pa, ms, file_cfg, (self.layout_fn)(), true);
-
-        let session = Session {
-            ms,
-            file_cfg: self.file_cfg,
-            layout_fn: self.layout_fn,
-        };
-
-        for file in args {
-            session.open_file_from_path(pa, context::cur_window(), PathBuf::from(file));
-        }
-
-        session
-    }
-
-    pub fn session_from_prev(
-        self,
-        ms: &'static U::MetaStatics,
-        prev: Vec<Vec<FileRet>>,
-    ) -> Session<U> {
-        cmd::add_session_commands::<U>();
+    pub fn build(self, ms: &'static U::MetaStatics, files: Vec<Vec<FileParts>>) -> Session<U> {
         // SAFETY: This function is only called from the main thread in
         // ../src/setup.rs, and from there, there are no other active
         // Passs, so this is fine.
         let pa = unsafe { &mut Pass::new() };
 
         context::set_windows::<U>(Windows::new());
+        
+        cmd::add_session_commands::<U>();
 
         let file_cfg = self.file_cfg.clone();
-        let inherited_cfgs = prev.into_iter().enumerate().map(|(i, cfgs)| {
+        let inherited_cfgs = files.into_iter().enumerate().map(|(i, cfgs)| {
             let cfgs = cfgs.into_iter().map(|file_ret| {
                 let bytes = file_ret.bytes;
                 let pk = file_ret.path_kind;
@@ -144,6 +108,8 @@ impl<U: Ui> SessionCfg<U> {
     }
 }
 
+/// A session of Duat
+#[doc(hidden)]
 pub struct Session<U: Ui> {
     ms: &'static U::MetaStatics,
     file_cfg: FileCfg<U>,
@@ -157,7 +123,7 @@ impl<U: Ui> Session<U> {
         duat_rx: mpsc::Receiver<DuatEvent>,
         spawn_count: &'static AtomicUsize,
     ) -> (
-        Vec<Vec<FileRet>>,
+        Vec<Vec<FileParts>>,
         mpsc::Receiver<DuatEvent>,
         Option<Instant>,
     ) {
@@ -177,11 +143,9 @@ impl<U: Ui> Session<U> {
         };
         mode_fn(pa);
 
-        {
-            let win = context::cur_window();
-            for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
-                node.update_and_print(pa);
-            }
+        let win = context::cur_window();
+        for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
+            node.update_and_print(pa);
         }
 
         U::flush_layout(self.ms);
@@ -273,7 +237,7 @@ impl<U: Ui> Session<U> {
         }
     }
 
-    fn take_files(self, pa: &mut Pass) -> Vec<Vec<FileRet>> {
+    fn take_files(self, pa: &mut Pass) -> Vec<Vec<FileParts>> {
         let files = context::windows::<U>().entries(pa).fold(
             Vec::new(),
             |mut file_handles, (win, _, node)| {
@@ -298,10 +262,15 @@ impl<U: Ui> Session<U> {
                     let text = std::mem::take(file.text_mut());
                     let has_unsaved_changes = text.has_unsaved_changes();
                     let bytes = text.take_bytes();
-                    let pk = file.path_kind();
+                    let path_kind = file.path_kind();
                     let is_active = area.is_active();
 
-                    FileRet::new(bytes, pk, is_active, has_unsaved_changes)
+                    FileParts {
+                        bytes,
+                        path_kind,
+                        is_active,
+                        has_unsaved_changes,
+                    }
                 });
                 files.collect()
             })
@@ -359,21 +328,41 @@ impl<U: Ui> Session<U> {
     }
 }
 
-pub struct FileRet {
+/// The parts that compose a [`File`] widget
+///
+/// **FOR USE BY THE DUAT EXECUTABLE ONLY**
+#[doc(hidden)]
+pub struct FileParts {
     bytes: Bytes,
     path_kind: PathKind,
     is_active: bool,
     has_unsaved_changes: bool,
 }
 
-impl FileRet {
-    fn new(bytes: Bytes, path_kind: PathKind, is_active: bool, has_unsaved_changes: bool) -> Self {
-        Self {
-            bytes,
+impl FileParts {
+    /// Creates a new [`FileParts`] from parts gathered from arguments
+    ///
+    /// **MEANT TO BE USED BY THE DUAT EXECUTABLE ONLY**
+    #[doc(hidden)]
+    pub fn by_args(path: Option<PathBuf>, is_active: bool) -> Result<Self, std::io::Error> {
+        let (bytes, path_kind) = match path.map(|p| (std::fs::read(&p), p)) {
+            Some((Ok(bytes), path)) => (
+                unsafe { String::from_utf8_unchecked(bytes) },
+                PathKind::SetExists(path),
+            ),
+            Some((Err(err), path)) if err.kind() == std::io::ErrorKind::NotFound => {
+                (String::new(), PathKind::SetAbsent(path))
+            }
+            Some((Err(err), _)) => return Err(err),
+            None => (String::new(), PathKind::new_unset()),
+        };
+
+        Ok(Self {
+            bytes: Bytes::new(&bytes),
             path_kind,
             is_active,
-            has_unsaved_changes,
-        }
+            has_unsaved_changes: false,
+        })
     }
 }
 
