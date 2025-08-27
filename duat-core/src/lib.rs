@@ -653,7 +653,7 @@
     dropck_eyepatch,
     fn_traits,
     box_as_ptr,
-    iter_array_chunks,
+    iter_array_chunks,
     thread_spawn_hook
 )]
 #![allow(clippy::single_range_in_vec_init)]

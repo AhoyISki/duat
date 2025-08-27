@@ -425,12 +425,18 @@ impl Iterator for RevIter<'_> {
 }
 
 fn buf_chars_fwd(text: &Text, b: usize) -> FwdChars<'_> {
-    let [s0, s1] = text.strs(b..).unwrap().to_array();
+    let [s0, s1] = text
+        .buffers(b..)
+        .to_array()
+        .map(|s| unsafe { std::str::from_utf8_unchecked(s) });
     s0.chars().chain(s1.chars())
 }
 
 fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
-    let [s0, s1] = text.strs(..b).unwrap().to_array();
+    let [s0, s1] = text
+        .buffers(..b)
+        .to_array()
+        .map(|s| unsafe { std::str::from_utf8_unchecked(s) });
     s1.chars().rev().chain(s0.chars().rev())
 }
 

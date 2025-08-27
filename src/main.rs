@@ -1,9 +1,8 @@
 //! The runner for Duat
-#![feature(decl_macro, iterator_try_collect, iter_array_chunks)]
+#![feature(decl_macro, iterator_try_collect, try_blocks)]
 
 use std::{
-    path::{Path, PathBuf},
-    process::Command,
+    path::PathBuf,
     sync::{
         LazyLock, Mutex,
         mpsc::{self, Receiver},
@@ -37,9 +36,21 @@ struct Args {
     /// Open the config's Cargo.toml
     #[arg(long)]
     cfg_manifest: bool,
+    /// Path to config [default: ~/.config/duat]
+    #[arg(short, long)]
+    load: Option<PathBuf>,
     /// Profile to load
     #[arg(long, default_value = "release")]
     profile: String,
+    /// Recompile the config crate
+    #[arg(long)]
+    reload: bool,
+    /// Clears the target and cache dirs
+    #[arg(long)]
+    clean: bool,
+    /// Updates the config's dependencies
+    #[arg(long)]
+    update: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,23 +75,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (reload_tx, reload_rx) = mpsc::channel();
 
     // Assert that the configuration crate actually exists.
-    let Some(crate_dir) = duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
-        context::error!("No config crate found, loading default config");
+    let Some(crate_dir) = args.duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
+        context::error!("Config crate not fou");
         pre_setup(None, duat_tx);
         run_duat((ms, &CLIPB), Vec::new(), duat_rx);
         return Ok(());
     };
 
-    let mut lib = {
-        let libconfig_path = crate_dir.join(if cfg!(debug_assertions) {
-            format!("target/debug/{}", resolve_config_file())
-        } else {
-            format!("target/release/{}", resolve_config_file())
-        });
+    if args.clean {
+        use std::io::ErrorKind::*;
+        let result: Result<(), std::io::Error> = try {
+            cargo::clean(crate_dir, true)?;
+            if let Some(cache_dir) = dirs_next::cache_dir() {
+                std::fs::remove_dir_all(cache_dir.join("duat"))?
+            }
+        };
 
-        if let Ok(false) | Err(_) = libconfig_path.try_exists() {
+        if let Err(err) = result {
+            match err.kind() {
+                NotFound => {}
+                _ => return Err(err.into()),
+            }
+        }
+    }
+
+    if args.update {
+        use std::io::ErrorKind::*;
+        let result: Result<(), std::io::Error> = try {
+            cargo::update(crate_dir, true)?;
+            if let Some(cache_dir) = dirs_next::cache_dir()
+                && !args.clean
+            {
+                std::fs::remove_dir_all(cache_dir.join("duat"))?
+            }
+        };
+
+        if let Err(err) = result {
+            match err.kind() {
+                NotFound => {}
+                _ => return Err(err.into()),
+            }
+        }
+    }
+
+    let mut lib = {
+        let libconfig_path = crate_dir.join(format!(
+            "target/{}/{}",
+            &args.profile,
+            resolve_config_file()
+        ));
+
+        if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
             println!("Compiling config crate for the first time, this might take a while...");
-            if let Ok(status) = run_cargo(crate_dir, &args.profile, true, true)
+            if let Ok(status) = cargo::build(crate_dir, &args.profile, true)
                 && status.success()
             {
                 context::info!("Compiled [a]release[] profile");
@@ -115,7 +162,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .try_collect()?;
 
         if files.is_empty() {
-            vec![vec![FileParts::by_args(None, true).unwrap()]]
+            if args.clean || args.reload || args.update {
+                return Ok(());
+            } else {
+                vec![vec![FileParts::by_args(None, true).unwrap()]]
+            }
         } else {
             let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
             let mut files_per_window = Vec::new();
@@ -216,38 +267,71 @@ fn spawn_watcher(
     Ok(watcher)
 }
 
-fn run_cargo(
-    crate_dir: &'static Path,
-    profile: &str,
-    print: bool,
-    clean: bool,
-) -> Result<std::process::ExitStatus, std::io::Error> {
-    let manifest_path = crate_dir.join("Cargo.toml");
+mod cargo {
+    use std::{path::Path, process::Command};
 
-    if clean {
+    use duat_core::context;
+
+    /// Build the config crate
+    pub fn build(
+        crate_dir: &'static Path,
+        profile: &str,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        let manifest_path = crate_dir.join("Cargo.toml");
+
         let mut cargo = Command::new("cargo");
-        cargo.arg("clean").arg(&manifest_path);
-        cargo.spawn()?.wait_with_output()?;
+        cargo
+            .args(["build", "--manifest-path", "--profile", profile])
+            .arg(manifest_path);
+
+        #[cfg(feature = "deadlocks")]
+        cargo.args(["--features", "deadlocks"]);
+
+        exec_cargo(cargo, print)
     }
 
-    let mut cargo = Command::new("cargo");
-    cargo
-        .args(["build", "--manifest-path", "--profile", profile])
-        .arg(manifest_path);
+    /// Clean the config crate
+    pub fn clean(
+        crate_dir: &'static Path,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        let mut cargo = Command::new("cargo");
+        cargo
+            .args(["clean", "--manifest-path"])
+            .arg(crate_dir.join("Cargo.toml"));
 
-    #[cfg(feature = "deadlocks")]
-    cargo.args(["--features", "deadlocks"]);
+        exec_cargo(cargo, print)
+    }
 
-    if print {
-        cargo.status()
-    } else {
-        cargo.output().map(|out| {
-            if !out.status.success() {
-                context::error!("{}", String::from_utf8_lossy(&out.stderr));
-            }
+    /// Updates the config crate
+    pub fn update(
+        crate_dir: &'static Path,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        let mut cargo = Command::new("cargo");
+        cargo
+            .args(["update", "--manifest-path"])
+            .arg(crate_dir.join("Cargo.toml"));
 
-            out.status
-        })
+        exec_cargo(cargo, print)
+    }
+
+    fn exec_cargo(
+        mut cargo: Command,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        if print {
+            cargo.status()
+        } else {
+            cargo.output().map(|out| {
+                if !out.status.success() {
+                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
+                }
+
+                out.status
+            })
+        }
     }
 }
 

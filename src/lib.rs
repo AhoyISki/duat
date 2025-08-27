@@ -990,16 +990,16 @@ pub macro setup_duat($setup:expr) {
     fn run(
         initials: Initials,
         ms: MetaStatics,
-        prev_files: Vec<Vec<FileRet>>,
+        files: Vec<Vec<FileParts>>,
         (duat_tx, duat_rx): DuatChannel,
     ) -> (
-        Vec<Vec<FileRet>>,
+        Vec<Vec<FileParts>>,
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
         pre_setup(Some(initials), duat_tx);
         $setup();
-        run_duat(ms, prev_files, duat_rx)
+        run_duat(ms, files, duat_rx)
     }
 }
 
