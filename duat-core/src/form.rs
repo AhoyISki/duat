@@ -50,7 +50,6 @@ mod global {
         any::TypeId,
         collections::HashMap,
         sync::{LazyLock, Mutex, OnceLock, mpsc},
-        thread,
         time::Duration,
     };
 

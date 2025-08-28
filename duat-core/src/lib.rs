@@ -1324,16 +1324,20 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     src_crate_inner(TypeId::of::<T>(), std::any::type_name::<T>())
 }
 
+/// The path for the crate that was loaded
 static CRATE_DIR: OnceLock<Option<&Path>> = OnceLock::new();
+/// The profile that was loaded
+static PROFILE: OnceLock<&str> = OnceLock::new();
 
 /// Sets the crate directory
 ///
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
-pub fn set_crate_dir(dir: Option<&'static Path>) {
+pub fn set_crate_dir_and_profile(dir: Option<&'static Path>, profile: &'static str) {
     CRATE_DIR
         .set(dir)
         .expect("Crate directory set multiple times.");
+    PROFILE.set(profile).expect("Profile set multiple times.");
 }
 
 /// The path for the config crate of Duat
@@ -1342,6 +1346,14 @@ pub fn crate_dir() -> Result<&'static Path, Text> {
         .get()
         .expect("Config not set yet")
         .ok_or_else(|| txt!("Config directory is [a]undefined").build())
+}
+
+/// The Profile that is currently loaded
+///
+/// This is only valid inside of the loaded configuration's `run`
+/// function, not in the metastatic Ui.
+pub fn profile() -> &'static str {
+    PROFILE.get().expect("Profile not set yet")
 }
 
 /// The path for a plugin's auxiliary files

@@ -32,7 +32,7 @@
 //! [`hook`]: crate::hook
 //! [`File`]: crate::file::File
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
-use std::{fmt::Debug, sync::mpsc, time::Instant};
+use std::{fmt::Debug, sync::mpsc};
 
 use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
@@ -49,6 +49,7 @@ use crate::{
     cfg::PrintCfg,
     data::Pass,
     form::Painter,
+    session::ReloadEvent,
     text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
 };
 
@@ -511,20 +512,22 @@ pub enum DuatEvent {
     FocusedOnDuat,
     /// Unfocused from Duat
     UnfocusedFromDuat,
-    /// Started a reload/recompilation at an [`Instant`]
-    ReloadStarted(Instant),
-    /// The Duat app sent a message to reload the config
-    ReloadConfig,
+    /// Request a reload of the configuration to the executable
+    RequestReload(ReloadEvent),
+    /// A reloading attempt succeeded
+    ReloadSucceeded,
+    /// A reloading attempt failed
+    ReloadFailed,
     /// Quit Duat
     Quit,
 }
 
 /// A sender of [`DuatEvent`]s
-pub struct Sender(&'static mpsc::Sender<DuatEvent>);
+pub struct Sender(mpsc::Sender<DuatEvent>);
 
 impl Sender {
     /// Returns a new [`Sender`]
-    pub fn new(sender: &'static mpsc::Sender<DuatEvent>) -> Self {
+    pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
         Self(sender)
     }
 

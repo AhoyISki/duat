@@ -45,7 +45,7 @@ mod global {
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
-    static SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
+    static SENDER: OnceLock<mpsc::Sender<DuatEvent>> = OnceLock::new();
 
     /// The name of the current [`Mode`]
     ///
@@ -149,8 +149,8 @@ mod global {
     }
 
     /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop
-    pub(crate) fn sender() -> &'static mpsc::Sender<DuatEvent> {
-        SENDER.get().unwrap()
+    pub(crate) fn sender() -> mpsc::Sender<DuatEvent> {
+        SENDER.get().unwrap().clone()
     }
 
     /// Sets the [`CurWidget`] and [`CurFile`], if needed
@@ -236,7 +236,7 @@ mod global {
     ///
     /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
-    pub fn set_sender(sender: &'static mpsc::Sender<DuatEvent>) {
+    pub fn set_sender(sender: mpsc::Sender<DuatEvent>) {
         SENDER.set(sender).expect("setup ran twice");
     }
 }

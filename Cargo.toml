@@ -3,7 +3,7 @@ name = "duat"
 version = "0.6.1"
 edition = "2024"
 authors = ["AhoyISki"]
-description = "A modern, batteries-included text editor, configured in rust."
+description = "A modern, very customizable text editor, configured in rust."
 repository = "https://github.com/AhoyISki/duat"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -28,7 +28,6 @@ duat-term = { version = "0.6.0", path = "duat-term", optional = true }
 
 dirs-next = "2.0.0"
 log = "0.4.27"
-notify = "8.2.0"
 
 [dependencies.clap]
 version = "4.5.46"
@@ -39,12 +38,16 @@ optional = true
 version = "0.8.8"
 optional = true
 
+[dependencies.notify]
+version = "8.2.0"
+optional = true
+
 [features]
 default = ["term-ui", "cli"]
 term-ui = ["dep:duat-term"]
 deadlocks = ["duat-core/deadlocks"]
 git-deps = []
-cli = ["dep:clap", "dep:libloading"]
+cli = ["dep:clap", "dep:libloading", "dep:notify"]
 
 [[bin]]
 name = "duat"

@@ -42,5 +42,5 @@ package = "duat-catppuccin"
 [dependencies.duat]
 git = "https://github.com/AhoyISki/duat"
 version = "0.6.0"
-no-default-features = true
+default-features = false
 features = ["term-ui"]

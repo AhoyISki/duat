@@ -1,3 +1,11 @@
+//! The session of Duat
+//!
+//! **FOR USE IN THE DUAT EXECUTABLE ONLY**
+//!
+//! This module defines the [`Session`] struct, which is used to run
+//! the whole session of duat, controling everything that is not
+//! related to printing or receiving input. This includes interpreting
+//! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
     path::PathBuf,
     sync::{
@@ -5,7 +13,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         mpsc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use crate::{
@@ -122,11 +130,8 @@ impl<U: Ui> Session<U> {
         self,
         duat_rx: mpsc::Receiver<DuatEvent>,
         spawn_count: &'static AtomicUsize,
-    ) -> (
-        Vec<Vec<FileParts>>,
-        mpsc::Receiver<DuatEvent>,
-        Option<Instant>,
-    ) {
+        reload_tx: Option<mpsc::Sender<ReloadEvent>>,
+    ) -> (Vec<Vec<FileParts>>, mpsc::Receiver<DuatEvent>) {
         form::set_sender(Sender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
@@ -150,7 +155,7 @@ impl<U: Ui> Session<U> {
 
         U::flush_layout(self.ms);
 
-        let mut reload_instant = None;
+        let mut reload_requested = false;
         let mut reprint_screen = false;
         let mut idle_count = 0;
 
@@ -189,8 +194,17 @@ impl<U: Ui> Session<U> {
                     DuatEvent::UnfocusedFromDuat => {
                         hook::trigger(pa, UnfocusedFromDuat(()));
                     }
-                    DuatEvent::ReloadStarted(instant) => reload_instant = Some(instant),
-                    DuatEvent::ReloadConfig => {
+                    DuatEvent::RequestReload(reload) => match (&reload_tx, reload_requested) {
+                        (Some(reload_tx), false) => {
+                            reload_tx.send(reload).unwrap();
+                            reload_requested = true;
+                        }
+                        (Some(_), true) => context::warn!("Waiting for previous reload"),
+                        (None, _) => {
+                            context::error!("Loaded default config, so reloading is not available")
+                        }
+                    },
+                    DuatEvent::ReloadSucceeded => {
                         hook::trigger(pa, ConfigUnloaded(()));
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
@@ -202,8 +216,9 @@ impl<U: Ui> Session<U> {
                         let ms = self.ms;
                         let files = self.take_files(pa);
                         U::unload(ms);
-                        return (files, duat_rx, reload_instant);
+                        return (files, duat_rx);
                     }
+                    DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
                         hook::trigger(pa, ConfigUnloaded(()));
                         hook::trigger(pa, ExitedDuat(()));
@@ -214,7 +229,7 @@ impl<U: Ui> Session<U> {
                             hook::trigger(pa, FileClosed((handle, Cache::new())));
                         }
 
-                        return (Vec::new(), duat_rx, None);
+                        return (Vec::new(), duat_rx);
                     }
                 }
             } else if reprint_screen {
@@ -364,6 +379,16 @@ impl FileParts {
             has_unsaved_changes: false,
         })
     }
+}
+
+/// How Duat should reload
+///
+/// **FOR USE IN THE DUAT EXECUTABLE ONLY**
+#[doc(hidden)]
+pub struct ReloadEvent {
+    pub clean: bool,
+    pub update: bool,
+    pub profile: String,
 }
 
 fn wait_for_threads_to_end(spawn_count: &'static AtomicUsize) {

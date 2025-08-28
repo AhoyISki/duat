@@ -242,11 +242,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{
-        Arc, LazyLock,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Instant,
+    sync::{Arc, LazyLock},
 };
 
 use crossterm::style::Color;
@@ -466,102 +462,23 @@ pub(crate) fn add_session_commands<U: Ui>() {
         Ok(None)
     });
 
-    add!(["reload"], |_pa, flags: Flags| {
-        static IS_UPDATING: AtomicBool = AtomicBool::new(false);
+    add!(["reload"], |_pa, flags: Flags, profile: Option<String>| {
+        sender()
+            .send(DuatEvent::RequestReload(crate::session::ReloadEvent {
+                clean: flags.word("clean"),
+                update: flags.word("update"),
+                profile: profile.unwrap_or(crate::profile().to_string()),
+            }))
+            .unwrap();
 
-        fn clear_path(path: std::path::PathBuf) {
-            let Ok(entries) = std::fs::read_dir(&path) else {
-                let _ = std::fs::remove_file(path);
-                return;
-            };
+        /// This has to be done on Windows, since you can't remove
+        /// loaded dlls. Thus, we need to quit the curent
+        /// configuration first, and then we can start compiling the
+        /// new version of the config crate.
+        #[cfg(target_os = "windows")]
+        sender().send(DuatEvent::ReloadSucceeded).unwrap();
 
-            for entry in entries.filter_map(Result::ok) {
-                if let Ok(ft) = entry.file_type()
-                    && ft.is_dir()
-                {
-                    let _ = std::fs::remove_dir_all(entry.path());
-                } else {
-                    let _ = std::fs::remove_file(entry.path());
-                }
-            }
-        }
-
-        if IS_UPDATING.load(Ordering::Relaxed) {
-            return Err(txt!("The config is already being recompiled").build());
-        } else {
-            IS_UPDATING.store(true, Ordering::Relaxed);
-        }
-
-        let crate_dir = crate::crate_dir()?;
-
-        let toml_path = crate_dir.join("Cargo.toml");
-        if let Ok(false) | Err(_) = toml_path.try_exists() {
-            return Err(txt!("Cargo.toml was not found").build());
-        }
-
-        if flags.word("clear") || flags.word("update") {
-            clear_path(crate_dir.join("target/release"));
-            clear_path(crate_dir.join("target/debug"));
-
-            if let Some(cache_dir) = dirs_next::cache_dir() {
-                clear_path(cache_dir.join("duat"));
-            }
-            if let Some(local_dir) = dirs_next::data_local_dir() {
-                clear_path(local_dir.join("duat/plugins"));
-            }
-        }
-
-        let mut cargo = std::process::Command::new("cargo");
-        cargo.stdin(std::process::Stdio::null());
-        cargo.stdout(std::process::Stdio::null());
-        cargo.stderr(std::process::Stdio::inherit());
-        cargo
-            .args(["build", "--release", "--manifest-path"])
-            .arg(toml_path);
-
-        match cargo.spawn() {
-            Ok(child) => {
-                sender()
-                    .send(DuatEvent::ReloadStarted(Instant::now()))
-                    .unwrap();
-                let thread_builder = if cfg!(target_os = "windows") {
-                    // On Windows, since loaded dlls can't be removed,
-                    // I need to unload the config crate immediately.
-                    // The no_hooks part is to allow the Session::start()
-                    // function to end without waiting for this thread to
-                    // finish.
-                    sender().send(DuatEvent::ReloadConfig).unwrap();
-                    std::thread::Builder::new()
-                        .name("reload".to_string())
-                        .no_hooks()
-                } else {
-                    std::thread::Builder::new().name("reload".to_string())
-                };
-
-                let log_txt = "log.txt".to_string();
-                // thread_builder.spawn(move || {
-                //     match child.wait_with_output() {
-                //         Ok(out) => {
-                //             std::fs::write(&log_txt,
-                // String::from_utf8_lossy(&out.stderr).as_bytes());
-                //             // if !out.stderr.is_empty() {
-                //             //     context::warn!("{}",
-                // String::from_utf8_lossy(&out.stderr));             
-                // // }         }
-                //         Err(err) => {
-                //             std::fs::write(&log_txt, err.to_string().as_bytes());
-                //             // context::error!("cargo failed: {err}")
-                //         },
-                //     };
-                //     IS_UPDATING.store(false, Ordering::Relaxed);
-                // });
-                Ok(Some(txt!("Started config recompilation").build()))
-            }
-            Err(err) => {
-                IS_UPDATING.store(false, Ordering::Relaxed);
-                Err(txt!("Failed to start cargo: [a]{err}").build())
-            }
-        }
+        Ok(None)
     });
 
     add!(["edit", "e"], |pa, path: ValidFile<U>| {

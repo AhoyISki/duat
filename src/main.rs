@@ -10,17 +10,21 @@ use std::{
     time::Instant,
 };
 
-use duat::{DuatChannel, Initials, MetaStatics, pre_setup, prelude::*, run_duat};
+use duat::{Channels, Initials, MetaStatics, crate_dir, pre_setup, prelude::*, run_duat};
 use duat_core::{
     clipboard::Clipboard,
     context,
-    session::FileParts,
+    session::{FileParts, ReloadEvent},
     ui::{self, DuatEvent, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
 
+static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
 static CLIPBOARD: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
+
+#[cfg(not(feature = "cli"))]
+compile_error!("The Duat app needs the "cli" feature to work.");
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about, long_about = None)]
@@ -77,16 +81,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     duat_core::form::set_initial(forms_init);
 
     let (duat_tx, mut duat_rx) = mpsc::channel();
-    let duat_tx: &'static mpsc::Sender<DuatEvent> = Box::leak(Box::new(duat_tx));
-    duat_core::context::set_sender(duat_tx);
+    duat_core::context::set_sender(duat_tx.clone());
 
     let ms: &'static <Ui as ui::Ui>::MetaStatics =
         Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
 
-    let (reload_tx, reload_rx) = mpsc::channel();
-
     // Assert that the configuration crate actually exists.
-    let crate_dir = {
+    let (crate_dir, profile) = {
         let crate_dir = args
             .load
             .map(|crate_dir| {
@@ -102,72 +103,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(std::path::Path::new(path))
             });
 
-        duat_core::set_crate_dir(crate_dir);
+        let profile: &'static str = args.profile.leak();
+        duat_core::set_crate_dir_and_profile(crate_dir, profile);
 
         if let Some(crate_dir) = crate_dir {
-            crate_dir
+            (crate_dir, profile)
         } else {
-            Ui::open(ms, ui::Sender::new(duat_tx));
+            Ui::open(ms, ui::Sender::new(duat_tx.clone()));
             context::error!("Failed to find config crate, loading default");
             pre_setup(None, None);
             run_duat(
                 (ms, &CLIPBOARD),
                 vec![vec![FileParts::by_args(None, true).unwrap()]],
                 duat_rx,
+                None,
             );
             Ui::close(ms);
             return Ok(());
         }
     };
 
-    if args.clean {
-        use std::io::ErrorKind::*;
-        let result: Result<(), std::io::Error> = try {
-            cargo::clean(crate_dir, true)?;
-            if let Some(cache_dir) = dirs_next::cache_dir() {
-                std::fs::remove_dir_all(cache_dir.join("duat"))?
-            }
-        };
+    if (args.clean || args.update)
+        && let Some(cache_dir) = dirs_next::cache_dir()
+    {
+        clear_path(cache_dir.join("duat"));
+    }
 
-        if let Err(err) = result {
-            match err.kind() {
-                NotFound => {}
-                _ => return Err(err.into()),
-            }
+    if args.clean
+        && let Err(err) = cargo::clean(crate_dir, true)
+    {
+        match err.kind() {
+            std::io::ErrorKind::NotFound => {}
+            _ => return Err(err.into()),
         }
     }
 
-    if args.update {
-        use std::io::ErrorKind::*;
-        let result: Result<(), std::io::Error> = try {
-            cargo::update(crate_dir, true)?;
-            if let Some(cache_dir) = dirs_next::cache_dir()
-                && !args.clean
-            {
-                std::fs::remove_dir_all(cache_dir.join("duat"))?
-            }
-        };
-
-        if let Err(err) = result {
-            match err.kind() {
-                NotFound => {}
-                _ => return Err(err.into()),
-            }
+    if args.update
+        && let Err(err) = cargo::update(crate_dir, true)
+    {
+        match err.kind() {
+            std::io::ErrorKind::NotFound => {}
+            _ => return Err(err.into()),
         }
+    } else if args.clean || args.update {
+        return Ok(());
     }
 
     let mut lib = {
-        let libconfig_path = crate_dir.join(format!(
-            "target/{}/{}",
-            &args.profile,
-            resolve_config_file()
-        ));
+        let libconfig_path =
+            crate_dir.join(format!("target/{}/{}", profile, resolve_config_file()));
 
         if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
             if !args.reload {
                 println!("Compiling config crate for the first time, this might take a while...");
             }
-            if let Ok(status) = cargo::build(crate_dir, &args.profile, true)
+            if let Ok(status) = cargo::build(crate_dir, profile, true)
                 && status.success()
             {
                 context::info!("Compiled [a]release[] profile");
@@ -180,7 +170,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // The watcher is returned as to not be dropped.
-    let _watcher = match spawn_watcher(reload_tx, duat_tx, crate_dir) {
+    let (config_tx, config_rx) = mpsc::channel();
+    let _watcher = match spawn_config_watcher(config_tx.clone(), duat_tx.clone(), crate_dir) {
         Ok(_watcher) => Some(_watcher),
         Err(err) => {
             context::error!("Failed to spawn watcher, [a]reloading will be disabled[]: {err}");
@@ -188,7 +179,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    Ui::open(ms, ui::Sender::new(duat_tx));
+    let (reload_tx, reload_rx) = mpsc::channel();
+    spawn_reloader(reload_rx, config_tx.clone(), duat_tx.clone());
+
+    Ui::open(ms, ui::Sender::new(duat_tx.clone()));
 
     let mut files = {
         let files: Vec<FileParts> = args
@@ -226,20 +220,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let running_lib = lib.take();
         let mut run_fn = running_lib.as_ref().and_then(find_run_duat);
 
-        let reload_instant;
-        (files, duat_rx, reload_instant) = std::thread::scope(|s| {
+        let (duat_tx, reload_tx) = (duat_tx.clone(), reload_tx.clone());
+        (files, duat_rx) = std::thread::scope(|s| {
             // Initialize now in order to prevent thread activation after the
             // thread counter hook sets in.
             let clipb = &*CLIPBOARD;
             s.spawn(|| {
                 if let Some(run_duat) = run_fn.take() {
-                    let initials = (logs.clone(), forms_init);
-                    let channel = (duat_tx, duat_rx);
+                    let initials = (logs.clone(), forms_init, (crate_dir, profile));
+                    let channel = (duat_tx, duat_rx, reload_tx.clone());
                     run_duat(initials, (ms, clipb), files, channel)
                 } else {
                     context::error!("Config crate not found at [a]{crate_dir}[], loading default");
                     pre_setup(None, None);
-                    run_duat((ms, clipb), files, duat_rx)
+                    run_duat((ms, clipb), files, duat_rx, Some(reload_tx))
                 }
             })
             .join()
@@ -255,12 +249,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
-        let (config_path, profile) = reload_rx.recv().unwrap();
+        let (config_path, profile) = config_rx.recv().unwrap();
 
-        let time = match reload_instant {
+        let time = match RELOAD_INSTANT.lock().unwrap().take() {
             Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
             None => Text::builder(),
         };
+
         context::info!("[a]{profile}[] profile reloaded{time}");
         lib = unsafe { Library::new(config_path) }.ok();
     }
@@ -270,22 +265,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn spawn_watcher(
-    reload_tx: mpsc::Sender<(PathBuf, String)>,
-    duat_tx: &mpsc::Sender<DuatEvent>,
+fn spawn_config_watcher(
+    config_tx: mpsc::Sender<(PathBuf, String)>,
+    duat_tx: mpsc::Sender<DuatEvent>,
     crate_dir: &'static std::path::Path,
 ) -> Result<notify::RecommendedWatcher, Box<dyn std::error::Error>> {
     let target_dir = crate_dir.join("target");
     std::fs::create_dir_all(&target_dir)?;
 
     let mut watcher = notify::recommended_watcher({
-        let reload_tx = reload_tx.clone();
-        let duat_tx = duat_tx.clone();
-        let libconfig_str = resolve_config_file();
-
         move |res| {
             if let Ok(Event { kind: EventKind::Create(_), paths, .. }) = res
-                && let Some(out_path) = paths.iter().find(|p| p.ends_with(libconfig_str))
+                && let Some(out_path) = paths.iter().find(|p| p.ends_with(resolve_config_file()))
             {
                 let profile = if let Some(parent) = out_path.parent()
                     && let Some(parent) = parent.file_name()
@@ -295,12 +286,12 @@ fn spawn_watcher(
                     "release".to_string()
                 };
 
-                reload_tx.send((out_path.clone(), profile)).unwrap();
-                // On Windows, we need to unload the dll before reloading
+                config_tx.send((out_path.clone(), profile)).unwrap();
+                // On Windows, we need to unReloadResult before reloading
                 // This means that this event should be sent as "reload" is
                 // called, not here.
                 if !cfg!(target_os = "windows") {
-                    duat_tx.send(DuatEvent::ReloadConfig).unwrap();
+                    duat_tx.send(DuatEvent::ReloadSucceeded).unwrap();
                 }
             }
         }
@@ -309,6 +300,55 @@ fn spawn_watcher(
     watcher.watch(&target_dir, Recursive)?;
 
     Ok(watcher)
+}
+
+fn spawn_reloader(
+    reload_rx: mpsc::Receiver<ReloadEvent>,
+    config_tx: mpsc::Sender<(PathBuf, String)>,
+    duat_tx: mpsc::Sender<DuatEvent>,
+) {
+    std::thread::Builder::new()
+        .name("reload".to_string())
+        .spawn(move || {
+            while let Ok(reload) = reload_rx.recv() {
+                *RELOAD_INSTANT.lock().unwrap() = Some(Instant::now());
+
+                let crate_dir = crate_dir().unwrap();
+                if (reload.clean || reload.update)
+                    && let Some(cache_dir) = dirs_next::cache_dir()
+                {
+                    clear_path(cache_dir.join("duat/cache"));
+                }
+
+                let result: Result<std::process::ExitStatus, std::io::Error> = try {
+                    if reload.clean {
+                        cargo::clean(crate_dir, false)?;
+                    }
+                    if reload.update {
+                        cargo::update(crate_dir, false)?;
+                    }
+                    cargo::build(crate_dir, &reload.profile, false)?
+                };
+
+                if let Err(err) = result {
+                    *RELOAD_INSTANT.lock().unwrap() = None;
+                    context::error!(target: "reload", "{err}");
+                    duat_tx.send(DuatEvent::ReloadFailed).unwrap();
+                } else if cfg!(target_os = "windows") {
+                    config_tx
+                        .send((
+                            crate_dir.join(format!(
+                                "target/{}/{}",
+                                &reload.profile,
+                                resolve_config_file()
+                            )),
+                            reload.profile.to_string(),
+                        ))
+                        .unwrap();
+                }
+            }
+        })
+        .unwrap();
 }
 
 mod cargo {
@@ -379,6 +419,26 @@ mod cargo {
     }
 }
 
+/// Recursively attempts to remove every element in a path
+///
+/// Doesn't give up upon failing to remove some individual item.
+fn clear_path(path: std::path::PathBuf) {
+    let Ok(entries) = std::fs::read_dir(&path) else {
+        let _ = std::fs::remove_file(path);
+        return;
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        if let Ok(ft) = entry.file_type()
+            && ft.is_dir()
+        {
+            let _ = std::fs::remove_dir_all(entry.path());
+        } else {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
     unsafe { lib.get::<RunFn>(b"run").ok() }
 }
@@ -402,5 +462,5 @@ type RunFn = fn(
     Initials,
     MetaStatics,
     Vec<Vec<FileParts>>,
-    DuatChannel,
-) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>, Option<Instant>);
+    Channels,
+) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>);

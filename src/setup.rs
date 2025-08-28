@@ -11,7 +11,6 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         mpsc::{Receiver, Sender},
     },
-    time::Instant,
 };
 
 use duat_core::{
@@ -19,7 +18,7 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     form::Palette,
-    session::{FileParts, SessionCfg},
+    session::{FileParts, ReloadEvent, SessionCfg},
     text::History,
     ui::{self, Area, DuatEvent, Widget},
 };
@@ -45,13 +44,14 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
-pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<&'static Sender<DuatEvent>>) {
+pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>) {
     start_counting_spawned_threads();
 
-    if let Some((logs, forms_init)) = initials {
+    if let Some((logs, forms_init, (crate_dir, profile))) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
         duat_core::form::set_initial(forms_init);
+        duat_core::set_crate_dir_and_profile(Some(crate_dir), profile);
     }
 
     if let Some(duat_tx) = duat_tx {
@@ -168,7 +168,8 @@ pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
     files: Vec<Vec<FileParts>>,
     duat_rx: Receiver<DuatEvent>,
-) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>, Option<Instant>) {
+    reload_tx: Option<Sender<ReloadEvent>>,
+) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>) {
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 
@@ -183,19 +184,30 @@ pub fn run_duat(
 
     cfg.set_print_cfg(print_cfg);
 
-    cfg.build(ui_ms, files).start(duat_rx, &SPAWN_COUNT)
+    cfg.build(ui_ms, files)
+        .start(duat_rx, &SPAWN_COUNT, reload_tx)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
+
+////////// Types used for startup and reloading
+
+/// Channels to send information between the runner and executable
 #[doc(hidden)]
-pub type DuatChannel = (&'static Sender<DuatEvent>, Receiver<DuatEvent>);
+pub type Channels = (Sender<DuatEvent>, Receiver<DuatEvent>, Sender<ReloadEvent>);
+/// Items that will live for the duration of Duat
 #[doc(hidden)]
 pub type MetaStatics = (
     &'static <Ui as ui::Ui>::MetaStatics,
     &'static Mutex<Clipboard>,
 );
+/// Initial setup items
 #[doc(hidden)]
-pub type Initials = (Logs, (&'static Mutex<Vec<&'static str>>, &'static Palette));
+pub type Initials = (
+    Logs,
+    (&'static Mutex<Vec<&'static str>>, &'static Palette),
+    (&'static Path, &'static str),
+);
 
 /// Starts counting how many threads are running
 fn start_counting_spawned_threads() {
