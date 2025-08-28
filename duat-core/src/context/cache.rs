@@ -111,7 +111,10 @@ impl Cache {
                 name
             };
 
-            let src = cache_dir.join("duat/structs").join(cached_file_name);
+            let src = cache_dir
+                .join("duat")
+                .join("structs")
+                .join(cached_file_name);
             // It could fail if the directory doesn't exist, but we don't really
             // care.
             let _ = std::fs::remove_dir_all(src);
@@ -138,7 +141,8 @@ impl Cache {
         };
 
         let src = cache_dir
-            .join("duat/structs")
+            .join("duat")
+            .join("structs")
             .join(cached_file_name)
             .join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
@@ -154,7 +158,7 @@ fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> std::io::Result<File
     let hash_value = hasher.finish();
 
     let cached_file_name = {
-        let mut name = OsString::from(format!("{hash_value}:"));
+        let mut name = OsString::from(format!("{hash_value}-"));
         name.push(path.file_name().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::IsADirectory,
@@ -168,15 +172,16 @@ fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> std::io::Result<File
         .ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "cache directory isn't set")
         })?
-        .join("duat/structs")
+        .join("duat")
+        .join("structs")
         .join(cached_file_name.clone());
-
+    
     if !src_dir.exists() {
         std::fs::create_dir_all(src_dir.clone())?;
     }
-
-    let src = src_dir.join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
-
+    
+    let src = src_dir.join(format!("{}-{}", src_crate::<C>(), duat_name::<C>()));
+    
     std::fs::OpenOptions::new()
         .create(true)
         .read(true)

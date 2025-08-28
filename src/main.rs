@@ -24,7 +24,7 @@ static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
 static CLIPBOARD: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
 #[cfg(not(feature = "cli"))]
-compile_error!("The Duat app needs the "cli" feature to work.");
+compile_error!("The Duat app needs the \"cli\" feature to work.");
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about, long_about = None)]
@@ -335,21 +335,24 @@ fn spawn_reloader(
                     cargo::build(crate_dir, &reload.profile, false)?
                 };
 
-                if let Err(err) = result {
-                    *RELOAD_INSTANT.lock().unwrap() = None;
-                    context::error!(target: "reload", "{err}");
-                    duat_tx.send(DuatEvent::ReloadFailed).unwrap();
-                } else if cfg!(target_os = "windows") && cfg!(false) {
-                    config_tx
-                        .send((
-                            crate_dir.join(format!(
-                                "target/{}/{}",
-                                &reload.profile,
-                                resolve_config_file()
-                            )),
-                            reload.profile.to_string(),
-                        ))
-                        .unwrap();
+                match result {
+                    Err(err) => {
+                        *RELOAD_INSTANT.lock().unwrap() = None;
+                        context::error!(target: "reload", "{err}");
+                        duat_tx.send(DuatEvent::ReloadFailed).unwrap();
+                    }
+                    Ok(status) => {
+                        config_tx
+                            .send((
+                                crate_dir.join(format!(
+                                    "target/{}/{}",
+                                    &reload.profile,
+                                    resolve_config_file()
+                                )),
+                                reload.profile.to_string(),
+                            ))
+                            .unwrap();
+                    }
                 }
             }
         })

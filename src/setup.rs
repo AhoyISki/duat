@@ -78,12 +78,12 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         cfg
     });
 
-    hook::add_grouped::<WindowCreated>("LogBook", |_, builder| {
-        builder.push(LogBook::cfg());
-    });
-
     hook::add_grouped::<WindowCreated>("FooterWidgets", |_, builder| {
         builder.push(FooterWidgets::default());
+    });
+
+    hook::add_grouped::<WindowCreated>("LogBook", |_, builder| {
+        builder.push(LogBook::cfg());
     });
 
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
@@ -145,13 +145,13 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         if let Some(area_cache) = area.cache()
             && let Err(err) = cache.store(&path, area_cache)
         {
-            context::error!("{err}");
+            context::error!(target: "FileClosed", "{err}");
         }
 
         if let Some(main) = file.selections_mut().get_main()
             && let Err(err) = cache.store(path, main.clone())
         {
-            context::error!("{err}");
+            context::error!(target: "FileClosed", "{err}");
         }
     });
 
