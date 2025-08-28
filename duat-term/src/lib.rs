@@ -80,7 +80,7 @@ impl ui::Ui for Ui {
             terminal::enable_raw_mode().unwrap();
 
             loop {
-                if let Ok(true) = ct_poll(Duration::from_millis(20)) {
+                if let Ok(true) = ct_poll(Duration::from_millis(1000 / 60)) {
                     let res = match ct_read().unwrap() {
                         CtEvent::Key(key) => {
                             if key.kind.is_press() {

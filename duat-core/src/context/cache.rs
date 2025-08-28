@@ -175,13 +175,13 @@ fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> std::io::Result<File
         .join("duat")
         .join("structs")
         .join(cached_file_name.clone());
-    
+
     if !src_dir.exists() {
         std::fs::create_dir_all(src_dir.clone())?;
     }
-    
+
     let src = src_dir.join(format!("{}-{}", src_crate::<C>(), duat_name::<C>()));
-    
+
     std::fs::OpenOptions::new()
         .create(true)
         .read(true)

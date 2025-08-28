@@ -471,10 +471,10 @@ pub(crate) fn add_session_commands<U: Ui>() {
             }))
             .unwrap();
 
-        /// This has to be done on Windows, since you can't remove
-        /// loaded dlls. Thus, we need to quit the curent
-        /// configuration first, and then we can start compiling the
-        /// new version of the config crate.
+        // This has to be done on Windows, since you can't remove
+        // loaded dlls. Thus, we need to quit the curent
+        // configuration first, and then we can start compiling the
+        // new version of the config crate.
         #[cfg(target_os = "windows")]
         sender().send(DuatEvent::ReloadSucceeded).unwrap();
 

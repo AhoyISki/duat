@@ -7,7 +7,6 @@ use std::{
 use cassowary::Variable;
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
-    execute,
     style::Attribute,
     terminal,
 };
@@ -198,7 +197,7 @@ impl Printer {
         let mut stdout = stdout.unwrap_or_else(|| std::io::stdout().lock());
         let max = list.last().unwrap().1.coords().br;
 
-        execute!(stdout, terminal::BeginSynchronizedUpdate).unwrap();
+        queue!(stdout, terminal::BeginSynchronizedUpdate);
         queue!(stdout, cursor::Hide, MoveTo(0, 0));
 
         for y in 0..max.y {
@@ -234,7 +233,8 @@ impl Printer {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
-        execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
+        queue!(stdout, terminal::EndSynchronizedUpdate);
+        stdout.flush().unwrap();
     }
 
     /// Returns a new [`Lines`], a struct used to print to the screen

@@ -150,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut files = {
         let files: Vec<FileParts> = args
             .cfg
-            .then(|| crate_dir.join("src/lib.rs"))
+            .then(|| crate_dir.join("src").join("lib.rs"))
             .into_iter()
             .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
             .chain(args.files)
@@ -161,9 +161,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if files.is_empty() {
             if args.reload {
                 cargo::build(crate_dir, profile, true)?;
-                return Ok(())
+                return Ok(());
             } else if args.clean || args.update {
-                return Ok(())
+                return Ok(());
             } else {
                 vec![vec![FileParts::by_args(None, true).unwrap()]]
             }
@@ -184,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut lib = {
         let libconfig_path =
-            crate_dir.join(format!("target/{}/{}", profile, resolve_config_file()));
+            crate_dir.join("target").join(profile).join(resolve_config_file());
 
         if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
             if !args.reload {
@@ -257,7 +257,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None => Text::builder(),
         };
 
-        context::info!("{}", &config_path);
         context::info!("[a]{profile}[] profile reloaded{time}");
         lib = unsafe { Library::new(config_path) }.ok();
     }
@@ -322,7 +321,7 @@ fn spawn_reloader(
                 if (reload.clean || reload.update)
                     && let Some(cache_dir) = dirs_next::cache_dir()
                 {
-                    clear_path(cache_dir.join("duat/cache"));
+                    clear_path(cache_dir.join("duat").join("cache"));
                 }
 
                 let result: Result<std::process::ExitStatus, std::io::Error> = try {
@@ -341,18 +340,15 @@ fn spawn_reloader(
                         context::error!(target: "reload", "{err}");
                         duat_tx.send(DuatEvent::ReloadFailed).unwrap();
                     }
-                    Ok(status) => {
+                    Ok(status) if !status.success() => {
                         config_tx
                             .send((
-                                crate_dir.join(format!(
-                                    "target/{}/{}",
-                                    &reload.profile,
-                                    resolve_config_file()
-                                )),
+                                crate_dir.join("target").join(&reload.profile).join(resolve_config_file()),
                                 reload.profile.to_string(),
                             ))
                             .unwrap();
                     }
+                    Ok(_) => {}
                 }
             }
         })
@@ -417,10 +413,21 @@ mod cargo {
             cargo.status()
         } else {
             cargo.output().map(|out| {
-                if !out.status.success() {
+                #[cfg(target_os = "windows")]
+                if out.stderr.ends_with(b"Access is denied. (os error 5)\n") {
+                    context::error!("Failed to reload config crate");
+                    context::info!(
+                        "On [a]Windows[], close other instances of Duat to reload"
+                    );
+                } else {
                     context::error!("{}", String::from_utf8_lossy(&out.stderr));
                 }
 
+                #[cfg(not(target_os = "windows"))]
+                if !out.status.success() {
+                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
+                }
+                
                 out.status
             })
         }
