@@ -145,9 +145,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::io::ErrorKind::NotFound => {}
             _ => return Err(err.into()),
         }
-    } else if args.clean || args.update {
-        return Ok(());
     }
+
+    let mut files = {
+        let files: Vec<FileParts> = args
+            .cfg
+            .then(|| crate_dir.join("src/lib.rs"))
+            .into_iter()
+            .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
+            .chain(args.files)
+            .enumerate()
+            .map(|(i, path)| FileParts::by_args(Some(path), i == 0))
+            .try_collect()?;
+
+        if files.is_empty() {
+            if args.reload {
+                cargo::build(crate_dir, profile, true)?;
+                return Ok(())
+            } else if args.clean || args.update {
+                return Ok(())
+            } else {
+                vec![vec![FileParts::by_args(None, true).unwrap()]]
+            }
+        } else {
+            let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
+            let mut files_per_window = Vec::new();
+
+            for (i, file) in files.into_iter().enumerate() {
+                if i % n == 0 {
+                    files_per_window.push(Vec::new());
+                }
+                files_per_window.last_mut().unwrap().push(file);
+            }
+
+            files_per_window
+        }
+    };
 
     let mut lib = {
         let libconfig_path =
@@ -160,9 +193,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(status) = cargo::build(crate_dir, profile, true)
                 && status.success()
             {
-                context::info!("Compiled [a]release[] profile");
+                context::info!("Compiled [a]{profile}[] profile");
             } else {
-                context::error!("Failed to compile [a]release[] profile");
+                context::error!("Failed to compile [a]{profile}[] profile");
             }
         }
 
@@ -184,38 +217,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ui::open(ms, ui::Sender::new(duat_tx.clone()));
 
-    let mut files = {
-        let files: Vec<FileParts> = args
-            .cfg
-            .then(|| crate_dir.join("src/lib.rs"))
-            .into_iter()
-            .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
-            .chain(args.files)
-            .enumerate()
-            .map(|(i, path)| FileParts::by_args(Some(path), i == 0))
-            .try_collect()?;
-
-        if files.is_empty() {
-            if args.clean || args.reload || args.update {
-                return Ok(());
-            } else {
-                vec![vec![FileParts::by_args(None, true).unwrap()]]
-            }
-        } else {
-            let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
-            let mut files_per_window = Vec::new();
-
-            for (i, file) in files.into_iter().enumerate() {
-                if i % n == 0 {
-                    files_per_window.push(Vec::new());
-                }
-                files_per_window.last_mut().unwrap().push(file);
-            }
-
-            files_per_window
-        }
-    };
-
     loop {
         let running_lib = lib.take();
         let mut run_fn = running_lib.as_ref().and_then(find_run_duat);
@@ -231,7 +232,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
                     run_duat(initials, (ms, clipb), files, channel)
                 } else {
-                    context::error!("Config crate not found at [a]{crate_dir}[], loading default");
+                    context::error!("No config at [a]{crate_dir}[], loading default");
                     pre_setup(None, None);
                     run_duat((ms, clipb), files, duat_rx, Some(reload_tx))
                 }
@@ -256,6 +257,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None => Text::builder(),
         };
 
+        context::info!("{}", &config_path);
         context::info!("[a]{profile}[] profile reloaded{time}");
         lib = unsafe { Library::new(config_path) }.ok();
     }
@@ -277,6 +279,9 @@ fn spawn_config_watcher(
         move |res| {
             if let Ok(Event { kind: EventKind::Create(_), paths, .. }) = res
                 && let Some(out_path) = paths.iter().find(|p| p.ends_with(resolve_config_file()))
+                && let Some(parent) = out_path.parent()
+                && let Some(grand_parent) = parent.parent()
+                && grand_parent.ends_with("target")
             {
                 let profile = if let Some(parent) = out_path.parent()
                     && let Some(parent) = parent.file_name()
@@ -334,7 +339,7 @@ fn spawn_reloader(
                     *RELOAD_INSTANT.lock().unwrap() = None;
                     context::error!(target: "reload", "{err}");
                     duat_tx.send(DuatEvent::ReloadFailed).unwrap();
-                } else if cfg!(target_os = "windows") {
+                } else if cfg!(target_os = "windows") && cfg!(false) {
                     config_tx
                         .send((
                             crate_dir.join(format!(
