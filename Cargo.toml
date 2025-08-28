@@ -13,4 +13,8 @@ categories = ["command-line-utilities", "text-editors", "config"]
 [dependencies]
 dirs-next = "2.0.0"
 duat-core = { version = "0.6.0", git = "https://github.com/AhoyISki/duat" }
-regex = { version = "1.11.1", default-features = false, features = ["perf", "std"] }
+
+[dependencies.regex]
+version = "1.11.1"
+default-features = false
+features = ["perf", "std"]
