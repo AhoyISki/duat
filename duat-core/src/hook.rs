@@ -166,16 +166,45 @@ use crate::{
 
 /// Hook functions
 mod global {
-    use std::sync::LazyLock;
+    use std::sync::{
+        LazyLock,
+        atomic::{AtomicUsize, Ordering},
+    };
 
-    use super::{HookAlias, Hookable, InnerHooks};
+    use super::{HookAlias, HookDummy, Hookable, InnerGroupId, InnerHooks};
     use crate::{
         data::Pass,
-        hook::HookDummy,
         ui::{DuatEvent, Ui},
     };
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
+
+    /// A [`GroupId`] that can be used in order to remove hooks
+    ///
+    /// When [adding grouped hooks], you can either use strings or a
+    /// [`GroupId`]. You should use strings for publicly removable
+    /// hooks, and [`GroupId`]s for privately removable hooks:
+    ///
+    /// [adding grouped hooks]: add_grouped
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct GroupId(usize);
+
+    impl GroupId {
+        /// Returns a new [`GroupId`]
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            static HOOK_GROUPS: AtomicUsize = AtomicUsize::new(0);
+            Self(HOOK_GROUPS.fetch_add(1, Ordering::Relaxed))
+        }
+
+        /// Remove all hooks that belong to this [`GroupId`]
+        ///
+        /// This can be used in order to have hooks remove themselves,
+        /// for example.
+        pub fn remove(self) {
+            remove(self)
+        }
+    }
 
     /// Adds a [hook]
     ///
@@ -191,64 +220,123 @@ mod global {
     pub fn add<H: HookAlias<U, impl HookDummy>, U: Ui>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        HOOKS.add::<H::Hookable>("", Box::new(f));
+        HOOKS.add::<H::Hookable>(None, Box::new(f));
+    }
+
+    /// Adds a grouped [hook]
+    ///
+    /// The group can either be a type that implements
+    /// [`std::fmt::Display`], like [`String`] or [`&str`], or it can
+    /// be a [`GroupId`], which is a dedicated structure for anonymous
+    /// hook grouping.
+    ///
+    /// As a plugin writer, when you use a string as the hook group,
+    /// you are allowing an end user to remove that hook group. If you
+    /// use a [`GroupId`], only you can remove it, since only you have
+    /// access to the [`GroupId`]. Which one you choose depends on
+    /// those two options.
+    ///
+    /// Alternatively, if you don't have a use for removing hooks, you
+    /// can just call [`hook::add`] in order to add them without a
+    /// group. In addition, if you don't have access to a [`Ui`]
+    /// argument (inside of a static definition, for example), you can
+    /// call [`hook::add_grouped_no_alias`], which doesn't require a
+    /// [`Ui`] argument.
+    ///
+    /// [hook]: Hookable
+    /// [`hook::remove`]: remove
+    /// [`hook::add`]: add
+    /// [`hook::add_grouped_no_alias`]: add_grouped_no_alias
+    /// [`&str`]: str
+    #[inline(never)]
+    pub fn add_grouped<H: HookAlias<U, impl HookDummy>, U: Ui>(
+        group: impl Into<InnerGroupId>,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+    ) {
+        HOOKS.add::<H::Hookable>(Some(group.into()), Box::new(f));
+    }
+
+    /// Adds a [hook] to be executed only once
+    ///
+    /// This hook will only trigger once, being removed after the
+    /// fact. Alternatively, this can also be achieved by making
+    /// use of a [`GroupId`], like so:
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// fn setup() {
+    ///     let group_id = hook::GroupId::new();
+    ///     hook::add_grouped::<WindowCreated>(group_id, |_, builder| {
+    ///         builder.push(status!("Main Window").above());
+    ///         group_id.remove();
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// This hook should only be triggered on the first opened window,
+    /// after which it self destructs via [`GroupId::remove`]. This
+    /// method also allows for any number of triggers to this hook, or
+    /// for a condition to cause its removal, unlike
+    /// [`hook::add_once`].
+    ///
+    /// [hook]: Hookable
+    /// [`hook::add_once`]: add_once
+    pub fn add_once<H: HookAlias<U, impl HookDummy>, U: Ui>(
+        mut f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+    ) {
+        let group_id = GroupId::new();
+        HOOKS.add::<H::Hookable>(
+            Some(group_id.into()),
+            Box::new(move |pa, input| {
+                let ret = f(pa, input);
+                group_id.remove();
+                ret
+            }),
+        );
     }
 
     /// Adds a [hook], without accepting aliases
     ///
     /// Use this if you want to add a hook, but have no access to
-    /// [`Ui`] parameter.
+    /// [`Ui`] parameter, like when declaring static variables on
+    /// plugins.
     ///
     /// [hook]: Hookable
     #[doc(hidden)]
     pub fn add_no_alias<H: Hookable>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        HOOKS.add::<H>("", Box::new(f));
-    }
-
-    /// Adds a grouped [hook]
-    ///
-    /// A grouped hook is one that, along with others on the same
-    /// group, can be removed by [`hook::remove`]. If you do
-    /// not need/want this feature, take a look at [`hook::add`]. If
-    /// you don't have access to a [`Ui`] argument for some reason,
-    /// see [`hook::add_grouped_no_alias`].
-    ///
-    /// [hook]: Hookable
-    /// [`hook::remove`]: remove
-    /// [`hook::add`]: add
-    /// [`hook::add_grouped_no_alias`]: add_grouped_no_alias
-    #[inline(never)]
-    pub fn add_grouped<H: HookAlias<U, impl HookDummy>, U: Ui>(
-        group: &'static str,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
-    ) {
-        HOOKS.add::<H::Hookable>(group, Box::new(f));
+        HOOKS.add::<H>(None, Box::new(f));
     }
 
     /// Adds a grouped [hook], without accepting aliases
     ///
     /// Use this if you want to add a hook, but have no access to
-    /// [`Ui`] parameter.
+    /// [`Ui`] parameter, like when declaring static variables on
+    /// plugins.
     ///
     /// [hook]: Hookable
     #[doc(hidden)]
     pub fn add_grouped_no_alias<H: Hookable>(
+        group: impl Into<InnerGroupId>,
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        HOOKS.add::<H>("", Box::new(f));
+        HOOKS.add::<H>(Some(group.into()), Box::new(f));
     }
 
     /// Removes a [hook] group
+    ///
+    /// The hook can either be a string type, or a [`GroupId`].
     ///
     /// By removing the group, this function will remove all hooks
     /// added via [`hook::add_grouped`] with the same group.
     ///
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
-    pub fn remove(group: &'static str) {
-        HOOKS.remove(group);
+    pub fn remove(group: impl Into<InnerGroupId>) {
+        HOOKS.remove(group.into());
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -287,6 +375,8 @@ mod global {
 
     /// Checks if a give group exists
     ///
+    /// The hook can either be a string type, or a [`GroupId`].
+    ///
     /// Returns `true` if said group was added via
     /// [`hook::add_grouped`], and no [`hook::remove`]
     /// followed these additions
@@ -295,6 +385,26 @@ mod global {
     /// [`hook::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
         HOOKS.group_exists(group)
+    }
+}
+
+/// A group can either be created through a name or through a
+/// [`GroupId`]
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum InnerGroupId {
+    Numbered(GroupId),
+    Named(String),
+}
+
+impl From<GroupId> for InnerGroupId {
+    fn from(value: GroupId) -> Self {
+        Self::Numbered(value)
+    }
+}
+
+impl<S: ToString> From<S> for InnerGroupId {
+    fn from(value: S) -> Self {
+        Self::Named(value.to_string())
     }
 }
 
@@ -797,22 +907,22 @@ pub trait Hookable<_H: HookDummy = NormalHook>: Sized + 'static {
 #[derive(Clone, Copy)]
 struct InnerHooks {
     types: &'static Mutex<HashMap<TypeId, Box<dyn HookHolder>>>,
-    groups: &'static Mutex<Vec<&'static str>>,
+    groups: &'static Mutex<Vec<InnerGroupId>>,
 }
 
 impl InnerHooks {
     /// Adds a hook for a [`Hookable`]
     fn add<H: Hookable>(
         &self,
-        group: &'static str,
+        group_id: Option<InnerGroupId>,
         f: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static>,
     ) {
         let mut map = self.types.lock().unwrap();
 
-        if !group.is_empty() {
+        if let Some(group_id) = group_id.clone() {
             let mut groups = self.groups.lock().unwrap();
-            if !groups.contains(&group) {
-                groups.push(group)
+            if !groups.contains(&group_id) {
+                groups.push(group_id)
             }
         }
 
@@ -823,10 +933,10 @@ impl InnerHooks {
             };
 
             let mut hooks = hooks_of.0.borrow_mut();
-            hooks.push((group, Box::leak(Box::new(RefCell::new(f)))));
+            hooks.push((group_id, Box::leak(Box::new(RefCell::new(f)))));
         } else {
             let hooks_of = HooksOf::<H>(RefCell::new(vec![(
-                group,
+                group_id,
                 Box::leak(Box::new(RefCell::new(f))),
             )]));
 
@@ -835,11 +945,11 @@ impl InnerHooks {
     }
 
     /// Removes hooks with said group
-    fn remove(&self, group: &'static str) {
-        self.groups.lock().unwrap().retain(|g| *g != group);
+    fn remove(&self, group_id: InnerGroupId) {
+        self.groups.lock().unwrap().retain(|g| *g != group_id);
         let map = self.types.lock().unwrap();
         for holder in map.iter() {
-            holder.1.remove(group)
+            holder.1.remove(&group_id)
         }
     }
 
@@ -874,8 +984,8 @@ impl InnerHooks {
     }
 
     /// Checks if a hook group exists
-    fn group_exists(&self, group: &str) -> bool {
-        self.groups.lock().unwrap().contains(&group)
+    fn group_exists(&self, group: impl Into<InnerGroupId>) -> bool {
+        self.groups.lock().unwrap().contains(&group.into())
     }
 }
 
@@ -894,16 +1004,16 @@ unsafe impl Sync for InnerHooks {}
 /// An intermediary trait, meant for group removal
 trait HookHolder {
     /// Remove the given group from hooks of this holder
-    fn remove(&self, group: &str);
+    fn remove(&self, group_id: &InnerGroupId);
 }
 
 /// An intermediary struct, meant to hold the hooks of a [`Hookable`]
-struct HooksOf<H: Hookable>(RefCell<Vec<(&'static str, InnerHookFn<H>)>>);
+struct HooksOf<H: Hookable>(RefCell<Vec<(Option<InnerGroupId>, InnerHookFn<H>)>>);
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
-    fn remove(&self, group: &str) {
+    fn remove(&self, group_id: &InnerGroupId) {
         let mut hooks = self.0.borrow_mut();
-        hooks.retain(|(g, _)| *g != group);
+        hooks.retain(|(g, _)| g.as_ref().is_some_and(|g| g == group_id));
     }
 }
 
