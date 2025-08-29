@@ -202,7 +202,7 @@ impl Bytes {
 
     /// Returns the two `&str`s in the byte range.
     fn strs_inner(&self, range: impl RangeBounds<usize>) -> Option<[&str; 2]> {
-        let (start, end) = crate::get_ends(range, self.len().byte());
+        let (start, end) = crate::utils::get_ends(range, self.len().byte());
         use std::str::from_utf8_unchecked;
 
         let (s0, s1) = self.buf.as_slices();

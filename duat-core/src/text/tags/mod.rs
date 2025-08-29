@@ -32,7 +32,7 @@ use super::{
     Point, Text, TextRangeOrPoint,
     shift_list::{Shift, ShiftList, Shiftable},
 };
-use crate::get_ends;
+use crate::utils::get_ends;
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
 ///
@@ -284,7 +284,7 @@ impl InnerTags {
 
     /// Removes all [`RawTag`]s of a give [`Taggers`]
     pub(super) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
-        let (start, end) = crate::get_ends(within, self.len_bytes());
+        let (start, end) = crate::utils::get_ends(within, self.len_bytes());
 
         for range in self
             .extents
@@ -295,7 +295,7 @@ impl InnerTags {
     }
 
     fn remove_from_excl(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
-        let (start, end) = crate::get_ends(within, self.len_bytes());
+        let (start, end) = crate::utils::get_ends(within, self.len_bytes());
         // In this case, this would be an empty range, and returning is
         // appropriate.
         let Some(excl_end) = end.checked_sub(1).filter(|e| *e >= start) else {

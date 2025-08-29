@@ -467,7 +467,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
             .send(DuatEvent::RequestReload(crate::session::ReloadEvent {
                 clean: flags.word("clean"),
                 update: flags.word("update"),
-                profile: profile.unwrap_or(crate::profile().to_string()),
+                profile: profile.unwrap_or(crate::utils::profile().to_string()),
             }))
             .unwrap();
 

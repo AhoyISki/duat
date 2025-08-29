@@ -2,7 +2,7 @@ use std::ops::RangeBounds;
 
 use gapbuf::GapBuffer;
 
-use crate::{binary_search_by_key_and_index, get_ends};
+use crate::utils::{binary_search_by_key_and_index, get_ends};
 
 /// A sorted list of elements which keeps track of changes in a very
 /// efficient manner

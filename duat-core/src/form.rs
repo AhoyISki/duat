@@ -279,10 +279,10 @@ mod global {
 
     /// Creates a [`Painter`] with a mask
     pub(crate) fn painter_with_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
-        PALETTE
-            .get()
-            .unwrap()
-            .painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), mask)
+        PALETTE.get().unwrap().painter(
+            default_id(TypeId::of::<W>(), crate::utils::duat_name::<W>()),
+            mask,
+        )
     }
 
     /// Enables the use of this mask

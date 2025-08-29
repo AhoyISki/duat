@@ -17,7 +17,7 @@ use bincode::{Decode, Encode};
 use parking_lot::Mutex;
 
 use super::{Point, Text};
-use crate::{add_shifts as add, merging_range_by_guess_and_lazy_shift};
+use crate::utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
 #[derive(Default, Debug)]

@@ -11,7 +11,7 @@ use super::Mode;
 use crate::{
     context::{self, Handle},
     data::Pass,
-    duat_name,
+    utils::duat_name,
     file::File,
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
@@ -111,7 +111,7 @@ pub fn reset<W: Widget<U>, U: Ui>() {
     } else {
         context::error!(
             "There is no default [a]Mode[] set for [a]{}[]",
-            crate::duat_name::<W>()
+            crate::utils::duat_name::<W>()
         );
     };
 }
@@ -146,7 +146,7 @@ pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
     } else {
         context::error!(
             "There is no default [a]Mode[] set for [a]{}[]",
-            crate::duat_name::<W>()
+            crate::utils::duat_name::<W>()
         );
     };
 }

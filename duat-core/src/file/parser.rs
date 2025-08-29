@@ -352,7 +352,7 @@ impl<U: Ui> Parsers<U> {
         {
             Err(txt!(
                 "There is already a reader of type [a]{}",
-                crate::duat_name::<Cfg::Parser>()
+                crate::utils::duat_name::<Cfg::Parser>()
             ))?;
         }
 

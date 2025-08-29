@@ -115,7 +115,7 @@ mod global {
             } else {
                 Err(txt!(
                     "The widget with the given U::Area is not [a]{}",
-                    crate::duat_name::<W>()
+                    crate::utils::duat_name::<W>()
                 )
                 .build())
             }

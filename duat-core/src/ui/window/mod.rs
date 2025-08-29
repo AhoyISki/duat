@@ -8,12 +8,12 @@ use super::{Area, Node, Ui, Widget, layout::Layout};
 use crate::{
     context::{self, Cache, Handle},
     data::{Pass, RwData},
-    duat_name,
     file::{File, FileCfg},
     hook::{self, FileClosed, WidgetCreated, WindowCreated},
     mode,
     text::{Text, txt},
     ui::{MutArea, PushSpecs, WidgetCfg},
+    utils::duat_name,
 };
 
 mod builder;

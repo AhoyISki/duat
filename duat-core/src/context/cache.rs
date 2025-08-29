@@ -42,7 +42,7 @@ use self::bincode::{
     encode_into_std_write,
 };
 use crate::{
-    duat_name, src_crate,
+    utils::{duat_name, src_crate},
     text::{Text, txt},
 };
 

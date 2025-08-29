@@ -4,8 +4,8 @@ use gapbuf::{GapBuffer, gap_buffer};
 
 pub use self::cursor::{Selection, VPoint};
 use crate::{
-    add_shifts, merging_range_by_guess_and_lazy_shift,
     text::{Change, Point, TextRange},
+    utils::{add_shifts, merging_range_by_guess_and_lazy_shift},
 };
 
 /// The list of [`Selection`]s in a [`Text`]

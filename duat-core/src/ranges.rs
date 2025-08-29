@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use gapbuf::{GapBuffer, gap_buffer};
 
-use crate::merging_range_by_guess_and_lazy_shift;
+use crate::utils::merging_range_by_guess_and_lazy_shift;
 
 /// A list of non intersecting exclusive [`Range<usize>`]s
 ///

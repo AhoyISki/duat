@@ -260,7 +260,7 @@ impl<S: AsRef<str>> Matcheable for S {
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
     ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>> {
-        let (start, end) = crate::get_ends(range, self.as_ref().len());
+        let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
         let str = &self.as_ref()[start..end];
         let dfas = dfas_from_pat(pat)?;
 
@@ -304,7 +304,7 @@ impl<S: AsRef<str>> Matcheable for S {
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
     ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>> {
-        let (start, end) = crate::get_ends(range, self.as_ref().len());
+        let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
         let str = &self.as_ref()[start..end];
         let dfas = dfas_from_pat(pat)?;
 
@@ -348,7 +348,7 @@ impl<S: AsRef<str>> Matcheable for S {
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
     ) -> Result<bool, Box<regex_syntax::Error>> {
-        let (start, end) = crate::get_ends(range, self.as_ref().len());
+        let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
         let str = &self.as_ref()[start..end];
         let dfas = dfas_from_pat(pat)?;
 
