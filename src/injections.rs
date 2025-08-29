@@ -129,7 +129,7 @@ impl InjectedTree {
     ) {
         let tagger = ts_tagger();
         for range in self.ranges.iter_over(range.clone()) {
-            tags.remove(tagger, range.clone());
+            tags.remove_excl(tagger, range.clone());
         }
 
         highlight_and_inject(

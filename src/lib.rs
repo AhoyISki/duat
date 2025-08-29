@@ -30,7 +30,7 @@ use std::{
     fs,
     ops::Range,
     path::PathBuf,
-    sync::{LazyLock, Mutex},
+    sync::{atomic::{AtomicUsize, Ordering}, LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -1038,8 +1038,8 @@ fn highlight_and_inject(
     let cn = injections.capture_names();
     let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
     let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
-    
-	let mut new_langs: Vec<(LangParts<'static>, Ranges)> = Vec::new();
+
+    let mut new_langs: Vec<(LangParts<'static>, Ranges)> = Vec::new();
 
     let mut inj_captures = cursor.captures(injections, root, buf);
     while let Some((qm, _)) = inj_captures.next() {
@@ -1115,7 +1115,7 @@ fn highlight_and_inject(
         let qm: &QueryMatch = qm;
         for cap in qm.captures.iter() {
             let ts_range = cap.node.range();
-    
+
             // Assume that an empty range must take up the whole line
             // Cuz sometimes it be like that
             let (form, priority) = forms[cap.index as usize];
