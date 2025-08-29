@@ -122,6 +122,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
+    
+    let profile_dir = match profile {
+        "dev" => "debug",
+        profile => profile,
+    };
 
     if (args.clean || args.update)
         && let Some(cache_dir) = dirs_next::cache_dir()
@@ -184,7 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut lib = {
         let libconfig_path =
-            crate_dir.join("target").join(profile).join(resolve_config_file());
+            crate_dir.join("target").join(profile_dir).join(resolve_config_file());
 
         if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
             if !args.reload {

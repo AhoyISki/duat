@@ -702,7 +702,7 @@ mod cursor {
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self, bytes: &Bytes) -> Range<usize> {
+        pub fn byte_range(&self, bytes: &Bytes) -> Range<usize> {
             let [start, end] = self.point_range(bytes);
             start.byte()..end.byte()
         }

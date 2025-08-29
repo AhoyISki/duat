@@ -489,41 +489,86 @@ impl<U: Ui> File<U> {
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
-    /// Reads a specific [`Parser`], if it was [added]
+    /// Reads from a specific [`Parser`], if it was [added]
     ///
-    /// If the [`Parser`] was sent to another thread, this function
-    /// will block until it returns to this thread. If you don't wish
-    /// for this behaviour, see [`File::try_read_parser`].
+    /// This function will block until the [`Parser`] is ready to be
+    /// read. This usually implies that the [`Parser`] is done
+    /// processing all the [`Change`]s up to this point. But it could
+    /// also be the case that the [`Parser`] doesn't really care about
+    /// [`Change`]s.
     ///
-    /// This function will also update the [`Parser`]s with the latest
-    /// changes that happened in the [`File`], keeping state
-    /// consistent even as you are actively updating it within the
-    /// same scope. Do note that a [`Parser`] that was in this thread,
-    /// could be sent to another thread because of this.
+    /// While this function is being called, trying to read or write
+    /// to the same [`Parser`] will always return [`None`].
+    ///
+    /// If you want to read in a non blocking way, see
+    /// [`File::try_read_parser`].
     ///
     /// [added]: Handle::add_parser
-    pub fn read_parser<Rd: Parser<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
+    /// [`Change`]: crate::text::Change
+    pub fn read_parser<P: Parser<U>, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
         self.parsers.read_parser(read)
+    }
+
+    /// Tries tor read from a specific [`Parser`], if it was [added]
+    ///
+    /// Unlike [`File::read_parser`], this function will only be
+    /// called when the [`Parser`] is ready to be read. This may not
+    /// be the case if, for example, it is still processing
+    /// [`Change`]s to the [`Text`]. In that case, the function will
+    /// not be called and [`try_read_parser`] will return [`None`].
+    ///
+    /// While this function is being called, trying to read or write
+    /// to the same [`Parser`] will always return [`None`].
+    ///
+    /// [added]: Handle::add_parser
+    /// [`Change`]: crate::text::Change
+    /// [`try_read_parser`]: Self::try_read_parser
+    pub fn try_read_parser<P: Parser<U>, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
+        self.parsers.try_read_parser(read)
+    }
+
+    /// Writes to a specific [`Parser`], if it was [added]
+    ///
+    /// This function will block until the [`Parser`] is ready to be
+    /// written to. This usually implies that the [`Parser`] is done
+    /// processing all the [`Change`]s up to this point. But it could
+    /// also be the case that the [`Parser`] doesn't really care
+    /// about [`Change`]s.
+    ///
+    /// While this function is being called, trying to read or write
+    /// to the same [`Parser`] will always return [`None`].
+    ///
+    /// If you want to write in a non blocking way, see
+    /// [`File::try_write_parser`].
+    ///
+    /// [added]: Handle::add_parser
+    /// [`Change`]: crate::text::Change
+    pub fn write_parser<P: Parser<U>, Ret>(
+        &self,
+        write: impl FnOnce(&mut P) -> Ret,
+    ) -> Option<Ret> {
+        self.parsers.write_parser(write)
     }
 
     /// Tries tor read a specific [`Parser`], if it was [added]
     ///
-    /// Not only does it not trigger if the [`Parser`] doesn't exist,
-    /// also will not trigger if it was sent to another thread, and
-    /// isn't ready to be brought back. If you wish to wait for the
+    /// Unlike [`File::write_parser`], this function will only be
+    /// called when the [`Parser`] is ready to be written to. This may
+    /// not be the case if, for example, it is still processing
+    /// [`Change`]s to the [`Text`]. In that case, the function will
+    /// not be called and [`try_write_parser`] will return [`None`].
     ///
-    /// This function will also update the [`Parser`]s with the latest
-    /// changes that happened in the [`File`], keeping state
-    /// consistent even as you are actively updating it within the
-    /// same scope. Do note that a [`Parser`] that was in this thread,
-    /// could be sent to another thread because of this.
+    /// While this function is being called, trying to read or write
+    /// to the same [`Parser`] will always return [`None`].
     ///
     /// [added]: Handle::add_parser
-    pub fn try_read_parser<Rd: Parser<U>, Ret>(
+    /// [`Change`]: crate::text::Change
+    /// [`try_write_parser`]: Self::try_write_parser
+    pub fn try_write_parser<P: Parser<U>, Ret>(
         &self,
-        read: impl FnOnce(&Rd) -> Ret,
+        write: impl FnOnce(&mut P) -> Ret,
     ) -> Option<Ret> {
-        self.parsers.try_read_parser(read)
+        self.parsers.try_write_parser(write)
     }
 }
 

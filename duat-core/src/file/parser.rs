@@ -58,22 +58,27 @@ use crate::{
 /// calling [`ParserCfg::build`], three main parsing strategies
 /// emerge:
 ///
+/// - Not parsing at all;
 /// - Parsing synchronously;
 /// - Parsing asynchronously (via threads, not async);
-/// - Not parsing at all;
 ///
 /// You should reach out for these in the following circumstances:
 ///
+/// - If you don't care about [`Change`]s, then you can be doing "no
+///   parsing";
 /// - If you care about [`Change`]s, you should almost always do
 ///   synchronous parsing, since multithreading is often not really
 ///   faster than using single threaded code;
 /// - If you care about [`Change`]s and you know that your [`Parser`]
 ///   can be _really_ slow (very unlikely), then you should use
 ///   asynchronous parsing;
-/// - If you don't care about [`Change`]s, then don't parse at all;
 ///
 /// Keep in mind that the picked strategy could change, depending
 /// on the circumstance.
+///
+/// ## No parsing
+///
+/// TODO: Document this
 ///
 /// ## Synchronous parsing
 ///
@@ -122,7 +127,7 @@ use crate::{
 ///     /// limit those changes to. For example, if you are adding
 ///     /// Tags on every instance of the word "the", you should
 ///     /// limit the search to the given range.
-///     fn update_file(&mut self, file: &mut File, area: &Area, on: Range<Point>) {
+///     fn update_file(&mut self, file: &mut File, area: &Area, on: Vec<Range<Point>>) {
 ///         todo!();
 ///     }
 /// }
@@ -152,7 +157,7 @@ use crate::{
 ///
 ///     // Since you have &mut Pass, you can actually do any sort of
 ///     // mutation, not just limited to this File in particular.
-///     fn update(&mut self, pa: &mut Pass, handle: Handle<File<U>>, on: Range<Point>) {
+///     fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
 ///         let (file, area) = handle.write_with_area(pa);
 ///
 ///         /// Addition of Tags, modification of the text, etc.
@@ -160,12 +165,12 @@ use crate::{
 ///     }
 ///
 ///     // This is usually what you'd want to do in this scenario
-///     fn before_read(&mut self) {
+///     fn before_get(&mut self) {
 ///         self.parse(pa);
 ///     }
 ///
 ///     // Same thing here. Since the parsing is always done
-///     fn before_try_read(&mut self) -> bool {
+///     fn before_try_get(&mut self) -> bool {
 ///         self.parse(pa);
 ///         true
 ///     }
@@ -176,9 +181,17 @@ use crate::{
 ///
 /// TODO: Document this
 ///
-/// # No parsing
+/// # External access to parsers
 ///
 /// TODO: Document this
+///
+/// > [!TIP]
+/// >
+/// > You can keep a [`Parser`] private in your plugin in order to
+/// > prevent the end user from reading or writing to it. You can
+/// > then create standalone functions or implement traits on the
+/// > [`File`] widget in order to give controled access to the
+/// > parser.
 ///
 /// [`Change`]: crate::text::Change
 /// [`Selection`]: crate::mode::Selection
@@ -242,18 +255,21 @@ pub trait Parser<U: Ui>: Send + 'static {
 
     /// Prepare this [`Parser`] before [`File::read_parser`] call
     ///
-    /// The [`File::read_parser`] blocks the current thread until the
-    /// [`Parser`] is available. Therefore, [`before_read`] should
-    /// finish _all_ parsing, so if the parsing is taking place in
+    /// The [`File::read_parser`]/[`File::write_parser`] functions
+    /// block the current thread until the [`Parser`] is
+    /// available. Therefore, [`before_get`] should finish _all_
+    /// parsing, so if the parsing is taking place in
     /// another thread, you're gonna want to join said thread and
-    /// finish the parsing.
+    /// finish it.
     ///
     /// If the [`Parser`]'s availability doesn't rely on other threads
     /// (which should be the case for almost every single [`Parser`]),
     /// then this function can just be left empty.
     ///
-    /// [`before_read`]: Parser::before_read
-    fn before_read(&mut self) {}
+    /// [`before_get`]: Parser::before_get
+    fn before_get(&mut self) {
+        self.parse();
+    }
 
     /// Prepare the [`Parser`] before [`File::try_read_parser`] call
     ///
@@ -269,7 +285,8 @@ pub trait Parser<U: Ui>: Send + 'static {
     ///
     /// [`try_read_parser`]: File::try_read_parser
     /// [`read_parser`]: File::read_parser
-    fn before_try_read(&mut self) -> bool {
+    fn before_try_get(&mut self) -> bool {
+        self.before_get();
         true
     }
 }
@@ -368,15 +385,11 @@ impl<U: Ui> Parsers<U> {
         &self,
         read: impl FnOnce(&P) -> Ret,
     ) -> Option<Ret> {
-        if TypeId::of::<P>() == TypeId::of::<()>() {
-            return None;
-        }
-
         let position = self.list.borrow().iter().position(type_eq::<U, P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
 
-            parser.before_read();
+            parser.before_get();
 
             let ret = read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap());
 
@@ -388,21 +401,60 @@ impl<U: Ui> Parsers<U> {
         }
     }
 
-    /// Tries to read a specific [`Parser`]. Fails if it was sent
+    /// Tries to read from a specific [`Parser`]. Fails if it is not
+    /// available
     pub(super) fn try_read_parser<P: Parser<U>, Ret>(
         &self,
         read: impl FnOnce(&P) -> Ret,
     ) -> Option<Ret> {
-        if TypeId::of::<P>() == TypeId::of::<()>() {
-            return None;
-        }
-
         let position = self.list.borrow().iter().position(type_eq::<U, P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
             let ret = parser
-                .before_try_read()
+                .before_try_get()
                 .then(|| read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap()));
+
+            self.list.borrow_mut()[i].parser = Some(parser);
+
+            ret
+        } else {
+            None
+        }
+    }
+
+    /// Writes to a specific [`Parser`]
+    pub(super) fn write_parser<P: Parser<U>, Ret>(
+        &self,
+        write: impl FnOnce(&mut P) -> Ret,
+    ) -> Option<Ret> {
+        let position = self.list.borrow().iter().position(type_eq::<U, P>);
+        if let Some(i) = position {
+            let mut parser = self.list.borrow_mut()[i].parser.take()?;
+
+            parser.before_get();
+
+            let ret = write(unsafe { (Box::as_mut_ptr(&mut parser) as *mut P).as_mut() }.unwrap());
+
+            self.list.borrow_mut()[i].parser = Some(parser);
+
+            Some(ret)
+        } else {
+            None
+        }
+    }
+
+    /// Tries to write to a specific [`Parser`]. Fails if it is not
+    /// available
+    pub(super) fn try_write_parser<P: Parser<U>, Ret>(
+        &self,
+        write: impl FnOnce(&mut P) -> Ret,
+    ) -> Option<Ret> {
+        let position = self.list.borrow().iter().position(type_eq::<U, P>);
+        if let Some(i) = position {
+            let mut parser = self.list.borrow_mut()[i].parser.take()?;
+            let ret = parser.before_try_get().then(|| {
+                write(unsafe { (Box::as_mut_ptr(&mut parser) as *mut P).as_mut() }.unwrap())
+            });
 
             self.list.borrow_mut()[i].parser = Some(parser);
 
@@ -719,7 +771,8 @@ impl RangesTracker {
             RangesTracker::ChangedLines(ranges) => {
                 ranges.shift_by(change.start().byte(), change.shift()[0]);
                 let start = bytes.point_at_line(change.start().line());
-                let end = bytes.point_at_line(change.added_end().line() + 1);
+                let end =
+                    bytes.point_at_line((change.added_end().line() + 1).min(bytes.len().line()));
                 ranges.add(start.byte()..end.byte());
             }
             RangesTracker::Area => {}

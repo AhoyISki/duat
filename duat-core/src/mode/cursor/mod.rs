@@ -518,7 +518,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
 
     /// Wether the current selection matches a regex pattern
     pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
-        let range = self.selection.range(self.widget.text());
+        let range = self.selection.byte_range(self.widget.text());
         self.widget.text().matches(pat, range).unwrap()
     }
 
@@ -549,7 +549,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs<'_> {
-        let range = self.selection.range(self.text());
+        let range = self.selection.byte_range(self.text());
         self.text().strs(range).unwrap()
     }
 
@@ -703,7 +703,7 @@ impl<W: Widget<A::Ui> + ?Sized, A: Area> Cursor<'_, W, A, Searcher> {
     ///
     /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     pub fn matches_inc(&mut self) -> bool {
-        let range = self.selection.range(self.widget.text());
+        let range = self.selection.byte_range(self.widget.text());
         self.inc_searcher
             .matches(self.widget.text().strs(range).unwrap().to_string().as_str())
     }
