@@ -26,15 +26,18 @@ pub struct InjectedTree {
 
 impl InjectedTree {
     /// Returns a new [`InjectedTree`] with an initial [`Range`]
-    pub(crate) fn new(bytes: &Bytes, lang_parts: LangParts<'static>, range: Range<usize>) -> Self {
+    pub(crate) fn new(bytes: &Bytes, lang_parts: LangParts<'static>, ranges: Ranges) -> Self {
         let (.., lang, _) = &lang_parts;
         let forms = forms_from_lang_parts(lang_parts);
 
+        let included_ranges: Vec<TsRange> = ranges
+            .iter()
+            .map(|range| ts_range_from_range(bytes, range))
+            .collect();
+
         let mut parser = Parser::new();
         parser.set_language(lang).unwrap();
-        parser
-            .set_included_ranges(&[ts_range_from_range(bytes, range.clone())])
-            .unwrap();
+        parser.set_included_ranges(&included_ranges).unwrap();
 
         let tree = parser
             .parse_with_options(&mut parser_fn(bytes), None, None)
@@ -46,7 +49,7 @@ impl InjectedTree {
             forms,
             tree,
             old_tree: None,
-            ranges: Ranges::new(range),
+            ranges,
             injections: Vec::new(),
             ranges_to_parse: Ranges::empty(),
         }
@@ -126,7 +129,7 @@ impl InjectedTree {
     ) {
         let tagger = ts_tagger();
         for range in self.ranges.iter_over(range.clone()) {
-            tags.remove(tagger, range);
+            tags.remove(tagger, range.clone());
         }
 
         highlight_and_inject(
@@ -186,12 +189,16 @@ impl InjectedTree {
         &self,
         start_byte: usize,
     ) -> Option<(Node<'_>, &'static Query, Range<usize>)> {
+        crate::context::debug!("{self.ranges:#?}, {start_byte}");
         if let Some(range) = self.ranges.iter().find(|r| r.contains(&start_byte)) {
             self.injections
                 .iter()
                 .find_map(|inj| inj.get_injection_indent_parts(start_byte))
                 .or(Some((
-                    self.tree.root_node(),
+                    self.tree
+                        .root_node()
+                        .descendant_for_byte_range(range.start, range.end)
+                        .unwrap(),
                     self.lang_parts.2.injections,
                     range.clone(),
                 )))

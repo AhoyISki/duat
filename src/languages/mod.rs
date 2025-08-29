@@ -12,6 +12,11 @@ use self::list::LANGUAGE_OPTIONS;
 
 mod list;
 
+/// Wether the filetype is in the list of parsers
+pub fn filetype_is_in_list(filetype: &str) -> bool {
+    LANGUAGE_OPTIONS.contains_key(filetype)
+}
+
 /// Wether the parser for the given `filetype` is compiled
 pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
     let options = LANGUAGE_OPTIONS
@@ -19,7 +24,7 @@ pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
         .ok_or_else(|| txt!("There is no tree-sitter grammar for [a].{filetype}[] files"))?;
 
     let lib = options.crate_name.replace("-", "_");
-    let so_path = get_workspace_dir()?.join(format!("parsers/lib/{}", resolve_lib_file(&lib)));
+    let so_path = get_workspace_dir()?.join("parsers").join("lib").join(resolve_lib_file(&lib));
 
     Ok(so_path.try_exists()?)
 }

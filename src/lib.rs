@@ -29,12 +29,8 @@ use std::{
     collections::HashMap,
     fs,
     ops::Range,
-    panic::AssertUnwindSafe,
     path::PathBuf,
-    sync::{
-        Arc, LazyLock, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -181,9 +177,9 @@ impl<U: Ui> file::Parser<U> for TsParser {
         // - All ranges where an injection was added or removed, which will be
         //   acquired through the injections query, applied on the two
         //   previous range lists,
-        let mut parser_state = self.0.take().unwrap();
+        let parser_state = self.0.take().unwrap();
 
-        let do_update = parser_state.parse();
+        let (parser_state, do_update) = parser_state.parse();
 
         self.0 = Some(parser_state);
 
@@ -208,24 +204,26 @@ impl<U: Ui> file::Parser<U> for TsParser {
     }
 
     fn before_read(&mut self) {
-        let parser_state = self.0.take().unwrap();
-
-        if let ParserState::Remote((_, join_handle)) = parser_state {
-            self.0 = Some(ParserState::Present(join_handle.join().unwrap()));
-        } else {
-            self.0 = Some(parser_state);
-        }
+        duat_core::file::Parser::<U>::parse(self);
     }
 
     fn before_try_read(&mut self) -> bool {
         let parser_state = self.0.take().unwrap();
 
-        if let ParserState::Remote((is_done, join_handle)) = parser_state {
-            if is_done.load(Ordering::Relaxed) {
-                self.0 = Some(ParserState::Present(join_handle.join().unwrap()));
-                file::Parser::<U>::parse(self)
+        if let ParserState::Remote(join_handle) = parser_state {
+            if join_handle.is_finished() {
+                match join_handle.join().unwrap() {
+                    Ok(parser) => {
+                        self.0 = Some(ParserState::Present(parser));
+                        file::Parser::<U>::parse(self)
+                    }
+                    Err(tracker) => {
+                        self.0 = Some(ParserState::NotSet(tracker));
+                        false
+                    }
+                }
             } else {
-                self.0 = Some(ParserState::Remote((is_done, join_handle)));
+                self.0 = Some(ParserState::Remote(join_handle));
                 false
             }
         } else {
@@ -244,11 +242,12 @@ impl<U: Ui> ParserCfg<U> for TsParser {
         let path = file.path_kind();
         let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
             && let Some(filetype) = path.filetype()
+            && crate::languages::filetype_is_in_list(filetype)
         {
             filetype
         } else {
             context::debug!(
-                "No filetype set for {}, will try again once one is set",
+                "No filetype set for [a]{}[], will try again once one is set",
                 path.name_txt()
             );
             return Ok(Self(Some(ParserState::NotSet(tracker))));
@@ -256,31 +255,29 @@ impl<U: Ui> ParserCfg<U> for TsParser {
 
         const MAX_LEN_FOR_LOCAL: usize = 100_000;
 
-        let lang_parts = lang_parts_of(filetype)?;
-
         if parser_is_compiled(filetype)? && file.bytes().len().byte() <= MAX_LEN_FOR_LOCAL {
+            let lang_parts = lang_parts_of(filetype)?;
             Ok(Self(Some(ParserState::Present(InnerTsParser::new(
                 lang_parts, tracker,
             )))))
         } else {
-            let is_done = Arc::new(AtomicBool::new(false));
-            Ok(Self(Some(ParserState::Remote((
-                is_done.clone(),
-                std::thread::spawn(move || {
+            Ok(Self(Some(ParserState::Remote(std::thread::spawn(
+                move || {
+                    let lang_parts = match lang_parts_of(filetype) {
+                        Ok(lang_parts) => lang_parts,
+                        Err(err) => {
+                            context::error!("{err}");
+                            return Err(tracker);
+                        }
+                    };
+
                     let mut parser = InnerTsParser::new(lang_parts, tracker);
 
-                    loop {
-                        parser.tracker.update();
-
-                        if parser.tracker.moment().is_empty() {
-                            break;
-                        }
-                    }
+                    while parser.parse() {}
 
                     parser.tracker.request_parse();
-                    is_done.store(true, Ordering::Relaxed);
-                    parser
-                }),
+                    Ok(parser)
+                },
             )))))
         }
     }
@@ -326,13 +323,14 @@ impl InnerTsParser {
         }
     }
 
-    fn parse(&mut self) {
+    /// Parse the newest changes, returns `false` if there were none
+    fn parse(&mut self) -> bool {
         self.tracker.update();
         let bytes = self.tracker.bytes();
         let moment = self.tracker.moment();
 
         if moment.is_empty() {
-            return;
+            return false;
         }
 
         for change in moment.changes() {
@@ -373,11 +371,7 @@ impl InnerTsParser {
             let end = bytes
                 .point_at_line((range.end_point.row + 1).min(bytes.len().line()))
                 .byte();
-            if let Err(_) =
-                std::panic::catch_unwind(AssertUnwindSafe(|| new_ranges.add(start..end)))
-            {
-                panic!("{range:?}, {start}, {end}");
-            }
+            new_ranges.add(start..end)
         }
 
         // Finally, in order to properly catch injection changes, a final
@@ -392,6 +386,8 @@ impl InnerTsParser {
         );
 
         self.tracker.add_ranges(new_ranges);
+
+        true
     }
 
     /// Highlights and injects based on the [`LangParts`] queries
@@ -702,19 +698,31 @@ struct Queries<'a> {
 
 enum ParserState {
     Present(InnerTsParser),
-    Remote((Arc<AtomicBool>, std::thread::JoinHandle<InnerTsParser>)),
+    Remote(std::thread::JoinHandle<RemoteResult>),
     NotSet(FileTracker),
 }
 
 impl ParserState {
-    fn parse(&mut self) -> bool {
+    fn parse(self) -> (Self, bool) {
         match self {
-            ParserState::Present(parser) => {
+            ParserState::Present(mut parser) => {
                 parser.parse();
-                true
+                (ParserState::Present(parser), true)
             }
-            ParserState::Remote(_) => todo!(),
-            ParserState::NotSet(_) => false,
+            ParserState::Remote(join_handle) => {
+                if join_handle.is_finished() {
+                    match join_handle.join().unwrap() {
+                        Ok(mut parser) => {
+                            parser.parse();
+                            (ParserState::Present(parser), true)
+                        }
+                        Err(tracker) => (ParserState::NotSet(tracker), false),
+                    }
+                } else {
+                    (ParserState::Remote(join_handle), false)
+                }
+            }
+            ParserState::NotSet(tracker) => (ParserState::NotSet(tracker), false),
         }
     }
 }
@@ -1030,6 +1038,8 @@ fn highlight_and_inject(
     let cn = injections.capture_names();
     let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
     let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
+    
+	let mut new_langs: Vec<(LangParts<'static>, Ranges)> = Vec::new();
 
     let mut inj_captures = cursor.captures(injections, root, buf);
     while let Some((qm, _)) = inj_captures.next() {
@@ -1079,9 +1089,15 @@ fn highlight_and_inject(
             .find(|inj| inj.lang_parts().0 == lang_parts.0)
         {
             inj.add_range(cap_range.clone());
+        } else if let Some(new) = new_langs.iter_mut().find(|(lp, _)| lp.0 == lang_parts.0) {
+            new.1.add(cap_range);
         } else {
-            injected_trees.push(InjectedTree::new(bytes, lang_parts, cap_range.clone()));
+            new_langs.push((lang_parts, Ranges::new(cap_range)));
         }
+    }
+
+    for (lang_parts, ranges) in new_langs {
+        injected_trees.push(InjectedTree::new(bytes, lang_parts, ranges));
     }
 
     injected_trees.retain_mut(|inj| {
@@ -1099,12 +1115,11 @@ fn highlight_and_inject(
         let qm: &QueryMatch = qm;
         for cap in qm.captures.iter() {
             let ts_range = cap.node.range();
-
+    
             // Assume that an empty range must take up the whole line
             // Cuz sometimes it be like that
             let (form, priority) = forms[cap.index as usize];
             let range = ts_range.start_byte..ts_range.end_byte;
-
             tags.insert(tagger, range, form.to_tag(priority));
         }
     }
@@ -1162,3 +1177,5 @@ fn refactor_injections(
 
     ranges.merge(inj_ranges);
 }
+
+type RemoteResult = Result<InnerTsParser, FileTracker>;
