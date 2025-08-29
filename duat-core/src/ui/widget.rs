@@ -143,7 +143,7 @@ use crate::{
 /// triggered.
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use std::{sync::OnceLock, time::Instant};
 ///
@@ -308,7 +308,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// these in [hooks] like [`WidgetCreated`]:
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
+    /// # duat_core::doc_duat!(duat);
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
@@ -479,7 +479,7 @@ pub trait Widget<U: Ui>: Send + 'static {
 /// direction it will be pushed:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///

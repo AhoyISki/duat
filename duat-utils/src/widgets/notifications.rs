@@ -28,7 +28,7 @@ use duat_core::{
 /// vice-versa. This is the default behaviour of Duat.
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// # use duat_utils::widgets::{Notifications, FooterWidgets};
 /// setup_duat!(setup);
 /// use duat::prelude::*;

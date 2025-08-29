@@ -40,7 +40,7 @@ mod status_line;
 /// they can also be placed around individual [`File`]s:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 /// use duat_utils::widgets::{FooterWidgets, status};

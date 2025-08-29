@@ -1,6 +1,7 @@
 [package]
 name = "duat-core"
 version = "0.6.0"
+edition = "2024"
 authors = ["AhoyISki"]
 description = "The core of Duat, a highly customizable text editor."
 repository = "https://github.com/AhoyISki/duat/tree/master/duat-core"
@@ -8,7 +9,6 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-edition = "2024"
 
 [lints.rust]
 private_bounds = "allow"

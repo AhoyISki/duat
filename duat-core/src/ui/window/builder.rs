@@ -35,7 +35,7 @@ use crate::{
 /// done, in the [`File`] [`Widget`]:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -52,7 +52,7 @@ use crate::{
 /// change that:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -74,7 +74,7 @@ use crate::{
 /// use [`hook::remove`]:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -177,7 +177,7 @@ impl<U: Ui> UiBuilder<U> {
     /// Here's an example of such a layout:
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
+    /// # duat_core::doc_duat!(duat);
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
@@ -215,7 +215,7 @@ impl<U: Ui> UiBuilder<U> {
     /// widget.
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
+    /// # duat_core::doc_duat!(duat);
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///

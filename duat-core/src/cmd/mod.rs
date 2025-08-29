@@ -99,7 +99,7 @@
 //! optional [`Parameter`].
 //!
 //! ```rust
-//! # use duat_core::doc_duat as duat;
+//! # duat_core::doc_duat!(duat);
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
@@ -133,7 +133,7 @@
 //! and blob flags (`-singlechar`):
 //!
 //! ```rust
-//! # use duat_core::doc_duat as duat;
+//! # duat_core::doc_duat!(duat);
 //! setup_duat!(setup);
 //! use std::sync::atomic::{AtomicU32, Ordering};
 //!
@@ -177,7 +177,7 @@
 //! collects them into a single [`String`].
 //!
 //! ```rust
-//! # use duat_core::doc_duat as duat;
+//! # duat_core::doc_duat!(duat);
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
@@ -195,7 +195,7 @@
 //! [`Parameter`]:
 //!
 //! ```rust
-//! # use duat_core::doc_duat as duat;
+//! # duat_core::doc_duat!(duat);
 //! setup_duat!(setup);
 //! use duat::prelude::{file::File, *};
 //!
@@ -640,7 +640,7 @@ mod global {
     /// In the config crate:
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
+    /// # duat_core::doc_duat!(duat);
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///

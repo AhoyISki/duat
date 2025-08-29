@@ -451,7 +451,7 @@ impl Text {
     /// which could be in the way.
     ///
     /// [`Form`]: crate::form::Form
-    pub fn update_bounds(&mut self) {
+    pub(crate) fn update_bounds(&mut self) {
         self.0.tags.update_bounds();
     }
 

@@ -148,7 +148,7 @@ impl<U> LogBookCfg<U> {
     /// [`Record`]s (those with level [`Debug`] or higher.
     ///
     /// [`Debug`]: context::Level::Debug
-    pub fn formatted(self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) -> Self {
+    pub fn fmt(self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) -> Self {
         Self { format_rec: Box::new(fmt), ..self }
     }
 

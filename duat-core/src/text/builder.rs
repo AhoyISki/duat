@@ -124,6 +124,11 @@ impl Builder {
     /// [`impl Display`]: std::fmt::Display
     /// [`impl Tag`]: super::Tag
     pub fn push<D: Display, _T>(&mut self, part: impl Into<BuilderPart<D, _T>>) {
+        self.push_builder_part(part.into());
+    }
+
+    #[doc(hidden)]
+    pub fn push_builder_part<_T>(&mut self, part: BuilderPart<impl Display, _T>) {
         fn push_basic(builder: &mut Builder, part: BuilderPart) {
             use Alignment::*;
             use BuilderPart as BP;
@@ -176,8 +181,8 @@ impl Builder {
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }
-
-        match Into::<BuilderPart<D, _T>>::into(part).try_to_basic() {
+        
+        match part.try_to_basic() {
             Ok(basic_part) => push_basic(self, basic_part),
             Err(BuilderPart::ToString(display)) => self.push_str(display),
             Err(_) => unsafe { std::hint::unreachable_unchecked() },
@@ -358,12 +363,6 @@ impl<'a> From<&'a PathBuf> for BuilderPart<std::borrow::Cow<'a, str>> {
 impl<'a> From<&'a std::path::Path> for BuilderPart<std::borrow::Cow<'a, str>> {
     fn from(value: &'a std::path::Path) -> Self {
         BuilderPart::ToString(value.to_string_lossy())
-    }
-}
-
-impl From<std::process::Output> for BuilderPart {
-    fn from(value: std::process::Output) -> Self {
-        BuilderPart::ToString(String::from_utf8_lossy(&value.stdout).into_owned())
     }
 }
 

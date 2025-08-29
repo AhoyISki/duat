@@ -673,7 +673,6 @@ pub mod hook {
     /// instead of writing this in the config crate:
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
@@ -685,7 +684,6 @@ pub mod hook {
     /// You can just write this:
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
@@ -701,28 +699,6 @@ pub mod hook {
     /// this:
     ///
     /// ```rust
-    /// # use duat_core::prelude::{BuildInfo, PushSpecs};
-    /// # pub struct VertRule(Text);
-    /// # impl Widget<Ui> for VertRule {
-    /// #     type Cfg = VertRuleCfg;
-    /// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
-    /// #     fn needs_update(&self, _: &Pass) -> bool { false }
-    /// #     fn cfg() -> Self::Cfg { VertRuleCfg }
-    /// #     fn text(&self) -> &Text { &self.0 }
-    /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
-    /// #     fn once() -> Result<(), Text> { Ok(()) }
-    /// # }
-    /// # pub struct VertRuleCfg;
-    /// # impl VertRuleCfg {
-    /// #     pub fn on_the_right(self) -> Self { self }
-    /// # }
-    /// # impl WidgetCfg<Ui> for VertRuleCfg {
-    /// #     type Widget = VertRule;
-    /// #     fn build(self, _: &mut Pass, _: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
-    /// #         (VertRule(Text::new()), PushSpecs::left())
-    /// #     }
-    /// # }
-    /// # use duat_core::doc_duat as duat;
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
@@ -1178,5 +1154,5 @@ type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 /// For testing mdBook examples.
 #[cfg(doctest)]
 #[doc(hidden)]
-#[path = "../book/book-examples.rs"]
+#[path = "../book/book_examples.rs"]
 mod book;

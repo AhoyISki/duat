@@ -71,10 +71,11 @@ impl Tags<'_> {
     /// }
     ///
     /// impl<U: Ui> Parser<U> for MyParser {
-    ///     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
+    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+    ///         let file = file.write(pa);
     ///         // Removing on the whole File
-    ///         parts.tags.remove(self.tagger, ..);
-    ///         // Logic to add InnerTags...
+    ///         file.text_mut().remove_tags(self.tagger, ..);
+    ///         // Logic to add Tags with self.tagger...
     ///     }
     /// }
     /// ```

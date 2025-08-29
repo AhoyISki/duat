@@ -39,7 +39,7 @@ fn main() -> std::io::Result<()> {
 
     fs::create_dir_all(dest.join("src"))?;
 
-    File::create(dest.join("src/lib.rs"))?.write_all(LIB)?;
+    File::create(dest.join("src").join("lib.rs"))?.write_all(LIB)?;
 
     let cut_toml: String = if cfg!(feature = "git-deps") {
         unsafe { str::from_utf8_unchecked(TOML) }.to_string()

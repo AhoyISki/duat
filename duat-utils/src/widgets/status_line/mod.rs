@@ -30,7 +30,7 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// will always point to the currently active [`File`]:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// # use duat_utils::widgets::{FooterWidgets, status};
 /// setup_duat!(setup);
 /// use duat::prelude::*;
@@ -62,7 +62,7 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// Although, if you want the regular status line, you can just:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// # use duat_utils::widgets::{LineNumbers, StatusLine};
 /// setup_duat!(setup);
 /// use duat::prelude::*;
@@ -261,7 +261,7 @@ mod macros {
     /// Here's some examples:
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
+    /// # duat_core::doc_duat!(duat);
     /// # use duat_utils::widgets::status;
     /// setup_duat!(setup);
     /// use duat::prelude::*;
@@ -325,7 +325,7 @@ mod macros {
     /// Here's an examples:
     ///
     /// ```rust
-    /// # use duat_core::doc_duat as duat;
+    /// # duat_core::doc_duat!(duat);
     /// # use duat_utils::widgets::status;
     /// setup_duat!(setup);
     /// use std::sync::atomic::{AtomicUsize, Ordering};

@@ -20,8 +20,13 @@ use duat_core::{
 
 /// [`StatusLine`] part: The [`File`]'s name, formatted
 ///
-/// Includes wether or not the file is written and wether or not it
-/// exists.
+/// The name of a [`File`] widget is the same as the path, but it
+/// strips away the current directory. If it can't, it will try to
+/// strip away the home directory, replacing it with `"~"`. If
+/// that also fails, it will just show the full path.
+///
+/// This status part also includes wether or not the file is written
+/// and wether or not it exists.
 ///
 /// # Formatting
 ///
@@ -45,15 +50,48 @@ use duat_core::{
 pub fn name_txt(file: &File<impl Ui>) -> Text {
     let mut b = Text::builder();
 
-    if let Some(name) = file.name_set() {
-        b.push(txt!("[file]{name}"));
-        if !file.exists() {
-            b.push(txt!("[file.new][[new file]]"));
-        } else if file.text().has_unsaved_changes() {
-            b.push(txt!("[file.unsaved][[+]]"));
-        }
-    } else {
-        b.push(txt!("[file.new.scratch]{}", file.name()));
+    b.push(file.name_txt());
+    if !file.exists() {
+        b.push(txt!("[file.new][[new file]]"));
+    } else if file.text().has_unsaved_changes() {
+        b.push(txt!("[file.unsaved][[+]]"));
+    }
+
+    b.build()
+}
+
+/// [`StatusLine`] part: The [`File`]'s path, formatted
+///
+/// This status part also includes wether or not the file is written
+/// and wether or not it exists.
+///
+/// # Formatting
+///
+/// If the file's `path` was set:
+///
+/// ```text
+/// [file]{path}
+/// ```
+///
+/// If it has unwritten changes, a `[file.unsaved][[+]]` will be
+/// appended. If it doesn't exist, a `[file.new][[new file]]` will be
+/// appendedk.
+///
+/// If the file's `path` was not set:
+///
+/// ```text
+/// [file.new.scratch]{scratch_path}
+/// ```
+///
+/// [`StatusLine`]: crate::widgets::StatusLine
+pub fn path_txt(file: &File<impl Ui>) -> Text {
+    let mut b = Text::builder();
+
+    b.push(file.name_txt());
+    if !file.exists() {
+        b.push(txt!("[file.new][[new file]]"));
+    } else if file.text().has_unsaved_changes() {
+        b.push(txt!("[file.unsaved][[+]]"));
     }
 
     b.build()
@@ -72,13 +110,13 @@ pub fn name_txt(file: &File<impl Ui>) -> Text {
 /// simple trick is this:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// # use duat_utils::{state, widgets::status};
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<WindowCreated>(|pa, builder| {
+///     hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
 ///         let mode_upper = state::mode_name(pa).map(pa, |mode| {
 ///             let mode = match mode.split_once('<') {
 ///                 Some((mode, _)) => mode,
@@ -87,9 +125,9 @@ pub fn name_txt(file: &File<impl Ui>) -> Text {
 ///             txt!("[mode]{}", mode.to_uppercase()).build()
 ///         });
 ///
-///         builder.push(status!(
+///         cfg.fmt(status!(
 ///             "{name_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
-///         ));
+///         ))
 ///     });
 /// }
 /// ```

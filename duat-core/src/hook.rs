@@ -7,7 +7,7 @@
 //! whenever said [`Hookable`] is triggered:
 //!
 //! ```rust
-//! # use duat_core::doc_duat as duat;
+//! # duat_core::doc_duat!(duat);
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
@@ -264,11 +264,12 @@ mod global {
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
+    /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
     /// fn setup() {
     ///     let group_id = hook::GroupId::new();
-    ///     hook::add_grouped::<WindowCreated>(group_id, |_, builder| {
+    ///     hook::add_grouped::<WindowCreated>(group_id, move |_, builder| {
     ///         builder.push(status!("Main Window").above());
     ///         group_id.remove();
     ///     });
@@ -391,7 +392,8 @@ mod global {
 /// A group can either be created through a name or through a
 /// [`GroupId`]
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum InnerGroupId {
+#[doc(hidden)]
+pub enum InnerGroupId {
     Numbered(GroupId),
     Named(String),
 }
@@ -484,7 +486,7 @@ impl Hookable for UnfocusedFromDuat {
 /// of writing this in the config crate:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -496,7 +498,7 @@ impl Hookable for UnfocusedFromDuat {
 /// You can just write this:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -532,7 +534,7 @@ impl Hookable for UnfocusedFromDuat {
 /// #         (VertRule(Text::new()), PushSpecs::left())
 /// #     }
 /// # }
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -690,7 +692,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
 /// #     }
 /// # }
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 /// use kak::Normal;
@@ -712,7 +714,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
 /// #     }
 /// # }
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 /// use kak::Normal;
@@ -1055,7 +1057,7 @@ type InnerHookFn<H> =
 ///
 /// // In the user's config crate:
 /// # {
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -1104,7 +1106,7 @@ type InnerHookFn<H> =
 ///
 /// // In the user's config crate:
 /// # {
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -1177,7 +1179,7 @@ impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
 ///
 /// // In the user's config crate:
 /// # {
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
@@ -1226,7 +1228,7 @@ impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
 ///
 /// // In the user's config crate:
 /// # {
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///

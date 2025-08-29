@@ -554,7 +554,7 @@
 //! #         fn plug(self) { todo!(); }
 //! #     }
 //! # };
-//! # use duat_core::doc_duat as duat;
+//! # duat_core::doc_duat!(duat);
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //! use word_count::*;
@@ -706,6 +706,7 @@ pub mod cfg;
 pub mod cmd;
 pub mod context;
 pub mod data;
+mod doc_duat_macro;
 pub mod file;
 pub mod form;
 pub mod hook;
@@ -715,31 +716,6 @@ mod ranges;
 pub mod session;
 pub mod text;
 pub mod ui;
-
-/// A macro to create a mock version of a `duat` dependency
-///
-/// You should use this macro in order to add testable documentation
-/// to your plugins for `duat`. This is necessary because plugins
-/// depend on `duat-core`, and as such, they can't call `use
-/// duat::prelude::*` at the start.
-///
-/// Instead, what you should do is quite simple:
-///
-/// ```rust
-/// # // You should always hide this initial part of the code
-/// # duat_core::doc_duat!(duat);
-/// use duat::prelude::*;
-///
-/// // ...Rest of your example.
-/// ```
-///
-/// The test will compile as though you had access to `duat`, even
-/// when you don't.
-#[doc(hidden)]
-pub macro doc_duat($duat:ident) {
-    #[path = "../../book/doc-duat.rs"]
-    pub mod $duat;
-}
 
 /// A plugin for Duat
 ///
@@ -915,12 +891,12 @@ mod private_exports {
     pub macro parse_arg {
         ($builder:expr, "", $arg:expr) => {{
             let builder = $builder;
-            builder.push($arg);
+            builder.push_builder_part($arg.into());
             builder
         }},
         ($builder:expr, $modif:literal, $arg:expr) => {{
             let builder = $builder;
-            builder.push(format!(concat!("{:", $modif, "}"), &$arg));
+            builder.push_str(format!(concat!("{:", $modif, "}"), &$arg));
             builder
         }},
     }
@@ -930,21 +906,21 @@ mod private_exports {
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
             let id = $crate::form::DEFAULT_ID;
-            builder.push(id.to_tag(PRIORITY));
+            builder.push_builder_part(id.to_tag(PRIORITY).into());
             builder
         }},
         ($builder:expr, $priority:literal, a) => {{
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
             let id = $crate::form::ACCENT_ID;
-            builder.push(id.to_tag(PRIORITY));
+            builder.push_builder_part(id.to_tag(PRIORITY).into());
             builder
         }},
         ($builder:expr, $priority:literal, $($form:tt)*) => {{
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
             let id = $crate::form::id_of!(concat!($(stringify!($form)),*));
-            builder.push(id.to_tag(PRIORITY));
+            builder.push_builder_part(id.to_tag(PRIORITY).into());
             builder
         }},
     }
@@ -1069,7 +1045,8 @@ pub fn plugin_dir(plugin: &str) -> Result<PathBuf, Text> {
     static PLUGIN_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
         dirs_next::data_local_dir().map(|local_dir| {
             let path: &'static str = local_dir
-                .join("duat/plugins")
+                .join("duat")
+                .join("plugins")
                 .to_string_lossy()
                 .to_string()
                 .leak();

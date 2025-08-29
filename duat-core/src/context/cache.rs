@@ -32,7 +32,7 @@ use std::{
     fs::File,
     hash::{DefaultHasher, Hash, Hasher},
     marker::PhantomData,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub use bincode::{self, Decode, Encode};
@@ -62,9 +62,9 @@ impl Cache {
     /// interpreted, returns [`None`]
     pub fn load<C: Decode<()> + Default + 'static>(
         &self,
-        path: impl Into<PathBuf>,
+        path: impl AsRef<Path>,
     ) -> Result<C, Text> {
-        let mut cache_file = cache_file::<C>(path.into(), false)?;
+        let mut cache_file = cache_file::<C>(path.as_ref(), false)?;
 
         if cache_file.metadata()?.len() == 0 {
             return Ok(C::default());
@@ -81,10 +81,10 @@ impl Cache {
     /// The cache can then later be loaded by [`Cache::load`].
     pub fn store<C: Encode + 'static>(
         &self,
-        path: impl Into<PathBuf>,
+        path: impl AsRef<Path>,
         cache: C,
     ) -> Result<usize, Text> {
-        let mut cache_file = cache_file::<C>(path.into(), true)?;
+        let mut cache_file = cache_file::<C>(path.as_ref(), true)?;
 
         let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
         encode_into_std_write(cache, &mut cache_file, config).map_err(|err| txt!("{err}").build())
@@ -124,8 +124,8 @@ impl Cache {
     }
 
     /// Deletes the cache for everything related to the given `path`
-    pub fn delete_for<C: 'static>(&self, path: impl Into<PathBuf>) {
-        let path: PathBuf = path.into();
+    pub fn delete_for<C: 'static>(&self, path: impl AsRef<Path>) {
+        let path = path.as_ref();
         let (Some(cache_dir), Some(file_name)) = (dirs_next::cache_dir(), path.file_name()) else {
             return;
         };
@@ -144,7 +144,7 @@ impl Cache {
             .join("duat")
             .join("structs")
             .join(cached_file_name)
-            .join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
+            .join(format!("{}-{}", src_crate::<C>(), duat_name::<C>()));
 
         if let Ok(true) = src.try_exists() {
             std::fs::remove_file(src).unwrap();
@@ -152,7 +152,7 @@ impl Cache {
     }
 }
 
-fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> std::io::Result<File> {
+fn cache_file<C: 'static>(path: &Path, truncate: bool) -> std::io::Result<File> {
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);
     let hash_value = hasher.finish();

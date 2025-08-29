@@ -50,7 +50,7 @@ mod switch;
 /// other [`Mode`]s in a common place:
 ///
 /// ```rust
-/// # use duat_core::doc_duat as duat;
+/// # duat_core::doc_duat!(duat);
 /// # mod plugin0{
 /// #     use duat_core::prelude::*;
 /// #     #[derive(Clone, Copy, Debug)]

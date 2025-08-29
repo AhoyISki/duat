@@ -11,7 +11,12 @@
 //!
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
-use std::{fs, marker::PhantomData, path::PathBuf, sync::Arc};
+use std::{
+    fs,
+    marker::PhantomData,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use parking_lot::Mutex;
 
@@ -294,6 +299,7 @@ impl<U: Ui> File<U> {
         self.save_quit(false)
     }
 
+    /// Saves and quits, resulting in no config reload
     pub(crate) fn save_quit(&mut self, quit: bool) -> Result<Option<usize>, Text> {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
             let path = path.clone();
@@ -362,9 +368,29 @@ impl<U: Ui> File<U> {
 
     /// The full path of the file.
     ///
-    /// Returns [`None`] if the path has not been set yet.
+    /// Returns [`None`] if the path has not been set yet, i.e., if
+    /// the file is a scratch file.
     pub fn path_set(&self) -> Option<String> {
         self.path.path_set()
+    }
+
+    /// A [`Text`] from the full path of this [`PathKind`]
+    ///
+    /// # Formatting
+    ///
+    /// If the file's `path` was set:
+    ///
+    /// ```text
+    /// [file]{path}
+    /// ```
+    ///
+    /// If the file's `path` was not set:
+    ///
+    /// ```text
+    /// [file.new.scratch]*scratch file #{id}*
+    /// ```
+    pub fn path_txt(&self) -> Text {
+        self.path_kind().path_txt()
     }
 
     /// The file's name.
@@ -376,9 +402,34 @@ impl<U: Ui> File<U> {
 
     /// The file's name.
     ///
-    /// Returns [`None`] if the path has not been set yet.
+    /// Returns [`None`] if the path has not been set yet, i.e., if
+    /// the file is a scratch file.
     pub fn name_set(&self) -> Option<String> {
         self.path.name_set()
+    }
+
+    /// A [`Text`] from the name of this [`PathKind`]
+    ///
+    /// The name of a [`File`] widget is the same as the path, but it
+    /// strips away the current directory. If it can't, it will try to
+    /// strip away the home directory, replacing it with `"~"`. If
+    /// that also fails, it will just show the full path.
+    ///
+    /// # Formatting
+    ///
+    /// If the file's `name` was set:
+    ///
+    /// ```text
+    /// [file]{name}
+    /// ```
+    ///
+    /// If the file's `name` was not set:
+    ///
+    /// ```text
+    /// [file.new.scratch]*scratch file #{id}*
+    /// ```
+    pub fn name_txt(&self) -> Text {
+        self.path.name_txt()
     }
 
     /// The type of [`PathBuf`]
@@ -476,19 +527,6 @@ impl<U: Ui> File<U> {
     }
 }
 
-impl<U: Ui> Handle<File<U>, U> {
-    /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
-    ///
-    /// [`Change`]: crate::text::Change
-    pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
-        let file = self.widget().read(pa);
-
-        if let Err(err) = file.parsers.add(file, cfg) {
-            context::error!("{err}");
-        }
-    }
-}
-
 impl<U: Ui> Widget<U> for File<U> {
     type Cfg = FileCfg<U>;
 
@@ -565,6 +603,19 @@ impl<U: Ui> Widget<U> for File<U> {
     }
 }
 
+impl<U: Ui> Handle<File<U>, U> {
+    /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
+    ///
+    /// [`Change`]: crate::text::Change
+    pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
+        let file = self.widget().read(pa);
+
+        if let Err(err) = file.parsers.add(file, cfg) {
+            context::error!("{err}");
+        }
+    }
+}
+
 /// Represents the presence or absence of a path
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathKind {
@@ -626,6 +677,10 @@ impl PathKind {
                 let cur_dir = context::cur_dir();
                 if let Ok(path) = path.strip_prefix(cur_dir) {
                     path.to_string_lossy().to_string()
+                } else if let Some(home_dir) = dirs_next::home_dir()
+                    && let Ok(path) = path.strip_prefix(home_dir)
+                {
+                    Path::new("~").join(path).to_string_lossy().to_string()
                 } else {
                     path.to_string_lossy().to_string()
                 }
@@ -643,6 +698,10 @@ impl PathKind {
                 let cur_dir = context::cur_dir();
                 Some(if let Ok(path) = path.strip_prefix(cur_dir) {
                     path.to_string_lossy().to_string()
+                } else if let Some(home_dir) = dirs_next::home_dir()
+                    && let Ok(path) = path.strip_prefix(home_dir)
+                {
+                    Path::new("~").join(path).to_string_lossy().to_string()
                 } else {
                     path.to_string_lossy().to_string()
                 })
@@ -675,6 +734,11 @@ impl PathKind {
 
     /// A [`Text`] from the name of this [`PathKind`]
     ///
+    /// The name of a [`File`] widget is the same as the path, but it
+    /// strips away the current directory. If it can't, it will try to
+    /// strip away the home directory, replacing it with `"~"`. If
+    /// that also fails, it will just show the full path.
+    ///
     /// # Formatting
     ///
     /// If the file's `name` was set:
@@ -693,11 +757,14 @@ impl PathKind {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 let cur_dir = context::cur_dir();
                 if let Ok(path) = path.strip_prefix(cur_dir) {
-                    path.to_string_lossy().to_string()
+                    txt!("[file]{path}").build()
+                } else if let Some(home_dir) = dirs_next::home_dir()
+                    && let Ok(path) = path.strip_prefix(home_dir)
+                {
+                    txt!("[file]{}", Path::new("~").join(path)).build()
                 } else {
-                    path.to_string_lossy().to_string()
-                };
-                txt!("[file]{path}").build()
+                    txt!("[file]{path}").build()
+                }
             }
             PathKind::NotSet(id) => txt!("[file.new.scratch]*scratch file #{id}*").build(),
         }

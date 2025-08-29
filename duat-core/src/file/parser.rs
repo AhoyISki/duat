@@ -59,7 +59,7 @@ use crate::{
 /// emerge:
 ///
 /// - Parsing synchronously;
-/// - Parsing asynchronously (via threads);
+/// - Parsing asynchronously (via threads, not async);
 /// - Not parsing at all;
 ///
 /// You should reach out for these in the following circumstances:
@@ -196,7 +196,9 @@ pub trait Parser<U: Ui>: Send + 'static {
     /// [add]: Ranges::add
     /// [remove]: Ranges::remove
     /// [`update`]: Parser::update
-    fn parse(&mut self) -> bool;
+    fn parse(&mut self) -> bool {
+        true
+    }
 
     /// Updates the [`File`] in some given [`Range<Point>`]s
     ///
@@ -236,7 +238,7 @@ pub trait Parser<U: Ui>: Send + 'static {
     /// [`parse`]: Parser::parse
     /// [`parse_remote`]: Parser::parse_remote
     /// [`Conceal`]: crate::text::Conceal
-    fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>);
+    fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {}
 
     /// Prepare this [`Parser`] before [`File::read_parser`] call
     ///
@@ -251,7 +253,7 @@ pub trait Parser<U: Ui>: Send + 'static {
     /// then this function can just be left empty.
     ///
     /// [`before_read`]: Parser::before_read
-    fn before_read(&mut self);
+    fn before_read(&mut self) {}
 
     /// Prepare the [`Parser`] before [`File::try_read_parser`] call
     ///
@@ -267,7 +269,9 @@ pub trait Parser<U: Ui>: Send + 'static {
     ///
     /// [`try_read_parser`]: File::try_read_parser
     /// [`read_parser`]: File::read_parser
-    fn before_try_read(&mut self) -> bool;
+    fn before_try_read(&mut self) -> bool {
+        true
+    }
 }
 
 /// A [`Parser`] builder struct

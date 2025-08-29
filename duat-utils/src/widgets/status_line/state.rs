@@ -86,7 +86,7 @@ where
 impl<D: Display + Clone + Send + 'static, U: Ui> From<D> for State<U, D, D> {
     fn from(value: D) -> Self {
         Self {
-            appender: Appender::Part(BuilderPart::from(value)),
+            appender: Appender::Part(value.into()),
             checker: None,
             ghost: PhantomData,
         }
