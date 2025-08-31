@@ -30,7 +30,7 @@ use std::{
     fs,
     ops::Range,
     path::PathBuf,
-    sync::{atomic::{AtomicUsize, Ordering}, LazyLock, Mutex},
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -70,10 +70,11 @@ mod languages;
 /// explanations for what is happening.
 ///
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
+#[derive(Default)]
 pub struct TreeSitter;
 
 impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
-    fn plug(self) {
+    fn plug(self, _: &Plugins<U>) {
         form::set_many!(
             ("variable", Form::white()),
             ("variable.builtin", Form::dark_yellow()),
@@ -203,11 +204,11 @@ impl<U: Ui> file::Parser<U> for TsParser {
         }
     }
 
-    fn before_read(&mut self) {
+    fn before_get(&mut self) {
         duat_core::file::Parser::<U>::parse(self);
     }
 
-    fn before_try_read(&mut self) -> bool {
+    fn before_try_get(&mut self) -> bool {
         let parser_state = self.0.take().unwrap();
 
         if let ParserState::Remote(join_handle) = parser_state {
@@ -855,7 +856,7 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
     static QUERIES: LazyLock<Mutex<HashMap<PathBuf, &'static Query>>> =
         LazyLock::new(Mutex::default);
 
-    let queries_dir = duat_core::plugin_dir("duat-treesitter")?.join("queries");
+    let queries_dir = duat_core::utils::plugin_dir("duat-treesitter")?.join("queries");
 
     let path = queries_dir.join(name).join(kind).with_extension("scm");
 

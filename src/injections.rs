@@ -189,7 +189,6 @@ impl InjectedTree {
         &self,
         start_byte: usize,
     ) -> Option<(Node<'_>, &'static Query, Range<usize>)> {
-        crate::context::debug!("{self.ranges:#?}, {start_byte}");
         if let Some(range) = self.ranges.iter().find(|r| r.contains(&start_byte)) {
             self.injections
                 .iter()

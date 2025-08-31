@@ -140,7 +140,7 @@ fn get_workspace_dir() -> Result<PathBuf, Text> {
         exclude = ["lib", "target"]"#
     );
 
-    let workspace_dir = duat_core::plugin_dir("duat-treesitter")?;
+    let workspace_dir = duat_core::utils::plugin_dir("duat-treesitter")?;
     let parsers_dir = workspace_dir.join("parsers");
 
     if let Ok(false) | Err(_) = fs::exists(&parsers_dir) {
