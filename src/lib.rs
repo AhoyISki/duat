@@ -391,7 +391,9 @@ impl Kak {
 }
 
 impl<U: Ui> Plugin<U> for Kak {
-    fn plug(self) {
+    fn plug(self, plugins: &Plugins<U>) {
+        plugins.require::<treesitter::TreeSitter>();
+        
         mode::set_alt_is_reverse(true);
         duat_core::mode::set_default::<Normal, U>(Normal::new());
         insert::INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
