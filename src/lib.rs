@@ -158,16 +158,14 @@ impl MatchPairs {
 }
 
 impl<U: Ui> Plugin<U> for MatchPairs {
-    fn plug(self) {
+    fn plug(self, plugins: &Plugins<U>) {
+        plugins.require::<duat_treesitter::TreeSitter>();
+
         hook::add::<File<U>, U>(|_, (cfg, _)| cfg.with_parser(MatchPairs::new()))
     }
 }
 
 impl<U: Ui> Parser<U> for MatchPairs {
-    fn parse(&mut self) -> bool {
-        true
-    }
-
     fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
@@ -181,7 +179,7 @@ impl<U: Ui> Parser<U> for MatchPairs {
             .flat_map(|r| {
                 file.selections()
                     .iter_within(r)
-                    .map(|(_, sel, is_main)| (sel.range(file.bytes()), is_main))
+                    .map(|(_, sel, is_main)| (sel.byte_range(file.bytes()), is_main))
             })
             .collect();
 
@@ -275,12 +273,6 @@ impl<U: Ui> Parser<U> for MatchPairs {
             file.text_mut()
                 .insert_tag(*PAREN_TAGGER, end_range, id.to_tag(99));
         }
-    }
-
-    fn before_read(&mut self) {}
-
-    fn before_try_read(&mut self) -> bool {
-        true
     }
 }
 
