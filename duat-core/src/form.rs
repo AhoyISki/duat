@@ -10,7 +10,7 @@ pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
     hook::{self, FormSet},
     text::FormTag,
-    ui::Sender,
+    ui::DuatSender,
 };
 
 /// Lists of [`Form`]s to be applied by a name
@@ -29,7 +29,7 @@ pub trait ColorScheme: Send + Sync + 'static {
     fn name(&self) -> &'static str;
 }
 
-static SENDER: OnceLock<Sender> = OnceLock::new();
+static SENDER: OnceLock<DuatSender> = OnceLock::new();
 static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("default", Form::new().0, Normal),
     ("accent", Form::bold().0, Normal),
@@ -492,6 +492,7 @@ mod global {
     ///
     /// [`form::add_colorscheme`]: add_colorscheme
     pub fn set_colorscheme(name: &str) {
+        let name = name.to_string();
         let colorschemes = COLORSCHEMES.lock().unwrap();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
             cs.apply();
@@ -1458,7 +1459,7 @@ impl Painter {
     }
 }
 
-pub(crate) fn set_sender(sender: Sender) {
+pub(crate) fn set_sender(sender: DuatSender) {
     SENDER
         .set(sender)
         .unwrap_or_else(|_| panic!("Sender set more than once"));

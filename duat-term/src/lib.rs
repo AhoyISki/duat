@@ -19,7 +19,7 @@ use crossterm::{
 use duat_core::{
     MainThreadOnly,
     form::Color,
-    ui::{self, Sender},
+    ui::{self, DuatSender},
 };
 
 use self::{layout::Layout, print::Printer};
@@ -39,18 +39,19 @@ impl ui::Ui for Ui {
     type Area = Area;
     type MetaStatics = Mutex<MetaStatics>;
 
-    fn open(ms: &'static Self::MetaStatics, tx: Sender) {
+    fn open(ms: &'static Self::MetaStatics, duat_tx: DuatSender) {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
 
-        let thread = std::thread::Builder::new()
+        let term_rx = ms.lock().unwrap().rx.take().unwrap();
+        let term_tx = ms.lock().unwrap().tx.clone();
+
+        let print_thread = std::thread::Builder::new()
             .no_hooks()
             .name("print loop".to_string());
-        let rx = ms.lock().unwrap().rx.take().unwrap();
-
-        let _ = thread.spawn(move || {
+        let _ = print_thread.spawn(move || {
             // Wait for everything to be setup before doing anything to the
             // terminal, for a less jarring effect.
-            let Ok(Event::NewPrinter(mut printer)) = rx.recv() else {
+            let Ok(Event::NewPrinter(mut printer)) = term_rx.recv() else {
                 unreachable!("Failed to load the Ui");
             };
 
@@ -80,37 +81,41 @@ impl ui::Ui for Ui {
             terminal::enable_raw_mode().unwrap();
 
             loop {
-                if let Ok(true) = ct_poll(Duration::from_millis(1000 / 60)) {
-                    let res = match ct_read().unwrap() {
-                        CtEvent::Key(key) => {
-                            if key.kind.is_press() {
-                                tx.send_key(key)
-                            } else {
-                                Ok(())
-                            }
-                        }
-                        CtEvent::Resize(..) => {
-                            printer.update(true);
-                            tx.send_resize()
-                        }
-                        CtEvent::FocusGained => tx.send_focused(),
-                        CtEvent::FocusLost => tx.send_unfocused(),
-                        CtEvent::Mouse(_) | CtEvent::Paste(_) => Ok(()),
-                    };
-                    if res.is_err() {
-                        break;
-                    }
-                }
-
-                printer.print();
-
-                match rx.try_recv() {
+                match term_rx.recv() {
+                    Ok(Event::Print) => printer.print(),
+                    Ok(Event::UpdatePrinter) => printer.update(true),
                     Ok(Event::NewPrinter(new_printer)) => printer = new_printer,
                     Ok(Event::Quit) => break,
                     Err(_) => {}
                 }
             }
         });
+
+        let _ = std::thread::Builder::new()
+            .name("crossterm".to_string())
+            .no_hooks()
+            .spawn(move || {
+                loop {
+                    let Ok(true) = ct_poll(Duration::from_millis(50)) else {
+                        continue;
+                    };
+
+                    match ct_read().unwrap() {
+                        CtEvent::Key(key) => {
+                            if key.kind.is_press() {
+                                duat_tx.send_key(key).unwrap();
+                            }
+                        }
+                        CtEvent::Resize(..) => {
+                            term_tx.send(Event::UpdatePrinter).unwrap();
+                            duat_tx.send_resize().unwrap();
+                        }
+                        CtEvent::FocusGained => duat_tx.send_focused().unwrap(),
+                        CtEvent::FocusLost => duat_tx.send_unfocused().unwrap(),
+                        CtEvent::Mouse(_) | CtEvent::Paste(_) => {}
+                    }
+                }
+            });
     }
 
     fn close(ms: &'static Self::MetaStatics) {
@@ -169,6 +174,10 @@ impl ui::Ui for Ui {
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
         ms.lock().unwrap().cur_printer().update(true);
+    }
+
+    fn print(ms: &'static Self::MetaStatics) {
+        ms.lock().unwrap().tx.send(Event::Print).unwrap();
     }
 
     fn load(_ms: &'static Self::MetaStatics) {
@@ -289,6 +298,8 @@ pub enum Anchor {
 }
 
 enum Event {
+    Print,
+    UpdatePrinter,
     NewPrinter(Arc<Printer>),
     Quit,
 }

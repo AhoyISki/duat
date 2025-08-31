@@ -104,12 +104,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
         let profile: &'static str = args.profile.leak();
-        duat_core::set_crate_dir_and_profile(crate_dir, profile);
+        duat_core::utils::set_crate_dir_and_profile(crate_dir, profile);
 
         if let Some(crate_dir) = crate_dir {
             (crate_dir, profile)
         } else {
-            Ui::open(ms, ui::Sender::new(duat_tx.clone()));
+            Ui::open(ms, ui::DuatSender::new(duat_tx.clone()));
             context::error!("Failed to find config crate, loading default");
             pre_setup(None, None);
             run_duat(
@@ -220,7 +220,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (reload_tx, reload_rx) = mpsc::channel();
     spawn_reloader(reload_rx, config_tx.clone(), duat_tx.clone());
 
-    Ui::open(ms, ui::Sender::new(duat_tx.clone()));
+    Ui::open(ms, ui::DuatSender::new(duat_tx.clone()));
 
     loop {
         let running_lib = lib.take();

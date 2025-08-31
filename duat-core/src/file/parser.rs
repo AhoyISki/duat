@@ -351,7 +351,7 @@ impl<U: Ui> Parsers<U> {
             .any(|rb| rb.ty == TypeId::of::<Cfg::Parser>())
         {
             Err(txt!(
-                "There is already a reader of type [a]{}",
+                "There is already a parser of type [a]{}",
                 crate::utils::duat_name::<Cfg::Parser>()
             ))?;
         }

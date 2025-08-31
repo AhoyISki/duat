@@ -113,14 +113,14 @@ pub trait Ui: Default + Clone + Send + 'static {
     /// Functions to trigger when the program begins
     ///
     /// These will happen in the main `duat` runner
-    fn open(ms: &'static Self::MetaStatics, duat_tx: Sender);
+    fn open(ms: &'static Self::MetaStatics, duat_tx: DuatSender);
 
     /// Functions to trigger when the program ends
     ///
     /// These will happen in the main `duat` runner
     fn close(ms: &'static Self::MetaStatics);
 
-    ////////// Functions executed from within the configuratio loop
+    ////////// Functions executed from within the configuration loop
 
     /// Initiates and returns a new "master" [`Area`]
     ///
@@ -143,6 +143,13 @@ pub trait Ui: Default + Clone + Send + 'static {
     /// adding or removing widgets, so the ui should calculate the
     /// layout.
     fn flush_layout(ms: &'static Self::MetaStatics);
+
+    /// Prints the layout
+    ///
+    /// Since printing runs all on the same thread, it is most
+    /// efficient to call a printing function after all the widgets
+    /// are done updating, I think.
+    fn print(ms: &'static Self::MetaStatics);
 
     /// Functions to trigger when the program reloads
     ///
@@ -523,9 +530,9 @@ pub enum DuatEvent {
 }
 
 /// A sender of [`DuatEvent`]s
-pub struct Sender(mpsc::Sender<DuatEvent>);
+pub struct DuatSender(mpsc::Sender<DuatEvent>);
 
-impl Sender {
+impl DuatSender {
     /// Returns a new [`Sender`]
     pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
         Self(sender)

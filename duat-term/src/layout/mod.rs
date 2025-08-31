@@ -21,7 +21,7 @@ mod rect;
 ///
 /// The [`Layout`] will also hold floating [`Rect`]s, once those
 /// become a thing.
-pub struct Layout {
+pub(crate) struct Layout {
     pub rects: Rects,
     pub active_id: AreaId,
     pub printer: Arc<Printer>,

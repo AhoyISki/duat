@@ -274,6 +274,12 @@ pub fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug,
     m_range
 }
 
+/// A binary search that takes into account the index of the element
+/// in order to extract the key
+///
+/// In Duat, this is used for searching in ordered lists where the
+/// elements after a certain index are shifted by some amount, while
+/// those behind that point aren't shifted at all.
 pub fn binary_search_by_key_and_index<T, K>(
     container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
     len: usize,

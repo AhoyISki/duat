@@ -7,6 +7,7 @@
 //! related to printing or receiving input. This includes interpreting
 //! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
+    any::TypeId,
     path::PathBuf,
     sync::{
         Mutex,
@@ -17,6 +18,7 @@ use std::{
 };
 
 use crate::{
+    Plugins,
     cfg::PrintCfg,
     clipboard::Clipboard,
     cmd,
@@ -31,7 +33,7 @@ use crate::{
     mode,
     text::Bytes,
     ui::{
-        Area, DuatEvent, Sender, Ui, Widget, Windows,
+        Area, DuatEvent, DuatSender, Ui, Widget, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
@@ -53,7 +55,27 @@ impl<U: Ui> SessionCfg<U> {
         }
     }
 
-    pub fn build(self, ms: &'static U::MetaStatics, files: Vec<Vec<FileParts>>) -> Session<U> {
+    pub fn build(
+        self,
+        ms: &'static U::MetaStatics,
+        files: Vec<Vec<FileParts>>,
+        already_plugged: Vec<TypeId>,
+    ) -> Session<U> {
+        let plugins = Plugins::<U>::_new();
+        // SAFETY: The only externally available function for Plugins is to
+        // add more plugins, accessing the plugging functions happens only on
+        // this thread.
+        while let Some((plug, ty)) = {
+            unsafe { plugins.0.get() }
+                .lock()
+                .iter_mut()
+                .find_map(|(f, ty)| f.take().zip(Some(*ty)))
+        } {
+            if !already_plugged.contains(&ty) {
+                plug(&plugins);
+            }
+        }
+
         // SAFETY: This function is only called from the main thread in
         // ../src/setup.rs, and from there, there are no other active
         // Passs, so this is fine.
@@ -132,7 +154,7 @@ impl<U: Ui> Session<U> {
         spawn_count: &'static AtomicUsize,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
     ) -> (Vec<Vec<FileParts>>, mpsc::Receiver<DuatEvent>) {
-        form::set_sender(Sender::new(sender()));
+        form::set_sender(DuatSender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
         let pa = unsafe { &mut Pass::new() };
@@ -157,18 +179,13 @@ impl<U: Ui> Session<U> {
 
         let mut reload_requested = false;
         let mut reprint_screen = false;
-        let mut idle_count = 0;
 
         loop {
             if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
                 mode_fn(pa);
             }
 
-            // After one second, switch to a slower regime
-            let timeout = if idle_count > 100 { 100 } else { 10 };
-
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(timeout)) {
-                idle_count = 0;
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                 match event {
                     DuatEvent::Tagger(key) => mode::send_key(pa, key),
                     DuatEvent::QueuedFunction(f) => f(pa),
@@ -229,6 +246,7 @@ impl<U: Ui> Session<U> {
                             hook::trigger(pa, FileClosed((handle, Cache::new())));
                         }
 
+                        U::unload(self.ms);
                         return (Vec::new(), duat_rx);
                     }
                 }
@@ -239,8 +257,6 @@ impl<U: Ui> Session<U> {
                 }
                 reprint_screen = false;
                 continue;
-            } else {
-                idle_count += 1;
             }
 
             let win = context::cur_window();
@@ -249,6 +265,8 @@ impl<U: Ui> Session<U> {
                     node.update_and_print(pa);
                 }
             }
+
+            U::print(self.ms);
         }
     }
 

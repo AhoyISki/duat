@@ -77,7 +77,7 @@ impl PartialEq for Area {
 }
 
 impl Area {
-    pub fn new(id: AreaId, layouts: Rc<RefCell<Vec<Layout>>>) -> Self {
+    pub(crate) fn new(id: AreaId, layouts: Rc<RefCell<Vec<Layout>>>) -> Self {
         Self { layouts, id, ansi_codes: Arc::default() }
     }
 

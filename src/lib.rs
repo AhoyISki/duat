@@ -383,7 +383,7 @@
 use std::sync::RwLock;
 
 use duat_core::session::SessionCfg;
-pub use duat_core::{crate_dir, duat_name, src_crate};
+pub use duat_core::utils::{crate_dir, duat_name, src_crate};
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
@@ -977,10 +977,10 @@ pub macro setup_duat($setup:expr) {
 
 /// The prelude of Duat
 pub mod prelude {
-    use std::process::Output;
+    use std::{any::TypeId, process::Output};
 
     pub use duat_core::{
-        Plugin, clipboard, context,
+        self, clipboard, context,
         data::{self, Pass},
         file,
         prelude::Lender,
@@ -988,12 +988,14 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
             Text, txt,
         },
-        ui::{self, Area as AreaTrait, Widget, WidgetCfg},
+        ui::{self, Area as AreaTrait, Widget},
     };
+    use duat_core::{Plugin, Plugins};
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term, VertRule};
 
+    use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
         Area, Ui, cmd, cursor,
         form::{self, CursorShape, Form},
@@ -1009,14 +1011,12 @@ pub mod prelude {
         widgets::*,
     };
 
-    /// Plugs a list of plugins
+    /// Adds a plugin to Duat
     ///
     /// These plugins should use the builder construction pattern,
     /// i.e., they should look like this:
     ///
     /// ```rust
-    /// # use duat::prelude as duat_core;
-    /// use duat_core::{Plugin, ui::Ui};
     /// pub struct MyPlugin {
     ///     // ..options
     /// }
@@ -1037,21 +1037,22 @@ pub mod prelude {
     ///         # todo!();
     ///     }
     /// }
-    ///
-    /// impl<U: Ui> Plugin<U> for MyPlugin {
-    ///     fn plug(self) {
-    ///         // Finally applies the plugin, after all alterations
-    ///     }
-    /// }
     /// ```
     ///
     /// As you can see above, they should also have a `plug` method,
     /// which consumes the plugin.
-    pub macro plug($($plugin:expr),* $(,)?) {{
-        $(
-            plug_inner($plugin);
-        )*
-    }}
+    pub fn plug<P: Plugin<Ui>>(plugin: P) {
+        let mut already_plugged = ALREADY_PLUGGED.lock().unwrap();
+        if already_plugged.contains(&TypeId::of::<P>()) {
+            context::warn!(
+                "Plugin {} was added multiple times",
+                duat_core::utils::duat_name::<P>()
+            );
+        } else {
+            already_plugged.push(TypeId::of::<P>());
+            plugin.plug(&Plugins::_new());
+        }
+    }
 
     /// Executes a shell command, returning its [`Output`] if
     /// successful
@@ -1093,11 +1094,6 @@ pub mod prelude {
         cmd.args(args);
 
         cmd.output().ok()
-    }
-
-    #[doc(hidden)]
-    pub fn plug_inner(plugin: impl Plugin<Ui>) {
-        plugin.plug()
     }
 
     /// A handle to a [`Widget`] in Duat

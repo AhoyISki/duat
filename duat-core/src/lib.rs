@@ -658,9 +658,12 @@
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
+use std::{any::TypeId, sync::OnceLock};
+
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use main_thread_only::MainThreadOnly;
+use parking_lot::Mutex;
 
 use self::ui::Ui;
 
@@ -675,7 +678,7 @@ pub mod prelude {
     pub use lender::Lender;
 
     pub use crate::{
-        Plugin,
+        Plugin, Plugins,
         cfg::PrintCfg,
         cmd,
         context::{self, Handle},
@@ -721,6 +724,9 @@ pub mod utils;
 ///
 /// ```rust
 /// # use duat_core::{Plugin, ui::Ui};
+/// // It's not a supertrait of Plugin, but you must implement
+/// // Default in order to use the plugin.
+/// #[derive(Default)]
 /// struct MyPlugin(bool);
 ///
 /// impl<U: Ui> Plugin<U> for MyPlugin {
@@ -748,9 +754,54 @@ pub mod utils;
 ///
 /// [plugged]: Plugin::plug
 /// [`PhantomData`]: std::marker::PhantomData
-pub trait Plugin<U: Ui>: Sized {
+pub trait Plugin<U: Ui>: 'static {
     /// Sets up the [`Plugin`]
-    fn plug(self);
+    fn plug(self, plugins: &Plugins<U>);
+}
+
+static PLUGINS: OnceLock<Box<dyn std::any::Any + Send + Sync>> = OnceLock::new();
+
+/// A struct for [`Plugin`]s to declare dependencies on other
+/// [`Plugin`]s
+pub struct Plugins<'a, U: Ui>(&'a MainThreadOnly<Mutex<Vec<(PluginFn<U>, TypeId)>>>);
+
+impl<U: Ui> Plugins<'_, U> {
+    /// Returnss a new instance of [`Plugins`]
+    ///
+    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
+    #[doc(hidden)]
+    pub fn _new() -> Self {
+        let plugins = PLUGINS.get_or_init(|| {
+            Box::new(MainThreadOnly::new(Mutex::new(
+                Vec::<(PluginFn<U>, TypeId)>::new(),
+            )))
+        });
+        Self(plugins.downcast_ref().expect("Used two different Uis."))
+    }
+
+    /// Require that a [`Plugin`] be added
+    ///
+    /// This plugin may have already been added, or it might be added
+    /// by this call.
+    ///
+    /// > [!NOTE]
+    /// >
+    /// > As a [`Plugin`] writer, you are not allowed to change the
+    /// > configurations of the [`Plugin`], only the end user, by
+    /// > calling the [`plug!`] macro, is allowed to do that.
+    ///
+    /// [`plug!`]: https://docs.rs/duat/latest/duat/macro.plug.html
+    pub fn require<P: Plugin<U> + Default>(&self) {
+        // SAFETY: This function can only push new elements to the list, not
+        // accessing the !Send functions within.
+        let mut plugins = unsafe { self.0.get() }.lock();
+        if !plugins.iter().any(|(_, ty)| *ty == TypeId::of::<P>()) {
+            plugins.push((
+                Some(Box::new(|plugins| P::default().plug(plugins))),
+                TypeId::of::<P>(),
+            ));
+        };
+    }
 }
 
 mod main_thread_only {
@@ -934,3 +985,5 @@ pub const fn priority(priority: &str) -> u8 {
 
     val as u8
 }
+
+type PluginFn<U> = Option<Box<dyn FnOnce(&Plugins<U>)>>;

@@ -5,6 +5,7 @@
 //! variables are not set in the start of the program, since they
 //! require a [`Ui`], which cannot be defined in static time.
 use std::{
+    any::TypeId,
     path::Path,
     sync::{
         LazyLock, Mutex, RwLock,
@@ -42,6 +43,7 @@ pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
+pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
 pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>) {
@@ -51,7 +53,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
         duat_core::form::set_initial(forms_init);
-        duat_core::set_crate_dir_and_profile(Some(crate_dir), profile);
+        duat_core::utils::set_crate_dir_and_profile(Some(crate_dir), profile);
     }
 
     if let Some(duat_tx) = duat_tx {
@@ -184,7 +186,8 @@ pub fn run_duat(
 
     cfg.set_print_cfg(print_cfg);
 
-    cfg.build(ui_ms, files)
+    let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
+    cfg.build(ui_ms, files, already_plugged)
         .start(duat_rx, &SPAWN_COUNT, reload_tx)
 }
 

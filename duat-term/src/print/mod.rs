@@ -18,7 +18,7 @@ use duat_core::{
 use sync_solver::SyncSolver;
 use variables::Variables;
 
-use crate::{AreaId, CStyle, Coords, Equality, Mutex, area::Coord, layout::Rect, queue, style};
+use crate::{AreaId, CStyle, Coords, Equality, Mutex, layout::Rect, queue, style};
 
 mod frame;
 mod line;
@@ -57,12 +57,6 @@ impl Printer {
     }
 
     ////////// Area setup functions
-
-    /// Adds a new [`Variable`] to the list of [`Variables`] and
-    /// returns it
-    pub fn new_var(&self) -> Variable {
-        self.vars.lock().unwrap().new_var()
-    }
 
     /// Adds a new [`VarPoint`] to the list of [`Variable`]s and
     /// returns it
@@ -282,26 +276,6 @@ impl Printer {
     /// The maximum [`VarPoint`], i.e. the bottom right of the screen
     pub fn max(&self) -> &VarPoint {
         &self.max
-    }
-
-    /// Gets the current value of the [`Variable`]
-    ///
-    /// If `is_printing` [`Printer::has_changed`] will now return
-    /// `false`
-    pub fn value(&self, var: Variable, is_printing: bool) -> u32 {
-        let (value, _) = self.vars.lock().unwrap().value(var, is_printing);
-        value
-    }
-
-    /// Gets the current [`Coord`] of a [`VarPoint`]
-    ///
-    /// If `is_printing` [`Printer::has_changed`] will now return
-    /// `false`
-    pub fn coord(&self, var_point: VarPoint, is_printing: bool) -> Coord {
-        let mut vars = self.vars.lock().unwrap();
-        let (x, _) = vars.value(var_point.x(), is_printing);
-        let (y, _) = vars.value(var_point.y(), is_printing);
-        Coord::new(x, y)
     }
 
     /// Gets [`Coords`] from two [`VarPoint`]s
@@ -941,12 +915,5 @@ impl VarPoint {
 
     pub fn y(&self) -> Variable {
         self.y
-    }
-
-    pub fn on_axis(&self, axis: Axis) -> Variable {
-        match axis {
-            Axis::Horizontal => self.x,
-            Axis::Vertical => self.y,
-        }
     }
 }

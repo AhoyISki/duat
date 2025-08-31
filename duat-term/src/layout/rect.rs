@@ -220,7 +220,7 @@ impl Rect {
     /// These equalities ensure that the [`Rect`]s stay within the
     /// borders of the terminal, but unlike with pushed [`Rect`]s,
     /// there is no requirement for no collisions with other [`Rect`]s
-    pub fn set_spawned_eqs(&mut self, p: &Printer) {
+    pub fn _set_spawned_eqs(&mut self, p: &Printer) {
         self.eqs.extend([
             self.tl.x() | GE(REQUIRED) | 0.0,
             self.tl.y() | GE(REQUIRED) | 0.0,
@@ -721,7 +721,7 @@ impl Rects {
         Some((n, self.get_mut(id).unwrap()))
     }
 
-    pub fn insert_child(&mut self, pos: usize, id: AreaId, child: Rect) {
+    pub fn _insert_child(&mut self, pos: usize, id: AreaId, child: Rect) {
         let parent = self.get_mut(id).unwrap();
 
         let entry = (child, Constraints::default());
@@ -777,7 +777,7 @@ impl Rects {
     }
 
     /// Gets the siblings of the `id`'s [`Rect`]
-    pub fn get_siblings(&self, id: AreaId) -> Option<&[(Rect, Constraints)]> {
+    pub fn _get_siblings(&self, id: AreaId) -> Option<&[(Rect, Constraints)]> {
         self.get_parent(id).and_then(|(_, p)| p.kind.children())
     }
 
