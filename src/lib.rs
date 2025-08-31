@@ -22,7 +22,7 @@ use gapbuf::GapBuffer;
 pub struct JumpList;
 
 impl<U: Ui> Plugin<U> for JumpList {
-    fn plug(self) {
+    fn plug(self, _: &Plugins<U>) {
         hook::add::<File<U>, U>(|_, (cfg, _)| cfg.with_parser(JumpsBuilder));
     }
 }
@@ -120,6 +120,10 @@ impl<U: Ui> Parser<U> for Jumps {
             None
         };
 
+        if rev.is_none() && fwd.is_none() {
+            return;
+        }
+
         for change in self.tracker.moment().changes() {
             for pos in [fwd, rev].into_iter().flatten() {
                 let change = (
@@ -174,8 +178,22 @@ pub trait FileJumps<U: Ui> {
     /// selections, also represented by a [`Range<usize>`], with the
     /// main selection's index included.
     ///
-    /// [`Selections`]: duat_core::mode::Selections
-    fn jump_selections(&mut self, n: i32) -> Option<Jump>;
+    /// This will return [`None`] if the [`JumpList`] plugin was not
+    /// plugged, or if no jumps have been saved/all jumps have been
+    /// removed.
+    fn jump_selections_by(&mut self, by: i32) -> Option<Jump>;
+
+    /// Jumps to the `n`th [`Jump`]
+    ///
+    /// The [`Jump`] can either be a single selection, represented by
+    /// an exclusive [`Range<usize>`], or it can be multiple
+    /// selections, also represented by a [`Range<usize>`], with the
+    /// main selection's index included.
+    ///
+    /// This will return [`None`] if the [`JumpList`] plugin was not
+    /// plugged, or if no jumps have been saved/all jumps have been
+    /// removed.
+    fn jump_to_selections(&mut self, n: usize) -> Option<Jump>;
 }
 
 impl<U: Ui> FileJumps<U> for File<U> {
@@ -204,19 +222,19 @@ impl<U: Ui> FileJumps<U> for File<U> {
         });
     }
 
-    fn jump_selections(&mut self, mut n: i32) -> Option<Jump> {
+    fn jump_selections_by(&mut self, mut by: i32) -> Option<Jump> {
         self.write_parser(|jumps: &mut Jumps| {
             let mut changes = Changes::default();
             let mut last_seen = None;
 
-            let jump = if n >= 0 {
+            let jump = if by >= 0 {
                 loop {
                     match jumps.list.get_mut(jumps.cur) {
                         Some(Saved::Jump(jump)) => {
                             if jump.shift(&changes) {
-                                if n == 0 {
+                                if by == 0 {
                                     let jump = jump.clone();
-                                    if !changes.list.is_empty() {
+                                    if !changes.list.is_empty() && jumps.cur < jumps.list.len() {
                                         jumps.list.insert(
                                             jumps.cur + 1,
                                             Saved::FwdChanges(Box::new(changes)),
@@ -225,7 +243,7 @@ impl<U: Ui> FileJumps<U> for File<U> {
                                     break Some(jump);
                                 } else {
                                     last_seen = Some(jumps.cur);
-                                    n -= 1;
+                                    by -= 1;
                                     jumps.cur += 1;
                                 }
                             } else {
@@ -248,10 +266,10 @@ impl<U: Ui> FileJumps<U> for File<U> {
                         Some(Saved::Jump(jump)) => {
                             jumps.cur -= 1;
                             if jump.shift(&changes) {
-                                n += 1;
-                                if n == 0 {
+                                by += 1;
+                                if by == 0 {
                                     let jump = jump.clone();
-                                    if !changes.list.is_empty() {
+                                    if !changes.list.is_empty() && jumps.cur > 0 {
                                         jumps.list.insert(
                                             jumps.cur,
                                             Saved::RevChanges(Box::new(changes)),
@@ -295,6 +313,19 @@ impl<U: Ui> FileJumps<U> for File<U> {
             })
         })
         .flatten()
+    }
+
+    fn jump_to_selections(&mut self, n: usize) -> Option<Jump> {
+        let cur_n = self.write_parser(|jumps: &mut Jumps| {
+            jumps
+                .list
+                .iter()
+                .take(jumps.cur)
+                .filter(|s| matches!(s, Saved::Jump(_)))
+                .count()
+        })?;
+
+        self.jump_selections_by(n as i32 - cur_n as i32)
     }
 }
 
