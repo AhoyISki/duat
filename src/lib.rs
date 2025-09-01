@@ -256,9 +256,12 @@ impl<U: Ui> FileJumps<U> for File<U> {
                         Some(Saved::Jump(jump)) => {
                             if by == 0 {
                                 break Some(jump.clone());
-                            } else {
+                            } else if jumps.cur + 1 < jumps.list.len() {
+                                last_seen = Some(jumps.cur);
                                 by -= 1;
                                 jumps.cur += 1;
+                            } else {
+                                break None;
                             }
                         }
                         Some(Saved::Changes(_)) => unreachable!(),
