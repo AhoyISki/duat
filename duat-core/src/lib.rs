@@ -91,12 +91,17 @@
 //!
 //! Duat is extended primarily through the use of [`Plugin`]s from
 //! external crates, these will be plugged in the main config through
-//! the [`plug!`] macro, and are modified in place through the builder
-//! pattern.
+//! the [`plug`] function, and are modified in place through the
+//! builder pattern.
+//!
+//! By default, Duat includes the [`MatchPairs`] and [`Treesitter`]
+//! plugins. The former highlightin the matching pair to the cursor,
+//! and the latter parsing the text into a syntax tree that is used
+//! for syntax highlighting, indentation, and much more.
 //!
 //! For this demonstration, I will create a [`Plugin`] that keeps
-//! track of the word count in a [`File`], without reparsing it every
-//! time said [`File`] changes.
+//! track of the word count in a [`File`], without counting the words
+//! every time said [`File`] changes.
 //!
 //! ## Creating a [`Plugin`]
 //!
@@ -132,7 +137,7 @@
 //! pub struct WordCount;
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn plug(self) {
+//!     fn plug(self, plugins: &Plugins<U>) {
 //!         todo!();
 //!     }
 //! }
@@ -164,7 +169,7 @@
 //! }
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn plug(self) {
+//!     fn plug(self, plugins: &Plugins<U>) {
 //!         todo!();
 //!     }
 //! }
@@ -551,7 +556,7 @@
 //! #         pub fn not_whitespace(self) -> Self { WordCount(true) }
 //! #     }
 //! #     impl<U: Ui> Plugin<U> for WordCount {
-//! #         fn plug(self) { todo!(); }
+//! #         fn plug(self, _: &Plugins<U>) { todo!(); }
 //! #     }
 //! # };
 //! # duat_core::doc_duat!(duat);
@@ -560,10 +565,10 @@
 //! use word_count::*;
 //!
 //! fn setup() {
-//!     plug!(WordCount::new().not_whitespace());
+//!     plug(WordCount::new().not_whitespace());
 //!
 //!     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
-//!         sl.replace(status!(
+//!         sl.fmt(status!(
 //!             "{name_txt} has [wc]{file_words}[] words{Spacer}{mode_txt} {sels_txt} {main_txt}"
 //!         ))
 //!     });
@@ -625,7 +630,7 @@
 //! [number one rule of Rust]: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html
 //! [create your own]: crate::hook::Hookable
 //! [choose when to trigger them]: crate::hook::trigger
-//! [`plug!`]: https://docs.rs/duat/latest/duat/prelude/macro.plug.html
+//! [`plug`]: https://docs.rs/duat/latest/duat/prelude/function.plug.html
 //! [crates.io]: https://crates.io
 //! [these guidelines]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
 //! [installed duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
@@ -638,6 +643,8 @@
 //! [`PrintCfg`]: crate::cfg::PrintCfg
 //! [`Text`]: crate::text::Text
 //! [`txt!`]: crate::text::txt
+//! [`MatchPairs`]: https://docs.rs/duat-match-pairs/latest/duat_match_pairs/struct.MatchPairs.html
+//! [`Treesitter`]: https://docs.rs/duat-tree-sitter/latest/duat_tree_sitter/struct.Treesitter.html
 #![feature(
     decl_macro,
     step_trait,
@@ -648,7 +655,8 @@
     dropck_eyepatch,
     fn_traits,
     iter_array_chunks,
-    thread_spawn_hook
+    thread_spawn_hook,
+    box_as_ptr
 )]
 #![allow(clippy::single_range_in_vec_init)]
 

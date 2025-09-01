@@ -1,5 +1,5 @@
 //! The runner for Duat
-#![feature(decl_macro, iterator_try_collect, try_blocks)]
+#![feature(decl_macro, iterator_try_collect, try_blocks, cfg_select)]
 
 use std::{
     path::PathBuf,
@@ -27,7 +27,7 @@ static CLIPBOARD: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 compile_error!("The Duat app needs the \"cli\" feature to work.");
 
 #[derive(Debug, clap::Parser)]
-#[command(version, about, long_about = None)]
+#[command(version, about)]
 struct Args {
     /// Files to open
     files: Vec<PathBuf>,
@@ -37,18 +37,11 @@ struct Args {
     /// Open the config's Cargo.toml
     #[arg(long)]
     cfg_manifest: bool,
-    #[cfg_attr(
-        not(any(target_os = "macos", target_os = "windows")),
-        doc = "Config crate path [default: ~/.config/duat]"
-    )]
-    #[cfg_attr(
-        target_os = "macos",
-        doc = "Config crate path [default: ~/Library/Application Support/duat]"
-    )]
-    #[cfg_attr(
-        target_os = "windows",
-        doc = r"Config crate path [default: ~\AppData\Roaming\duat]"
-    )]
+    #[doc = concat!("Config crate path [default: ", cfg_select! {
+        target_os = "macos" => "~/Library/Application Support/duat]",
+        target_os = "windows" => r"~\AppData\Roaming\duat",
+        _ => "~/.config/duat]"
+	})]
     #[arg(short, long)]
     load: Option<PathBuf>,
     /// Profile to load
@@ -66,10 +59,18 @@ struct Args {
     /// Updates the config's dependencies
     #[arg(long)]
     update: bool,
+    /// Initializes a new Duat Plugin
+    #[arg(long, value_name = "NAME", global = true)]
+    init_plugin: Option<String>
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = <Args as clap::Parser>::parse();
+
+    if let Some(name) = args.init_plugin {
+        std::fs::create_dir(&name)?;
+        
+    }
 
     // Initializers for access to static variables across two different
     // "duat-core instances"
@@ -122,7 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
-    
+
     let profile_dir = match profile {
         "dev" => "debug",
         profile => profile,
@@ -188,8 +189,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut lib = {
-        let libconfig_path =
-            crate_dir.join("target").join(profile_dir).join(resolve_config_file());
+        let libconfig_path = crate_dir
+            .join("target")
+            .join(profile_dir)
+            .join(resolve_config_file());
 
         if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
             if !args.reload {
@@ -348,7 +351,10 @@ fn spawn_reloader(
                     Ok(status) if !status.success() => {
                         config_tx
                             .send((
-                                crate_dir.join("target").join(&reload.profile).join(resolve_config_file()),
+                                crate_dir
+                                    .join("target")
+                                    .join(&reload.profile)
+                                    .join(resolve_config_file()),
                                 reload.profile.to_string(),
                             ))
                             .unwrap();
@@ -421,9 +427,7 @@ mod cargo {
                 #[cfg(target_os = "windows")]
                 if out.stderr.ends_with(b"Access is denied. (os error 5)\n") {
                     context::error!("Failed to reload config crate");
-                    context::info!(
-                        "On [a]Windows[], close other instances of Duat to reload"
-                    );
+                    context::info!("On [a]Windows[], close other instances of Duat to reload");
                 } else {
                     context::error!("{}", String::from_utf8_lossy(&out.stderr));
                 }
@@ -432,7 +436,7 @@ mod cargo {
                 if !out.status.success() {
                     context::error!("{}", String::from_utf8_lossy(&out.stderr));
                 }
-                
+
                 out.status
             })
         }

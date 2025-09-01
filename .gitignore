@@ -1,9 +1,6 @@
-/target
-*/target
-/testing
-/Cargo.lock
-*/Cargo.lock
+target/
+Cargo.lock
 README.j2
-.cargo/*
+.cargo/
 .mod*
-book/book/*
+book/book/
