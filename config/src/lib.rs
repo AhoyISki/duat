@@ -1,11 +1,11 @@
-//! This is an example configuration file.
-//! Note that
-//! ```rust
-//! setup_duat!(setup);
-//! use duat::prelude::*;
-//! fn setup() {}
-//! ```
-//! is a valid configuration.
+// This is an example configuration file.
+// Note that
+// ```rust
+// setup_duat!(setup);
+// use duat::prelude::*;
+// fn setup() {}
+// ```
+// is a valid configuration.
 setup_duat!(setup);
 use duat::prelude::*;
 // Since duat_kak is a plugin, it must be used explicitly.
@@ -13,26 +13,11 @@ use duat::prelude::*;
 use kak::{Insert, Normal};
 
 fn setup() {
-    plug!(
-        // Adds a TsParser Reader, which enables syntax highlighting.
-        treesitter::TreeSitter,
-        match_pairs::MatchPairs::new(),
-        // This plugin sets the mode to Kakoune's Normal.
-        // If you want a regular editing mode, you can remove this line.
-        kak::Kak::new(),
-        // This one adds the Catppuccin colorschemes.
-        // The modify function gives you access to the
-        // colors from Catppuccin, so you can change
-        // Forms with them.
-        catppuccin::Catppuccin::new().modify(|c| {
-            form::set_many!(
-                ("caret.main.Normal", Form::with(c.base).on(c.text)),
-                ("caret.extra.Normal", Form::with(c.base).on(c.sapphire)),
-                ("caret.main.Insert", Form::with(c.base).on(c.mauve)),
-                ("caret.extra.Insert", Form::with(c.base).on(c.yellow)),
-            );
-        })
-    );
+    // This plugin sets the mode to Kakoune's Normal.
+    // If you want a regular editing mode, you can remove this line.
+    plug(kak::Kak::new());
+    // This one adds the Catppuccin colorschemes.
+    plug(catppuccin::Catppuccin::new());
 
     // You can also set Forms to reference other Forms.
     form::set("caret.main.OneKey", "caret.main.Normal");

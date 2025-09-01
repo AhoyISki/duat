@@ -90,18 +90,6 @@
 //! config it is just `kak`.
 //!
 //! ```rust
-//! # mod treesitter {
-//! #     pub struct TreeSitter;
-//! #     impl duat_core::Plugin<duat::Ui> for TreeSitter {
-//! #         fn plug(self) {}
-//! #     }
-//! # }
-//! # mod match_pairs {
-//! #     pub struct MatchPairs;
-//! #     impl duat_core::Plugin<duat::Ui> for MatchPairs {
-//! #         fn plug(self) {}
-//! #     }
-//! # }
 //! # mod kak {
 //! #     use duat::{prelude::{*, mode::KeyEvent}};
 //! #     #[derive(Clone)]
@@ -130,12 +118,9 @@
 //! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
-//! use kak::Kak;
-//! use match_pairs::MatchPairs;
-//! use treesitter::TreeSitter;
-//!
+//! 
 //! fn setup() {
-//!     plug!(TreeSitter, MatchPairs, Kak::new());
+//!     plug!(kak::Kak::new());
 //!     map::<kak::Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_edge();
@@ -163,9 +148,7 @@
 //!
 //! This configuration does the following things:
 //!
-//! - [plugs] the `Kak` plugin, which changes the [default mode], and
-//!   the `TreeSitter` plugin, which adds syntax highlighting and is
-//!   also used by the `Kak` plugin;
+//! - [plugs] the `Kak` plugin, which changes the [default mode];
 //! - [Maps] jk to esc in the `Insert` mode;
 //! - [Changes] the wrapping;
 //! - Changes the alignment of the [`LineNumbers`] [`Widget`];
@@ -1152,3 +1135,46 @@ type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 #[doc(hidden)]
 #[path = "../book/book_examples.rs"]
 mod book;
+
+#[cfg(doctest)]
+#[doc(hidden)]
+/// ```rust
+/// # mod catppuccin {
+/// #     use duat::prelude::duat_core::Plugins;
+/// #     pub struct Catppuccin;
+/// #     impl Catppuccin {
+/// #         pub fn new() -> Self { Self }
+/// #     }
+/// #     impl duat_core::Plugin<duat::Ui> for Catppuccin {
+/// #         fn plug(self, _: &Plugins<duat::Ui>) {}
+/// #     }
+/// # }
+/// # mod kak {
+/// #     use duat::{prelude::{*, duat_core::Plugins, mode::KeyEvent}};
+/// #     #[derive(Clone)]
+/// #     pub struct Normal;
+/// #     impl Mode<Ui> for Normal {
+/// #         type Widget = File;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
+/// #             todo!();
+/// #         }
+/// #     }
+/// #     #[derive(Clone)]
+/// #     pub struct Insert;
+/// #     impl Mode<Ui> for Insert {
+/// #         type Widget = File;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
+/// #             todo!();
+/// #         }
+/// #     }
+/// #     pub struct Kak;
+/// #     impl Kak {
+/// #         pub fn new() -> Self { Self }
+/// #     }
+/// #     impl duat_core::Plugin<Ui> for Kak {
+/// #         fn plug(self, _: &Plugins<duat::Ui>) {}
+/// #     }
+/// # }
+#[doc = include_str!(concat!("../config/src/lib.rs"))]
+/// ```
+mod config {}
