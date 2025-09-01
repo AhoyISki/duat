@@ -642,13 +642,11 @@
     decl_macro,
     step_trait,
     type_alias_impl_trait,
-    trait_alias,
     debug_closure_helpers,
     unboxed_closures,
     associated_type_defaults,
     dropck_eyepatch,
     fn_traits,
-    box_as_ptr,
     iter_array_chunks,
     thread_spawn_hook
 )]
