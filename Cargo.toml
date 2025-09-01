@@ -22,13 +22,13 @@ exclude = ["config"]
 duat-core = { version = "0.6.0", path = "duat-core" }
 duat-utils = { version = "0.6.0", path = "duat-utils" }
 duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-filetype" }
+dirs-next = "2.0.0"
+log = "0.4.27"
 
 # List of UIs.
 duat-term = { version = "0.6.0", path = "duat-term", optional = true }
 
-dirs-next = "2.0.0"
-log = "0.4.27"
-
+# Cli dependencies
 [dependencies.clap]
 version = "4.5.46"
 features = ["derive"]
@@ -42,12 +42,24 @@ optional = true
 version = "8.2.0"
 optional = true
 
+# Default plugins
+## This one comes from the "treesitter" feature because
+## duat-treesitter is one of its dependencies, so it automatically
+## brings it in, and it is a much more "prevalent" feature than
+## matching pairs.
+[dependencies.match-pairs]
+version = "0.2.0"
+git = "https://github.com/AhoyISki/duat-match-pairs"
+package = "duat-match-pairs"
+optional = true
+
 [features]
-default = ["term-ui", "cli"]
+default = ["term-ui", "treesitter", "cli"]
 term-ui = ["dep:duat-term"]
 deadlocks = ["duat-core/deadlocks"]
 git-deps = []
 cli = ["dep:clap", "dep:libloading", "dep:notify"]
+treesitter = ["dep:match-pairs"]
 
 [[bin]]
 name = "duat"

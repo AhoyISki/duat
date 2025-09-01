@@ -162,7 +162,14 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     form::enable_mask("info");
     form::enable_mask("inactive");
 
-    mode::map::<mode::User>("L", Pager::<LogBook, Ui>::new())
+    mode::map::<mode::User>("L", Pager::<LogBook, Ui>::new());
+
+    #[cfg(feature = "treesitter")]
+    {
+        use duat_core::Plugins;
+
+        Plugins::<Ui>::_new().require::<match_pairs::MatchPairs>();
+    }
 }
 
 #[doc(hidden)]

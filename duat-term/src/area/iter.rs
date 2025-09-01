@@ -300,6 +300,8 @@ fn len_from(char: char, start: u32, max_width: u32, cfg: &PrintCfg) -> u32 {
             .min(max_width.saturating_sub(start))
             .max(1),
         '\n' => 0,
-        _ => UnicodeWidthChar::width(char).unwrap_or(0) as u32,
+        '\0'..='\u{1f}' => 2,
+        '\u{80}'..='\u{9f}' => 4,
+        char => UnicodeWidthChar::width(char).unwrap_or(0) as u32,
     }
 }

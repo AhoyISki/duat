@@ -38,10 +38,11 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("selection.main", Form::white().on_dark_grey().0, Normal),
     (
         "selection.extra",
-        Form::white().on_dark_grey().0,
+        Form::white().on_grey().0,
         Ref(M_SEL_ID.0 as usize),
     ),
     ("cloak", Form::grey().on_black().0, Normal),
+    ("character.control", Form::grey().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
@@ -63,19 +64,49 @@ mod global {
     static FORMS: OnceLock<&'static Mutex<Vec<&str>>> = OnceLock::new();
     static COLORSCHEMES: LazyLock<Mutex<Vec<Box<dyn ColorScheme>>>> = LazyLock::new(Mutex::default);
 
-    /// Either a [`Form`] or a name of a form
+    /// Either a [`Form`] or the name of a form
     ///
     /// Note that the referenced form does not need to exist for
-    /// [`form::set`] or [`form::set_weak`] to work properly.
+    /// [`form::set`] or [`form::set_weak`] to work properly. In that
+    /// case, a new form with that name will be created, as well as
+    /// any of its inherited parents (separated by `"."`).
     ///
     /// [`form::set`]: set
     /// [`form::set_weak`]: set_weak
-    pub trait FormFmt: InnerFormFmt {}
-    impl FormFmt for Form {}
-    impl FormFmt for BuiltForm {}
-    impl FormFmt for &str {}
-    impl FormFmt for &mut str {}
-    impl FormFmt for String {}
+    #[doc(hidden)]
+    pub trait FormFmt {
+        /// The kind of [`Form`] that this type represents
+        fn kind(&self) -> Kind;
+    }
+    impl FormFmt for Form {
+        fn kind(&self) -> Kind {
+            Kind::Form(*self)
+        }
+    }
+
+    impl FormFmt for BuiltForm {
+        fn kind(&self) -> Kind {
+            Kind::Form(self.0)
+        }
+    }
+
+    impl FormFmt for &str {
+        fn kind(&self) -> Kind {
+            Kind::Ref(self.to_string())
+        }
+    }
+
+    impl FormFmt for &mut str {
+        fn kind(&self) -> Kind {
+            Kind::Ref(self.to_string())
+        }
+    }
+
+    impl FormFmt for String {
+        fn kind(&self) -> Kind {
+            Kind::Ref(self.clone())
+        }
+    }
 
     /// Sets the [`Form`] by the name of `name`
     ///
@@ -395,25 +426,25 @@ mod global {
     /// [default `Form`]: Form::new
     pub macro id_of {
         ($form:expr) => {{
-            use $crate::form::FormId;
+            use $crate::form::{FormId, _set_many};
 
             static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
             *ID.get_or_init(|| {
                 let name = $form.to_string();
-                let id = id_from_name(&name);
-                add_forms(vec![name]);
-                id
+                _set_many(true, vec![(name, None)])[0]
             })
         }},
         ($($form:expr),+) => {{
+            use $crate::form::{Form, FormId, Kind, _set_many};
+
             static IDS: std::sync::OnceLock<&[FormId]> = std::sync::OnceLock::new();
             let ids = *IDS.get_or_init(|| {
                 let mut ids = Vec::new();
-                let names = vec![$( $form ),+];
+                let names = vec![$( ($form, None) ),+];
                 for name in names.iter() {
                     ids.push(id_from_name(name));
                 }
-                add_forms(names);
+                _set_many(true, names);
                 ids.leak()
             });
             ids
@@ -428,11 +459,7 @@ mod global {
     /// issue (usually with something like a [`HashMap`]).
     pub fn id_of_non_static(name: impl ToString) -> FormId {
         let name = name.to_string();
-
-        let mut forms = FORMS.get().unwrap().lock().unwrap();
-        let id = FormId(position_of_name(&mut forms, &name) as u16);
-        add_forms(vec![name]);
-        id
+        _set_many(true, vec![(name, None)])[0]
     }
 
     /// Non static version of [`id_of!`], for many [`Form`]s
@@ -442,27 +469,26 @@ mod global {
     /// case, you should try to find a way to memoize around this
     /// issue (usually with something like a [`HashMap`]).
     pub fn ids_of_non_static(names: impl IntoIterator<Item = impl ToString>) -> Vec<FormId> {
-        let names: Vec<String> = names.into_iter().map(|n| n.to_string()).collect();
+        let names: Vec<(String, Option<Kind>)> =
+            names.into_iter().map(|n| (n.to_string(), None)).collect();
+        _set_many(true, names)
+    }
 
+    /// Sets a bunch of [`Form`]s
+    #[doc(hidden)]
+    pub fn _set_many<S: AsRef<str> + Send + Sync + 'static>(
+        weak: bool,
+        sets: Vec<(S, Option<Kind>)>,
+    ) -> Vec<FormId> {
         let mut ids = Vec::new();
         let mut forms = FORMS.get().unwrap().lock().unwrap();
-        for name in names.iter() {
+        for (name, _) in sets.iter() {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
-        add_forms(names);
+
+        queue(move || PALETTE.get().unwrap().set_many(weak, &sets));
+
         ids
-    }
-
-    /// Returns the [`FormId`] of the form's name
-    #[doc(hidden)]
-    pub fn id_from_name(name: impl AsRef<str>) -> FormId {
-        let mut forms = FORMS.get().unwrap().lock().unwrap();
-        FormId(position_of_name(&mut forms, name) as u16)
-    }
-
-    #[doc(hidden)]
-    pub fn add_forms(names: Vec<String>) {
-        queue(move || PALETTE.get().unwrap().set_many(names.as_ref()));
     }
 
     /// Adds a [`ColorScheme`] to the list of colorschemes
@@ -504,11 +530,32 @@ mod global {
 
     /// Calls [`form::set`] on each tuple in the list
     ///
+    /// This macro should primarily be used by colorschemes. If you
+    /// want to call a weak version of this macro (most useful for
+    /// other types of [`Plugin`]), then see [`set_many_weak!`].
+    ///
     /// [`form::set`]: set
     pub macro set_many($(($name:literal, $form:expr)),+ $(,)?) {{
-        $(
-            set($name, $form);
-        )+
+        use $crate::form::FormFmt;
+        $crate::form::_set_many(false, vec![$( ($name, Some($form.kind())) ),+]);
+    }}
+
+    /// Calls [`form::set_weak`] on each tuple in the list
+    ///
+    /// This macro should be used when defining default colors in
+    /// [`Plugin`]s that are _not_ colorscheme [`Plugin`]s. This makes
+    /// it so the set [`Form`]s don't overrule the choices of the end
+    /// user, who might have called [`form::set`] or
+    /// [`form::set_colorscheme`] by the point that the [`Plugin`] is
+    /// added.
+    ///
+    /// [`Plugin`]: crate::Plugin
+    /// [`form::set_weak`]: set_weak
+    /// [`form::set`]: set
+    /// [`form::set_colorscheme`]: set_colorscheme
+    pub macro set_many_weak($(($name:literal, $form:expr)),+ $(,)?) {{
+        use $crate::form::FormFmt;
+        $crate::form::_set_many(true, vec![$( ($name, Some($form.kind())) ),+]);
     }}
 
     /// Wether or not a specific [`Form`] has been set
@@ -538,8 +585,7 @@ mod global {
             *id
         } else {
             let name = format!("default.{type_name}");
-            let id = id_from_name(&name);
-            add_forms(vec![name]);
+            let id = _set_many(true, vec![(name, None)])[0];
             ids.insert(type_id, id);
             id
         }
@@ -613,47 +659,10 @@ mod global {
     }
 
     /// A kind of [`Form`]
-    enum Kind {
+    #[doc(hidden)]
+    pub enum Kind {
         Form(Form),
         Ref(String),
-    }
-
-    /// So [`Form`]s and [`impl ToString`]s are arguments for [`set`]
-    ///
-    /// [`impl ToString`]: ToString
-    trait InnerFormFmt {
-        /// The kind of [`Form`] that this type represents
-        fn kind(&self) -> Kind;
-    }
-
-    impl InnerFormFmt for Form {
-        fn kind(&self) -> Kind {
-            Kind::Form(*self)
-        }
-    }
-
-    impl InnerFormFmt for BuiltForm {
-        fn kind(&self) -> Kind {
-            Kind::Form(self.0)
-        }
-    }
-
-    impl InnerFormFmt for &str {
-        fn kind(&self) -> Kind {
-            Kind::Ref(self.to_string())
-        }
-    }
-
-    impl InnerFormFmt for &mut str {
-        fn kind(&self) -> Kind {
-            Kind::Ref(self.to_string())
-        }
-    }
-
-    impl InnerFormFmt for String {
-        fn kind(&self) -> Kind {
-            Kind::Ref(self.clone())
-        }
     }
 }
 
@@ -980,25 +989,20 @@ impl From<BuiltForm> for Form {
     }
 }
 
-/// The [`FormId`] of the `"default"` form
+/// The [`FormId`] of `"default"`
 pub const DEFAULT_ID: FormId = FormId(0);
-/// The [`FormId`] of the `"accent"` form
+/// The [`FormId`] of `"accent"`
 pub const ACCENT_ID: FormId = FormId(1);
-/// The [`FormId`] of the `"caret.main"` form
+/// The [`FormId`] of `"caret.main"`
 pub const M_CAR_ID: FormId = FormId(2);
-/// The [`FormId`] of the `"caret.extra"` form
+/// The [`FormId`] of `"caret.extra"`
 pub const E_CAR_ID: FormId = FormId(3);
-/// The [`FormId`] of the `"slection.main"` form
+/// The [`FormId`] of `"slection.main"`
 pub const M_SEL_ID: FormId = FormId(4);
-/// The [`FormId`] of the `"selection.extra"` form
+/// The [`FormId`] of `"selection.extra"`
 pub const E_SEL_ID: FormId = FormId(5);
-
-struct InnerPalette {
-    main_cursor: Option<CursorShape>,
-    extra_cursor: Option<CursorShape>,
-    forms: Vec<(&'static str, Form, FormType)>,
-    masks: Vec<(&'static str, Vec<u16>)>,
-}
+/// The [`FormId`] of `"character.control"`
+pub const CONTROL_CHAR_ID: FormId = FormId(7);
 
 /// The list of forms to be used when rendering.
 ///
@@ -1025,112 +1029,40 @@ impl Palette {
     /// Sets a [`Form`]
     fn set_form(&self, name: impl AsRef<str>, form: Form) {
         let name = name.as_ref();
-        let mut inner = self.0.write().unwrap();
-        let (i, _) = position_and_form(&mut inner.forms, name);
-
-        inner.forms[i].1 = form;
-        inner.forms[i].2 = FormType::Normal;
-
-        for refed in refs_of(&inner, i) {
-            inner.forms[refed].1 = form;
-        }
-
-        if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
-        }
-
-        mask_form(name, i, &mut inner);
-        hook::queue(FormSet((inner.forms[i].0, FormId(i as u16), form)));
+        self.0.write().unwrap().set_form(name, form);
     }
 
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: impl AsRef<str>, form: Form) {
         let name = name.as_ref();
-
-        let mut inner = self.0.write().unwrap();
-        let (i, _) = position_and_form(&mut inner.forms, name);
-
-        let (_, f, f_ty) = &mut inner.forms[i];
-        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
-            *f = form;
-            *f_ty = FormType::Normal;
-
-            if let Some(sender) = SENDER.get() {
-                sender.send_form_changed().unwrap()
-            }
-            for refed in refs_of(&inner, i) {
-                inner.forms[refed].1 = form;
-            }
-
-            mask_form(name, i, &mut inner);
-        }
+        self.0.write().unwrap().set_weak_form(name, form);
     }
 
     /// Makes a [`Form`] reference another
     fn set_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
         let (name, refed) = (name.as_ref(), refed.as_ref());
-        let mut inner = self.0.write().unwrap();
-        let (refed, form) = position_and_form(&mut inner.forms, refed);
-        let (i, _) = position_and_form(&mut inner.forms, name);
-
-        inner.forms[i].1 = form;
-        for refed in refs_of(&inner, i) {
-            inner.forms[refed].1 = form;
-        }
-
-        // If it would be circular, we just don't reference anything.
-        if would_be_circular(&inner, i, refed) {
-            inner.forms[i].2 = FormType::Normal;
-        } else {
-            inner.forms[i].2 = FormType::Ref(refed);
-        }
-
-        if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
-        }
-
-        mask_form(name, i, &mut inner);
-        hook::queue(FormSet((inner.forms[i].0, FormId(i as u16), form)));
+        self.0.write().unwrap().set_ref(name, refed);
     }
 
     /// Makes a [`Form`] reference another "weakly"
     fn set_weak_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
         let (name, refed) = (name.as_ref(), refed.as_ref());
-        let mut inner = self.0.write().unwrap();
-        let (refed, form) = position_and_form(&mut inner.forms, refed);
-        let (i, _) = position_and_form(&mut inner.forms, name);
-
-        // For weak refs, no checks are done, since a form is only set if it
-        // doesn't exist, and for there to be refs to it, it must exist.
-        let (_, f, f_ty) = &mut inner.forms[i];
-        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
-            *f = form;
-            *f_ty = FormType::WeakestRef(refed);
-
-            if let Some(sender) = SENDER.get() {
-                sender.send_form_changed().unwrap()
-            }
-            for refed in refs_of(&inner, i) {
-                inner.forms[refed].1 = form;
-            }
-
-            mask_form(name, i, &mut inner);
-        }
+        self.0.write().unwrap().set_weak_ref(name, refed);
     }
 
     /// Sets many [`Form`]s
-    fn set_many<S: AsRef<str>>(&self, names: &[S]) {
+    fn set_many<S: AsRef<str>>(&self, weak: bool, sets: &[(S, Option<self::global::Kind>)]) {
         let mut inner = self.0.write().unwrap();
-        let form_indices: Vec<(usize, &str)> = names
-            .iter()
-            .map(|name| {
-                let (i, _) = position_and_form(&mut inner.forms, name.as_ref());
-                (i, inner.forms[i].0)
-            })
-            .collect();
-
-        for (i, name) in form_indices {
-            mask_form(name, i, &mut inner);
+        for (name, kind) in sets {
+            match (weak, kind) {
+                (false, Some(Kind::Form(form))) => inner.set_form(name.as_ref(), *form),
+                (false, Some(Kind::Ref(refed))) => inner.set_ref(name.as_ref(), refed),
+                (true, Some(Kind::Form(form))) => inner.set_weak_form(name.as_ref(), *form),
+                (true, Some(Kind::Ref(refed))) => inner.set_weak_ref(name.as_ref(), refed),
+                (_, None) => {
+                    position_and_form(&mut inner.forms, name);
+                }
+            }
         }
     }
 
@@ -1211,6 +1143,103 @@ impl Palette {
             set_bg: true,
             set_ul: true,
             reset_attrs: false,
+        }
+    }
+}
+
+struct InnerPalette {
+    main_cursor: Option<CursorShape>,
+    extra_cursor: Option<CursorShape>,
+    forms: Vec<(&'static str, Form, FormType)>,
+    masks: Vec<(&'static str, Vec<u16>)>,
+}
+
+impl InnerPalette {
+    /// Sets a [`Form`]
+    fn set_form(&mut self, name: &str, form: Form) {
+        crate::context::debug!("set {name} to {form:?}");
+        let (i, _) = position_and_form(&mut self.forms, name);
+
+        self.forms[i].1 = form;
+        self.forms[i].2 = FormType::Normal;
+
+        for refed in refs_of(self, i) {
+            self.forms[refed].1 = form;
+        }
+
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
+
+        mask_form(name, i, self);
+        hook::queue(FormSet((self.forms[i].0, FormId(i as u16), form)));
+    }
+
+    /// Sets a [`Form`] "weakly"
+    fn set_weak_form(&mut self, name: &str, form: Form) {
+        let (i, _) = position_and_form(&mut self.forms, name);
+
+        let (_, f, f_ty) = &mut self.forms[i];
+        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
+            *f = form;
+            *f_ty = FormType::Normal;
+
+            if let Some(sender) = SENDER.get() {
+                sender.send_form_changed().unwrap()
+            }
+            for refed in refs_of(self, i) {
+                self.forms[refed].1 = form;
+            }
+
+            mask_form(name, i, self);
+        }
+    }
+
+    /// Makes a [`Form`] reference another
+    fn set_ref(&mut self, name: &str, refed: &str) {
+        let (refed, form) = position_and_form(&mut self.forms, refed);
+        let (i, _) = position_and_form(&mut self.forms, name);
+
+        self.forms[i].1 = form;
+        for refed in refs_of(self, i) {
+            self.forms[refed].1 = form;
+        }
+
+        // If it would be circular, we just don't reference anything.
+        if would_be_circular(self, i, refed) {
+            self.forms[i].2 = FormType::Normal;
+        } else {
+            self.forms[i].2 = FormType::Ref(refed);
+        }
+
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
+
+        mask_form(name, i, self);
+        hook::queue(FormSet((self.forms[i].0, FormId(i as u16), form)));
+    }
+
+    /// Makes a [`Form`] reference another "weakly"
+    fn set_weak_ref(&mut self, name: &str, refed: &str) {
+        let (refed, form) = position_and_form(&mut self.forms, refed);
+        let (i, _) = position_and_form(&mut self.forms, name);
+
+        // For weak refs, no checks are done, since a form is only set if it
+        // doesn't exist, and for there to be refs to it, it must exist.
+        let (_, f, f_ty) = &mut self.forms[i];
+        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
+            *f = form;
+            *f_ty = FormType::WeakestRef(refed);
+
+            if let Some(sender) = SENDER.get() {
+                sender.send_form_changed().unwrap()
+            }
+            for refed in refs_of(self, i) {
+                self.forms[refed].1 = form;
+            }
+
+            mask_form(name, i, self);
         }
     }
 }

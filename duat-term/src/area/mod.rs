@@ -6,7 +6,7 @@ use std::{cell::RefCell, fmt::Alignment, rc::Rc, sync::Arc};
 use crossterm::cursor;
 use duat_core::{
     cfg::PrintCfg,
-    form::Painter,
+    form::{CONTROL_CHAR_ID, Painter},
     text::{FwdIter, Item, Part, Point, RevIter, Text, txt},
     ui::{self, Axis, Caret, Constraint, MutArea, PushSpecs, SpawnSpecs},
 };
@@ -152,15 +152,33 @@ impl Area {
 
                 match part {
                     Part::Char(char) => {
-                        if style_was_set {
-                            style!(lines, &mut ansi_codes, painter.relative_style());
-                            style_was_set = false;
-                        }
                         match char {
-                            '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
+                            '\t' => {
+                                if style_was_set {
+                                    style!(lines, &mut ansi_codes, painter.relative_style());
+                                    style_was_set = false;
+                                }
+                                (0..len).for_each(|_| lines.push_char(' ', 1));
+                            }
                             '\n' | '\r' => {}
-                            char => lines.push_char(char, len),
+                            char => {
+                                if let Some(str) = get_control_str(char) {
+                                    painter.apply(CONTROL_CHAR_ID, 100);
+                                    let style = painter.relative_style();
+                                    duat_core::context::info!("{CONTROL_CHAR_ID:?}, {style:#?}");
+                                    style!(lines, &mut ansi_codes, style);
+                                    str.chars().for_each(|c| lines.push_char(c, 1));
+                                    painter.remove(CONTROL_CHAR_ID)
+                                } else {
+                                    if style_was_set {
+                                        style!(lines, &mut ansi_codes, painter.relative_style());
+                                        style_was_set = false;
+                                    }
+                                    lines.push_char(char, len)
+                                }
+                            }
                         }
+
                         if let Some(cursor) = cursor.take() {
                             match cursor {
                                 Cursor::Main => painter.remove_main_caret(),
@@ -685,4 +703,74 @@ fn get_layout_mut(layouts: &mut [Layout], id: AreaId) -> Option<&mut Layout> {
 
 fn get_layout_pos(layouts: &[Layout], id: AreaId) -> Option<usize> {
     layouts.iter().position(|l| l.get(id).is_some())
+}
+
+const fn get_control_str(char: char) -> Option<&'static str> {
+    match char {
+        '\0' => Some("^@"),
+        '\u{01}' => Some("^A"),
+        '\u{02}' => Some("^B"),
+        '\u{03}' => Some("^C"),
+        '\u{04}' => Some("^D"),
+        '\u{05}' => Some("^E"),
+        '\u{06}' => Some("^F"),
+        '\u{07}' => Some("^G"),
+        '\u{08}' => Some("^H"),
+        '\u{09}' => Some("^I"),
+        '\u{0a}' => Some("^J"),
+        '\u{0b}' => Some("^K"),
+        '\u{0c}' => Some("^L"),
+        '\u{0d}' => Some("^M"),
+        '\u{0e}' => Some("^N"),
+        '\u{0f}' => Some("^O"),
+        '\u{10}' => Some("^P"),
+        '\u{11}' => Some("^Q"),
+        '\u{12}' => Some("^R"),
+        '\u{13}' => Some("^S"),
+        '\u{14}' => Some("^T"),
+        '\u{15}' => Some("^U"),
+        '\u{16}' => Some("^V"),
+        '\u{17}' => Some("^W"),
+        '\u{18}' => Some("^X"),
+        '\u{19}' => Some("^Y"),
+        '\u{1a}' => Some("^Z"),
+        '\u{1b}' => Some("^["),
+        '\u{1c}' => Some("^\\"),
+        '\u{1d}' => Some("^]"),
+        '\u{1e}' => Some("^^"),
+        '\u{1f}' => Some("^_"),
+        '\u{80}' => Some("<80>"),
+        '\u{81}' => Some("<81>"),
+        '\u{82}' => Some("<82>"),
+        '\u{83}' => Some("<83>"),
+        '\u{84}' => Some("<84>"),
+        '\u{85}' => Some("<85>"),
+        '\u{86}' => Some("<86>"),
+        '\u{87}' => Some("<87>"),
+        '\u{88}' => Some("<88>"),
+        '\u{89}' => Some("<89>"),
+        '\u{8a}' => Some("<8a>"),
+        '\u{8b}' => Some("<8b>"),
+        '\u{8c}' => Some("<8c>"),
+        '\u{8d}' => Some("<8d>"),
+        '\u{8e}' => Some("<8e>"),
+        '\u{8f}' => Some("<8f>"),
+        '\u{90}' => Some("<90>"),
+        '\u{91}' => Some("<91>"),
+        '\u{92}' => Some("<92>"),
+        '\u{93}' => Some("<93>"),
+        '\u{94}' => Some("<94>"),
+        '\u{95}' => Some("<95>"),
+        '\u{96}' => Some("<96>"),
+        '\u{97}' => Some("<97>"),
+        '\u{98}' => Some("<98>"),
+        '\u{99}' => Some("<99>"),
+        '\u{9a}' => Some("<9a>"),
+        '\u{9b}' => Some("<9b>"),
+        '\u{9c}' => Some("<9c>"),
+        '\u{9d}' => Some("<9d>"),
+        '\u{9e}' => Some("<9e>"),
+        '\u{9f}' => Some("<9f>"),
+        _ => None,
+    }
 }
