@@ -106,7 +106,7 @@ impl Cache {
             let hash_value = hasher.finish();
 
             let cached_file_name = {
-                let mut name = OsString::from(format!("{hash_value}:"));
+                let mut name = OsString::from(format!("{hash_value}-"));
                 name.push(file_name);
                 name
             };
@@ -135,7 +135,7 @@ impl Cache {
         let hash_value = hasher.finish();
 
         let cached_file_name = {
-            let mut name = OsString::from(format!("{hash_value}:"));
+            let mut name = OsString::from(format!("{hash_value}-"));
             name.push(file_name);
             name
         };
