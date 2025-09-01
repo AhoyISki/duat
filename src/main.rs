@@ -69,7 +69,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(name) = args.init_plugin {
         std::fs::create_dir(&name)?;
-        
     }
 
     // Initializers for access to static variables across two different
