@@ -62,13 +62,7 @@ macro_rules! doc_duat {
                     }
                 }
 
-                macro_rules! plug {
-                    ($dol($dol plugin:expr),* $dol(,)?) => {{
-                        $dol(
-                            Plugin::<Ui>::plug($dol plugin);
-                        )*
-                    }}
-                }
+                pub fn plug<P: $crate::Plugin<Ui>>(_: P) {}
 
                 pub fn exec(_: impl ToString) -> Option<Output> {
                     None
@@ -251,7 +245,7 @@ macro_rules! doc_duat {
                 impl $crate::ui::Ui for Ui {
                     type Area = Area;
                     type MetaStatics = ();
-                    fn open(_: &'static Self::MetaStatics, _: $crate::ui::Sender) {}
+                    fn open(_: &'static Self::MetaStatics, _: $crate::ui::DuatSender) {}
                     fn close(_: &'static Self::MetaStatics) {}
                     fn new_root(
                         _: &'static Self::MetaStatics,
@@ -261,6 +255,7 @@ macro_rules! doc_duat {
                     }
                     fn switch_window(_: &'static Self::MetaStatics, _: usize) {}
                     fn flush_layout(_: &'static Self::MetaStatics) {}
+                    fn print(_: &'static Self::MetaStatics) {}
                     fn load(_: &'static Self::MetaStatics) {}
                     fn unload(_: &'static Self::MetaStatics) {}
                     fn remove_window(_: &'static Self::MetaStatics, _: usize) {}

@@ -723,14 +723,16 @@ pub mod utils;
 /// compatible with the [`Ui`]:
 ///
 /// ```rust
-/// # use duat_core::{Plugin, ui::Ui};
+/// # use duat_core::{Plugin, Plugins, ui::Ui};
 /// // It's not a supertrait of Plugin, but you must implement
 /// // Default in order to use the plugin.
 /// #[derive(Default)]
 /// struct MyPlugin(bool);
 ///
 /// impl<U: Ui> Plugin<U> for MyPlugin {
-///     fn plug(self) {
+///     // With the Plugins struct, you can require other plugins
+///     // within your plugin
+///     fn plug(self, plugins: &Plugins<U>) {
 ///         //..
 ///     }
 /// }

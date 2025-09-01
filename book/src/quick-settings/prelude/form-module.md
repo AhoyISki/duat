@@ -46,12 +46,13 @@ a previously named one:
 
 ```rust
 # mod catppuccin {
+#     use duat::prelude::*;
 #     pub struct Catppuccin;
 #     impl Catppuccin {
 #         pub fn new() -> Self { Self }
 #     }
-#     impl duat::prelude::Plugin<duat::Ui> for Catppuccin {
-#         fn plug(self) { todo!() }
+#     impl duat_core::Plugin<duat::Ui> for Catppuccin {
+#         fn plug(self, _: &duat_core::Plugins<Ui>) { todo!() }
 #     }
 # }
 setup_duat!(setup);
@@ -60,7 +61,7 @@ use catppuccin::Catppuccin;
 
 fn setup() {
     // Adds four colorschemes, "catppuccin-latte" among them.
-    plug!(Catppuccin::new());
+    plug(Catppuccin::new());
     
     form::set_colorscheme("catppuccin-latte");
 }

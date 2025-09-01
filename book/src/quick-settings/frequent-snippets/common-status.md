@@ -60,7 +60,7 @@ Customized `main_txt`:
 ```rust
 # use duat::prelude::*;
 hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
-    cfg.fmt(status(
+    cfg.fmt(status!(
         "{name_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
         mode_txt(pa),
         |file: &File| file.text().len().line()

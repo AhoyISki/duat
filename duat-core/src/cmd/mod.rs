@@ -186,7 +186,7 @@
 //!         let child = std::process::Command::new("pip").spawn()?;
 //!         let res = child.wait_with_output()?;
 //!
-//!         Ok(Some(txt!("{res}").build()))
+//!         Ok(Some(txt!("{res:?}").build()))
 //!     });
 //! }
 //! ```

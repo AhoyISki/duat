@@ -51,14 +51,14 @@ something like this:
 #         pub fn new() -> Self { Self }
 #     }
 #     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self) {}
+#         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
 # }
 setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
 
     print::wrap_at(150);
     print::trailing_new_line('󱁐');

@@ -113,14 +113,14 @@
 //! #         pub fn new() -> Self { Self }
 //! #     }
 //! #     impl duat_core::Plugin<Ui> for Kak {
-//! #         fn plug(self) {}
+//! #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 //! #     }
 //! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
-//! 
+//!
 //! fn setup() {
-//!     plug!(kak::Kak::new());
+//!     plug(kak::Kak::new());
 //!     map::<kak::Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_edge();
@@ -606,7 +606,7 @@ pub mod hook {
     /// #         pub fn new() -> Self { Self }
     /// #     }
     /// #     impl duat_core::Plugin<Ui> for Kak {
-    /// #         fn plug(self) {}
+    /// #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
     /// #     }
     /// # }
     /// setup_duat!(setup);
@@ -962,8 +962,7 @@ pub macro setup_duat($setup:expr) {
 pub mod prelude {
     use std::{any::TypeId, process::Output};
 
-    pub use duat_core::{
-        self, clipboard, context,
+    pub use duat_core::{clipboard, context,
         data::{self, Pass},
         file,
         prelude::Lender,
@@ -1140,17 +1139,17 @@ mod book;
 #[doc(hidden)]
 /// ```rust
 /// # mod catppuccin {
-/// #     use duat::prelude::duat_core::Plugins;
+/// #     use duat::prelude::*;
 /// #     pub struct Catppuccin;
 /// #     impl Catppuccin {
 /// #         pub fn new() -> Self { Self }
 /// #     }
 /// #     impl duat_core::Plugin<duat::Ui> for Catppuccin {
-/// #         fn plug(self, _: &Plugins<duat::Ui>) {}
+/// #         fn plug(self, _: &duat_core::Plugins<duat::Ui>) {}
 /// #     }
 /// # }
 /// # mod kak {
-/// #     use duat::{prelude::{*, duat_core::Plugins, mode::KeyEvent}};
+/// #     use duat::{prelude::{*, mode::KeyEvent}};
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
 /// #     impl Mode<Ui> for Normal {
@@ -1172,9 +1171,9 @@ mod book;
 /// #         pub fn new() -> Self { Self }
 /// #     }
 /// #     impl duat_core::Plugin<Ui> for Kak {
-/// #         fn plug(self, _: &Plugins<duat::Ui>) {}
+/// #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 /// #     }
 /// # }
-#[doc = include_str!(concat!("../config/src/lib.rs"))]
+#[doc = include_str!("../config/src/lib.rs")]
 /// ```
 mod config {}

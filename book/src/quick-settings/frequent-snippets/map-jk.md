@@ -13,13 +13,6 @@ This one is pretty simple. Assuming you are using some sort of `Insert` `Mode`:
 #             todo!();
 #         }
 #     }
-#     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
-#     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self) {}
-#     }
 # }
 # use duat::prelude::*;
 # setup_duat!(setup);
@@ -44,13 +37,6 @@ use this:
 #             todo!();
 #         }
 #     }
-#     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
-#     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self) {}
-#     }
 # }
 # use duat::prelude::*;
 # setup_duat!(setup);
@@ -71,13 +57,6 @@ Additionally, if you want to write to the file on `jk` as well, you can do this:
 #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
 #             todo!();
 #         }
-#     }
-#     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
-#     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self) {}
 #     }
 # }
 # use duat::prelude::*;

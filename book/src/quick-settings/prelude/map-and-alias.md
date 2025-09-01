@@ -19,7 +19,7 @@ works:
 #         pub fn new() -> Self { Self }
 #     }
 #     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self) {}
+#         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
 # }
 setup_duat!(setup);
@@ -27,7 +27,7 @@ use duat::prelude::*;
 
 fn setup() {
     // Adds kakoune-like editing modes, like Insert, Normal and OneKey
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
   
     map::<User>("f", "<Esc>|fold -s<Enter>");
     alias::<kak::Insert>("jk", "<Esc>");
@@ -67,14 +67,14 @@ While you _can_ change that like this:
 #         pub fn new() -> Self { Self }
 #     }
 #     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self) {}
+#         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
 # }
 setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
   
     map::<kak::Normal>(" ", "");
     // In rust, you have to escap a backslash
@@ -100,7 +100,7 @@ You _should_ prefer doing this:
 #         pub fn new() -> Self { Self }
 #     }
 #     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self) {}
+#         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
 # }
 setup_duat!(setup);
@@ -108,7 +108,7 @@ use duat::prelude::*;
 use kak::Kak;
 
 fn setup() {
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
   
     map::<kak::Normal>(" ", "");
     map::<kak::Normal>("\\", User);
@@ -123,6 +123,7 @@ place the `Mode` as the second argument, and the mapping will switch modes
 instead of sending keys. This also works with `alias`es.
 
 > [!NOTE]
+>
 > In this case, since `User` is a struct with no fields, I could just put 
 > `User` as the second argument, which acts as a constructor. But in most other 
 > `Mode`s, you're gonna have to write something like `Insert::new()` as the 
