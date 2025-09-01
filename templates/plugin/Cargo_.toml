@@ -1,0 +1,15 @@
+[package]
+name = "plugin-name"
+version = "0.1.0"
+edition = "2024"
+authors = ["{author_name}"]
+description = "A duat plugin to ..."
+repository = "{repository_url}"
+# By creating a plugin for Duat, it needs to be GPL3
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "text", "plugin", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+
+[dependencies]
+duat-core = { version = "0.6.0", git = "https://github.com/AhoyISki/duat" }

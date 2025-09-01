@@ -61,14 +61,61 @@ struct Args {
     update: bool,
     /// Initializes a new Duat Plugin
     #[arg(long, value_name = "NAME", global = true)]
-    init_plugin: Option<String>
+    init_plugin: Option<String>,
+    /// The Plugin's repository
+    #[arg(long, value_name = "REPO", requires = "init_plugin")]
+    repository: Option<String>,
+    /// The Plugin's author
+    #[arg(long, value_name = "AUTHOR", requires = "init_plugin")]
+    author: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = <Args as clap::Parser>::parse();
 
     if let Some(name) = args.init_plugin {
-        std::fs::create_dir(&name)?;
+        use convert_case::{Case, Casing};
+        const PLUGIN_TOML: &str = include_str!("../templates/plugin/Cargo_.toml");
+        const PLUGIN_README: &str = include_str!("../templates/plugin/README.md");
+        const PLUGIN_LIB: &str = include_str!("../templates/plugin/lib.rs");
+
+        if !name.is_case(Case::Kebab) {
+            println!("\x1b[33mwarning:\x1b[0m converting plugin name to kebab-case");
+        }
+
+        let kebab_name = name.to_case(Case::Kebab);
+        let snake_name = name.to_case(Case::Snake);
+        let pascal_name = name.to_case(Case::Pascal);
+        let plugin_dir = PathBuf::from(&kebab_name);
+
+        std::fs::create_dir(&plugin_dir)?;
+        std::fs::create_dir(plugin_dir.join("src"))?;
+
+        let repo = args.repository.unwrap_or("{repository_url}".to_string());
+        let author = args.author.unwrap_or("{author_name}".to_string());
+
+        let toml = PLUGIN_TOML
+            .replace("plugin-name", &kebab_name)
+            .replace("{repository_url}", &repo)
+            .replace("{author_name}", &author);
+
+        let readme = PLUGIN_README
+            .replace("plugin-name", &kebab_name)
+            .replace("plugin_name", &snake_name)
+            .replace("PluginName", &pascal_name)
+            .replace("{repository_url}", &repo);
+
+        let lib = PLUGIN_LIB
+            .replace("plugin_name", &snake_name)
+            .replace("PluginName", &pascal_name);
+
+        std::fs::write(plugin_dir.join("Cargo.toml"), toml)?;
+        std::fs::write(plugin_dir.join("README.md"), readme)?;
+        std::fs::write(plugin_dir.join("src").join("lib.rs"), lib)?;
+
+        println!("Created a plugin crate at {kebab_name}");
+
+        return Ok(());
     }
 
     // Initializers for access to static variables across two different

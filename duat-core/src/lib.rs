@@ -758,7 +758,7 @@ pub mod utils;
 ///
 /// [plugged]: Plugin::plug
 /// [`PhantomData`]: std::marker::PhantomData
-pub trait Plugin<U: Ui>: 'static {
+pub trait Plugin<U: Ui>: Default + 'static {
     /// Sets up the [`Plugin`]
     fn plug(self, plugins: &Plugins<U>);
 }
