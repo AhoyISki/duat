@@ -1,11 +1,15 @@
-// This is mostly for convenience and testing, you can change it for
-// something else
-#![doc = include_str!("README.md")]
+// If you want, you can include the README as the description
+//
+// By running `cargo test --doc`, you will be able to test if the
+// examples in this file work.
+//
+// #![doc = include_str!("README.md")]
 use duat_core::prelude::*;
 
 /// A plugin for ...
 ///
 /// A longer description for this plugin is ...
+#[derive(Default)]
 pub struct PluginName(usize, bool);
 
 impl PluginName {
@@ -21,11 +25,11 @@ impl PluginName {
 }
 
 impl<U: Ui> Plugin<U> for PluginName {
-    impl plug(self, plugins: &Plugins<U>) {
-        // Plugin requirementes:
+    fn plug(self, plugins: &Plugins<U>) {
+        // Plugin requirement example:
         // plugins.require::<SomeOtherPlugin<U>>();
 
-        // Further processing, like adding hooks, parsers, widgets, etc.
-        // ...
+        // Further processing, like adding hooks, parsers, widgets,
+        // etc. ...
     }
 }

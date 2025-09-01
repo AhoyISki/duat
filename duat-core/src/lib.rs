@@ -107,33 +107,22 @@
 //!
 //! First of all, assuming that you have succeeded in following the
 //! [installation instructions of duat], you should create a crate
-//! with `cargo init`:
+//! with `duat --init-plugin`:
 //!
 //! ```bash
-//! cargo init --lib duat-word-count
-//! cd duat-word-count
+//! duat --init-plugin duat-word-count
 //! ```
 //!
-//! Wihin that crate, you're should add the `duat-core` dependency:
-//!
-//! ```bash
-//! cargo add duat-core
-//! ```
-//!
-//! Or, if you're using git dependencies:
-//!
-//! ```bash
-//! cargo add duat-core --git https://github.com/AhoyISki/duat
-//! ```
-//!
-//! Finally, you can remove everything in `duat-word-count/src/lib.rs`
-//! and start writing your plugin.
+//! This should create a directory named `"duat-word-count"`, where
+//! the `WordCount` plugin is defined. There is some example
+//! boilerplate, removing it, you should get something like this:
 //!
 //! ```rust
 //! // In duat-word-count/src/lib.rs
 //! use duat_core::prelude::*;
 //!
 //! /// A [`Plugin`] to count the number of words in [`File`]s
+//! #[derive(Default)]
 //! pub struct WordCount;
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
@@ -143,7 +132,11 @@
 //! }
 //! ```
 //!
-//! In the example, `WordCount` is a plugin that can be included in
+//! The [`Plugins`] struct can be used to require that other
+//! [`Plugin`]s be added to Duat as well. We won't use it in this
+//! example.
+//!
+//! In the code above, `WordCount` is a plugin that can be included in
 //! Duat's `config` crate. It will give the user the ability to get
 //! how many words are in a [`File`], without having to reparse the
 //! whole buffer every time, given that it could be a very large file.
@@ -154,6 +147,7 @@
 //! use duat_core::prelude::*;
 //!
 //! /// A [`Plugin`] to count the number of words in [`File`]s
+//! #[derive(Default)]
 //! pub struct WordCount(bool);
 //!
 //! impl WordCount {
@@ -169,7 +163,7 @@
 //! }
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn plug(self, plugins: &Plugins<U>) {
+//!     fn plug(self, _: &Plugins<U>) {
 //!         todo!();
 //!     }
 //! }
@@ -188,56 +182,62 @@
 //!
 //! /// A [`Parser`] to keep track of words in a [`File`]
 //! struct WordCounter {
+//!     tracker: FileTracker,
 //!     words: usize,
 //!     regex: &'static str,
 //! }
 //!
 //! impl<U: Ui> Parser<U> for WordCounter {
-//!     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
+//!     fn parse(&mut self) -> bool {
 //!         todo!();
 //!     }
 //! }
 //! ```
 //!
-//! Whenever changes take place in a [`File`], those changes will be
-//! reported in a [`Moment`], which is essentially just a list of
-//! [`Change`]s that took place. This [`Moment`], in a
-//! [`FileSnapshot`], will be sent to the [`Parser::parse`] function,
-//! in which you are supposed to change the internal state of the
-//! [`Parser`] to accomodate the [`Change`]s.
+//! There are a few things to unpack here:
 //!
-//! The [`FileSnapshot`] gives you a "snapshot" of what the [`File`]
-//! looked like after said [`Moment`] took place. It includes the
-//! [`Moment`] in question, the [`Bytes`] of the [`File`]'s [`Text`],
-//! and the [`PrintCfg`] at that moment in time.
+//! - The `WordCounter` has a [`FileTracker`] struct within: This
+//!   tracker is acquired when constructing the [`Parser`], and it can
+//!   track [`Change`]s to the [`File`]. It does this by having its
+//!   own copy of the [`File`]s [`Bytes`], which it updates as
+//!   requested, allowing parsers to work in different threads.
+//! - The [`Parser::parse`] function: This function is called every
+//!   time the [`File`] is updated, and a return value of `true` means
+//!   that this [`Parser`] wants to update the [`File`] itself, which
+//!   will call [`Parser::update`]. I won't be using this feature, so
+//!   I can just return `false`.
 //!
-//! First, I'm going to write a function that figures out how many
-//! words were added or removed by a [`Change`]:
+//! This is the basic layout for a [`Parser`] that doesn't need to
+//! modify the [`File`] itself, which is our case.
+//!
+//! Next, I'll make use of duat's [`Text`] API in order to figure out
+//! the word count difference given a [`Change`] to the text:
 //!
 //! ```rust
 //! use duat_core::{prelude::*, text::Change};
 //!
 //! fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
+//!     // The starting and ending points of the lines where the Change
+//!     // took place.
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
-//!     // Recreate the line as it was before the change
+//!     // Recreate the lines as they were before the change
 //!     // behind_change is just the part of the line before the point
 //!     // where a change starts.
 //!     // ahead_of_change is the part of the line after the end of
 //!     // the Change
-//!     let mut behind_change = bytes.strs(start..change.start()).unwrap().to_string();
+//!     let behind_change = bytes.strs(start..change.start()).unwrap().to_string();
 //!     let ahead_of_change = bytes.strs(change.added_end()..end).unwrap();
 //!     // change.taken_str() is the &str that was taken by the Change
-//!     behind_change.push_str(change.taken_str());
-//!     // By adding these three together, I now have:
-//!     // {behind_change}{change.taken_str()}{ahead_of_change}
-//!     // Which is what the line looked like before the Change happened
-//!     behind_change.extend(ahead_of_change);
+//!     let taken_by_change = change.taken_str();
+//!     // By adding these three together, I now have a string for what
+//!     // the lines looked like before the Change took place:
+//!     let lines_before = format!("{behind_change}{taken_by_change}{ahead_of_change}");
 //!
 //!     // Here, I'm just counting the number of occurances of the
-//!     // regex in the line before and after the change.
-//!     let words_before = behind_change.search_fwd(regex, ..).unwrap().count();
+//!     // regex in the lines before and after the change.
+//!     let words_before = lines_before.search_fwd(regex, ..).unwrap().count();
 //!     let words_after = bytes.search_fwd(regex, start..end).unwrap().count();
 //!
 //!     words_after as i32 - words_before as i32
@@ -261,23 +261,38 @@
 //!
 //! /// A [`Parser`] to keep track of words in a [`File`]
 //! struct WordCounter {
+//!     tracker: FileTracker,
 //!     words: usize,
 //!     regex: &'static str,
 //! }
 //!
 //! impl<U: Ui> Parser<U> for WordCounter {
-//!     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, _: Option<&mut Ranges>) {
+//!     fn parse(&mut self) -> bool {
+//!         // Fetches the latest updates from the File
+//!         self.tracker.update();
+//!
 //!         // Rust iterators are magic 🪄
-//!         let diff: i32 = snap
-//!             .moment
+//!         let diff: i32 = self
+//!             .tracker
+//!             .moment()
 //!             .changes()
-//!             .map(|change| word_diff(self.regex, &snap.bytes, change))
+//!             .map(|change| word_diff(self.regex, &self.tracker.bytes(), change))
 //!             .sum();
 //!
 //!         self.words = (self.words as i32 + diff) as usize;
+//!
+//!         // We don't care about updating the File, so just return false.
+//!         false
 //!     }
 //! }
 //! ```
+//!
+//! You'll notice that the [`FileTracker`] has a
+//! [`FileTracker::moment`] method. This method returns a [`Moment`],
+//! which is a list of all the [`Change`]s that took place since the
+//! previous call to [`FileTracker::update`]. By iterating through
+//! these changes, the [`Parser`] can keep up with every [`Change`]
+//! that takes place in the [`File`].
 //!
 //! And that's it for the [`Parser`] implementation! Now, how do we
 //! add it to a [`File`]?
@@ -288,11 +303,12 @@
 //!
 //! ```rust
 //! # struct WordCounter {
+//! #     tracker: FileTracker,
 //! #     words: usize,
 //! #     regex: &'static str,
 //! # }
 //! # impl<U: Ui> Parser<U> for WordCounter {
-//! #     fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {}
+//! #     fn parse(&mut self) -> bool { todo!() }
 //! # }
 //! use duat_core::prelude::*;
 //!
@@ -301,86 +317,48 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+//!     fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
-//!         let word_counter = WordCounter { words, regex };
-//!         Ok(ParserBox::new(file, word_counter))
+//!         Ok(WordCounter { tracker, words, regex })
 //!     }
 //! }
 //! ```
 //!
-//! In this function, I am returning the `WordCounter`, with a
+//! In this function, I am returning the `WordCounter` with a
 //! precalculated number of words (since I have to calculate this
 //! value at some point), based on the current state of the [`File`].
 //!
-//! The [`ParserBox`] return value is a wrapper for "constructing the
-//! [`Parser`]". To create a [`ParserBox`], there are two functions:
-//! [`new`] and [`new_remote`]. The first one is essentially just a
-//! wrapper around the [`Parser`]. The second one takes a closure that
-//! will build the [`Parser`] in a second thread, this can be useful
-//! if you want to create your [`Parser`] remotely.
-//!
-//! One thing to note is that the [`Parser`] and [`ParserCfg`] can be
-//! the same struct, it all depends on your constraints. For most
-//! [`Parser`] implementations, that may not be the case, but for this
-//! one, instead of storing a `bool` in `WordCounterCfg`, I could've
-//! just stored the regex directly, like this:
-//!
-//! ```rust
-//! # struct WordCounter {
-//! #     words: usize,
-//! #     regex: &'static str,
-//! # }
-//! # impl<U: Ui> Parser<U> for WordCounter {
-//! # fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {
-//! #     todo!();
-//! # }
-//! # }
-//! use duat_core::prelude::*;
-//!
-//! impl WordCounter {
-//!     /// Returns a new instance of [`WordCounter`]
-//!     pub fn new() -> Self {
-//!         WordCounter { words: 0, regex: r"\w+" }
-//!     }
-//! }
-//!
-//! impl<U: Ui> ParserCfg<U> for WordCounter {
-//!     type Parser = Self;
-//!
-//!     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
-//!         let words = file.bytes().search_fwd(self.regex, ..).unwrap().count();
-//!
-//!         Ok(ParserBox::new(file, Self { words, ..self }))
-//!     }
-//! }
-//! ```
-//!
-//! But the former is done for the purpose of demonstration, since (I
-//! don't think) this will be the case for most [`Parser`]s.
+//! This is the point where you are given the [`FileTracker`], which a
+//! [`Parser`] can use to track that specific [`File`]. This
+//! [`Plugin`] is a relatively simple example, but the [`FileTracker`]
+//! is really useful for Duat to inform plugin writers when they
+//! actually need to update some part of the [`File`]'s [`Text`], in
+//! order to prevent inefficient updates to the text.
 //!
 //! Now, to wrap this all up, the plugin needs to add this [`Parser`]
-//! to every opened [`File`]. We do this through the use of a [hook]:
+//! to every [`File`]. We do this through the use of a [hook]:
 //!
 //! ```rust
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //! #     type Parser = WordCounter;
-//! #     fn init(self, _: &File<U>) -> Result<ParserBox<U>, Text> { todo!() }
+//! #     fn build(self, _: &File<U>, _: FileTracker) -> Result<Self::Parser, Text> { todo!() }
 //! # }
 //! # /// A [`Parser`] to keep track of words in a [`File`]
 //! # struct WordCounter {
+//! #     tracker: FileTracker,
 //! #     words: usize,
 //! #     regex: &'static str
 //! # }
 //! # impl<U: Ui> Parser<U> for WordCounter {
-//! #    fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {}
+//! #    fn parse(&mut self) -> bool { todo!() }
 //! # }
 //! use duat_core::prelude::*;
 //!
 //! /// A [`Plugin`] to count the number of words in [`File`]s
+//! #[derive(Default)]
 //! pub struct WordCount(bool);
 //!
 //! impl WordCount {
@@ -396,10 +374,10 @@
 //! }
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn plug(self) {
+//!     fn plug(self, _: &Plugins<U>) {
 //!         let not_whitespace = self.0;
 //!
-//!         hook::add::<File<U>, U>(move |pa, (mut cfg, builder)| {
+//!         hook::add::<File<U>, U>(move |pa, (mut cfg, _)| {
 //!             cfg.with_parser(WordCounterCfg(not_whitespace))
 //!         });
 //!     }
@@ -419,15 +397,16 @@
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //! #     type Parser = WordCounter;
-//! #     fn init(self, _: &File<U>) -> Result<ParserBox<U>, Text> { todo!() }
+//! #     fn build(self, _: &File<U>, _: FileTracker) -> Result<Self::Parser, Text> { todo!() }
 //! # }
 //! # /// A [`Parser`] to keep track of words in a [`File`]
 //! # struct WordCounter {
+//! #     tracker: FileTracker,
 //! #     words: usize,
 //! #     regex: &'static str
 //! # }
 //! # impl<U: Ui> Parser<U> for WordCounter {
-//! # fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {}
+//! #     fn parse(&mut self) -> bool { todo!() }
 //! # }
 //! use duat_core::prelude::*;
 //!
@@ -444,6 +423,7 @@
 //! use duat_core::{prelude::*, text::Change};
 //!
 //! /// A [`Plugin`] to count the number of words in [`File`]s
+//! #[derive(Default)]
 //! pub struct WordCount(bool);
 //!
 //! impl WordCount {
@@ -459,9 +439,8 @@
 //! }
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn plug(self) {
+//!     fn plug(self, _: &Plugins<U>) {
 //!         let not_whitespace = self.0;
-//!
 //!         hook::add::<File<U>, U>(move |_, (mut cfg, _)| {
 //!             cfg.with_parser(WordCounterCfg(not_whitespace))
 //!         });
@@ -476,33 +455,34 @@
 //!
 //! /// A [`Parser`] to keep track of words in a [`File`]
 //! struct WordCounter {
+//!     tracker: FileTracker,
 //!     words: usize,
 //!     regex: &'static str,
 //! }
 //!
 //! impl<U: Ui> Parser<U> for WordCounter {
-//!     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, _: Option<&mut Ranges>) {
-//!         let diff: i32 = snap
-//!             .moment
-//!             .changes()
-//!             .map(|change| word_diff(self.regex, &snap.bytes, change))
-//!             .sum();
+//!     fn parse(&mut self) -> bool {
+//!         self.tracker.update();
 //!
+//!         let diff = |change| word_diff(self.regex, &self.tracker.bytes(), change);
+//!         let diff: i32 = self.tracker.moment().changes().map(diff).sum();
 //!         self.words = (self.words as i32 + diff) as usize;
+//!
+//!         false
 //!     }
 //! }
 //!
+//! #[derive(Default)]
 //! struct WordCounterCfg(bool);
 //!
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+//!     fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
-//!
 //!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
-//!         Ok(ParserBox::new(file, WordCounter { words, regex }))
+//!         Ok(WordCounter { tracker, words, regex })
 //!     }
 //! }
 //!
@@ -510,12 +490,12 @@
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
-//!     // Recreate the line as it was before the change
-//!     let mut line_before = bytes.strs(start..change.start()).unwrap().to_string();
-//!     line_before.push_str(change.taken_str());
-//!     line_before.extend(bytes.strs(change.added_end()..end).unwrap());
+//!     let behind_change = bytes.strs(start..change.start()).unwrap().to_string();
+//!     let ahead_of_change = bytes.strs(change.added_end()..end).unwrap();
+//!     let taken_by_change = change.taken_str();
+//!     let lines_before = format!("{behind_change}{taken_by_change}{ahead_of_change}");
 //!
-//!     let words_before = line_before.search_fwd(regex, ..).unwrap().count();
+//!     let words_before = lines_before.search_fwd(regex, ..).unwrap().count();
 //!     let words_after = bytes.search_fwd(regex, start..end).unwrap().count();
 //!
 //!     words_after as i32 - words_before as i32
@@ -550,6 +530,7 @@
 //! ```rust
 //! # mod word_count {
 //! #     use duat_core::prelude::*;
+//! #     #[derive(Default)]
 //! #     pub struct WordCount(bool);
 //! #     impl WordCount {
 //! #         pub fn new() -> Self { WordCount(false) }
@@ -619,6 +600,7 @@
 //! [`Moment`]: crate::text::Moment
 //! [`Change`]: crate::text::Change
 //! [`Parser::parse`]: crate::file::Parser::parse
+//! [`Parser::update`]: crate::file::Parser::update
 //! [`Bytes`]: crate::text::Bytes
 //! [`Bytes::points_of_line`]: crate::text::Bytes::points_of_line
 //! [`Point`]: crate::text::Point
@@ -645,6 +627,9 @@
 //! [`txt!`]: crate::text::txt
 //! [`MatchPairs`]: https://docs.rs/duat-match-pairs/latest/duat_match_pairs/struct.MatchPairs.html
 //! [`Treesitter`]: https://docs.rs/duat-tree-sitter/latest/duat_tree_sitter/struct.Treesitter.html
+//! [`FileTracker`]: crate::file::FileTracker
+//! [`FileTracker::moment`]: crate::file::FileTracker::moment
+//! [`FileTracker::update`]: crate::file::FileTracker::update
 #![feature(
     decl_macro,
     step_trait,
@@ -991,3 +976,9 @@ pub const fn priority(priority: &str) -> u8 {
 }
 
 type PluginFn<U> = Option<Box<dyn FnOnce(&Plugins<U>)>>;
+
+#[cfg(doctest)]
+/// ```rust
+#[doc = include_str!("../../templates/plugin/lib.rs")]
+/// ```
+mod plugin {}

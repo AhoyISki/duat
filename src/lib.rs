@@ -1174,6 +1174,6 @@ mod book;
 /// #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 /// #     }
 /// # }
-#[doc = include_str!("../config/src/lib.rs")]
+#[doc = include_str!("../templates/config/lib.rs")]
 /// ```
 mod config {}

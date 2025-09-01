@@ -1,5 +1,11 @@
 //! The runner for Duat
-#![feature(decl_macro, iterator_try_collect, try_blocks, cfg_select)]
+#![feature(
+    decl_macro,
+    iterator_try_collect,
+    try_blocks,
+    cfg_select,
+    trim_prefix_suffix
+)]
 
 use std::{
     path::PathBuf,
@@ -73,49 +79,8 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = <Args as clap::Parser>::parse();
 
-    if let Some(name) = args.init_plugin {
-        use convert_case::{Case, Casing};
-        const PLUGIN_TOML: &str = include_str!("../templates/plugin/Cargo_.toml");
-        const PLUGIN_README: &str = include_str!("../templates/plugin/README.md");
-        const PLUGIN_LIB: &str = include_str!("../templates/plugin/lib.rs");
-
-        if !name.is_case(Case::Kebab) {
-            println!("\x1b[33mwarning:\x1b[0m converting plugin name to kebab-case");
-        }
-
-        let kebab_name = name.to_case(Case::Kebab);
-        let snake_name = name.to_case(Case::Snake);
-        let pascal_name = name.to_case(Case::Pascal);
-        let plugin_dir = PathBuf::from(&kebab_name);
-
-        std::fs::create_dir(&plugin_dir)?;
-        std::fs::create_dir(plugin_dir.join("src"))?;
-
-        let repo = args.repository.unwrap_or("{repository_url}".to_string());
-        let author = args.author.unwrap_or("{author_name}".to_string());
-
-        let toml = PLUGIN_TOML
-            .replace("plugin-name", &kebab_name)
-            .replace("{repository_url}", &repo)
-            .replace("{author_name}", &author);
-
-        let readme = PLUGIN_README
-            .replace("plugin-name", &kebab_name)
-            .replace("plugin_name", &snake_name)
-            .replace("PluginName", &pascal_name)
-            .replace("{repository_url}", &repo);
-
-        let lib = PLUGIN_LIB
-            .replace("plugin_name", &snake_name)
-            .replace("PluginName", &pascal_name);
-
-        std::fs::write(plugin_dir.join("Cargo.toml"), toml)?;
-        std::fs::write(plugin_dir.join("README.md"), readme)?;
-        std::fs::write(plugin_dir.join("src").join("lib.rs"), lib)?;
-
-        println!("Created a plugin crate at {kebab_name}");
-
-        return Ok(());
+    if let Some(name) = args.init_plugin.clone() {
+        return init_plugin(args, name);
     }
 
     // Initializers for access to static variables across two different
@@ -526,6 +491,47 @@ const fn resolve_config_file() -> &'static str {
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 const fn resolve_config_file() -> &'static str {
     "libconfig.so"
+}
+
+fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error>> {
+    use convert_case::{Case, Casing};
+    const PLUGIN_TOML: &str = include_str!("../templates/plugin/Cargo_.toml");
+    const PLUGIN_README: &str = include_str!("../templates/plugin/README.md");
+    const PLUGIN_LIB: &str = include_str!("../templates/plugin/lib.rs");
+    if !name.is_case(Case::Kebab) {
+        println!("\x1b[33mwarning:\x1b[0m converting plugin name to kebab-case");
+    }
+    let kebab_name = name.to_case(Case::Kebab);
+    if !kebab_name.starts_with("duat-") {
+        println!(
+            "\x1b[33mwarning:\x1b[0m by creating a plugin that doesn't start with \"duat\", you \
+             might cause some confusion"
+        );
+    }
+    let snake_name = name.to_case(Case::Snake);
+    let pascal_name = snake_name.trim_prefix("duat_").to_case(Case::Pascal);
+    let plugin_dir = PathBuf::from(&kebab_name);
+    std::fs::create_dir(&plugin_dir)?;
+    std::fs::create_dir(plugin_dir.join("src"))?;
+    let repo = args.repository.unwrap_or("{repository_url}".to_string());
+    let author = args.author.unwrap_or("{author_name}".to_string());
+    let toml = PLUGIN_TOML
+        .replace("plugin-name", &kebab_name)
+        .replace("{repository_url}", &repo)
+        .replace("{author_name}", &author);
+    let readme = PLUGIN_README
+        .replace("plugin-name", &kebab_name)
+        .replace("plugin_name", &snake_name)
+        .replace("PluginName", &pascal_name)
+        .replace("{repository_url}", &repo);
+    let lib = PLUGIN_LIB
+        .replace("plugin_name", &snake_name)
+        .replace("PluginName", &pascal_name);
+    std::fs::write(plugin_dir.join("Cargo.toml"), toml)?;
+    std::fs::write(plugin_dir.join("README.md"), readme)?;
+    std::fs::write(plugin_dir.join("src").join("lib.rs"), lib)?;
+    println!("Created a plugin crate at {kebab_name}");
+    Ok(())
 }
 
 type RunFn = fn(

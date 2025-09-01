@@ -683,6 +683,8 @@ impl FileTracker {
     /// automatically whenever a [`Change`] takes place. Instead, they
     /// all must be added through [`add_range`].
     ///
+    /// This is the default method of tracking [`Change`]s.
+    ///
     /// [`add_range`]: FileTracker::add_range
     pub fn turn_off_tracking(&mut self) {
         let mut tracker = self.ranges.lock();
