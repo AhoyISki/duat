@@ -229,14 +229,14 @@ something like this:</p>
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
 
     print::wrap_at(150);
     print::trailing_new_line('󱁐');

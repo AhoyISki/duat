@@ -223,12 +223,13 @@ a previously named one:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">mod catppuccin {
+</span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    pub struct Catppuccin;
 </span><span class="boring">    impl Catppuccin {
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">    }
-</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Catppuccin {
-</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    impl duat_core::Plugin&lt;duat::Ui&gt; for Catppuccin {
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
@@ -237,7 +238,7 @@ use catppuccin::Catppuccin;
 
 fn setup() {
     // Adds four colorschemes, "catppuccin-latte" among them.
-    plug!(Catppuccin::new());
+    plug(Catppuccin::new());
     
     form::set_colorscheme("catppuccin-latte");
 }

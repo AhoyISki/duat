@@ -201,7 +201,7 @@ works:</p>
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
@@ -209,7 +209,7 @@ use duat::prelude::*;
 
 fn setup() {
     // Adds kakoune-like editing modes, like Insert, Normal and OneKey
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
   
     map::&lt;User&gt;("f", "&lt;Esc&gt;|fold -s&lt;Enter&gt;");
     alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
@@ -246,14 +246,14 @@ While you <em>can</em> change that like this:</p>
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
   
     map::&lt;kak::Normal&gt;(" ", "");
     // In rust, you have to escap a backslash
@@ -278,7 +278,7 @@ fn setup() {
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
@@ -286,7 +286,7 @@ use duat::prelude::*;
 use kak::Kak;
 
 fn setup() {
-    plug!(kak::Kak::new());
+    plug(kak::Kak::new());
   
     map::&lt;kak::Normal&gt;(" ", "");
     map::&lt;kak::Normal&gt;("\\", User);
@@ -298,8 +298,8 @@ I placed the mode directly.</p>
 place the <code>Mode</code> as the second argument, and the mapping will switch modes
 instead of sending keys. This also works with <code>alias</code>es.</p>
 <blockquote>
-<p>[!NOTE]
-In this case, since <code>User</code> is a struct with no fields, I could just put
+<p>[!NOTE]</p>
+<p>In this case, since <code>User</code> is a struct with no fields, I could just put
 <code>User</code> as the second argument, which acts as a constructor. But in most other
 <code>Mode</code>s, you're gonna have to write something like <code>Insert::new()</code> as the
 argument instead.</p>

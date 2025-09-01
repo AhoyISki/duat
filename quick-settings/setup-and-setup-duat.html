@@ -199,28 +199,24 @@ example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod treesitter {
-</span><span class="boring">    pub struct TreeSitter;
-</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for TreeSitter {
-</span><span class="boring">        fn plug(self) { todo!() }
-</span><span class="boring">    }
-</span><span class="boring">}
 </span><span class="boring">mod kak {
+</span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    pub struct Kak;
 </span><span class="boring">    impl Kak {
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">    }
-</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    impl duat_core::Plugin&lt;duat::Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span><span class="boring">mod catppuccin {
+</span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    pub struct Catppuccin;
 </span><span class="boring">    impl Catppuccin {
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">    }
-</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Catppuccin {
-</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    impl duat_core::Plugin&lt;duat::Ui&gt; for Catppuccin {
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
@@ -231,11 +227,8 @@ fn setup() {
 }
 
 fn add_plugins() {
-    plug!(
-        treesitter::TreeSitter,
-        kak::Kak::new(),
-        catppuccin::Catppuccin::new()
-    );
+    plug(kak::Kak::new());
+    plug(catppuccin::Catppuccin::new());
 }
 <span class="boring">}</span></code></pre></pre>
 <h3 id="the-plug-macro"><a class="header" href="#the-plug-macro">The <code>plug!</code> macro</a></h3>
@@ -245,21 +238,22 @@ documentation to figure out. But they should all be configured in the same way:<
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">mod kak {
+</span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    pub struct Kak;
 </span><span class="boring">    impl Kak {
 </span><span class="boring">        pub fn new() -&gt; Self { Self }
 </span><span class="boring">        pub fn f_and_t_set_search(self) -&gt; Self { Self }
 </span><span class="boring">        pub fn with_no_indent_on_capital_i(self) -&gt; Self { Self }
 </span><span class="boring">    }
-</span><span class="boring">    impl duat::prelude::Plugin&lt;duat::Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self) { todo!() }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(
+    plug(
         kak::Kak::new()
             .f_and_t_set_search()
             .with_no_indent_on_capital_i(),
