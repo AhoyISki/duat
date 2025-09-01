@@ -103,12 +103,9 @@ config it is just `kak`.
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
-use kak::Kak;
-use match_pairs::MatchPairs;
-use treesitter::TreeSitter;
 
 fn setup() {
-    plug!(TreeSitter, MatchPairs, Kak::new());
+    plug(kak::Kak::new());
     map::<kak::Insert>("jk", "<Esc>");
 
     print::wrap_on_edge();
@@ -136,9 +133,7 @@ fn setup() {
 
 This configuration does the following things:
 
-* [plugs][__link2] the `Kak` plugin, which changes the [default mode][__link3], and
-  the `TreeSitter` plugin, which adds syntax highlighting and is
-  also used by the `Kak` plugin;
+* [plugs][__link2] the `Kak` plugin, which changes the [default mode][__link3];
 * [Maps][__link4] jk to esc in the `Insert` mode;
 * [Changes][__link5] the wrapping;
 * Changes the alignment of the [`LineNumbers`][__link6] [`Widget`][__link7];
@@ -311,7 +306,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG2W6pcpx-IiLG-l53kiR1wxzG3vlE_8Il1woG32afjZxkixkYWSCgmRkdWF0ZTAuNi4xgmlkdWF0X2NvcmVlMC42LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEGzsDZETCIOaMGxxy58NhaVBoG-e4BvVwBtREG4BCRxBpQIQ2YWSCgmRkdWF0ZTAuNi4xgmlkdWF0X2NvcmVlMC42LjA
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://code.visualstudio.com/docs/cpp/config-mingw
  [__link10]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Spacer

@@ -539,7 +539,7 @@ screen by searching through character sequences.
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG_1nwxwrEdLLG1lO-819fa6GG4M7Ls2N6pRGG63blOPE9YRnYWSBg2lkdWF0LWNvcmVlMC42LjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG6M-pP075F2uG_M4t3I0pUr2G19TwuMQR0-3G9ay_kHhOdYRYWSFgmxGaWxlU25hcHNob3T2gmlQYXJzZXJCb3j2g2lkdWF0LWNvcmVlMC42LjBpZHVhdF9jb3JlgmNuZXf2gmpuZXdfcmVtb3Rl9g
  [__link0]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.6.0/duat_core/ui/index.html
  [__link10]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Ui
@@ -552,19 +552,19 @@ screen by searching through character sequences.
  [__link106]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserCfg
  [__link107]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link108]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
- [__link109]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox
+ [__link109]: https://crates.io/crates/ParserBox
  [__link11]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Area
  [__link110]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
- [__link111]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox
- [__link112]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox::new
- [__link113]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserBox::new_remote
+ [__link111]: https://crates.io/crates/ParserBox
+ [__link112]: https://crates.io/crates/new
+ [__link113]: https://crates.io/crates/new_remote
  [__link114]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link115]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link116]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link117]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link118]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::ParserCfg
  [__link119]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
- [__link12]: https://docs.rs/duat-core/0.6.0/duat_core/text/index.html
+ [__link12]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
  [__link120]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link121]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link122]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
@@ -587,7 +587,7 @@ screen by searching through character sequences.
  [__link14]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Ui
  [__link15]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Tag
  [__link16]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Text
- [__link17]: `txt!`
+ [__link17]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::txt
  [__link18]: https://doc.rust-lang.org/stable/std/macro.format.html
  [__link19]: https://doc.rust-lang.org/stable/std
  [__link2]: https://docs.rs/duat-core/0.6.0/duat_core/?search=ui::Widget
@@ -660,11 +660,11 @@ screen by searching through character sequences.
  [__link80]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Moment
  [__link81]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change
  [__link82]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Moment
- [__link83]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::FileSnapshot
+ [__link83]: https://crates.io/crates/FileSnapshot
  [__link84]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser::parse
  [__link85]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::Parser
  [__link86]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Change
- [__link87]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::FileSnapshot
+ [__link87]: https://crates.io/crates/FileSnapshot
  [__link88]: https://docs.rs/duat-core/0.6.0/duat_core/?search=file::File
  [__link89]: https://docs.rs/duat-core/0.6.0/duat_core/?search=text::Moment
  [__link9]: https://docs.rs/duat-core/0.6.0/duat_core/hook/index.html
