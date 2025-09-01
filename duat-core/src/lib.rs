@@ -614,8 +614,6 @@
 //! [`Moment`]: crate::text::Moment
 //! [`Change`]: crate::text::Change
 //! [`Parser::parse`]: crate::file::Parser::parse
-//! [`Parser::update_range`]: crate::file::Parser::update_range
-//! [`update_range`]: crate::file::Parser::update_range
 //! [`Bytes`]: crate::text::Bytes
 //! [`Bytes::points_of_line`]: crate::text::Bytes::points_of_line
 //! [`Point`]: crate::text::Point
@@ -635,13 +633,11 @@
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
 //! [commands]: crate::cmd
 //! [`RwData<Self>`]: crate::data::RwData
-//! [`ParserBox`]: crate::file::ParserBox
-//! [`new_remote`]: crate::file::ParserBox::new_remote
-//! [`new`]: crate::file::ParserBox::new
 //! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
 //! [`parse`]: crate::file::Parser::parse
-//! [`FileSnapshot`]: crate::file::FileSnapshot
 //! [`PrintCfg`]: crate::cfg::PrintCfg
+//! [`Text`]: crate::text::Text
+//! [`txt!`]: crate::text::txt
 #![feature(
     decl_macro,
     step_trait,

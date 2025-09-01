@@ -245,11 +245,9 @@ pub trait Parser<U: Ui>: Send + 'static {
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`File`]: crate::file::File
-    /// [parts]: FileParts
     /// [`Change`]: crate::text::Change
     /// [range]: std::ops::Range
     /// [`parse`]: Parser::parse
-    /// [`parse_remote`]: Parser::parse_remote
     /// [`Conceal`]: crate::text::Conceal
     fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {}
 
@@ -536,6 +534,8 @@ impl FileTracker {
     /// relevant [`Range`]s, i.e., those that actually show up on
     /// area and that have been added by to the [`FileTracker`] via
     /// [`add_range`].
+    ///
+    /// [`add_range`]: Self::add_range
     pub fn request_parse(&self) {
         self.update_requested.store(true, Ordering::Relaxed);
     }
@@ -546,7 +546,7 @@ impl FileTracker {
     /// [`Parser::update`]
     ///
     /// This [`Range`] will be merged with other [`Ranges`] on the
-    /// list, and when an [update is requested], the intersections
+    /// list, and when a [parse is requested], the intersections
     /// between the [`Ranges`] sent to this method and the [`Range`]
     /// of the [`Text`] shown on area will be updated.
     ///
@@ -557,7 +557,7 @@ impl FileTracker {
     /// ranges `3..17` and `61..87` will remain on the list of
     /// [`Range`]s to be updated
     ///
-    /// [update is requested]: Self::request_update
+    /// [parse is requested]: Self::request_parse
     pub fn add_range(&mut self, range: impl TextRange) {
         let range = range.to_range(self.bytes.len().byte());
         self.ranges.lock().add_range(range);
@@ -671,6 +671,7 @@ impl FileTracker {
     /// > would be much too long for a simple example.
     ///
     /// [`Selection`]: crate::mode::Selection
+    /// [`Selections`]: crate::mode::Selections
     /// [`Form`]: crate::form::Form
     pub fn track_area(&mut self) {
         *self.ranges.lock() = RangesTracker::Area;

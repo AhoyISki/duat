@@ -408,7 +408,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`form::set_weak`]: crate::form::set_weak
 /// [`form::set`]: crate::form::set
 /// [Kakoune]: https://github.com/mawww/kakoune
-/// [`Text`]: crate::Text
+/// [`Text`]: crate::text::Text
 /// [`&mut Selections`]: Selections
 #[allow(unused_variables)]
 pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {

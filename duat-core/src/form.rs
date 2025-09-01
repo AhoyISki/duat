@@ -534,6 +534,7 @@ mod global {
     /// want to call a weak version of this macro (most useful for
     /// other types of [`Plugin`]), then see [`set_many_weak!`].
     ///
+    /// [`Plugin`]: crate::Plugin
     /// [`form::set`]: set
     pub macro set_many($(($name:literal, $form:expr)),+ $(,)?) {{
         use $crate::form::FormFmt;

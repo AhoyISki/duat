@@ -84,7 +84,6 @@ impl Tags<'_> {
     /// [range]: RangeBounds
     /// [`Parser`]: crate::file::Parser
     /// [when changes happen]: crate::file::Parser::parse
-    /// [on updates]: crate::file::Parser::update_range
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(taggers, range)

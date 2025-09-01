@@ -533,7 +533,7 @@ pub enum DuatEvent {
 pub struct DuatSender(mpsc::Sender<DuatEvent>);
 
 impl DuatSender {
-    /// Returns a new [`Sender`]
+    /// Returns a new [`DuatSender`]
     pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
         Self(sender)
     }

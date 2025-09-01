@@ -60,6 +60,8 @@ use crate::text::{Text, txt};
 ///
 /// Any `<Ui>` or `Ui, ` type arguments will be removed from the final
 /// result, since Duat is supposed to have only one [`Ui`] in use.
+///
+/// [`Ui`]: crate::ui::Ui
 pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
     fn duat_name_inner(type_id: TypeId, type_name: &str) -> &'static str {
         static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
