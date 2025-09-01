@@ -392,6 +392,7 @@ impl Kak {
 
 impl<U: Ui> Plugin<U> for Kak {
     fn plug(self, plugins: &Plugins<U>) {
+        plugins.require::<jump_list::JumpList>();
         plugins.require::<treesitter::TreeSitter>();
         
         mode::set_alt_is_reverse(true);

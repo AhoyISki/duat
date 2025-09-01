@@ -8,6 +8,7 @@ use duat_core::{
 use duat_utils::modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
 };
+use jump_list::FileJumps;
 
 use crate::{
     Category, Insert, Memoized, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex,
@@ -88,6 +89,12 @@ impl<U: Ui> Mode<U> for Normal {
 
     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget, U>) {
         let wc = handle.cfg(pa).word_chars;
+
+        let rec = if handle.write(pa).record_selections(false) {
+            2
+        } else {
+            1
+        };
 
         match event {
             ////////// Basic movement keys
@@ -833,6 +840,42 @@ impl<U: Ui> Mode<U> for Normal {
                         }
                     }
                 });
+            }
+
+            ////////// Jumping
+            key!(Char('u' | 'U'), Mod::ALT) => {
+                let jmp = if event.code == Char('u') { -rec } else { rec };
+                if let Some(jump) = handle.write(pa).jump_selections_by(jmp) {
+                    match jump {
+                        jump_list::Jump::Single(selection) => {
+                            handle.write(pa).selections_mut().remove_extras();
+                            handle.edit_main(pa, |mut c| {
+                                let start = c.text().point_at_byte(selection.start);
+                                let end = c.text().point_at_byte(selection.end);
+                                c.move_to(start..end)
+                            });
+                        }
+                        jump_list::Jump::Multiple(selections, main) => {
+                            handle.write(pa).selections_mut().remove_extras();
+
+                            handle.edit_main(pa, |mut c| {
+                                let mut is_first = true;
+                                for selection in selections {
+                                    if !is_first {
+                                        c.copy();
+                                    }
+
+                                    let start = c.text().point_at_byte(selection.start);
+                                    let end = c.text().point_at_byte(selection.end);
+                                    c.move_to(start..end);
+                                    is_first = false;
+                                }
+                            });
+                            handle.write(pa).selections_mut().set_main(main);
+                        }
+                    }
+                }
+                handle.write(pa).debug();
             }
 
             ////////// Other mode changing keys
