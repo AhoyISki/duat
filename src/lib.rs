@@ -8,7 +8,7 @@
 //!
 //! [`Selections`]: duat_core::mode::Selections
 //! [`Change`]: duat_core::text::Change
-#![feature(decl_macro)]
+#![feature(decl_macro, iter_order_by)]
 
 use std::ops::Range;
 
@@ -19,6 +19,7 @@ use gapbuf::GapBuffer;
 ///
 /// This [`Jumps`] parser can be used to retrieve previous
 /// [`Selections`] values, "jumping" around in the history.
+#[derive(Default)]
 pub struct JumpList;
 
 impl<U: Ui> Plugin<U> for JumpList {
@@ -35,7 +36,7 @@ impl<U: Ui> Plugin<U> for JumpList {
 /// selection.
 ///
 /// [`Selections`]: duat_core::mode::Selections
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Jump {
     Single(Range<usize>),
     Multiple(Vec<Range<usize>>, usize),
@@ -70,6 +71,7 @@ impl<U: Ui> ParserCfg<U> for JumpsBuilder {
     }
 }
 
+#[derive(Debug)]
 struct Jumps {
     list: GapBuffer<Saved>,
     tracker: FileTracker,
@@ -95,44 +97,31 @@ impl<U: Ui> Parser<U> for Jumps {
         if self.list.is_empty() || self.tracker.moment().is_empty() {
             return;
         }
+        context::debug!("{:?}", self.tracker.moment());
+        self.list.truncate(self.cur);
 
-        let rev = if let Some(prev) = self.cur.checked_sub(1) {
-            if let Saved::RevChanges(_) = &self.list[prev] {
-                Some(prev)
-            } else {
-                self.list
-                    .insert(self.cur, Saved::RevChanges(Box::default()));
-                self.cur += 1;
-                Some(self.cur - 1)
-            }
-        } else {
-            None
-        };
-        let fwd = if let Some(jump) = self.list.get(self.cur) {
-            if let Saved::FwdChanges(_) = jump {
-                Some(self.cur)
-            } else {
-                self.list
-                    .insert(self.cur, Saved::FwdChanges(Box::default()));
-                Some(self.cur)
-            }
-        } else {
-            None
-        };
-
-        if rev.is_none() && fwd.is_none() {
+        if self.cur == 0 {
             return;
         }
 
+        let changes = if let Saved::Changes(changes) = &mut self.list[self.cur - 1] {
+            changes
+        } else {
+            self.list.insert(self.cur, Saved::Changes(Box::default()));
+            self.cur += 1;
+            let Some(Saved::Changes(changes)) = self.list.get_mut(self.cur - 1) else {
+                unreachable!();
+            };
+            changes
+        };
+
         for change in self.tracker.moment().changes() {
-            for pos in [fwd, rev].into_iter().flatten() {
-                let change = (
-                    change.start().byte() as i32,
-                    change.taken_end().byte() as i32,
-                    change.added_end().byte() as i32,
-                );
-                self.list[pos].mut_changes().unwrap().add_change(change);
-            }
+            let change = (
+                change.start().byte() as i32,
+                change.taken_end().byte() as i32,
+                change.added_end().byte() as i32,
+            );
+            changes.add_change(change);
         }
     }
 
@@ -142,19 +131,10 @@ impl<U: Ui> Parser<U> for Jumps {
     }
 }
 
+#[derive(Debug)]
 enum Saved {
     Jump(Jump),
-    FwdChanges(Box<Changes>),
-    RevChanges(Box<Changes>),
-}
-
-impl Saved {
-    fn mut_changes(&mut self) -> Option<&mut Changes> {
-        match self {
-            Saved::Jump(_) => None,
-            Saved::FwdChanges(changes) | Saved::RevChanges(changes) => Some(changes),
-        }
-    }
+    Changes(Box<Changes>),
 }
 
 /// A trait for recording and jumping [`Selections`]
@@ -168,8 +148,14 @@ impl Saved {
 pub trait FileJumps<U: Ui> {
     /// Record the [`File`]'s [`Selections`]
     ///
+    /// If `allow_duplicates` is set to `false`, then the selections
+    /// will not be recorded if that would mean two identical jumps in
+    /// sequence.
+    ///
+    /// This function will return `false` if no jump was recorded.
+    ///
     /// [`Selections`]: duat_core::mode::Selections
-    fn record_selections(&mut self);
+    fn record_selections(&mut self, allow_duplicates: bool) -> bool;
 
     /// Jumps forwards or backwards through the [`Jump`]s on the list
     ///
@@ -194,12 +180,45 @@ pub trait FileJumps<U: Ui> {
     /// plugged, or if no jumps have been saved/all jumps have been
     /// removed.
     fn jump_to_selections(&mut self, n: usize) -> Option<Jump>;
+
+    fn debug(&self);
 }
 
 impl<U: Ui> FileJumps<U> for File<U> {
-    fn record_selections(&mut self) {
+    fn record_selections(&mut self, allow_duplicates: bool) -> bool {
         self.write_parser(|jumps: &mut Jumps| {
             let selections = self.selections();
+
+            if !allow_duplicates {
+                for i in [Some(jumps.cur), jumps.cur.checked_sub(1)]
+                    .into_iter()
+                    .flatten()
+                {
+                    let Some(Saved::Jump(jump)) = jumps.list.get(i) else {
+                        continue;
+                    };
+
+                    match jump {
+                        Jump::Single(sel) => {
+                            if selections.len() == 1
+                                && selections.get_main().unwrap().byte_range(self.bytes()) == *sel
+                            {
+                                return false;
+                            }
+                        }
+                        Jump::Multiple(sels, main) => {
+                            if *main == selections.main_index()
+                                && sels.iter().eq_by(selections.iter(), |lhs, (rhs, _)| {
+                                    *lhs == rhs.byte_range(self.bytes())
+                                })
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+
             if selections.len() == 1 {
                 jumps.list.insert(
                     jumps.cur,
@@ -219,7 +238,11 @@ impl<U: Ui> FileJumps<U> for File<U> {
                     )),
                 );
             }
-        });
+            jumps.cur += 1;
+
+            true
+        })
+        .unwrap()
     }
 
     fn jump_selections_by(&mut self, mut by: i32) -> Option<Jump> {
@@ -231,32 +254,14 @@ impl<U: Ui> FileJumps<U> for File<U> {
                 loop {
                     match jumps.list.get_mut(jumps.cur) {
                         Some(Saved::Jump(jump)) => {
-                            if jump.shift(&changes) {
-                                if by == 0 {
-                                    let jump = jump.clone();
-                                    if !changes.list.is_empty() && jumps.cur < jumps.list.len() {
-                                        jumps.list.insert(
-                                            jumps.cur + 1,
-                                            Saved::FwdChanges(Box::new(changes)),
-                                        );
-                                    }
-                                    break Some(jump);
-                                } else {
-                                    last_seen = Some(jumps.cur);
-                                    by -= 1;
-                                    jumps.cur += 1;
-                                }
+                            if by == 0 {
+                                break Some(jump.clone());
                             } else {
-                                jumps.list.remove(jumps.cur);
+                                by -= 1;
+                                jumps.cur += 1;
                             }
                         }
-                        Some(Saved::FwdChanges(_)) => {
-                            let Saved::FwdChanges(fwd) = jumps.list.remove(jumps.cur) else {
-                                unreachable!();
-                            };
-                            changes.merge(*fwd);
-                        }
-                        Some(Saved::RevChanges(_)) => jumps.cur += 1,
+                        Some(Saved::Changes(_)) => unreachable!(),
                         None => break None,
                     }
                 }
@@ -270,10 +275,9 @@ impl<U: Ui> FileJumps<U> for File<U> {
                                 if by == 0 {
                                     let jump = jump.clone();
                                     if !changes.list.is_empty() && jumps.cur > 0 {
-                                        jumps.list.insert(
-                                            jumps.cur,
-                                            Saved::RevChanges(Box::new(changes)),
-                                        );
+                                        jumps
+                                            .list
+                                            .insert(jumps.cur, Saved::Changes(Box::new(changes)));
                                         jumps.cur += 1;
                                     }
                                     break Some(jump);
@@ -287,17 +291,16 @@ impl<U: Ui> FileJumps<U> for File<U> {
                                 jumps.list.remove(jumps.cur);
                             }
                         }
-                        Some(Saved::RevChanges(_)) => {
+                        Some(Saved::Changes(_)) => {
                             if let Some(last_seen) = last_seen.as_mut() {
                                 *last_seen -= 1;
                             }
                             jumps.cur -= 1;
-                            let Saved::RevChanges(rev) = jumps.list.remove(jumps.cur) else {
+                            let Saved::Changes(rev) = jumps.list.remove(jumps.cur) else {
                                 unreachable!();
                             };
                             changes.merge(*rev);
                         }
-                        Some(Saved::FwdChanges(_)) => jumps.cur -= 1,
                         None => break None,
                     }
                 }
@@ -327,9 +330,15 @@ impl<U: Ui> FileJumps<U> for File<U> {
 
         self.jump_selections_by(n as i32 - cur_n as i32)
     }
+
+    fn debug(&self) {
+        self.read_parser(|jumps: &Jumps| {
+            context::debug!("{jumps.list:#?}");
+        });
+    }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Changes {
     list: GapBuffer<(i32, i32, i32)>,
     from: usize,
