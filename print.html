@@ -517,12 +517,12 @@ would follow the change to the <code>markup</code> form.</p>
 that situation, not whatever <code>f0.f1.f2</code> was set to.</p>
 <h3 id="quiz"><a class="header" href="#quiz">Quiz</a></h3>
 <p>Given the following sequence of <code>form::set</code>s, what will each <code>Form</code> be at the
-end:</p>
+end?</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span><span class="boring">fn test() {
-</span>form::set("arent", Form::green());
+</span>form::set("parent", Form::green());
 form::set("parent.child.granchild", Form::blue()); 
 form::set("grandparent.parent.child", "parent.child");
 form::set("parent", Form::red());
