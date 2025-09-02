@@ -394,7 +394,7 @@ impl<U: Ui> Plugin<U> for Kak {
     fn plug(self, plugins: &Plugins<U>) {
         plugins.require::<jump_list::JumpList>();
         plugins.require::<treesitter::TreeSitter>();
-        
+
         mode::set_alt_is_reverse(true);
         duat_core::mode::set_default::<Normal, U>(Normal::new());
         insert::INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
@@ -561,7 +561,7 @@ enum Object<'a> {
 impl<'a> Object<'a> {
     fn new(event: KeyEvent, wc: WordChars, brackets: Brackets) -> Option<Self> {
         static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
-        
+
         match event {
             key!(Char('Q')) => Some(Self::Bound("\"")),
             key!(Char('q')) => Some(Self::Bound("'")),
@@ -585,7 +585,7 @@ impl<'a> Object<'a> {
                     [r"(;|,)\s*", s_pat.leak(), e_pat.leak()]
                 });
 
-                if event.code == Char('m') {
+                if let Char('m' | 'M') = event.code {
                     Self::Bounds(s_b, e_b)
                 } else {
                     Self::Argument(m_b, s_b, e_b)
