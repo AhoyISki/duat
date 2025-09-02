@@ -97,7 +97,6 @@ impl<U: Ui> Parser<U> for Jumps {
         if self.list.is_empty() || self.tracker.moment().is_empty() {
             return;
         }
-        context::debug!("{:?}", self.tracker.moment());
         self.list.truncate(self.cur);
 
         if self.cur == 0 {
@@ -180,8 +179,6 @@ pub trait FileJumps<U: Ui> {
     /// plugged, or if no jumps have been saved/all jumps have been
     /// removed.
     fn jump_to_selections(&mut self, n: usize) -> Option<Jump>;
-
-    fn debug(&self);
 }
 
 impl<U: Ui> FileJumps<U> for File<U> {
@@ -332,12 +329,6 @@ impl<U: Ui> FileJumps<U> for File<U> {
         })?;
 
         self.jump_selections_by(n as i32 - cur_n as i32)
-    }
-
-    fn debug(&self) {
-        self.read_parser(|jumps: &Jumps| {
-            context::debug!("{jumps.list:#?}");
-        });
     }
 }
 
