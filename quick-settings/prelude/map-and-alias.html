@@ -259,7 +259,7 @@ fn setup() {
 <p>You <em>should</em> prefer doing this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod kak {
+</span><span class="boring">mod duat_kak {
 </span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
 </span><span class="boring">    #[derive(Clone)]
 </span><span class="boring">    pub struct Normal;
@@ -277,13 +277,12 @@ fn setup() {
 </span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
-use kak::Kak;
 
 fn setup() {
-    plug(kak::Kak::default());
+    plug(duat_kak::Kak::default());
   
-    map::&lt;kak::Normal&gt;(" ", "");
-    map::&lt;kak::Normal&gt;("\\", User);
+    map::&lt;duat_kak::Normal&gt;(" ", "");
+    map::&lt;duat_kak::Normal&gt;("\\", User);
 }
 <span class="boring">}</span></code></pre></pre>
 <p>In this case, instead of putting a sequence of keys to replace the mapped ones,
@@ -311,7 +310,7 @@ are enclosed in these pairs, with a <code>&lt;{mod}-{key}&gt;</code> syntax. Exa
 <ul>
 <li><code>&lt;Enter&gt;</code>,</li>
 <li><code>&lt;Tab&gt;</code>,</li>
-<li><code>&lt;Bspc&gt;</code>,</li>
+<li><code>&lt;Backspace&gt;</code>,</li>
 <li><code>&lt;Del&gt;</code>,</li>
 <li><code>&lt;Esc&gt;</code>,</li>
 <li><code>&lt;Up&gt;</code>,</li>
