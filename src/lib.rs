@@ -108,6 +108,7 @@
 //! #             todo!();
 //! #         }
 //! #     }
+//! #     #[derive(Default)]
 //! #     pub struct Kak;
 //! #     impl Kak {
 //! #         pub fn new() -> Self { Self }
@@ -601,6 +602,7 @@ pub mod hook {
     /// #     impl Normal {
     /// #         pub fn f_and_t_set_search(self) -> Self { todo!() }
     /// #     }
+    /// #     #[derive(Default)]
     /// #     pub struct Kak;
     /// #     impl Kak {
     /// #         pub fn new() -> Self { Self }
@@ -962,7 +964,8 @@ pub macro setup_duat($setup:expr) {
 pub mod prelude {
     use std::{any::TypeId, process::Output};
 
-    pub use duat_core::{clipboard, context,
+    pub use duat_core::{
+        self, clipboard, context,
         data::{self, Pass},
         file,
         prelude::Lender,
@@ -999,6 +1002,7 @@ pub mod prelude {
     /// i.e., they should look like this:
     ///
     /// ```rust
+    /// #[derive(Default)]
     /// pub struct MyPlugin {
     ///     // ..options
     /// }
@@ -1140,6 +1144,7 @@ mod book;
 /// ```rust
 /// # mod catppuccin {
 /// #     use duat::prelude::*;
+/// #     #[derive(Default)]
 /// #     pub struct Catppuccin;
 /// #     impl Catppuccin {
 /// #         pub fn new() -> Self { Self }
@@ -1166,6 +1171,7 @@ mod book;
 /// #             todo!();
 /// #         }
 /// #     }
+/// #     #[derive(Default)]
 /// #     pub struct Kak;
 /// #     impl Kak {
 /// #         pub fn new() -> Self { Self }

@@ -19,13 +19,13 @@ fn setup() {
 ```
 
 The main function that you will use from this module is `form::set`. This 
-function sets the form with the given name on the left to the argument on the 
-right. This argument can be of two types:
+function sets the form on the left to the value on the right. This value can be 
+of two types:
 
-- A `Form` argument will just modify the named form to be shown like that;
+- A `Form` argument will be used to color the form directly.
 - A `&str` argument will "reference" the form on the right. If the form on the 
   right is altered, so will the one on the left. This reduces the need for 
-  setting a ton of forms in things like colorschemes;
+  setting a ton of forms in things like colorschemes.
 
 ## How forms should be named
 
@@ -45,23 +45,20 @@ The other main function that you will use from this module is the
 a previously named one:
 
 ```rust
-# mod catppuccin {
+# mod duat_catppuccin {
 #     use duat::prelude::*;
+#     #[derive(Default)]
 #     pub struct Catppuccin;
-#     impl Catppuccin {
-#         pub fn new() -> Self { Self }
-#     }
 #     impl duat_core::Plugin<duat::Ui> for Catppuccin {
 #         fn plug(self, _: &duat_core::Plugins<Ui>) { todo!() }
 #     }
 # }
 setup_duat!(setup);
 use duat::prelude::*;
-use catppuccin::Catppuccin;
 
 fn setup() {
     // Adds four colorschemes, "catppuccin-latte" among them.
-    plug(Catppuccin::new());
+    plug(duat_catppuccin::Catppuccin::default());
     
     form::set_colorscheme("catppuccin-latte");
 }
@@ -86,13 +83,38 @@ Additionally, if the form `f0.f1.f2` is set to something, the forms `f0` and
 `f1.f2` would also be set, although they will reference the `default` form in 
 that situation, not whatever `f0.f1.f2` was set to.
 
+### Quiz
+
+Given the following sequence of `form::set`s, what will each `Form` be at the 
+end:
+
+```rust
+# use duat::prelude::*;
+# fn test() {
+form::set("arent", Form::green());
+form::set("parent.child.granchild", Form::blue()); 
+form::set("grandparent.parent.child", "parent.child");
+form::set("parent", Form::red());
+# }
+```
+
+<details>
+<summary>See results</summary>
+  
+- "parent": `Form::red()`.
+- "parent.child": `Form::red()`. 
+- "parent.child.grandchild": `Form::blue()`.
+- "grandparent.parent.child": `Form::red()`.
+
+</details>
+
 ## Masks
 
 A mask is essentially the opposite of the inheritance concept. Instead of the longer form inheriting from the shorter forms, the shorter forms will be mapped for longer ones.
 
 It works like this: Say I have a `File` widget, and in it, there are instances 
 of the `function` form, used to highlight function identifiers. If there is a 
-`function.error` form, and I tell the `File` to use the `error` mask, instead 
+ `function.error` form, and I tell the `File` to use the `error` mask, instead 
 of using the `function` form, Duat will use `function.error`.
 
 In duat, by default there are four masks: `error`, `warning`, `info`, and `inactive`. The first three are used primarily to show color coded notifications. The last one is unused, but you can use it to change how unfocused files should be displayed.

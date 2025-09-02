@@ -42,8 +42,8 @@ use self::bincode::{
     encode_into_std_write,
 };
 use crate::{
-    utils::{duat_name, src_crate},
     text::{Text, txt},
+    utils::{duat_name, src_crate},
 };
 
 /// Used in order to cache things
@@ -57,9 +57,9 @@ impl Cache {
 
     /// Tries to load the cache stored by Duat for the given type
     ///
-    /// The cache must have been previously stored by [astore_cache`].
-    /// If it does not exist, or the file can't be correctly
-    /// interpreted, returns [`None`]
+    /// The cache must have been previously stored by
+    /// [`Cache::store`]. If it does not exist, or the file can't
+    /// be correctly interpreted, returns [`None`]
     pub fn load<C: Decode<()> + Default + 'static>(
         &self,
         path: impl AsRef<Path>,

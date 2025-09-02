@@ -11,11 +11,11 @@ use super::Mode;
 use crate::{
     context::{self, Handle},
     data::Pass,
-    utils::duat_name,
     file::File,
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
     ui::{DuatEvent, Node, Ui, Widget},
+    utils::duat_name,
 };
 
 static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> = MainThreadOnly::new(RefCell::new(None));

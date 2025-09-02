@@ -628,31 +628,33 @@ impl FileTracker {
     ///
     /// // When construction the SelectionLen, I turned on area tracking
     /// struct SelectionLen {
-    ///     _tracker: RangesTracker,
+    ///     _tracker: FileTracker,
     ///     tagger: Tagger,
     /// }
     ///
     /// impl<U: Ui> Parser<U> for SelectionLen {
-    ///     fn update(&mut self, pa: &mut Pass, handle: &Handle<File>, on: Range<usize>) {
-    ///         let parts = handle.write(pa).text_mut().parts();
+    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+    ///         let mut parts = file.write(pa).text_mut().parts();
     ///         // This is efficient even in very large `Text`s.
     ///         parts.tags.remove(self.tagger, ..);
     ///
-    ///         for (_, selection, is_main) in parts.selections.iter_within(on) {
-    ///             let range = selection.range(&parts.bytes);
-    ///             let (start, end) = (range.start, range.end);
-    ///             let len = end - start;
+    ///         for range in on {
+    ///             for (_, selection, is_main) in parts.selections.iter_within(range) {
+    ///                 let range = selection.byte_range(&parts.bytes);
+    ///                 let (start, end) = (range.start, range.end);
+    ///                 let len = end - start;
     ///
-    ///             if len > 2 {
-    ///                 let nums = len.ilog10() as usize + 1;
-    ///                 let ghost = Ghost(if is_main {
-    ///                     txt!("[sel_len.main]{len}")
-    ///                 } else {
-    ///                     txt!("[sel_len]{len}")
-    ///                 });
+    ///                 if len > 2 {
+    ///                     let nums = len.ilog10() as usize + 1;
+    ///                     let ghost = Ghost(if is_main {
+    ///                         txt!("[sel_len.main]{len}")
+    ///                     } else {
+    ///                         txt!("[sel_len]{len}")
+    ///                     });
     ///
-    ///                 parts.tags.insert(self.tagger, start, ghost);
-    ///                 parts.tags.insert(self.tagger, start..start + nums, Conceal);
+    ///                     parts.tags.insert(self.tagger, start, ghost);
+    ///                     parts.tags.insert(self.tagger, start..start + nums, Conceal);
+    ///                 }
     ///             }
     ///         }
     ///     }

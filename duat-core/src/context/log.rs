@@ -97,7 +97,7 @@ mod macros {
 
     /// Logs an info to Duat
     ///
-    /// Use this, as opposed to [`error!`], [`warn!`] or [`debug!],
+    /// Use this, as opposed to [`error!`], [`warn!`] or [`debug!`],
     /// when you want to tell the user that something was
     /// successful, and it is important for them to know it was
     /// successful.

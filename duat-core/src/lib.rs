@@ -16,10 +16,11 @@
 //!   includes things like:
 //!   - [`Widget`]s: As the name implies, this is the trait for
 //!     objects that will show up on the screen. The most noteworthy
-//!     [`Widget`] is [`File`], which displays the contents of a file.
-//!   - [`WidgetCfg`]s: These are [`Widget`] builders. They are used
-//!     in the `setup` function of Duat's config, through the
-//!     [`WidgetCreated`] and [`WindowCreated`] [hook]s.
+//!     `Widget` is the [`File`], which displays the contents of a
+//!     file.
+//!   - [`WidgetCfg`]s: These are `Widget` builders. They are used in
+//!     the `setup` function of Duat's config, through the
+//!     `WidgetCreated` and `WindowCreated` hooks.
 //!   - [`Ui`] and [`Area`]s: These are used if you want to create
 //!     your own interface for Duat. Very much a work in progress, so
 //!     I wouldn't recommend trying that yet.
@@ -28,54 +29,52 @@
 //!   - [`Text`]: Is everything that Duat shows on screen (except
 //!     [`Ui`] specific decorations). This includes a UTF-8 string and
 //!     tags to modify it.
-//!   - [`Tag`]s: This is how Duat determines how [`Text`] will be
+//!   - [`Tag`]s: This is how Duat determines how `Text` will be
 //!     displayed on screen. There are tags for styling, text
 //!     alignment, spacing and all sorts of other things.
 //!   - [`txt!`]: This macro, with syntax reminiscent of [`format!`]
-//!     from Rust's [`std`],  can be used to create [`Text`] through
-//!     the [`text::Builder`] struct.
+//!     from Rust's `std`, can be used to declaratively construct a
+//!     `Text`.
 //!
 //! - [`mode`]: Defines how Duat will take input in order to control
-//!   [`Widget`]s, includes things like:
-//!   - [`Mode`](mode::Mode)s: have the function [`send_key`], which
-//!     takes a [key] and the current [widget] as input, and decides
-//!     what to do with them. Only one [`Mode`](mode::Mode) is active
-//!     at any given time.
+//!   `Widget`s, includes things like:
+//!   - [`Mode`](mode::Mode)s: have the function `send_key`, which
+//!     takes a key and the current widget as input, and decides what
+//!     to do with them. Only one `Mode` is active at any given time.
 //!   - [`map`] and [`alias`]: These functions provide vim-style
-//!     remapping on a given [`Mode`](mode::Mode), also letting you
-//!     switch modes on [key] sequences.
+//!     remapping on a given `Mode`, also letting you   switch modes
+//!     on key sequences.
 //!   - [`set`], [`set_default`], [`reset`]: These functions are used
-//!     in order to switch [`Mode`](mode::Mode) on demand. Do note
-//!     that the switching is done asynchronously.
+//!     in order to switch `Mode` on demand. Do note that the
+//!     switching is done asynchronously.
 //!
 //! - [`hook`]: Provides utilities for hooking functions in Duat
 //!   - [`Hookable`]: An event that you want to provide hooks for, in
 //!     order to trigger functions whenever it takes place.
 //!   - [`add`], [`add_grouped`], [`remove`]: These functions let you
-//!     add or remove functions from [`Hookable`] events. Their
-//!     arguments are statically determine by said [`Hookable`]s.
+//!     add or remove functions from `Hookable` events. Their
+//!     arguments are statically determine by said `Hookable`s.
 //!
 //! - [`cmd`]: Creation of commands in Duat, which can be called at
 //!   runtime by the user.
 //!   - [`add!`]: This macro lets you create a command, with one or
-//!     more callers, and any number of [`Parameter`]s
+//!     more callers, and any number of `Parameter`s
 //!   - [`Parameter`]: A command argument parsed from a string. There
-//!     are a bunch of predefined [`Parameter`]s, and things like
-//!     [`Vec<P>`] where `P: Parameter`, can also be as
-//!     [`Parameter`]s, if you want multiple of the same kind.
-//!   - [`call`], [`queue`], [`call_notify`], [`queue_and`], etc:
-//!     functions to call or queue commands, which one should be used
-//!     depends on the context of the function calling them.
+//!     are a bunch of predefined `Parameter`s, and things like
+//!     `Vec<P>` where `P: Parameter`, can also be as `Parameter`s, if
+//!     you want multiple of the same kind.
+//!   - [`call`], [`queue`], [`queue_and`], etc: functions to call or
+//!     queue commands, which one should be used depends on the
+//!     context of the function calling them.
 //!
-//! - [`form`]: How to stylize [`Text`]
-//!   - [`Form`](form::Form): Has many options on what [`Text`] should
+//! - [`form`]: How to stylize `Text`
+//!   - [`Form`](form::Form): Has many options on what `Text` should
 //!     look like, are the same as those found on unix terminals.
 //!   - [`set`](form::set), [`set_weak`]: These functions let you set
-//!     forms with a name. They can be set to a [`Form`](form::Form)
-//!     or reference another name of a form.
-//!   - [`ColorScheme`]s: These are general purpose
-//!     [`Form`](form::Form) setters, with a name that can be called
-//!     from the `colorscheme` [command]
+//!     forms with a name. They can be set to a `Form` or reference
+//!     another name of a form.
+//!   - [`ColorScheme`]s: These are general purpose `Form` setters,
+//!     with a name that can be called from the `colorscheme` command.
 //!
 //! These are the elements available to you if you want to extend
 //! Duat. Additionally, there are some other things that have been
@@ -94,16 +93,16 @@
 //! the [`plug`] function, and are modified in place through the
 //! builder pattern.
 //!
-//! By default, Duat includes the [`MatchPairs`] and [`Treesitter`]
+//! By default, Duat includes the `MatchPairs` and `Treesitter`
 //! plugins. The former highlightin the matching pair to the cursor,
 //! and the latter parsing the text into a syntax tree that is used
 //! for syntax highlighting, indentation, and much more.
 //!
-//! For this demonstration, I will create a [`Plugin`] that keeps
-//! track of the word count in a [`File`], without counting the words
-//! every time said [`File`] changes.
+//! For this demonstration, I will create a `Plugin` that keeps
+//! track of the word count in a `File`, without counting the words
+//! every time said `File` changes.
 //!
-//! ## Creating a [`Plugin`]
+//! ## Creating a `Plugin`
 //!
 //! First of all, assuming that you have succeeded in following the
 //! [installation instructions of duat], you should create a crate
@@ -133,15 +132,15 @@
 //! ```
 //!
 //! The [`Plugins`] struct can be used to require that other
-//! [`Plugin`]s be added to Duat as well. We won't use it in this
+//! `Plugin`s be added to Duat as well. We won't use it in this
 //! example.
 //!
 //! In the code above, `WordCount` is a plugin that can be included in
 //! Duat's `config` crate. It will give the user the ability to get
-//! how many words are in a [`File`], without having to reparse the
+//! how many words are in a `File`, without having to reparse the
 //! whole buffer every time, given that it could be a very large file.
-//! In order to configure the [`Plugin`], you should make use of the
-//! builder pattern, returning the [`Plugin`] on every modification.
+//! In order to configure the `Plugin`, you should make use of the
+//! builder pattern, returning the `Plugin` on every modification.
 //!
 //! ```rust
 //! use duat_core::prelude::*;
@@ -174,8 +173,8 @@
 //! example "x(x^3 + 3)" as 3 words, rather than 4.
 //!
 //! Next, I need to add something to keep track of the number of words
-//! in a [`File`]. For [`File`]s specifically, there is a built-in way
-//! to keep track of changes through the [`Parser`] trait:
+//! in a `File`. For `File`s specifically, there is a built-in way to
+//! keep track of changes through the [`Parser`] trait:
 //!
 //! ```rust
 //! use duat_core::prelude::*;
@@ -197,21 +196,21 @@
 //! There are a few things to unpack here:
 //!
 //! - The `WordCounter` has a [`FileTracker`] struct within: This
-//!   tracker is acquired when constructing the [`Parser`], and it can
-//!   track [`Change`]s to the [`File`]. It does this by having its
-//!   own copy of the [`File`]s [`Bytes`], which it updates as
-//!   requested, allowing parsers to work in different threads.
+//!   tracker is acquired when constructing the `Parser`, and it can
+//!   track [`Change`]s to the `File`. It does this by having its own
+//!   copy of the `File`s [`Bytes`], which it updates as requested,
+//!   allowing parsers to work in different threads.
 //! - The [`Parser::parse`] function: This function is called every
-//!   time the [`File`] is updated, and a return value of `true` means
-//!   that this [`Parser`] wants to update the [`File`] itself, which
-//!   will call [`Parser::update`]. I won't be using this feature, so
-//!   I can just return `false`.
+//!   time the `File` is updated, and a return value of `true` means
+//!   that this `Parser` wants to update the `File` itself, which will
+//!   call [`Parser::update`]. I won't be using this feature, so I can
+//!   just return `false`.
 //!
-//! This is the basic layout for a [`Parser`] that doesn't need to
-//! modify the [`File`] itself, which is our case.
+//! This is the basic layout for a `Parser` that doesn't need to
+//! modify the `File` itself, which is our case.
 //!
-//! Next, I'll make use of duat's [`Text`] API in order to figure out
-//! the word count difference given a [`Change`] to the text:
+//! Next, I'll make use of duat's `Text` API in order to figure out
+//! the word count difference given a `Change` to the text:
 //!
 //! ```rust
 //! use duat_core::{prelude::*, text::Change};
@@ -245,15 +244,15 @@
 //! ```
 //!
 //! In this method, I am calculating the difference between the number
-//! of words in the line before and after the [`Change`] took place.
-//! Here [`Bytes::points_of_line`] returns the [`Point`]s where a
+//! of words in the line before and after the `Change` took place.
+//! Here `Bytes::points_of_line` returns the [`Point`]s where a
 //! line starts and ends. I know there are better ways to do this by
 //! comparing the text that [was taken] to [what was added],
 //! with the context of the lines of the change, but this is
 //! just a demonstration, and the more efficient method is left as an
 //! exercise to the viewer 😉.
 //!
-//! Now, just call this on [`parse`]:
+//! Now, just call this on `Parser::parse`:
 //!
 //! ```rust
 //! # fn word_diff(_: &str, _: &Bytes, _: Change<&str>) -> i32 { 0 }
@@ -287,19 +286,19 @@
 //! }
 //! ```
 //!
-//! You'll notice that the [`FileTracker`] has a
+//! You'll notice that the `FileTracker` has a
 //! [`FileTracker::moment`] method. This method returns a [`Moment`],
-//! which is a list of all the [`Change`]s that took place since the
-//! previous call to [`FileTracker::update`]. By iterating through
-//! these changes, the [`Parser`] can keep up with every [`Change`]
-//! that takes place in the [`File`].
+//! which is a list of all the `Change`s that took place since the
+//! previous call to `FileTracker::update`. By iterating through these
+//! changes, the `Parser` can keep up with every `Change` that takes
+//! place in the `File`.
 //!
-//! And that's it for the [`Parser`] implementation! Now, how do we
-//! add it to a [`File`]?
+//! And that's it for the `Parser` implementation! Now, how do we add
+//! it to a `File`?
 //!
-//! In order to add this [`Parser`] to a [`File`], we're going to
-//! need a [`ParserCfg`], which is used for configuring [`Parser`]s
-//! before they are added:
+//! In order to add this `Parser` to a `File`, we're going to need a
+//! [`ParserCfg`], which is used for configuring `Parser`s before they
+//! are added:
 //!
 //! ```rust
 //! # struct WordCounter {
@@ -328,17 +327,17 @@
 //!
 //! In this function, I am returning the `WordCounter` with a
 //! precalculated number of words (since I have to calculate this
-//! value at some point), based on the current state of the [`File`].
+//! value at some point), based on the current state of the `File`.
 //!
-//! This is the point where you are given the [`FileTracker`], which a
-//! [`Parser`] can use to track that specific [`File`]. This
-//! [`Plugin`] is a relatively simple example, but the [`FileTracker`]
+//! This is the point where you are given the `FileTracker`, which a
+//! `Parser` can use to track that specific `File`. This
+//! `Plugin` is a relatively simple example, but the `FileTracker`
 //! is really useful for Duat to inform plugin writers when they
-//! actually need to update some part of the [`File`]'s [`Text`], in
+//! actually need to update some part of the `File`'s `Text`, in
 //! order to prevent inefficient updates to the text.
 //!
-//! Now, to wrap this all up, the plugin needs to add this [`Parser`]
-//! to every [`File`]. We do this through the use of a [hook]:
+//! Now, to wrap this all up, the plugin needs to add this `Parser`
+//! to every `File`. We do this through the use of a hook:
 //!
 //! ```rust
 //! # struct WordCounterCfg(bool);
@@ -384,12 +383,12 @@
 //! }
 //! ```
 //!
-//! Now, whenever a [`File`] is opened, this [`Parser`] will be added
-//! to it. This is just one out of many types of [hook] that Duat
+//! Now, whenever a `File` is opened, this `Parser` will be added
+//! to it. This is just one out of many types of hook that Duat
 //! provides by default. In Duat, you can even [create your own], and
 //! [choose when to trigger them].
 //!
-//! However, while we have added the [`Parser`], how is the user
+//! However, while we have added the `Parser`, how is the user
 //! supposed to access this value? Well, one convenient way to do this
 //! is through a simple function:
 //!
@@ -561,10 +560,6 @@
 //! `{file_words}` part of the string, which just interpolated that
 //! function, imported by `use word_count::*;`, into the status line.
 //!
-//! There are many other things that plugins can do, like create
-//! custom [`Widget`]s, [`Mode`](mode::Mode)s that can change how Duat
-//! behaves, customized [commands] and [hook]s, and many such things
-//!
 //! [`Widget`]: crate::ui::Widget
 //! [`File`]: crate::file::File
 //! [`WidgetCfg`]: crate::ui::WidgetCfg
@@ -625,8 +620,6 @@
 //! [`PrintCfg`]: crate::cfg::PrintCfg
 //! [`Text`]: crate::text::Text
 //! [`txt!`]: crate::text::txt
-//! [`MatchPairs`]: https://docs.rs/duat-match-pairs/latest/duat_match_pairs/struct.MatchPairs.html
-//! [`Treesitter`]: https://docs.rs/duat-tree-sitter/latest/duat_tree_sitter/struct.Treesitter.html
 //! [`FileTracker`]: crate::file::FileTracker
 //! [`FileTracker::moment`]: crate::file::FileTracker::moment
 //! [`FileTracker::update`]: crate::file::FileTracker::update
@@ -643,6 +636,7 @@
     thread_spawn_hook,
     box_as_ptr
 )]
+#![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
 
 use std::{any::TypeId, sync::OnceLock};

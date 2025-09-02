@@ -4,7 +4,7 @@ In Duat, mapping works somewhat like Vim/neovim, but not quite. This is how it
 works:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::{prelude::{*, mode::KeyEvent}};
 #     #[derive(Clone)]
 #     pub struct Insert;
@@ -14,10 +14,8 @@ works:
 #             todo!();
 #         }
 #     }
+#     #[derive(Default)]
 #     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
 #     impl duat_core::Plugin<Ui> for Kak {
 #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
@@ -27,10 +25,10 @@ use duat::prelude::*;
 
 fn setup() {
     // Adds kakoune-like editing modes, like Insert, Normal and OneKey
-    plug(kak::Kak::new());
+    plug(duat_kak::Kak::default());
   
     map::<User>("f", "<Esc>|fold -s<Enter>");
-    alias::<kak::Insert>("jk", "<Esc>");
+    alias::<duat_kak::Insert>("jk", "<Esc>");
     alias::<Prompt<Ui>>("jk", "<Esc>");
 }
 ```
@@ -52,7 +50,7 @@ On `duat-kak`, by default, this mode is entered by pressing the space bar.
 While you _can_ change that like this:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::{prelude::{*, mode::KeyEvent}};
 #     #[derive(Clone)]
 #     pub struct Normal;
@@ -62,10 +60,8 @@ While you _can_ change that like this:
 #             todo!();
 #         }
 #     }
+#     #[derive(Default)]
 #     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
 #     impl duat_core::Plugin<Ui> for Kak {
 #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
@@ -74,11 +70,11 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug(kak::Kak::new());
+    plug(duat_kak::Kak::default());
   
-    map::<kak::Normal>(" ", "");
+    map::<duat_kak::Normal>(" ", "");
     // In rust, you have to escap a backslash
-    map::<kak::Normal>("\\", " ");
+    map::<duat_kak::Normal>("\\", " ");
 }
 ```
 
@@ -95,10 +91,8 @@ You _should_ prefer doing this:
 #             todo!();
 #         }
 #     }
+#     #[derive(Default)]
 #     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
 #     impl duat_core::Plugin<Ui> for Kak {
 #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
@@ -108,7 +102,7 @@ use duat::prelude::*;
 use kak::Kak;
 
 fn setup() {
-    plug(kak::Kak::new());
+    plug(kak::Kak::default());
   
     map::<kak::Normal>(" ", "");
     map::<kak::Normal>("\\", User);

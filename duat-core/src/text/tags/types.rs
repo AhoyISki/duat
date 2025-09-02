@@ -174,7 +174,7 @@ pub struct AlignLeft;
 /// txt!("This is my line,please,pretend it has tags");
 /// ```
 ///
-/// If we were to print it with `{Spacer}as like this:
+/// If we were to print it with `{Spacer}` like this:
 ///
 /// ```
 /// # use duat_core::prelude::*;

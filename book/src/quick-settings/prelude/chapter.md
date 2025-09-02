@@ -36,7 +36,7 @@ This means that, for most options, their path is made up of a
 something like this:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::{prelude::{*, mode::KeyEvent}};
 #     #[derive(Clone)]
 #     pub struct Insert;
@@ -46,10 +46,8 @@ something like this:
 #             todo!();
 #         }
 #     }
+#     #[derive(Default)]
 #     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
 #     impl duat_core::Plugin<Ui> for Kak {
 #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
 #     }
@@ -58,7 +56,7 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug(kak::Kak::new());
+    plug(duat_kak::Kak::default());
 
     print::wrap_at(150);
     print::trailing_new_line('󱁐');
@@ -73,12 +71,12 @@ fn setup() {
         Ok(Some(txt!("Lines were set to [a]relative absolute").build()))
     });
     
-    map::<kak::Insert>("jk", "<Esc>:w<Enter>");
+    map::<duat_kak::Insert>("jk", "<Esc>:w<Enter>");
 }
 ```
 
-The exceptions to this are the `map` and `alias` functions, as well as the 
-`plug!` and `setup_duat!` macros. These items are imported directly.
+The exceptions to this are the `map`, `alias` and `plug` functions, the 
+`setup_duat!` macro. These items are imported directly.
 
 The following chapters should give a quick overview of these items imported 
 from the prelude module.

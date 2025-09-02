@@ -1,6 +1,7 @@
 # The `setup` function and `setup_duat!`
 
-In order for Duat to be able to run your config crate in `~/.config/duat`, it _needs_ to have at the very least this in it: 
+In order for Duat to be able to run your config crate in `~/.config/duat`, it 
+_needs_ to have at the very least this in it: 
 
 ```rust
 setup_duat!(setup);
@@ -19,23 +20,19 @@ example, you could separate the plugins into a separate function, if you think
 that will look cleaner:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::prelude::*;
+#     #[derive(Default)]
 #     pub struct Kak;
-#     impl Kak {
-#         pub fn new() -> Self { Self }
-#     }
-#     impl duat_core::Plugin<duat::Ui> for Kak {
+#     impl duat_core::Plugin<Ui> for Kak {
 #         fn plug(self, _: &duat_core::Plugins<Ui>) { todo!() }
 #     }
 # }
-# mod catppuccin {
+# mod duat_catppuccin {
 #     use duat::prelude::*;
+#     #[derive(Default)]
 #     pub struct Catppuccin;
-#     impl Catppuccin {
-#         pub fn new() -> Self { Self }
-#     }
-#     impl duat_core::Plugin<duat::Ui> for Catppuccin {
+#     impl duat_core::Plugin<Ui> for Catppuccin {
 #         fn plug(self, _: &duat_core::Plugins<Ui>) { todo!() }
 #     }
 # }
@@ -47,20 +44,22 @@ fn setup() {
 }
 
 fn add_plugins() {
-    plug(kak::Kak::new());
-    plug(catppuccin::Catppuccin::new());
+    plug(duat_kak::Kak::default());
+    plug(duat_catppuccin::Catppuccin::default());
 }
 ```
 
-### The `plug!` macro
+### Using `Plugin`s
 
-The `plug!` macro serves the purpose of adding plugins to Duat. Every plugin 
-will have its own configuration options, that you will need to look at their 
-documentation to figure out. But they should all be configured in the same way:
+You can add `Plugin`s to duat by calling the `plug` function. By default, the 
+`Treesitter` and `MatchPairs` plugins are added, providing syntax highlighting, 
+automatic indentation, and matching parenthesis highlighting.
+
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::prelude::*;
+#     #[derive(Default)]
 #     pub struct Kak;
 #     impl Kak {
 #         pub fn new() -> Self { Self }
@@ -76,7 +75,7 @@ use duat::prelude::*;
 
 fn setup() {
     plug(
-        kak::Kak::new()
+        duat_kak::Kak::new()
             .f_and_t_set_search()
             .with_no_indent_on_capital_i(),
     );

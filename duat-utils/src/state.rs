@@ -111,7 +111,7 @@ pub fn path_txt(file: &File<impl Ui>) -> Text {
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # use duat_utils::{state, widgets::status};
+/// # use duat_utils::{state, widgets::{StatusLine, status}};
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///

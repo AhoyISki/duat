@@ -181,7 +181,7 @@ impl Builder {
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }
-        
+
         match part.try_to_basic() {
             Ok(basic_part) => push_basic(self, basic_part),
             Err(BuilderPart::ToString(display)) => self.push_str(display),

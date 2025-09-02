@@ -346,17 +346,15 @@ impl Bytes {
         );
 
         let (c_b, c_c, mut c_l) = {
-            let [mut b, mut c, l] = self.records.closest_to_by_key(l, |[.., l]| l);
-            self.strs_inner(..b)
+            let [b, c, l] = self.records.closest_to_by_key(l, |[.., l]| l);
+            let (b, c) = self
+                .strs_inner(..b)
                 .unwrap()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
                 .take_while(|c| *c != '\n')
-                .for_each(|char| {
-                    b -= char.len_utf8();
-                    c -= 1;
-                });
+                .fold((b, c), |(b, c), char| (b - char.len_utf8(), c - 1));
             (b, c, l)
         };
 
