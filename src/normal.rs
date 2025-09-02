@@ -2,7 +2,7 @@ use std::sync::{Mutex, atomic::Ordering};
 
 use duat_core::{
     cfg::WordChars,
-    mode::{KeyCode::*, KeyMod as Mod},
+    mode::{KeyCode::*, KeyMod as Mod, VPoint},
     prelude::*,
 };
 use duat_utils::modes::{
@@ -741,68 +741,30 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Cursor creation and destruction
             key!(Char(',')) => handle.selections_mut(pa).remove_extras(),
-            key!(Char('C')) => {
+            key!(Char('C'), Mod::NONE | Mod::ALT) => {
+                let (nth, mult) = if event.modifiers == Mod::NONE {
+                    (handle.read(pa).selections().len() - 1, 1)
+                } else {
+                    (0, -1)
+                };
+
                 handle.text_mut(pa).new_moment();
-                handle.edit_last(pa, |mut c| {
-                    let v_caret = c.v_caret();
+                handle.edit_nth(pa, nth, |mut c| {
                     c.copy();
-                    if let Some(v_anchor) = c.v_anchor() {
-                        let lines_diff = v_anchor.line() as i32 - c.caret().line() as i32;
-                        let len_lines = lines_diff.unsigned_abs() as usize;
-                        while c.caret().line() + len_lines < c.len().line() {
-                            c.move_ver(len_lines as i32 + 1);
-                            c.set_anchor();
-                            c.set_desired_vcol(v_anchor.visual_col());
-                            c.move_ver(lines_diff);
+                    let (v_caret, v_anchor) = (c.v_caret(), c.v_anchor());
+                    let lines_diff = v_anchor.map(|vp| vp.line() as i32 - v_caret.line() as i32);
+                    let mut lines = mult * (lines_diff.unwrap_or(0) + 1);
+
+                    while c.move_ver(lines) == lines {
+                        if v_anchor.is_some() {
                             c.swap_ends();
-                            if c.v_caret().visual_col() <= v_caret.visual_col()
-                                && c.v_anchor().unwrap().visual_col() <= v_anchor.visual_col()
-                            {
-                                return;
-                            }
+                            c.move_ver(lines);
                             c.swap_ends();
                         }
-                    } else {
-                        while c.caret().line() < c.len().line() {
-                            if c.move_ver(1) == 0 {
-                                break;
-                            }
-                            if c.v_caret().visual_col() == v_caret.visual_col() {
-                                return;
-                            }
+                        if cols_eq((v_caret, v_anchor), (c.v_caret(), c.v_anchor())) {
+                            return;
                         }
-                    }
-                    c.destroy();
-                });
-            }
-            key!(Char('C'), Mod::ALT) => {
-                handle.text_mut(pa).new_moment();
-                handle.edit_nth(pa, 0, |mut c| {
-                    let v_caret = c.v_caret();
-                    c.copy();
-                    if let Some(v_anchor) = c.v_anchor() {
-                        let lines_diff = v_anchor.line() as i32 - c.caret().line() as i32;
-                        let len_lines = lines_diff.unsigned_abs() as usize;
-                        while c.caret().line().checked_sub(len_lines + 1).is_some() {
-                            c.move_ver(-1 - len_lines as i32);
-                            c.set_anchor();
-                            c.set_desired_vcol(v_anchor.visual_col());
-                            c.move_ver(lines_diff);
-                            c.swap_ends();
-                            if c.v_caret().visual_col() == v_caret.visual_col()
-                                && c.v_anchor().unwrap().visual_col() == v_anchor.visual_col()
-                            {
-                                return;
-                            }
-                            c.swap_ends();
-                        }
-                    } else {
-                        while c.caret().line() > 0 {
-                            c.move_ver(-1);
-                            if c.v_caret().visual_col() == v_caret.visual_col() {
-                                return;
-                            }
-                        }
+                        lines = mult;
                     }
                     c.destroy();
                 });
@@ -975,6 +937,14 @@ fn paste_strings() -> Vec<String> {
     } else {
         CLIPBOARD.lock().unwrap().clone()
     }
+}
+
+fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool {
+    lhs.0.visual_col() == rhs.0.visual_col()
+        && lhs
+            .1
+            .zip(rhs.1)
+            .is_none_or(|(lhs, rhs)| lhs.visual_col() == rhs.visual_col())
 }
 
 static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
