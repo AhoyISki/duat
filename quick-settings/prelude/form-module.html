@@ -200,13 +200,13 @@ fn setup() {
 }
 <span class="boring">}</span></code></pre></pre>
 <p>The main function that you will use from this module is <code>form::set</code>. This
-function sets the form with the given name on the left to the argument on the
-right. This argument can be of two types:</p>
+function sets the form on the left to the value on the right. This value can be
+of two types:</p>
 <ul>
-<li>A <code>Form</code> argument will just modify the named form to be shown like that;</li>
+<li>A <code>Form</code> argument will be used to color the form directly.</li>
 <li>A <code>&amp;str</code> argument will "reference" the form on the right. If the form on the
 right is altered, so will the one on the left. This reduces the need for
-setting a ton of forms in things like colorschemes;</li>
+setting a ton of forms in things like colorschemes.</li>
 </ul>
 <h2 id="how-forms-should-be-named"><a class="header" href="#how-forms-should-be-named">How forms should be named</a></h2>
 <p>Every form in duat should be named like this: <code>[a-z0-9]+(\.[a-z0-9]+)*</code>. That
@@ -222,23 +222,20 @@ like <code>default.StatusLine</code>, which will change the <code>default</code>
 a previously named one:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod catppuccin {
+</span><span class="boring">mod duat_catppuccin {
 </span><span class="boring">    use duat::prelude::*;
+</span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Catppuccin;
-</span><span class="boring">    impl Catppuccin {
-</span><span class="boring">        pub fn new() -&gt; Self { Self }
-</span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;duat::Ui&gt; for Catppuccin {
 </span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
-use catppuccin::Catppuccin;
 
 fn setup() {
     // Adds four colorschemes, "catppuccin-latte" among them.
-    plug(Catppuccin::new());
+    plug(duat_catppuccin::Catppuccin::default());
     
     form::set_colorscheme("catppuccin-latte");
 }
@@ -259,6 +256,28 @@ would follow the change to the <code>markup</code> form.</p>
 <p>Additionally, if the form <code>f0.f1.f2</code> is set to something, the forms <code>f0</code> and
 <code>f1.f2</code> would also be set, although they will reference the <code>default</code> form in
 that situation, not whatever <code>f0.f1.f2</code> was set to.</p>
+<h3 id="quiz"><a class="header" href="#quiz">Quiz</a></h3>
+<p>Given the following sequence of <code>form::set</code>s, what will each <code>Form</code> be at the
+end:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span><span class="boring">fn test() {
+</span>form::set("arent", Form::green());
+form::set("parent.child.granchild", Form::blue()); 
+form::set("grandparent.parent.child", "parent.child");
+form::set("parent", Form::red());
+<span class="boring">}
+</span><span class="boring">}</span></code></pre></pre>
+<details>
+<summary>See results</summary>
+<ul>
+<li>"parent": <code>Form::red()</code>.</li>
+<li>"parent.child": <code>Form::red()</code>.</li>
+<li>"parent.child.grandchild": <code>Form::blue()</code>.</li>
+<li>"grandparent.parent.child": <code>Form::red()</code>.</li>
+</ul>
+</details>
 <h2 id="masks"><a class="header" href="#masks">Masks</a></h2>
 <p>A mask is essentially the opposite of the inheritance concept. Instead of the longer form inheriting from the shorter forms, the shorter forms will be mapped for longer ones.</p>
 <p>It works like this: Say I have a <code>File</code> widget, and in it, there are instances

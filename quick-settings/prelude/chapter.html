@@ -214,7 +214,7 @@ directly, like this:</p>
 something like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod kak {
+</span><span class="boring">mod duat_kak {
 </span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
 </span><span class="boring">    #[derive(Clone)]
 </span><span class="boring">    pub struct Insert;
@@ -224,10 +224,8 @@ something like this:</p>
 </span><span class="boring">            todo!();
 </span><span class="boring">        }
 </span><span class="boring">    }
+</span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl Kak {
-</span><span class="boring">        pub fn new() -&gt; Self { Self }
-</span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
 </span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
@@ -236,7 +234,7 @@ something like this:</p>
 use duat::prelude::*;
 
 fn setup() {
-    plug(kak::Kak::new());
+    plug(duat_kak::Kak::default());
 
     print::wrap_at(150);
     print::trailing_new_line('󱁐');
@@ -251,11 +249,11 @@ fn setup() {
         Ok(Some(txt!("Lines were set to [a]relative absolute").build()))
     });
     
-    map::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
+    map::&lt;duat_kak::Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }
 <span class="boring">}</span></code></pre></pre>
-<p>The exceptions to this are the <code>map</code> and <code>alias</code> functions, as well as the
-<code>plug!</code> and <code>setup_duat!</code> macros. These items are imported directly.</p>
+<p>The exceptions to this are the <code>map</code>, <code>alias</code> and <code>plug</code> functions, the
+<code>setup_duat!</code> macro. These items are imported directly.</p>
 <p>The following chapters should give a quick overview of these items imported
 from the prelude module.</p>
 

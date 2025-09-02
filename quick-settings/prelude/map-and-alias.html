@@ -186,7 +186,7 @@
 works:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod kak {
+</span><span class="boring">mod duat_kak {
 </span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
 </span><span class="boring">    #[derive(Clone)]
 </span><span class="boring">    pub struct Insert;
@@ -196,10 +196,8 @@ works:</p>
 </span><span class="boring">            todo!();
 </span><span class="boring">        }
 </span><span class="boring">    }
+</span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl Kak {
-</span><span class="boring">        pub fn new() -&gt; Self { Self }
-</span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
 </span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
@@ -209,10 +207,10 @@ use duat::prelude::*;
 
 fn setup() {
     // Adds kakoune-like editing modes, like Insert, Normal and OneKey
-    plug(kak::Kak::new());
+    plug(duat_kak::Kak::default());
   
     map::&lt;User&gt;("f", "&lt;Esc&gt;|fold -s&lt;Enter&gt;");
-    alias::&lt;kak::Insert&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;duat_kak::Insert&gt;("jk", "&lt;Esc&gt;");
     alias::&lt;Prompt&lt;Ui&gt;&gt;("jk", "&lt;Esc&gt;");
 }
 <span class="boring">}</span></code></pre></pre>
@@ -231,7 +229,7 @@ On <code>duat-kak</code>, by default, this mode is entered by pressing the space
 While you <em>can</em> change that like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod kak {
+</span><span class="boring">mod duat_kak {
 </span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
 </span><span class="boring">    #[derive(Clone)]
 </span><span class="boring">    pub struct Normal;
@@ -241,10 +239,8 @@ While you <em>can</em> change that like this:</p>
 </span><span class="boring">            todo!();
 </span><span class="boring">        }
 </span><span class="boring">    }
+</span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl Kak {
-</span><span class="boring">        pub fn new() -&gt; Self { Self }
-</span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
 </span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
@@ -253,11 +249,11 @@ While you <em>can</em> change that like this:</p>
 use duat::prelude::*;
 
 fn setup() {
-    plug(kak::Kak::new());
+    plug(duat_kak::Kak::default());
   
-    map::&lt;kak::Normal&gt;(" ", "");
+    map::&lt;duat_kak::Normal&gt;(" ", "");
     // In rust, you have to escap a backslash
-    map::&lt;kak::Normal&gt;("\\", " ");
+    map::&lt;duat_kak::Normal&gt;("\\", " ");
 }
 <span class="boring">}</span></code></pre></pre>
 <p>You <em>should</em> prefer doing this:</p>
@@ -273,10 +269,8 @@ fn setup() {
 </span><span class="boring">            todo!();
 </span><span class="boring">        }
 </span><span class="boring">    }
+</span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl Kak {
-</span><span class="boring">        pub fn new() -&gt; Self { Self }
-</span><span class="boring">    }
 </span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
 </span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
 </span><span class="boring">    }
@@ -286,7 +280,7 @@ use duat::prelude::*;
 use kak::Kak;
 
 fn setup() {
-    plug(kak::Kak::new());
+    plug(kak::Kak::default());
   
     map::&lt;kak::Normal&gt;(" ", "");
     map::&lt;kak::Normal&gt;("\\", User);
