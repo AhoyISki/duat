@@ -172,10 +172,7 @@ mod global {
     };
 
     use super::{HookAlias, HookDummy, Hookable, InnerGroupId, InnerHooks};
-    use crate::{
-        data::Pass,
-        ui::{DuatEvent, Ui},
-    };
+    use crate::{data::Pass, session::DuatEvent, ui::Ui};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 

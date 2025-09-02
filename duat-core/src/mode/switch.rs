@@ -14,7 +14,8 @@ use crate::{
     file::File,
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
-    ui::{DuatEvent, Node, Ui, Widget},
+    session::DuatEvent,
+    ui::{Node, Ui, Widget},
     utils::duat_name,
 };
 

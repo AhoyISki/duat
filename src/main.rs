@@ -20,8 +20,8 @@ use duat::{Channels, Initials, MetaStatics, crate_dir, pre_setup, prelude::*, ru
 use duat_core::{
     clipboard::Clipboard,
     context,
-    session::{FileParts, ReloadEvent},
-    ui::{self, DuatEvent, Ui as UiTrait},
+    session::{DuatEvent, FileParts, ReloadEvent},
+    ui::{self, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
@@ -121,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(crate_dir) = crate_dir {
             (crate_dir, profile)
         } else {
-            Ui::open(ms, ui::DuatSender::new(duat_tx.clone()));
+            Ui::open(ms, duat_core::session::DuatSender::new(duat_tx.clone()));
             context::error!("Failed to find config crate, loading default");
             pre_setup(None, None);
             run_duat(
@@ -234,7 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (reload_tx, reload_rx) = mpsc::channel();
     spawn_reloader(reload_rx, config_tx.clone(), duat_tx.clone());
 
-    Ui::open(ms, ui::DuatSender::new(duat_tx.clone()));
+    Ui::open(ms, duat_core::session::DuatSender::new(duat_tx.clone()));
 
     loop {
         let running_lib = lib.take();

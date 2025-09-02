@@ -19,9 +19,9 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     form::Palette,
-    session::{FileParts, ReloadEvent, SessionCfg},
+    session::{DuatEvent, FileParts, ReloadEvent, SessionCfg},
     text::History,
-    ui::{self, Area, DuatEvent, Widget},
+    ui::{self, Area, Widget},
 };
 use duat_filetype::FileType;
 use duat_term::VertRule;

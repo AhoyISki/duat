@@ -254,8 +254,9 @@ use crate::{
     file::File,
     form::FormId,
     mode,
+    session::DuatEvent,
     text::{Text, txt},
-    ui::{DuatEvent, Node, Ui, Widget},
+    ui::{Node, Ui, Widget},
 };
 
 mod parameters;
@@ -361,15 +362,13 @@ pub(crate) fn add_session_commands<U: Ui>() {
             };
             (bytes, file.name())
         };
-        
+
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         match bytes {
             Some(bytes) => Ok(Some(
                 txt!("Closed [file]{name}[], writing [a]{bytes}[] bytes").build(),
             )),
-            None => Ok(Some(
-                txt!("Closed [file]{name}[]").build(),
-            )),
+            None => Ok(Some(txt!("Closed [file]{name}[]").build())),
         }
     });
 
@@ -588,7 +587,7 @@ mod global {
     use super::{CheckerFn, CmdFn, CmdResult, Commands};
     use crate::{
         context, data::Pass, form::FormId, main_thread_only::MainThreadOnly, text::Text,
-        ui::DuatEvent,
+        session::DuatEvent,
     };
 
     static COMMANDS: MainThreadOnly<Commands> = MainThreadOnly::new(Commands::new());

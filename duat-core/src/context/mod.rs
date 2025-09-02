@@ -33,8 +33,9 @@ mod global {
         context::Handle,
         data::{DataMap, Pass, RwData},
         file::File,
+        session::DuatEvent,
         text::{Text, txt},
-        ui::{DuatEvent, GetAreaId, Node, Ui, Widget, Windows},
+        ui::{GetAreaId, Node, Ui, Widget, Windows},
     };
 
     static CUR_FILE: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();

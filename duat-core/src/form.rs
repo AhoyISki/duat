@@ -9,8 +9,8 @@ pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
     hook::{self, FormSet},
+    session::DuatSender,
     text::FormTag,
-    ui::DuatSender,
 };
 
 /// Lists of [`Form`]s to be applied by a name

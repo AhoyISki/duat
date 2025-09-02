@@ -32,10 +32,9 @@
 //! [`hook`]: crate::hook
 //! [`File`]: crate::file::File
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
-use std::{fmt::Debug, sync::mpsc};
+use std::fmt::Debug;
 
 use bincode::{Decode, Encode};
-use crossterm::event::KeyEvent;
 
 pub(crate) use self::widget::Node;
 pub use self::{
@@ -47,9 +46,8 @@ pub use self::{
 };
 use crate::{
     cfg::PrintCfg,
-    data::Pass,
     form::Painter,
-    session::ReloadEvent,
+    session::DuatSender,
     text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
 };
 
@@ -481,94 +479,6 @@ impl From<PushSpecs> for Axis {
             Side::Above | Side::Below => Axis::Vertical,
             _ => Axis::Horizontal,
         }
-    }
-}
-
-/// An event that Duat must handle
-#[doc(hidden)]
-pub enum DuatEvent {
-    /// A [`KeyEvent`] was typed
-    Tagger(KeyEvent),
-    /// A function was queued
-    QueuedFunction(Box<dyn FnOnce(&mut Pass) + Send>),
-    /// The Screen has resized
-    Resized,
-    /// A [`Form`] was altered, which one it is, doesn't matter
-    ///
-    /// [`Form`]: crate::form::Form
-    FormChange,
-    /// Open a new [`File`]
-    ///
-    /// [`File`]: crate::file::File
-    OpenFile(String),
-    /// Close an open [`File`]
-    ///
-    /// [`File`]: crate::file::File
-    CloseFile(String),
-    /// Swap two [`File`]s
-    ///
-    /// [`File`]: crate::file::File
-    SwapFiles(String, String),
-    /// Open a new window with a [`File`]
-    ///
-    /// [`File`]: crate::file::File
-    OpenWindow(String),
-    /// Switch to the n'th window
-    SwitchWindow(usize),
-    /// Focused on Duat
-    FocusedOnDuat,
-    /// Unfocused from Duat
-    UnfocusedFromDuat,
-    /// Request a reload of the configuration to the executable
-    RequestReload(ReloadEvent),
-    /// A reloading attempt succeeded
-    ReloadSucceeded,
-    /// A reloading attempt failed
-    ReloadFailed,
-    /// Quit Duat
-    Quit,
-}
-
-/// A sender of [`DuatEvent`]s
-pub struct DuatSender(mpsc::Sender<DuatEvent>);
-
-impl DuatSender {
-    /// Returns a new [`DuatSender`]
-    pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
-        Self(sender)
-    }
-
-    /// Sends a [`KeyEvent`]
-    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::Tagger(key))
-    }
-
-    /// Sends a notice that the app has resized
-    pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::Resized)
-    }
-
-    /// Triggers the [`FocusedOnDuat`] [`hook`]
-    ///
-    /// [`FocusedOnDuat`]: crate::hook::FocusedOnDuat
-    /// [`hook`]: crate::hook
-    pub fn send_focused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::FocusedOnDuat)
-    }
-
-    /// Triggers the [`UnfocusedFromDuat`] [`hook`]
-    ///
-    /// [`UnfocusedFromDuat`]: crate::hook::UnfocusedFromDuat
-    /// [`hook`]: crate::hook
-    pub fn send_unfocused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::UnfocusedFromDuat)
-    }
-
-    /// Sends a notice that a [`Form`] has changed
-    ///
-    /// [`Form`]: crate::form::Form
-    pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::FormChange)
     }
 }
 

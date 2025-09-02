@@ -20,9 +20,10 @@
 //! [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
 //! [`PipeSelections`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.PipeSelections.html
 use core::str;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use parking_lot::Mutex;
 
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;
@@ -36,6 +37,7 @@ use crate::{
     context::Handle,
     data::Pass,
     file::File,
+    session::DuatEvent,
     ui::{Ui, Widget},
 };
 
@@ -101,6 +103,34 @@ impl<U: Ui> Mode<U> for User {
 
     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {
         reset::<File<U>, U>();
+    }
+}
+
+static KEYS_WERE_SENT: AtomicUsize = AtomicUsize::new(0);
+
+/// Wether any keys were sent via [`mode::send_keys`]
+///
+/// [`mode::send_keys`]: send_keys
+pub(crate) fn keys_were_sent(_: &mut Pass) -> bool {
+    if KEYS_WERE_SENT.load(Ordering::Relaxed) > 0 {
+        KEYS_WERE_SENT.fetch_sub(1, Ordering::Relaxed);
+        true
+    } else {
+        false
+    }
+}
+
+/// Sends a sequence of [`KeyEvent`]s
+///
+/// Unlike with [`mode::map`] or [`mode::alias`], the sent keys are
+/// allowed to be remapped to something else.
+pub fn send_keys(keys: impl AsRef<str>) {
+    let keys = str_to_keys(keys.as_ref());
+    if !keys.is_empty() {
+        KEYS_WERE_SENT.fetch_add(1, Ordering::Relaxed);
+        crate::context::sender()
+            .send(DuatEvent::KeysSent(keys))
+            .unwrap();
     }
 }
 

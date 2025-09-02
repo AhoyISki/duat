@@ -17,6 +17,8 @@ use std::{
     time::Duration,
 };
 
+use crossterm::event::KeyEvent;
+
 use crate::{
     Plugins,
     cfg::PrintCfg,
@@ -33,7 +35,7 @@ use crate::{
     mode,
     text::Bytes,
     ui::{
-        Area, DuatEvent, DuatSender, Ui, Widget, Windows,
+        Area, Ui, Widget, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
@@ -187,7 +189,20 @@ impl<U: Ui> Session<U> {
 
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                 match event {
-                    DuatEvent::Tagger(key) => mode::send_key(pa, key),
+                    DuatEvent::KeySent(key) => {
+                        mode::send_key(pa, key);
+                        if mode::keys_were_sent(pa) {
+                            continue;
+                        }
+                    }
+                    DuatEvent::KeysSent(keys) => {
+                        for key in keys {
+                            mode::send_key(pa, key)
+                        }
+                        if mode::keys_were_sent(pa) {
+                            continue;
+                        }
+                    }
                     DuatEvent::QueuedFunction(f) => f(pa),
                     DuatEvent::Resized | DuatEvent::FormChange => {
                         reprint_screen = true;
@@ -389,6 +404,96 @@ impl<U: Ui> Session<U> {
             (self.layout_fn)(),
             self.file_cfg.clone(),
         );
+    }
+}
+
+/// An event that Duat must handle
+#[doc(hidden)]
+pub enum DuatEvent {
+    /// A [`KeyEvent`] was typed
+    KeySent(KeyEvent),
+    /// Multiple [`KeyEvent`]s were sent
+    KeysSent(Vec<KeyEvent>),
+    /// A function was queued
+    QueuedFunction(Box<dyn FnOnce(&mut Pass) + Send>),
+    /// The Screen has resized
+    Resized,
+    /// A [`Form`] was altered, which one it is, doesn't matter
+    ///
+    /// [`Form`]: crate::form::Form
+    FormChange,
+    /// Open a new [`File`]
+    ///
+    /// [`File`]: crate::file::File
+    OpenFile(String),
+    /// Close an open [`File`]
+    ///
+    /// [`File`]: crate::file::File
+    CloseFile(String),
+    /// Swap two [`File`]s
+    ///
+    /// [`File`]: crate::file::File
+    SwapFiles(String, String),
+    /// Open a new window with a [`File`]
+    ///
+    /// [`File`]: crate::file::File
+    OpenWindow(String),
+    /// Switch to the n'th window
+    SwitchWindow(usize),
+    /// Focused on Duat
+    FocusedOnDuat,
+    /// Unfocused from Duat
+    UnfocusedFromDuat,
+    /// Request a reload of the configuration to the executable
+    RequestReload(ReloadEvent),
+    /// A reloading attempt succeeded
+    ReloadSucceeded,
+    /// A reloading attempt failed
+    ReloadFailed,
+    /// Quit Duat
+    Quit,
+}
+
+/// A sender of [`DuatEvent`]s
+pub struct DuatSender(mpsc::Sender<DuatEvent>);
+
+impl DuatSender {
+    /// Returns a new [`DuatSender`]
+    pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
+        Self(sender)
+    }
+
+    /// Sends a [`KeyEvent`]
+    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::KeySent(key))
+    }
+
+    /// Sends a notice that the app has resized
+    pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::Resized)
+    }
+
+    /// Triggers the [`FocusedOnDuat`] [`hook`]
+    ///
+    /// [`FocusedOnDuat`]: crate::hook::FocusedOnDuat
+    /// [`hook`]: crate::hook
+    pub fn send_focused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::FocusedOnDuat)
+    }
+
+    /// Triggers the [`UnfocusedFromDuat`] [`hook`]
+    ///
+    /// [`UnfocusedFromDuat`]: crate::hook::UnfocusedFromDuat
+    /// [`hook`]: crate::hook
+    pub fn send_unfocused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::UnfocusedFromDuat)
+    }
+
+    /// Sends a notice that a [`Form`] has changed
+    ///
+    /// [`Form`]: crate::form::Form
+    pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::FormChange)
     }
 }
 

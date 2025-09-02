@@ -19,7 +19,8 @@ use crossterm::{
 use duat_core::{
     MainThreadOnly,
     form::Color,
-    ui::{self, DuatSender},
+    session::DuatSender,
+    ui::{self},
 };
 
 use self::{layout::Layout, print::Printer};

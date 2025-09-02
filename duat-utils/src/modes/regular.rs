@@ -32,8 +32,7 @@ impl<U: Ui> mode::Mode<U> for Regular {
                 if e.anchor().is_some() {
                     e.replace("");
                     e.unset_anchor();
-                } else {
-                    e.move_hor(-1);
+                } else if e.move_hor(-1) == -1 {
                     e.set_anchor();
                     e.replace("");
                     e.unset_anchor();
@@ -90,7 +89,10 @@ impl<U: Ui> mode::Mode<U> for Regular {
             }),
 
             // Control
-            key!(Char('p'), Mod::CONTROL) => mode::set::<U>(RunCommands::new()),
+            key!(Char('p'), Mod::CONTROL) => {
+                mode::set::<U>(RunCommands::new());
+                mode::send_keys("edit ");
+            }
             key!(Char('f'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
             key!(Char('F'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchRev)),
 
