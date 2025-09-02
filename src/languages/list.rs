@@ -26,7 +26,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
                 ("soql::LANGUAGE", false),
                 ("sosl::LANGUAGE", false),
             ],
-            "sfapex",
+            ("sfapex", None),
             &["@aheber", "@xixiaofinland"],
         ),
         LanguageOptions::pair_const(
@@ -37,18 +37,19 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         LanguageOptions::pair_const("asm", "https://github.com/RubixDev/tree-sitter-asm", &[
             "@RubixDev",
         ]),
-        // Wrong version >:(
+        // Fails to compile
         // LanguageOptions::pair_fn(
         //     "astro",
         //     "https://github.com/virchau13/tree-sitter-astro",
         //     &["@virchau13"],
         // ),
-        // LanguageOptions::pair_fn_and_crate(
-        //     "authzed",
-        //     "https://github.com/mleonidas/tree-sitter-authzed",
-        //     "azd",
-        //     &["@mattpolzin"],
-        // ),
+        LanguageOptions::pairs_with_symbol_and_crate(
+            "authzed",
+            "https://github.com/mleonidas/tree-sitter-authzed",
+            &[("language", true)],
+            ("azd", None),
+            &["@mattpolzin"],
+        ),
         // Seems to freeze?
         // LanguageOptions::pair_fn(
         //     "awk",
@@ -234,11 +235,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/glehmann/tree-sitter-earthfile",
             &["@glehmann"],
         ),
-        LanguageOptions::pair_fn(
-            "ebnf",
-            "https://github.com/RubixDev/ebnf",
-            &["@RubixDev"],
-        ),
+        LanguageOptions::pair_fn("ebnf", "https://github.com/RubixDev/ebnf", &["@RubixDev"]),
         LanguageOptions::pair_const(
             "editorconfig",
             "https://github.com/ValdezFOmar/tree-sitter-editorconfig",
@@ -293,12 +290,11 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         LanguageOptions::pair_const("firrtl", "https://github.com/amaanq/tree-sitter-firrtl", &[
             "@amaanq",
         ]),
-        // Wrong version >:(
-        // LanguageOptions::pair_fn(
-        //     "fish",
-        //     "https://github.com/ram02z/tree-sitter-fish",
-        //     &["@ram02z"],
-        // ),
+        LanguageOptions::pair_fn(
+            "fish",
+            "https://github.com/ram02z/tree-sitter-fish",
+            &["@ram02z"],
+        ),
         LanguageOptions::pair_const(
             "foam",
             "https://github.com/FoamScience/tree-sitter-foam",
@@ -560,11 +556,9 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/tree-sitter/tree-sitter-javascript",
             &["@steelsojka"],
         ),
-        LanguageOptions::pair_fn(
-            "jq",
-            "https://github.com/flurie/tree-sitter-jq",
-            &["@ObserverOfTime"],
-        ),
+        LanguageOptions::pair_fn("jq", "https://github.com/flurie/tree-sitter-jq", &[
+            "@ObserverOfTime",
+        ]),
         LanguageOptions::pair_const(
             "jsdoc",
             "https://github.com/tree-sitter/tree-sitter-jsdoc",
@@ -653,9 +647,13 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/savonet/tree-sitter-liquidsoap",
             &["@toots"],
         ),
-        LanguageOptions::pair_const("lua", "https://github.com/MunifTanjim/tree-sitter-lua", &[
-            "@muniftanjim",
-        ]),
+        LanguageOptions::pairs_with_symbol_and_crate(
+            "lua",
+            "https://github.com/MunifTanjim/tree-sitter-lua",
+            &[("LANGUAGE", false)],
+            ("lua", Some("0.3.1-dev.0")),
+            &["@muniftanjim"],
+        ),
         LanguageOptions::pair_const("luadoc", "https://github.com/amaanq/tree-sitter-luadoc", &[
             "@amaanq",
         ]),
@@ -682,14 +680,14 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "markdown",
             "https://github.com/MDeiml/tree-sitter-markdown",
             &[("LANGUAGE", false), ("INLINE_LANGUAGE", false)],
-            "md",
+            ("md", None),
             &["@MDeiml"],
         ),
         LanguageOptions::pairs_with_symbol_and_crate(
             "markdown_inline",
             "https://github.com/MDeiml/tree-sitter-markdown",
             &[("INLINE_LANGUAGE", false), ("LANGUAGE", false)],
-            "md",
+            ("md", None),
             &["@MDeiml"],
         ),
         LanguageOptions::pair_const(
@@ -779,7 +777,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
                 ("LANGUAGE_OCAML_INTERFACE", false),
                 ("LANGUAGE_OCAML", false),
             ],
-            "ocaml",
+            ("ocaml", None),
             &["@undu"],
         ),
         LanguageOptions::pair_const(
@@ -818,7 +816,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "php_only",
             "https://github.com/tree-sitter/tree-sitter-php",
             &[("LANGUAGE_PHP_ONLY", false), ("LANGUAGE_PHP", false)],
-            "php",
+            ("php", None),
             &["@tk-shirasaka", "@calebdw"],
         ),
         LanguageOptions::pair_const(
@@ -826,12 +824,11 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/claytonrcarter/tree-sitter-phpdoc",
             &["@mikehaertl"],
         ),
-        // Wrong version >:(
-        // LanguageOptions::pair_fn(
-        //     "pioasm",
-        //     "https://github.com/leo60228/tree-sitter-pioasm",
-        //     &["@leo60228"],
-        // ),
+        LanguageOptions::pair_fn(
+            "pioasm",
+            "https://github.com/leo60228/tree-sitter-pioasm",
+            &["@leo60228"],
+        ),
         LanguageOptions::pair_const("po", "https://github.com/erasin/tree-sitter-po", &[
             "@amaanq",
         ]),
@@ -868,7 +865,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "problog",
             "https://github.com/foxyseta/tree-sitter-prolog",
             &[("problog", true), ("prolog", true)],
-            "prolog",
+            ("prolog", None),
             &["@foxyseta"],
         ),
         LanguageOptions::pairs_with_symbol(
@@ -901,7 +898,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
                 ("language_csv", true),
                 ("language_tsv", true),
             ],
-            "csv",
+            ("csv", None),
             &["@amaanq"],
         ),
         LanguageOptions::pair_const("pug", "https://github.com/zealot128/tree-sitter-pug", &[
@@ -1038,7 +1035,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
                 ("soql::LANGUAGE", false),
                 ("sosl::LANGUAGE", false),
             ],
-            "sfapex",
+            ("sfapex", None),
             &["@aheber", "@xixiaofinland"],
         ),
         LanguageOptions::pair_const(
@@ -1081,7 +1078,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
                 ("apex::LANGUAGE", false),
                 ("sosl::LANGUAGE", false),
             ],
-            "sfapex",
+            ("sfapex", None),
             &["@aheber", "@xixiaofinland"],
         ),
         LanguageOptions::pairs_with_symbol_and_crate(
@@ -1093,7 +1090,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
                 ("apex::LANGUAGE", false),
                 ("sosl::LANGUAGE", false),
             ],
-            "sfapex",
+            ("sfapex", None),
             &["@aheber", "@xixiaofinland"],
         ),
         LanguageOptions::pair_const(
@@ -1241,7 +1238,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "toml",
             "https://github.com/tree-sitter-grammars/tree-sitter-toml",
             &[("LANGUAGE", false)],
-            "toml-ng",
+            ("toml-ng", None),
             &["@tk-shirasaka"],
         ),
         LanguageOptions::pairs_with_symbol_and_crate(
@@ -1252,14 +1249,14 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
                 ("language_csv", true),
                 ("language_psv", true),
             ],
-            "csv",
+            ("csv", None),
             &["@amaanq"],
         ),
         LanguageOptions::pairs_with_symbol_and_crate(
             "tsx",
             "https://github.com/tree-sitter/tree-sitter-typescript",
             &[("LANGUAGE_TSX", false), ("LANGUAGE_TYPESCRIPT", false)],
-            "typescript",
+            ("typescript", None),
             &["@steelsojka"],
         ),
         LanguageOptions::pair_const(
@@ -1286,11 +1283,11 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/Teddytrombone/tree-sitter-typoscript",
             &["@Teddytrombone"],
         ),
-        LanguageOptions::pair_fn(
-            "typst",
-            "https://github.com/uben0/tree-sitter-typst",
-            &["@uben0", "@RaafatTurki"],
-        ),
+        // Fails to compile
+        // LanguageOptions::pair_fn("typst", "https://github.com/uben0/tree-sitter-typst", &[
+        //     "@uben0",
+        //     "@RaafatTurki",
+        // ]),
         LanguageOptions::pair_const(
             "udev",
             "https://github.com/ObserverOfTime/tree-sitter-udev",
@@ -1395,11 +1392,10 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         LanguageOptions::pair_const("yang", "https://github.com/Hubro/tree-sitter-yang", &[
             "@Hubro",
         ]),
-        // Wrong version >:(
-        // LanguageOptions::pair_fn("yuck", "https://github.com/Philipp-M/tree-sitter-yuck", &[
-        //     "@Philipp-M",
-        //     "@amaanq",
-        // ]),
+        LanguageOptions::pair_fn("yuck", "https://github.com/Philipp-M/tree-sitter-yuck", &[
+            "@Philipp-M",
+            "@amaanq",
+        ]),
         LanguageOptions::pair_fn(
             "zathurarc",
             "https://github.com/Freed-Wu/tree-sitter-zathurarc",
@@ -1410,15 +1406,11 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/tree-sitter-grammars/tree-sitter-zig",
             &["@amaanq"],
         ),
-        LanguageOptions::pair_fn(
-            "ziggy",
-            "https://github.com/kristoff-it/ziggy",
-            &["@rockorager"],
-        ),
-        LanguageOptions::pair_fn(
-            "ziggy_schema",
-            "https://github.com/kristoff-it/ziggy",
-            &["@rockorager"],
-        ),
+        LanguageOptions::pair_fn("ziggy", "https://github.com/kristoff-it/ziggy", &[
+            "@rockorager",
+        ]),
+        LanguageOptions::pair_fn("ziggy_schema", "https://github.com/kristoff-it/ziggy", &[
+            "@rockorager",
+        ]),
     ])
 });

@@ -4,7 +4,7 @@ use duat_core::{
     context,
     text::{Text, txt},
 };
-use indoc::{formatdoc, indoc};
+use indoc::formatdoc;
 use libloading::Library;
 use tree_sitter::Language;
 
@@ -24,7 +24,7 @@ pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
         .ok_or_else(|| txt!("There is no tree-sitter grammar for [a].{filetype}[] files"))?;
 
     let lib = options.crate_name.replace("-", "_");
-    let so_path = get_workspace_dir()?.join("parsers").join("lib").join(resolve_lib_file(&lib));
+    let so_path = get_parsers_dir()?.join("lib").join(resolve_lib_file(&lib));
 
     Ok(so_path.try_exists()?)
 }
@@ -32,7 +32,7 @@ pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
 pub fn get_language(filetype: &str) -> Result<Language, Text> {
     static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
-    let parsers_dir = get_workspace_dir()?.join("parsers");
+    let parsers_dir = get_parsers_dir()?;
     let options = LANGUAGE_OPTIONS
         .get(filetype)
         .ok_or_else(|| txt!("There is no tree-sitter grammar for [a]{filetype}"))?;
@@ -42,9 +42,9 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
     let manifest_path = crate_dir.join("Cargo.toml");
 
     let lib = options.crate_name.replace("-", "_");
-    let so_path = lib_dir.join(resolve_lib_file(&lib));
+    let parser_path = lib_dir.join(resolve_lib_file(&lib));
 
-    if let Ok(lib) = unsafe { Library::new(so_path) } {
+    if let Ok(lib) = unsafe { Library::new(parser_path) } {
         context::debug!("Loading tree-sitter parser for [a]{filetype}");
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
@@ -58,23 +58,24 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
         LIBRARIES.lock().unwrap().push(lib);
 
         Ok(language)
-    } else if let Ok(true) = fs::exists(&manifest_path) {
+    } else if let Ok(true) = fs::exists(&crate_dir) {
         context::info!("Compiling tree-sitter parser for [a]{filetype}");
         let mut cargo = Command::new("cargo");
 
-        cargo.args([
-            "build",
-            "--release",
-            "--manifest-path",
-            manifest_path.to_str().unwrap(),
-            "-Z",
-            "unstable-options",
-            "--artifact-dir",
-            lib_dir.to_str().unwrap(),
-        ]);
+        cargo
+            .args(["build", "--release", "--manifest-path"])
+            .arg(&manifest_path)
+            .args(["-Z", "unstable-options", "--artifact-dir"])
+            .arg(lib_dir.to_str().unwrap());
 
         let out = cargo.output()?;
         if out.status.success() {
+            let mut cargo = Command::new("cargo");
+            cargo
+                .args(["clean", "--manifest-path"])
+                .arg(manifest_path)
+                .output()?;
+
             get_language(filetype)
         } else {
             Err(String::from_utf8_lossy(&out.stderr).to_string().into())
@@ -102,6 +103,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
 
         let crate_name = options.crate_name;
         let git = options.git;
+        let version = options.crate_version.unwrap_or("*");
 
         let cargo_toml = formatdoc! {r#"
             [package]
@@ -118,7 +120,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
             tree-sitter = "*"
 
             [dependencies.ts]
-            version = "*"
+            version = "{version}"
             git = "{git}"
             package = "tree-sitter-{crate_name}"
         "#};
@@ -131,30 +133,22 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
     }
 }
 
-fn get_workspace_dir() -> Result<PathBuf, Text> {
-    const BASE_WORKSPACE_TOML: &str = indoc!(
-        r#"
-        [workspace]
-        resolver = "2"
-        members = ["*"]
-        exclude = ["lib", "target"]"#
-    );
-
+fn get_parsers_dir() -> Result<PathBuf, Text> {
     let workspace_dir = duat_core::utils::plugin_dir("duat-treesitter")?;
     let parsers_dir = workspace_dir.join("parsers");
 
     if let Ok(false) | Err(_) = fs::exists(&parsers_dir) {
         fs::create_dir_all(workspace_dir.join("parsers"))?;
-        fs::write(parsers_dir.join("Cargo.toml"), BASE_WORKSPACE_TOML)?
     }
 
-    Ok(workspace_dir)
+    Ok(parsers_dir)
 }
 
 struct LanguageOptions {
     git: &'static str,
     symbols: &'static [(&'static str, bool)],
     crate_name: &'static str,
+    crate_version: Option<&'static str>,
     _maintainers: &'static [&'static str],
 }
 
@@ -168,12 +162,13 @@ impl LanguageOptions {
             git,
             symbols: &[("LANGUAGE", false)],
             crate_name: crate_name(lang),
+            crate_version: None,
             _maintainers,
         };
 
         (lang, options)
     }
-    
+
     fn pair_fn(
         lang: &'static str,
         git: &'static str,
@@ -183,6 +178,7 @@ impl LanguageOptions {
             git,
             symbols: &[("language", true)],
             crate_name: crate_name(lang),
+            crate_version: None,
             _maintainers,
         };
 
@@ -199,6 +195,7 @@ impl LanguageOptions {
             git,
             symbols,
             crate_name: crate_name(lang),
+            crate_version: None,
             _maintainers,
         };
 
@@ -209,10 +206,16 @@ impl LanguageOptions {
         lang: &'static str,
         git: &'static str,
         symbols: &'static [(&'static str, bool)],
-        crate_name: &'static str,
+        (crate_name, crate_version): (&'static str, Option<&'static str>),
         _maintainers: &'static [&'static str],
     ) -> (&'static str, LanguageOptions) {
-        let options = Self { git, symbols, crate_name, _maintainers };
+        let options = Self {
+            git,
+            symbols,
+            crate_name,
+            crate_version,
+            _maintainers,
+        };
 
         (lang, options)
     }
@@ -240,4 +243,3 @@ fn resolve_lib_file(lang: &str) -> String {
 fn resolve_lib_file(lang: &str) -> String {
     format!("lib{lang}.so")
 }
-

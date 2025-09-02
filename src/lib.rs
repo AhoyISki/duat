@@ -11,13 +11,13 @@
 //! `cargo add` in the config directory:
 //!
 //! ```bash
-//! cargo add duat-treesitter@"*" --rename treesitter
+//! cargo add duat-treesitter@"*"
 //! ```
 //!
 //! Or, if you are using a `--git-deps` version of duat, do this:
 //!
 //! ```bash
-//! cargo add --git https://github.com/AhoyISki/duat-treesitter --rename treesitter
+//! cargo add --git https://github.com/AhoyISki/duat-treesitter
 //! ```
 //!
 //! But this is a default plugin, so you most likely won't have to do
@@ -75,7 +75,7 @@ pub struct TreeSitter;
 
 impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
     fn plug(self, _: &Plugins<U>) {
-        form::set_many!(
+        form::set_many_weak!(
             ("variable", Form::white()),
             ("variable.builtin", Form::dark_yellow()),
             ("constant", Form::grey()),
@@ -238,8 +238,6 @@ impl<U: Ui> ParserCfg<U> for TsParser {
     type Parser = Self;
 
     fn build(self, file: &File<U>, mut tracker: FileTracker) -> Result<Self::Parser, Text> {
-        tracker.track_changed_lines();
-
         let path = file.path_kind();
         let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
             && let Some(filetype) = path.filetype()
@@ -334,6 +332,10 @@ impl InnerTsParser {
             return false;
         }
 
+        // These new ranges will be used for calculating things like
+        // new injections, for example.
+        let mut new_ranges = Ranges::empty();
+
         for change in moment.changes() {
             let input_edit = input_edit(change, bytes);
             self.tree.edit(&input_edit);
@@ -341,6 +343,8 @@ impl InnerTsParser {
             for inj in self.injections.iter_mut() {
                 inj.edit(&input_edit);
             }
+            let range = change.line_points(bytes);
+            new_ranges.add(range.start.byte()..range.end.byte());
         }
 
         let tree = self
@@ -354,7 +358,6 @@ impl InnerTsParser {
             inj.update_tree(bytes);
         }
 
-        let mut new_ranges = Ranges::empty();
         // `changed_ranges` should mostly be able to catch any big additions
         // to the tree structure.
         for range in self
@@ -368,11 +371,11 @@ impl InnerTsParser {
                     .flat_map(InjectedTree::changed_ranges),
             )
         {
-            let start = bytes.point_at_line(range.start_point.row).byte();
-            let end = bytes
-                .point_at_line((range.end_point.row + 1).min(bytes.len().line()))
-                .byte();
-            new_ranges.add(start..end)
+            // The rows seem kind of unpredictable, which is why I have to do this
+            // nonsense
+            let start = bytes.point_at_line(bytes.point_at_byte(range.start_byte).line());
+            let [_, end] = bytes.points_of_line(bytes.point_at_byte(range.end_byte).line());
+            new_ranges.add(start.byte()..end.byte())
         }
 
         // Finally, in order to properly catch injection changes, a final
@@ -745,18 +748,18 @@ fn parser_fn<'a>(bytes: &'a Bytes) -> impl FnMut(usize, TsPoint) -> &'a [u8] {
 }
 
 fn ts_point(point: Point, buffer: &Bytes) -> TsPoint {
-    let strs = buffer.strs(..point.byte()).unwrap();
-    let iter = strs.into_iter().flat_map(str::chars).rev();
-    let col = iter.take_while(|&b| b != '\n').count();
+    let strs = buffer.buffers(..point.byte());
+    let iter = strs.into_iter().rev();
+    let col = iter.take_while(|&b| b != b'\n').count();
 
     TsPoint::new(point.line(), col)
 }
 
 fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TsPoint {
     let col = if to.line() == from.line() {
-        col + str.chars().count()
+        col + str.len()
     } else {
-        str.chars().rev().take_while(|&b| b != '\n').count()
+        str.bytes().rev().take_while(|&b| b != b'\n').count()
     };
 
     TsPoint::new(to.line(), col)
