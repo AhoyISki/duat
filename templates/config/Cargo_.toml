@@ -19,25 +19,14 @@ lto = "off"
 [dependencies]
 
 # You can get rid of this one, if you don't want the duat-kak editor.
-[dependencies.kak]
+[dependencies.duat-kak]
 git = "https://github.com/AhoyISki/duat-kak"
 version = "0.6.0"
-package = "duat-kak"
 
-[dependencies.treesitter]
-git = "https://github.com/AhoyISki/duat-treesitter"
-version = "0.3.0"
-package = "duat-treesitter"
-
-[dependencies.match-pairs]
-git = "https://github.com/AhoyISki/duat-match-pairs"
-version = "0.2.0"
-package = "duat-match-pairs"
-
-[dependencies.catppuccin]
+# Same with this one, it just adds more colorschemes.
+[dependencies.duat-catppuccin]
 git = "https://github.com/AhoyISki/duat-catppuccin"
 version = "0.3.0"
-package = "duat-catppuccin"
 
 [dependencies.duat]
 git = "https://github.com/AhoyISki/duat"

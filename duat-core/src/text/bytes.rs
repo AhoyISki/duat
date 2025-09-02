@@ -91,6 +91,7 @@ impl Bytes {
     /// of the slices might be empty.
     ///
     /// [`strs`]: Self::strs
+    #[track_caller]
     pub fn buffers(&self, range: impl RangeBounds<usize>) -> Buffers<'_> {
         let (s0, s1) = self.buf.range(range).as_slices();
         Buffers([s0.iter(), s1.iter()])
@@ -138,6 +139,7 @@ impl Bytes {
     /// [`Text`]: super::Text
     /// [range]: TextRange
     /// [`strs`]: Self::strs
+    #[track_caller]
     pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
         let range = range.to_range(self.len().byte());
         Some(Strs {
@@ -153,6 +155,7 @@ impl Bytes {
     /// whole line, not just the parts within the range.
     ///
     /// [range]: TextRange
+    #[track_caller]
     pub fn lines(&self, range: impl TextRange) -> Lines<'_> {
         let range = range.to_range(self.len().byte());
         let start = self.point_at_line(self.point_at_byte(range.start).line());
@@ -201,6 +204,7 @@ impl Bytes {
     }
 
     /// Returns the two `&str`s in the byte range.
+    #[track_caller]
     fn strs_inner(&self, range: impl RangeBounds<usize>) -> Option<[&str; 2]> {
         let (start, end) = crate::utils::get_ends(range, self.len().byte());
         use std::str::from_utf8_unchecked;
@@ -235,6 +239,7 @@ impl Bytes {
     ///
     /// Will panic if `b` is greater than the length of the text
     #[inline(always)]
+    #[track_caller]
     pub fn point_at_byte(&self, b: usize) -> Point {
         assert!(
             b <= self.len().byte(),
@@ -285,6 +290,7 @@ impl Bytes {
     /// Will panic if `c` is greater than the number of chars in the
     /// text.
     #[inline(always)]
+    #[track_caller]
     pub fn point_at_char(&self, c: usize) -> Point {
         assert!(
             c <= self.len().char(),
@@ -338,6 +344,7 @@ impl Bytes {
     /// Will panic if the number `l` is greater than the number of
     /// lines on the text
     #[inline(always)]
+    #[track_caller]
     pub fn point_at_line(&self, l: usize) -> Point {
         assert!(
             l <= self.len().line(),
@@ -402,6 +409,7 @@ impl Bytes {
     /// Will panic if the number `l` is greater than the number of
     /// lines on the text
     #[inline(always)]
+    #[track_caller]
     pub fn points_of_line(&self, l: usize) -> [Point; 2] {
         assert!(
             l <= self.len().line(),
@@ -437,6 +445,7 @@ impl Bytes {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
+    #[track_caller]
     pub fn chars_fwd(
         &self,
         range: impl TextRange,
@@ -455,6 +464,7 @@ impl Bytes {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
+    #[track_caller]
     pub fn chars_rev(
         &self,
         range: impl TextRange,

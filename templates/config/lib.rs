@@ -10,14 +10,14 @@ setup_duat!(setup);
 use duat::prelude::*;
 // Since duat_kak is a plugin, it must be used explicitly.
 // Plugins are usually imported with their "duat_" prefix removed.
-use kak::{Insert, Normal};
+use duat_kak::{Insert, Normal};
 
 fn setup() {
     // This plugin sets the mode to Kakoune's Normal.
     // If you want a regular editing mode, you can remove this line.
-    plug(kak::Kak::new());
+    plug(duat_kak::Kak::new());
     // This one adds the Catppuccin colorschemes.
-    plug(catppuccin::Catppuccin::new());
+    plug(duat_catppuccin::Catppuccin::new());
 
     // You can also set Forms to reference other Forms.
     form::set("caret.main.OneKey", "caret.main.Normal");

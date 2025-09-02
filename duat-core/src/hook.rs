@@ -683,7 +683,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// `duat_kak` plugin imported as `kak`, instead of writing this:
 ///
 /// ```rust
-/// # mod kak {
+/// # mod duat_kak {
 /// #     use duat_core::prelude::*;
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
@@ -695,7 +695,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
-/// use kak::Normal;
+/// use duat_kak::Normal;
 ///
 /// fn setup() {
 ///     hook::add::<ModeCreated<Normal>>(|pa, (normal, handle)| normal);
@@ -705,7 +705,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// You can just write this:
 ///
 /// ```rust
-/// # mod kak {
+/// # mod duat_kak {
 /// #     use duat_core::prelude::*;
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
@@ -717,7 +717,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
-/// use kak::Normal;
+/// use duat_kak::Normal;
 ///
 /// fn setup() {
 ///     hook::add::<Normal>(|pa, (normal, handle)| normal);

@@ -69,7 +69,7 @@ mod switch;
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
 /// #     }
 /// # }
-/// # mod kak {
+/// # mod duat_kak {
 /// #     use duat_core::prelude::*;
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct Normal;
@@ -86,7 +86,7 @@ mod switch;
 /// fn setup() {
 ///     map::<User>("0", PluginMode0);
 ///     map::<User>("1", PluginMode1);
-///     map::<kak::Normal>(" ", User);
+///     map::<duat_kak::Normal>(" ", User);
 /// }
 /// ```
 ///

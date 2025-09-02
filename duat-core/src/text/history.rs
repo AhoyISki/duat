@@ -17,7 +17,10 @@ use bincode::{Decode, Encode};
 use parking_lot::Mutex;
 
 use super::{Point, Text};
-use crate::utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift};
+use crate::{
+    text::Bytes,
+    utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
+};
 
 /// The history of edits, contains all moments
 #[derive(Default, Debug)]
@@ -377,16 +380,30 @@ impl<S: std::borrow::Borrow<str>> Change<S> {
         }
     }
 
+    /// Gets a [`Range<Point>`], from the start to the end of the
+    /// affected lines
+    ///
+    /// For example, if you make an edit that transforms lines `1..=3`
+    /// to lines `1..=5`, this function will return a [`Range`] that
+    /// starts at the beginning of line 1, and ends at the end of line
+    /// 5.
+    ///
+    /// > [!NOTE]
+    /// >
+    /// > This end of this range will come _after_ the last `\n`,
+    /// > which means that, in that example, said point would have a
+    /// > [`Point::line`] value equal to 6, _not_ 5, since it
+    /// > represents both the end of line 5, and the beginning of line
+    /// > 6.
+    pub fn line_points(&self, bytes: &Bytes) -> Range<Point> {
+        let start = bytes.point_at_line(self.start[2] as usize);
+        let [_, end] = bytes.points_of_line(self.added_end[2] as usize);
+        start..end
+    }
+
     /// The [`Point`] at the start of the change
     pub fn start(&self) -> Point {
         to_point(self.start)
-    }
-
-    /// Shifts the [`Change`] by a "signed point"
-    pub(crate) fn shift_by(&mut self, shift: [i32; 3]) {
-        self.start = add(self.start, shift);
-        self.added_end = add(self.added_end, shift);
-        self.taken_end = add(self.taken_end, shift);
     }
 
     /// Returns the end of the [`Change`], before it was applied
@@ -426,6 +443,13 @@ impl<S: std::borrow::Borrow<str>> Change<S> {
             self.added_end[1] - self.taken_end[1],
             self.added_end[2] - self.taken_end[2],
         ]
+    }
+
+    /// Shifts the [`Change`] by a "signed point"
+    pub(crate) fn shift_by(&mut self, shift: [i32; 3]) {
+        self.start = add(self.start, shift);
+        self.added_end = add(self.added_end, shift);
+        self.taken_end = add(self.taken_end, shift);
     }
 }
 

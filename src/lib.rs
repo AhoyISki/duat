@@ -1142,7 +1142,7 @@ mod book;
 #[cfg(doctest)]
 #[doc(hidden)]
 /// ```rust
-/// # mod catppuccin {
+/// # mod duat_catppuccin {
 /// #     use duat::prelude::*;
 /// #     #[derive(Default)]
 /// #     pub struct Catppuccin;
@@ -1153,7 +1153,7 @@ mod book;
 /// #         fn plug(self, _: &duat_core::Plugins<duat::Ui>) {}
 /// #     }
 /// # }
-/// # mod kak {
+/// # mod duat_kak {
 /// #     use duat::{prelude::{*, mode::KeyEvent}};
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
