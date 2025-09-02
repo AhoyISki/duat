@@ -86,12 +86,12 @@ that situation, not whatever `f0.f1.f2` was set to.
 ### Quiz
 
 Given the following sequence of `form::set`s, what will each `Form` be at the 
-end:
+end?
 
 ```rust
 # use duat::prelude::*;
 # fn test() {
-form::set("arent", Form::green());
+form::set("parent", Form::green());
 form::set("parent.child.granchild", Form::blue()); 
 form::set("grandparent.parent.child", "parent.child");
 form::set("parent", Form::red());
