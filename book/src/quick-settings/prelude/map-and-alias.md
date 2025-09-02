@@ -81,7 +81,7 @@ fn setup() {
 You _should_ prefer doing this:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::{prelude::{*, mode::KeyEvent}};
 #     #[derive(Clone)]
 #     pub struct Normal;
@@ -99,13 +99,12 @@ You _should_ prefer doing this:
 # }
 setup_duat!(setup);
 use duat::prelude::*;
-use kak::Kak;
 
 fn setup() {
-    plug(kak::Kak::default());
+    plug(duat_kak::Kak::default());
   
-    map::<kak::Normal>(" ", "");
-    map::<kak::Normal>("\\", User);
+    map::<duat_kak::Normal>(" ", "");
+    map::<duat_kak::Normal>("\\", User);
 }
 ```
 
@@ -137,7 +136,7 @@ This is the list of recognized special keys:
 
 - `<Enter>`,
 - `<Tab>`,
-- `<Bspc>`,
+- `<Backspace>`,
 - `<Del>`,
 - `<Esc>`,
 - `<Up>`,

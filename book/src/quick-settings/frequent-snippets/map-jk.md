@@ -3,7 +3,7 @@
 This one is pretty simple. Assuming you are using some sort of `Insert` `Mode`:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::{prelude::{*, mode::KeyEvent}};
 #     #[derive(Clone)]
 #     pub struct Insert;
@@ -18,7 +18,7 @@ This one is pretty simple. Assuming you are using some sort of `Insert` `Mode`:
 # setup_duat!(setup);
 # fn setup() {
 // Or vim::Insert, or helix::Insert, when those come out.
-map::<kak::Insert>("jk", "<Esc>");
+map::<duat_kak::Insert>("jk", "<Esc>");
 # }
 ```
 
@@ -27,7 +27,7 @@ like the `j` key has a bit of delay. If you wish to print `'j'` to the screen,
 use this:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::{prelude::{*, mode::KeyEvent}};
 #     #[derive(Clone)]
 #     pub struct Insert;
@@ -41,14 +41,14 @@ use this:
 # use duat::prelude::*;
 # setup_duat!(setup);
 # fn setup() {
-alias::<kak::Insert>("jk", "<Esc>");
+alias::<duat_kak::Insert>("jk", "<Esc>");
 # }
 ```
 
 Additionally, if you want to write to the file on `jk` as well, you can do this:
 
 ```rust
-# mod kak {
+# mod duat_kak {
 #     use duat::{prelude::{*, mode::KeyEvent}};
 #     #[derive(Clone)]
 #     pub struct Insert;
@@ -62,7 +62,7 @@ Additionally, if you want to write to the file on `jk` as well, you can do this:
 # use duat::prelude::*;
 # setup_duat!(setup);
 # fn setup() {
-alias::<kak::Insert>("jk", "<Esc>:w<Enter>");
+alias::<duat_kak::Insert>("jk", "<Esc>:w<Enter>");
 # }
 ```
 
