@@ -561,6 +561,7 @@ enum Object<'a> {
 impl<'a> Object<'a> {
     fn new(event: KeyEvent, wc: WordChars, brackets: Brackets) -> Option<Self> {
         static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
+        
         match event {
             key!(Char('Q')) => Some(Self::Bound("\"")),
             key!(Char('q')) => Some(Self::Bound("'")),

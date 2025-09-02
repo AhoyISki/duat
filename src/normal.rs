@@ -875,7 +875,6 @@ impl<U: Ui> Mode<U> for Normal {
                         }
                     }
                 }
-                handle.write(pa).debug();
             }
 
             ////////// Other mode changing keys

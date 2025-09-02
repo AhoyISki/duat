@@ -219,18 +219,14 @@ fn match_inside_around<U: Ui>(
                 Some(())
             }),
             'u' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let [p2, _] = object.find_ahead(c, 1, None)?;
+                let [p2, p3] = object.find_ahead(c, 1, None)?;
                 c.move_to(p2);
                 let [p0, p1] = object.find_behind(c, 1, None)?;
                 if is_inside {
                     c.move_to(p1..p2);
-                    c.move_hor(-1);
                 } else {
-                    c.move_to(p0..p2);
-                    if !matches!(c.char_at(p2), Some(';' | ',')) {
-                        c.move_hor(-1);
-                    }
-                    if !matches!(c.char_at(p0), Some(';' | ',')) {
+                    c.move_to(p0..p3);
+                    if matches!(c.char_at(p0), Some(';' | ',')) {
                         c.swap_ends();
                         c.move_hor(1);
                         c.swap_ends();
