@@ -374,7 +374,7 @@ impl<U: Ui> Windows<U> {
                 (node.read_as(pa).filter(|f: &&File<U>| f.name() == name))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
             })
-            .ok_or_else(|| txt!("File with name [a]{name}[] not found").build())
+            .ok_or_else(|| txt!("F[a]{name}[] not found").build())
     }
 
     /// An entry for a widget of a specific type

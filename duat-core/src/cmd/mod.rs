@@ -284,19 +284,6 @@ pub(crate) fn add_session_commands<U: Ui>() {
             return Err(txt!("[a]{name}[] has unsaved changes").build());
         }
 
-        // If we are on the current File, switch to the next one.
-        if name == cur_name {
-            let Some(next_name) = windows.iter_around(pa, win, wid).find_map(get_name(pa)) else {
-                sender().send(DuatEvent::Quit).unwrap();
-                return Ok(None);
-            };
-
-            // If I send the switch signal first, and the Window is deleted, I
-            // will have the synchronously change the current window number
-            // without affecting anything else.
-            mode::reset_to_file::<U>(&next_name, true);
-        }
-
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
@@ -310,14 +297,6 @@ pub(crate) fn add_session_commands<U: Ui>() {
         // Should wait here until I'm out of `session_loop`
         let windows = context::windows::<U>();
         let (win, wid, handle) = windows.file_entry(pa, name)?;
-
-        if name == cur_name {
-            let Some(next_name) = windows.iter_around(pa, win, wid).find_map(get_name(pa)) else {
-                sender().send(DuatEvent::Quit).unwrap();
-                return Ok(None);
-            };
-            mode::reset_to_file::<U>(&next_name, true);
-        }
 
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
@@ -382,27 +361,14 @@ pub(crate) fn add_session_commands<U: Ui>() {
             };
             (bytes, file.name())
         };
-
-        // Should wait here until I'm out of `session_loop`
-        let windows = context::windows::<U>();
-        let w = context::cur_window();
-
-        let (win, wid, file) = windows.file_entry(pa, &name)?;
-
-        let Some(next_name) = windows.iter_around(pa, win, wid).find_map(get_name(pa)) else {
-            sender().send(DuatEvent::Quit).unwrap();
-            return Ok(None);
-        };
-
-        mode::reset_to_file::<U>(&next_name, true);
-
+        
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         match bytes {
             Some(bytes) => Ok(Some(
-                txt!("Wrote [a]{bytes}[] bytes to [File]{name}[], then closed it").build(),
+                txt!("Closed [file]{name}[], writing [a]{bytes}[] bytes").build(),
             )),
             None => Ok(Some(
-                txt!("No changes in [File]{name}[], so just closed it").build(),
+                txt!("Closed [file]{name}[]").build(),
             )),
         }
     });
@@ -1164,6 +1130,6 @@ pub type CheckerFn = fn(
     Option<(Range<usize>, Text)>,
 );
 
-fn get_name<U: Ui>(pa: &Pass) -> impl Fn((usize, usize, &Node<U>)) -> Option<String> {
+pub(crate) fn get_name<U: Ui>(pa: &Pass) -> impl Fn((usize, usize, &Node<U>)) -> Option<String> {
     |(.., node)| node.read_as(pa).map(|f: &File<U>| f.name())
 }

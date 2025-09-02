@@ -359,7 +359,7 @@ fn spawn_reloader(
                         context::error!(target: "reload", "{err}");
                         duat_tx.send(DuatEvent::ReloadFailed).unwrap();
                     }
-                    Ok(status) if !status.success() => {
+                    Ok(_) => {
                         config_tx
                             .send((
                                 crate_dir
@@ -370,7 +370,6 @@ fn spawn_reloader(
                             ))
                             .unwrap();
                     }
-                    Ok(_) => {}
                 }
             }
         })
