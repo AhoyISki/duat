@@ -11,7 +11,7 @@ use super::Mode;
 use crate::{
     context::{self, Handle},
     data::Pass,
-    file::File,
+    file::{File, PathKind},
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
     session::DuatEvent,
@@ -153,10 +153,9 @@ pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
 }
 
 /// Switches to the [`File`] with the given name
-pub(crate) fn reset_to_file<U: Ui>(name: impl std::fmt::Display, switch_window: bool) {
-    let name = name.to_string();
+pub(crate) fn reset_to_file<U: Ui>(path_kind: PathKind, switch_window: bool) {
     *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
-        match context::windows::<U>().file_entry(pa, &name) {
+        match context::windows::<U>().file_entry(pa, path_kind) {
             Ok((win, _, handle)) => {
                 if win != context::cur_window() && switch_window {
                     crate::context::sender()
@@ -260,9 +259,9 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
             let windows = context::windows();
             let w = context::cur_window();
             if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
-                let name = context::fixed_file::<U>(pa).unwrap().read(pa).name();
+                let pk = context::fixed_file::<U>(pa).unwrap().read(pa).path_kind();
                 windows
-                    .file_entry(pa, &name)
+                    .file_entry(pa, pk)
                     .map(|(.., handle)| Node::from_handle(handle))
             } else {
                 windows

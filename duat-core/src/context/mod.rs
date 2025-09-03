@@ -67,8 +67,7 @@ mod global {
     ///
     /// [`File`]: crate::file::File
     pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<Handle<File<U>, U>, Text> {
-        let name = name.to_string();
-        let (.., handle) = windows::<U>().file_entry(pa, &name)?;
+        let (.., handle) = windows::<U>().named_file_entry(pa, &name.to_string())?;
 
         Ok(handle)
     }

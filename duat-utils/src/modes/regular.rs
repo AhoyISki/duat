@@ -1,4 +1,5 @@
 use duat_core::{
+    cmd,
     data::Pass,
     file::File,
     mode::{self, KeyCode::*, KeyEvent, KeyMod as Mod, key},
@@ -88,13 +89,22 @@ impl<U: Ui> mode::Mode<U> for Regular {
                 }
             }),
 
+            // Searching
+            key!(Char('f'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
+            key!(Char('F'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchRev)),
+
             // Control
+            key!(Char('P'), Mod::CONTROL) | key!(F(1)) => mode::set::<U>(RunCommands::new()),
             key!(Char('p'), Mod::CONTROL) => {
                 mode::set::<U>(RunCommands::new());
                 mode::send_keys("edit ");
             }
-            key!(Char('f'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
-            key!(Char('F'), Mod::CONTROL) => mode::set::<U>(IncSearch::new(SearchRev)),
+            key!(Char('N'), Mod::CONTROL) => {
+                mode::set::<U>(RunCommands::new());
+                mode::send_keys("open ");
+            }
+            key!(Char('W'), Mod::CONTROL) => cmd::quit(),
+            key!(Char(','), Mod::CONTROL) => cmd::queue_notify("open --cfg"),
 
             _ => {}
         }

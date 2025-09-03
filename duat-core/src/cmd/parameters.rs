@@ -13,6 +13,7 @@ use crossterm::style::Color;
 use crate::{
     context::{self, Handle},
     data::Pass,
+    file::File,
     form::{self, FormId},
     text::{Text, txt},
     ui::{Node, Ui, Widget},
@@ -212,16 +213,15 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
 pub struct Buffer<U>(PhantomData<U>);
 
 impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
-    type Returns = &'a str;
+    type Returns = Handle<File<U>, U>;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer = args.next()?;
-        if crate::context::windows::<U>()
+        if let Some(handle) = crate::context::windows::<U>()
             .file_handles(pa)
-            .map(|handle| handle.read(pa).name())
-            .any(|f| f == buffer)
+            .find(|handle| handle.read(pa).name() == buffer)
         {
-            Ok((buffer, Some(form::id_of!("param.file.open"))))
+            Ok((handle, Some(form::id_of!("param.file.open"))))
         } else {
             Err(txt!("No buffer called [a]{buffer}[] open").build())
         }
@@ -231,18 +231,18 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
 /// Command [`Parameter`]: An open [`File`]'s name, except the current
 ///
 /// [`File`]: crate::file::File
-pub struct OtherFileBuffer<U>(PhantomData<U>);
+pub struct OtherBuffer<U>(PhantomData<U>);
 
-impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
-    type Returns = &'a str;
+impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherBuffer<U> {
+    type Returns = Handle<File<U>, U>;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
-        let buffer = args.next_as::<Buffer<U>>(pa)?;
-        let handle = crate::context::fixed_file::<U>(pa).unwrap();
-        if buffer == handle.read(pa).name() {
+        let handle = args.next_as::<Buffer<U>>(pa)?;
+        let cur_handle = crate::context::fixed_file::<U>(pa).unwrap();
+        if cur_handle == handle {
             Err(txt!("Argument can't be the current file").build())
         } else {
-            Ok((buffer, Some(form::id_of!("param.file.open"))))
+            Ok((handle, Some(form::id_of!("param.file.open"))))
         }
     }
 }
@@ -275,6 +275,12 @@ impl<U: Ui> Parameter<'_> for ValidFile<U> {
             return Err(txt!("Path was not found").build());
         };
 
+        if let Some(parent) = path.parent()
+            && let Ok(false) | Err(_) = parent.try_exists()
+        {
+            return Err(txt!("Path's parent doesn't exist").build());
+        }
+
         let form = if crate::context::windows::<U>()
             .file_handles(pa)
             .map(|handle| handle.read(pa).path())
@@ -288,6 +294,31 @@ impl<U: Ui> Parameter<'_> for ValidFile<U> {
         };
 
         Ok((path, Some(form)))
+    }
+}
+
+/// A [`ValidFile`] or `--cfg` or `--cfg-manifest`
+pub(super) enum FileOrBufferOrCfg<U: Ui> {
+    File(PathBuf),
+    Buffer(Handle<File<U>, U>),
+    Cfg,
+    CfgManifest,
+}
+
+impl<U: Ui> Parameter<'_> for FileOrBufferOrCfg<U> {
+    type Returns = Self;
+
+    fn new(pa: &Pass, args: &mut Args<'_>) -> Result<(Self::Returns, Option<FormId>), Text> {
+        if args.flags.word("cfg") {
+            Ok((Self::Cfg, None))
+        } else if args.flags.word("cfg-manifest") {
+            Ok((Self::CfgManifest, None))
+        } else if let Ok((handle, form)) = args.next_as_with_form::<Buffer<U>>(pa) {
+            Ok((Self::Buffer(handle), form))
+        } else {
+            let (path, form) = args.next_as_with_form::<ValidFile<U>>(pa)?;
+            Ok((Self::File(path), form))
+        }
     }
 }
 
@@ -607,6 +638,22 @@ impl<'a> Args<'a> {
             self.is_forming_param = false;
         }
         ret.map(|(arg, _)| arg)
+    }
+
+    /// Tries to parse the next argument as `P`
+    ///
+    /// For now, this will consume arguments even if it fails, but
+    /// that may change in the future.
+    pub fn next_as_with_form<P: Parameter<'a>>(
+        &mut self,
+        pa: &Pass,
+    ) -> Result<(P::Returns, Option<FormId>), Text> {
+        self.has_to_start_param = true;
+        let ret = P::new(pa, self);
+        if ret.is_ok() {
+            self.is_forming_param = false;
+        }
+        ret
     }
 
     /// Tries to parse the next argument as `P`, otherwise returns a

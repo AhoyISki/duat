@@ -23,7 +23,6 @@ use core::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parking_lot::Mutex;
 
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;

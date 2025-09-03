@@ -34,15 +34,14 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("default", Form::new().0, Normal),
     ("accent", Form::bold().0, Normal),
     ("caret.main", Form::reverse().0, Normal),
-    ("caret.extra", Form::reverse().0, Ref(M_CAR_ID.0 as usize)),
+    ("caret.extra", Form::reverse().0, Ref(2)),
     ("selection.main", Form::white().on_dark_grey().0, Normal),
-    (
-        "selection.extra",
-        Form::white().on_grey().0,
-        Ref(M_SEL_ID.0 as usize),
-    ),
+    ("selection.extra", Form::white().on_grey().0, Ref(5)),
     ("cloak", Form::grey().on_black().0, Normal),
     ("character.control", Form::grey().0, Normal),
+    ("param.file", Form::yellow().0, Normal),
+    ("param.file.open", Form::yellow().0, Ref(8)),
+    ("param.file.exists", Form::yellow().underlined().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.

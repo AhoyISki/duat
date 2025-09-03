@@ -1,4 +1,4 @@
-use std::{any::type_name, path::PathBuf, sync::Mutex};
+use std::{any::type_name, sync::Mutex};
 
 pub use self::{
     builder::{BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias},
@@ -8,7 +8,7 @@ use super::{Area, Node, Ui, Widget, layout::Layout};
 use crate::{
     context::{self, Cache, Handle},
     data::{Pass, RwData},
-    file::{File, FileCfg},
+    file::{File, FileCfg, PathKind},
     hook::{self, FileClosed, WidgetCreated, WindowCreated},
     mode,
     text::{Text, txt},
@@ -128,9 +128,9 @@ impl<U: Ui> Windows<U> {
         Ok(node)
     }
 
-    pub(crate) fn close_file(&self, pa: &mut Pass, name: &str, ms: &'static U::MetaStatics) {
+    pub(crate) fn close_file(&self, pa: &mut Pass, pk: PathKind, ms: &'static U::MetaStatics) {
         let (win, lhs, nodes) = {
-            let (lhs_win, _, lhs) = self.file_entry(pa, name).unwrap();
+            let (lhs_win, _, lhs) = self.file_entry(pa, pk.clone()).unwrap();
             let lhs = lhs.clone();
 
             let lo = lhs.read(pa).layout_order;
@@ -153,7 +153,7 @@ impl<U: Ui> Windows<U> {
 
         let mut windows = std::mem::take(&mut self.0.write(pa).windows);
 
-        windows[win].remove_file(pa, name);
+        windows[win].remove_file(pa, pk);
         if windows[win].file_names(pa).is_empty() {
             windows.remove(win);
             U::remove_window(ms, win);
@@ -170,13 +170,13 @@ impl<U: Ui> Windows<U> {
     pub(crate) fn swap_files(
         &self,
         pa: &mut Pass,
-        lhs_name: &str,
-        rhs_name: &str,
+        lhs: PathKind,
+        rhs: PathKind,
         ms: &'static U::MetaStatics,
     ) {
         let (wins, [lhs_node, rhs_node]) = {
-            let (lhs_win, _, lhs_node) = self.file_entry(pa, lhs_name).unwrap();
-            let (rhs_win, _, rhs_node) = self.file_entry(pa, rhs_name).unwrap();
+            let (lhs_win, _, lhs_node) = self.file_entry(pa, lhs.clone()).unwrap();
+            let (rhs_win, _, rhs_node) = self.file_entry(pa, rhs.clone()).unwrap();
             let lhs_node = lhs_node.clone();
             let rhs_node = rhs_node.clone();
             ([lhs_win, rhs_win], [lhs_node, rhs_node])
@@ -184,9 +184,9 @@ impl<U: Ui> Windows<U> {
 
         self.swap(pa, wins, [&lhs_node, &rhs_node]);
 
-        let name = context::fixed_file::<U>(pa).unwrap().read(pa).name();
+        let pk = context::fixed_file::<U>(pa).unwrap().read(pa).path_kind();
         if wins[0] != wins[1]
-            && let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name)
+            && let Some(win) = [lhs, rhs].into_iter().position(|n| n == pk)
         {
             context::set_cur_window(win);
             U::switch_window(ms, win);
@@ -198,12 +198,12 @@ impl<U: Ui> Windows<U> {
     pub(crate) fn open_or_move_to_new_window(
         &self,
         pa: &mut Pass,
-        name: &str,
+        pk: PathKind,
         ms: &'static U::MetaStatics,
         layout: Box<dyn Layout<U>>,
         default_file_cfg: FileCfg<U>,
     ) {
-        match self.file_entry(pa, name) {
+        match self.file_entry(pa, pk.clone()) {
             Ok((win, _, handle)) => {
                 // Take the nodes in the original Window
                 handle.write(pa).layout_order = 0;
@@ -238,15 +238,15 @@ impl<U: Ui> Windows<U> {
                 self.new_window(
                     pa,
                     ms,
-                    default_file_cfg.open_path(PathBuf::from(name)),
+                    default_file_cfg.open_path(pk.as_path()),
                     layout,
                     false,
                 );
             }
         };
 
-        if context::fixed_file::<U>(pa).unwrap().read(pa).name() != name {
-            mode::reset_to_file::<U>(name, false);
+        if context::fixed_file::<U>(pa).unwrap().read(pa).path_kind() != pk {
+            mode::reset_to_file::<U>(pk, false);
         }
 
         let new_win = context::windows::<U>().len(pa) - 1;
@@ -362,6 +362,25 @@ impl<U: Ui> Windows<U> {
     pub fn file_entry(
         &self,
         pa: &Pass,
+        pk: PathKind,
+    ) -> Result<(usize, usize, Handle<File<U>, U>), Text> {
+        self.0
+            .read(pa)
+            .windows
+            .iter()
+            .enumerate()
+            .flat_map(window_index_widget)
+            .find_map(|(win, wid, node)| {
+                (node.read_as(pa).filter(|f: &&File<U>| f.path_kind() == pk))
+                    .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
+            })
+            .ok_or_else(|| txt!("File {pk} not found").build())
+    }
+
+    /// An entry for a file with the given name
+    pub fn named_file_entry(
+        &self,
+        pa: &Pass,
         name: &str,
     ) -> Result<(usize, usize, Handle<File<U>, U>), Text> {
         self.0
@@ -374,7 +393,7 @@ impl<U: Ui> Windows<U> {
                 (node.read_as(pa).filter(|f: &&File<U>| f.name() == name))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
             })
-            .ok_or_else(|| txt!("File [a]{name}[] not found").build())
+            .ok_or_else(|| txt!("File {name} not found").build())
     }
 
     /// An entry for a widget of a specific type
@@ -602,11 +621,11 @@ impl<U: Ui> Window<U> {
     pub(crate) fn _spawn<W: Widget<U>>(&mut self, _pa: &mut Pass, _widget: W) {}
 
     /// Removes all [`Node`]s whose [`Area`]s where deleted
-    pub(crate) fn remove_file(&mut self, pa: &Pass, name: &str) {
+    pub(crate) fn remove_file(&mut self, pa: &Pass, pk: PathKind) {
         let Some(node) = self
             .nodes
             .extract_if(.., |node| {
-                node.read_as(pa).map(|f: &File<U>| f.name() == name) == Some(true)
+                node.read_as(pa).map(|f: &File<U>| f.path_kind() == pk) == Some(true)
             })
             .next()
         else {

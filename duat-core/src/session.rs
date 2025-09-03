@@ -23,7 +23,7 @@ use crate::{
     Plugins,
     cfg::PrintCfg,
     clipboard::Clipboard,
-    cmd::{self, get_name},
+    cmd::{self, get_pk},
     context::{self, Cache, sender},
     data::Pass,
     file::{File, FileCfg, PathKind},
@@ -208,14 +208,16 @@ impl<U: Ui> Session<U> {
                         reprint_screen = true;
                         continue;
                     }
-                    DuatEvent::OpenFile(name) => self.open_file(pa, context::cur_window(), &name),
-                    DuatEvent::CloseFile(name) => {
-                        if self.close_file(pa, name) {
+                    DuatEvent::OpenFile(pk) => {
+                        self.open_file(pa, context::cur_window(), pk.as_path())
+                    }
+                    DuatEvent::CloseFile(pk) => {
+                        if self.close_file(pa, pk) {
                             continue;
                         }
                     }
                     DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(pa, lhs, rhs),
-                    DuatEvent::OpenWindow(name) => self.open_window_with(pa, name),
+                    DuatEvent::OpenWindow(pk) => self.open_window_with(pa, pk),
                     DuatEvent::SwitchWindow(win) => {
                         reprint_screen = true;
                         context::set_cur_window(win);
@@ -347,24 +349,29 @@ impl<U: Ui> Session<U> {
         }
     }
 
-    fn open_file(&self, pa: &mut Pass, win: usize, name: &str) {
-        if let Err(err) =
-            context::windows::<U>().new_file(pa, win, self.file_cfg.clone().open_path(name.into()))
-        {
-            context::error!("{err}")
+    fn open_file(&self, pa: &mut Pass, win: usize, path: Option<PathBuf>) {
+        match context::windows::<U>().new_file(
+            pa,
+            win,
+            self.file_cfg.clone().open_path(path.clone()),
+        ) {
+            Ok(node) => {
+                let handle = node.handle().try_downcast::<File<U>>().unwrap();
+                mode::reset_to_file::<U>(handle.read(pa).path_kind(), false);
+            }
+            Err(err) => context::error!("{err}"),
         }
-        mode::reset_to_file::<U>(name, false);
     }
 }
 
 // Loop functions
 impl<U: Ui> Session<U> {
     /// Closes a [`File`], returns `true` if duat must `continue`
-    fn close_file(&self, pa: &mut Pass, name: String) -> bool {
-        let cur_name = context::fixed_file::<U>(pa).unwrap().read(pa).name();
+    fn close_file(&self, pa: &mut Pass, pk: PathKind) -> bool {
+        let cur_pk = context::fixed_file::<U>(pa).unwrap().read(pa).path_kind();
 
         let windows = context::windows::<U>();
-        let (win, wid) = match windows.file_entry(pa, &name) {
+        let (win, wid) = match windows.file_entry(pa, pk.clone()) {
             Ok((win, wid, _)) => (win, wid),
             Err(err) => {
                 context::warn!("{err}");
@@ -373,8 +380,8 @@ impl<U: Ui> Session<U> {
         };
 
         // If we are on the current File, switch to the next one.
-        if name == cur_name {
-            let Some(next_name) = windows.iter_around(pa, win, wid).find_map(get_name(pa)) else {
+        if pk == cur_pk {
+            let Some(next_pk) = windows.iter_around(pa, win, wid).find_map(get_pk(pa)) else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return false;
             };
@@ -382,24 +389,24 @@ impl<U: Ui> Session<U> {
             // If I send the switch signal first, and the Window is deleted, I
             // will have to synchronously change the current window number
             // without affecting anything else.
-            mode::reset_to_file::<U>(&next_name, true);
-            context::windows::<U>().close_file(pa, &name, self.ms);
+            mode::reset_to_file::<U>(next_pk.clone(), true);
+            context::windows::<U>().close_file(pa, pk, self.ms);
 
             true
         } else {
-            context::windows::<U>().close_file(pa, &name, self.ms);
+            context::windows::<U>().close_file(pa, pk, self.ms);
             false
         }
     }
 
-    fn swap_files(&self, pa: &mut Pass, lhs_name: String, rhs_name: String) {
-        context::windows::<U>().swap_files(pa, &lhs_name, &rhs_name, self.ms);
+    fn swap_files(&self, pa: &mut Pass, lhs: PathKind, rhs: PathKind) {
+        context::windows::<U>().swap_files(pa, lhs, rhs, self.ms);
     }
 
-    fn open_window_with(&self, pa: &mut Pass, name: String) {
+    fn open_window_with(&self, pa: &mut Pass, pk: PathKind) {
         context::windows::<U>().open_or_move_to_new_window(
             pa,
-            &name,
+            pk,
             self.ms,
             (self.layout_fn)(),
             self.file_cfg.clone(),
@@ -425,19 +432,19 @@ pub enum DuatEvent {
     /// Open a new [`File`]
     ///
     /// [`File`]: crate::file::File
-    OpenFile(String),
+    OpenFile(PathKind),
     /// Close an open [`File`]
     ///
     /// [`File`]: crate::file::File
-    CloseFile(String),
+    CloseFile(PathKind),
     /// Swap two [`File`]s
     ///
     /// [`File`]: crate::file::File
-    SwapFiles(String, String),
+    SwapFiles(PathKind, PathKind),
     /// Open a new window with a [`File`]
     ///
     /// [`File`]: crate::file::File
-    OpenWindow(String),
+    OpenWindow(PathKind),
     /// Switch to the n'th window
     SwitchWindow(usize),
     /// Focused on Duat

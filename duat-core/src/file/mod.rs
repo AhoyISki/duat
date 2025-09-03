@@ -29,7 +29,7 @@ use crate::{
     form::Painter,
     hook::{self, FileWritten},
     mode::{Selection, Selections},
-    text::{Bytes, Text, txt},
+    text::{BuilderPart, Bytes, Text, txt},
     ui::{Area, BuildInfo, PushSpecs, Ui, Widget, WidgetCfg},
 };
 
@@ -190,8 +190,11 @@ impl<U: Ui> FileCfg<U> {
     }
 
     /// Changes the path of this cfg
-    pub(crate) fn open_path(self, path: PathBuf) -> Self {
-        Self { text_op: TextOp::OpenPath(path), ..self }
+    pub(crate) fn open_path(self, path: Option<PathBuf>) -> Self {
+        match path {
+            Some(path) => Self { text_op: TextOp::OpenPath(path), ..self },
+            None => Self { text_op: TextOp::NewBuffer, ..self },
+        }
     }
 
     /// Takes a previous [`File`]
@@ -662,7 +665,7 @@ impl<U: Ui> Handle<File<U>, U> {
 }
 
 /// Represents the presence or absence of a path
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum PathKind {
     /// A [`PathBuf`] that has been defined and points to a real file
     SetExists(PathBuf),
@@ -685,6 +688,15 @@ impl PathKind {
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
 
         PathKind::NotSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// Returns a [`PathBuf`] if `self` is [`SetExists`] or
+    /// [`SetAbsent`]
+    pub fn as_path(&self) -> Option<PathBuf> {
+        match self {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => Some(path.clone()),
+            PathKind::NotSet(_) => None,
+        }
     }
 
     /// The full path of the file.
@@ -813,6 +825,38 @@ impl PathKind {
             }
             PathKind::NotSet(id) => txt!("[file.new.scratch]*scratch file #{id}*").build(),
         }
+    }
+}
+
+impl<P: AsRef<Path>> From<P> for PathKind {
+    fn from(value: P) -> Self {
+        let path = value.as_ref();
+        if let Ok(true) = path.try_exists() {
+            PathKind::SetExists(path.into())
+        } else {
+            PathKind::SetAbsent(path.into())
+        }
+    }
+}
+
+impl PartialEq for PathKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::SetExists(l0) | Self::SetAbsent(l0),
+                Self::SetExists(r0) | Self::SetAbsent(r0),
+            ) => l0 == r0,
+            (Self::NotSet(l0), Self::NotSet(r0)) => l0 == r0,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for PathKind {}
+
+impl From<PathKind> for BuilderPart {
+    fn from(value: PathKind) -> Self {
+        BuilderPart::Text(value.name_txt())
     }
 }
 
