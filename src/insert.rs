@@ -4,8 +4,9 @@ use duat_core::{
     mode::{Cursor, KeyCode::*, KeyMod as Mod},
     prelude::*,
 };
+use treesitter::TsCursor;
 
-use crate::{Normal, reindent, set_anchor_if_needed};
+use crate::{Normal, set_anchor_if_needed};
 
 #[derive(Clone)]
 pub struct Insert {
@@ -66,12 +67,11 @@ impl<U: Ui> Mode<U> for Insert {
             });
         }
 
-        let mut processed_lines = Vec::new();
         match key {
             key!(Tab) => handle.edit_all(pa, |mut c| {
                 let char_col = c.v_caret().char_col();
                 if self.indent_keys.contains(&'\t') && char_col == 0 {
-                    reindent(&mut c, &mut processed_lines);
+                    c.ts_reindent();
                     if c.indent() > 0 {
                         return;
                     }
@@ -90,14 +90,14 @@ impl<U: Ui> Mode<U> for Insert {
                 c.insert(char);
                 c.move_hor(1);
                 if self.indent_keys.contains(&char) && c.indent() == c.v_caret().char_col() - 1 {
-                    reindent(&mut c, &mut processed_lines);
+                    c.ts_reindent();
                 }
             }),
             key!(Enter) => handle.edit_all(pa, |mut c| {
                 c.insert('\n');
                 c.move_hor(1);
                 if self.indent_keys.contains(&'\n') {
-                    reindent(&mut c, &mut processed_lines);
+                    c.ts_reindent();
                 }
             }),
             key!(Backspace) => handle.edit_all(pa, |mut c| {

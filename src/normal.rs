@@ -1,4 +1,4 @@
-use std::sync::{Mutex, atomic::Ordering};
+use std::sync::atomic::Ordering;
 
 use duat_core::{
     cfg::WordChars,
@@ -9,13 +9,14 @@ use duat_utils::modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
 };
 use jump_list::FileJumps;
+use treesitter::TsCursor;
 
 use crate::{
     Category, Insert, Memoized, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex,
     inc_searchers::{Select, Split},
     insert::INSERT_TABS,
     one_key::OneKey,
-    reindent, select_to_end_of_line, set_anchor_if_needed, w_char_cat,
+    select_to_end_of_line, set_anchor_if_needed, w_char_cat,
 };
 
 #[derive(Clone, Copy)]
@@ -355,11 +356,10 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert::new());
             }
             key!(Char('I')) => {
-                let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
                     if self.indent_on_capital_i {
-                        reindent(&mut c, &mut processed_lines);
+                        c.ts_reindent();
                     } else {
                         c.move_to_col(c.indent());
                     }
@@ -382,7 +382,6 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert::new());
             }
             key!(Char('o' | 'O'), Mod::NONE | Mod::ALT) => {
-                let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     if event.code == Char('O') {
                         c.set_caret_on_start();
@@ -390,7 +389,7 @@ impl<U: Ui> Mode<U> for Normal {
                         c.move_hor(-(char_col as i32));
                         c.insert("\n");
                         if event.modifiers == Mod::NONE {
-                            reindent(&mut c, &mut processed_lines);
+                            c.ts_reindent();
                         } else {
                             c.move_hor(char_col as i32 + 1);
                         }
@@ -402,7 +401,7 @@ impl<U: Ui> Mode<U> for Normal {
                         c.append("\n");
                         if event.modifiers == Mod::NONE {
                             c.move_hor(1);
-                            reindent(&mut c, &mut processed_lines);
+                            c.ts_reindent();
                         } else {
                             c.move_to(caret);
                         }
@@ -635,10 +634,10 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Clipboard keys
-            key!(Char('y')) => copy_selections(pa, &handle),
+            key!(Char('y')) => duat_utils::modes::copy_selections(pa, &handle),
             key!(Char('d' | 'c'), Mod::NONE | Mod::ALT) => {
                 if event.modifiers == Mod::NONE {
-                    copy_selections(pa, &handle);
+                    duat_utils::modes::copy_selections(pa, &handle);
                 }
                 handle.edit_all(pa, |mut c| {
                     let prev_char = c.chars_rev().next();
@@ -659,7 +658,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }
             key!(Char('p' | 'P')) => {
-                let pastes = paste_strings();
+                let pastes = duat_utils::modes::paste_strings();
                 if !pastes.is_empty() {
                     let mut p_iter = pastes.iter().cycle();
                     handle.edit_all(pa, |mut c| {
@@ -703,7 +702,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }
             key!(Char('R')) => {
-                let pastes = paste_strings();
+                let pastes = duat_utils::modes::paste_strings();
                 if !pastes.is_empty() {
                     let mut p_iter = pastes.iter().cycle();
                     handle.edit_all(pa, |mut c| c.replace(p_iter.next().unwrap()));
@@ -875,37 +874,6 @@ fn space_and_word(alt_word: bool, wc: WordChars) -> String {
     }
 }
 
-fn copy_selections<U: Ui>(pa: &mut Pass, handle: &Handle<File<U>, U, ()>) {
-    let mut copies: Vec<String> = Vec::new();
-    handle.edit_all(pa, |c| copies.push(c.selection().collect()));
-    if !copies.iter().all(String::is_empty) {
-        if copies.len() == 1 {
-            duat_core::clipboard::set_text(copies.first().unwrap());
-        }
-        *CLIPBOARD.lock().unwrap() = copies
-    }
-}
-
-fn paste_strings() -> Vec<String> {
-    static SYSTEM_CLIPB: Mutex<Option<String>> = Mutex::new(None);
-
-    let paste = duat_core::clipboard::get_text();
-
-    let mut sys_clipb = SYSTEM_CLIPB.lock().unwrap();
-
-    // If there was no previous clipboard, or it has changed, copy the new
-    // pasted text
-    if let Some(paste) = paste
-        && sys_clipb.as_ref().is_none_or(|sc| *sc != paste)
-    {
-        *CLIPBOARD.lock().unwrap() = vec![paste.clone()];
-        *sys_clipb = Some(paste.clone());
-        vec![paste]
-    } else {
-        CLIPBOARD.lock().unwrap().clone()
-    }
-}
-
 fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool {
     lhs.0.visual_col() == rhs.0.visual_col()
         && lhs
@@ -913,5 +881,3 @@ fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool
             .zip(rhs.1)
             .is_none_or(|(lhs, rhs)| lhs.visual_col() == rhs.visual_col())
 }
-
-static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());

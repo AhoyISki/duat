@@ -291,7 +291,6 @@ use duat_core::{
     text::Point,
 };
 use duat_utils::hooks::SearchPerformed;
-use treesitter::TsCursor;
 
 use crate::normal::Brackets;
 pub use crate::{insert::Insert, normal::Normal};
@@ -455,68 +454,6 @@ fn set_anchor_if_needed<S, U: Ui>(set_anchor: bool, c: &mut Cursor<File<U>, U::A
     } else {
         c.unset_anchor();
     }
-}
-
-fn prev_non_empty_line_points<S, U: Ui>(c: &mut Cursor<File<U>, U::Area, S>) -> Option<[Point; 2]> {
-    let byte_col = c
-        .text()
-        .buffers(..c.caret().byte())
-        .take_while(|b| *b != b'\n')
-        .count();
-    let mut lines = c.lines_on(..c.caret().byte() - byte_col);
-    let prev =
-        lines.find_map(|(n, l): (usize, &str)| l.chars().any(|c| !c.is_whitespace()).then_some(n));
-    prev.map(|n| c.text().points_of_line(n))
-}
-
-/// Sets the indentation for every cursor
-fn reindent<S, U: Ui>(c: &mut Cursor<File<U>, U::Area, S>, processed_lines: &mut Vec<usize>) {
-    if processed_lines.contains(&c.caret().line()) {
-        return;
-    }
-
-    let old_col = c.v_caret().char_col();
-    let anchor_existed = c.anchor().is_some();
-
-    let old_indent = c.indent();
-    let new_indent = if let Some(indent) = c.ts_indent() {
-        indent
-    } else {
-        let prev_non_empty = prev_non_empty_line_points(c);
-        prev_non_empty.map(|[p0, _]| c.indent_on(p0)).unwrap_or(0)
-    };
-    let indent_diff = new_indent as i32 - old_indent as i32;
-
-    c.move_hor(-(old_col as i32));
-    c.set_anchor();
-    c.move_hor(old_indent as i32);
-
-    if c.caret() == c.anchor().unwrap() {
-        c.insert(" ".repeat(new_indent));
-    } else {
-        c.move_hor(-1);
-        c.replace(" ".repeat(new_indent));
-    }
-    c.set_caret_on_start();
-    c.unset_anchor();
-
-    if anchor_existed {
-        c.set_anchor();
-        if old_col < old_indent {
-            c.move_hor(old_col as i32);
-        } else {
-            c.move_hor(old_col as i32 + indent_diff);
-        }
-        c.swap_ends();
-    }
-
-    if old_col < old_indent {
-        c.move_hor(old_col as i32);
-    } else {
-        c.move_hor(old_col as i32 + indent_diff);
-    }
-
-    processed_lines.push(c.caret().line());
 }
 
 ////////// Object definitions
