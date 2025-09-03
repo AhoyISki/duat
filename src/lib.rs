@@ -373,6 +373,7 @@ pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
 pub mod print;
 mod setup;
+mod regular;
 
 pub mod cmd {
     //! Command creation and calling utilities
@@ -1024,9 +1025,6 @@ pub mod prelude {
     ///     }
     /// }
     /// ```
-    ///
-    /// As you can see above, they should also have a `plug` method,
-    /// which consumes the plugin.
     pub fn plug<P: Plugin<Ui>>(plugin: P) {
         let mut already_plugged = ALREADY_PLUGGED.lock().unwrap();
         if already_plugged.contains(&TypeId::of::<P>()) {

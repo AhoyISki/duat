@@ -245,7 +245,7 @@ macro_rules! doc_duat {
                 impl $crate::ui::Ui for Ui {
                     type Area = Area;
                     type MetaStatics = ();
-                    fn open(_: &'static Self::MetaStatics, _: $crate::ui::DuatSender) {}
+                    fn open(_: &'static Self::MetaStatics, _: $crate::session::DuatSender) {}
                     fn close(_: &'static Self::MetaStatics) {}
                     fn new_root(
                         _: &'static Self::MetaStatics,

@@ -47,14 +47,14 @@ version = "0.8.0"
 optional = true
 
 # Default plugins
-## This one comes from the "treesitter" feature because
-## duat-treesitter is one of its dependencies, so it automatically
-## brings it in, and it is a much more "prevalent" feature than
-## matching pairs.
-[dependencies.match-pairs]
+[dependencies.duat-treesitter]
+version = "0.3.0"
+git = "https://github.com/AhoyISki/duat-treesitter"
+optional = true
+
+[dependencies.duat-match-pairs]
 version = "0.2.0"
 git = "https://github.com/AhoyISki/duat-match-pairs"
-package = "duat-match-pairs"
 optional = true
 
 [features]
@@ -63,7 +63,7 @@ term-ui = ["dep:duat-term"]
 deadlocks = ["duat-core/deadlocks"]
 git-deps = []
 cli = ["dep:clap", "dep:libloading", "dep:notify", "dep:convert_case"]
-treesitter = ["dep:match-pairs"]
+treesitter = ["dep:duat-treesitter", "dep:duat-match-pairs"]
 
 [[bin]]
 name = "duat"

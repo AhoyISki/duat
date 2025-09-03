@@ -257,8 +257,19 @@ impl From<Builder> for Text {
 #[derive(Clone)]
 pub enum BuilderPart<D: Display = String, _T = ()> {
     /// Text to be pushed
+    ///
+    /// > [!NOTE]
+    /// >
+    /// > Every [`Text`] struct has a `\n` attached at the end,
+    /// > but when pushing it to a [`Builder`], said `\n` is
+    /// > automatically removed. If you want to keep a `\n` at the
+    /// > end, push an additional one.
     Text(Text),
     /// A Text Builder
+    ///
+    /// Much like the [`Text`], normally, the [`Builder`] finishes
+    /// with a `\n`, but when pushed to another [`Builder`], that `\n`
+    /// is removed as well.
     Builder(Builder),
     /// An [`impl Display`](std::fmt::Display) type
     ToString(D),

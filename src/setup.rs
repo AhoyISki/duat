@@ -26,7 +26,7 @@ use duat_core::{
 use duat_filetype::FileType;
 use duat_term::VertRule;
 use duat_utils::{
-    modes::{Pager, Regular},
+    modes::Pager,
     widgets::{FooterWidgets, LogBook},
 };
 
@@ -71,7 +71,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         CUR_WINDOW.load(Ordering::Relaxed),
     );
 
-    mode::set_default(Regular);
+    mode::set_default(crate::regular::Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 
     hook::add_grouped::<File>("FileWidgets", |_, (cfg, builder)| {
@@ -168,7 +168,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     {
         use duat_core::Plugins;
 
-        Plugins::<Ui>::_new().require::<match_pairs::MatchPairs>();
+        Plugins::<Ui>::_new().require::<duat_match_pairs::MatchPairs>();
     }
 }
 

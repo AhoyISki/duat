@@ -1,9 +1,13 @@
-use std::{iter::FusedIterator, ops::RangeBounds, str::Utf8Error};
+use std::{
+    iter::FusedIterator,
+    ops::{Range, RangeBounds},
+    str::Utf8Error,
+};
 
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
-use super::{Point, TextRange, records::Records};
+use super::{Point, RegexPattern, TextRange, records::Records};
 use crate::cfg::PrintCfg;
 
 /// The bytes of a [`Text`], encoded in UTF-8
@@ -143,6 +147,8 @@ impl Bytes {
     pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
         let range = range.to_range(self.len().byte());
         Some(Strs {
+            bytes: self,
+            range: range.clone(),
             arr: self.strs_inner(range)?,
             fwd: 0,
             rev: 2,
@@ -710,6 +716,8 @@ impl<'a> DoubleEndedIterator for Buffers<'a> {
 /// [`Text`]: super::Text
 #[derive(Clone)]
 pub struct Strs<'a> {
+    bytes: &'a Bytes,
+    range: Range<usize>,
     arr: [&'a str; 2],
     fwd: usize,
     rev: usize,
@@ -727,6 +735,14 @@ impl<'a> Strs<'a> {
     pub fn chars(self) -> impl DoubleEndedIterator<Item = char> + 'a {
         let [s0, s1] = self.arr;
         s0.chars().chain(s1.chars())
+    }
+
+    /// Returns `true` if the [`RegexPattern`] can be found in the
+    /// [`Strs`]s
+    pub fn contains<P: RegexPattern>(&self, pat: P) -> Result<bool, Box<regex_syntax::Error>> {
+        self.bytes
+            .search_fwd(pat, self.range.clone())
+            .map(|mut iter| iter.next().is_some())
     }
 }
 
