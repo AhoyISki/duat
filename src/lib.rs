@@ -374,7 +374,11 @@ impl InnerTsParser {
             // The rows seem kind of unpredictable, which is why I have to do this
             // nonsense
             let start = bytes.point_at_line(bytes.point_at_byte(range.start_byte).line());
-            let [_, end] = bytes.points_of_line(bytes.point_at_byte(range.end_byte).line());
+            let [_, end] = bytes.points_of_line(
+                bytes
+                    .point_at_byte(range.end_byte.min(bytes.len().byte()))
+                    .line(),
+            );
             new_ranges.add(start.byte()..end.byte())
         }
 
@@ -978,6 +982,9 @@ impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
             prev.map(|n| c.text().points_of_line(n))
         }
 
+        let old_col = self.v_caret().char_col();
+        let anchor_existed = self.anchor().is_some();
+
         let old_indent = self.indent();
         let new_indent = if let Some(indent) = self.ts_indent() {
             indent
@@ -985,21 +992,38 @@ impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
             let prev_non_empty = prev_non_empty_line_points(self);
             prev_non_empty
                 .map(|[p0, _]| self.indent_on(p0))
-                .unwrap_or(old_indent)
+                .unwrap_or(0)
         };
+        let indent_diff = new_indent as i32 - old_indent as i32;
 
-        let mut c = self.copy();
-        c.move_hor(0);
-        c.set_anchor();
-        c.move_hor(old_indent as i32);
+        self.move_hor(-(old_col as i32));
+        self.set_anchor();
+        self.move_hor(old_indent as i32);
 
-        if c.caret() == c.anchor().unwrap() {
-            c.insert(" ".repeat(new_indent));
+        if self.caret() == self.anchor().unwrap() {
+            self.insert(" ".repeat(new_indent));
         } else {
-            c.move_hor(-1);
-            c.replace(" ".repeat(new_indent));
+            self.move_hor(-1);
+            self.replace(" ".repeat(new_indent));
         }
-        c.destroy();
+        self.set_caret_on_start();
+        self.unset_anchor();
+
+        if anchor_existed {
+            self.set_anchor();
+            if old_col < old_indent {
+                self.move_hor(old_col as i32);
+            } else {
+                self.move_hor(old_col as i32 + indent_diff);
+            }
+            self.swap_ends();
+        }
+
+        if old_col < old_indent {
+            self.move_hor(old_col as i32);
+        } else {
+            self.move_hor(old_col as i32 + indent_diff);
+        }
     }
 }
 
