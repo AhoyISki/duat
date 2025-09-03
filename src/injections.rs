@@ -86,16 +86,16 @@ impl InjectedTree {
 
         if !ranges.is_empty() {
             self.parser.set_included_ranges(&ranges).unwrap();
+        }
+        
+        let tree = self
+            .parser
+            .parse_with_options(&mut parser_fn(bytes), Some(&self.tree), None)
+            .unwrap();
+        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
 
-            let tree = self
-                .parser
-                .parse_with_options(&mut parser_fn(bytes), Some(&self.tree), None)
-                .unwrap();
-            self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
-
-            for inj in self.injections.iter_mut() {
-                inj.update_tree(bytes);
-            }
+        for inj in self.injections.iter_mut() {
+            inj.update_tree(bytes);
         }
     }
 

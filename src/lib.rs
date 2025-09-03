@@ -237,7 +237,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
 impl<U: Ui> ParserCfg<U> for TsParser {
     type Parser = Self;
 
-    fn build(self, file: &File<U>, mut tracker: FileTracker) -> Result<Self::Parser, Text> {
+    fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text> {
         let path = file.path_kind();
         let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
             && let Some(filetype) = path.filetype()
@@ -941,6 +941,13 @@ pub trait TsCursor {
     /// located in
     /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
     fn ts_indent_on(&self, p: Point) -> Option<usize>;
+
+    /// Reindents the [`Cursor`]'s line
+    ///
+    /// This is determined by a query, currently, it is the query
+    /// located in
+    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
+    fn ts_reindent(&mut self);
 }
 
 impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
@@ -953,6 +960,46 @@ impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
 
         self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), cfg))
             .flatten()
+    }
+
+    fn ts_reindent(&mut self) {
+        fn prev_non_empty_line_points<S, U: Ui>(
+            c: &mut Cursor<File<U>, U::Area, S>,
+        ) -> Option<[Point; 2]> {
+            let byte_col = c
+                .text()
+                .buffers(..c.caret().byte())
+                .take_while(|b| *b != b'\n')
+                .count();
+            let mut lines = c.lines_on(..c.caret().byte() - byte_col);
+            let prev = lines.find_map(|(n, l): (usize, &str)| {
+                l.chars().any(|c| !c.is_whitespace()).then_some(n)
+            });
+            prev.map(|n| c.text().points_of_line(n))
+        }
+
+        let old_indent = self.indent();
+        let new_indent = if let Some(indent) = self.ts_indent() {
+            indent
+        } else {
+            let prev_non_empty = prev_non_empty_line_points(self);
+            prev_non_empty
+                .map(|[p0, _]| self.indent_on(p0))
+                .unwrap_or(old_indent)
+        };
+
+        let mut c = self.copy();
+        c.move_hor(0);
+        c.set_anchor();
+        c.move_hor(old_indent as i32);
+
+        if c.caret() == c.anchor().unwrap() {
+            c.insert(" ".repeat(new_indent));
+        } else {
+            c.move_hor(-1);
+            c.replace(" ".repeat(new_indent));
+        }
+        c.destroy();
     }
 }
 
