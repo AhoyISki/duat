@@ -99,11 +99,11 @@ impl<U: Ui> mode::Mode<U> for Regular {
                 mode::set::<U>(RunCommands::new());
                 mode::send_keys("edit ");
             }
-            key!(Char('N'), Mod::CONTROL) => {
+            key!(Char('n'), Mod::CONTROL) => {
                 mode::set::<U>(RunCommands::new());
                 mode::send_keys("open ");
             }
-            key!(Char('W'), Mod::CONTROL) => cmd::quit(),
+            key!(Char('w'), Mod::CONTROL) => cmd::queue_notify("quit"),
             key!(Char(','), Mod::CONTROL) => cmd::queue_notify("open --cfg"),
 
             _ => {}

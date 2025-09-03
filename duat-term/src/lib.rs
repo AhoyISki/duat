@@ -103,7 +103,6 @@ impl ui::Ui for Ui {
 
                     match ct_read().unwrap() {
                         CtEvent::Key(key) => {
-                            duat_core::context::debug!("{key:#?}");
                             if !key.kind.is_release() {
                                 duat_tx.send_key(key).unwrap();
                             }

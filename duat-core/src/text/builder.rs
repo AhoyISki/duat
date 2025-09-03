@@ -135,7 +135,8 @@ impl Builder {
 
             let end = builder.text.len().byte();
             match part {
-                BP::Text(text) => builder.push_text(text),
+                BP::Text(text) => builder.push_text(text.without_last_nl()),
+                BP::Builder(new) => builder.push_text(new.build_no_nl()),
                 BP::Form(tag) => {
                     let last_form = if tag == crate::form::DEFAULT_ID.to_tag(0) {
                         builder.last_form.take()
@@ -257,6 +258,8 @@ impl From<Builder> for Text {
 pub enum BuilderPart<D: Display = String, _T = ()> {
     /// Text to be pushed
     Text(Text),
+    /// A Text Builder
+    Builder(Builder),
     /// An [`impl Display`](std::fmt::Display) type
     ToString(D),
     /// A [`FormId`]
@@ -277,6 +280,7 @@ impl<D: Display, _T> BuilderPart<D, _T> {
     fn try_to_basic(self) -> Result<BuilderPart, Self> {
         match self {
             BuilderPart::Text(text) => Ok(BuilderPart::Text(text)),
+            BuilderPart::Builder(builder) => Ok(BuilderPart::Builder(builder)),
             BuilderPart::ToString(d) => Err(BuilderPart::ToString(d)),
             BuilderPart::Form(form_id) => Ok(BuilderPart::Form(form_id)),
             BuilderPart::AlignLeft => Ok(BuilderPart::AlignLeft),
@@ -290,7 +294,7 @@ impl<D: Display, _T> BuilderPart<D, _T> {
 
 impl From<Builder> for BuilderPart {
     fn from(value: Builder) -> Self {
-        Self::Text(value.build_no_nl())
+        Self::Builder(value)
     }
 }
 
@@ -338,7 +342,7 @@ impl<T: Into<Text>> From<Ghost<T>> for BuilderPart {
 
 impl From<Text> for BuilderPart {
     fn from(value: Text) -> Self {
-        BuilderPart::Text(value.without_last_nl())
+        BuilderPart::Text(value)
     }
 }
 
