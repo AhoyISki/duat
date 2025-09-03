@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 
 use duat_core::prelude::Lender;
-use duat_utils::modes::{IncSearch, RunCommands, SearchFwd};
 use duat_treesitter::TsCursor;
+use duat_utils::modes::{IncSearch, RunCommands, SearchFwd};
 
 use crate::{
     Ui,
@@ -41,14 +41,16 @@ impl mode::Mode<Ui> for Regular {
                     handle.write(pa).text_mut().new_moment();
                 }
                 handle.edit_all(pa, |mut c| {
-                    c.insert(char);
+                    c.replace(char);
+                    c.unset_anchor();
                     c.move_hor(1);
                 })
             }
             key!(Enter) => {
                 handle.write(pa).text_mut().new_moment();
                 handle.edit_all(pa, |mut c| {
-                    c.insert('\n');
+                    c.replace('\n');
+                    c.unset_anchor();
                     c.move_hor(1);
                     c.ts_reindent();
                 })
@@ -134,7 +136,7 @@ impl mode::Mode<Ui> for Regular {
                     prev.push((c.range(), c.anchor_is_start()));
                     if c.anchor().is_none() {
                         let [start, end] = c.text().points_of_line(c.caret().line());
-                        c.move_to(start..=end);
+                        c.move_to(start..end);
                     }
                 });
                 duat_utils::modes::copy_selections(pa, &handle);
@@ -152,16 +154,33 @@ impl mode::Mode<Ui> for Regular {
                 });
             }
             key!(Char('v'), Mod::CONTROL) => {
-                handle.write(pa).text_mut().new_moment();
-                handle.edit_all(pa, |mut c| {
-                    if let Some(text) = duat_core::clipboard::get_text() {
-                        let anchor_is_start = c.set_caret_on_start();
-                        c.insert(text);
-                        if anchor_is_start {
-                            c.set_caret_on_end();
+                let pastes = duat_utils::modes::paste_strings();
+                if !pastes.is_empty() {
+                    handle.write(pa).text_mut().new_moment();
+                    let mut p_iter = pastes.iter().cycle();
+
+                    handle.edit_all(pa, |mut c| {
+                        let paste = p_iter.next().unwrap();
+                        if !paste.is_empty() {
+                            let mut c = c.copy();
+                            c.set_caret_on_start();
+                            c.unset_anchor();
+                            if paste.ends_with('\n') {
+                                c.move_to_col(0);
+                                c.insert(paste);
+                            } else {
+                                c.insert(paste)
+                            }
+                            c.destroy();
                         }
-                    }
-                })
+                        c.move_hor(paste.chars().count() as i32);
+                        if c.anchor().is_some() {
+                            c.swap_ends();
+                            c.move_hor(paste.chars().count() as i32);
+                            c.swap_ends();
+                        }
+                    });
+                }
             }
 
             // Searching
@@ -177,7 +196,8 @@ impl mode::Mode<Ui> for Regular {
                 mode::set(RunCommands::new());
                 mode::send_keys("open ");
             }
-            key!(Char('w'), Mod::CONTROL) => cmd::queue_notify("quit"),
+            key!(Char('s'), Mod::CONTROL) => cmd::queue_notify("write"),
+            key!(Char('w'), Mod::CONTROL) => cmd::queue_notify("write-quit"),
             key!(Char(','), Mod::CONTROL) => cmd::queue_notify("open --cfg"),
 
             _ => {}

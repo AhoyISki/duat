@@ -310,13 +310,11 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         let mut searcher = self.searcher.borrow_mut();
 
         edit(Cursor::new(
-            selection,
-            n,
-            was_main,
-            &mut *widget,
-            &self.area,
+            (selection, n, was_main),
+            (&mut *widget, &self.area),
             None,
             &mut searcher,
+            false,
         ))
     }
 

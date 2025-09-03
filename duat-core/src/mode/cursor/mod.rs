@@ -76,18 +76,17 @@ pub struct Cursor<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> {
     area: &'a A,
     next_i: Option<Rc<Cell<usize>>>,
     inc_searcher: &'a mut S,
+    is_copy: bool,
 }
 
 impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
-        selection: Selection,
-        n: usize,
-        was_main: bool,
-        widget: &'a mut W,
-        area: &'a A,
+        (selection, n, was_main): (Selection, usize, bool),
+        (widget, area): (&'a mut W, &'a A),
         next_i: Option<Rc<Cell<usize>>>,
         searcher: &'a mut S,
+        is_copy: bool,
     ) -> Self {
         Self {
             initial: selection.clone(),
@@ -98,6 +97,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
             area,
             next_i,
             inc_searcher: searcher,
+            is_copy,
         }
     }
 
@@ -373,13 +373,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     /// [destroy]: Self::destroy
     pub fn copy(&mut self) -> Cursor<'_, W, A, S> {
         Cursor::new(
-            self.selection.clone(),
-            self.n,
-            false,
-            self.widget,
-            self.area,
+            (self.selection.clone(), self.n, false),
+            (self.widget, self.area),
             self.next_i.clone(),
             self.inc_searcher,
+            true,
         )
     }
 
@@ -392,7 +390,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     pub fn destroy(mut self) {
         // If it is 1, it is actually 2, because this Selection is also part
         // of that list.
-        if !self.widget.text().selections().is_empty() {
+        if !self.widget.text().selections().is_empty() || self.is_copy {
             // Rc<Cell> needs to be manually dropped to reduce its counter.
             self.next_i.take();
             if self.was_main {
@@ -783,13 +781,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Lender for Cursors<'a, W, A, S> 
         let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
 
         Some(Cursor::new(
-            selection,
-            current_i,
-            was_main,
-            self.widget,
-            self.area,
+            (selection, current_i, was_main),
+            (self.widget, self.area),
             Some(self.next_i.clone()),
             &mut self.inc_searcher,
+            false,
         ))
     }
 }
