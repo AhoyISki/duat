@@ -56,18 +56,6 @@ impl ui::Ui for Ui {
                 unreachable!("Failed to load the Ui");
             };
 
-            // Initial terminal setup
-            // Some key chords (like alt+shift+o for some reason) don't work
-            // without this.
-            if let Ok(true) = terminal::supports_keyboard_enhancement() {
-                queue!(
-                    io::stdout(),
-                    PushKeyboardEnhancementFlags(
-                        KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
-                    )
-                );
-            }
-
             execute!(
                 io::stdout(),
                 terminal::EnterAlternateScreen,
@@ -80,6 +68,18 @@ impl ui::Ui for Ui {
             .unwrap();
 
             terminal::enable_raw_mode().unwrap();
+
+            // Initial terminal setup
+            // Some key chords (like alt+shift+o for some reason) don't work
+            // without this.
+            if let Ok(true) = terminal::supports_keyboard_enhancement() {
+                queue!(
+                    io::stdout(),
+                    PushKeyboardEnhancementFlags(
+                        KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
+                    )
+                );
+            }
 
             loop {
                 match term_rx.recv() {
@@ -103,7 +103,8 @@ impl ui::Ui for Ui {
 
                     match ct_read().unwrap() {
                         CtEvent::Key(key) => {
-                            if key.kind.is_press() {
+                            duat_core::context::debug!("{key:#?}");
+                            if !key.kind.is_release() {
                                 duat_tx.send_key(key).unwrap();
                             }
                         }

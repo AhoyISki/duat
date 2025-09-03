@@ -466,29 +466,29 @@ pub(crate) fn add_session_commands<U: Ui>() {
     add!(["open", "o"], |pa, arg: FileOrBufferOrCfg<U>| {
         let windows = context::windows::<U>();
 
-        let pk = match arg {
-            FileOrBufferOrCfg::Cfg => {
-                PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs"))
-            }
-            FileOrBufferOrCfg::CfgManifest => {
-                PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml"))
-            }
-            FileOrBufferOrCfg::File(path) => PathKind::from(path),
+        let (pk, msg) = match arg {
+            FileOrBufferOrCfg::Cfg => (
+                PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs")),
+                None,
+            ),
+            FileOrBufferOrCfg::CfgManifest => (
+                PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml")),
+                None,
+            ),
+            FileOrBufferOrCfg::File(path) => (PathKind::from(path), None),
             FileOrBufferOrCfg::Buffer(handle) => {
                 let pk = handle.read(pa).path_kind();
                 let (win, ..) = windows.file_entry(pa, pk.clone()).unwrap();
                 if windows.get(pa, win).unwrap().file_handles(pa).len() == 1 {
-                    mode::reset_to_file::<U>(pk.clone(), true);
-                    return Ok(Some(txt!("Switched to {pk}").build()));
+                    (pk.clone(), Some(txt!("Switched to {pk}").build()))
                 } else {
-                    sender().send(DuatEvent::OpenWindow(pk.clone())).unwrap();
-                    return Ok(Some(txt!("Moved {pk} to a new window").build()));
+                    (pk.clone(), Some(txt!("Moved {pk} to a new window").build()))
                 }
             }
         };
 
         sender().send(DuatEvent::OpenWindow(pk.clone())).unwrap();
-        return Ok(Some(txt!("Opened {pk} on new window").build()));
+        return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window").build())));
     });
 
     add!(["buffer", "b"], |pa, handle: OtherBuffer<U>| {

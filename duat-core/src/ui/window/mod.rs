@@ -204,7 +204,7 @@ impl<U: Ui> Windows<U> {
         default_file_cfg: FileCfg<U>,
     ) {
         match self.file_entry(pa, pk.clone()) {
-            Ok((win, _, handle)) => {
+            Ok((win, _, handle)) if self.get(pa, win).unwrap().file_handles(pa).len() > 1 => {
                 // Take the nodes in the original Window
                 handle.write(pa).layout_order = 0;
 
@@ -234,6 +234,9 @@ impl<U: Ui> Windows<U> {
                 // list of the original Window.
                 MutArea(&new_root).delete();
             }
+            // The Handle in question is already in its own window, so no need
+            // to move it to another one.
+            Ok(_) => {}
             Err(_) => {
                 self.new_window(
                     pa,

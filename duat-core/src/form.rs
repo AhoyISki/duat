@@ -1157,7 +1157,6 @@ struct InnerPalette {
 impl InnerPalette {
     /// Sets a [`Form`]
     fn set_form(&mut self, name: &str, form: Form) {
-        crate::context::debug!("set {name} to {form:?}");
         let (i, _) = position_and_form(&mut self.forms, name);
 
         self.forms[i].1 = form;

@@ -216,14 +216,14 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
     type Returns = Handle<File<U>, U>;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
-        let buffer = args.next()?;
+        let buffer_name = args.next()?;
         if let Some(handle) = crate::context::windows::<U>()
             .file_handles(pa)
-            .find(|handle| handle.read(pa).name() == buffer)
+            .find(|handle| handle.read(pa).name() == buffer_name)
         {
             Ok((handle, Some(form::id_of!("param.file.open"))))
         } else {
-            Err(txt!("No buffer called [a]{buffer}[] open").build())
+            Err(txt!("No buffer called [a]{buffer_name}[] open").build())
         }
     }
 }
@@ -601,7 +601,6 @@ impl<'a> Parameter<'a> for Flags<'a> {
 /// cmd::queue_notify(r#"mycmd --flags -moreflag arg1 "more arg" \"arg arg\""#);
 /// # }
 /// ```
-#[derive(Clone)]
 pub struct Args<'a> {
     args: Peekable<ArgsIter<'a>>,
     param_range: Range<usize>,
@@ -629,35 +628,40 @@ impl<'a> Args<'a> {
 
     /// Tries to parse the next argument as `P`
     ///
-    /// For now, this will consume arguments even if it fails, but
-    /// that may change in the future.
+    /// If parsing fails, [`Args`] will be reset as if this function
+    /// wasn't called.
     pub fn next_as<P: Parameter<'a>>(&mut self, pa: &Pass) -> Result<P::Returns, Text> {
+        let initial_args = self.args.clone();
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
         if ret.is_ok() {
             self.is_forming_param = false;
+        } else {
+            self.args = initial_args
         }
         ret.map(|(arg, _)| arg)
     }
 
     /// Tries to parse the next argument as `P`
     ///
-    /// For now, this will consume arguments even if it fails, but
-    /// that may change in the future.
+    /// If parsing fails, [`Args`] will be reset as if this function
+    /// wasn't called.
     pub fn next_as_with_form<P: Parameter<'a>>(
         &mut self,
         pa: &Pass,
     ) -> Result<(P::Returns, Option<FormId>), Text> {
+        let initial_args = self.args.clone();
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
         if ret.is_ok() {
             self.is_forming_param = false;
+        } else {
+            self.args = initial_args
         }
         ret
     }
 
-    /// Tries to parse the next argument as `P`, otherwise returns a
-    /// [`Text`]
+    /// Tries to get the next argument, otherwise returns a [`Text`]
     pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, _)) => Ok(arg),
@@ -681,6 +685,17 @@ impl<'a> Args<'a> {
     /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
     pub fn param_range(&self) -> Range<usize> {
         self.param_range.clone()
+    }
+
+	/// A private [`Clone`]
+    pub(super) fn clone(&self) -> Self {
+        Self {
+            args: self.args.clone(),
+            param_range: self.param_range.clone(),
+            has_to_start_param: self.has_to_start_param,
+            is_forming_param: self.is_forming_param,
+            flags: self.flags.clone(),
+        }
     }
 }
 
