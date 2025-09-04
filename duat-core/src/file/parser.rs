@@ -152,7 +152,7 @@ use crate::{
 ///             .edit_main(pa, |c| c.search_rev(r"\w*\z", None).next().map(|[s, _]| s))
 ///             .unwrap_or(s);
 ///         // Get a regex pattern for said range.
-///         let pat = handle.text(pa).strs(start..end).unwrap().to_string();
+///         let pat = handle.text(pa).strs(s..e).unwrap().to_string();
 ///         let pat = format!(r"\b{pat}\b");
 ///
 ///         // Add the "same_word" Form to every range that matches the pattern.

@@ -339,11 +339,21 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 /// like this:
 ///
 /// ```rust
-/// use duat_core::prelude::*;
-/// use duat_utils::modes::{IncSearch, Regular, SearchFwd};
+/// use duat_core::prelude::{KeyCode::*, *};
+/// use duat_utils::modes::{IncSearch, SearchFwd};
 ///
-/// fn setup_generic_over_ui<U: Ui>() {
-///     mode::map::<Regular, U>("<C-s>", IncSearch::new(SearchFwd));
+/// #[derive(Clone)]
+/// struct Emacs;
+///
+/// impl<U: Ui> Mode<U> for Emacs {
+///     type Widget = File<U>;
+///
+///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget, U>) {
+///         match event {
+///             key!(Char('s'), KeyMod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
+///             other_keys_oh_god => todo!(),
+///         }
+///     }
 /// }
 /// ```
 ///
