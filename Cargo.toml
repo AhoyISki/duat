@@ -1,6 +1,6 @@
 [package]
 name = "duat-treesitter"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "Plugin for tree-sitter bindings for Duat"
@@ -12,7 +12,7 @@ categories = ["command-line-utilities", "text-editors", "config"]
 include = ["src/*", "queries/*", "build.rs"]
 
 [dependencies]
-duat-core = { version = "0.6.0", git = "https://github.com/AhoyISki/duat" }
+duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
 duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-filetype" }
 
 streaming-iterator = "0.1.9"
