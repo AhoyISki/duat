@@ -1,6 +1,6 @@
 [package]
 name = "duat-match-pairs"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["AhoyISki"]
 description = "A duat plugin to highlight matched pairs"
 repository = "https://github.com/AhoyISki/duat-match-pairs"
@@ -11,7 +11,7 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat-core = { version = "0.6.0", git = "https://github.com/AhoyISki/duat" }
-duat-filetype = { git = "https://github.com/AhoyISki/duat-filetype", version = "0.3.0" }
+duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
+duat-filetype = { git = "https://github.com/AhoyISki/duat-filetype", version = "0.3.1" }
 
-duat-treesitter = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-treesitter" }
+duat-treesitter = { version = "0.3.1", git = "https://github.com/AhoyISki/duat-treesitter" }
