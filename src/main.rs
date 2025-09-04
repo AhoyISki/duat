@@ -8,7 +8,7 @@
 )]
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         LazyLock, Mutex,
         mpsc::{self, Receiver},
@@ -48,6 +48,8 @@ struct Args {
         target_os = "windows" => r"~\AppData\Roaming\duat",
         _ => "~/.config/duat]"
 	})]
+    /// Which config path to use (path to directory containing
+    /// Cargo.toml)
     #[arg(short, long)]
     load: Option<PathBuf>,
     /// Profile to load
@@ -65,6 +67,9 @@ struct Args {
     /// Updates the config's dependencies
     #[arg(long)]
     update: bool,
+    /// Initializes a fresh configuration
+    #[arg(long)]
+    init_config: bool,
     /// Initializes a new Duat Plugin
     #[arg(long, value_name = "NAME", global = true)]
     init_plugin: Option<String>,
@@ -134,6 +139,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
+
+    decide_on_new_config(&args, crate_dir)?;
 
     let profile_dir = match profile {
         "dev" => "debug",
@@ -374,6 +381,44 @@ fn spawn_reloader(
             }
         })
         .unwrap();
+}
+
+/// Decide if a new config is necessary
+fn decide_on_new_config(args: &Args, crate_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let config_is_empty = std::fs::read_dir(&crate_dir)?.next().is_none();
+
+    if args.init_config || config_is_empty {
+        const CONFIG_LIB: &str = include_str!("templates/config/lib.rs");
+        const CONFIG_TOML: &str = include_str!("templates/config/Cargo_.toml");
+
+        if config_is_empty ^ args.init_config {
+            if config_is_empty {
+                println!(
+                    "Do you want to start a new config in {}? [y/N]",
+                    crate_dir.to_string_lossy()
+                );
+            } else {
+                println!(
+                    "Are you sure you want to remove your current configuration at {}? [y/N]",
+                    crate_dir.to_string_lossy()
+                );
+            }
+
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            let ("y\n" | "Y\n") = input else {
+                println!("Operation cancelled");
+                return Ok(());
+            };
+        }
+
+        std::fs::remove_dir_all(&crate_dir)?;
+        std::fs::create_dir_all(crate_dir.join("src"))?;
+        std::fs::write(crate_dir.join("Cargo.toml"), CONFIG_TOML)?;
+        std::fs::write(crate_dir.join("src").join("lib.rs"), CONFIG_LIB)?;
+    }
+
+    Ok(())
 }
 
 mod cargo {
