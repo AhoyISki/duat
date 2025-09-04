@@ -372,8 +372,8 @@ pub use duat_core::utils::{crate_dir, duat_name, src_crate};
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
 pub mod print;
-mod setup;
 mod regular;
+mod setup;
 
 pub mod cmd {
     //! Command creation and calling utilities

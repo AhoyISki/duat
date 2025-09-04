@@ -36,158 +36,179 @@ use crate::{
 /// A parser's purpose is generally to look out for changes to the
 /// [`File`]'s [`Bytes`], and update some internal state that
 /// represents them. Examples of things that should be implemented as
-/// [`Parser`]s are:
+/// `Parser`s are:
 ///
-/// - A tree-sitter parser, or other syntax tree representations as
-///   well;
+/// - A tree-sitter parser, or other syntax tree representations;
 /// - Regex parsers;
 /// - Language server protocols;
 ///
-/// But [`Parser`]s don't have to necessarily do "big and complex"
+/// But `Parser`s don't have to necessarily do "big and complex"
 /// things like creating a language tree, they can be more simple,
 /// by, for example, acting on each [`Selection`] on the screen.
 ///
-/// If you want a walkthrough on how to make a [`Parser`], I would
+/// If you want a walkthrough on how to make a `Parser`, I would
 /// recommend reading the book (TODO). The rest of the documentation
 /// here is mostly just describing a final implementation, not
 /// walking through its creation.
 ///
-/// # Parsing strategies
+/// # What a parser does
 ///
-/// From the [`FileTracker`] that is given to the [`ParserCfg`] when
-/// calling [`ParserCfg::build`], three main parsing strategies
-/// emerge:
+/// The gist of it is that a `Parser` will be called to read the
+/// [`Bytes`] of the [`File`] as well as any [`Change`]s that are done
+/// to said `File`. Duat will then call upon the `Parser` to "act" on
+/// a region of the `File`'s [`Text`], this region being determined by
+/// what is shown on screen, in order to help plugin writers minimize
+/// the work done.
 ///
-/// - Not parsing at all;
-/// - Parsing synchronously;
-/// - Parsing asynchronously (via threads, not async);
+/// When creating a `Parser`, you will also be given a
+/// [`FileTracker`]. It will be used to keep track of the [`Change`]s,
+/// and it is also used by the `Parser` to tell which
+/// [`Range<usize>`]s of the [`Text`] the `Parser` cares about. So,
+/// for example, if you're matching non-multiline regex patterns, for
+/// every `Change`, you might want to add the lines of that `Change`
+/// to the `FileTracker`, and when Duat decides which ranges need to
+/// be updated, it will inform you: "Hey, you asked for this range to
+/// be updated, it's on screen now, so update it.".
 ///
-/// You should reach out for these in the following circumstances:
+/// # The functions from the `Parser` trait
 ///
-/// - If you don't care about [`Change`]s, then you can be doing "no
-///   parsing";
-/// - If you care about [`Change`]s, you should almost always do
-///   synchronous parsing, since multithreading is often not really
-///   faster than using single threaded code;
-/// - If you care about [`Change`]s and you know that your [`Parser`]
-///   can be _really_ slow (very unlikely), then you should use
-///   asynchronous parsing;
+/// There are 4 functions that you need to care about, but you may
+/// choose to implement only some of them:
 ///
-/// Keep in mind that the picked strategy could change, depending
-/// on the circumstance.
+/// ## [`Parser::parse`]
 ///
-/// ## No parsing
-///
-/// TODO: Document this
-///
-/// ## Synchronous parsing
-///
-/// Synchronous parsing is done by calling the
-/// [`FileTracker::update`] function _once_ per call to
-/// [`Parser::parse`]. If you don't continue parsing on another
-/// thread, it is guaranteed that the [`File`] will not change
-/// until the next call to [`Parser::parse`], so
-/// [`FileTracker::bytes`] is equal to the [`File`]'s [`Bytes`].
-///
-/// Generally, this is the rough structure of synchronous parsing
+/// This function's purpose is for the `Parser` to update its internal
+/// state after [`Change`]s take place. Here's the _general_ layout
+/// for a _synchronous_ version of this function:
 ///
 /// ```rust
 /// use duat_core::prelude::*;
 ///
-/// struct MyParser {
+/// struct CharCounter {
+///     count: usize,
+///     ch: char,
 ///     tracker: FileTracker,
-///     // Other fields.
-/// };
-///
-/// impl MyParser {
-///     /// this function represents some update to the internal
-///     /// state of the Parser, in order to reflect the Changes
-///     /// that took place.
-///     fn parse_bytes_and_moment(&mut self, pa: &Pass, bytes: &Bytes, moment: &Moment) {
-///         todo!();
-///     }
-///
-///     /// In this function, you add Ranges to be updated when
-///     /// calling Parser::update. This is done because Parsers
-///     /// should try to only update the things that are actually
-///     /// visible on screen, in order to not slow the whole
-///     /// program down.
-///     ///
-///     /// If you want more information about this, you can check
-///     /// out the documentation for Parser::update.
-///     fn add_ranges(&mut self, bytes: &Bytes, moment: &Moment) {
-///         todo!();
-///     }
-///
-///     /// this function should make the requested changes to the
-///     /// File, like adding Tags, inserting or removing text,
-///     /// resizing the Area, etc.
-///     ///
-///     /// The Range argument is a soft limit on where you should
-///     /// limit those changes to. For example, if you are adding
-///     /// Tags on every instance of the word "the", you should
-///     /// limit the search to the given range.
-///     fn update_file(&mut self, file: &mut File, area: &Area, on: Vec<Range<Point>>) {
-///         todo!();
-///     }
 /// }
 ///
-/// impl<U: Ui> Parser<U> for MyParser {
-///     // You are not given a &mut Pass, because while parsing,
-///     // you aren't supposed to be changing the File.
+/// impl<U: Ui> Parser<U> for CharCounter {
 ///     fn parse(&mut self) -> bool {
-///         // Updates the internal Bytes and Moment to the latest.
+///         // Fetches the latest Changes and Bytes of the File
 ///         self.tracker.update();
 ///
-///         let bytes = self.tracker.bytes();
-///         let moment = self.tracker.moment();
-///
-///         // If there were no Changes, there's usually no reason to
-///         // parse again.
-///         if !moment.is_empty() {
-///             self.parse_bytes_and_moment(pa, bytes, moment);
-///             self.add_ranges(bytes, moment);
+///         // A Moment is a list of Changes
+///         // For the sake of efficiency, Changes are sent in bulk,
+///         // rather than individually
+///         for change in self.tracker.moment().changes() {
+///             let bef_count = change.taken_str().matches(self.ch).count();
+///             let aft_count = change.taken_str().matches(self.ch).count();
+///             self.count += aft_count - bef_count;
 ///         }
 ///
-///         // The true here means that this Parser is ready to call
-///         // Parser::update. This should be true if you want mutate
-///         // the File.
-///         true
-///     }
-///
-///     // Since you have &mut Pass, you can actually do any sort of
-///     // mutation, not just limited to this File in particular.
-///     fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
-///         let (file, area) = handle.write_with_area(pa);
-///
-///         /// Addition of Tags, modification of the text, etc.
-///         self.update_file(file, area, on);
-///     }
-///
-///     // This is usually what you'd want to do in this scenario
-///     fn before_get(&mut self) {
-///         self.parse(pa);
-///     }
-///
-///     // Same thing here. Since the parsing is always done
-///     fn before_try_get(&mut self) -> bool {
-///         self.parse(pa);
-///         true
+///         // Return true if you want to call `Parser::update`, for
+///         // this Parser, since we never change the File, it's fine
+///         // to always return false.
+///         false
 ///     }
 /// }
 /// ```
 ///
-/// # Asynchronous parsing
+/// The example above just keeps track of every occurance of a
+/// specific `char`. Every time the `File` is updated, the `parse`
+/// function will be called, and you can use [`FileTracker::update`]
+/// to be notified of _every_ `Change` that takes place in the `File`.
 ///
-/// TODO: Document this
+/// ## [`Parser::update`]
 ///
-/// # External access to parsers
+/// The purpose of this funcion is for the `Parser` to modify the
+/// `File` itself. In the previous funcion, you may notice that you
+/// are not given access to the `File` directly, nor are you given a
+/// [`Pass`] in order to access global state. That's what this
+/// function is for.
+///
+/// Below is the rough layout for an implementation of this function,
+/// in this case, this function "resets its modifications" every time
+/// it is called:
+///
+/// ```rust
+/// use std::ops::Range;
+///
+/// use duat_core::prelude::*;
+///
+/// struct HighlightMatch {
+///     _tracker: FileTracker,
+///     tagger: Tagger,
+/// }
+///
+/// impl<U: Ui> Parser<U> for HighlightMatch {
+///     fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+///         // Remove all Tags previously added with self.tagger
+///         handle.text_mut(pa).remove_tags(self.tagger, ..);
+///
+///         // Get the range of the main cursor's word.
+///         let Some([s, e]) = handle.edit_main(pa, |c| c.search_fwd(r"\A\w+", None).next()) else {
+///             return;
+///         };
+///         let s = handle
+///             .edit_main(pa, |c| c.search_rev(r"\w*\z", None).next().map(|[s, _]| s))
+///             .unwrap_or(s);
+///         // Get a regex pattern for said range.
+///         let pat = handle.text(pa).strs(start..end).unwrap().to_string();
+///         let pat = format!(r"\b{pat}\b");
+///
+///         // Add the "same_word" Form to every range that matches the pattern.
+///         let form_id = form::id_of!("same_word");
+///         let mut parts = handle.text_parts(pa);
+///         // The `on` list of ranges represents a the printed area,
+///         // So no unnecessary Tags are added.
+///         for range in on {
+///             for [s, e] in parts.bytes.search_fwd(&pat, range.clone()).unwrap() {
+///                 parts.tags.insert(self.tagger, s..e, form_id.to_tag(50));
+///             }
+///         }
+///     }
+/// }
+/// ```
+///
+/// The `Parser` above reads the word under the main cursor (if there
+/// is one) and highlights every ocurrence of said word _on screen_.
+/// This function would be called if [`Parser::parse`] returns `true`,
+/// i.e. when the `Parser` is "ready" to update the `File`. The
+/// default implementation of `Parser::parse` is to just return
+/// `true`.
+///
+/// > [!IMPORTANT]
+/// >
+/// > In this function, the [`FileTracker`] is acting _slightly_
+/// > differently. When setting up this `Parser` with a [`ParserCfg`],
+/// > I called [`FileTracker::track_area`]. This function makes it so,
+/// > instead of tracking changed [`Range<Point>`]s,
+/// > [`Parser::update`] will always return a list of ranges
+/// > equivalent to the printed region of the [`Text`].
+///
+/// ## [`Parser::before_get`] and [`Parser::before_try_get`]
+///
+/// These functions have the same purpose as [`Parser::parse`], but
+/// they are called before calls to [`File::read_parser`],
+/// [`File::write_parser`], and their [try equivalents].
+///
+/// They serve to kind of "prepare" the `Parser` for functions that
+/// access it, much like [`Parser::parse`] "prepares" the `Parser` for
+/// a call to [`Parser::update`].
+///
+/// The purpose of these functions is to only ever update the `Parser`
+/// when that is actually necessary. The most notable example of this
+/// is the [`duat-jump-list`] crate. That crate defines a `Parser`
+/// that only ever updates its internal state when it is accessed
+/// externally. The reason for that is because it is only used to
+/// store and retrieve previous versions of the [`Selections`] of the
+/// [`File`], so it doesn't need to update itself _every time_ there
+/// are new changes to the [`File`], but only when it is requested.
 ///
 /// TODO: Document this
 ///
 /// > [!TIP]
 /// >
-/// > You can keep a [`Parser`] private in your plugin in order to
+/// > You can keep a `Parser` private in your plugin in order to
 /// > prevent the end user from reading or writing to it. You can
 /// > then create standalone functions or implement traits on the
 /// > [`File`] widget in order to give controled access to the
@@ -195,6 +216,8 @@ use crate::{
 ///
 /// [`Change`]: crate::text::Change
 /// [`Selection`]: crate::mode::Selection
+/// [try equivalents]: File::try_read_parser
+/// [`duat-jump-list`]: https://github.com/AhoyISki/duat-jump-list
 #[allow(unused_variables)]
 pub trait Parser<U: Ui>: Send + 'static {
     /// Parses the [`Bytes`] of the [`File`]

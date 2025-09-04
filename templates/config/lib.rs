@@ -57,7 +57,7 @@ fn setup() {
     map::<Normal>("G", "gj");
     // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
-    // // You may see them by uncommenting this line:
+    // // You may highlight them by uncommenting this line:
     // form::set("alias", Form::red());
 
     form::set_colorscheme("catppuccin-mocha");

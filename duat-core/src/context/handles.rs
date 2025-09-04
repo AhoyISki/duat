@@ -14,7 +14,7 @@ use crate::{
     cfg::PrintCfg,
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
-    text::{Point, Searcher, Text, TwoPoints},
+    text::{Point, Searcher, Text, TextParts, TwoPoints},
     ui::{Area, AreaId, GetAreaId, MutArea, SpawnSpecs, Ui, Widget, WidgetCfg},
 };
 
@@ -244,6 +244,23 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// This is the same as calling `handle.write(pa).text_mut()`.
     pub fn text_mut<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Text {
         self.write(pa).text_mut()
+    }
+
+    /// The [`TextParts`] of the [`Widget`]
+    ///
+    /// You can use this in order to get a shared reference to the
+    /// [`Bytes`] and [`Selections`], while maintaining a mutable
+    /// reference to the [`Tags`] of the [`Text`], letting you place
+    /// [`Tag`]s while still reading other information from the
+    /// [`Widget`]
+    ///
+    /// This is the same as calling `handle.text_mut().parts()`.
+    ///
+    /// [`Bytes`]: crate::text::Bytes
+    /// [`Tags`]: crate::text::Tags
+    /// [`Tag`]: crate::text::Tag
+    pub fn text_parts<'a>(&'a self, pa: &'a mut Pass) -> TextParts<'a> {
+        self.write(pa).text_mut().parts()
     }
 
     /// A shared reference to the [`Selections`] of the [`Widget`]'s
