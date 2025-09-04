@@ -48,7 +48,7 @@ optional = true
 
 # Default plugins
 [dependencies.duat-treesitter]
-version = "0.3.0"
+version = "0.3.1"
 git = "https://github.com/AhoyISki/duat-treesitter"
 optional = true
 

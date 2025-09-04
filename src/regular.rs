@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 
 use duat_core::prelude::Lender;
+#[cfg(feature = "treesitter")]
 use duat_treesitter::TsCursor;
 use duat_utils::modes::{IncSearch, RunCommands, SearchFwd};
 
@@ -49,9 +50,17 @@ impl mode::Mode<Ui> for Regular {
             key!(Enter) => {
                 handle.write(pa).text_mut().new_moment();
                 handle.edit_all(pa, |mut c| {
+                    #[cfg(not(feature = "treesitter"))]
+                    let indent = c.indent();
+                    
                     c.replace('\n');
                     c.unset_anchor();
                     c.move_hor(1);
+                    
+                    #[cfg(not(feature = "treesitter"))]
+                    c.insert(' '.repeat(indent));
+                    
+                    #[cfg(feature = "treesitter")]
                     c.ts_reindent();
                 })
             }

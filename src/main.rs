@@ -140,7 +140,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    decide_on_new_config(&args, crate_dir)?;
+    if decide_on_new_config(args.init_config, crate_dir)? {
+        return Ok(());
+    };
 
     let profile_dir = match profile {
         "dev" => "debug",
@@ -150,7 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if (args.clean || args.update)
         && let Some(cache_dir) = dirs_next::cache_dir()
     {
-        clear_path(cache_dir.join("duat"));
+        clear_path(&cache_dir.join("duat"));
     }
 
     if args.clean
@@ -221,11 +223,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 context::info!("Compiled [a]{profile}[] profile");
             } else {
-                context::error!("Failed to compile [a]{profile}[] profile");
+                return Ok(());
             }
         }
 
-        unsafe { Library::new(libconfig_path).ok() }
+        Some(unsafe { Library::new(libconfig_path)? })
     };
 
     // The watcher is returned as to not be dropped.
@@ -347,7 +349,7 @@ fn spawn_reloader(
                 if (reload.clean || reload.update)
                     && let Some(cache_dir) = dirs_next::cache_dir()
                 {
-                    clear_path(cache_dir.join("duat").join("cache"));
+                    clear_path(&cache_dir.join("duat").join("cache"));
                 }
 
                 let result: Result<std::process::ExitStatus, std::io::Error> = try {
@@ -384,14 +386,22 @@ fn spawn_reloader(
 }
 
 /// Decide if a new config is necessary
-fn decide_on_new_config(args: &Args, crate_dir: &Path) -> Result<(), Box<dyn Error>> {
-    let config_is_empty = std::fs::read_dir(&crate_dir)?.next().is_none();
+///
+/// Returns `true` if Duat shouldn't start.
+fn decide_on_new_config(
+    init_config: bool,
+    crate_dir: &Path,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let config_is_empty = match std::fs::read_dir(crate_dir) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(_) => true,
+    };
 
-    if args.init_config || config_is_empty {
-        const CONFIG_LIB: &str = include_str!("templates/config/lib.rs");
-        const CONFIG_TOML: &str = include_str!("templates/config/Cargo_.toml");
+    if init_config || config_is_empty {
+        const CONFIG_LIB: &str = include_str!("../templates/config/lib.rs");
+        const CONFIG_TOML: &str = include_str!("../templates/config/Cargo_.toml");
 
-        if config_is_empty ^ args.init_config {
+        if config_is_empty ^ init_config {
             if config_is_empty {
                 println!(
                     "Do you want to start a new config in {}? [y/N]",
@@ -406,19 +416,19 @@ fn decide_on_new_config(args: &Args, crate_dir: &Path) -> Result<(), Box<dyn Err
 
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
-            let ("y\n" | "Y\n") = input else {
+            let ("y\n" | "Y\n") = input.as_str() else {
                 println!("Operation cancelled");
-                return Ok(());
+                return Ok(true);
             };
         }
 
-        std::fs::remove_dir_all(&crate_dir)?;
+        clear_path(crate_dir);
         std::fs::create_dir_all(crate_dir.join("src"))?;
         std::fs::write(crate_dir.join("Cargo.toml"), CONFIG_TOML)?;
         std::fs::write(crate_dir.join("src").join("lib.rs"), CONFIG_LIB)?;
     }
 
-    Ok(())
+    Ok(false)
 }
 
 mod cargo {
@@ -501,8 +511,8 @@ mod cargo {
 /// Recursively attempts to remove every element in a path
 ///
 /// Doesn't give up upon failing to remove some individual item.
-fn clear_path(path: std::path::PathBuf) {
-    let Ok(entries) = std::fs::read_dir(&path) else {
+fn clear_path(path: &Path) {
+    let Ok(entries) = std::fs::read_dir(path) else {
         let _ = std::fs::remove_file(path);
         return;
     };
