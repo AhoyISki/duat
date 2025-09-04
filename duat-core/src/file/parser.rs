@@ -178,12 +178,29 @@ use crate::{
 ///
 /// > [!IMPORTANT]
 /// >
-/// > In this function, the [`FileTracker`] is acting _slightly_
+/// > In the example above, the [`FileTracker`] is acting _slightly_
 /// > differently. When setting up this `Parser` with a [`ParserCfg`],
 /// > I called [`FileTracker::track_area`]. This function makes it so,
 /// > instead of tracking changed [`Range<Point>`]s,
 /// > [`Parser::update`] will always return a list of ranges
 /// > equivalent to the printed region of the [`Text`].
+///
+/// In general, given the [`Parser::parse`] and `Parser::update`
+/// functions, you can roughly divide which ones you'll implement
+/// based on the following criteria:
+///
+/// - If your `Parser` does not update the `File`, and just keeps
+///   track of [`Change`]s, e.g. a word counter, or a filetype
+///   checker, etc, then you should only have to implement the
+///   [`Parser::parse`] function.
+/// - If your `Parser` actively updates the `File` every time it is
+///   printed, e.g. the word match finder above, or a current line
+///   highlighter, then you should only have to implement the
+///   [`Parser::update`] function.
+/// - If, in order to update the [`File`], you need to keep track of
+///   some current state, and you may even update the `Parser`'s state
+///   in other threads, like a treesitter parser for example, then you
+///   should implement both.
 ///
 /// ## [`Parser::before_get`] and [`Parser::before_try_get`]
 ///
@@ -204,15 +221,15 @@ use crate::{
 /// [`File`], so it doesn't need to update itself _every time_ there
 /// are new changes to the [`File`], but only when it is requested.
 ///
-/// TODO: Document this
-///
 /// > [!TIP]
 /// >
 /// > You can keep a `Parser` private in your plugin in order to
 /// > prevent the end user from reading or writing to it. You can
 /// > then create standalone functions or implement traits on the
 /// > [`File`] widget in order to give controled access to the
-/// > parser.
+/// > parser. For an example of this, you can see the
+/// > [`duat-jump-list`] crate, which defines traits for saving and
+/// > retrieving jumps, but doesn't grant direct access to the parser.
 ///
 /// [`Change`]: crate::text::Change
 /// [`Selection`]: crate::mode::Selection
