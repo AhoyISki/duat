@@ -1,6 +1,6 @@
 [package]
 name = "duat-kak"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["AhoyISki"]
 description = "A Kakoune inspired editing mode for Parsec"
 repository = "https://github.com/AhoyISki/duat/tree/master/duat-kak"
@@ -11,12 +11,12 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat-core = { version = "0.6.0", git = "https://github.com/AhoyISki/duat" }
-duat-utils = { version = "0.6.0", git = "https://github.com/AhoyISki/duat" }
+duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
+duat-utils = { version = "0.6.1", git = "https://github.com/AhoyISki/duat" }
 
 [dependencies.treesitter]
 git = "https://github.com/AhoyISki/duat-treesitter"
-version = "0.3.0"
+version = "0.3.1"
 package = "duat-treesitter"
 
 [dependencies.jump-list]

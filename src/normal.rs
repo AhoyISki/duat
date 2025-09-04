@@ -659,47 +659,48 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('p' | 'P')) => {
                 let pastes = duat_utils::modes::paste_strings();
-                if !pastes.is_empty() {
-                    let mut p_iter = pastes.iter().cycle();
-                    handle.edit_all(pa, |mut c| {
-                        let paste = p_iter.next().unwrap();
-
-                        let anchor_is_start = c.anchor_is_start();
-
-                        // If it ends in a new line, we gotta move to the start of the line.
-                        let appended = if event.code == Char('p') {
-                            c.set_caret_on_end();
-                            if paste.ends_with('\n') {
-                                let (p, _) =
-                                    c.chars_fwd().find(|(_, c)| *c == '\n').unwrap_or_default();
-                                c.move_to(p);
-                                c.append(paste);
-                            } else {
-                                c.append(paste)
-                            }
-                            true
-                        } else {
-                            c.set_caret_on_start();
-                            if paste.ends_with('\n') {
-                                let char_col = c.v_caret().char_col();
-                                c.move_hor(-(char_col as i32));
-                                c.insert(paste);
-                            } else {
-                                c.insert(paste)
-                            }
-                            false
-                        };
-
-                        if !paste.is_empty() {
-                            c.move_hor(appended as i32);
-                            c.set_anchor();
-                            c.move_hor(paste.chars().count() as i32 - 1);
-                            if !anchor_is_start {
-                                c.set_caret_on_start();
-                            }
-                        }
-                    });
+                if pastes.is_empty() {
+                    return;
                 }
+                let mut p_iter = pastes.iter().cycle();
+                handle.edit_all(pa, |mut c| {
+                    let paste = p_iter.next().unwrap();
+
+                    let anchor_is_start = c.anchor_is_start();
+
+                    // If it ends in a new line, we gotta move to the start of the line.
+                    let appended = if event.code == Char('p') {
+                        c.set_caret_on_end();
+                        if paste.ends_with('\n') {
+                            let (p, _) =
+                                c.chars_fwd().find(|(_, c)| *c == '\n').unwrap_or_default();
+                            c.move_to(p);
+                            c.append(paste);
+                        } else {
+                            c.append(paste)
+                        }
+                        true
+                    } else {
+                        c.set_caret_on_start();
+                        if paste.ends_with('\n') {
+                            let char_col = c.v_caret().char_col();
+                            c.move_hor(-(char_col as i32));
+                            c.insert(paste);
+                        } else {
+                            c.insert(paste)
+                        }
+                        false
+                    };
+
+                    if !paste.is_empty() {
+                        c.move_hor(appended as i32);
+                        c.set_anchor();
+                        c.move_hor(paste.chars().count() as i32 - 1);
+                        if !anchor_is_start {
+                            c.set_caret_on_start();
+                        }
+                    }
+                });
             }
             key!(Char('R')) => {
                 let pastes = duat_utils::modes::paste_strings();
