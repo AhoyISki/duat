@@ -186,9 +186,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .join(resolve_config_file());
 
         if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
-            if !args.reload {
-                println!("Compiling config crate for the first time, this might take a while...");
-            }
             if let Ok(status) = cargo::build(crate_dir, profile, true)
                 && status.success()
             {

@@ -32,9 +32,6 @@ fn setup() {
     // Changes every LineNumbers Widget.
     hook::add::<LineNumbers<Ui>>(|_, (ln, _)| ln.align_right().align_main_left().rel_abs());
 
-    // The WindowWidgets hook group defines Widgets to be placed on
-    // windows. I can get rid of it, and push my own Widgets instead
-    hook::remove("WindowWidgets");
     hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
@@ -44,7 +41,7 @@ fn setup() {
         });
 
         cfg.fmt(status!(
-            "[mode]{mode_upper}{Spacer}{name_txt} {sels_txt} {main_txt}"
+            "[mode]{mode_upper}{Spacer}{custom_name_txt} {sels_txt} {main_txt}"
         ))
     });
     // // See what happens when you uncomment this hook removal:
@@ -63,20 +60,25 @@ fn setup() {
     form::set_colorscheme("catppuccin-mocha");
 }
 
-/// This function is included in Duat, but it is implemented
-/// here as a demonstration
-fn name_txt(file: &File) -> Text {
+/// A custom function to show the name differently.
+fn custom_name_txt(file: &File) -> Text {
     if let Some(name) = file.name_set() {
         // A TextBuilder lets you build Text incrementally.
         let mut builder = Text::builder();
         // [] pairs change the Form of the text
         builder.push(txt!("[file]{name}"));
+
         if !file.exists() {
             // Like in regular Rust formatting, double a "[" to escape it.
-            builder.push(txt!("[file.new][[new file]]"));
+            builder.push(txt!("[file.new][[new file]]"))
         } else if file.text().has_unsaved_changes() {
-            txt!("[file.unsaved][[+]]");
+            builder.push(txt!("[file.unsaved][[+]]"))
         }
+
+        if let Some("rust") = file.filetype() {
+            builder.push('🦀');
+        }
+
         builder.build()
     } else {
         // But you can also create Text directly
