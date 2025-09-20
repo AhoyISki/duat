@@ -48,6 +48,9 @@ struct Args {
         target_os = "windows" => r"~\AppData\Roaming\duat",
         _ => "~/.config/duat]"
 	})]
+    /// Load the default config
+    #[arg(long, conflicts_with_all = ["load", "profile", "init-config"])]
+    no_load: bool,
     /// Which config path to use (path to directory containing
     /// Cargo.toml)
     #[arg(short, long)]
@@ -118,7 +121,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 std::fs::create_dir_all(path).ok()?;
                 Some(std::path::Path::new(path))
-            });
+            })
+            .filter(|_| !args.no_load);
 
         let profile: &'static str = args.profile.leak();
         duat_core::utils::set_crate_dir_and_profile(crate_dir, profile);
@@ -127,14 +131,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (crate_dir, profile)
         } else {
             Ui::open(ms, duat_core::session::DuatSender::new(duat_tx.clone()));
-            context::error!("Failed to find config crate, loading default");
+
+            if args.no_load {
+                context::info!("Opened with the default configuration");
+            } else {
+                context::error!("Failed to find config crate, loading default");
+            }
+
             pre_setup(None, None);
             run_duat(
                 (ms, &CLIPBOARD),
-                vec![vec![FileParts::by_args(None, true).unwrap()]],
+                
+                get_files(
+                    [false; 2],
+                    [false; 3],
+                    (args.files, args.open),
+                    Path::new(""),
+                    "",
+                )?,
                 duat_rx,
                 None,
             );
+
             Ui::close(ms);
             return Ok(());
         }
@@ -173,40 +191,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut files = {
-        let files: Vec<FileParts> = args
-            .cfg
-            .then(|| crate_dir.join("src").join("lib.rs"))
-            .into_iter()
-            .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
-            .chain(args.files)
-            .enumerate()
-            .map(|(i, path)| FileParts::by_args(Some(path), i == 0))
-            .try_collect()?;
-
-        if files.is_empty() {
-            if args.reload {
-                cargo::build(crate_dir, profile, true)?;
-                return Ok(());
-            } else if args.clean || args.update {
-                return Ok(());
-            } else {
-                vec![vec![FileParts::by_args(None, true).unwrap()]]
-            }
-        } else {
-            let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
-            let mut files_per_window = Vec::new();
-
-            for (i, file) in files.into_iter().enumerate() {
-                if i % n == 0 {
-                    files_per_window.push(Vec::new());
-                }
-                files_per_window.last_mut().unwrap().push(file);
-            }
-
-            files_per_window
-        }
-    };
+    let mut files = get_files(
+        [args.cfg, args.cfg_manifest],
+        [args.reload, args.clean, args.update],
+        (args.files, args.open),
+        crate_dir,
+        profile,
+    )?;
 
     let mut lib = {
         let libconfig_path = crate_dir
@@ -292,6 +283,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ui::close(ms);
 
     Ok(())
+}
+
+fn get_files(
+    [cfg, cfg_manifest]: [bool; 2],
+    [reload, clean, update]: [bool; 3],
+    (files, open): (Vec<PathBuf>, Option<u16>),
+    crate_dir: &'static Path,
+    profile: &'static str,
+) -> Result<Vec<Vec<FileParts>>, Box<dyn std::error::Error>> {
+    let files: Vec<FileParts> = cfg
+        .then(|| crate_dir.join("src").join("lib.rs"))
+        .into_iter()
+        .chain(cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
+        .chain(files)
+        .enumerate()
+        .map(|(i, path)| FileParts::by_args(Some(path), i == 0))
+        .try_collect()?;
+    Ok(if files.is_empty() {
+        if reload {
+            cargo::build(crate_dir, profile, true)?;
+            Vec::new()
+        } else if clean || update {
+            Vec::new()
+        } else {
+            vec![vec![FileParts::by_args(None, true).unwrap()]]
+        }
+    } else {
+        let n = (files.len() / open.map(|n| n as usize).unwrap_or(files.len())).max(1);
+        let mut files_per_window = Vec::new();
+
+        for (i, file) in files.into_iter().enumerate() {
+            if i % n == 0 {
+                files_per_window.push(Vec::new());
+            }
+            files_per_window.last_mut().unwrap().push(file);
+        }
+
+        files_per_window
+    })
 }
 
 fn spawn_config_watcher(
