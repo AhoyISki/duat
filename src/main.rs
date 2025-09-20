@@ -103,25 +103,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (duat_tx, mut duat_rx) = mpsc::channel();
     duat_core::context::set_sender(duat_tx.clone());
 
-    let ms: &'static <Ui as ui::Ui>::MetaStatics =
-        Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
+    let ms: &'static _ = Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
 
     // Assert that the configuration crate actually exists.
     let (crate_dir, profile) = {
         let crate_dir = args
             .load
-            .map(|crate_dir| {
-                let path: &'static std::path::Path = crate_dir.leak();
-                path
-            })
-            .or_else(|| {
-                let config_dir = dirs_next::config_dir()?;
-                let path: &'static str =
-                    config_dir.join("duat").to_string_lossy().to_string().leak();
-
-                std::fs::create_dir_all(path).ok()?;
-                Some(std::path::Path::new(path))
-            })
+            .map(|crate_dir| crate_dir.leak() as &'static Path)
+            .or_else(|| Some(dirs_next::config_dir()?.join("duat").leak() as &'static Path))
             .filter(|_| !args.no_load);
 
         let profile: &'static str = args.profile.leak();
@@ -141,7 +130,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pre_setup(None, None);
             run_duat(
                 (ms, &CLIPBOARD),
-                
                 get_files(
                     [false; 2],
                     [false; 3],
