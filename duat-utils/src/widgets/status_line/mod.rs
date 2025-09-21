@@ -114,29 +114,12 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         file_changed || (self.checker)(pa)
     }
 
-    fn cfg() -> Self::Cfg {
-        StatusLineCfg {
-            fns: None,
-            specs: PushSpecs::below().ver_len(1.0),
-        }
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn once() -> Result<(), Text> {
-        form::set_weak("file", Form::yellow().italic());
-        form::set_weak("selections", Form::dark_blue());
-        form::set_weak("coord", Form::dark_yellow());
-        form::set_weak("separator", Form::cyan());
-        form::set_weak("mode", Form::green());
-        form::set_weak("default.StatusLine", Form::on_dark_grey());
-        Ok(())
     }
 }
 
@@ -232,7 +215,10 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
 
 impl<U: Ui> Default for StatusLineCfg<U> {
     fn default() -> Self {
-        StatusLine::cfg()
+        StatusLineCfg {
+            fns: None,
+            specs: PushSpecs::below().ver_len(1.0),
+        }
     }
 }
 

@@ -9,8 +9,6 @@ use duat_core::{
     },
 };
 
-use crate::modes::Pager;
-
 /// A [`Widget`] to display [`Logs`] sent to Duat
 pub struct LogBook {
     logs: Logs,
@@ -22,35 +20,6 @@ pub struct LogBook {
 
 impl<U: Ui> Widget<U> for LogBook {
     type Cfg = LogBookCfg<U>;
-
-    fn cfg() -> Self::Cfg {
-        LogBookCfg {
-            format_rec: Box::new(|rec| {
-                use context::Level::*;
-                let mut builder = match rec.level() {
-                    Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
-                    Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]: "),
-                    Info => txt!("[log_book.info][[INFO]][log_book.colon]:   "),
-                    Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]:  "),
-                    Trace => unreachable!("Trace is not meant to be useable"),
-                };
-
-                builder.push(txt!(
-                    "[log_book.bracket]([log_book.target]{}[log_book.bracket])[] {}",
-                    rec.metadata().target(),
-                    rec.text().clone()
-                ));
-
-                Some(builder.build())
-            }),
-            close_on_unfocus: true,
-            hidden: true,
-            side: Side::Right,
-            height: Ratio(1, 4),
-            width: Ratio(2, 7),
-            _ghost: PhantomData,
-        }
-    }
 
     fn update(pa: &mut Pass, handle: &Handle<Self, U>)
     where
@@ -83,24 +52,6 @@ impl<U: Ui> Widget<U> for LogBook {
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn once() -> Result<(), Text> {
-        form::set_weak("default.LogBook", Form::on_dark_grey());
-        form::set_weak("log_book.error", "default.error");
-        form::set_weak("log_book.warn", "default.warn");
-        form::set_weak("log_book.info", "default.info");
-        form::set_weak("log_book.debug", "default.debug");
-        form::set_weak("log_book.colon", "prompt.colon");
-        form::set_weak("log_book.bracket", "punctuation.bracket");
-        form::set_weak("log_book.target", "module");
-
-        cmd::add!("logs", |pa| {
-            mode::set(Pager::<LogBook, U>::new());
-            Ok(None)
-        });
-
-        Ok(())
     }
 
     fn print_cfg(&self) -> PrintCfg {
@@ -231,5 +182,36 @@ impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
         };
 
         (lb, if self.hidden { specs.hidden() } else { specs })
+    }
+}
+
+impl<U: Ui> Default for LogBookCfg<U> {
+    fn default() -> Self {
+        LogBookCfg {
+            format_rec: Box::new(|rec| {
+                use context::Level::*;
+                let mut builder = match rec.level() {
+                    Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
+                    Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]: "),
+                    Info => txt!("[log_book.info][[INFO]][log_book.colon]:   "),
+                    Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]:  "),
+                    Trace => unreachable!("Trace is not meant to be useable"),
+                };
+
+                builder.push(txt!(
+                    "[log_book.bracket]([log_book.target]{}[log_book.bracket])[] {}",
+                    rec.metadata().target(),
+                    rec.text().clone()
+                ));
+
+                Some(builder.build())
+            }),
+            close_on_unfocus: true,
+            hidden: true,
+            side: Side::Right,
+            height: Ratio(1, 4),
+            width: Ratio(2, 7),
+            _ghost: PhantomData,
+        }
     }
 }

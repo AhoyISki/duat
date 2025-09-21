@@ -1,4 +1,4 @@
-use std::{any::type_name, sync::Mutex};
+use std::any::type_name;
 
 pub use self::{
     builder::{BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias},
@@ -13,7 +13,6 @@ use crate::{
     mode,
     text::{Text, txt},
     ui::{MutArea, PushSpecs, WidgetCfg},
-    utils::duat_name,
 };
 
 mod builder;
@@ -298,8 +297,6 @@ impl<U: Ui> Windows<U> {
 
             (widget_area, parent)
         }
-
-        run_once::<W, U>();
 
         let widget = RwData::new(widget);
 
@@ -825,17 +822,4 @@ fn window_index_widget<U: Ui>(
         .nodes()
         .enumerate()
         .map(move |(i, entry)| (index, i, entry))
-}
-
-/// Runs the [`once`] function of widgets.
-///
-/// [`once`]: Widget::once
-fn run_once<W: Widget<U>, U: Ui>() {
-    static ONCE_LIST: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
-
-    let mut once_list = ONCE_LIST.lock().unwrap();
-    if !once_list.contains(&duat_name::<W>()) {
-        W::once().unwrap();
-        once_list.push(duat_name::<W>());
-    }
 }

@@ -76,14 +76,6 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
         false
     }
 
-    fn cfg() -> Self::Cfg {
-        Self::Cfg {
-            prompts: HashMap::new(),
-            specs: PushSpecs::below().ver_len(1.0),
-            _ghost: PhantomData,
-        }
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
@@ -94,10 +86,6 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
 
     fn print_cfg(&self) -> PrintCfg {
         *PrintCfg::default_for_input().set_forced_horizontal_scrolloff(true)
-    }
-
-    fn once() -> Result<(), Text> {
-        Ok(())
     }
 }
 
@@ -170,6 +158,10 @@ impl<U: Ui> PromptLineCfg<U> {
 
 impl<U: Ui> Default for PromptLineCfg<U> {
     fn default() -> Self {
-        PromptLine::cfg()
+        PromptLineCfg {
+            prompts: HashMap::new(),
+            specs: PushSpecs::below().ver_len(1.0),
+            _ghost: PhantomData,
+        }
     }
 }

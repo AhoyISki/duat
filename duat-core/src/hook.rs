@@ -161,7 +161,7 @@ use crate::{
     file::File,
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
-    ui::{Ui, UiBuilder, Widget},
+    ui::{Ui, UiBuilder, Widget, WidgetCfg},
 };
 
 /// Hook functions

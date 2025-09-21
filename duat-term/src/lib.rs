@@ -17,10 +17,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    MainThreadOnly,
-    form::Color,
-    session::DuatSender,
-    ui::{self},
+    form::{self, Color}, session::DuatSender, ui::{self}, MainThreadOnly
 };
 
 use self::{layout::Layout, print::Printer};
@@ -42,6 +39,9 @@ impl ui::Ui for Ui {
 
     fn open(ms: &'static Self::MetaStatics, duat_tx: DuatSender) {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
+        
+        form::set_weak("rule.upper", "default.VertRule");
+        form::set_weak("rule.lower", "default.VertRule");
 
         let term_rx = ms.lock().unwrap().rx.take().unwrap();
         let term_tx = ms.lock().unwrap().tx.clone();

@@ -410,39 +410,6 @@ impl<U: Ui> RawUiBuilder<'_, U> {
     }
 }
 
-/// An alias to allow generic, yet consistent utilization of
-/// [`UiBuilder`]s
-///
-/// This trait lets you do any available actions with [`UiBuilder`]s,
-/// like pushing multiple [`Widget`]s, for example.
-///
-/// The reason for using this, rather than have your type just take a
-/// [`UiBuilder`] parameter in its creation function, is mostly for
-/// consistency's sake, since [`Ui`] building is done by pushing
-/// [`Widget`]s into the builder, this lets you push multiple
-/// [`Widget`]s, without breaking that same consistency.
-pub trait WidgetAlias<U: Ui, D: BuilderDummy = WidgetCfgDummy> {
-    /// "Pushes [`Widget`]s to a [`UiBuilder`], in a specific
-    /// [`U::Area`]
-    ///
-    /// [`U::Area`]: Ui::Area
-    fn push_alias(self, builder: &mut RawUiBuilder<U>) -> AreaId;
-}
-
-impl<Cfg: WidgetCfg<U>, U: Ui> WidgetAlias<U> for Cfg {
-    fn push_alias(self, builder: &mut RawUiBuilder<U>) -> AreaId {
-        builder.push(self)
-    }
-}
-
-/// A dummy trait, meant for specialization
-pub trait BuilderDummy {}
-
-#[doc(hidden)]
-pub struct WidgetCfgDummy;
-
-impl BuilderDummy for WidgetCfgDummy {}
-
 /// Information about the construction of the [`Ui`]
 pub struct BuildInfo<U: Ui> {
     main: Option<Handle<dyn Widget<U>, U>>,
@@ -504,5 +471,38 @@ impl<U: Ui> BuildInfo<U> {
         self.pushed_to.clone()
     }
 }
+
+/// An alias to allow generic, yet consistent utilization of
+/// [`UiBuilder`]s
+///
+/// This trait lets you do any available actions with [`UiBuilder`]s,
+/// like pushing multiple [`Widget`]s, for example.
+///
+/// The reason for using this, rather than have your type just take a
+/// [`UiBuilder`] parameter in its creation function, is mostly for
+/// consistency's sake, since [`Ui`] building is done by pushing
+/// [`Widget`]s into the builder, this lets you push multiple
+/// [`Widget`]s, without breaking that same consistency.
+pub trait WidgetAlias<U: Ui, D: BuilderDummy = WidgetCfgDummy> {
+    /// "Pushes [`Widget`]s to a [`UiBuilder`], in a specific
+    /// [`U::Area`]
+    ///
+    /// [`U::Area`]: Ui::Area
+    fn push_alias(self, builder: &mut RawUiBuilder<U>) -> AreaId;
+}
+
+impl<Cfg: WidgetCfg<U>, U: Ui> WidgetAlias<U> for Cfg {
+    fn push_alias(self, builder: &mut RawUiBuilder<U>) -> AreaId {
+        builder.push(self)
+    }
+}
+
+/// A dummy trait, meant for specialization
+pub trait BuilderDummy {}
+
+#[doc(hidden)]
+pub struct WidgetCfgDummy;
+
+impl BuilderDummy for WidgetCfgDummy {}
 
 type BuilderFn<U> = Box<dyn FnOnce(&mut Pass, AreaId, Option<Handle<dyn Widget<U>, U>>) -> AreaId>;

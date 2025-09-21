@@ -297,41 +297,19 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///
     /// When implementing this, you are free to remove the `where`
     /// clause.
-    type Cfg: WidgetCfg<U, Widget = Self>
+    type Cfg: Default + WidgetCfg<U, Widget = Self>
     where
         Self: Sized;
 
-    /// Returns a [`WidgetCfg`], for use in layout construction
+    /// Returns the default [`WidgetCfg`]
     ///
-    /// This function exists primarily so the [`WidgetCfg`]s
-    /// themselves don't need to be in scope. You will want to use
-    /// these in [hooks] like [`WidgetCreated`]:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     hook::remove("FileWidgets");
-    ///     // A type `W: Widget` is an alias for `WidgetCreated<W>`
-    ///     hook::add::<File>(|_, (cfg, builder)| {
-    ///         // Screw it, LineNumbers on both sides.
-    ///         builder.push(LineNumbers::cfg());
-    ///         builder.push(LineNumbers::cfg().on_the_right().align_right());
-    ///         cfg
-    ///     });
-    /// }
-    /// ```
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    ///
-    /// [hooks]: crate::hook
-    /// [`WidgetCreated`]: crate::hook::WidgetCreated
+    /// Not meant to be manually implemented.
     fn cfg() -> Self::Cfg
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        Self::Cfg::default()
+    }
 
     ////////// Stateful functions
 
@@ -455,20 +433,6 @@ pub trait Widget<U: Ui>: Send + 'static {
         let cfg = self.print_cfg();
         area.print(self.text_mut(), cfg, painter)
     }
-
-    /// Actions taken when this widget opens for the first time
-    ///
-    /// Examples of things that should go in here are [`form`]
-    /// functions, [hooks], [commands] you want executed only once
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    ///
-    /// [hooks]: crate::hook
-    /// [commands]: crate::cmd
-    fn once() -> Result<(), Text>
-    where
-        Self: Sized;
 }
 
 /// A configuration struct for a [`Widget`]

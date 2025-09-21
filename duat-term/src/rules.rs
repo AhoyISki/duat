@@ -76,22 +76,12 @@ impl Widget<Ui> for VertRule {
             && self.handle.as_ref().is_some_and(|fh| fh.has_changed())
     }
 
-    fn cfg() -> Self::Cfg {
-        VertRuleCfg::new()
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn once() -> Result<(), Text> {
-        form::set_weak("rule.upper", "default.VertRule");
-        form::set_weak("rule.lower", "default.VertRule");
-        Ok(())
     }
 }
 

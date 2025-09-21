@@ -18,7 +18,7 @@ use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
-    form::Palette,
+    form::{Form, Palette},
     session::{DuatEvent, FileParts, ReloadEvent, SessionCfg},
     text::History,
     ui::{self, Area, Widget},
@@ -161,6 +161,34 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     form::enable_mask("warn");
     form::enable_mask("info");
     form::enable_mask("inactive");
+
+    // Setup for the LineNumbers
+    duat_core::form::set_weak("linenum.main", Form::yellow());
+    duat_core::form::set_weak("linenum.wrapped", Form::cyan().italic());
+    duat_core::form::set_weak("linenum.wrapped.main", "linenum.wrapped");
+
+    // Setup for the StatusLine
+    duat_core::form::set_weak("file", Form::yellow().italic());
+    duat_core::form::set_weak("selections", Form::dark_blue());
+    duat_core::form::set_weak("coord", Form::dark_yellow());
+    duat_core::form::set_weak("separator", Form::cyan());
+    duat_core::form::set_weak("mode", Form::green());
+    duat_core::form::set_weak("default.StatusLine", Form::on_dark_grey());
+
+    // Setup for the LogBook
+    duat_core::form::set_weak("default.LogBook", Form::on_dark_grey());
+    duat_core::form::set_weak("log_book.error", "default.error");
+    duat_core::form::set_weak("log_book.warn", "default.warn");
+    duat_core::form::set_weak("log_book.info", "default.info");
+    duat_core::form::set_weak("log_book.debug", "default.debug");
+    duat_core::form::set_weak("log_book.colon", "prompt.colon");
+    duat_core::form::set_weak("log_book.bracket", "punctuation.bracket");
+    duat_core::form::set_weak("log_book.target", "module");
+
+    crate::cmd::add!("logs", |pa| {
+        mode::set(Pager::<LogBook, Ui>::new());
+        Ok(None)
+    });
 
     mode::map::<mode::User>("L", Pager::<LogBook, Ui>::new());
 

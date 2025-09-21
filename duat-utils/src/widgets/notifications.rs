@@ -9,7 +9,10 @@
 //! [hook]: hooks
 use std::{
     marker::PhantomData,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Once,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use duat_core::{
@@ -68,28 +71,6 @@ static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
 impl<U: Ui> Widget<U> for Notifications<U> {
     type Cfg = NotificationsCfg<U>;
 
-    fn cfg() -> Self::Cfg {
-        Self::Cfg {
-            format_rec: Box::new(|rec| {
-                txt!(
-                    "[notifs.target]{}[notifs.colon]: {}",
-                    rec.target(),
-                    rec.text().clone()
-                )
-                .build()
-            }),
-            get_mask: Box::new(|rec| match rec.level() {
-                context::Level::Error => "error",
-                context::Level::Warn => "warn",
-                context::Level::Info => "info",
-                context::Level::Debug => "debug",
-                context::Level::Trace => unreachable!(),
-            }),
-            levels: vec![Level::Info, Level::Warn, Level::Error],
-            _ghost: PhantomData,
-        }
-    }
-
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         let notifs = handle.write(pa);
@@ -113,18 +94,6 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn once() -> Result<(), Text> {
-        form::set_weak("default.Notifications.error", Form::red());
-        form::set_weak("accent.error", Form::red().underlined().bold());
-        form::set_weak("default.Notifications.info", Form::cyan());
-        form::set_weak("accent.info", Form::blue().underlined().bold());
-
-        hook::add_grouped::<KeysSent, U>("RemoveNotificationsOnInput", |_, _| {
-            CLEAR_NOTIFS.store(true, Ordering::Relaxed);
-        });
-        Ok(())
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
@@ -211,6 +180,36 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
 
 impl<U: Ui> Default for NotificationsCfg<U> {
     fn default() -> Self {
-        Notifications::cfg()
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            form::set_weak("default.Notifications.error", Form::red());
+            form::set_weak("accent.error", Form::red().underlined().bold());
+            form::set_weak("default.Notifications.info", Form::cyan());
+            form::set_weak("accent.info", Form::blue().underlined().bold());
+
+            hook::add_grouped::<KeysSent, U>("RemoveNotificationsOnInput", |_, _| {
+                CLEAR_NOTIFS.store(true, Ordering::Relaxed);
+            });
+        });
+
+        NotificationsCfg {
+            format_rec: Box::new(|rec| {
+                txt!(
+                    "[notifs.target]{}[notifs.colon]: {}",
+                    rec.target(),
+                    rec.text().clone()
+                )
+                .build()
+            }),
+            get_mask: Box::new(|rec| match rec.level() {
+                context::Level::Error => "error",
+                context::Level::Warn => "warn",
+                context::Level::Info => "info",
+                context::Level::Debug => "debug",
+                context::Level::Trace => unreachable!(),
+            }),
+            levels: vec![Level::Info, Level::Warn, Level::Error],
+            _ghost: PhantomData,
+        }
     }
 }

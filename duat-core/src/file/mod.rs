@@ -578,10 +578,6 @@ impl<U: Ui> File<U> {
 impl<U: Ui> Widget<U> for File<U> {
     type Cfg = FileCfg<U>;
 
-    fn cfg() -> Self::Cfg {
-        FileCfg::new()
-    }
-
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
@@ -644,10 +640,6 @@ impl<U: Ui> Widget<U> for File<U> {
                 printed_lines.push((line, wrapped));
             }
         })
-    }
-
-    fn once() -> Result<(), Text> {
-        Ok(())
     }
 }
 

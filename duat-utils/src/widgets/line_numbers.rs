@@ -197,13 +197,6 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
     }
-
-    fn once() -> Result<(), Text> {
-        form::set_weak("linenum.main", Form::yellow());
-        form::set_weak("linenum.wrapped", Form::cyan().italic());
-        form::set_weak("linenum.wrapped.main", "linenum.wrapped");
-        Ok(())
-    }
 }
 
 /// [`WidgetCfg`] for the [`LineNumbers`] widget
@@ -211,7 +204,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// Contains a [`LineNumbersCfg`], which, unlike
 /// [`LineNumbersCfg`], is modified by the `&mut` version of the
 /// builder pattern.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LineNumbersCfg<_U> {
     numbering: Numbering = Numbering::Abs,
     align: Alignment = Alignment::Left,
