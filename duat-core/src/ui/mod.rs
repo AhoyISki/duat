@@ -559,8 +559,10 @@ impl PushSpecs {
     ///
     /// - Can be undone just by calling [`Area::reveal`]
     /// - Can be redone just by calling [`Area::hide`]
-    /// - Is agnostic to other [`Constraint`]s, i.e., kind of
-    ///   memorizes what they should be before being hidden.
+    ///
+    /// This makes it "agnostic" to what the actual constraint is at
+    /// the time, thus letting you reveal and hide without having to
+    /// memorize how to "revert" said revealing/hiding.
     ///
     /// [`PushSpecs::hor_len(0.0)`]: PushSpecs::hor_len
     pub const fn hidden(self) -> Self {
@@ -736,6 +738,7 @@ pub struct SpawnSpecs {
     pub choices: Vec<[Corner; 2]>,
     ver_cons: [Option<Constraint>; 4],
     hor_cons: [Option<Constraint>; 4],
+    is_hidden: bool,
 }
 
 impl SpawnSpecs {
@@ -745,7 +748,25 @@ impl SpawnSpecs {
             choices: choices.into_iter().collect(),
             ver_cons: [None; 4],
             hor_cons: [None; 4],
+            is_hidden: false,
         }
+    }
+
+    /// Turns this [`Widget`] hidden by default
+    ///
+    /// Hiding [`Widget`]s, as opposed to calling something like
+    /// [`PushSpecs::hor_len(0.0)`] has a few advantages.
+    ///
+    /// - Can be undone just by calling [`Area::reveal`]
+    /// - Can be redone just by calling [`Area::hide`]
+    ///
+    /// This makes it "agnostic" to what the actual constraint is at
+    /// the time, thus letting you reveal and hide without having to
+    /// memorize how to "revert" said revealing/hiding.
+    ///
+    /// [`PushSpecs::hor_len(0.0)`]: PushSpecs::hor_len
+    pub fn hidden(self) -> Self {
+        Self { is_hidden: true, ..self }
     }
 
     /// Adds more [`Corner`]s as fallback to spawn on
@@ -802,13 +823,15 @@ impl SpawnSpecs {
         self
     }
 
+    ////////// Querying functions
+
     /// An [`Iterator`] over the vertical [`Constraint`]s
-    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> {
+    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
         self.ver_cons.into_iter().flatten()
     }
 
     /// An [`Iterator`] over the horizontal [`Constraint`]s
-    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> {
+    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
         self.hor_cons.into_iter().flatten()
     }
 
@@ -818,6 +841,13 @@ impl SpawnSpecs {
             Axis::Horizontal => self.hor_cons.into_iter().flatten(),
             Axis::Vertical => self.ver_cons.into_iter().flatten(),
         }
+    }
+
+    /// Wether this [`Widget`] should default to being [hidden] or not
+    ///
+    /// [hidden]: Self::hidden
+    pub const fn is_hidden(&self) -> bool {
+        self.is_hidden
     }
 
     /// Wether it is resizable in an [`Axis`]

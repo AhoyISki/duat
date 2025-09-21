@@ -219,8 +219,9 @@ impl Rect {
     ///
     /// These equalities ensure that the [`Rect`]s stay within the
     /// borders of the terminal, but unlike with pushed [`Rect`]s,
-    /// there is no requirement for no collisions with other [`Rect`]s
-    pub fn _set_spawned_eqs(&mut self, p: &Printer) {
+    /// there are no requirement for no collisions with other
+    /// [`Rect`]s
+    pub fn set_spawned_eqs(&mut self, p: &Printer) {
         self.eqs.extend([
             self.tl.x() | GE(REQUIRED) | 0.0,
             self.tl.y() | GE(REQUIRED) | 0.0,
@@ -389,11 +390,12 @@ impl PartialEq<Area> for Rect {
 
 pub struct Rects {
     pub main: Rect,
-    floating: Vec<Rect>,
+    floating: Vec<(Rect, Constraints)>,
     fr: Frame,
 }
 
 impl Rects {
+    /// Returns a new instance of [`Rects`]
     pub fn new(p: &Printer, fr: Frame, info: PrintInfo) -> Self {
         let mut main = Rect::new(p, true, Kind::end(info));
         main.eqs.extend([
@@ -407,9 +409,10 @@ impl Rects {
         Self { main, floating: Vec::new(), fr }
     }
 
+    /// Pushes a new [`Rect`] onto another
     pub fn push(
         &mut self,
-        ps: PushSpecs,
+        specs: PushSpecs,
         id: AreaId,
         p: &Printer,
         on_files: bool,
@@ -422,13 +425,13 @@ impl Rects {
 
         let (i, parent, cons, axis) = {
             let (i, parent) = self.get_parent(id).unwrap();
-            let (v_cons, h_cons) = (ps.ver_cons(), ps.hor_cons());
-            let cons =
-                Constraints::new(p, v_cons, h_cons, ps.is_hidden(), &rect, parent.id(), self);
+            let (vc, hc) = (specs.ver_cons(), specs.hor_cons());
+            let cons = Constraints::new(p, vc, hc, specs.is_hidden(), &rect, parent.id(), self);
+
             let parent = self.get_mut(parent.id()).unwrap();
             let axis = parent.kind.axis().unwrap();
 
-            if ps.comes_earlier() {
+            if specs.comes_earlier() {
                 (i, parent, cons, axis)
             } else {
                 (i + 1, parent, cons, axis)
@@ -451,6 +454,38 @@ impl Rects {
         new_id
     }
 
+    /// Spawns a new floating [`Rect`]
+    pub fn spawn(&mut self, specs: SpawnSpecs, id: AreaId, p: &Printer, info: PrintInfo) -> AreaId {
+        let parent = self.get(id).unwrap();
+        let mut rect = Rect::new(p, false, Kind::end(info));
+
+        rect.set_spawned_eqs(p);
+
+        let mut strength = STRONG - 1.0;
+        for &[from, anchor] in &specs.choices {
+            let [from_y, from_x] = parent.corner_exprs(from);
+            let [anchor_y, anchor_x] = rect.corner_exprs(anchor);
+            let x_diff = from_x.clone() - anchor_x.clone();
+            let y_diff = from_y.clone() - anchor_y.clone();
+            rect.eqs.extend([
+                // any value other than (x|y)_diff == 0.0 should result in an impossibly high (or
+                // low) value, disabling both expressions if one of them fails.
+                (from_y.clone() + x_diff * f64::MAX * f64::MAX) | EQ(strength) | anchor_y,
+                (from_x.clone() + y_diff * f64::MAX * f64::MAX) | EQ(strength) | anchor_x,
+            ]);
+            strength -= 1.0;
+        }
+
+        let id = rect.id;
+
+        let (vc, hc) = (specs.ver_cons(), specs.hor_cons());
+        let cons = Constraints::new(p, vc, hc, specs.is_hidden(), &rect, parent.id(), self);
+        self.floating.push((rect, cons));
+
+        id
+    }
+
+    /// Deletes a given [`Rect`], alongside all its children
     pub fn delete(
         &mut self,
         p: &Printer,
@@ -495,6 +530,7 @@ impl Rects {
         Some((rm_rect, rm_cons, rm_parent_id))
     }
 
+    /// Swaps two given [`Rect`]s
     pub fn swap(&mut self, p: &Printer, id0: AreaId, id1: AreaId) {
         let fr = self.fr;
         // We're gonna need to reconstrain a bunch of Areas, this is the most
@@ -561,6 +597,7 @@ impl Rects {
         constrain_areas(to_constrain.unwrap(), self, p);
     }
 
+    /// Resets the equalities of a given [`Rect`]
     pub fn reset_eqs(&mut self, p: &Printer, target: AreaId) {
         let fr = self.fr;
         let mut to_cons = Some(Vec::new());
@@ -607,6 +644,7 @@ impl Rects {
         constrain_areas(to_cons.unwrap(), self, p);
     }
 
+    /// Creates a new parent for a given [`Rect`]
     pub fn new_parent_for(
         &mut self,
         id: AreaId,
@@ -670,43 +708,10 @@ impl Rects {
         parent.children_mut().unwrap().push((child, cons));
     }
 
-    pub fn new_floating(&mut self, p: &Printer, id: AreaId, specs: SpawnSpecs) -> AreaId {
-        let parent = self.get(id).unwrap();
-        let mut floating = Rect::new(p, false, Kind::end(PrintInfo::default()));
-
-        let mut strength = WEAK + 4.0;
-        for [from, anchor] in specs.choices {
-            let [from_y, from_x] = parent.corner_exprs(from);
-            let [anchor_y, anchor_x] = floating.corner_exprs(anchor);
-            let x_diff = from_x.clone() - anchor_x.clone();
-            let y_diff = from_y.clone() - anchor_y.clone();
-            floating.eqs.extend([
-                // any value other than diff == 0.0 should result in an impossibly high (or low)
-                // value, disabling both expressions if one of them fails.
-                (from_y.clone() + x_diff * f64::MAX * f64::MAX) | EQ(strength) | anchor_y.clone(),
-                (from_x.clone() + y_diff * f64::MAX * f64::MAX) | EQ(strength) | anchor_x.clone(),
-            ]);
-            strength -= 1.0;
-        }
-
-        // let (tl, br) = (p.var_point(), p.var_point());
-        // let kind = Kind::end(p.sender(&tl,& br), PrintInfo::default());
-        // let mut rect = Rect::new(tl, br, false, kind);
-        // let main_eq = match specs.side() {
-        //    Side::Above => rect.start,
-        //    Side::Right => rect.start,
-        //    Side::Below => rect.start,
-        //    Side::Left => rect.start,
-        //}
-        // rect.eqs.extend([
-        //]);
-        todo!();
-    }
-
     /// Gets a mut reference to the parent of the `id`'s [`Rect`]
     pub fn get_mut(&mut self, id: AreaId) -> Option<&mut Rect> {
         std::iter::once(&mut self.main)
-            .chain(&mut self.floating)
+            .chain(self.floating.iter_mut().map(|(rect, _)| rect))
             .find_map(|rect| fetch_mut(rect, id))
     }
 
@@ -719,13 +724,6 @@ impl Rects {
         let (n, parent) = self.get_parent(id)?;
         let id = parent.id;
         Some((n, self.get_mut(id).unwrap()))
-    }
-
-    pub fn _insert_child(&mut self, pos: usize, id: AreaId, child: Rect) {
-        let parent = self.get_mut(id).unwrap();
-
-        let entry = (child, Constraints::default());
-        parent.children_mut().unwrap().insert(pos, entry);
     }
 
     /// Fetches the parent of the [`RwData<Rect>`] with the given
@@ -744,7 +742,7 @@ impl Rects {
         }
 
         std::iter::once(&self.main)
-            .chain(&self.floating)
+            .chain(self.floating.iter().map(|(rect, _)| rect))
             .find_map(|rect| fetch(rect, id))
     }
 
@@ -754,7 +752,7 @@ impl Rects {
     /// going top to bottom or left to right.
     pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
         std::iter::once(&self.main)
-            .chain(&self.floating)
+            .chain(self.floating.iter().map(|(rect, _)| rect))
             .find_map(|rect| fetch_parent(rect, id))
     }
 

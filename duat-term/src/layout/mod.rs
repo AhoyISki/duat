@@ -62,12 +62,12 @@ impl Layout {
     pub fn bisect(
         &mut self,
         id: AreaId,
-        ps: PushSpecs,
+        specs: PushSpecs,
         do_cluster: bool,
         on_files: bool,
         info: PrintInfo,
     ) -> (AreaId, Option<AreaId>) {
-        let axis = ps.axis();
+        let axis = specs.axis();
 
         let (can_be_sibling, can_be_child) = {
             let parent_is_cluster = self
@@ -99,7 +99,7 @@ impl Layout {
             && parent.aligns_with(axis)
         {
             let children = parent.children().unwrap();
-            let target = match ps.comes_earlier() {
+            let target = match specs.comes_earlier() {
                 true => children.first().unwrap().0.id(),
                 false => children.last().unwrap().0.id(),
             };
@@ -115,7 +115,9 @@ impl Layout {
             (id, Some(parent.id()))
         };
 
-        let new_id = self.rects.push(ps, target, &self.printer, on_files, info);
+        let new_id = self
+            .rects
+            .push(specs, target, &self.printer, on_files, info);
         (new_id, new_parent_id)
     }
 
@@ -148,8 +150,13 @@ impl Layout {
         self.active_id
     }
 
-    pub(crate) fn new_floating(&mut self, id: AreaId, specs: SpawnSpecs) -> AreaId {
-        self.rects.new_floating(&self.printer, id, specs)
+    pub(crate) fn new_floating(
+        &mut self,
+        id: AreaId,
+        specs: SpawnSpecs,
+        info: PrintInfo,
+    ) -> AreaId {
+        self.rects.spawn(specs, id, &self.printer, info)
     }
 }
 

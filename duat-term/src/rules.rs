@@ -198,7 +198,7 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn pushed(self, pa: &mut Pass, info: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
+    fn pushed(self, _: &mut Pass, info: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
         let widget = VertRule {
             handle: info.file(),
             text: Text::default(),

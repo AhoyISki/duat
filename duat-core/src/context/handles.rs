@@ -707,7 +707,16 @@ struct RelatedWidgets<U: Ui>(RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelatio
 /// What relation this [`Widget`] has to its parent
 #[derive(Clone, Copy, Debug)]
 pub enum WidgetRelation {
+    /// The main widget of the cluster, most commonly a [`File`]
+    ///
+    /// [`File`]: crate::file::File
     Main,
+    /// A [`Widget`] that was pushed around the main `Widget`, e.g.
+    /// [`LineNumbers`]
+    ///
+    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     Pushed,
+    /// A [`Widget`] that was spawned on the `Widget`, e.g. completion
+    /// lists
     Spawned,
 }

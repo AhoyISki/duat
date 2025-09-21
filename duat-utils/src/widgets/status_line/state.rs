@@ -70,7 +70,7 @@ where
             match self.appender {
                 Appender::TextFnCheckerArg(f) => Box::new(move |pa, b, _| f(pa, b)),
                 Appender::FromWidget(f) => Box::new(move |pa, b, reader| {
-                    if let Some((widget, area)) = reader.read_related(pa) {
+                    if let Some((widget, area, _)) = reader.read_related(pa).next() {
                         f(b, pa, widget, area);
                     }
                 }),

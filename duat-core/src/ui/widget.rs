@@ -508,10 +508,10 @@ pub trait WidgetCfg<U: Ui>: Sized + 'static {
 
     /// Builds the [`Widget`] alongside [`PushSpecs`]
     ///
-    /// The [`PushSpecs`] are determined by the [`WidgetCfg`] itself,
+    /// The `PushSpecs` are determined by the [`WidgetCfg`] itself,
     /// and the end user is meant to change it by public facing
-    /// functions in the [`WidgetCfg`]. This is to prevent nonsensical
-    /// [`Widget`] pushing, like [`LineNumbers`] on the bottom of a
+    /// functions in the `WidgetCfg`. This is to prevent nonsensical
+    /// `Widget` pushing, like [`LineNumbers`] on the bottom of a
     /// [`File`], for example.
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
@@ -520,6 +520,13 @@ pub trait WidgetCfg<U: Ui>: Sized + 'static {
         unimplemented!("This widget is not meant to be pushed");
     }
 
+    /// Builds the [`Widget`] alongside [`SpawnSpecs`]
+    ///
+    /// The `SpawnSpecs` are determined by the [`WidgetCfg`] itslef,
+    /// and the end user is meant to change them by public facing
+    /// functions from said `WidgetCfg`. This is to prevent
+    /// nonsensical `Widget` spawning, although that tends to be a
+    /// smaller issue than nonsensical `Widget` pushing.
     fn spawned(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, SpawnSpecs) {
         unimplemented!("This Widget is not meant to be spawned");
     }

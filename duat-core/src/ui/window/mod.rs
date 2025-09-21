@@ -387,7 +387,7 @@ impl<U: Ui> Windows<U> {
                 <U::Area as Area>::Cache::default()
             };
 
-            let spawned = U::Area::spawn_floating(MutArea(&area), specs, cache);
+            let spawned = U::Area::spawn_floating(MutArea(area), specs, cache);
 
             windows.0.write(pa).areas.push((widget_id, spawned.clone()));
 

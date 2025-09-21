@@ -318,14 +318,11 @@ impl ui::Area for Area {
         }
     }
 
-    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs) -> Result<Self, Text> {
+    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Self {
         let mut layouts = area.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
-        Ok(Self::new(
-            layout.new_floating(area.id, specs),
-            area.layouts.clone(),
-        ))
+        Self::new(layout.new_floating(area.id, specs, cache), area.layouts.clone())
     }
 
     fn spawn_floating_at(
