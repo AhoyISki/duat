@@ -194,7 +194,7 @@ impl<U> NotificationsCfg<U> {
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
     type Widget = Notifications<U>;
 
-    fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+    fn pushed(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let widget = Notifications {
             logs: context::logs(),
             text: Text::new(),

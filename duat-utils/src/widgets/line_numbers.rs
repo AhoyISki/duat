@@ -321,7 +321,7 @@ impl<_U> LineNumbersCfg<_U> {
 impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
     type Widget = LineNumbers<U>;
 
-    fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+    fn pushed(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let Some(handle) = info.file() else {
             panic!("For now, you can't push LineNumbers to something that is not a File");
         };

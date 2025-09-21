@@ -262,7 +262,7 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
     /// This function will take a list of [`SpawnSpecs`], taking the
     /// first one that fits, and readapting as the constraints are
     /// altered
-    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs) -> Result<Self, Text>;
+    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Self;
 
     /// Spawns a floating area
     ///
@@ -1043,25 +1043,10 @@ impl<A: Area> MutArea<'_, A> {
         A::swap(self, other);
     }
 
-    // /// Calls [`Area::spawn_floating`] on `self`
-    // pub fn spawn_floating<Cfg: WidgetCfg<A::Ui>>(
-    //     self,
-    //     pa: &mut Pass,
-    //     _cfg: Cfg,
-    //     specs: SpawnSpecs,
-    // ) -> Result<A, Text> {
-    //     let area = A::spawn_floating(MutArea(self.0), specs)?;
-    //     let mut windows = context::windows::<A::Ui>().borrow_mut();
-
-    //     let Some(_win) = windows
-    //         .iter_mut()
-    //         .find(|win| win.nodes().any(|n| n.area(pa) == self.0))
-    //     else {
-    //         return Err(txt!("Tried to spawn floating from a deleted
-    // Area").build());     };
-
-    //     Ok(area)
-    // }
+    /// Calls [`Area::spawn_floating`] on `self`
+    pub fn spawn_floating<Cfg: WidgetCfg<A::Ui>>(self, specs: SpawnSpecs, cache: A::Cache) -> A {
+        A::spawn_floating(self, specs, cache)
+    }
 
     /// Calls [`Area::spawn_floating_at`] on `self`
     pub fn spawn_floating_at(

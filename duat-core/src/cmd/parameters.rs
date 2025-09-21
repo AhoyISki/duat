@@ -452,47 +452,24 @@ impl<'a> Parameter<'a> for FormName {
 pub struct Handles<'a, W: Widget<U>, U: Ui>(Flags<'a>, PhantomData<(W, U)>);
 
 impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
-    /// Acts on a [`Handle`] of the most relevant instance of `W`
+    /// Acts on [`Handle`]s related to the currently active [`File`]
     ///
-    /// The most relevant instance is determined in this order:
+    /// This will trigger on every `Handle` of the given widget type
+    /// on the `File`. This _does_ include the `File` itself, so if `W
+    /// == File`, then that would act on the `File` itself, as well as
+    /// any other `File`s pushed to it.
     ///
-    /// - A [`Widget`] pushed to the currently active [`File`].
-    /// - A [`Widget`] pushed to the currently active window.
-    /// - A [`Widget`] that is open anywhere, starting from the next
-    ///   windows, ending on the previous.
-    ///
-    /// Do note that this function will only trigger once, so if there
-    /// are multiple instances of the [`Widget`] with the same level
-    /// of relevance, the first one that was pushed is the one that
-    /// will be picked. Since this is only triggered once, it can also
-    /// return a value.
-    ///
-    /// This function will be called by [`Handles::on_flags`], if no
-    /// context choosing [`Flags`] are passed.
-    ///
-    /// [`File`]: crate::file::File
-    pub fn on_current<Ret>(
-        &self,
-        pa: &mut Pass,
-        f: impl FnOnce(&mut Pass, Handle<W, U>) -> Ret,
-    ) -> Option<Ret> {
-        if let Some(handle) = context::fixed_file::<U>(pa).unwrap().get_related(pa) {
-            Some(f(pa, handle))
-        } else {
-            let w = context::cur_window();
+    /// This function will be called by [`Handles::on_flags`] if no
+    /// context choosing [`Flags`] are passed (i.e., no `--global`,
+    /// `-g`, `--window` or `--w`).
+    pub fn on_current(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
+        let get_related: Vec<_> = context::fixed_file::<U>(pa)
+            .unwrap()
+            .get_related(pa)
+            .collect();
 
-            let node = match context::windows::<U>()
-                .widget_entry::<W>(pa, w)
-                .map(|(.., node)| node.clone())
-            {
-                Ok(node) => node,
-                Err(err) => {
-                    context::error!("{err}");
-                    return None;
-                }
-            };
-
-            Some(f(pa, node.try_downcast().unwrap()))
+        for (handle, _) in get_related {
+            f(pa, handle)
         }
     }
 
@@ -501,12 +478,8 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// This will trigger in all windows, starting from the first, in
     /// the order that they were pushed.
     ///
-    /// Unlike [`Handles::on_current`], this can act on multiple
-    /// instances of the same type of [`Widget`] pushed to a single
-    /// window.
-    ///
     /// This function will be called by [`Handles::on_flags`], if the
-    /// `"--global"` or `"-g"` [`Flags`] are passed.
+    /// `--global` or `-g` [`Flags`] are passed.
     pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
         let handles: Vec<_> = context::windows::<U>().handles(pa).cloned().collect();
         for handle in handles {
@@ -520,12 +493,8 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     ///
     /// Will trigger in the order that they were pushed.
     ///
-    /// Unlike [`Handles::on_current`], this can act on multiple
-    /// instances of the same type of [`Widget`] pushed to a single
-    /// window.
-    ///
     /// This function will be called by [`Handles::on_flags`], if the
-    /// `"--window"` or `"-w"` [`Flags`] are passed.
+    /// `--window` or `-w` [`Flags`] are passed.
     pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
         let cur_win = context::cur_window();
         let nodes: Vec<Node<U>> = context::windows::<U>()

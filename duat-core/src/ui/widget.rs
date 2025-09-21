@@ -41,12 +41,12 @@ use std::sync::{Arc, Mutex};
 use super::{Area, AreaId, PushSpecs, Ui};
 use crate::{
     cfg::PrintCfg,
-    context::Handle,
+    context::{Handle, WidgetRelation},
     data::{Pass, RwData},
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
-    ui::{BuildInfo, GetAreaId},
+    ui::{BuildInfo, GetAreaId, SpawnSpecs},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -501,6 +501,7 @@ pub trait Widget<U: Ui>: Send + 'static {
 ///
 /// [`File`]: crate::file::File
 /// [`builder`]: super::UiBuilder
+#[allow(unused_variables)]
 pub trait WidgetCfg<U: Ui>: Sized + 'static {
     /// The [`Widget`] that will be created by this [`WidgetCfg`]
     type Widget: Widget<U, Cfg = Self>;
@@ -515,7 +516,13 @@ pub trait WidgetCfg<U: Ui>: Sized + 'static {
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`File`]: crate::file::File
-    fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs);
+    fn pushed(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+        unimplemented!("This widget is not meant to be pushed");
+    }
+
+    fn spawned(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, SpawnSpecs) {
+        unimplemented!("This Widget is not meant to be spawned");
+    }
 }
 
 /// Elements related to the [`Widget`]s
@@ -594,7 +601,9 @@ impl<U: Ui> Node<U> {
     }
 
     /// The [`Widget`]s that are related to this [`Widget`]
-    pub(crate) fn related_widgets(&self) -> &RwData<Vec<Handle<dyn Widget<U>, U>>> {
+    pub(crate) fn related_widgets(
+        &self,
+    ) -> &RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>> {
         self.handle.related()
     }
 

@@ -204,7 +204,7 @@ impl<U> LogBookCfg<U> {
 impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
     type Widget = LogBook;
 
-    fn build(mut self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+    fn pushed(mut self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let logs = context::logs();
 
         let mut text = Text::new();

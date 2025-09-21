@@ -214,7 +214,7 @@ impl<U: Ui> FileCfg<U> {
 impl<U: Ui> WidgetCfg<U> for FileCfg<U> {
     type Widget = File<U>;
 
-    fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+    fn pushed(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
             TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {

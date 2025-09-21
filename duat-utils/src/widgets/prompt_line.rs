@@ -104,7 +104,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
 impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;
 
-    fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+    fn pushed(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let specs = if hook::group_exists("HidePromptLine") {
             self.specs.ver_len(0.0)
         } else {

@@ -12,10 +12,11 @@ use lender::Lender;
 
 use crate::{
     cfg::PrintCfg,
+    context,
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TextParts, TwoPoints},
-    ui::{Area, AreaId, GetAreaId, MutArea, SpawnSpecs, Ui, Widget, WidgetCfg},
+    ui::{Area, AreaId, GetAreaId, SpawnSpecs, Ui, Widget, WidgetCfg},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -136,8 +137,8 @@ use crate::{
 pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
     widget: RwData<W>,
     area: U::Area,
-    mask: Arc<Mutex<&'static str>>,
     id: AreaId,
+    mask: Arc<Mutex<&'static str>>,
     related: RelatedWidgets<U>,
     searcher: RefCell<S>,
 }
@@ -153,8 +154,8 @@ impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
         Self {
             widget,
             area,
-            mask,
             id,
+            mask,
             related: RelatedWidgets(RwData::default()),
             searcher: RefCell::new(()),
         }
@@ -561,7 +562,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         self.widget.read(pa).print_cfg()
     }
 
-    /// Reads a related [`Widget`] of type `W2`, as well as it s
+    /// Reads related [`Widget`]s of type `W2`, as well as it s
     /// [`Ui::Area`]
     ///
     /// This can also be done by calling [`Handle::get_related`], and
@@ -570,33 +571,39 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn read_related<'a, W2: Widget<U>>(
         &'a self,
         pa: &'a Pass,
-    ) -> Option<(&'a W2, &'a U::Area)> {
-        self.read_as(pa).map(|w| (w, self.area(pa))).or_else(|| {
-            self.related
-                .0
-                .read(pa)
-                .iter()
-                .find_map(|handle| handle.read_as(pa).map(|w| (w, handle.area(pa))))
-        })
+    ) -> impl Iterator<Item = (&'a W2, &'a U::Area, WidgetRelation)> {
+        self.read_as(pa)
+            .map(|w| (w, self.area(pa), WidgetRelation::Main))
+            .into_iter()
+            .chain(
+                self.related.0.read(pa).iter().filter_map(|(handle, rel)| {
+                    handle.read_as(pa).map(|w| (w, handle.area(pa), *rel))
+                }),
+            )
     }
 
-    /// Gets the [`Handle`] of a related [`Widget`]
+    /// Gets related [`Handle`]s of type [`Widget`]
     ///
     /// If you are doing this just to read the [`Widget`] and
-    /// [`Ui::Area`], consider using [`Handle::read_related`], since
-    /// that function is generally faster.
-    pub fn get_related<W2: Widget<U>>(&self, pa: &Pass) -> Option<Handle<W2, U>> {
-        self.try_downcast().or_else(|| {
-            self.related
-                .0
-                .read(pa)
-                .iter()
-                .find_map(|handle| handle.try_downcast())
-        })
+    /// [`Ui::Area`], consider using [`Handle::read_related`].
+    pub fn get_related<'a, W2: Widget<U>>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = (Handle<W2, U>, WidgetRelation)> + 'a {
+        self.try_downcast()
+            .zip(Some(WidgetRelation::Main))
+            .into_iter()
+            .chain(
+                self.related
+                    .0
+                    .read(pa)
+                    .iter()
+                    .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel))),
+            )
     }
 
     /// Raw access to the related widgets
-    pub(crate) fn related(&self) -> &RwData<Vec<Handle<dyn Widget<U>, U>>> {
+    pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>> {
         &self.related.0
     }
 
@@ -632,21 +639,23 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             searcher: RefCell::new(searcher),
         }
     }
+}
 
+impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// Spawns a floating [`Widget`]
     pub fn spawn_widget<Cfg: WidgetCfg<U>>(
         &self,
-        _pa: &mut Pass,
-        _cfg: Cfg,
-        _specs: SpawnSpecs,
-    ) -> Result<AreaId, Text> {
-        let _area = MutArea(&self.area);
-        // let _spawned = area.spawn_floating(pa, cfg, specs)?;
-        todo!();
+        pa: &mut Pass,
+        cfg: Cfg,
+        specs: SpawnSpecs,
+    ) -> Handle<Cfg::Widget, U> {
+        context::windows()
+            .spawn_new_widget(pa, (self.to_dyn(), specs), cfg)
+            .handle()
+            .try_downcast()
+            .unwrap()
     }
-}
 
-impl<W: Widget<U>, U: Ui> Handle<W, U> {
     /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`]
     pub fn to_dyn(&self) -> Handle<dyn Widget<U>, U> {
         Handle {
@@ -693,4 +702,12 @@ impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
 }
 
 #[derive(Clone)]
-struct RelatedWidgets<U: Ui>(RwData<Vec<Handle<dyn Widget<U>, U>>>);
+struct RelatedWidgets<U: Ui>(RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>>);
+
+/// What relation this [`Widget`] has to its parent
+#[derive(Clone, Copy, Debug)]
+pub enum WidgetRelation {
+    Main,
+    Pushed,
+    Spawned,
+}

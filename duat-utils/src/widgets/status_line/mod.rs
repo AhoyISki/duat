@@ -196,7 +196,7 @@ impl<U: Ui> StatusLineCfg<U> {
 impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
-    fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+    fn pushed(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let (builder_fn, checker_fn) = if let Some((builder, checker)) = self.fns {
             (builder, checker)
         } else {

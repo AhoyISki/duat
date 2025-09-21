@@ -12,7 +12,7 @@
 //! [`File`]: crate::file::File
 use super::{AreaId, GetAreaId, Ui, Widget, WidgetCfg};
 use crate::{
-    context::{self, Handle},
+    context::{self, Handle, WidgetRelation},
     data::Pass,
     file::File,
     hook::{self, WidgetCreated},
@@ -335,7 +335,7 @@ impl<U: Ui> RawUiBuilder<'_, U> {
                 (cfg.unwrap(), builder)
             };
 
-            let (widget, specs) = cfg.build(pa, BuildInfo { main, pushed_to: None });
+            let (widget, specs) = cfg.pushed(pa, BuildInfo { main, pushed_to: None });
 
             let (node, parent_id) = context::windows().push(
                 pa,
@@ -346,7 +346,9 @@ impl<U: Ui> RawUiBuilder<'_, U> {
             );
 
             if let Some(main) = builder.main.as_ref() {
-                main.related().write(pa).push(node.handle().clone())
+                main.related()
+                    .write(pa)
+                    .push((node.handle().clone(), WidgetRelation::Pushed))
             }
 
             if let Some(builder_fn) = builder.builder_fn {
@@ -382,7 +384,7 @@ impl<U: Ui> RawUiBuilder<'_, U> {
                 (cfg.unwrap(), builder)
             };
 
-            let (widget, specs) = cfg.build(pa, BuildInfo {
+            let (widget, specs) = cfg.pushed(pa, BuildInfo {
                 main: builder.main.clone(),
                 pushed_to: None,
             });
@@ -396,7 +398,7 @@ impl<U: Ui> RawUiBuilder<'_, U> {
             );
 
             if let Some(main) = builder.main.as_ref() {
-                main.related().write(pa).push(node.handle().clone())
+                main.related().write(pa).push((node.handle().clone(), WidgetRelation::Pushed))
             }
 
             if let Some(builder_fn) = builder.builder_fn {
@@ -450,8 +452,14 @@ pub struct BuildInfo<U: Ui> {
 }
 
 impl<U: Ui> BuildInfo<U> {
+    /// A [`BuildInfo`] for standalone [`Widget`]s
     pub(super) fn for_main() -> Self {
         Self { main: None, pushed_to: None }
+    }
+
+    /// A [`BuildInfo`] for spawned [`Widget`]s
+    pub(super) fn spawned_on(main: Handle<dyn Widget<U>, U>) -> Self {
+        Self { main: Some(main), pushed_to: None }
     }
 
     /// Returns the [`File`]'s [`Handle`], if this [`Widget`] was
