@@ -181,13 +181,16 @@ impl<U: Ui> Session<U> {
 
         let mut reload_requested = false;
         let mut reprint_screen = false;
+        let mut no_updates = 0;
 
         loop {
             if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
                 mode_fn(pa);
             }
 
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
+            let timeout = if no_updates < 100 { 10 } else { 100 };
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(timeout)) {
+                no_updates = 0;
                 match event {
                     DuatEvent::KeySent(key) => {
                         mode::send_key(pa, key);
@@ -276,10 +279,12 @@ impl<U: Ui> Session<U> {
                 reprint_screen = false;
                 continue;
             }
+            no_updates += 1;
 
             let win = context::cur_window();
             for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
                 if node.needs_update(pa) {
+                    no_updates = 0;
                     node.update_and_print(pa);
                 }
             }
@@ -358,6 +363,7 @@ impl<U: Ui> Session<U> {
             Ok(node) => {
                 let handle = node.handle().try_downcast::<File<U>>().unwrap();
                 mode::reset_to_file::<U>(handle.read(pa).path_kind(), false);
+                node.update_and_print(pa);
             }
             Err(err) => context::error!("{err}"),
         }

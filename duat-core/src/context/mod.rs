@@ -352,7 +352,10 @@ impl<U: Ui> DynFile<U> {
     /// [`read`]: Self::read
     /// [`has_changed`]: Self::has_changed
     pub fn declare_as_read(&self) {
-        self.file.declare_as_read();
+        // SAFETY: Since this struct doesn't implement Clone, no mutable
+        // references to the RwData exist.
+        static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
+        self.file.read(INTERNAL_PASS).declare_as_read();
         self.cur_file.0.declare_as_read();
     }
 

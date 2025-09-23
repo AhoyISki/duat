@@ -103,6 +103,12 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
             FileHandle::Fixed(file) => (sl.text_fn)(pa, file),
             FileHandle::Dynamic(dyn_file) => (sl.text_fn)(pa, dyn_file.handle()),
         };
+
+        // Do this in case the File is never read during Text construction
+        match &handle.read(pa).file_handle {
+            FileHandle::Fixed(handle) => handle.declare_as_read(),
+            FileHandle::Dynamic(dyn_file) => dyn_file.declare_as_read(),
+        }
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
@@ -110,8 +116,9 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
             FileHandle::Fixed(handle) => handle.has_changed(),
             FileHandle::Dynamic(dyn_file) => dyn_file.has_changed(pa),
         };
+        let checkered = (self.checker)(pa);
 
-        file_changed || (self.checker)(pa)
+        file_changed || checkered
     }
 
     fn cfg() -> Self::Cfg {

@@ -186,6 +186,16 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         self.widget.read_as(pa)
     }
 
+    /// Declares the [`Widget`] within as read
+    ///
+    /// Same as calling `handle.widget().declare_as_read()`. You
+    /// should use this function if you want to signal to others that
+    /// the widget was read, even if you don't have access to a
+    /// [`Pass`].
+    pub fn declare_as_read(&self) {
+        self.widget.declare_as_read();
+    }
+
     /// Writes to the [`Widget`], making use of a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
@@ -217,6 +227,16 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`Area`]: crate::ui::Area
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a U::Area) {
         (self.widget.write(pa), &self.area)
+    }
+
+    /// Declares the [`Widget`] within as written
+    ///
+    /// Same as calling `handle.widget().declare_written()`. You
+    /// should use this function if you want to signal to others that
+    /// the widget was written to, even if you don't have access to a
+    /// [`Pass`].
+    pub fn declare_written(&self) {
+        self.widget.declare_written();
     }
 
     /// Tries to downcast from `dyn Widget` to a concrete [`Widget`]

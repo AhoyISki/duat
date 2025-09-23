@@ -73,7 +73,6 @@ impl Kind {
 /// [`Constraint`]: Equality
 #[allow(clippy::type_complexity)]
 pub struct Rect {
-    /// The index that this [`Rect`] is tied to.
     id: AreaId,
     tl: VarPoint,
     br: VarPoint,
@@ -389,8 +388,8 @@ impl PartialEq<Area> for Rect {
 }
 
 pub struct Rects {
-    pub main: Rect,
-    floating: Vec<(Rect, Constraints)>,
+    pub(super) main: Rect,
+    pub floating: Vec<(Rect, Constraints)>,
     fr: Frame,
 }
 
@@ -465,13 +464,11 @@ impl Rects {
         for &[from, anchor] in &specs.choices {
             let [from_y, from_x] = parent.corner_exprs(from);
             let [anchor_y, anchor_x] = rect.corner_exprs(anchor);
-            let x_diff = from_x.clone() - anchor_x.clone();
-            let y_diff = from_y.clone() - anchor_y.clone();
             rect.eqs.extend([
                 // any value other than (x|y)_diff == 0.0 should result in an impossibly high (or
                 // low) value, disabling both expressions if one of them fails.
-                (from_y.clone() + x_diff * f64::MAX * f64::MAX) | EQ(strength) | anchor_y,
-                (from_x.clone() + y_diff * f64::MAX * f64::MAX) | EQ(strength) | anchor_x,
+                from_y.clone() | EQ(strength) | anchor_y,
+                from_x.clone() | EQ(strength) | anchor_x,
             ]);
             strength -= 1.0;
         }
@@ -480,6 +477,9 @@ impl Rects {
 
         let (vc, hc) = (specs.ver_cons(), specs.hor_cons());
         let cons = Constraints::new(p, vc, hc, specs.is_hidden(), &rect, parent.id(), self);
+        p.add_eqs(rect.eqs.clone());
+        p.update(false);
+        
         self.floating.push((rect, cons));
 
         id

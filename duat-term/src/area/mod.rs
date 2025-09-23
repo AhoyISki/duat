@@ -91,6 +91,31 @@ impl Area {
         let layouts = self.layouts.borrow();
         let mut ansi_codes = self.ansi_codes.lock().unwrap();
 
+        static ONCE: std::sync::Once = std::sync::Once::new();
+
+        ONCE.call_once(|| {
+            struct Sendable<T>(T);
+            unsafe impl<T> Send for Sendable<T> {}
+
+            impl<T> Sendable<Rc<RefCell<T>>> {
+                fn borrow(&self) -> std::cell::Ref<'_, T> {
+                    self.0.borrow()
+                }
+            }
+                
+            let layouts = Sendable(self.layouts.clone());
+            duat_core::hook::add::<duat_core::hook::KeysSent, crate::Ui>(move |_, _| {
+                let layouts = layouts.borrow();
+                duat_core::context::debug!("start debugging coords.");
+                for layout in layouts.iter() {
+                    for (rect, _) in &layout.rects.floating {
+                        let (coords, _) = layout.printer.coords(rect.var_points(), true);
+                        duat_core::context::debug!("{coords:?}");
+                    }
+                }
+            });
+        });
+
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;
 
@@ -322,7 +347,10 @@ impl ui::Area for Area {
         let mut layouts = area.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
-        Self::new(layout.new_floating(area.id, specs, cache), area.layouts.clone())
+        Self::new(
+            layout.new_floating(area.id, specs, cache),
+            area.layouts.clone(),
+        )
     }
 
     fn spawn_floating_at(

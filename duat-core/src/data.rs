@@ -293,11 +293,11 @@ impl<T: ?Sized> RwData<T> {
         _: &Pass,
         map: impl FnMut(&T) -> Ret + 'static,
     ) -> DataMap<T, Ret> {
-        let RwData { value, cur_state, read_state, .. } = self.clone();
+        let RwData { value, cur_state, .. } = self.clone();
         let data = RwData {
             value,
             cur_state,
-            read_state,
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))),
             ty: TypeId::of::<T>(),
         };
 
@@ -322,7 +322,7 @@ impl<T: ?Sized> RwData<T> {
         Some(RwData {
             value,
             cur_state: self.cur_state.clone(),
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))),
             ty: TypeId::of::<U>(),
         })
     }
@@ -376,7 +376,7 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`read`]: Self::read
     pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + 'static {
-        let (cur, read) = (self.cur_state.clone(), self.read_state.clone());
+        let (read, cur) = (self.read_state.clone(), self.cur_state.clone());
         move || read.load(Ordering::Relaxed) < cur.load(Ordering::Relaxed)
     }
 }
@@ -438,12 +438,9 @@ pub struct DataMap<I: ?Sized + 'static, O: 'static> {
 
 impl<I: ?Sized, O> DataMap<I, O> {
     /// Maps the value within, works just like [`RwData::map`]
-    pub fn map<O2>(&self, pa: &Pass, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
-        let data_map = self.clone();
-        data_map
-            .data
-            .clone()
-            .map(pa, move |input| f(data_map.map.borrow_mut()(input)))
+    pub fn map<O2>(self, pa: &Pass, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
+        self.data
+            .map(pa, move |input| f(self.map.borrow_mut()(input)))
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the
@@ -489,34 +486,25 @@ impl<I: ?Sized, O> DataMap<I, O> {
 unsafe impl<I: ?Sized + 'static, O: 'static> Send for DataMap<I, O> {}
 unsafe impl<I: ?Sized + 'static, O: 'static> Sync for DataMap<I, O> {}
 
-impl<I: ?Sized + 'static, O> Clone for DataMap<I, O> {
-    fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
-            map: self.map.clone(),
-        }
-    }
-}
-
 impl<I: ?Sized + 'static, O: 'static> DataMap<I, O> {}
 
 impl<I: ?Sized + 'static, O: 'static> FnOnce<(&Pass,)> for DataMap<I, O> {
     type Output = O;
 
-    extern "rust-call" fn call_once(self, (key,): (&Pass,)) -> Self::Output {
-        self.map.borrow_mut()(self.data.read(key))
+    extern "rust-call" fn call_once(self, (pa,): (&Pass,)) -> Self::Output {
+        self.map.borrow_mut()(self.data.read(pa))
     }
 }
 
 impl<I: ?Sized + 'static, O: 'static> FnMut<(&Pass,)> for DataMap<I, O> {
-    extern "rust-call" fn call_mut(&mut self, (key,): (&Pass,)) -> Self::Output {
-        self.map.borrow_mut()(self.data.read(key))
+    extern "rust-call" fn call_mut(&mut self, (pa,): (&Pass,)) -> Self::Output {
+        self.map.borrow_mut()(self.data.read(pa))
     }
 }
 
 impl<I: ?Sized + 'static, O: 'static> Fn<(&Pass,)> for DataMap<I, O> {
-    extern "rust-call" fn call(&self, (key,): (&Pass,)) -> Self::Output {
-        self.map.borrow_mut()(self.data.read(key))
+    extern "rust-call" fn call(&self, (pa,): (&Pass,)) -> Self::Output {
+        self.map.borrow_mut()(self.data.read(pa))
     }
 }
 
