@@ -322,7 +322,7 @@ impl<T: ?Sized> RwData<T> {
         Some(RwData {
             value,
             cur_state: self.cur_state.clone(),
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
             ty: TypeId::of::<U>(),
         })
     }
@@ -414,7 +414,7 @@ impl<T: ?Sized> Clone for RwData<T> {
             value: self.value.clone(),
             ty: self.ty,
             cur_state: self.cur_state.clone(),
-            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
         }
     }
 }
@@ -424,7 +424,7 @@ impl<T: Default + 'static> Default for RwData<T> {
         Self {
             value: Arc::default(),
             cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: Arc::default(),
+            read_state: Arc::new(AtomicUsize::new(0)),
             ty: TypeId::of::<T>(),
         }
     }

@@ -77,6 +77,7 @@ pub struct Rect {
     tl: VarPoint,
     br: VarPoint,
     eqs: Vec<Equality>,
+    pub is_floating: bool,
     kind: Kind,
     on_files: bool,
     edge: Option<Variable>,
@@ -84,13 +85,14 @@ pub struct Rect {
 
 impl Rect {
     /// Returns a new [`Rect`] with no default [`Constraints`]
-    fn new(p: &Printer, on_files: bool, kind: Kind) -> Self {
+    fn new(p: &Printer, on_files: bool, kind: Kind, is_floating: bool) -> Self {
         let (tl, br) = (p.new_point(), p.new_point());
         Rect {
             id: AreaId::new(),
             tl,
             br,
             eqs: Vec::new(),
+            is_floating,
             kind,
             on_files,
             edge: None,
@@ -389,14 +391,14 @@ impl PartialEq<Area> for Rect {
 
 pub struct Rects {
     pub(super) main: Rect,
-    pub floating: Vec<(Rect, Constraints)>,
+    floating: Vec<(Rect, Constraints)>,
     fr: Frame,
 }
 
 impl Rects {
     /// Returns a new instance of [`Rects`]
     pub fn new(p: &Printer, fr: Frame, info: PrintInfo) -> Self {
-        let mut main = Rect::new(p, true, Kind::end(info));
+        let mut main = Rect::new(p, true, Kind::end(info), false);
         main.eqs.extend([
             main.tl.x() | EQ(REQUIRED) | 0.0,
             main.tl.y() | EQ(REQUIRED) | 0.0,
@@ -419,7 +421,7 @@ impl Rects {
     ) -> AreaId {
         let fr = self.fr;
 
-        let mut rect = Rect::new(p, on_files, Kind::end(info));
+        let mut rect = Rect::new(p, on_files, Kind::end(info), false);
         let new_id = rect.id();
 
         let (i, parent, cons, axis) = {
@@ -456,7 +458,7 @@ impl Rects {
     /// Spawns a new floating [`Rect`]
     pub fn spawn(&mut self, specs: SpawnSpecs, id: AreaId, p: &Printer, info: PrintInfo) -> AreaId {
         let parent = self.get(id).unwrap();
-        let mut rect = Rect::new(p, false, Kind::end(info));
+        let mut rect = Rect::new(p, false, Kind::end(info), true);
 
         rect.set_spawned_eqs(p);
 
@@ -479,7 +481,7 @@ impl Rects {
         let cons = Constraints::new(p, vc, hc, specs.is_hidden(), &rect, parent.id(), self);
         p.add_eqs(rect.eqs.clone());
         p.update(false);
-        
+
         self.floating.push((rect, cons));
 
         id
@@ -656,7 +658,7 @@ impl Rects {
         let fr = self.fr;
 
         let (mut child, cons, parent_id) = {
-            let mut parent = Rect::new(p, on_files, Kind::middle(axis, do_cluster));
+            let mut parent = Rect::new(p, on_files, Kind::middle(axis, do_cluster), false);
             let parent_id = parent.id();
 
             let (target, cons) = if let Some((i, orig)) = self.get_parent_mut(id) {

@@ -91,35 +91,10 @@ impl Area {
         let layouts = self.layouts.borrow();
         let mut ansi_codes = self.ansi_codes.lock().unwrap();
 
-        static ONCE: std::sync::Once = std::sync::Once::new();
-
-        ONCE.call_once(|| {
-            struct Sendable<T>(T);
-            unsafe impl<T> Send for Sendable<T> {}
-
-            impl<T> Sendable<Rc<RefCell<T>>> {
-                fn borrow(&self) -> std::cell::Ref<'_, T> {
-                    self.0.borrow()
-                }
-            }
-                
-            let layouts = Sendable(self.layouts.clone());
-            duat_core::hook::add::<duat_core::hook::KeysSent, crate::Ui>(move |_, _| {
-                let layouts = layouts.borrow();
-                duat_core::context::debug!("start debugging coords.");
-                for layout in layouts.iter() {
-                    for (rect, _) in &layout.rects.floating {
-                        let (coords, _) = layout.printer.coords(rect.var_points(), true);
-                        duat_core::context::debug!("{coords:?}");
-                    }
-                }
-            });
-        });
-
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;
 
-        let (mut lines, iter) = {
+        let (mut lines, iter, is_floating) = {
             let rect = layout.get(self.id).unwrap();
             let (coords, has_changed) = layout.printer.coords(rect.var_points(), true);
 
@@ -142,7 +117,7 @@ impl Area {
                 print_iter(iter, lines.cap(), cfg, s_points)
             };
 
-            (lines, iter)
+            (lines, iter, rect.is_floating)
         };
 
         let mut style_was_set = false;
@@ -267,7 +242,11 @@ impl Area {
             lines.end_line(&mut ansi_codes, &painter);
         }
 
-        layout.printer.send(self.id, lines);
+        if is_floating {
+            layout.printer.send_floating(self.id, lines);
+        } else {
+            layout.printer.send(self.id, lines);
+        }
     }
 }
 

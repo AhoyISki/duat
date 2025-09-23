@@ -28,7 +28,8 @@ pub use self::frame::{Brush, Frame};
 pub struct Printer {
     sync_solver: Mutex<SyncSolver>,
     vars: Mutex<Variables>,
-    lines: Mutex<Vec<(AreaId, Box<Lines>)>>,
+    lines: Mutex<Vec<(AreaId, Lines)>>,
+    floating_lines: Mutex<Vec<(AreaId, Lines)>>,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
 }
@@ -51,6 +52,7 @@ impl Printer {
             sync_solver: Mutex::new(sync_solver),
             vars: Mutex::new(vars),
             lines: Mutex::new(Vec::new()),
+            floating_lines: Mutex::new(Vec::new()),
             max,
             has_to_print_edges: AtomicBool::new(false),
         }
@@ -183,7 +185,7 @@ impl Printer {
             None
         };
 
-        let list: Vec<(AreaId, Box<Lines>)> = std::mem::take(&mut self.lines.lock().unwrap());
+        let list = std::mem::take(&mut *self.lines.lock().unwrap());
         if list.is_empty() {
             return;
         }
@@ -222,6 +224,18 @@ impl Printer {
         } else {
             CURSOR_IS_REAL.load(Ordering::Relaxed)
         };
+
+        let list = self.floating_lines.lock().unwrap();
+        if !list.is_empty() {
+            for (_, lines) in list.iter() {
+                let coords = lines.coords();
+                for y in coords.tl.y..coords.br.y {
+                    queue!(stdout, MoveTo(coords.tl.x as u16, y as u16));
+                    let (bytes, ..) = lines.on(y).unwrap();
+                    stdout.write_all(bytes).unwrap();
+                }
+            }
+        }
 
         if cursor_was_real {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
@@ -268,7 +282,21 @@ impl Printer {
             unreachable!("Colliding Lines should have been removed already");
         };
 
-        list.insert(i, (id, Box::new(lines)));
+        list.insert(i, (id, lines));
+    }
+
+    /// Sends the finished [`Lines`] of a floating `Widget` to be
+    /// printed
+    pub fn send_floating(&self, id: AreaId, lines: Lines) {
+        let mut list = self.floating_lines.lock().unwrap();
+
+        // This is done in order to preserve the order in which the floating
+        // Widgets were sent.
+        if let Some((_, old_lines)) = list.iter_mut().find(|(other, _)| *other == id) {
+            *old_lines = lines;
+        } else {
+            list.push((id, lines));
+        }
     }
 
     ////////// Querying functions

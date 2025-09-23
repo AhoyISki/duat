@@ -806,7 +806,36 @@ impl<U: Ui> Window<U> {
 
     /// An [`Iterator`] over the [`Node`]s in a [`Window`]
     pub(crate) fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {
-        self.nodes.iter()
+        use std::slice::Iter;
+        struct InnerChain<'a, U: Ui>(
+            std::iter::Chain<Iter<'a, Node<U>>, Iter<'a, Node<U>>>,
+            usize,
+        );
+
+        impl<'a, U: Ui> Iterator for InnerChain<'a, U> {
+            type Item = &'a Node<U>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.0.next()
+            }
+        }
+
+        impl<'a, U: Ui> DoubleEndedIterator for InnerChain<'a, U> {
+            fn next_back(&mut self) -> Option<Self::Item> {
+                self.0.next_back()
+            }
+        }
+
+        impl<'a, U: Ui> ExactSizeIterator for InnerChain<'a, U> {
+            fn len(&self) -> usize {
+                self.1
+            }
+        }
+
+        InnerChain(
+            self.nodes.iter().chain(self.floating.iter()),
+            self.nodes.len() + self.floating.len(),
+        )
     }
 
     /// Returns an [`Iterator`] over the names of [`File`]s
