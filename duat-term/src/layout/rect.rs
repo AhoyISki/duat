@@ -7,7 +7,7 @@ use cassowary::{
 };
 use duat_core::ui::{
     Axis::{self, *},
-    Corner, PushSpecs, SpawnSpecs,
+    PushSpecs, SpawnSpecs,
 };
 
 use super::{Constraints, Layout};
@@ -77,7 +77,7 @@ pub struct Rect {
     tl: VarPoint,
     br: VarPoint,
     eqs: Vec<Equality>,
-    pub is_floating: bool,
+    is_floating: bool,
     kind: Kind,
     on_files: bool,
     edge: Option<Variable>,
@@ -355,25 +355,8 @@ impl Rect {
         self.edge
     }
 
-    /// Two [`Expression`]s representing a corner of the [`Rect`]
-    ///
-    /// The first one is the vertical component, the second one is the
-    /// horizontal.
-    pub fn corner_exprs(&self, corner: Corner) -> [Expression; 2] {
-        match corner {
-            Corner::TopLeft => [self.tl.y().into(), self.tl.x().into()],
-            Corner::Top => [self.tl.y().into(), (self.tl.x() + self.br.x()) / 2.0],
-            Corner::TopRight => [self.tl.y().into(), self.br.x().into()],
-            Corner::Right => [(self.tl.y() + self.br.y()) / 2.0, self.br.x().into()],
-            Corner::BottomRight => [self.br.y().into(), self.br.x().into()],
-            Corner::Bottom => [self.br.y().into(), (self.tl.x() + self.br.x()) / 2.0],
-            Corner::BottomLeft => [self.br.y().into(), self.tl.x().into()],
-            Corner::Left => [(self.tl.y() + self.br.y()) / 2.0, self.tl.x().into()],
-            Corner::Center => [
-                (self.tl.y() + self.br.y()) / 2.0,
-                (self.tl.x() + self.br.x()) / 2.0,
-            ],
-        }
+    pub fn is_floating(&self) -> bool {
+        self.is_floating
     }
 }
 
@@ -457,23 +440,46 @@ impl Rects {
 
     /// Spawns a new floating [`Rect`]
     pub fn spawn(&mut self, specs: SpawnSpecs, id: AreaId, p: &Printer, info: PrintInfo) -> AreaId {
+        use duat_core::ui::Orientation::*;
         let parent = self.get(id).unwrap();
         let mut rect = Rect::new(p, false, Kind::end(info), true);
 
         rect.set_spawned_eqs(p);
 
-        let mut strength = STRONG - 1.0;
-        for &[from, anchor] in &specs.choices {
-            let [from_y, from_x] = parent.corner_exprs(from);
-            let [anchor_y, anchor_x] = rect.corner_exprs(anchor);
-            rect.eqs.extend([
-                // any value other than (x|y)_diff == 0.0 should result in an impossibly high (or
-                // low) value, disabling both expressions if one of them fails.
-                from_y.clone() | EQ(strength) | anchor_y,
-                from_x.clone() | EQ(strength) | anchor_x,
-            ]);
-            strength -= 1.0;
-        }
+        // Left/bottom, center, right/top, above/left, below/right strengths
+        let [lb_str, c_str, rt_str, al_str, br_str] = match specs.orientation() {
+            VerLeftAbove => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG + 1.0, STRONG],
+            VerCenterAbove => [STRONG + 1.0, STRONG + 2.0, STRONG, STRONG + 1.0, STRONG],
+            VerRightAbove => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG + 1.0, STRONG],
+            VerLeftBelow => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG, STRONG + 1.0],
+            VerCenterBelow => [STRONG + 1.0, STRONG + 2.0, STRONG, STRONG, STRONG + 1.0],
+            VerRightBelow => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG, STRONG + 1.0],
+            HorTopLeft => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG + 1.0, STRONG],
+            HorCenterLeft => [STRONG, STRONG + 2.0, STRONG + 1.0, STRONG + 1.0, STRONG],
+            HorBottomLeft => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG + 1.0, STRONG],
+            HorTopRight => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG, STRONG + 1.0],
+            HorCenterRight => [STRONG + 1.0, STRONG + 2.0, STRONG, STRONG, STRONG + 1.0],
+            HorBottomRight => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG, STRONG + 1.0],
+        };
+
+        rect.eqs.extend(match specs.orientation() {
+            VerLeftAbove | VerCenterAbove | VerRightAbove | VerLeftBelow | VerCenterBelow
+            | VerRightBelow => [
+                rect.br.y() | EQ(al_str) | parent.tl.y(),
+                rect.tl.y() | EQ(br_str) | parent.br.y(),
+                rect.tl.x() | EQ(lb_str) | parent.tl.x(),
+                rect.tl.x() + rect.br.x() | EQ(c_str) | parent.tl.x() + parent.br.x(),
+                rect.br.x() | EQ(rt_str) | parent.br.x(),
+            ],
+            HorTopRight | HorCenterRight | HorBottomRight | HorTopLeft | HorCenterLeft
+            | HorBottomLeft => [
+                rect.br.x() | EQ(al_str) | parent.tl.x(),
+                rect.tl.x() | EQ(br_str) | parent.br.x(),
+                rect.br.y() | EQ(lb_str) | parent.br.y(),
+                rect.br.y() + rect.tl.y() | EQ(c_str) | (parent.br.y() + parent.tl.y()),
+                rect.tl.y() | EQ(rt_str) | parent.tl.y(),
+            ],
+        });
 
         let id = rect.id;
 

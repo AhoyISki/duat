@@ -117,7 +117,7 @@ impl Area {
                 print_iter(iter, lines.cap(), cfg, s_points)
             };
 
-            (lines, iter, rect.is_floating)
+            (lines, iter, rect.is_floating())
         };
 
         let mut style_was_set = false;

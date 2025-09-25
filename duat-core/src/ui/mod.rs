@@ -735,7 +735,7 @@ impl PushSpecs {
 #[derive(Debug, Clone)]
 pub struct SpawnSpecs {
     /// Potential spawning [`Corner`]s to connect to and from
-    pub choices: Vec<[Corner; 2]>,
+    orientation: Orientation,
     ver_cons: [Option<Constraint>; 4],
     hor_cons: [Option<Constraint>; 4],
     is_hidden: bool,
@@ -743,9 +743,9 @@ pub struct SpawnSpecs {
 
 impl SpawnSpecs {
     /// Returns a new [`SpawnSpecs`] from possible [`Corner`]s
-    pub fn new(choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
+    pub const fn new(orientation: Orientation) -> Self {
         Self {
-            choices: choices.into_iter().collect(),
+            orientation,
             ver_cons: [None; 4],
             hor_cons: [None; 4],
             is_hidden: false,
@@ -765,65 +765,64 @@ impl SpawnSpecs {
     /// memorize how to "revert" said revealing/hiding.
     ///
     /// [`PushSpecs::hor_len(0.0)`]: PushSpecs::hor_len
-    pub fn hidden(self) -> Self {
+    pub const fn hidden(self) -> Self {
         Self { is_hidden: true, ..self }
     }
 
-    /// Adds more [`Corner`]s as fallback to spawn on
-    pub fn with_fallbacks(mut self, choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
-        self.choices.extend(choices);
-        self
-    }
-
     /// Sets the required vertical length
-    pub fn ver_len(mut self, len: f32) -> Self {
+    pub const fn ver_len(mut self, len: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Len(len));
         self
     }
 
     /// Sets the minimum vertical length
-    pub fn ver_min(mut self, min: f32) -> Self {
+    pub const fn ver_min(mut self, min: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Min(min));
         self
     }
 
     /// Sets the maximum vertical length
-    pub fn ver_max(mut self, max: f32) -> Self {
+    pub const fn ver_max(mut self, max: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Max(max));
         self
     }
 
     /// Sets the vertical ratio between it and its parent
-    pub fn ver_ratio(mut self, den: u16, div: u16) -> Self {
+    pub const fn ver_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
         self
     }
 
     /// Sets the required horizontal length
-    pub fn hor_len(mut self, len: f32) -> Self {
+    pub const fn hor_len(mut self, len: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Len(len));
         self
     }
 
     /// Sets the minimum horizontal length
-    pub fn hor_min(mut self, min: f32) -> Self {
+    pub const fn hor_min(mut self, min: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Min(min));
         self
     }
 
     /// Sets the maximum horizontal length
-    pub fn hor_max(mut self, max: f32) -> Self {
+    pub const fn hor_max(mut self, max: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Max(max));
         self
     }
 
     /// Sets the horizontal ratio between it and its parent
-    pub fn hor_ratio(mut self, den: u16, div: u16) -> Self {
+    pub const fn hor_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
         self
     }
 
     ////////// Querying functions
+
+    /// Where the spawned [`Widget`] is supposed to go
+    pub const fn orientation(&self) -> Orientation {
+        self.orientation
+    }
 
     /// An [`Iterator`] over the vertical [`Constraint`]s
     pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
@@ -968,27 +967,91 @@ impl Side {
     }
 }
 
-/// A corner to attach a floating [`Widget`] to and from
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Corner {
-    /// Attach on/from the top left corner
-    TopLeft,
-    /// Attach on/from the top
-    Top,
-    /// Attach on/from the top right corner
-    TopRight,
-    /// Attach on/from the right
-    Right,
-    /// Attach on/from the bottom right corner
-    BottomRight,
-    /// Attach on/from the bottom
-    Bottom,
-    /// Attach on/from the bottom left  corner
-    BottomLeft,
-    /// Attach on/from the left
-    Left,
-    /// Attach on/from the center
-    Center,
+/// Where to place a spawned [`Widget`]
+///
+/// The `Orientation` has 3 components of positioning, which follow
+/// priorities in order to relocate the `Widget` in case there isn't
+/// enough space. Respectively, they are the following:
+///
+/// - An axis to align the `Widget`.
+/// - How to align said `Widget` on said axis.
+/// - Which side of the parent should be prioritized.
+///
+/// For example, [`Orientation::HorTopLeft`] means: Spawn this
+/// `Widget` horizontally, trying to align its top edge with the top
+/// edge of the parent, prioritizing the left side. Visually speaking,
+/// it will try to spawn a `Widget` like this:
+///
+/// ```text
+/// ╭─────────┬────────╮
+/// │         │ Parent │
+/// │ Spawned ├────────╯
+/// │         │
+/// ╰─────────╯
+/// ```
+///
+/// Notice that their tops are aligned, the edges connect on the
+/// horizontal axis, and it is on the left side. However, if there is
+/// not enough space, (e.g. the parent is very close to the bottom
+/// left edge of the screen) it might try to spawn it like this:
+///
+/// ```text
+/// ╭─────────╮                                 ╭─────────╮
+/// │         ├────────╮                        │         │
+/// │ Spawned │ Parent │, or even like ╭────────┤ Spawned │
+/// │         ├────────╯               │ Parent │         │
+/// ╰─────────╯                        ╰────────┴─────────╯
+/// ```
+///
+/// This prioritization gives more flexibility to the spawning of
+/// `Widget`s, which usually follows patterns of where to spawn and
+/// how to place things, mostly to prevent obscuring information. The
+/// most notable example of this are completion lists. For obvious
+/// reasons, those should only be placed above or below (`Ver`),
+/// alignment should try to be on the left edge (`VerLeft`), and
+/// ideally below the cursor ([`Orientation::VerLeftBelow`]).
+/// Likewise, these completion lists are sometimes accompanied by
+/// description panels, which should ideally follow a
+/// [`HorCenterRight`] or [`HorBottomRight`] orientation.
+///
+/// [`HorCenterRight`]: Orientation::HorCenterRight
+/// [`HorBottomRight`]: Orientation::HorBottomRight
+#[derive(Clone, Copy, Debug)]
+pub enum Orientation {
+    /// Place the [`Widget`] vertically, prioritizing the left edge
+    /// above
+    VerLeftAbove,
+    /// Place the [`Widget`] vertically, prioritizing centering above
+    VerCenterAbove,
+    /// Place the [`Widget`] vertically, prioritizing the right edge
+    /// above
+    VerRightAbove,
+    /// Place the [`Widget`] vertically, prioritizing the left edge
+    /// below
+    VerLeftBelow,
+    /// Place the [`Widget`] vertically, prioritizing centering below
+    VerCenterBelow,
+    /// Place the [`Widget`] vertically, prioritizing the right edge
+    /// below
+    VerRightBelow,
+    /// Place the [`Widget`] horizontally, prioritizing the top edge
+    /// on the left
+    HorTopLeft,
+    /// Place the [`Widget`] horizontally, prioritizing centering
+    /// on the left
+    HorCenterLeft,
+    /// Place the [`Widget`] horizontally, prioritizing the right edge
+    /// on the left
+    HorBottomLeft,
+    /// Place the [`Widget`] horizontally, prioritizing the top edge
+    /// on the right
+    HorTopRight,
+    /// Place the [`Widget`] horizontally, prioritizing centering
+    /// on the right
+    HorCenterRight,
+    /// Place the [`Widget`] horizontally, prioritizing the bottom
+    /// edge on the right
+    HorBottomRight,
 }
 
 /// A struct representing a "visual position" on the screen

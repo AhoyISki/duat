@@ -86,7 +86,7 @@ impl<U: Ui> Windows<U> {
             .read(pa)
             .windows
             .iter()
-            .position(|win| win.nodes.iter().any(|node| *node == to))
+            .position(|win| win.nodes().any(|node| *node == to))
             .unwrap();
 
         let widget_id = AreaId::new();
