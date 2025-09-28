@@ -122,10 +122,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn cfg() -> Self::Cfg {
-        StatusLineCfg {
-            fns: None,
-            specs: PushSpecs::below().ver_len(1.0),
-        }
+        StatusLineCfg::default()
     }
 
     fn text(&self) -> &Text {
@@ -148,15 +145,16 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 }
 
 /// The [`WidgetCfg`] for a [`StatusLine`]
+#[derive(Default)]
 pub struct StatusLineCfg<U: Ui> {
-    fns: Option<(BuilderFn<U>, CheckerFn)>,
-    specs: PushSpecs,
+    fns: Option<(BuilderFn<U>, CheckerFn)> = None,
+    specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
 }
 
 impl<U: Ui> StatusLineCfg<U> {
     #[doc(hidden)]
-    pub fn new_with(fns: (BuilderFn<U>, CheckerFn), specs: PushSpecs) -> Self {
-        Self { fns: Some(fns), specs }
+    pub fn new_with(fns: (BuilderFn<U>, CheckerFn)) -> Self {
+        Self { fns: Some(fns), .. }
     }
 
     /// Replaces the previous formatting with a new one
@@ -167,7 +165,7 @@ impl<U: Ui> StatusLineCfg<U> {
     /// Puts the [`StatusLine`] above, as opposed to below
     pub fn above(self) -> Self {
         Self {
-            specs: PushSpecs::above().ver_len(1.0),
+            specs: PushSpecs { side: Side::Above, ..self.specs },
             ..self
         }
     }
@@ -175,21 +173,7 @@ impl<U: Ui> StatusLineCfg<U> {
     /// Puts the [`StatusLine`] below, this is the default
     pub fn below(self) -> Self {
         Self {
-            specs: PushSpecs::below().ver_len(1.0),
-            ..self
-        }
-    }
-
-    /// Puts the [`StatusLine`] on the right, instead of below
-    ///
-    /// use this if you want a single line [`StatusLine`],
-    /// [`PromptLine`]/[`Notifications`] combo.
-    ///
-    /// [`PromptLine`]: super::PromptLine
-    /// [`Notifications`]: super::Notifications
-    pub fn right_ratioed(self, den: u16, div: u16) -> Self {
-        Self {
-            specs: self.specs.to_right().hor_ratio(den, div),
+            specs: PushSpecs { side: Side::Below, ..self.specs },
             ..self
         }
     }
@@ -208,7 +192,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             (builder, checker)
         } else {
             let mode_txt = mode_txt(pa);
-            let cfg = match self.specs.side() {
+            let cfg = match self.specs.side {
                 Side::Above | Side::Below => {
                     macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
                 }
@@ -234,12 +218,6 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             checker: Box::new(checker_fn),
         };
         (widget, self.specs)
-    }
-}
-
-impl<U: Ui> Default for StatusLineCfg<U> {
-    fn default() -> Self {
-        StatusLine::cfg()
     }
 }
 
@@ -424,7 +402,6 @@ mod macros {
                 }),
                 Box::new(checker)
             ),
-            PushSpecs::below().ver_len(1.0),
         )
     }}
 }

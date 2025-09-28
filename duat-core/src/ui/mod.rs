@@ -282,10 +282,10 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
     ////////// Constraint changing functions
 
     /// Changes the horizontal constraint of the area
-    fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
+    fn set_width(&self, width: f32) -> Result<(), Text>;
 
     /// Changes the vertical constraint of the area
-    fn constrain_ver(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
+    fn set_height(&self, height: f32) -> Result<(), Text>;
 
     /// Changes [`Constraint`]s such that the [`Area`] becomes
     /// hidden
@@ -296,7 +296,7 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), Text>;
+    fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text>;
 
     /// Scrolls the [`Text`] veritcally by an amount
     ///
@@ -497,173 +497,44 @@ impl From<PushSpecs> for Axis {
 ///
 /// ```rust
 /// use duat_core::ui::PushSpecs;
-/// let specs = PushSpecs::left().hor_len(3.0).ver_ratio(2, 3);
+/// let specs = PushSpecs {
+///     side: Side::Left,
+///     width: Some(3.0),
+///     height: None,
+///     hidden: false,
+/// };
 /// ```
 ///
 /// Then the widget should be pushed to the left, with a width of 3,
-/// and its height should be equal to two thirds of the area directly
-/// below.
-#[derive(Clone, Copy, Debug)]
+/// an unspecified height, and _not_ hidden by default. Note that,
+/// with `#[feature(default_field_values)]`, the same can be
+/// accomplished by the following:
+///
+/// ```rust
+/// let specs = PushSpecs { side: Side::left, width: Some(3.0), .. };
+/// ```
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PushSpecs {
-    side: Side,
-    ver_cons: [Option<Constraint>; 4],
-    hor_cons: [Option<Constraint>; 4],
-    is_hidden: bool,
+    /// Which [`Side`] to push the [`Widget`] to
+    pub side: Side = Side::Below,
+    /// A width (in character cells) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub width: Option<f32> = None,
+    /// A height (in lines) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub height: Option<f32> = None,
+    /// Hide this `Widget` by default
+    ///
+    /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
+    /// this property.
+    pub hidden: bool = false,
 }
 
 impl PushSpecs {
-    /// Push the [`Widget`] to the left
-    pub const fn left() -> Self {
-        Self {
-            side: Side::Left,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Push the [`Widget`] to the right
-    pub const fn right() -> Self {
-        Self {
-            side: Side::Right,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Push the [`Widget`] above
-    pub const fn above() -> Self {
-        Self {
-            side: Side::Above,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Push the [`Widget`] below
-    pub const fn below() -> Self {
-        Self {
-            side: Side::Below,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Turns this [`Widget`] hidden by default
-    ///
-    /// Hiding [`Widget`]s, as opposed to calling something like
-    /// [`PushSpecs::hor_len(0.0)`] has a few advantages.
-    ///
-    /// - Can be undone just by calling [`Area::reveal`]
-    /// - Can be redone just by calling [`Area::hide`]
-    ///
-    /// This makes it "agnostic" to what the actual constraint is at
-    /// the time, thus letting you reveal and hide without having to
-    /// memorize how to "revert" said revealing/hiding.
-    ///
-    /// [`PushSpecs::hor_len(0.0)`]: PushSpecs::hor_len
-    pub const fn hidden(self) -> Self {
-        Self { is_hidden: true, ..self }
-    }
-
-    /// Changes the direction of pushing to the left
-    pub const fn to_left(self) -> Self {
-        Self { side: Side::Left, ..self }
-    }
-
-    /// Changes the direction of pushing to the right
-    pub const fn to_right(self) -> Self {
-        Self { side: Side::Right, ..self }
-    }
-
-    /// Changes the direction of pushing to above
-    pub const fn to_above(self) -> Self {
-        Self { side: Side::Above, ..self }
-    }
-
-    /// Changes the direction of pushing to below
-    pub const fn to_below(self) -> Self {
-        Self { side: Side::Below, ..self }
-    }
-
-    /// Sets the required vertical length
-    pub const fn ver_len(mut self, len: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum vertical length
-    pub const fn ver_min(mut self, min: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum vertical length
-    pub const fn ver_max(mut self, max: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the vertical ratio between it and its parent
-    pub const fn ver_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    /// Adds a vertical [`Constraint`] directly
-    ///
-    /// Use this if you want to dinamically work with multiple kinds
-    /// of [`Constraint`]. Otherwise, the other `ver_*` methods are
-    /// more readable.
-    pub const fn constrain_ver(mut self, con: Constraint) -> Self {
-        constrain(&mut self.ver_cons, con);
-        self
-    }
-
-    /// Sets the required horizontal length
-    pub const fn hor_len(mut self, len: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum horizontal length
-    pub const fn hor_min(mut self, min: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum horizontal length
-    pub const fn hor_max(mut self, max: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the horizontal ratio between it and its parent
-    pub const fn hor_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    /// Adds a horizontal [`Constraint`] directly
-    ///
-    /// Use this if you want to dinamically work with multiple kinds
-    /// of [`Constraint`]. Otherwise, the other `hor_*` methods are
-    /// more readable.
-    pub const fn constrain_hor(mut self, con: Constraint) -> Self {
-        constrain(&mut self.hor_cons, con);
-        self
-    }
-
-    /// Wether this [`Widget`] should default to being [hidden] or not
-    ///
-    /// [hidden]: Self::hidden
-    pub const fn is_hidden(&self) -> bool {
-        self.is_hidden
-    }
-
     /// The [`Axis`] where it will be pushed
     ///
     /// - left/right: [`Axis::Horizontal`]
@@ -675,11 +546,6 @@ impl PushSpecs {
         }
     }
 
-    /// The [`Side`] where it will be pushed
-    pub const fn side(&self) -> Side {
-        self.side
-    }
-
     /// Wether this "comes earlier" on the screen
     ///
     /// This returns true if `self.side() == Side::Left || self.side()
@@ -689,257 +555,12 @@ impl PushSpecs {
         matches!(self.side, Side::Left | Side::Above)
     }
 
-    /// An [`Iterator`] over the vertical constraints
-    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
-        self.ver_cons.into_iter().flatten()
-    }
-
-    /// An [`Iterator`] over the horizontal constraints
-    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
-        self.hor_cons.into_iter().flatten()
-    }
-
     /// The constraints on a given [`Axis`]
-    pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
+    pub fn len_on(&self, axis: Axis) -> Option<f32> {
         match axis {
-            Axis::Horizontal => self.hor_cons.into_iter().flatten(),
-            Axis::Vertical => self.ver_cons.into_iter().flatten(),
+            Axis::Horizontal => self.width,
+            Axis::Vertical => self.height,
         }
-    }
-
-    /// Wether it is resizable in an [`Axis`]
-    ///
-    /// It will be resizable if there are no [`Constraint::Len`] in
-    /// that [`Axis`].
-    pub const fn is_resizable_on(&self, axis: Axis) -> bool {
-        let cons = match axis {
-            Axis::Horizontal => &self.hor_cons,
-            Axis::Vertical => &self.ver_cons,
-        };
-
-        let mut i = 0;
-
-        while i < 4 {
-            let (None | Some(Constraint::Min(..) | Constraint::Max(..))) = cons[i] else {
-                return false;
-            };
-
-            i += 1;
-        }
-
-        true
-    }
-}
-
-/// Much like [`PushSpecs`], but for floating [`Widget`]s
-#[derive(Debug, Clone)]
-pub struct SpawnSpecs {
-    /// Potential spawning [`Corner`]s to connect to and from
-    orientation: Orientation,
-    ver_cons: [Option<Constraint>; 4],
-    hor_cons: [Option<Constraint>; 4],
-    is_hidden: bool,
-}
-
-impl SpawnSpecs {
-    /// Returns a new [`SpawnSpecs`] from possible [`Corner`]s
-    pub const fn new(orientation: Orientation) -> Self {
-        Self {
-            orientation,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Turns this [`Widget`] hidden by default
-    ///
-    /// Hiding [`Widget`]s, as opposed to calling something like
-    /// [`PushSpecs::hor_len(0.0)`] has a few advantages.
-    ///
-    /// - Can be undone just by calling [`Area::reveal`]
-    /// - Can be redone just by calling [`Area::hide`]
-    ///
-    /// This makes it "agnostic" to what the actual constraint is at
-    /// the time, thus letting you reveal and hide without having to
-    /// memorize how to "revert" said revealing/hiding.
-    ///
-    /// [`PushSpecs::hor_len(0.0)`]: PushSpecs::hor_len
-    pub const fn hidden(self) -> Self {
-        Self { is_hidden: true, ..self }
-    }
-
-    /// Sets the required vertical length
-    pub const fn ver_len(mut self, len: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum vertical length
-    pub const fn ver_min(mut self, min: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum vertical length
-    pub const fn ver_max(mut self, max: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the vertical ratio between it and its parent
-    pub const fn ver_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    /// Sets the required horizontal length
-    pub const fn hor_len(mut self, len: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum horizontal length
-    pub const fn hor_min(mut self, min: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum horizontal length
-    pub const fn hor_max(mut self, max: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the horizontal ratio between it and its parent
-    pub const fn hor_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    ////////// Querying functions
-
-    /// Where the spawned [`Widget`] is supposed to go
-    pub const fn orientation(&self) -> Orientation {
-        self.orientation
-    }
-
-    /// An [`Iterator`] over the vertical [`Constraint`]s
-    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
-        self.ver_cons.into_iter().flatten()
-    }
-
-    /// An [`Iterator`] over the horizontal [`Constraint`]s
-    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
-        self.hor_cons.into_iter().flatten()
-    }
-
-    /// The constraints on a given [`Axis`]
-    pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
-        match axis {
-            Axis::Horizontal => self.hor_cons.into_iter().flatten(),
-            Axis::Vertical => self.ver_cons.into_iter().flatten(),
-        }
-    }
-
-    /// Wether this [`Widget`] should default to being [hidden] or not
-    ///
-    /// [hidden]: Self::hidden
-    pub const fn is_hidden(&self) -> bool {
-        self.is_hidden
-    }
-
-    /// Wether it is resizable in an [`Axis`]
-    ///
-    /// It will be resizable if there are no [`Constraint::Len`] in
-    /// that [`Axis`].
-    pub fn is_resizable_on(&self, axis: Axis) -> bool {
-        let cons = match axis {
-            Axis::Horizontal => &self.hor_cons,
-            Axis::Vertical => &self.ver_cons,
-        };
-        cons.iter()
-            .flatten()
-            .all(|con| matches!(con, Constraint::Min(..) | Constraint::Max(..)))
-    }
-}
-
-/// A constraint used to determine the size of [`Widget`]s
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Constraint {
-    /// Constrain this dimension to a certain length
-    Len(f32),
-    /// The length in this dimension must be at least this long
-    Min(f32),
-    /// The length in this dimension must be at most this long
-    Max(f32),
-    /// The length in this dimension should be this fraction of its
-    /// parent
-    Ratio(u16, u16),
-}
-
-impl Eq for Constraint {}
-
-#[allow(clippy::non_canonical_partial_ord_impl)]
-impl PartialOrd for Constraint {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        fn discriminant(con: &Constraint) -> usize {
-            match con {
-                Constraint::Len(_) => 0,
-                Constraint::Min(_) => 1,
-                Constraint::Max(_) => 2,
-                Constraint::Ratio(..) => 3,
-            }
-        }
-        match (self, other) {
-            (Constraint::Len(lhs), Constraint::Len(rhs)) => lhs.partial_cmp(rhs),
-            (Constraint::Min(lhs), Constraint::Min(rhs)) => lhs.partial_cmp(rhs),
-            (Constraint::Max(lhs), Constraint::Max(rhs)) => lhs.partial_cmp(rhs),
-            (Constraint::Ratio(lhs_den, lhs_div), Constraint::Ratio(rhs_den, rhs_div)) => {
-                (lhs_den, lhs_div).partial_cmp(&(rhs_den, rhs_div))
-            }
-            (lhs, rhs) => discriminant(lhs).partial_cmp(&discriminant(rhs)),
-        }
-    }
-}
-
-impl Ord for Constraint {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-impl Constraint {
-    /// Returns `true` if the constraint is [`Len`].
-    ///
-    /// [`Len`]: Constraint::Len
-    #[must_use]
-    pub fn is_len(&self) -> bool {
-        matches!(self, Self::Len(..))
-    }
-
-    /// Returns `true` if the constraint is [`Min`].
-    ///
-    /// [`Min`]: Constraint::Min
-    #[must_use]
-    pub fn is_min(&self) -> bool {
-        matches!(self, Self::Min(..))
-    }
-
-    /// Returns `true` if the constraint is [`Max`].
-    ///
-    /// [`Max`]: Constraint::Max
-    #[must_use]
-    pub fn is_max(&self) -> bool {
-        matches!(self, Self::Max(..))
-    }
-
-    /// Returns `true` if the constraint is [`Ratio`].
-    ///
-    /// [`Ratio`]: Constraint::Ratio
-    #[must_use]
-    pub fn is_ratio(&self) -> bool {
-        matches!(self, Self::Ratio(..))
     }
 }
 
@@ -963,6 +584,38 @@ impl Side {
         match self {
             Side::Above | Side::Below => Axis::Vertical,
             Side::Right | Side::Left => Axis::Horizontal,
+        }
+    }
+}
+
+/// Much like [`PushSpecs`], but for floating [`Widget`]s
+#[derive(Debug, Clone)]
+pub struct SpawnSpecs {
+    /// Potential spawning [`Corner`]s to connect to and from
+    pub orientation: Orientation = Orientation::VerLeftBelow,
+    /// A width (in character cells) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub width: Option<f32> = None,
+    /// A height (in lines) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub height: Option<f32> = None,
+    /// Hide this `Widget` by default
+    ///
+    /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
+    /// this property.
+    pub hidden: bool = false,
+}
+
+impl SpawnSpecs {
+    /// The constraints on a given [`Axis`]
+    pub fn len_on(&self, axis: Axis) -> Option<f32> {
+        match axis {
+            Axis::Horizontal => self.width,
+            Axis::Vertical => self.height,
         }
     }
 }
@@ -1079,25 +732,6 @@ impl Caret {
     #[inline(always)]
     pub fn new(x: u32, len: u32, wrap: bool) -> Self {
         Self { x, len, wrap }
-    }
-}
-
-const fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
-    let mut i = 0;
-
-    while i < 4 {
-        i += 1;
-
-        cons[i - 1] = match (cons[i - 1], con) {
-            (None, _)
-            | (Some(Constraint::Len(_)), Constraint::Len(_))
-            | (Some(Constraint::Min(_)), Constraint::Min(_))
-            | (Some(Constraint::Max(_)), Constraint::Max(_))
-            | (Some(Constraint::Ratio(..)), Constraint::Ratio(..)) => Some(con),
-            _ => continue,
-        };
-
-        break;
     }
 }
 

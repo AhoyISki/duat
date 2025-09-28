@@ -634,7 +634,8 @@
     fn_traits,
     iter_array_chunks,
     thread_spawn_hook,
-    box_as_ptr
+    box_as_ptr,
+    default_field_values
 )]
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]

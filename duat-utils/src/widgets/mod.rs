@@ -14,7 +14,8 @@
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
-    hook::{self, FocusedOn, UnfocusedFrom},
+    context,
+    hook::{self, FocusedOn, KeysSentTo, UnfocusedFrom},
     ui::{Area, AreaId, BuilderDummy, GetAreaId, Ui, Widget, WidgetAlias},
 };
 
@@ -25,6 +26,7 @@ pub use self::{
     prompt_line::{PromptLine, PromptLineCfg},
     status_line::{State, StatusLine, StatusLineCfg, status},
 };
+use crate::modes::Prompt;
 
 mod line_numbers;
 mod log_book;
@@ -135,7 +137,17 @@ impl<U: Ui> WidgetAlias<U, FooterWidgetsDummy> for FooterWidgets<U> {
         };
 
         let prompt_id = if self.is_one_line {
-            builder.push_to(status_id, self.prompt_cfg.left_ratioed(3, 7).hidden())
+            let prompt_id = builder.push_to(status_id, self.prompt_cfg.left().hidden());
+            hook::add::<KeysSentTo<Prompt<U>, U>, U>(move |pa, (_, handle)| {
+                if handle.area_id() == prompt_id
+                    && let Err(err) = handle
+                        .area(pa)
+                        .request_width_to_fit(handle.read(pa).print_cfg(), handle.text(pa))
+                {
+                    context::error!("{err}")
+                }
+            });
+            prompt_id
         } else {
             builder.push_to(status_id, self.prompt_cfg.below().hidden())
         };

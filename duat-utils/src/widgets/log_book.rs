@@ -3,10 +3,7 @@ use std::marker::PhantomData;
 use duat_core::{
     context::{Logs, Record},
     prelude::*,
-    ui::{
-        Constraint::{self, Len, Ratio},
-        Side,
-    },
+    ui::Side,
 };
 
 use crate::modes::Pager;
@@ -46,8 +43,8 @@ impl<U: Ui> Widget<U> for LogBook {
             close_on_unfocus: true,
             hidden: true,
             side: Side::Right,
-            height: Ratio(1, 4),
-            width: Ratio(2, 7),
+            height: 10.0,
+            width: 50.0,
             _ghost: PhantomData,
         }
     }
@@ -124,8 +121,8 @@ pub struct LogBookCfg<U> {
     close_on_unfocus: bool,
     hidden: bool,
     side: Side,
-    height: Constraint,
-    width: Constraint,
+    height: f32,
+    width: f32,
     _ghost: PhantomData<U>,
 }
 
@@ -175,29 +172,15 @@ impl<U> LogBookCfg<U> {
     /// Sets the height of the [`LogBook`]
     ///
     /// This is ignored if pushing to the left or to the right.
-    pub fn height(self, height: usize) -> Self {
-        Self { height: Len(height as f32), ..self }
+    pub fn height(self, height: f32) -> Self {
+        Self { height, ..self }
     }
 
     /// Sets the width of the [`LogBook`]
     ///
     /// This is ignored if pushing above or below.
-    pub fn width(self, width: usize) -> Self {
-        Self { width: Len(width as f32), ..self }
-    }
-
-    /// Sets a ratio for the height of the [`LogBook`]
-    ///
-    /// This is ignored if pushing to the left or to the right.
-    pub fn height_ratio(self, den: u16, div: u16) -> Self {
-        Self { height: Ratio(den, div), ..self }
-    }
-
-    /// Sets a ratio for the witdh of the [`LogBook`]
-    ///
-    /// This is ignored if pushing above or below.
-    pub fn width_ratio(self, den: u16, div: u16) -> Self {
-        Self { width: Ratio(den, div), ..self }
+    pub fn width(self, width: f32) -> Self {
+        Self { width, ..self }
     }
 }
 
@@ -215,7 +198,7 @@ impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
             text.insert_text(text.len(), rec_text);
         }
 
-        let lb = LogBook {
+        let widget = LogBook {
             logs,
             len_of_taken,
             text,
@@ -223,13 +206,19 @@ impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
             close_on_unfocus: self.close_on_unfocus,
         };
 
-        let specs = match self.side {
-            Side::Right => PushSpecs::right().constrain_hor(self.width),
-            Side::Left => PushSpecs::left().constrain_hor(self.width),
-            Side::Above => PushSpecs::above().constrain_ver(self.height),
-            Side::Below => PushSpecs::below().constrain_ver(self.height),
-        };
-
-        (lb, if self.hidden { specs.hidden() } else { specs })
+        (widget, match self.side {
+            Side::Right | Side::Left => PushSpecs {
+                side: self.side,
+                width: Some(self.width),
+                hidden: self.hidden,
+                ..
+            },
+            Side::Above | Side::Below => PushSpecs {
+                side: self.side,
+                height: Some(self.height),
+                hidden: self.hidden,
+                ..
+            },
+        })
     }
 }

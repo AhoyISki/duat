@@ -39,7 +39,7 @@
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
 use super::{PushSpecs, Ui};
-use crate::{file::File, prelude::Handle, text::Text};
+use crate::{file::File, prelude::Handle, text::Text, ui::Side};
 
 /// A form of organizing opened [`File`]s
 ///
@@ -85,9 +85,9 @@ where
     ) -> Result<(Handle<File<U>, U>, PushSpecs), Text> {
         let last = prev.last().unwrap().clone();
         Ok(if prev.len() == 1 {
-            (last, PushSpecs::right())
+            (last, PushSpecs { side: Side::Right, .. })
         } else {
-            (last, PushSpecs::below())
+            (last, PushSpecs { side: Side::Below, .. })
         })
     }
 }

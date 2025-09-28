@@ -1,4 +1,4 @@
-use duat_core::prelude::*;
+use duat_core::{prelude::*, ui::Side};
 
 use crate::Ui;
 
@@ -127,23 +127,23 @@ pub struct VertRuleCfg {
 
 impl VertRuleCfg {
     /// Returns a new instance of [`VertRuleCfg`].
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             sep_char: SepChar::Uniform('│'),
-            specs: PushSpecs::left().hor_len(1.0),
+            specs: PushSpecs { side: Side::Left, width: Some(1.0), .. },
         }
     }
 
     /// Puts this [`VertRule`] on the right
-    pub fn on_the_right(self) -> Self {
+    pub const fn on_the_right(self) -> Self {
         Self {
-            specs: PushSpecs::right().hor_len(1.0),
+            specs: PushSpecs { side: Side::Right, ..self.specs },
             ..self
         }
     }
 
     /// Sets a [`char`] to be displayed, is `'│'` by default
-    pub fn with_char(self, char: char) -> Self {
+    pub const fn with_char(self, char: char) -> Self {
         Self { sep_char: SepChar::Uniform(char), ..self }
     }
 
@@ -151,7 +151,7 @@ impl VertRuleCfg {
     /// `'│'` by default
     ///
     /// The lower and upper ranges are unaffected by this option.
-    pub fn with_main_char(self, main: char) -> Self {
+    pub const fn with_main_char(self, main: char) -> Self {
         Self {
             sep_char: match self.sep_char {
                 SepChar::Uniform(other) => SepChar::TwoWay(main, other),
@@ -166,7 +166,7 @@ impl VertRuleCfg {
     /// `'│'` by default
     ///
     /// The lower and upper ranges are unaffected by this option.
-    pub fn with_char_above(self, above: char) -> Self {
+    pub const fn with_char_above(self, above: char) -> Self {
         Self {
             sep_char: match self.sep_char {
                 SepChar::Uniform(other) => SepChar::ThreeWay(other, above, other),
@@ -177,7 +177,7 @@ impl VertRuleCfg {
         }
     }
 
-    pub fn with_char_below(self, below: char) -> Self {
+    pub const fn with_char_below(self, below: char) -> Self {
         Self {
             sep_char: match self.sep_char {
                 SepChar::Uniform(other) => SepChar::ThreeWay(other, other, below),

@@ -119,12 +119,12 @@ pub fn reset<W: Widget<U>, U: Ui>() {
 
 /// Resets to the default [`Mode`] of the given [`Widget`], on a
 /// given [`Handle<W, U>`]
-pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
+pub fn reset_to<U: Ui>(handle: Handle<dyn Widget<U>, U>) {
     let reset_modes = RESET_MODES.lock().unwrap();
 
     let i = reset_modes
         .iter()
-        .position(|(ty, _)| *ty == TypeId::of::<W>());
+        .position(|(ty, _)| *ty == handle.widget().type_id());
 
     if let Some(i) = i {
         *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
@@ -142,13 +142,10 @@ pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
                 false
             }
         }));
-    } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+    } else if handle.widget().type_id() == TypeId::of::<File<U>>() {
         panic!("Something went terribly wrong, somehow");
     } else {
-        context::error!(
-            "There is no default [a]Mode[] set for [a]{}[]",
-            crate::utils::duat_name::<W>()
-        );
+        context::error!("There is no default [a]Mode[] set for the [a]Widget",);
     };
 }
 
@@ -245,7 +242,7 @@ fn send_keys_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>)
         }
     };
 
-    hook::trigger(pa, KeysSentTo((sent_keys.clone(), handle.clone())));
+    hook::trigger(pa, KeysSentTo::<M, U>((sent_keys.clone(), handle.clone())));
     hook::trigger(pa, KeysSent(sent_keys));
 
     mode_fn

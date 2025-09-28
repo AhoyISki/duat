@@ -30,7 +30,7 @@ use crate::{
     hook::{self, FileWritten},
     mode::{Selection, Selections},
     text::{BuilderPart, Bytes, Text, txt},
-    ui::{Area, BuildInfo, PushSpecs, Ui, Widget, WidgetCfg},
+    ui::{Area, BuildInfo, PushSpecs, Side, Ui, Widget, WidgetCfg},
 };
 
 mod parser;
@@ -268,7 +268,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg<U> {
         }
 
         // The PushSpecs don't matter
-        (file, PushSpecs::above())
+        (file, PushSpecs { side: Side::Above, .. })
     }
 }
 

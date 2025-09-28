@@ -693,8 +693,8 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
-unsafe impl<W: Widget<U>, U: Ui, S> Send for Handle<W, U, S> {}
-unsafe impl<W: Widget<U>, U: Ui, S> Sync for Handle<W, U, S> {}
+unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Send for Handle<W, U, S> {}
+unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Sync for Handle<W, U, S> {}
 
 impl<W: Widget<U> + ?Sized, U: Ui, S> GetAreaId for Handle<W, U, S> {
     fn area_id(&self) -> AreaId {

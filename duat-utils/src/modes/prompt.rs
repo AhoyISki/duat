@@ -1,4 +1,9 @@
-use std::{io::Write, marker::PhantomData, sync::LazyLock};
+use std::{
+    any::TypeId,
+    io::Write,
+    marker::PhantomData,
+    sync::{Arc, LazyLock, Mutex, Once},
+};
 
 use duat_core::{prelude::*, text::Searcher};
 
@@ -33,33 +38,66 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///
 /// [`Parameter`]: cmd::Parameter
 /// [`Selection`]: mode::Selection
-#[derive(Clone)]
-pub struct Prompt<U: Ui, M: PromptMode<U> = RunCommands>(M, String, PhantomData<U>);
+pub struct Prompt<U: Ui> {
+    mode: Box<dyn PromptMode<U>>,
+    starting_text: String,
+    ty: TypeId,
+    clone_fn: Arc<Mutex<ModeCloneFn<U>>>,
+    reset_fn: fn(),
+}
 
-impl<M: PromptMode<U>, U: Ui> Prompt<U, M> {
+impl<U: Ui> Prompt<U> {
     /// Returns a new [`Prompt`] from this [`PromptMode`]
     ///
     /// For convenience, you should make it so `new` methods in
     /// [`PromptMode`] implementors return a [`Prompt<Self, U>`],
     /// rather than the [`PromptMode`] itself.
-    pub fn new(mode: M) -> Self {
-        Self(mode, String::new(), PhantomData)
+    pub fn new<M: PromptMode<U> + Clone>(mode: M) -> Self {
+        let clone_fn = Arc::new(Mutex::new({
+            let mode = mode.clone();
+            move || -> Box<dyn PromptMode<U>> { Box::new(mode.clone()) }
+        }));
+        Self {
+            mode: Box::new(mode),
+            starting_text: String::new(),
+            ty: TypeId::of::<M>(),
+            clone_fn,
+            reset_fn: mode::reset::<M::ExitWidget, U>,
+        }
     }
 
     /// Returns a new [`Prompt`] with some initial text
-    pub fn new_with(mode: M, initial: impl ToString) -> Self {
-        Self(mode, initial.to_string(), PhantomData)
+    pub fn new_with<M: PromptMode<U> + Clone>(mode: M, initial: impl ToString) -> Self {
+        let clone_fn = Arc::new(Mutex::new({
+            let mode = mode.clone();
+            move || -> Box<dyn PromptMode<U>> { Box::new(mode.clone()) }
+        }));
+        Self {
+            mode: Box::new(mode),
+            starting_text: initial.to_string(),
+            ty: TypeId::of::<M>(),
+            clone_fn,
+            reset_fn: mode::reset::<M::ExitWidget, U>,
+        }
     }
 }
 
-impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<U, M> {
+impl<U: Ui> mode::Mode<U> for Prompt<U> {
     type Widget = PromptLine<U>;
 
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
         let mut update = |pa: &mut Pass| {
             let text = std::mem::take(handle.write(pa).text_mut());
-            let text = self.0.update(pa, text, handle.area(pa));
+            let text = self.mode.update(pa, text, handle.area(pa));
             *handle.write(pa).text_mut() = text;
+        };
+        
+        let reset = |prompt: &mut Self| {
+            if let Some(ret_handle) = prompt.mode.return_handle() {
+                mode::reset_to(ret_handle);
+            } else {
+                (prompt.reset_fn)();
+            }
         };
 
         match key {
@@ -69,10 +107,10 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<U, M> {
 
                     update(pa);
 
-                    if let Some(ret_handle) = self.0.return_handle() {
+                    if let Some(ret_handle) = self.mode.return_handle() {
                         mode::reset_to(ret_handle);
                     } else {
-                        mode::reset::<M::ExitWidget, U>();
+                        (self.reset_fn)();
                     }
                 } else {
                     handle.edit_main(pa, |mut e| {
@@ -115,23 +153,13 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<U, M> {
                 });
                 handle.write(pa).text_mut().selections_mut().clear();
                 update(pa);
-
-                if let Some(ret_handle) = self.0.return_handle() {
-                    mode::reset_to(ret_handle);
-                } else {
-                    mode::reset::<M::ExitWidget, U>();
-                }
+                reset(self);
             }
             key!(KeyCode::Enter) => {
                 handle.write(pa).text_mut().selections_mut().clear();
 
                 update(pa);
-
-                if let Some(ret_handle) = self.0.return_handle() {
-                    mode::reset_to(ret_handle);
-                } else {
-                    mode::reset::<M::ExitWidget, U>();
-                }
+                reset(self);
             }
             _ => {}
         }
@@ -141,26 +169,37 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<U, M> {
         let text = {
             let pl = handle.write(pa);
             *pl.text_mut() = Text::new_with_selections();
-            pl.text_mut().replace_range(0..0, &self.1);
-            run_once::<M, U>();
+            pl.text_mut().replace_range(0..0, &self.starting_text);
 
-            let tag = Ghost(match pl.prompt_of::<M>() {
+            let tag = Ghost(match pl.prompt_of_id(self.ty) {
                 Some(text) => txt!("{text}[prompt.colon]:").build(),
-                None => txt!("{}[prompt.colon]:", self.0.prompt()).build(),
+                None => txt!("{}[prompt.colon]:", self.mode.prompt()).build(),
             });
             pl.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
 
             std::mem::take(pl.text_mut())
         };
 
-        let text = self.0.on_switch(pa, text, handle.area(pa));
+        let text = self.mode.on_switch(pa, text, handle.area(pa));
 
         *handle.write(pa).text_mut() = text;
     }
 
     fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
         let text = std::mem::take(handle.write(pa).text_mut());
-        self.0.before_exit(pa, text, handle.area(pa));
+        self.mode.before_exit(pa, text, handle.area(pa));
+    }
+}
+
+impl<U: Ui> Clone for Prompt<U> {
+    fn clone(&self) -> Self {
+        Self {
+            mode: self.clone_fn.lock().unwrap()(),
+            starting_text: self.starting_text.clone(),
+            ty: self.ty,
+            clone_fn: self.clone_fn.clone(),
+            reset_fn: self.reset_fn
+        }
     }
 }
 
@@ -224,10 +263,13 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<U, M> {
 ///
 /// [`U::Area`]: Ui::Area
 #[allow(unused_variables)]
-pub trait PromptMode<U: Ui>: Clone + Send + 'static {
+pub trait PromptMode<U: Ui>: Send + 'static {
     /// What [`Widget`] to exit to, upon pressing enter, esc, or
     /// backspace in an empty [`PromptLine`]
-    type ExitWidget: Widget<U> = File<U>;
+    type ExitWidget: Widget<U>
+        = File<U>
+    where
+        Self: Sized;
 
     /// Updates the [`PromptLine`] and [`Text`] of the [`Prompt`]
     ///
@@ -252,9 +294,6 @@ pub trait PromptMode<U: Ui>: Clone + Send + 'static {
     /// finishes the search, etc.
     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) {}
 
-    /// Things to do when this [`PromptMode`] is first instantiated
-    fn once() {}
-
     /// What text should be at the beginning of the [`PromptLine`], as
     /// a [`Ghost`]
     fn prompt(&self) -> Text;
@@ -262,7 +301,7 @@ pub trait PromptMode<U: Ui>: Clone + Send + 'static {
     /// An optional returning [`Handle`] for the [`ExitWidget`]
     ///
     /// [`ExitWidget`]: PromptMode::ExitWidget
-    fn return_handle(&self) -> Option<Handle<Self::ExitWidget, U>> {
+    fn return_handle(&self) -> Option<Handle<dyn Widget<U>, U>> {
         None
     }
 }
@@ -276,13 +315,26 @@ pub struct RunCommands;
 
 impl RunCommands {
     /// Crates a new [`RunCommands`]
-    pub fn new<U: Ui>() -> Prompt<U, Self> {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new<U: Ui>() -> Prompt<U> {
+        Self::call_once();
         Prompt::new(Self)
     }
 
     /// Opens a [`RunCommands`] with some initial text
-    pub fn new_with<U: Ui>(initial: impl ToString) -> Prompt<U, Self> {
+    pub fn new_with<U: Ui>(initial: impl ToString) -> Prompt<U> {
+        Self::call_once();
         Prompt::new_with(Self, initial)
+    }
+
+    fn call_once() {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            form::set_weak("caller.info", "accent.info");
+            form::set_weak("caller.error", "accent.error");
+            form::set_weak("parameter.info", "default.info");
+            form::set_weak("parameter.error", "default.error");
+        });
     }
 }
 
@@ -319,13 +371,6 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         if !call.is_empty() {
             cmd::queue_notify(call);
         }
-    }
-
-    fn once() {
-        form::set_weak("caller.info", "accent.info");
-        form::set_weak("caller.error", "accent.error");
-        form::set_weak("parameter.info", "default.info");
-        form::set_weak("parameter.error", "default.error");
     }
 
     fn prompt(&self) -> Text {
@@ -369,7 +414,15 @@ pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
     /// Returns a [`Prompt`] with [`IncSearch<I, U>`] as its
     /// [`PromptMode`]
-    pub fn new(inc: I) -> Prompt<U, Self> {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new(inc: I) -> Prompt<U> {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            form::set_weak("regex.error", "accent.error");
+            form::set_weak("regex.operator", "operator");
+            form::set_weak("regex.class", "constant");
+            form::set_weak("regex.bracket", "punctuation.bracket");
+        });
         Prompt::new(Self {
             inc,
             orig: None,
@@ -455,13 +508,6 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
         }
     }
 
-    fn once() {
-        form::set_weak("regex.error", "accent.error");
-        form::set_weak("regex.operator", "operator");
-        form::set_weak("regex.class", "constant");
-        form::set_weak("regex.bracket", "punctuation.bracket");
-    }
-
     fn prompt(&self) -> Text {
         txt!("{}", self.inc.prompt()).build()
     }
@@ -479,7 +525,8 @@ pub struct PipeSelections<U>(PhantomData<U>);
 impl<U: Ui> PipeSelections<U> {
     /// Returns a [`Prompt`] with [`PipeSelections`] as its
     /// [`PromptMode`]
-    pub fn new() -> Prompt<U, Self> {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new() -> Prompt<U> {
         Prompt::new(Self(PhantomData))
     }
 }
@@ -564,17 +611,5 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
     }
 }
 
-/// Runs the [`once`] function of widgets.
-///
-/// [`once`]: Widget::once
-fn run_once<M: PromptMode<U>, U: Ui>() {
-    use std::{any::TypeId, sync::Mutex};
+type ModeCloneFn<U> = dyn Fn() -> Box<dyn PromptMode<U>> + Send;
 
-    static LIST: LazyLock<Mutex<Vec<TypeId>>> = LazyLock::new(|| Mutex::new(Vec::new()));
-
-    let mut list = LIST.lock().unwrap();
-    if !list.contains(&TypeId::of::<M>()) {
-        M::once();
-        list.push(TypeId::of::<M>());
-    }
-}

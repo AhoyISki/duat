@@ -12,7 +12,7 @@
 //! [`File`]: duat_core::file::File
 use std::{fmt::Alignment, marker::PhantomData};
 
-use duat_core::{prelude::*, text::Builder, ui::Constraint};
+use duat_core::{prelude::*, text::Builder, ui::Side};
 
 /// Shows a column of line numbers beside the [`File`]
 ///
@@ -167,10 +167,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let width = handle.read(pa).calculate_width(pa);
-        handle
-            .area(pa)
-            .constrain_hor([Constraint::Len(width + 1.0)])
-            .unwrap();
+        handle.area(pa).set_width(width + 1.0).unwrap();
 
         handle.write(pa).text = handle.read(pa).form_text(pa);
     }
@@ -185,7 +182,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
             align: Alignment::Left,
             main_align: Alignment::Right,
             show_wraps: false,
-            specs: PushSpecs::left(),
+            specs: PushSpecs { side: Side::Left, .. },
             _ghost: PhantomData,
         }
     }
@@ -217,7 +214,7 @@ pub struct LineNumbersCfg<_U> {
     align: Alignment = Alignment::Left,
     main_align: Alignment = Alignment::Right,
     show_wraps: bool = false,
-    specs: PushSpecs = PushSpecs::left(),
+    specs: PushSpecs = PushSpecs { side: Side::Left, .. },
     _ghost: PhantomData<_U>
 }
 
@@ -314,7 +311,10 @@ impl<_U> LineNumbersCfg<_U> {
     ///
     /// Do note that this has no effect if done at runtime.
     pub fn on_the_right(self) -> Self {
-        Self { specs: self.specs.to_right(), ..self }
+        Self {
+            specs: PushSpecs { side: Side::Right, ..self.specs },
+            ..self
+        }
     }
 }
 

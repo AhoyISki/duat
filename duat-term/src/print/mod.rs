@@ -18,7 +18,7 @@ use duat_core::{
 use sync_solver::SyncSolver;
 use variables::Variables;
 
-use crate::{AreaId, CStyle, Coords, Equality, Mutex, layout::Rect, queue, style};
+use crate::{AreaId, CStyle, Coords, Equality, Mutex, area::Coord, layout::Rect, queue, style};
 
 mod frame;
 mod line;
@@ -304,6 +304,15 @@ impl Printer {
     /// The maximum [`VarPoint`], i.e. the bottom right of the screen
     pub fn max(&self) -> &VarPoint {
         &self.max
+    }
+
+    /// The current value of the [`max`] [`VarPoint`]
+    ///
+    /// [`max`]: Self::max
+    pub fn max_value(&self) -> Coord {
+        let mut vars = self.vars.lock().unwrap();
+        let (max, _) = vars.coord(self.max, false);
+        max
     }
 
     /// Gets [`Coords`] from two [`VarPoint`]s

@@ -17,6 +17,7 @@ use duat_core::{
     form::Painter,
     hook::KeysSent,
     prelude::*,
+    ui::Side,
 };
 
 /// A [`Widget`] to show notifications
@@ -205,7 +206,11 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
             _ghost: PhantomData,
         };
 
-        (widget, PushSpecs::below().ver_len(1.0))
+        (widget, PushSpecs {
+            side: Side::Below,
+            height: Some(1.0),
+            ..
+        })
     }
 }
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cassowary::{WeightedRelation::*, strength::STRONG};
-use duat_core::ui::{Axis, Constraint, PushSpecs, SpawnSpecs};
+use duat_core::ui::{Axis, PushSpecs, SpawnSpecs};
 
 pub use self::rect::{Rect, Rects, transfer_vars};
 use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
@@ -178,10 +178,10 @@ impl Layout {
 /// [`Constraint`]: Equality
 #[derive(Default, Debug, Clone)]
 pub struct Constraints {
-    ver_eqs: Vec<Equality>,
-    hor_eqs: Vec<Equality>,
-    ver_cons: (Vec<Constraint>, bool),
-    hor_cons: (Vec<Constraint>, bool),
+    hor_eq: Option<Equality>,
+    ver_eq: Option<Equality>,
+    width: Option<(f32, bool)>,
+    height: Option<(f32, bool)>,
     pub(crate) is_hidden: bool,
 }
 
@@ -192,55 +192,30 @@ impl Constraints {
     /// work.
     fn new(
         p: &Printer,
-        v_cons: impl Iterator<Item = Constraint> + Clone,
-        h_cons: impl Iterator<Item = Constraint> + Clone,
+        [width, height]: [Option<f32>; 2],
         is_hidden: bool,
         new: &Rect,
         parent: AreaId,
         rects: &Rects,
     ) -> Self {
-        let ver_cons = {
-            let mut ver_cons: Vec<Constraint> = v_cons.clone().collect();
-            ver_cons.sort_unstable();
-            ver_cons
-        };
-        let hor_cons = {
-            let mut hor_cons: Vec<Constraint> = h_cons.clone().collect();
-            hor_cons.sort_unstable();
-            hor_cons
-        };
-        let cons = ver_cons
-            .into_iter()
-            .map(|c| (c, Axis::Vertical))
-            .chain(hor_cons.into_iter().map(|c| (c, Axis::Horizontal)))
-            .map(|c| (c, false));
+        let width = width.zip(Some(false));
+        let height = height.zip(Some(false));
+        let [ver_eq, hor_eq] = get_eqs([width, height], new, parent, rects, is_hidden);
+        p.add_eqs(ver_eq.clone().into_iter().chain(hor_eq.clone()));
 
-        let [ver_eqs, hor_eqs] = get_eqs(cons, is_hidden, new, parent, rects);
-        p.add_eqs(ver_eqs.clone().into_iter().chain(hor_eqs.clone()));
-
-        Self {
-            ver_eqs,
-            hor_eqs,
-            ver_cons: (v_cons.collect(), false),
-            hor_cons: (h_cons.collect(), false),
-            is_hidden,
-        }
+        Self { hor_eq, ver_eq, width, height, is_hidden }
     }
 
-    pub fn replace(
-        mut self,
-        cons: impl Iterator<Item = Constraint>,
-        axis: Axis,
-    ) -> (Self, impl Iterator<Item = Equality>) {
-        let hor_eqs = std::mem::take(&mut self.hor_eqs);
-        let ver_eqs = std::mem::take(&mut self.ver_eqs);
+    pub fn replace(mut self, new: f32, axis: Axis) -> (Self, impl Iterator<Item = Equality>) {
+        let hor_eq = self.hor_eq.take();
+        let ver_eq = self.ver_eq.take();
         // A replacement means manual constraining, which is prioritized.
 
         match axis {
-            Axis::Horizontal => self.hor_cons = (cons.collect(), true),
-            Axis::Vertical => self.ver_cons = (cons.collect(), true),
+            Axis::Horizontal => self.width = Some((new, true)),
+            Axis::Vertical => self.height = Some((new, true)),
         };
-        (self, hor_eqs.into_iter().chain(ver_eqs))
+        (self, hor_eq.into_iter().chain(ver_eq))
     }
 
     /// Reuses [`self`] in order to constrain a new child
@@ -250,49 +225,42 @@ impl Constraints {
         parent: AreaId,
         rects: &Rects,
     ) -> (Self, impl Iterator<Item = Equality>) {
-        let (ver_cons, ver_m) = &self.ver_cons;
-        let (hor_cons, hor_m) = &self.hor_cons;
-        let cons = ver_cons
-            .iter()
-            .map(|c| ((*c, Axis::Vertical), *ver_m))
-            .chain(hor_cons.iter().map(|c| ((*c, Axis::Horizontal), *hor_m)));
+        let constraints = [self.width, self.height];
+        let [ver_eq, hor_eq] = get_eqs(constraints, new, parent, rects, self.is_hidden);
+        let new_eqs = ver_eq.clone().into_iter().chain(hor_eq.clone());
 
-        let [ver_eqs, hor_eqs] = get_eqs(cons, self.is_hidden, new, parent, rects);
-        let new_eqs = ver_eqs.clone().into_iter().chain(hor_eqs.clone());
-
-        (Self { ver_eqs, hor_eqs, ..self }, new_eqs)
+        (Self { ver_eq, hor_eq, ..self }, new_eqs)
     }
 
     pub fn get_eqs(&self) -> impl Iterator<Item = Equality> + use<> {
-        self.hor_eqs.clone().into_iter().chain(self.ver_eqs.clone())
+        self.hor_eq.clone().into_iter().chain(self.ver_eq.clone())
     }
 
     pub fn drain_eqs(&mut self) -> impl Iterator<Item = Equality> {
-        self.ver_eqs.drain(..).chain(self.hor_eqs.drain(..))
+        self.ver_eq.take().into_iter().chain(self.hor_eq.take())
     }
 
-    pub fn on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
+    pub fn on(&self, axis: Axis) -> Option<f32> {
         match axis {
-            Axis::Horizontal => self.hor_cons.0.iter().cloned(),
-            Axis::Vertical => self.ver_cons.0.iter().cloned(),
+            Axis::Horizontal => self.width.map(|(w, _)| w),
+            Axis::Vertical => self.height.map(|(h, _)| h),
         }
     }
 
     /// Whether or not [`self`] has flexibility in terms of its
     /// length.
     fn is_resizable_on(&self, axis: Axis) -> bool {
-        self.on(axis)
-            .all(|con| matches!(con, Constraint::Min(_) | Constraint::Max(_)))
+        self.on(axis).is_none()
     }
 }
 
 fn get_eqs(
-    cons: impl Iterator<Item = ((Constraint, Axis), bool)>,
-    is_hidden: bool,
+    [width, height]: [Option<(f32, bool)>; 2],
     child: &Rect,
     parent: AreaId,
     rects: &Rects,
-) -> [Vec<Equality>; 2] {
+    is_hidden: bool,
+) -> [Option<Equality>; 2] {
     if is_hidden {
         if rects
             .get(parent)
@@ -300,37 +268,22 @@ fn get_eqs(
             .unwrap()
         {
             return [
-                vec![child.len(Axis::Horizontal) | EQ(STRONG + 3.0) | 0.0],
-                Vec::new(),
+                Some(child.len(Axis::Horizontal) | EQ(STRONG + 3.0) | 0.0),
+                None,
             ];
         } else {
-            return [Vec::new(), vec![
-                child.len(Axis::Vertical) | EQ(STRONG + 3.0) | 0.0,
-            ]];
+            return [
+                None,
+                Some(child.len(Axis::Vertical) | EQ(STRONG + 3.0) | 0.0),
+            ];
         }
     }
 
-    let mut ver_eqs = Vec::new();
-    let mut hor_eqs = Vec::new();
-
-    for ((con, axis), is_manual) in cons {
+    [(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
+        let (len, is_manual) = constraint?;
         let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
-        let eq = match con {
-            Constraint::Ratio(num, den) => {
-                let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
-                (child.len(axis) * den as f64) | EQ(strength) | (ancestor.len(axis) * num as f64)
-            }
-            Constraint::Len(len) => child.len(axis) | EQ(strength) | len,
-            Constraint::Min(min) => child.len(axis) | GE(strength) | min,
-            Constraint::Max(max) => child.len(axis) | LE(strength) | max,
-        };
-        match axis {
-            Axis::Horizontal => hor_eqs.push(eq),
-            Axis::Vertical => ver_eqs.push(eq),
-        }
-    }
-
-    [hor_eqs, ver_eqs]
+        Some(child.len(axis) | EQ(strength) | len)
+    })
 }
 
 fn remove_children(rect: &mut Rect, p: &Printer) {

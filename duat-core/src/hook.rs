@@ -788,10 +788,10 @@ impl Hookable for KeysSent {
 /// - An [`Handle<W>`] for the widget.
 ///
 /// [key]: KeyEvent
-pub struct KeysSentTo<W: Widget<U>, U: Ui>(pub(crate) (Vec<KeyEvent>, Handle<W, U>));
+pub struct KeysSentTo<M: Mode<U>, U: Ui>(pub(crate) (Vec<KeyEvent>, Handle<M::Widget, U>));
 
-impl<W: Widget<U>, U: Ui> Hookable for KeysSentTo<W, U> {
-    type Input<'h> = (&'h [KeyEvent], &'h Handle<W, U>);
+impl<M: Mode<U>, U: Ui> Hookable for KeysSentTo<M, U> {
+    type Input<'h> = (&'h [KeyEvent], &'h Handle<M::Widget, U>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         (&self.0.0, &self.0.1)

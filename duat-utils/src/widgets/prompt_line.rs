@@ -17,7 +17,7 @@
 //! [`Prompt`]: crate::modes::Prompt
 use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
-use duat_core::prelude::*;
+use duat_core::{prelude::*, ui::Side};
 
 use crate::modes::PromptMode;
 
@@ -58,6 +58,11 @@ impl<U: Ui> PromptLine<U> {
     pub fn set_prompt<M: PromptMode<U>>(&mut self, text: Text) {
         self.prompts.entry(TypeId::of::<M>()).or_insert(text);
     }
+
+	/// Returns the prompt for a [`TypeId`], if there is any
+    pub fn prompt_of_id(&self, id: TypeId) -> Option<Text> {
+        self.prompts.get(&id).cloned()
+    }
 }
 
 impl<U: Ui> Widget<U> for PromptLine<U> {
@@ -77,11 +82,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
     }
 
     fn cfg() -> Self::Cfg {
-        Self::Cfg {
-            prompts: HashMap::new(),
-            specs: PushSpecs::below().ver_len(1.0),
-            _ghost: PhantomData,
-        }
+        PromptLineCfg::default()
     }
 
     fn text(&self) -> &Text {
@@ -106,7 +107,7 @@ impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
 
     fn pushed(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let specs = if hook::group_exists("HidePromptLine") {
-            self.specs.ver_len(0.0)
+            PushSpecs { height: Some(0.0), ..self.specs }
         } else {
             self.specs
         };
@@ -122,9 +123,10 @@ impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
 }
 
 #[doc(hidden)]
+#[derive(Default)]
 pub struct PromptLineCfg<U> {
     prompts: HashMap<TypeId, Text>,
-    specs: PushSpecs,
+    specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
     _ghost: PhantomData<U>,
 }
 
@@ -141,7 +143,7 @@ impl<U: Ui> PromptLineCfg<U> {
     /// Places the [`PromptLine`] above, as opposed to below
     pub fn above(self) -> Self {
         Self {
-            specs: PushSpecs::above().ver_len(1.0),
+            specs: PushSpecs { side: Side::Above, ..self.specs },
             ..self
         }
     }
@@ -149,27 +151,26 @@ impl<U: Ui> PromptLineCfg<U> {
     /// Places the [`PromptLine`] below, this is the default
     pub fn below(self) -> Self {
         Self {
-            specs: PushSpecs::below().ver_len(1.0),
+            specs: PushSpecs { side: Side::Below, ..self.specs },
             ..self
         }
     }
 
     /// Hides the [`PromptLine`] by default
     pub fn hidden(self) -> Self {
-        Self { specs: self.specs.hidden(), ..self }
-    }
-
-    /// Pushes this [`PromptLine`] to the left
-    pub fn left_ratioed(self, den: u16, div: u16) -> Self {
         Self {
-            specs: PushSpecs::left().hor_ratio(den, div),
+            specs: PushSpecs { hidden: true, ..self.specs },
             ..self
         }
     }
-}
 
-impl<U: Ui> Default for PromptLineCfg<U> {
-    fn default() -> Self {
-        PromptLine::cfg()
+    /// Push to the left, to be used by [`FooterWidgets`]
+    ///
+    /// [`FooterWidgets`]: crate::widgets::FooterWidgets
+    pub(crate) fn left(self) -> Self {
+        Self {
+            specs: PushSpecs { side: Side::Left, ..self.specs },
+            ..self
+        }
     }
 }

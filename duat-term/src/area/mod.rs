@@ -8,7 +8,7 @@ use duat_core::{
     cfg::PrintCfg,
     form::{CONTROL_CHAR_ID, Painter},
     text::{FwdIter, Item, Part, Point, RevIter, Text, txt},
-    ui::{self, Axis, Caret, Constraint, MutArea, PushSpecs, SpawnSpecs},
+    ui::{self, Axis, Caret, MutArea, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -342,13 +342,7 @@ impl ui::Area for Area {
         todo!()
     }
 
-    fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
-        let cons = {
-            let mut cons: Vec<Constraint> = cons.into_iter().collect();
-            cons.sort_unstable();
-            cons
-        };
-
+    fn set_width(&self, width: f32) -> Result<(), Text> {
         let mut layouts = self.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
@@ -357,12 +351,14 @@ impl ui::Area for Area {
             .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
             .clone();
 
-        if old_cons.on(Axis::Horizontal).eq(cons.iter().cloned()) {
+        if let Some(old) = old_cons.on(Axis::Horizontal)
+            && old == width
+        {
             return Ok(());
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let (cons, old_eqs) = old_cons.replace(cons.into_iter(), Axis::Horizontal);
+            let (cons, old_eqs) = old_cons.replace(width, Axis::Horizontal);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
@@ -375,13 +371,7 @@ impl ui::Area for Area {
         Ok(())
     }
 
-    fn constrain_ver(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
-        let cons = {
-            let mut cons: Vec<Constraint> = cons.into_iter().collect();
-            cons.sort_unstable();
-            cons
-        };
-
+    fn set_height(&self, height: f32) -> Result<(), Text> {
         let mut layouts = self.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
@@ -390,12 +380,14 @@ impl ui::Area for Area {
             .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
             .clone();
 
-        if old_cons.on(Axis::Vertical).eq(cons.iter().cloned()) {
+        if let Some(old) = old_cons.on(Axis::Vertical)
+            && old == height
+        {
             return Ok(());
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let (cons, old_eqs) = old_cons.replace(cons.into_iter(), Axis::Vertical);
+            let (cons, old_eqs) = old_cons.replace(height, Axis::Vertical);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
@@ -464,8 +456,23 @@ impl ui::Area for Area {
         Ok(())
     }
 
-    fn request_width_to_fit(&self, _text: &str) -> Result<(), Text> {
-        todo!();
+    fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text> {
+        let layouts = self.layouts.borrow();
+        let max = get_layout(&layouts, self.id).unwrap().printer.max_value();
+        let iter = iter::print_iter(
+            text.iter_fwd(Point::default()),
+            cfg.wrap_width(max.x),
+            cfg,
+            (Point::default(), None),
+        );
+
+        // It can be None if there is total concalment.
+        let len = match iter.filter(|(_, item)| item.part.is_char()).last() {
+            Some((caret, _)) => caret.x as f32 + caret.len as f32,
+            _ => 0.0,
+        };
+
+        self.set_width(len)
     }
 
     fn scroll_ver(&self, text: &Text, by: i32, cfg: PrintCfg) {

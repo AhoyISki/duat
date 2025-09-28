@@ -409,8 +409,8 @@ impl Rects {
 
         let (i, parent, cons, axis) = {
             let (i, parent) = self.get_parent(id).unwrap();
-            let (vc, hc) = (specs.ver_cons(), specs.hor_cons());
-            let cons = Constraints::new(p, vc, hc, specs.is_hidden(), &rect, parent.id(), self);
+            let dims = [specs.width, specs.height];
+            let cons = Constraints::new(p, dims, specs.hidden, &rect, parent.id(), self);
 
             let parent = self.get_mut(parent.id()).unwrap();
             let axis = parent.kind.axis().unwrap();
@@ -446,45 +446,48 @@ impl Rects {
 
         rect.set_spawned_eqs(p);
 
+        let (high, med, low) = (STRONG - 1.0, STRONG - 2.0, STRONG - 3.0);
         // Left/bottom, center, right/top, above/left, below/right strengths
-        let [lb_str, c_str, rt_str, al_str, br_str] = match specs.orientation() {
-            VerLeftAbove => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG + 1.0, STRONG],
-            VerCenterAbove => [STRONG + 1.0, STRONG + 2.0, STRONG, STRONG + 1.0, STRONG],
-            VerRightAbove => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG + 1.0, STRONG],
-            VerLeftBelow => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG, STRONG + 1.0],
-            VerCenterBelow => [STRONG + 1.0, STRONG + 2.0, STRONG, STRONG, STRONG + 1.0],
-            VerRightBelow => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG, STRONG + 1.0],
-            HorTopLeft => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG + 1.0, STRONG],
-            HorCenterLeft => [STRONG, STRONG + 2.0, STRONG + 1.0, STRONG + 1.0, STRONG],
-            HorBottomLeft => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG + 1.0, STRONG],
-            HorTopRight => [STRONG, STRONG + 1.0, STRONG + 2.0, STRONG, STRONG + 1.0],
-            HorCenterRight => [STRONG + 1.0, STRONG + 2.0, STRONG, STRONG, STRONG + 1.0],
-            HorBottomRight => [STRONG + 2.0, STRONG + 1.0, STRONG, STRONG, STRONG + 1.0],
+        let [lb_str, _, _, al_str, _] = match specs.orientation {
+            VerLeftAbove => [high, med, low, high, low],
+            VerCenterAbove => [med, high, low, high, low],
+            VerRightAbove => [low, med, high, high, low],
+            VerLeftBelow => [high, med, low, low, high],
+            VerCenterBelow => [med, high, low, low, high],
+            VerRightBelow => [low, med, high, low, high],
+            HorTopLeft => [low, med, high, high, low],
+            HorCenterLeft => [low, high, med, high, low],
+            HorBottomLeft => [high, med, low, high, low],
+            HorTopRight => [low, med, high, low, high],
+            HorCenterRight => [med, high, low, low, high],
+            HorBottomRight => [high, med, low, low, high],
         };
 
-        rect.eqs.extend(match specs.orientation() {
+        rect.eqs.extend(match specs.orientation {
             VerLeftAbove | VerCenterAbove | VerRightAbove | VerLeftBelow | VerCenterBelow
             | VerRightBelow => [
                 rect.br.y() | EQ(al_str) | parent.tl.y(),
-                rect.tl.y() | EQ(br_str) | parent.br.y(),
+                rect.tl.y() | EQ(al_str) | parent.br.y(),
+                rect.br.x() | EQ(al_str - 1.0) | parent.tl.x(),
+                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
+                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
                 rect.tl.x() | EQ(lb_str) | parent.tl.x(),
-                rect.tl.x() + rect.br.x() | EQ(c_str) | parent.tl.x() + parent.br.x(),
-                rect.br.x() | EQ(rt_str) | parent.br.x(),
             ],
             HorTopRight | HorCenterRight | HorBottomRight | HorTopLeft | HorCenterLeft
             | HorBottomLeft => [
-                rect.br.x() | EQ(al_str) | parent.tl.x(),
-                rect.tl.x() | EQ(br_str) | parent.br.x(),
+                rect.br.x() | GE(al_str) | parent.tl.x(),
+                rect.tl.x() | LE(al_str) | parent.br.x(),
+                rect.br.x() | EQ(al_str - 1.0) | parent.tl.x(),
+                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
+                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
                 rect.br.y() | EQ(lb_str) | parent.br.y(),
-                rect.br.y() + rect.tl.y() | EQ(c_str) | (parent.br.y() + parent.tl.y()),
-                rect.tl.y() | EQ(rt_str) | parent.tl.y(),
             ],
         });
 
         let id = rect.id;
 
-        let (vc, hc) = (specs.ver_cons(), specs.hor_cons());
-        let cons = Constraints::new(p, vc, hc, specs.is_hidden(), &rect, parent.id(), self);
+        let dims = [specs.width, specs.height];
+        let cons = Constraints::new(p, dims, specs.hidden, &rect, parent.id(), self);
         p.add_eqs(rect.eqs.clone());
         p.update(false);
 
@@ -762,24 +765,6 @@ impl Rects {
         std::iter::once(&self.main)
             .chain(self.floating.iter().map(|(rect, _)| rect))
             .find_map(|rect| fetch_parent(rect, id))
-    }
-
-    /// Gets the earliest parent that follows the [`Axis`]
-    ///
-    /// If the target's children are following the axis, return it,
-    /// otherwise, keep looking back in order to find the latest
-    /// ancestor whose axis matches `axis`.
-    pub fn get_ancestor_on(&self, axis: Axis, id: AreaId) -> Option<(usize, &Rect)> {
-        let mut target = self.get(id)?;
-        let mut target_axis = target.kind.axis();
-        let mut n = 0;
-
-        while target_axis.is_none_or(|a| a != axis) {
-            (n, target) = self.get_parent(target.id)?;
-            target_axis = target.kind.axis();
-        }
-
-        Some((n, target))
     }
 
     /// Gets the siblings of the `id`'s [`Rect`]
