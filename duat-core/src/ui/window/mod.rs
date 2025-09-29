@@ -67,7 +67,7 @@ impl<U: Ui> Windows<U> {
         (to, to_file, specs): (AreaId, bool, PushSpecs),
         widget: W,
     ) -> Handle<W, U> {
-        let (win, ..) = self.area_id_entry(pa, to);
+        let (win, ..) = self.area_id_entry(pa, to).unwrap();
 
         let (node, _) = self.push(pa, win, (to, specs), widget, to_file);
         node.handle().try_downcast().unwrap()
@@ -107,7 +107,7 @@ impl<U: Ui> Windows<U> {
             spawned
         }
 
-        let (win, ..) = self.area_id_entry(pa, to);
+        let (win, ..) = self.area_id_entry(pa, to).unwrap();
         let widget_id = AreaId::new();
         let widget = RwData::new(widget);
 
@@ -250,6 +250,10 @@ impl<U: Ui> Windows<U> {
 
                 self.0.write(pa).windows.push(window);
 
+                let inner = self.0.write(pa);
+                let builder = UiBuilder::<U>::new(inner.windows.len() - 1);
+                hook::trigger(pa, WindowCreated(builder));
+
                 // Swap the Files ahead of the swapped new_root
                 let lo = handle.read(pa).layout_order;
 
@@ -379,19 +383,7 @@ impl<U: Ui> Windows<U> {
         MutArea(lhs.area(pa)).swap(rhs.area(pa));
     }
 
-    ////////// Querying functions
-
-    /// The number of open [`Window`]s
-    ///
-    /// Should never be 0, as that is not a valid state of affairs.
-    pub fn len(&self, pa: &Pass) -> usize {
-        self.0.read(pa).windows.len()
-    }
-
-    /// get's the `win`th [`Window`]
-    pub fn get<'a>(&'a self, pa: &'a Pass, win: usize) -> Option<&'a Window<U>> {
-        self.0.read(pa).windows.get(win)
-    }
+    ////////// Entry lookup
 
     /// An entry for a file with the given name
     pub fn file_entry(
@@ -399,12 +391,7 @@ impl<U: Ui> Windows<U> {
         pa: &Pass,
         pk: PathKind,
     ) -> Result<(usize, usize, Handle<File<U>, U>), Text> {
-        self.0
-            .read(pa)
-            .windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
+        self.entries(pa)
             .find_map(|(win, wid, node)| {
                 (node.read_as(pa).filter(|f: &&File<U>| f.path_kind() == pk))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
@@ -418,12 +405,7 @@ impl<U: Ui> Windows<U> {
         pa: &Pass,
         name: &str,
     ) -> Result<(usize, usize, Handle<File<U>, U>), Text> {
-        self.0
-            .read(pa)
-            .windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
+        self.entries(pa)
             .find_map(|(win, wid, node)| {
                 (node.read_as(pa).filter(|f: &&File<U>| f.name() == name))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
@@ -431,20 +413,14 @@ impl<U: Ui> Windows<U> {
             .ok_or_else(|| txt!("File {name} not found").build())
     }
 
-    /// An entry for a specific [`Handle`]
+    /// An entry for a specific [`AreaId`]
     pub(crate) fn area_id_entry<'a>(
         &'a self,
         pa: &'a Pass,
         area_id: AreaId,
-    ) -> (usize, usize, &'a Node<U>) {
-        self.0
-            .read(pa)
-            .windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
+    ) -> Option<(usize, usize, &'a Node<U>)> {
+        self.entries(pa)
             .find(|(.., node)| node.area_id() == area_id)
-            .unwrap()
     }
 
     /// An entry for a widget of a specific type
@@ -459,13 +435,7 @@ impl<U: Ui> Windows<U> {
         let handle = context::fixed_file::<U>(pa).unwrap();
 
         if let Some((handle, _)) = handle.get_related::<W>(pa).next() {
-            self.0
-                .read(pa)
-                .windows
-                .iter()
-                .enumerate()
-                .flat_map(window_index_widget)
-                .find(|(.., n)| n.ptr_eq(handle.widget()))
+            self.entries(pa).find(|(.., n)| n.ptr_eq(handle.widget()))
         } else {
             self.iter_around(pa, w, 0)
                 .find(|(.., node)| node.data_is::<W>())
@@ -532,6 +502,40 @@ impl<U: Ui> Windows<U> {
             )
     }
 
+    /// Iterates over all widget entries, with window and widget
+    /// indices, in that order
+    pub(crate) fn entries<'a>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
+        self.0
+            .read(pa)
+            .windows
+            .iter()
+            .enumerate()
+            .flat_map(|(win, window)| {
+                window
+                    .nodes
+                    .iter()
+                    .enumerate()
+                    .map(move |(wid, node)| (win, wid, node))
+            })
+    }
+
+    ////////// Querying functions
+
+    /// The number of open [`Window`]s
+    ///
+    /// Should never be 0, as that is not a valid state of affairs.
+    pub fn len(&self, pa: &Pass) -> usize {
+        self.0.read(pa).windows.len()
+    }
+
+    /// get's the `win`th [`Window`]
+    pub fn get<'a>(&'a self, pa: &'a Pass, win: usize) -> Option<&'a Window<U>> {
+        self.0.read(pa).windows.get(win)
+    }
+
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat
     pub fn handles<'a>(
         &'a self,
@@ -556,24 +560,15 @@ impl<U: Ui> Windows<U> {
             .flat_map(|w| w.file_handles(pa))
     }
 
-    /// Iterates over all widget entries, with window and widget
-    /// indices, in that order
-    pub(crate) fn entries<'a>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
+    /// The [`AreaId`] of a given [`Ui::Area`]
+    pub fn area_id_of(&self, pa: &Pass, area: &U::Area) -> AreaId {
         self.0
             .read(pa)
-            .windows
+            .areas
             .iter()
-            .enumerate()
-            .flat_map(|(win, window)| {
-                window
-                    .nodes
-                    .iter()
-                    .enumerate()
-                    .map(move |(wid, node)| (win, wid, node))
-            })
+            .find(|(_, other)| other == area)
+            .unwrap()
+            .0
     }
 }
 
@@ -598,6 +593,7 @@ pub struct Window<U: Ui> {
     nodes: Vec<Node<U>>,
     floating: Vec<Node<U>>,
     files_area: U::Area,
+    master_area: U::Area,
     layout: Box<dyn Layout<U>>,
 }
 
@@ -623,6 +619,7 @@ impl<U: Ui> Window<U> {
             nodes: vec![node.clone()],
             floating: Vec::new(),
             files_area: area.clone(),
+            master_area: area.clone(),
             layout,
         };
 
@@ -631,15 +628,16 @@ impl<U: Ui> Window<U> {
 
     /// Returns a new [`Window`] from raw elements
     pub(crate) fn from_raw(
-        files_area: U::Area,
+        master_area: U::Area,
         nodes: Vec<Node<U>>,
         layout: Box<dyn Layout<U>>,
     ) -> Self {
-        let files_area = files_area.get_cluster_master().unwrap_or(files_area);
+        let master_area = master_area.get_cluster_master().unwrap_or(master_area);
         Self {
             nodes,
             floating: Vec::new(),
-            files_area,
+            files_area: master_area.clone(),
+            master_area,
             layout,
         }
     }
@@ -659,6 +657,12 @@ impl<U: Ui> Window<U> {
             }
             Location::Regular => self.nodes.push(node),
             Location::Spawned => self.floating.push(node),
+        }
+        
+        if let Some(parent) = &parent_area
+            && parent.is_master_of(&self.master_area)
+        {
+            self.master_area = parent.clone();
         }
     }
 

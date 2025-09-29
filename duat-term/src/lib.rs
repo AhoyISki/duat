@@ -31,7 +31,7 @@ use duat_core::{
 use self::{layout::Layout, print::Printer};
 pub use self::{
     print::{Brush, Frame},
-    rules::{VertRule, VertRuleCfg},
+    rules::{VertRule, VertRuleBuilder},
 };
 
 mod area;

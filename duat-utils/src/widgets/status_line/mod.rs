@@ -15,7 +15,12 @@
 //! [data]: crate::data
 mod state;
 
-use duat_core::{context::DynFile, prelude::*, text::Builder, ui::Side};
+use duat_core::{
+    context::DynFile,
+    prelude::*,
+    text::Builder,
+    ui::{PushTarget, Side},
+};
 
 pub use self::{macros::status, state::State};
 use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
@@ -89,9 +94,19 @@ pub struct StatusLine<U: Ui> {
     checker: Box<dyn Fn(&Pass) -> bool + Send>,
 }
 
-impl<U: Ui> Widget<U> for StatusLine<U> {
-    type Cfg = StatusLineCfg<U>;
+impl<U: Ui> StatusLine<U> {
+    /// Returns a [`StatusLineBuilder`], which can be used to push
+    /// around `StatusLine`s
+    ///
+    /// The same can be done more conveniently with the [`status!`]
+    /// macro, which is imported by default in the configuration
+    /// crate.
+    pub fn builder() -> StatusLineBuilder<U> {
+        StatusLineBuilder::default()
+    }
+}
 
+impl<U: Ui> Widget<U> for StatusLine<U> {
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         if let FileHandle::Dynamic(dyn_file) = &mut handle.write(pa).file_handle {
             dyn_file.swap_to_current();
@@ -121,10 +136,6 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         file_changed || checkered
     }
 
-    fn cfg() -> Self::Cfg {
-        StatusLineCfg::default()
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
@@ -146,20 +157,60 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
 /// The [`WidgetCfg`] for a [`StatusLine`]
 #[derive(Default)]
-pub struct StatusLineCfg<U: Ui> {
+#[doc(hidden)]
+pub struct StatusLineBuilder<U: Ui> {
     fns: Option<(BuilderFn<U>, CheckerFn)> = None,
     specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
 }
 
-impl<U: Ui> StatusLineCfg<U> {
+impl<U: Ui> StatusLineBuilder<U> {
+    /// Push the [`StatusLine`]
+    ///
+    /// If the handle's [`Widget`] is a [`File`], then this
+    /// `StatusLine` will refer to it when printing information about
+    /// `File`s. Otherwise, the `StatusLine` will print information
+    /// about the currently active `File`.
+    pub fn push_on(
+        self,
+        pa: &mut Pass,
+        push_target: &impl PushTarget<U>,
+    ) -> Handle<StatusLine<U>, U> {
+        let (builder_fn, checker_fn) = if let Some((builder, checker)) = self.fns {
+            (builder, checker)
+        } else {
+            let mode_txt = mode_txt(pa);
+            let cfg = match self.specs.side {
+                Side::Above | Side::Below => {
+                    macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
+                }
+                Side::Right => {
+                    macros::status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
+                }
+                Side::Left => unreachable!(),
+            };
+
+            cfg.fns.unwrap()
+        };
+
+        let status_line = StatusLine {
+            file_handle: match push_target.try_downcast() {
+                Some(handle) => FileHandle::Fixed(handle),
+                None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
+            },
+            text_fn: Box::new(move |pa, fh| {
+                let builder = Text::builder();
+                builder_fn(pa, builder, fh)
+            }),
+            text: Text::default(),
+            checker: Box::new(checker_fn),
+        };
+
+        push_target.push_outer(pa, status_line, self.specs)
+    }
+
     #[doc(hidden)]
     pub fn new_with(fns: (BuilderFn<U>, CheckerFn)) -> Self {
         Self { fns: Some(fns), .. }
-    }
-
-    /// Replaces the previous formatting with a new one
-    pub fn fmt(self, new: Self) -> Self {
-        Self { specs: self.specs, ..new }
     }
 
     /// Puts the [`StatusLine`] above, as opposed to below
@@ -181,43 +232,6 @@ impl<U: Ui> StatusLineCfg<U> {
     /// The [`PushSpecs`] in use
     pub fn specs(&self) -> PushSpecs {
         self.specs
-    }
-}
-
-impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
-    type Widget = StatusLine<U>;
-
-    fn pushed(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-        let (builder_fn, checker_fn) = if let Some((builder, checker)) = self.fns {
-            (builder, checker)
-        } else {
-            let mode_txt = mode_txt(pa);
-            let cfg = match self.specs.side {
-                Side::Above | Side::Below => {
-                    macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
-                }
-                Side::Right => {
-                    macros::status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
-                }
-                Side::Left => unreachable!(),
-            };
-
-            cfg.fns.unwrap()
-        };
-
-        let widget = StatusLine {
-            file_handle: match info.file() {
-                Some(handle) => FileHandle::Fixed(handle),
-                None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
-            },
-            text_fn: Box::new(move |pa, fh| {
-                let builder = Text::builder();
-                builder_fn(pa, builder, fh)
-            }),
-            text: Text::default(),
-            checker: Box::new(checker_fn),
-        };
-        (widget, self.specs)
     }
 }
 
@@ -381,7 +395,7 @@ mod macros {
                 duat_core::{context::Handle, data::Pass, file::File, ui::PushSpecs, text::Builder},
                 format_like, parse_form, parse_status_part, parse_str
             },
-            widgets::StatusLineCfg,
+            widgets::StatusLineBuilder,
         };
 
         let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<File<_>, _>| {};
@@ -394,7 +408,7 @@ mod macros {
             $($parts)*
         );
 
-        StatusLineCfg::new_with(
+        StatusLineBuilder::new_with(
             (
                 Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<File<_>, _>| {
                     text_fn(pa, &mut builder, &handle);

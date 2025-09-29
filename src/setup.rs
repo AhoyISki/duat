@@ -80,11 +80,11 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     });
 
     hook::add_grouped::<WindowCreated>("FooterWidgets", |_, builder| {
-        builder.push(FooterWidgets::default());
+        builder.push_inner(FooterWidgets::default());
     });
 
     hook::add_grouped::<WindowCreated>("LogBook", |_, builder| {
-        builder.push(LogBook::cfg());
+        builder.push_inner(LogBook::cfg());
     });
 
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {

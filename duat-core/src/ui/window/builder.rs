@@ -162,8 +162,8 @@ impl<U: Ui> UiBuilder<U> {
     /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     /// [`WindowCreated`]: crate::hook::WindowCreated
-    pub fn push<W: Widget<U>>(
-        &mut self,
+    pub fn push_inner<W: Widget<U>>(
+        &self,
         pa: &mut Pass,
         widget: W,
         specs: PushSpecs,
@@ -176,5 +176,22 @@ impl<U: Ui> UiBuilder<U> {
             .unwrap();
 
         context::windows().push_widget(pa, (*files_area_id, false, specs), widget)
+    }
+
+    /// Docs: TODO
+    pub fn push_outer<W: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: W,
+        specs: PushSpecs,
+    ) -> Handle<W, U> {
+        let windows = context::windows::<U>().0.read(pa);
+        let (master_area_id, _) = windows
+            .areas
+            .iter()
+            .find(|(_, area)| area == &windows.windows[self.win].master_area)
+            .unwrap();
+
+        context::windows().push_widget(pa, (*master_area_id, false, specs), widget)
     }
 }

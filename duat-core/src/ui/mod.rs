@@ -46,6 +46,8 @@ pub use self::{
 };
 use crate::{
     cfg::PrintCfg,
+    context::Handle,
+    data::Pass,
     form::Painter,
     session::DuatSender,
     text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
@@ -829,5 +831,181 @@ impl<A: Area> std::ops::Deref for MutArea<'_, A> {
 
     fn deref(&self) -> &Self::Target {
         self.0
+    }
+}
+
+/// A target for pushing [`Widget`]s to
+///
+/// This can either be a [`Handle`], which will push around a `Widget`
+/// or a [`UiBuilder`], which will push around the window.
+///
+/// This trait is useful if you wish to let your [`Widget`] both be
+/// pushed around other `Widget`s and also around the window with the
+/// [`UiBuilder`]. One example of this is the [`StatusLine`] widget,
+/// which behaves differently depending on if it was pushed to a
+/// [`Handle<File>`].
+///
+/// [`StatusLine`]: https://docs.rs/duat_utils/duat-utils/latest/widgets/struct.StatusLine.html
+pub trait PushTarget<U: Ui> {
+    /// Pushes a [`Widget`] around `self`
+    ///
+    /// If `self` is a [`Handle`], this will push around the
+    /// [`Handle`]'s own [`Ui::Area`]. If this is a [`UiBuilder`],
+    /// this will push around the master [`Ui::Area`] of the central
+    /// region of files.
+    ///
+    /// This `Widget` will be placed internally, i.e., around the
+    /// [`Ui::Area`] of `self`. This is in contrast to
+    /// [`Handle::push_outer_widget`], which will push around the
+    /// "cluster master" of `self`.
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// below `self`, when pushing to the left, the following would
+    /// happen:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │ new │   self   │
+    /// │                │ -> │     │          │
+    /// ├────────────────┤    ├─────┴──────────┤
+    /// │      old       │    │      old       │
+    /// ╰────────────────╯    ╰────────────────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_outer_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │     │   self   │
+    /// │                │ -> │ new │          │
+    /// ├────────────────┤    │     ├──────────┤
+    /// │      old       │    │     │   old    │
+    /// ╰────────────────╯    ╰─────┴──────────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the second case, not just around `self`.
+    fn push_inner<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U>;
+
+    /// Pushes a [`Widget`] around the "master region" of `self`
+    ///
+    /// If `self` is a [`Handle`], this will push its "cluster
+    /// master". If this is a [`UiBuilder`], this will push the
+    /// `Widget` to the edges of the window.
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// This [`Widget`] will be placed externally, i.e., around every
+    /// other [`Widget`] that was pushed around `self`. This is in
+    /// contrast to [`Handle::push_inner_widget`], which will push
+    /// only around `self`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// to the left of `self`, when pushing to the left again, the
+    /// following would happen:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ new │ old │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_inner_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ old │ new │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the first case, not just around `self`.
+    fn push_outer<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U>;
+
+    /// Tries to downcast to a [`Handle`] of some `W`
+    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>>;
+}
+
+impl<W: Widget<U> + ?Sized, U: Ui> PushTarget<U> for Handle<W, U> {
+    #[doc(hidden)]
+    fn push_inner<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        self.push_inner_widget(pa, widget, specs)
+    }
+
+    #[doc(hidden)]
+    fn push_outer<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        self.push_outer_widget(pa, widget, specs)
+    }
+
+    fn try_downcast<DW: Widget<U>>(&self) -> Option<Handle<DW, U>> {
+        self.try_downcast()
+    }
+}
+
+impl<U: Ui> PushTarget<U> for UiBuilder<U> {
+    #[doc(hidden)]
+    fn push_inner<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        UiBuilder::push_inner(self, pa, widget, specs)
+    }
+
+    #[doc(hidden)]
+    fn push_outer<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        UiBuilder::push_outer(self, pa, widget, specs)
+    }
+
+    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
+        None
     }
 }

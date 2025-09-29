@@ -7,17 +7,13 @@
 //!
 //! [`PromptLine`]: super::PromptLine
 //! [hook]: hooks
-use std::{
-    marker::PhantomData,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use duat_core::{
     context::{Level, Record},
-    form::Painter,
     hook::KeysSent,
     prelude::*,
-    ui::Side,
+    ui::{PushTarget, Side},
 };
 
 /// A [`Widget`] to show notifications
@@ -66,30 +62,14 @@ pub struct Notifications {
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
 
 impl Notifications {
-    pub fn cfg() -> NotificationsCfg {
-        Self::Cfg {
-            format_rec: Box::new(|rec| {
-                txt!(
-                    "[notifs.target]{}[notifs.colon]: {}",
-                    rec.target(),
-                    rec.text().clone()
-                )
-                .build()
-            }),
-            get_mask: Box::new(|rec| match rec.level() {
-                context::Level::Error => "error",
-                context::Level::Warn => "warn",
-                context::Level::Info => "info",
-                context::Level::Debug => "debug",
-                context::Level::Trace => unreachable!(),
-            }),
-            levels: vec![Level::Info, Level::Warn, Level::Error],
-            _ghost: PhantomData,
-        }
+    /// Returns a [`NotificationsBuilder`], which can be used to push
+    /// `Notifications` around
+    pub fn builder() -> NotificationsBuilder {
+        NotificationsBuilder::default()
     }
 }
 
-impl<U: Ui> Widget<U> for Notifications<U> {
+impl<U: Ui> Widget<U> for Notifications {
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         let notifs = handle.write(pa);
@@ -130,11 +110,6 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     fn needs_update(&self, _: &Pass) -> bool {
         self.logs.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
     }
-
-    fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
-        let cfg = self.get_print_cfg();
-        area.print(self.text_mut(), cfg, painter)
-    }
 }
 
 /// A [`Widget`] to show notifications
@@ -149,30 +124,30 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
-pub struct NotificationsCfg {
-    format_rec: Box<dyn FnMut(Record) -> Text + Send>,
+pub struct NotificationsBuilder {
+    fmt: Box<dyn FnMut(Record) -> Text + Send>,
     get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
-    levels: Vec<Level>,
+    allowed_levels: Vec<Level>,
 }
 
-impl NotificationsCfg {
+impl NotificationsBuilder {
     /// Pushes the [`Notifications`] to another [`Widget`]
-    pub fn push_on<W: Widget<U>, U: Ui>(
+    pub fn push_on<U: Ui>(
         self,
         pa: &mut Pass,
-        handle: &Handle<W, U>,
-    ) -> Handle<Notifications<U>, U> {
+        push_target: &impl PushTarget<U>,
+    ) -> Handle<Notifications, U> {
         let notifications = Notifications {
             logs: context::logs(),
             text: Text::new(),
-            format_rec: self.format_rec,
+            format_rec: self.fmt,
             get_mask: self.get_mask,
-            levels: self.levels,
+            levels: self.allowed_levels,
             last_rec: None,
         };
         let specs = PushSpecs { side: Side::Below, height: Some(1.0), .. };
-        
-        handle.push_widget(pa, notifications, specs)
+
+        push_target.push_outer(pa, notifications, specs)
     }
 
     /// Changes the way [`Record`]s are formatted by [`Notifications`]
@@ -182,12 +157,9 @@ impl NotificationsCfg {
     /// see [`filter_levels`]
     ///
     /// [`filter_levels`]: Self::filter_levels
-    pub fn formatted<T: Into<Text>>(
-        self,
-        mut fmt: impl FnMut(Record) -> T + Send + 'static,
-    ) -> Self {
+    pub fn fmt<T: Into<Text>>(self, mut fmt: impl FnMut(Record) -> T + Send + 'static) -> Self {
         Self {
-            format_rec: Box::new(move |rec| fmt(rec).into()),
+            fmt: Box::new(move |rec| fmt(rec).into()),
             ..self
         }
     }
@@ -197,7 +169,7 @@ impl NotificationsCfg {
     /// Is [`Level::Info`], [`Level::Warn`] and [`Level::Error`] by
     /// default.
     pub fn filter_levels(mut self, levels: impl IntoIterator<Item = Level>) -> Self {
-        self.levels = levels.into_iter().collect();
+        self.allowed_levels = levels.into_iter().collect();
         self
     }
 
@@ -209,8 +181,30 @@ impl NotificationsCfg {
     }
 }
 
-impl<U: Ui> Default for NotificationsCfg<U> {
+impl Default for NotificationsBuilder {
     fn default() -> Self {
-        Notifications::cfg()
+        fn default_fmt(rec: Record) -> Text {
+            txt!(
+                "[notifs.target]{}[notifs.colon]: {}",
+                rec.target(),
+                rec.text().clone()
+            )
+            .build()
+        }
+        fn default_get_mask(rec: Record) -> &'static str {
+            match rec.level() {
+                context::Level::Error => "error",
+                context::Level::Warn => "warn",
+                context::Level::Info => "info",
+                context::Level::Debug => "debug",
+                context::Level::Trace => unreachable!(),
+            }
+        }
+
+        Self {
+            fmt: Box::new(default_fmt),
+            get_mask: Box::new(default_get_mask),
+            allowed_levels: Default::default(),
+        }
     }
 }

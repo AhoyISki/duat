@@ -675,8 +675,49 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             .unwrap()
     }
 
-    /// Pushes a [`Widget`]
-    pub fn push_widget<PW: Widget<U>>(
+    /// Pushes a [`Widget`] around this one
+    ///
+    /// This `Widget` will be placed internally, i.e., around the
+    /// [`Ui::Area`] of `self`. This is in contrast to
+    /// [`Handle::push_outer_widget`], which will push around the
+    /// "cluster master" of `self`.
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// below `self`, when pushing to the left, the following would
+    /// happen:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │ new │   self   │
+    /// │                │ -> │     │          │
+    /// ├────────────────┤    ├─────┴──────────┤
+    /// │      old       │    │      old       │
+    /// ╰────────────────╯    ╰────────────────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_outer_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │     │   self   │
+    /// │                │ -> │ new │          │
+    /// ├────────────────┤    │     ├──────────┤
+    /// │      old       │    │     │   old    │
+    /// ╰────────────────╯    ╰─────┴──────────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the second case, not just around `self`.
+    pub fn push_inner_widget<PW: Widget<U>>(
         &self,
         pa: &mut Pass,
         widget: PW,
@@ -684,6 +725,64 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ) -> Handle<PW, U> {
         let to_file = self.widget.data_is::<crate::file::File<U>>();
         context::windows().push_widget(pa, (self.area_id(), to_file, specs), widget)
+    }
+
+    /// Pushes a [`Widget`] around the "cluster master" of this one
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// This [`Widget`] will be placed externally, i.e., around every
+    /// other [`Widget`] that was pushed around `self`. This is in
+    /// contrast to [`Handle::push_inner_widget`], which will push
+    /// only around `self`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// to the left of `self`, when pushing to the left again, the
+    /// following would happen:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ new │ old │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_inner_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ old │ new │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the first case, not just around `self`.
+    pub fn push_outer_widget<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        let to_file = self.widget.data_is::<crate::file::File<U>>();
+        let area_id = if let Some(master) = self.area(pa).get_cluster_master() {
+            context::windows::<U>().area_id_of(pa, &master)
+        } else {
+            self.id
+        };
+
+        context::windows().push_widget(pa, (area_id, to_file, specs), widget)
     }
 }
 

@@ -17,7 +17,10 @@
 //! [`Prompt`]: crate::modes::Prompt
 use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
-use duat_core::{prelude::*, ui::Side};
+use duat_core::{
+    prelude::*,
+    ui::{PushTarget, Side},
+};
 
 use crate::modes::PromptMode;
 
@@ -42,23 +45,25 @@ use crate::modes::PromptMode;
 /// [`File`]: duat_core::file::File
 /// [`IncSearcher`]: crate::modes::IncSearcher
 /// [`PipeSelections`]: crate::modes::PipeSelections
-pub struct PromptLine {
+pub struct PromptLine<U: Ui> {
     text: Text,
     prompts: HashMap<TypeId, Text>,
+    _ghost: PhantomData<U>,
 }
 
-impl PromptLine {
-    pub fn cfg() -> PromptLineCfg {
-        PromptLineCfg::default()
+impl<U: Ui> PromptLine<U> {
+    /// Returns a [`PromptLineBuilder`], which can be used to push `PromptLine`s around
+    pub fn builder() -> PromptLineBuilder<U> {
+        PromptLineBuilder::default()
     }
 
     /// Returns the prompt for a [`PromptMode`] if there is any
-    pub fn prompt_of<M: PromptMode<U>, U: ui>(&self) -> Option<Text> {
+    pub fn prompt_of<M: PromptMode<U>>(&self) -> Option<Text> {
         self.prompts.get(&TypeId::of::<M>()).cloned()
     }
 
     /// Sets the prompt for the given [`PromptMode`]
-    pub fn set_prompt<M: PromptMode<U>, U: ui>(&mut self, text: Text) {
+    pub fn set_prompt<M: PromptMode<U>>(&mut self, text: Text) {
         self.prompts.entry(TypeId::of::<M>()).or_insert(text);
     }
 
@@ -99,26 +104,24 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
     }
 }
 
-impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
-    type Widget = PromptLine<U>;
-}
-
 #[doc(hidden)]
 #[derive(Default)]
-pub struct PromptLineCfg {
-    prompts: HashMap<TypeId, Text>,
+pub struct PromptLineBuilder<U: Ui> {
+    prompts: Option<HashMap<TypeId, Text>> = None,
     specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
+    _ghost: PhantomData<U> = PhantomData
 }
 
-impl PromptLineCfg {
-    fn push_on<W: Widget<U>, U: Ui>(
+impl<U: Ui> PromptLineBuilder<U> {
+    pub fn push_on(
         self,
         pa: &mut Pass,
-        handle: &Handle<W, U>,
-    ) -> Handle<PromptLine, U> {
+        push_target: &impl PushTarget<U>,
+    ) -> Handle<PromptLine<U>, U> {
         let prompt_line = PromptLine {
             text: Text::default(),
-            prompts: HashMap::new(),
+            prompts: self.prompts.unwrap_or_default(),
+            _ghost: PhantomData,
         };
         let specs = if hook::group_exists("HidePromptLine") {
             PushSpecs { height: Some(0.0), ..self.specs }
@@ -126,7 +129,7 @@ impl PromptLineCfg {
             self.specs
         };
 
-        handle.push_widget(pa, prompt_line, specs)
+        push_target.push_outer(pa, prompt_line, specs)
     }
 
     /// Changes the default [prompt] for a given [mode]
@@ -134,7 +137,9 @@ impl PromptLineCfg {
     /// [prompt]: Text
     /// [mode]: PromptMode
     pub fn set_prompt<M: PromptMode<U>>(mut self, prompt: Text) -> Self {
-        self.prompts.insert(TypeId::of::<M>(), prompt);
+        self.prompts
+            .get_or_insert_default()
+            .insert(TypeId::of::<M>(), prompt);
         self
     }
 

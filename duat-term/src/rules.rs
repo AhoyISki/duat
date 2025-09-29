@@ -1,4 +1,7 @@
-use duat_core::{prelude::*, ui::Side};
+use duat_core::{
+    prelude::*,
+    ui::{PushTarget, Side},
+};
 
 use crate::Ui;
 
@@ -31,9 +34,15 @@ pub struct VertRule {
     sep_char: SepChar,
 }
 
-impl Widget<Ui> for VertRule {
-    type Cfg = VertRuleCfg;
+impl VertRule {
+    /// Returns a [`VertRuleBuilder`], letting you push your own
+    /// [`VertRule`]s around
+    pub fn builder() -> VertRuleBuilder {
+        VertRuleBuilder::default()
+    }
+}
 
+impl Widget<Ui> for VertRule {
     fn update(pa: &mut Pass, handle: &Handle<Self, Ui>) {
         let vr = handle.read(pa);
         let text = if let Some(handle) = vr.handle.as_ref()
@@ -76,10 +85,6 @@ impl Widget<Ui> for VertRule {
             && self.handle.as_ref().is_some_and(|fh| fh.has_changed())
     }
 
-    fn cfg() -> Self::Cfg {
-        VertRuleCfg::new()
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
@@ -98,7 +103,7 @@ impl Widget<Ui> for VertRule {
 /// The [`char`]s that should be printed above, equal to, and below
 /// the main line.
 #[derive(Clone)]
-enum SepChar {
+pub enum SepChar {
     Uniform(char),
     /// Order: main line, other lines.
     TwoWay(char, char),
@@ -119,93 +124,31 @@ impl SepChar {
 }
 
 /// The configurations for the [`VertRule`] widget.
-#[derive(Clone)]
-pub struct VertRuleCfg {
-    sep_char: SepChar,
-    specs: PushSpecs,
+#[derive(Default, Clone)]
+pub struct VertRuleBuilder {
+    pub sep_char: SepChar = SepChar::Uniform('│'),
+    pub on_the_right: bool = false
 }
 
-impl VertRuleCfg {
-    /// Returns a new instance of [`VertRuleCfg`].
-    pub const fn new() -> Self {
-        Self {
-            sep_char: SepChar::Uniform('│'),
-            specs: PushSpecs { side: Side::Left, width: Some(1.0), .. },
-        }
-    }
-
-    /// Puts this [`VertRule`] on the right
-    pub const fn on_the_right(self) -> Self {
-        Self {
-            specs: PushSpecs { side: Side::Right, ..self.specs },
-            ..self
-        }
-    }
-
-    /// Sets a [`char`] to be displayed, is `'│'` by default
-    pub const fn with_char(self, char: char) -> Self {
-        Self { sep_char: SepChar::Uniform(char), ..self }
-    }
-
-    /// Sets a [`char`] to be displayed on the main line only, is
-    /// `'│'` by default
-    ///
-    /// The lower and upper ranges are unaffected by this option.
-    pub const fn with_main_char(self, main: char) -> Self {
-        Self {
-            sep_char: match self.sep_char {
-                SepChar::Uniform(other) => SepChar::TwoWay(main, other),
-                SepChar::TwoWay(_, other) => SepChar::TwoWay(main, other),
-                SepChar::ThreeWay(_, above, below) => SepChar::ThreeWay(main, above, below),
-            },
-            ..self
-        }
-    }
-
-    /// Sets a [`char`] to be displayed on the main line only, is
-    /// `'│'` by default
-    ///
-    /// The lower and upper ranges are unaffected by this option.
-    pub const fn with_char_above(self, above: char) -> Self {
-        Self {
-            sep_char: match self.sep_char {
-                SepChar::Uniform(other) => SepChar::ThreeWay(other, above, other),
-                SepChar::TwoWay(main, below) => SepChar::ThreeWay(main, above, below),
-                SepChar::ThreeWay(main, _, below) => SepChar::ThreeWay(main, above, below),
-            },
-            ..self
-        }
-    }
-
-    pub const fn with_char_below(self, below: char) -> Self {
-        Self {
-            sep_char: match self.sep_char {
-                SepChar::Uniform(other) => SepChar::ThreeWay(other, other, below),
-                SepChar::TwoWay(main, above) => SepChar::ThreeWay(main, above, below),
-                SepChar::ThreeWay(main, above, _) => SepChar::ThreeWay(main, above, below),
-            },
-            ..self
-        }
-    }
-}
-
-impl Default for VertRuleCfg {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WidgetCfg<Ui> for VertRuleCfg {
-    type Widget = VertRule;
-
-    fn pushed(self, _: &mut Pass, info: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
-        let widget = VertRule {
-            handle: info.file(),
+impl VertRuleBuilder {
+    fn push_on(self, pa: &mut Pass, push_target: impl PushTarget<Ui>) -> Handle<VertRule, Ui> {
+        let vert_rule = VertRule {
+            handle: push_target.try_downcast(),
             text: Text::default(),
             sep_char: self.sep_char,
         };
 
-        (widget, self.specs)
+        let specs = PushSpecs {
+            side: if self.on_the_right {
+                Side::Right
+            } else {
+                Side::Left
+            },
+            width: Some(1.0),
+            ..
+        };
+
+        push_target.push_outer(pa, vert_rule, specs)
     }
 }
 

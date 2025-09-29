@@ -260,14 +260,13 @@ impl ui::Area for Area {
     fn push(
         area: MutArea<Self>,
         specs: PushSpecs,
-        cluster: bool,
         on_files: bool,
         cache: PrintInfo,
     ) -> (Area, Option<Area>) {
         let mut layouts = area.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
-        let (child, parent) = layout.bisect(area.id, specs, cluster, on_files, cache);
+        let (child, parent) = layout.bisect(area.id, specs, on_files, cache);
 
         (
             Self::new(child, area.layouts.clone()),

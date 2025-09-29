@@ -63,7 +63,6 @@ impl Layout {
         &mut self,
         id: AreaId,
         specs: PushSpecs,
-        do_cluster: bool,
         on_files: bool,
         info: PrintInfo,
     ) -> (AreaId, Option<AreaId>) {
@@ -74,7 +73,7 @@ impl Layout {
                 .rects
                 .get_parent(id)
                 .map(|(_, parent)| parent.is_clustered())
-                .unwrap_or(do_cluster);
+                .unwrap_or(specs.cluster);
             let target_is_cluster = self.rects.get(id).is_some_and(Rect::is_clustered);
 
             // Clustering is what determines if a new rect can be a child or not.
@@ -82,8 +81,8 @@ impl Layout {
             // be helpful to keep only the stuff that is clustered to that file on
             // the same parent, even if other Areas could reasonable be placed
             // alognside it.
-            let can_be_sibling = parent_is_cluster == do_cluster;
-            let can_be_child = target_is_cluster == do_cluster;
+            let can_be_sibling = parent_is_cluster == specs.cluster;
+            let can_be_child = target_is_cluster == specs.cluster;
             (can_be_sibling, can_be_child)
         };
 
@@ -109,7 +108,7 @@ impl Layout {
         // and the new area.
         } else {
             self.rects
-                .new_parent_for(id, axis, &self.printer, do_cluster, on_files);
+                .new_parent_for(id, axis, &self.printer, specs.cluster, on_files);
             let (_, parent) = self.rects.get_parent(id).unwrap();
 
             (id, Some(parent.id()))
