@@ -66,6 +66,25 @@ impl Printer {
         self.vars.lock().unwrap().new_point()
     }
 
+    /// Returns a new dynamically updated [`Variable`], which centers
+    /// a [`Rect`] as well as another which represents the length of
+    /// said [`Rect`]
+    pub fn new_floating_center(
+        &self,
+        deps: [Variable; 2],
+        len: Option<f32>,
+        axis: Axis,
+        prefers_before: bool,
+    ) -> [Variable; 2] {
+        self.sync_solver.lock().unwrap().new_floating_center(
+            &mut self.vars.lock().unwrap(),
+            deps,
+            len,
+            axis,
+            prefers_before,
+        )
+    }
+
     /// Creates a new edge from the two [`VarPoint`]s
     ///
     /// This function will return the [`Variable`] representing the
@@ -126,12 +145,10 @@ impl Printer {
 
     /// Updates the value of all [`VarPoint`]s that have changed,
     /// returning true if any of them have.
-    pub fn update(&self, change_max: bool) {
+    pub fn update(&self, change_max: bool, assign_floating: bool) {
         let changes = {
             let mut ss = self.sync_solver.lock().unwrap();
-            ss.update(change_max, self.max).unwrap();
-
-            ss.fetch_changes().to_vec()
+            ss.update(change_max, self.max, assign_floating).unwrap()
         };
 
         let mut vars = self.vars.lock().unwrap();
@@ -159,8 +176,7 @@ impl Printer {
             let mut ss = self.sync_solver.lock().unwrap();
             ss.remove_eqs(old_eqs);
             ss.add_eqs(new_eqs);
-            ss.update(change_max, self.max).unwrap();
-            ss.fetch_changes().to_vec()
+            ss.update(change_max, self.max, false).unwrap()
         };
 
         let mut vars = self.vars.lock().unwrap();
@@ -528,6 +544,7 @@ mod sync_solver {
     use cassowary::{
         AddConstraintError, RemoveConstraintError, Solver, Variable, strength::STRONG,
     };
+    use duat_core::ui::Axis;
 
     use super::VarPoint;
     use crate::Equality;
@@ -536,6 +553,7 @@ mod sync_solver {
         solver: Solver,
         eqs_to_add: Vec<Equality>,
         eqs_to_remove: Vec<Equality>,
+        floating: Vec<FloatingCenter>,
     }
 
     impl SyncSolver {
@@ -552,6 +570,7 @@ mod sync_solver {
                 solver,
                 eqs_to_add: Vec::new(),
                 eqs_to_remove: Vec::new(),
+                floating: Vec::new(),
             }
         }
 
@@ -559,7 +578,8 @@ mod sync_solver {
             &mut self,
             change_max: bool,
             max: VarPoint,
-        ) -> Result<(), AddConstraintError> {
+            mut assign_floating: bool,
+        ) -> Result<Vec<(Variable, f64)>, AddConstraintError> {
             for eq in self.eqs_to_remove.drain(..) {
                 match self.solver.remove_constraint(&eq) {
                     Ok(_) | Err(RemoveConstraintError::UnknownConstraint) => {}
@@ -577,7 +597,71 @@ mod sync_solver {
                 self.solver.suggest_value(max.y(), height).unwrap();
             }
 
-            Ok(())
+            let mut changes = Vec::new();
+            let mut new_changes = self.solver.fetch_changes().to_vec();
+
+            loop {
+                let mut to_update = self
+                    .floating
+                    .iter()
+                    .filter(|fl| {
+                        new_changes.iter().any(|(var, _)| fl.deps.contains(var)) || assign_floating
+                    })
+                    .peekable();
+
+                if to_update.peek().is_none() {
+                    changes.extend(new_changes);
+                    break;
+                }
+
+                for floating in to_update {
+                    let max = match floating.axis {
+                        Axis::Horizontal => self.solver.get_value(max.x),
+                        Axis::Vertical => self.solver.get_value(max.y),
+                    };
+                    let lhs = self.solver.get_value(floating.deps[0]);
+                    let rhs = self.solver.get_value(floating.deps[1]);
+
+                    if let Some(len) = floating.desired_len
+                        && (lhs >= len || max - rhs >= len)
+                    {
+                        match (floating.prefers_before, lhs >= len, max - rhs >= len) {
+                            (true, true, true | false) | (false, true, false) => {
+                                self.solver.suggest_value(floating.len_var, len).unwrap();
+                                self.solver
+                                    .suggest_value(floating.center_var, lhs - len / 2.0)
+                                    .unwrap();
+                            }
+                            (true, false, true) | (false, true | false, true) => {
+                                self.solver.suggest_value(floating.len_var, len).unwrap();
+                                self.solver
+                                    .suggest_value(floating.center_var, rhs + len / 2.0)
+                                    .unwrap();
+                            }
+                            (true | false, false, false) => unreachable!(),
+                        };
+                    } else {
+                        let value = if lhs > max - rhs {
+                            lhs / 2.0
+                        } else {
+                            rhs + (max - rhs) / 2.0
+                        };
+
+                        self.solver
+                            .suggest_value(floating.len_var, lhs.max(max - rhs))
+                            .unwrap();
+                        self.solver
+                            .suggest_value(floating.center_var, value)
+                            .unwrap();
+                    }
+                }
+                
+                assign_floating = false;
+                changes.append(&mut new_changes);
+                new_changes = self.solver.fetch_changes().to_vec();
+            }
+
+            Ok(changes)
         }
 
         pub fn add_eqs(&mut self, eqs: impl IntoIterator<Item = Equality>) {
@@ -591,9 +675,50 @@ mod sync_solver {
             }
         }
 
-        pub fn fetch_changes(&mut self) -> &[(Variable, f64)] {
-            self.solver.fetch_changes()
+        pub fn new_floating_center(
+            &mut self,
+            variables: &mut super::variables::Variables,
+            deps: [Variable; 2],
+            len: Option<f32>,
+            axis: Axis,
+            prefers_before: bool,
+        ) -> [Variable; 2] {
+            let center_var = variables.new_var();
+            let len_var = variables.new_var();
+
+            self.solver
+                .add_edit_variable(center_var, STRONG - 1.0)
+                .unwrap();
+            self.solver
+                .add_edit_variable(len_var, STRONG - 1.0)
+                .unwrap();
+
+            self.floating.push(FloatingCenter {
+                center_var,
+                len_var,
+                desired_len: len.map(|len| len as f64),
+                deps,
+                axis,
+                prefers_before,
+            });
+
+            [center_var, len_var]
         }
+    }
+
+    /// Represents the "center" of a floaging [`Rect`]
+    ///
+    /// This makes use of an edit [`Variable`], allowing for
+    /// dinamically positioned floating [`Rect`]s.
+    ///
+    /// [`Rect`]: super::Rect
+    struct FloatingCenter {
+        center_var: Variable,
+        len_var: Variable,
+        desired_len: Option<f64>,
+        deps: [Variable; 2],
+        axis: Axis,
+        prefers_before: bool,
     }
 }
 

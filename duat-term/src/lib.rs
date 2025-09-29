@@ -89,7 +89,7 @@ impl ui::Ui for Ui {
             loop {
                 match term_rx.recv() {
                     Ok(Event::Print) => printer.print(),
-                    Ok(Event::UpdatePrinter) => printer.update(true),
+                    Ok(Event::UpdatePrinter) => printer.update(true, true),
                     Ok(Event::NewPrinter(new_printer)) => printer = new_printer,
                     Ok(Event::Quit) => break,
                     Err(_) => {}
@@ -179,7 +179,7 @@ impl ui::Ui for Ui {
     }
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
-        ms.lock().unwrap().cur_printer().update(true);
+        ms.lock().unwrap().cur_printer().update(true, false);
     }
 
     fn print(ms: &'static Self::MetaStatics) {
@@ -268,7 +268,7 @@ impl MetaStatics {
         if let Some((_, printer)) = self.windows.get(self.win) {
             // On switching, the window size could've changed, so take that into
             // account
-            printer.update(true);
+            printer.update(true, true);
             printer.clone()
         } else {
             unreachable!("Started printing before a window was created");

@@ -589,7 +589,7 @@ impl Side {
 }
 
 /// Much like [`PushSpecs`], but for floating [`Widget`]s
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct SpawnSpecs {
     /// Potential spawning [`Corner`]s to connect to and from
     pub orientation: Orientation = Orientation::VerLeftBelow,
@@ -705,6 +705,44 @@ pub enum Orientation {
     /// Place the [`Widget`] horizontally, prioritizing the bottom
     /// edge on the right
     HorBottomRight,
+}
+
+impl Orientation {
+    /// The [`Axis`] to which this `Orientation` pushes
+    pub fn axis(&self) -> Axis {
+        match self {
+            Orientation::VerLeftAbove
+            | Orientation::VerCenterAbove
+            | Orientation::VerRightAbove
+            | Orientation::VerLeftBelow
+            | Orientation::VerCenterBelow
+            | Orientation::VerRightBelow => Axis::Vertical,
+            Orientation::HorTopLeft
+            | Orientation::HorCenterLeft
+            | Orientation::HorBottomLeft
+            | Orientation::HorTopRight
+            | Orientation::HorCenterRight
+            | Orientation::HorBottomRight => Axis::Horizontal,
+        }
+    }
+
+    /// Wether this should prefer being pushed before (left or above)
+    pub fn prefers_before(&self) -> bool {
+        match self {
+            Orientation::VerLeftAbove
+            | Orientation::VerCenterAbove
+            | Orientation::VerRightAbove
+            | Orientation::HorTopLeft
+            | Orientation::HorCenterLeft
+            | Orientation::HorBottomLeft => true,
+            Orientation::VerLeftBelow
+            | Orientation::VerCenterBelow
+            | Orientation::VerRightBelow
+            | Orientation::HorTopRight
+            | Orientation::HorCenterRight
+            | Orientation::HorBottomRight => false,
+        }
+    }
 }
 
 /// A struct representing a "visual position" on the screen

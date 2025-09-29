@@ -277,6 +277,7 @@ impl<U: Ui> Session<U> {
                     node.update_and_print(pa);
                 }
                 reprint_screen = false;
+                U::print(self.ms);
                 continue;
             }
             no_updates += 1;
@@ -289,7 +290,9 @@ impl<U: Ui> Session<U> {
                 }
             }
 
-            U::print(self.ms);
+            if no_updates == 0 {
+                U::print(self.ms);
+            }
         }
     }
 

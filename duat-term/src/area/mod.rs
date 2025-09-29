@@ -318,7 +318,7 @@ impl ui::Area for Area {
         }
 
         for lay in [lhs_lay, rhs_lay] {
-            layouts[lay].printer.update(false);
+            layouts[lay].printer.update(false, false);
         }
     }
 

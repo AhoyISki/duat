@@ -345,6 +345,14 @@ impl Rect {
         }
     }
 
+    /// The mean of the [`Variable`]s in a given [`Axis`]
+    pub fn mean(&self, axis: Axis) -> Expression {
+        match axis {
+            Horizontal => (self.tl.x() + self.br.x()) / 2.0,
+            Vertical => (self.tl.y() + self.br.y()) / 2.0,
+        }
+    }
+
     /// The two [`VarPoint`]s determining this [`Rect`]'s shape
     pub fn var_points(&self) -> [VarPoint; 2] {
         [self.tl, self.br]
@@ -441,55 +449,69 @@ impl Rects {
     /// Spawns a new floating [`Rect`]
     pub fn spawn(&mut self, specs: SpawnSpecs, id: AreaId, p: &Printer, info: PrintInfo) -> AreaId {
         use duat_core::ui::Orientation::*;
+
         let parent = self.get(id).unwrap();
         let mut rect = Rect::new(p, false, Kind::end(info), true);
 
         rect.set_spawned_eqs(p);
 
-        let (high, med, low) = (STRONG - 1.0, STRONG - 2.0, STRONG - 3.0);
         // Left/bottom, center, right/top, above/left, below/right strengths
-        let [lb_str, _, _, al_str, _] = match specs.orientation {
-            VerLeftAbove => [high, med, low, high, low],
-            VerCenterAbove => [med, high, low, high, low],
-            VerRightAbove => [low, med, high, high, low],
-            VerLeftBelow => [high, med, low, low, high],
-            VerCenterBelow => [med, high, low, low, high],
-            VerRightBelow => [low, med, high, low, high],
-            HorTopLeft => [low, med, high, high, low],
-            HorCenterLeft => [low, high, med, high, low],
-            HorBottomLeft => [high, med, low, high, low],
-            HorTopRight => [low, med, high, low, high],
-            HorCenterRight => [med, high, low, low, high],
-            HorBottomRight => [high, med, low, low, high],
+        let (deps, ends, len) = match specs.orientation.axis() {
+            Axis::Horizontal => (
+                [parent.tl.x(), parent.br.x()],
+                [rect.tl.x(), rect.br.x()],
+                specs.width,
+            ),
+            Axis::Vertical => (
+                [parent.tl.y(), parent.br.y()],
+                [rect.tl.y(), rect.br.y()],
+                specs.height,
+            ),
         };
 
-        rect.eqs.extend(match specs.orientation {
-            VerLeftAbove | VerCenterAbove | VerRightAbove | VerLeftBelow | VerCenterBelow
-            | VerRightBelow => [
-                rect.br.y() | EQ(al_str) | parent.tl.y(),
-                rect.tl.y() | EQ(al_str) | parent.br.y(),
-                rect.br.x() | EQ(al_str - 1.0) | parent.tl.x(),
-                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
-                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
-                rect.tl.x() | EQ(lb_str) | parent.tl.x(),
-            ],
-            HorTopRight | HorCenterRight | HorBottomRight | HorTopLeft | HorCenterLeft
-            | HorBottomLeft => [
-                rect.br.x() | GE(al_str) | parent.tl.x(),
-                rect.tl.x() | LE(al_str) | parent.br.x(),
-                rect.br.x() | EQ(al_str - 1.0) | parent.tl.x(),
-                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
-                rect.tl.x() | EQ(al_str - 1.0) | parent.br.x(),
-                rect.br.y() | EQ(lb_str) | parent.br.y(),
-            ],
-        });
+        let [center, len] = p.new_floating_center(
+            deps,
+            len,
+            specs.orientation.axis(),
+            specs.orientation.prefers_before(),
+        );
+
+        let align_eq = match specs.orientation {
+            VerLeftAbove | VerLeftBelow => rect.tl.x() | EQ(STRONG - 3.0) | parent.tl.x(),
+            VerCenterAbove | VerCenterBelow => {
+                rect.mean(Axis::Horizontal) | EQ(STRONG - 3.0) | parent.mean(Axis::Horizontal)
+            }
+            VerRightAbove | VerRightBelow => rect.br.x() | EQ(STRONG - 3.0) | parent.br.x(),
+            HorTopLeft | HorTopRight => rect.tl.y() | EQ(STRONG - 3.0) | parent.tl.y(),
+            HorCenterLeft | HorCenterRight => {
+                rect.mean(Axis::Vertical) | EQ(STRONG - 3.0) | parent.mean(Axis::Vertical)
+            }
+            HorBottomLeft | HorBottomRight => rect.br.y() | EQ(STRONG - 3.0) | parent.br.y(),
+        };
+
+        rect.eqs.extend(
+            specs
+                .width
+                .map(|width| (rect.br.x() - rect.tl.x()) | EQ(STRONG - 2.0) | width)
+                .into_iter()
+                .chain(
+                    specs
+                        .height
+                        .map(|height| (rect.br.y() - rect.tl.y()) | EQ(STRONG - 2.0) | height),
+                )
+                .chain([
+                    align_eq,
+                    ends[0] | EQ(STRONG - 1.0) | (center - len / 2.0),
+                    ends[1] | EQ(STRONG - 1.0) | (center + len / 2.0),
+                ]),
+        );
 
         let id = rect.id;
 
         let dims = [specs.width, specs.height];
         let cons = Constraints::new(p, dims, specs.hidden, &rect, parent.id(), self);
         p.add_eqs(rect.eqs.clone());
-        p.update(false);
+        p.update(false, true);
 
         self.floating.push((rect, cons));
 

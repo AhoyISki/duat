@@ -125,7 +125,7 @@ impl Layout {
         let (mut rect, _, parent_id) = self.rects.delete(&self.printer, id)?;
         remove_children(&mut rect, &self.printer);
 
-        self.printer.update(false);
+        self.printer.update(false, false);
 
         parent_id
     }
