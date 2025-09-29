@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         LazyLock, Mutex,
+        atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver},
     },
     time::Instant,
@@ -316,6 +317,8 @@ fn spawn_config_watcher(
                 && let Some(parent) = out_path.parent()
                 && let Some(grand_parent) = parent.parent()
                 && grand_parent.ends_with("target")
+                // If it is Some, a manual reload was already triggered.
+                && RELOAD_INSTANT.lock().unwrap().is_none()
             {
                 let profile = if let Some(parent) = out_path.parent()
                     && let Some(parent) = parent.file_name()
@@ -375,16 +378,22 @@ fn spawn_reloader(
                         context::error!(target: "reload", "{err}");
                         duat_tx.send(DuatEvent::ReloadFailed).unwrap();
                     }
-                    Ok(_) => {
-                        config_tx
-                            .send((
-                                crate_dir
-                                    .join("target")
-                                    .join(&reload.profile)
-                                    .join(resolve_config_file()),
-                                reload.profile.to_string(),
-                            ))
-                            .unwrap();
+                    Ok(status) => {
+                        if status.success() {
+                            config_tx
+                                .send((
+                                    crate_dir
+                                        .join("target")
+                                        .join(&reload.profile)
+                                        .join(resolve_config_file()),
+                                    reload.profile.to_string(),
+                                ))
+                                .unwrap();
+                            duat_tx.send(DuatEvent::ReloadSucceeded).unwrap();
+                        } else {
+                            *RELOAD_INSTANT.lock().unwrap() = None;
+                            duat_tx.send(DuatEvent::ReloadFailed).unwrap();
+                        }
                     }
                 }
             }
