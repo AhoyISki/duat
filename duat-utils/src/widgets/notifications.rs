@@ -54,22 +54,19 @@ use duat_core::{
 /// [`PromptLine`]: super::PromptLine
 /// [`StatusLine`]: super::StatusLine
 /// [hook]: duat_core::hook
-pub struct Notifications<U> {
+pub struct Notifications {
     logs: context::Logs,
     text: Text,
     format_rec: Box<dyn FnMut(Record) -> Text + Send>,
     levels: Vec<Level>,
     last_rec: Option<usize>,
     get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
-    _ghost: PhantomData<U>,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
 
-impl<U: Ui> Widget<U> for Notifications<U> {
-    type Cfg = NotificationsCfg<U>;
-
-    fn cfg() -> Self::Cfg {
+impl Notifications {
+    pub fn cfg() -> NotificationsCfg {
         Self::Cfg {
             format_rec: Box::new(|rec| {
                 txt!(
@@ -90,7 +87,9 @@ impl<U: Ui> Widget<U> for Notifications<U> {
             _ghost: PhantomData,
         }
     }
+}
 
+impl<U: Ui> Widget<U> for Notifications<U> {
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         let notifs = handle.write(pa);
@@ -133,7 +132,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     }
 
     fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
-        let cfg = self.print_cfg();
+        let cfg = self.get_print_cfg();
         area.print(self.text_mut(), cfg, painter)
     }
 }
@@ -150,14 +149,32 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
-pub struct NotificationsCfg<U> {
+pub struct NotificationsCfg {
     format_rec: Box<dyn FnMut(Record) -> Text + Send>,
     get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
     levels: Vec<Level>,
-    _ghost: PhantomData<U>,
 }
 
-impl<U> NotificationsCfg<U> {
+impl NotificationsCfg {
+    /// Pushes the [`Notifications`] to another [`Widget`]
+    pub fn push_on<W: Widget<U>, U: Ui>(
+        self,
+        pa: &mut Pass,
+        handle: &Handle<W, U>,
+    ) -> Handle<Notifications<U>, U> {
+        let notifications = Notifications {
+            logs: context::logs(),
+            text: Text::new(),
+            format_rec: self.format_rec,
+            get_mask: self.get_mask,
+            levels: self.levels,
+            last_rec: None,
+        };
+        let specs = PushSpecs { side: Side::Below, height: Some(1.0), .. };
+        
+        handle.push_widget(pa, notifications, specs)
+    }
+
     /// Changes the way [`Record`]s are formatted by [`Notifications`]
     ///
     /// This will be applied to every single [`Level`] of a
@@ -189,28 +206,6 @@ impl<U> NotificationsCfg<U> {
     /// [mask]: duat_core::context::Handle::set_mask
     pub fn with_mask(self, get_mask: impl FnMut(Record) -> &'static str + Send + 'static) -> Self {
         Self { get_mask: Box::new(get_mask), ..self }
-    }
-}
-
-impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
-    type Widget = Notifications<U>;
-
-    fn pushed(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-        let widget = Notifications {
-            logs: context::logs(),
-            text: Text::new(),
-            format_rec: self.format_rec,
-            get_mask: self.get_mask,
-            levels: self.levels,
-            last_rec: None,
-            _ghost: PhantomData,
-        };
-
-        (widget, PushSpecs {
-            side: Side::Below,
-            height: Some(1.0),
-            ..
-        })
     }
 }
 

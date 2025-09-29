@@ -42,47 +42,44 @@ use crate::modes::PromptMode;
 /// [`File`]: duat_core::file::File
 /// [`IncSearcher`]: crate::modes::IncSearcher
 /// [`PipeSelections`]: crate::modes::PipeSelections
-pub struct PromptLine<U> {
+pub struct PromptLine {
     text: Text,
     prompts: HashMap<TypeId, Text>,
-    _ghost: PhantomData<U>,
 }
 
-impl<U: Ui> PromptLine<U> {
+impl PromptLine {
+    pub fn cfg() -> PromptLineCfg {
+        PromptLineCfg::default()
+    }
+
     /// Returns the prompt for a [`PromptMode`] if there is any
-    pub fn prompt_of<M: PromptMode<U>>(&self) -> Option<Text> {
+    pub fn prompt_of<M: PromptMode<U>, U: ui>(&self) -> Option<Text> {
         self.prompts.get(&TypeId::of::<M>()).cloned()
     }
 
     /// Sets the prompt for the given [`PromptMode`]
-    pub fn set_prompt<M: PromptMode<U>>(&mut self, text: Text) {
+    pub fn set_prompt<M: PromptMode<U>, U: ui>(&mut self, text: Text) {
         self.prompts.entry(TypeId::of::<M>()).or_insert(text);
     }
 
-	/// Returns the prompt for a [`TypeId`], if there is any
+    /// Returns the prompt for a [`TypeId`], if there is any
     pub fn prompt_of_id(&self, id: TypeId) -> Option<Text> {
         self.prompts.get(&id).cloned()
     }
 }
 
 impl<U: Ui> Widget<U> for PromptLine<U> {
-    type Cfg = PromptLineCfg<U>;
-
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let pl = handle.read(pa);
         if let Some(main) = pl.text.selections().get_main() {
             handle
                 .area(pa)
-                .scroll_around_point(&pl.text, main.caret(), pl.print_cfg());
+                .scroll_around_point(&pl.text, main.caret(), pl.get_print_cfg());
         }
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
         false
-    }
-
-    fn cfg() -> Self::Cfg {
-        PromptLineCfg::default()
     }
 
     fn text(&self) -> &Text {
@@ -93,7 +90,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
         &mut self.text
     }
 
-    fn print_cfg(&self) -> PrintCfg {
+    fn get_print_cfg(&self) -> PrintCfg {
         *PrintCfg::default_for_input().set_forced_horizontal_scrolloff(true)
     }
 
@@ -104,33 +101,34 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
 
 impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;
+}
 
-    fn pushed(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+#[doc(hidden)]
+#[derive(Default)]
+pub struct PromptLineCfg {
+    prompts: HashMap<TypeId, Text>,
+    specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
+}
+
+impl PromptLineCfg {
+    fn push_on<W: Widget<U>, U: Ui>(
+        self,
+        pa: &mut Pass,
+        handle: &Handle<W, U>,
+    ) -> Handle<PromptLine, U> {
+        let prompt_line = PromptLine {
+            text: Text::default(),
+            prompts: HashMap::new(),
+        };
         let specs = if hook::group_exists("HidePromptLine") {
             PushSpecs { height: Some(0.0), ..self.specs }
         } else {
             self.specs
         };
 
-        let widget = PromptLine {
-            text: Text::default(),
-            prompts: HashMap::new(),
-            _ghost: PhantomData,
-        };
-
-        (widget, specs)
+        handle.push_widget(pa, prompt_line, specs)
     }
-}
 
-#[doc(hidden)]
-#[derive(Default)]
-pub struct PromptLineCfg<U> {
-    prompts: HashMap<TypeId, Text>,
-    specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
-    _ghost: PhantomData<U>,
-}
-
-impl<U: Ui> PromptLineCfg<U> {
     /// Changes the default [prompt] for a given [mode]
     ///
     /// [prompt]: Text

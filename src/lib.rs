@@ -937,7 +937,7 @@ pub mod widgets {
 }
 
 #[allow(unused_imports)]
-use duat_core::session::{DuatEvent, FileParts};
+use duat_core::session::{DuatEvent, ReloadedFile};
 
 /// Pre and post setup for Duat
 ///

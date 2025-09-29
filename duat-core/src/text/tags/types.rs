@@ -47,15 +47,15 @@ use crate::{
 /// [range]: TextRange
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::ui::Widget
-pub trait Tag<I>: Sized + std::fmt::Debug {
+pub trait Tag<Index, Return = ()>: Sized + std::fmt::Debug {
     /// Decomposes the [`Tag`] to its base elements
     #[doc(hidden)]
     fn decompose(
         self,
-        index: I,
+        index: Index,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>);
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Return);
 }
 
 ////////// Form-like InnerTags
@@ -81,11 +81,11 @@ impl<I: TextRange> Tag<I> for FormTag {
         self,
         index: I,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
         let FormTag(id, prio) = self;
         let range = index.to_range(max);
-        ranged(range, PushForm(key, id, prio), PopForm(key, id), None)
+        ranged(range, PushForm(tagger, id, prio), PopForm(tagger, id), ())
     }
 }
 
@@ -204,32 +204,31 @@ simple_impl_Tag!(Spacer, RawTag::Spacer);
 #[derive(Debug, Clone, Copy)]
 pub struct Ghost<T: Into<Text>>(pub T);
 
-impl<T: Into<Text> + std::fmt::Debug> Tag<usize> for Ghost<T> {
+impl<T: Into<Text> + std::fmt::Debug> Tag<usize, GhostId> for Ghost<T> {
     fn decompose(
         self,
         byte: usize,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
         assert!(
             byte <= max,
             "index out of bounds: the len is {max}, but the index is {byte}",
         );
         let id = GhostId::new();
-        let tag_id = TagId::Ghost(id, Into::<Text>::into(self.0).without_last_nl());
-        ((byte, RawTag::Ghost(key, id)), None, Some(tag_id))
+        ((byte, RawTag::Ghost(tagger, id)), None, id)
     }
 }
 
-impl<T: Into<Text> + std::fmt::Debug> Tag<Point> for Ghost<T> {
+impl<T: Into<Text> + std::fmt::Debug> Tag<Point, GhostId> for Ghost<T> {
     fn decompose(
         self,
         point: Point,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
         let byte = point.byte();
-        self.decompose(byte, max, key)
+        self.decompose(byte, max, tagger)
     }
 }
 
@@ -273,8 +272,8 @@ impl<W: Widget<U>, U: crate::ui::Ui> Tag<Point> for SpawnTag<W, U> {
         self,
         index: Point,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
         todo!();
     }
 }
@@ -429,7 +428,7 @@ impl RawTag {
     /// The [`Tagger`] of this [`RawTag`]
     pub(in crate::text) fn tagger(&self) -> Tagger {
         match self.get_tagger() {
-            Some(key) => key,
+            Some(tagger) => tagger,
             None => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
             ),
@@ -595,20 +594,13 @@ impl std::fmt::Debug for RawTag {
 /// button
 pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;
 
-#[derive(Clone)]
-#[allow(dead_code)]
-pub enum TagId {
-    Ghost(GhostId, Text),
-    Toggle(ToggleId, Toggle),
-}
-
-fn ranged(
+fn ranged<Return>(
     r: Range<usize>,
     s_tag: RawTag,
     e_tag: RawTag,
-    id: Option<TagId>,
-) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
-    ((r.start, s_tag), Some((r.end, e_tag)), id)
+    ret: Return,
+) -> ((usize, RawTag), Option<(usize, RawTag)>, Return) {
+    ((r.start, s_tag), Some((r.end, e_tag)), ret)
 }
 
 macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
@@ -617,13 +609,13 @@ macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
             self,
             byte: usize,
             max: usize,
-            key: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            tagger: Tagger,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
             assert!(
                 byte <= max,
                 "byte out of bounds: the len is {max}, but the byte is {byte}",
             );
-            ((byte, $raw_tag(key)), None, None)
+            ((byte, $raw_tag(tagger)), None, ())
         }
     }
 
@@ -632,10 +624,10 @@ macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
             self,
             point: Point,
             max: usize,
-            key: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            tagger: Tagger,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
             let byte = point.byte();
-            self.decompose(byte, max, key)
+            self.decompose(byte, max, tagger)
         }
     }
 }
@@ -646,13 +638,13 @@ macro ranged_impl_tag($tag:ty, $start:expr, $end:expr) {
             self,
             index: I,
             max: usize,
-            key: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            tagger: Tagger,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
             let range = index.to_range(max);
             (
-                (range.start, $start(key)),
-                Some((range.end, $end(key))),
-                None,
+                (range.start, $start(tagger)),
+                Some((range.end, $end(tagger))),
+                (),
             )
         }
     }

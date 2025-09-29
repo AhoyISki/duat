@@ -18,37 +18,6 @@ pub struct LogBook {
 }
 
 impl<U: Ui> Widget<U> for LogBook {
-    type Cfg = LogBookCfg<U>;
-
-    fn cfg() -> Self::Cfg {
-        LogBookCfg {
-            format_rec: Box::new(|rec| {
-                use context::Level::*;
-                let mut builder = match rec.level() {
-                    Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
-                    Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]: "),
-                    Info => txt!("[log_book.info][[INFO]][log_book.colon]:   "),
-                    Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]:  "),
-                    Trace => unreachable!("Trace is not meant to be useable"),
-                };
-
-                builder.push(txt!(
-                    "[log_book.bracket]([log_book.target]{}[log_book.bracket])[] {}",
-                    rec.metadata().target(),
-                    rec.text().clone()
-                ));
-
-                Some(builder.build())
-            }),
-            close_on_unfocus: true,
-            hidden: true,
-            side: Side::Right,
-            height: 10.0,
-            width: 50.0,
-            _ghost: PhantomData,
-        }
-    }
-
     fn update(pa: &mut Pass, handle: &Handle<Self, U>)
     where
         Self: Sized,
@@ -66,7 +35,7 @@ impl<U: Ui> Widget<U> for LogBook {
         }
 
         if records_were_added {
-            area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::print_cfg(lb));
+            area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::get_print_cfg(lb));
         }
     }
 
@@ -100,7 +69,7 @@ impl<U: Ui> Widget<U> for LogBook {
         Ok(())
     }
 
-    fn print_cfg(&self) -> PrintCfg {
+    fn get_print_cfg(&self) -> PrintCfg {
         *PrintCfg::new().wrap_on_word().set_scrolloff(0, 0)
     }
 
@@ -116,97 +85,39 @@ impl<U: Ui> Widget<U> for LogBook {
 }
 
 /// [`WidgetCfg`] for the [`LogBook`]
-pub struct LogBookCfg<U> {
-    format_rec: Box<dyn FnMut(Record) -> Option<Text> + Send>,
-    close_on_unfocus: bool,
-    hidden: bool,
-    side: Side,
-    height: f32,
-    width: f32,
-    _ghost: PhantomData<U>,
+pub struct LogBookCfg<F: FnMut(Record) -> Option<Text> + Send> {
+    pub fmt: F = default_fmt,
+    pub close_on_unfocus: bool = true,
+    pub hidden: bool = true,
+    pub side: Side = Side::Right,
+    pub height: f32 = 8.0,
+    pub width: f32 = 50.0,
 }
 
-impl<U> LogBookCfg<U> {
-    /// Have the [`LogBook`] be open by default
-    pub fn open_by_default(self) -> Self {
-        Self { hidden: false, ..self }
-    }
-
-    /// Keeps the [`LogBook`] open when unfocused, as opposed to
-    /// hiding it
-    pub fn keep_open_on_unfocus(self) -> Self {
-        Self { close_on_unfocus: false, ..self }
-    }
-
-    /// Changes the way [`Record`]s are formatted by the [`LogBook`]
-    ///
-    /// This function returns an [`Option<Text>`], which means you can
-    /// filter out unnecessary [`Record`]s. By default, all valid
-    /// [`Record`]s (those with level [`Debug`] or higher.
-    ///
-    /// [`Debug`]: context::Level::Debug
-    pub fn fmt(self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) -> Self {
-        Self { format_rec: Box::new(fmt), ..self }
-    }
-
-    /// Pushes the [`LogBook`] to the right, as opposed to below
-    pub fn on_the_right(self) -> Self {
-        Self { side: Side::Right, ..self }
-    }
-
-    /// Pushes the [`LogBook`] to the left, as opposed to below
-    pub fn on_the_left(self) -> Self {
-        Self { side: Side::Left, ..self }
-    }
-
-    /// Pushes the [`LogBook`] above, as opposed to below
-    pub fn above(self) -> Self {
-        Self { side: Side::Above, ..self }
-    }
-
-    /// Pushes the [`LogBook`] above, as opposed to below
-    pub fn below(self) -> Self {
-        Self { side: Side::Below, ..self }
-    }
-
-    /// Sets the height of the [`LogBook`]
-    ///
-    /// This is ignored if pushing to the left or to the right.
-    pub fn height(self, height: f32) -> Self {
-        Self { height, ..self }
-    }
-
-    /// Sets the width of the [`LogBook`]
-    ///
-    /// This is ignored if pushing above or below.
-    pub fn width(self, width: f32) -> Self {
-        Self { width, ..self }
-    }
-}
-
-impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
-    type Widget = LogBook;
-
-    fn pushed(mut self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+impl LogBookCfg {
+    fn push_on<W: Widget<U>, U: Ui>(
+        mut self,
+        pa: &mut Pass,
+        handle: &Handle<W, U>,
+    ) -> Handle<LogBook, U> {
         let logs = context::logs();
 
         let mut text = Text::new();
 
         let records = logs.get(..).unwrap();
         let len_of_taken = records.len();
-        for rec_text in records.into_iter().filter_map(&mut self.format_rec) {
+        for rec_text in records.into_iter().filter_map(&mut self.fmt) {
             text.insert_text(text.len(), rec_text);
         }
 
-        let widget = LogBook {
+        let log_book = LogBook {
             logs,
             len_of_taken,
             text,
-            format_rec: self.format_rec,
+            format_rec: self.fmt,
             close_on_unfocus: self.close_on_unfocus,
         };
-
-        (widget, match self.side {
+        let specs = match self.side {
             Side::Right | Side::Left => PushSpecs {
                 side: self.side,
                 width: Some(self.width),
@@ -219,6 +130,27 @@ impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
                 hidden: self.hidden,
                 ..
             },
-        })
+        };
+
+        handle.push_widget(pa, log_book, specs)
     }
+}
+
+fn default_fmt(rec: Record) -> Text {
+    use context::Level::*;
+    let mut builder = match rec.level() {
+        Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
+        Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]: "),
+        Info => txt!("[log_book.info][[INFO]][log_book.colon]:   "),
+        Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]:  "),
+        Trace => unreachable!("Trace is not meant to be useable"),
+    };
+
+    builder.push(txt!(
+        "[log_book.bracket]([log_book.target]{}[log_book.bracket])[] {}",
+        rec.metadata().target(),
+        rec.text().clone()
+    ));
+
+    Some(builder.build())
 }

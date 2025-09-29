@@ -1,18 +1,19 @@
 use std::{any::type_name, sync::Mutex};
 
 pub use self::{
-    builder::{BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias},
+    builder::UiBuilder,
     id::{AreaId, GetAreaId},
 };
 use super::{Area, Node, Ui, Widget, layout::Layout};
 use crate::{
+    cfg::PrintCfg,
     context::{self, Cache, Handle},
     data::{Pass, RwData},
-    file::{File, FileCfg, PathKind},
-    hook::{self, FileClosed, WidgetCreated, WindowCreated},
+    file::{File, PathKind},
+    hook::{self, FileClosed, WindowCreated},
     mode,
     text::{Text, txt},
-    ui::{MutArea, PushSpecs, SpawnSpecs, WidgetCfg},
+    ui::{MutArea, PushSpecs, SpawnSpecs},
     utils::duat_name,
 };
 
@@ -37,24 +38,11 @@ impl<U: Ui> Windows<U> {
         &self,
         pa: &mut Pass,
         ms: &'static U::MetaStatics,
-        file_cfg: FileCfg<U>,
+        file: File<U>,
         layout: Box<dyn Layout<U>>,
         set_cur: bool,
     ) -> Node<U> {
-        let widget_id = AreaId::new();
-        let (file_cfg, builder) = {
-            let wc = hook::trigger(
-                pa,
-                WidgetCreated::<File<U>, U>((
-                    Some(file_cfg),
-                    UiBuilder::new_main(self.0.read(pa).windows.len(), widget_id),
-                )),
-            );
-            (wc.0.0.unwrap(), wc.0.1)
-        };
-
-        let (file, _) = file_cfg.pushed(pa, BuildInfo::for_main());
-        let (window, node) = Window::new(pa, ms, file, widget_id, layout);
+        let (window, node) = Window::new(pa, ms, file, layout);
 
         let area = node.area(pa);
         let inner = self.0.write(pa);
@@ -65,44 +53,69 @@ impl<U: Ui> Windows<U> {
             context::set_cur(pa, node.try_downcast(), node.clone());
         }
 
-        let files_id = builder.finish_around_widget(pa, None, node.handle().clone());
-
         let inner = self.0.write(pa);
-        let builder = UiBuilder::<U>::new_window(inner.windows.len() - 1);
-        let WindowCreated(builder) = hook::trigger(pa, WindowCreated(builder));
-        builder.finish_around_window(pa, files_id);
+        let builder = UiBuilder::<U>::new(inner.windows.len() - 1);
+        hook::trigger(pa, WindowCreated(builder));
 
         node
     }
 
-    pub(crate) fn spawn_new_widget<Cfg: WidgetCfg<U>>(
+    /// Push a [`Widget`] to [`Handle`]
+    pub(crate) fn push_widget<W: Widget<U>>(
         &self,
         pa: &mut Pass,
-        (to, specs): (Handle<dyn Widget<U>, U>, SpawnSpecs),
-        cfg: Cfg,
+        (to, to_file, specs): (AreaId, bool, PushSpecs),
+        widget: W,
+    ) -> Handle<W, U> {
+        let (win, ..) = self.area_id_entry(pa, to);
+
+        let (node, _) = self.push(pa, win, (to, specs), widget, to_file);
+        node.handle().try_downcast().unwrap()
+    }
+
+    /// Spawn a [`Widget`] on a [`Handle`]
+    pub(crate) fn spawn_widget_on_area_id<W: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        (to, specs): (AreaId, SpawnSpecs),
+        widget: W,
     ) -> Node<U> {
-        let win = self
-            .0
-            .read(pa)
-            .windows
-            .iter()
-            .position(|win| win.nodes().any(|node| *node == to))
-            .unwrap();
+        fn spawn_and_get_area<U: Ui>(
+            windows: &Windows<U>,
+            pa: &mut Pass,
+            (widget, specs): (RwData<dyn Widget<U>>, SpawnSpecs),
+            (to_id, widget_id): (AreaId, AreaId),
+        ) -> U::Area {
+            let area = windows.0.read(pa).find_area(to_id);
 
+            let cache = if let Some(file) = widget.read_as::<File<U>>(pa) {
+                match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
+                    Ok(cache) => cache,
+                    Err(err) => {
+                        context::error!("{err}");
+                        <U::Area as Area>::Cache::default()
+                    }
+                }
+            } else {
+                <U::Area as Area>::Cache::default()
+            };
+
+            let spawned = U::Area::spawn(MutArea(area), specs, cache);
+
+            windows.0.write(pa).areas.push((widget_id, spawned.clone()));
+
+            spawned
+        }
+
+        let (win, ..) = self.area_id_entry(pa, to);
         let widget_id = AreaId::new();
-        let (cfg, builder) = {
-            let wc = hook::trigger(
-                pa,
-                WidgetCreated::<Cfg::Widget, U>((Some(cfg), UiBuilder::new_main(win, widget_id))),
-            );
-            (wc.0.0.unwrap(), wc.0.1)
-        };
+        let widget = RwData::new(widget);
 
-        let (widget, _) = cfg.spawned(pa, BuildInfo::spawned_on(to.clone()));
+        let spawned_area =
+            spawn_and_get_area(self, pa, (widget.to_dyn_widget(), specs), (to, widget_id));
 
-        let node = self.spawn(pa, win, (widget, specs), (to.area_id(), widget_id));
-
-        builder.finish_around_widget(pa, None, node.handle().clone());
+        let node = Node::new::<W>(pa, widget, spawned_area, widget_id);
+        self.0.write(pa).windows[win].add(node.clone(), None, Location::Spawned);
 
         node
     }
@@ -117,25 +130,15 @@ impl<U: Ui> Windows<U> {
         &self,
         pa: &mut Pass,
         win: usize,
-        file_cfg: FileCfg<U>,
+        mut file: File<U>,
     ) -> Result<Node<U>, Text> {
-        let widget_id = AreaId::new();
-        let (file_cfg, builder) = {
-            let wc = hook::trigger(
-                pa,
-                WidgetCreated::<File<U>, U>((Some(file_cfg), UiBuilder::new_main(win, widget_id))),
-            );
-            (wc.0.0.unwrap(), wc.0.1)
-        };
-
-        let (mut file, _) = file_cfg.pushed(pa, BuildInfo::for_main());
-
         let window = &self.0.read(pa).windows[win];
         let file_handles = window.file_handles(pa);
         file.layout_order = file_handles.len();
 
         let window = &mut self.0.write(pa).windows[win];
         let (handle, specs) = window.layout.new_file(&file, file_handles)?;
+        let specs = PushSpecs { cluster: false, ..specs };
 
         let master_id = {
             let master_area = handle
@@ -147,15 +150,7 @@ impl<U: Ui> Windows<U> {
             self.0.read(pa).areas.iter().find_map(id_of).unwrap()
         };
 
-        let (node, _) = self.push(
-            pa,
-            win,
-            (file, specs),
-            (master_id, widget_id),
-            (false, true),
-        );
-
-        builder.finish_around_widget(pa, None, node.handle().clone());
+        let (node, _) = self.push(pa, win, (master_id, specs), file, true);
 
         Ok(node)
     }
@@ -233,7 +228,7 @@ impl<U: Ui> Windows<U> {
         pk: PathKind,
         ms: &'static U::MetaStatics,
         layout: Box<dyn Layout<U>>,
-        default_file_cfg: FileCfg<U>,
+        default_file_cfg: PrintCfg,
     ) {
         match self.file_entry(pa, pk.clone()) {
             Ok((win, _, handle)) if self.get(pa, win).unwrap().file_handles(pa).len() > 1 => {
@@ -273,7 +268,7 @@ impl<U: Ui> Windows<U> {
                 self.new_window(
                     pa,
                     ms,
-                    default_file_cfg.open_path(pk.as_path()),
+                    File::new(pk.as_path(), default_file_cfg),
                     layout,
                     false,
                 );
@@ -294,16 +289,16 @@ impl<U: Ui> Windows<U> {
         &self,
         pa: &mut Pass,
         win: usize,
-        (widget, specs): (W, PushSpecs),
-        (to_id, widget_id): (AreaId, AreaId),
-        (do_cluster, on_files): (bool, bool),
+        (to_id, specs): (AreaId, PushSpecs),
+        widget: W,
+        on_file: bool,
     ) -> (Node<U>, Option<AreaId>) {
         fn push_and_get_areas<U: Ui>(
             windows: &Windows<U>,
             pa: &mut Pass,
             (widget, specs): (RwData<dyn Widget<U> + 'static>, PushSpecs),
             (to_id, widget_id): (AreaId, AreaId),
-            (do_cluster, on_files): (bool, bool),
+            on_file: bool,
         ) -> (U::Area, Option<(AreaId, U::Area)>) {
             let area = windows.0.read(pa).find_area(to_id);
 
@@ -319,8 +314,7 @@ impl<U: Ui> Windows<U> {
                 <U::Area as Area>::Cache::default()
             };
 
-            let (widget_area, parent_area) =
-                MutArea(area).bisect(specs, do_cluster, on_files, cache);
+            let (widget_area, parent_area) = MutArea(area).push(specs, on_file, cache);
 
             let parent = parent_area.map(|a| (AreaId::new(), a));
 
@@ -333,23 +327,24 @@ impl<U: Ui> Windows<U> {
 
         run_once::<W, U>();
 
+        let pushed_id = AreaId::new();
         let widget = RwData::new(widget);
 
         let (widget_area, parent) = push_and_get_areas(
             self,
             pa,
             (widget.to_dyn_widget(), specs),
-            (to_id, widget_id),
-            (do_cluster, on_files),
+            (to_id, pushed_id),
+            on_file,
         );
 
         let (parent_id, parent_area) = parent.unzip();
 
-        let node = self.0.write(pa).windows[win].add::<W>(
-            widget,
+        let node = Node::new(pa, widget, widget_area, pushed_id);
+        self.0.write(pa).windows[win].add(
+            node.clone(),
             parent_area,
-            (widget_id, widget_area),
-            if on_files {
+            if on_file {
                 Location::OnFiles
             } else {
                 Location::Regular
@@ -357,58 +352,6 @@ impl<U: Ui> Windows<U> {
         );
 
         (node, parent_id)
-    }
-
-    /// Spawns a floating widget
-    fn spawn<W: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        win: usize,
-        (widget, specs): (W, SpawnSpecs),
-        (to_id, widget_id): (AreaId, AreaId),
-    ) -> Node<U> {
-        fn spawn_and_get_area<U: Ui>(
-            windows: &Windows<U>,
-            pa: &mut Pass,
-            (widget, specs): (RwData<dyn Widget<U>>, SpawnSpecs),
-            (to_id, widget_id): (AreaId, AreaId),
-        ) -> U::Area {
-            let area = windows.0.read(pa).find_area(to_id);
-
-            let cache = if let Some(file) = widget.read_as::<File<U>>(pa) {
-                match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
-                    Ok(cache) => cache,
-                    Err(err) => {
-                        context::error!("{err}");
-                        <U::Area as Area>::Cache::default()
-                    }
-                }
-            } else {
-                <U::Area as Area>::Cache::default()
-            };
-
-            let spawned = U::Area::spawn_floating(MutArea(area), specs, cache);
-
-            windows.0.write(pa).areas.push((widget_id, spawned.clone()));
-
-            spawned
-        }
-
-        let widget = RwData::new(widget);
-
-        let spawned_area = spawn_and_get_area(
-            self,
-            pa,
-            (widget.to_dyn_widget(), specs),
-            (to_id, widget_id),
-        );
-
-        self.0.write(pa).windows[win].add(
-            widget,
-            None,
-            (widget_id, spawned_area),
-            Location::Spawned,
-        )
     }
 
     /// Swaps two [`File`] widgets
@@ -486,6 +429,22 @@ impl<U: Ui> Windows<U> {
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
             })
             .ok_or_else(|| txt!("File {name} not found").build())
+    }
+
+    /// An entry for a specific [`Handle`]
+    pub(crate) fn area_id_entry<'a>(
+        &'a self,
+        pa: &'a Pass,
+        area_id: AreaId,
+    ) -> (usize, usize, &'a Node<U>) {
+        self.0
+            .read(pa)
+            .windows
+            .iter()
+            .enumerate()
+            .flat_map(window_index_widget)
+            .find(|(.., node)| node.area_id() == area_id)
+            .unwrap()
     }
 
     /// An entry for a widget of a specific type
@@ -648,7 +607,6 @@ impl<U: Ui> Window<U> {
         pa: &mut Pass,
         ms: &'static U::MetaStatics,
         widget: W,
-        widget_id: AreaId,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
         let widget = RwData::new(widget);
@@ -659,8 +617,7 @@ impl<U: Ui> Window<U> {
             .unwrap_or_default();
 
         let area = U::new_root(ms, cache);
-
-        let node = Node::new::<W>(widget, area.clone(), widget_id);
+        let node = Node::new::<W>(pa, widget, area.clone(), AreaId::new());
 
         let window = Self {
             nodes: vec![node.clone()],
@@ -690,29 +647,19 @@ impl<U: Ui> Window<U> {
     ////////// Widget addition/removal
 
     /// Adds a [`Widget`] to the list of widgets of this [`Window`]
-    fn add<W: Widget<U>>(
-        &mut self,
-        widget: RwData<W>,
-        parent_area: Option<U::Area>,
-        (widget_id, widget_area): (AreaId, U::Area),
-        location: Location,
-    ) -> Node<U> {
-        let node = Node::new::<W>(widget, widget_area, widget_id);
-
+    fn add(&mut self, node: Node<U>, parent_area: Option<U::Area>, location: Location) {
         match location {
             Location::OnFiles => {
-                self.nodes.push(node.clone());
+                self.nodes.push(node);
                 if let Some(parent) = &parent_area
                     && parent.is_master_of(&self.files_area)
                 {
                     self.files_area = parent.clone();
                 }
             }
-            Location::Regular => self.nodes.push(node.clone()),
-            Location::Spawned => self.floating.push(node.clone()),
+            Location::Regular => self.nodes.push(node),
+            Location::Spawned => self.floating.push(node),
         }
-
-        node
     }
 
     /// Removes all [`Node`]s whose [`Area`]s where deleted

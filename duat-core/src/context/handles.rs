@@ -16,7 +16,7 @@ use crate::{
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TextParts, TwoPoints},
-    ui::{Area, AreaId, GetAreaId, SpawnSpecs, Ui, Widget, WidgetCfg},
+    ui::{Area, AreaId, GetAreaId, PushSpecs, SpawnSpecs, Ui, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -480,7 +480,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
         let widget = self.widget.read(pa);
         self.area(pa)
-            .scroll_ver(widget.text(), dist, widget.print_cfg());
+            .scroll_ver(widget.text(), dist, widget.get_print_cfg());
         self.widget.declare_written();
     }
 
@@ -492,20 +492,21 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn scroll_to_points(&self, pa: &Pass, points: impl TwoPoints) {
         let widget = self.widget.read(pa);
         self.area
-            .scroll_to_points(widget.text(), points, widget.print_cfg());
+            .scroll_to_points(widget.text(), points, widget.get_print_cfg());
         self.widget.declare_written();
     }
 
     /// The start points that should be printed
     pub fn start_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
-        self.area.start_points(widget.text(), widget.print_cfg())
+        self.area
+            .start_points(widget.text(), widget.get_print_cfg())
     }
 
     /// The end points that should be printed
     pub fn end_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
-        self.area.end_points(widget.text(), widget.print_cfg())
+        self.area.end_points(widget.text(), widget.get_print_cfg())
     }
 
     ////////// Querying functions
@@ -579,7 +580,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
 
     /// The [`Widget`]'s [`PrintCfg`]
     pub fn cfg(&self, pa: &Pass) -> PrintCfg {
-        self.widget.read(pa).print_cfg()
+        self.widget.read(pa).get_print_cfg()
     }
 
     /// Reads related [`Widget`]s of type `W2`, as well as it s
@@ -659,23 +660,34 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             searcher: RefCell::new(searcher),
         }
     }
-}
 
-impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// Spawns a floating [`Widget`]
-    pub fn spawn_widget<Cfg: WidgetCfg<U>>(
+    pub fn spawn_widget<SW: Widget<U>>(
         &self,
         pa: &mut Pass,
-        cfg: Cfg,
+        widget: SW,
         specs: SpawnSpecs,
-    ) -> Handle<Cfg::Widget, U> {
+    ) -> Handle<SW, U> {
         context::windows()
-            .spawn_new_widget(pa, (self.to_dyn(), specs), cfg)
+            .spawn_widget_on_area_id(pa, (self.id, specs), widget)
             .handle()
             .try_downcast()
             .unwrap()
     }
 
+    /// Pushes a [`Widget`]
+    pub fn push_widget<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        let to_file = self.widget.data_is::<crate::file::File<U>>();
+        context::windows().push_widget(pa, (self.area_id(), to_file, specs), widget)
+    }
+}
+
+impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`]
     pub fn to_dyn(&self) -> Handle<dyn Widget<U>, U> {
         Handle {

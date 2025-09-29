@@ -14,18 +14,14 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use self::{
-    bounds::Bounds,
-    taggers::TaggerExtents,
-    types::{TagId, Toggle},
-};
+use self::{bounds::Bounds, taggers::TaggerExtents, types::Toggle};
 pub use self::{
     ids::*,
     taggers::{Tagger, Taggers},
     types::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
-        Spacer, Tag,
+        Spacer, SpawnTag, Tag,
     },
 };
 use super::{
@@ -48,8 +44,22 @@ pub struct Tags<'a>(pub(super) &'a mut InnerTags);
 
 impl Tags<'_> {
     /// Inserts a [`Tag`] at the given position
-    pub fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) {
-        self.0.insert(tagger, r, tag);
+    ///
+    /// Insertion may fail if you try to push a `Tag` to a position or
+    /// range which already has the exact same `Tag` with the exact
+    /// same `Tagger`.
+    ///
+    /// For some `Tag`s (like [`Ghost`]) can return an id (like
+    /// [`GhostId`]). This id can then be used in order to insert the
+    /// same `Tag`. In the [`Ghost`] example, that would print the
+    /// same ghost [`Text`] multiple times without needing to
+    /// pointlessly copy the [`Text`] for every time you want to
+    /// insert the same ghost.
+    ///
+    /// When the `Tag` doesn't return an id, it will return `Some(())`
+    /// if the `Tag` was successfully added, and `None` otherwise.
+    pub fn insert<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R> {
+        self.0.insert(tagger, r, tag)
     }
 
     /// Removes the [`Tag`]s of a [tagger] from a region
@@ -157,27 +167,9 @@ impl InnerTags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub(super) fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
-        fn insert_id(tags: &mut InnerTags, id: Option<TagId>) -> Option<ToggleId> {
-            match id {
-                Some(TagId::Ghost(id, ghost)) => {
-                    tags.ghosts.push((id, ghost));
-                    None
-                }
-                Some(TagId::Toggle(id, toggle)) => {
-                    tags.toggles.push((id, toggle));
-                    Some(id)
-                }
-                None => None,
-            }
-        }
-
-        let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), tagger);
-        if self.insert_raw(start, end) {
-            insert_id(self, tag_id)
-        } else {
-            None
-        }
+    pub(super) fn insert<I, R>(&mut self, tagger: Tagger, i: I, tag: impl Tag<I, R>) -> Option<R> {
+        let (start, end, ret) = tag.decompose(i, self.len_bytes(), tagger);
+        self.insert_raw(start, end).then_some(ret)
     }
 
     fn insert_raw(&mut self, (s_b, s_tag): (usize, RawTag), end: Option<(usize, RawTag)>) -> bool {

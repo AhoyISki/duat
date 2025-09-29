@@ -142,7 +142,7 @@ impl<U: Ui> WidgetAlias<U, FooterWidgetsDummy> for FooterWidgets<U> {
                 if handle.area_id() == prompt_id
                     && let Err(err) = handle
                         .area(pa)
-                        .request_width_to_fit(handle.read(pa).print_cfg(), handle.text(pa))
+                        .request_width_to_fit(handle.read(pa).get_print_cfg(), handle.text(pa))
                 {
                     context::error!("{err}")
                 }

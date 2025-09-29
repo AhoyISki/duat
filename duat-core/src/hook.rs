@@ -554,18 +554,13 @@ impl Hookable for UnfocusedFromDuat {
 /// [direction]: crate::ui::PushSpecs
 /// [`LineNumbers`]: https://docs.rs/duat_utils/latest/duat-utils/widgets/struct.LineNumbers.html
 /// [`VertRule`]: https://docs.rs/duat_term/latest/duat-term/struct.VertRule.html
-pub struct WidgetCreated<W: Widget<U>, U: Ui>(pub(crate) (Option<W::Cfg>, UiBuilder<U>));
+pub struct WidgetCreated<W: Widget<U>, U: Ui>(pub(crate) Handle<W, U>);
 
 impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
-    type Input<'h> = (W::Cfg, &'h mut UiBuilder<U>);
-    type Output = W::Cfg;
+    type Input<'h> = &'h Handle<W, U>;
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (self.0.0.take().unwrap(), &mut self.0.1)
-    }
-
-    fn take_output_back(&mut self, output: Self::Output) {
-        self.0.0 = Some(output)
+        &self.0
     }
 }
 

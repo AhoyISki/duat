@@ -19,7 +19,7 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     form::Palette,
-    session::{DuatEvent, FileParts, ReloadEvent, SessionCfg},
+    session::{DuatEvent, ReloadedFile, ReloadEvent, SessionCfg},
     text::History,
     ui::{self, Area, Widget},
 };
@@ -39,7 +39,6 @@ use crate::{
 };
 
 // Setup statics.
-pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
@@ -175,23 +174,16 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 #[doc(hidden)]
 pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
-    files: Vec<Vec<FileParts>>,
+    files: Vec<Vec<ReloadedFile>>,
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
-) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>) {
+) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>) {
     <Ui as ui::Ui>::load(ui_ms);
-    let mut cfg = SessionCfg::new(clipb);
 
-    if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
-        cfg_fn(&mut cfg)
-    }
-
-    let print_cfg = match PRINT_CFG.write().unwrap().take() {
+    let mut cfg = SessionCfg::new(clipb, match PRINT_CFG.write().unwrap().take() {
         Some(cfg) => cfg,
         None => PrintCfg::default_for_input(),
-    };
-
-    cfg.set_print_cfg(print_cfg);
+    });
 
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
     cfg.build(ui_ms, files, already_plugged)

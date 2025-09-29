@@ -107,8 +107,12 @@ impl Builder {
             && b < self.text.len().byte()
         {
             match align {
-                Alignment::Center => self.text.insert_tag(Tagger::basic(), b.., AlignCenter),
-                Alignment::Right => self.text.insert_tag(Tagger::basic(), b.., AlignRight),
+                Alignment::Center => {
+                    self.text.insert_tag(Tagger::basic(), b.., AlignCenter);
+                }
+                Alignment::Right => {
+                    self.text.insert_tag(Tagger::basic(), b.., AlignRight);
+                }
                 _ => {}
             }
         }
@@ -177,8 +181,12 @@ impl Builder {
                     None => builder.last_align = Some((end, Right)),
                     Some(_) => {}
                 },
-                BP::Spacer(_) => builder.text.insert_tag(Tagger::basic(), end, Spacer),
-                BP::Ghost(text) => builder.text.insert_tag(Tagger::basic(), end, Ghost(text)),
+                BP::Spacer(_) => {
+                    builder.text.insert_tag(Tagger::basic(), end, Spacer);
+                }
+                BP::Ghost(text) => {
+                    builder.text.insert_tag(Tagger::basic(), end, Ghost(text));
+                }
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }

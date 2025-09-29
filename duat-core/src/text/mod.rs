@@ -98,7 +98,6 @@ mod shift_list;
 mod tags;
 
 use std::{
-    path::Path,
     rc::Rc,
     sync::{
         Arc,
@@ -117,12 +116,12 @@ pub use self::{
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
-        MainCaret, RawTag, Spacer, Tag, Tagger, Taggers, Tags, ToggleId, SpawnId
+        MainCaret, RawTag, Spacer, SpawnId, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,
     },
 };
 use crate::{
     cfg::PrintCfg,
-    context, form,
+    form,
     mode::{Selection, Selections},
     ui::Area,
 };
@@ -173,37 +172,6 @@ impl Text {
             Selections::new(Selection::default()),
             true,
         )
-    }
-
-    /// Creates a [`Text`] from a file's [path]
-    ///
-    /// [path]: Path
-    pub(crate) fn from_file(
-        bytes: Bytes,
-        selections: Selections,
-        path: impl AsRef<Path>,
-        has_unsaved_changes: bool,
-    ) -> Self {
-        let selections = if let Some(selection) = selections.get_main()
-            && bytes.len() > selection.caret()
-        {
-            let caret = bytes.point_at_byte(selection.caret().byte());
-            let anchor = selection.anchor().map(|p| p.min(bytes.last_point()));
-            Selections::new(Selection::new(caret, anchor))
-        } else {
-            Selections::new(Selection::default())
-        };
-
-        let mut text = Self::from_bytes(bytes, selections, true);
-        text.0
-            .has_unsaved_changes
-            .store(has_unsaved_changes, Ordering::Relaxed);
-
-        if let Ok(history) = context::Cache::new().load(path.as_ref()) {
-            text.0.history = Some(history);
-        }
-
-        text
     }
 
     /// Creates a [`Text`] from [`Bytes`]
@@ -576,8 +544,8 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) {
-        self.0.tags.insert(tagger, r, tag);
+    pub fn insert_tag<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R> {
+        self.0.tags.insert(tagger, r, tag)
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -666,6 +634,16 @@ impl Text {
     /// Removes the [`Tag`]s for all [`Selection`]s
     pub(crate) fn remove_selections(&mut self) {
         self.remove_tags(Tagger::for_selections(), ..);
+    }
+
+    /// Prepares the `Text` for reloading, to be used on [`File`]s
+    ///
+    /// [`File`]: crate::file::File
+    pub(crate) fn prepare_for_reloading(&mut self) {
+        self.clear_tags();
+        if let Some(history) = self.0.history.as_mut() {
+            history.prepare_for_reloading()
+        }
     }
 
     /////////// Iterator methods

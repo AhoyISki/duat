@@ -38,15 +38,15 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::sync::{Arc, Mutex};
 
-use super::{Area, AreaId, PushSpecs, Ui};
+use super::{Area, AreaId, Ui};
 use crate::{
     cfg::PrintCfg,
     context::{Handle, WidgetRelation},
     data::{Pass, RwData},
     form::{self, Painter},
-    hook::{self, FocusedOn, UnfocusedFrom},
+    hook::{self, FocusedOn, UnfocusedFrom, WidgetCreated},
     text::Text,
-    ui::{BuildInfo, GetAreaId, SpawnSpecs},
+    ui::GetAreaId,
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -288,51 +288,6 @@ use crate::{
 /// [`Plugin`]: crate::Plugin
 /// [`File`]: crate::file::File
 pub trait Widget<U: Ui>: Send + 'static {
-    /// The configuration type
-    ///
-    /// This configuration type is used when pushing [`Widget`]s
-    /// around the screen. It should follow the builder pattern,
-    /// making it very easy to concatenatively (?) modify it before
-    /// adding it in.
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    type Cfg: WidgetCfg<U, Widget = Self>
-    where
-        Self: Sized;
-
-    /// Returns a [`WidgetCfg`], for use in layout construction
-    ///
-    /// This function exists primarily so the [`WidgetCfg`]s
-    /// themselves don't need to be in scope. You will want to use
-    /// these in [hooks] like [`WidgetCreated`]:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     hook::remove("FileWidgets");
-    ///     // A type `W: Widget` is an alias for `WidgetCreated<W>`
-    ///     hook::add::<File>(|_, (cfg, builder)| {
-    ///         // Screw it, LineNumbers on both sides.
-    ///         builder.push(LineNumbers::cfg());
-    ///         builder.push(LineNumbers::cfg().on_the_right().align_right());
-    ///         cfg
-    ///     });
-    /// }
-    /// ```
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    ///
-    /// [hooks]: crate::hook
-    /// [`WidgetCreated`]: crate::hook::WidgetCreated
-    fn cfg() -> Self::Cfg
-    where
-        Self: Sized;
-
     ////////// Stateful functions
 
     /// Updates the widget, allowing the modification of its
@@ -437,7 +392,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// implemented,can be found at [`PrintCfg::new`].
     ///
     /// [configuration]: PrintCfg
-    fn print_cfg(&self) -> PrintCfg {
+    fn get_print_cfg(&self) -> PrintCfg {
         PrintCfg::new()
     }
 
@@ -452,7 +407,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`File::print`]: crate::file::File::print
     fn print(&mut self, painter: Painter, area: &U::Area) {
-        let cfg = self.print_cfg();
+        let cfg = self.get_print_cfg();
         area.print(self.text_mut(), cfg, painter)
     }
 
@@ -471,67 +426,6 @@ pub trait Widget<U: Ui>: Send + 'static {
         Self: Sized;
 }
 
-/// A configuration struct for a [`Widget`]
-///
-/// This configuration is used to make adjustments on how a widget
-/// will be added to a file or a window. These adjustments are
-/// primarily configurations for the widget itself, and to what
-/// direction it will be pushed:
-///
-/// ```rust
-/// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     hook::add::<File>(|_, (file_cfg, builder)| {
-///         // Change pushing direction to the right.
-///         let cfg = LineNumbers::cfg().on_the_right();
-///         // Changes the alignment of the numbers.
-///         // Then pushes the widget.
-///         builder.push(cfg.align_right().align_main_left());
-///         file_cfg
-///     });
-/// }
-/// ```
-///
-/// In this case, the `LineNumbers::cfg` function will return the
-/// `LineNumbers::Cfg` type, which can be modified to then be pushed
-/// to the [`File`] via the [`builder`].
-///
-/// [`File`]: crate::file::File
-/// [`builder`]: super::UiBuilder
-#[allow(unused_variables)]
-pub trait WidgetCfg<U: Ui>: Sized + 'static {
-    /// The [`Widget`] that will be created by this [`WidgetCfg`]
-    type Widget: Widget<U, Cfg = Self>;
-
-    /// Builds the [`Widget`] alongside [`PushSpecs`]
-    ///
-    /// The `PushSpecs` are determined by the [`WidgetCfg`] itself,
-    /// and the end user is meant to change it by public facing
-    /// functions in the `WidgetCfg`. This is to prevent nonsensical
-    /// `Widget` pushing, like [`LineNumbers`] on the bottom of a
-    /// [`File`], for example.
-    ///
-    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-    /// [`File`]: crate::file::File
-    fn pushed(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-        unimplemented!("This widget is not meant to be pushed");
-    }
-
-    /// Builds the [`Widget`] alongside [`SpawnSpecs`]
-    ///
-    /// The `SpawnSpecs` are determined by the [`WidgetCfg`] itslef,
-    /// and the end user is meant to change them by public facing
-    /// functions from said `WidgetCfg`. This is to prevent
-    /// nonsensical `Widget` spawning, although that tends to be a
-    /// smaller issue than nonsensical `Widget` pushing.
-    fn spawned(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, SpawnSpecs) {
-        unimplemented!("This Widget is not meant to be spawned");
-    }
-}
-
 /// Elements related to the [`Widget`]s
 #[derive(Clone)]
 pub(crate) struct Node<U: Ui> {
@@ -544,8 +438,15 @@ pub(crate) struct Node<U: Ui> {
 
 impl<U: Ui> Node<U> {
     /// Returns a new [`Node`]
-    pub(crate) fn new<W: Widget<U>>(widget: RwData<W>, area: U::Area, id: AreaId) -> Self {
+    pub(crate) fn new<W: Widget<U>>(
+        pa: &mut Pass,
+        widget: RwData<W>,
+        area: U::Area,
+        id: AreaId,
+    ) -> Self {
         let handle = Handle::new(widget, area, Arc::new(Mutex::new("")), id);
+        hook::trigger(pa, WidgetCreated(handle.clone()));
+
         Self::from_handle(handle)
     }
 
@@ -638,7 +539,7 @@ impl<U: Ui> Node<U> {
         (self.update)(pa);
 
         let (widget, area) = self.handle.write_with_area(pa);
-        let cfg = widget.print_cfg();
+        let cfg = widget.get_print_cfg();
         widget.text_mut().add_selections(area, cfg);
 
         if area.print_info() != <U::Area as Area>::PrintInfo::default() {

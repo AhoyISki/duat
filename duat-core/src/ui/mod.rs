@@ -38,9 +38,9 @@ use bincode::{Decode, Encode};
 
 pub(crate) use self::widget::Node;
 pub use self::{
-    widget::{Widget, WidgetCfg},
+    widget::Widget,
     window::{
-        BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias, Window, Windows,
+        UiBuilder, Window, Windows,
         id::{AreaId, GetAreaId},
     },
 };
@@ -236,13 +236,19 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
     /// ```
     ///
     /// And so [`Area::bisect`] should return `(3, None)`.
-    fn bisect(
+    fn push(
         area: MutArea<Self>,
         specs: PushSpecs,
-        cluster: bool,
         on_files: bool,
         cache: Self::Cache,
     ) -> (Self, Option<Self>);
+
+    /// Spawns a floating area on this [`Area`]
+    ///
+    /// This function will take a list of [`SpawnSpecs`], taking the
+    /// first one that fits, and readapting as the constraints are
+    /// altered
+    fn spawn(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Self;
 
     /// Deletes this [`Area`], signaling the closing of a
     /// [`Widget`]
@@ -256,13 +262,6 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
     /// respective [`Area`]s. As such, if they belong to the same
     /// master, nothing happens.
     fn swap(lhs: MutArea<Self>, rhs: &Self);
-
-    /// Spawns a floating area on this [`Area`]
-    ///
-    /// This function will take a list of [`SpawnSpecs`], taking the
-    /// first one that fits, and readapting as the constraints are
-    /// altered
-    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Self;
 
     /// Spawns a floating area
     ///
@@ -532,6 +531,12 @@ pub struct PushSpecs {
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
     pub hidden: bool = false,
+    /// Cluster this `Widget` when pushing
+    ///
+    /// This makes it so, if the main `Widget` is moved or deleted,
+    /// then this one will follow. Useful for things like
+    /// [`LineNumbers`], since they should follow their [`File`] around.
+    pub cluster: bool = true,
 }
 
 impl PushSpecs {
@@ -788,14 +793,8 @@ pub struct MutArea<'area, A: Area>(pub(crate) &'area A);
 
 impl<A: Area> MutArea<'_, A> {
     /// Bisects the [`Area`] in two
-    pub fn bisect(
-        self,
-        specs: PushSpecs,
-        cluster: bool,
-        on_files: bool,
-        cache: A::Cache,
-    ) -> (A, Option<A>) {
-        A::bisect(self, specs, cluster, on_files, cache)
+    pub fn push(self, specs: PushSpecs, on_files: bool, cache: A::Cache) -> (A, Option<A>) {
+        A::push(self, specs, on_files, cache)
     }
 
     /// Calls [`Area::delete`] on `self`
@@ -809,8 +808,8 @@ impl<A: Area> MutArea<'_, A> {
     }
 
     /// Calls [`Area::spawn_floating`] on `self`
-    pub fn spawn_floating<Cfg: WidgetCfg<A::Ui>>(self, specs: SpawnSpecs, cache: A::Cache) -> A {
-        A::spawn_floating(self, specs, cache)
+    pub fn spawn_floating(self, specs: SpawnSpecs, cache: A::Cache) -> A {
+        A::spawn(self, specs, cache)
     }
 
     /// Calls [`Area::spawn_floating_at`] on `self`

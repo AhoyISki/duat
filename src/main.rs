@@ -20,7 +20,7 @@ use duat::{Channels, Initials, MetaStatics, crate_dir, pre_setup, prelude::*, ru
 use duat_core::{
     clipboard::Clipboard,
     context,
-    session::{DuatEvent, FileParts, ReloadEvent},
+    session::{DuatEvent, ReloadedFile, ReloadEvent},
     ui::{self, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
@@ -266,15 +266,15 @@ fn get_files(
     args: Args,
     crate_dir: &'static Path,
     profile: &'static str,
-) -> Result<Vec<Vec<FileParts>>, Box<dyn std::error::Error>> {
-    let files: Vec<FileParts> = args
+) -> Result<Vec<Vec<ReloadedFile>>, Box<dyn std::error::Error>> {
+    let files: Vec<ReloadedFile> = args
         .cfg
         .then(|| crate_dir.join("src").join("lib.rs"))
         .into_iter()
         .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
         .chain(args.files)
         .enumerate()
-        .map(|(i, path)| FileParts::by_args(Some(path), i == 0))
+        .map(|(i, path)| ReloadedFile::by_args(Some(path), i == 0))
         .try_collect()?;
 
     Ok(if files.is_empty() {
@@ -284,7 +284,7 @@ fn get_files(
         } else if args.clean || args.update {
             Vec::new()
         } else {
-            vec![vec![FileParts::by_args(None, true).unwrap()]]
+            vec![vec![ReloadedFile::by_args(None, true).unwrap()]]
         }
     } else {
         let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
@@ -606,6 +606,6 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
 type RunFn = fn(
     Initials,
     MetaStatics,
-    Vec<Vec<FileParts>>,
+    Vec<Vec<ReloadedFile>>,
     Channels,
-) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>);
+) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>);
