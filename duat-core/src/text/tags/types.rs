@@ -7,15 +7,16 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{ops::Range, sync::Arc};
+use std::{marker::PhantomData, ops::Range, sync::Arc};
 
 use RawTag::*;
 use crossterm::event::MouseEventKind;
 
-use super::{GhostId, Tagger, ToggleId};
+use super::{GhostId, SpawnId, Tagger, ToggleId};
 use crate::{
     form::FormId,
     text::{Point, Text, TextRange},
+    ui::{SpawnSpecs, Widget},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`]
@@ -118,7 +119,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 pub struct ExtraCaret;
 simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
 
-/////////// Alignment InnerTags
+/////////// Alignment Tags
 
 /// [`Builder`] part: Begins centered alignment
 ///
@@ -192,7 +193,7 @@ pub struct AlignLeft;
 pub struct Spacer;
 simple_impl_Tag!(Spacer, RawTag::Spacer);
 
-////////// Text modification InnerTags
+////////// Text modification Tags
 
 /// [`Builder`] part and [`Tag`]: Places ghost text
 ///
@@ -242,6 +243,50 @@ impl<T: Into<Text> + std::fmt::Debug> Tag<Point> for Ghost<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct Conceal;
 ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
+
+////////// Layout modification Tags
+
+/// [`Tag`]: Spawns a [`Widget`] in the [`Text`]
+///
+/// The [`Widget`] will be placed according to the [`SpawnSpecs`], and
+/// should move automatically as the `SpawnTag` moves around the
+/// screen.
+pub struct SpawnTag<W: Widget<U>, U: crate::ui::Ui>(W, SpawnSpecs, PhantomData<U>);
+
+impl<W: Widget<U>, U: crate::ui::Ui> SpawnTag<W, U> {
+    /// Returns a new instance of `SpawnTag`
+    ///
+    /// You can then place this [`Tag`] inside of the [`Text`] via
+    /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
+    /// should be placed according to the [`SpawnSpecs`], and should
+    /// move around automatically whenever tha position moves on
+    /// screen.
+    ///
+    /// [`Tags::insert`]: super::Tags::insert
+    pub fn new(widget: W, specs: SpawnSpecs) -> Self {
+        Self(widget, specs, PhantomData)
+    }
+}
+
+impl<W: Widget<U>, U: crate::ui::Ui> Tag<Point> for SpawnTag<W, U> {
+    fn decompose(
+        self,
+        index: Point,
+        max: usize,
+        key: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        todo!();
+    }
+}
+
+impl<W: Widget<U>, U: crate::ui::Ui> std::fmt::Debug for SpawnTag<W, U> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("SpawnTag")
+            .field(&std::any::type_name::<W>())
+            .field(&self.2)
+            .finish()
+    }
+}
 
 /// An internal representation of [`Tag`]s
 ///
@@ -303,6 +348,9 @@ pub enum RawTag {
     /// Text that shows up on screen, but is ignored otherwise.
     Ghost(Tagger, GhostId),
 
+    /// A spawned floating [`Widget`]
+    SpawnedWidget(Tagger, SpawnId),
+
     // Not Implemented:
     /// Begins a toggleable section in the text.
     StartToggle(Tagger, ToggleId),
@@ -314,16 +362,16 @@ impl RawTag {
     /// Inverts a [`RawTag`] that occupies a range
     pub fn inverse(&self) -> Option<Self> {
         match self {
-            Self::PushForm(key, id, _) => Some(Self::PopForm(*key, *id)),
-            Self::PopForm(key, id) => Some(Self::PushForm(*key, *id, 0)),
-            Self::StartToggle(key, id) => Some(Self::EndToggle(*key, *id)),
-            Self::EndToggle(key, id) => Some(Self::StartToggle(*key, *id)),
-            Self::StartConceal(key) => Some(Self::EndConceal(*key)),
-            Self::EndConceal(key) => Some(Self::StartConceal(*key)),
-            Self::StartAlignCenter(key) => Some(Self::EndAlignCenter(*key)),
-            Self::EndAlignCenter(key) => Some(Self::StartAlignCenter(*key)),
-            Self::StartAlignRight(key) => Some(Self::EndAlignRight(*key)),
-            Self::EndAlignRight(key) => Some(Self::StartAlignRight(*key)),
+            Self::PushForm(tagger, id, _) => Some(Self::PopForm(*tagger, *id)),
+            Self::PopForm(tagger, id) => Some(Self::PushForm(*tagger, *id, 0)),
+            Self::StartToggle(tagger, id) => Some(Self::EndToggle(*tagger, *id)),
+            Self::EndToggle(tagger, id) => Some(Self::StartToggle(*tagger, *id)),
+            Self::StartConceal(tagger) => Some(Self::EndConceal(*tagger)),
+            Self::EndConceal(tagger) => Some(Self::StartConceal(*tagger)),
+            Self::StartAlignCenter(tagger) => Some(Self::EndAlignCenter(*tagger)),
+            Self::EndAlignCenter(tagger) => Some(Self::StartAlignCenter(*tagger)),
+            Self::StartAlignRight(tagger) => Some(Self::EndAlignRight(*tagger)),
+            Self::EndAlignRight(tagger) => Some(Self::StartAlignRight(*tagger)),
             _ => None,
         }
     }
@@ -395,20 +443,21 @@ impl RawTag {
     /// [`InnerTags`]: super::InnerTags
     fn get_tagger(&self) -> Option<Tagger> {
         match self {
-            Self::PushForm(key, ..)
-            | Self::PopForm(key, _)
-            | Self::MainCaret(key)
-            | Self::ExtraCaret(key)
-            | Self::StartAlignCenter(key)
-            | Self::EndAlignCenter(key)
-            | Self::StartAlignRight(key)
-            | Self::EndAlignRight(key)
-            | Self::Spacer(key)
-            | Self::StartConceal(key)
-            | Self::EndConceal(key)
-            | Self::Ghost(key, _)
-            | Self::StartToggle(key, _)
-            | Self::EndToggle(key, _) => Some(*key),
+            Self::PushForm(tagger, ..)
+            | Self::PopForm(tagger, _)
+            | Self::MainCaret(tagger)
+            | Self::ExtraCaret(tagger)
+            | Self::StartAlignCenter(tagger)
+            | Self::EndAlignCenter(tagger)
+            | Self::StartAlignRight(tagger)
+            | Self::EndAlignRight(tagger)
+            | Self::Spacer(tagger)
+            | Self::StartConceal(tagger)
+            | Self::EndConceal(tagger)
+            | Self::Ghost(tagger, _)
+            | Self::StartToggle(tagger, _)
+            | Self::EndToggle(tagger, _)
+            | Self::SpawnedWidget(tagger, _) => Some(*tagger),
             Self::ConcealUntil(_) => None,
         }
     }
@@ -421,18 +470,17 @@ impl RawTag {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
             Self::PopForm(..) => 0,
-            Self::MainCaret(..) => 4,
-            Self::ExtraCaret(..) => 4,
-            Self::StartAlignCenter(..) => 3,
-            Self::EndAlignCenter(..) => 1,
-            Self::StartAlignRight(..) => 3,
-            Self::EndAlignRight(..) => 1,
-            Self::Spacer(..) => 1,
-            Self::StartConceal(..) => 3,
-            Self::EndConceal(..) => 1,
-            Self::Ghost(..) => 2,
-            Self::StartToggle(..) => 3,
-            Self::EndToggle(..) => 1,
+            Self::MainCaret(..) | Self::ExtraCaret(..) => 4,
+            Self::StartAlignCenter(..)
+            | Self::StartAlignRight(..)
+            | Self::StartConceal(..)
+            | Self::StartToggle(..) => 3,
+            Self::EndAlignCenter(..)
+            | Self::EndAlignRight(..)
+            | Self::Spacer(..)
+            | Self::EndConceal(..)
+            | Self::EndToggle(..) => 1,
+            Self::SpawnedWidget(..) | Self::Ghost(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
@@ -521,23 +569,24 @@ impl Ord for RawTag {
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::PushForm(key, id, prio) => {
-                write!(f, "PushForm({key:?}, {}, {prio})", id.name())
+            Self::PushForm(tagger, id, prio) => {
+                write!(f, "PushForm({tagger:?}, {}, {prio})", id.name())
             }
-            Self::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
-            Self::MainCaret(key) => write!(f, "MainCaret({key:?})"),
-            Self::ExtraCaret(key) => write!(f, "ExtraCaret({key:?})"),
-            Self::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
-            Self::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
-            Self::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
-            Self::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
-            Self::Spacer(key) => write!(f, "Spacer({key:?})"),
-            Self::StartConceal(key) => write!(f, "StartConceal({key:?})"),
-            Self::EndConceal(key) => write!(f, "EndConceal({key:?})"),
-            Self::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            Self::Ghost(key, id) => write!(f, "Ghost({key:?}, {id:?})"),
-            Self::StartToggle(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
-            Self::EndToggle(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
+            Self::PopForm(tagger, id) => write!(f, "PopForm({tagger:?}, {})", id.name()),
+            Self::MainCaret(tagger) => write!(f, "MainCaret({tagger:?})"),
+            Self::ExtraCaret(tagger) => write!(f, "ExtraCaret({tagger:?})"),
+            Self::StartAlignCenter(tagger) => write!(f, "StartAlignCenter({tagger:?})"),
+            Self::EndAlignCenter(tagger) => write!(f, "EndAlignCenter({tagger:?})"),
+            Self::StartAlignRight(tagger) => write!(f, "StartAlignRight({tagger:?})"),
+            Self::EndAlignRight(tagger) => write!(f, "EndAlignRight({tagger:?})"),
+            Self::Spacer(tagger) => write!(f, "Spacer({tagger:?})"),
+            Self::StartConceal(tagger) => write!(f, "StartConceal({tagger:?})"),
+            Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
+            Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
+            Self::Ghost(tagger, id) => write!(f, "Ghost({tagger:?}, {id:?})"),
+            Self::StartToggle(tagger, id) => write!(f, "ToggleStart({tagger:?}), {id:?})"),
+            Self::EndToggle(tagger, id) => write!(f, "ToggleEnd({tagger:?}, {id:?})"),
+            Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),
         }
     }
 }

@@ -117,7 +117,7 @@ pub use self::{
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
-        MainCaret, RawTag, Spacer, Tag, Tagger, Taggers, Tags, ToggleId,
+        MainCaret, RawTag, Spacer, Tag, Tagger, Taggers, Tags, ToggleId, SpawnId
     },
 };
 use crate::{

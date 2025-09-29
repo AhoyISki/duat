@@ -18,7 +18,7 @@ use std::{
 };
 
 use super::{
-    Point, Text, ToggleId, TwoPoints,
+    Point, SpawnId, Text, ToggleId, TwoPoints,
     tags::{self, RawTag},
 };
 use crate::mode::Selection;
@@ -597,6 +597,9 @@ pub enum Part {
     ///
     /// Not yet implemented
     ToggleEnd(ToggleId),
+    /// A spawned [`Widget`]
+    SpawnedWidget(SpawnId),
+
     /// Resets all [`FormId`]s, [`ToggleId`]s and alignments
     ///
     /// Used when a [`Conceal`] covers a large region, which Duat
@@ -604,6 +607,8 @@ pub enum Part {
     /// This could skip some [`Tag`]s, so this variant serves the
     /// purpose of terminating or initiating in place of skipped
     /// [`Tag`]s
+    ///
+    /// This variant does not actually represent any [`Tag`].
     ///
     /// [`Conceal`]: super::Conceal
     /// [`Tag`]: super::Tag
@@ -627,6 +632,7 @@ impl Part {
             RawTag::StartToggle(_, id) => Part::ToggleStart(id),
             RawTag::EndToggle(_, id) => Part::ToggleEnd(id),
             RawTag::ConcealUntil(_) => Part::ResetState,
+            RawTag::SpawnedWidget(_, id) => Part::SpawnedWidget(id),
             RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Ghost(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }

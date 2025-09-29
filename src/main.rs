@@ -11,7 +11,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         LazyLock, Mutex,
-        atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver},
     },
     time::Instant,

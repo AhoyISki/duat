@@ -172,52 +172,46 @@ impl InnerTags {
             }
         }
 
-        fn insert_raw_tags(
-            tags: &mut InnerTags,
-            (s_b, s_tag): (usize, RawTag),
-            end: Option<(usize, RawTag)>,
-        ) -> bool {
-            if let Some((e_b, e_tag)) = end
-                && s_b < e_b
-            {
-                let (s_i, e_i) = match (
-                    tags.list.find_by_key((s_b as i32, s_tag), |t| t),
-                    tags.list.find_by_key((e_b as i32, e_tag), |t| t),
-                ) {
-                    (Ok(_), Ok(_)) => return false,
-                    (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => {
-                        (s_i, e_i + 1)
-                    }
-                };
-
-                tags.list.insert(s_i, (s_b as i32, s_tag));
-                tags.list.insert(e_i, (e_b as i32, e_tag));
-
-                tags.bounds
-                    .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
-
-                tags.extents.insert(s_tag.tagger(), s_b);
-                tags.extents.insert(s_tag.tagger(), e_b);
-
-                true
-            } else if end.is_none() {
-                let (Ok(i) | Err(i)) = tags.list.find_by_key((s_b as i32, s_tag), |s| s);
-                tags.list.insert(i, (s_b as i32, s_tag));
-
-                tags.bounds.shift_by(i, [1, 0]);
-
-                tags.extents.insert(s_tag.tagger(), s_b);
-                true
-            } else {
-                false
-            }
-        }
-
         let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), tagger);
-        if insert_raw_tags(self, start, end) {
+        if self.insert_raw(start, end) {
             insert_id(self, tag_id)
         } else {
             None
+        }
+    }
+
+    fn insert_raw(&mut self, (s_b, s_tag): (usize, RawTag), end: Option<(usize, RawTag)>) -> bool {
+        if let Some((e_b, e_tag)) = end
+            && s_b < e_b
+        {
+            let (s_i, e_i) = match (
+                self.list.find_by_key((s_b as i32, s_tag), |t| t),
+                self.list.find_by_key((e_b as i32, e_tag), |t| t),
+            ) {
+                (Ok(_), Ok(_)) => return false,
+                (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => (s_i, e_i + 1),
+            };
+
+            self.list.insert(s_i, (s_b as i32, s_tag));
+            self.list.insert(e_i, (e_b as i32, e_tag));
+
+            self.bounds
+                .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
+
+            self.extents.insert(s_tag.tagger(), s_b);
+            self.extents.insert(s_tag.tagger(), e_b);
+
+            true
+        } else if end.is_none() {
+            let (Ok(i) | Err(i)) = self.list.find_by_key((s_b as i32, s_tag), |s| s);
+            self.list.insert(i, (s_b as i32, s_tag));
+
+            self.bounds.shift_by(i, [1, 0]);
+
+            self.extents.insert(s_tag.tagger(), s_b);
+            true
+        } else {
+            false
         }
     }
 
@@ -228,46 +222,27 @@ impl InnerTags {
         for (_, (b, tag)) in other.list.iter_fwd(..) {
             let b = b as usize + p.char();
             match tag {
-                PushForm(..) => starts.push((b, tag)),
-                PopForm(tagger, id) => {
+                PushForm(..) | StartAlignCenter(_) | StartAlignRight(_) | StartConceal(_) => {
+                    starts.push((b, tag))
+                }
+                PopForm(..) | EndAlignCenter(_) | EndAlignRight(_) | EndConceal(_) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, id.to_tag(tag.priority()));
-                }
-                RawTag::MainCaret(tagger) => {
-                    self.insert(tagger, b, MainCaret);
-                }
-                RawTag::ExtraCaret(tagger) => {
-                    self.insert(tagger, b, ExtraCaret);
-                }
-                StartAlignCenter(_) => starts.push((b, tag)),
-                EndAlignCenter(tagger) => {
-                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, AlignCenter);
-                }
-                StartAlignRight(_) => starts.push((b, tag)),
-                EndAlignRight(tagger) => {
-                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, AlignRight);
-                }
-                RawTag::Spacer(tagger) => {
-                    self.insert(tagger, b, Spacer);
-                }
-                StartConceal(_) => starts.push((b, tag)),
-                EndConceal(tagger) => {
-                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, Conceal);
+                    let (sb, stag) = starts.remove(i);
+                    self.insert_raw((sb, stag), Some((b, tag)));
                 }
                 ConcealUntil(_) => unreachable!(),
-                RawTag::Ghost(tagger, id) => {
-                    let entry = other.ghosts.extract_if(.., |(l, _)| l == &id).next();
-                    self.insert(tagger, b, Ghost(entry.unwrap().1));
+                RawTag::Ghost(_, id) => {
+                    self.ghosts
+                        .extend(other.ghosts.extract_if(.., |(l, _)| l == &id).next());
+                    self.insert_raw((b, tag), None);
                 }
-                StartToggle(..) => todo!(),
-                EndToggle(..) => todo!(),
+                StartToggle(..) | EndToggle(..) => todo!(),
+                RawTag::MainCaret(_)
+                | RawTag::ExtraCaret(_)
+                | RawTag::Spacer(_)
+                | SpawnedWidget(..) => {
+                    self.insert_raw((b, tag), None);
+                }
             };
         }
     }
@@ -662,8 +637,7 @@ mod ids {
 
     impl GhostId {
         /// Creates a new [`GhostId`]
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
+        pub(super) fn new() -> Self {
             static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
             Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
         }
@@ -681,8 +655,7 @@ mod ids {
 
     impl ToggleId {
         /// Creates a new [`ToggleId`]
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
+        pub(super) fn _new() -> Self {
             static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
             Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
         }
@@ -691,6 +664,27 @@ mod ids {
     impl std::fmt::Debug for ToggleId {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "ToggleId({})", self.0)
+        }
+    }
+
+    /// The id of a spawned [`Widget`]
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct SpawnId(u16);
+
+    impl SpawnId {
+        /// Creates a new [`SpawnId`]
+        #[allow(clippy::new_without_default)]
+        pub(super) fn new() -> Self {
+            static SPAWN_COUNT: AtomicU16 = AtomicU16::new(0);
+            Self(SPAWN_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+
+    impl std::fmt::Debug for SpawnId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "SpawnId({})", self.0)
         }
     }
 }
