@@ -17,6 +17,7 @@ mod state;
 
 use duat_core::{
     context::DynFile,
+    data::DataMap,
     prelude::*,
     text::Builder,
     ui::{PushTarget, Side},
@@ -95,14 +96,56 @@ pub struct StatusLine<U: Ui> {
 }
 
 impl<U: Ui> StatusLine<U> {
+    fn new(builder: StatusLineBuilder<U>, file_handle: FileHandle<U>) -> Self {
+        let (builder_fn, checker) = if let Some((builder, checker)) = builder.fns {
+            (builder, checker)
+        } else {
+            let Some(mode_txt) = builder.mode_txt else {
+                unreachable!("mode_txt not xor with the default config");
+            };
+
+            let cfg = match builder.specs.side {
+                Side::Above | Side::Below => {
+                    macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
+                }
+                Side::Right => {
+                    macros::status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
+                }
+                Side::Left => unreachable!(),
+            };
+
+            cfg.fns.unwrap()
+        };
+
+        Self {
+            file_handle,
+            text_fn: Box::new(move |pa, fh| {
+                let builder = Text::builder();
+                builder_fn(pa, builder, fh)
+            }),
+            text: Text::new(),
+            checker: Box::new(checker),
+        }
+    }
+
+    /// Replaces this `StatusLine` with a new one
+    pub fn fmt(&mut self, new: StatusLineBuilder<U>) {
+        let handle = self.file_handle.clone();
+        *self = StatusLine::new(new, handle);
+    }
+
     /// Returns a [`StatusLineBuilder`], which can be used to push
     /// around `StatusLine`s
     ///
     /// The same can be done more conveniently with the [`status!`]
     /// macro, which is imported by default in the configuration
     /// crate.
-    pub fn builder() -> StatusLineBuilder<U> {
-        StatusLineBuilder::default()
+    pub fn builder(pa: &Pass) -> StatusLineBuilder<U> {
+        StatusLineBuilder {
+            mode_txt: Some(mode_txt(pa)),
+            fns: None,
+            ..
+        }
     }
 }
 
@@ -156,10 +199,10 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 }
 
 /// The [`WidgetCfg`] for a [`StatusLine`]
-#[derive(Default)]
 #[doc(hidden)]
 pub struct StatusLineBuilder<U: Ui> {
-    fns: Option<(BuilderFn<U>, CheckerFn)> = None,
+    mode_txt: Option<DataMap<&'static str, Text>>,
+    fns: Option<(BuilderFn<U>, CheckerFn)>,
     specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
 }
 
@@ -175,42 +218,18 @@ impl<U: Ui> StatusLineBuilder<U> {
         pa: &mut Pass,
         push_target: &impl PushTarget<U>,
     ) -> Handle<StatusLine<U>, U> {
-        let (builder_fn, checker_fn) = if let Some((builder, checker)) = self.fns {
-            (builder, checker)
-        } else {
-            let mode_txt = mode_txt(pa);
-            let cfg = match self.specs.side {
-                Side::Above | Side::Below => {
-                    macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
-                }
-                Side::Right => {
-                    macros::status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
-                }
-                Side::Left => unreachable!(),
-            };
+        let specs = self.specs;
+        let status_line = StatusLine::new(self, match push_target.try_downcast() {
+            Some(handle) => FileHandle::Fixed(handle),
+            None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
+        });
 
-            cfg.fns.unwrap()
-        };
-
-        let status_line = StatusLine {
-            file_handle: match push_target.try_downcast() {
-                Some(handle) => FileHandle::Fixed(handle),
-                None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
-            },
-            text_fn: Box::new(move |pa, fh| {
-                let builder = Text::builder();
-                builder_fn(pa, builder, fh)
-            }),
-            text: Text::default(),
-            checker: Box::new(checker_fn),
-        };
-
-        push_target.push_outer(pa, status_line, self.specs)
+        push_target.push_outer(pa, status_line, specs)
     }
 
     #[doc(hidden)]
     pub fn new_with(fns: (BuilderFn<U>, CheckerFn)) -> Self {
-        Self { fns: Some(fns), .. }
+        Self { mode_txt: None, fns: Some(fns), .. }
     }
 
     /// Puts the [`StatusLine`] above, as opposed to below
@@ -424,6 +443,7 @@ type TextFn<U> = Box<dyn Fn(&Pass, &Handle<File<U>, U>) -> Text + Send>;
 type BuilderFn<U> = Box<dyn Fn(&Pass, Builder, &Handle<File<U>, U>) -> Text + Send>;
 type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;
 
+#[derive(Clone)]
 enum FileHandle<U: Ui> {
     Fixed(Handle<File<U>, U>),
     Dynamic(DynFile<U>),

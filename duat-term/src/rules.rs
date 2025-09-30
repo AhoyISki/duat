@@ -132,7 +132,7 @@ pub struct VertRuleBuilder {
 
 impl VertRuleBuilder {
     /// Pushes a [`VertRule`] to a [`PushTarget`]
-    pub fn push_on(self, pa: &mut Pass, push_target: impl PushTarget<Ui>) -> Handle<VertRule, Ui> {
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget<Ui>) -> Handle<VertRule, Ui> {
         let vert_rule = VertRule {
             handle: push_target.try_downcast(),
             text: Text::default(),

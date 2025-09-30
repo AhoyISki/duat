@@ -79,7 +79,6 @@ mod status_line;
 /// [`prompt`]: FooterWidgets::prompt
 /// [`notifs`]: FooterWidgets::notifs
 /// [`above`]: FooterWidgets::above
-#[derive(Default)]
 pub struct FooterWidgets<U: Ui> {
     status: StatusLineBuilder<U>,
     prompt: PromptLineBuilder<U>,
@@ -89,6 +88,17 @@ pub struct FooterWidgets<U: Ui> {
 }
 
 impl<U: Ui> FooterWidgets<U> {
+    /// Returns a new default intance of `FooterWidgets`
+    pub fn default(pa: &Pass) -> Self {
+        Self {
+            status: StatusLine::builder(pa),
+            prompt: PromptLine::builder(),
+            notifs: Notifications::builder(),
+            one_line: false,
+            above: false,
+        }
+    }
+
     /// Adds footer [`Widget`]s
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget<U>) {
         let status_line = if self.above {
@@ -123,19 +133,21 @@ impl<U: Ui> FooterWidgets<U> {
             let notifications = notifications.clone();
             let prompt_line = prompt_line.clone();
             move |pa, (_, handle)| {
-                Ok(if handle == &prompt_line {
+                if handle == &prompt_line {
                     notifications.area(pa).hide().unwrap();
                     handle.area(pa).reveal().unwrap();
-                })
+                };
+                Ok(())
             }
         });
 
         hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>({
             move |pa, (_, handle)| {
-                Ok(if handle == &prompt_line {
+                if handle == &prompt_line {
                     notifications.area(pa).reveal().unwrap();
                     handle.area(pa).hide().unwrap();
-                })
+                }
+                Ok(())
             }
         });
     }

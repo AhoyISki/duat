@@ -27,8 +27,9 @@ impl<U: Ui> Windows<U> {
     /// [`Windows`] exist before anything is setup
     pub(crate) fn new() -> Self {
         Self(RwData::new(InnerWindows {
-            windows: Vec::new(),
+            list: Vec::new(),
             areas: Vec::new(),
+            new_additions: None,
         }))
     }
 
@@ -45,16 +46,21 @@ impl<U: Ui> Windows<U> {
         let (window, node) = Window::new(pa, ms, file, layout);
 
         let area = node.area(pa);
-        let inner = self.0.write(pa);
-        inner.windows.push(window);
-        inner.areas.push((node.area_id(), area.clone()));
+        let wins = self.0.write(pa);
+        wins.list.push(window);
+        wins.areas.push((node.area_id(), area.clone()));
 
         if set_cur {
             context::set_cur(pa, node.try_downcast(), node.clone());
         }
 
-        let inner = self.0.write(pa);
-        let builder = UiBuilder::<U>::new(inner.windows.len() - 1);
+        let wins = self.0.write(pa);
+        let win = wins.list.len() - 1;
+        wins.new_additions
+            .get_or_insert_default()
+            .push((win, node.clone()));
+
+        let builder = UiBuilder::<U>::new(win);
         hook::trigger(pa, WindowCreated(builder));
 
         node
@@ -68,8 +74,8 @@ impl<U: Ui> Windows<U> {
         widget: W,
     ) -> Handle<W, U> {
         let (win, ..) = self.area_id_entry(pa, to).unwrap();
-
         let (node, _) = self.push(pa, win, (to, specs), widget, to_file);
+
         node.handle().try_downcast().unwrap()
     }
 
@@ -79,7 +85,7 @@ impl<U: Ui> Windows<U> {
         pa: &mut Pass,
         (to, specs): (AreaId, SpawnSpecs),
         widget: W,
-    ) -> Node<U> {
+    ) -> Handle<W, U> {
         fn spawn_and_get_area<U: Ui>(
             windows: &Windows<U>,
             pa: &mut Pass,
@@ -115,9 +121,14 @@ impl<U: Ui> Windows<U> {
             spawn_and_get_area(self, pa, (widget.to_dyn_widget(), specs), (to, widget_id));
 
         let node = Node::new::<W>(pa, widget, spawned_area, widget_id);
-        self.0.write(pa).windows[win].add(node.clone(), None, Location::Spawned);
 
-        node
+        let wins = self.0.write(pa);
+        wins.list[win].add(node.clone(), None, Location::Spawned);
+        wins.new_additions
+            .get_or_insert_default()
+            .push((win, node.clone()));
+
+        node.handle().try_downcast().unwrap()
     }
 
     /// Pushes a [`File`] to the file's parent
@@ -132,11 +143,11 @@ impl<U: Ui> Windows<U> {
         win: usize,
         mut file: File<U>,
     ) -> Result<Node<U>, Text> {
-        let window = &self.0.read(pa).windows[win];
+        let window = &self.0.read(pa).list[win];
         let file_handles = window.file_handles(pa);
         file.layout_order = file_handles.len();
 
-        let window = &mut self.0.write(pa).windows[win];
+        let window = &mut self.0.write(pa).list[win];
         let (handle, specs) = window.layout.new_file(&file, file_handles)?;
         let specs = PushSpecs { cluster: false, ..specs };
 
@@ -162,7 +173,7 @@ impl<U: Ui> Windows<U> {
 
             let lo = lhs.read(pa).layout_order;
 
-            let nodes: Vec<Handle<File<U>, U>> = self.0.read(pa).windows[lhs_win]
+            let nodes: Vec<Handle<File<U>, U>> = self.0.read(pa).list[lhs_win]
                 .nodes()
                 .filter(|n| n.data_is::<File<U>>())
                 .skip(lo + 1)
@@ -178,7 +189,7 @@ impl<U: Ui> Windows<U> {
             self.swap(pa, [win, win], [&lhs, &rhs]);
         }
 
-        let mut windows = std::mem::take(&mut self.0.write(pa).windows);
+        let mut windows = std::mem::take(&mut self.0.write(pa).list);
 
         windows[win].remove_file(pa, pk);
         if windows[win].file_names(pa).is_empty() {
@@ -190,7 +201,9 @@ impl<U: Ui> Windows<U> {
             }
         }
 
-        self.0.write(pa).windows = windows;
+        let wins = self.0.write(pa);
+        wins.list = windows;
+        wins.new_additions.get_or_insert_default();
     }
 
     /// Swaps two [`File`]s, as well as their related [`Widget`]s
@@ -236,9 +249,9 @@ impl<U: Ui> Windows<U> {
                 handle.write(pa).layout_order = 0;
 
                 let nodes = {
-                    let mut old_window = self.0.write(pa).windows.remove(win);
+                    let mut old_window = self.0.write(pa).list.remove(win);
                     let nodes = old_window.take_file_and_related_nodes(pa, &handle);
-                    self.0.write(pa).windows.insert(win, old_window);
+                    self.0.write(pa).list.insert(win, old_window);
 
                     nodes
                 };
@@ -248,22 +261,24 @@ impl<U: Ui> Windows<U> {
                 U::Area::swap(MutArea(handle.area(pa)), &new_root);
                 let window = Window::<U>::from_raw(handle.area(pa).clone(), nodes, layout);
 
-                self.0.write(pa).windows.push(window);
+                self.0.write(pa).list.push(window);
 
-                let inner = self.0.write(pa);
-                let builder = UiBuilder::<U>::new(inner.windows.len() - 1);
+                let wins = self.0.write(pa);
+                let builder = UiBuilder::<U>::new(wins.list.len() - 1);
                 hook::trigger(pa, WindowCreated(builder));
 
                 // Swap the Files ahead of the swapped new_root
                 let lo = handle.read(pa).layout_order;
 
-                for handle in &self.0.read(pa).windows[win].file_handles(pa)[lo..] {
+                for handle in &self.0.read(pa).list[win].file_handles(pa)[lo..] {
                     MutArea(&new_root).swap(handle.area(pa));
                 }
 
                 // Delete the new_root, which should be the last "File" in the
                 // list of the original Window.
                 MutArea(&new_root).delete();
+
+                self.0.write(pa).new_additions.get_or_insert_default();
             }
             // The Handle in question is already in its own window, so no need
             // to move it to another one.
@@ -345,7 +360,9 @@ impl<U: Ui> Windows<U> {
         let (parent_id, parent_area) = parent.unzip();
 
         let node = Node::new(pa, widget, widget_area, pushed_id);
-        self.0.write(pa).windows[win].add(
+
+        let wins = self.0.write(pa);
+        wins.list[win].add(
             node.clone(),
             parent_area,
             if on_file {
@@ -354,6 +371,9 @@ impl<U: Ui> Windows<U> {
                 Location::Regular
             },
         );
+        wins.new_additions
+            .get_or_insert_default()
+            .push((win, node.clone()));
 
         (node, parent_id)
     }
@@ -370,7 +390,7 @@ impl<U: Ui> Windows<U> {
 
         rhs.widget().write(pa).layout_order = lhs_lo;
 
-        let mut windows = std::mem::take(&mut self.0.write(pa).windows);
+        let mut windows = std::mem::take(&mut self.0.write(pa).list);
 
         let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(pa, lhs);
         windows[rhs_w].insert_file_nodes(pa, rhs_lo, lhs_nodes);
@@ -378,7 +398,9 @@ impl<U: Ui> Windows<U> {
         let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(pa, rhs);
         windows[lhs_w].insert_file_nodes(pa, lhs_lo, rhs_nodes);
 
-        self.0.write(pa).windows = windows;
+        let wins = self.0.write(pa);
+        wins.list = windows;
+        wins.new_additions.get_or_insert_default();
 
         MutArea(lhs.area(pa)).swap(rhs.area(pa));
     }
@@ -450,7 +472,7 @@ impl<U: Ui> Windows<U> {
         win: usize,
         wid: usize,
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
-        let windows = &self.0.read(pa).windows;
+        let windows = &self.0.read(pa).list;
 
         let prev_len: usize = windows.iter().take(win).map(Window::len_widgets).sum();
 
@@ -477,7 +499,7 @@ impl<U: Ui> Windows<U> {
         win: usize,
         wid: usize,
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
-        let windows = &self.0.read(pa).windows;
+        let windows = &self.0.read(pa).list;
 
         let next_len: usize = windows.iter().skip(win).map(Window::len_widgets).sum();
 
@@ -510,7 +532,7 @@ impl<U: Ui> Windows<U> {
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
         self.0
             .read(pa)
-            .windows
+            .list
             .iter()
             .enumerate()
             .flat_map(|(win, window)| {
@@ -528,12 +550,12 @@ impl<U: Ui> Windows<U> {
     ///
     /// Should never be 0, as that is not a valid state of affairs.
     pub fn len(&self, pa: &Pass) -> usize {
-        self.0.read(pa).windows.len()
+        self.0.read(pa).list.len()
     }
 
     /// get's the `win`th [`Window`]
     pub fn get<'a>(&'a self, pa: &'a Pass, win: usize) -> Option<&'a Window<U>> {
-        self.0.read(pa).windows.get(win)
+        self.0.read(pa).list.get(win)
     }
 
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat
@@ -543,7 +565,7 @@ impl<U: Ui> Windows<U> {
     ) -> impl Iterator<Item = &'a Handle<dyn Widget<U>, U>> {
         self.0
             .read(pa)
-            .windows
+            .list
             .iter()
             .flat_map(|w| w.nodes().map(|n| n.handle()))
     }
@@ -553,11 +575,7 @@ impl<U: Ui> Windows<U> {
         &'a self,
         pa: &'a Pass,
     ) -> impl Iterator<Item = Handle<File<U>, U>> + 'a {
-        self.0
-            .read(pa)
-            .windows
-            .iter()
-            .flat_map(|w| w.file_handles(pa))
+        self.0.read(pa).list.iter().flat_map(|w| w.file_handles(pa))
     }
 
     /// The [`AreaId`] of a given [`Ui::Area`]
@@ -570,12 +588,23 @@ impl<U: Ui> Windows<U> {
             .unwrap()
             .0
     }
+
+    /// Iterates through every [`Window`]
+    pub(crate) fn windows<'a>(&'a self, pa: &'a Pass) -> std::slice::Iter<'a, Window<U>> {
+        self.0.read(pa).list.iter()
+    }
+
+	/// Gets the new additions to the [`Windows`]
+    pub(crate) fn get_additions(&self, pa: &mut Pass) -> Option<Vec<(usize, Node<U>)>> {
+        self.0.write(pa).new_additions.take()
+    }
 }
 
 /// Inner holder of [`Window`]s
 struct InnerWindows<U: Ui> {
-    windows: Vec<Window<U>>,
+    list: Vec<Window<U>>,
     areas: Vec<(AreaId, U::Area)>,
+    new_additions: Option<Vec<(usize, Node<U>)>>,
 }
 
 impl<U: Ui> InnerWindows<U> {
@@ -658,7 +687,7 @@ impl<U: Ui> Window<U> {
             Location::Regular => self.nodes.push(node),
             Location::Spawned => self.floating.push(node),
         }
-        
+
         if let Some(parent) = &parent_area
             && parent.is_master_of(&self.master_area)
         {

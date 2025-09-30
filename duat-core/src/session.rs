@@ -135,14 +135,34 @@ impl<U: Ui> Session<U> {
         spawn_count: &'static AtomicUsize,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
     ) -> (Vec<Vec<ReloadedFile<U>>>, mpsc::Receiver<DuatEvent>) {
+        fn get_windows_nodes<U: Ui>(pa: &Pass) -> Vec<Vec<crate::ui::Node<U>>> {
+            context::windows::<U>()
+                .windows(pa)
+                .map(|window| window.nodes().cloned().collect())
+                .collect()
+        }
+
+        fn update_and_print_additions<U: Ui>(
+            pa: &mut Pass,
+            ms: &'static U::MetaStatics,
+            windows_nodes: &mut Vec<Vec<crate::ui::Node<U>>>,
+        ) {
+            while let Some(new_additions) = context::windows::<U>().get_additions(pa) {
+                U::flush_layout(ms);
+
+                let cur_win = context::cur_window();
+                for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
+                    node.update_and_print(pa);
+                }
+
+                *windows_nodes = get_windows_nodes(pa);
+            }
+        }
+
         form::set_sender(DuatSender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
         let pa = unsafe { &mut Pass::new() };
-        // SAFETY: Windows won't be accessible via &mut Pass by the end user,
-        // so I should be able to use a shared Pass in order to allow easier
-        // use here, whilst using the other &mut Pass for mutation operations.
-        let wins_pa = unsafe { &Pass::new() };
 
         hook::trigger(pa, ConfigLoaded(()));
 
@@ -151,16 +171,19 @@ impl<U: Ui> Session<U> {
         };
         mode_fn(pa);
 
-        let win = context::cur_window();
-        for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
-            node.update_and_print(pa);
-        }
-
-        U::flush_layout(self.ms);
-
         let mut reload_requested = false;
         let mut reprint_screen = false;
         let mut no_updates = 0;
+        let mut windows_nodes = get_windows_nodes(pa);
+
+        U::flush_layout(self.ms);
+
+        for node in windows_nodes.get(context::cur_window()).unwrap() {
+            node.update_and_print(pa);
+        }
+        update_and_print_additions::<U>(pa, self.ms, &mut windows_nodes);
+
+        U::print(self.ms);
 
         loop {
             if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
@@ -229,7 +252,11 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        for handle in context::windows::<U>().file_handles(wins_pa) {
+                        for handle in windows_nodes
+                            .iter()
+                            .flatten()
+                            .filter_map(|node| node.handle().try_downcast::<File<U>>())
+                        {
                             hook::trigger(pa, FileReloaded((handle, Cache::new())));
                         }
 
@@ -245,7 +272,11 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        for handle in context::windows::<U>().file_handles(wins_pa) {
+                        for handle in windows_nodes
+                            .iter()
+                            .flatten()
+                            .filter_map(|node| node.handle().try_downcast::<File<U>>())
+                        {
                             hook::trigger(pa, FileClosed((handle, Cache::new())));
                         }
 
@@ -254,27 +285,26 @@ impl<U: Ui> Session<U> {
                     }
                 }
             } else if reprint_screen {
-                let win = context::cur_window();
-                for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
+                for node in windows_nodes.get(context::cur_window()).unwrap() {
                     node.update_and_print(pa);
                 }
+                update_and_print_additions(pa, self.ms, &mut windows_nodes);
+
                 reprint_screen = false;
                 U::print(self.ms);
                 continue;
             }
             no_updates += 1;
 
-            let win = context::cur_window();
-            for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
+            for node in windows_nodes.get(context::cur_window()).unwrap() {
                 if node.needs_update(pa) {
                     no_updates = 0;
                     node.update_and_print(pa);
                 }
             }
+            update_and_print_additions(pa, self.ms, &mut windows_nodes);
 
-            if no_updates == 0 {
-                U::print(self.ms);
-            }
+            U::print(self.ms);
         }
     }
 

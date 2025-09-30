@@ -319,8 +319,8 @@ impl<U: Ui> DynFile<U> {
 
     /// Swaps the [`DynFile`] to the currently active [`File`]
     pub fn swap_to_current(&mut self) {
-        // SAFETY: Since this struct doesn't implement Clone, mutable access
-        // ensures that nothing is holding a reference to the RwData.
+        // SAFETY: Since this struct uses deep Cloning, no mutable
+        // references to the RwData exist.
         let pa = unsafe { &mut Pass::new() };
         if self.cur_file.has_swapped() {
             *self.file.write(pa) = self.cur_file.fixed(pa).unwrap();
@@ -334,7 +334,7 @@ impl<U: Ui> DynFile<U> {
 
     /// The [`Handle<File>`] currently being pointed to
     pub fn handle(&self) -> &Handle<File<U>, U> {
-        // SAFETY: Since this struct doesn't implement Clone, no mutable
+        // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
         self.file.read(INTERNAL_PASS)
@@ -352,7 +352,7 @@ impl<U: Ui> DynFile<U> {
     /// [`read`]: Self::read
     /// [`has_changed`]: Self::has_changed
     pub fn declare_as_read(&self) {
-        // SAFETY: Since this struct doesn't implement Clone, no mutable
+        // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
         self.file.read(INTERNAL_PASS).declare_as_read();
@@ -392,6 +392,27 @@ impl<U: Ui> DynFile<U> {
     /// [`has_changed`]: Self::has_changed
     pub fn declare_written(&self) {
         self.file.declare_written();
+    }
+}
+
+impl<U: Ui> Clone for DynFile<U> {
+    /// Returns a _deep cloned_ duplicate of the value
+    ///
+    /// In this case, what this means is that the clone and `self`
+    /// will have different internal pointers for the current
+    /// [`File`]. So if, for example, you call
+    /// [`DynFile::swap_to_current`] on `self`, that will switch
+    /// `self` to point to the current `File`, but the same will not
+    /// be done in the clone.
+    fn clone(&self) -> Self {
+        // SAFETY: Because I already got a &mut Pass, the RwData can't be
+        // accessed anyways.
+        static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
+
+        Self {
+            file: RwData::new(self.file.read(INTERNAL_PASS).clone()),
+            cur_file: self.cur_file.clone(),
+        }
     }
 }
 

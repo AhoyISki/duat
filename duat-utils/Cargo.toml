@@ -16,4 +16,4 @@ missing_docs = "warn"
 [dependencies]
 format-like = "0.3.0"
 duat-core = { version = "0.7.0", path = "../duat-core/" }
-regex-syntax = "0.8.5"
+regex-syntax = "0.8.6"

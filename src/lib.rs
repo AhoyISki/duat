@@ -578,8 +578,8 @@ pub mod hook {
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
     //! [tabstop]: duat_core::cfg::PrintCfg::set_tabstop
-    use duat_core::data::Pass;
     pub use duat_core::hook::*;
+    use duat_core::{data::Pass, text::Text};
     pub use duat_utils::hooks::*;
 
     use crate::Ui;
@@ -624,7 +624,7 @@ pub mod hook {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     pub fn add<H: HookAlias<Ui, impl HookDummy>>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         duat_core::hook::add::<H, Ui>(f);
     }
@@ -640,7 +640,7 @@ pub mod hook {
     /// [`hook::add`]: add
     pub fn add_grouped<H: HookAlias<Ui, impl HookDummy>>(
         group: &'static str,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         duat_core::hook::add_grouped::<H, Ui>(group, f);
     }
@@ -929,7 +929,7 @@ pub mod state {
 
 /// Duat's builtin widgets
 pub mod widgets {
-    pub use duat_core::ui::{Widget, WidgetCfg};
+    pub use duat_core::ui::Widget;
     pub use duat_utils::widgets::*;
 
     /// The widget that is used to print and edit files

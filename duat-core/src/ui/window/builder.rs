@@ -172,7 +172,7 @@ impl<U: Ui> UiBuilder<U> {
         let (files_area_id, _) = windows
             .areas
             .iter()
-            .find(|(_, area)| area == &windows.windows[self.win].files_area)
+            .find(|(_, area)| area == &windows.list[self.win].files_area)
             .unwrap();
 
         context::windows().push_widget(pa, (*files_area_id, false, specs), widget)
@@ -189,7 +189,7 @@ impl<U: Ui> UiBuilder<U> {
         let (master_area_id, _) = windows
             .areas
             .iter()
-            .find(|(_, area)| area == &windows.windows[self.win].master_area)
+            .find(|(_, area)| area == &windows.list[self.win].master_area)
             .unwrap();
 
         context::windows().push_widget(pa, (*master_area_id, false, specs), widget)
