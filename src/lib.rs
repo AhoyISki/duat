@@ -24,7 +24,7 @@ pub struct JumpList;
 
 impl<U: Ui> Plugin<U> for JumpList {
     fn plug(self, _: &Plugins<U>) {
-        hook::add::<File<U>, U>(|_, (cfg, _)| cfg.with_parser(JumpsBuilder));
+        hook::add::<File<U>, U>(|pa, handle| handle.add_parser(pa, Jumps::new));
     }
 }
 
@@ -58,16 +58,6 @@ impl Jump {
                 !selections.is_empty()
             }
         }
-    }
-}
-
-struct JumpsBuilder;
-
-impl<U: Ui> ParserCfg<U> for JumpsBuilder {
-    type Parser = Jumps;
-
-    fn build(self, _: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text> {
-        Ok(Jumps::new(tracker))
     }
 }
 
