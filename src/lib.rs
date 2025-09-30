@@ -88,21 +88,22 @@ use duat_core::prelude::*;
 use duat_filetype::FileType;
 use duat_treesitter::TsParser;
 
-/// [`Plugin`] and [`Parser`] to highlight the match of the delimiter
-/// under [`Selection`]s
+/// [`Parser`] to highlight the match of the delimiter under
+/// [`Selection`]s
 ///
 /// [`Selection`]: duat_core::mode::Selection
+#[derive(Clone)]
 pub struct MatchPairs {
-    ts_and_bytes: Vec<[&'static [u8]; 2]>,
+    ts_and_reg: Vec<[&'static [u8]; 2]>,
     ts_only: Vec<[&'static [u8]; 2]>,
     escaped: Vec<[&'static str; 2]>,
 }
 
 impl MatchPairs {
     /// Returns a new [`MatchPairs`]
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
-            ts_and_bytes: vec![[b"(", b")"], [b"{", b"}"], [b"[", b"]"]],
+            ts_and_reg: vec![[b"(", b")"], [b"{", b"}"], [b"[", b"]"]],
             // TODO: Add more filetypes
             ts_only: vec![[b"<", b">"]],
             escaped: vec![["\\(", "\\)"], ["\\{", "\\}"], ["\\[", "\\]"]],
@@ -130,7 +131,11 @@ impl MatchPairs {
             .map(|[l, r]| [escape(l), escape(r)])
             .collect();
 
-        Self { ts_and_bytes, escaped, ..self }
+        Self {
+            ts_and_reg: ts_and_bytes,
+            escaped,
+            ..self
+        }
     }
 
     /// Match these pairs _only_ when they are tree-sitter pairs
@@ -161,11 +166,30 @@ impl<U: Ui> Plugin<U> for MatchPairs {
     fn plug(self, plugins: &Plugins<U>) {
         plugins.require::<duat_treesitter::TreeSitter>();
 
-        hook::add::<File<U>, U>(|_, (cfg, _)| cfg.with_parser(MatchPairs::new()))
+        hook::add::<File<U>, U>(move |pa, handle| {
+            let mut match_pairs = self.clone();
+
+            let file = handle.write(pa);
+            if let Some(path) = file.path_set()
+                && let Some(path) = path.filetype()
+            {
+                match_pairs.ts_only = match path {
+                    "rust" => vec![[b"<", b">"], [b"|", b"|"]],
+                    _ => match_pairs.ts_only,
+                }
+            };
+
+            file.add_parser(|mut tracker| {
+                tracker.track_area();
+                MatchPairsParser(match_pairs)
+            })
+        })
     }
 }
 
-impl<U: Ui> Parser<U> for MatchPairs {
+struct MatchPairsParser(MatchPairs);
+
+impl<U: Ui> Parser<U> for MatchPairsParser {
     fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
@@ -187,10 +211,10 @@ impl<U: Ui> Parser<U> for MatchPairs {
             let str: Vec<u8> = file.bytes().buffers(range.clone()).collect();
 
             // TODO: Support multi-character pairs
-            let (delims, escaped) = if let Some(i) = self.ts_and_bytes.iter().position(ends(&str)) {
-                (self.ts_and_bytes[i], Some(self.escaped[i]))
-            } else if let Some(i) = self.ts_only.iter().position(ends(&str)) {
-                (self.ts_only[i], None)
+            let (delims, escaped) = if let Some(i) = self.0.ts_and_reg.iter().position(ends(&str)) {
+                (self.0.ts_and_reg[i], Some(self.0.escaped[i]))
+            } else if let Some(i) = self.0.ts_only.iter().position(ends(&str)) {
+                (self.0.ts_only[i], None)
             } else {
                 continue;
             };
@@ -273,25 +297,6 @@ impl<U: Ui> Parser<U> for MatchPairs {
             file.text_mut()
                 .insert_tag(*PAREN_TAGGER, end_range, id.to_tag(99));
         }
-    }
-}
-
-impl<U: Ui> ParserCfg<U> for MatchPairs {
-    type Parser = Self;
-
-    fn build(mut self, file: &File<U>, mut tracker: FileTracker) -> Result<Self::Parser, Text> {
-        if let Some(path) = file.path_set()
-            && let Some(path) = path.filetype()
-        {
-            self.ts_only = match path {
-                "rust" => vec![[b"<", b">"], [b"|", b"|"]],
-                _ => self.ts_only,
-            }
-        };
-
-        tracker.track_area();
-
-        Ok(self)
     }
 }
 
