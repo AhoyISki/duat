@@ -75,6 +75,8 @@ pub struct TreeSitter;
 
 impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
     fn plug(self, _: &Plugins<U>) {
+        const MAX_LEN_FOR_LOCAL: usize = 100_000;
+
         form::set_many_weak!(
             ("variable", Form::white()),
             ("variable.builtin", Form::dark_yellow()),
@@ -116,8 +118,50 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("node.field", "variable.member"),
         );
 
-        hook::add_grouped::<File<U>, U>("TreeSitter", |_, (cfg, _)| {
-            cfg.with_parser(TsParser::new())
+        hook::add_grouped::<File<U>, U>("TreeSitter", |pa, handle| {
+            let file = handle.write(pa);
+
+            let path = file.path_kind();
+            let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
+                && let Some(filetype) = path.filetype()
+                && crate::languages::filetype_is_in_list(filetype)
+            {
+                filetype
+            } else {
+                context::debug!(
+                    "No filetype set for [a]{}[], will try again once one is set",
+                    path.name_txt()
+                );
+                return file.add_parser(|tracker| TsParser(Some(ParserState::NotSet(tracker))));
+            };
+
+            if parser_is_compiled(filetype)? && file.bytes().len().byte() <= MAX_LEN_FOR_LOCAL {
+                let lang_parts = lang_parts_of(filetype)?;
+                handle.add_parser(pa, |tracker| {
+                    TsParser(Some(ParserState::Present(InnerTsParser::new(
+                        lang_parts, tracker,
+                    ))))
+                })
+            } else {
+                handle.add_parser(pa, |tracker| {
+                    TsParser(Some(ParserState::Remote(std::thread::spawn(move || {
+                        let lang_parts = match lang_parts_of(filetype) {
+                            Ok(lang_parts) => lang_parts,
+                            Err(err) => {
+                                context::error!("{err}");
+                                return Err(tracker);
+                            }
+                        };
+
+                        let mut parser = InnerTsParser::new(lang_parts, tracker);
+
+                        while parser.parse() {}
+
+                        parser.tracker.request_parse();
+                        Ok(parser)
+                    }))))
+                })
+            }
         });
     }
 }
@@ -128,14 +172,9 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
 pub struct TsParser(Option<ParserState>);
 
 impl TsParser {
-    /// Returns a new instance of a [`TsParser`]
-    pub fn new() -> Self {
-        Self(None)
-    }
-
     /// The root [`Node`] of the syntax tree
     pub fn root(&self) -> Option<Node<'_>> {
-        let ParserState::Present(parser) = self.0.as_ref().unwrap() else {
+        let Some(ParserState::Present(parser)) = &self.0 else {
             context::warn!("Called function that shouldn't be possible without present parser");
             return None;
         };
@@ -145,7 +184,7 @@ impl TsParser {
 
     /// Logs the root node with the [`context::debug`] macro
     pub fn debug_root(&self) {
-        let ParserState::Present(parser) = self.0.as_ref().unwrap() else {
+        let Some(ParserState::Present(parser)) = &self.0 else {
             context::warn!("Called function that shouldn't be possible without present parser");
             return;
         };
@@ -160,7 +199,7 @@ impl TsParser {
     ///
     /// [`filetype`]: FileType::filetype
     pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
-        let ParserState::Present(parser) = self.0.as_ref().unwrap() else {
+        let Some(ParserState::Present(parser)) = &self.0 else {
             context::warn!("Called function that shouldn't be possible without present parser");
             return None;
         };
@@ -179,9 +218,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
         //   acquired through the injections query, applied on the two
         //   previous range lists,
         let parser_state = self.0.take().unwrap();
-
         let (parser_state, do_update) = parser_state.parse();
-
         self.0 = Some(parser_state);
 
         do_update
@@ -231,60 +268,6 @@ impl<U: Ui> file::Parser<U> for TsParser {
             self.0 = Some(parser_state);
             true
         }
-    }
-}
-
-impl<U: Ui> ParserCfg<U> for TsParser {
-    type Parser = Self;
-
-    fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text> {
-        let path = file.path_kind();
-        let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
-            && let Some(filetype) = path.filetype()
-            && crate::languages::filetype_is_in_list(filetype)
-        {
-            filetype
-        } else {
-            context::debug!(
-                "No filetype set for [a]{}[], will try again once one is set",
-                path.name_txt()
-            );
-            return Ok(Self(Some(ParserState::NotSet(tracker))));
-        };
-
-        const MAX_LEN_FOR_LOCAL: usize = 100_000;
-
-        if parser_is_compiled(filetype)? && file.bytes().len().byte() <= MAX_LEN_FOR_LOCAL {
-            let lang_parts = lang_parts_of(filetype)?;
-            Ok(Self(Some(ParserState::Present(InnerTsParser::new(
-                lang_parts, tracker,
-            )))))
-        } else {
-            Ok(Self(Some(ParserState::Remote(std::thread::spawn(
-                move || {
-                    let lang_parts = match lang_parts_of(filetype) {
-                        Ok(lang_parts) => lang_parts,
-                        Err(err) => {
-                            context::error!("{err}");
-                            return Err(tracker);
-                        }
-                    };
-
-                    let mut parser = InnerTsParser::new(lang_parts, tracker);
-
-                    while parser.parse() {}
-
-                    parser.tracker.request_parse();
-                    Ok(parser)
-                },
-            )))))
-        }
-    }
-}
-
-impl Default for TsParser {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -925,7 +908,7 @@ pub trait TsFile {
 
 impl<U: Ui> TsFile for File<U> {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
+        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.get_print_cfg()))
             .flatten()
     }
 }
