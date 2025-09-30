@@ -400,6 +400,7 @@ impl<U: Ui> Plugin<U> for Kak {
 
         hook::add::<SearchPerformed, U>(|_, search| {
             *SEARCH.lock().unwrap() = search.to_string();
+            Ok(())
         });
 
         if self.set_cursor_forms {
