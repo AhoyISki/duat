@@ -106,7 +106,7 @@ pub trait Ui: Default + Clone + Send + 'static {
     ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
     /// [`Mutex`]: std::sync::Mutex
-    type MetaStatics: Default + Send;
+    type MetaStatics: GetOnce<Self> + Send;
 
     ////////// Functions executed from the outer loop
 
@@ -1008,4 +1008,10 @@ impl<U: Ui> PushTarget<U> for UiBuilder<U> {
     fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
         None
     }
+}
+
+/// A trait meant to prevent getting multiple [`Ui::MetaStatics`]
+pub trait GetOnce<U: Ui> {
+    /// Return [`Some`] only on the first call
+    fn get_once() -> Option<&'static Self>;
 }

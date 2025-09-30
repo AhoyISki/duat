@@ -20,7 +20,7 @@ use std::{
 use parking_lot::Mutex;
 
 use self::parser::Parsers;
-pub use self::parser::{FileTracker, Parser, ParserCfg};
+pub use self::parser::{FileTracker, Parser};
 use crate::{
     cfg::PrintCfg,
     context::{self, Cache, Handle},
@@ -88,7 +88,7 @@ impl<U: Ui> File<U> {
     /// together, not needing to call this function more than once.
     ///
     /// TODO: EXAMPLES
-    pub fn cfg(&mut self) -> parking_lot::MutexGuard<PrintCfg> {
+    pub fn cfg(&mut self) -> parking_lot::MutexGuard<'_, PrintCfg> {
         self.cfg.lock()
     }
 
@@ -289,6 +289,23 @@ impl<U: Ui> File<U> {
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
+    ////////// Parser functions
+
+    /// Adds a [`Parser`] to this `File`
+    ///
+    /// The [`Parser`] will be able to keep track of every single
+    /// [`Change`] that takes place in the `File`'s [`Text`], and can
+    /// act on the `File` accordingly.
+    ///
+    /// This function will fail if a [`Parser`] of the same type was
+    /// already added to this [`File`]
+    pub fn add_parser<P: Parser<U>>(
+        &mut self,
+        f: impl FnOnce(FileTracker) -> P,
+    ) -> Result<(), Text> {
+        self.parsers.add(self, f)
+    }
+
     /// Reads from a specific [`Parser`], if it was [added]
     ///
     /// This function will block until the [`Parser`] is ready to be
@@ -376,7 +393,7 @@ impl<U: Ui> File<U> {
     /// This works by creating a new [`File`], which will take
     /// ownership of a stripped down version of this one's [`Text`]
     pub(crate) fn prepare_for_reloading(&mut self) -> Self {
-        self.text.clear_tags();
+        self.text.prepare_for_reloading();
         Self {
             path: self.path.clone(),
             text: std::mem::take(&mut self.text),
@@ -462,12 +479,13 @@ impl<U: Ui> Handle<File<U>, U> {
     /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
     ///
     /// [`Change`]: crate::text::Change
-    pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
+    pub fn add_parser<P: Parser<U>>(
+        &self,
+        pa: &mut Pass,
+        f: impl FnOnce(FileTracker) -> P,
+    ) -> Result<(), Text> {
         let file = self.widget().read(pa);
-
-        if let Err(err) = file.parsers.add(file, cfg) {
-            context::error!("{err}");
-        }
+        file.parsers.add(file, f)
     }
 }
 
@@ -665,13 +683,4 @@ impl From<PathKind> for BuilderPart {
     fn from(value: PathKind) -> Self {
         BuilderPart::Text(value.name_txt())
     }
-}
-
-/// What to do when opening the [`File`]
-#[derive(Default, Clone)]
-enum TextOp {
-    #[default]
-    NewBuffer,
-    TakeBuf(Bytes, PathKind, bool),
-    OpenPath(PathBuf),
 }

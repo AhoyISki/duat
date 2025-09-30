@@ -9,7 +9,11 @@ use std::{
     fmt::Debug,
     io::{self, Write},
     rc::Rc,
-    sync::{Arc, Mutex, mpsc},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
@@ -25,7 +29,7 @@ use duat_core::{
     MainThreadOnly,
     form::Color,
     session::DuatSender,
-    ui::{self},
+    ui::{self, GetOnce},
 };
 
 use self::{layout::Layout, print::Printer};
@@ -276,18 +280,22 @@ impl MetaStatics {
     }
 }
 
-impl Default for MetaStatics {
-    fn default() -> Self {
+impl GetOnce<Ui> for Mutex<MetaStatics> {
+    fn get_once() -> Option<&'static Self> {
+        static GOT: AtomicBool = AtomicBool::new(false);
         let (tx, rx) = mpsc::channel();
-        Self {
-            windows: Vec::new(),
-            layouts: MainThreadOnly::default(),
-            win: 0,
-            fr: Frame::default(),
-            printer_fn: || Arc::new(Printer::new()),
-            rx: Some(rx),
-            tx,
-        }
+
+        (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
+            Box::leak(Box::new(Mutex::new(MetaStatics {
+                windows: Vec::new(),
+                layouts: MainThreadOnly::default(),
+                win: 0,
+                fr: Frame::default(),
+                printer_fn: || Arc::new(Printer::new()),
+                rx: Some(rx),
+                tx,
+            }))) as &'static Self
+        })
     }
 }
 

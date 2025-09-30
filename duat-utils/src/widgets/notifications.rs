@@ -103,6 +103,7 @@ impl<U: Ui> Widget<U> for Notifications {
 
         hook::add_grouped::<KeysSent, U>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
+            Ok(())
         });
         Ok(())
     }

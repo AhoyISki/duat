@@ -665,7 +665,7 @@ pub mod prelude {
         cmd,
         context::{self, Handle},
         data::{Pass, RwData},
-        file::{File, FileTracker, Parser, ParserCfg},
+        file::{File, FileTracker, Parser},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
@@ -738,7 +738,7 @@ pub mod utils;
 ///
 /// [plugged]: Plugin::plug
 /// [`PhantomData`]: std::marker::PhantomData
-pub trait Plugin<U: Ui>: Default + 'static {
+pub trait Plugin<U: Ui>: 'static {
     /// Sets up the [`Plugin`]
     fn plug(self, plugins: &Plugins<U>);
 }

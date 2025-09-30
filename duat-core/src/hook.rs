@@ -161,6 +161,7 @@ use crate::{
     file::File,
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
+    text::Text,
     ui::{Ui, UiBuilder, Widget},
 };
 
@@ -172,7 +173,7 @@ mod global {
     };
 
     use super::{HookAlias, HookDummy, Hookable, InnerGroupId, InnerHooks};
-    use crate::{data::Pass, session::DuatEvent, ui::Ui};
+    use crate::{data::Pass, session::DuatEvent, text::Text, ui::Ui};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 
@@ -215,7 +216,7 @@ mod global {
     /// [`hook::add_no_alias`]: add_no_alias
     #[inline(never)]
     pub fn add<H: HookAlias<U, impl HookDummy>, U: Ui>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         HOOKS.add::<H::Hookable>(None, Box::new(f));
     }
@@ -248,7 +249,7 @@ mod global {
     #[inline(never)]
     pub fn add_grouped<H: HookAlias<U, impl HookDummy>, U: Ui>(
         group: impl Into<InnerGroupId>,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         HOOKS.add::<H::Hookable>(Some(group.into()), Box::new(f));
     }
@@ -282,7 +283,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hook::add_once`]: add_once
     pub fn add_once<H: HookAlias<U, impl HookDummy>, U: Ui>(
-        mut f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        mut f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         let group_id = GroupId::new();
         HOOKS.add::<H::Hookable>(
@@ -304,7 +305,7 @@ mod global {
     /// [hook]: Hookable
     #[doc(hidden)]
     pub fn add_no_alias<H: Hookable>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         HOOKS.add::<H>(None, Box::new(f));
     }
@@ -319,7 +320,7 @@ mod global {
     #[doc(hidden)]
     pub fn add_grouped_no_alias<H: Hookable>(
         group: impl Into<InnerGroupId>,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         HOOKS.add::<H>(Some(group.into()), Box::new(f));
     }
@@ -743,18 +744,13 @@ impl Hookable for ModeSwitched {
 /// This hook is very useful if you want to, for example, set
 /// different options upon switching to modes, depending on things
 /// like the language of a [`File`].
-pub struct ModeCreated<M: Mode<U>, U: Ui>(pub(crate) (Option<M>, Handle<M::Widget, U>));
+pub struct ModeCreated<M: Mode<U>, U: Ui>(pub(crate) (M, Handle<M::Widget, U>));
 
 impl<M: Mode<U>, U: Ui> Hookable for ModeCreated<M, U> {
-    type Input<'h> = (M, &'h Handle<M::Widget, U>);
-    type Output = M;
+    type Input<'h> = (&'h mut M, &'h Handle<M::Widget, U>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (self.0.0.take().unwrap(), &self.0.1)
-    }
-
-    fn take_output_back(&mut self, output: Self::Output) {
-        self.0.0 = Some(output)
+        (&mut self.0.0, &self.0.1)
     }
 }
 
@@ -870,31 +866,8 @@ impl Hookable for FileWritten {
 pub trait Hookable<_H: HookDummy = NormalHook>: Sized + 'static {
     /// The arguments that are passed to each hook.
     type Input<'h>;
-    /// The output of triggering hooks. Mostly never used
-    ///
-    /// This value is never returned when calling [`hook::trigger`],
-    /// instead, through the [`Hookable::take_output_back`] function,
-    /// you are supposed to store it in [`Self`], and then you can
-    /// access it after the [`hook::trigger`] call, if it supposed
-    /// to be something like the builder pattern.
-    ///
-    /// [`hook::trigger`]: global::trigger
-    /// [`Self`]: Hookable
-    type Output = ();
-
     /// How to get the arguments from the [`Hookable`]
     fn get_input(&mut self) -> Self::Input<'_>;
-
-    /// When a [`Hookable`] has an [`Output`], you can define how it
-    /// takes it back
-    ///
-    /// One example of how this can be useful is if your [`Hookable`]
-    /// is using a builder pattern definition for the [`Output`], like
-    /// the [`ModeCreated`] [`Hookable`].
-    ///
-    /// [`Output`]: Hookable::Output
-    #[allow(unused_variables)]
-    fn take_output_back(&mut self, output: Self::Output) {}
 }
 
 /// Where all hooks of Duat are stored
@@ -909,7 +882,7 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         group_id: Option<InnerGroupId>,
-        f: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static>,
+        f: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + 'static>,
     ) {
         let mut map = self.types.lock().unwrap();
 
@@ -961,10 +934,15 @@ impl InnerHooks {
             Box::from_raw(ptr)
         };
 
-        for (_, hook) in hooks_of.0.borrow_mut().iter() {
+        for (group, hook) in hooks_of.0.borrow_mut().iter() {
             let input = hookable.get_input();
-            let output = hook.borrow_mut()(pa, input);
-            hookable.take_output_back(output);
+            if let Err(err) = hook.borrow_mut()(pa, input) {
+                if let Some(InnerGroupId::Named(group)) = group {
+                    crate::context::error!(target: group, "{err}");
+                } else {
+                    crate::context::error!(target: crate::utils::duat_name::<H>(), "{err}");
+                }
+            }
         }
 
         self.types
@@ -1012,7 +990,7 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 }
 
 type InnerHookFn<H> =
-    &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> <H as Hookable>::Output>;
+    &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> Result<(), Text>>;
 
 /// An alias for a [`Hookable`]
 ///
@@ -1112,31 +1090,24 @@ pub trait HookAlias<U: Ui, D: HookDummy = NormalHook> {
     /// Just a shorthand for less boilerplate in the function
     /// definition
     type Input<'h>;
-    /// Just a shorthand for less boilerplate in the function
-    /// definition
-    type Output;
-
     /// The actual [`Hookable`] that this [`HookAlias`] is supposed to
     /// map to
-    type Hookable: for<'h> Hookable<Input<'h> = Self::Input<'h>, Output = Self::Output>;
+    type Hookable: for<'h> Hookable<Input<'h> = Self::Input<'h>>;
 }
 
 impl<H: Hookable, U: Ui> HookAlias<U> for H {
     type Hookable = Self;
     type Input<'h> = H::Input<'h>;
-    type Output = H::Output;
 }
 
 impl<W: Widget<U>, U: Ui> HookAlias<U, WidgetCreatedDummy<U>> for W {
     type Hookable = WidgetCreated<W, U>;
     type Input<'h> = <WidgetCreated<W, U> as Hookable>::Input<'h>;
-    type Output = <WidgetCreated<W, U> as Hookable>::Output;
 }
 
 impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
     type Hookable = ModeCreated<M, U>;
     type Input<'h> = <ModeCreated<M, U> as Hookable>::Input<'h>;
-    type Output = <ModeCreated<M, U> as Hookable>::Output;
 }
 
 /// Use this trait if you want to make specialized hooks

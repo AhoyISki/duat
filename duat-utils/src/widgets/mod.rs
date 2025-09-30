@@ -17,7 +17,7 @@ use duat_core::{
     context,
     data::Pass,
     hook::{self, FocusedOn, KeysSentTo, UnfocusedFrom},
-    ui::{Area, GetAreaId, PushTarget, Ui, Widget},
+    ui::{Area, PushTarget, Ui, Widget},
 };
 
 pub use self::{
@@ -109,6 +109,7 @@ impl<U: Ui> FooterWidgets<U> {
                     {
                         context::error!("{err}")
                     }
+                    Ok(())
                 }
             });
             prompt_line
@@ -122,19 +123,19 @@ impl<U: Ui> FooterWidgets<U> {
             let notifications = notifications.clone();
             let prompt_line = prompt_line.clone();
             move |pa, (_, handle)| {
-                if handle == &prompt_line {
+                Ok(if handle == &prompt_line {
                     notifications.area(pa).hide().unwrap();
                     handle.area(pa).reveal().unwrap();
-                }
+                })
             }
         });
 
         hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>({
             move |pa, (_, handle)| {
-                if handle == &prompt_line {
+                Ok(if handle == &prompt_line {
                     notifications.area(pa).reveal().unwrap();
                     handle.area(pa).hide().unwrap();
-                }
+                })
             }
         });
     }

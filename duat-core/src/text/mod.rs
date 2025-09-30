@@ -218,11 +218,6 @@ impl Text {
         Builder::new()
     }
 
-    /// Takes the [`Bytes`] from this [`Text`], consuming it
-    pub(crate) fn take_bytes(self) -> Bytes {
-        self.0.bytes
-    }
-
     ////////// Querying functions
 
     /// Whether the [`Bytes`] and `InnerTags` are empty

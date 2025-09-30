@@ -86,9 +86,7 @@ impl<U: Ui> SessionCfg<U> {
 
         cmd::add_session_commands::<U>();
 
-        let file_cfg = self.file_cfg.clone();
-
-        let mut session = Session {
+        let session = Session {
             ms,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
@@ -97,7 +95,7 @@ impl<U: Ui> SessionCfg<U> {
         let mut hasnt_set_cur = true;
         for (win, mut rel_files) in files.into_iter().map(|rf| rf.into_iter()).enumerate() {
             let ReloadedFile { mut file, is_active } = rel_files.next().unwrap();
-            *file.cfg() = file_cfg;
+            *file.cfg() = self.file_cfg;
 
             let node =
                 context::windows().new_window(pa, ms, file, (session.layout_fn)(), hasnt_set_cur);
@@ -112,7 +110,7 @@ impl<U: Ui> SessionCfg<U> {
             }
 
             for ReloadedFile { mut file, is_active } in rel_files {
-                *file.cfg() = file_cfg;
+                *file.cfg() = self.file_cfg;
                 session.open_file(pa, file, is_active, win);
             }
         }
@@ -374,7 +372,7 @@ impl<U: Ui> Session<U> {
             pk,
             self.ms,
             (self.layout_fn)(),
-            self.file_cfg.clone(),
+            self.file_cfg,
         );
     }
 }

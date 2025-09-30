@@ -185,7 +185,8 @@ pub fn main_line(file: &File<impl Ui>) -> usize {
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_col<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
     let main = file.selections().get_main().unwrap();
-    main.v_caret(file.text(), area, file.get_print_cfg()).char_col()
+    main.v_caret(file.text(), area, file.get_print_cfg())
+        .char_col()
 }
 
 /// [`StatusLine`] part: The main selection, formatted
@@ -280,7 +281,8 @@ pub fn last_key() -> RwData<String> {
             hook::add_no_alias::<KeysSent>({
                 let last_key = last_key.clone();
                 move |pa, keys| {
-                    *last_key.write(pa) = mode::keys_to_string(keys)
+                    *last_key.write(pa) = mode::keys_to_string(keys);
+                    Ok(())
                 }
             });
 

@@ -19,7 +19,7 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     form::Palette,
-    session::{DuatEvent, ReloadedFile, ReloadEvent, SessionCfg},
+    session::{DuatEvent, ReloadEvent, ReloadedFile, SessionCfg},
     text::History,
     ui::{self, Area, Widget},
 };
@@ -73,18 +73,18 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     mode::set_default(crate::regular::Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 
-    hook::add_grouped::<File>("FileWidgets", |_, (cfg, builder)| {
-        builder.push(VertRule::cfg());
-        builder.push(LineNumbers::cfg());
+    hook::add_grouped::<File>("FileWidgets", |pa, file| {
+        VertRule::builder().push_on(pa, file);
+        LineNumbers::builder().push_on(pa, file);
         cfg
     });
 
-    hook::add_grouped::<WindowCreated>("FooterWidgets", |_, builder| {
-        builder.push_inner(FooterWidgets::default());
+    hook::add_grouped::<WindowCreated>("FooterWidgets", |pa, builder| {
+        FooterWidgets::default().push_on(pa, builder);
     });
 
-    hook::add_grouped::<WindowCreated>("LogBook", |_, builder| {
-        builder.push_inner(LogBook::cfg());
+    hook::add_grouped::<WindowCreated>("LogBook", |pa, builder| {
+        LogBook::builder().push_on(pa, builder);
     });
 
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
@@ -102,12 +102,6 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
         let path = file.path();
         file.text_mut().new_moment();
-
-        if let Some(history) = file.text().history()
-            && let Err(err) = cache.store(&path, history.clone())
-        {
-            context::error!("{err}");
-        }
 
         if let Some(area_cache) = area.cache()
             && let Err(err) = cache.store(&path, area_cache)

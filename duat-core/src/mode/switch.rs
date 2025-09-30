@@ -284,8 +284,8 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
         .mutate_data_as(pa, |handle: &Handle<M::Widget, U>| handle.clone())
         .unwrap();
 
-    let mc = ModeCreated((Some(mode), handle.clone()));
-    let mut mode = hook::trigger(pa, mc).0.0.unwrap();
+    let mc = ModeCreated((mode, handle.clone()));
+    let mut mode = hook::trigger(pa, mc).0.0;
 
     mode.on_switch(pa, handle.clone());
 

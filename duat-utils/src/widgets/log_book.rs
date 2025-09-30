@@ -15,6 +15,14 @@ pub struct LogBook {
     close_on_unfocus: bool,
 }
 
+impl LogBook {
+    /// Returns a [`LogBookBuilder`], so you can push `LogBook`s
+    /// around
+    pub fn builder() -> LogBookBuilder {
+        LogBookBuilder::default()
+    }
+}
+
 impl<U: Ui> Widget<U> for LogBook {
     fn update(pa: &mut Pass, handle: &Handle<Self, U>)
     where
