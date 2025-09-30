@@ -38,7 +38,7 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::sync::{Arc, Mutex};
 
-use super::{Area, AreaId, Ui};
+use super::{Area, Ui};
 use crate::{
     cfg::PrintCfg,
     context::{Handle, WidgetRelation},
@@ -46,7 +46,6 @@ use crate::{
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom, WidgetCreated},
     text::Text,
-    ui::GetAreaId,
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -438,16 +437,8 @@ pub(crate) struct Node<U: Ui> {
 
 impl<U: Ui> Node<U> {
     /// Returns a new [`Node`]
-    pub(crate) fn new<W: Widget<U>>(
-        pa: &mut Pass,
-        widget: RwData<W>,
-        area: U::Area,
-        id: AreaId,
-    ) -> Self {
-        let handle = Handle::new(widget, area, Arc::new(Mutex::new("")), id);
-        hook::trigger(pa, WidgetCreated(handle.clone()));
-
-        Self::from_handle(handle)
+    pub(crate) fn new<W: Widget<U>>(widget: RwData<W>, area: Arc<U::Area>) -> Self {
+        Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new(""))))
     }
 
     pub(crate) fn from_handle<W: Widget<U>>(handle: Handle<W, U>) -> Self {
@@ -563,16 +554,10 @@ impl<U: Ui> Node<U> {
     }
 }
 
-impl<U: Ui> GetAreaId for Node<U> {
-    fn area_id(&self) -> AreaId {
-        self.handle.area_id()
+impl<U: Ui> std::fmt::Debug for Node<U> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+            .field("handle", &self.handle)
+            .finish_non_exhaustive()
     }
 }
-
-impl<T: GetAreaId, U: Ui> PartialEq<T> for Node<U> {
-    fn eq(&self, other: &T) -> bool {
-        self.area_id() == other.area_id()
-    }
-}
-
-impl<U: Ui> Eq for Node<U> {}

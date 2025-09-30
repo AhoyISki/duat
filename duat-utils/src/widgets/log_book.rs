@@ -16,6 +16,11 @@ pub struct LogBook {
 }
 
 impl LogBook {
+    /// Reformats this `LogBook`
+    pub fn fmt(&mut self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) {
+        self.fmt = Box::new(fmt)
+    }
+
     /// Returns a [`LogBookBuilder`], so you can push `LogBook`s
     /// around
     pub fn builder() -> LogBookBuilder {

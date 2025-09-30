@@ -43,7 +43,7 @@ use crate::{
 #[doc(hidden)]
 pub struct SessionCfg<U: Ui> {
     file_cfg: PrintCfg,
-    layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
+    layout: Box<Mutex<dyn Layout<U>>>,
 }
 
 impl<U: Ui> SessionCfg<U> {
@@ -52,7 +52,7 @@ impl<U: Ui> SessionCfg<U> {
 
         SessionCfg {
             file_cfg,
-            layout_fn: Box::new(|| Box::new(MasterOnLeft)),
+            layout: Box::new(Mutex::new(MasterOnLeft)),
         }
     }
 
@@ -82,23 +82,18 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let pa = unsafe { &mut Pass::new() };
 
-        context::set_windows::<U>(Windows::new());
+        context::set_windows::<U>(Windows::new(self.layout));
 
         cmd::add_session_commands::<U>();
 
-        let session = Session {
-            ms,
-            file_cfg: self.file_cfg,
-            layout_fn: self.layout_fn,
-        };
+        let session = Session { ms, file_cfg: self.file_cfg };
 
         let mut hasnt_set_cur = true;
         for (win, mut rel_files) in files.into_iter().map(|rf| rf.into_iter()).enumerate() {
             let ReloadedFile { mut file, is_active } = rel_files.next().unwrap();
             *file.cfg() = self.file_cfg;
 
-            let node =
-                context::windows().new_window(pa, ms, file, (session.layout_fn)(), hasnt_set_cur);
+            let node = context::windows().new_window(pa, ms, file, hasnt_set_cur);
             hasnt_set_cur = false;
 
             if is_active {
@@ -124,7 +119,6 @@ impl<U: Ui> SessionCfg<U> {
 pub struct Session<U: Ui> {
     ms: &'static U::MetaStatics,
     file_cfg: PrintCfg,
-    layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
 
 impl<U: Ui> Session<U> {
@@ -342,17 +336,13 @@ impl<U: Ui> Session<U> {
     }
 
     fn open_file(&self, pa: &mut Pass, file: File<U>, is_active: bool, win: usize) {
-        match context::windows::<U>().new_file(pa, win, file) {
-            Ok(node) => {
-                if is_active {
-                    context::set_cur(pa, node.try_downcast(), node.clone());
-                    if context::cur_window() != win {
-                        context::set_cur_window(win);
-                        U::switch_window(self.ms, win);
-                    }
-                }
+        let node = context::windows::<U>().new_file(pa, file);
+        if is_active {
+            context::set_cur(pa, node.try_downcast(), node.clone());
+            if context::cur_window() != win {
+                context::set_cur_window(win);
+                U::switch_window(self.ms, win);
             }
-            Err(err) => context::error!("{err}"),
         }
     }
 }
@@ -397,13 +387,7 @@ impl<U: Ui> Session<U> {
     }
 
     fn open_window_with(&self, pa: &mut Pass, pk: PathKind) {
-        context::windows::<U>().open_or_move_to_new_window(
-            pa,
-            pk,
-            self.ms,
-            (self.layout_fn)(),
-            self.file_cfg,
-        );
+        context::windows::<U>().open_or_move_to_new_window(pa, pk, self.ms, self.file_cfg);
     }
 }
 

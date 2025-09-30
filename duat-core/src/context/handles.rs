@@ -16,7 +16,7 @@ use crate::{
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TextParts, TwoPoints},
-    ui::{Area, AreaId, GetAreaId, PushSpecs, SpawnSpecs, Ui, Widget},
+    ui::{Area, PushSpecs, SpawnSpecs, Ui, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -136,8 +136,7 @@ use crate::{
 /// [`U::Area`]: Ui::Area
 pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
     widget: RwData<W>,
-    area: U::Area,
-    id: AreaId,
+    pub(crate) area: Arc<U::Area>,
     mask: Arc<Mutex<&'static str>>,
     related: RelatedWidgets<U>,
     searcher: RefCell<S>,
@@ -147,14 +146,12 @@ impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
     /// Returns a new instance of a [`Handle<W, U>`]
     pub(crate) fn new(
         widget: RwData<W>,
-        area: U::Area,
+        area: Arc<U::Area>,
         mask: Arc<Mutex<&'static str>>,
-        id: AreaId,
     ) -> Self {
         Self {
             widget,
             area,
-            id,
             mask,
             related: RelatedWidgets(RwData::default()),
             searcher: RefCell::new(()),
@@ -245,7 +242,6 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             widget: self.widget.try_downcast()?,
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: RefCell::new(()),
         })
@@ -655,7 +651,6 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: RefCell::new(searcher),
         }
@@ -668,7 +663,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         widget: SW,
         specs: SpawnSpecs,
     ) -> Handle<SW, U> {
-        context::windows().spawn_widget_on_area_id(pa, (self.id, specs), widget)
+        context::windows::<U>().spawn_widget(pa, (&self.area, specs), widget)
     }
 
     /// Pushes a [`Widget`] around this one
@@ -720,7 +715,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         specs: PushSpecs,
     ) -> Handle<PW, U> {
         let to_file = self.widget.data_is::<crate::file::File<U>>();
-        context::windows().push_widget(pa, (self.area_id(), to_file, specs), widget)
+        context::windows::<U>().push_widget(pa, (&self.area, to_file, specs), widget)
     }
 
     /// Pushes a [`Widget`] around the "cluster master" of this one
@@ -772,13 +767,11 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         specs: PushSpecs,
     ) -> Handle<PW, U> {
         let to_file = self.widget.data_is::<crate::file::File<U>>();
-        let area_id = if let Some(master) = self.area(pa).get_cluster_master() {
-            context::windows::<U>().area_id_of(pa, &master)
+        if let Some(master) = self.area(pa).get_cluster_master() {
+            context::windows().push_widget(pa, (&master, to_file, specs), widget)
         } else {
-            self.id
-        };
-
-        context::windows().push_widget(pa, (area_id, to_file, specs), widget)
+            context::windows::<U>().push_widget(pa, (&self.area, to_file, specs), widget)
+        }
     }
 }
 
@@ -790,7 +783,6 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
             // TODO: Arc wrapper, and Area: !Clone
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: RefCell::new(()),
         }
@@ -803,15 +795,14 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
 unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Send for Handle<W, U, S> {}
 unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Sync for Handle<W, U, S> {}
 
-impl<W: Widget<U> + ?Sized, U: Ui, S> GetAreaId for Handle<W, U, S> {
-    fn area_id(&self) -> AreaId {
-        self.id
-    }
-}
-
-impl<T: GetAreaId, W: Widget<U> + ?Sized, U: Ui, S> PartialEq<T> for Handle<W, U, S> {
-    fn eq(&self, other: &T) -> bool {
-        self.area_id() == other.area_id()
+impl<W1, W2, U, S1, S2> PartialEq<Handle<W2, U, S2>> for Handle<W1, U, S1>
+where
+    W1: Widget<U> + ?Sized,
+    W2: Widget<U> + ?Sized,
+    U: Ui,
+{
+    fn eq(&self, other: &Handle<W2, U, S2>) -> bool {
+        self.widget().ptr_eq(other.widget())
     }
 }
 
@@ -821,10 +812,17 @@ impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: self.searcher.clone(),
         }
+    }
+}
+
+impl<W: Widget<U> + ?Sized, U: Ui, S> std::fmt::Debug for Handle<W, U, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Handle")
+            .field("mask", &self.mask)
+            .finish_non_exhaustive()
     }
 }
 

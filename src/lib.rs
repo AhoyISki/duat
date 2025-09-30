@@ -364,9 +364,6 @@
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #![feature(decl_macro, thread_spawn_hook)]
 
-use std::sync::RwLock;
-
-use duat_core::session::SessionCfg;
 pub use duat_core::utils::{crate_dir, duat_name, src_crate};
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
@@ -947,14 +944,15 @@ pub macro setup_duat($setup:expr) {
     use std::sync::{Mutex, mpsc};
 
     use $crate::prelude::{File, Text, context::Logs, form::Palette};
+    type RlFile = ReloadedFile<$crate::Ui>;
 
     #[unsafe(no_mangle)]
     fn run(
         initials: Initials,
         ms: MetaStatics,
-        files: Vec<Vec<FileParts>>,
+        files: Vec<Vec<RlFile>>,
         (duat_tx, duat_rx, reload_tx): Channels,
-    ) -> (Vec<Vec<FileParts>>, mpsc::Receiver<DuatEvent>) {
+    ) -> (Vec<Vec<RlFile>>, mpsc::Receiver<DuatEvent>) {
         pre_setup(Some(initials), Some(duat_tx));
         $setup();
         run_duat(ms, files, duat_rx, Some(reload_tx))
@@ -1127,9 +1125,6 @@ pub type Ui = duat_term::Ui;
 ///
 /// [`ui::Area`]: duat_core::ui::Area
 pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
-
-/// A function that sets the [`SessionCfg`].
-type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 
 /// For testing mdBook examples.
 #[cfg(doctest)]

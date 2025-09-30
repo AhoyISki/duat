@@ -270,9 +270,9 @@ impl<W: Widget<U>, U: crate::ui::Ui> SpawnTag<W, U> {
 impl<W: Widget<U>, U: crate::ui::Ui> Tag<Point> for SpawnTag<W, U> {
     fn decompose(
         self,
-        index: Point,
-        max: usize,
-        tagger: Tagger,
+        _index: Point,
+        _max: usize,
+        _tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
         todo!();
     }

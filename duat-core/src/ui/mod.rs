@@ -39,10 +39,7 @@ use bincode::{Decode, Encode};
 pub(crate) use self::widget::Node;
 pub use self::{
     widget::Widget,
-    window::{
-        UiBuilder, Window, Windows,
-        id::{AreaId, GetAreaId},
-    },
+    window::{UiBuilder, Window, Windows},
 };
 use crate::{
     cfg::PrintCfg,
@@ -86,7 +83,7 @@ mod window;
 ///     }
 /// }
 /// ```
-pub trait Ui: Default + Clone + Send + 'static {
+pub trait Ui: Default + Debug + Clone + Send + 'static {
     /// The [`Area`] of this [`Ui`]
     type Area: Area<Ui = Self>;
     /// Variables to initialize at the Duat application, outside the
@@ -179,7 +176,7 @@ pub trait Ui: Default + Clone + Send + 'static {
 ///
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
-pub trait Area: Clone + PartialEq + Sized + 'static {
+pub trait Area: PartialEq + Sized + 'static {
     /// The [`Ui`] this [`Area`] belongs to
     type Ui: Ui<Area = Self>;
     /// Something to be kept between app instances/reloads
@@ -1011,6 +1008,7 @@ impl<U: Ui> PushTarget<U> for UiBuilder<U> {
 }
 
 /// A trait meant to prevent getting multiple [`Ui::MetaStatics`]
+#[doc(hidden)]
 pub trait GetOnce<U: Ui> {
     /// Return [`Some`] only on the first call
     fn get_once() -> Option<&'static Self>;

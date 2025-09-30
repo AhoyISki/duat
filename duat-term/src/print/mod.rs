@@ -655,7 +655,7 @@ mod sync_solver {
                             .unwrap();
                     }
                 }
-                
+
                 assign_floating = false;
                 changes.append(&mut new_changes);
                 new_changes = self.solver.fetch_changes().to_vec();

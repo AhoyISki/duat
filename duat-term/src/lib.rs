@@ -43,6 +43,7 @@ mod layout;
 mod print;
 mod rules;
 
+#[derive(Debug)]
 pub struct Ui;
 
 impl ui::Ui for Ui {

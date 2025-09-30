@@ -91,7 +91,7 @@ impl<U: Ui> mode::Mode<U> for Prompt<U> {
             let text = self.mode.update(pa, text, handle.area(pa));
             *handle.write(pa).text_mut() = text;
         };
-        
+
         let reset = |prompt: &mut Self| {
             if let Some(ret_handle) = prompt.mode.return_handle() {
                 mode::reset_to(ret_handle);
@@ -198,7 +198,7 @@ impl<U: Ui> Clone for Prompt<U> {
             starting_text: self.starting_text.clone(),
             ty: self.ty,
             clone_fn: self.clone_fn.clone(),
-            reset_fn: self.reset_fn
+            reset_fn: self.reset_fn,
         }
     }
 }
@@ -403,12 +403,22 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 /// ```
 ///
 /// This function returns a [`Prompt<IncSearch<SearchFwd, U>, U>`],
-#[derive(Clone)]
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     inc: I,
     orig: Option<(mode::Selections, <U::Area as Area>::PrintInfo)>,
     ghost: PhantomData<U>,
     prev: String,
+}
+
+impl<I: IncSearcher<U>, U: Ui> Clone for IncSearch<I, U> {
+    fn clone(&self) -> Self {
+        Self {
+            inc: self.inc.clone(),
+            orig: self.orig.clone(),
+            ghost: self.ghost,
+            prev: self.prev.clone(),
+        }
+    }
 }
 
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
@@ -612,4 +622,3 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
 }
 
 type ModeCloneFn<U> = dyn Fn() -> Box<dyn PromptMode<U>> + Send;
-

@@ -10,7 +10,7 @@
 //! selection's line number.
 //!
 //! [`File`]: duat_core::file::File
-use std::fmt::Alignment;
+use std::{fmt::Alignment, marker::PhantomData};
 
 use duat_core::{prelude::*, text::Builder, ui::Side};
 
@@ -43,7 +43,7 @@ pub struct LineNumbers<U: Ui> {
 impl<U: Ui> LineNumbers<U> {
     /// Returns a [`LineNumbersBuilder`], used to create a new
     /// `LineNumbers`
-    pub fn builder() -> LineNumbersBuilder {
+    pub fn builder() -> LineNumbersBuilder<U> {
         LineNumbersBuilder::default()
     }
 
@@ -130,7 +130,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// builder pattern.
 #[derive(Default, Clone, Copy, Debug)]
 #[doc(hidden)]
-pub struct LineNumbersBuilder {
+pub struct LineNumbersBuilder<U: Ui> {
     /// The numbering of lines, [`Numbering::Abs`] by default
     ///
     /// Can be:
@@ -147,14 +147,11 @@ pub struct LineNumbersBuilder {
     pub show_wraps: bool = false,
     /// Place this [`Widget`] on the right, `false` by default
     pub on_the_right: bool = false,
+    _ghost: PhantomData<U> = PhantomData,
 }
 
-impl LineNumbersBuilder {
-    pub fn push_on<U: Ui>(
-        self,
-        pa: &mut Pass,
-        handle: &Handle<File<U>, U>,
-    ) -> Handle<LineNumbers<U>, U> {
+impl<U: Ui> LineNumbersBuilder<U> {
+    pub fn push_on(self, pa: &mut Pass, handle: &Handle<File<U>, U>) -> Handle<LineNumbers<U>, U> {
         let mut line_numbers = LineNumbers {
             handle: handle.clone(),
             text: Text::default(),
@@ -175,7 +172,7 @@ impl LineNumbersBuilder {
             ..
         };
 
-        handle.push_inner_widget(pa, line_numbers, specs)
+        handle.push_outer_widget(pa, line_numbers, specs)
     }
 }
 

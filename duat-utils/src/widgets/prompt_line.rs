@@ -52,7 +52,8 @@ pub struct PromptLine<U: Ui> {
 }
 
 impl<U: Ui> PromptLine<U> {
-    /// Returns a [`PromptLineBuilder`], which can be used to push `PromptLine`s around
+    /// Returns a [`PromptLineBuilder`], which can be used to push
+    /// `PromptLine`s around
     pub fn builder() -> PromptLineBuilder<U> {
         PromptLineBuilder::default()
     }

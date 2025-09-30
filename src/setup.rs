@@ -109,14 +109,15 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         if let Some(area_cache) = area.cache()
             && let Err(err) = cache.store(&path, area_cache)
         {
-            context::error!("{err}");
+            context::error!(target: "FileReloaded", "{err}");
         }
 
         if let Some(main) = file.selections_mut().get_main()
             && let Err(err) = cache.store(path, main.clone())
         {
-            context::error!("{err}");
+            context::error!(target: "FileReloaded", "{err}");
         }
+        Ok(())
     });
 
     hook::add::<FileClosed>(|pa, (handle, cache)| {

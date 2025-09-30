@@ -12,11 +12,10 @@
 //! [`File`]: crate::file::File
 use std::marker::PhantomData;
 
-use super::{Ui, Widget};
+use super::{PushSpecs, Ui, Widget};
 use crate::{
     context::{self, Handle},
     data::Pass,
-    ui::PushSpecs,
 };
 
 /// A struct for determining what the how the Ui should be constructed
@@ -168,14 +167,13 @@ impl<U: Ui> UiBuilder<U> {
         widget: W,
         specs: PushSpecs,
     ) -> Handle<W, U> {
-        let windows = context::windows::<U>().0.read(pa);
-        let (files_area_id, _) = windows
-            .areas
-            .iter()
-            .find(|(_, area)| area == &windows.list[self.win].files_area)
-            .unwrap();
+        let files = context::windows::<U>()
+            .get(pa, self.win)
+            .unwrap()
+            .files_area
+            .clone();
 
-        context::windows().push_widget(pa, (*files_area_id, false, specs), widget)
+        context::windows::<U>().push_widget(pa, (&files, false, specs), widget)
     }
 
     /// Docs: TODO
@@ -185,13 +183,12 @@ impl<U: Ui> UiBuilder<U> {
         widget: W,
         specs: PushSpecs,
     ) -> Handle<W, U> {
-        let windows = context::windows::<U>().0.read(pa);
-        let (master_area_id, _) = windows
-            .areas
-            .iter()
-            .find(|(_, area)| area == &windows.list[self.win].master_area)
-            .unwrap();
+        let master = context::windows::<U>()
+            .get(pa, self.win)
+            .unwrap()
+            .master_area
+            .clone();
 
-        context::windows().push_widget(pa, (*master_area_id, false, specs), widget)
+        context::windows::<U>().push_widget(pa, (&master, false, specs), widget)
     }
 }

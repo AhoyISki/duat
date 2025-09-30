@@ -35,7 +35,7 @@ mod global {
         file::File,
         session::DuatEvent,
         text::{Text, txt},
-        ui::{GetAreaId, Node, Ui, Widget, Windows},
+        ui::{Node, Ui, Windows},
     };
 
     static CUR_FILE: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
@@ -93,35 +93,6 @@ mod global {
     /// [`File`]: crate::file::File
     pub fn dyn_file<U: Ui>(pa: &Pass) -> Result<DynFile<U>, Text> {
         cur_file(pa).dynamic(pa)
-    }
-
-    /// Gets the [`Widget`] from a [`U::Area`]
-    ///
-    /// # Note
-    ///
-    /// This can fail if the [`Widget`] was closed.
-    ///
-    /// [`U::Area`]: Ui::Area
-    pub fn get_widget<W: Widget<U>, U: Ui>(
-        pa: &Pass,
-        area: &impl GetAreaId,
-    ) -> Result<Handle<W, U>, Text> {
-        let node = windows::<U>()
-            .entries(pa)
-            .find(|(.., node)| node.area_id() == area.area_id());
-        if let Some((.., node)) = node {
-            if let Some(handle) = node.try_downcast() {
-                Ok(handle)
-            } else {
-                Err(txt!(
-                    "The widget with the given U::Area is not [a]{}",
-                    crate::utils::duat_name::<W>()
-                )
-                .build())
-            }
-        } else {
-            Err(txt!("No widget found that matches").build())
-        }
     }
 
     /// The index of the currently active window

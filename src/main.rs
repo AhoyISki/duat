@@ -20,8 +20,8 @@ use duat::{Channels, Initials, MetaStatics, crate_dir, pre_setup, prelude::*, ru
 use duat_core::{
     clipboard::Clipboard,
     context,
-    session::{DuatEvent, ReloadedFile, ReloadEvent},
-    ui::{self, Ui as UiTrait},
+    session::{DuatEvent, ReloadEvent, ReloadedFile},
+    ui::{self, GetOnce, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (duat_tx, mut duat_rx) = mpsc::channel();
     duat_core::context::set_sender(duat_tx.clone());
 
-    let ms: &'static _ = Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
+    let ms = <Ui as ui::Ui>::MetaStatics::get_once().unwrap();
 
     // Assert that the configuration crate actually exists.
     let (crate_dir, profile) = {
@@ -266,8 +266,8 @@ fn get_files(
     args: Args,
     crate_dir: &'static Path,
     profile: &'static str,
-) -> Result<Vec<Vec<ReloadedFile>>, Box<dyn std::error::Error>> {
-    let files: Vec<ReloadedFile> = args
+) -> Result<Vec<Vec<ReloadedFile<Ui>>>, Box<dyn std::error::Error>> {
+    let files: Vec<ReloadedFile<Ui>> = args
         .cfg
         .then(|| crate_dir.join("src").join("lib.rs"))
         .into_iter()
@@ -606,6 +606,6 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
 type RunFn = fn(
     Initials,
     MetaStatics,
-    Vec<Vec<ReloadedFile>>,
+    Vec<Vec<ReloadedFile<Ui>>>,
     Channels,
-) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>);
+) -> (Vec<Vec<ReloadedFile<Ui>>>, Receiver<DuatEvent>);

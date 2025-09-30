@@ -52,14 +52,14 @@ impl mode::Mode<Ui> for Regular {
                 handle.edit_all(pa, |mut c| {
                     #[cfg(not(feature = "treesitter"))]
                     let indent = c.indent();
-                    
+
                     c.replace('\n');
                     c.unset_anchor();
                     c.move_hor(1);
-                    
+
                     #[cfg(not(feature = "treesitter"))]
                     c.insert(' '.repeat(indent));
-                    
+
                     #[cfg(feature = "treesitter")]
                     c.ts_reindent();
                 })

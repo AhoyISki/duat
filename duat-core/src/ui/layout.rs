@@ -39,7 +39,12 @@
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
 use super::{PushSpecs, Ui};
-use crate::{file::File, prelude::Handle, text::Text, ui::Side};
+use crate::{
+    data::Pass,
+    file::File,
+    prelude::Handle,
+    ui::{Side, Window},
+};
 
 /// A form of organizing opened [`File`]s
 ///
@@ -62,9 +67,11 @@ where
     /// [`Ok(Handle<File>, PushSpecs)`]: Handle
     fn new_file(
         &mut self,
-        file: &File<U>,
-        prev: Vec<Handle<File<U>, U>>,
-    ) -> Result<(Handle<File<U>, U>, PushSpecs), Text>;
+        pa: &Pass,
+        cur_win: usize,
+        cur_file: &File<U>,
+        windows: &[Window<U>],
+    ) -> (Handle<File<U>, U>, PushSpecs);
 }
 
 /// [`Layout`]: One [`File`] on the left, others on the right
@@ -80,14 +87,16 @@ where
 {
     fn new_file(
         &mut self,
+        pa: &Pass,
+        cur_win: usize,
         _file: &File<U>,
-        prev: Vec<Handle<File<U>, U>>,
-    ) -> Result<(Handle<File<U>, U>, PushSpecs), Text> {
-        let last = prev.last().unwrap().clone();
-        Ok(if prev.len() == 1 {
+        windows: &[Window<U>],
+    ) -> (Handle<File<U>, U>, PushSpecs) {
+        let last = windows[cur_win].file_handles(pa).last().unwrap().clone();
+        if windows.len() == 1 {
             (last, PushSpecs { side: Side::Right, .. })
         } else {
             (last, PushSpecs { side: Side::Below, .. })
-        })
+        }
     }
 }
