@@ -3,6 +3,10 @@ use duat_core::ui::Axis;
 use super::variables::Variables;
 use crate::{area::Coord, print::VarPoint};
 
+mod combinations;
+
+pub use combinations::*;
+
 /// What type of line should separate widgets
 #[derive(Default, Clone, Copy, Debug)]
 pub enum Brush {
