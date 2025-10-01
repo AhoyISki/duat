@@ -635,8 +635,8 @@ impl<U: Ui> Hookable for FileReloaded<U> {
 ///
 /// # Arguments
 ///
-/// - A [`Handle<dyn Widget>`] for newly focused [`Widget`]
-/// - A [`Handle<W>`] for the unfocused [`Widget`]
+/// - The [`Handle<dyn Widget>`] for the unfocused [`Widget`]
+/// - The [`Handle<W>`] for the newly focused [`Widget`]
 pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) (Handle<dyn Widget<U>, U>, Handle<W, U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
@@ -651,8 +651,8 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 ///
 /// # Arguments
 ///
-/// - A [`Handle<W>`] for newly focused [`Widget`]
-/// - A [`Handle<dyn Widget>`] for the unfocused [`Widget`]
+/// - The [`Handle<W>`] for the unfocused [`Widget`]
+/// - The [`Handle<dyn Widget>`] for the newly focused [`Widget`]
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) (Handle<W, U>, Handle<dyn Widget<U>, U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {

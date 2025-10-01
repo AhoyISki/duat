@@ -146,7 +146,12 @@ impl NotificationsBuilder {
             levels: self.allowed_levels,
             last_rec: None,
         };
-        let specs = PushSpecs { side: Side::Below, height: Some(1.0), .. };
+        let specs = PushSpecs {
+            side: Side::Below,
+            height: Some(1.0),
+            hidden: true,
+            ..
+        };
 
         push_target.push_outer(pa, notifications, specs)
     }
@@ -205,7 +210,7 @@ impl Default for NotificationsBuilder {
         Self {
             fmt: Box::new(default_fmt),
             get_mask: Box::new(default_get_mask),
-            allowed_levels: Default::default(),
+            allowed_levels: vec![Level::Error, Level::Warn, Level::Info],
         }
     }
 }

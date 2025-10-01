@@ -142,7 +142,7 @@ impl<U: Ui> FooterWidgets<U> {
         });
 
         hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>({
-            move |pa, (_, handle)| {
+            move |pa, (handle, _)| {
                 if handle == &prompt_line {
                     notifications.area(pa).reveal().unwrap();
                     handle.area(pa).hide().unwrap();
