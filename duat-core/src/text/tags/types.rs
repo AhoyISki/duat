@@ -47,15 +47,21 @@ use crate::{
 /// [range]: TextRange
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::ui::Widget
-pub trait Tag<Index, Return = ()>: Sized + std::fmt::Debug {
-    /// Decomposes the [`Tag`] to its base elements
+pub trait Tag<Index, Return: Copy = ()>: Sized + std::fmt::Debug {
+    /// Gets the [`RawTag`]s and a possible return id from the `Tag`
     #[doc(hidden)]
-    fn decompose(
-        self,
+    fn get_raw(
+        &self,
         index: Index,
         max: usize,
         tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Return);
+
+    /// An action to take place if the [`RawTag`]s are successfully
+    /// added
+    #[doc(hidden)]
+    #[allow(unused_variables)]
+    fn on_insertion(self, ret: Return, tags: &mut super::InnerTags) {}
 }
 
 ////////// Form-like InnerTags
@@ -77,13 +83,13 @@ pub trait Tag<Index, Return = ()>: Sized + std::fmt::Debug {
 pub struct FormTag(pub FormId, pub u8);
 
 impl<I: TextRange> Tag<I> for FormTag {
-    fn decompose(
-        self,
+    fn get_raw(
+        &self,
         index: I,
         max: usize,
         tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
-        let FormTag(id, prio) = self;
+        let FormTag(id, prio) = *self;
         let range = index.to_range(max);
         ranged(range, PushForm(tagger, id, prio), PopForm(tagger, id), ())
     }
@@ -205,8 +211,8 @@ simple_impl_Tag!(Spacer, RawTag::Spacer);
 pub struct Ghost<T: Into<Text>>(pub T);
 
 impl<T: Into<Text> + std::fmt::Debug> Tag<usize, GhostId> for Ghost<T> {
-    fn decompose(
-        self,
+    fn get_raw(
+        &self,
         byte: usize,
         max: usize,
         tagger: Tagger,
@@ -218,17 +224,25 @@ impl<T: Into<Text> + std::fmt::Debug> Tag<usize, GhostId> for Ghost<T> {
         let id = GhostId::new();
         ((byte, RawTag::Ghost(tagger, id)), None, id)
     }
+
+    fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
+        tags.ghosts.push((ret, self.0.into().without_last_nl()))
+    }
 }
 
 impl<T: Into<Text> + std::fmt::Debug> Tag<Point, GhostId> for Ghost<T> {
-    fn decompose(
-        self,
+    fn get_raw(
+        &self,
         point: Point,
         max: usize,
         tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
         let byte = point.byte();
-        self.decompose(byte, max, tagger)
+        self.get_raw(byte, max, tagger)
+    }
+
+    fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
+        tags.ghosts.push((ret, self.0.into()))
     }
 }
 
@@ -268,8 +282,8 @@ impl<W: Widget<U>, U: crate::ui::Ui> SpawnTag<W, U> {
 }
 
 impl<W: Widget<U>, U: crate::ui::Ui> Tag<Point> for SpawnTag<W, U> {
-    fn decompose(
-        self,
+    fn get_raw(
+        &self,
         _index: Point,
         _max: usize,
         _tagger: Tagger,
@@ -605,8 +619,8 @@ fn ranged<Return>(
 
 macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
     impl Tag<usize> for $tag {
-        fn decompose(
-            self,
+        fn get_raw(
+            &self,
             byte: usize,
             max: usize,
             tagger: Tagger,
@@ -620,22 +634,22 @@ macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
     }
 
     impl Tag<Point> for $tag {
-        fn decompose(
-            self,
+        fn get_raw(
+            &self,
             point: Point,
             max: usize,
             tagger: Tagger,
         ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
             let byte = point.byte();
-            self.decompose(byte, max, tagger)
+            self.get_raw(byte, max, tagger)
         }
     }
 }
 
 macro ranged_impl_tag($tag:ty, $start:expr, $end:expr) {
     impl<I: TextRange> Tag<I> for $tag {
-        fn decompose(
-            self,
+        fn get_raw(
+            &self,
             index: I,
             max: usize,
             tagger: Tagger,

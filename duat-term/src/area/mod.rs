@@ -16,7 +16,7 @@ pub use self::print_info::PrintInfo;
 use crate::{
     AreaId, CStyle, Mutex,
     layout::{Layout, Rect, transfer_vars},
-    queue, style,
+    print_style, queue,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -96,6 +96,7 @@ impl Area {
 
         let (mut lines, iter, is_floating) = {
             let rect = layout.get(self.id).unwrap();
+            let max = layout.printer.max_value();
             let (coords, has_changed) = layout.printer.coords(rect.var_points(), true);
 
             if coords.width() == 0 || coords.height() == 0 {
@@ -109,7 +110,7 @@ impl Area {
                 (s_points, info.x_shift())
             };
 
-            let lines = layout.printer.lines(coords, x_shift, cfg);
+            let lines = layout.printer.lines(coords, max, x_shift, cfg);
 
             let iter = {
                 let line_start = text.visual_line_start(s_points);
@@ -129,6 +130,7 @@ impl Area {
         let lines_left = {
             // The y here represents the bottom of the current row of cells.
             let tl_y = lines.coords().tl.y;
+            let (lines, ansi_codes) = (&mut lines, &mut ansi_codes);
             let mut y = tl_y;
             let mut cursor = None;
 
@@ -140,13 +142,13 @@ impl Area {
 
                 if wrap {
                     if y > lines.coords().tl.y {
-                        lines.end_line(&mut ansi_codes, &painter);
+                        lines.end_line(ansi_codes, &painter);
                     }
                     if y == lines.coords().br.y {
                         break;
                     }
                     (0..x).for_each(|_| lines.push_char(' ', 1));
-                    style!(lines, &mut ansi_codes, painter.absolute_style());
+                    print_style(lines, painter.absolute_style(), ansi_codes);
                     y += 1
                 }
 
@@ -155,7 +157,7 @@ impl Area {
                         match char {
                             '\t' => {
                                 if style_was_set {
-                                    style!(lines, &mut ansi_codes, painter.relative_style());
+                                    print_style(lines, painter.relative_style(), ansi_codes);
                                     style_was_set = false;
                                 }
                                 (0..len).for_each(|_| lines.push_char(' ', 1));
@@ -166,12 +168,12 @@ impl Area {
                                     painter.apply(CONTROL_CHAR_ID, 100);
                                     let style = painter.relative_style();
                                     duat_core::context::info!("{CONTROL_CHAR_ID:?}, {style:#?}");
-                                    style!(lines, &mut ansi_codes, style);
+                                    print_style(lines, style, ansi_codes);
                                     str.chars().for_each(|c| lines.push_char(c, 1));
                                     painter.remove(CONTROL_CHAR_ID)
                                 } else {
                                     if style_was_set {
-                                        style!(lines, &mut ansi_codes, painter.relative_style());
+                                        print_style(lines, painter.relative_style(), ansi_codes);
                                         style_was_set = false;
                                     }
                                     lines.push_char(char, len)
@@ -184,7 +186,7 @@ impl Area {
                                 Cursor::Main => painter.remove_main_caret(),
                                 Cursor::Extra => painter.remove_extra_caret(),
                             }
-                            style!(lines, &mut ansi_codes, painter.relative_style())
+                            print_style(lines, painter.relative_style(), ansi_codes)
                         }
                     }
                     Part::PushForm(id, prio) => {
@@ -225,15 +227,13 @@ impl Area {
                     Part::Spacer if !cfg.wrap_method.is_no_wrap() => {
                         lines.add_spacer();
                     }
-                    Part::ResetState => {
-                        style!(lines, &mut ansi_codes, painter.reset())
-                    }
+                    Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                     Part::ToggleStart(_) | Part::ToggleEnd(_) => todo!(),
                     _ => {}
                 }
             }
 
-            lines.end_line(&mut ansi_codes, &painter);
+            lines.end_line(ansi_codes, &painter);
 
             lines.coords().br.y - y
         };

@@ -44,7 +44,7 @@ use crate::{
     context::{Handle, WidgetRelation},
     data::{Pass, RwData},
     form::{self, Painter},
-    hook::{self, FocusedOn, UnfocusedFrom, WidgetCreated},
+    hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
 };
 

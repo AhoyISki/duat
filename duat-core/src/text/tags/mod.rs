@@ -58,7 +58,10 @@ impl Tags<'_> {
     ///
     /// When the `Tag` doesn't return an id, it will return `Some(())`
     /// if the `Tag` was successfully added, and `None` otherwise.
-    pub fn insert<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R> {
+    pub fn insert<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
         self.0.insert(tagger, r, tag)
     }
 
@@ -167,9 +170,19 @@ impl InnerTags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub(super) fn insert<I, R>(&mut self, tagger: Tagger, i: I, tag: impl Tag<I, R>) -> Option<R> {
-        let (start, end, ret) = tag.decompose(i, self.len_bytes(), tagger);
-        self.insert_raw(start, end).then_some(ret)
+    pub(super) fn insert<I, R>(&mut self, tagger: Tagger, i: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        let (start, end, ret) = tag.get_raw(i, self.len_bytes(), tagger);
+        let inserted = self.insert_raw(start, end);
+
+        if inserted {
+            tag.on_insertion(ret, self);
+            Some(ret)
+        } else {
+            None
+        }
     }
 
     fn insert_raw(&mut self, (s_b, s_tag): (usize, RawTag), end: Option<(usize, RawTag)>) -> bool {

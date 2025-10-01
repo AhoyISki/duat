@@ -7,7 +7,7 @@ use std::{
 use cassowary::Variable;
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
-    style::Attribute,
+    style::{Attribute, ContentStyle},
     terminal,
 };
 use duat_core::{
@@ -18,7 +18,9 @@ use duat_core::{
 use sync_solver::SyncSolver;
 use variables::Variables;
 
-use crate::{AreaId, CStyle, Coords, Equality, Mutex, area::Coord, layout::Rect, queue, style};
+use crate::{
+    AreaId, CStyle, Coords, Equality, Mutex, area::Coord, layout::Rect, print_style, queue,
+};
 
 mod frame;
 mod line;
@@ -190,7 +192,7 @@ impl Printer {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
 
         let stdout = if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
-            let mut stdout = std::io::stdout().lock();
+            let mut stdout = stdout::get();
             let edge_form = form::from_id(form::id_of!("terminal.frame"));
             self.vars
                 .lock()
@@ -206,8 +208,8 @@ impl Printer {
             return;
         }
 
-        let mut stdout = stdout.unwrap_or_else(|| std::io::stdout().lock());
-        let max = list.last().unwrap().1.coords().br;
+        let mut stdout = stdout.unwrap_or_else(stdout::get);
+        let max = list.last().unwrap().1.coords.br;
 
         queue!(stdout, terminal::BeginSynchronizedUpdate);
         queue!(stdout, cursor::Hide, MoveTo(0, 0));
@@ -262,7 +264,7 @@ impl Printer {
     }
 
     /// Returns a new [`Lines`], a struct used to print to the screen
-    pub fn lines(&self, coords: Coords, shift: u32, cfg: PrintCfg) -> Lines {
+    pub fn lines(&self, coords: Coords, max: Coord, shift: u32, cfg: PrintCfg) -> Lines {
         let cap = cfg.wrap_width(coords.width());
         let area = (coords.width() * coords.height()) as usize;
         let mut cutoffs = Vec::with_capacity(coords.height() as usize);
@@ -279,6 +281,7 @@ impl Printer {
             positions: Vec::new(),
             gaps: Gaps::OnRight,
             default_gaps: Gaps::OnRight,
+            rightmost: coords.br.x == max.x,
 
             shift,
             cap,
@@ -362,7 +365,12 @@ mod variables {
     use duat_core::{form::Form, ui::Axis};
 
     use super::{Frame, VarPoint, frame::Edge};
-    use crate::{Brush, area::Coord, print::frame::EdgeCoords, queue};
+    use crate::{
+        Brush,
+        area::Coord,
+        print::{frame::EdgeCoords, stdout::Stdout},
+        queue,
+    };
 
     pub struct Variables {
         list: HashMap<Variable, (u32, usize)>,
@@ -436,7 +444,7 @@ mod variables {
         }
 
         /// Prints the [`Edge`]s
-        pub fn print_edges(&mut self, stdout: &mut std::io::StdoutLock, edge_form: Form) {
+        pub fn print_edges(&mut self, stdout: &mut Stdout, edge_form: Form) {
             let edges: Vec<EdgeCoords> = {
                 let edges = std::mem::take(&mut self.edges);
                 let coords = edges.iter().filter_map(|(_, e)| e.coords(self)).collect();
@@ -735,6 +743,7 @@ pub struct Lines {
     positions: Vec<(usize, u32)>,
     gaps: Gaps,
     default_gaps: Gaps,
+    rightmost: bool,
 
     // Outside information
     shift: u32,
@@ -798,14 +807,38 @@ impl Lines {
         ansi_codes: &mut micromap::Map<CStyle, String, 16>,
         painter: &Painter,
     ) {
+        fn starting_spaces(bytes: &mut Vec<u8>, len: usize) {
+            if len > 0 {
+                bytes.extend_from_slice(&BLANK[..len]);
+            }
+        }
+
+        fn ending_spaces(
+            bytes: &mut Vec<u8>,
+            len: usize,
+            style: ContentStyle,
+            ansi_codes: &mut micromap::Map<CStyle, String, 16>,
+            is_rightmost: bool,
+        ) {
+            print_style(bytes, style, ansi_codes);
+            if is_rightmost {
+                bytes.extend_from_slice(b"\x1b[0K");
+            } else {
+                bytes.extend_from_slice(&BLANK[..len])
+            }
+        }
+
         const BLANK: [u8; 1000] = [b' '; 1000];
-        let mut default_form = painter.get_default();
-        default_form.style.attributes.set(Attribute::Reset);
+        let default = {
+            let mut default_form = painter.get_default();
+            default_form.style.attributes.set(Attribute::Reset);
+            default_form.style
+        };
 
         let spaces = self.gaps.get_spaces(self.cap - self.len);
         // Shortcut
         if self.coords.width() >= self.cap {
-            style!(self.bytes, ansi_codes, default_form.style);
+            print_style(&mut self.bytes, default, ansi_codes);
 
             let start_d = match &self.gaps {
                 Gaps::OnRight => 0,
@@ -827,13 +860,12 @@ impl Lines {
                 }
             };
 
-            self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
+            starting_spaces(&mut self.bytes, start_d as usize);
             self.bytes.extend_from_slice(&self.line);
             let end_d = start_d + self.len;
             if self.coords.width() > end_d {
-                style!(self.bytes, ansi_codes, default_form.style);
-                self.bytes
-                    .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize])
+                let len = (self.coords.width() - end_d) as usize;
+                ending_spaces(&mut self.bytes, len, default, ansi_codes, self.rightmost);
             }
             self.go_to_next_line();
             return;
@@ -867,9 +899,8 @@ impl Lines {
             // Situation where the line is empty, from having no characters or
             // from being shifted out of sight.
             let Some(&(start, len)) = found_start else {
-                style!(self.bytes, ansi_codes, default_form.style);
-                self.bytes
-                    .extend_from_slice(&BLANK[..self.coords.width() as usize]);
+                let len = self.coords.width() as usize;
+                ending_spaces(&mut self.bytes, len, default, ansi_codes, self.rightmost);
 
                 self.go_to_next_line();
                 return;
@@ -910,7 +941,7 @@ impl Lines {
             // Due to spacers in the middle of the line, end_i might actually be
             // smaller than start_i.
             let Some(&(end, len)) = found_end.filter(|(end_i, _)| *end_i >= start_i) else {
-                style!(self.bytes, ansi_codes, default_form.style);
+                print_style(&mut self.bytes, default, ansi_codes);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
 
@@ -927,8 +958,8 @@ impl Lines {
             }
         };
 
-        style!(self.bytes, ansi_codes, default_form.style);
-        self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
+        print_style(&mut self.bytes, default, ansi_codes);
+        starting_spaces(&mut self.bytes, start_d as usize);
 
         self.add_ansi(start_i);
 
@@ -953,9 +984,8 @@ impl Lines {
         }
 
         if self.coords.width() > end_d {
-            style!(self.bytes, ansi_codes, default_form.style);
-            self.bytes
-                .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
+            let len = (self.coords.width() - end_d) as usize;
+            ending_spaces(&mut self.bytes, len, default, ansi_codes, self.rightmost);
         }
 
         self.go_to_next_line();
@@ -1077,5 +1107,56 @@ impl VarPoint {
 
     pub fn y(&self) -> Variable {
         self.y
+    }
+}
+
+mod stdout {
+    use std::{
+        fs::File,
+        io::BufWriter,
+        sync::{LazyLock, Mutex, MutexGuard},
+    };
+
+    pub type Stdout = MutexGuard<'static, BufWriter<File>>;
+
+    /// Gets a BufWriter wrapper around the stdout
+    pub fn get() -> Stdout {
+        #[cfg(not(windows))]
+        use unix::get_stdout;
+        #[cfg(windows)]
+        use windows::get_stdout;
+
+        static STDOUT: LazyLock<Mutex<BufWriter<File>>> =
+            LazyLock::new(|| Mutex::new(BufWriter::new(get_stdout())));
+
+        STDOUT.lock().unwrap()
+    }
+
+    #[cfg(not(windows))]
+    mod unix {
+        use std::{
+            fs::File,
+            io::stdout,
+            os::fd::{AsRawFd, FromRawFd},
+        };
+
+        /// The stdout [`File`] on non Windows systems
+        pub fn get_stdout() -> File {
+            unsafe { File::from_raw_fd(stdout().as_raw_fd()) }
+        }
+    }
+
+    #[cfg(windows)]
+    mod windows {
+        use std::{
+            fs::File,
+            io::stdout,
+            os::windows::io::{AsRawHandle, FromRawHandle},
+        };
+
+        /// The stdout [`File`] on Windows systems
+        pub fn get_stdout() -> File {
+            unsafe { File::from_raw_handle(stdout().as_raw_handle()) }
+        }
     }
 }

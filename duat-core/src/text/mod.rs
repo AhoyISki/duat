@@ -539,7 +539,10 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R> {
+    pub fn insert_tag<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
         self.0.tags.insert(tagger, r, tag)
     }
 

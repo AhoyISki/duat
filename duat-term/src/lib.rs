@@ -509,10 +509,6 @@ macro queue($writer:expr $(, $command:expr)* $(,)?) {
     crossterm::queue!($writer $(, $command)*).unwrap()
 }
 
-macro style($lines:expr, $ansi_codes:expr, $style:expr) {{
-    print_style(&mut $lines, $style, $ansi_codes);
-}}
-
 #[rustfmt::skip]
 macro color_values($name:ident, $p:literal, $s:literal) {
     macro c($n:literal) {

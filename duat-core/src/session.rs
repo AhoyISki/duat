@@ -298,7 +298,9 @@ impl<U: Ui> Session<U> {
             }
             update_and_print_additions(pa, self.ms, &mut windows_nodes);
 
-            U::print(self.ms);
+            if no_updates == 0 {
+                U::print(self.ms);
+            }
         }
     }
 
