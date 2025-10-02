@@ -14,7 +14,7 @@ use super::{Constraints, Layout};
 use crate::{
     Area, AreaId, Equality, Frame,
     area::PrintInfo,
-    print::{Printer, VarPoint},
+    printer::{Printer, VarPoint},
 };
 
 enum Kind {

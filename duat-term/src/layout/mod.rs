@@ -4,7 +4,7 @@ use cassowary::{WeightedRelation::*, strength::STRONG};
 use duat_core::ui::{Axis, PushSpecs, SpawnSpecs};
 
 pub use self::rect::{Rect, Rects, transfer_vars};
-use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
+use crate::{AreaId, Equality, Frame, area::PrintInfo, printer::Printer};
 
 mod rect;
 

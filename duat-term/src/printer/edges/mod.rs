@@ -1,7 +1,7 @@
 use duat_core::ui::Axis;
 
-use super::variables::Variables;
-use crate::{area::Coord, print::VarPoint};
+use super::{VarPoint, variables::Variables};
+use crate::area::Coord;
 
 mod combinations;
 

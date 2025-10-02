@@ -1,4 +1,4 @@
-use crate::Brush::{self, *};
+use super::Brush::{self, *};
 
 pub fn crossing(
     right: Option<Brush>,

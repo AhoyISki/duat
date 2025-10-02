@@ -32,15 +32,15 @@ use duat_core::{
     ui::{self, GetOnce},
 };
 
-use self::{layout::Layout, print::Printer};
+use self::{layout::Layout, printer::Printer};
 pub use self::{
-    print::{Brush, Frame},
+    printer::{Brush, Frame},
     rules::{VertRule, VertRuleBuilder},
 };
 
 mod area;
 mod layout;
-mod print;
+mod printer;
 mod rules;
 
 #[derive(Debug)]

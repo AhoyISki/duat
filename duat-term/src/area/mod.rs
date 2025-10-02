@@ -243,9 +243,9 @@ impl Area {
         }
 
         if is_floating {
-            layout.printer.send_floating(self.id, lines);
+            layout.printer.send_floating_lines(self.id, lines);
         } else {
-            layout.printer.send(self.id, lines);
+            layout.printer.send_lines(self.id, lines);
         }
     }
 }

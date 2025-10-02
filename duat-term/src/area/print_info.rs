@@ -11,7 +11,7 @@ use crate::{
         iter::{print_iter, rev_print_iter},
         print_iter_indented,
     },
-    print::Gaps,
+    printer::Gaps,
 };
 
 /// Information about how to print the file on the `Label`.
