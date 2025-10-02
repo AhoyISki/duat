@@ -396,9 +396,6 @@ mod global {
 
     /// Returns the [`FormId`] from the name of a [`Form`]
     ///
-    /// You can also pass multiple names, in order to get a list of
-    /// ids.
-    ///
     /// If there is no [`Form`] with the given name, a new one is
     /// created, which will behave according to the following
     /// priority:
@@ -423,48 +420,30 @@ mod global {
     ///
     /// [`HashMap`]: std::collections::HashMap
     /// [default `Form`]: Form::new
-    // SAFETY: The only value that is not synchronized between threads
-    // here is ID. This means that two threads could think that ID == None
-    // at the same time, which would lead to both of them calling the
-    // _set_many function.
-    // However, the _set_many function is synchronized, and it is much
-    // like const in that, for a given value, it should always return the
-    // same output, so what would happen in that scenario is that both
-    // calls would set ID to the same Some(id), which is completely fine.
-    pub macro id_of {
-        ($form:expr) => {{
-            use $crate::form::{FormId, _set_many};
+    // SAFETY: Since _set_many always resolves to the same value, then the
+    // static muts should eventually be set to their correct values, after
+    // which no problems can occurr.
+    // Before that point, the absolute worst thing that could happen is
+    // DEFAULT_ID will be returned instead of the correct id (if the two
+    // unsafe setting statements are in the wrong order for some reason),
+    // but this should pretty much never happen.
+    pub macro id_of($form:expr) {{
+        use $crate::form::{_set_many, DEFAULT_ID, FormId};
 
-            static mut ID: Option<FormId> = None;
-            if let Some(id) = unsafe { ID } {
-                id
-            } else {
-                let name = $form.to_string();
-                let id = _set_many(true, vec![(name, None)])[0];
-                unsafe { ID = Some(id); }
-                id
+        static mut WAS_SET: bool = false;
+        static mut ID: FormId = DEFAULT_ID;
+        if unsafe { WAS_SET } {
+            unsafe { ID }
+        } else {
+            let name = $form.to_string();
+            let id = _set_many(true, vec![(name, None)])[0];
+            unsafe {
+                ID = id;
+                WAS_SET = true;
             }
-        }},
-        ($($form:expr),+) => {{
-            use $crate::form::{Form, FormId, Kind, _set_many};
-
-            static mut IDS: Option<&[FormId]> = None;
-            if let Some(ids) = unsafe { IDS } {
-                ids
-            } else {
-                let mut ids = Vec::new();
-                let names = vec![$( ($form, None) ),+];
-                for name in names.iter() {
-                    ids.push(id_from_name(name));
-                }
-                _set_many(true, names);
-                
-                let ids: &'static str = ids.leak();
-                unsafe { IDS = Some(ids) };
-                ids
-            }
-        }}
-    }
+            id
+        }
+    }}
 
     /// Non static version of [`id_of!`]
     ///
