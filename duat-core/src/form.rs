@@ -423,30 +423,46 @@ mod global {
     ///
     /// [`HashMap`]: std::collections::HashMap
     /// [default `Form`]: Form::new
+    // SAFETY: The only value that is not synchronized between threads
+    // here is ID. This means that two threads could think that ID == None
+    // at the same time, which would lead to both of them calling the
+    // _set_many function.
+    // However, the _set_many function is synchronized, and it is much
+    // like const in that, for a given value, it should always return the
+    // same output, so what would happen in that scenario is that both
+    // calls would set ID to the same Some(id), which is completely fine.
     pub macro id_of {
         ($form:expr) => {{
             use $crate::form::{FormId, _set_many};
 
-            static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
-            *ID.get_or_init(|| {
+            static mut ID: Option<FormId> = None;
+            if let Some(id) = unsafe { ID } {
+                id
+            } else {
                 let name = $form.to_string();
-                _set_many(true, vec![(name, None)])[0]
-            })
+                let id = _set_many(true, vec![(name, None)])[0];
+                unsafe { ID = Some(id); }
+                id
+            }
         }},
         ($($form:expr),+) => {{
             use $crate::form::{Form, FormId, Kind, _set_many};
 
-            static IDS: std::sync::OnceLock<&[FormId]> = std::sync::OnceLock::new();
-            let ids = *IDS.get_or_init(|| {
+            static mut IDS: Option<&[FormId]> = None;
+            if let Some(ids) = unsafe { IDS } {
+                ids
+            } else {
                 let mut ids = Vec::new();
                 let names = vec![$( ($form, None) ),+];
                 for name in names.iter() {
                     ids.push(id_from_name(name));
                 }
                 _set_many(true, names);
-                ids.leak()
-            });
-            ids
+                
+                let ids: &'static str = ids.leak();
+                unsafe { IDS = Some(ids) };
+                ids
+            }
         }}
     }
 
