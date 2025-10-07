@@ -1,13 +1,12 @@
 use std::{
     io::Write,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use cassowary::Variable;
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn},
     style::ResetColor,
-    terminal,
 };
 use duat_core::{form, ui::Axis};
 

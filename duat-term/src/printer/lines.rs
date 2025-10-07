@@ -1,6 +1,6 @@
 use std::fmt::Alignment;
 
-use crossterm::style::{Attribute, Attributes, ContentStyle};
+use crossterm::style::{Attribute, Attributes};
 use duat_core::{cfg::PrintCfg, form::Painter};
 
 use super::Lines;
