@@ -405,9 +405,9 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`File::print`]: crate::file::File::print
-    fn print(&mut self, painter: Painter, area: &U::Area) {
+    fn print(&self, painter: Painter, area: &U::Area) {
         let cfg = self.get_print_cfg();
-        area.print(self.text_mut(), cfg, painter)
+        area.print(self.text(), cfg, painter)
     }
 
     /// Actions taken when this widget opens for the first time
@@ -537,6 +537,10 @@ impl<U: Ui> Node<U> {
             widget.text_mut().update_bounds();
         }
 
+        let widgets_to_spawn = self.handle.text_mut(pa).get_widget_spawns();
+        for spawn in widgets_to_spawn {
+            spawn(pa);
+        }
         (self.print)(pa);
 
         self.handle.text_mut(pa).remove_selections();

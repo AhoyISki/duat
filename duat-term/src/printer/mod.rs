@@ -1,16 +1,17 @@
 use std::{
     io::Write,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use cassowary::Variable;
 use crossterm::{
-    cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
+    cursor::{self, MoveTo, MoveToColumn},
+    style::ResetColor,
     terminal,
 };
-use duat_core::{cfg::PrintCfg, form, ui::Axis};
+use duat_core::{form, ui::Axis};
 
-use self::{lines::LinesBuilder, sync_solver::SyncSolver, variables::Variables};
+use self::{sync_solver::SyncSolver, variables::Variables};
 use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect, queue};
 
 mod edges;
@@ -20,14 +21,14 @@ mod variables;
 
 pub use self::{
     edges::{Brush, Frame},
-    lines::Gaps,
+    lines::{Gaps, LinesBuilder},
 };
 
 pub struct Printer {
     sync_solver: Mutex<SyncSolver>,
     vars: Mutex<Variables>,
-    old_lines: Mutex<Vec<(AreaId, Lines)>>,
-    new_lines: Mutex<NewLinesList>,
+    old_lines: Mutex<Vec<Lines>>,
+    new_lines: Mutex<Vec<Lines>>,
     floating_lines: Mutex<Vec<(AreaId, Lines)>>,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
@@ -51,7 +52,7 @@ impl Printer {
             sync_solver: Mutex::new(sync_solver),
             vars: Mutex::new(vars),
             old_lines: Mutex::new(Vec::new()),
-            new_lines: Mutex::new(NewLinesList::default()),
+            new_lines: Mutex::new(Vec::new()),
             floating_lines: Mutex::new(Vec::new()),
             max,
             has_to_print_edges: AtomicBool::new(false),
@@ -151,6 +152,10 @@ impl Printer {
             ss.update(change_max, self.max, assign_floating).unwrap()
         };
 
+        if change_max {
+            self.old_lines.lock().unwrap().clear();
+        }
+
         let mut vars = self.vars.lock().unwrap();
         vars.update_variables(changes);
         self.has_to_print_edges.store(true, Ordering::Relaxed);
@@ -188,6 +193,7 @@ impl Printer {
 
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
+        const SPACES: &[u8] = &[b' '; 3000];
 
         let stdout = if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
             let mut stdout = stdout::get();
@@ -202,7 +208,7 @@ impl Printer {
         };
 
         let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
-        if new_lines.list.is_empty() {
+        if new_lines.is_empty() {
             return;
         }
         let mut old_lines = self.old_lines.lock().unwrap();
@@ -210,53 +216,36 @@ impl Printer {
         let mut stdout = stdout.unwrap_or_else(stdout::get);
         let max = self.max_value();
 
-        queue!(stdout, terminal::BeginSynchronizedUpdate);
-        queue!(stdout, cursor::Hide, MoveTo(0, 0));
+        queue!(stdout, cursor::Hide, ResetColor);
+        write!(stdout, "\x1b[?2026h").unwrap();
 
         for y in 0..max.y {
+            write!(stdout, "\x1b[{}H", y + 1).unwrap();
+
             let mut x = 0;
 
-            let iter = new_lines
-                .list
-                .iter()
-                .filter_map(|(id, lines)| {
-                    lines.on(y).filter(|line_info| {
-                        if let Some(old_y) = y.checked_add_signed(new_lines.scroll)
-                            && let Some(old_line_info) =
-                                old_lines.iter().find_map(|(old_id, lines)| {
-                                    lines.on(old_y).filter(|_| old_id == id)
-                                })
-                        {
-                            old_line_info != *line_info
-                        } else {
-                            true
-                        }
-                    })
-                })
-                .chain(
-                    (new_lines.scroll != 0)
-                        .then(|| old_lines.iter().filter_map(|(_, lines)| lines.on(y)))
-                        .into_iter()
-                        .flatten(),
-                );
+            let new_iter = new_lines.iter().filter_map(|lines| lines.on(y));
 
-            for (bytes, start, end) in iter {
-                if x != start {
-                    queue!(stdout, MoveToColumn(start as u16));
+            for (new, new_ends) in new_iter {
+                if x != new_ends[0] {
+                    queue!(stdout, MoveToColumn(new_ends[0] as u16));
                 }
 
-                stdout.write_all(bytes).unwrap();
+                stdout.write_all(new.bytes).unwrap();
 
-                x = end;
+                if new_ends[1] == max.x {
+                    stdout.write_all(b"\x1b[K").unwrap();
+                } else {
+                    stdout.write_all(&SPACES[..new.end_spaces]).unwrap();
+                }
+
+                x = new_ends[1];
             }
-
-            queue!(stdout, MoveToNextLine(1));
         }
 
         let cursor_was_real = if let Some(was_real) = new_lines
-            .list
             .iter()
-            .filter_map(|(_, lines)| lines.real_cursor)
+            .filter_map(|lines| lines.real_cursor)
             .reduce(|prev, was_real| prev || was_real)
         {
             CURSOR_IS_REAL.store(was_real, Ordering::Relaxed);
@@ -270,8 +259,8 @@ impl Printer {
             for (_, lines) in list.iter() {
                 for y in lines.coords.tl.y..lines.coords.br.y {
                     queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
-                    let (bytes, ..) = lines.on(y).unwrap();
-                    stdout.write_all(bytes).unwrap();
+                    let (info, ..) = lines.on(y).unwrap();
+                    stdout.write_all(info.bytes).unwrap();
                 }
             }
         }
@@ -280,47 +269,35 @@ impl Printer {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
-        queue!(stdout, terminal::EndSynchronizedUpdate);
+        write!(stdout, "\x1b[?2026l").unwrap();
         stdout.flush().unwrap();
 
-        for (id, lines) in new_lines.list {
-            old_lines.retain(|(i, l)| *i != id && !l.coords.intersects(lines.coords));
+        for info in new_lines {
+            old_lines.retain(|l| !l.coords.intersects(info.coords));
 
-            let Err(i) = old_lines.binary_search_by_key(&lines.coords, |(_, lines)| lines.coords)
-            else {
+            let Err(i) = old_lines.binary_search_by_key(&info.coords, |lines| lines.coords) else {
                 unreachable!("Colliding Lines should have been removed already");
             };
 
-            old_lines.insert(i, (id, lines));
+            old_lines.insert(i, info);
         }
     }
 
     ////////// Lines functions
 
-    /// Returns a new [`Lines`], a struct used to print to the screen
-    pub fn lines(&self, coords: Coords, max: Coord, shift: u32, cfg: PrintCfg) -> LinesBuilder {
-        LinesBuilder::new(coords, max, shift, cfg)
-    }
-
     /// Sends the finished [`Lines`], off to be printed
-    pub fn send_lines(&self, id: AreaId, builder: LinesBuilder) {
+    pub fn send_lines(&self, builder: LinesBuilder) {
         let mut new_lines = self.new_lines.lock().unwrap();
-        // This area may have been sent without being printed, in that case,
-        // we just remove it.
-        // Also, areas that intersect with this one came from a previous
-        // organization of areas, so they should also be removed.
-        new_lines
-            .list
-            .retain(|(i, l)| *i != id && !l.coords.intersects(builder.coords()));
+        // Areas that intersect with this one came from a previous
+        // organization of areas or are a previous version of itself, so they
+        // should also be removed.
+        new_lines.retain(|l| !l.coords.intersects(builder.coords()));
 
-        let Err(i) = new_lines
-            .list
-            .binary_search_by_key(&builder.coords(), |(_, lines)| lines.coords)
-        else {
+        let Err(i) = new_lines.binary_search_by_key(&builder.coords(), |lines| lines.coords) else {
             unreachable!("Colliding Lines should have been removed already");
         };
 
-        new_lines.list.insert(i, (id, builder.build()));
+        new_lines.insert(i, builder.build());
     }
 
     /// Sends the finished [`Lines`] of a floating `Widget` to be
@@ -335,11 +312,6 @@ impl Printer {
         } else {
             list.push((id, builder.build()));
         }
-    }
-
-    /// Decides how much to scroll before printing
-    pub fn set_lines_scroll(&self, scroll: i32) {
-        self.new_lines.lock().unwrap().scroll = scroll;
     }
 
     ////////// Querying functions
@@ -378,27 +350,45 @@ impl Printer {
 unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
 
-#[derive(PartialEq, Eq)]
 struct Lines {
-    list: Vec<Vec<u8>>,
+    bytes: Vec<u8>,
+    line_infos: Vec<InnerLineInfo>,
     coords: Coords,
     real_cursor: Option<bool>,
 }
 
 impl Lines {
-    pub fn on(&self, y: u32) -> Option<(&[u8], u32, u32)> {
+    pub fn on(&self, y: u32) -> Option<(LineInfo<'_>, [u32; 2])> {
         let (tl, br) = (self.coords.tl, self.coords.br);
+        let y = y.checked_sub(tl.y)? as usize;
 
-        self.list
-            .get((y - tl.y) as usize)
-            .map(|bytes| (bytes.as_slice(), tl.x, br.x))
+        self.line_infos.get(y).map(|info| {
+            let end = self
+                .line_infos
+                .get(y + 1)
+                .map(|i| i.offset)
+                .unwrap_or(self.bytes.len());
+            let info = LineInfo {
+                bytes: &self.bytes[info.offset..end],
+                end_fmt_i: info.end_fmt_i,
+                end_spaces: info.end_spaces,
+            };
+            (info, [tl.x, br.x])
+        })
     }
 }
 
-#[derive(Default)]
-struct NewLinesList {
-    scroll: i32,
-    list: Vec<(AreaId, Lines)>,
+struct InnerLineInfo {
+    offset: usize,
+    end_fmt_i: usize,
+    end_spaces: usize,
+}
+
+#[derive(PartialEq, Eq)]
+struct LineInfo<'a> {
+    bytes: &'a [u8],
+    end_fmt_i: usize,
+    end_spaces: usize,
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]

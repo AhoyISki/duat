@@ -82,7 +82,7 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let pa = unsafe { &mut Pass::new() };
 
-        context::set_windows::<U>(Windows::new(self.layout));
+        context::set_windows::<U>(Windows::new(self.layout, ms));
 
         cmd::add_session_commands::<U>();
 
@@ -93,7 +93,7 @@ impl<U: Ui> SessionCfg<U> {
             let ReloadedFile { mut file, is_active } = rel_files.next().unwrap();
             *file.cfg() = self.file_cfg;
 
-            let node = context::windows().new_window(pa, ms, file, hasnt_set_cur);
+            let node = context::windows().new_window(pa, file, hasnt_set_cur);
             hasnt_set_cur = false;
 
             if is_active {
@@ -184,7 +184,7 @@ impl<U: Ui> Session<U> {
                 mode_fn(pa);
             }
 
-            let timeout = if no_updates < 100 { 10 } else { 100 };
+            let timeout = if no_updates < 100 { 10 } else { 10000 };
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(timeout)) {
                 no_updates = 0;
                 match event {
@@ -375,21 +375,21 @@ impl<U: Ui> Session<U> {
             // will have to synchronously change the current window number
             // without affecting anything else.
             mode::reset_to_file::<U>(next_pk.clone(), true);
-            context::windows::<U>().close_file(pa, pk, self.ms);
+            context::windows::<U>().close_file(pa, pk);
 
             true
         } else {
-            context::windows::<U>().close_file(pa, pk, self.ms);
+            context::windows::<U>().close_file(pa, pk);
             false
         }
     }
 
     fn swap_files(&self, pa: &mut Pass, lhs: PathKind, rhs: PathKind) {
-        context::windows::<U>().swap_files(pa, lhs, rhs, self.ms);
+        context::windows::<U>().swap_files(pa, lhs, rhs);
     }
 
     fn open_window_with(&self, pa: &mut Pass, pk: PathKind) {
-        context::windows::<U>().open_or_move_to_new_window(pa, pk, self.ms, self.file_cfg);
+        context::windows::<U>().open_or_move_to_new_window(pa, pk, self.file_cfg);
     }
 }
 

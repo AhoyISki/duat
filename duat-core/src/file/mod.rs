@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 
 use self::parser::Parsers;
 pub use self::parser::{FileTracker, Parser};
@@ -38,7 +38,7 @@ mod parser;
 pub struct File<U: Ui> {
     path: PathKind,
     text: Text,
-    printed_lines: Vec<(usize, bool)>,
+    printed_lines: Mutex<Vec<(usize, bool)>>,
     parsers: Parsers<U>,
     /// The [`PrintCfg`] of this [`File`]
     cfg: Arc<Mutex<PrintCfg>>,
@@ -75,7 +75,7 @@ impl<U: Ui> File<U> {
             path,
             text,
             cfg: Arc::new(Mutex::new(print_cfg)),
-            printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
+            printed_lines: Mutex::new(Vec::new()),
             parsers: Parsers::default(),
             layout_order: 0,
         }
@@ -246,8 +246,8 @@ impl<U: Ui> File<U> {
     /// These are returned as a `usize`, showing the index of the line
     /// in the file, and a `bool`, which is `true` when the line is
     /// wrapped.
-    pub fn printed_lines(&self) -> &[(usize, bool)] {
-        &self.printed_lines
+    pub fn printed_lines(&self) -> MutexGuard<'_, Vec<(usize, bool)>> {
+        self.printed_lines.lock()
     }
 
     ////////// General querying functions
@@ -397,7 +397,7 @@ impl<U: Ui> File<U> {
         Self {
             path: self.path.clone(),
             text: std::mem::take(&mut self.text),
-            printed_lines: Vec::new(),
+            printed_lines: Mutex::new(Vec::new()),
             parsers: Parsers::default(),
             cfg: Arc::default(),
             layout_order: self.layout_order,
@@ -445,7 +445,7 @@ impl<U: Ui> Widget<U> for File<U> {
         *self.cfg.lock()
     }
 
-    fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
+    fn print(&self, painter: Painter, area: &<U as Ui>::Area) {
         let cfg = *self.cfg.lock();
         let (start, _) = area.start_points(&self.text, cfg);
 
@@ -453,12 +453,12 @@ impl<U: Ui> Widget<U> for File<U> {
             .rev_print_iter(self.text.iter_rev(start), cfg)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
-        self.printed_lines.clear();
-        let printed_lines = &mut self.printed_lines;
+        let mut printed_lines = self.printed_lines.lock();
+        printed_lines.clear();
 
         let mut has_wrapped = false;
 
-        area.print_with(&mut self.text, cfg, painter, move |caret, item| {
+        area.print_with(&self.text, cfg, painter, move |caret, item| {
             has_wrapped |= caret.wrap;
             if has_wrapped && item.part.is_char() {
                 has_wrapped = false;

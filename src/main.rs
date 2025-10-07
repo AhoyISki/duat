@@ -200,13 +200,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The watcher is returned as to not be dropped.
     let (config_tx, config_rx) = mpsc::channel();
-    let _watcher = match spawn_config_watcher(config_tx.clone(), duat_tx.clone(), crate_dir) {
-        Ok(_watcher) => Some(_watcher),
-        Err(err) => {
-            context::error!("Failed to spawn watcher, [a]reloading will be disabled[]: {err}");
-            None
-        }
-    };
+    // let _watcher = match spawn_config_watcher(config_tx.clone(),
+    // duat_tx.clone(), crate_dir) {    Ok(_watcher) =>
+    // Some(_watcher),    Err(err) => {
+    //        context::error!("Failed to spawn watcher, [a]reloading will
+    // be disabled[]: {err}");        None
+    //    }
+    //};
 
     let (reload_tx, reload_rx) = mpsc::channel();
     spawn_reloader(reload_rx, config_tx.clone(), duat_tx.clone());

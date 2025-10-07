@@ -28,7 +28,7 @@ use super::{
     Point, Text, TextRangeOrPoint,
     shift_list::{Shift, ShiftList, Shiftable},
 };
-use crate::utils::get_ends;
+use crate::{data::Pass, utils::get_ends};
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
 ///
@@ -128,6 +128,33 @@ impl Tags<'_> {
     pub fn clear(&mut self) {
         *self.0 = InnerTags::new(self.0.list.max() as usize);
     }
+
+    /////////// Querying functions
+
+    /// The lenght of this `Tags` struct
+    ///
+    /// This number is always identical to calling
+    /// [`bytes.len().byte()`] from the [`Bytes`] of the same
+    /// [`Text`], or calling `text.len().bytes()` from the `Text`
+    /// itself.
+    ///
+    /// [`bytes.len().byte()`]: super::Bytes::len
+    /// [`Bytes`]: super::Bytes
+    pub fn len_bytes(&self) -> usize {
+        self.0.len_bytes()
+    }
+
+    /// List of [`Widget`]s that were spawned on this `Tags`'s
+    /// [`Text`]
+    ///
+    /// These `Widget` are all guaranteed to still exist, although
+    /// they might not be printed on screen, in the situation where
+    /// the `Text` was not itself printed on screen.
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    pub fn spawned_ids(&self) -> &[SpawnId] {
+        &self.0.spawns
+    }
 }
 
 impl std::ops::Deref for Tags<'_> {
@@ -148,29 +175,32 @@ impl std::fmt::Debug for Tags<'_> {
 ///
 /// It also holds the [`Text`]s of any [`Ghost`]s, and the
 /// functions of [`ToggleStart`]s
-#[derive(Clone)]
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
     ghosts: Vec<(GhostId, Text)>,
     toggles: Vec<(ToggleId, Toggle)>,
+    spawns: Vec<SpawnId>,
+    pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
 }
 
 impl InnerTags {
     /// Creates a new [`InnerTags`] with a given len
-    pub(super) fn new(max: usize) -> Self {
+    pub fn new(max: usize) -> Self {
         Self {
             list: ShiftList::new(max as i32),
             ghosts: Vec::new(),
             toggles: Vec::new(),
+            spawns: Vec::new(),
+            spawn_fns: Vec::new(),
             bounds: Bounds::new(max),
             extents: TaggerExtents::new(max),
         }
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub(super) fn insert<I, R>(&mut self, tagger: Tagger, i: I, tag: impl Tag<I, R>) -> Option<R>
+    pub fn insert<I, R>(&mut self, tagger: Tagger, i: I, tag: impl Tag<I, R>) -> Option<R>
     where
         R: Copy,
     {
@@ -221,7 +251,7 @@ impl InnerTags {
     }
 
     /// Insert another [`InnerTags`] into this one
-    pub(super) fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
+    pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
@@ -253,7 +283,7 @@ impl InnerTags {
     }
 
     /// Extends this [`InnerTags`] with another one
-    pub(super) fn extend(&mut self, other: InnerTags) {
+    pub fn extend(&mut self, other: InnerTags) {
         self.list.extend(other.list);
         self.ghosts.extend(other.ghosts);
         self.toggles.extend(other.toggles);
@@ -262,7 +292,7 @@ impl InnerTags {
     }
 
     /// Removes all [`RawTag`]s of a give [`Taggers`]
-    pub(super) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
+    pub fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let (start, end) = crate::utils::get_ends(within, self.len_bytes());
 
         for range in self
@@ -426,7 +456,7 @@ impl InnerTags {
         self.extents.shift_by(old.start + 1, shift);
     }
 
-    pub(crate) fn update_bounds(&mut self) {
+    pub fn update_bounds(&mut self) {
         for range in self.bounds.take_ranges() {
             let mut starts = Vec::new();
             for (i, (b, tag)) in self.list.iter_fwd(range) {
@@ -445,15 +475,7 @@ impl InnerTags {
         self.bounds.cull_small_ranges();
     }
 
-    /// Returns true if there are no [`RawTag`]s
-    pub fn is_empty(&self) -> bool {
-        self.list.is_empty()
-    }
-
-    /// Returns the len of the [`InnerTags`] in bytes
-    pub fn len_bytes(&self) -> usize {
-        self.list.max() as usize
-    }
+    ////////// Iterator functions
 
     /// Returns a forward iterator at a given byte
     #[define_opaque(FwdTags)]
@@ -522,6 +544,18 @@ impl InnerTags {
             .map(|(_, (_, tag))| tag)
     }
 
+    ////////// Querying functions
+
+    /// Returns true if there are no [`RawTag`]s
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+
+    /// Returns the len of the [`InnerTags`] in bytes
+    pub fn len_bytes(&self) -> usize {
+        self.list.max() as usize
+    }
+
     /// Returns the length of all [`Ghost`]s in a byte
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
@@ -538,6 +572,20 @@ impl InnerTags {
         self.ghosts
             .iter()
             .find_map(|(lhs, text)| (*lhs == id).then_some(text))
+    }
+}
+
+impl Clone for InnerTags {
+    fn clone(&self) -> Self {
+        Self {
+            list: self.list.clone(),
+            ghosts: self.ghosts.clone(),
+            toggles: self.toggles.clone(),
+            spawns: self.spawns.clone(),
+            spawn_fns: Vec::new(),
+            bounds: self.bounds.clone(),
+            extents: self.extents.clone(),
+        }
     }
 }
 

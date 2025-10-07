@@ -16,7 +16,9 @@ pub use self::print_info::PrintInfo;
 use crate::{
     AreaId, CStyle, Mutex,
     layout::{Layout, Rect, transfer_vars},
-    print_style, queue,
+    print_style,
+    printer::LinesBuilder,
+    queue,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -55,6 +57,10 @@ impl Coords {
         self.br.y - self.tl.y
     }
 
+    pub fn area(&self) -> u32 {
+        self.width() * self.height()
+    }
+
     pub fn intersects(&self, other: Self) -> bool {
         self.tl.x < other.br.x
             && self.br.x > other.tl.x
@@ -83,7 +89,7 @@ impl Area {
 
     fn print<'a>(
         &self,
-        text: &mut Text,
+        text: &Text,
         cfg: PrintCfg,
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
@@ -96,7 +102,6 @@ impl Area {
 
         let (mut lines, iter, is_floating) = {
             let rect = layout.get(self.id).unwrap();
-            let max = layout.printer.max_value();
             let (coords, has_changed) = layout.printer.coords(rect.var_points(), true);
 
             if coords.width() == 0 || coords.height() == 0 {
@@ -110,7 +115,7 @@ impl Area {
                 (s_points, info.x_shift())
             };
 
-            let lines = layout.printer.lines(coords, max, x_shift, cfg);
+            let lines = LinesBuilder::new(coords, x_shift, cfg);
 
             let iter = {
                 let line_start = text.visual_line_start(s_points);
@@ -130,7 +135,7 @@ impl Area {
         let lines_left = {
             // The y here represents the bottom of the current row of cells.
             let tl_y = lines.coords().tl.y;
-            let (lines, ansi_codes) = (&mut lines, &mut ansi_codes);
+            let (painter, lines, ansi_codes) = (&mut painter, &mut lines, &mut ansi_codes);
             let mut y = tl_y;
             let mut cursor = None;
 
@@ -142,42 +147,38 @@ impl Area {
 
                 if wrap {
                     if y > lines.coords().tl.y {
-                        lines.end_line(ansi_codes, &painter);
+                        lines.end_line(ansi_codes, painter);
                     }
                     if y == lines.coords().br.y {
                         break;
                     }
-                    (0..x).for_each(|_| lines.push_char(' ', 1));
-                    print_style(lines, painter.absolute_style(), ansi_codes);
+                    if x > 0 {
+                        let default_style = painter.get_default().style;
+                        print_style(lines, default_style, ansi_codes);
+                        (0..x).for_each(|_| lines.push_char(' ', 1));
+                    }
+                    painter.reset_prev_style();
+                    style_was_set = true;
                     y += 1
                 }
 
                 match part {
                     Part::Char(char) => {
-                        match char {
-                            '\t' => {
-                                if style_was_set {
-                                    print_style(lines, painter.relative_style(), ansi_codes);
-                                    style_was_set = false;
-                                }
-                                (0..len).for_each(|_| lines.push_char(' ', 1));
+                        if let Some(str) = get_control_str(char) {
+                            painter.apply(CONTROL_CHAR_ID, 100);
+                            if style_was_set && let Some(style) = painter.relative_style() {
+                                print_style(lines, style, ansi_codes);
                             }
-                            '\n' | '\r' => {}
-                            char => {
-                                if let Some(str) = get_control_str(char) {
-                                    painter.apply(CONTROL_CHAR_ID, 100);
-                                    let style = painter.relative_style();
-                                    duat_core::context::info!("{CONTROL_CHAR_ID:?}, {style:#?}");
-                                    print_style(lines, style, ansi_codes);
-                                    str.chars().for_each(|c| lines.push_char(c, 1));
-                                    painter.remove(CONTROL_CHAR_ID)
-                                } else {
-                                    if style_was_set {
-                                        print_style(lines, painter.relative_style(), ansi_codes);
-                                        style_was_set = false;
-                                    }
-                                    lines.push_char(char, len)
-                                }
+                            str.chars().for_each(|c| lines.push_char(c, 1));
+                            painter.remove(CONTROL_CHAR_ID)
+                        } else {
+                            if style_was_set && let Some(style) = painter.relative_style() {
+                                print_style(lines, style, ansi_codes);
+                            }
+                            match char {
+                                '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
+                                '\n' | '\r' => {}
+                                char => lines.push_char(char, len),
                             }
                         }
 
@@ -186,8 +187,11 @@ impl Area {
                                 Cursor::Main => painter.remove_main_caret(),
                                 Cursor::Extra => painter.remove_extra_caret(),
                             }
-                            print_style(lines, painter.relative_style(), ansi_codes)
+                            if let Some(style) = painter.relative_style() {
+                                print_style(lines, style, ansi_codes)
+                            }
                         }
+                        style_was_set = false;
                     }
                     Part::PushForm(id, prio) => {
                         painter.apply(id, prio);
@@ -233,19 +237,19 @@ impl Area {
                 }
             }
 
-            lines.end_line(ansi_codes, &painter);
+            lines.end_line(ansi_codes, painter);
 
             lines.coords().br.y - y
         };
 
         for _ in 0..lines_left {
-            lines.end_line(&mut ansi_codes, &painter);
+            lines.end_line(&mut ansi_codes, &mut painter);
         }
 
         if is_floating {
             layout.printer.send_floating_lines(self.id, lines);
         } else {
-            layout.printer.send_lines(self.id, lines);
+            layout.printer.send_lines(lines);
         }
     }
 }
@@ -523,13 +527,13 @@ impl ui::Area for Area {
         get_layout_mut(&mut layouts, self.id).unwrap().active_id = self.id;
     }
 
-    fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter) {
+    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter) {
         self.print(text, cfg, painter, |_, _| {})
     }
 
     fn print_with<'a>(
         &self,
-        text: &mut Text,
+        text: &Text,
         cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
@@ -726,11 +730,8 @@ const fn get_control_str(char: char) -> Option<&'static str> {
         '\u{06}' => Some("^F"),
         '\u{07}' => Some("^G"),
         '\u{08}' => Some("^H"),
-        '\u{09}' => Some("^I"),
-        '\u{0a}' => Some("^J"),
         '\u{0b}' => Some("^K"),
         '\u{0c}' => Some("^L"),
-        '\u{0d}' => Some("^M"),
         '\u{0e}' => Some("^N"),
         '\u{0f}' => Some("^O"),
         '\u{10}' => Some("^P"),

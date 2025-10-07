@@ -66,6 +66,9 @@ impl ui::Ui for Ui {
                 unreachable!("Failed to load the Ui");
             };
 
+            // Initial terminal setup
+            // Some key chords (like alt+shift+o for some reason) don't work
+            // without this.
             execute!(
                 io::stdout(),
                 terminal::EnterAlternateScreen,
@@ -79,9 +82,6 @@ impl ui::Ui for Ui {
 
             terminal::enable_raw_mode().unwrap();
 
-            // Initial terminal setup
-            // Some key chords (like alt+shift+o for some reason) don't work
-            // without this.
             if let Ok(true) = terminal::supports_keyboard_enhancement() {
                 queue!(
                     io::stdout(),
@@ -107,23 +107,24 @@ impl ui::Ui for Ui {
             .no_hooks()
             .spawn(move || {
                 loop {
-                    let Ok(true) = ct_poll(Duration::from_millis(50)) else {
+                    let Ok(true) = ct_poll(Duration::from_millis(20)) else {
                         continue;
                     };
 
-                    match ct_read().unwrap() {
-                        CtEvent::Key(key) => {
+                    match ct_read() {
+                        Ok(CtEvent::Key(key)) => {
                             if !key.kind.is_release() {
                                 duat_tx.send_key(key).unwrap();
                             }
                         }
-                        CtEvent::Resize(..) => {
+                        Ok(CtEvent::Resize(..)) => {
                             term_tx.send(Event::UpdatePrinter).unwrap();
                             duat_tx.send_resize().unwrap();
                         }
-                        CtEvent::FocusGained => duat_tx.send_focused().unwrap(),
-                        CtEvent::FocusLost => duat_tx.send_unfocused().unwrap(),
-                        CtEvent::Mouse(_) | CtEvent::Paste(_) => {}
+                        Ok(CtEvent::FocusGained) => duat_tx.send_focused().unwrap(),
+                        Ok(CtEvent::FocusLost) => duat_tx.send_unfocused().unwrap(),
+                        Ok(CtEvent::Mouse(_) | CtEvent::Paste(_)) => {}
+                        Err(_) => {}
                     }
                 }
             });
@@ -175,6 +176,15 @@ impl ui::Ui for Ui {
         }
 
         root
+    }
+
+    fn new_floating(
+        ms: &'static Self::MetaStatics,
+        cache: <Self::Area as ui::Area>::Cache,
+        specs: ui::SpawnSpecs,
+        id: duat_core::text::SpawnId,
+    ) -> Self::Area {
+        todo!();
     }
 
     fn switch_window(ms: &'static Self::MetaStatics, win: usize) {

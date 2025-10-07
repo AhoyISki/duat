@@ -7,16 +7,18 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{marker::PhantomData, ops::Range, sync::Arc};
+use std::{ops::Range, sync::Arc};
 
 use RawTag::*;
 use crossterm::event::MouseEventKind;
 
 use super::{GhostId, SpawnId, Tagger, ToggleId};
 use crate::{
+    context,
+    data::Pass,
     form::FormId,
     text::{Point, Text, TextRange},
-    ui::{SpawnSpecs, Widget},
+    ui::{SpawnSpecs, Ui, Widget},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`]
@@ -47,7 +49,7 @@ use crate::{
 /// [range]: TextRange
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::ui::Widget
-pub trait Tag<Index, Return: Copy = ()>: Sized + std::fmt::Debug {
+pub trait Tag<Index, Return: Copy = ()>: Sized {
     /// Gets the [`RawTag`]s and a possible return id from the `Tag`
     #[doc(hidden)]
     fn get_raw(
@@ -264,40 +266,58 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 /// The [`Widget`] will be placed according to the [`SpawnSpecs`], and
 /// should move automatically as the `SpawnTag` moves around the
 /// screen.
-pub struct SpawnTag<W: Widget<U>, U: crate::ui::Ui>(W, SpawnSpecs, PhantomData<U>);
+pub struct SpawnTag(SpawnId, Box<dyn FnOnce(&mut Pass) + Send>);
 
-impl<W: Widget<U>, U: crate::ui::Ui> SpawnTag<W, U> {
+impl SpawnTag {
     /// Returns a new instance of `SpawnTag`
     ///
     /// You can then place this [`Tag`] inside of the [`Text`] via
     /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
     /// should be placed according to the [`SpawnSpecs`], and should
-    /// move around automatically whenever tha position moves on
-    /// screen.
+    /// move around automatically reflecting where the `Tag` is at.
+    ///
+    /// Do note that this [`Widget`] will only be added to Duat and be
+    /// able to be printed to the screen once the [`Text`] itself
+    /// is printed. And it will be removed once the [`RawTag`] within
+    /// gets dropped, either by being removed from the `Text`, or by
+    /// the `Text` itself being dropped.
+    ///
+    /// > [!NOTE]
+    /// >
+    /// > For now, if you clone a [`Text`] with spawned [`Widget`]s
+    /// > within, those `Widget`s will not be cloned to the new
+    /// > `Text`, and the [`RawTag::SpawnedWidget`]s within will also
+    /// > be removed.
     ///
     /// [`Tags::insert`]: super::Tags::insert
-    pub fn new(widget: W, specs: SpawnSpecs) -> Self {
-        Self(widget, specs, PhantomData)
+    pub fn new<U: Ui>(widget: impl Widget<U>, specs: SpawnSpecs) -> Self {
+        let id = SpawnId::new();
+        Self(
+            id,
+            Box::new(move |pa| {
+                context::windows::<U>().spawn_on_text(pa, (id, specs), widget);
+            }),
+        )
     }
 }
 
-impl<W: Widget<U>, U: crate::ui::Ui> Tag<Point> for SpawnTag<W, U> {
+impl Tag<Point, SpawnId> for SpawnTag {
     fn get_raw(
         &self,
-        _index: Point,
-        _max: usize,
-        _tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
-        todo!();
+        index: Point,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, SpawnId) {
+        (
+            (index.byte().min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            None,
+            self.0,
+        )
     }
-}
 
-impl<W: Widget<U>, U: crate::ui::Ui> std::fmt::Debug for SpawnTag<W, U> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("SpawnTag")
-            .field(&std::any::type_name::<W>())
-            .field(&self.2)
-            .finish()
+    fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
+        tags.spawns.push(ret);
+        tags.spawn_fns.push(self.1);
     }
 }
 

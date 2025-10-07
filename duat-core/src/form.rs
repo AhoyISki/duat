@@ -21,8 +21,7 @@ pub trait ColorScheme: Send + Sync + 'static {
     ///
     /// This can technically do anything, mostly because one might
     /// want to do a bunch of `if`s and `else`s in order to get to a
-    /// finalized [`ColorScheme`], but you should refrain from doing
-    /// anything but that in this function.
+    /// finalized [`ColorScheme`].
     fn apply(&self);
 
     /// The name of this [`ColorScheme`], shouldn't be altered
@@ -1138,6 +1137,7 @@ impl Palette {
             set_bg: true,
             set_ul: true,
             reset_attrs: false,
+            prev_style: None,
         }
     }
 }
@@ -1320,6 +1320,7 @@ pub struct Painter {
     set_bg: bool,
     set_ul: bool,
     reset_attrs: bool,
+    prev_style: Option<ContentStyle>,
 }
 
 impl Painter {
@@ -1414,8 +1415,9 @@ impl Painter {
     ///
     /// [`absolute_style`]: Painter::absolute_style
     #[inline(always)]
-    pub fn relative_style(&mut self) -> ContentStyle {
-        let mut style = self.absolute_style();
+    pub fn relative_style(&mut self) -> Option<ContentStyle> {
+        let abs_style = self.absolute_style();
+        let mut style = abs_style;
 
         if style.attributes.has(Attribute::Reset) || self.reset_attrs {
             style.attributes.set(Attribute::Reset);
@@ -1425,13 +1427,16 @@ impl Painter {
         } else {
             style.foreground_color = self
                 .set_fg
-                .then_some(style.foreground_color.unwrap_or(Color::Reset));
+                .then_some(style.foreground_color.unwrap_or(Color::Reset))
+                .filter(|fg| Some(*fg) != self.prev_style.and_then(|s| s.foreground_color));
             style.background_color = self
                 .set_bg
-                .then_some(style.background_color.unwrap_or(Color::Reset));
+                .then_some(style.background_color.unwrap_or(Color::Reset))
+                .filter(|bg| Some(*bg) != self.prev_style.and_then(|s| s.background_color));
             style.underline_color = self
                 .set_ul
-                .then_some(style.underline_color.unwrap_or(Color::Reset));
+                .then_some(style.underline_color.unwrap_or(Color::Reset))
+                .filter(|ul| Some(*ul) != self.prev_style.and_then(|s| s.underline_color));
         }
 
         self.set_fg = false;
@@ -1439,7 +1444,23 @@ impl Painter {
         self.set_ul = false;
         self.reset_attrs = false;
 
-        style
+        if let Some(prev_style) = self.prev_style.replace(abs_style) {
+            (style != prev_style && style != Default::default()).then_some(style)
+        } else {
+            Some(style)
+        }
+    }
+
+    /// Makes it so the next call to [`relative_style`] returns the
+    /// same thing as a call to [`absolute_style`]
+    ///
+    /// [`relative_style`]: Self::relative_style
+    /// [`absolute_style`]: Self::absolute_style
+    pub fn reset_prev_style(&mut self) {
+        self.prev_style = None;
+        self.set_fg = true;
+        self.set_bg = true;
+        self.set_ul = true;
     }
 
     /// Applies the `"caret.main"` [`Form`]

@@ -121,6 +121,7 @@ pub use self::{
 };
 use crate::{
     cfg::PrintCfg,
+    data::Pass,
     form,
     mode::{Selection, Selections},
     ui::Area,
@@ -578,7 +579,7 @@ impl Text {
         self.0.tags = InnerTags::new(self.0.bytes.len().byte());
     }
 
-    /////////// Selection functions
+    /////////// Internal synchronization functions
 
     /// Returns a [`Text`] without [`Selections`]
     ///
@@ -642,6 +643,18 @@ impl Text {
         if let Some(history) = self.0.history.as_mut() {
             history.prepare_for_reloading()
         }
+    }
+
+    /// Functions to add  all [`Widget`]s that were spawned in this
+    /// `Text`
+    ///
+    /// This function should only be called right before printing,
+    /// where it is "known" that `Widget`s can no longer get rid of
+    /// the [`SpawnTag`]s
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    pub(crate) fn get_widget_spawns(&mut self) -> Vec<Box<dyn FnOnce(&mut Pass) + Send>> {
+        std::mem::take(&mut self.0.tags.spawn_fns)
     }
 
     /////////// Iterator methods

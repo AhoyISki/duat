@@ -12,7 +12,8 @@ pub struct LogBook {
     len_of_taken: usize,
     text: Text,
     fmt: Box<dyn FnMut(Record) -> Option<Text> + Send>,
-    close_on_unfocus: bool,
+    /// Wether to close this [`Widget`] after unfocusing, `true` by default
+    pub close_on_unfocus: bool,
 }
 
 impl LogBook {

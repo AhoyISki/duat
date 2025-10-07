@@ -663,7 +663,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         widget: SW,
         specs: SpawnSpecs,
     ) -> Handle<SW, U> {
-        context::windows::<U>().spawn_widget(pa, (&self.area, specs), widget)
+        context::windows::<U>().spawn_on_widget(pa, (&self.area, specs), widget)
     }
 
     /// Pushes a [`Widget`] around this one

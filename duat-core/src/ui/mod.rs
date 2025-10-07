@@ -47,7 +47,7 @@ use crate::{
     data::Pass,
     form::Painter,
     session::DuatSender,
-    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
+    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
 };
 
 pub mod layout;
@@ -101,9 +101,15 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     /// better to use the one from the Duat app, rather than one from
     /// the config crate
     ///
+    /// > [!NOTE]
+    /// >
+    /// > This trait member is only meant to be used by duat itself.
+    /// > This is why it implements the [`GetOnce`] trait, so it can
+    /// > only be acquired once on startup.
+    ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
     /// [`Mutex`]: std::sync::Mutex
-    type MetaStatics: GetOnce<Self> + Send;
+    type MetaStatics: GetOnce<Self> + Send + Sync;
 
     ////////// Functions executed from the outer loop
 
@@ -126,6 +132,24 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     ///
     /// [`Area`]: Ui::Area
     fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
+
+    /// Initiates and returns a new "floating" [`Area`]
+    ///
+    /// This is one of two ways of spawning floating [`Widget`]s. The
+    /// other way is with [`Area::spawn`], in which a [`Widget`] will
+    /// be bolted on the edges of another.
+    ///
+    /// TODO: There will probably be some way of defining floating
+    /// [`Widget`]s with coordinates in the not too distant future as
+    /// well.
+    ///
+    /// [`Area`]: Ui::Area
+    fn new_floating(
+        ms: &'static Self::MetaStatics,
+        cache: <Self::Area as Area>::Cache,
+        specs: SpawnSpecs,
+        id: SpawnId,
+    ) -> Self::Area;
 
     /// Switches the currently active window
     ///
@@ -339,12 +363,12 @@ pub trait Area: PartialEq + Sized + 'static {
     ////////// Printing
 
     /// Prints the [`Text`] via an [`Iterator`]
-    fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter);
+    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
 
     /// Prints the [`Text`] with a callback function
     fn print_with<'a>(
         &self,
-        text: &mut Text,
+        text: &Text,
         cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
