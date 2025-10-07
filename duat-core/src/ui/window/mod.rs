@@ -33,7 +33,6 @@ impl<U: Ui> Windows<U> {
             inner: RwData::new(InnerWindows {
                 layout,
                 list: Vec::new(),
-                text_floating: Vec::new(),
                 new_additions: Arc::default(),
             }),
             ms,
@@ -53,13 +52,6 @@ impl<U: Ui> Windows<U> {
         if set_cur {
             context::set_cur(pa, node.try_downcast(), node.clone());
         }
-
-        let wins = self.inner.write(pa);
-        wins.new_additions
-            .lock()
-            .unwrap()
-            .get_or_insert_default()
-            .push((win, node.clone()));
 
         hook::trigger(
             pa,
@@ -100,11 +92,6 @@ impl<U: Ui> Windows<U> {
 
         let wins = self.inner.write(pa);
         wins.list[win].add(node.clone(), None, Location::Spawned);
-        wins.new_additions
-            .lock()
-            .unwrap()
-            .get_or_insert_default()
-            .push((win, node.clone()));
 
         hook::trigger(
             pa,
@@ -119,13 +106,21 @@ impl<U: Ui> Windows<U> {
         pa: &mut Pass,
         (on, specs): (SpawnId, SpawnSpecs),
         widget: W,
+        win: usize,
     ) -> Handle<W, U> {
         let widget = RwData::new(widget);
         let cache = get_cache(pa, widget.to_dyn_widget(), self, None);
         let spawned = U::new_floating(self.ms, cache, specs, on);
 
         let node = Node::new(widget, Arc::new(spawned));
-        self.inner.write(pa).text_floating.push((on, node.clone()));
+
+        let wins = self.inner.write(pa);
+        wins.list[win].add(node.clone(), None, Location::Spawned);
+
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<File<U>>().unwrap()),
+        );
 
         node.handle().try_downcast().unwrap()
     }
@@ -538,7 +533,6 @@ impl<U: Ui> Windows<U> {
 struct InnerWindows<U: Ui> {
     layout: Box<Mutex<dyn Layout<U>>>,
     list: Vec<Window<U>>,
-    text_floating: Vec<(SpawnId, Node<U>)>,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
 }
 
@@ -570,6 +564,12 @@ impl<U: Ui> Window<U> {
 
         let area = Arc::new(U::new_root(ms, cache));
         let node = Node::new::<W>(widget, area.clone());
+
+        new_additions
+            .lock()
+            .unwrap()
+            .get_or_insert_default()
+            .push((index, node.clone()));
 
         let window = Self {
             index,

@@ -151,7 +151,15 @@ impl Tags<'_> {
     /// they might not be printed on screen, in the situation where
     /// the `Text` was not itself printed on screen.
     ///
+    /// This information is particularly useful for [`Ui`]
+    /// implementors, since, upon printing a [`Text`], they will
+    /// iterate through all [`RawTag`]s that show up on screen. For
+    /// every [`RawTag::SpawnedWidget`] that _didn't_ show up on
+    /// screen, they will know that that `Widget` should not be
+    /// printed.
+    ///
     /// [`Widget`]: crate::ui::Widget
+    /// [`Ui`]: crate::ui::Ui
     pub fn spawned_ids(&self) -> &[SpawnId] {
         &self.0.spawns
     }
@@ -180,7 +188,7 @@ pub struct InnerTags {
     ghosts: Vec<(GhostId, Text)>,
     toggles: Vec<(ToggleId, Toggle)>,
     spawns: Vec<SpawnId>,
-    pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass) + Send>>,
+    pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
 }

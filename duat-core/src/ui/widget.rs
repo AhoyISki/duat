@@ -526,7 +526,7 @@ impl<U: Ui> Node<U> {
     ////////// Eventful functions
 
     /// Updates and prints this [`Node`]
-    pub(crate) fn update_and_print(&self, pa: &mut Pass) {
+    pub(crate) fn update_and_print(&self, pa: &mut Pass, win: usize) {
         (self.update)(pa);
 
         let (widget, area) = self.handle.write_with_area(pa);
@@ -539,7 +539,7 @@ impl<U: Ui> Node<U> {
 
         let widgets_to_spawn = self.handle.text_mut(pa).get_widget_spawns();
         for spawn in widgets_to_spawn {
-            spawn(pa);
+            spawn(pa, win);
         }
         (self.print)(pa);
 

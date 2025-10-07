@@ -266,7 +266,7 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 /// The [`Widget`] will be placed according to the [`SpawnSpecs`], and
 /// should move automatically as the `SpawnTag` moves around the
 /// screen.
-pub struct SpawnTag(SpawnId, Box<dyn FnOnce(&mut Pass) + Send>);
+pub struct SpawnTag(SpawnId, Box<dyn FnOnce(&mut Pass, usize) + Send>);
 
 impl SpawnTag {
     /// Returns a new instance of `SpawnTag`
@@ -294,8 +294,8 @@ impl SpawnTag {
         let id = SpawnId::new();
         Self(
             id,
-            Box::new(move |pa| {
-                context::windows::<U>().spawn_on_text(pa, (id, specs), widget);
+            Box::new(move |pa, win| {
+                context::windows::<U>().spawn_on_text(pa, (id, specs), widget, win);
             }),
         )
     }

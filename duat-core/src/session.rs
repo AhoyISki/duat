@@ -146,7 +146,7 @@ impl<U: Ui> Session<U> {
 
                 let cur_win = context::cur_window();
                 for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
-                    node.update_and_print(pa);
+                    node.update_and_print(pa, cur_win);
                 }
 
                 *windows_nodes = get_windows_nodes(pa);
@@ -172,8 +172,9 @@ impl<U: Ui> Session<U> {
 
         U::flush_layout(self.ms);
 
-        for node in windows_nodes.get(context::cur_window()).unwrap() {
-            node.update_and_print(pa);
+        let cur_win = context::cur_window();
+        for node in windows_nodes.get(cur_win).unwrap() {
+            node.update_and_print(pa, cur_win);
         }
         update_and_print_additions::<U>(pa, self.ms, &mut windows_nodes);
 
@@ -279,8 +280,9 @@ impl<U: Ui> Session<U> {
                     }
                 }
             } else if reprint_screen {
-                for node in windows_nodes.get(context::cur_window()).unwrap() {
-                    node.update_and_print(pa);
+                let cur_win = context::cur_window();
+                for node in windows_nodes.get(cur_win).unwrap() {
+                    node.update_and_print(pa, cur_win);
                 }
                 update_and_print_additions(pa, self.ms, &mut windows_nodes);
 
@@ -290,10 +292,11 @@ impl<U: Ui> Session<U> {
             }
             no_updates += 1;
 
+            let cur_win = context::cur_window();
             for node in windows_nodes.get(context::cur_window()).unwrap() {
                 if node.needs_update(pa) {
                     no_updates = 0;
-                    node.update_and_print(pa);
+                    node.update_and_print(pa, cur_win);
                 }
             }
             update_and_print_additions(pa, self.ms, &mut windows_nodes);

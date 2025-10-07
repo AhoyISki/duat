@@ -653,7 +653,7 @@ impl Text {
     /// the [`SpawnTag`]s
     ///
     /// [`Widget`]: crate::ui::Widget
-    pub(crate) fn get_widget_spawns(&mut self) -> Vec<Box<dyn FnOnce(&mut Pass) + Send>> {
+    pub(crate) fn get_widget_spawns(&mut self) -> Vec<Box<dyn FnOnce(&mut Pass, usize) + Send>> {
         std::mem::take(&mut self.0.tags.spawn_fns)
     }
 
