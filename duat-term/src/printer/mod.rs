@@ -76,7 +76,7 @@ impl Printer {
         axis: Axis,
         prefers_before: bool,
     ) -> [Variable; 2] {
-        self.sync_solver.lock().unwrap().new_floating_center(
+        self.sync_solver.lock().unwrap().new_widget_spawned_center(
             &mut self.vars.lock().unwrap(),
             deps,
             len,
