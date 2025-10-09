@@ -1,0 +1,117 @@
+FOR NEXT UPDATE:
+[ ] Add floating widgets.
+  [x] Get rid of min, max, and ratio constraints,they don't really make any sense in conjunction with the length constraint.
+  [x] Use forward propagation in order to figure out where to spawn the widget.
+  [x] Add Widget defined floating Widgets.
+  [ ] Add Tag defined floating Widgets.
+  [ ] Extend regular Widget functions to floating Widgets.
+[/] Set title for better performance apparently (???).
+[x] Get rid of AreaId.
+[ ] Add completion lists.
+[ ] Remembering at which Moment the Text was saved.
+[ ] Create a fun lil' spinner.
+[x] Create a jumplist.
+[x] Rework Parsers (again).
+[ ] Get started on a Vim mode.
+[x] Make the Regular mode more usable.
+[ ] Named colors.
+[ ] Turn the History into a tree.
+[x] New Parser API.
+[x] Make TreeSitter and MatchPairs default plugins.
+[x] More sophisticated Plugin API.
+[x] Fix the Windows version.
+[x] Superior thread counting method.
+[ ] Named StatusParts.
+[x] Start using clap.
+[x] Handle non printable code points.
+[x] Finish new parser documentation.
+[x] Simplify Widget API.
+[/] Get rid of WidgetCreated (that's right).
+[x] Get rid of the various Cfgs.
+[ ] Add convenience methods for the duat-utils Widgets.
+[ ] Remove requirement of Clone on Modes.
+
+KNOWN BUGS:
+[ ] tree-sitter-duat-text is not being used.
+[x] Canceling git commit panics.
+[x] `C` key is broken on more than one cell.
+[x] History got fucked up.
+[ ] Locking a Mutex on every Change is surely slow.
+[ ] std::mem::replace (grrrr...).
+[x] Deleting last character crashes.
+[x] Treesitter not highlighting injections at first.
+[x] There might still be some issues with tree-sitter hightlight.
+[ ] Tree-sitter also not really indenting.
+[x] Tree-sitter not yielding as parsers are built.
+[x] Kakoune 'm' and <A-i> not working properly.
+[x] Conflicting versions of tree-sitter.
+[ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
+[x] Closing windows crashes Duat.
+[ ] Aliases turn lines wrapped in the LineNumbers eyes.
+[x] Treesitter crashes seemingly randomly.
+[ ] First Point not updating when there are changes before the start of the screen.
+[ ] Removing a bunch of injections at the same time seems to freak treesitter out.
+[ ] Appending to the text doesn't seem to update treesitter.
+[x] Failing to compile locks up recompilation.
+
+FUTURE UPDATES:
+[ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.
+[ ] Finalize the Windows API for more public use.
+[ ] Coordinates based tagging.
+[ ] Use track_caller on TextBuilder.
+[ ] Anonymous Forms, which index based on hashing the Form itself.
+[ ] Add Form interpolation and Form::copy.
+[ ] Use Tags for masks.
+[ ] Keep information of PushSpecs and SpawnSpecs on the Handles.
+[ ] Initial installation configuration menu.
+[ ] Print only changed lines.
+[ ] Handle mostly utf-8 strings.
+[ ] Allow Modes to detect when a key is mapped.
+[ ] Add a failure mode for remapping.
+[ ] Bring back multithreading?
+[ ] Abuse the shit out of catch_unwind.
+[ ] Additive Forms.
+[ ] Remapping on `Mode` creation.
+[x] Use the FileCfg insted of OnFileOpen.
+[ ] FileBuilder::push_detached!
+[ ] ReplaceCell Tags!
+[ ] Split suggested max range by conceals.
+[ ] A MapForm Tag!
+[ ] macro_mode! or something like that.
+[ ] Fuzzy path detection should be rule based, not on what buffers are open.
+[ ] A cache for visual lines (🤮).
+[ ] rustc_on_unimplemented for State.
+[ ] External file tracking.
+[ ] Crumple zone tags (?).
+[ ] Document print.rs (jesus christ man)
+[ ] Custom error messages for unimplemented on status!.
+[ ] Try to create a macro to generate a prelude, where types don't have U as a type argument.
+[ ] Create a Text wrapper for Parsers, which can tell when a conceal was placed.
+[ ] It is technically possible to reverse iterate without going over the whole line, if you know where in the screen said line ends.
+[ ] add options to the build script, about which type of UI you want, and where to get your config files.
+[ ] general undo/redo, that can delete/create files.
+[ ] ghosts 👻 on doc comments for tests.
+[ ] mouse drag binding to resize widgets.
+[ ] adaptive widget size.
+[ ] transition the ranges system to 4 lists.
+[ ] Tracker for the tags you have added.
+[ ] Least common denominator for showing paths.
+[ ] Macro for the creation of commands, utilizing a closure syntax with types for autocompletion.
+[ ] An updater function that returns true if a certain hook was triggered.
+[ ] File statics.
+[ ] No wrapping Tag.
+[ ] Search bar widget that shows up when you hover over a tooltip.
+[ ] Go to reference should popup a list of references, while swapping the whole screen as you scroll.
+[ ] Completion lists should have automatic triggers.
+[ ] Compilation should automatically plug plugins.
+[ ] Completion/hover panels should allow you to press tab to go to the next element and search for it.
+[ ] fixed_file and dyn_file should only call for updates if the File has actually changed at all.
+[ ] LSP option to show function arguments only when parenthesis is typed.
+[ ] Use the format-like modif to modify forms on the fly.
+[ ] `m` key could act on additional pairs if cursor is in specific chars.
+[ ] Option to show colored text on the txt! macro.
+
+PERFORMANCE IDEAS:
+[/] Scroll screen instead of printing every time.
+[ ] Try not iterating over every character in scroll_vertically.
+[ ] Try getting all the lines ready first, and only then print process them.
