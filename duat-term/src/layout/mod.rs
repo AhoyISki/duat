@@ -30,7 +30,14 @@ impl Layouts {
     pub fn new_layout(&self, printer: Arc<Printer>, frame: Frame, cache: PrintInfo) -> AreaId {
         let layout = Layout::new(printer, frame, cache);
         let main_id = layout.main_id();
-        self.0.borrow_mut().list.push(layout);
+
+        let mut layouts = self.0.borrow_mut();
+        layouts.list.push(layout);
+
+        if layouts.active_id.is_none() {
+            layouts.active_id = Some(main_id);
+        }
+
         main_id
     }
 
@@ -100,44 +107,59 @@ impl Layouts {
     pub fn swap(&self, lhs: AreaId, rhs: AreaId) -> bool {
         let mut layouts = self.0.borrow_mut();
         let list = &mut layouts.list;
-        let (Some(lhs_layout_i), Some(rhs_layout_i)) = (
-            list.iter().position(|layout| layout.get(lhs).is_some()),
-            list.iter().position(|layout| layout.get(rhs).is_some()),
+        let (Some((l_layout_i, l_main_id)), Some((r_layout_i, r_main_id))) = (
+            list.iter()
+                .enumerate()
+                .find_map(|(i, layout)| Some(i).zip(layout.get_main_id(lhs))),
+            list.iter()
+                .enumerate()
+                .find_map(|(i, layout)| Some(i).zip(layout.get_main_id(rhs))),
         ) else {
             return false;
         };
 
-        if lhs_layout_i == rhs_layout_i {
-            let layout = &mut list[lhs_layout_i];
-            let lhs_id = layout.get_cluster_master(lhs).unwrap_or(lhs);
-            let rhs_id = layout.get_cluster_master(rhs).unwrap_or(rhs);
+        if l_main_id == r_main_id {
+            let layout = &mut list[l_layout_i];
+            let l_id = layout.get_cluster_master(lhs).unwrap_or(lhs);
+            let r_id = layout.get_cluster_master(rhs).unwrap_or(rhs);
 
-            if lhs_id == rhs_id {
+            if l_id == r_id {
                 return false;
             }
 
-            layout.swap(lhs_id, rhs_id);
+            layout.swap(l_id, r_id);
         } else {
-            let layouts_i = [lhs_layout_i, rhs_layout_i];
-            let [lhs_layout, rhs_layout] = list.get_disjoint_mut(layouts_i).unwrap();
-            let lhs_id = lhs_layout.get_cluster_master(lhs).unwrap_or(lhs);
-            let rhs_id = rhs_layout.get_cluster_master(rhs).unwrap_or(rhs);
+            let l_p = list[l_layout_i].printer.clone();
+            let r_p = list[r_layout_i].printer.clone();
 
-            let lhs_p = lhs_layout.printer.clone();
-            let rhs_p = rhs_layout.printer.clone();
-            let lhs_rect = lhs_layout.get_mut(lhs_id).unwrap();
-            let rhs_rect = rhs_layout.get_mut(rhs_id).unwrap();
+            let (l_main, r_main) = if l_layout_i == r_layout_i {
+                list[l_layout_i]
+                    .get_disjoint_mains_mut(l_main_id, r_main_id)
+                    .unwrap()
+            } else {
+                let layouts_i = [l_layout_i, r_layout_i];
+                let [l_layout, r_layout] = list.get_disjoint_mut(layouts_i).unwrap();
+                let l_main = l_layout.get_mut(l_main_id).unwrap();
+                let r_main = r_layout.get_mut(r_main_id).unwrap();
+                (l_main, r_main)
+            };
 
-            transfer_vars(&lhs_p, &rhs_p, lhs_rect);
-            transfer_vars(&rhs_p, &lhs_p, rhs_rect);
+            let l_id = l_main.get_cluster_master(lhs).unwrap_or(lhs);
+            let r_id = r_main.get_cluster_master(rhs).unwrap_or(rhs);
 
-            std::mem::swap(lhs_rect, rhs_rect);
+            let l_rect = l_main.get_mut(l_id).unwrap();
+            let r_rect = r_main.get_mut(r_id).unwrap();
 
-            lhs_layout.reset_eqs(rhs_id);
-            rhs_layout.reset_eqs(lhs_id);
+            transfer_vars(&l_p, &r_p, l_rect);
+            transfer_vars(&r_p, &l_p, r_rect);
+
+            std::mem::swap(l_rect, r_rect);
+
+            list[l_layout_i].reset_eqs(r_id);
+            list[r_layout_i].reset_eqs(l_id);
         }
 
-        for layout_i in [lhs_layout_i, rhs_layout_i] {
+        for layout_i in [l_layout_i, r_layout_i] {
             list[layout_i].printer.update(false, false);
         }
 
@@ -379,8 +401,8 @@ impl Layout {
 
     /// Sets the constraints on a given [`Rect`]
     ///
-    /// Returns `false` if the [`Rect`] was deleted or if there was
-    /// nothing to be done.
+    /// Returns `false` if this `Layout` does not contain the
+    /// [`AreaId`]'s [`Rect`].
     pub fn set_constraints(
         &mut self,
         id: AreaId,
@@ -403,7 +425,7 @@ impl Layout {
             && height.is_none_or(|h| Some(h) == old_cons.on(Axis::Vertical))
             && is_hidden.is_none_or(|ih| ih == old_cons.is_hidden)
         {
-            return false;
+            return true;
         };
 
         *get_constraints_mut(id, self).unwrap() = {
@@ -426,14 +448,6 @@ impl Layout {
             .into_iter()
             .chain(self.spawned.iter_mut().map(|(rect, ..)| rect))
             .any(|rect| rect.reset_eqs(&self.printer, id));
-    }
-
-    /// Gets the mut [`Constraints`] of the [`Rect`] of an [`AreaId`]
-    fn get_constraints_mut(&mut self, id: AreaId) -> Option<&mut Constraints> {
-        [&mut self.main]
-            .into_iter()
-            .chain(self.spawned.iter_mut().map(|(rect, ..)| rect))
-            .find_map(|rect| rect.get_constraints_mut(id))
     }
 
     ////////// Getters
@@ -463,6 +477,14 @@ impl Layout {
             .find_map(|rect| rect.get_cluster_master(id))
     }
 
+    /// Get the main [`Rect`] that contains this `AreaId`'s
+    fn get_main_id(&self, id: AreaId) -> Option<AreaId> {
+        [&self.main]
+            .into_iter()
+            .chain(self.spawned.iter().map(|(rect, ..)| rect))
+            .find_map(|rect| rect.get(id).is_some().then_some(rect.id()))
+    }
+
     /// Gets the mut [`Rect`] of an [`AreaId`]
     fn get_mut(&mut self, id: AreaId) -> Option<&mut Rect> {
         [&mut self.main]
@@ -482,11 +504,38 @@ impl Layout {
     ///
     /// Also returns wether or not they have changed.
     ///
-    /// Returns [`None`] if this `Layout` does not contain the given
-    /// [`AreaId`]' [`Rect`].
+    /// Returns [`None`] if this `Layout` does not contain the
+    /// [`AreaId`]'s [`Rect`].
     fn coords_of(&self, id: AreaId, is_printing: bool) -> Option<(Coords, bool)> {
         let rect = self.get(id)?;
         Some(self.printer.coords(rect.var_points(), is_printing))
+    }
+
+    /// Gets two disjointed main [`Rect`]s
+    ///
+    /// Fails if they can't be found, or if they are the same
+    /// [`AreaId`]s
+    fn get_disjoint_mains_mut(
+        &mut self,
+        l_main_id: AreaId,
+        r_main_id: AreaId,
+    ) -> Option<(&mut Rect, &mut Rect)> {
+        let l_eq = |rect: &Rect| rect.id() == l_main_id;
+        let r_eq = |rect: &Rect| rect.id() == r_main_id;
+
+        if l_main_id == self.main.id() {
+            let (r_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| r_eq(rect))?;
+            Some((&mut self.main, r_main))
+        } else if r_main_id == self.main.id() {
+            let (l_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| l_eq(rect))?;
+            Some((l_main, &mut self.main))
+        } else {
+            let l_i = self.spawned.iter().position(|(rect, ..)| l_eq(rect))?;
+            let r_i = self.spawned.iter().position(|(rect, ..)| r_eq(rect))?;
+
+            let [(l_rect, ..), (r_rect, ..)] = self.spawned.get_disjoint_mut([l_i, r_i]).ok()?;
+            Some((l_rect, r_rect))
+        }
     }
 }
 

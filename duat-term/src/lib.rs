@@ -2,7 +2,7 @@
     decl_macro,
     debug_closure_helpers,
     thread_spawn_hook,
-    default_field_values
+    default_field_values,
 )]
 use std::{
     fmt::Debug,
