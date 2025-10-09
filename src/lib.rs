@@ -294,6 +294,12 @@
 //!
 //! - [ ] Create an Iced frontend;
 //!
+//! An internal (and more detailed) TODO list, which might hard to
+//! understand, can be found in [TODO](./TODO). This list will is
+//! _not_ a comprehensive roadmap, as I will ocasionally remove
+//! entries from it, particularly those in the `FOR NEXT UPDATE`
+//! section, when said update comes out.
+//!
 //! __NOTE:__ These are not set in stone, and may be done out of
 //! order.
 //!

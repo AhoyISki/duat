@@ -275,6 +275,12 @@ way:
 
 * [ ] Create an Iced frontend;
 
+An internal (and more detailed) TODO list, which might hard to
+understand, can be found in [TODO][__link33]. This list will is
+*not* a comprehensive roadmap, as I will ocasionally remove
+entries from it, particularly those in the `FOR NEXT UPDATE`
+section, when said update comes out.
+
 **NOTE:** These are not set in stone, and may be done out of
 order.
 
@@ -306,37 +312,38 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEGzsDZETCIOaMGxxy58NhaVBoG-e4BvVwBtREG4BCRxBpQIQ2YWSCgmRkdWF0ZTAuNi4xgmlkdWF0X2NvcmVlMC42LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEGzR3CBUUt_pLG9ZedsO8z4bBG8E1NHd8sjY3G2tgHt3BYI-DYWSCgmRkdWF0ZTAuNy4wgmlkdWF0X2NvcmVlMC43LjA
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://code.visualstudio.com/docs/cpp/config-mingw
- [__link10]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Spacer
- [__link11]: https://docs.rs/duat/0.6.1/duat/?search=prelude::mode_name
- [__link12]: https://docs.rs/duat/0.6.1/duat/?search=prelude::hook::add
- [__link13]: https://docs.rs/duat/0.6.1/duat/?search=prelude::hook::ModeSwitched
- [__link14]: https://docs.rs/duat/0.6.1/duat/?search=form::set
- [__link15]: https://docs.rs/duat/0.6.1/duat/?search=prelude::form::Form
- [__link16]: https://docs.rs/duat/0.6.1/duat/?search=prelude::cmd
- [__link17]: https://docs.rs/duat/0.6.1/duat/?search=hook::WidgetCreated
- [__link18]: https://docs.rs/duat/0.6.1/duat/?search=hook::WindowCreated
- [__link19]: https://docs.rs/duat_core/0.6.0/duat_core/?search=file::Parser
- [__link2]: https://docs.rs/duat/0.6.1/duat/?search=prelude::plug
- [__link20]: https://docs.rs/duat/0.6.1/duat/?search=prelude::File
- [__link21]: https://docs.rs/duat/0.6.1/duat/?search=prelude::text::txt
+ [__link10]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Spacer
+ [__link11]: https://docs.rs/duat/0.7.0/duat/?search=prelude::mode_name
+ [__link12]: https://docs.rs/duat/0.7.0/duat/?search=prelude::hook::add
+ [__link13]: https://docs.rs/duat/0.7.0/duat/?search=prelude::hook::ModeSwitched
+ [__link14]: https://docs.rs/duat/0.7.0/duat/?search=form::set
+ [__link15]: https://docs.rs/duat/0.7.0/duat/?search=prelude::form::Form
+ [__link16]: https://docs.rs/duat/0.7.0/duat/?search=prelude::cmd
+ [__link17]: https://docs.rs/duat/0.7.0/duat/?search=hook::WidgetCreated
+ [__link18]: https://docs.rs/duat/0.7.0/duat/?search=hook::WindowCreated
+ [__link19]: https://docs.rs/duat_core/0.7.0/duat_core/?search=file::Parser
+ [__link2]: https://docs.rs/duat/0.7.0/duat/?search=prelude::plug
+ [__link20]: https://docs.rs/duat/0.7.0/duat/?search=prelude::File
+ [__link21]: https://docs.rs/duat/0.7.0/duat/?search=prelude::text::txt
  [__link22]: https://doc.rust-lang.org/stable/std/macro.println.html
- [__link23]: https://docs.rs/duat/0.6.1/duat/?search=prelude::status
+ [__link23]: https://docs.rs/duat/0.7.0/duat/?search=prelude::status
  [__link24]: https://github.com/AhoyISki/duat-kak
  [__link25]: https://github.com/mawww/kakoune
  [__link26]: https://github.com/AhoyISki/duat-catppuccin
  [__link27]: https://catppuccin.com
- [__link28]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Form
+ [__link28]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
  [__link29]: https://github.com/AhoyISki/duat-treesitter
- [__link3]: https://docs.rs/duat/0.6.1/duat/?search=prelude::mode::set_default
+ [__link3]: https://docs.rs/duat/0.7.0/duat/?search=prelude::mode::set_default
  [__link30]: https://tree-sitter.github.io/tree-sitter
- [__link31]: https://docs.rs/duat/0.6.1/duat/?search=prelude::plug
+ [__link31]: https://docs.rs/duat/0.7.0/duat/?search=prelude::plug
  [__link32]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
- [__link4]: https://docs.rs/duat/0.6.1/duat/?search=prelude::map
- [__link5]: https://docs.rs/duat/0.6.1/duat/?search=prelude::print::wrap_on_edge
- [__link6]: https://docs.rs/duat/0.6.1/duat/?search=prelude::LineNumbers
- [__link7]: https://docs.rs/duat/0.6.1/duat/?search=prelude::Widget
- [__link8]: https://docs.rs/duat/0.6.1/duat/?search=prelude::hook::remove
- [__link9]: https://docs.rs/duat/0.6.1/duat/?search=prelude::status
+ [__link33]: ./TODO
+ [__link4]: https://docs.rs/duat/0.7.0/duat/?search=prelude::map
+ [__link5]: https://docs.rs/duat/0.7.0/duat/?search=prelude::print::wrap_on_edge
+ [__link6]: https://docs.rs/duat/0.7.0/duat/?search=prelude::LineNumbers
+ [__link7]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Widget
+ [__link8]: https://docs.rs/duat/0.7.0/duat/?search=prelude::hook::remove
+ [__link9]: https://docs.rs/duat/0.7.0/duat/?search=prelude::status
