@@ -110,7 +110,7 @@ impl<U: Ui> Windows<U> {
     ) -> Handle<W, U> {
         let widget = RwData::new(widget);
         let cache = get_cache(pa, widget.to_dyn_widget(), self, None);
-        let spawned = U::new_floating(self.ms, cache, specs, on);
+        let spawned = U::new_spawned(self.ms, cache, specs, on, win);
 
         let node = Node::new(widget, Arc::new(spawned));
 

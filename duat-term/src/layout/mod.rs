@@ -1,12 +1,128 @@
-use std::sync::Arc;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use cassowary::{WeightedRelation::*, strength::STRONG};
-use duat_core::ui::{Axis, PushSpecs, SpawnSpecs};
+use duat_core::{
+    text::SpawnId,
+    ui::{Axis, PushSpecs, SpawnSpecs},
+};
 
-pub use self::rect::{Rect, Rects, transfer_vars};
+pub use self::rect::{Rect, transfer_vars};
 use crate::{AreaId, Equality, Frame, area::PrintInfo, printer::Printer};
 
 mod rect;
+
+/// The list of opened layouts, one for each window
+///
+/// Also contains a list of "free widgets", which can dynamically
+/// change which layout they belong to, which _could_ happen if the
+/// user decides to switch two widgets's [`Text`]s
+///
+/// [`Text`]: duat_core::text::Text
+#[derive(Clone, Default)]
+pub(crate) struct Layouts(Rc<RefCell<InnerLayouts>>);
+
+impl Layouts {
+    /// Adds a new layout, returning the main [`AreaId`]
+    pub fn new_layout(&self, fr: Frame, printer: Arc<Printer>, cache: PrintInfo) -> AreaId {
+        let layout = Layout::new(fr, printer, cache);
+        let main_id = layout.main_id();
+        self.0.borrow_mut().list.push(layout);
+        main_id
+    }
+
+    ////////// Layout modification
+
+    /// Push a new [`Area`] to an existing one, returning its
+    /// [`AreaId`], as well as a parent [`AreaId`], if it was created
+    ///
+    /// May return [`None`] in the situation where the `Area` of the
+    /// id was already deleted.
+    ///
+    /// [`Area`]: crate::area::Area
+    pub fn push(
+        &self,
+        id: AreaId,
+        specs: PushSpecs,
+        on_files: bool,
+        cache: PrintInfo,
+    ) -> Option<(AreaId, Option<AreaId>)> {
+        let mut layouts = self.0.borrow_mut();
+        Some(
+            layouts
+                .get_layout_mut(|l| l.get(id).is_some())?
+                .push(id, specs, on_files, cache),
+        )
+    }
+
+    /// Spawnss a new [`Area`] on an existing one, returning its
+    /// [`AreaId`]
+    ///
+    /// May return [`None`] in the situation where the `Area` of the
+    /// id was already deleted.
+    ///
+    /// [`Area`]: crate::area::Area
+    pub fn spawn(&self, id: AreaId, specs: SpawnSpecs, cache: PrintInfo) -> Option<AreaId> {
+        let mut layouts = self.0.borrow_mut();
+        Some(
+            layouts
+                .get_layout_mut(|l| l.get(id).is_some())?
+                .spawn_on_widget(id, specs, cache),
+        )
+    }
+
+    /// Deletes the [`Area`] of a given id
+    ///
+    /// Returns [`None`] if it was alread deleted
+    ///
+    /// [`Area`]: crate::area::Area
+    pub fn delete(&self, id: AreaId) -> Option<AreaId> {
+        let mut layouts = self.0.borrow_mut();
+        if let Some(layout) = layouts.get_layout_mut(|l| l.get(id).is_some()) {
+        layout.delete(id)
+        } else {
+            todo!()
+        }
+    }
+
+    /// Removes all windows and all spawned widgets
+    pub fn reset(&self) {
+        let mut inner = self.0.borrow_mut();
+        inner.list.clear();
+        inner.text_spawned.clear();
+        inner.active_id = None;
+    }
+
+    /// Removes a window from the list
+    pub fn remove_window(&self, win: usize) {
+        self.0.borrow_mut().list.remove(win);
+    }
+
+    ////////// Querying functions
+
+    pub fn get_rect(&self, id: AreaId) -> Option<&Rect> {
+        let layouts = self.0.borrow();
+        let layout = layouts.get_layout(|l| l.get(id).is_some())
+    }
+}
+
+#[derive(Default)]
+struct InnerLayouts {
+    list: Vec<Layout>,
+    text_spawned: Vec<(SpawnId, Rect, Constraints)>,
+    active_id: Option<AreaId>,
+}
+
+impl InnerLayouts {
+    /// Gets the mut [`Layout`] that matches some predicate
+    fn get_layout_mut(&mut self, predicate: impl Fn(&&mut Layout) -> bool) -> Option<&mut Layout> {
+        self.list.iter_mut().find(predicate)
+    }
+
+	/// Gets the [`Layout`] thaat matches some predicate
+    fn get_layout(&self, predicate: impl Fn(&&Layout) -> bool) -> Option<&Layout> {
+        self.list.iter().find(predicate)
+    }
+}
 
 /// The overrall structure of a window on `duat_term`.
 ///
@@ -22,25 +138,23 @@ mod rect;
 /// The [`Layout`] will also hold floating [`Rect`]s, once those
 /// become a thing.
 pub(crate) struct Layout {
-    pub rects: Rects,
-    pub active_id: AreaId,
+    pub main: Rect,
+    spawned: Vec<(Rect, Constraints)>,
     pub printer: Arc<Printer>,
 }
 
 impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
     /// [`Frame`] to all inner [`Rect`]s.
-    pub fn new(fr: Frame, printer: Arc<Printer>, info: PrintInfo) -> Self {
-        let rects = Rects::new(&printer, fr, info);
-        let main_id = rects.main.id();
-
-        Layout { rects, active_id: main_id, printer }
+    pub fn new(printer: Arc<Printer>, frame: Frame, cache: PrintInfo) -> Self {
+        let main = Rect::new_main(&printer, frame, cache);
+        Layout { main, spawned: Vec::new(), printer }
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)
     /// others.
     pub fn main_id(&self) -> AreaId {
-        self.rects.main.id()
+        self.main.id()
     }
 
     /// Bisects a given [`Rect`] into two [`Rect`]s, returning the
@@ -59,7 +173,7 @@ impl Layout {
     /// If `do_group`, and the bisected [`Rect`] was already glued,
     /// the creation of a new parent will follow regular rules, but
     /// the children will still be "glued".
-    pub fn bisect(
+    pub fn push(
         &mut self,
         id: AreaId,
         specs: PushSpecs,
@@ -70,11 +184,11 @@ impl Layout {
 
         let (can_be_sibling, can_be_child) = {
             let parent_is_cluster = self
-                .rects
+                .main
                 .get_parent(id)
                 .map(|(_, parent)| parent.is_clustered())
                 .unwrap_or(specs.cluster);
-            let target_is_cluster = self.rects.get(id).is_some_and(Rect::is_clustered);
+            let target_is_cluster = self.main.get(id).is_some_and(Rect::is_clustered);
 
             // Clustering is what determines if a new rect can be a child or not.
             // In order to simplify, for example, swapping files around, it would
@@ -88,13 +202,13 @@ impl Layout {
 
         // Check if the target's parent has the same `Axis`.
         let (target, new_parent_id) = if can_be_sibling
-            && let Some((_, parent)) = self.rects.get_parent_mut(id)
+            && let Some((_, parent)) = self.main.get_parent_mut(id)
             && parent.aligns_with(axis)
         {
             (id, None)
         // Check if the target has the same `Axis`.
         } else if can_be_child
-            && let Some(parent) = self.rects.get_mut(id)
+            && let Some(parent) = self.main.get_mut(id)
             && parent.aligns_with(axis)
         {
             let children = parent.children().unwrap();
@@ -107,21 +221,21 @@ impl Layout {
         // If all else fails, create a new parent to hold both `self`
         // and the new area.
         } else {
-            self.rects
+            self.main
                 .new_parent_for(id, axis, &self.printer, specs.cluster, on_files);
-            let (_, parent) = self.rects.get_parent(id).unwrap();
+            let (_, parent) = self.main.get_parent(id).unwrap();
 
             (id, Some(parent.id()))
         };
 
         let new_id = self
-            .rects
+            .main
             .push(specs, target, &self.printer, on_files, info);
         (new_id, new_parent_id)
     }
 
     pub fn delete(&mut self, id: AreaId) -> Option<AreaId> {
-        let (mut rect, _, parent_id) = self.rects.delete(&self.printer, id)?;
+        let (mut rect, _, parent_id) = self.main.delete(&self.printer, id)?;
         remove_children(&mut rect, &self.printer);
 
         self.printer.update(false, false);
@@ -130,32 +244,32 @@ impl Layout {
     }
 
     pub fn swap(&mut self, id0: AreaId, id1: AreaId) {
-        self.rects.swap(&self.printer, id0, id1);
+        self.main.swap(&self.printer, id0, id1);
     }
 
     pub fn reset_eqs(&mut self, target: AreaId) {
-        self.rects.reset_eqs(&self.printer, target)
+        self.main.reset_eqs(&self.printer, target)
     }
 
     pub fn get(&self, id: AreaId) -> Option<&Rect> {
-        self.rects.get(id)
+        self.main.get(id)
     }
 
     pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
-        self.rects.get_parent(id)
+        self.main.get_parent(id)
     }
 
     pub fn active_id(&self) -> AreaId {
         self.active_id
     }
 
-    pub(crate) fn new_floating(
+    pub(crate) fn spawn_on_widget(
         &mut self,
         id: AreaId,
         specs: SpawnSpecs,
         info: PrintInfo,
     ) -> AreaId {
-        self.rects.spawn(specs, id, &self.printer, info)
+        self.main.new_spawned(specs, id, &self.printer, info)
     }
 }
 
@@ -189,20 +303,22 @@ impl Constraints {
     ///
     /// Will also add all equalities needed to make this constraint
     /// work.
+    ///
+    /// This operation can fail if the `parent` in question can't be found in the `main` [`Rect`]
     fn new(
         p: &Printer,
         [width, height]: [Option<f32>; 2],
         is_hidden: bool,
         new: &Rect,
         parent: AreaId,
-        rects: &Rects,
-    ) -> Self {
+        main: &Rect,
+    ) -> Option<Self> {
         let width = width.zip(Some(false));
         let height = height.zip(Some(false));
-        let [ver_eq, hor_eq] = get_eqs([width, height], new, parent, rects, is_hidden);
+        let [ver_eq, hor_eq] = get_eqs([width, height], new, parent, main, is_hidden)?;
         p.add_eqs(ver_eq.clone().into_iter().chain(hor_eq.clone()));
 
-        Self { hor_eq, ver_eq, width, height, is_hidden }
+        Some(Self { hor_eq, ver_eq, width, height, is_hidden })
     }
 
     pub fn replace(mut self, new: f32, axis: Axis) -> (Self, impl Iterator<Item = Equality>) {
@@ -222,13 +338,13 @@ impl Constraints {
         self,
         new: &Rect,
         parent: AreaId,
-        rects: &Rects,
-    ) -> (Self, impl Iterator<Item = Equality>) {
+        rect: &Rect,
+    ) -> Option<(Self, impl Iterator<Item = Equality>)> {
         let constraints = [self.width, self.height];
-        let [ver_eq, hor_eq] = get_eqs(constraints, new, parent, rects, self.is_hidden);
+        let [ver_eq, hor_eq] = get_eqs(constraints, new, parent, rect, self.is_hidden)?;
         let new_eqs = ver_eq.clone().into_iter().chain(hor_eq.clone());
 
-        (Self { ver_eq, hor_eq, ..self }, new_eqs)
+        Some((Self { ver_eq, hor_eq, ..self }, new_eqs))
     }
 
     pub fn get_eqs(&self) -> impl Iterator<Item = Equality> + use<> {
@@ -257,32 +373,33 @@ fn get_eqs(
     [width, height]: [Option<(f32, bool)>; 2],
     child: &Rect,
     parent: AreaId,
-    rects: &Rects,
+    main: &Rect,
     is_hidden: bool,
-) -> [Option<Equality>; 2] {
+) -> Option<[Option<Equality>; 2]> {
+    let is_horizontal = main
+                .get(parent)
+                .map(|p| p.aligns_with(Axis::Horizontal))?;
+        
     if is_hidden {
-        if rects
-            .get(parent)
-            .map(|p| p.aligns_with(Axis::Horizontal))
-            .unwrap()
+        if is_horizontal
         {
-            return [
+            return Some([
                 Some(child.len(Axis::Horizontal) | EQ(STRONG + 3.0) | 0.0),
                 None,
-            ];
+            ]);
         } else {
-            return [
+            return Some([
                 None,
                 Some(child.len(Axis::Vertical) | EQ(STRONG + 3.0) | 0.0),
-            ];
+            ]);
         }
     }
 
-    [(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
+    Some([(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
         let (len, is_manual) = constraint?;
         let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
         Some(child.len(axis) | EQ(strength) | len)
-    })
+    }))
 }
 
 fn remove_children(rect: &mut Rect, p: &Printer) {

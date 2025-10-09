@@ -1,7 +1,7 @@
 mod iter;
 mod print_info;
 
-use std::{cell::RefCell, fmt::Alignment, rc::Rc, sync::Arc};
+use std::{fmt::Alignment, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
@@ -15,7 +15,7 @@ use iter::{print_iter, print_iter_indented, rev_print_iter};
 pub use self::print_info::PrintInfo;
 use crate::{
     AreaId, CStyle, Mutex,
-    layout::{Layout, Rect, transfer_vars},
+    layout::{Layouts, transfer_vars},
     print_style,
     printer::LinesBuilder,
     queue,
@@ -71,8 +71,8 @@ impl Coords {
 
 #[derive(Clone)]
 pub struct Area {
-    layouts: Rc<RefCell<Vec<Layout>>>,
-    pub id: AreaId,
+    layouts: Layouts,
+    id: AreaId,
     ansi_codes: Arc<Mutex<micromap::Map<CStyle, String, 16>>>,
 }
 
@@ -83,7 +83,7 @@ impl PartialEq for Area {
 }
 
 impl Area {
-    pub(crate) fn new(id: AreaId, layouts: Rc<RefCell<Vec<Layout>>>) -> Self {
+    pub(crate) fn new(id: AreaId, layouts: Layouts) -> Self {
         Self { layouts, id, ansi_codes: Arc::default() }
     }
 
@@ -266,24 +266,17 @@ impl ui::Area for Area {
         specs: PushSpecs,
         on_files: bool,
         cache: PrintInfo,
-    ) -> (Area, Option<Area>) {
-        let mut layouts = area.layouts.borrow_mut();
-        let layout = get_layout_mut(&mut layouts, area.id).unwrap();
+    ) -> Option<(Area, Option<Area>)> {
+        let (child, parent) = area.layouts.push(area.id, specs, on_files, cache)?;
 
-        let (child, parent) = layout.bisect(area.id, specs, on_files, cache);
-
-        (
+        Some((
             Self::new(child, area.layouts.clone()),
             parent.map(|parent| Self::new(parent, area.layouts.clone())),
-        )
+        ))
     }
 
     fn delete(area: MutArea<Self>) -> Option<Self> {
-        let mut layouts = area.layouts.borrow_mut();
-        // This Area may have already been deleted, so a Layout may not be
-        // found.
-        let layout = get_layout_mut(&mut layouts, area.id)?;
-        layout
+        area.layouts
             .delete(area.id)
             .map(|id| Self::new(id, area.layouts.clone()))
     }
@@ -330,19 +323,9 @@ impl ui::Area for Area {
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
         Self::new(
-            layout.new_floating(area.id, specs, cache),
+            layout.spawn_on_widget(area.id, specs, cache),
             area.layouts.clone(),
         )
-    }
-
-    fn spawn_floating_at(
-        _area: MutArea<Self>,
-        _specs: SpawnSpecs,
-        _at: impl duat_core::text::TwoPoints,
-        _text: &Text,
-        _cfg: PrintCfg,
-    ) -> Result<Self, Text> {
-        todo!()
     }
 
     fn set_width(&self, width: f32) -> Result<(), Text> {
@@ -701,22 +684,6 @@ mod layouted {
         rect.print_info().unwrap().set(info);
         e_points
     }
-}
-
-fn get_rect(layouts: &[Layout], id: AreaId) -> Option<&Rect> {
-    layouts.iter().find_map(|l| l.get(id))
-}
-
-fn get_layout(layouts: &[Layout], id: AreaId) -> Option<&Layout> {
-    layouts.iter().find(|l| l.get(id).is_some())
-}
-
-fn get_layout_mut(layouts: &mut [Layout], id: AreaId) -> Option<&mut Layout> {
-    layouts.iter_mut().find(|l| l.get(id).is_some())
-}
-
-fn get_layout_pos(layouts: &[Layout], id: AreaId) -> Option<usize> {
-    layouts.iter().position(|l| l.get(id).is_some())
 }
 
 const fn get_control_str(char: char) -> Option<&'static str> {

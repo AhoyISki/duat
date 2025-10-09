@@ -144,11 +144,12 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     /// well.
     ///
     /// [`Area`]: Ui::Area
-    fn new_floating(
+    fn new_spawned(
         ms: &'static Self::MetaStatics,
         cache: <Self::Area as Area>::Cache,
         specs: SpawnSpecs,
         id: SpawnId,
+        win: usize,
     ) -> Self::Area;
 
     /// Switches the currently active window
@@ -285,21 +286,6 @@ pub trait Area: PartialEq + Sized + 'static {
     /// respective [`Area`]s. As such, if they belong to the same
     /// master, nothing happens.
     fn swap(lhs: MutArea<Self>, rhs: &Self);
-
-    /// Spawns a floating area
-    ///
-    /// If the [`TwoPoints`] parameter is not specified, this new
-    /// [`Area`] will be pushed to the edges of the old one, the
-    /// pushed edge being the same as the [`Side`] used for pushing.
-    ///
-    /// If there is a [`TwoPoints`] argument, the
-    fn spawn_floating_at(
-        area: MutArea<Self>,
-        specs: SpawnSpecs,
-        at: impl TwoPoints,
-        text: &Text,
-        cfg: PrintCfg,
-    ) -> Result<Self, Text>;
 
     ////////// Constraint changing functions
 
@@ -828,22 +814,6 @@ impl<A: Area> MutArea<'_, A> {
     /// Calls [`Area::swap`] on `self`
     pub fn swap(self, other: &A) {
         A::swap(self, other);
-    }
-
-    /// Calls [`Area::spawn_floating`] on `self`
-    pub fn spawn_floating(self, specs: SpawnSpecs, cache: A::Cache) -> A {
-        A::spawn(self, specs, cache)
-    }
-
-    /// Calls [`Area::spawn_floating_at`] on `self`
-    pub fn spawn_floating_at(
-        self,
-        specs: SpawnSpecs,
-        at: impl TwoPoints,
-        text: &Text,
-        cfg: PrintCfg,
-    ) -> Result<A, Text> {
-        A::spawn_floating_at(self, specs, at, text, cfg)
     }
 }
 

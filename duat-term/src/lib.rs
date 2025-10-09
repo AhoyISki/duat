@@ -5,10 +5,8 @@
     default_field_values
 )]
 use std::{
-    cell::RefCell,
     fmt::Debug,
     io::{self, Write},
-    rc::Rc,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -37,6 +35,7 @@ pub use self::{
     printer::{Brush, Frame},
     rules::{VertRule, VertRuleBuilder},
 };
+use crate::layout::Layouts;
 
 mod area;
 mod layout;
@@ -159,15 +158,10 @@ impl ui::Ui for Ui {
         let mut ms = ms.lock().unwrap();
         let printer = (ms.printer_fn)();
 
-        let main_id = {
+        let main_id = 
             // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
             // from another thread
-            let mut layouts = unsafe { ms.layouts.get() }.borrow_mut();
-            let layout = Layout::new(ms.fr, printer.clone(), cache);
-            let main_id = layout.main_id();
-            layouts.push(layout);
-            main_id
-        };
+            unsafe { ms.layouts.get() }.new_layout(ms.fr, printer.clone(), cache);
 
         let root = Area::new(main_id, unsafe { ms.layouts.get() }.clone());
         ms.windows.push((root.clone(), printer.clone()));
@@ -178,11 +172,12 @@ impl ui::Ui for Ui {
         root
     }
 
-    fn new_floating(
+    fn new_spawned(
         ms: &'static Self::MetaStatics,
         cache: <Self::Area as ui::Area>::Cache,
         specs: ui::SpawnSpecs,
         id: duat_core::text::SpawnId,
+        win: usize,
     ) -> Self::Area {
         todo!();
     }
@@ -239,7 +234,7 @@ impl ui::Ui for Ui {
         ms.windows = Vec::new();
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        *unsafe { ms.layouts.get() }.borrow_mut() = Vec::new();
+        unsafe { ms.layouts.get() }.reset();
         ms.win = 0;
     }
 
@@ -248,7 +243,7 @@ impl ui::Ui for Ui {
         ms.windows.remove(win);
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        unsafe { ms.layouts.get() }.borrow_mut().remove(win);
+        unsafe { ms.layouts.get() }.remove_window(win);
         if ms.win > win {
             ms.win -= 1;
         }
@@ -270,7 +265,7 @@ impl Default for Ui {
 #[doc(hidden)]
 pub struct MetaStatics {
     windows: Vec<(Area, Arc<Printer>)>,
-    layouts: MainThreadOnly<Rc<RefCell<Vec<Layout>>>>,
+    layouts: MainThreadOnly<Layouts>,
     win: usize,
     fr: Frame,
     printer_fn: fn() -> Arc<Printer>,

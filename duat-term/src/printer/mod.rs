@@ -8,7 +8,7 @@ use crossterm::{
     cursor::{self, MoveTo, MoveToColumn},
     style::ResetColor,
 };
-use duat_core::{form, ui::Axis};
+use duat_core::{form, text::SpawnId, ui::Axis};
 
 use self::{sync_solver::SyncSolver, variables::Variables};
 use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect, queue};
@@ -69,16 +69,38 @@ impl Printer {
     /// Returns a new dynamically updated [`Variable`], which centers
     /// a [`Rect`] as well as another which represents the length of
     /// said [`Rect`]
-    pub fn new_floating_center(
+    pub fn new_widget_spawned(
         &self,
         deps: [Variable; 2],
         len: Option<f32>,
         axis: Axis,
         prefers_before: bool,
     ) -> [Variable; 2] {
-        self.sync_solver.lock().unwrap().new_widget_spawned_center(
+        self.sync_solver.lock().unwrap().new_widget_spawned(
             &mut self.vars.lock().unwrap(),
             deps,
+            len,
+            axis,
+            prefers_before,
+        )
+    }
+
+    /// Returns a new dynamically updated [`Variable`], which centers
+    /// a [`Rect`] and another which represents the length of
+    /// said [`Rect`].
+    ///
+    /// Also returns a [`VarPoint`], which is meant to represent to
+    /// top left corner of a cell in the terminal.
+    pub fn new_text_spawned(
+        &self,
+        id: SpawnId,
+        len: Option<f32>,
+        axis: Axis,
+        prefers_before: bool,
+    ) -> ([Variable; 2], VarPoint) {
+        self.sync_solver.lock().unwrap().new_text_spawned(
+            &mut self.vars.lock().unwrap(),
+            id,
             len,
             axis,
             prefers_before,

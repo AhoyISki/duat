@@ -12,50 +12,10 @@ use duat_core::ui::{
 
 use super::{Constraints, Layout};
 use crate::{
-    Area, AreaId, Equality, Frame,
+    AreaId, Equality, Frame,
     area::PrintInfo,
     printer::{Printer, VarPoint},
 };
-
-enum Kind {
-    End(Cell<PrintInfo>),
-    Middle {
-        children: Vec<(Rect, Constraints)>,
-        axis: Axis,
-        clustered: bool,
-    },
-}
-
-impl Kind {
-    fn end(info: PrintInfo) -> Self {
-        Self::End(Cell::new(info))
-    }
-
-    fn middle(axis: Axis, clustered: bool) -> Self {
-        Self::Middle { children: Vec::new(), axis, clustered }
-    }
-
-    fn axis(&self) -> Option<Axis> {
-        match self {
-            Kind::Middle { axis, .. } => Some(*axis),
-            Kind::End(..) => None,
-        }
-    }
-
-    fn children(&self) -> Option<&[(Rect, Constraints)]> {
-        match self {
-            Kind::Middle { children, .. } => Some(children),
-            Kind::End(..) => None,
-        }
-    }
-
-    fn children_mut(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
-        match self {
-            Kind::End(..) => None,
-            Kind::Middle { children, .. } => Some(children),
-        }
-    }
-}
 
 /// An area on the screen, which can hold other [`Rect`]s or be host
 /// for printing a [`Widget`][duat_core::widgets::Widget].
@@ -81,11 +41,175 @@ pub struct Rect {
     kind: Kind,
     on_files: bool,
     edge: Option<Variable>,
+    frame: Frame,
 }
 
 impl Rect {
+    /// Returns a new main `Rect`, which represents a full window
+    pub fn new_main(p: &Printer, frame: Frame, cache: PrintInfo) -> Self {
+        let mut main = Rect::new(p, true, Kind::End(Cell::new(cache)), false, frame);
+
+        main.eqs.extend([
+            main.tl.x() | EQ(REQUIRED) | 0.0,
+            main.tl.y() | EQ(REQUIRED) | 0.0,
+            main.br.x() | EQ(REQUIRED) | p.max().x(),
+            main.br.y() | EQ(REQUIRED) | p.max().y(),
+        ]);
+        p.add_eqs(main.eqs.clone());
+
+        main
+    }
+
+    /// Returns a new spawned `Rect`, placed around an existing one
+    ///
+    /// This can fail (returning [`None`]) if the `Rect` in question
+    /// can't be found within this one.
+    pub fn new_spawned(
+        &mut self,
+        specs: SpawnSpecs,
+        id: AreaId,
+        p: &Printer,
+        info: PrintInfo,
+    ) -> Option<(Rect, Constraints)> {
+        use duat_core::ui::Orientation::*;
+
+        let parent = self.get(id)?;
+        let mut rect = Rect::new(p, false, Kind::end(info), true, self.frame);
+
+        rect.set_spawned_eqs(p);
+
+        // Left/bottom, center, right/top, above/left, below/right strengths
+        let (deps, ends, len) = match specs.orientation.axis() {
+            Axis::Horizontal => (
+                [parent.tl.x(), parent.br.x()],
+                [rect.tl.x(), rect.br.x()],
+                specs.width,
+            ),
+            Axis::Vertical => (
+                [parent.tl.y(), parent.br.y()],
+                [rect.tl.y(), rect.br.y()],
+                specs.height,
+            ),
+        };
+
+        let [center, len] = p.new_widget_spawned(
+            deps,
+            len,
+            specs.orientation.axis(),
+            specs.orientation.prefers_before(),
+        );
+
+        let align_eq = match specs.orientation {
+            VerLeftAbove | VerLeftBelow => rect.tl.x() | EQ(STRONG - 3.0) | parent.tl.x(),
+            VerCenterAbove | VerCenterBelow => {
+                rect.mean(Axis::Horizontal) | EQ(STRONG - 3.0) | parent.mean(Axis::Horizontal)
+            }
+            VerRightAbove | VerRightBelow => rect.br.x() | EQ(STRONG - 3.0) | parent.br.x(),
+            HorTopLeft | HorTopRight => rect.tl.y() | EQ(STRONG - 3.0) | parent.tl.y(),
+            HorCenterLeft | HorCenterRight => {
+                rect.mean(Axis::Vertical) | EQ(STRONG - 3.0) | parent.mean(Axis::Vertical)
+            }
+            HorBottomLeft | HorBottomRight => rect.br.y() | EQ(STRONG - 3.0) | parent.br.y(),
+        };
+
+        rect.eqs.extend(
+            specs
+                .width
+                .map(|width| (rect.br.x() - rect.tl.x()) | EQ(STRONG - 2.0) | width)
+                .into_iter()
+                .chain(
+                    specs
+                        .height
+                        .map(|height| (rect.br.y() - rect.tl.y()) | EQ(STRONG - 2.0) | height),
+                )
+                .chain([
+                    align_eq,
+                    ends[0] | EQ(STRONG - 1.0) | (center - len / 2.0),
+                    ends[1] | EQ(STRONG - 1.0) | (center + len / 2.0),
+                ]),
+        );
+
+        let dims = [specs.width, specs.height];
+        let cons = Constraints::new(p, dims, specs.hidden, &rect, parent.id(), self)?;
+        p.add_eqs(rect.eqs.clone());
+        p.update(false, true);
+
+        Some((rect, cons))
+    }
+
+    /// Creates a new parent for a given [`Rect`]
+    pub fn new_parent_for(
+        &mut self,
+        id: AreaId,
+        axis: Axis,
+        p: &Printer,
+        do_cluster: bool,
+        on_files: bool,
+    ) -> bool {
+        let frame = self.frame;
+
+        let (mut child, cons, parent_id) = if let Some((i, orig)) = self.get_parent_mut(id) {
+            let kind = Kind::middle(axis, do_cluster);
+            let mut parent = Rect::new(p, on_files, kind, false, frame);
+
+            let axis = orig.kind.axis().unwrap();
+            let (rect, cons) = orig.children_mut().unwrap().remove(i);
+
+            let is_resizable = rect.is_resizable_on(axis, &cons);
+            parent.set_pushed_eqs(i, orig, p, frame, is_resizable, None);
+
+            let entry = (parent, Constraints::default());
+            orig.children_mut().unwrap().insert(i, entry);
+
+            if i > 0 {
+                let (mut rect, cons) = orig.children_mut().unwrap().remove(i - 1);
+                let is_resizable = rect.is_resizable_on(axis, &cons);
+                rect.set_pushed_eqs(i - 1, orig, p, frame, is_resizable, None);
+                let entry = (rect, cons);
+                orig.children_mut().unwrap().insert(i - 1, entry);
+            }
+
+            (rect, Some(cons), parent.id)
+        } else if id == self.id {
+            let kind = Kind::middle(axis, do_cluster);
+            let mut parent = Rect::new(p, on_files, kind, false, frame);
+
+            let kind = Kind::middle(axis, do_cluster);
+            let mut parent = Rect::new(p, on_files, kind, false, frame);
+
+            parent.eqs.extend([
+                parent.tl.x() | EQ(REQUIRED) | 0.0,
+                parent.tl.y() | EQ(REQUIRED) | 0.0,
+                parent.br.x() | EQ(REQUIRED) | p.max().x(),
+                parent.br.y() | EQ(REQUIRED) | p.max().y(),
+            ]);
+            p.add_eqs(parent.eqs.clone());
+
+            (std::mem::replace(self, parent), None, parent.id)
+        } else {
+            return false;
+        };
+
+        let cons = match cons.and_then(|cons| cons.apply(&child, parent_id, self)) {
+            Some((cons, eqs)) => {
+                p.add_eqs(eqs);
+                cons
+            }
+            None => Constraints::default(),
+        };
+
+        let parent = self.get_mut(parent_id).unwrap();
+
+        let is_resizable = child.is_resizable_on(axis, &cons);
+        child.set_pushed_eqs(0, parent, p, frame, is_resizable, None);
+
+        parent.children_mut().unwrap().push((child, cons));
+
+        return true
+    }
+
     /// Returns a new [`Rect`] with no default [`Constraints`]
-    fn new(p: &Printer, on_files: bool, kind: Kind, is_floating: bool) -> Self {
+    fn new(p: &Printer, on_files: bool, kind: Kind, is_floating: bool, frame: Frame) -> Self {
         let (tl, br) = (p.new_point(), p.new_point());
         Rect {
             id: AreaId::new(),
@@ -96,21 +220,238 @@ impl Rect {
             kind,
             on_files,
             edge: None,
+            frame,
         }
     }
 
-    /// The children of this [`Rect`], if it is a [parent]
+    ////////// Direct tree modification
+
+    /// Pushes a new [`Rect`] onto another
     ///
-    /// [parent]: Kind::Middle
-    pub fn children(&self) -> Option<&[(Rect, Constraints)]> {
-        self.kind.children()
+    /// This assumes that there is a parent for the given `Rect`,
+    /// returning [`None`] if that's not the case. You should call
+    /// [`Rect::new_parent_for`], if that wasn't the case before.
+    pub fn push(
+        &mut self,
+        specs: PushSpecs,
+        id: AreaId,
+        p: &Printer,
+        on_files: bool,
+        info: PrintInfo,
+    ) -> Option<AreaId> {
+        let frame = self.frame;
+
+        let (i, mut rect, parent, cons, axis) = {
+            let (i, parent) = self.get_parent(id)?;
+            let rect = Rect::new(p, on_files, Kind::end(info), false, self.frame);
+
+            let dims = [specs.width, specs.height];
+            let cons = Constraints::new(p, dims, specs.hidden, &rect, parent.id(), self)?;
+
+            let parent = self.get_mut(parent.id()).unwrap();
+            let axis = parent.kind.axis().unwrap();
+
+            if specs.comes_earlier() {
+                (i, rect, parent, cons, axis)
+            } else {
+                (i + 1, rect, parent, cons, axis)
+            }
+        };
+
+        let new_id = rect.id();
+        rect.set_pushed_eqs(i, parent, p, frame, cons.is_resizable_on(axis), None);
+        parent.children_mut().unwrap().insert(i, (rect, cons));
+
+        let (i, (mut rect_to_fix, cons_to_fix)) = if i == 0 {
+            (1, parent.children_mut().unwrap().remove(1))
+        } else {
+            (i - 1, parent.children_mut().unwrap().remove(i - 1))
+        };
+        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons_to_fix);
+        rect_to_fix.set_pushed_eqs(i, parent, p, frame, is_resizable, None);
+        let entry = (rect_to_fix, cons_to_fix);
+        parent.children_mut().unwrap().insert(i, entry);
+
+        Some(new_id)
     }
 
-    /// The mutable children of this [`Rect`], if it is a [parent]
+    /// Deletes a given [`Rect`], alongside all its children
     ///
-    /// [parent]: Kind::Middle
-    pub fn children_mut(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
-        self.kind.children_mut()
+    /// This can fail (returning [`None`]) if the `Rect` in question
+    /// can't be found within this one.
+    pub fn delete(
+        &mut self,
+        p: &Printer,
+        id: AreaId,
+    ) -> Option<(Rect, Constraints, Option<AreaId>)> {
+        let frame = self.frame;
+
+        let id = self.get_cluster_master(id)?;
+        let (i, parent) = self.get_parent_mut(id)?;
+
+        let (mut rm_rect, rm_cons) = parent.children_mut().unwrap().remove(i);
+        p.remove_rect(&mut rm_rect);
+
+        let (i, parent, rm_parent_id) = if parent.children().unwrap().len() == 1 {
+            let parent_id = parent.id();
+            let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
+            let (i, grandparent) = self.get_parent_mut(parent_id)?;
+            let (mut rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
+            p.remove_rect(&mut rm_parent);
+
+            let axis = grandparent.kind.axis().unwrap();
+            let is_resizable = rect.is_resizable_on(axis, &cons);
+            rect.set_pushed_eqs(i, grandparent, p, frame, is_resizable, None);
+            grandparent.children_mut().unwrap().insert(i, (rect, cons));
+
+            (i, grandparent, Some(parent_id))
+        } else {
+            (i, parent, None)
+        };
+
+        let (i, (mut rect_to_fix, cons)) = if i == 0 {
+            (0, parent.children_mut().unwrap().remove(0))
+        } else {
+            (i - 1, parent.children_mut().unwrap().remove(i - 1))
+        };
+        let axis = parent.kind.axis().unwrap();
+        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+        rect_to_fix.set_pushed_eqs(i, parent, p, frame, is_resizable, None);
+        let entry = (rect_to_fix, cons);
+        parent.children_mut().unwrap().insert(i, entry);
+
+        Some((rm_rect, rm_cons, rm_parent_id))
+    }
+
+    /// Swaps two given [`Rect`]s
+    ///
+    /// This can fail (returning `false`) if the `Rect`s in question
+    /// can't be found in this one, or if one of them is the main
+    /// `Rect`, since swapping a parent with one of its children
+    /// makes no sense.
+    pub fn swap(&mut self, p: &Printer, id0: AreaId, id1: AreaId) -> bool {
+        if (id0 == self.id || id1 == self.id)
+            || (self.get_parent(id0).is_none() || self.get_parent(id1).is_none())
+        {
+            return false;
+        }
+
+        let frame = self.frame;
+
+        // We're gonna need to reconstrain a bunch of Areas, this is the most
+        // ergonomic way of doing that.
+        let mut to_constrain = Some(Vec::new());
+        let mut old_eqs = Vec::new();
+
+        let (i0, parent0) = self.get_parent_mut(id0).unwrap();
+        let p0_id = parent0.id();
+        let (mut rect0, mut cons0) = parent0.children_mut().unwrap().remove(i0);
+        old_eqs.extend(cons0.drain_eqs());
+
+        let (mut rect1, _) = {
+            let (i1, parent1) = self.get_parent_mut(id1).unwrap();
+            let (_, cons1) = &parent1.children().unwrap()[i1];
+            let mut cons1 = cons1.clone();
+            old_eqs.extend(cons1.drain_eqs());
+
+            let axis = parent1.kind.axis().unwrap();
+            let is_resizable = rect0.is_resizable_on(axis, &cons1);
+            to_constrain = rect0.set_pushed_eqs(i1, parent1, p, frame, is_resizable, to_constrain);
+
+            parent1
+                .children_mut()
+                .unwrap()
+                .insert(i1, (rect0, cons1.clone()));
+
+            let (i, (mut rect_to_fix, cons)) = if i1 == 0 {
+                (1, parent1.children_mut().unwrap().remove(1))
+            } else {
+                (i1 - 1, parent1.children_mut().unwrap().remove(i1 - 1))
+            };
+            let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+            to_constrain =
+                rect_to_fix.set_pushed_eqs(i, parent1, p, frame, is_resizable, to_constrain);
+            let entry = (rect_to_fix, cons);
+            parent1.children_mut().unwrap().insert(i, entry);
+
+            parent1.children_mut().unwrap().remove(i1 + 1)
+        };
+
+        let parent0 = self.get_mut(p0_id).unwrap();
+        let axis = parent0.kind.axis().unwrap();
+        let is_resizable = rect1.is_resizable_on(axis, &cons0);
+        to_constrain = rect1.set_pushed_eqs(i0, parent0, p, frame, is_resizable, to_constrain);
+
+        parent0.children_mut().unwrap().insert(i0, (rect1, cons0));
+
+        let (i, (mut rect_to_fix, cons)) = if i0 == 0 {
+            (1, parent0.children_mut().unwrap().remove(1))
+        } else {
+            (i0 - 1, parent0.children_mut().unwrap().remove(i0 - 1))
+        };
+        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+        to_constrain = rect_to_fix.set_pushed_eqs(i, parent0, p, frame, is_resizable, to_constrain);
+        let entry = (rect_to_fix, cons);
+        parent0.children_mut().unwrap().insert(i, entry);
+
+        p.remove_eqs(old_eqs);
+        constrain_areas(to_constrain.unwrap(), self, p);
+
+        true
+    }
+
+    /// Resets the equalities of a given [`Rect`]
+    ///
+    /// This can fail (returning `false`) if the `Rect` in question
+    /// can't be found within this one.
+    pub fn reset_eqs(&mut self, p: &Printer, id: AreaId) -> bool {
+        let frame = self.frame;
+        let mut to_cons = Some(Vec::new());
+
+        if let Some((i, parent)) = self.get_parent_mut(id) {
+            let (mut rect, cons) = parent.children_mut().unwrap().remove(i);
+
+            let axis = parent.kind.axis().unwrap();
+            let is_resizable = rect.is_resizable_on(axis, &cons);
+            to_cons = rect.set_pushed_eqs(i, parent, p, frame, is_resizable, to_cons);
+
+            parent.children_mut().unwrap().insert(i, (rect, cons));
+
+            let (i, (mut rect_to_fix, cons)) = if i == 0 {
+                (1, parent.children_mut().unwrap().remove(1))
+            } else {
+                (i - 1, parent.children_mut().unwrap().remove(i - 1))
+            };
+            let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+            to_cons = rect_to_fix.set_pushed_eqs(i, parent, p, frame, is_resizable, to_cons);
+            let entry = (rect_to_fix, cons);
+            parent.children_mut().unwrap().insert(i, entry);
+        } else if id == self.id {
+            let old_eqs: Vec<Equality> = self.drain_eqs().collect();
+            self.eqs.extend([
+                self.tl.x() | EQ(REQUIRED) | 0.0,
+                self.tl.y() | EQ(REQUIRED) | 0.0,
+                self.br.x() | EQ(REQUIRED) | p.max().x(),
+                self.br.y() | EQ(REQUIRED) | p.max().y(),
+            ]);
+            p.replace(old_eqs, self.eqs.clone());
+
+            if let Kind::Middle { children, axis, .. } = &mut self.kind {
+                let axis = *axis;
+                for i in 0..children.len() {
+                    let (mut child, cons) = self.children_mut().unwrap().remove(i);
+                    let is_resizable = child.is_resizable_on(axis, &cons);
+                    to_cons = child.set_pushed_eqs(i, self, p, frame, is_resizable, to_cons);
+                    self.children_mut().unwrap().insert(i, (child, cons));
+                }
+            }
+        } else {
+            return false;
+        }
+
+        constrain_areas(to_cons.unwrap(), self, p);
+
+        true
     }
 
     ////////// Constraint modification
@@ -238,7 +579,142 @@ impl Rect {
         self.eqs.drain(..)
     }
 
-    ////////// General queries
+    /////////// Rect getters
+
+    /// Gets a mut reference to the parent of the `id`'s [`Rect`]
+    pub fn get_mut(&mut self, id: AreaId) -> Option<&mut Rect> {
+        fetch_mut(self, id)
+    }
+
+    /// Fetches the [`Rect`] which holds the [`Rect`]
+    /// of the given index.
+    ///
+    /// Also returns the child's "position", going top to bottom or
+    /// left to right.
+    pub fn get_parent_mut(&mut self, id: AreaId) -> Option<(usize, &mut Rect)> {
+        let (n, parent) = self.get_parent(id)?;
+        let id = parent.id;
+        Some((n, self.get_mut(id).unwrap()))
+    }
+
+    /// Gets a mut reference to the constraints of a [`Rect`]
+    ///
+    /// Can fail if the [`Rect`] is the main one of the window, thus
+    /// being unable to be constrained.
+    pub fn get_constraints_mut(&mut self, id: AreaId) -> Option<&mut Constraints> {
+        self.get_parent_mut(id)
+            .map(|(pos, parent)| &mut parent.children_mut().unwrap()[pos].1)
+    }
+
+    /// Fetches the parent of the [`RwData<Rect>`] with the given
+    /// index, including its positional index and the [`Axis`] of
+    /// its children. Fetches the [`RwData<Rect>`] of the given
+    /// index, if there is one.
+    pub fn get(&self, id: AreaId) -> Option<&Rect> {
+        fn fetch(rect: &Rect, id: AreaId) -> Option<&Rect> {
+            if rect.id == id {
+                Some(rect)
+            } else if let Kind::Middle { children, .. } = &rect.kind {
+                children.iter().find_map(|(child, _)| fetch(child, id))
+            } else {
+                None
+            }
+        }
+
+        fetch(self, id)
+    }
+
+    /// Gets the parent of the `id`'s [`Rect`]
+    ///
+    /// Also returns the child's "position", given an [`Axis`],
+    /// going top to bottom or left to right.
+    pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
+        fetch_parent(self, id)
+    }
+
+    /// Gets the "cluster master" of a [`Rect`]
+    pub fn get_cluster_master(&self, id: AreaId) -> Option<AreaId> {
+        let Some((_, mut rect)) = self.get_parent(id).filter(|(_, p)| p.is_clustered()) else {
+            return self.get(id).map(|rect| rect.id());
+        };
+
+        loop {
+            if let Some((_, parent)) = self.get_parent(rect.id())
+                && parent.is_clustered()
+            {
+                rect = parent
+            } else {
+                break Some(rect.id());
+            }
+        }
+    }
+
+    /// The children of this [`Rect`], if it is a [parent]
+    ///
+    /// [parent]: Kind::Middle
+    pub fn children(&self) -> Option<&[(Rect, Constraints)]> {
+        self.kind.children()
+    }
+
+    /// The mutable children of this [`Rect`], if it is a [parent]
+    ///
+    /// [parent]: Kind::Middle
+    pub fn children_mut(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
+        self.kind.children_mut()
+    }
+
+    /////////// Variables and Expressions
+
+    /// A [`Variable`], representing the "start" of [`self`], given an
+    /// [`Axis`]
+    ///
+    /// It will be the left or upper side of a [`Rect`].
+    pub fn start(&self, axis: Axis) -> Variable {
+        match axis {
+            Horizontal => self.tl.x(),
+            Vertical => self.tl.y(),
+        }
+    }
+
+    /// A [`Variable`], representing the "end" of [`self`], given an
+    /// [`Axis`]
+    ///
+    /// It will be the right or lower side of a [`Rect`].
+    pub fn end(&self, axis: Axis) -> Variable {
+        match axis {
+            Horizontal => self.br.x(),
+            Vertical => self.br.y(),
+        }
+    }
+
+    /// An [`Expression`] representing the length of [`self`] on a
+    /// given [`Axis`]
+    pub fn len(&self, axis: Axis) -> Expression {
+        match axis {
+            Horizontal => self.br.x() - self.tl.x(),
+            Vertical => self.br.y() - self.tl.y(),
+        }
+    }
+
+    /// The mean of the [`Variable`]s in a given [`Axis`]
+    pub fn mean(&self, axis: Axis) -> Expression {
+        match axis {
+            Horizontal => (self.tl.x() + self.br.x()) / 2.0,
+            Vertical => (self.tl.y() + self.br.y()) / 2.0,
+        }
+    }
+
+    /// The two [`VarPoint`]s determining this [`Rect`]'s shape
+    pub fn var_points(&self) -> [VarPoint; 2] {
+        [self.tl, self.br]
+    }
+
+    /// The edge of this [`Rect`], if it has one
+    pub fn edge(&self) -> Option<Variable> {
+        self.edge
+    }
+
+    ////////// Querying Functions
 
     /// Wether this [`Rect`]'s [`Coords`] have changed
     ///
@@ -312,57 +788,6 @@ impl Rect {
         }
     }
 
-    /////////// Variables and Expressions
-
-    /// A [`Variable`], representing the "start" of [`self`], given an
-    /// [`Axis`]
-    ///
-    /// It will be the left or upper side of a [`Rect`].
-    pub fn start(&self, axis: Axis) -> Variable {
-        match axis {
-            Horizontal => self.tl.x(),
-            Vertical => self.tl.y(),
-        }
-    }
-
-    /// A [`Variable`], representing the "end" of [`self`], given an
-    /// [`Axis`]
-    ///
-    /// It will be the right or lower side of a [`Rect`].
-    pub fn end(&self, axis: Axis) -> Variable {
-        match axis {
-            Horizontal => self.br.x(),
-            Vertical => self.br.y(),
-        }
-    }
-
-    /// An [`Expression`] representing the length of [`self`] on a
-    /// given [`Axis`]
-    pub fn len(&self, axis: Axis) -> Expression {
-        match axis {
-            Horizontal => self.br.x() - self.tl.x(),
-            Vertical => self.br.y() - self.tl.y(),
-        }
-    }
-
-    /// The mean of the [`Variable`]s in a given [`Axis`]
-    pub fn mean(&self, axis: Axis) -> Expression {
-        match axis {
-            Horizontal => (self.tl.x() + self.br.x()) / 2.0,
-            Vertical => (self.tl.y() + self.br.y()) / 2.0,
-        }
-    }
-
-    /// The two [`VarPoint`]s determining this [`Rect`]'s shape
-    pub fn var_points(&self) -> [VarPoint; 2] {
-        [self.tl, self.br]
-    }
-
-    /// The edge of this [`Rect`], if it has one
-    pub fn edge(&self) -> Option<Variable> {
-        self.edge
-    }
-
     pub fn is_floating(&self) -> bool {
         self.is_floating
     }
@@ -374,443 +799,43 @@ impl PartialEq for Rect {
     }
 }
 
-impl PartialEq<Area> for Rect {
-    fn eq(&self, other: &Area) -> bool {
-        self.id() == other.id
-    }
-}
-
-pub struct Rects {
-    pub(super) main: Rect,
-    floating: Vec<(Rect, Constraints)>,
-    fr: Frame,
-}
-
-impl Rects {
-    /// Returns a new instance of [`Rects`]
-    pub fn new(p: &Printer, fr: Frame, info: PrintInfo) -> Self {
-        let mut main = Rect::new(p, true, Kind::end(info), false);
-        main.eqs.extend([
-            main.tl.x() | EQ(REQUIRED) | 0.0,
-            main.tl.y() | EQ(REQUIRED) | 0.0,
-            main.br.x() | EQ(REQUIRED) | p.max().x(),
-            main.br.y() | EQ(REQUIRED) | p.max().y(),
-        ]);
-        p.add_eqs(main.eqs.clone());
-
-        Self { main, floating: Vec::new(), fr }
-    }
-
-    /// Pushes a new [`Rect`] onto another
-    pub fn push(
-        &mut self,
-        specs: PushSpecs,
-        id: AreaId,
-        p: &Printer,
-        on_files: bool,
-        info: PrintInfo,
-    ) -> AreaId {
-        let fr = self.fr;
-
-        let mut rect = Rect::new(p, on_files, Kind::end(info), false);
-        let new_id = rect.id();
-
-        let (i, parent, cons, axis) = {
-            let (i, parent) = self.get_parent(id).unwrap();
-            let dims = [specs.width, specs.height];
-            let cons = Constraints::new(p, dims, specs.hidden, &rect, parent.id(), self);
-
-            let parent = self.get_mut(parent.id()).unwrap();
-            let axis = parent.kind.axis().unwrap();
-
-            if specs.comes_earlier() {
-                (i, parent, cons, axis)
-            } else {
-                (i + 1, parent, cons, axis)
-            }
-        };
-
-        rect.set_pushed_eqs(i, parent, p, fr, cons.is_resizable_on(axis), None);
-        parent.children_mut().unwrap().insert(i, (rect, cons));
-
-        let (i, (mut rect_to_fix, cons_to_fix)) = if i == 0 {
-            (1, parent.children_mut().unwrap().remove(1))
-        } else {
-            (i - 1, parent.children_mut().unwrap().remove(i - 1))
-        };
-        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons_to_fix);
-        rect_to_fix.set_pushed_eqs(i, parent, p, fr, is_resizable, None);
-        let entry = (rect_to_fix, cons_to_fix);
-        parent.children_mut().unwrap().insert(i, entry);
-
-        new_id
-    }
-
-    /// Spawns a new floating [`Rect`]
-    pub fn spawn(&mut self, specs: SpawnSpecs, id: AreaId, p: &Printer, info: PrintInfo) -> AreaId {
-        use duat_core::ui::Orientation::*;
-
-        let parent = self.get(id).unwrap();
-        let mut rect = Rect::new(p, false, Kind::end(info), true);
-
-        rect.set_spawned_eqs(p);
-
-        // Left/bottom, center, right/top, above/left, below/right strengths
-        let (deps, ends, len) = match specs.orientation.axis() {
-            Axis::Horizontal => (
-                [parent.tl.x(), parent.br.x()],
-                [rect.tl.x(), rect.br.x()],
-                specs.width,
-            ),
-            Axis::Vertical => (
-                [parent.tl.y(), parent.br.y()],
-                [rect.tl.y(), rect.br.y()],
-                specs.height,
-            ),
-        };
-
-        let [center, len] = p.new_floating_center(
-            deps,
-            len,
-            specs.orientation.axis(),
-            specs.orientation.prefers_before(),
-        );
-
-        let align_eq = match specs.orientation {
-            VerLeftAbove | VerLeftBelow => rect.tl.x() | EQ(STRONG - 3.0) | parent.tl.x(),
-            VerCenterAbove | VerCenterBelow => {
-                rect.mean(Axis::Horizontal) | EQ(STRONG - 3.0) | parent.mean(Axis::Horizontal)
-            }
-            VerRightAbove | VerRightBelow => rect.br.x() | EQ(STRONG - 3.0) | parent.br.x(),
-            HorTopLeft | HorTopRight => rect.tl.y() | EQ(STRONG - 3.0) | parent.tl.y(),
-            HorCenterLeft | HorCenterRight => {
-                rect.mean(Axis::Vertical) | EQ(STRONG - 3.0) | parent.mean(Axis::Vertical)
-            }
-            HorBottomLeft | HorBottomRight => rect.br.y() | EQ(STRONG - 3.0) | parent.br.y(),
-        };
-
-        rect.eqs.extend(
-            specs
-                .width
-                .map(|width| (rect.br.x() - rect.tl.x()) | EQ(STRONG - 2.0) | width)
-                .into_iter()
-                .chain(
-                    specs
-                        .height
-                        .map(|height| (rect.br.y() - rect.tl.y()) | EQ(STRONG - 2.0) | height),
-                )
-                .chain([
-                    align_eq,
-                    ends[0] | EQ(STRONG - 1.0) | (center - len / 2.0),
-                    ends[1] | EQ(STRONG - 1.0) | (center + len / 2.0),
-                ]),
-        );
-
-        let id = rect.id;
-
-        let dims = [specs.width, specs.height];
-        let cons = Constraints::new(p, dims, specs.hidden, &rect, parent.id(), self);
-        p.add_eqs(rect.eqs.clone());
-        p.update(false, true);
-
-        self.floating.push((rect, cons));
-
-        id
-    }
-
-    /// Deletes a given [`Rect`], alongside all its children
-    pub fn delete(
-        &mut self,
-        p: &Printer,
-        id: AreaId,
-    ) -> Option<(Rect, Constraints, Option<AreaId>)> {
-        let fr = self.fr;
-
-        let id = self.get_cluster_master(id).unwrap_or(id);
-        let (i, parent) = self.get_parent_mut(id)?;
-
-        let (mut rm_rect, rm_cons) = parent.children_mut().unwrap().remove(i);
-        p.remove_rect(&mut rm_rect);
-
-        let (i, parent, rm_parent_id) = if parent.children().unwrap().len() == 1 {
-            let parent_id = parent.id();
-            let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
-            let (i, grandparent) = self.get_parent_mut(parent_id)?;
-            let (mut rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
-            p.remove_rect(&mut rm_parent);
-
-            let axis = grandparent.kind.axis().unwrap();
-            let is_resizable = rect.is_resizable_on(axis, &cons);
-            rect.set_pushed_eqs(i, grandparent, p, fr, is_resizable, None);
-            grandparent.children_mut().unwrap().insert(i, (rect, cons));
-
-            (i, grandparent, Some(parent_id))
-        } else {
-            (i, parent, None)
-        };
-
-        let (i, (mut rect_to_fix, cons)) = if i == 0 {
-            (0, parent.children_mut().unwrap().remove(0))
-        } else {
-            (i - 1, parent.children_mut().unwrap().remove(i - 1))
-        };
-        let axis = parent.kind.axis().unwrap();
-        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-        rect_to_fix.set_pushed_eqs(i, parent, p, fr, is_resizable, None);
-        let entry = (rect_to_fix, cons);
-        parent.children_mut().unwrap().insert(i, entry);
-
-        Some((rm_rect, rm_cons, rm_parent_id))
-    }
-
-    /// Swaps two given [`Rect`]s
-    pub fn swap(&mut self, p: &Printer, id0: AreaId, id1: AreaId) {
-        let fr = self.fr;
-        // We're gonna need to reconstrain a bunch of Areas, this is the most
-        // ergonomic way of doing that.
-        let mut to_constrain = Some(Vec::new());
-        let mut old_eqs = Vec::new();
-
-        // We can't swap anything with the main Area, that makes no sense.
-        if id0 == self.main.id || id1 == self.main.id {
-            return;
-        }
-        let (i0, parent0) = self.get_parent_mut(id0).unwrap();
-        let p0_id = parent0.id();
-        let (mut rect0, mut cons0) = parent0.children_mut().unwrap().remove(i0);
-        old_eqs.extend(cons0.drain_eqs());
-
-        let (mut rect1, _) = {
-            let (i1, parent1) = self.get_parent_mut(id1).unwrap();
-            let (_, cons1) = &parent1.children().unwrap()[i1];
-            let mut cons1 = cons1.clone();
-            old_eqs.extend(cons1.drain_eqs());
-
-            let axis = parent1.kind.axis().unwrap();
-            let is_resizable = rect0.is_resizable_on(axis, &cons1);
-            to_constrain = rect0.set_pushed_eqs(i1, parent1, p, fr, is_resizable, to_constrain);
-
-            parent1
-                .children_mut()
-                .unwrap()
-                .insert(i1, (rect0, cons1.clone()));
-
-            let (i, (mut rect_to_fix, cons)) = if i1 == 0 {
-                (1, parent1.children_mut().unwrap().remove(1))
-            } else {
-                (i1 - 1, parent1.children_mut().unwrap().remove(i1 - 1))
-            };
-            let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-            to_constrain =
-                rect_to_fix.set_pushed_eqs(i, parent1, p, fr, is_resizable, to_constrain);
-            let entry = (rect_to_fix, cons);
-            parent1.children_mut().unwrap().insert(i, entry);
-
-            parent1.children_mut().unwrap().remove(i1 + 1)
-        };
-
-        let parent0 = self.get_mut(p0_id).unwrap();
-        let axis = parent0.kind.axis().unwrap();
-        let is_resizable = rect1.is_resizable_on(axis, &cons0);
-        to_constrain = rect1.set_pushed_eqs(i0, parent0, p, fr, is_resizable, to_constrain);
-
-        parent0.children_mut().unwrap().insert(i0, (rect1, cons0));
-
-        let (i, (mut rect_to_fix, cons)) = if i0 == 0 {
-            (1, parent0.children_mut().unwrap().remove(1))
-        } else {
-            (i0 - 1, parent0.children_mut().unwrap().remove(i0 - 1))
-        };
-        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-        to_constrain = rect_to_fix.set_pushed_eqs(i, parent0, p, fr, is_resizable, to_constrain);
-        let entry = (rect_to_fix, cons);
-        parent0.children_mut().unwrap().insert(i, entry);
-
-        p.remove_eqs(old_eqs);
-        constrain_areas(to_constrain.unwrap(), self, p);
-    }
-
-    /// Resets the equalities of a given [`Rect`]
-    pub fn reset_eqs(&mut self, p: &Printer, target: AreaId) {
-        let fr = self.fr;
-        let mut to_cons = Some(Vec::new());
-
-        if let Some((i, parent)) = self.get_parent_mut(target) {
-            let (mut rect, cons) = parent.children_mut().unwrap().remove(i);
-
-            let axis = parent.kind.axis().unwrap();
-            let is_resizable = rect.is_resizable_on(axis, &cons);
-            to_cons = rect.set_pushed_eqs(i, parent, p, fr, is_resizable, to_cons);
-
-            parent.children_mut().unwrap().insert(i, (rect, cons));
-
-            let (i, (mut rect_to_fix, cons)) = if i == 0 {
-                (1, parent.children_mut().unwrap().remove(1))
-            } else {
-                (i - 1, parent.children_mut().unwrap().remove(i - 1))
-            };
-            let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-            to_cons = rect_to_fix.set_pushed_eqs(i, parent, p, fr, is_resizable, to_cons);
-            let entry = (rect_to_fix, cons);
-            parent.children_mut().unwrap().insert(i, entry);
-        } else if let Some(main) = self.get_mut(target) {
-            let old_eqs: Vec<Equality> = main.drain_eqs().collect();
-            main.eqs.extend([
-                main.tl.x() | EQ(REQUIRED) | 0.0,
-                main.tl.y() | EQ(REQUIRED) | 0.0,
-                main.br.x() | EQ(REQUIRED) | p.max().x(),
-                main.br.y() | EQ(REQUIRED) | p.max().y(),
-            ]);
-            p.replace(old_eqs, main.eqs.clone());
-
-            if let Kind::Middle { children, axis, .. } = &mut main.kind {
-                let axis = *axis;
-                for i in 0..children.len() {
-                    let (mut child, cons) = main.children_mut().unwrap().remove(i);
-                    let is_resizable = child.is_resizable_on(axis, &cons);
-                    to_cons = child.set_pushed_eqs(i, main, p, fr, is_resizable, to_cons);
-                    main.children_mut().unwrap().insert(i, (child, cons));
-                }
-            }
-        }
-
-        constrain_areas(to_cons.unwrap(), self, p);
-    }
-
-    /// Creates a new parent for a given [`Rect`]
-    pub fn new_parent_for(
-        &mut self,
-        id: AreaId,
+enum Kind {
+    End(Cell<PrintInfo>),
+    Middle {
+        children: Vec<(Rect, Constraints)>,
         axis: Axis,
-        p: &Printer,
-        do_cluster: bool,
-        on_files: bool,
-    ) {
-        let fr = self.fr;
+        clustered: bool,
+    },
+}
 
-        let (mut child, cons, parent_id) = {
-            let mut parent = Rect::new(p, on_files, Kind::middle(axis, do_cluster), false);
-            let parent_id = parent.id();
-
-            let (target, cons) = if let Some((i, orig)) = self.get_parent_mut(id) {
-                let axis = orig.kind.axis().unwrap();
-                let (target, cons) = orig.children_mut().unwrap().remove(i);
-
-                let is_resizable = target.is_resizable_on(axis, &cons);
-                parent.set_pushed_eqs(i, orig, p, fr, is_resizable, None);
-
-                let entry = (parent, Constraints::default());
-                orig.children_mut().unwrap().insert(i, entry);
-
-                if i > 0 {
-                    let (mut rect, cons) = orig.children_mut().unwrap().remove(i - 1);
-                    let is_resizable = rect.is_resizable_on(axis, &cons);
-                    rect.set_pushed_eqs(i - 1, orig, p, fr, is_resizable, None);
-                    let entry = (rect, cons);
-                    orig.children_mut().unwrap().insert(i - 1, entry);
-                }
-
-                (target, Some(cons))
-            } else {
-                parent.eqs.extend([
-                    parent.tl.x() | EQ(REQUIRED) | 0.0,
-                    parent.tl.y() | EQ(REQUIRED) | 0.0,
-                    parent.br.x() | EQ(REQUIRED) | p.max().x(),
-                    parent.br.y() | EQ(REQUIRED) | p.max().y(),
-                ]);
-                p.add_eqs(parent.eqs.clone());
-                (std::mem::replace(&mut self.main, parent), None)
-            };
-
-            (target, cons, parent_id)
-        };
-
-        let cons = match cons.map(|cons| cons.apply(&child, parent_id, self)) {
-            Some((cons, eqs)) => {
-                p.add_eqs(eqs);
-                cons
-            }
-            None => Constraints::default(),
-        };
-
-        let parent = self.get_mut(parent_id).unwrap();
-
-        let is_resizable = child.is_resizable_on(axis, &cons);
-        child.set_pushed_eqs(0, parent, p, fr, is_resizable, None);
-
-        parent.children_mut().unwrap().push((child, cons));
+impl Kind {
+    fn end(info: PrintInfo) -> Self {
+        Self::End(Cell::new(info))
     }
 
-    /// Gets a mut reference to the parent of the `id`'s [`Rect`]
-    pub fn get_mut(&mut self, id: AreaId) -> Option<&mut Rect> {
-        std::iter::once(&mut self.main)
-            .chain(self.floating.iter_mut().map(|(rect, _)| rect))
-            .find_map(|rect| fetch_mut(rect, id))
+    fn middle(axis: Axis, clustered: bool) -> Self {
+        Self::Middle { children: Vec::new(), axis, clustered }
     }
 
-    /// Fetches the [`Rect`] which holds the [`Rect`]
-    /// of the given index.
-    ///
-    /// Also returns the child's "position", going top to bottom or
-    /// left to right.
-    pub fn get_parent_mut(&mut self, id: AreaId) -> Option<(usize, &mut Rect)> {
-        let (n, parent) = self.get_parent(id)?;
-        let id = parent.id;
-        Some((n, self.get_mut(id).unwrap()))
-    }
-
-    /// Fetches the parent of the [`RwData<Rect>`] with the given
-    /// index, including its positional index and the [`Axis`] of
-    /// its children. Fetches the [`RwData<Rect>`] of the given
-    /// index, if there is one.
-    pub fn get(&self, id: AreaId) -> Option<&Rect> {
-        fn fetch(rect: &Rect, id: AreaId) -> Option<&Rect> {
-            if rect.id == id {
-                Some(rect)
-            } else if let Kind::Middle { children, .. } = &rect.kind {
-                children.iter().find_map(|(child, _)| fetch(child, id))
-            } else {
-                None
-            }
-        }
-
-        std::iter::once(&self.main)
-            .chain(self.floating.iter().map(|(rect, _)| rect))
-            .find_map(|rect| fetch(rect, id))
-    }
-
-    /// Gets the parent of the `id`'s [`Rect`]
-    ///
-    /// Also returns the child's "position", given an [`Axis`],
-    /// going top to bottom or left to right.
-    pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
-        std::iter::once(&self.main)
-            .chain(self.floating.iter().map(|(rect, _)| rect))
-            .find_map(|rect| fetch_parent(rect, id))
-    }
-
-    /// Gets the siblings of the `id`'s [`Rect`]
-    pub fn _get_siblings(&self, id: AreaId) -> Option<&[(Rect, Constraints)]> {
-        self.get_parent(id).and_then(|(_, p)| p.kind.children())
-    }
-
-    pub fn get_cluster_master(&self, id: AreaId) -> Option<AreaId> {
-        let (_, mut area) = self.get_parent(id).filter(|(_, p)| p.is_clustered())?;
-
-        loop {
-            if let Some((_, parent)) = self.get_parent(area.id())
-                && parent.is_clustered()
-            {
-                area = parent
-            } else {
-                break Some(area.id());
-            }
+    fn axis(&self) -> Option<Axis> {
+        match self {
+            Kind::Middle { axis, .. } => Some(*axis),
+            Kind::End(..) => None,
         }
     }
 
-    pub fn get_constraints_mut(&mut self, id: AreaId) -> Option<&mut Constraints> {
-        self.get_parent_mut(id)
-            .map(|(pos, parent)| &mut parent.children_mut().unwrap()[pos].1)
+    fn children(&self) -> Option<&[(Rect, Constraints)]> {
+        match self {
+            Kind::Middle { children, .. } => Some(children),
+            Kind::End(..) => None,
+        }
+    }
+
+    fn children_mut(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
+        match self {
+            Kind::End(..) => None,
+            Kind::Middle { children, .. } => Some(children),
+        }
     }
 }
 
@@ -843,22 +868,22 @@ fn fetch_mut(rect: &mut Rect, id: AreaId) -> Option<&mut Rect> {
     }
 }
 
-fn constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &Printer) {
+fn constrain_areas(to_constrain: Vec<AreaId>, main: &mut Rect, p: &Printer) {
     let mut old_eqs = Vec::new();
     let mut new_eqs = Vec::new();
 
     for id in to_constrain {
-        let Some((i, parent)) = rects.get_parent_mut(id) else {
+        let Some((i, parent)) = main.get_parent_mut(id) else {
             continue;
         };
         let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
         old_eqs.extend(cons.drain_eqs());
         let parent_id = parent.id;
 
-        let (cons, eqs) = cons.apply(&rect, parent_id, rects);
+        let (cons, eqs) = cons.apply(&rect, parent_id, main).unwrap();
         new_eqs.extend(eqs);
 
-        let parent = rects.get_mut(parent_id).unwrap();
+        let parent = main.get_mut(parent_id).unwrap();
         parent.children_mut().unwrap().insert(i, (rect, cons));
     }
     p.replace(old_eqs, new_eqs)

@@ -148,7 +148,7 @@ impl SyncSolver {
     ///
     /// Returns the center variable for this new widget and the lenght
     /// for said widget in the given axis, respectively
-    pub fn new_widget_spawned_center(
+    pub fn new_widget_spawned(
         &mut self,
         variables: &mut super::variables::Variables,
         [start, end]: [Variable; 2],
@@ -184,7 +184,7 @@ impl SyncSolver {
     /// for said widget in the given axis, respectively. Also returns
     /// the [`VarPoint`] representing the top left corner of a
     /// terminal cell.
-    pub fn new_text_spawned_center(
+    pub fn new_text_spawned(
         &mut self,
         variables: &mut super::variables::Variables,
         id: SpawnId,
