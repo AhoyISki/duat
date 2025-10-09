@@ -662,7 +662,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         pa: &mut Pass,
         widget: SW,
         specs: SpawnSpecs,
-    ) -> Handle<SW, U> {
+    ) -> Option<Handle<SW, U>> {
         context::windows::<U>().spawn_on_widget(pa, (&self.area, specs), widget)
     }
 
@@ -715,7 +715,9 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         specs: PushSpecs,
     ) -> Handle<PW, U> {
         let to_file = self.widget.data_is::<crate::file::File<U>>();
-        context::windows::<U>().push_widget(pa, (&self.area, to_file, specs), widget)
+        context::windows::<U>()
+            .push_widget(pa, (&self.area, to_file, specs), widget)
+            .unwrap()
     }
 
     /// Pushes a [`Widget`] around the "cluster master" of this one
@@ -768,9 +770,13 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ) -> Handle<PW, U> {
         let to_file = self.widget.data_is::<crate::file::File<U>>();
         if let Some(master) = self.area(pa).get_cluster_master() {
-            context::windows().push_widget(pa, (&master, to_file, specs), widget)
+            context::windows()
+                .push_widget(pa, (&master, to_file, specs), widget)
+                .unwrap()
         } else {
-            context::windows::<U>().push_widget(pa, (&self.area, to_file, specs), widget)
+            context::windows::<U>()
+                .push_widget(pa, (&self.area, to_file, specs), widget)
+                .unwrap()
         }
     }
 }

@@ -6,20 +6,15 @@ use std::{fmt::Alignment, sync::Arc};
 use crossterm::cursor;
 use duat_core::{
     cfg::PrintCfg,
+    context,
     form::{CONTROL_CHAR_ID, Painter},
     text::{FwdIter, Item, Part, Point, RevIter, Text, txt},
-    ui::{self, Axis, Caret, MutArea, PushSpecs, SpawnSpecs},
+    ui::{self, Caret, MutArea, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 pub use self::print_info::PrintInfo;
-use crate::{
-    AreaId, CStyle, Mutex,
-    layout::{Layouts, transfer_vars},
-    print_style,
-    printer::LinesBuilder,
-    queue,
-};
+use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::LinesBuilder, queue};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {
@@ -44,6 +39,7 @@ pub struct Coords {
     pub tl: Coord,
     pub br: Coord,
 }
+
 impl Coords {
     pub fn new(tl: Coord, br: Coord) -> Self {
         Coords { tl, br }
@@ -94,24 +90,20 @@ impl Area {
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        let layouts = self.layouts.borrow();
-        let mut ansi_codes = self.ansi_codes.lock().unwrap();
-
-        let layout = get_layout(&layouts, self.id).unwrap();
-        let is_active = layout.active_id() == self.id;
-
-        let (mut lines, iter, is_floating) = {
-            let rect = layout.get(self.id).unwrap();
-            let (coords, has_changed) = layout.printer.coords(rect.var_points(), true);
+        let (mut lines, iter) = {
+            let Some((coords, has_changed)) = self.layouts.coords_of(self.id, false) else {
+                context::warn!("This Area was already deleted");
+                return;
+            };
 
             if coords.width() == 0 || coords.height() == 0 {
                 return;
             }
 
             let (s_points, x_shift) = {
-                let mut info = rect.print_info().unwrap().get();
+                let mut info = self.layouts.get_info_of(self.id).unwrap();
                 let s_points = info.start_points(coords, text, cfg, has_changed);
-                rect.print_info().unwrap().set(info);
+                self.layouts.set_info_of(self.id, info);
                 (s_points, info.x_shift())
             };
 
@@ -123,10 +115,18 @@ impl Area {
                 print_iter(iter, lines.cap(), cfg, s_points)
             };
 
-            (lines, iter, rect.is_floating())
+            (lines, iter)
         };
 
+        let is_floating = self
+            .layouts
+            .inspect(self.id, |rect, _| rect.is_floating())
+            .unwrap();
+        let is_active = self.id == self.layouts.get_active_id();
+
+        let mut ansi_codes = self.ansi_codes.lock().unwrap();
         let mut style_was_set = false;
+
         enum Cursor {
             Main,
             Extra,
@@ -246,11 +246,7 @@ impl Area {
             lines.end_line(&mut ansi_codes, &mut painter);
         }
 
-        if is_floating {
-            layout.printer.send_floating_lines(self.id, lines);
-        } else {
-            layout.printer.send_lines(lines);
-        }
+        self.layouts.send_lines(self.id, lines, is_floating);
     }
 }
 
@@ -281,170 +277,67 @@ impl ui::Area for Area {
             .map(|id| Self::new(id, area.layouts.clone()))
     }
 
-    fn swap(lhs: MutArea<Self>, rhs: &Self) {
-        let mut layouts = lhs.layouts.borrow_mut();
-        let lhs_lay = get_layout_pos(&layouts, lhs.id).unwrap();
-        let rhs_lay = get_layout_pos(&layouts, rhs.id).unwrap();
-
-        if lhs_lay == rhs_lay {
-            let layout = &mut layouts[lhs_lay];
-            let lhs_id = layout.rects.get_cluster_master(lhs.id).unwrap_or(lhs.id);
-            let rhs_id = layout.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
-            if lhs_id == rhs_id {
-                return;
-            }
-            layout.swap(lhs_id, rhs_id);
-        } else {
-            let [lhs_lay, rhs_lay] = layouts.get_disjoint_mut([lhs_lay, rhs_lay]).unwrap();
-            let lhs_id = lhs_lay.rects.get_cluster_master(lhs.id).unwrap_or(lhs.id);
-            let rhs_id = rhs_lay.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
-
-            let lhs_rect = lhs_lay.rects.get_mut(lhs_id).unwrap();
-            let rhs_rect = rhs_lay.rects.get_mut(rhs_id).unwrap();
-
-            let lhs_p = &lhs_lay.printer;
-            let rhs_p = &rhs_lay.printer;
-            transfer_vars(lhs_p, rhs_p, lhs_rect);
-            transfer_vars(rhs_p, lhs_p, rhs_rect);
-
-            std::mem::swap(lhs_rect, rhs_rect);
-
-            lhs_lay.reset_eqs(rhs_id);
-            rhs_lay.reset_eqs(lhs_id);
-        }
-
-        for lay in [lhs_lay, rhs_lay] {
-            layouts[lay].printer.update(false, false);
-        }
+    fn swap(lhs: MutArea<Self>, rhs: &Self) -> bool {
+        lhs.layouts.swap(lhs.id, rhs.id)
     }
 
-    fn spawn(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Self {
-        let mut layouts = area.layouts.borrow_mut();
-        let layout = get_layout_mut(&mut layouts, area.id).unwrap();
-
-        Self::new(
-            layout.spawn_on_widget(area.id, specs, cache),
+    fn spawn(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Option<Self> {
+        Some(Self::new(
+            area.layouts.spawn_on_widget(area.id, specs, cache)?,
             area.layouts.clone(),
-        )
+        ))
     }
 
     fn set_width(&self, width: f32) -> Result<(), Text> {
-        let mut layouts = self.layouts.borrow_mut();
-        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let old_cons = layout
-            .rects
-            .get_constraints_mut(self.id)
-            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
-            .clone();
-
-        if let Some(old) = old_cons.on(Axis::Horizontal)
-            && old == width
+        if self
+            .layouts
+            .set_constraints(self.id, Some(width), None, None)
         {
-            return Ok(());
-        };
-
-        *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let (cons, old_eqs) = old_cons.replace(width, Axis::Horizontal);
-
-            let (_, parent) = layout.get_parent(self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-
-            let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
-            layout.printer.replace_and_update(old_eqs, new_eqs, false);
-            cons
-        };
-
-        Ok(())
+            Ok(())
+        } else {
+            Err(txt!("Couldn't set the width to [a]{width}").build())
+        }
     }
 
     fn set_height(&self, height: f32) -> Result<(), Text> {
-        let mut layouts = self.layouts.borrow_mut();
-        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let old_cons = layout
-            .rects
-            .get_constraints_mut(self.id)
-            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
-            .clone();
-
-        if let Some(old) = old_cons.on(Axis::Vertical)
-            && old == height
+        if self
+            .layouts
+            .set_constraints(self.id, None, Some(height), None)
         {
-            return Ok(());
-        };
-
-        *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let (cons, old_eqs) = old_cons.replace(height, Axis::Vertical);
-
-            let (_, parent) = layout.get_parent(self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-
-            let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
-            layout.printer.replace_and_update(old_eqs, new_eqs, false);
-            cons
-        };
-
-        Ok(())
+            Ok(())
+        } else {
+            Err(txt!("Couldn't set the height to [a]{height}").build())
+        }
     }
 
     fn hide(&self) -> Result<(), Text> {
-        let mut layouts = self.layouts.borrow_mut();
-        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let mut old_cons = layout
-            .rects
-            .get_constraints_mut(self.id)
-            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
-            .clone();
-
-        if old_cons.is_hidden {
-            return Ok(());
-        };
-
-        *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let old_eqs = old_cons.get_eqs();
-            old_cons.is_hidden = true;
-
-            let (_, parent) = layout.get_parent(self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-
-            let (cons, new_eqs) = old_cons.apply(rect, parent.id(), &layout.rects);
-            layout.printer.replace_and_update(old_eqs, new_eqs, false);
-            cons
-        };
-
-        Ok(())
+        if self
+            .layouts
+            .set_constraints(self.id, None, None, Some(true))
+        {
+            Ok(())
+        } else {
+            Err(txt!("Couldn't hide the Area").build())
+        }
     }
 
     fn reveal(&self) -> Result<(), Text> {
-        let mut layouts = self.layouts.borrow_mut();
-        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let mut old_cons = layout
-            .rects
-            .get_constraints_mut(self.id)
-            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
-            .clone();
-
-        if !old_cons.is_hidden {
-            return Ok(());
-        };
-
-        *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let old_eqs = old_cons.get_eqs();
-            old_cons.is_hidden = false;
-
-            let (_, parent) = layout.get_parent(self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-
-            let (cons, new_eqs) = old_cons.apply(rect, parent.id(), &layout.rects);
-            layout.printer.replace_and_update(old_eqs, new_eqs, false);
-            cons
-        };
-
-        Ok(())
+        if self
+            .layouts
+            .set_constraints(self.id, None, None, Some(false))
+        {
+            Ok(())
+        } else {
+            Err(txt!("Couldn't reveal the Area").build())
+        }
     }
 
     fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text> {
-        let layouts = self.layouts.borrow();
-        let max = get_layout(&layouts, self.id).unwrap().printer.max_value();
+        let max = self
+            .layouts
+            .inspect(self.id, |_, layout| layout.max_value())
+            .ok_or_else(|| txt!("This Area was already deleted"))?;
+
         let iter = iter::print_iter(
             text.iter_fwd(Point::default()),
             cfg.wrap_width(max.x),
@@ -453,12 +346,7 @@ impl ui::Area for Area {
         );
 
         // It can be None if there is total concalment.
-        let len = match iter.filter(|(_, item)| item.part.is_char()).last() {
-            Some((caret, _)) => caret.x as f32 + caret.len as f32,
-            _ => 0.0,
-        };
-
-        self.set_width(len)
+        self.set_width(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
     }
 
     fn scroll_ver(&self, text: &Text, by: i32, cfg: PrintCfg) {
@@ -466,27 +354,27 @@ impl ui::Area for Area {
             return;
         }
 
-        let layouts = self.layouts.borrow();
-        let layout = get_layout(&layouts, self.id).unwrap();
-        let rect = layout.get(self.id).unwrap();
-        let (coords, _) = layout.printer.coords(rect.var_points(), false);
+        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return;
+        };
 
-        let mut info = rect.print_info().unwrap().get();
+        let mut info = self.layouts.get_info_of(self.id).unwrap();
         info.scroll_ver(by, coords, text, cfg);
-        rect.print_info().unwrap().set(info);
+        self.layouts.set_info_of(self.id, info);
     }
 
     ////////// Printing
 
     fn scroll_around_point(&self, text: &Text, p: Point, cfg: PrintCfg) {
-        let layouts = self.layouts.borrow();
-        let layout = get_layout(&layouts, self.id).unwrap();
-        let rect = layout.get(self.id).unwrap();
-        let (coords, _) = layout.printer.coords(rect.var_points(), false);
+        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return;
+        };
 
-        let mut info = rect.print_info().unwrap().get();
+        let mut info = self.layouts.get_info_of(self.id).unwrap();
         info.scroll_around(p, coords, text, cfg);
-        rect.print_info().unwrap().set(info);
+        self.layouts.set_info_of(self.id, info);
     }
 
     fn scroll_to_points(
@@ -495,19 +383,18 @@ impl ui::Area for Area {
         points: impl duat_core::text::TwoPoints,
         cfg: PrintCfg,
     ) {
-        let layouts = self.layouts.borrow();
-        let layout = get_layout(&layouts, self.id).unwrap();
-        let rect = layout.get(self.id).unwrap();
-        let (coords, _) = layout.printer.coords(rect.var_points(), false);
+        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return;
+        };
 
-        let mut info = rect.print_info().unwrap().get();
+        let mut info = self.layouts.get_info_of(self.id).unwrap();
         info.scroll_to_points(points, coords, text, cfg);
-        rect.print_info().unwrap().set(info);
+        self.layouts.set_info_of(self.id, info);
     }
 
     fn set_as_active(&self) {
-        let mut layouts = self.layouts.borrow_mut();
-        get_layout_mut(&mut layouts, self.id).unwrap().active_id = self.id;
+        self.layouts.set_active_id(self.id);
     }
 
     fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter) {
@@ -527,9 +414,7 @@ impl ui::Area for Area {
     ////////// Queries
 
     fn set_print_info(&self, info: Self::PrintInfo) {
-        let layouts = self.layouts.borrow();
-        let layout = get_layout(&layouts, self.id).unwrap();
-        layout.get(self.id).unwrap().print_info().unwrap().set(info);
+        self.layouts.set_info_of(self.id, info);
     }
 
     fn print_iter<'a>(
@@ -538,7 +423,7 @@ impl ui::Area for Area {
         cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let points = iter.points();
-        print_iter(iter, cfg.wrap_width(self.width()), cfg, points)
+        print_iter(iter, cfg.wrap_width(self.width() as u32), cfg, points)
     }
 
     fn rev_print_iter<'a>(
@@ -546,143 +431,96 @@ impl ui::Area for Area {
         iter: RevIter<'a>,
         cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
+        rev_print_iter(iter, cfg.wrap_width(self.width() as u32), cfg)
     }
 
     fn has_changed(&self) -> bool {
-        let layouts = self.layouts.borrow();
-        if let Some(layout) = get_layout(&layouts, self.id)
-            && let Some(rect) = layout.get(self.id)
-        {
-            rect.has_changed(layout)
-        } else {
-            true
-        }
+        self.layouts
+            .inspect(self.id, |rect, layout| rect.has_changed(layout))
+            .unwrap_or(false)
     }
 
     fn is_master_of(&self, other: &Self) -> bool {
         if other.id == self.id {
             return true;
         }
-        let layouts = self.layouts.borrow();
-        let Some(layout) = get_layout(&layouts, self.id) else {
-            return false;
-        };
 
         let mut parent_id = other.id;
-        while let Some((_, parent)) = layout.get_parent(parent_id) {
-            parent_id = parent.id();
-            if parent.id() == self.id {
-                return true;
+
+        self.layouts.inspect(self.id, |_, layout| {
+            while let Some((_, parent)) = layout.get_parent(parent_id) {
+                parent_id = parent.id();
+                if parent.id() == self.id {
+                    break;
+                }
             }
-        }
+        });
 
         parent_id == self.id
     }
 
     fn get_cluster_master(&self) -> Option<Self> {
-        let layouts = self.layouts.borrow();
-        get_layout(&layouts, self.id)?
-            .rects
-            .get_cluster_master(self.id)
-            .map(|id| Self::new(id, self.layouts.clone()))
+        let id = self
+            .layouts
+            .inspect(self.id, |_, layout| layout.get_cluster_master(self.id))??;
+
+        Some(Self {
+            layouts: self.layouts.clone(),
+            id,
+            ansi_codes: Arc::default(),
+        })
     }
 
     fn cache(&self) -> Option<Self::Cache> {
-        let layouts = self.layouts.borrow();
-        get_rect(&layouts, self.id)?
-            .print_info()
-            .map(|cell| cell.get().for_caching())
+        Some(self.layouts.get_info_of(self.id)?.for_caching())
     }
 
-    fn width(&self) -> u32 {
-        let layouts = self.layouts.borrow();
-        let Some(layout) = get_layout(&layouts, self.id) else {
-            return 0;
-        };
-
-        let rect = layout.get(self.id).unwrap();
-        let (coords, _) = layout.printer.coords(rect.var_points(), false);
-        coords.width()
+    fn width(&self) -> f32 {
+        self.layouts
+            .coords_of(self.id, false)
+            .map(|(coords, _)| coords.width() as f32)
+            .unwrap_or(0.0)
     }
 
-    fn height(&self) -> u32 {
-        let layouts = self.layouts.borrow();
-        let Some(layout) = get_layout(&layouts, self.id) else {
-            return 0;
-        };
-
-        let rect = layout.get(self.id).unwrap();
-        let (coords, _) = layout.printer.coords(rect.var_points(), false);
-        coords.height()
+    fn height(&self) -> f32 {
+        self.layouts
+            .coords_of(self.id, false)
+            .map(|(coords, _)| coords.height() as f32)
+            .unwrap_or(0.0)
     }
 
     fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.borrow();
-        layouted::start_points(self, &layouts, text, cfg)
+        let Some((coords, has_changed)) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return Default::default();
+        };
+
+        let mut info = self.layouts.get_info_of(self.id).unwrap();
+        let start_points = info.start_points(coords, text, cfg, has_changed);
+        self.layouts.set_info_of(self.id, info);
+
+        start_points
     }
 
     fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.borrow();
-        layouted::end_points(self, &layouts, text, cfg)
+        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return Default::default();
+        };
+
+        let mut info = self.layouts.get_info_of(self.id).unwrap();
+        let end_points = info.end_points(coords, text, cfg);
+        self.layouts.set_info_of(self.id, info);
+
+        end_points
     }
 
     fn print_info(&self) -> Self::PrintInfo {
-        let layouts = self.layouts.borrow();
-        get_rect(&layouts, self.id)
-            .and_then(|rect| rect.print_info())
-            .map(|pi| pi.get())
-            .unwrap_or_default()
+        self.layouts.get_info_of(self.id).unwrap_or_default()
     }
 
     fn is_active(&self) -> bool {
-        if let Some(layout) = get_layout(&self.layouts.borrow(), self.id) {
-            layout.active_id == self.id
-        } else {
-            false
-        }
-    }
-}
-
-mod layouted {
-    use duat_core::{
-        cfg::PrintCfg,
-        text::{Point, Text},
-    };
-
-    use super::{Area, get_layout};
-    use crate::layout::Layout;
-
-    pub fn start_points(
-        area: &Area,
-        layouts: &[Layout],
-        text: &Text,
-        cfg: PrintCfg,
-    ) -> (Point, Option<Point>) {
-        let layout = get_layout(layouts, area.id).unwrap();
-        let rect = layout.get(area.id).unwrap();
-        let (coords, has_changed) = layout.printer.coords(rect.var_points(), false);
-
-        let mut info = rect.print_info().unwrap().get();
-        let s_points = info.start_points(coords, text, cfg, has_changed);
-        rect.print_info().unwrap().set(info);
-        s_points
-    }
-
-    pub fn end_points(
-        area: &Area,
-        layouts: &[Layout],
-        text: &Text,
-        cfg: PrintCfg,
-    ) -> (Point, Option<Point>) {
-        let layout = get_layout(layouts, area.id).unwrap();
-        let rect = layout.get(area.id).unwrap();
-        let (coords, _) = layout.printer.coords(rect.var_points(), false);
-
-        let mut info = rect.print_info().unwrap().get();
-        let e_points = info.end_points(coords, text, cfg);
-        rect.print_info().unwrap().set(info);
-        e_points
+        self.layouts.get_active_id() == self.id
     }
 }
 

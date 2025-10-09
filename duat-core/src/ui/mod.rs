@@ -224,11 +224,12 @@ pub trait Area: PartialEq + Sized + 'static {
 
     ////////// Area modification
 
-    /// Bisects the [`Area`][Ui::Area] with the given index into
-    /// two.
+    /// Creates an `Area` around this one
     ///
-    /// Will return 2 indices, the first one is the index of a new
-    /// area. The second is an index for a newly created parent
+    /// Will return the newly created `Area` as well as a parent
+    /// `Area`, if one was created to house both of them.
+    ///
+    /// If this `Area` was previously [deleted], will return [`None`].
     ///
     /// As an example, assuming that [`self`] has an index of `0`,
     /// pushing an area to [`self`] on [`Side::Left`] would create
@@ -260,19 +261,23 @@ pub trait Area: PartialEq + Sized + 'static {
     /// ```
     ///
     /// And so [`Area::bisect`] should return `(3, None)`.
+    ///
+    /// [deleted]: Area::delete
     fn push(
         area: MutArea<Self>,
         specs: PushSpecs,
         on_files: bool,
         cache: Self::Cache,
-    ) -> (Self, Option<Self>);
+    ) -> Option<(Self, Option<Self>)>;
 
     /// Spawns a floating area on this [`Area`]
     ///
     /// This function will take a list of [`SpawnSpecs`], taking the
     /// first one that fits, and readapting as the constraints are
     /// altered
-    fn spawn(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Self;
+    ///
+    /// If this `Area` was previously [deleted], will return [`None`].
+    fn spawn(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Option<Self>;
 
     /// Deletes this [`Area`], signaling the closing of a
     /// [`Widget`]
@@ -280,12 +285,20 @@ pub trait Area: PartialEq + Sized + 'static {
     /// If the [`Area`]'s parent was also deleted, return it.
     fn delete(area: MutArea<Self>) -> Option<Self>;
 
-    /// Swaps this [`Area`] with another one
+    /// Swaps this `Area` with another one
     ///
-    /// The swapped [`Area`]s will be cluster masters of the
-    /// respective [`Area`]s. As such, if they belong to the same
+    /// The swapped `Area`s will be cluster masters of the
+    /// respective `Area`s. As such, if they belong to the same
     /// master, nothing happens.
-    fn swap(lhs: MutArea<Self>, rhs: &Self);
+    ///
+    /// This function will _never_ be called such that one of the
+    /// `Area`s is a decendant of the other, so the [`Ui`] implementor
+    /// doesn't need to worry about that possibility.
+    ///
+    /// It can fail if either of the [`Area`]s was already deleted, or
+    /// if no swap happened because they belonged to the same cluster
+    /// master.
+    fn swap(lhs: MutArea<Self>, rhs: &Self) -> bool;
 
     ////////// Constraint changing functions
 
@@ -426,10 +439,10 @@ pub trait Area: PartialEq + Sized + 'static {
     fn cache(&self) -> Option<Self::Cache>;
 
     /// Gets the width of the area
-    fn width(&self) -> u32;
+    fn width(&self) -> f32;
 
     /// Gets the height of the area
-    fn height(&self) -> u32;
+    fn height(&self) -> f32;
 
     /// The start points that should be printed
     fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
@@ -799,23 +812,6 @@ impl Caret {
 /// Higher lever versions of these methods are still available to the
 /// end user, in the more controled APIs of [`Area`]
 pub struct MutArea<'area, A: Area>(pub(crate) &'area A);
-
-impl<A: Area> MutArea<'_, A> {
-    /// Bisects the [`Area`] in two
-    pub fn push(self, specs: PushSpecs, on_files: bool, cache: A::Cache) -> (A, Option<A>) {
-        A::push(self, specs, on_files, cache)
-    }
-
-    /// Calls [`Area::delete`] on `self`
-    pub fn delete(self) -> Option<A> {
-        A::delete(self)
-    }
-
-    /// Calls [`Area::swap`] on `self`
-    pub fn swap(self, other: &A) {
-        A::swap(self, other);
-    }
-}
 
 impl<A: Area> std::ops::Deref for MutArea<'_, A> {
     type Target = A;

@@ -30,7 +30,7 @@ use duat_core::{
     ui::{self, GetOnce},
 };
 
-use self::{layout::Layout, printer::Printer};
+use self::{printer::Printer};
 pub use self::{
     printer::{Brush, Frame},
     rules::{VertRule, VertRuleBuilder},
@@ -161,7 +161,7 @@ impl ui::Ui for Ui {
         let main_id = 
             // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
             // from another thread
-            unsafe { ms.layouts.get() }.new_layout(ms.fr, printer.clone(), cache);
+            unsafe { ms.layouts.get() }.new_layout(printer.clone(), ms.frame, cache);
 
         let root = Area::new(main_id, unsafe { ms.layouts.get() }.clone());
         ms.windows.push((root.clone(), printer.clone()));
@@ -267,7 +267,7 @@ pub struct MetaStatics {
     windows: Vec<(Area, Arc<Printer>)>,
     layouts: MainThreadOnly<Layouts>,
     win: usize,
-    fr: Frame,
+    frame: Frame,
     printer_fn: fn() -> Arc<Printer>,
     rx: Option<mpsc::Receiver<Event>>,
     tx: mpsc::Sender<Event>,
@@ -296,7 +296,7 @@ impl GetOnce<Ui> for Mutex<MetaStatics> {
                 windows: Vec::new(),
                 layouts: MainThreadOnly::default(),
                 win: 0,
-                fr: Frame::default(),
+                frame: Frame::default(),
                 printer_fn: || Arc::new(Printer::new()),
                 rx: Some(rx),
                 tx,

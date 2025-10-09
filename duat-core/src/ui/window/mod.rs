@@ -69,24 +69,25 @@ impl<U: Ui> Windows<U> {
         pa: &mut Pass,
         (to, to_file, specs): (&U::Area, bool, PushSpecs),
         widget: W,
-    ) -> Handle<W, U> {
-        self.push(pa, (to, specs), widget, to_file)
+    ) -> Option<Handle<W, U>> {
+        self.push(pa, (to, specs), widget, to_file)?
             .handle()
             .try_downcast()
-            .unwrap()
     }
 
     /// Spawn a [`Widget`] on a [`Handle`]
+    ///
+    /// Can fail if the `Handle` in question was already removed.
     pub(crate) fn spawn_on_widget<W: Widget<U>>(
         &self,
         pa: &mut Pass,
         (on, specs): (&U::Area, SpawnSpecs),
         widget: W,
-    ) -> Handle<W, U> {
+    ) -> Option<Handle<W, U>> {
         let win = window_index_of_area(on, self.inner.read(pa));
         let widget = RwData::new(widget);
         let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
-        let spawned = U::Area::spawn(MutArea(on), specs, cache);
+        let spawned = U::Area::spawn(MutArea(on), specs, cache)?;
 
         let node = Node::new(widget, Arc::new(spawned));
 
@@ -97,7 +98,8 @@ impl<U: Ui> Windows<U> {
             pa,
             WidgetCreated(node.handle().try_downcast::<File<U>>().unwrap()),
         );
-        node.handle().try_downcast().unwrap()
+
+        node.handle().try_downcast()
     }
 
     /// Spawns a [`Widget`]
@@ -143,9 +145,9 @@ impl<U: Ui> Windows<U> {
         let specs = PushSpecs { cluster: false, ..specs };
 
         if let Some(master) = handle.area(pa).get_cluster_master() {
-            self.push(pa, (&master, specs), file, true)
+            self.push(pa, (&master, specs), file, true).unwrap()
         } else {
-            self.push(pa, (&handle.area, specs), file, true)
+            self.push(pa, (&handle.area, specs), file, true).unwrap()
         }
     }
 
@@ -251,12 +253,12 @@ impl<U: Ui> Windows<U> {
                 let lo = handle.read(pa).layout_order;
 
                 for handle in &self.inner.read(pa).list[win].file_handles(pa)[lo..] {
-                    MutArea(&new_root).swap(handle.area(pa));
+                    U::Area::swap(MutArea(&new_root), handle.area(pa));
                 }
 
                 // Delete the new_root, which should be the last "File" in the
                 // list of the original Window.
-                MutArea(&new_root).delete();
+                U::Area::delete(MutArea(&new_root));
 
                 self.inner
                     .write(pa)
@@ -283,13 +285,15 @@ impl<U: Ui> Windows<U> {
     }
 
     /// Pushes a [`Widget`] to the [`Window`]s
+    ///
+    /// May return [`None`] if the [`U::Area`] was already deleted.
     fn push<W: Widget<U>>(
         &self,
         pa: &mut Pass,
         (to, specs): (&U::Area, PushSpecs),
         widget: W,
         on_file: bool,
-    ) -> Node<U> {
+    ) -> Option<Node<U>> {
         run_once::<W, U>();
 
         let win = self
@@ -302,7 +306,7 @@ impl<U: Ui> Windows<U> {
 
         let widget = RwData::new(widget);
         let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
-        let (pushed, parent) = MutArea(to).push(specs, on_file, cache);
+        let (pushed, parent) = U::Area::push(MutArea(to), specs, on_file, cache)?;
 
         let node = Node::new(widget, Arc::new(pushed));
 
@@ -321,7 +325,8 @@ impl<U: Ui> Windows<U> {
             pa,
             WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
         );
-        node
+
+        Some(node)
     }
 
     /// Swaps two [`File`] widgets
@@ -348,7 +353,7 @@ impl<U: Ui> Windows<U> {
         wins.list = windows;
         wins.new_additions.lock().unwrap().get_or_insert_default();
 
-        MutArea(lhs.area(pa)).swap(rhs.area(pa));
+        U::Area::swap(MutArea(lhs.area(pa)), rhs.area(pa));
     }
 
     ////////// Entry lookup
@@ -650,7 +655,7 @@ impl<U: Ui> Window<U> {
         // If this is the case, this means there is only one File left in this
         // Window, so the files_area should be the cluster master of that
         // File.
-        if let Some(parent) = MutArea(node.area(pa)).delete()
+        if let Some(parent) = U::Area::delete(MutArea(node.area(pa)))
             && parent == *self.files_area
         {
             let files = self.file_handles(pa);
@@ -669,7 +674,7 @@ impl<U: Ui> Window<U> {
         for node in self.nodes.extract_if(.., |node| {
             related.iter().any(|(handle, _)| handle == node.handle())
         }) {
-            MutArea(node.area(pa)).delete();
+            U::Area::delete(MutArea(node.area(pa)));
         }
     }
 

@@ -173,7 +173,7 @@ impl<U: Ui> UiBuilder<U> {
             .files_area
             .clone();
 
-        context::windows::<U>().push_widget(pa, (&files, false, specs), widget)
+        context::windows::<U>().push_widget(pa, (&files, false, specs), widget).unwrap()
     }
 
     /// Docs: TODO
@@ -189,6 +189,6 @@ impl<U: Ui> UiBuilder<U> {
             .master_area
             .clone();
 
-        context::windows::<U>().push_widget(pa, (&master, false, specs), widget)
+        context::windows::<U>().push_widget(pa, (&master, false, specs), widget).unwrap()
     }
 }
