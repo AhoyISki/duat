@@ -90,7 +90,7 @@ impl Area {
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        let (mut lines, iter) = {
+        let (mut lines, iter, line_start) = {
             let Some((coords, has_changed)) = self.layouts.coords_of(self.id, false) else {
                 context::warn!("This Area was already deleted");
                 return;
@@ -109,13 +109,13 @@ impl Area {
 
             let lines = LinesBuilder::new(coords, x_shift, cfg);
 
-            let iter = {
+            let (line_start, iter) = {
                 let line_start = text.visual_line_start(s_points);
                 let iter = text.iter_fwd(line_start);
-                print_iter(iter, lines.cap(), cfg, s_points)
+                (line_start, print_iter(iter, lines.cap(), cfg, s_points))
             };
 
-            (lines, iter)
+            (lines, iter, line_start)
         };
 
         let mut observed_spawns = Vec::new();
@@ -227,7 +227,11 @@ impl Area {
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                     Part::SpawnedWidget(id) => {
                         observed_spawns.push(id);
-                        self.layouts.move_spawn_to(id, Coord::new(4, 9), len);
+                        self.layouts.move_spawn_to(
+                            id,
+                            Coord::new(line_start.0.byte() as u32 % 50, 20),
+                            len,
+                        );
                     }
                     Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                         todo!("Toggles have not been implemented yet.")

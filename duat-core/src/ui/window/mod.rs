@@ -84,7 +84,7 @@ impl<U: Ui> Windows<U> {
         (on, specs): (&U::Area, SpawnSpecs),
         widget: W,
     ) -> Option<Handle<W, U>> {
-        let win = window_index_of_area(on, self.inner.read(pa));
+        let win = window_index_of_area(pa, on, self.inner.read(pa));
         let widget = RwData::new(widget);
         let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
         let spawned = U::Area::spawn(MutArea(on), specs, cache)?;
@@ -96,7 +96,7 @@ impl<U: Ui> Windows<U> {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<File<U>>().unwrap()),
+            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
         );
 
         node.handle().try_downcast()
@@ -121,7 +121,7 @@ impl<U: Ui> Windows<U> {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<File<U>>().unwrap()),
+            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
         );
 
         node.handle().try_downcast().unwrap()
@@ -545,7 +545,7 @@ struct InnerWindows<U: Ui> {
 pub struct Window<U: Ui> {
     index: usize,
     nodes: Vec<Node<U>>,
-    floating: Vec<Node<U>>,
+    spawned: Vec<Node<U>>,
     files_area: Arc<U::Area>,
     master_area: Arc<U::Area>,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
@@ -579,7 +579,7 @@ impl<U: Ui> Window<U> {
         let window = Self {
             index,
             nodes: vec![node.clone()],
-            floating: Vec::new(),
+            spawned: Vec::new(),
             files_area: area.clone(),
             master_area: area.clone(),
             new_additions,
@@ -603,7 +603,7 @@ impl<U: Ui> Window<U> {
         Self {
             index,
             nodes,
-            floating: Vec::new(),
+            spawned: Vec::new(),
             files_area: master_area.clone(),
             master_area,
             new_additions,
@@ -624,7 +624,7 @@ impl<U: Ui> Window<U> {
                 }
             }
             Location::Regular => self.nodes.push(node.clone()),
-            Location::Spawned => self.floating.push(node.clone()),
+            Location::Spawned => self.spawned.push(node.clone()),
         }
 
         if let Some(parent) = &parent
@@ -758,8 +758,8 @@ impl<U: Ui> Window<U> {
         }
 
         InnerChain(
-            self.nodes.iter().chain(self.floating.iter()),
-            self.nodes.len() + self.floating.len(),
+            self.nodes.iter().chain(self.spawned.iter()),
+            self.nodes.len() + self.spawned.len(),
         )
     }
 
@@ -808,7 +808,7 @@ impl<U: Ui> std::fmt::Debug for Window<U> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Window")
             .field("nodes", &self.nodes)
-            .field("floating", &self.floating)
+            .field("floating", &self.spawned)
             .finish_non_exhaustive()
     }
 }
@@ -823,10 +823,16 @@ fn window_index_widget<U: Ui>(
         .map(move |(i, entry)| (index, i, entry))
 }
 
-fn window_index_of_area<U: Ui>(area: &U::Area, wins: &InnerWindows<U>) -> usize {
+fn window_index_of_area<U: Ui>(pa: &Pass, area: &U::Area, wins: &InnerWindows<U>) -> usize {
     wins.list
         .iter()
-        .position(|win| win.master_area.is_master_of(area) || *win.master_area == *area)
+        .position(|win| {
+            win.master_area.is_master_of(area)
+                || win
+                    .spawned
+                    .iter()
+                    .any(|node| node.area(pa).is_master_of(area))
+        })
         .unwrap()
 }
 

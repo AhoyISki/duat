@@ -643,7 +643,7 @@ impl Rect {
         ]);
 
         let align_eq = match specs.orientation {
-            VerLeftAbove | VerLeftBelow => self.tl.x() | EQ(SPAWN_ALIGN_PRIO) | br_x,
+            VerLeftAbove | VerLeftBelow => self.tl.x() | EQ(SPAWN_ALIGN_PRIO) | tl_x,
             VerCenterAbove | VerCenterBelow => {
                 self.mean(Axis::Horizontal) | EQ(SPAWN_ALIGN_PRIO) | ((tl_x + br_x) / 2.0)
             }
@@ -658,12 +658,12 @@ impl Rect {
         self.eqs.extend(
             specs
                 .width
-                .map(|width| (self.br.x() - self.tl.x()) | EQ(SPAWN_LEN_PRIO) | width)
+                .map(|width| self.len(Axis::Horizontal) | EQ(SPAWN_LEN_PRIO) | width)
                 .into_iter()
                 .chain(
                     specs
                         .height
-                        .map(|height| (self.br.y() - self.tl.y()) | EQ(SPAWN_LEN_PRIO) | height),
+                        .map(|height| self.len(Axis::Vertical) | EQ(SPAWN_LEN_PRIO) | height),
                 )
                 .chain([
                     align_eq,

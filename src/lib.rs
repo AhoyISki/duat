@@ -969,8 +969,8 @@ pub mod prelude {
         file,
         prelude::Lender,
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
-            Text, txt,
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
+            Tagger, Text, txt,
         },
         ui::{self, Area as AreaTrait, Widget},
     };

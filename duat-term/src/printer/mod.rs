@@ -213,7 +213,10 @@ impl Printer {
     }
 
     pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) {
-        self.sync_solver.lock().unwrap().move_spawn_to(id, coord, char_width);
+        self.sync_solver
+            .lock()
+            .unwrap()
+            .move_spawn_to(id, coord, char_width);
     }
 
     pub fn print(&self) {
@@ -286,6 +289,7 @@ impl Printer {
                     queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
                     let (info, ..) = lines.on(y).unwrap();
                     stdout.write_all(info.bytes).unwrap();
+                    stdout.write_all(&SPACES[..info.end_spaces]).unwrap();
                 }
             }
         }
@@ -454,8 +458,9 @@ mod stdout {
         #[cfg(windows)]
         use windows::get_stdout;
 
+        const CAP: usize = usize::pow(2, 14);
         static STDOUT: LazyLock<Mutex<BufWriter<File>>> =
-            LazyLock::new(|| Mutex::new(BufWriter::new(get_stdout())));
+            LazyLock::new(|| Mutex::new(BufWriter::with_capacity(CAP, get_stdout())));
 
         STDOUT.lock().unwrap()
     }

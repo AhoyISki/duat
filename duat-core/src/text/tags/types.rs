@@ -321,6 +321,26 @@ impl Tag<Point, SpawnId> for SpawnTag {
     }
 }
 
+impl Tag<usize, SpawnId> for SpawnTag {
+    fn get_raw(
+        &self,
+        index: usize,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, SpawnId) {
+        (
+            (index.min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            None,
+            self.0,
+        )
+    }
+
+    fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
+        tags.spawns.push(ret);
+        tags.spawn_fns.push(self.1);
+    }
+}
+
 /// An internal representation of [`Tag`]s
 ///
 /// Unlike [`Tag`]s, however, each variant here is only placed in a
