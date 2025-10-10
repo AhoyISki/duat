@@ -18,7 +18,7 @@ pub struct LinesBuilder {
 
     // Outside information
     shift: u32,
-    cap: u32,
+    cap: Option<u32>,
 }
 
 impl LinesBuilder {
@@ -59,13 +59,17 @@ impl LinesBuilder {
     }
 
     pub fn realign(&mut self, alignment: Alignment) {
-        self.default_gaps = match alignment {
-            Alignment::Left => Gaps::OnRight,
-            Alignment::Right => Gaps::OnLeft,
-            Alignment::Center => Gaps::OnSides,
-        };
-        if let Gaps::OnRight | Gaps::OnLeft | Gaps::OnSides = self.gaps {
-            self.gaps = self.default_gaps.clone();
+        if let Some(cap) = self.cap
+            && cap > self.coords().width()
+        {
+            self.default_gaps = match alignment {
+                Alignment::Left => Gaps::OnRight,
+                Alignment::Right => Gaps::OnLeft,
+                Alignment::Center => Gaps::OnSides,
+            };
+            if let Gaps::OnRight | Gaps::OnLeft | Gaps::OnSides = self.gaps {
+                self.gaps = self.default_gaps.clone();
+            }
         }
     }
 
@@ -103,17 +107,20 @@ impl LinesBuilder {
             end_fmt_i
         }
 
+        let effective_cap = self.cap.unwrap_or(self.coords().width());
         let bytes = &mut self.lines.bytes;
 
-        let spaces = self.gaps.get_spaces(self.cap - self.len);
+        let spaces = self.gaps.get_spaces(effective_cap - self.len);
         let offset = bytes.len();
 
         // Shortcut
-        if self.lines.coords.width() >= self.cap {
+        if let Some(cap) = self.cap
+            && cap <= self.lines.coords.width()
+        {
             let start_d = match &self.gaps {
                 Gaps::OnRight => 0,
-                Gaps::OnLeft => self.cap - self.len,
-                Gaps::OnSides => (self.cap - self.len) / 2,
+                Gaps::OnLeft => cap - self.len,
+                Gaps::OnSides => (cap - self.len) / 2,
                 Gaps::Spacers(indices) => {
                     let spacers = indices.iter().zip(spaces);
                     let mut start = 0;
@@ -142,8 +149,8 @@ impl LinesBuilder {
         let (start_i, start_d) = {
             let mut dist = match &self.gaps {
                 Gaps::OnRight | Gaps::Spacers(_) => 0,
-                Gaps::OnLeft => self.cap - self.len,
-                Gaps::OnSides => (self.cap - self.len) / 2,
+                Gaps::OnLeft => effective_cap - self.len,
+                Gaps::OnSides => (effective_cap - self.len) / 2,
             };
 
             // Using a different loop when there are no spacers in order to
@@ -186,8 +193,8 @@ impl LinesBuilder {
         let (end_i, end_d) = {
             let mut dist = match &self.gaps {
                 Gaps::OnRight => self.len,
-                Gaps::OnLeft | Gaps::Spacers(_) => self.cap,
-                Gaps::OnSides => self.len + (self.cap - self.len) / 2,
+                Gaps::OnLeft | Gaps::Spacers(_) => effective_cap,
+                Gaps::OnSides => self.len + (effective_cap - self.len) / 2,
             };
             let found_end = if let Gaps::Spacers(indices) = &self.gaps {
                 let mut sb = spaces.iter().zip(indices).rev().peekable();
@@ -257,7 +264,7 @@ impl LinesBuilder {
         self.lines.coords
     }
 
-    pub fn cap(&self) -> u32 {
+    pub fn cap(&self) -> Option<u32> {
         self.cap
     }
 

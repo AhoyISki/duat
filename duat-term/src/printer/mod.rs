@@ -212,6 +212,10 @@ impl Printer {
         drop(vars)
     }
 
+    pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) {
+        self.sync_solver.lock().unwrap().move_spawn_to(id, coord, char_width);
+    }
+
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
         const SPACES: &[u8] = &[b' '; 3000];

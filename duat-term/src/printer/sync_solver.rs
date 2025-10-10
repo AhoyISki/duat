@@ -225,7 +225,7 @@ impl SyncSolver {
     ///
     /// The `char_width` argument is used to determine where the right
     /// edge lies. It's ignored for vertically spawned widgets
-    pub fn move_spawn_to(&mut self, id: SpawnId, coord: Coord, char_width: usize) {
+    pub fn move_spawn_to(&mut self, id: SpawnId, coord: Coord, char_width: u32) {
         let Some(center) = self.spawns.iter_mut().find(|c| c.deps.matches_id(id)) else {
             unreachable!("Whoopsie Daisy, that's not supposed to happen.");
         };
@@ -263,7 +263,7 @@ struct SpawnedCenter {
 /// What kind of dependency a [`SpawnedCenter`] has
 enum CenterDeps {
     Widget(Variable, Variable),
-    TextHorizontal(SpawnId, VarPoint, Option<usize>),
+    TextHorizontal(SpawnId, VarPoint, Option<u32>),
     TextVertical(SpawnId, VarPoint),
 }
 

@@ -9,7 +9,7 @@ use duat_core::{
 pub use self::rect::{Rect, transfer_vars};
 use crate::{
     AreaId, Coords, Equality, Frame,
-    area::PrintInfo,
+    area::{Coord, PrintInfo},
     printer::{LinesBuilder, Printer},
 };
 
@@ -176,6 +176,33 @@ impl Layouts {
 
         for layout_i in [l_layout_i, r_layout_i] {
             list[layout_i].printer.update(false, false);
+        }
+
+        true
+    }
+
+    /// Moves the [`Rect`] of a [`SpawnId`] to some [`Coord`]
+    ///
+    /// The [`Rect`] will dynamically relocate itself if there isn't
+    /// enough space in its preferred position.
+    ///
+    /// Returns `false` if the [`Rect`] was deleted.
+    pub fn move_spawn_to(&self, id: SpawnId, coord: Coord) -> bool {
+        let win = duat_core::context::cur_window();
+        let mut layouts = self.0.borrow_mut();
+        let Some((i, rect)) = layouts.list.iter_mut().enumerate().find_map(|(i, layout)| {
+            layout
+                .spawned
+                .iter_mut()
+                .find_map(|(rect, s_id, _)| (*s_id == Some(id)).then_some((i, rect)))
+        }) else {
+            return false;
+        };
+
+        if i == win {
+            layouts.list[i].printer.
+        } else {
+            todo!("Text spawned Widget relocation to another window is not yet implemented.");
         }
 
         true

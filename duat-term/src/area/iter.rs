@@ -13,10 +13,12 @@ use unicode_width::UnicodeWidthChar;
 /// iterator starts in the visual start of the line.
 pub fn print_iter(
     mut iter: TextIter<'_>,
-    cap: u32,
+    cap: Option<u32>,
     cfg: PrintCfg,
     points: (Point, Option<Point>),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+    let cap = cap.unwrap_or(u32::MAX);
+    
     let (Continue(indent) | Break(indent)) = iter
         .clone()
         .take_while(|&Item { real, ghost, .. }| (real, ghost) < points)
@@ -37,9 +39,11 @@ pub fn print_iter(
 
 pub fn rev_print_iter(
     mut iter: RevTextIter<'_>,
-    cap: u32,
+    cap: Option<u32>,
     cfg: PrintCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+    let cap = cap.unwrap_or(u32::MAX);
+    
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
 

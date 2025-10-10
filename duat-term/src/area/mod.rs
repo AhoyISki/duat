@@ -219,21 +219,15 @@ impl Area {
                         painter.apply_extra_cursor();
                         style_was_set = true;
                     }
-                    Part::AlignLeft if !cfg.wrap_method.is_no_wrap() => {
-                        lines.realign(Alignment::Left)
-                    }
-                    Part::AlignCenter if !cfg.wrap_method.is_no_wrap() => {
-                        lines.realign(Alignment::Center)
-                    }
-                    Part::AlignRight if !cfg.wrap_method.is_no_wrap() => {
-                        lines.realign(Alignment::Right)
-                    }
-                    Part::Spacer if !cfg.wrap_method.is_no_wrap() => {
-                        lines.add_spacer();
-                    }
+                    Part::AlignLeft => lines.realign(Alignment::Left),
+                    Part::AlignCenter => lines.realign(Alignment::Center),
+                    Part::AlignRight => lines.realign(Alignment::Right),
+                    Part::Spacer => lines.add_spacer(),
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
+                    Part::SpawnedWidget(id) => {
+                        self.layouts.move_spawn_to(id, Coord::new(4, 9));
+                    }
                     Part::ToggleStart(_) | Part::ToggleEnd(_) => todo!(),
-                    _ => {}
                 }
             }
 
