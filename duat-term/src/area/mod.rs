@@ -118,6 +118,7 @@ impl Area {
             (lines, iter)
         };
 
+        let mut observed_spawns = Vec::new();
         let is_floating = self
             .layouts
             .inspect(self.id, |rect, _| rect.is_floating())
@@ -225,9 +226,12 @@ impl Area {
                     Part::Spacer => lines.add_spacer(),
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                     Part::SpawnedWidget(id) => {
-                        self.layouts.move_spawn_to(id, Coord::new(4, 9));
+                        observed_spawns.push(id);
+                        self.layouts.move_spawn_to(id, Coord::new(4, 9), len);
                     }
-                    Part::ToggleStart(_) | Part::ToggleEnd(_) => todo!(),
+                    Part::ToggleStart(_) | Part::ToggleEnd(_) => {
+                        todo!("Toggles have not been implemented yet.")
+                    }
                 }
             }
 
@@ -240,7 +244,8 @@ impl Area {
             lines.end_line(&mut ansi_codes, &mut painter);
         }
 
-        self.layouts.send_lines(self.id, lines, is_floating);
+        self.layouts
+            .send_lines(self.id, lines, is_floating, &observed_spawns, &[]);
     }
 }
 

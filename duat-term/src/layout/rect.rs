@@ -3,7 +3,6 @@ use std::cell::Cell;
 use cassowary::{
     Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
-    strength::{REQUIRED, STRONG, WEAK},
 };
 use duat_core::{
     text::SpawnId,
@@ -13,10 +12,13 @@ use duat_core::{
     },
 };
 
-use super::{Constraints, Layout};
+use super::{
+    Constraints, EDGE_PRIO, FRAME_PRIO, Layout, SPAWN_ALIGN_PRIO, SPAWN_LEN_PRIO, SPAWN_POS_PRIO,
+};
 use crate::{
     AreaId, Equality, Frame,
     area::PrintInfo,
+    layout::EQ_LEN_PRIO,
     printer::{Printer, VarPoint},
 };
 
@@ -53,19 +55,20 @@ impl Rect {
         let mut main = Rect::new(p, true, Kind::Leaf(Cell::new(cache)), false, frame);
 
         main.eqs.extend([
-            main.tl.x() | EQ(REQUIRED) | 0.0,
-            main.tl.y() | EQ(REQUIRED) | 0.0,
-            main.br.x() | EQ(REQUIRED) | p.max().x(),
-            main.br.y() | EQ(REQUIRED) | p.max().y(),
+            main.tl.x() | EQ(EDGE_PRIO) | 0.0,
+            main.tl.y() | EQ(EDGE_PRIO) | 0.0,
+            main.br.x() | EQ(EDGE_PRIO) | p.max().x(),
+            main.br.y() | EQ(EDGE_PRIO) | p.max().y(),
         ]);
         p.add_eqs(main.eqs.clone());
 
         main
     }
 
-	/// Returns a new `Rect` which is supposed to be spawned in [`Text`]
-	///
-	/// [`Text`]: duat_core::text::Text
+    /// Returns a new `Rect` which is supposed to be spawned in
+    /// [`Text`]
+    ///
+    /// [`Text`]: duat_core::text::Text
     pub fn new_spawned_on_text(
         p: &Printer,
         id: SpawnId,
@@ -91,9 +94,9 @@ impl Rect {
             tl.x() + 1.0,
             tl.y() + 1.0,
         ]);
-        
+
         let dims = [specs.width, specs.height];
-        let cons = Constraints::new(p, dims, specs.hidden, &rect);
+        let cons = Constraints::new(p, dims, specs.hidden, &rect, None);
 
         (rect, cons)
     }
@@ -134,7 +137,7 @@ impl Rect {
         );
 
         let dims = [specs.width, specs.height];
-        let cons = Constraints::new(p, dims, specs.hidden, &self);
+        let cons = Constraints::new(p, dims, specs.hidden, self, Some(parent));
 
         Some((rect, cons))
     }
@@ -178,10 +181,10 @@ impl Rect {
             let mut parent = Rect::new(p, on_files, kind, false, frame);
 
             parent.eqs.extend([
-                parent.tl.x() | EQ(REQUIRED) | 0.0,
-                parent.tl.y() | EQ(REQUIRED) | 0.0,
-                parent.br.x() | EQ(REQUIRED) | p.max().x(),
-                parent.br.y() | EQ(REQUIRED) | p.max().y(),
+                parent.tl.x() | EQ(EDGE_PRIO) | 0.0,
+                parent.tl.y() | EQ(EDGE_PRIO) | 0.0,
+                parent.br.x() | EQ(EDGE_PRIO) | p.max().x(),
+                parent.br.y() | EQ(EDGE_PRIO) | p.max().y(),
             ]);
             p.add_eqs(parent.eqs.clone());
 
@@ -191,7 +194,8 @@ impl Rect {
             return false;
         };
 
-        let cons = match cons.map(|cons| cons.apply(&child)) {
+        let parent = self.get(parent_id).unwrap();
+        let cons = match cons.map(|cons| cons.apply(&child, Some(parent))) {
             Some((cons, eqs)) => {
                 p.add_eqs(eqs);
                 cons
@@ -205,7 +209,7 @@ impl Rect {
 
         parent.children_mut().unwrap().push((child, cons));
 
-        return true;
+        true
     }
 
     /// Returns a new [`Rect`] with no default [`Constraints`]
@@ -296,7 +300,7 @@ impl Rect {
             let rect = Rect::new(p, on_files, Kind::end(info), false, self.frame);
 
             let dims = [specs.width, specs.height];
-            let cons = Constraints::new(p, dims, specs.hidden, &rect);
+            let cons = Constraints::new(p, dims, specs.hidden, &rect, Some(parent));
 
             let parent = self.get_mut(parent.id()).unwrap();
             let axis = parent.kind.axis().unwrap();
@@ -479,10 +483,10 @@ impl Rect {
         } else if id == self.id {
             let old_eqs: Vec<Equality> = self.drain_eqs().collect();
             self.eqs.extend([
-                self.tl.x() | EQ(REQUIRED) | 0.0,
-                self.tl.y() | EQ(REQUIRED) | 0.0,
-                self.br.x() | EQ(REQUIRED) | p.max().x(),
-                self.br.y() | EQ(REQUIRED) | p.max().y(),
+                self.tl.x() | EQ(EDGE_PRIO) | 0.0,
+                self.tl.y() | EQ(EDGE_PRIO) | 0.0,
+                self.br.x() | EQ(EDGE_PRIO) | p.max().x(),
+                self.br.y() | EQ(EDGE_PRIO) | p.max().y(),
             ]);
             p.replace(old_eqs, self.eqs.clone());
 
@@ -531,18 +535,18 @@ impl Rect {
         }
 
         self.eqs.extend([
-            self.br.x() | GE(REQUIRED) | self.tl.x(),
-            self.br.y() | GE(REQUIRED) | self.tl.y(),
+            self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
+            self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
         ]);
 
         if i == 0 {
             self.eqs
-                .push(self.start(axis) | EQ(REQUIRED) | parent.start(axis));
+                .push(self.start(axis) | EQ(EDGE_PRIO) | parent.start(axis));
         }
 
         self.eqs.extend([
-            self.start(axis.perp()) | EQ(REQUIRED) | parent.start(axis.perp()),
-            self.end(axis.perp()) | EQ(REQUIRED) | parent.end(axis.perp()),
+            self.start(axis.perp()) | EQ(EDGE_PRIO) | parent.start(axis.perp()),
+            self.end(axis.perp()) | EQ(EDGE_PRIO) | parent.end(axis.perp()),
         ]);
 
         let Kind::Branch { children, clustered, .. } = &parent.kind else {
@@ -557,7 +561,8 @@ impl Rect {
                 .iter()
                 .find(|(child, cons)| child.is_resizable_on(axis, cons))
         {
-            self.eqs.push(self.len(axis) | EQ(WEAK) | res.len(axis));
+            self.eqs
+                .push(self.len(axis) | EQ(EQ_LEN_PRIO) | res.len(axis));
         }
 
         if let Some((next, _)) = children.get(i) {
@@ -570,23 +575,23 @@ impl Rect {
             if edge == 1.0 && !*clustered {
                 let width = p.set_edge(self.br, next.tl, axis, fr);
                 self.eqs.extend([
-                    width | EQ(STRONG) | 1.0,
-                    (self.end(axis) + width) | EQ(REQUIRED) | next.start(axis),
+                    width | EQ(FRAME_PRIO) | 1.0,
+                    (self.end(axis) + width) | EQ(EDGE_PRIO) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.
-                    width | GE(REQUIRED) | 0.0,
-                    width | LE(REQUIRED) | 1.0,
-                    self.len(axis) | GE(REQUIRED) | width,
-                    next.len(axis) | GE(REQUIRED) | width,
+                    width | GE(EDGE_PRIO) | 0.0,
+                    width | LE(EDGE_PRIO) | 1.0,
+                    self.len(axis) | GE(EDGE_PRIO) | width,
+                    next.len(axis) | GE(EDGE_PRIO) | width,
                 ]);
                 self.edge = Some(width);
             } else {
                 self.eqs
-                    .push(self.end(axis) | EQ(REQUIRED) | next.start(axis));
+                    .push(self.end(axis) | EQ(EDGE_PRIO) | next.start(axis));
             }
         } else {
             self.eqs
-                .push(self.end(axis) | EQ(REQUIRED) | parent.end(axis));
+                .push(self.end(axis) | EQ(EDGE_PRIO) | parent.end(axis));
         }
 
         if let Kind::Branch { children, axis, .. } = &mut self.kind {
@@ -629,41 +634,41 @@ impl Rect {
         };
 
         self.eqs.extend([
-            self.tl.x() | GE(REQUIRED) | 0.0,
-            self.tl.y() | GE(REQUIRED) | 0.0,
-            self.br.x() | LE(REQUIRED) | p.max().x(),
-            self.tl.y() | LE(REQUIRED) | p.max().y(),
-            self.br.x() | GE(REQUIRED) | self.tl.x(),
-            self.br.y() | GE(REQUIRED) | self.tl.y(),
+            self.tl.x() | GE(EDGE_PRIO) | 0.0,
+            self.tl.y() | GE(EDGE_PRIO) | 0.0,
+            self.br.x() | LE(EDGE_PRIO) | p.max().x(),
+            self.tl.y() | LE(EDGE_PRIO) | p.max().y(),
+            self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
+            self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
         ]);
 
         let align_eq = match specs.orientation {
-            VerLeftAbove | VerLeftBelow => self.tl.x() | EQ(STRONG - 3.0) | br_x,
+            VerLeftAbove | VerLeftBelow => self.tl.x() | EQ(SPAWN_ALIGN_PRIO) | br_x,
             VerCenterAbove | VerCenterBelow => {
-                self.mean(Axis::Horizontal) | EQ(STRONG - 3.0) | (tl_x + br_x) / 2.0
+                self.mean(Axis::Horizontal) | EQ(SPAWN_ALIGN_PRIO) | ((tl_x + br_x) / 2.0)
             }
-            VerRightAbove | VerRightBelow => self.br.x() | EQ(STRONG - 3.0) | br_x,
-            HorTopLeft | HorTopRight => self.tl.y() | EQ(STRONG - 3.0) | tl_y,
+            VerRightAbove | VerRightBelow => self.br.x() | EQ(SPAWN_ALIGN_PRIO) | br_x,
+            HorTopLeft | HorTopRight => self.tl.y() | EQ(SPAWN_ALIGN_PRIO) | tl_y,
             HorCenterLeft | HorCenterRight => {
-                self.mean(Axis::Vertical) | EQ(STRONG - 3.0) | (tl_y + br_y) / 2.0
+                self.mean(Axis::Vertical) | EQ(SPAWN_ALIGN_PRIO) | ((tl_y + br_y) / 2.0)
             }
-            HorBottomLeft | HorBottomRight => self.br.y() | EQ(STRONG - 3.0) | br_y,
+            HorBottomLeft | HorBottomRight => self.br.y() | EQ(SPAWN_ALIGN_PRIO) | br_y,
         };
 
         self.eqs.extend(
             specs
                 .width
-                .map(|width| (self.br.x() - self.tl.x()) | EQ(STRONG - 2.0) | width)
+                .map(|width| (self.br.x() - self.tl.x()) | EQ(SPAWN_LEN_PRIO) | width)
                 .into_iter()
                 .chain(
                     specs
                         .height
-                        .map(|height| (self.br.y() - self.tl.y()) | EQ(STRONG - 2.0) | height),
+                        .map(|height| (self.br.y() - self.tl.y()) | EQ(SPAWN_LEN_PRIO) | height),
                 )
                 .chain([
                     align_eq,
-                    ends[0] | EQ(STRONG - 1.0) | (center - len / 2.0),
-                    ends[1] | EQ(STRONG - 1.0) | (center + len / 2.0),
+                    ends[0] | EQ(SPAWN_POS_PRIO) | (center - len / 2.0),
+                    ends[1] | EQ(SPAWN_POS_PRIO) | (center + len / 2.0),
                 ]),
         );
 
@@ -976,7 +981,7 @@ fn constrain_areas(to_constrain: Vec<AreaId>, main: &mut Rect, p: &Printer) {
         let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
         old_eqs.extend(cons.drain_eqs());
 
-        let (cons, eqs) = cons.apply(&rect);
+        let (cons, eqs) = cons.apply(&rect, Some(parent));
         new_eqs.extend(eqs);
 
         let parent_id = parent.id;

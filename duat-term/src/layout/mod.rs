@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use cassowary::{WeightedRelation::*, strength::STRONG};
+use cassowary::{Constraint, WeightedRelation::*};
 use duat_core::{
     text::SpawnId,
     ui::{Axis, PushSpecs, SpawnSpecs},
@@ -8,7 +8,7 @@ use duat_core::{
 
 pub use self::rect::{Rect, transfer_vars};
 use crate::{
-    AreaId, Coords, Equality, Frame,
+    AreaId, Coords, Frame,
     area::{Coord, PrintInfo},
     printer::{LinesBuilder, Printer},
 };
@@ -187,10 +187,10 @@ impl Layouts {
     /// enough space in its preferred position.
     ///
     /// Returns `false` if the [`Rect`] was deleted.
-    pub fn move_spawn_to(&self, id: SpawnId, coord: Coord) -> bool {
+    pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) -> bool {
         let win = duat_core::context::cur_window();
         let mut layouts = self.0.borrow_mut();
-        let Some((i, rect)) = layouts.list.iter_mut().enumerate().find_map(|(i, layout)| {
+        let Some((i, _rect)) = layouts.list.iter_mut().enumerate().find_map(|(i, layout)| {
             layout
                 .spawned
                 .iter_mut()
@@ -200,7 +200,7 @@ impl Layouts {
         };
 
         if i == win {
-            layouts.list[i].printer.
+            layouts.list[i].printer.move_spawn_to(id, coord, char_width);
         } else {
             todo!("Text spawned Widget relocation to another window is not yet implemented.");
         }
@@ -256,13 +256,24 @@ impl Layouts {
     ////////// Functions for printing
 
     /// Sends lines to be printed on screen
-    pub fn send_lines(&self, id: AreaId, lines: LinesBuilder, is_floating: bool) {
+    pub fn send_lines(
+        &self,
+        id: AreaId,
+        lines: LinesBuilder,
+        is_floating: bool,
+        observed_spawns: &[SpawnId],
+        _spawns: &[SpawnId],
+    ) {
         let layouts = self.0.borrow();
         let layout = layouts
             .list
             .iter()
             .find(|layout| layout.get(id).is_some())
             .unwrap();
+
+        if !observed_spawns.is_empty() {
+            layout.printer.update(false, false);
+        }
 
         if is_floating {
             layout.printer.send_floating_lines(id, lines);
@@ -338,7 +349,7 @@ struct InnerLayouts {
 ///
 /// The [`Layout`] handles all of the [`Rect`]s inside of it,
 /// including all of the [`Variable`]s and
-/// [`Constraint`](Equality)s that define said [`Rect`]s.
+/// [`Constraint`](Constraint)s that define said [`Rect`]s.
 /// All external interactions seeking to change these values do so
 /// through the [`Layout`].
 ///
@@ -462,8 +473,9 @@ impl Layout {
             let (cons, old_eqs) = old_cons.replace(width, height, is_hidden);
 
             let rect = self.get(id).unwrap();
+            let (_, parent) = self.get_parent(id).unzip();
 
-            let (cons, new_eqs) = cons.apply(rect);
+            let (cons, new_eqs) = cons.apply(rect, parent);
             self.printer.replace_and_update(old_eqs, new_eqs, false);
             cons
         };
@@ -549,18 +561,18 @@ impl Layout {
         l_main_id: AreaId,
         r_main_id: AreaId,
     ) -> Option<(&mut Rect, &mut Rect)> {
-        let l_eq = |rect: &Rect| rect.id() == l_main_id;
-        let r_eq = |rect: &Rect| rect.id() == r_main_id;
+        let l_con = |rect: &Rect| rect.id() == l_main_id;
+        let r_con = |rect: &Rect| rect.id() == r_main_id;
 
         if l_main_id == self.main.id() {
-            let (r_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| r_eq(rect))?;
+            let (r_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| r_con(rect))?;
             Some((&mut self.main, r_main))
         } else if r_main_id == self.main.id() {
-            let (l_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| l_eq(rect))?;
+            let (l_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| l_con(rect))?;
             Some((l_main, &mut self.main))
         } else {
-            let l_i = self.spawned.iter().position(|(rect, ..)| l_eq(rect))?;
-            let r_i = self.spawned.iter().position(|(rect, ..)| r_eq(rect))?;
+            let l_i = self.spawned.iter().position(|(rect, ..)| l_con(rect))?;
+            let r_i = self.spawned.iter().position(|(rect, ..)| r_con(rect))?;
 
             let [(l_rect, ..), (r_rect, ..)] = self.spawned.get_disjoint_mut([l_i, r_i]).ok()?;
             Some((l_rect, r_rect))
@@ -593,11 +605,11 @@ impl Layout {
 /// Both of these constraints are optional, and are meant to be
 /// replaceable at runtime.
 ///
-/// [`Constraint`]: Equality
+/// [`Constraint`]: Constraint
 #[derive(Default, Debug, Clone)]
 pub struct Constraints {
-    hor_eq: Option<Equality>,
-    ver_eq: Option<Equality>,
+    hor_con: Option<Constraint>,
+    ver_con: Option<Constraint>,
     width: Option<(f32, bool)>,
     height: Option<(f32, bool)>,
     is_hidden: bool,
@@ -611,13 +623,25 @@ impl Constraints {
     ///
     /// This operation can fail if the `parent` in question can't be
     /// found in the `main` [`Rect`]
-    fn new(p: &Printer, [width, height]: [Option<f32>; 2], is_hidden: bool, new: &Rect) -> Self {
+    fn new(
+        p: &Printer,
+        [width, height]: [Option<f32>; 2],
+        is_hidden: bool,
+        new: &Rect,
+        parent: Option<&Rect>,
+    ) -> Self {
         let width = width.zip(Some(false));
         let height = height.zip(Some(false));
-        let [ver_eq, hor_eq] = get_eqs([width, height], new, is_hidden);
-        p.add_eqs(ver_eq.clone().into_iter().chain(hor_eq.clone()));
+        let [ver_con, hor_con] = get_cons([width, height], new, is_hidden, parent);
+        p.add_eqs(ver_con.clone().into_iter().chain(hor_con.clone()));
 
-        Self { hor_eq, ver_eq, width, height, is_hidden }
+        Self {
+            hor_con,
+            ver_con,
+            width,
+            height,
+            is_hidden,
+        }
     }
 
     pub fn replace(
@@ -625,33 +649,33 @@ impl Constraints {
         width: Option<f32>,
         height: Option<f32>,
         is_hidden: Option<bool>,
-    ) -> (Self, impl Iterator<Item = Equality>) {
-        let hor_eq = self.hor_eq.take();
-        let ver_eq = self.ver_eq.take();
+    ) -> (Self, impl Iterator<Item = Constraint>) {
+        let hor_con = self.hor_con.take();
+        let ver_con = self.ver_con.take();
         // A replacement means manual constraining, which is prioritized.
 
         self.width = width.map(|w| (w, true)).or(self.width);
         self.height = height.map(|h| (h, true)).or(self.height);
         self.is_hidden = is_hidden.unwrap_or(self.is_hidden);
 
-        (self, hor_eq.into_iter().chain(ver_eq))
+        (self, hor_con.into_iter().chain(ver_con))
     }
 
     /// Reuses [`self`] in order to constrain a new child
-    pub fn apply(self, rect: &Rect) -> (Self, impl Iterator<Item = Equality>) {
+    pub fn apply(
+        self,
+        rect: &Rect,
+        parent: Option<&Rect>,
+    ) -> (Self, impl Iterator<Item = Constraint>) {
         let constraints = [self.width, self.height];
-        let [ver_eq, hor_eq] = get_eqs(constraints, rect, self.is_hidden);
-        let new_eqs = ver_eq.clone().into_iter().chain(hor_eq.clone());
+        let [ver_con, hor_con] = get_cons(constraints, rect, self.is_hidden, parent);
+        let new_eqs = ver_con.clone().into_iter().chain(hor_con.clone());
 
-        (Self { ver_eq, hor_eq, ..self }, new_eqs)
+        (Self { ver_con, hor_con, ..self }, new_eqs)
     }
 
-    pub fn get_eqs(&self) -> impl Iterator<Item = Equality> + use<> {
-        self.hor_eq.clone().into_iter().chain(self.ver_eq.clone())
-    }
-
-    pub fn drain_eqs(&mut self) -> impl Iterator<Item = Equality> {
-        self.ver_eq.take().into_iter().chain(self.hor_eq.take())
+    pub fn drain_eqs(&mut self) -> impl Iterator<Item = Constraint> {
+        self.ver_con.take().into_iter().chain(self.hor_con.take())
     }
 
     pub fn on(&self, axis: Axis) -> Option<f32> {
@@ -668,20 +692,28 @@ impl Constraints {
     }
 }
 
-fn get_eqs(
+fn get_cons(
     [width, height]: [Option<(f32, bool)>; 2],
     child: &Rect,
     is_hidden: bool,
-) -> [Option<Equality>; 2] {
+    parent: Option<&Rect>,
+) -> [Option<Constraint>; 2] {
     if is_hidden {
-        [
-            Some(child.len(Axis::Horizontal) | EQ(STRONG) | 0.0),
-            Some(child.len(Axis::Vertical) | EQ(STRONG) | 0.0),
-        ]
+        let hor_con = child.len(Axis::Horizontal) | EQ(HIDDEN_PRIO) | 0.0;
+        let ver_con = child.len(Axis::Vertical) | EQ(HIDDEN_PRIO) | 0.0;
+        if let Some(parent) = parent {
+            if parent.aligns_with(Axis::Horizontal) {
+                [Some(hor_con), None]
+            } else {
+                [None, Some(ver_con)]
+            }
+        } else {
+            [Some(hor_con), Some(ver_con)]
+        }
     } else {
         [(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
             let (len, is_manual) = constraint?;
-            let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
+            let strength = if is_manual { MANUAL_LEN_PRIO } else { LEN_PRIO };
             Some(child.len(axis) | EQ(strength) | len)
         })
     }
@@ -693,3 +725,22 @@ fn remove_children(rect: &mut Rect, p: &Printer) {
         remove_children(child, p);
     }
 }
+
+/// The priority for edges for areas that must not overlap
+const EDGE_PRIO: f64 = cassowary::strength::REQUIRED;
+/// The priority for manually defined lengths
+const MANUAL_LEN_PRIO: f64 = cassowary::strength::STRONG + 2.0;
+/// The priority for lengths defined when creating Areas
+const LEN_PRIO: f64 = cassowary::strength::STRONG + 1.0;
+/// The priority for frames
+const FRAME_PRIO: f64 = cassowary::strength::STRONG;
+/// The priority for hiding things
+const HIDDEN_PRIO: f64 = cassowary::strength::STRONG - 1.0;
+/// The priority for lengths that should try to be equal (a.k.a Files)
+const EQ_LEN_PRIO: f64 = cassowary::strength::STRONG - 2.0;
+/// The priority for positioning of spawned Areas
+const SPAWN_POS_PRIO: f64 = cassowary::strength::STRONG - 3.0;
+/// The priority for the length of spawned Areas
+const SPAWN_LEN_PRIO: f64 = cassowary::strength::STRONG - 4.0;
+/// The priority for the alignment of spawned Areas
+const SPAWN_ALIGN_PRIO: f64 = cassowary::strength::STRONG - 5.0;

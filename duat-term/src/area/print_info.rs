@@ -211,7 +211,7 @@ impl PrintInfo {
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
     fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, cfg: PrintCfg) {
-        let cap = cfg.wrap_width(width);
+        let cap = cfg.wrap_width(width).unwrap_or(width);
         // Quick shortcut to avoid iteration.
         if cap <= width {
             self.x_shift = 0;
@@ -224,7 +224,7 @@ impl PrintInfo {
                 .points_after(points)
                 .unwrap_or_else(|| text.len_points());
 
-            let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg);
+            let mut iter = rev_print_iter(text.iter_rev(after), Some(cap), cfg);
 
             let (points, start, end, wrap) = iter
                 .find_map(|(Caret { x, len, wrap }, item)| {
@@ -315,7 +315,12 @@ impl PrintInfo {
     }
 }
 
-fn max_s_points(text: &Text, cfg: PrintCfg, height: u32, cap: u32) -> (Point, Option<Point>) {
+fn max_s_points(
+    text: &Text,
+    cfg: PrintCfg,
+    height: u32,
+    cap: Option<u32>,
+) -> (Point, Option<Point>) {
     rev_print_iter(text.iter_rev(text.len_points()), cap, cfg)
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
         .nth(if cfg.allow_overscroll {

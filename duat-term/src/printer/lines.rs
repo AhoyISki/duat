@@ -52,7 +52,7 @@ impl LinesBuilder {
         self.len += len;
         let mut bytes = [0; 4];
         char.encode_utf8(&mut bytes);
-        if self.lines.coords.width() < self.cap {
+        if self.lines.coords.width() < self.cap.unwrap_or(u32::MAX) {
             self.positions.push((self.line.len(), len));
         }
         self.line.extend(&bytes[..char.len_utf8()]);
