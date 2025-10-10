@@ -84,6 +84,21 @@ impl Layouts {
             .find_map(|layout| layout.spawn_on_widget(id, specs, cache))
     }
 
+    /// Spawns a new [`Rect`] from a [`SpawnId`], which is supposed to
+    /// go on [`Text`]
+    ///
+    /// [`Text`]: duat_core::text::Text
+    pub fn spawn_on_text(
+        &self,
+        id: SpawnId,
+        specs: SpawnSpecs,
+        cache: PrintInfo,
+        win: usize,
+    ) -> AreaId {
+        let mut layouts = self.0.borrow_mut();
+        layouts.list[win].spawn_on_text(id, specs, cache)
+    }
+
     /// Deletes the [`Area`] of a given id
     ///
     /// Returns [`None`] if it was alread deleted
@@ -258,18 +273,6 @@ impl Layouts {
             .map(|(rect, layout)| f(rect, layout))
     }
 
-    /// Reads the [`Layout`] of an [`AreaId`], if it still exists
-    ///
-    /// Can return [`None`] if the [`Rect`] has deleted.
-    pub fn read_layout_of<Ret>(&self, id: AreaId, f: impl FnOnce(&Layout) -> Ret) -> Option<Ret> {
-        let layouts = self.0.borrow();
-        layouts
-            .list
-            .iter()
-            .find(|layout| layout.get(id).is_some())
-            .map(f)
-    }
-
     /// Get the [`Coords`] of an [`AreaId`]'s [`Rect`]
     ///
     /// Also returns wether or not they have changed.
@@ -431,10 +434,9 @@ impl Layout {
         *get_constraints_mut(id, self).unwrap() = {
             let (cons, old_eqs) = old_cons.replace(width, height, is_hidden);
 
-            let (_, parent) = self.get_parent(id).unwrap();
             let rect = self.get(id).unwrap();
 
-            let (cons, new_eqs) = cons.apply(rect, parent);
+            let (cons, new_eqs) = cons.apply(rect);
             self.printer.replace_and_update(old_eqs, new_eqs, false);
             cons
         };
@@ -537,6 +539,16 @@ impl Layout {
             Some((l_rect, r_rect))
         }
     }
+
+    fn spawn_on_text(&mut self, id: SpawnId, specs: SpawnSpecs, cache: PrintInfo) -> AreaId {
+        let (rect, cons) =
+            Rect::new_spawned_on_text(&self.printer, id, self.main.frame, cache, specs);
+        let rect_id = rect.id();
+
+        self.spawned.push((rect, Some(id), cons));
+
+        rect_id
+    }
 }
 
 /// A list of [`Constraint`] for [`Rect`]s to follow.
@@ -572,16 +584,10 @@ impl Constraints {
     ///
     /// This operation can fail if the `parent` in question can't be
     /// found in the `main` [`Rect`]
-    fn new(
-        p: &Printer,
-        [width, height]: [Option<f32>; 2],
-        is_hidden: bool,
-        new: &Rect,
-        parent: &Rect,
-    ) -> Self {
+    fn new(p: &Printer, [width, height]: [Option<f32>; 2], is_hidden: bool, new: &Rect) -> Self {
         let width = width.zip(Some(false));
         let height = height.zip(Some(false));
-        let [ver_eq, hor_eq] = get_eqs([width, height], new, parent, is_hidden);
+        let [ver_eq, hor_eq] = get_eqs([width, height], new, is_hidden);
         p.add_eqs(ver_eq.clone().into_iter().chain(hor_eq.clone()));
 
         Self { hor_eq, ver_eq, width, height, is_hidden }
@@ -605,9 +611,9 @@ impl Constraints {
     }
 
     /// Reuses [`self`] in order to constrain a new child
-    pub fn apply(self, rect: &Rect, parent: &Rect) -> (Self, impl Iterator<Item = Equality>) {
+    pub fn apply(self, rect: &Rect) -> (Self, impl Iterator<Item = Equality>) {
         let constraints = [self.width, self.height];
-        let [ver_eq, hor_eq] = get_eqs(constraints, rect, parent, self.is_hidden);
+        let [ver_eq, hor_eq] = get_eqs(constraints, rect, self.is_hidden);
         let new_eqs = ver_eq.clone().into_iter().chain(hor_eq.clone());
 
         (Self { ver_eq, hor_eq, ..self }, new_eqs)
@@ -638,28 +644,20 @@ impl Constraints {
 fn get_eqs(
     [width, height]: [Option<(f32, bool)>; 2],
     child: &Rect,
-    parent: &Rect,
     is_hidden: bool,
 ) -> [Option<Equality>; 2] {
     if is_hidden {
-        if parent.aligns_with(Axis::Horizontal) {
-            return [
-                Some(child.len(Axis::Horizontal) | EQ(STRONG + 3.0) | 0.0),
-                None,
-            ];
-        } else {
-            return [
-                None,
-                Some(child.len(Axis::Vertical) | EQ(STRONG + 3.0) | 0.0),
-            ];
-        }
+        [
+            Some(child.len(Axis::Horizontal) | EQ(STRONG) | 0.0),
+            Some(child.len(Axis::Vertical) | EQ(STRONG) | 0.0),
+        ]
+    } else {
+        [(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
+            let (len, is_manual) = constraint?;
+            let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
+            Some(child.len(axis) | EQ(strength) | len)
+        })
     }
-
-    [(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
-        let (len, is_manual) = constraint?;
-        let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
-        Some(child.len(axis) | EQ(strength) | len)
-    })
 }
 
 fn remove_children(rect: &mut Rect, p: &Printer) {

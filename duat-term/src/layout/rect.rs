@@ -5,9 +5,12 @@ use cassowary::{
     WeightedRelation::{EQ, GE, LE},
     strength::{REQUIRED, STRONG, WEAK},
 };
-use duat_core::ui::{
-    Axis::{self, *},
-    PushSpecs, SpawnSpecs,
+use duat_core::{
+    text::SpawnId,
+    ui::{
+        Axis::{self, *},
+        PushSpecs, SpawnSpecs,
+    },
 };
 
 use super::{Constraints, Layout};
@@ -41,7 +44,7 @@ pub struct Rect {
     kind: Kind,
     on_files: bool,
     edge: Option<Variable>,
-    frame: Frame,
+    pub frame: Frame,
 }
 
 impl Rect {
@@ -60,6 +63,41 @@ impl Rect {
         main
     }
 
+	/// Returns a new `Rect` which is supposed to be spawned in [`Text`]
+	///
+	/// [`Text`]: duat_core::text::Text
+    pub fn new_spawned_on_text(
+        p: &Printer,
+        id: SpawnId,
+        frame: Frame,
+        cache: PrintInfo,
+        specs: SpawnSpecs,
+    ) -> (Self, Constraints) {
+        let mut rect = Rect::new(p, false, Kind::Leaf(Cell::new(cache)), true, frame);
+
+        let len = match specs.orientation.axis() {
+            Axis::Horizontal => specs.width,
+            Axis::Vertical => specs.height,
+        };
+
+        let ([center, len], tl) = p.new_text_spawned(
+            id,
+            len,
+            specs.orientation.axis(),
+            specs.orientation.prefers_before(),
+        );
+
+        rect.set_spawned_eqs(p, specs, [center, len], [tl.x().into(), tl.y().into()], [
+            tl.x() + 1.0,
+            tl.y() + 1.0,
+        ]);
+        
+        let dims = [specs.width, specs.height];
+        let cons = Constraints::new(p, dims, specs.hidden, &rect);
+
+        (rect, cons)
+    }
+
     /// Returns a new spawned `Rect`, placed around an existing one
     ///
     /// This can fail (returning [`None`]) if the `Rect` in question
@@ -71,25 +109,13 @@ impl Rect {
         p: &Printer,
         info: PrintInfo,
     ) -> Option<(Rect, Constraints)> {
-        use duat_core::ui::Orientation::*;
-
         let parent = self.get(id)?;
         let mut rect = Rect::new(p, false, Kind::end(info), true, self.frame);
 
-        rect.set_spawned_eqs(p);
-
         // Left/bottom, center, right/top, above/left, below/right strengths
-        let (deps, ends, len) = match specs.orientation.axis() {
-            Axis::Horizontal => (
-                [parent.tl.x(), parent.br.x()],
-                [rect.tl.x(), rect.br.x()],
-                specs.width,
-            ),
-            Axis::Vertical => (
-                [parent.tl.y(), parent.br.y()],
-                [rect.tl.y(), rect.br.y()],
-                specs.height,
-            ),
+        let (deps, len) = match specs.orientation.axis() {
+            Axis::Horizontal => ([parent.tl.x(), parent.br.x()], specs.width),
+            Axis::Vertical => ([parent.tl.y(), parent.br.y()], specs.height),
         };
 
         let [center, len] = p.new_widget_spawned(
@@ -99,40 +125,16 @@ impl Rect {
             specs.orientation.prefers_before(),
         );
 
-        let align_eq = match specs.orientation {
-            VerLeftAbove | VerLeftBelow => rect.tl.x() | EQ(STRONG - 3.0) | parent.tl.x(),
-            VerCenterAbove | VerCenterBelow => {
-                rect.mean(Axis::Horizontal) | EQ(STRONG - 3.0) | parent.mean(Axis::Horizontal)
-            }
-            VerRightAbove | VerRightBelow => rect.br.x() | EQ(STRONG - 3.0) | parent.br.x(),
-            HorTopLeft | HorTopRight => rect.tl.y() | EQ(STRONG - 3.0) | parent.tl.y(),
-            HorCenterLeft | HorCenterRight => {
-                rect.mean(Axis::Vertical) | EQ(STRONG - 3.0) | parent.mean(Axis::Vertical)
-            }
-            HorBottomLeft | HorBottomRight => rect.br.y() | EQ(STRONG - 3.0) | parent.br.y(),
-        };
-
-        rect.eqs.extend(
-            specs
-                .width
-                .map(|width| (rect.br.x() - rect.tl.x()) | EQ(STRONG - 2.0) | width)
-                .into_iter()
-                .chain(
-                    specs
-                        .height
-                        .map(|height| (rect.br.y() - rect.tl.y()) | EQ(STRONG - 2.0) | height),
-                )
-                .chain([
-                    align_eq,
-                    ends[0] | EQ(STRONG - 1.0) | (center - len / 2.0),
-                    ends[1] | EQ(STRONG - 1.0) | (center + len / 2.0),
-                ]),
+        rect.set_spawned_eqs(
+            p,
+            specs,
+            [center, len],
+            [rect.tl.x().into(), rect.tl.y().into()],
+            [rect.br.x().into(), rect.br.y().into()],
         );
 
         let dims = [specs.width, specs.height];
-        let cons = Constraints::new(p, dims, specs.hidden, &rect, parent);
-        p.add_eqs(rect.eqs.clone());
-        p.update(false, true);
+        let cons = Constraints::new(p, dims, specs.hidden, &self);
 
         Some((rect, cons))
     }
@@ -189,8 +191,7 @@ impl Rect {
             return false;
         };
 
-        let parent = self.get(parent_id).unwrap();
-        let cons = match cons.map(|cons| cons.apply(&child, parent)) {
+        let cons = match cons.map(|cons| cons.apply(&child)) {
             Some((cons, eqs)) => {
                 p.add_eqs(eqs);
                 cons
@@ -295,7 +296,7 @@ impl Rect {
             let rect = Rect::new(p, on_files, Kind::end(info), false, self.frame);
 
             let dims = [specs.width, specs.height];
-            let cons = Constraints::new(p, dims, specs.hidden, &rect, parent);
+            let cons = Constraints::new(p, dims, specs.hidden, &rect);
 
             let parent = self.get_mut(parent.id()).unwrap();
             let axis = parent.kind.axis().unwrap();
@@ -612,7 +613,21 @@ impl Rect {
     /// borders of the terminal, but unlike with pushed [`Rect`]s,
     /// there are no requirement for no collisions with other
     /// [`Rect`]s
-    pub fn set_spawned_eqs(&mut self, p: &Printer) {
+    pub fn set_spawned_eqs(
+        &mut self,
+        p: &Printer,
+        specs: SpawnSpecs,
+        [center, len]: [Variable; 2],
+        [tl_x, tl_y]: [Expression; 2],
+        [br_x, br_y]: [Expression; 2],
+    ) {
+        use duat_core::ui::Orientation::*;
+
+        let ends = match specs.orientation.axis() {
+            Axis::Horizontal => [self.tl.x(), self.br.x()],
+            Axis::Vertical => [self.tl.y(), self.br.y()],
+        };
+
         self.eqs.extend([
             self.tl.x() | GE(REQUIRED) | 0.0,
             self.tl.y() | GE(REQUIRED) | 0.0,
@@ -621,6 +636,39 @@ impl Rect {
             self.br.x() | GE(REQUIRED) | self.tl.x(),
             self.br.y() | GE(REQUIRED) | self.tl.y(),
         ]);
+
+        let align_eq = match specs.orientation {
+            VerLeftAbove | VerLeftBelow => self.tl.x() | EQ(STRONG - 3.0) | br_x,
+            VerCenterAbove | VerCenterBelow => {
+                self.mean(Axis::Horizontal) | EQ(STRONG - 3.0) | (tl_x + br_x) / 2.0
+            }
+            VerRightAbove | VerRightBelow => self.br.x() | EQ(STRONG - 3.0) | br_x,
+            HorTopLeft | HorTopRight => self.tl.y() | EQ(STRONG - 3.0) | tl_y,
+            HorCenterLeft | HorCenterRight => {
+                self.mean(Axis::Vertical) | EQ(STRONG - 3.0) | (tl_y + br_y) / 2.0
+            }
+            HorBottomLeft | HorBottomRight => self.br.y() | EQ(STRONG - 3.0) | br_y,
+        };
+
+        self.eqs.extend(
+            specs
+                .width
+                .map(|width| (self.br.x() - self.tl.x()) | EQ(STRONG - 2.0) | width)
+                .into_iter()
+                .chain(
+                    specs
+                        .height
+                        .map(|height| (self.br.y() - self.tl.y()) | EQ(STRONG - 2.0) | height),
+                )
+                .chain([
+                    align_eq,
+                    ends[0] | EQ(STRONG - 1.0) | (center - len / 2.0),
+                    ends[1] | EQ(STRONG - 1.0) | (center + len / 2.0),
+                ]),
+        );
+
+        p.add_eqs(self.eqs.clone());
+        p.update(false, true);
     }
 
     /// Removes all [`Equality`]s which define [`self`]
@@ -928,7 +976,7 @@ fn constrain_areas(to_constrain: Vec<AreaId>, main: &mut Rect, p: &Printer) {
         let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
         old_eqs.extend(cons.drain_eqs());
 
-        let (cons, eqs) = cons.apply(&rect, parent);
+        let (cons, eqs) = cons.apply(&rect);
         new_eqs.extend(eqs);
 
         let parent_id = parent.id;

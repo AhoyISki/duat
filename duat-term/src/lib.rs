@@ -179,7 +179,10 @@ impl ui::Ui for Ui {
         id: duat_core::text::SpawnId,
         win: usize,
     ) -> Self::Area {
-        todo!();
+        let ms = ms.lock().unwrap();
+        let id = unsafe { ms.layouts.get() }.spawn_on_text(id, specs, cache, win);
+
+        Area::new(id, unsafe { ms.layouts.get() }.clone())
     }
 
     fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
