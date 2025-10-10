@@ -1,4 +1,6 @@
-use cassowary::{AddConstraintError, RemoveConstraintError, Solver, Variable, strength::STRONG};
+use cassowary::{
+    AddConstraintError, Expression, RemoveConstraintError, Solver, Variable, strength::STRONG,
+};
 use duat_core::{text::SpawnId, ui::Axis};
 
 use super::VarPoint;
@@ -151,7 +153,7 @@ impl SyncSolver {
     pub fn new_widget_spawned(
         &mut self,
         variables: &mut super::variables::Variables,
-        [start, end]: [Variable; 2],
+        [start, end]: [VarPoint; 2],
         len: Option<f32>,
         axis: Axis,
         prefers_before: bool,
@@ -170,7 +172,7 @@ impl SyncSolver {
             center_var,
             len_var,
             desired_len: len.map(|len| len as f64),
-            deps: CenterDeps::Widget(start, end),
+            deps: CenterDeps::Widget(start, end, axis),
             axis,
             prefers_before,
         });
@@ -243,6 +245,35 @@ impl SyncSolver {
             }
         }
     }
+
+    /// Returns the spawned info associated with a [`SpawnId`]
+    ///
+    /// This info consists of the following:
+    ///
+    /// - The `center` and `len` variables
+    /// - The top left corner of the spawn target
+    /// - The bottom right corner of the spawn target
+    pub fn get_spawned_info(
+        &self,
+        id: SpawnId,
+    ) -> Option<([Variable; 2], [Expression; 2], [Expression; 2])> {
+        self.spawns
+            .iter()
+            .find(|c| c.deps.matches_id(id))
+            .map(|center| {
+                let (tl, width) = match center.deps {
+                    CenterDeps::Widget(..) => unreachable!(),
+                    CenterDeps::TextHorizontal(_, tl, char_width) => (tl, char_width.unwrap_or(1)),
+                    CenterDeps::TextVertical(_, tl) => (tl, 1),
+                };
+
+                (
+                    [center.center_var, center.len_var],
+                    [tl.x().into(), tl.y().into()],
+                    [tl.x() + width as f64, tl.y() + 1.0],
+                )
+            })
+    }
 }
 
 /// Represents the "center" of a floaging [`Rect`]
@@ -262,7 +293,7 @@ struct SpawnedCenter {
 
 /// What kind of dependency a [`SpawnedCenter`] has
 enum CenterDeps {
-    Widget(Variable, Variable),
+    Widget(VarPoint, VarPoint, Axis),
     TextHorizontal(SpawnId, VarPoint, Option<u32>),
     TextVertical(SpawnId, VarPoint),
 }
@@ -270,8 +301,10 @@ enum CenterDeps {
 impl CenterDeps {
     /// The current value of the edges that define a [`SpawnedCenter`]
     fn get_values(&self, solver: &Solver) -> [f64; 2] {
-        match self {
-            CenterDeps::Widget(start, end) => [start, end].map(|v| solver.get_value(*v)),
+        match *self {
+            CenterDeps::Widget(start, end, axis) => {
+                [start, end].map(|v| solver.get_value(v.on(axis)))
+            }
             CenterDeps::TextHorizontal(_, tl, len) => {
                 let left = solver.get_value(tl.x);
                 [left, left + len.unwrap_or(1) as f64]
@@ -285,8 +318,8 @@ impl CenterDeps {
 
     /// Wether the dependencies contain a certain [`Variable`]
     fn contains(&self, var: Variable) -> bool {
-        match self {
-            CenterDeps::Widget(start, end) => *start == var || *end == var,
+        match *self {
+            CenterDeps::Widget(start, end, axis) => start.on(axis) == var || end.on(axis) == var,
             CenterDeps::TextHorizontal(_, tl, _) => tl.x == var,
             CenterDeps::TextVertical(_, tl) => tl.y == var,
         }

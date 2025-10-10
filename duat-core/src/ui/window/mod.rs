@@ -301,7 +301,13 @@ impl<U: Ui> Windows<U> {
             .read(pa)
             .list
             .iter()
-            .position(|window| window.master_area.is_master_of(to))
+            .position(|window| {
+                window.master_area.is_master_of(to)
+                    || window
+                        .spawned
+                        .iter()
+                        .any(|node| node.area(pa).is_master_of(to))
+            })
             .unwrap();
 
         let widget = RwData::new(widget);

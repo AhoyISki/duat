@@ -616,7 +616,7 @@ impl Side {
 }
 
 /// Much like [`PushSpecs`], but for floating [`Widget`]s
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct SpawnSpecs {
     /// Potential spawning [`Corner`]s to connect to and from
     pub orientation: Orientation = Orientation::VerLeftBelow,

@@ -3,7 +3,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use cassowary::Variable;
+use cassowary::{Expression, Variable};
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn},
     style::ResetColor,
@@ -71,7 +71,7 @@ impl Printer {
     /// said [`Rect`]
     pub fn new_widget_spawned(
         &self,
-        deps: [Variable; 2],
+        deps: [VarPoint; 2],
         len: Option<f32>,
         axis: Axis,
         prefers_before: bool,
@@ -107,6 +107,20 @@ impl Printer {
         )
     }
 
+    /// Returns the spawned info associated with a [`SpawnId`]
+    ///
+    /// This info consists of the following:
+    ///
+    /// - The `center` and `len` variables
+    /// - The top left corner of the spawn target
+    /// - The bottom right corner of the spawn target
+    pub fn get_spawned_info(
+        &self,
+        id: SpawnId,
+    ) -> Option<([Variable; 2], [Expression; 2], [Expression; 2])> {
+        self.sync_solver.lock().unwrap().get_spawned_info(id)
+    }
+
     /// Creates a new edge from the two [`VarPoint`]s
     ///
     /// This function will return the [`Variable`] representing the
@@ -123,7 +137,7 @@ impl Printer {
     ////////// Layout modification functions
 
     /// Removes [`Equality`]s from the solver
-    pub fn remove_eqs(&self, eqs: impl IntoIterator<Item = Equality>) {
+    pub fn remove_cons(&self, eqs: impl IntoIterator<Item = Equality>) {
         // If there is no SavedVar, then the first term is a frame.
         self.sync_solver.lock().unwrap().remove_eqs(eqs);
     }
@@ -141,7 +155,7 @@ impl Printer {
         self.sync_solver
             .lock()
             .unwrap()
-            .remove_eqs(rect.drain_eqs());
+            .remove_eqs(rect.drain_cons());
 
         let mut vars = self.vars.lock().unwrap();
         let [tl, br] = rect.var_points();
@@ -439,6 +453,13 @@ impl VarPoint {
 
     pub fn y(&self) -> Variable {
         self.y
+    }
+
+    pub fn on(&self, axis: Axis) -> Variable {
+        match axis {
+            Axis::Horizontal => self.x,
+            Axis::Vertical => self.y,
+        }
     }
 }
 

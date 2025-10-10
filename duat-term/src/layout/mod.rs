@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 use cassowary::{Constraint, WeightedRelation::*};
 use duat_core::{
     text::SpawnId,
-    ui::{Axis, PushSpecs, SpawnSpecs},
+    ui::{Axis, Orientation, PushSpecs, SpawnSpecs},
 };
 
 pub use self::rect::{Rect, transfer_vars};
@@ -191,10 +191,10 @@ impl Layouts {
         let win = duat_core::context::cur_window();
         let mut layouts = self.0.borrow_mut();
         let Some((i, _rect)) = layouts.list.iter_mut().enumerate().find_map(|(i, layout)| {
-            layout
-                .spawned
-                .iter_mut()
-                .find_map(|(rect, s_id, _)| (*s_id == Some(id)).then_some((i, rect)))
+            layout.spawned.iter_mut().find_map(|(rect, info, _)| {
+                info.is_some_and(|(s_id, _)| s_id == id)
+                    .then_some((i, rect))
+            })
         }) else {
             return false;
         };
@@ -345,6 +345,8 @@ struct InnerLayouts {
     active_id: Option<AreaId>,
 }
 
+type SpawnedEntry = (Rect, Option<(SpawnId, Orientation)>, Constraints);
+
 /// The overrall structure of a window on `duat_term`.
 ///
 /// The [`Layout`] handles all of the [`Rect`]s inside of it,
@@ -360,7 +362,7 @@ struct InnerLayouts {
 /// become a thing.
 pub struct Layout {
     main: Rect,
-    spawned: Vec<(Rect, Option<SpawnId>, Constraints)>,
+    spawned: Vec<SpawnedEntry>,
     printer: Arc<Printer>,
 }
 
@@ -390,12 +392,16 @@ impl Layout {
         id: AreaId,
         specs: PushSpecs,
         on_files: bool,
-        info: PrintInfo,
+        cache: PrintInfo,
     ) -> Option<(AreaId, Option<AreaId>)> {
-        [&mut self.main]
-            .into_iter()
-            .chain(self.spawned.iter_mut().map(|(r, ..)| r))
-            .find_map(|r| r.push(&self.printer, specs, id, on_files, info))
+        self.main
+            .push(&self.printer, specs, id, on_files, cache, None)
+            .or_else(|| {
+                self.spawned.iter_mut().find_map(|(rect, info, cons)| {
+                    let spawned_cons = info.map(|info| (cons, info));
+                    rect.push(&self.printer, specs, id, on_files, cache, spawned_cons)
+                })
+            })
     }
 
     /// Deletes the [`Area`] of the given id
@@ -581,10 +587,11 @@ impl Layout {
 
     fn spawn_on_text(&mut self, id: SpawnId, specs: SpawnSpecs, cache: PrintInfo) -> AreaId {
         let (rect, cons) =
-            Rect::new_spawned_on_text(&self.printer, id, self.main.frame, cache, specs);
+            Rect::new_spawned_on_text(&self.printer, id, self.main.frame(), cache, specs);
         let rect_id = rect.id();
 
-        self.spawned.push((rect, Some(id), cons));
+        self.spawned
+            .push((rect, Some((id, specs.orientation)), cons));
 
         rect_id
     }
@@ -627,12 +634,13 @@ impl Constraints {
         p: &Printer,
         [width, height]: [Option<f32>; 2],
         is_hidden: bool,
-        new: &Rect,
+        rect: &Rect,
         parent: Option<&Rect>,
     ) -> Self {
         let width = width.zip(Some(false));
         let height = height.zip(Some(false));
-        let [ver_con, hor_con] = get_cons([width, height], new, is_hidden, parent);
+        let [ver_con, hor_con] =
+            get_cons([width, height], rect, is_hidden, rect.is_spawned(), parent);
         p.add_eqs(ver_con.clone().into_iter().chain(hor_con.clone()));
 
         Self {
@@ -668,13 +676,14 @@ impl Constraints {
         parent: Option<&Rect>,
     ) -> (Self, impl Iterator<Item = Constraint>) {
         let constraints = [self.width, self.height];
-        let [ver_con, hor_con] = get_cons(constraints, rect, self.is_hidden, parent);
+        let [ver_con, hor_con] =
+            get_cons(constraints, rect, self.is_hidden, rect.is_spawned(), parent);
         let new_eqs = ver_con.clone().into_iter().chain(hor_con.clone());
 
         (Self { ver_con, hor_con, ..self }, new_eqs)
     }
 
-    pub fn drain_eqs(&mut self) -> impl Iterator<Item = Constraint> {
+    pub fn drain(&mut self) -> impl Iterator<Item = Constraint> {
         self.ver_con.take().into_iter().chain(self.hor_con.take())
     }
 
@@ -696,6 +705,7 @@ fn get_cons(
     [width, height]: [Option<(f32, bool)>; 2],
     child: &Rect,
     is_hidden: bool,
+    is_spawned: bool,
     parent: Option<&Rect>,
 ) -> [Option<Constraint>; 2] {
     if is_hidden {
@@ -713,7 +723,11 @@ fn get_cons(
     } else {
         [(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
             let (len, is_manual) = constraint?;
-            let strength = if is_manual { MANUAL_LEN_PRIO } else { LEN_PRIO };
+            let strength = match (is_spawned, is_manual) {
+                (true, _) => SPAWN_LEN_PRIO,
+                (false, true) => MANUAL_LEN_PRIO,
+                (false, false) => LEN_PRIO,
+            };
             Some(child.len(axis) | EQ(strength) | len)
         })
     }
