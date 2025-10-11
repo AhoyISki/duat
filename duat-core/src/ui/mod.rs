@@ -146,9 +146,9 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     /// [`Area`]: Ui::Area
     fn new_spawned(
         ms: &'static Self::MetaStatics,
-        cache: <Self::Area as Area>::Cache,
-        specs: SpawnSpecs,
         id: SpawnId,
+        specs: SpawnSpecs,
+        cache: <Self::Area as Area>::Cache,
         win: usize,
     ) -> Self::Area;
 
@@ -277,13 +277,18 @@ pub trait Area: PartialEq + Sized + 'static {
     /// altered
     ///
     /// If this `Area` was previously [deleted], will return [`None`].
-    fn spawn(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Option<Self>;
+    fn spawn(
+        area: MutArea<Self>,
+        id: SpawnId,
+        specs: SpawnSpecs,
+        cache: Self::Cache,
+    ) -> Option<Self>;
 
     /// Deletes this [`Area`], signaling the closing of a
     /// [`Widget`]
     ///
     /// If the [`Area`]'s parent was also deleted, return it.
-    fn delete(area: MutArea<Self>) -> Option<Self>;
+    fn delete(area: MutArea<Self>) -> (bool, Vec<Self>);
 
     /// Swaps this `Area` with another one
     ///

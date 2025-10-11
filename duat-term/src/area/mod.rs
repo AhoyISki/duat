@@ -8,7 +8,7 @@ use duat_core::{
     cfg::PrintCfg,
     context,
     form::{CONTROL_CHAR_ID, Painter},
-    text::{FwdIter, Item, Part, Point, RevIter, Text, txt},
+    text::{FwdIter, Item, Part, Point, RevIter, SpawnId, Text, txt},
     ui::{self, Caret, MutArea, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
@@ -91,7 +91,7 @@ impl Area {
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
         let (mut lines, iter, line_start) = {
-            let Some((coords, has_changed)) = self.layouts.coords_of(self.id, false) else {
+            let Some((coords, has_changed)) = self.layouts.coords_of(self.id, true) else {
                 context::warn!("This Area was already deleted");
                 return;
             };
@@ -284,9 +284,15 @@ impl ui::Area for Area {
         lhs.layouts.swap(lhs.id, rhs.id)
     }
 
-    fn spawn(area: MutArea<Self>, specs: SpawnSpecs, cache: Self::Cache) -> Option<Self> {
+    fn spawn(
+        area: MutArea<Self>,
+        spawn_id: SpawnId,
+        specs: SpawnSpecs,
+        cache: Self::Cache,
+    ) -> Option<Self> {
         Some(Self::new(
-            area.layouts.spawn_on_widget(area.id, specs, cache)?,
+            area.layouts
+                .spawn_on_widget(area.id, spawn_id, specs, cache)?,
             area.layouts.clone(),
         ))
     }

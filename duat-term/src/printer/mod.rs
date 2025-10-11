@@ -69,14 +69,16 @@ impl Printer {
     /// Returns a new dynamically updated [`Variable`], which centers
     /// a [`Rect`] as well as another which represents the length of
     /// said [`Rect`]
-    pub fn new_widget_spawned(
+    pub fn new_widget_spawn(
         &self,
+        id: SpawnId,
         deps: [VarPoint; 2],
         len: Option<f32>,
         axis: Axis,
         prefers_before: bool,
     ) -> [Variable; 2] {
-        self.sync_solver.lock().unwrap().new_widget_spawned(
+        self.sync_solver.lock().unwrap().new_widget_spawn(
+            id,
             &mut self.vars.lock().unwrap(),
             deps,
             len,
@@ -91,16 +93,16 @@ impl Printer {
     ///
     /// Also returns a [`VarPoint`], which is meant to represent to
     /// top left corner of a cell in the terminal.
-    pub fn new_text_spawned(
+    pub fn new_text_spawn(
         &self,
         id: SpawnId,
         len: Option<f32>,
         axis: Axis,
         prefers_before: bool,
     ) -> ([Variable; 2], VarPoint) {
-        self.sync_solver.lock().unwrap().new_text_spawned(
-            &mut self.vars.lock().unwrap(),
+        self.sync_solver.lock().unwrap().new_text_spawn(
             id,
+            &mut self.vars.lock().unwrap(),
             len,
             axis,
             prefers_before,
@@ -118,7 +120,7 @@ impl Printer {
         &self,
         id: SpawnId,
     ) -> Option<([Variable; 2], [Expression; 2], [Expression; 2])> {
-        self.sync_solver.lock().unwrap().get_spawned_info(id)
+        self.sync_solver.lock().unwrap().get_spawn_info(id)
     }
 
     /// Creates a new edge from the two [`VarPoint`]s
@@ -137,7 +139,7 @@ impl Printer {
     ////////// Layout modification functions
 
     /// Removes [`Equality`]s from the solver
-    pub fn remove_cons(&self, eqs: impl IntoIterator<Item = Equality>) {
+    pub fn remove_eqs(&self, eqs: impl IntoIterator<Item = Equality>) {
         // If there is no SavedVar, then the first term is a frame.
         self.sync_solver.lock().unwrap().remove_eqs(eqs);
     }
@@ -167,6 +169,21 @@ impl Printer {
         }
 
         [tl.x(), tl.y(), br.x(), br.y()]
+    }
+
+    /// Removes the information regarding a [`SpawnId`]
+    ///
+    /// This will remove, more specifically, the `center` and `len`
+    /// variables, as well as future calculations for the center of
+    /// the spawned widget.
+    pub fn remove_spawn_info(&self, id: SpawnId) {
+        let Some([center, len]) = self.sync_solver.lock().unwrap().remove_spawn_info(id) else {
+            return;
+        };
+
+        let mut vars = self.vars.lock().unwrap();
+        vars.remove(center);
+        vars.remove(len);
     }
 
     /// Inserts the [`Variables`] taken from a [`Rect`]

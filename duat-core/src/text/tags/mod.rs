@@ -737,7 +737,7 @@ mod ids {
     impl SpawnId {
         /// Creates a new [`SpawnId`]
         #[allow(clippy::new_without_default)]
-        pub(super) fn new() -> Self {
+        pub(crate) fn new() -> Self {
             static SPAWN_COUNT: AtomicU16 = AtomicU16::new(0);
             Self(SPAWN_COUNT.fetch_add(1, Ordering::Relaxed))
         }

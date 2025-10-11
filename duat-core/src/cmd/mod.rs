@@ -444,6 +444,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["edit", "e"], |pa, arg: FileOrBufferOrCfg<U>| {
+        let windows = context::windows::<U>();
+
         let pk = match arg {
             FileOrBufferOrCfg::Cfg => {
                 PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs"))
@@ -459,7 +461,10 @@ pub(crate) fn add_session_commands<U: Ui>() {
             }
         };
 
-        sender().send(DuatEvent::OpenFile(pk.clone())).unwrap();
+        let file = File::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
+        let handle = windows.new_file(pa, file);
+        context::set_current_node(pa, handle);
+
         return Ok(Some(txt!("Opened {pk}").build()));
     });
 
@@ -487,7 +492,10 @@ pub(crate) fn add_session_commands<U: Ui>() {
             }
         };
 
-        sender().send(DuatEvent::OpenWindow(pk.clone())).unwrap();
+        let file = File::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
+        let handle = windows.new_window(pa, file);
+        context::set_current_node(pa, handle.to_dyn());
+
         return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window").build())));
     });
 
@@ -557,14 +565,9 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!("swap", |pa, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
-        let lhs = lhs.read(pa).path_kind();
-        let rhs = match rhs {
-            Some(rhs) => rhs.read(pa).path_kind(),
-            None => context::fixed_file::<U>(pa)?.read(pa).path_kind(),
-        };
-        sender()
-            .send(DuatEvent::SwapFiles(lhs.clone(), rhs.clone()))
-            .unwrap();
+        let rhs = rhs.unwrap_or_else(|| context::fixed_file(pa).unwrap());
+
+        context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn());
 
         Ok(Some(txt!("Swapped {lhs} and {rhs}").build()))
     });

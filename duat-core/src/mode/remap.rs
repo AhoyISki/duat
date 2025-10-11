@@ -525,7 +525,7 @@ pub enum Gives {
 }
 
 fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, usize)) {
-    let widget = context::cur_widget::<U>(pa).unwrap();
+    let widget = context::cur_widget::<U>(pa);
     // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
     widget.mutate_data(pa, |handle| {

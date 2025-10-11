@@ -436,11 +436,12 @@ pub(crate) struct Node<U: Ui> {
 }
 
 impl<U: Ui> Node<U> {
-    /// Returns a new [`Node`]
+    /// Returns a new `Node`
     pub(crate) fn new<W: Widget<U>>(widget: RwData<W>, area: Arc<U::Area>) -> Self {
         Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new(""))))
     }
 
+	/// Returns a `Node` from an existing [`Handle`]
     pub(crate) fn from_handle<W: Widget<U>>(handle: Handle<W, U>) -> Self {
         Self {
             handle: handle.to_dyn(),

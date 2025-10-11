@@ -59,17 +59,6 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         duat_core::context::set_sender(duat_tx);
     }
 
-    // State statics.
-    let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
-    let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
-    static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
-
-    duat_core::context::setup_context::<Ui>(
-        cur_file,
-        cur_widget,
-        CUR_WINDOW.load(Ordering::Relaxed),
-    );
-
     mode::set_default(crate::regular::Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 

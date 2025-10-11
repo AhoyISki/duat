@@ -6,7 +6,7 @@ use duat_core::{
     ui::{Axis, Orientation, PushSpecs, SpawnSpecs},
 };
 
-pub use self::rect::{Rect, transfer_vars};
+pub use self::rect::{Deletion, Rect, transfer_vars};
 use crate::{
     AreaId, Coords, Frame,
     area::{Coord, PrintInfo},
@@ -52,7 +52,7 @@ impl Layouts {
     /// [`Area`]: crate::area::Area
     pub fn push(
         &self,
-        id: AreaId,
+        target: AreaId,
         specs: PushSpecs,
         on_files: bool,
         cache: PrintInfo,
@@ -61,7 +61,7 @@ impl Layouts {
         layouts
             .list
             .iter_mut()
-            .find_map(|l| l.push(id, specs, on_files, cache))
+            .find_map(|l| l.push(target, specs, on_files, cache))
     }
 
     /// Spawnss a new [`Area`] on an existing one, returning its
@@ -73,7 +73,8 @@ impl Layouts {
     /// [`Area`]: crate::area::Area
     pub fn spawn_on_widget(
         &self,
-        id: AreaId,
+        target: AreaId,
+        spawn_id: SpawnId,
         specs: SpawnSpecs,
         cache: PrintInfo,
     ) -> Option<AreaId> {
@@ -81,7 +82,7 @@ impl Layouts {
         layouts
             .list
             .iter_mut()
-            .find_map(|layout| layout.spawn_on_widget(id, specs, cache))
+            .find_map(|layout| layout.spawn_on_widget(target, spawn_id, specs, cache))
     }
 
     /// Spawns a new [`Rect`] from a [`SpawnId`], which is supposed to
@@ -101,12 +102,29 @@ impl Layouts {
 
     /// Deletes the [`Area`] of a given id
     ///
-    /// Returns [`None`] if it was alread deleted
+    /// Returns wether this deletion resulted in the window being
+    /// removed, and also returns every [`AreaId`] belonging to a
+    /// [`Rect`] that was removed as a consequence of this.
     ///
     /// [`Area`]: crate::area::Area
-    pub fn delete(&self, id: AreaId) -> Option<AreaId> {
+    pub fn delete(&self, id: AreaId) -> (bool, Vec<AreaId>) {
         let mut layouts = self.0.borrow_mut();
-        layouts.list.iter_mut().find_map(|layout| layout.delete(id))
+        if let Some((i, rm_areas)) = layouts
+            .list
+            .iter_mut()
+            .enumerate()
+            .find_map(|(i, layout)| Some(i).zip(layout.delete(id)))
+        {
+            if rm_areas.contains(&layouts.list[i].main.id()) {
+                layouts.list.remove(i);
+                (true, rm_areas)
+            } else {
+                layouts.list[i].printer.update(false, false);
+                (false, rm_areas)
+            }
+        } else {
+            (false, Vec::new())
+        }
     }
 
     /// Swaps two [`Area`]s around
@@ -191,10 +209,10 @@ impl Layouts {
         let win = duat_core::context::cur_window();
         let mut layouts = self.0.borrow_mut();
         let Some((i, _rect)) = layouts.list.iter_mut().enumerate().find_map(|(i, layout)| {
-            layout.spawned.iter_mut().find_map(|(rect, info, _)| {
-                info.is_some_and(|(s_id, _)| s_id == id)
-                    .then_some((i, rect))
-            })
+            layout
+                .spawned
+                .iter_mut()
+                .find_map(|(info, rect)| (info.id == id).then_some((i, rect)))
         }) else {
             return false;
         };
@@ -345,8 +363,6 @@ struct InnerLayouts {
     active_id: Option<AreaId>,
 }
 
-type SpawnedEntry = (Rect, Option<(SpawnId, Orientation)>, Constraints);
-
 /// The overrall structure of a window on `duat_term`.
 ///
 /// The [`Layout`] handles all of the [`Rect`]s inside of it,
@@ -362,7 +378,7 @@ type SpawnedEntry = (Rect, Option<(SpawnId, Orientation)>, Constraints);
 /// become a thing.
 pub struct Layout {
     main: Rect,
-    spawned: Vec<SpawnedEntry>,
+    spawned: Vec<(SpawnInfo, Rect)>,
     printer: Arc<Printer>,
 }
 
@@ -389,37 +405,73 @@ impl Layout {
     /// this
     fn push(
         &mut self,
-        id: AreaId,
+        target: AreaId,
         specs: PushSpecs,
         on_files: bool,
         cache: PrintInfo,
     ) -> Option<(AreaId, Option<AreaId>)> {
         self.main
-            .push(&self.printer, specs, id, on_files, cache, None)
+            .push(&self.printer, specs, target, on_files, cache, None)
             .or_else(|| {
-                self.spawned.iter_mut().find_map(|(rect, info, cons)| {
-                    let spawned_cons = info.map(|info| (cons, info));
-                    rect.push(&self.printer, specs, id, on_files, cache, spawned_cons)
+                self.spawned.iter_mut().find_map(|(info, rect)| {
+                    rect.push(&self.printer, specs, target, on_files, cache, Some(info))
                 })
             })
     }
 
-    /// Deletes the [`Area`] of the given id
+    /// Deletes the [`Rect`] of the given [`AreaId`]
     ///
-    /// Returns [`None`] if it was alread deleted.
+    /// Returns a [`Vec`] of every leaf `AreaId` that was deleted by
+    /// this action. This doesn't include the main [`AreaId`], since
+    /// that one can't be deleted from within [`Layout`]
+    ///
+    /// Returns [`None`] if this `Layout` does not contain the
+    /// `AreaId`'s `Rect`.
     ///
     /// [`Area`]: crate::area::Area
-    fn delete(&mut self, id: AreaId) -> Option<AreaId> {
-        let (mut rect, _, parent_id) = [&mut self.main]
-            .into_iter()
-            .chain(self.spawned.iter_mut().map(|(rect, ..)| rect))
-            .find_map(|rect| rect.delete(&self.printer, id))?;
+    fn delete(&mut self, id: AreaId) -> Option<Vec<AreaId>> {
+        let (mut rect, mut cons) = if let Some(deletion) = self.main.delete(&self.printer, id) {
+            if let Deletion::Child(rect, cons) = deletion {
+                (rect, cons)
+            } else {
+                (&self.printer).remove_rect(&mut self.main);
 
-        remove_children(&mut rect, &self.printer);
+                return Some(remove_dependents(
+                    &mut self.main,
+                    &mut self.spawned,
+                    &self.printer,
+                ));
+            }
+        } else if let Some((i, deletion)) = self
+            .spawned
+            .iter_mut()
+            .enumerate()
+            .find_map(|(i, (_, rect))| Some(i).zip(rect.delete(&self.printer, id)))
+        {
+            if let Deletion::Child(rect, cons) = deletion {
+                (rect, cons)
+            } else {
+                let (mut info, mut rect) = self.spawned.remove(i);
+                (&self.printer).remove_rect(&mut rect);
+                (&self.printer).remove_eqs(info.cons.drain());
 
-        self.printer.update(false, false);
+                return Some(remove_dependents(
+                    &mut rect,
+                    &mut self.spawned,
+                    &self.printer,
+                ));
+            }
+        } else {
+            return None;
+        };
 
-        parent_id
+        self.printer.remove_eqs(cons.drain());
+
+        Some(remove_dependents(
+            &mut rect,
+            &mut self.spawned,
+            &self.printer,
+        ))
     }
 
     /// Swaps the [`Rect`]s of two [`AreaId`]s
@@ -430,20 +482,36 @@ impl Layout {
     /// Spawns a new [`Rect`] around another, returning the [`AreaId`]
     fn spawn_on_widget(
         &mut self,
-        id: AreaId,
+        target: AreaId,
+        id: SpawnId,
         specs: SpawnSpecs,
-        info: PrintInfo,
+        cache: PrintInfo,
     ) -> Option<AreaId> {
         let (rect, cons) = [&mut self.main]
             .into_iter()
-            .chain(self.spawned.iter_mut().map(|(rect, ..)| rect))
-            .find_map(|rect| rect.new_spawned_on_widget(specs, id, &self.printer, info))?;
+            .chain(self.spawned.iter_mut().map(|(_, rect)| rect))
+            .find_map(|rect| rect.new_spawned_on_widget(id, specs, target, &self.printer, cache))?;
 
-        let id = rect.id();
+        let area_id = rect.id();
+        let orientation = specs.orientation;
 
-        self.spawned.push((rect, None, cons));
+        self.spawned
+            .push((SpawnInfo { id, orientation, cons }, rect));
 
-        Some(id)
+        Some(area_id)
+    }
+
+    fn spawn_on_text(&mut self, id: SpawnId, specs: SpawnSpecs, cache: PrintInfo) -> AreaId {
+        let (rect, cons) =
+            Rect::new_spawned_on_text(&self.printer, id, self.main.frame(), cache, specs);
+        let rect_id = rect.id();
+
+        let orientation = specs.orientation;
+
+        self.spawned
+            .push((SpawnInfo { id, orientation, cons }, rect));
+
+        rect_id
     }
 
     /// Sets the constraints on a given [`Rect`]
@@ -460,28 +528,28 @@ impl Layout {
         fn get_constraints_mut(id: AreaId, layout: &mut Layout) -> Option<&mut Constraints> {
             [&mut layout.main]
                 .into_iter()
-                .chain(layout.spawned.iter_mut().map(|(rect, ..)| rect))
-                .find_map(|layout| layout.get_constraints_mut(id))
+                .chain(layout.spawned.iter_mut().map(|(_, rect)| rect))
+                .find_map(|rect| rect.get_constraints_mut(id))
         }
 
-        let Some(old_cons) = get_constraints_mut(id, self).cloned() else {
+        let Some(mut cons) = get_constraints_mut(id, self).cloned() else {
             return false;
         };
 
-        if width.is_none_or(|w| Some(w) == old_cons.on(Axis::Horizontal))
-            && height.is_none_or(|h| Some(h) == old_cons.on(Axis::Vertical))
-            && is_hidden.is_none_or(|ih| ih == old_cons.is_hidden)
+        if width.is_none_or(|w| Some(w) == cons.on(Axis::Horizontal))
+            && height.is_none_or(|h| Some(h) == cons.on(Axis::Vertical))
+            && is_hidden.is_none_or(|ih| ih == cons.is_hidden)
         {
             return true;
         };
 
         *get_constraints_mut(id, self).unwrap() = {
-            let (cons, old_eqs) = old_cons.replace(width, height, is_hidden);
+            let old_eqs = cons.replace(width, height, is_hidden);
 
             let rect = self.get(id).unwrap();
             let (_, parent) = self.get_parent(id).unzip();
 
-            let (cons, new_eqs) = cons.apply(rect, parent);
+            let new_eqs = cons.apply(rect, parent);
             self.printer.replace_and_update(old_eqs, new_eqs, false);
             cons
         };
@@ -493,7 +561,7 @@ impl Layout {
     fn reset_eqs(&mut self, id: AreaId) {
         [&mut self.main]
             .into_iter()
-            .chain(self.spawned.iter_mut().map(|(rect, ..)| rect))
+            .chain(self.spawned.iter_mut().map(|(_, rect)| rect))
             .any(|rect| rect.reset_eqs(&self.printer, id));
     }
 
@@ -503,7 +571,7 @@ impl Layout {
     pub fn get(&self, id: AreaId) -> Option<&Rect> {
         [&self.main]
             .into_iter()
-            .chain(self.spawned.iter().map(|(rect, ..)| rect))
+            .chain(self.spawned.iter().map(|(_, rect)| rect))
             .find_map(|rect| rect.get(id))
     }
 
@@ -512,7 +580,7 @@ impl Layout {
     pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
         [&self.main]
             .into_iter()
-            .chain(self.spawned.iter().map(|(rect, ..)| rect))
+            .chain(self.spawned.iter().map(|(_, rect)| rect))
             .find_map(|rect| rect.get_parent(id))
     }
 
@@ -520,7 +588,7 @@ impl Layout {
     pub fn get_cluster_master(&self, id: AreaId) -> Option<AreaId> {
         [&self.main]
             .into_iter()
-            .chain(self.spawned.iter().map(|(rect, ..)| rect))
+            .chain(self.spawned.iter().map(|(_, rect)| rect))
             .find_map(|rect| rect.get_cluster_master(id))
     }
 
@@ -528,7 +596,7 @@ impl Layout {
     fn get_main_id(&self, id: AreaId) -> Option<AreaId> {
         [&self.main]
             .into_iter()
-            .chain(self.spawned.iter().map(|(rect, ..)| rect))
+            .chain(self.spawned.iter().map(|(_, rect)| rect))
             .find_map(|rect| rect.get(id).is_some().then_some(rect.id()))
     }
 
@@ -536,7 +604,7 @@ impl Layout {
     fn get_mut(&mut self, id: AreaId) -> Option<&mut Rect> {
         [&mut self.main]
             .into_iter()
-            .chain(self.spawned.iter_mut().map(|(rect, ..)| rect))
+            .chain(self.spawned.iter_mut().map(|(_, rect)| rect))
             .find_map(|rect| rect.get_mut(id))
     }
 
@@ -571,30 +639,26 @@ impl Layout {
         let r_con = |rect: &Rect| rect.id() == r_main_id;
 
         if l_main_id == self.main.id() {
-            let (r_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| r_con(rect))?;
+            let (_, r_main) = self.spawned.iter_mut().find(|(_, rect)| r_con(rect))?;
             Some((&mut self.main, r_main))
         } else if r_main_id == self.main.id() {
-            let (l_main, ..) = self.spawned.iter_mut().find(|(rect, ..)| l_con(rect))?;
+            let (_, l_main) = self.spawned.iter_mut().find(|(_, rect)| l_con(rect))?;
             Some((l_main, &mut self.main))
         } else {
-            let l_i = self.spawned.iter().position(|(rect, ..)| l_con(rect))?;
-            let r_i = self.spawned.iter().position(|(rect, ..)| r_con(rect))?;
+            let l_i = self.spawned.iter().position(|(_, rect)| l_con(rect))?;
+            let r_i = self.spawned.iter().position(|(_, rect)| r_con(rect))?;
 
-            let [(l_rect, ..), (r_rect, ..)] = self.spawned.get_disjoint_mut([l_i, r_i]).ok()?;
+            let [(_, l_rect), (_, r_rect)] = self.spawned.get_disjoint_mut([l_i, r_i]).ok()?;
             Some((l_rect, r_rect))
         }
     }
+}
 
-    fn spawn_on_text(&mut self, id: SpawnId, specs: SpawnSpecs, cache: PrintInfo) -> AreaId {
-        let (rect, cons) =
-            Rect::new_spawned_on_text(&self.printer, id, self.main.frame(), cache, specs);
-        let rect_id = rect.id();
-
-        self.spawned
-            .push((rect, Some((id, specs.orientation)), cons));
-
-        rect_id
-    }
+/// A listed main spawned [`Rect`]
+struct SpawnInfo {
+    id: SpawnId,
+    orientation: Orientation,
+    cons: Constraints,
 }
 
 /// A list of [`Constraint`] for [`Rect`]s to follow.
@@ -652,12 +716,13 @@ impl Constraints {
         }
     }
 
+    /// Replaces the inner elements of the `Constraints`
     pub fn replace(
-        mut self,
+        &mut self,
         width: Option<f32>,
         height: Option<f32>,
         is_hidden: Option<bool>,
-    ) -> (Self, impl Iterator<Item = Constraint>) {
+    ) -> Vec<Constraint> {
         let hor_con = self.hor_con.take();
         let ver_con = self.ver_con.take();
         // A replacement means manual constraining, which is prioritized.
@@ -666,21 +731,20 @@ impl Constraints {
         self.height = height.map(|h| (h, true)).or(self.height);
         self.is_hidden = is_hidden.unwrap_or(self.is_hidden);
 
-        (self, hor_con.into_iter().chain(ver_con))
+        hor_con.into_iter().chain(ver_con).collect()
     }
 
     /// Reuses [`self`] in order to constrain a new child
-    pub fn apply(
-        self,
-        rect: &Rect,
-        parent: Option<&Rect>,
-    ) -> (Self, impl Iterator<Item = Constraint>) {
+    pub fn apply(&mut self, rect: &Rect, parent: Option<&Rect>) -> Vec<Constraint> {
         let constraints = [self.width, self.height];
         let [ver_con, hor_con] =
             get_cons(constraints, rect, self.is_hidden, rect.is_spawned(), parent);
         let new_eqs = ver_con.clone().into_iter().chain(hor_con.clone());
 
-        (Self { ver_con, hor_con, ..self }, new_eqs)
+        self.ver_con = ver_con;
+        self.hor_con = hor_con;
+
+        new_eqs.collect()
     }
 
     pub fn drain(&mut self) -> impl Iterator<Item = Constraint> {
@@ -733,11 +797,61 @@ fn get_cons(
     }
 }
 
-fn remove_children(rect: &mut Rect, p: &Printer) {
-    for (child, _) in rect.children_mut().into_iter().flat_map(|c| c.iter_mut()) {
-        p.remove_rect(child);
-        remove_children(child, p);
+/// Removes every [`Rect`] that's considered a "dependant" of this one
+///
+/// Returns the list of [`AreaId`]s that were removed by this action.
+///
+/// A `Rect` is considered dependant if it is a child of the removed
+/// `Rect` or if it was spawned on it. This functions recurses until
+/// all dependants of all removed `Rect`s are removed.
+fn remove_dependents(
+    rect: &mut Rect,
+    spawned: &mut Vec<(SpawnInfo, Rect)>,
+    p: &Printer,
+) -> Vec<AreaId> {
+    let mut rm = Vec::new();
+
+    let vars = {
+        let [tl, br] = rect.var_points();
+        [tl.x(), tl.y(), br.x(), br.y()]
+    };
+
+    let rm_spawned: Vec<(SpawnInfo, Rect)> = spawned
+        .extract_if(.., |(info, _)| {
+            let (_, tl, br) = p.get_spawned_info(info.id).unwrap();
+
+            if tl
+                .iter()
+                .chain(br.iter())
+                .any(|expr| expr.terms.iter().any(|term| vars.contains(&term.variable)))
+            {
+                p.remove_spawn_info(info.id);
+                true
+            } else {
+                false
+            }
+        })
+        .collect();
+
+    for (mut info, mut rect) in rm_spawned {
+        rm.push(rect.id());
+
+        p.remove_rect(&mut rect);
+        p.remove_eqs(info.cons.drain());
+
+        remove_dependents(&mut rect, spawned, p);
     }
+
+    for (rect, cons) in rect.children_mut().into_iter().flat_map(|c| c.iter_mut()) {
+        rm.push(rect.id());
+
+        p.remove_rect(rect);
+        p.remove_eqs(cons.drain());
+
+        remove_dependents(rect, spawned, p);
+    }
+
+    rm
 }
 
 /// The priority for edges for areas that must not overlap

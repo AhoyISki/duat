@@ -182,13 +182,13 @@ pub(crate) fn reset_to_file<U: Ui>(path_kind: PathKind, switch_window: bool) {
 
 /// Switches to a certain widget
 pub(super) fn switch_widget<U: Ui>(pa: &mut Pass, node: Node<U>) {
-    let cur_widget = context::cur_widget::<U>(pa).unwrap();
+    let cur_widget = context::cur_widget::<U>(pa);
     unsafe { BEFORE_EXIT.get() }.replace(|_| {})(pa);
 
     let handle = node.handle().clone();
     cur_widget.node(pa).on_unfocus(pa, handle);
 
-    context::set_cur(pa, node.try_downcast(), node.clone());
+    context::set_current_node(pa, node.try_downcast(), node.clone());
 
     node.on_focus(pa, cur_widget.node(pa).handle().clone());
 }

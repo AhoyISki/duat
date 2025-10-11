@@ -174,9 +174,9 @@ impl ui::Ui for Ui {
 
     fn new_spawned(
         ms: &'static Self::MetaStatics,
-        cache: <Self::Area as ui::Area>::Cache,
-        specs: ui::SpawnSpecs,
         id: duat_core::text::SpawnId,
+        specs: ui::SpawnSpecs,
+        cache: <Self::Area as ui::Area>::Cache,
         win: usize,
     ) -> Self::Area {
         let ms = ms.lock().unwrap();

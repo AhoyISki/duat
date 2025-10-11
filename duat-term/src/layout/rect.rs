@@ -8,11 +8,13 @@ use duat_core::{
     text::SpawnId,
     ui::{
         Axis::{self, *},
-        Orientation, PushSpecs, SpawnSpecs,
+        PushSpecs, SpawnSpecs,
     },
 };
 
-use super::{Constraints, EDGE_PRIO, FRAME_PRIO, Layout, SPAWN_ALIGN_PRIO, SPAWN_POS_PRIO};
+use super::{
+    Constraints, EDGE_PRIO, FRAME_PRIO, Layout, SPAWN_ALIGN_PRIO, SPAWN_POS_PRIO, SpawnInfo,
+};
 use crate::{
     AreaId, Equality, Frame,
     area::PrintInfo,
@@ -39,7 +41,7 @@ pub struct Rect {
     id: AreaId,
     tl: VarPoint,
     br: VarPoint,
-    eqs: Vec<Equality>,
+    con_list: Vec<Equality>,
     is_spawned: bool,
     kind: Kind,
     on_files: bool,
@@ -52,13 +54,13 @@ impl Rect {
     pub fn new_main(p: &Printer, frame: Frame, cache: PrintInfo) -> Self {
         let mut main = Rect::new(p, true, Kind::Leaf(Cell::new(cache)), false, frame);
 
-        main.eqs.extend([
+        main.con_list.extend([
             main.tl.x() | EQ(EDGE_PRIO) | 0.0,
             main.tl.y() | EQ(EDGE_PRIO) | 0.0,
             main.br.x() | EQ(EDGE_PRIO) | p.max().x(),
             main.br.y() | EQ(EDGE_PRIO) | p.max().y(),
         ]);
-        p.add_eqs(main.eqs.clone());
+        p.add_eqs(main.con_list.clone());
 
         main
     }
@@ -81,7 +83,7 @@ impl Rect {
             Axis::Vertical => specs.height,
         };
 
-        let ([center, len], tl) = p.new_text_spawned(
+        let ([center, len], tl) = p.new_text_spawn(
             id,
             len,
             specs.orientation.axis(),
@@ -105,12 +107,13 @@ impl Rect {
     /// can't be found within this one.
     pub fn new_spawned_on_widget(
         &mut self,
+        id: SpawnId,
         specs: SpawnSpecs,
-        id: AreaId,
+        target: AreaId,
         p: &Printer,
         info: PrintInfo,
     ) -> Option<(Rect, Constraints)> {
-        let parent = self.get(id)?;
+        let target = self.get(target)?;
         let mut rect = Rect::new(p, false, Kind::end(info), true, self.frame);
 
         // Left/bottom, center, right/top, above/left, below/right strengths
@@ -119,8 +122,9 @@ impl Rect {
             Axis::Vertical => specs.height,
         };
 
-        let [center, len] = p.new_widget_spawned(
-            [parent.tl, parent.br],
+        let [center, len] = p.new_widget_spawn(
+            id,
+            [target.tl, target.br],
             len,
             specs.orientation.axis(),
             specs.orientation.prefers_before(),
@@ -135,7 +139,7 @@ impl Rect {
         );
 
         let dims = [specs.width, specs.height];
-        let cons = Constraints::new(p, dims, specs.hidden, self, Some(parent));
+        let cons = Constraints::new(p, dims, specs.hidden, self, Some(target));
 
         Some((rect, cons))
     }
@@ -145,16 +149,17 @@ impl Rect {
     /// This is used to prepare a new parent `Rect` to take the spot
     /// and father an existing one, which will then be used to push a
     /// new `Rect`h into the parent `Rect`'s lineage.
-    pub fn new_parent_for(
+    pub(super) fn new_parent_for(
         &mut self,
         p: &Printer,
         id: AreaId,
         axis: Axis,
         do_cluster: bool,
         on_files: bool,
-        spawned_info: Option<(&mut Constraints, (SpawnId, Orientation))>,
+        spawn_info: Option<&mut SpawnInfo>,
     ) -> bool {
         let frame = self.frame;
+        let do_cluster = do_cluster || self.is_spawned;
 
         let is_spawned = self.is_spawned;
         let (mut child, cons, parent_id) = if let Some((i, orig)) = self.get_parent_mut(id) {
@@ -185,25 +190,25 @@ impl Rect {
             let mut parent = Rect::new(p, on_files, kind, is_spawned, frame);
             let parent_id = parent.id;
 
-            if let Some((cons, (id, orientation))) =
-                spawned_info.map(|(cons, info)| (std::mem::take(cons), info))
-            {
-                let specs = SpawnSpecs { orientation, .. };
-                p.remove_cons(self.drain_cons());
+            if let Some(info) = spawn_info {
+                let cons = std::mem::take(&mut info.cons);
+                let specs = SpawnSpecs { orientation: info.orientation, .. };
 
-                let (deps, tl, br) = p.get_spawned_info(id).unwrap();
+                p.add_eqs(info.cons.apply(&parent, None));
+
+                let (deps, tl, br) = p.get_spawned_info(info.id).unwrap();
 
                 parent.set_spawned_eqs(p, specs, deps, tl, br);
 
                 (std::mem::replace(self, parent), Some(cons), parent_id)
             } else {
-                parent.eqs.extend([
+                parent.con_list.extend([
                     parent.tl.x() | EQ(EDGE_PRIO) | 0.0,
                     parent.tl.y() | EQ(EDGE_PRIO) | 0.0,
                     parent.br.x() | EQ(EDGE_PRIO) | p.max().x(),
                     parent.br.y() | EQ(EDGE_PRIO) | p.max().y(),
                 ]);
-                p.add_eqs(parent.eqs.clone());
+                p.add_eqs(parent.con_list.clone());
 
                 (std::mem::replace(self, parent), None, parent_id)
             }
@@ -213,11 +218,12 @@ impl Rect {
 
         let parent = self.get(parent_id).unwrap();
         let cons = match cons.map(|mut cons| {
-            p.remove_cons(cons.drain());
-            cons.apply(&child, Some(parent))
+            p.remove_eqs(cons.drain());
+            let removed = cons.apply(&child, Some(parent));
+            (cons, removed)
         }) {
-            Some((cons, eqs)) => {
-                p.add_eqs(eqs);
+            Some((cons, removed)) => {
+                p.add_eqs(removed);
                 cons
             }
             None => Constraints::default(),
@@ -239,7 +245,7 @@ impl Rect {
             id: AreaId::new(),
             tl,
             br,
-            eqs: Vec::new(),
+            con_list: Vec::new(),
             is_spawned,
             kind,
             on_files,
@@ -255,14 +261,14 @@ impl Rect {
     /// This assumes that there is a parent for the given `Rect`,
     /// returning [`None`] if that's not the case. You should call
     /// [`Rect::new_parent_for`], if that wasn't the case before.
-    pub fn push(
+    pub(super) fn push(
         &mut self,
         p: &Printer,
         specs: PushSpecs,
         id: AreaId,
         on_files: bool,
         info: PrintInfo,
-        spawned_cons: Option<(&mut Constraints, (SpawnId, Orientation))>,
+        spawn_info: Option<&mut SpawnInfo>,
     ) -> Option<(AreaId, Option<AreaId>)> {
         let axis = specs.axis();
 
@@ -308,7 +314,7 @@ impl Rect {
         // If all else fails, create a new parent to hold both `self`
         // and the new area.
         } else {
-            self.new_parent_for(p, id, axis, specs.cluster, on_files, spawned_cons);
+            self.new_parent_for(p, id, axis, specs.cluster, on_files, spawn_info);
             let (_, parent) = self.get_parent(id).unwrap();
 
             (id, Some(parent.id()))
@@ -347,6 +353,9 @@ impl Rect {
         let entry = (rect_to_fix, cons_to_fix);
         parent.children_mut().unwrap().insert(i, entry);
 
+        // Spawned
+        if let Some(info) = spawn_info {}
+
         Some((new_id, new_parent_id))
     }
 
@@ -354,20 +363,21 @@ impl Rect {
     ///
     /// This can fail (returning [`None`]) if the `Rect` in question
     /// can't be found within this one.
-    pub fn delete(
-        &mut self,
-        p: &Printer,
-        id: AreaId,
-    ) -> Option<(Rect, Constraints, Option<AreaId>)> {
+    ///
+    /// Returns `Some(None)` if the `Rect` is the main one.
+    pub fn delete(&mut self, p: &Printer, id: AreaId) -> Option<Deletion> {
         let frame = self.frame;
 
-        let id = self.get_cluster_master(id)?;
-        let (i, parent) = self.get_parent_mut(id)?;
+        // Early return if not in here.
+        self.get(id)?;
+        let Some((i, parent)) = self.get_parent_mut(id) else {
+            return Some(Deletion::Main);
+        };
 
         let (mut rm_rect, rm_cons) = parent.children_mut().unwrap().remove(i);
         p.remove_rect(&mut rm_rect);
 
-        let (i, parent, rm_parent_id) = if parent.children().unwrap().len() == 1 {
+        let (i, parent) = if parent.children().unwrap().len() == 1 {
             let parent_id = parent.id();
             let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
             let (i, grandparent) = self.get_parent_mut(parent_id)?;
@@ -379,9 +389,9 @@ impl Rect {
             rect.set_pushed_eqs(i, grandparent, p, frame, is_resizable, None);
             grandparent.children_mut().unwrap().insert(i, (rect, cons));
 
-            (i, grandparent, Some(parent_id))
+            (i, grandparent)
         } else {
-            (i, parent, None)
+            (i, parent)
         };
 
         let (i, (mut rect_to_fix, cons)) = if i == 0 {
@@ -389,13 +399,14 @@ impl Rect {
         } else {
             (i - 1, parent.children_mut().unwrap().remove(i - 1))
         };
+
         let axis = parent.kind.axis().unwrap();
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
         rect_to_fix.set_pushed_eqs(i, parent, p, frame, is_resizable, None);
         let entry = (rect_to_fix, cons);
         parent.children_mut().unwrap().insert(i, entry);
 
-        Some((rm_rect, rm_cons, rm_parent_id))
+        Some(Deletion::Child(rm_rect, rm_cons))
     }
 
     /// Swaps two given [`Rect`]s
@@ -469,7 +480,7 @@ impl Rect {
         let entry = (rect_to_fix, cons);
         parent0.children_mut().unwrap().insert(i, entry);
 
-        p.remove_cons(old_eqs);
+        p.remove_eqs(old_eqs);
         constrain_areas(to_constrain.unwrap(), self, p);
 
         true
@@ -503,13 +514,13 @@ impl Rect {
             parent.children_mut().unwrap().insert(i, entry);
         } else if id == self.id {
             let old_eqs: Vec<Equality> = self.drain_cons().collect();
-            self.eqs.extend([
+            self.con_list.extend([
                 self.tl.x() | EQ(EDGE_PRIO) | 0.0,
                 self.tl.y() | EQ(EDGE_PRIO) | 0.0,
                 self.br.x() | EQ(EDGE_PRIO) | p.max().x(),
                 self.br.y() | EQ(EDGE_PRIO) | p.max().y(),
             ]);
-            p.replace(old_eqs, self.eqs.clone());
+            p.replace(old_eqs, self.con_list.clone());
 
             if let Kind::Branch { children, axis, .. } = &mut self.kind {
                 let axis = *axis;
@@ -550,22 +561,22 @@ impl Rect {
         }
         let axis = parent.kind.axis().unwrap();
 
-        p.remove_cons(self.drain_cons());
+        p.remove_eqs(self.drain_cons());
         if let Some(width) = self.edge.take() {
             p.remove_edge(width);
         }
 
-        self.eqs.extend([
+        self.con_list.extend([
             self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
             self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
         ]);
 
         if i == 0 {
-            self.eqs
+            self.con_list
                 .push(self.start(axis) | EQ(EDGE_PRIO) | parent.start(axis));
         }
 
-        self.eqs.extend([
+        self.con_list.extend([
             self.start(axis.perp()) | EQ(EDGE_PRIO) | parent.start(axis.perp()),
             self.end(axis.perp()) | EQ(EDGE_PRIO) | parent.end(axis.perp()),
         ]);
@@ -582,7 +593,7 @@ impl Rect {
                 .iter()
                 .find(|(child, cons)| child.is_resizable_on(axis, cons))
         {
-            self.eqs
+            self.con_list
                 .push(self.len(axis) | EQ(EQ_LEN_PRIO) | res.len(axis));
         }
 
@@ -595,7 +606,7 @@ impl Rect {
 
             if edge == 1.0 && !*clustered {
                 let width = p.set_edge(self.br, next.tl, axis, fr);
-                self.eqs.extend([
+                self.con_list.extend([
                     width | EQ(FRAME_PRIO) | 1.0,
                     (self.end(axis) + width) | EQ(EDGE_PRIO) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
@@ -607,11 +618,11 @@ impl Rect {
                 ]);
                 self.edge = Some(width);
             } else {
-                self.eqs
+                self.con_list
                     .push(self.end(axis) | EQ(EDGE_PRIO) | next.start(axis));
             }
         } else {
-            self.eqs
+            self.con_list
                 .push(self.end(axis) | EQ(EDGE_PRIO) | parent.end(axis));
         }
 
@@ -628,7 +639,7 @@ impl Rect {
             }
         }
 
-        p.add_eqs(self.eqs.clone());
+        p.add_eqs(self.con_list.clone());
 
         to_constrain
     }
@@ -654,7 +665,7 @@ impl Rect {
             Axis::Vertical => [self.tl.y(), self.br.y()],
         };
 
-        self.eqs.extend([
+        self.con_list.extend([
             self.tl.x() | GE(EDGE_PRIO) | 0.0,
             self.tl.y() | GE(EDGE_PRIO) | 0.0,
             self.br.x() | LE(EDGE_PRIO) | p.max().x(),
@@ -676,19 +687,19 @@ impl Rect {
             HorBottomLeft | HorBottomRight => self.br.y() | EQ(SPAWN_ALIGN_PRIO) | br_y,
         };
 
-        self.eqs.extend([
+        self.con_list.extend([
             align_eq,
             ends[0] | EQ(SPAWN_POS_PRIO) | (center - len / 2.0),
             ends[1] | EQ(SPAWN_POS_PRIO) | (center + len / 2.0),
         ]);
 
-        p.add_eqs(self.eqs.clone());
+        p.add_eqs(self.con_list.clone());
         p.update(false, true);
     }
 
     /// Removes all [`Equality`]s which define [`self`]
     pub fn drain_cons(&mut self) -> impl Iterator<Item = Equality> {
-        self.eqs.drain(..)
+        self.con_list.drain(..)
     }
 
     /////////// Rect getters
@@ -999,8 +1010,7 @@ fn constrain_areas(to_constrain: Vec<AreaId>, main: &mut Rect, p: &Printer) {
         let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
         old_eqs.extend(cons.drain());
 
-        let (cons, eqs) = cons.apply(&rect, Some(parent));
-        new_eqs.extend(eqs);
+        new_eqs.extend(cons.apply(&rect, Some(parent)));
 
         let parent_id = parent.id;
         let parent = main.get_mut(parent_id).unwrap();
@@ -1020,4 +1030,9 @@ pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &mut Rect) {
     } else {
         to_p.insert_rect_vars(vars);
     }
+}
+
+pub enum Deletion {
+    Main,
+    Child(Rect, Constraints),
 }
