@@ -274,10 +274,15 @@ impl ui::Area for Area {
         ))
     }
 
-    fn delete(area: MutArea<Self>) -> Option<Self> {
-        area.layouts
-            .delete(area.id)
-            .map(|id| Self::new(id, area.layouts.clone()))
+    fn delete(area: MutArea<Self>) -> (bool, Vec<Self>) {
+        let (do_rm_window, rm_areas) = area.layouts.delete(area.id);
+        (
+            do_rm_window,
+            rm_areas
+                .into_iter()
+                .map(|id| Self::new(id, area.layouts.clone()))
+                .collect(),
+        )
     }
 
     fn swap(lhs: MutArea<Self>, rhs: &Self) -> bool {

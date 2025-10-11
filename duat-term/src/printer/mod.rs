@@ -157,7 +157,7 @@ impl Printer {
         self.sync_solver
             .lock()
             .unwrap()
-            .remove_eqs(rect.drain_cons());
+            .remove_eqs(rect.drain_eqs());
 
         let mut vars = self.vars.lock().unwrap();
         let [tl, br] = rect.var_points();

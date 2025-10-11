@@ -221,7 +221,7 @@ impl<U: Ui> StatusLineBuilder<U> {
         let specs = self.specs;
         let status_line = StatusLine::new(self, match push_target.try_downcast() {
             Some(handle) => FileHandle::Fixed(handle),
-            None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
+            None => FileHandle::Dynamic(context::dyn_file(pa)),
         });
 
         push_target.push_outer(pa, status_line, specs)

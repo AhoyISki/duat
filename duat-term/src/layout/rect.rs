@@ -41,7 +41,7 @@ pub struct Rect {
     id: AreaId,
     tl: VarPoint,
     br: VarPoint,
-    con_list: Vec<Equality>,
+    eqs: Vec<Equality>,
     is_spawned: bool,
     kind: Kind,
     on_files: bool,
@@ -54,13 +54,13 @@ impl Rect {
     pub fn new_main(p: &Printer, frame: Frame, cache: PrintInfo) -> Self {
         let mut main = Rect::new(p, true, Kind::Leaf(Cell::new(cache)), false, frame);
 
-        main.con_list.extend([
+        main.eqs.extend([
             main.tl.x() | EQ(EDGE_PRIO) | 0.0,
             main.tl.y() | EQ(EDGE_PRIO) | 0.0,
             main.br.x() | EQ(EDGE_PRIO) | p.max().x(),
             main.br.y() | EQ(EDGE_PRIO) | p.max().y(),
         ]);
-        p.add_eqs(main.con_list.clone());
+        p.add_eqs(main.eqs.clone());
 
         main
     }
@@ -156,7 +156,7 @@ impl Rect {
         axis: Axis,
         do_cluster: bool,
         on_files: bool,
-        spawn_info: Option<&mut SpawnInfo>,
+        spawn_info: &mut Option<&mut SpawnInfo>,
     ) -> bool {
         let frame = self.frame;
         let do_cluster = do_cluster || self.is_spawned;
@@ -202,13 +202,13 @@ impl Rect {
 
                 (std::mem::replace(self, parent), Some(cons), parent_id)
             } else {
-                parent.con_list.extend([
+                parent.eqs.extend([
                     parent.tl.x() | EQ(EDGE_PRIO) | 0.0,
                     parent.tl.y() | EQ(EDGE_PRIO) | 0.0,
                     parent.br.x() | EQ(EDGE_PRIO) | p.max().x(),
                     parent.br.y() | EQ(EDGE_PRIO) | p.max().y(),
                 ]);
-                p.add_eqs(parent.con_list.clone());
+                p.add_eqs(parent.eqs.clone());
 
                 (std::mem::replace(self, parent), None, parent_id)
             }
@@ -245,7 +245,7 @@ impl Rect {
             id: AreaId::new(),
             tl,
             br,
-            con_list: Vec::new(),
+            eqs: Vec::new(),
             is_spawned,
             kind,
             on_files,
@@ -268,7 +268,7 @@ impl Rect {
         id: AreaId,
         on_files: bool,
         info: PrintInfo,
-        spawn_info: Option<&mut SpawnInfo>,
+        mut spawn_info: Option<&mut SpawnInfo>,
     ) -> Option<(AreaId, Option<AreaId>)> {
         let axis = specs.axis();
 
@@ -314,7 +314,7 @@ impl Rect {
         // If all else fails, create a new parent to hold both `self`
         // and the new area.
         } else {
-            self.new_parent_for(p, id, axis, specs.cluster, on_files, spawn_info);
+            self.new_parent_for(p, id, axis, specs.cluster, on_files, &mut spawn_info);
             let (_, parent) = self.get_parent(id).unwrap();
 
             (id, Some(parent.id()))
@@ -365,31 +365,56 @@ impl Rect {
     /// can't be found within this one.
     ///
     /// Returns `Some(None)` if the `Rect` is the main one.
-    pub fn delete(&mut self, p: &Printer, id: AreaId) -> Option<Deletion> {
+    pub fn delete(&mut self, p: &Printer, target_id: AreaId) -> Option<Deletion> {
         let frame = self.frame;
+        let cluster_id = self.get_cluster_master(target_id)?;
 
-        // Early return if not in here.
-        self.get(id)?;
-        let Some((i, parent)) = self.get_parent_mut(id) else {
+        let Some((i, parent)) = self.get_parent_mut(cluster_id) else {
             return Some(Deletion::Main);
         };
+
+        let mut rm_list = Vec::new();
 
         let (mut rm_rect, rm_cons) = parent.children_mut().unwrap().remove(i);
         p.remove_rect(&mut rm_rect);
 
         let (i, parent) = if parent.children().unwrap().len() == 1 {
+            rm_list.push(parent.id());
+
             let parent_id = parent.id();
             let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
-            let (i, grandparent) = self.get_parent_mut(parent_id)?;
-            let (mut rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
-            p.remove_rect(&mut rm_parent);
 
-            let axis = grandparent.kind.axis().unwrap();
-            let is_resizable = rect.is_resizable_on(axis, &cons);
-            rect.set_pushed_eqs(i, grandparent, p, frame, is_resizable, None);
-            grandparent.children_mut().unwrap().insert(i, (rect, cons));
+            if let Some((i, grandparent)) = self.get_parent_mut(parent_id) {
+                let (mut rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
+                p.remove_rect(&mut rm_parent);
 
-            (i, grandparent)
+                let axis = grandparent.kind.axis().unwrap();
+                let is_resizable = rect.is_resizable_on(axis, &cons);
+                rect.set_pushed_eqs(i, grandparent, p, frame, is_resizable, None);
+                grandparent.children_mut().unwrap().insert(i, (rect, cons));
+                (i, grandparent)
+            } else {
+                // In this case, self is the parent of the cluster, so swap it
+                if let Some(edge) = rect.edge.take() {
+                    p.remove_edge(edge)
+                }
+                
+                // Since all spawned widgets are clustered, this must be the main
+                // Area.
+                p.remove_eqs(rect.drain_eqs());
+                rect.eqs.extend([
+                    rect.tl.x() | EQ(EDGE_PRIO) | 0.0,
+                    rect.tl.y() | EQ(EDGE_PRIO) | 0.0,
+                    rect.br.x() | EQ(EDGE_PRIO) | p.max().x(),
+                    rect.br.y() | EQ(EDGE_PRIO) | p.max().y(),
+                ]);
+                p.add_eqs(rect.eqs.clone());
+
+                let mut old_self = std::mem::replace(self, rect);
+                p.remove_rect(&mut old_self);
+
+                return Some(Deletion::Child(rm_rect, rm_cons, rm_list));
+            }
         } else {
             (i, parent)
         };
@@ -406,7 +431,7 @@ impl Rect {
         let entry = (rect_to_fix, cons);
         parent.children_mut().unwrap().insert(i, entry);
 
-        Some(Deletion::Child(rm_rect, rm_cons))
+        Some(Deletion::Child(rm_rect, rm_cons, rm_list))
     }
 
     /// Swaps two given [`Rect`]s
@@ -513,14 +538,14 @@ impl Rect {
             let entry = (rect_to_fix, cons);
             parent.children_mut().unwrap().insert(i, entry);
         } else if id == self.id {
-            let old_eqs: Vec<Equality> = self.drain_cons().collect();
-            self.con_list.extend([
+            let old_eqs: Vec<Equality> = self.drain_eqs().collect();
+            self.eqs.extend([
                 self.tl.x() | EQ(EDGE_PRIO) | 0.0,
                 self.tl.y() | EQ(EDGE_PRIO) | 0.0,
                 self.br.x() | EQ(EDGE_PRIO) | p.max().x(),
                 self.br.y() | EQ(EDGE_PRIO) | p.max().y(),
             ]);
-            p.replace(old_eqs, self.con_list.clone());
+            p.replace(old_eqs, self.eqs.clone());
 
             if let Kind::Branch { children, axis, .. } = &mut self.kind {
                 let axis = *axis;
@@ -561,22 +586,22 @@ impl Rect {
         }
         let axis = parent.kind.axis().unwrap();
 
-        p.remove_eqs(self.drain_cons());
-        if let Some(width) = self.edge.take() {
-            p.remove_edge(width);
+        p.remove_eqs(self.drain_eqs());
+        if let Some(edge) = self.edge.take() {
+            p.remove_edge(edge);
         }
 
-        self.con_list.extend([
+        self.eqs.extend([
             self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
             self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
         ]);
 
         if i == 0 {
-            self.con_list
+            self.eqs
                 .push(self.start(axis) | EQ(EDGE_PRIO) | parent.start(axis));
         }
 
-        self.con_list.extend([
+        self.eqs.extend([
             self.start(axis.perp()) | EQ(EDGE_PRIO) | parent.start(axis.perp()),
             self.end(axis.perp()) | EQ(EDGE_PRIO) | parent.end(axis.perp()),
         ]);
@@ -593,7 +618,7 @@ impl Rect {
                 .iter()
                 .find(|(child, cons)| child.is_resizable_on(axis, cons))
         {
-            self.con_list
+            self.eqs
                 .push(self.len(axis) | EQ(EQ_LEN_PRIO) | res.len(axis));
         }
 
@@ -606,7 +631,7 @@ impl Rect {
 
             if edge == 1.0 && !*clustered {
                 let width = p.set_edge(self.br, next.tl, axis, fr);
-                self.con_list.extend([
+                self.eqs.extend([
                     width | EQ(FRAME_PRIO) | 1.0,
                     (self.end(axis) + width) | EQ(EDGE_PRIO) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
@@ -618,11 +643,11 @@ impl Rect {
                 ]);
                 self.edge = Some(width);
             } else {
-                self.con_list
+                self.eqs
                     .push(self.end(axis) | EQ(EDGE_PRIO) | next.start(axis));
             }
         } else {
-            self.con_list
+            self.eqs
                 .push(self.end(axis) | EQ(EDGE_PRIO) | parent.end(axis));
         }
 
@@ -639,7 +664,7 @@ impl Rect {
             }
         }
 
-        p.add_eqs(self.con_list.clone());
+        p.add_eqs(self.eqs.clone());
 
         to_constrain
     }
@@ -665,7 +690,7 @@ impl Rect {
             Axis::Vertical => [self.tl.y(), self.br.y()],
         };
 
-        self.con_list.extend([
+        self.eqs.extend([
             self.tl.x() | GE(EDGE_PRIO) | 0.0,
             self.tl.y() | GE(EDGE_PRIO) | 0.0,
             self.br.x() | LE(EDGE_PRIO) | p.max().x(),
@@ -687,19 +712,19 @@ impl Rect {
             HorBottomLeft | HorBottomRight => self.br.y() | EQ(SPAWN_ALIGN_PRIO) | br_y,
         };
 
-        self.con_list.extend([
+        self.eqs.extend([
             align_eq,
             ends[0] | EQ(SPAWN_POS_PRIO) | (center - len / 2.0),
             ends[1] | EQ(SPAWN_POS_PRIO) | (center + len / 2.0),
         ]);
 
-        p.add_eqs(self.con_list.clone());
+        p.add_eqs(self.eqs.clone());
         p.update(false, true);
     }
 
     /// Removes all [`Equality`]s which define [`self`]
-    pub fn drain_cons(&mut self) -> impl Iterator<Item = Equality> {
-        self.con_list.drain(..)
+    pub fn drain_eqs(&mut self) -> impl Iterator<Item = Equality> {
+        self.eqs.drain(..)
     }
 
     /////////// Rect getters
@@ -1034,5 +1059,5 @@ pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &mut Rect) {
 
 pub enum Deletion {
     Main,
-    Child(Rect, Constraints),
+    Child(Rect, Constraints, Vec<AreaId>),
 }

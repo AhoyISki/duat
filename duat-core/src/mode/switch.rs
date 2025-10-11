@@ -11,10 +11,9 @@ use super::Mode;
 use crate::{
     context::{self, Handle},
     data::Pass,
-    file::{File, PathKind},
+    file::File,
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
-    session::DuatEvent,
     ui::{Node, Ui, Widget},
     utils::duat_name,
 };
@@ -118,7 +117,7 @@ pub fn reset<W: Widget<U>, U: Ui>() {
 }
 
 /// Resets to the default [`Mode`] of the given [`Widget`], on a
-/// given [`Handle<W, U>`]
+/// given [`Handle`]
 pub fn reset_to<U: Ui>(handle: Handle<dyn Widget<U>, U>) {
     let reset_modes = RESET_MODES.lock().unwrap();
 
@@ -138,46 +137,13 @@ pub fn reset_to<U: Ui>(handle: Handle<dyn Widget<U>, U>) {
                 switch_widget(pa, node);
                 (RESET_MODES.lock().unwrap()[i].1)(pa)
             } else {
-                context::error!("The Handle in question is no longer in use");
+                context::error!("The Handle was already closed");
                 false
             }
         }));
-    } else if handle.widget().type_id() == TypeId::of::<File<U>>() {
-        panic!("Something went terribly wrong, somehow");
     } else {
         context::error!("There is no default [a]Mode[] set for the [a]Widget",);
     };
-}
-
-/// Switches to the [`File`] with the given name
-pub(crate) fn reset_to_file<U: Ui>(path_kind: PathKind, switch_window: bool) {
-    *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
-        match context::windows::<U>().file_entry(pa, path_kind) {
-            Ok((win, _, handle)) => {
-                if win != context::cur_window() && switch_window {
-                    crate::context::sender()
-                        .send(DuatEvent::SwitchWindow(win))
-                        .unwrap();
-                }
-
-                if let Some((_, f)) = RESET_MODES
-                    .lock()
-                    .unwrap()
-                    .iter_mut()
-                    .find(|(ty, _)| *ty == TypeId::of::<File<U>>())
-                {
-                    switch_widget(pa, Node::from_handle(handle));
-                    f(pa)
-                } else {
-                    panic!("Something went terribly wrong, somehow");
-                }
-            }
-            Err(err) => {
-                context::error!("{err}");
-                false
-            }
-        }
-    }))
 }
 
 /// Switches to a certain widget
@@ -188,7 +154,7 @@ pub(super) fn switch_widget<U: Ui>(pa: &mut Pass, node: Node<U>) {
     let handle = node.handle().clone();
     cur_widget.node(pa).on_unfocus(pa, handle);
 
-    context::set_current_node(pa, node.try_downcast(), node.clone());
+    context::set_current_node(pa, node.clone());
 
     node.on_focus(pa, cur_widget.node(pa).handle().clone());
 }
@@ -219,8 +185,7 @@ pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
 #[allow(clippy::await_holding_refcell_ref)]
 fn send_keys_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>) -> Option<ModeFn> {
     let handle = context::cur_widget::<U>(pa)
-        .map(|cw| cw.node(pa))
-        .unwrap()
+        .node(pa)
         .try_downcast()
         .unwrap();
 
@@ -251,12 +216,12 @@ fn send_keys_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>)
 /// Static dispatch function to set the [`Mode`]
 fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
     // If we are on the correct widget, no switch is needed.
-    if context::cur_widget::<U>(pa).unwrap().type_id(pa) != TypeId::of::<M::Widget>() {
+    if context::cur_widget::<U>(pa).type_id(pa) != TypeId::of::<M::Widget>() {
         let node = {
             let windows = context::windows();
-            let w = context::cur_window();
+            let w = context::cur_window::<U>(pa);
             if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
-                let pk = context::fixed_file::<U>(pa).unwrap().read(pa).path_kind();
+                let pk = context::cur_file::<U>(pa).read(pa).path_kind();
                 windows
                     .file_entry(pa, pk)
                     .map(|(.., handle)| Node::from_handle(handle))
@@ -278,7 +243,7 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
         unsafe { BEFORE_EXIT.get() }.borrow_mut()(pa);
     }
 
-    let wid = context::cur_widget::<U>(pa).unwrap();
+    let wid = context::cur_widget::<U>(pa);
 
     let handle = wid
         .mutate_data_as(pa, |handle: &Handle<M::Widget, U>| handle.clone())
@@ -313,7 +278,7 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
 /// Static dispatch function to use before exiting a given
 /// [`Mode`]
 fn before_exit_fn<M: Mode<U>, U: Ui>(pa: &mut Pass) {
-    let wid = context::cur_widget(pa).unwrap();
+    let wid = context::cur_widget(pa);
 
     let handle = wid
         .mutate_data_as(pa, |handle: &Handle<M::Widget, U>| handle.clone())

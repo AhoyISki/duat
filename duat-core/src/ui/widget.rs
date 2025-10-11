@@ -41,7 +41,7 @@ use std::sync::{Arc, Mutex};
 use super::{Area, Ui};
 use crate::{
     cfg::PrintCfg,
-    context::{Handle, WidgetRelation},
+    context::Handle,
     data::{Pass, RwData},
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
@@ -441,7 +441,7 @@ impl<U: Ui> Node<U> {
         Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new(""))))
     }
 
-	/// Returns a `Node` from an existing [`Handle`]
+    /// Returns a `Node` from an existing [`Handle`]
     pub(crate) fn from_handle<W: Widget<U>>(handle: Handle<W, U>) -> Self {
         Self {
             handle: handle.to_dyn(),
@@ -500,13 +500,6 @@ impl<U: Ui> Node<U> {
         &self.handle
     }
 
-    /// The [`Widget`]s that are related to this [`Widget`]
-    pub(crate) fn related_widgets(
-        &self,
-    ) -> &RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>> {
-        self.handle.related()
-    }
-
     ////////// Querying functions
 
     /// Wether the value within is `W`
@@ -528,6 +521,10 @@ impl<U: Ui> Node<U> {
 
     /// Updates and prints this [`Node`]
     pub(crate) fn update_and_print(&self, pa: &mut Pass, win: usize) {
+        if self.handle().is_closed(pa) {
+            return;
+        }
+
         (self.update)(pa);
 
         let (widget, area) = self.handle.write_with_area(pa);

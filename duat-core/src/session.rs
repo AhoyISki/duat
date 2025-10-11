@@ -89,22 +89,25 @@ impl<U: Ui> SessionCfg<U> {
 
         let mut layout = Some(self.layout);
 
-        for (win, mut rel_files) in files.into_iter().map(|rf| rf.into_iter()).enumerate() {
+        for mut rel_files in files.into_iter().map(|rf| rf.into_iter()) {
             let ReloadedFile { mut file, is_active } = rel_files.next().unwrap();
             *file.cfg() = *FILE_CFG.get().unwrap();
 
             if let Some(layout) = layout.take() {
                 Windows::initialize(pa, file, layout, ms);
             } else {
-                let handle = context::windows().new_window(pa, file);
+                let node = context::windows().new_window(pa, file);
                 if is_active {
-                    context::set_current_node(pa, handle.to_dyn());
+                    context::set_current_node(pa, node);
                 }
             }
 
             for ReloadedFile { mut file, is_active } in rel_files {
                 *file.cfg() = *FILE_CFG.get().unwrap();
-                session.open_file(pa, file, is_active, win);
+                let node = context::windows::<U>().new_file(pa, file);
+                if is_active {
+                    context::set_current_node(pa, node);
+                }
             }
         }
 
@@ -141,7 +144,7 @@ impl<U: Ui> Session<U> {
             while let Some(new_additions) = context::windows::<U>().get_additions(pa) {
                 U::flush_layout(ms);
 
-                let cur_win = context::cur_window();
+                let cur_win = context::cur_window::<U>(pa);
                 for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
                     node.update_and_print(pa, cur_win);
                 }
@@ -166,7 +169,7 @@ impl<U: Ui> Session<U> {
         let mut reprint_screen = false;
         let mut no_updates = 0;
         let mut windows_nodes = get_windows_nodes(pa);
-        let mut last_win = context::cur_window();
+        let mut last_win = context::cur_window::<U>(pa);
 
         U::flush_layout(self.ms);
 
@@ -259,7 +262,7 @@ impl<U: Ui> Session<U> {
                     }
                 }
             } else if reprint_screen {
-                let cur_win = context::cur_window();
+                let cur_win = context::cur_window::<U>(pa);
                 for node in windows_nodes.get(cur_win).unwrap() {
                     node.update_and_print(pa, cur_win);
                 }
@@ -271,9 +274,9 @@ impl<U: Ui> Session<U> {
             }
             no_updates += 1;
 
-            let cur_win = context::cur_window();
+            let cur_win = context::cur_window::<U>(pa);
             if cur_win == last_win {
-                for node in windows_nodes.get(context::cur_window()).unwrap() {
+                for node in windows_nodes.get(cur_win).unwrap() {
                     if node.needs_update(pa) {
                         no_updates = 0;
                         node.update_and_print(pa, cur_win);
@@ -325,17 +328,6 @@ impl<U: Ui> Session<U> {
                     .collect()
             })
             .collect()
-    }
-
-    fn open_file(&self, pa: &mut Pass, file: File<U>, is_active: bool, win: usize) {
-        let handle = context::windows::<U>().new_file(pa, file);
-        if is_active {
-            context::set_current_node(pa, node.try_downcast(), node.clone());
-            if context::cur_window() != win {
-                context::set_cur_window(win);
-                U::switch_window(self.ms, win);
-            }
-        }
     }
 }
 

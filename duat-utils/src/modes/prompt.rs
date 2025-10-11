@@ -447,7 +447,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*TAGGER, ..);
 
-        let handle = context::fixed_file::<U>(pa).unwrap();
+        let handle = context::cur_file::<U>(pa);
 
         if text == self.prev {
             return text;
@@ -486,7 +486,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     }
 
     fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
-        let handle = context::fixed_file::<U>(pa).unwrap();
+        let handle = context::cur_file::<U>(pa);
 
         self.orig = Some((
             handle.read(pa).selections().clone(),
@@ -591,7 +591,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return;
         };
 
-        let handle = context::fixed_file::<U>(pa).unwrap();
+        let handle = context::cur_file::<U>(pa);
         handle.edit_all(pa, |mut c| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))

@@ -9,7 +9,6 @@ pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
     data::{Pass, RwData},
     file::File,
-    text::{Text, txt},
     ui::{Node, Ui, Widget},
 };
 
@@ -76,8 +75,8 @@ mod global {
     /// always points to the current [`File`], see [`dyn_file`]
     ///
     /// [`File`]: crate::file::File
-    pub fn fixed_file<U: Ui>(pa: &Pass) -> Result<Handle<File<U>, U>, Text> {
-        cur_file(pa).fixed(pa)
+    pub fn cur_file<U: Ui>(pa: &Pass) -> Handle<File<U>, U> {
+        windows::<U>().current_file(pa).read(pa).clone()
     }
 
     /// Returns a "dynamic" [`Handle`] for the active [`File`]
@@ -85,16 +84,18 @@ mod global {
     /// This [`Handle`] will change to point to the current [`File`],
     /// whenever the user swicthes which [`File`] is active. If you
     /// want a [`Handle`] that will stay on the current [`File`], see
-    /// [`fixed_file`].
+    /// [`cur_file`].
     ///
     /// [`File`]: crate::file::File
-    pub fn dyn_file<U: Ui>(pa: &Pass) -> Result<DynFile<U>, Text> {
-        cur_file(pa).dynamic(pa)
+    pub fn dyn_file<U: Ui>(pa: &Pass) -> DynFile<U> {
+        let dyn_file = windows::<U>().current_file(pa);
+        let cur_file = RwData::new(dyn_file.read(pa).clone());
+        DynFile { dyn_file, cur_file }
     }
 
     /// The index of the currently active window
-    pub fn cur_window() -> usize {
-        CUR_WINDOW.load(Ordering::Relaxed)
+    pub fn cur_window<U: Ui>(pa: &Pass) -> usize {
+        windows::<U>().current_window(pa)
     }
 
     /// The current directory
@@ -177,7 +178,7 @@ mod global {
 /// [`read`]: DynFile::read
 /// [`write`]: DynFile::write
 pub struct DynFile<U: Ui> {
-    file: RwData<Handle<File<U>, U>>,
+    dyn_file: RwData<Handle<File<U>, U>>,
     cur_file: RwData<Handle<File<U>, U>>,
 }
 
@@ -188,7 +189,7 @@ impl<U: Ui> DynFile<U> {
         if self.cur_file.has_changed() {
             true
         } else {
-            self.file.read(pa).has_changed()
+            self.dyn_file.read(pa).has_changed()
         }
     }
 
@@ -198,13 +199,13 @@ impl<U: Ui> DynFile<U> {
         // references to the RwData exist.
         let pa = unsafe { &mut Pass::new() };
         if self.cur_file.has_changed() {
-            *self.file.write(pa) = self.cur_file.read(pa).clone();
+            *self.dyn_file.write(pa) = self.cur_file.read(pa).clone();
         }
     }
 
     /// Reads the presently active [`File`]
     pub fn read<'a>(&'a mut self, pa: &'a Pass) -> &'a File<U> {
-        self.file.read(pa).read(pa)
+        self.dyn_file.read(pa).read(pa)
     }
 
     /// The [`Handle<File>`] currently being pointed to
@@ -212,7 +213,7 @@ impl<U: Ui> DynFile<U> {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
-        self.file.read(INTERNAL_PASS)
+        self.dyn_file.read(INTERNAL_PASS)
     }
 
     /// Simulates a [`read`] without actually reading
@@ -230,7 +231,7 @@ impl<U: Ui> DynFile<U> {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
-        self.file.read(INTERNAL_PASS).declare_as_read();
+        self.dyn_file.read(INTERNAL_PASS).declare_as_read();
         self.cur_file.declare_as_read();
     }
 
@@ -242,7 +243,7 @@ impl<U: Ui> DynFile<U> {
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
-        self.file.read(INTERNAL_PASS).write(pa)
+        self.dyn_file.read(INTERNAL_PASS).write(pa)
     }
 
     /// Writes to the [`File`] and [`Area`], making use of a
@@ -254,7 +255,7 @@ impl<U: Ui> DynFile<U> {
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
-        self.file.read(INTERNAL_PASS).write_with_area(pa)
+        self.dyn_file.read(INTERNAL_PASS).write_with_area(pa)
     }
 
     /// Simulates a [`write`] without actually writing
@@ -266,7 +267,7 @@ impl<U: Ui> DynFile<U> {
     /// [`write`]: Self::write
     /// [`has_changed`]: Self::has_changed
     pub fn declare_written(&self) {
-        self.file.declare_written();
+        self.dyn_file.declare_written();
     }
 }
 
@@ -285,15 +286,14 @@ impl<U: Ui> Clone for DynFile<U> {
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
         Self {
-            file: RwData::new(self.file.read(INTERNAL_PASS).clone()),
+            dyn_file: RwData::new(self.dyn_file.read(INTERNAL_PASS).clone()),
             cur_file: self.cur_file.clone(),
         }
     }
 }
 
 /// The current [`Widget`]
-#[doc(hidden)]
-pub struct CurWidget<U: Ui>(RwData<Node<U>>);
+pub(crate) struct CurWidget<U: Ui>(RwData<Node<U>>);
 
 impl<U: Ui> CurWidget<U> {
     /// The [`Widget`]'s [`TypeId`]
@@ -302,14 +302,14 @@ impl<U: Ui> CurWidget<U> {
     }
 
     /// Reads the [`Widget`] and its [`Area`](crate::ui::Area)
-    pub fn read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
+    pub fn _read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
         let node = self.0.read(pa);
         f(node.handle().read(pa), node.area(pa))
     }
 
     /// Reads the [`Widget`] as `W` and its
     /// [`Area`](crate::ui::Area)
-    pub fn read_as<W: Widget<U>, R>(
+    pub fn _read_as<W: Widget<U>, R>(
         &self,
         pa: &Pass,
         f: impl FnOnce(&W, &U::Area) -> R,

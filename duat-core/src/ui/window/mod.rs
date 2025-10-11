@@ -59,7 +59,7 @@ impl<U: Ui> Windows<U> {
 
     /// Creates a new list of [`Window`]s, with a main one
     /// initialiazed
-    pub(crate) fn new_window(&self, pa: &mut Pass, file: File<U>) -> Handle<File<U>, U> {
+    pub(crate) fn new_window(&self, pa: &mut Pass, file: File<U>) -> Node<U> {
         let win = self.inner.read(pa).list.len();
         let new_additions = self.inner.read(pa).new_additions.clone();
         let (window, node) = Window::new(win, pa, self.ms, file, new_additions);
@@ -74,7 +74,7 @@ impl<U: Ui> Windows<U> {
         let builder = UiBuilder::<U>::new(win);
         hook::trigger(pa, WindowCreated(builder));
 
-        node.try_downcast().unwrap()
+        node
     }
 
     /// Push a [`Widget`] to [`Handle`]
@@ -146,8 +146,8 @@ impl<U: Ui> Windows<U> {
     /// This is an area, usually in the center, that contains all
     /// [`File`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
-    pub(crate) fn new_file(&self, pa: &mut Pass, file: File<U>) -> Handle<File<U>, U> {
-        let win = context::cur_window();
+    pub(crate) fn new_file(&self, pa: &mut Pass, file: File<U>) -> Node<U> {
+        let win = context::cur_window::<U>(pa);
         let wins = self.inner.read(pa);
         let (handle, specs) = wins
             .layout
@@ -158,15 +158,9 @@ impl<U: Ui> Windows<U> {
         let specs = PushSpecs { cluster: false, ..specs };
 
         if let Some(master) = handle.area(pa).get_cluster_master() {
-            self.push(pa, (&master, specs), file)
-                .unwrap()
-                .try_downcast()
-                .unwrap()
+            self.push(pa, (&master, specs), file).unwrap()
         } else {
-            self.push(pa, (&handle.area, specs), file)
-                .unwrap()
-                .try_downcast()
-                .unwrap()
+            self.push(pa, (&handle.area, specs), file).unwrap()
         }
     }
 
@@ -227,18 +221,17 @@ impl<U: Ui> Windows<U> {
                 .collect();
 
             for file_ahead in files_ahead {
-                self.swap(pa, &handle, &file_ahead.handle());
+                self.swap(pa, &handle, file_ahead.handle())?;
             }
         }
 
         // Actually removing the Handle.
         let mut windows = std::mem::take(&mut self.inner.write(pa).list);
 
-        windows[win].remove(pa, handle);
-        if windows[win].nodes.is_empty() {
+        if windows[win].close(pa, handle) {
             windows.remove(win);
             U::remove_window(self.ms, win);
-            let cur_win = context::cur_window();
+            let cur_win = context::cur_window::<U>(pa);
             if cur_win > win {
                 self.inner.write(pa).cur_win -= 1;
             }
@@ -258,8 +251,8 @@ impl<U: Ui> Windows<U> {
         lhs: &Handle<dyn Widget<U>, U>,
         rhs: &Handle<dyn Widget<U>, U>,
     ) -> Result<(), Text> {
-        let (lhs_win, _) = self.handle_entry(pa, &lhs)?;
-        let (rhs_win, _) = self.handle_entry(pa, &rhs)?;
+        let (lhs_win, _) = self.handle_entry(pa, lhs)?;
+        let (rhs_win, _) = self.handle_entry(pa, rhs)?;
 
         let [lhs_file, rhs_file] = [lhs.try_downcast::<File<U>>(), rhs.try_downcast()];
         let lhs_lo = lhs_file.as_ref().map(|handle| handle.read(pa).layout_order);
@@ -273,10 +266,10 @@ impl<U: Ui> Windows<U> {
 
         let mut windows = std::mem::take(&mut self.inner.write(pa).list);
 
-        let lhs_nodes = windows[lhs_win].take_with_related_nodes(pa, &lhs);
+        let lhs_nodes = windows[lhs_win].take_with_related_nodes(pa, lhs);
         windows[rhs_win].insert_nodes(pa, rhs_lo, lhs_nodes);
 
-        let rhs_nodes = windows[rhs_win].take_with_related_nodes(pa, &rhs);
+        let rhs_nodes = windows[rhs_win].take_with_related_nodes(pa, rhs);
         windows[lhs_win].insert_nodes(pa, lhs_lo, rhs_nodes);
 
         let wins = self.inner.write(pa);
@@ -285,7 +278,7 @@ impl<U: Ui> Windows<U> {
 
         U::Area::swap(MutArea(lhs.area(pa)), rhs.area(pa));
 
-        let cur_file = context::fixed_file::<U>(pa)?;
+        let cur_file = context::cur_file::<U>(pa);
         if lhs_win != rhs_win
             && let Some(win) = [lhs, rhs]
                 .into_iter()
@@ -305,8 +298,8 @@ impl<U: Ui> Windows<U> {
         pa: &mut Pass,
         pk: PathKind,
         default_file_cfg: PrintCfg,
-    ) {
-        match self.file_entry(pa, pk.clone()) {
+    ) -> Node<U> {
+        let node = match self.file_entry(pa, pk.clone()) {
             Ok((win, _, handle)) if self.get(pa, win).unwrap().file_handles(pa).len() > 1 => {
                 // Take the nodes in the original Window
                 handle.write(pa).layout_order = 0;
@@ -352,22 +345,24 @@ impl<U: Ui> Windows<U> {
                     .lock()
                     .unwrap()
                     .get_or_insert_default();
+
+                Node::from_handle(handle)
             }
             // The Handle in question is already in its own window, so no need
             // to move it to another one.
-            Ok(_) => {}
-            Err(_) => {
-                self.new_window(pa, File::new(pk.as_path(), default_file_cfg));
-            }
+            Ok((.., handle)) => Node::from_handle(handle),
+            Err(_) => self.new_window(pa, File::new(pk.as_path(), default_file_cfg)),
         };
 
-        if context::fixed_file::<U>(pa).unwrap().read(pa).path_kind() != pk {
-            mode::reset_to_file::<U>(pk, false);
+        if context::cur_file::<U>(pa).read(pa).path_kind() != pk {
+            mode::reset_to::<U>(node.handle().clone());
         }
 
         let new_win = context::windows::<U>().len(pa) - 1;
         self.inner.write(pa).cur_win = new_win;
         U::switch_window(self.ms, new_win);
+
+        node
     }
 
     /// Pushes a [`Widget`] to the [`Window`]s
@@ -491,7 +486,7 @@ impl<U: Ui> Windows<U> {
         pa: &'a Pass,
         w: usize,
     ) -> Result<(usize, usize, &'a Node<U>), Text> {
-        let handle = context::fixed_file::<U>(pa).unwrap();
+        let handle = context::cur_file::<U>(pa);
 
         if let Some((handle, _)) = handle.get_related::<W>(pa).next() {
             self.entries(pa).find(|(.., n)| n.ptr_eq(handle.widget()))
@@ -629,6 +624,11 @@ impl<U: Ui> Windows<U> {
         self.inner.read(pa).cur_widget.clone()
     }
 
+    /// The index of the currently active [`Window`]
+    pub(crate) fn current_window(&self, pa: &Pass) -> usize {
+        self.inner.read(pa).cur_win
+    }
+
     /// Iterates through every [`Window`]
     pub(crate) fn windows<'a>(&'a self, pa: &'a Pass) -> std::slice::Iter<'a, Window<U>> {
         self.inner.read(pa).list.iter()
@@ -749,10 +749,10 @@ impl<U: Ui> Window<U> {
             .push((self.index, node.clone()));
     }
 
-    /// Removes all [`Node`]s whose [`Area`]s where deleted
+    /// Closes the [`Handle`] and all related ones
     ///
     /// Returns `true` if this `Window` is supposed to be removed.
-    fn remove(&mut self, pa: &Pass, handle: Handle<dyn Widget<U>, U>) -> bool {
+    fn close(&mut self, pa: &mut Pass, handle: Handle<dyn Widget<U>, U>) -> bool {
         let Some(node) = self
             .nodes
             .extract_if(.., |node| *node.handle() == handle)
@@ -766,10 +766,23 @@ impl<U: Ui> Window<U> {
             return true;
         }
 
-        self.nodes
-            .retain(|node| !rm_areas.contains(&node.handle().area(pa)));
-        self.spawned
-            .retain(|(_, node)| !rm_areas.contains(&node.handle().area(pa)));
+        self.nodes.retain(|node| {
+            if rm_areas.contains(node.handle().area(pa)) {
+                node.handle().declare_closed(pa);
+                false
+            } else {
+                true
+            }
+        });
+        self.spawned.retain(|(_, node)| {
+            if rm_areas.contains(node.handle().area(pa)) {
+                node.handle().declare_closed(pa);
+                false
+            } else {
+                true
+            }
+        });
+
 
         let files = self.file_handles(pa);
         if files.len() == 1 {

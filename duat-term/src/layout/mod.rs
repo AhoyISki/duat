@@ -206,7 +206,6 @@ impl Layouts {
     ///
     /// Returns `false` if the [`Rect`] was deleted.
     pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) -> bool {
-        let win = duat_core::context::cur_window();
         let mut layouts = self.0.borrow_mut();
         let Some((i, _rect)) = layouts.list.iter_mut().enumerate().find_map(|(i, layout)| {
             layout
@@ -217,11 +216,7 @@ impl Layouts {
             return false;
         };
 
-        if i == win {
-            layouts.list[i].printer.move_spawn_to(id, coord, char_width);
-        } else {
-            todo!("Text spawned Widget relocation to another window is not yet implemented.");
-        }
+        layouts.list[i].printer.move_spawn_to(id, coord, char_width);
 
         true
     }
@@ -430,16 +425,17 @@ impl Layout {
     ///
     /// [`Area`]: crate::area::Area
     fn delete(&mut self, id: AreaId) -> Option<Vec<AreaId>> {
-        let (mut rect, mut cons) = if let Some(deletion) = self.main.delete(&self.printer, id) {
-            if let Deletion::Child(rect, cons) = deletion {
-                (rect, cons)
+        let ret = if let Some(deletion) = self.main.delete(&self.printer, id) {
+            if let Deletion::Child(rect, cons, rm_list) = deletion {
+                (rect, cons, rm_list)
             } else {
-                (&self.printer).remove_rect(&mut self.main);
+                self.printer.remove_rect(&mut self.main);
 
                 return Some(remove_dependents(
                     &mut self.main,
                     &mut self.spawned,
                     &self.printer,
+                    Vec::new(),
                 ));
             }
         } else if let Some((i, deletion)) = self
@@ -448,22 +444,25 @@ impl Layout {
             .enumerate()
             .find_map(|(i, (_, rect))| Some(i).zip(rect.delete(&self.printer, id)))
         {
-            if let Deletion::Child(rect, cons) = deletion {
-                (rect, cons)
+            if let Deletion::Child(rect, cons, rm_list) = deletion {
+                (rect, cons, rm_list)
             } else {
                 let (mut info, mut rect) = self.spawned.remove(i);
-                (&self.printer).remove_rect(&mut rect);
-                (&self.printer).remove_eqs(info.cons.drain());
+                self.printer.remove_rect(&mut rect);
+                self.printer.remove_eqs(info.cons.drain());
 
                 return Some(remove_dependents(
                     &mut rect,
                     &mut self.spawned,
                     &self.printer,
+                    Vec::new(),
                 ));
             }
         } else {
             return None;
         };
+
+        let (mut rect, mut cons, rm_list) = ret;
 
         self.printer.remove_eqs(cons.drain());
 
@@ -471,6 +470,7 @@ impl Layout {
             &mut rect,
             &mut self.spawned,
             &self.printer,
+            rm_list,
         ))
     }
 
@@ -808,8 +808,9 @@ fn remove_dependents(
     rect: &mut Rect,
     spawned: &mut Vec<(SpawnInfo, Rect)>,
     p: &Printer,
+    mut rm_list: Vec<AreaId>,
 ) -> Vec<AreaId> {
-    let mut rm = Vec::new();
+    rm_list.push(rect.id());
 
     let vars = {
         let [tl, br] = rect.var_points();
@@ -834,24 +835,20 @@ fn remove_dependents(
         .collect();
 
     for (mut info, mut rect) in rm_spawned {
-        rm.push(rect.id());
-
         p.remove_rect(&mut rect);
         p.remove_eqs(info.cons.drain());
 
-        remove_dependents(&mut rect, spawned, p);
+        rm_list = remove_dependents(&mut rect, spawned, p, rm_list);
     }
 
     for (rect, cons) in rect.children_mut().into_iter().flat_map(|c| c.iter_mut()) {
-        rm.push(rect.id());
-
         p.remove_rect(rect);
         p.remove_eqs(cons.drain());
 
-        remove_dependents(rect, spawned, p);
+        rm_list = remove_dependents(rect, spawned, p, rm_list);
     }
 
-    rm
+    rm_list
 }
 
 /// The priority for edges for areas that must not overlap

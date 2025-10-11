@@ -17,7 +17,7 @@ use std::{
 use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
-    context::{self, CurFile, CurWidget, Logs},
+    context::{self, Logs},
     form::Palette,
     session::{DuatEvent, ReloadEvent, ReloadedFile, SessionCfg},
     text::History,

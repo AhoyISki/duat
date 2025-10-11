@@ -140,6 +140,7 @@ pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
     mask: Arc<Mutex<&'static str>>,
     related: RelatedWidgets<U>,
     searcher: RefCell<S>,
+    is_closed: RwData<bool>,
 }
 
 impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
@@ -155,6 +156,7 @@ impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
             mask,
             related: RelatedWidgets(RwData::default()),
             searcher: RefCell::new(()),
+            is_closed: RwData::new(false),
         }
     }
 }
@@ -244,6 +246,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             mask: self.mask.clone(),
             related: self.related.clone(),
             searcher: RefCell::new(()),
+            is_closed: self.is_closed.clone(),
         })
     }
 
@@ -653,6 +656,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             mask: self.mask.clone(),
             related: self.related.clone(),
             searcher: RefCell::new(searcher),
+            is_closed: self.is_closed.clone(),
         }
     }
 
@@ -714,9 +718,8 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW, U> {
-        let to_file = self.widget.data_is::<crate::file::File<U>>();
         context::windows::<U>()
-            .push_widget(pa, (&self.area, to_file, specs), widget)
+            .push_widget(pa, (&self.area, specs), widget)
             .unwrap()
     }
 
@@ -768,16 +771,25 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW, U> {
-        let to_file = self.widget.data_is::<crate::file::File<U>>();
         if let Some(master) = self.area(pa).get_cluster_master() {
             context::windows()
-                .push_widget(pa, (&master, to_file, specs), widget)
+                .push_widget(pa, (&master, specs), widget)
                 .unwrap()
         } else {
             context::windows::<U>()
-                .push_widget(pa, (&self.area, to_file, specs), widget)
+                .push_widget(pa, (&self.area, specs), widget)
                 .unwrap()
         }
+    }
+
+    /// Wether this `Handle` was already closed
+    pub fn is_closed(&self, pa: &Pass) -> bool {
+        *self.is_closed.read(pa)
+    }
+
+    /// Declares that this `Handle` has been closed
+    pub(crate) fn declare_closed(&self, pa: &mut Pass) {
+        *self.is_closed.write(pa) = true;
     }
 }
 
@@ -791,6 +803,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
             mask: self.mask.clone(),
             related: self.related.clone(),
             searcher: RefCell::new(()),
+            is_closed: self.is_closed.clone(),
         }
     }
 }
@@ -820,6 +833,7 @@ impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
             mask: self.mask.clone(),
             related: self.related.clone(),
             searcher: self.searcher.clone(),
+            is_closed: self.is_closed.clone(),
         }
     }
 }
