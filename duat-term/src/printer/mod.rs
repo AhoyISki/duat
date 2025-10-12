@@ -28,7 +28,7 @@ pub struct Printer {
     vars: Mutex<Variables>,
     old_lines: Mutex<Vec<Lines>>,
     new_lines: Mutex<Vec<Lines>>,
-    spawned_lines: Mutex<SpawnedLines>,
+    spawned_lines: Mutex<Vec<(AreaId, Lines)>>,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
 }
@@ -52,7 +52,7 @@ impl Printer {
             vars: Mutex::new(vars),
             old_lines: Mutex::new(Vec::new()),
             new_lines: Mutex::new(Vec::new()),
-            spawned_lines: Mutex::new(SpawnedLines::default()),
+            spawned_lines: Mutex::new(Vec::new()),
             max,
             has_to_print_edges: AtomicBool::new(false),
         }
@@ -169,10 +169,10 @@ impl Printer {
         }
         drop(vars);
 
-        let mut spawned_lines = self.spawned_lines.lock().unwrap();
-        let prev_len = spawned_lines.list.len();
-        spawned_lines.list.retain(|(id, _)| *id != rect.id());
-        spawned_lines.has_changed = prev_len > spawned_lines.list.len();
+        self.spawned_lines
+            .lock()
+            .unwrap()
+            .retain(|(id, _)| *id != rect.id());
 
         [tl.x(), tl.y(), br.x(), br.y()]
     }
@@ -272,12 +272,7 @@ impl Printer {
         };
 
         let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
-        let mut spawned_lines = self.spawned_lines.lock().unwrap();
-
-        if new_lines.is_empty() && !spawned_lines.has_changed {
-            return;
-        }
-        spawned_lines.has_changed = false;
+        let spawned_lines = self.spawned_lines.lock().unwrap();
 
         let mut old_lines = self.old_lines.lock().unwrap();
 
@@ -296,9 +291,9 @@ impl Printer {
             let mut new_iter = new_lines.iter().filter_map(|lines| lines.on(y)).peekable();
 
             while let Some((line, [start, end])) = new_iter
-                .next_if(|(_, [start, _])| spawned_lines.list.is_empty() || *start == x)
+                .next_if(|(_, [start, _])| spawned_lines.is_empty() || *start == x)
                 .or_else(|| {
-                    old_iter.find(|(_, [start, _])| !spawned_lines.list.is_empty() && *start >= x)
+                    old_iter.find(|(_, [start, _])| !spawned_lines.is_empty() && *start >= x)
                 })
             {
                 if x != start {
@@ -328,7 +323,7 @@ impl Printer {
             CURSOR_IS_REAL.load(Ordering::Relaxed)
         };
 
-        for (_, lines) in spawned_lines.list.iter() {
+        for (_, lines) in spawned_lines.iter() {
             for y in lines.coords.tl.y..lines.coords.br.y {
                 queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
                 let (info, ..) = lines.on(y).unwrap();
@@ -379,14 +374,10 @@ impl Printer {
 
         // This is done in order to preserve the order in which the floating
         // Widgets were sent.
-        if let Some((_, old_lines)) = spawned_lines
-            .list
-            .iter_mut()
-            .find(|(other, _)| *other == id)
-        {
+        if let Some((_, old_lines)) = spawned_lines.iter_mut().find(|(other, _)| *other == id) {
             *old_lines = builder.build();
         } else {
-            spawned_lines.list.push((id, builder.build()));
+            spawned_lines.push((id, builder.build()));
         }
     }
 
@@ -465,12 +456,6 @@ struct LineInfo<'a> {
     bytes: &'a [u8],
     end_fmt_i: usize,
     end_spaces: usize,
-}
-
-#[derive(Default)]
-struct SpawnedLines {
-    list: Vec<(AreaId, Lines)>,
-    has_changed: bool,
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]
