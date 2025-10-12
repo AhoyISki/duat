@@ -146,12 +146,7 @@ impl NotificationsBuilder {
             levels: self.allowed_levels,
             last_rec: None,
         };
-        let specs = PushSpecs {
-            side: Side::Below,
-            height: Some(1.0),
-            hidden: true,
-            ..
-        };
+        let specs = PushSpecs { side: Side::Below, height: Some(1.0), .. };
 
         push_target.push_outer(pa, notifications, specs)
     }

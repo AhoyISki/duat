@@ -719,7 +719,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         specs: PushSpecs,
     ) -> Handle<PW, U> {
         context::windows::<U>()
-            .push_widget(pa, (&self.area, specs), widget)
+            .push_widget(pa, (&self.area, None, specs), widget)
             .unwrap()
     }
 
@@ -773,11 +773,11 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ) -> Handle<PW, U> {
         if let Some(master) = self.area(pa).get_cluster_master() {
             context::windows()
-                .push_widget(pa, (&master, specs), widget)
+                .push_widget(pa, (&master, None, specs), widget)
                 .unwrap()
         } else {
             context::windows::<U>()
-                .push_widget(pa, (&self.area, specs), widget)
+                .push_widget(pa, (&self.area, None, specs), widget)
                 .unwrap()
         }
     }

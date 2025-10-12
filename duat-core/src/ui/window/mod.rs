@@ -81,10 +81,12 @@ impl<U: Ui> Windows<U> {
     pub(crate) fn push_widget<W: Widget<U>>(
         &self,
         pa: &mut Pass,
-        (to, specs): (&U::Area, PushSpecs),
+        (target, on_files, specs): (&U::Area, Option<bool>, PushSpecs),
         widget: W,
     ) -> Option<Handle<W, U>> {
-        self.push(pa, (to, specs), widget)?.handle().try_downcast()
+        self.push(pa, (target, on_files, specs), widget)?
+            .handle()
+            .try_downcast()
     }
 
     /// Spawn a [`Widget`] on a [`Handle`]
@@ -158,9 +160,10 @@ impl<U: Ui> Windows<U> {
         let specs = PushSpecs { cluster: false, ..specs };
 
         if let Some(master) = handle.area(pa).get_cluster_master() {
-            self.push(pa, (&master, specs), file).unwrap()
+            self.push(pa, (&master, Some(true), specs), file).unwrap()
         } else {
-            self.push(pa, (&handle.area, specs), file).unwrap()
+            self.push(pa, (&handle.area, Some(true), specs), file)
+                .unwrap()
         }
     }
 
@@ -371,7 +374,7 @@ impl<U: Ui> Windows<U> {
     fn push<W: Widget<U>>(
         &self,
         pa: &mut Pass,
-        (target, specs): (&U::Area, PushSpecs),
+        (target, on_files, specs): (&U::Area, Option<bool>, PushSpecs),
         widget: W,
     ) -> Option<Node<U>> {
         run_once::<W, U>();
@@ -388,8 +391,11 @@ impl<U: Ui> Windows<U> {
             })
             .unwrap();
 
-        let on_files = inner.list[win].files_area.is_master_of(target);
+        let target_is_on_files = inner.list[win].files_area.is_master_of(target);
+        let on_files = on_files.unwrap_or(target_is_on_files) && target_is_on_files;
+
         let location = if on_files {
+            context::debug!("pushed {} to files", crate::utils::duat_name::<W>());
             Location::OnFiles
         } else if let Some((id, _)) = inner.list[win]
             .spawned
@@ -782,7 +788,6 @@ impl<U: Ui> Window<U> {
                 true
             }
         });
-
 
         let files = self.file_handles(pa);
         if files.len() == 1 {

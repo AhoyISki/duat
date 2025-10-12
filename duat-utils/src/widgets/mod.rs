@@ -124,7 +124,7 @@ impl<U: Ui> FooterWidgets<U> {
             });
             prompt_line
         } else {
-            self.prompt.below().push_on(pa, &status_line)
+            self.prompt.below().hidden().push_on(pa, &status_line)
         };
 
         let notifications = self.notifs.push_on(pa, &prompt_line);

@@ -124,13 +124,8 @@ impl<U: Ui> PromptLineBuilder<U> {
             prompts: self.prompts.unwrap_or_default(),
             _ghost: PhantomData,
         };
-        let specs = if hook::group_exists("HidePromptLine") {
-            PushSpecs { height: Some(0.0), ..self.specs }
-        } else {
-            self.specs
-        };
 
-        push_target.push_outer(pa, prompt_line, specs)
+        push_target.push_outer(pa, prompt_line, self.specs)
     }
 
     /// Changes the default [prompt] for a given [mode]

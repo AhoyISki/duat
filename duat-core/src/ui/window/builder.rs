@@ -167,13 +167,15 @@ impl<U: Ui> UiBuilder<U> {
         widget: W,
         specs: PushSpecs,
     ) -> Handle<W, U> {
-        let files = context::windows::<U>()
+        let target = context::windows::<U>()
             .get(pa, self.win)
             .unwrap()
             .files_area
             .clone();
 
-        context::windows::<U>().push_widget(pa, (&files, specs), widget).unwrap()
+        context::windows::<U>()
+            .push_widget(pa, (&target, Some(false), specs), widget)
+            .unwrap()
     }
 
     /// Docs: TODO
@@ -183,12 +185,14 @@ impl<U: Ui> UiBuilder<U> {
         widget: W,
         specs: PushSpecs,
     ) -> Handle<W, U> {
-        let master = context::windows::<U>()
+        let target = context::windows::<U>()
             .get(pa, self.win)
             .unwrap()
             .master_area
             .clone();
 
-        context::windows::<U>().push_widget(pa, (&master, specs), widget).unwrap()
+        context::windows::<U>()
+            .push_widget(pa, (&target, Some(false), specs), widget)
+            .unwrap()
     }
 }
