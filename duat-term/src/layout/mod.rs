@@ -861,11 +861,11 @@ const LEN_PRIO: f64 = cassowary::strength::STRONG + 1.0;
 const FRAME_PRIO: f64 = cassowary::strength::STRONG;
 /// The priority for hiding things
 const HIDDEN_PRIO: f64 = cassowary::strength::STRONG - 1.0;
-/// The priority for lengths that should try to be equal (a.k.a Files)
-const EQ_LEN_PRIO: f64 = cassowary::strength::STRONG - 2.0;
 /// The priority for positioning of spawned Areas
-const SPAWN_POS_PRIO: f64 = cassowary::strength::STRONG - 3.0;
+const SPAWN_POS_PRIO: f64 = cassowary::strength::STRONG - 2.0;
 /// The priority for the length of spawned Areas
-const SPAWN_LEN_PRIO: f64 = cassowary::strength::STRONG - 4.0;
+const SPAWN_LEN_PRIO: f64 = cassowary::strength::STRONG - 3.0;
 /// The priority for the alignment of spawned Areas
-const SPAWN_ALIGN_PRIO: f64 = cassowary::strength::STRONG - 5.0;
+const SPAWN_ALIGN_PRIO: f64 = cassowary::strength::STRONG - 4.0;
+/// The priority for lengths that should try to be equal (a.k.a Files)
+const EQ_LEN_PRIO: f64 = cassowary::strength::STRONG - 5.0;

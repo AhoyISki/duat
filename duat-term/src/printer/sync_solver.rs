@@ -154,7 +154,7 @@ impl SyncSolver {
         &mut self,
         id: SpawnId,
         variables: &mut super::variables::Variables,
-        [start, end]: [VarPoint; 2],
+        [tl, br]: [VarPoint; 2],
         len: Option<f32>,
         axis: Axis,
         prefers_before: bool,
@@ -163,17 +163,17 @@ impl SyncSolver {
         let len_var = variables.new_var();
 
         self.solver
-            .add_edit_variable(center_var, STRONG - 2.0)
+            .add_edit_variable(center_var, STRONG - 1.5)
             .unwrap();
         self.solver
-            .add_edit_variable(len_var, STRONG - 2.0)
+            .add_edit_variable(len_var, STRONG - 1.5)
             .unwrap();
 
         self.spawns.push(SpawnedCenter {
             center_var,
             len_var,
             desired_len: len.map(|len| len as f64),
-            deps: CenterDeps::Widget(id, start, end, axis),
+            deps: CenterDeps::Widget(id, tl, br, axis),
             axis,
             prefers_before,
         });

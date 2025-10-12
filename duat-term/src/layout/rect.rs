@@ -97,6 +97,7 @@ impl Rect {
 
         let dims = [specs.width, specs.height];
         let cons = Constraints::new(p, dims, specs.hidden, &rect, None);
+        p.update(false, true);
 
         (rect, cons)
     }
@@ -134,12 +135,13 @@ impl Rect {
             p,
             specs,
             [center, len],
-            [rect.tl.x().into(), rect.tl.y().into()],
-            [rect.br.x().into(), rect.br.y().into()],
+            [target.tl.x().into(), target.tl.y().into()],
+            [target.br.x().into(), target.br.y().into()],
         );
 
         let dims = [specs.width, specs.height];
-        let cons = Constraints::new(p, dims, specs.hidden, self, Some(target));
+        let cons = Constraints::new(p, dims, specs.hidden, &rect, None);
+        p.update(false, true);
 
         Some((rect, cons))
     }
@@ -694,7 +696,7 @@ impl Rect {
             self.tl.x() | GE(EDGE_PRIO) | 0.0,
             self.tl.y() | GE(EDGE_PRIO) | 0.0,
             self.br.x() | LE(EDGE_PRIO) | p.max().x(),
-            self.tl.y() | LE(EDGE_PRIO) | p.max().y(),
+            self.br.y() | LE(EDGE_PRIO) | p.max().y(),
             self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
             self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
         ]);
@@ -719,7 +721,6 @@ impl Rect {
         ]);
 
         p.add_eqs(self.eqs.clone());
-        p.update(false, true);
     }
 
     /// Removes all [`Equality`]s which define [`self`]
