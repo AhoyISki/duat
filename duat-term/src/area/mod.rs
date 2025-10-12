@@ -147,11 +147,11 @@ impl Area {
                 let Item { part, .. } = item;
 
                 if wrap {
-                    if y > lines.coords().tl.y {
-                        lines.end_line(ansi_codes, painter);
-                    }
                     if y == lines.coords().br.y {
                         break;
+                    }
+                    if y > lines.coords().tl.y {
+                        lines.end_line(ansi_codes, painter);
                     }
                     if x > 0 {
                         let default_style = painter.get_default().style;
@@ -222,9 +222,7 @@ impl Area {
                     }
                     Part::AlignLeft => lines.realign(Alignment::Left),
                     Part::AlignCenter => lines.realign(Alignment::Center),
-                    Part::AlignRight => {
-                        lines.realign(Alignment::Right)
-                    }
+                    Part::AlignRight => lines.realign(Alignment::Right),
                     Part::Spacer => lines.add_spacer(),
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                     Part::SpawnedWidget(id) => {

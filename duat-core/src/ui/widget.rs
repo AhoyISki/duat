@@ -527,10 +527,6 @@ impl<U: Ui> Node<U> {
 
         (self.update)(pa);
 
-        if !self.handle().has_changed() {
-            return;
-        }
-
         let (widget, area) = self.handle.write_with_area(pa);
         let cfg = widget.get_print_cfg();
         widget.text_mut().add_selections(area, cfg);

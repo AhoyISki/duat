@@ -985,7 +985,7 @@ struct HooksOf<H: Hookable>(RefCell<Vec<(Option<InnerGroupId>, InnerHookFn<H>)>>
 impl<H: Hookable> HookHolder for HooksOf<H> {
     fn remove(&self, group_id: &InnerGroupId) {
         let mut hooks = self.0.borrow_mut();
-        hooks.retain(|(g, _)| g.as_ref().is_some_and(|g| g != group_id));
+        hooks.retain(|(g, _)| g.as_ref().is_none_or(|g| g != group_id));
     }
 }
 

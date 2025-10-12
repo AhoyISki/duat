@@ -246,8 +246,6 @@ impl Printer {
         let mut vars = self.vars.lock().unwrap();
         vars.update_variables(changes);
         self.has_to_print_edges.store(true, Ordering::Relaxed);
-        // Drop here, so self.updates and self.vars update "at the same time"
-        drop(vars)
     }
 
     pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) {
@@ -289,54 +287,33 @@ impl Printer {
         queue!(stdout, cursor::Hide, ResetColor);
         write!(stdout, "\x1b[?2026h").unwrap();
 
-        let mut log = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("log")
-            .unwrap();
-
-        writeln!(
-            log,
-            "lengths: {:#?}",
-            old_lines
-                .iter()
-                .map(|lines| lines.line_infos.len())
-                .collect::<Vec<_>>()
-        )
-        .unwrap();
-
         for y in 0..max.y {
             write!(stdout, "\x1b[{}H", y + 1).unwrap();
 
             let mut x = 0;
 
-            let old_iter = old_lines.iter().filter_map(|lines| lines.on(y));
-            let new_iter = new_lines.iter().filter_map(|lines| lines.on(y));
+            let mut old_iter = old_lines.iter().filter_map(|lines| lines.on(y));
+            let mut new_iter = new_lines.iter().filter_map(|lines| lines.on(y)).peekable();
 
-            for (new, new_ends) in new_iter {
-                if x != new_ends[0] {
-                    if spawned_lines.list.is_empty() {
-                        queue!(stdout, MoveToColumn(new_ends[0] as u16));
-                    } else {
-                        for (old, old_ends) in old_iter
-                            .clone()
-                            .filter(|(_, old_ends)| old_ends[0] >= x && old_ends[1] <= new_ends[0])
-                        {
-                            stdout.write_all(old.bytes).unwrap();
-                            stdout.write_all(&SPACES[..old.end_spaces]).unwrap();
-                        }
-                    }
+            while let Some((line, ends)) = new_iter
+                .next_if(|(_, ends)| spawned_lines.list.is_empty() || ends[0] == x)
+                .or_else(|| {
+                    old_iter.find(|(_, ends)| !spawned_lines.list.is_empty() && ends[0] >= x)
+                })
+            {
+                if x != ends[0] {
+                    queue!(stdout, MoveToColumn(ends[0] as u16));
                 }
 
-                stdout.write_all(new.bytes).unwrap();
+                stdout.write_all(line.bytes).unwrap();
 
-                if new_ends[1] == max.x {
+                if ends[1] == max.x {
                     stdout.write_all(b"\x1b[K").unwrap();
                 } else {
-                    stdout.write_all(&SPACES[..new.end_spaces]).unwrap();
+                    stdout.write_all(&SPACES[..line.end_spaces]).unwrap();
                 }
 
-                x = new_ends[1];
+                x = ends[1];
             }
         }
 
