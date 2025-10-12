@@ -217,6 +217,7 @@ impl Layouts {
         };
 
         layouts.list[i].printer.move_spawn_to(id, coord, char_width);
+        layouts.list[i].printer.update(false, false);
 
         true
     }

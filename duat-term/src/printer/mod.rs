@@ -295,25 +295,25 @@ impl Printer {
             let mut old_iter = old_lines.iter().filter_map(|lines| lines.on(y));
             let mut new_iter = new_lines.iter().filter_map(|lines| lines.on(y)).peekable();
 
-            while let Some((line, ends)) = new_iter
-                .next_if(|(_, ends)| spawned_lines.list.is_empty() || ends[0] == x)
+            while let Some((line, [start, end])) = new_iter
+                .next_if(|(_, [start, _])| spawned_lines.list.is_empty() || *start == x)
                 .or_else(|| {
-                    old_iter.find(|(_, ends)| !spawned_lines.list.is_empty() && ends[0] >= x)
+                    old_iter.find(|(_, [start, _])| !spawned_lines.list.is_empty() && *start >= x)
                 })
             {
-                if x != ends[0] {
-                    queue!(stdout, MoveToColumn(ends[0] as u16));
+                if x != start {
+                    queue!(stdout, MoveToColumn(start as u16));
                 }
 
                 stdout.write_all(line.bytes).unwrap();
 
-                if ends[1] == max.x {
+                if end == max.x {
                     stdout.write_all(b"\x1b[K").unwrap();
                 } else {
                     stdout.write_all(&SPACES[..line.end_spaces]).unwrap();
                 }
 
-                x = ends[1];
+                x = end;
             }
         }
 

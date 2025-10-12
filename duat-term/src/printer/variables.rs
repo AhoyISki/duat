@@ -72,15 +72,6 @@ impl Variables {
 
     /// Updates the [`Variable`]'s values, according to changes
     pub fn update_variables(&mut self, changes: Vec<(Variable, f64)>) {
-        let mut log = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("log")
-            .unwrap();
-
-        log.write_all(b"\n").unwrap();
-
-        let mut variables_changed = 0;
         for (var, new) in changes {
             // If a Variable is not in this list, it is an edge's width, which is
             // never read, and as such, does not need to be updated.
@@ -89,14 +80,9 @@ impl Variables {
             };
 
             let new = new.round() as u32;
-            variables_changed += (*value != new) as usize;
             *changes += (*value != new) as usize;
             *value = new;
-            writeln!(log, "Changed {var:?} ").unwrap();
         }
-
-        use std::io::Write;
-        writeln!(log, "Changed {variables_changed} variables").unwrap();
     }
 
     /// Prints the [`Edge`]s

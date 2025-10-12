@@ -18,8 +18,8 @@ use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::LinesB
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {
-    pub y: u32,
     pub x: u32,
+    pub y: u32,
 }
 
 impl std::fmt::Debug for Coord {
@@ -119,9 +119,9 @@ impl Area {
         };
 
         let mut observed_spawns = Vec::new();
-        let is_floating = self
+        let is_spawned = self
             .layouts
-            .inspect(self.id, |rect, _| rect.is_floating())
+            .inspect(self.id, |rect, _| rect.is_spawned())
             .unwrap();
         let is_active = self.id == self.layouts.get_active_id();
 
@@ -249,7 +249,7 @@ impl Area {
         }
 
         self.layouts
-            .send_lines(self.id, lines, is_floating, &observed_spawns, &[]);
+            .send_lines(self.id, lines, is_spawned, &observed_spawns, &[]);
     }
 }
 

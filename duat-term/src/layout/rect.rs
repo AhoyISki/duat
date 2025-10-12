@@ -937,10 +937,6 @@ impl Rect {
         }
     }
 
-    pub fn is_floating(&self) -> bool {
-        self.is_spawned
-    }
-
     pub fn is_spawned(&self) -> bool {
         self.is_spawned
     }

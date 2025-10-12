@@ -84,43 +84,43 @@ impl SyncSolver {
                 break;
             }
 
-            for floating in to_update {
-                let max = match floating.axis {
+            for spawned in to_update {
+                let max = match spawned.axis {
                     Axis::Horizontal => self.solver.get_value(max.x),
                     Axis::Vertical => self.solver.get_value(max.y),
                 };
-                let [lhs, rhs] = floating.deps.get_values(&self.solver);
+                let [lhs, rhs] = spawned.deps.get_values(&self.solver);
 
-                if let Some(len) = floating.desired_len
+                if let Some(len) = spawned.desired_len
                     && (lhs >= len || max - rhs >= len)
                 {
-                    match (floating.prefers_before, lhs >= len, max - rhs >= len) {
+                    match (spawned.prefers_before, lhs >= len, max - rhs >= len) {
                         (true, true, true | false) | (false, true, false) => {
-                            self.solver.suggest_value(floating.len_var, len).unwrap();
+                            self.solver.suggest_value(spawned.len_var, len).unwrap();
                             self.solver
-                                .suggest_value(floating.center_var, lhs - len / 2.0)
+                                .suggest_value(spawned.center_var, lhs - len / 2.0)
                                 .unwrap();
                         }
                         (true, false, true) | (false, true | false, true) => {
-                            self.solver.suggest_value(floating.len_var, len).unwrap();
+                            self.solver.suggest_value(spawned.len_var, len).unwrap();
                             self.solver
-                                .suggest_value(floating.center_var, rhs + len / 2.0)
+                                .suggest_value(spawned.center_var, rhs + len / 2.0)
                                 .unwrap();
                         }
                         (true | false, false, false) => unreachable!(),
                     };
                 } else {
-                    let value = if lhs > max - rhs {
+                    let center = if lhs > max - rhs {
                         lhs / 2.0
                     } else {
                         rhs + (max - rhs) / 2.0
                     };
 
                     self.solver
-                        .suggest_value(floating.len_var, lhs.max(max - rhs))
+                        .suggest_value(spawned.len_var, lhs.max(max - rhs))
                         .unwrap();
                     self.solver
-                        .suggest_value(floating.center_var, value)
+                        .suggest_value(spawned.center_var, center)
                         .unwrap();
                 }
             }
