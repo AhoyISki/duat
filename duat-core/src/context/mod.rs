@@ -44,29 +44,50 @@ mod global {
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
     static SENDER: OnceLock<mpsc::Sender<DuatEvent>> = OnceLock::new();
 
-    /// The name of the current [`Mode`]
+    /// Queues a function to be done on the main thread with a
+    /// [`Pass`]
     ///
-    /// This uses a [`DataMap`] in order to prevent mutation of said
-    /// name.
-    ///
-    /// [`Mode`]: crate::mode::Mode
-    pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
-        MODE_NAME.map(pa, |name| *name)
+    /// You can use this whenever you don't have access to a [`Pass`],
+    /// in order to execute an action on the main thread, gaining
+    /// access to Duat's global state within that function.
+    pub fn queue(f: impl FnOnce(&mut Pass) + Send + 'static) {
+        sender()
+            .send(DuatEvent::QueuedFunction(Box::new(f)))
+            .unwrap();
     }
 
-    // pub(crate) in order to keep just the DataMap one public
-    pub(crate) fn raw_mode_name() -> RwData<&'static str> {
-        MODE_NAME.clone()
-    }
+    ////////// Internal setters meant to be called once
 
-    /// Returns a [`Handle`] for a [`File`] with the given name
+    /// Attempts to set the current [`Handle`]
     ///
-    /// [`File`]: crate::file::File
-    pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<Handle<File<U>, U>, Text> {
-        let (.., handle) = windows::<U>().named_file_entry(pa, &name.to_string())?;
-
-        Ok(handle)
+    /// Fails if said [`Handle`] was already deleted.
+    pub(crate) fn set_current_node<U: Ui>(pa: &mut Pass, node: crate::ui::Node<U>) {
+        if let Err(err) = windows().set_current_node(pa, node) {
+            super::warn!("{err}");
+        }
     }
+
+    /// Sets the [`Window`]s for Duat
+    pub(crate) fn set_windows<U: Ui>(windows: Windows<U>) {
+        WINDOWS
+            .set(Box::leak(Box::new(windows)))
+            .expect("Setup ran twice")
+    }
+
+    /// Orders to quit Duat
+    pub(crate) fn order_reload_or_quit() {
+        WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
+    }
+
+    /// Sets the sender for [`DuatEvent`]s
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    #[doc(hidden)]
+    pub fn set_sender(sender: mpsc::Sender<DuatEvent>) {
+        SENDER.set(sender).expect("setup ran twice");
+    }
+
+    ////////// Widget Handle getters
 
     /// Returns a "fixed" [`Handle`] for the currently active [`File`]
     ///
@@ -93,9 +114,45 @@ mod global {
         DynFile { dyn_file, cur_file }
     }
 
+    /// Returns a [`Handle`] for a [`File`] with the given name
+    ///
+    /// [`File`]: crate::file::File
+    pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<Handle<File<U>, U>, Text> {
+        let (.., handle) = windows::<U>().named_file_entry(pa, &name.to_string())?;
+
+        Ok(handle)
+    }
+
+    /// The [`CurWidget`]
+    pub(crate) fn cur_widget<U: Ui>(pa: &Pass) -> CurWidget<U> {
+        CurWidget(windows().current_widget(pa))
+    }
+
+    ////////// Other getters
+
+    /// The [`Window`]s of Duat, must be used on main thread
+    pub(crate) fn windows<U: Ui>() -> &'static Windows<U> {
+        WINDOWS.get().unwrap().downcast_ref().expect("1 Ui only")
+    }
+
     /// The index of the currently active window
     pub fn cur_window<U: Ui>(pa: &Pass) -> usize {
         windows::<U>().current_window(pa)
+    }
+
+    /// The name of the current [`Mode`]
+    ///
+    /// This uses a [`DataMap`] in order to prevent mutation of said
+    /// name.
+    ///
+    /// [`Mode`]: crate::mode::Mode
+    pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
+        MODE_NAME.map(pa, |name| *name)
+    }
+
+    // pub(crate) in order to keep just the DataMap one public
+    pub(crate) fn raw_mode_name() -> RwData<&'static str> {
+        MODE_NAME.clone()
     }
 
     /// The current directory
@@ -107,65 +164,16 @@ mod global {
             .clone()
     }
 
-    /// Returns `true` if Duat is about to reload
-    pub fn will_reload_or_quit() -> bool {
-        WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
-    }
-
     /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop
     pub(crate) fn sender() -> mpsc::Sender<DuatEvent> {
         SENDER.get().unwrap().clone()
     }
 
-    /// Attempts to set the current [`Handle`]
-    ///
-    /// Fails if said [`Handle`] was already deleted.
-    pub(crate) fn set_current_node<U: Ui>(pa: &mut Pass, node: crate::ui::Node<U>) {
-        if let Err(err) = windows().set_current_node(pa, node) {
-            super::warn!("{err}");
-        }
-    }
+    ////////// Functions for synchronization
 
-    /// The [`CurWidget`]
-    pub(crate) fn cur_widget<U: Ui>(pa: &Pass) -> CurWidget<U> {
-        CurWidget(windows().current_widget(pa))
-    }
-
-    /// Sets the [`Window`]s for Duat
-    pub(crate) fn set_windows<U: Ui>(windows: Windows<U>) {
-        WINDOWS
-            .set(Box::leak(Box::new(windows)))
-            .expect("Setup ran twice")
-    }
-
-    /// The [`Window`]s of Duat, must be used on main thread
-    pub(crate) fn windows<U: Ui>() -> &'static Windows<U> {
-        WINDOWS.get().unwrap().downcast_ref().expect("1 Ui only")
-    }
-
-    /// Orders to quit Duat
-    pub(crate) fn order_reload_or_quit() {
-        WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
-    }
-
-    /// Queues a function to be done on the main thread with a
-    /// [`Pass`]
-    ///
-    /// You can use this whenever you don't have access to a [`Pass`],
-    /// in order to execute an action on the main thread, gaining
-    /// access to Duat's global state within that function.
-    pub fn queue(f: impl FnOnce(&mut Pass) + Send + 'static) {
-        sender()
-            .send(DuatEvent::QueuedFunction(Box::new(f)))
-            .unwrap();
-    }
-
-    /// Sets the sender for [`DuatEvent`]s
-    ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
-    #[doc(hidden)]
-    pub fn set_sender(sender: mpsc::Sender<DuatEvent>) {
-        SENDER.set(sender).expect("setup ran twice");
+    /// Returns `true` if Duat is about to reload
+    pub fn will_reload_or_quit() -> bool {
+        WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
     }
 }
 

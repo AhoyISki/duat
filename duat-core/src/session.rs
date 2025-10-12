@@ -168,6 +168,8 @@ impl<U: Ui> Session<U> {
                     }
                 }
 
+				// Additional Widgets may have been created in the meantime.
+				// DDOS vulnerable i guess.
                 while let Some(new_additions) = context::windows::<U>().get_additions(pa) {
                     U::flush_layout(self.ms);
 

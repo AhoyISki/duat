@@ -22,6 +22,7 @@ mod builder;
 /// A list of all [`Window`]s in Duat
 pub struct Windows<U: Ui> {
     inner: RwData<InnerWindows<U>>,
+    spawns_to_remove: Mutex<Vec<SpawnId>>,
     ms: &'static U::MetaStatics,
 }
 
@@ -46,6 +47,7 @@ impl<U: Ui> Windows<U> {
                 cur_widget: RwData::new(node.clone()),
                 cur_win: 0,
             }),
+            spawns_to_remove: Mutex::new(Vec::new()),
             ms,
         });
 
@@ -56,6 +58,8 @@ impl<U: Ui> Windows<U> {
         let builder = UiBuilder::<U>::new(0);
         hook::trigger(pa, WindowCreated(builder));
     }
+
+    ////////// Functions for new Widgets
 
     /// Creates a new list of [`Window`]s, with a main one
     /// initialiazed
@@ -166,6 +170,67 @@ impl<U: Ui> Windows<U> {
                 .unwrap()
         }
     }
+
+    /// Pushes a [`Widget`] to the [`Window`]s
+    ///
+    /// May return [`None`] if the [`U::Area`] was already deleted.
+    fn push<W: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        (target, on_files, mut specs): (&U::Area, Option<bool>, PushSpecs),
+        widget: W,
+    ) -> Option<Node<U>> {
+        run_once::<W, U>();
+
+        let inner = self.inner.read(pa);
+        let win = inner
+            .list
+            .iter()
+            .position(|window| {
+                window.master_area.is_master_of(target)
+                    || window
+                        .nodes()
+                        .any(|node| node.area(pa).is_master_of(target))
+            })
+            .unwrap();
+
+        let target_is_on_files = inner.list[win].files_area.is_master_of(target);
+        let on_files = on_files.unwrap_or(target_is_on_files) && target_is_on_files;
+
+        if target_is_on_files && !on_files {
+            specs.cluster = false;
+        }
+
+        let location = if on_files {
+            Location::OnFiles
+        } else if let Some((id, _)) = inner.list[win]
+            .spawned
+            .iter()
+            .find(|(_, node)| node.area(pa) == target)
+        {
+            Location::Spawned(*id)
+        } else {
+            Location::Regular
+        };
+
+        let widget = RwData::new(widget);
+        let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
+        let (pushed, parent) = U::Area::push(MutArea(target), specs, on_files, cache)?;
+
+        let node = Node::new(widget, Arc::new(pushed));
+
+        let inner = self.inner.write(pa);
+        inner.list[win].add(node.clone(), parent.map(Arc::new), location);
+
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+        );
+
+        Some(node)
+    }
+
+    ////////// Existing Widget manipulation
 
     /// Closes a [`Handle`], removing it from the ui
     pub(crate) fn close<W: Widget<U> + ?Sized, S>(
@@ -370,65 +435,6 @@ impl<U: Ui> Windows<U> {
         node
     }
 
-    /// Pushes a [`Widget`] to the [`Window`]s
-    ///
-    /// May return [`None`] if the [`U::Area`] was already deleted.
-    fn push<W: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        (target, on_files, mut specs): (&U::Area, Option<bool>, PushSpecs),
-        widget: W,
-    ) -> Option<Node<U>> {
-        run_once::<W, U>();
-
-        let inner = self.inner.read(pa);
-        let win = inner
-            .list
-            .iter()
-            .position(|window| {
-                window.master_area.is_master_of(target)
-                    || window
-                        .nodes()
-                        .any(|node| node.area(pa).is_master_of(target))
-            })
-            .unwrap();
-
-        let target_is_on_files = inner.list[win].files_area.is_master_of(target);
-        let on_files = on_files.unwrap_or(target_is_on_files) && target_is_on_files;
-
-        if target_is_on_files && !on_files {
-            specs.cluster = false;
-        }
-
-        let location = if on_files {
-            Location::OnFiles
-        } else if let Some((id, _)) = inner.list[win]
-            .spawned
-            .iter()
-            .find(|(_, node)| node.area(pa) == target)
-        {
-            Location::Spawned(*id)
-        } else {
-            Location::Regular
-        };
-
-        let widget = RwData::new(widget);
-        let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
-        let (pushed, parent) = U::Area::push(MutArea(target), specs, on_files, cache)?;
-
-        let node = Node::new(widget, Arc::new(pushed));
-
-        let inner = self.inner.write(pa);
-        inner.list[win].add(node.clone(), parent.map(Arc::new), location);
-
-        hook::trigger(
-            pa,
-            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
-        );
-
-        Some(node)
-    }
-
     /// Sets the current active [`Handle`]
     pub(crate) fn set_current_node(&self, pa: &mut Pass, node: Node<U>) -> Result<(), Text> {
         // SAFETY: This Pass is only used when I'm already reborrowing a &mut
@@ -445,6 +451,30 @@ impl<U: Ui> Windows<U> {
         inner.cur_win = win;
 
         Ok(())
+    }
+
+    ////////// Spawned Widget cleanup
+
+    /// Adds a [`SpawnId`] to be removed when a [`Pass`] is available
+    pub(crate) fn _queue_close_spawned(&self, id: SpawnId) {
+        let mut spawns_to_remove = self.spawns_to_remove.lock().unwrap();
+        if !spawns_to_remove.contains(&id) {
+            spawns_to_remove.push(id)
+        }
+    }
+
+    /// Removes all queued [`SpawnId`]'s [`Widget`]s
+    pub(crate) fn _cleanup_spawned(&self, pa: &mut Pass) {
+        let spawns_to_remove = std::mem::take(&mut *self.spawns_to_remove.lock().unwrap());
+        for id in spawns_to_remove {
+            if let Some((_, node)) = self
+                .windows(pa)
+                .flat_map(|window| &window.spawned)
+                .find(|(other, _)| *other == id)
+            {
+                self.close(pa, &node.handle().clone()).unwrap();
+            }
+        }
     }
 
     ////////// Entry lookup
@@ -508,6 +538,29 @@ impl<U: Ui> Windows<U> {
         .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()).build())
     }
 
+    ////////// Entry iterators
+
+    /// Iterates over all widget entries, with window and widget
+    /// indices, in that order
+    pub(crate) fn entries<'a>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
+        self.inner
+            .read(pa)
+            .list
+            .iter()
+            .enumerate()
+            .flat_map(|(win, window)| {
+                window
+                    .nodes
+                    .iter()
+                    .chain(window.spawned.iter().map(|(_, node)| node))
+                    .enumerate()
+                    .map(move |(wid, node)| (win, wid, node))
+            })
+    }
+
     /// Iterates around a specific widget, going forwards
     pub(crate) fn iter_around<'a>(
         &'a self,
@@ -565,27 +618,6 @@ impl<U: Ui> Windows<U> {
                     .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
                     .take(next_len - (wid + 1)),
             )
-    }
-
-    /// Iterates over all widget entries, with window and widget
-    /// indices, in that order
-    pub(crate) fn entries<'a>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
-        self.inner
-            .read(pa)
-            .list
-            .iter()
-            .enumerate()
-            .flat_map(|(win, window)| {
-                window
-                    .nodes
-                    .iter()
-                    .chain(window.spawned.iter().map(|(_, node)| node))
-                    .enumerate()
-                    .map(move |(wid, node)| (win, wid, node))
-            })
     }
 
     ////////// Querying functions
