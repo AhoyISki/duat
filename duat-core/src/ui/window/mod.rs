@@ -770,6 +770,8 @@ impl<U: Ui> Window<U> {
             unreachable!("This isn't supposed to fail");
         };
 
+        node.handle().declare_closed(pa);
+
         let (do_rm_window, rm_areas) = U::Area::delete(MutArea(node.area(pa)));
         if do_rm_window {
             return true;
