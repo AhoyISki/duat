@@ -3,7 +3,7 @@ mod print_info;
 
 use std::{fmt::Alignment, sync::Arc};
 
-use crossterm::cursor;
+use crossterm::{cursor, style::Attribute};
 use duat_core::{
     cfg::PrintCfg,
     context,
@@ -154,7 +154,8 @@ impl Area {
                         lines.end_line(ansi_codes, painter);
                     }
                     if x > 0 {
-                        let default_style = painter.get_default().style;
+                        let mut default_style = painter.get_default().style;
+                        default_style.attributes.set(Attribute::Reset);
                         print_style(lines, default_style, ansi_codes);
                         (0..x).for_each(|_| lines.push_char(' ', 1));
                     }

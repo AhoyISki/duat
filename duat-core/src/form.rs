@@ -1461,6 +1461,7 @@ impl Painter {
         self.set_fg = true;
         self.set_bg = true;
         self.set_ul = true;
+        self.reset_attrs = true;
     }
 
     /// Applies the `"caret.main"` [`Form`]
