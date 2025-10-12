@@ -78,15 +78,15 @@ impl EdgeCoords {
         Self { tl, br, axis, line }
     }
 
-    #[allow(clippy::type_complexity)]
     pub fn crossing(&self, other: EdgeCoords) -> Option<(Coord, [Option<Brush>; 4])> {
         if let Axis::Vertical = self.axis {
-            if let Axis::Vertical = other.axis
-                && self.br.x == other.tl.x
-                && self.br.y + 2 == other.tl.y
-            {
-                let coord = Coord::new(self.br.x, self.br.y + 1);
-                return Some((coord, [None, self.line, None, other.line]));
+            if let Axis::Vertical = other.axis {
+                if self.br.x == other.tl.x && self.br.y + 2 == other.tl.y {
+                    let coord = Coord::new(self.br.x, self.br.y + 1);
+                    return Some((coord, [None, self.line, None, other.line]));
+                } else {
+                    return None;
+                }
             } else {
                 return other.crossing(*self);
             }

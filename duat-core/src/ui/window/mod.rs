@@ -150,12 +150,12 @@ impl<U: Ui> Windows<U> {
     /// with others being at the perifery of this area.
     pub(crate) fn new_file(&self, pa: &mut Pass, file: File<U>) -> Node<U> {
         let win = context::cur_window::<U>(pa);
-        let wins = self.inner.read(pa);
-        let (handle, specs) = wins
+        let inner = self.inner.read(pa);
+        let (handle, specs) = inner
             .layout
             .lock()
             .unwrap()
-            .new_file(pa, win, &file, &wins.list);
+            .new_file(pa, win, &file, &inner.list);
 
         let specs = PushSpecs { cluster: false, ..specs };
 
@@ -374,7 +374,7 @@ impl<U: Ui> Windows<U> {
     fn push<W: Widget<U>>(
         &self,
         pa: &mut Pass,
-        (target, on_files, specs): (&U::Area, Option<bool>, PushSpecs),
+        (target, on_files, mut specs): (&U::Area, Option<bool>, PushSpecs),
         widget: W,
     ) -> Option<Node<U>> {
         run_once::<W, U>();
@@ -394,8 +394,11 @@ impl<U: Ui> Windows<U> {
         let target_is_on_files = inner.list[win].files_area.is_master_of(target);
         let on_files = on_files.unwrap_or(target_is_on_files) && target_is_on_files;
 
+        if target_is_on_files && !on_files {
+            specs.cluster = false;
+        }
+
         let location = if on_files {
-            context::debug!("pushed {} to files", crate::utils::duat_name::<W>());
             Location::OnFiles
         } else if let Some((id, _)) = inner.list[win]
             .spawned
