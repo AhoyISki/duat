@@ -479,10 +479,8 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// `--global` or `-g` [`Flags`] are passed.
     pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
         let handles: Vec<_> = context::windows::<U>().handles(pa).cloned().collect();
-        for handle in handles {
-            if let Some(handle) = handle.try_downcast() {
-                f(pa, handle)
-            }
+        for handle in handles.iter().filter_map(Handle::try_downcast) {
+            f(pa, handle)
         }
     }
 
@@ -494,16 +492,14 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// `--window` or `-w` [`Flags`] are passed.
     pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
         let cur_win = context::cur_window::<U>(pa);
-        let nodes: Vec<Node<U>> = context::windows::<U>()
+        let nodes: Vec<_> = context::windows::<U>()
             .entries(pa)
             .filter(|&(win, ..)| win == cur_win)
-            .map(|(.., node)| node.clone())
+            .map(|(.., node)| node.handle().clone())
             .collect();
 
-        for handle in nodes.iter().map(Node::handle) {
-            if let Some(handle) = handle.try_downcast() {
-                f(pa, handle)
-            }
+        for handle in nodes.iter().filter_map(Handle::try_downcast) {
+            f(pa, handle)
         }
     }
 

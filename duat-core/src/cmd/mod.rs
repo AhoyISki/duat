@@ -284,9 +284,14 @@ pub(crate) fn add_session_commands<U: Ui>() {
             return Err(txt!("{} has unsaved changes", file.name()).build());
         }
 
-        context::windows::<U>().close(pa, handle.to_dyn())?;
+        context::windows::<U>().close(pa, &handle)?;
+        if context::windows::<U>().file_handles(pa).count() == 0 {
+            context::sender().send(DuatEvent::Quit).unwrap();
+        }
 
-        Ok(Some(txt!("Closed [file]{}", handle.read(pa).name()).build()))
+        Ok(Some(
+            txt!("Closed [file]{}", handle.read(pa).name()).build(),
+        ))
     });
 
     add!(["quit!", "q!"], |pa, handle: Option<Buffer<U>>| {
@@ -295,7 +300,10 @@ pub(crate) fn add_session_commands<U: Ui>() {
             None => context::cur_file::<U>(pa),
         };
 
-        context::windows::<U>().close(pa, handle.to_dyn())?;
+        context::windows::<U>().close(pa, &handle)?;
+        if context::windows::<U>().file_handles(pa).count() == 0 {
+            context::sender().send(DuatEvent::Quit).unwrap();
+        }
 
         Ok(Some(
             txt!("Forcefully closed {}", handle.read(pa).name()).build(),
@@ -360,7 +368,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
             (bytes, file.name())
         };
 
-        context::windows::<U>().close(pa, handle.to_dyn())?;
+        context::windows::<U>().close(pa, &handle)?;
 
         match bytes {
             Some(bytes) => Ok(Some(

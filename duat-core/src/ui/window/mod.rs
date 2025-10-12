@@ -167,16 +167,17 @@ impl<U: Ui> Windows<U> {
         }
     }
 
-    pub(crate) fn close(
+    /// Closes a [`Handle`], removing it from the ui
+    pub(crate) fn close<W: Widget<U> + ?Sized, S>(
         &self,
         pa: &mut Pass,
-        handle: Handle<dyn Widget<U>, U>,
+        handle: &Handle<W, U, S>,
     ) -> Result<(), Text> {
-        let (win, wid) = self.handle_entry(pa, &handle)?;
+        let (win, wid) = self.handle_entry(pa, handle)?;
 
         // If this is the active Handle, pick another one to make active.
         let inner = self.inner.read(pa);
-        if handle == *inner.cur_widget.read(pa).handle() {
+        if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_file.read(pa) {
             // SAFETY: This Pass is only used on known other types.
             let internal_pass = &mut unsafe { Pass::new() };
 
@@ -224,7 +225,7 @@ impl<U: Ui> Windows<U> {
                 .collect();
 
             for file_ahead in files_ahead {
-                self.swap(pa, &handle, file_ahead.handle())?;
+                self.swap(pa, handle, file_ahead.handle())?;
             }
         }
 
@@ -248,11 +249,11 @@ impl<U: Ui> Windows<U> {
     }
 
     /// Swaps two [`Handle`]'s positions
-    pub(crate) fn swap(
+    pub(crate) fn swap<W1: Widget<U> + ?Sized, S1, W2: Widget<U> + ?Sized, S2>(
         &self,
         pa: &mut Pass,
-        lhs: &Handle<dyn Widget<U>, U>,
-        rhs: &Handle<dyn Widget<U>, U>,
+        lhs: &Handle<W1, U, S1>,
+        rhs: &Handle<W2, U, S2>,
     ) -> Result<(), Text> {
         let (lhs_win, _) = self.handle_entry(pa, lhs)?;
         let (rhs_win, _) = self.handle_entry(pa, rhs)?;
@@ -282,13 +283,14 @@ impl<U: Ui> Windows<U> {
         U::Area::swap(MutArea(lhs.area(pa)), rhs.area(pa));
 
         let cur_file = context::cur_file::<U>(pa);
-        if lhs_win != rhs_win
-            && let Some(win) = [lhs, rhs]
-                .into_iter()
-                .position(|handle| *handle == cur_file)
-        {
-            self.inner.write(pa).cur_win = win;
-            U::switch_window(self.ms, win);
+        if lhs_win != rhs_win {
+            if *lhs == cur_file {
+                self.inner.write(pa).cur_win = lhs_win;
+                U::switch_window(self.ms, lhs_win);
+            } else if *rhs == cur_file {
+                self.inner.write(pa).cur_win = rhs_win;
+                U::switch_window(self.ms, rhs_win);
+            }
         }
 
         Ok(())
@@ -448,10 +450,10 @@ impl<U: Ui> Windows<U> {
     ////////// Entry lookup
 
     /// An entry for a [`Handle`]
-    pub fn handle_entry(
+    pub fn handle_entry<W: Widget<U> + ?Sized, S>(
         &self,
         pa: &Pass,
-        handle: &Handle<dyn Widget<U>, U>,
+        handle: &Handle<W, U, S>,
     ) -> Result<(usize, usize), Text> {
         self.entries(pa)
             .find_map(|(win, wid, node)| (node.handle() == handle).then_some((win, wid)))
@@ -580,6 +582,7 @@ impl<U: Ui> Windows<U> {
                 window
                     .nodes
                     .iter()
+                    .chain(window.spawned.iter().map(|(_, node)| node))
                     .enumerate()
                     .map(move |(wid, node)| (win, wid, node))
             })
@@ -761,12 +764,14 @@ impl<U: Ui> Window<U> {
     /// Closes the [`Handle`] and all related ones
     ///
     /// Returns `true` if this `Window` is supposed to be removed.
-    fn close(&mut self, pa: &mut Pass, handle: Handle<dyn Widget<U>, U>) -> bool {
-        let Some(node) = self
-            .nodes
-            .extract_if(.., |node| *node.handle() == handle)
-            .next()
-        else {
+    fn close<W: Widget<U> + ?Sized, S>(&mut self, pa: &mut Pass, handle: &Handle<W, U, S>) -> bool {
+        let handle_eq = |node: &mut Node<U>| node.handle() == handle;
+
+        let node = if let Some(node) = self.nodes.extract_if(.., handle_eq).next() {
+            node
+        } else if let Some((_, node)) = self.spawned.extract_if(.., |(_, n)| handle_eq(n)).next() {
+            node
+        } else {
             unreachable!("This isn't supposed to fail");
         };
 
@@ -811,10 +816,10 @@ impl<U: Ui> Window<U> {
     }
 
     /// Takes all [`Node`]s related to a given [`Node`]
-    fn take_with_related_nodes(
+    fn take_with_related_nodes<W: Widget<U> + ?Sized, S>(
         &mut self,
         pa: &mut Pass,
-        handle: &Handle<dyn Widget<U>, U>,
+        handle: &Handle<W, U, S>,
     ) -> Vec<Node<U>> {
         let related = handle.related();
 

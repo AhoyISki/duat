@@ -660,16 +660,6 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         }
     }
 
-    /// Spawns a floating [`Widget`]
-    pub fn spawn_widget<SW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: SW,
-        specs: SpawnSpecs,
-    ) -> Option<Handle<SW, U>> {
-        context::windows::<U>().spawn_on_widget(pa, (&self.area, specs), widget)
-    }
-
     /// Pushes a [`Widget`] around this one
     ///
     /// This `Widget` will be placed internally, i.e., around the
@@ -780,6 +770,21 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
                 .push_widget(pa, (&self.area, None, specs), widget)
                 .unwrap()
         }
+    }
+
+    /// Spawns a floating [`Widget`]
+    pub fn spawn_widget<SW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: SW,
+        specs: SpawnSpecs,
+    ) -> Option<Handle<SW, U>> {
+        context::windows::<U>().spawn_on_widget(pa, (&self.area, specs), widget)
+    }
+
+    /// Closes this `Handle`, removing the [`Widget`] from the [`Ui`]
+    pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
+        context::windows().close(pa, self)
     }
 
     /// Wether this `Handle` was already closed
