@@ -778,9 +778,15 @@ fn get_cons(
         let ver_con = child.len(Axis::Vertical) | EQ(HIDDEN_PRIO) | 0.0;
         if let Some(parent) = parent {
             if parent.aligns_with(Axis::Horizontal) {
-                [Some(hor_con), None]
+                [
+                    Some(hor_con),
+                    height.map(|(h, _)| child.len(Axis::Vertical) | EQ(LEN_PRIO) | h),
+                ]
             } else {
-                [None, Some(ver_con)]
+                [
+                    width.map(|(w, _)| child.len(Axis::Horizontal) | EQ(LEN_PRIO) | w),
+                    Some(ver_con),
+                ]
             }
         } else {
             [Some(hor_con), Some(ver_con)]

@@ -137,8 +137,13 @@ impl<U: Ui> FooterWidgets<U> {
             let prompt_line = prompt_line.clone();
             move |pa, (_, handle)| {
                 if handle == &prompt_line {
-                    notifications.area(pa).hide().unwrap();
-                    handle.area(pa).reveal().unwrap();
+                    notifications.area(pa).hide()?;
+                    handle.area(pa).reveal()?;
+                    if self.one_line {
+                        handle
+                            .area(pa)
+                            .request_width_to_fit(handle.cfg(pa), handle.text(pa))?;
+                    }
                 };
                 Ok(())
             }
@@ -147,8 +152,8 @@ impl<U: Ui> FooterWidgets<U> {
         hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>({
             move |pa, (handle, _)| {
                 if handle == &prompt_line {
-                    notifications.area(pa).reveal().unwrap();
-                    handle.area(pa).hide().unwrap();
+                    notifications.area(pa).reveal()?;
+                    handle.area(pa).hide()?;
                 }
                 Ok(())
             }

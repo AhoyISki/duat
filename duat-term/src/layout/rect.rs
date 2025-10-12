@@ -1058,6 +1058,7 @@ pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &mut Rect) {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum Deletion {
     Main,
     Child(Rect, Constraints, Vec<AreaId>),
