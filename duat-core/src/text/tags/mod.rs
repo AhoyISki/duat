@@ -581,6 +581,11 @@ impl InnerTags {
             .iter()
             .find_map(|(lhs, text)| (*lhs == id).then_some(text))
     }
+
+    /// A list of all [`SpawnId`]s that belong to this `Tags`
+    pub(crate) fn get_spawned_ids(&self) -> &[SpawnId] {
+        &self.spawns
+    }
 }
 
 impl Clone for InnerTags {

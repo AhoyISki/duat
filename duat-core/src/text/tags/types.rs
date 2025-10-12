@@ -341,6 +341,14 @@ impl Tag<usize, SpawnId> for SpawnTag {
     }
 }
 
+struct SpawnCell(SpawnTag);
+
+impl Drop for SpawnCell {
+    fn drop(&mut self) {
+        
+    }
+}
+
 /// An internal representation of [`Tag`]s
 ///
 /// Unlike [`Tag`]s, however, each variant here is only placed in a

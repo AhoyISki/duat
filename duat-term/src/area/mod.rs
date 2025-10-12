@@ -90,7 +90,7 @@ impl Area {
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        let (mut lines, iter, line_start) = {
+        let (mut lines, iter) = {
             let Some((coords, has_changed)) = self.layouts.coords_of(self.id, true) else {
                 context::warn!("This Area was already deleted");
                 return;
@@ -109,13 +109,13 @@ impl Area {
 
             let lines = LinesBuilder::new(coords, x_shift, cfg);
 
-            let (line_start, iter) = {
+            let iter = {
                 let line_start = text.visual_line_start(s_points);
                 let iter = text.iter_fwd(line_start);
-                (line_start, print_iter(iter, lines.cap(), cfg, s_points))
+                print_iter(iter, lines.cap(), cfg, s_points)
             };
 
-            (lines, iter, line_start)
+            (lines, iter)
         };
 
         let mut observed_spawns = Vec::new();
@@ -230,7 +230,7 @@ impl Area {
                         observed_spawns.push(id);
                         self.layouts.move_spawn_to(
                             id,
-                            Coord::new(line_start.0.byte() as u32 % 50, 20),
+                            Coord::new(lines.coords().tl.x + x, lines.coords().tl.y + y),
                             len,
                         );
                     }
@@ -248,6 +248,8 @@ impl Area {
         for _ in 0..lines_left {
             lines.end_line(&mut ansi_codes, &mut painter);
         }
+
+        let spawns = text.get_spawned_ids();
 
         self.layouts
             .send_lines(self.id, lines, is_spawned, &observed_spawns, &[]);

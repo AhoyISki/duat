@@ -285,9 +285,6 @@ pub(crate) fn add_session_commands<U: Ui>() {
         }
 
         context::windows::<U>().close(pa, &handle)?;
-        if context::windows::<U>().file_handles(pa).count() == 0 {
-            context::sender().send(DuatEvent::Quit).unwrap();
-        }
 
         Ok(Some(
             txt!("Closed [file]{}", handle.read(pa).name()).build(),
@@ -301,9 +298,6 @@ pub(crate) fn add_session_commands<U: Ui>() {
         };
 
         context::windows::<U>().close(pa, &handle)?;
-        if context::windows::<U>().file_handles(pa).count() == 0 {
-            context::sender().send(DuatEvent::Quit).unwrap();
-        }
 
         Ok(Some(
             txt!("Forcefully closed {}", handle.read(pa).name()).build(),

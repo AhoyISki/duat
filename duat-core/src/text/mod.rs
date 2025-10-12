@@ -419,7 +419,7 @@ impl Text {
         self.0.tags.update_bounds();
     }
 
-    /// Inserts a [`Text`] into this [`Text`], in a specific [`Point`]
+    /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
     pub fn insert_text(&mut self, p: Point, text: Text) {
         let insert = if p.char() == 1 && self.0.bytes == "\n" {
             let change = Change::new(
@@ -517,7 +517,7 @@ impl Text {
         }
     }
 
-    /// Writes the contents of this [`Text`] to a [writer]
+    /// Writes the contents of this `Text` to a [writer]
     ///
     /// [writer]: std::io::Write
     pub fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
@@ -741,20 +741,25 @@ impl Text {
         self.0.tags.raw_rev_at(b)
     }
 
-    /// The [`Selections`] printed to this [`Text`], if they exist
+    /// The [`Selections`] printed to this `Text`, if they exist
     pub fn selections(&self) -> &Selections {
         &self.0.selections
     }
 
-    /// A mut reference to this [`Text`]'s [`Selections`] if they
+    /// A mut reference to this `Text`'s [`Selections`] if they
     /// exist
     pub fn selections_mut(&mut self) -> &mut Selections {
         &mut self.0.selections
     }
 
-    /// The [`History`] of [`Moment`]s in this [`Text`]
+    /// The [`History`] of [`Moment`]s in this `Text`
     pub fn history(&self) -> Option<&History> {
         self.0.history.as_ref()
+    }
+
+	/// A list of all [`SpawnId`]s that belong to this `Text`
+    pub fn get_spawned_ids(&self) -> &[SpawnId] {
+        self.0.tags.get_spawned_ids()
     }
 }
 

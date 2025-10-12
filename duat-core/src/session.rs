@@ -136,23 +136,6 @@ impl<U: Ui> Session<U> {
                 .collect()
         }
 
-        fn update_and_print_additions<U: Ui>(
-            pa: &mut Pass,
-            ms: &'static U::MetaStatics,
-            windows_nodes: &mut Vec<Vec<crate::ui::Node<U>>>,
-        ) {
-            while let Some(new_additions) = context::windows::<U>().get_additions(pa) {
-                U::flush_layout(ms);
-
-                let cur_win = context::cur_window::<U>(pa);
-                for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
-                    node.update_and_print(pa, cur_win);
-                }
-
-                *windows_nodes = get_windows_nodes(pa);
-            }
-        }
-
         form::set_sender(DuatSender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
@@ -167,27 +150,51 @@ impl<U: Ui> Session<U> {
 
         let mut reload_requested = false;
         let mut reprint_screen = false;
-        let mut no_updates = 0;
-        let mut windows_nodes = get_windows_nodes(pa);
-        let mut last_win = context::cur_window::<U>(pa);
 
         U::flush_layout(self.ms);
 
-        for node in windows_nodes.get(last_win).unwrap() {
-            node.update_and_print(pa, last_win);
-        }
-        update_and_print_additions::<U>(pa, self.ms, &mut windows_nodes);
+        let mut print_screen = {
+            let mut last_win = context::cur_window::<U>(pa);
+            let mut windows_nodes = get_windows_nodes::<U>(pa);
 
-        U::print(self.ms);
+            move |pa: &mut Pass, force: bool| {
+                let cur_win = context::cur_window::<U>(pa);
+
+                let mut printed_at_least_one = false;
+                for node in windows_nodes.get(last_win).unwrap() {
+                    if force || cur_win != last_win || node.needs_update(pa) {
+                        node.update_and_print(pa, last_win);
+                        printed_at_least_one = true;
+                    }
+                }
+
+                while let Some(new_additions) = context::windows::<U>().get_additions(pa) {
+                    U::flush_layout(self.ms);
+
+                    let cur_win = context::cur_window::<U>(pa);
+                    for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
+                        node.update_and_print(pa, cur_win);
+                    }
+
+                    windows_nodes = get_windows_nodes(pa);
+                }
+
+                if printed_at_least_one {
+                    U::print(self.ms);
+                }
+
+                last_win = cur_win;
+            }
+        };
+
+        print_screen(pa, true);
 
         loop {
             if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
                 mode_fn(pa);
             }
 
-            let timeout = if no_updates < 100 { 10 } else { 10000 };
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(timeout)) {
-                no_updates = 0;
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
                 match event {
                     DuatEvent::KeySent(key) => {
                         mode::send_key(pa, key);
@@ -229,11 +236,8 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        for handle in windows_nodes
-                            .iter()
-                            .flatten()
-                            .filter_map(|node| node.handle().try_downcast::<File<U>>())
-                        {
+                        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
+                        for handle in handles {
                             hook::trigger(pa, FileReloaded((handle, Cache::new())));
                         }
 
@@ -249,11 +253,8 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        for handle in windows_nodes
-                            .iter()
-                            .flatten()
-                            .filter_map(|node| node.handle().try_downcast::<File<U>>())
-                        {
+                        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
+                        for handle in handles {
                             hook::trigger(pa, FileClosed((handle, Cache::new())));
                         }
 
@@ -261,39 +262,10 @@ impl<U: Ui> Session<U> {
                         return (Vec::new(), duat_rx);
                     }
                 }
-            } else if reprint_screen {
-                let cur_win = context::cur_window::<U>(pa);
-                for node in windows_nodes.get(cur_win).unwrap() {
-                    node.update_and_print(pa, cur_win);
-                }
-                update_and_print_additions(pa, self.ms, &mut windows_nodes);
-
-                reprint_screen = false;
-                U::print(self.ms);
-                continue;
-            }
-            no_updates += 1;
-
-            let cur_win = context::cur_window::<U>(pa);
-            if cur_win == last_win {
-                for node in windows_nodes.get(cur_win).unwrap() {
-                    if node.needs_update(pa) {
-                        no_updates = 0;
-                        node.update_and_print(pa, cur_win);
-                    }
-                }
-            } else {
-                for node in windows_nodes.get(cur_win).unwrap() {
-                    node.update_and_print(pa, cur_win);
-                }
-            }
-            update_and_print_additions(pa, self.ms, &mut windows_nodes);
-
-            if no_updates == 0 {
-                U::print(self.ms);
             }
 
-            last_win = cur_win;
+            print_screen(pa, reprint_screen);
+            reprint_screen = false;
         }
     }
 
