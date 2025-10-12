@@ -101,14 +101,13 @@ impl<U: Ui> FooterWidgets<U> {
 
     /// Adds footer [`Widget`]s
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget<U>) {
-        let status_line = if self.above {
-            self.status.above().push_on(pa, push_target)
+        let prompt_line = if self.above {
+            self.prompt.above().hidden().push_on(pa, push_target)
         } else {
-            self.status.push_on(pa, push_target)
+            self.prompt.below().hidden().push_on(pa, push_target)
         };
 
-        let prompt_line = if self.one_line {
-            let prompt_line = self.prompt.left().hidden().push_on(pa, &status_line);
+        if self.one_line {
             hook::add::<KeysSentTo<Prompt<U>, U>, U>({
                 let prompt_line = prompt_line.clone();
                 move |pa, (_, handle)| {
@@ -122,12 +121,16 @@ impl<U: Ui> FooterWidgets<U> {
                     Ok(())
                 }
             });
-            prompt_line
+            self.status.right().push_on(pa, &prompt_line);
         } else {
-            self.prompt.below().hidden().push_on(pa, &status_line)
+            self.status.above().push_on(pa, &prompt_line);
         };
 
-        let notifications = self.notifs.push_on(pa, &prompt_line);
+        let notifications = if self.one_line {
+            self.notifs.request_width().push_on(pa, &prompt_line)
+        } else {
+            self.notifs.push_on(pa, &prompt_line)
+        };
 
         hook::add::<FocusedOn<PromptLine<U>, U>, U>({
             let notifications = notifications.clone();

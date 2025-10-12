@@ -248,6 +248,14 @@ impl<U: Ui> StatusLineBuilder<U> {
         }
     }
 
+	/// Puts the [`StatusLine`] on the right
+    pub(crate) fn right(self) -> Self {
+        Self {
+            specs: PushSpecs { side: Side::Right, ..self.specs },
+            ..self
+        }
+    }
+
     /// The [`PushSpecs`] in use
     pub fn specs(&self) -> PushSpecs {
         self.specs

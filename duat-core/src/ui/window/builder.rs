@@ -165,13 +165,15 @@ impl<U: Ui> UiBuilder<U> {
         &self,
         pa: &mut Pass,
         widget: W,
-        specs: PushSpecs,
+        mut specs: PushSpecs,
     ) -> Handle<W, U> {
         let target = context::windows::<U>()
             .get(pa, self.win)
             .unwrap()
             .files_area
             .clone();
+        
+        specs.cluster = false;
 
         context::windows::<U>()
             .push_widget(pa, (&target, Some(false), specs), widget)
@@ -183,13 +185,15 @@ impl<U: Ui> UiBuilder<U> {
         &self,
         pa: &mut Pass,
         widget: W,
-        specs: PushSpecs,
+        mut specs: PushSpecs,
     ) -> Handle<W, U> {
         let target = context::windows::<U>()
             .get(pa, self.win)
             .unwrap()
             .master_area
             .clone();
+
+        specs.cluster = false;
 
         context::windows::<U>()
             .push_widget(pa, (&target, Some(false), specs), widget)

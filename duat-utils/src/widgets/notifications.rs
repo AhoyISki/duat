@@ -57,6 +57,7 @@ pub struct Notifications {
     levels: Vec<Level>,
     last_rec: Option<usize>,
     get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
+    request_width: bool,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
@@ -81,9 +82,25 @@ impl<U: Ui> Widget<U> for Notifications {
             handle.set_mask((notifs.get_mask)(rec.clone()));
             notifs.text = (notifs.format_rec)(rec);
             notifs.last_rec = Some(i);
+
+            if notifs.request_width {
+                let notifs = handle.read(pa);
+                handle
+                    .area(pa)
+                    .request_width_to_fit(Widget::<U>::get_print_cfg(notifs), &notifs.text)
+                    .unwrap();
+            }
         } else if clear_notifs {
             handle.set_mask("");
-            notifs.text = Text::new()
+            notifs.text = Text::new();
+
+            if notifs.request_width {
+                let notifs = handle.read(pa);
+                handle
+                    .area(pa)
+                    .request_width_to_fit(Widget::<U>::get_print_cfg(notifs), &notifs.text)
+                    .unwrap();
+            }
         }
     }
 
@@ -129,6 +146,7 @@ pub struct NotificationsBuilder {
     fmt: Box<dyn FnMut(Record) -> Text + Send>,
     get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
     allowed_levels: Vec<Level>,
+    request_width: bool,
 }
 
 impl NotificationsBuilder {
@@ -145,10 +163,11 @@ impl NotificationsBuilder {
             get_mask: self.get_mask,
             levels: self.allowed_levels,
             last_rec: None,
+            request_width: self.request_width,
         };
         let specs = PushSpecs { side: Side::Below, height: Some(1.0), .. };
 
-        push_target.push_outer(pa, notifications, specs)
+        push_target.push_inner(pa, notifications, specs)
     }
 
     /// Changes the way [`Record`]s are formatted by [`Notifications`]
@@ -180,6 +199,11 @@ impl NotificationsBuilder {
     pub fn with_mask(self, get_mask: impl FnMut(Record) -> &'static str + Send + 'static) -> Self {
         Self { get_mask: Box::new(get_mask), ..self }
     }
+
+    /// Requests the width when printing to the screen
+    pub(crate) fn request_width(self) -> Self {
+        Self { request_width: true, ..self }
+    }
 }
 
 impl Default for NotificationsBuilder {
@@ -206,6 +230,7 @@ impl Default for NotificationsBuilder {
             fmt: Box::new(default_fmt),
             get_mask: Box::new(default_get_mask),
             allowed_levels: vec![Level::Error, Level::Warn, Level::Info],
+            request_width: false,
         }
     }
 }

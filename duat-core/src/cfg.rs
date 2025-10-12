@@ -271,7 +271,7 @@ impl PrintCfg {
     ///
     /// [word]: word_chars
     pub const fn wrap_on_word(&mut self) -> &mut Self {
-        self.wrap_method = WrapMethod::Edge;
+        self.wrap_method = WrapMethod::Word;
         self
     }
 

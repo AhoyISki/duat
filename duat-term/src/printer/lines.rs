@@ -59,9 +59,7 @@ impl LinesBuilder {
     }
 
     pub fn realign(&mut self, alignment: Alignment) {
-        if let Some(cap) = self.cap
-            && cap > self.coords().width()
-        {
+        if self.cap.is_some() {
             self.default_gaps = match alignment {
                 Alignment::Left => Gaps::OnRight,
                 Alignment::Right => Gaps::OnLeft,

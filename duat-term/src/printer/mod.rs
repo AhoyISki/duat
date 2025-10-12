@@ -28,7 +28,7 @@ pub struct Printer {
     vars: Mutex<Variables>,
     old_lines: Mutex<Vec<Lines>>,
     new_lines: Mutex<Vec<Lines>>,
-    floating_lines: Mutex<Vec<(AreaId, Lines)>>,
+    spawned_lines: Mutex<SpawnedLines>,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
 }
@@ -52,7 +52,7 @@ impl Printer {
             vars: Mutex::new(vars),
             old_lines: Mutex::new(Vec::new()),
             new_lines: Mutex::new(Vec::new()),
-            floating_lines: Mutex::new(Vec::new()),
+            spawned_lines: Mutex::new(SpawnedLines::default()),
             max,
             has_to_print_edges: AtomicBool::new(false),
         }
@@ -167,6 +167,12 @@ impl Printer {
         for var in [tl.x(), tl.y(), br.x(), br.y()] {
             vars.remove(var);
         }
+        drop(vars);
+
+        let mut spawned_lines = self.spawned_lines.lock().unwrap();
+        let prev_len = spawned_lines.list.len();
+        spawned_lines.list.retain(|(id, _)| *id != rect.id());
+        spawned_lines.has_changed = prev_len > spawned_lines.list.len();
 
         [tl.x(), tl.y(), br.x(), br.y()]
     }
@@ -184,6 +190,7 @@ impl Printer {
         let mut vars = self.vars.lock().unwrap();
         vars.remove(center);
         vars.remove(len);
+        drop(vars);
     }
 
     /// Inserts the [`Variables`] taken from a [`Rect`]
@@ -267,9 +274,13 @@ impl Printer {
         };
 
         let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
-        if new_lines.is_empty() {
+        let mut spawned_lines = self.spawned_lines.lock().unwrap();
+
+        if new_lines.is_empty() && !spawned_lines.has_changed {
             return;
         }
+        spawned_lines.has_changed = false;
+
         let mut old_lines = self.old_lines.lock().unwrap();
 
         let mut stdout = stdout.unwrap_or_else(stdout::get);
@@ -278,16 +289,43 @@ impl Printer {
         queue!(stdout, cursor::Hide, ResetColor);
         write!(stdout, "\x1b[?2026h").unwrap();
 
+        let mut log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("log")
+            .unwrap();
+
+        writeln!(
+            log,
+            "lengths: {:#?}",
+            old_lines
+                .iter()
+                .map(|lines| lines.line_infos.len())
+                .collect::<Vec<_>>()
+        )
+        .unwrap();
+
         for y in 0..max.y {
             write!(stdout, "\x1b[{}H", y + 1).unwrap();
 
             let mut x = 0;
 
+            let old_iter = old_lines.iter().filter_map(|lines| lines.on(y));
             let new_iter = new_lines.iter().filter_map(|lines| lines.on(y));
 
             for (new, new_ends) in new_iter {
                 if x != new_ends[0] {
-                    queue!(stdout, MoveToColumn(new_ends[0] as u16));
+                    if spawned_lines.list.is_empty() {
+                        queue!(stdout, MoveToColumn(new_ends[0] as u16));
+                    } else {
+                        for (old, old_ends) in old_iter
+                            .clone()
+                            .filter(|(_, old_ends)| old_ends[0] >= x && old_ends[1] <= new_ends[0])
+                        {
+                            stdout.write_all(old.bytes).unwrap();
+                            stdout.write_all(&SPACES[..old.end_spaces]).unwrap();
+                        }
+                    }
                 }
 
                 stdout.write_all(new.bytes).unwrap();
@@ -313,15 +351,12 @@ impl Printer {
             CURSOR_IS_REAL.load(Ordering::Relaxed)
         };
 
-        let list = self.floating_lines.lock().unwrap();
-        if !list.is_empty() {
-            for (_, lines) in list.iter() {
-                for y in lines.coords.tl.y..lines.coords.br.y {
-                    queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
-                    let (info, ..) = lines.on(y).unwrap();
-                    stdout.write_all(info.bytes).unwrap();
-                    stdout.write_all(&SPACES[..info.end_spaces]).unwrap();
-                }
+        for (_, lines) in spawned_lines.list.iter() {
+            for y in lines.coords.tl.y..lines.coords.br.y {
+                queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
+                let (info, ..) = lines.on(y).unwrap();
+                stdout.write_all(info.bytes).unwrap();
+                stdout.write_all(&SPACES[..info.end_spaces]).unwrap();
             }
         }
 
@@ -362,15 +397,19 @@ impl Printer {
 
     /// Sends the finished [`Lines`] of a floating `Widget` to be
     /// printed
-    pub fn send_floating_lines(&self, id: AreaId, builder: LinesBuilder) {
-        let mut list = self.floating_lines.lock().unwrap();
+    pub fn send_spawned_lines(&self, id: AreaId, builder: LinesBuilder) {
+        let mut spawned_lines = self.spawned_lines.lock().unwrap();
 
         // This is done in order to preserve the order in which the floating
         // Widgets were sent.
-        if let Some((_, old_lines)) = list.iter_mut().find(|(other, _)| *other == id) {
+        if let Some((_, old_lines)) = spawned_lines
+            .list
+            .iter_mut()
+            .find(|(other, _)| *other == id)
+        {
             *old_lines = builder.build();
         } else {
-            list.push((id, builder.build()));
+            spawned_lines.list.push((id, builder.build()));
         }
     }
 
@@ -444,11 +483,17 @@ struct InnerLineInfo {
     end_spaces: usize,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct LineInfo<'a> {
     bytes: &'a [u8],
     end_fmt_i: usize,
     end_spaces: usize,
+}
+
+#[derive(Default)]
+struct SpawnedLines {
+    list: Vec<(AreaId, Lines)>,
+    has_changed: bool,
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]

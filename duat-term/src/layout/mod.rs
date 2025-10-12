@@ -289,7 +289,7 @@ impl Layouts {
         }
 
         if is_floating {
-            layout.printer.send_floating_lines(id, lines);
+            layout.printer.send_spawned_lines(id, lines);
         } else {
             layout.printer.send_lines(lines);
         }
@@ -448,6 +448,7 @@ impl Layout {
                 (rect, cons, rm_list)
             } else {
                 let (mut info, mut rect) = self.spawned.remove(i);
+                self.printer.remove_spawn_info(info.id);
                 self.printer.remove_rect(&mut rect);
                 self.printer.remove_eqs(info.cons.drain());
 

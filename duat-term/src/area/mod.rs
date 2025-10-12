@@ -222,7 +222,9 @@ impl Area {
                     }
                     Part::AlignLeft => lines.realign(Alignment::Left),
                     Part::AlignCenter => lines.realign(Alignment::Center),
-                    Part::AlignRight => lines.realign(Alignment::Right),
+                    Part::AlignRight => {
+                        lines.realign(Alignment::Right)
+                    }
                     Part::Spacer => lines.add_spacer(),
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                     Part::SpawnedWidget(id) => {
