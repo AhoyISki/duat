@@ -50,10 +50,7 @@ use crate::{
 ///
 /// Determines how the n'th [`File`] should be opened, given the
 /// previously opened [`File`]s on the same window.
-pub trait Layout<U>: Send + Sync
-where
-    U: Ui,
-{
+pub trait Layout<U: Ui>: Send + Sync {
     /// Opens a new [`File`]
     ///
     /// The returned [`Ok(Handle<File>, PushSpecs)`] value represents
@@ -69,7 +66,7 @@ where
         &mut self,
         pa: &Pass,
         cur_win: usize,
-        cur_file: &File<U>,
+        file: &File<U>,
         windows: &[Window<U>],
     ) -> (Handle<File<U>, U>, PushSpecs);
 }
@@ -81,10 +78,7 @@ where
 #[derive(Clone)]
 pub struct MasterOnLeft;
 
-impl<U> Layout<U> for MasterOnLeft
-where
-    U: Ui,
-{
+impl<U: Ui> Layout<U> for MasterOnLeft {
     fn new_file(
         &mut self,
         pa: &Pass,
@@ -93,7 +87,7 @@ where
         windows: &[Window<U>],
     ) -> (Handle<File<U>, U>, PushSpecs) {
         let last = windows[cur_win].file_handles(pa).last().unwrap().clone();
-        if windows.len() == 1 {
+        if windows[cur_win].file_handles(pa).len() == 1 {
             (last, PushSpecs { side: Side::Right, .. })
         } else {
             (last, PushSpecs { side: Side::Below, .. })
