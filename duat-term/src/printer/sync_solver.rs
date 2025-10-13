@@ -254,7 +254,12 @@ impl SyncSolver {
         self.spawns
             .extract_if(.., |c| c.deps.matches_id(id))
             .next()
-            .map(|c| [c.center_var, c.len_var])
+            .map(|c| {
+                self.solver.remove_edit_variable(c.center_var).unwrap();
+                self.solver.remove_edit_variable(c.len_var).unwrap();
+                
+                [c.center_var, c.len_var]
+            })
     }
 
     /// Returns the spawn info associated with a [`SpawnId`]

@@ -787,7 +787,6 @@ fn get_cons(
     parent: Option<&Rect>,
 ) -> [Option<Constraint>; 2] {
     if is_hidden {
-        duat_core::context::debug!("boo 👻");
         let hor_con = child.len(Axis::Horizontal) | EQ(HIDDEN_PRIO) | 0.0;
         let ver_con = child.len(Axis::Vertical) | EQ(HIDDEN_PRIO) | 0.0;
         if let Some(parent) = parent {
