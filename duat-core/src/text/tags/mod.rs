@@ -263,7 +263,7 @@ impl InnerTags {
         let mut starts = Vec::new();
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
-            let b = b as usize + p.char();
+            let b = b as usize + p.byte();
             match tag {
                 PushForm(..) | StartAlignCenter(_) | StartAlignRight(_) | StartConceal(_) => {
                     starts.push((b, tag))

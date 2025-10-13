@@ -203,8 +203,7 @@ impl Printer {
 
     ////////// Updating functions
 
-    /// Updates the value of all [`VarPoint`]s that have changed,
-    /// returning true if any of them have.
+    /// Updates the value of all [`VarPoint`]s that have changed
     pub fn update(&self, change_max: bool, assign_floating: bool) {
         let changes = {
             let mut ss = self.sync_solver.lock().unwrap();

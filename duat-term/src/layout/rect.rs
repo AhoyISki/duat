@@ -74,9 +74,13 @@ impl Rect {
         id: SpawnId,
         frame: Frame,
         cache: PrintInfo,
-        specs: SpawnSpecs,
+        mut specs: SpawnSpecs,
     ) -> (Self, Constraints) {
         let mut rect = Rect::new(p, false, Kind::Leaf(Cell::new(cache)), true, frame);
+
+        // Wether the Rect is shown or not is dependent on the SpawnTag being
+        // printed or not, it's not a choice of the user.
+        specs.hidden = true;
 
         let len = match specs.orientation.axis() {
             Axis::Horizontal => specs.width,
@@ -400,7 +404,7 @@ impl Rect {
                 if let Some(edge) = rect.edge.take() {
                     p.remove_edge(edge)
                 }
-                
+
                 // Since all spawned widgets are clustered, this must be the main
                 // Area.
                 p.remove_eqs(rect.drain_eqs());

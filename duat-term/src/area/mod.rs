@@ -227,12 +227,14 @@ impl Area {
                     Part::Spacer => lines.add_spacer(),
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                     Part::SpawnedWidget(id) => {
-                        observed_spawns.push(id);
-                        self.layouts.move_spawn_to(
-                            id,
-                            Coord::new(lines.coords().tl.x + x, lines.coords().tl.y + y),
-                            len,
-                        );
+                        if y > lines.coords().tl.y {
+                            observed_spawns.push(id);
+                            self.layouts.move_spawn_to(
+                                id,
+                                Coord::new(lines.coords().tl.x + x, lines.coords().tl.y + y),
+                                len,
+                            );
+                        }
                     }
                     Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                         todo!("Toggles have not been implemented yet.")
@@ -252,7 +254,7 @@ impl Area {
         let spawns = text.get_spawned_ids();
 
         self.layouts
-            .send_lines(self.id, lines, is_spawned, &observed_spawns, &[]);
+            .send_lines(self.id, lines, is_spawned, spawns, &observed_spawns);
     }
 }
 

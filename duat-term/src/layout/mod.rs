@@ -275,17 +275,26 @@ impl Layouts {
         id: AreaId,
         lines: LinesBuilder,
         is_floating: bool,
+        spawns: &[SpawnId],
         observed_spawns: &[SpawnId],
-        _spawns: &[SpawnId],
     ) {
-        let layouts = self.0.borrow();
+        let mut layouts = self.0.borrow_mut();
         let layout = layouts
             .list
-            .iter()
+            .iter_mut()
             .find(|layout| layout.get(id).is_some())
             .unwrap();
 
-        if !observed_spawns.is_empty() {
+        let mut revealed_at_least_one = false;
+        for spawn_id in spawns {
+            if let Some((_, rect)) = layout.spawned.iter().find(|(info, _)| info.id == *spawn_id) {
+                let hidden = !observed_spawns.contains(spawn_id);
+                recurse_set_hidden(layout, rect.id(), hidden);
+                revealed_at_least_one = !hidden;
+            }
+        }
+
+        if revealed_at_least_one {
             layout.printer.update(false, false);
         }
 
@@ -528,10 +537,13 @@ impl Layout {
         is_hidden: Option<bool>,
     ) -> bool {
         fn get_constraints_mut(id: AreaId, layout: &mut Layout) -> Option<&mut Constraints> {
-            [&mut layout.main]
-                .into_iter()
-                .chain(layout.spawned.iter_mut().map(|(_, rect)| rect))
-                .find_map(|rect| rect.get_constraints_mut(id))
+            layout.main.get_constraints_mut(id).or_else(|| {
+                layout.spawned.iter_mut().find_map(|(info, rect)| {
+                    (rect.id() == id)
+                        .then_some(&mut info.cons)
+                        .or_else(|| rect.get_constraints_mut(id))
+                })
+            })
         }
 
         let Some(mut cons) = get_constraints_mut(id, self).cloned() else {
@@ -775,6 +787,7 @@ fn get_cons(
     parent: Option<&Rect>,
 ) -> [Option<Constraint>; 2] {
     if is_hidden {
+        duat_core::context::debug!("boo 👻");
         let hor_con = child.len(Axis::Horizontal) | EQ(HIDDEN_PRIO) | 0.0;
         let ver_con = child.len(Axis::Vertical) | EQ(HIDDEN_PRIO) | 0.0;
         if let Some(parent) = parent {
@@ -857,6 +870,21 @@ fn remove_dependents(
     }
 
     rm_list
+}
+
+fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
+    let Some(rect) = layout.get(id) else {
+        return;
+    };
+
+    if let Some(children) = rect.children() {
+        let children: Vec<_> = children.iter().map(|(rect, _)| rect.id()).collect();
+        for child_id in children {
+            recurse_set_hidden(layout, child_id, hidden);
+        }
+    }
+
+    layout.set_constraints(id, None, None, Some(hidden));
 }
 
 /// The priority for edges for areas that must not overlap

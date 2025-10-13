@@ -421,26 +421,20 @@ impl Text {
 
     /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
     pub fn insert_text(&mut self, p: Point, text: Text) {
-        let insert = if p.char() == 1 && self.0.bytes == "\n" {
+        if p.char() == 1 && self.0.bytes == "\n" {
             let change = Change::new(
                 text.0.bytes.strs(..).unwrap().to_string(),
                 [Point::default(), p],
                 self,
             );
             self.apply_change_inner(0, change.as_ref());
-            Point::default()
         } else {
             let added_str = text.0.bytes.strs(..).unwrap().to_string();
             let change = Change::str_insert(&added_str, p);
             self.apply_change_inner(0, change);
-            p
         };
 
-        if insert == self.len() {
-            self.0.tags.extend(text.0.tags);
-        } else {
-            self.0.tags.insert_tags(insert, text.0.tags);
-        }
+        self.0.tags.insert_tags(p, text.0.tags);
     }
 
     ////////// History functions
@@ -757,7 +751,7 @@ impl Text {
         self.0.history.as_ref()
     }
 
-	/// A list of all [`SpawnId`]s that belong to this `Text`
+    /// A list of all [`SpawnId`]s that belong to this `Text`
     pub fn get_spawned_ids(&self) -> &[SpawnId] {
         self.0.tags.get_spawned_ids()
     }
