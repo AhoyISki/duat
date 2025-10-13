@@ -257,7 +257,13 @@ impl SyncSolver {
             .map(|c| {
                 self.solver.remove_edit_variable(c.center_var).unwrap();
                 self.solver.remove_edit_variable(c.len_var).unwrap();
-                
+                if let CenterDeps::TextHorizontal(_, tl, _) | CenterDeps::TextVertical(_, tl) =
+                    c.deps
+                {
+                    self.solver.remove_edit_variable(tl.x).unwrap();
+                    self.solver.remove_edit_variable(tl.y).unwrap();
+                }
+
                 [c.center_var, c.len_var]
             })
     }
