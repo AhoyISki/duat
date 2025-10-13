@@ -139,6 +139,7 @@ impl Area {
             let (painter, lines, ansi_codes) = (&mut painter, &mut lines, &mut ansi_codes);
             let mut y = tl_y;
             let mut cursor = None;
+            let mut spawns_for_next: Vec<SpawnId> = Vec::new();
 
             for (caret, item) in iter {
                 f(&caret, &item);
@@ -193,6 +194,15 @@ impl Area {
                                 print_style(lines, style, ansi_codes)
                             }
                         }
+                        for id in spawns_for_next.drain(..) {
+                            observed_spawns.push(id);
+                            self.layouts.move_spawn_to(
+                                id,
+                                Coord::new(lines.coords().tl.x + x, y - 1),
+                                len,
+                            );
+                        }
+
                         style_was_set = false;
                     }
                     Part::PushForm(id, prio) => {
@@ -226,16 +236,7 @@ impl Area {
                     Part::AlignRight => lines.realign(Alignment::Right),
                     Part::Spacer => lines.add_spacer(),
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
-                    Part::SpawnedWidget(id) => {
-                        if y > lines.coords().tl.y {
-                            observed_spawns.push(id);
-                            self.layouts.move_spawn_to(
-                                id,
-                                Coord::new(lines.coords().tl.x + x, y - 1),
-                                len,
-                            );
-                        }
-                    }
+                    Part::SpawnedWidget(id) => spawns_for_next.push(id),
                     Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                         todo!("Toggles have not been implemented yet.")
                     }

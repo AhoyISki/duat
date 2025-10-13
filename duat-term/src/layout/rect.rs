@@ -359,8 +359,10 @@ impl Rect {
         let entry = (rect_to_fix, cons_to_fix);
         parent.children_mut().unwrap().insert(i, entry);
 
-        // Spawned
-        if let Some(info) = spawn_info {}
+        // Spawned Rects are dynamically sized.
+        if let Some(info) = spawn_info {
+            let new_len = recursive_length(self, &info.cons, info.orientation.axis());
+        }
 
         Some((new_id, new_parent_id))
     }
@@ -1055,6 +1057,29 @@ pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &mut Rect) {
         }
     } else {
         to_p.insert_rect_vars(vars);
+    }
+}
+
+fn recursive_length(rect: &Rect, cons: &Constraints, on_axis: Axis) -> Option<u32> {
+    let Kind::Branch { children, axis, .. } = &rect.kind else {
+        return match on_axis {
+            Horizontal => cons.width.map(|(w, _)| w as u32),
+            Vertical => cons.height.map(|(h, _)| h as u32),
+        };
+    };
+
+    let mut iter = children
+        .iter()
+        .map(|(rect, cons)| recursive_length(rect, cons, on_axis));
+
+    if *axis == on_axis {
+        // If any child on the same axis has no size restriction, then the
+        // spawned Rect is unrestricted and should have len == None.
+        iter.try_fold(0, |acc, len| Some(acc + len?))
+    } else {
+        // If all children on a the other axis have no size restriction, then
+        // the spawned Rect is unrestricted and should have len == None.
+        iter.max().unwrap_or(None)
     }
 }
 

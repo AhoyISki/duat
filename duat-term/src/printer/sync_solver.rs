@@ -255,11 +255,6 @@ impl SyncSolver {
             .extract_if(.., |c| c.deps.matches_id(id))
             .next()
             .map(|c| {
-                duat_core::context::debug!(
-                    "objective: {}",
-                    self.solver.objective.borrow().cells.len()
-                );
-                
                 self.solver.remove_edit_variable(c.center_var).unwrap();
                 self.solver.remove_edit_variable(c.len_var).unwrap();
                 if let CenterDeps::TextHorizontal(_, tl, _) | CenterDeps::TextVertical(_, tl) =

@@ -190,7 +190,7 @@ impl<'a> FwdIter<'a> {
                 *self = FwdIter::new_at(self.text, point);
                 return false;
             }
-            RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::Spacer(_)
+            RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::SpawnedWidget(..)
                 if b < self.init_point.byte() => {}
             _ => return false,
         }
