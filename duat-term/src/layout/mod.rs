@@ -458,9 +458,9 @@ impl Layout {
                 (rect, cons, rm_list)
             } else {
                 let (mut info, mut rect) = self.spawned.remove(i);
-                self.printer.remove_spawn_info(info.id);
                 self.printer.remove_rect(&mut rect);
                 self.printer.remove_eqs(info.cons.drain());
+                self.printer.remove_spawn_info(info.id);
 
                 return Some(remove_dependents(
                     &mut rect,

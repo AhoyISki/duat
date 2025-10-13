@@ -249,12 +249,17 @@ impl SyncSolver {
 
     /// Removes the spawn info associated with a [`SpawnId`]
     ///
-    /// Returns the `center` and `len` variables, if they exist.
-    pub fn remove_spawn_info(&mut self, id: SpawnId) -> Option<[Variable; 2]> {
+    /// Returns all edit variables.
+    pub fn remove_spawn_info(&mut self, id: SpawnId) -> Option<ReturnedEditVars> {
         self.spawns
             .extract_if(.., |c| c.deps.matches_id(id))
             .next()
             .map(|c| {
+                duat_core::context::debug!(
+                    "objective: {}",
+                    self.solver.objective.borrow().cells.len()
+                );
+                
                 self.solver.remove_edit_variable(c.center_var).unwrap();
                 self.solver.remove_edit_variable(c.len_var).unwrap();
                 if let CenterDeps::TextHorizontal(_, tl, _) | CenterDeps::TextVertical(_, tl) =
@@ -262,9 +267,10 @@ impl SyncSolver {
                 {
                     self.solver.remove_edit_variable(tl.x).unwrap();
                     self.solver.remove_edit_variable(tl.y).unwrap();
+                    ReturnedEditVars::TextSpawned([c.center_var, c.len_var, tl.x, tl.y])
+                } else {
+                    ReturnedEditVars::WidgetSpawned([c.center_var, c.len_var])
                 }
-
-                [c.center_var, c.len_var]
             })
     }
 
@@ -356,4 +362,9 @@ impl CenterDeps {
             | CenterDeps::TextVertical(id, _) => *id == other,
         }
     }
+}
+
+pub enum ReturnedEditVars {
+    WidgetSpawned([Variable; 2]),
+    TextSpawned([Variable; 4]),
 }

@@ -178,8 +178,7 @@ impl Default for LogBookBuilder {
             };
 
             builder.push(txt!(
-                "[log_book.bracket]([log_book.target]{}[log_book.bracket])[] {}",
-                rec.metadata().target(),
+                "[log_book.bracket]([log_book.target][log_book.bracket])[] {}",
                 rec.text().clone()
             ));
 

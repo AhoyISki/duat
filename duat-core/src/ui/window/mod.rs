@@ -968,7 +968,7 @@ impl<U: Ui> Window<U> {
 
     /// How many [`Widget`]s are in this [`Window`]
     pub(crate) fn len_widgets(&self) -> usize {
-        self.nodes.len()
+        self.nodes.len() + self.spawned.len()
     }
 }
 

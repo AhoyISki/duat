@@ -183,13 +183,23 @@ impl Printer {
     /// variables, as well as future calculations for the center of
     /// the spawned widget.
     pub fn remove_spawn_info(&self, id: SpawnId) {
-        let Some([center, len]) = self.sync_solver.lock().unwrap().remove_spawn_info(id) else {
+        let Some(edit_vars) = self.sync_solver.lock().unwrap().remove_spawn_info(id) else {
             return;
         };
 
         let mut vars = self.vars.lock().unwrap();
-        vars.remove(center);
-        vars.remove(len);
+        match edit_vars {
+            sync_solver::ReturnedEditVars::WidgetSpawned([center, len]) => {
+                vars.remove(center);
+                vars.remove(len);
+            }
+            sync_solver::ReturnedEditVars::TextSpawned([center, len, tl_x, tl_y]) => {
+                vars.remove(center);
+                vars.remove(len);
+                vars.remove(tl_x);
+                vars.remove(tl_y);
+            }
+        }
         drop(vars);
     }
 

@@ -376,6 +376,8 @@ impl InnerTags {
                     } else {
                         ends.push(tag);
                     }
+                } else if let RawTag::SpawnedWidget(_, spawn_id) = tag {
+                    self.spawns.retain(|id| *id != spawn_id);
                 }
             });
 
