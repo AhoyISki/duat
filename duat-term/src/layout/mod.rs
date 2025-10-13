@@ -6,7 +6,7 @@ use duat_core::{
     ui::{Axis, Orientation, PushSpecs, SpawnSpecs},
 };
 
-pub use self::rect::{Deletion, Rect, transfer_vars};
+pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
 use crate::{
     AreaId, Coords, Frame,
     area::{Coord, PrintInfo},
@@ -536,39 +536,63 @@ impl Layout {
         height: Option<f32>,
         is_hidden: Option<bool>,
     ) -> bool {
-        fn get_constraints_mut(id: AreaId, layout: &mut Layout) -> Option<&mut Constraints> {
-            layout.main.get_constraints_mut(id).or_else(|| {
-                layout.spawned.iter_mut().find_map(|(info, rect)| {
-                    (rect.id() == id)
-                        .then_some(&mut info.cons)
-                        .or_else(|| rect.get_constraints_mut(id))
-                })
-            })
-        }
-
-        let Some(mut cons) = get_constraints_mut(id, self).cloned() else {
-            return false;
+        let is_eq = |cons: &mut Constraints| {
+            width.is_none_or(|w| Some(w) == cons.on(Axis::Horizontal))
+                && height.is_none_or(|h| Some(h) == cons.on(Axis::Vertical))
+                && is_hidden.is_none_or(|ih| ih == cons.is_hidden)
         };
 
-        if width.is_none_or(|w| Some(w) == cons.on(Axis::Horizontal))
-            && height.is_none_or(|h| Some(h) == cons.on(Axis::Vertical))
-            && is_hidden.is_none_or(|ih| ih == cons.is_hidden)
-        {
-            return true;
-        };
-
-        *get_constraints_mut(id, self).unwrap() = {
+        let get_new_cons = |main: &Rect, mut cons: Constraints| {
             let old_eqs = cons.replace(width, height, is_hidden);
 
-            let rect = self.get(id).unwrap();
-            let (_, parent) = self.get_parent(id).unzip();
+            let rect = main.get(id).unwrap();
+            let (_, parent) = main.get_parent(id).unzip();
 
             let new_eqs = cons.apply(rect, parent);
-            self.printer.replace_and_update(old_eqs, new_eqs, false);
+            self.printer.replace(old_eqs, new_eqs);
             cons
         };
 
-        true
+        if let Some(cons) = self.main.get_constraints_mut(id) {
+            if is_eq(cons) {
+                return true;
+            }
+            let cons = cons.clone();
+            *self.main.get_constraints_mut(id).unwrap() = get_new_cons(&self.main, cons);
+            self.printer.update(false, false);
+
+            true
+        } else if let Some((i, cons)) =
+            self.spawned
+                .iter_mut()
+                .enumerate()
+                .find_map(|(i, (info, rect))| {
+                    (rect.id() == id)
+                        .then_some((i, &mut info.cons))
+                        .or_else(|| Some(i).zip(rect.get_constraints_mut(id)))
+                })
+        {
+            if is_eq(cons) {
+                return true;
+            }
+            let cons = cons.clone();
+
+            let (SpawnInfo { cons: main_cons, .. }, main) = &mut self.spawned[i];
+            if main.id() == id {
+                *main_cons = get_new_cons(main, cons);
+            } else {
+                *main.get_constraints_mut(id).unwrap() = get_new_cons(main, cons);
+            }
+
+            let (SpawnInfo { id, orientation, cons }, rect) = &self.spawned[i];
+            let len = recurse_length(rect, cons, orientation.axis());
+            self.printer.set_spawn_len(*id, len.map(|len| len as f64));
+            self.printer.update(false, false);
+
+            true
+        } else {
+            false
+        }
     }
 
     /// Resets the equalities of the [`Rect`] of an [`AreaId`]
@@ -839,7 +863,7 @@ fn remove_dependents(
 
     let rm_spawned: Vec<(SpawnInfo, Rect)> = spawned
         .extract_if(.., |(info, _)| {
-            let (_, tl, br) = p.get_spawned_info(info.id).unwrap();
+            let (_, tl, br) = p.get_spawn_info(info.id).unwrap();
 
             if tl
                 .iter()

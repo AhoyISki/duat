@@ -99,14 +99,39 @@ impl<U: Ui> Windows<U> {
     pub(crate) fn spawn_on_widget<W: Widget<U>>(
         &self,
         pa: &mut Pass,
-        (on, specs): (&U::Area, SpawnSpecs),
+        (target, specs): (&U::Area, SpawnSpecs),
         widget: W,
     ) -> Option<Handle<W, U>> {
-        let win = window_index_of_area(pa, on, self.inner.read(pa));
+        let (win, cluster_master) =
+            self.inner
+                .read(pa)
+                .list
+                .iter()
+                .enumerate()
+                .find_map(|(win, window)| {
+                    if window.master_area.is_master_of(target) {
+                        Some((win, None))
+                    } else if let Some((_, node)) = window
+                        .spawned
+                        .iter()
+                        .find(|(_, node)| node.area(pa).is_master_of(target))
+                    {
+                        Some((win, node.area(pa).get_cluster_master()))
+                    } else {
+                        None
+                    }
+                })?;
+
         let widget = RwData::new(widget);
         let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
         let id = SpawnId::new();
-        let spawned = U::Area::spawn(MutArea(on), id, specs, cache)?;
+
+        let spawned = U::Area::spawn(
+            MutArea(cluster_master.as_ref().unwrap_or(target)),
+            id,
+            specs,
+            cache,
+        )?;
 
         let node = Node::new(widget, Arc::new(spawned));
 
@@ -989,19 +1014,6 @@ fn window_index_widget<U: Ui>(
         .nodes()
         .enumerate()
         .map(move |(i, entry)| (index, i, entry))
-}
-
-fn window_index_of_area<U: Ui>(pa: &Pass, area: &U::Area, wins: &InnerWindows<U>) -> usize {
-    wins.list
-        .iter()
-        .position(|win| {
-            win.master_area.is_master_of(area)
-                || win
-                    .spawned
-                    .iter()
-                    .any(|(_, node)| node.area(pa).is_master_of(area))
-        })
-        .unwrap()
 }
 
 /// Runs the [`once`] function of widgets.

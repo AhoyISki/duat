@@ -202,7 +202,7 @@ impl Rect {
 
                 p.add_eqs(info.cons.apply(&parent, None));
 
-                let (deps, tl, br) = p.get_spawned_info(info.id).unwrap();
+                let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
 
                 parent.set_spawned_eqs(p, specs, deps, tl, br);
 
@@ -361,7 +361,8 @@ impl Rect {
 
         // Spawned Rects are dynamically sized.
         if let Some(info) = spawn_info {
-            let new_len = recursive_length(self, &info.cons, info.orientation.axis());
+            let new_len = recurse_length(self, &info.cons, info.orientation.axis());
+            p.set_spawn_len(info.id, new_len.map(|len| len as f64));
         }
 
         Some((new_id, new_parent_id))
@@ -1060,7 +1061,7 @@ pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &mut Rect) {
     }
 }
 
-fn recursive_length(rect: &Rect, cons: &Constraints, on_axis: Axis) -> Option<u32> {
+pub fn recurse_length(rect: &Rect, cons: &Constraints, on_axis: Axis) -> Option<u32> {
     let Kind::Branch { children, axis, .. } = &rect.kind else {
         return match on_axis {
             Horizontal => cons.width.map(|(w, _)| w as u32),
@@ -1070,7 +1071,7 @@ fn recursive_length(rect: &Rect, cons: &Constraints, on_axis: Axis) -> Option<u3
 
     let mut iter = children
         .iter()
-        .map(|(rect, cons)| recursive_length(rect, cons, on_axis));
+        .map(|(rect, cons)| recurse_length(rect, cons, on_axis));
 
     if *axis == on_axis {
         // If any child on the same axis has no size restriction, then the

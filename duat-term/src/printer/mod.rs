@@ -116,11 +116,17 @@ impl Printer {
     /// - The `center` and `len` variables
     /// - The top left corner of the spawn target
     /// - The bottom right corner of the spawn target
-    pub fn get_spawned_info(
+    pub fn get_spawn_info(
         &self,
         id: SpawnId,
     ) -> Option<([Variable; 2], [Expression; 2], [Expression; 2])> {
         self.sync_solver.lock().unwrap().get_spawn_info(id)
+    }
+
+
+    /// Sets the new desired length for a [`SpawnId`]
+    pub fn set_spawn_len(&self, id: SpawnId, len: Option<f64>) {
+        self.sync_solver.lock().unwrap().set_spawn_len(id, len);
     }
 
     /// Creates a new edge from the two [`VarPoint`]s

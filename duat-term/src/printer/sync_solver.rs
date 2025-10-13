@@ -152,7 +152,7 @@ impl SyncSolver {
     /// for said widget in the given axis, respectively
     pub fn new_widget_spawn(
         &mut self,
-        id: SpawnId,
+        spawn_id: SpawnId,
         variables: &mut super::variables::Variables,
         [tl, br]: [VarPoint; 2],
         len: Option<f32>,
@@ -170,10 +170,11 @@ impl SyncSolver {
             .unwrap();
 
         self.spawns.push(SpawnedCenter {
+            spawn_id,
             center_var,
             len_var,
             desired_len: len.map(|len| len as f64),
-            deps: CenterDeps::Widget(id, tl, br, axis),
+            deps: CenterDeps::Widget(tl, br, axis),
             axis,
             prefers_before,
         });
@@ -189,7 +190,7 @@ impl SyncSolver {
     /// terminal cell.
     pub fn new_text_spawn(
         &mut self,
-        id: SpawnId,
+        spawn_id: SpawnId,
         variables: &mut super::variables::Variables,
         len: Option<f32>,
         axis: Axis,
@@ -210,12 +211,13 @@ impl SyncSolver {
         self.solver.add_edit_variable(tl.y, STRONG - 1.0).unwrap();
 
         self.spawns.push(SpawnedCenter {
+            spawn_id,
             center_var,
             len_var,
             desired_len: len.map(|len| len as f64),
             deps: match axis {
-                Axis::Horizontal => CenterDeps::TextHorizontal(id, tl, None),
-                Axis::Vertical => CenterDeps::TextVertical(id, tl),
+                Axis::Horizontal => CenterDeps::TextHorizontal(tl, None),
+                Axis::Vertical => CenterDeps::TextVertical(tl),
             },
             axis,
             prefers_before,
@@ -229,18 +231,18 @@ impl SyncSolver {
     /// The `char_width` argument is used to determine where the right
     /// edge lies. It's ignored for vertically spawned widgets
     pub fn move_spawn_to(&mut self, id: SpawnId, coord: Coord, char_width: u32) {
-        let Some(center) = self.spawns.iter_mut().find(|c| c.deps.matches_id(id)) else {
+        let Some(center) = self.spawns.iter_mut().find(|c| c.spawn_id == id) else {
             unreachable!("Whoopsie Daisy, that's not supposed to happen.");
         };
 
         match center.deps {
             CenterDeps::Widget(..) => unreachable!(),
-            CenterDeps::TextHorizontal(_, tl, ref mut len) => {
+            CenterDeps::TextHorizontal(tl, ref mut len) => {
                 self.solver.suggest_value(tl.x, coord.x as f64).unwrap();
                 self.solver.suggest_value(tl.y, coord.y as f64).unwrap();
                 *len = Some(char_width)
             }
-            CenterDeps::TextVertical(_, tl) => {
+            CenterDeps::TextVertical(tl) => {
                 self.solver.suggest_value(tl.x, coord.x as f64).unwrap();
                 self.solver.suggest_value(tl.y, coord.y as f64).unwrap();
             }
@@ -252,14 +254,12 @@ impl SyncSolver {
     /// Returns all edit variables.
     pub fn remove_spawn_info(&mut self, id: SpawnId) -> Option<ReturnedEditVars> {
         self.spawns
-            .extract_if(.., |c| c.deps.matches_id(id))
+            .extract_if(.., |c| c.spawn_id == id)
             .next()
             .map(|c| {
                 self.solver.remove_edit_variable(c.center_var).unwrap();
                 self.solver.remove_edit_variable(c.len_var).unwrap();
-                if let CenterDeps::TextHorizontal(_, tl, _) | CenterDeps::TextVertical(_, tl) =
-                    c.deps
-                {
+                if let CenterDeps::TextHorizontal(tl, _) | CenterDeps::TextVertical(tl) = c.deps {
                     self.solver.remove_edit_variable(tl.x).unwrap();
                     self.solver.remove_edit_variable(tl.y).unwrap();
                     ReturnedEditVars::TextSpawned([c.center_var, c.len_var, tl.x, tl.y])
@@ -280,25 +280,33 @@ impl SyncSolver {
         &self,
         id: SpawnId,
     ) -> Option<([Variable; 2], [Expression; 2], [Expression; 2])> {
-        self.spawns
-            .iter()
-            .find(|c| c.deps.matches_id(id))
-            .map(|center| {
-                let (tl, br) = match center.deps {
-                    CenterDeps::Widget(_, tl, br, _) => (tl, [br.x().into(), br.y().into()]),
-                    CenterDeps::TextHorizontal(_, tl, char_width) => {
-                        let width = char_width.unwrap_or(1);
-                        (tl, [tl.x() + width as f32, tl.y() + 1.0])
-                    }
-                    CenterDeps::TextVertical(_, tl) => (tl, [tl.x() + 1.0, tl.y() + 1.0]),
-                };
+        self.spawns.iter().find(|c| c.spawn_id == id).map(|center| {
+            let (tl, br) = match center.deps {
+                CenterDeps::Widget(tl, br, _) => (tl, [br.x().into(), br.y().into()]),
+                CenterDeps::TextHorizontal(tl, char_width) => {
+                    let width = char_width.unwrap_or(1);
+                    (tl, [tl.x() + width as f32, tl.y() + 1.0])
+                }
+                CenterDeps::TextVertical(tl) => (tl, [tl.x() + 1.0, tl.y() + 1.0]),
+            };
 
-                (
-                    [center.center_var, center.len_var],
-                    [tl.x().into(), tl.y().into()],
-                    br,
-                )
-            })
+            (
+                [center.center_var, center.len_var],
+                [tl.x().into(), tl.y().into()],
+                br,
+            )
+        })
+    }
+
+    /// Sets the new desired length for a [`SpawnId`]
+    pub fn set_spawn_len(&mut self, id: SpawnId, desired_len: Option<f64>) {
+        let Some(center) = self.spawns.iter_mut().find(|c| c.spawn_id == id) else {
+            unreachable!(
+                "This should only be called when it is known that the Spawn still exists."
+            );
+        };
+
+        center.desired_len = desired_len;
     }
 }
 
@@ -309,6 +317,7 @@ impl SyncSolver {
 ///
 /// [`Rect`]: super::Rect
 struct SpawnedCenter {
+    spawn_id: SpawnId,
     center_var: Variable,
     len_var: Variable,
     desired_len: Option<f64>,
@@ -319,21 +328,21 @@ struct SpawnedCenter {
 
 /// What kind of dependency a [`SpawnedCenter`] has
 enum CenterDeps {
-    Widget(SpawnId, VarPoint, VarPoint, Axis),
-    TextHorizontal(SpawnId, VarPoint, Option<u32>),
-    TextVertical(SpawnId, VarPoint),
+    Widget(VarPoint, VarPoint, Axis),
+    TextHorizontal(VarPoint, Option<u32>),
+    TextVertical(VarPoint),
 }
 
 impl CenterDeps {
     /// The current value of the edges that define a [`SpawnedCenter`]
     fn get_values(&self, solver: &Solver) -> [f64; 2] {
         match *self {
-            CenterDeps::Widget(_, tl, br, axis) => [tl, br].map(|v| solver.get_value(v.on(axis))),
-            CenterDeps::TextHorizontal(_, tl, len) => {
+            CenterDeps::Widget(tl, br, axis) => [tl, br].map(|v| solver.get_value(v.on(axis))),
+            CenterDeps::TextHorizontal(tl, len) => {
                 let left = solver.get_value(tl.x);
                 [left, left + len.unwrap_or(1) as f64]
             }
-            CenterDeps::TextVertical(_, tl) => {
+            CenterDeps::TextVertical(tl) => {
                 let top = solver.get_value(tl.y);
                 [top, top + 1.0]
             }
@@ -343,18 +352,9 @@ impl CenterDeps {
     /// Wether the dependencies contain a certain [`Variable`]
     fn contains(&self, var: Variable) -> bool {
         match *self {
-            CenterDeps::Widget(_, tl, br, axis) => tl.on(axis) == var || br.on(axis) == var,
-            CenterDeps::TextHorizontal(_, tl, _) => tl.x == var,
-            CenterDeps::TextVertical(_, tl) => tl.y == var,
-        }
-    }
-
-    /// Wether this dependency is tied to a given [`SpawnId`]
-    fn matches_id(&self, other: SpawnId) -> bool {
-        match self {
-            CenterDeps::Widget(id, ..)
-            | CenterDeps::TextHorizontal(id, ..)
-            | CenterDeps::TextVertical(id, _) => *id == other,
+            CenterDeps::Widget(tl, br, axis) => tl.on(axis) == var || br.on(axis) == var,
+            CenterDeps::TextHorizontal(tl, _) => tl.x == var,
+            CenterDeps::TextVertical(tl) => tl.y == var,
         }
     }
 }
