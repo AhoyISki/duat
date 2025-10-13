@@ -404,7 +404,7 @@ pub mod cursor {
     pub use duat_core::form::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
-        unset_main_cursor as unset_main,
+        unset_main_cursor as unset_main, id_of
     };
 }
 

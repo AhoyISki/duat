@@ -219,6 +219,14 @@ impl Printer {
         self.has_to_print_edges.store(true, Ordering::Relaxed);
     }
 
+    /// Clears a spawned Widget from screen, not actually deleting it
+    pub fn clear_spawn(&self, target: AreaId) {
+        self.spawned_lines
+            .lock()
+            .unwrap()
+            .retain(|(id, _)| *id != target);
+    }
+
     pub fn replace(
         &self,
         old_eqs: impl IntoIterator<Item = Equality>,

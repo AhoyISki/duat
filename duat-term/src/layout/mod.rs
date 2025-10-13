@@ -884,6 +884,9 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
         }
     }
 
+    if hidden {
+        layout.printer.clear_spawn(id);
+    }
     layout.set_constraints(id, None, None, Some(hidden));
 }
 

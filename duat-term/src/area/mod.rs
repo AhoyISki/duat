@@ -231,7 +231,7 @@ impl Area {
                             observed_spawns.push(id);
                             self.layouts.move_spawn_to(
                                 id,
-                                Coord::new(lines.coords().tl.x + x, lines.coords().tl.y + y),
+                                Coord::new(lines.coords().tl.x + x, y - 1),
                                 len,
                             );
                         }
