@@ -13,29 +13,29 @@ use crate::{
     hook::{self, FileClosed, WidgetCreated, WindowCreated},
     mode,
     text::{SpawnId, Text, txt},
-    ui::{MutArea, PushSpecs, SpawnSpecs},
+    ui::{MutArea, PushSpecs, SpawnSpecs, TypeErasedArea, TypeErasedUi},
 };
 
 mod builder;
 
 /// A list of all [`Window`]s in Duat
-pub struct Windows<U: Ui> {
-    inner: RwData<InnerWindows<U>>,
+pub struct Windows {
+    inner: RwData<InnerWindows>,
     spawns_to_remove: Mutex<Vec<SpawnId>>,
-    ms: &'static U::MetaStatics,
+    ui: TypeErasedUi,
 }
 
-impl<U: Ui> Windows<U> {
+impl Windows {
     /// Initializes the `Windows`, returning a [`Node`] for the first
     /// [`File`]
     pub(crate) fn initialize(
         pa: &mut Pass,
-        file: File<U>,
-        layout: Box<Mutex<dyn Layout<U>>>,
-        ms: &'static U::MetaStatics,
+        file: File,
+        layout: Box<Mutex<dyn Layout>>,
+        ui: TypeErasedUi,
     ) {
         let new_additions = Arc::new(Mutex::default());
-        let (window, node) = Window::new(0, pa, ms, file, new_additions.clone());
+        let (window, node) = Window::new(0, pa, ui, file, new_additions.clone());
 
         context::set_windows(Self {
             inner: RwData::new(InnerWindows {
@@ -47,14 +47,15 @@ impl<U: Ui> Windows<U> {
                 cur_win: 0,
             }),
             spawns_to_remove: Mutex::new(Vec::new()),
-            ms,
+            ui,
         });
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<File<U>>().unwrap()),
+            WidgetCreated(node.handle().try_downcast::<File>().unwrap()),
         );
-        let builder = UiBuilder::<U>::new(0);
+        
+        let builder = UiBuilder::new(0);
         hook::trigger(pa, WindowCreated(builder));
     }
 
@@ -701,48 +702,51 @@ impl<U: Ui> Windows<U> {
     }
 
     /// Gets the new additions to the [`Windows`]
-    pub(crate) fn get_additions(&self, pa: &mut Pass) -> Option<Vec<(usize, Node<U>)>> {
+    pub(crate) fn get_additions(&self, pa: &mut Pass) -> Option<Vec<(usize, Node)>> {
         self.inner.write(pa).new_additions.lock().unwrap().take()
     }
 }
 
 /// Inner holder of [`Window`]s
-struct InnerWindows<U: Ui> {
-    layout: Box<Mutex<dyn Layout<U>>>,
-    list: Vec<Window<U>>,
-    new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
-    cur_file: RwData<Handle<File<U>, U>>,
-    cur_widget: RwData<Node<U>>,
+struct InnerWindows {
+    layout: Box<Mutex<dyn Layout>>,
+    list: Vec<Window>,
+    new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
+    cur_file: RwData<Handle<File>>,
+    cur_widget: RwData<Node>,
     cur_win: usize,
 }
 
 /// A container for a master [`Area`] in Duat
-pub struct Window<U: Ui> {
+pub struct Window {
     index: usize,
-    nodes: Vec<Node<U>>,
-    spawned: Vec<(SpawnId, Node<U>)>,
-    files_area: Arc<U::Area>,
-    master_area: Arc<U::Area>,
-    new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
+    nodes: Vec<Node>,
+    spawned: Vec<(SpawnId, Node)>,
+    files_area: TypeErasedArea,
+    master_area: TypeErasedArea,
+    new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
 }
 
-impl<U: Ui> Window<U> {
+impl Window {
     /// Returns a new instance of [`Window`]
-    fn new<W: Widget<U>>(
+    fn new<W: Widget>(
         index: usize,
         pa: &mut Pass,
-        ms: &'static U::MetaStatics,
+        ui: TypeErasedUi,
         widget: W,
-        new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
-    ) -> (Self, Node<U>) {
+        new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
+    ) -> (Self, Node) {
         let widget = RwData::new(widget);
+        if let Some(file) = widget.write_as::<File>(pa) {
+            file.layout_order
+        }
 
         let cache = widget
             .read_as(pa)
-            .and_then(|f: &File<U>| Cache::new().load::<<U::Area as Area>::Cache>(f.path()).ok())
+            .and_then(|f: &File| Cache::new().load::<<U::Area as Area>::Cache>(f.path()).ok())
             .unwrap_or_default();
 
-        let area = Arc::new(U::new_root(ms, cache));
+        let area = ui.new_root();
         let node = Node::new::<W>(widget, area.clone());
 
         new_additions
@@ -1013,28 +1017,11 @@ fn window_index_widget<U: Ui>(
         .map(move |(i, entry)| (index, i, entry))
 }
 
-fn get_cache<U: Ui>(
-    pa: &mut Pass,
-    widget: RwData<dyn Widget<U>>,
-    windows: &Windows<U>,
-) -> <<U as Ui>::Area as Area>::Cache {
-    let last_layout_order = windows
-        .file_handles(pa)
-        .map(|handle| handle.read(pa).layout_order)
-        .max();
+fn get_layout_order() -> usize {
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    if let Some(file) = widget.write_as::<File<U>>(pa) {
-        file.layout_order = last_layout_order.map(|lo| lo + 1).unwrap_or(0);
-        match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
-            Ok(cache) => cache,
-            Err(err) => {
-                context::error!("{err}");
-                <U::Area as Area>::Cache::default()
-            }
-        }
-    } else {
-        <U::Area as Area>::Cache::default()
-    }
+    static LAYOUT_ORDER: AtomicUsize = AtomicUsize::new(0);
+    LAYOUT_ORDER.fetch_add(1, Ordering::Relaxed)
 }
 
 enum Location {

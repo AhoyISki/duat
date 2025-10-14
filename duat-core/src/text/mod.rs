@@ -586,7 +586,7 @@ impl Text {
 
     /// Removes the tags for all the selections, used before they are
     /// expected to move
-    pub(crate) fn add_selections(&mut self, area: &impl Area, cfg: PrintCfg) {
+    pub(crate) fn add_selections(&mut self, area: &dyn Area, cfg: PrintCfg) {
         let within = (self.0.selections.len() >= 500).then(|| {
             let (start, _) = area.start_points(self, cfg);
             let (end, _) = area.end_points(self, cfg);

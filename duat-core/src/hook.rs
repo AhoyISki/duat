@@ -555,10 +555,10 @@ impl Hookable for UnfocusedFromDuat {
 /// [direction]: crate::ui::PushSpecs
 /// [`LineNumbers`]: https://docs.rs/duat_utils/latest/duat-utils/widgets/struct.LineNumbers.html
 /// [`VertRule`]: https://docs.rs/duat_term/latest/duat-term/struct.VertRule.html
-pub struct WidgetCreated<W: Widget<U>, U: Ui>(pub(crate) Handle<W, U>);
+pub struct WidgetCreated<W: Widget>(pub(crate) Handle<W>);
 
-impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
-    type Input<'h> = &'h Handle<W, U>;
+impl<W: Widget> Hookable for WidgetCreated<W> {
+    type Input<'h> = &'h Handle<W>;
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
@@ -581,10 +581,10 @@ impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
 ///
 /// [builder]: crate::ui::UiBuilder
 /// [hook]: self
-pub struct WindowCreated<U: Ui>(pub(crate) UiBuilder<U>);
+pub struct WindowCreated(pub(crate) UiBuilder);
 
-impl<U: Ui> Hookable for WindowCreated<U> {
-    type Input<'h> = &'h mut UiBuilder<U>;
+impl Hookable for WindowCreated {
+    type Input<'h> = &'h mut UiBuilder;
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &mut self.0
@@ -601,10 +601,10 @@ impl<U: Ui> Hookable for WindowCreated<U> {
 ///
 /// This will not trigger upon reloading Duat. For that, see
 /// [`FileClosed`].
-pub struct FileClosed<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
+pub struct FileClosed(pub(crate) (Handle<File>, Cache));
 
-impl<U: Ui> Hookable for FileClosed<U> {
-    type Input<'h> = &'h (Handle<File<U>, U>, Cache);
+impl Hookable for FileClosed {
+    type Input<'h> = &'h (Handle<File>, Cache);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
@@ -621,10 +621,10 @@ impl<U: Ui> Hookable for FileClosed<U> {
 ///
 /// This will not trigger upon closing Duat. For that, see
 /// [`FileClosed`].
-pub struct FileReloaded<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
+pub struct FileReloaded(pub(crate) (Handle<File>, Cache));
 
-impl<U: Ui> Hookable for FileReloaded<U> {
-    type Input<'h> = &'h (Handle<File<U>, U>, Cache);
+impl Hookable for FileReloaded {
+    type Input<'h> = &'h (Handle<File>, Cache);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
@@ -637,10 +637,10 @@ impl<U: Ui> Hookable for FileReloaded<U> {
 ///
 /// - The [`Handle<dyn Widget>`] for the unfocused [`Widget`]
 /// - The [`Handle<W>`] for the newly focused [`Widget`]
-pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) (Handle<dyn Widget<U>, U>, Handle<W, U>));
+pub struct FocusedOn<W: Widget>(pub(crate) (Handle<dyn Widget>, Handle<W>));
 
-impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Input<'h> = &'h (Handle<dyn Widget<U>, U>, Handle<W, U>);
+impl<W: Widget> Hookable for FocusedOn<W> {
+    type Input<'h> = &'h (Handle<dyn Widget>, Handle<W>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
@@ -653,10 +653,10 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 ///
 /// - The [`Handle<W>`] for the unfocused [`Widget`]
 /// - The [`Handle<dyn Widget>`] for the newly focused [`Widget`]
-pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) (Handle<W, U>, Handle<dyn Widget<U>, U>));
+pub struct UnfocusedFrom<W: Widget>(pub(crate) (Handle<W>, Handle<dyn Widget>));
 
-impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Input<'h> = &'h (Handle<W, U>, Handle<dyn Widget<U>, U>);
+impl<W: Widget> Hookable for UnfocusedFrom<W> {
+    type Input<'h> = &'h (Handle<W>, Handle<dyn Widget>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
@@ -744,10 +744,10 @@ impl Hookable for ModeSwitched {
 /// This hook is very useful if you want to, for example, set
 /// different options upon switching to modes, depending on things
 /// like the language of a [`File`].
-pub struct ModeCreated<M: Mode<U>, U: Ui>(pub(crate) (M, Handle<M::Widget, U>));
+pub struct ModeCreated<M: Mode>(pub(crate) (M, Handle<M::Widget>));
 
-impl<M: Mode<U>, U: Ui> Hookable for ModeCreated<M, U> {
-    type Input<'h> = (&'h mut M, &'h Handle<M::Widget, U>);
+impl<M: Mode> Hookable for ModeCreated<M> {
+    type Input<'h> = (&'h mut M, &'h Handle<M::Widget>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         (&mut self.0.0, &self.0.1)
@@ -779,10 +779,10 @@ impl Hookable for KeysSent {
 /// - An [`Handle<W>`] for the widget.
 ///
 /// [key]: KeyEvent
-pub struct KeysSentTo<M: Mode<U>, U: Ui>(pub(crate) (Vec<KeyEvent>, Handle<M::Widget, U>));
+pub struct KeysSentTo<M: Mode>(pub(crate) (Vec<KeyEvent>, Handle<M::Widget>));
 
-impl<M: Mode<U>, U: Ui> Hookable for KeysSentTo<M, U> {
-    type Input<'h> = (&'h [KeyEvent], &'h Handle<M::Widget, U>);
+impl<M: Mode> Hookable for KeysSentTo<M> {
+    type Input<'h> = (&'h [KeyEvent], &'h Handle<M::Widget>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         (&self.0.0, &self.0.1)
@@ -1086,7 +1086,7 @@ type InnerHookFn<H> =
 /// }
 /// # }
 /// ```
-pub trait HookAlias<U: Ui, D: HookDummy = NormalHook> {
+pub trait HookAlias<D: HookDummy = NormalHook> {
     /// Just a shorthand for less boilerplate in the function
     /// definition
     type Input<'h>;
@@ -1095,19 +1095,19 @@ pub trait HookAlias<U: Ui, D: HookDummy = NormalHook> {
     type Hookable: for<'h> Hookable<Input<'h> = Self::Input<'h>>;
 }
 
-impl<H: Hookable, U: Ui> HookAlias<U> for H {
+impl<H: Hookable> HookAlias for H {
     type Hookable = Self;
     type Input<'h> = H::Input<'h>;
 }
 
-impl<W: Widget<U>, U: Ui> HookAlias<U, WidgetCreatedDummy<U>> for W {
-    type Hookable = WidgetCreated<W, U>;
-    type Input<'h> = <WidgetCreated<W, U> as Hookable>::Input<'h>;
+impl<W: Widget> HookAlias<WidgetCreatedDummy> for W {
+    type Hookable = WidgetCreated<W>;
+    type Input<'h> = <WidgetCreated<W> as Hookable>::Input<'h>;
 }
 
-impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
-    type Hookable = ModeCreated<M, U>;
-    type Input<'h> = <ModeCreated<M, U> as Hookable>::Input<'h>;
+impl<M: Mode> HookAlias<ModeCreatedDummy> for M {
+    type Hookable = ModeCreated<M>;
+    type Input<'h> = <ModeCreated<M> as Hookable>::Input<'h>;
 }
 
 /// Use this trait if you want to make specialized hooks
@@ -1211,12 +1211,12 @@ impl HookDummy for NormalHook {}
 
 /// For specialization purposes
 #[doc(hidden)]
-pub struct WidgetCreatedDummy<U>(PhantomData<U>);
+pub struct WidgetCreatedDummy;
 
-impl<U> HookDummy for WidgetCreatedDummy<U> {}
+impl HookDummy for WidgetCreatedDummy {}
 
 /// For specialization purposes
 #[doc(hidden)]
-pub struct ModeCreatedDummy<U>(PhantomData<U>);
+pub struct ModeCreatedDummy;
 
-impl<U> HookDummy for ModeCreatedDummy<U> {}
+impl HookDummy for ModeCreatedDummy {}

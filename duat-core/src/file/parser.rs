@@ -236,7 +236,7 @@ use crate::{
 /// [try equivalents]: File::try_read_parser
 /// [`duat-jump-list`]: https://github.com/AhoyISki/duat-jump-list
 #[allow(unused_variables)]
-pub trait Parser<U: Ui>: Send + 'static {
+pub trait Parser: Send + 'static {
     /// Parses the [`Bytes`] of the [`File`]
     ///
     /// This function is called every time the [`File`] is updated,
@@ -289,7 +289,7 @@ pub trait Parser<U: Ui>: Send + 'static {
     /// [range]: std::ops::Range
     /// [`parse`]: Parser::parse
     /// [`Conceal`]: crate::text::Conceal
-    fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {}
+    fn update(&mut self, pa: &mut Pass, file: &Handle<File>, on: Vec<Range<Point>>) {}
 
     /// Prepare this [`Parser`] before [`File::read_parser`] call
     ///
@@ -330,15 +330,15 @@ pub trait Parser<U: Ui>: Send + 'static {
 }
 
 #[derive(Default)]
-pub(super) struct Parsers<U: Ui> {
-    list: RefCell<Vec<ParserParts<U>>>,
+pub(super) struct Parsers {
+    list: RefCell<Vec<ParserParts>>,
 }
 
-impl<U: Ui> Parsers<U> {
+impl Parsers {
     /// Attempts to add  a [`Parser`]
-    pub(super) fn add<P: Parser<U>>(
+    pub(super) fn add<P: Parser>(
         &self,
-        file: &File<U>,
+        file: &File,
         f: impl FnOnce(FileTracker) -> P,
     ) -> Result<(), Text> {
         let mut parsers = self.list.borrow_mut();
@@ -374,11 +374,8 @@ impl<U: Ui> Parsers<U> {
     }
 
     /// Reads a specific [`Parser`]
-    pub(super) fn read_parser<P: Parser<U>, Ret>(
-        &self,
-        read: impl FnOnce(&P) -> Ret,
-    ) -> Option<Ret> {
-        let position = self.list.borrow().iter().position(type_eq::<U, P>);
+    pub(super) fn read_parser<P: Parser, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
+        let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
 
@@ -396,11 +393,11 @@ impl<U: Ui> Parsers<U> {
 
     /// Tries to read from a specific [`Parser`]. Fails if it is not
     /// available
-    pub(super) fn try_read_parser<P: Parser<U>, Ret>(
+    pub(super) fn try_read_parser<P: Parser, Ret>(
         &self,
         read: impl FnOnce(&P) -> Ret,
     ) -> Option<Ret> {
-        let position = self.list.borrow().iter().position(type_eq::<U, P>);
+        let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
             let ret = parser
@@ -416,11 +413,11 @@ impl<U: Ui> Parsers<U> {
     }
 
     /// Writes to a specific [`Parser`]
-    pub(super) fn write_parser<P: Parser<U>, Ret>(
+    pub(super) fn write_parser<P: Parser, Ret>(
         &self,
         write: impl FnOnce(&mut P) -> Ret,
     ) -> Option<Ret> {
-        let position = self.list.borrow().iter().position(type_eq::<U, P>);
+        let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
 
@@ -438,11 +435,11 @@ impl<U: Ui> Parsers<U> {
 
     /// Tries to write to a specific [`Parser`]. Fails if it is not
     /// available
-    pub(super) fn try_write_parser<P: Parser<U>, Ret>(
+    pub(super) fn try_write_parser<P: Parser, Ret>(
         &self,
         write: impl FnOnce(&mut P) -> Ret,
     ) -> Option<Ret> {
-        let position = self.list.borrow().iter().position(type_eq::<U, P>);
+        let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
             let ret = parser.before_try_get().then(|| {
@@ -459,7 +456,7 @@ impl<U: Ui> Parsers<U> {
 
     /// Updates the [`Parser`]s on a given range
     // TODO: Deal with reparsing if Changes took place.
-    pub(super) fn update(&self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Range<usize>) {
+    pub(super) fn update(&self, pa: &mut Pass, handle: &Handle<File>, on: Range<usize>) {
         let len = self.list.borrow().len();
         for i in 0..len {
             let mut parts = self.list.borrow_mut().remove(i);
@@ -491,8 +488,8 @@ impl<U: Ui> Parsers<U> {
 }
 
 /// Things related to an individual [`Parser`]
-struct ParserParts<U: Ui> {
-    parser: Option<Box<dyn Parser<U>>>,
+struct ParserParts {
+    parser: Option<Box<dyn Parser>>,
     ranges: Arc<Mutex<RangesTracker>>,
     update_requested: Arc<AtomicBool>,
     ty: TypeId,
@@ -806,6 +803,6 @@ impl RangesTracker {
 }
 
 /// Wether the type of the [`ParserParts`]'s parser is `P`
-fn type_eq<U: Ui, P: 'static>(parts: &ParserParts<U>) -> bool {
+fn type_eq<P: 'static>(parts: &ParserParts) -> bool {
     parts.ty == TypeId::of::<P>()
 }

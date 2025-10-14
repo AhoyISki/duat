@@ -38,7 +38,6 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::sync::{Arc, Mutex};
 
-use super::{Area, Ui};
 use crate::{
     cfg::PrintCfg,
     context::Handle,
@@ -408,7 +407,7 @@ pub trait Widget: Send + 'static {
     /// [`File::print`]: crate::file::File::print
     fn print(&self, pa: &Pass, painter: Painter, area: &TypeErasedArea) {
         let cfg = self.get_print_cfg();
-        area.print(self.text(), cfg, painter)
+        area.print(pa, self.text(), cfg, painter)
     }
 }
 
@@ -440,7 +439,7 @@ impl Node {
                 let handle = handle.clone();
                 move |pa| {
                     let painter = form::painter_with_mask::<W>(*handle.mask().lock().unwrap());
-                    W::print(handle.read(pa), pa, painter, handle.area());
+                    W::print(handle.read(pa), pa, painter, handle.area().read(pa));
                 }
             }),
             on_focus: Arc::new({
@@ -513,11 +512,12 @@ impl Node {
 
         (self.update)(pa);
 
+        let print_info = self.handle.area().get_print_info(pa);
         let (widget, area) = self.handle.write_with_area(pa);
         let cfg = widget.get_print_cfg();
         widget.text_mut().add_selections(area, cfg);
 
-        if area.get_print_info() != TypeErasedPrintInfo::default() {
+        if print_info != TypeErasedPrintInfo::default() {
             widget.text_mut().update_bounds();
         }
 

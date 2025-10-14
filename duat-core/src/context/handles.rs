@@ -224,8 +224,8 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// relatively large amount of shareable state.
     ///
     /// [`Area`]: crate::ui::Area
-    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a U::Area) {
-        (self.widget.write(pa), todo!())
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a dyn Area) {
+        (self.widget.write(pa), self.area.read(pa))
     }
 
     /// Declares the [`Widget`] within as written

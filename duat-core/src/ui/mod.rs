@@ -1017,6 +1017,38 @@ impl TypeErasedUi {
             fns: TypeErasedUiFunctions::new::<U>(),
         }
     }
+
+    /// Initiates and returns a new "master" [`Area`]
+    ///
+    /// This [`Area`] must not have any parents, and must be placed on
+    /// a new window, that is, a plain region with nothing in it.
+    ///
+    /// [`Area`]: Ui::Area
+    pub fn new_root(&self, pa: &Pass, widget: &RwData<dyn Widget>) -> TypeErasedArea {
+        (self.fns.new_root)(pa, &self.ui, widget)
+    }
+
+    /// Initiates and returns a new "floating" [`Area`]
+    ///
+    /// This is one of two ways of spawning floating [`Widget`]s. The
+    /// other way is with [`Area::spawn`], in which a [`Widget`] will
+    /// be bolted on the edges of another.
+    ///
+    /// TODO: There will probably be some way of defining floating
+    /// [`Widget`]s with coordinates in the not too distant future as
+    /// well.
+    ///
+    /// [`Area`]: Ui::Area
+    pub fn new_spawned(
+        &self,
+        pa: &Pass,
+        widget: &RwData<dyn Widget>,
+        spawn_id: SpawnId,
+        specs: SpawnSpecs,
+        win: usize,
+    ) -> TypeErasedArea {
+        (self.fns.new_spawned)(pa, &self.ui, widget, spawn_id, specs, win)
+    }
 }
 
 struct TypeErasedUiFunctions {
@@ -1082,6 +1114,16 @@ impl TypeErasedArea {
         }
     }
 
+    /// Shared access to an [`Area`] trait object
+    ///
+    /// You can use this to call any of the non restricted functions
+    /// from the [`Area`] trait, which include a bunch internal
+    /// mutability, like with [`Area::set_width`],
+    /// [`Area::set_height`], [`Area::reveal`], etc.
+    pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a dyn Area {
+        self.area.read(pa)
+    }
+
     ////////// Area Modification functions
 
     /// Pushes a [`Widget`] to this [`Area`]
@@ -1109,29 +1151,29 @@ impl TypeErasedArea {
     ////////// Constraint changing functions
 
     /// Changes the horizontal constraint of the area
-    fn set_width(&self, pa: &Pass, width: f32) -> Result<(), Text> {
+    pub fn set_width(&self, pa: &Pass, width: f32) -> Result<(), Text> {
         self.area.read(pa).set_width(width)
     }
 
     /// Changes the vertical constraint of the area
-    fn set_height(&self, pa: &Pass, height: f32) -> Result<(), Text> {
+    pub fn set_height(&self, pa: &Pass, height: f32) -> Result<(), Text> {
         self.area.read(pa).set_height(height)
     }
 
     /// Changes [`Constraint`]s such that the [`Area`] becomes
     /// hidden
-    fn hide(&self, pa: &Pass) -> Result<(), Text> {
+    pub fn hide(&self, pa: &Pass) -> Result<(), Text> {
         self.area.read(pa).hide()
     }
 
     /// Changes [`Constraint`]s such that the [`Area`] is revealed
-    fn reveal(&self, pa: &Pass) -> Result<(), Text> {
+    pub fn reveal(&self, pa: &Pass) -> Result<(), Text> {
         self.area.read(pa).reveal()
     }
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&self, pa: &Pass, cfg: PrintCfg, text: &Text) -> Result<(), Text> {
+    pub fn request_width_to_fit(&self, pa: &Pass, cfg: PrintCfg, text: &Text) -> Result<(), Text> {
         self.area.read(pa).request_width_to_fit(cfg, text)
     }
 
@@ -1140,19 +1182,19 @@ impl TypeErasedArea {
     ///
     /// Should make [`self`] the active [`Area`] while deactivating
     /// any other active [`Area`].
-    fn set_as_active(&self, pa: &Pass) {
+    pub fn set_as_active(&self, pa: &Pass) {
         self.area.read(pa).set_as_active()
     }
 
     ////////// Printing functions
 
     /// Prints the [`Text`] via an [`Iterator`]
-    fn print(&self, pa: &Pass, text: &Text, cfg: PrintCfg, painter: Painter) {
+    pub fn print(&self, pa: &Pass, text: &Text, cfg: PrintCfg, painter: Painter) {
         self.area.read(pa).print(text, cfg, painter)
     }
 
     /// Prints the [`Text`] with a callback function
-    fn print_with<'a>(
+    pub fn print_with<'a>(
         &self,
         pa: &Pass,
         text: &Text,
@@ -1164,14 +1206,14 @@ impl TypeErasedArea {
     }
 
     /// The current printing information of the area
-    fn get_print_info(&self, pa: &Pass) -> TypeErasedPrintInfo {
+    pub fn get_print_info(&self, pa: &Pass) -> TypeErasedPrintInfo {
         (self.fns.get_print_info)(pa, &self.area)
     }
 
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
     /// [`PrintInfo`]: Area::PrintInfo
-    fn set_print_info(&self, pa: &mut Pass, info: TypeErasedPrintInfo) {
+    pub fn set_print_info(&self, pa: &mut Pass, info: TypeErasedPrintInfo) {
         (self.fns.set_print_info)(pa, &self.area, info)
     }
 
@@ -1186,7 +1228,7 @@ impl TypeErasedArea {
     /// [`Area::rev_print_iter`].
     ///
     /// [`text::Item`]: Item
-    fn print_iter<'a>(
+    pub fn print_iter<'a>(
         &self,
         pa: &Pass,
         iter: FwdIter<'a>,
@@ -1205,7 +1247,7 @@ impl TypeErasedArea {
     /// If you want a forwards iterator, see [`Area::print_iter`].
     ///
     /// [`text::Item`]: Item
-    fn rev_print_iter<'a>(
+    pub fn rev_print_iter<'a>(
         &self,
         pa: &Pass,
         iter: RevIter<'a>,
@@ -1236,7 +1278,7 @@ impl TypeErasedArea {
     /// [`ScrollOff`]: crate::cfg::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
     /// [`scroll_to_points`]: Area::scroll_to_points
-    fn scroll_around_points(
+    pub fn scroll_around_points(
         &self,
         pa: &Pass,
         text: &Text,
