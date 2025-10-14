@@ -32,7 +32,12 @@
 //! [`hook`]: crate::hook
 //! [`File`]: crate::file::File
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
-use std::{any::Any, cell::UnsafeCell, fmt::Debug, sync::Arc};
+use std::{
+    any::Any,
+    cell::UnsafeCell,
+    fmt::Debug,
+    sync::{Arc, OnceLock},
+};
 
 use bincode::{Decode, Encode};
 
@@ -48,7 +53,7 @@ use crate::{
     file::File,
     form::Painter,
     session::DuatSender,
-    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, txt},
+    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints, txt},
 };
 
 pub mod layout;
@@ -213,7 +218,7 @@ pub trait Area: 'static {
     /// use of smooth scrolling, for example.
     ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
-    type PrintInfo: Default + Clone + Send + PartialEq + Eq + 'static
+    type PrintInfo: Default + Clone + Send + Sync + PartialEq + Eq + 'static
     where
         Self: Sized;
 
@@ -325,39 +330,6 @@ pub trait Area: 'static {
     /// text.
     fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text>;
 
-    /// Scrolls the [`Text`] veritcally by an amount
-    ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg);
-
-    /// Scrolls the [`Text`] on all four directions until the given
-    /// [`Point`] is within the [`ScrollOff`] range
-    ///
-    /// There are two other scrolling methods for [`Area`]:
-    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
-    /// between this and [`scroll_to_points`] is that this method
-    /// doesn't do anything if the [`Point`] is already on screen.
-    ///
-    /// [`ScrollOff`]: crate::cfg::ScrollOff
-    /// [`scroll_ver`]: Area::scroll_ver
-    /// [`scroll_to_points`]: Area::scroll_to_points
-    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
-
-    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
-    ///
-    /// This method takes [line wrapping] into account, so it's not
-    /// the same as setting the starting points to the
-    /// [`Text::visual_line_start`] of these [`TwoPoints`].
-    ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    ///
-    /// [line wrapping]: crate::cfg::WrapMethod
-    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg);
-
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
     ///
@@ -365,7 +337,7 @@ pub trait Area: 'static {
     /// any other active [`Area`].
     fn set_as_active(&self);
 
-    ////////// Printing
+    ////////// Printing functions
 
     /// Prints the [`Text`] via an [`Iterator`]
     fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
@@ -425,6 +397,47 @@ pub trait Area: 'static {
         cfg: PrintCfg,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>;
 
+    ////////// Points functions
+
+    /// Scrolls the [`Text`] veritcally by an amount
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg);
+
+    /// Scrolls the [`Text`] on all four directions until the given
+    /// [`Point`] is within the [`ScrollOff`] range
+    ///
+    /// There are two other scrolling methods for [`Area`]:
+    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
+    /// between this and [`scroll_to_points`] is that this method
+    /// doesn't do anything if the [`Point`] is already on screen.
+    ///
+    /// [`ScrollOff`]: crate::cfg::ScrollOff
+    /// [`scroll_ver`]: Area::scroll_ver
+    /// [`scroll_to_points`]: Area::scroll_to_points
+    fn scroll_around_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg);
+
+    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
+    ///
+    /// This method takes [line wrapping] into account, so it's not
+    /// the same as setting the starting points to the
+    /// [`Text::visual_line_start`] of these [`TwoPoints`].
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    ///
+    /// [line wrapping]: crate::cfg::WrapMethod
+    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg);
+
+    /// The start points that should be printed
+    fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+
+    /// The points immediately after the last printed [`Point`]
+    fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+
     ////////// Queries
 
     /// Whether or not [`self`] has changed
@@ -454,7 +467,7 @@ pub trait Area: 'static {
         Self: Sized;
 
     /// Returns the statics from `self`
-    fn cache(&mut self) -> Option<Self::Cache>
+    fn cache(&self) -> Option<Self::Cache>
     where
         Self: Sized;
 
@@ -463,12 +476,6 @@ pub trait Area: 'static {
 
     /// Gets the height of the area
     fn height(&self) -> f32;
-
-    /// The start points that should be printed
-    fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
-
-    /// The points immediately after the last printed [`Point`]
-    fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
 
     /// Returns `true` if this is the currently active [`Area`]
     ///
@@ -850,7 +857,7 @@ impl<A: Area> std::ops::Deref for MutArea<'_, A> {
 /// [`Handle<File>`].
 ///
 /// [`StatusLine`]: https://docs.rs/duat_utils/duat-utils/latest/widgets/struct.StatusLine.html
-pub trait PushTarget<U: Ui> {
+pub trait PushTarget {
     /// Pushes a [`Widget`] around `self`
     ///
     /// If `self` is a [`Handle`], this will push around the
@@ -898,12 +905,7 @@ pub trait PushTarget<U: Ui> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the second case, not just around `self`.
-    fn push_inner<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U>;
+    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW>;
 
     /// Pushes a [`Widget`] around the "master region" of `self`
     ///
@@ -951,72 +953,70 @@ pub trait PushTarget<U: Ui> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the first case, not just around `self`.
-    fn push_outer<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U>;
+    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW>;
 
     /// Tries to downcast to a [`Handle`] of some `W`
-    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>>;
+    fn try_downcast<W: Widget>(&self) -> Option<Handle<W>>;
 }
 
-impl<W: Widget<U> + ?Sized, U: Ui> PushTarget<U> for Handle<W, U> {
+impl<W: Widget + ?Sized> PushTarget for Handle<W> {
     #[doc(hidden)]
-    fn push_inner<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         self.push_inner_widget(pa, widget, specs)
     }
 
     #[doc(hidden)]
-    fn push_outer<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         self.push_outer_widget(pa, widget, specs)
     }
 
-    fn try_downcast<DW: Widget<U>>(&self) -> Option<Handle<DW, U>> {
+    fn try_downcast<DW: Widget>(&self) -> Option<Handle<DW>> {
         self.try_downcast()
     }
 }
 
-impl<U: Ui> PushTarget<U> for UiBuilder<U> {
+impl PushTarget for UiBuilder {
     #[doc(hidden)]
-    fn push_inner<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         UiBuilder::push_inner(self, pa, widget, specs)
     }
 
     #[doc(hidden)]
-    fn push_outer<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         UiBuilder::push_outer(self, pa, widget, specs)
     }
 
-    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
+    fn try_downcast<W: Widget>(&self) -> Option<Handle<W>> {
         None
     }
 }
 
+static DEFAULT_PRINT_INFO: OnceLock<fn() -> TypeErasedPrintInfo> = OnceLock::new();
+
+#[derive(Clone, Copy)]
 struct TypeErasedUi {
     ui: &'static dyn Any,
     fns: &'static TypeErasedUiFunctions,
+}
+
+impl TypeErasedUi {
+    /// Returns a new type erased [`Ui`]
+    ///
+    /// Given the [`Ui::get_once`] function, this should only be
+    /// callable _once_.
+    pub fn new<U: Ui>() -> Self
+    where
+        U::Area: PartialEq,
+    {
+        DEFAULT_PRINT_INFO
+            .set(|| TypeErasedPrintInfo::new::<U>(<U::Area as Area>::PrintInfo::default()))
+            .expect("Multiple Uis were setup, you are not supposed to do that");
+
+        TypeErasedUi {
+            ui: U::get_once().expect("Ui was acquired more than once"),
+            fns: TypeErasedUiFunctions::new::<U>(),
+        }
+    }
 }
 
 struct TypeErasedUiFunctions {
@@ -1056,13 +1056,21 @@ impl TypeErasedUiFunctions {
     }
 }
 
+/// A type erased [`Area`]
+///
+/// This type houses the inner `Area`, and provides type erased access
+/// to its functions.
 #[derive(Clone)]
-struct TypeErasedArea {
+pub struct TypeErasedArea {
     area: RwData<dyn Area>,
     fns: &'static TypeErasedAreaFunctions,
 }
 
 impl TypeErasedArea {
+    /// Returns a new type erased [`Area`]
+    ///
+    /// This is the only moment where the [`Ui`] and `Area` will be
+    /// statically known.
     fn new<U: Ui>(area: U::Area) -> Self
     where
         U::Area: PartialEq,
@@ -1074,7 +1082,10 @@ impl TypeErasedArea {
         }
     }
 
-    fn push(
+    ////////// Area Modification functions
+
+    /// Pushes a [`Widget`] to this [`Area`]
+    pub(crate) fn push(
         &self,
         pa: &mut Pass,
         widget: &RwData<dyn Widget>,
@@ -1084,7 +1095,203 @@ impl TypeErasedArea {
         (self.fns.push)(pa, &self.area, widget, specs, on_files)
     }
 
-    fn area_is_eq(&self, pa: &Pass, other: &TypeErasedArea) -> bool {
+    /// Spawns a [`Widget`] on this [`Area`]
+    pub(crate) fn spawn(
+        &self,
+        pa: &mut Pass,
+        widget: &RwData<dyn Widget>,
+        spawn_id: SpawnId,
+        specs: SpawnSpecs,
+    ) -> Option<Self> {
+        (self.fns.spawn)(pa, &self.area, widget, spawn_id, specs)
+    }
+
+    ////////// Constraint changing functions
+
+    /// Changes the horizontal constraint of the area
+    fn set_width(&self, pa: &Pass, width: f32) -> Result<(), Text> {
+        self.area.read(pa).set_width(width)
+    }
+
+    /// Changes the vertical constraint of the area
+    fn set_height(&self, pa: &Pass, height: f32) -> Result<(), Text> {
+        self.area.read(pa).set_height(height)
+    }
+
+    /// Changes [`Constraint`]s such that the [`Area`] becomes
+    /// hidden
+    fn hide(&self, pa: &Pass) -> Result<(), Text> {
+        self.area.read(pa).hide()
+    }
+
+    /// Changes [`Constraint`]s such that the [`Area`] is revealed
+    fn reveal(&self, pa: &Pass) -> Result<(), Text> {
+        self.area.read(pa).reveal()
+    }
+
+    /// Requests that the width be enough to fit a certain piece of
+    /// text.
+    fn request_width_to_fit(&self, pa: &Pass, cfg: PrintCfg, text: &Text) -> Result<(), Text> {
+        self.area.read(pa).request_width_to_fit(cfg, text)
+    }
+
+    /// Tells the [`Ui`] that this [`Area`] is the one that is
+    /// currently focused.
+    ///
+    /// Should make [`self`] the active [`Area`] while deactivating
+    /// any other active [`Area`].
+    fn set_as_active(&self, pa: &Pass) {
+        self.area.read(pa).set_as_active()
+    }
+
+    ////////// Printing functions
+
+    /// Prints the [`Text`] via an [`Iterator`]
+    fn print(&self, pa: &Pass, text: &Text, cfg: PrintCfg, painter: Painter) {
+        self.area.read(pa).print(text, cfg, painter)
+    }
+
+    /// Prints the [`Text`] with a callback function
+    fn print_with<'a>(
+        &self,
+        pa: &Pass,
+        text: &Text,
+        cfg: PrintCfg,
+        painter: Painter,
+        f: impl FnMut(&Caret, &Item) + 'a,
+    ) {
+        (self.fns.print_with)(pa, &self.area, text, cfg, painter, Box::new(f))
+    }
+
+    /// The current printing information of the area
+    fn get_print_info(&self, pa: &Pass) -> TypeErasedPrintInfo {
+        (self.fns.get_print_info)(pa, &self.area)
+    }
+
+    /// Sets a previously acquired [`PrintInfo`] to the area
+    ///
+    /// [`PrintInfo`]: Area::PrintInfo
+    fn set_print_info(&self, pa: &mut Pass, info: TypeErasedPrintInfo) {
+        (self.fns.set_print_info)(pa, &self.area, info)
+    }
+
+    /// Returns a printing iterator
+    ///
+    /// Given an iterator of [`text::Item`]s, returns an iterator
+    /// which assigns to each of them a [`Caret`]. This struct
+    /// essentially represents where horizontally would this character
+    /// be printed.
+    ///
+    /// If you want a reverse iterator, see
+    /// [`Area::rev_print_iter`].
+    ///
+    /// [`text::Item`]: Item
+    fn print_iter<'a>(
+        &self,
+        pa: &Pass,
+        iter: FwdIter<'a>,
+        cfg: PrintCfg,
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
+        self.area.read(pa).print_iter(iter, cfg)
+    }
+
+    /// Returns a reversed printing iterator
+    ///
+    /// Given an iterator of [`text::Item`]s, returns a reversed
+    /// iterator which assigns to each of them a [`Caret`]. This
+    /// struct essentially represents where horizontally each
+    /// character would be printed.
+    ///
+    /// If you want a forwards iterator, see [`Area::print_iter`].
+    ///
+    /// [`text::Item`]: Item
+    fn rev_print_iter<'a>(
+        &self,
+        pa: &Pass,
+        iter: RevIter<'a>,
+        cfg: PrintCfg,
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
+        self.area.read(pa).rev_print_iter(iter, cfg)
+    }
+
+    ////////// Points functions
+
+    /// Scrolls the [`Text`] veritcally by an amount
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    pub fn scroll_ver(&self, pa: &Pass, text: &Text, dist: i32, cfg: PrintCfg) {
+        self.area.read(pa).scroll_ver(text, dist, cfg);
+    }
+
+    /// Scrolls the [`Text`] on all four directions until the given
+    /// [`Point`] is within the [`ScrollOff`] range
+    ///
+    /// There are two other scrolling methods for [`Area`]:
+    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
+    /// between this and [`scroll_to_points`] is that this method
+    /// doesn't do anything if the [`Point`] is already on screen.
+    ///
+    /// [`ScrollOff`]: crate::cfg::ScrollOff
+    /// [`scroll_ver`]: Area::scroll_ver
+    /// [`scroll_to_points`]: Area::scroll_to_points
+    fn scroll_around_points(
+        &self,
+        pa: &Pass,
+        text: &Text,
+        points: (Point, Option<Point>),
+        cfg: PrintCfg,
+    ) {
+        self.area.read(pa).scroll_to_points(text, points, cfg);
+    }
+
+    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
+    ///
+    /// This method takes [line wrapping] into account, so it's not
+    /// the same as setting the starting points to the
+    /// [`Text::visual_line_start`] of these [`TwoPoints`].
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    ///
+    /// [line wrapping]: crate::cfg::WrapMethod
+    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: impl TwoPoints, cfg: PrintCfg) {
+        self.area
+            .read(pa)
+            .scroll_to_points(text, points.to_points(), cfg);
+    }
+
+    /// Scrolls the [`Area`] to the given [`TwoPoints`]
+    pub fn start_points(&self, pa: &Pass, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
+        self.area.read(pa).start_points(text, cfg)
+    }
+
+    /// Scrolls the [`Area`] to the given [`TwoPoints`]
+    pub fn end_points(&self, pa: &Pass, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
+        self.area.read(pa).end_points(text, cfg)
+    }
+
+    /////////// Querying functions
+
+    /// Wether this [`Area`] has changed since last being printed
+    pub fn has_changed(&self, pa: &Pass) -> bool {
+        self.area.read(pa).has_changed()
+    }
+
+    /// Whether or not this [`Area`] is the "master" of another
+    pub fn is_master_of(&self, pa: &Pass, other: &Self) -> bool {
+        (self.fns.is_master_of)(pa, &self.area, &other.area)
+    }
+
+    /// Returns the clustered master of the [`Area`], if there is one
+    pub fn get_cluster_master(&self, pa: &mut Pass) -> Option<Self> {
+        (self.fns.get_cluster_master)(pa, &self.area)
+    }
+
+    /// Wether this [`Area`] is the same as another
+    pub fn area_is_eq(&self, pa: &Pass, other: &TypeErasedArea) -> bool {
         (self.fns.eq)(pa, &self.area, &other.area)
     }
 }
@@ -1142,7 +1349,7 @@ impl TypeErasedAreaFunctions {
         &Self {
             push: |pa, area, widget, specs, on_files| {
                 let cache = get_cache::<U>(pa, widget);
-                let area: &mut U::Area = area.write_as(pa)?;
+                let area = area.write_as::<U::Area>(pa).unwrap();
                 let (child, parent) = area.push(specs, on_files, cache)?;
 
                 let child = TypeErasedArea::new::<U>(child);
@@ -1152,16 +1359,13 @@ impl TypeErasedAreaFunctions {
             },
             spawn: |pa, area, widget, spawn_id, specs| {
                 let cache = get_cache::<U>(pa, widget);
-                let area: &mut U::Area = area.write_as(pa)?;
+                let area = area.write_as::<U::Area>(pa).unwrap();
                 let spawned = area.spawn(spawn_id, specs, cache)?;
 
                 Some(TypeErasedArea::new::<U>(spawned))
             },
             delete: |pa, area| {
-                let Some(area) = area.write_as::<U::Area>(pa) else {
-                    context::error!("Tried to delete an Area of the incorrect type");
-                    return (false, Vec::new());
-                };
+                let area: &mut U::Area = area.write_as(pa).unwrap();
 
                 let (do_rm_window, removed) = area.delete();
 
@@ -1180,63 +1384,47 @@ impl TypeErasedAreaFunctions {
                 // don't point to the same thing.
                 let internal_pass = &mut unsafe { Pass::new() };
 
-                let [Some(lhs), Some(rhs)] = [
-                    lhs.area.write_as::<U::Area>(pa),
-                    rhs.area.write_as(internal_pass),
-                ] else {
-                    panic!("The two Areas are not of the same type");
-                };
+                let lhs = lhs.area.write_as::<U::Area>(pa).unwrap();
+                let rhs = rhs.area.write_as(internal_pass).unwrap();
 
                 lhs.swap(rhs)
             },
             print_with: |pa, area, text, print_cfg, painter, f| {
-                let Some(area) = area.read_as::<U::Area>(pa) else {
-                    context::error!("Tried to delete an Area of the incorrect type");
-                    return;
-                };
+                let area = area.read_as::<U::Area>(pa).unwrap();
 
                 area.print_with(text, print_cfg, painter, f);
             },
             get_print_info: |pa, area| {
-                let Some(area) = area.read_as::<U::Area>(pa) else {
-                    panic!("Attempted to get PrintInfo of the wrong type");
-                };
+                let area = area.read_as::<U::Area>(pa).unwrap();
 
                 TypeErasedPrintInfo::new::<U>(area.get_print_info())
             },
             set_print_info: |pa, area, info| {
-                let (Some(area), Some(info)) = (
-                    area.write_as::<U::Area>(pa),
-                    info.info.downcast_ref::<<U::Area as Area>::PrintInfo>(),
-                ) else {
+                let area = area.write_as::<U::Area>(pa).unwrap();
+                let Some(info) = info.info.downcast_ref::<<U::Area as Area>::PrintInfo>() else {
                     panic!("Attempted to get PrintInfo of the wrong type");
                 };
 
                 area.set_print_info(info.clone());
             },
             eq: |pa, lhs, rhs| {
-                let [Some(lhs), Some(rhs)] = [lhs.read_as::<U::Area>(pa), rhs.read_as(pa)] else {
-                    context::error!("Tried to compare Areas of the incorrect type");
-                    return false;
-                };
+                let lhs = lhs.read_as::<U::Area>(pa).unwrap();
+                let rhs = rhs.read_as::<U::Area>(pa).unwrap();
 
                 lhs == rhs
             },
             is_master_of: |pa, lhs, rhs| {
-                let [Some(lhs), Some(rhs)] = [lhs.read_as::<U::Area>(pa), rhs.read_as(pa)] else {
-                    panic!("Tried to compare two areas of the wrong type");
-                };
+                let lhs = lhs.read_as::<U::Area>(pa).unwrap();
+                let rhs = rhs.read_as::<U::Area>(pa).unwrap();
 
                 lhs.is_master_of(rhs)
             },
             get_cluster_master: |pa, area| {
-                let area = area.write_as::<U::Area>(pa)?;
+                let area = area.write_as::<U::Area>(pa).unwrap();
                 area.get_cluster_master().map(TypeErasedArea::new::<U>)
             },
             store_cache: |pa, area, path| {
-                let area = area
-                    .read_as::<U::Area>(pa)
-                    .ok_or_else(|| txt!("Attempted to store cache of wrong Area type"))?;
+                let area = area.read_as::<U::Area>(pa).unwrap();
 
                 if let Some(area_cache) = area.cache() {
                     Cache::new().store(&path, area_cache)?;
@@ -1259,6 +1447,12 @@ impl TypeErasedPrintInfo {
             info: Box::new(info),
             fns: TypeErasedPrintInfoFunctions::new::<U>(),
         }
+    }
+}
+
+impl Default for TypeErasedPrintInfo {
+    fn default() -> Self {
+        DEFAULT_PRINT_INFO.get().expect("PrintInfo wasn't setup")()
     }
 }
 
@@ -1306,7 +1500,7 @@ impl TypeErasedPrintInfoFunctions {
     }
 }
 
-fn get_cache<U: Ui>(pa: &Pass, widget: &RwData<dyn Widget<U>>) -> <<U as Ui>::Area as Area>::Cache {
+fn get_cache<U: Ui>(pa: &Pass, widget: &RwData<dyn Widget>) -> <<U as Ui>::Area as Area>::Cache {
     if let Some(file) = widget.read_as::<File<U>>(pa) {
         match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
             Ok(cache) => cache,

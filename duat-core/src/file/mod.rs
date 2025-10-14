@@ -415,7 +415,7 @@ impl<U: Ui> Widget<U> for File<U> {
         let (file, area) = handle.write_with_area(pa);
 
         if let Some(main) = file.text().selections().get_main() {
-            area.scroll_around_point(file.text(), main.caret(), file.get_print_cfg());
+            area.scroll_around_points(file.text(), main.caret(), file.get_print_cfg());
         }
 
         let (start, _) = area.start_points(&file.text, cfg);

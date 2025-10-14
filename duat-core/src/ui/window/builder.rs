@@ -10,9 +10,8 @@
 //! layout modification fairly minimal, with minimal boilerplate.
 //!
 //! [`File`]: crate::file::File
-use std::marker::PhantomData;
 
-use super::{PushSpecs, Ui, Widget};
+use super::{PushSpecs, Widget};
 use crate::{
     context::{self, Handle},
     data::Pass,
@@ -96,17 +95,16 @@ use crate::{
 /// [hook group]: crate::hook::add_grouped
 /// [`hook::remove`]: crate::hook::remove
 /// [`WindowCreated`]: crate::hook::WindowCreated
-pub struct UiBuilder<U: Ui> {
+pub struct UiBuilder {
     win: usize,
-    _ghost: PhantomData<U>,
 }
 
-impl<U: Ui> UiBuilder<U> {
+impl UiBuilder {
     /// Returns a new [`UiBuilder`], with no main [`Widget`]
     ///
     /// This is used when creating
     pub(super) fn new(win: usize) -> Self {
-        Self { win, _ghost: PhantomData }
+        Self { win }
     }
 
     /// Pushes a widget to the main area of the [`UiBuilder`]
@@ -161,33 +159,33 @@ impl<U: Ui> UiBuilder<U> {
     /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     /// [`WindowCreated`]: crate::hook::WindowCreated
-    pub fn push_inner<W: Widget<U>>(
+    pub fn push_inner<W: Widget>(
         &self,
         pa: &mut Pass,
         widget: W,
         mut specs: PushSpecs,
-    ) -> Handle<W, U> {
-        let target = context::windows::<U>()
+    ) -> Handle<W> {
+        let target = context::windows()
             .get(pa, self.win)
             .unwrap()
             .files_area
             .clone();
-        
+
         specs.cluster = false;
 
-        context::windows::<U>()
+        context::windows()
             .push_widget(pa, (&target, Some(false), specs), widget)
             .unwrap()
     }
 
     /// Docs: TODO
-    pub fn push_outer<W: Widget<U>>(
+    pub fn push_outer<W: Widget>(
         &self,
         pa: &mut Pass,
         widget: W,
         mut specs: PushSpecs,
-    ) -> Handle<W, U> {
-        let target = context::windows::<U>()
+    ) -> Handle<W> {
+        let target = context::windows()
             .get(pa, self.win)
             .unwrap()
             .master_area
@@ -195,7 +193,7 @@ impl<U: Ui> UiBuilder<U> {
 
         specs.cluster = false;
 
-        context::windows::<U>()
+        context::windows()
             .push_widget(pa, (&target, Some(false), specs), widget)
             .unwrap()
     }

@@ -386,7 +386,7 @@ impl ui::Area for Area {
 
     ////////// Printing
 
-    fn scroll_around_point(&self, text: &Text, p: Point, cfg: PrintCfg) {
+    fn scroll_around_points(&self, text: &Text, p: Point, cfg: PrintCfg) {
         let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
