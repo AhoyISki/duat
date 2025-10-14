@@ -288,8 +288,6 @@ impl Layouts {
         let mut revealed_at_least_one = false;
         for spawn_id in spawns {
             if let Some((_, rect)) = layout.spawned.iter().find(|(info, _)| info.id == *spawn_id) {
-                let [tl, _] = rect.var_points();
-
                 let hidden = !observed_spawns.contains(spawn_id);
                 recurse_set_hidden(layout, rect.id(), hidden);
                 revealed_at_least_one = !hidden;

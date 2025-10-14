@@ -22,6 +22,8 @@ pub struct LinesBuilder {
 }
 
 impl LinesBuilder {
+    /// Returns a new `LinesBuilder`, which is used to send [`Lines`]
+    /// to be printed
     pub fn new(coords: Coords, shift: u32, cfg: PrintCfg) -> Self {
         let cap = cfg.wrap_width(coords.width());
 
@@ -44,10 +46,12 @@ impl LinesBuilder {
         }
     }
 
+    /// "Build" the [`Lines`] struct
     pub(super) fn build(self) -> Lines {
         self.lines
     }
 
+    /// Add a `char` to the line
     pub fn push_char(&mut self, char: char, len: u32) {
         self.len += len;
         let mut bytes = [0; 4];
@@ -58,6 +62,7 @@ impl LinesBuilder {
         self.line.extend(&bytes[..char.len_utf8()]);
     }
 
+    /// Realign the line to a new [`Alignment`]
     pub fn realign(&mut self, alignment: Alignment) {
         if self.cap.is_some() {
             self.default_gaps = match alignment {
@@ -71,18 +76,30 @@ impl LinesBuilder {
         }
     }
 
+    /// Add a [`Spacer`] to this line
+    ///
+    /// this will be used later in order to calculate the positions of
+    /// everything.
     pub fn add_spacer(&mut self) {
         self.gaps.add_spacer(self.line.len());
     }
 
+    /// Show the real cursor, making the main cursor [`CursorShape`]
+    /// based
+    ///
+    /// [`CursorShape`]: duat_core::form::CursorShape
     pub fn show_real_cursor(&mut self) {
         self.lines.real_cursor = Some(true);
     }
 
+    /// Hide the real cursor, making the main cursor [`Form`] based
+    ///
+    /// [`Form`]: duat_core::form::Form
     pub fn hide_real_cursor(&mut self) {
         self.lines.real_cursor = Some(false);
     }
 
+    /// Ends the line and prepares to send the next one
     pub fn end_line(
         &mut self,
         ansi_codes: &mut micromap::Map<CStyle, String, 16>,
@@ -94,15 +111,25 @@ impl LinesBuilder {
             bytes: &mut Vec<u8>,
             painter: &mut Painter,
             ansi_codes: &mut micromap::Map<CStyle, String, 16>,
-        ) -> usize {
+        ) {
             let mut default_style = painter.get_default();
             default_style.style.foreground_color = None;
             default_style.style.underline_color = None;
             default_style.style.attributes = Attributes::from(Attribute::Reset);
 
-            let end_fmt_i = bytes.len();
             print_style(bytes, default_style.style, ansi_codes);
-            end_fmt_i
+        }
+
+        fn go_to_next_line(builder: &mut LinesBuilder, offset: usize, end_spaces: u32) {
+            builder
+                .lines
+                .line_infos
+                .push(InnerLineInfo { offset, end_spaces: end_spaces as usize });
+
+            builder.line.clear();
+            builder.positions.clear();
+            builder.gaps = builder.default_gaps.clone();
+            builder.len = 0;
         }
 
         let effective_cap = self.cap.unwrap_or(self.coords().width());
@@ -130,8 +157,8 @@ impl LinesBuilder {
                     }
                     bytes.extend(&self.line[start..self.line.len()]);
 
-                    let end_fmt_i = end_fmt(bytes, painter, ansi_codes);
-                    self.go_to_next_line(offset, end_fmt_i, 0);
+                    end_fmt(bytes, painter, ansi_codes);
+                    go_to_next_line(self, offset, 0);
                     return;
                 }
             };
@@ -139,8 +166,8 @@ impl LinesBuilder {
             bytes.extend_from_slice(&SPACES[..start_d as usize]);
             bytes.extend_from_slice(&self.line);
             let end_spaces = self.lines.coords.width().saturating_sub(start_d + self.len);
-            let end_fmt_i = end_fmt(bytes, painter, ansi_codes);
-            self.go_to_next_line(offset, end_fmt_i, end_spaces);
+            end_fmt(bytes, painter, ansi_codes);
+            go_to_next_line(self, offset, end_spaces);
             return;
         }
 
@@ -173,8 +200,8 @@ impl LinesBuilder {
             // from being shifted out of sight.
             let Some(&(start, len)) = found_start else {
                 let end_spaces = self.lines.coords.width();
-                let end_fmt_i = end_fmt(bytes, painter, ansi_codes);
-                self.go_to_next_line(offset, end_fmt_i, end_spaces);
+                end_fmt(bytes, painter, ansi_codes);
+                go_to_next_line(self, offset, end_spaces);
                 return;
             };
 
@@ -214,8 +241,8 @@ impl LinesBuilder {
             // smaller than start_i.
             let Some(&(end, len)) = found_end.filter(|(end_i, _)| *end_i >= start_i) else {
                 let end_spaces = self.lines.coords.width();
-                let end_fmt_i = end_fmt(bytes, painter, ansi_codes);
-                self.go_to_next_line(offset, end_fmt_i, end_spaces);
+                end_fmt(bytes, painter, ansi_codes);
+                go_to_next_line(self, offset, end_spaces);
                 return;
             };
             // If the character is cut by the end, don't print it.
@@ -229,7 +256,20 @@ impl LinesBuilder {
         };
 
         bytes.extend_from_slice(&SPACES[..start_d as usize]);
-        self.add_ansi(start_i);
+
+        let mut adding_ansi = false;
+        let bytes = &mut self.lines.bytes;
+        for &b in &self.line[..start_i] {
+            if b == 0x1b {
+                adding_ansi = true;
+                bytes.push(0x1b)
+            } else if b == b'm' && adding_ansi {
+                adding_ansi = false;
+                bytes.push(b'm')
+            } else if adding_ansi {
+                bytes.push(b)
+            }
+        }
 
         let bytes = &mut self.lines.bytes;
 
@@ -254,46 +294,18 @@ impl LinesBuilder {
         }
 
         let end_spaces = self.lines.coords.width().saturating_sub(end_d);
-        let end_fmt_i = end_fmt(bytes, painter, ansi_codes);
-        self.go_to_next_line(offset, end_fmt_i, end_spaces);
+        end_fmt(bytes, painter, ansi_codes);
+        go_to_next_line(self, offset, end_spaces);
     }
 
+    /// The [`Coords`] that will be printed
     pub fn coords(&self) -> Coords {
         self.lines.coords
     }
 
+    /// The cap for printing
     pub fn cap(&self) -> Option<u32> {
         self.cap
-    }
-
-    fn go_to_next_line(&mut self, offset: usize, end_fmt_i: usize, end_spaces: u32) {
-        self.lines.line_infos.push(InnerLineInfo {
-            offset,
-            end_fmt_i: end_fmt_i - offset,
-            end_spaces: end_spaces as usize,
-        });
-
-        self.line.clear();
-        self.positions.clear();
-        self.gaps = self.default_gaps.clone();
-        self.len = 0;
-    }
-
-    fn add_ansi(&mut self, start_i: usize) {
-        let mut adding_ansi = false;
-        let bytes = &mut self.lines.bytes;
-
-        for &b in &self.line[..start_i] {
-            if b == 0x1b {
-                adding_ansi = true;
-                bytes.push(0x1b)
-            } else if b == b'm' && adding_ansi {
-                adding_ansi = false;
-                bytes.push(b'm')
-            } else if adding_ansi {
-                bytes.push(b)
-            }
-        }
     }
 }
 

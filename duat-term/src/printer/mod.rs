@@ -123,7 +123,6 @@ impl Printer {
         self.sync_solver.lock().unwrap().get_spawn_info(id)
     }
 
-
     /// Sets the new desired length for a [`SpawnId`]
     pub fn set_spawn_len(&self, id: SpawnId, len: Option<f64>) {
         self.sync_solver.lock().unwrap().set_spawn_len(id, len);
@@ -243,6 +242,7 @@ impl Printer {
             .retain(|(id, _)| *id != target);
     }
 
+    /// Replace a set of [`Equality`]s with another
     pub fn replace(
         &self,
         old_eqs: impl IntoIterator<Item = Equality>,
@@ -253,24 +253,7 @@ impl Printer {
         ss.add_eqs(new_eqs);
     }
 
-    pub fn replace_and_update(
-        &self,
-        old_eqs: impl IntoIterator<Item = Equality>,
-        new_eqs: impl IntoIterator<Item = Equality>,
-        change_max: bool,
-    ) {
-        let changes = {
-            let mut ss = self.sync_solver.lock().unwrap();
-            ss.remove_eqs(old_eqs);
-            ss.add_eqs(new_eqs);
-            ss.update(change_max, self.max, false).unwrap()
-        };
-
-        let mut vars = self.vars.lock().unwrap();
-        vars.update_variables(changes);
-        self.has_to_print_edges.store(true, Ordering::Relaxed);
-    }
-
+    /// Moves a [`SpawnId`] to another [`Coord`]
     pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) {
         self.sync_solver
             .lock()
@@ -278,6 +261,8 @@ impl Printer {
             .move_spawn_to(id, coord, char_width);
     }
 
+    /// Main printing function, responsible for keeping things
+    /// consistent
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
         const SPACES: &[u8] = &[b' '; 3000];
@@ -440,6 +425,7 @@ impl Printer {
 unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
 
+/// A list of lines to print, belonging to some `Widget`
 struct Lines {
     bytes: Vec<u8>,
     line_infos: Vec<InnerLineInfo>,
@@ -448,6 +434,10 @@ struct Lines {
 }
 
 impl Lines {
+    /// A line on a given `y` position
+    ///
+    /// Returns [`None`] if these [`Lines`] don't intersect with the
+    /// given `y`.
     pub fn on(&self, y: u32) -> Option<(LineInfo<'_>, [u32; 2])> {
         let (tl, br) = (self.coords.tl, self.coords.br);
         let y = y.checked_sub(tl.y)? as usize;
@@ -460,7 +450,6 @@ impl Lines {
                 .unwrap_or(self.bytes.len());
             let info = LineInfo {
                 bytes: &self.bytes[info.offset..end],
-                end_fmt_i: info.end_fmt_i,
                 end_spaces: info.end_spaces,
             };
             (info, [tl.x, br.x])
@@ -470,14 +459,12 @@ impl Lines {
 
 struct InnerLineInfo {
     offset: usize,
-    end_fmt_i: usize,
     end_spaces: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct LineInfo<'a> {
     bytes: &'a [u8],
-    end_fmt_i: usize,
     end_spaces: usize,
 }
 
