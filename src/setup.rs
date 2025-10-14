@@ -17,9 +17,9 @@ use std::{
 use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
-    context::{self, CurFile, CurWidget, Logs},
+    context::{self, Logs},
     form::{Form, Palette},
-    session::{DuatEvent, FileParts, ReloadEvent, SessionCfg},
+    session::{DuatEvent, ReloadEvent, ReloadedFile, SessionCfg},
     text::History,
     ui::{self, Area, Widget},
 };
@@ -31,7 +31,7 @@ use duat_utils::{
 };
 
 use crate::{
-    CfgFn, Ui, form,
+    Ui, form,
     hook::{self, FileClosed, FileReloaded, WindowCreated},
     mode,
     prelude::{FileWritten, LineNumbers},
@@ -39,7 +39,6 @@ use crate::{
 };
 
 // Setup statics.
-pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
@@ -60,32 +59,23 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         duat_core::context::set_sender(duat_tx);
     }
 
-    // State statics.
-    let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
-    let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
-    static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
-
-    duat_core::context::setup_context::<Ui>(
-        cur_file,
-        cur_widget,
-        CUR_WINDOW.load(Ordering::Relaxed),
-    );
-
     mode::set_default(crate::regular::Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 
-    hook::add_grouped::<File>("FileWidgets", |_, (cfg, builder)| {
-        builder.push(VertRule::cfg());
-        builder.push(LineNumbers::cfg());
-        cfg
+    hook::add_grouped::<File>("FileWidgets", |pa, handle| {
+        VertRule::builder().push_on(pa, handle);
+        LineNumbers::builder().push_on(pa, handle);
+        Ok(())
     });
 
-    hook::add_grouped::<WindowCreated>("FooterWidgets", |_, builder| {
-        builder.push(FooterWidgets::default());
+    hook::add_grouped::<WindowCreated>("FooterWidgets", |pa, builder| {
+        FooterWidgets::default(pa).push_on(pa, builder);
+        Ok(())
     });
 
-    hook::add_grouped::<WindowCreated>("LogBook", |_, builder| {
-        builder.push(LogBook::cfg());
+    hook::add_grouped::<WindowCreated>("LogBook", |pa, builder| {
+        LogBook::builder().push_on(pa, builder);
+        Ok(())
     });
 
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
@@ -96,6 +86,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         {
             crate::prelude::cmd::queue("reload");
         }
+        Ok(())
     });
 
     hook::add::<FileReloaded>(|pa, (handle, cache)| {
@@ -104,23 +95,18 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         let path = file.path();
         file.text_mut().new_moment();
 
-        if let Some(history) = file.text().history()
-            && let Err(err) = cache.store(&path, history.clone())
-        {
-            context::error!("{err}");
-        }
-
         if let Some(area_cache) = area.cache()
             && let Err(err) = cache.store(&path, area_cache)
         {
-            context::error!("{err}");
+            context::error!(target: "FileReloaded", "{err}");
         }
 
         if let Some(main) = file.selections_mut().get_main()
             && let Err(err) = cache.store(path, main.clone())
         {
-            context::error!("{err}");
+            context::error!(target: "FileReloaded", "{err}");
         }
+        Ok(())
     });
 
     hook::add::<FileClosed>(|pa, (handle, cache)| {
@@ -131,6 +117,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         if !file.exists() || file.text().has_unsaved_changes() {
             cache.delete(path);
         }
+        Ok(())
     });
 
     hook::add_grouped::<FileClosed>("CacheCursorPosition", |pa, (handle, cache)| {
@@ -141,7 +128,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
         if let Some("gitcommit") = path.filetype() {
             cache.delete(path);
-            return;
+            return Ok(());
         }
 
         if let Some(area_cache) = area.cache()
@@ -155,6 +142,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         {
             context::error!(target: "FileClosed", "{err}");
         }
+        Ok(())
     });
 
     form::enable_mask("error");
@@ -203,23 +191,16 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 #[doc(hidden)]
 pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
-    files: Vec<Vec<FileParts>>,
+    files: Vec<Vec<ReloadedFile<Ui>>>,
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
-) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>) {
+) -> (Vec<Vec<ReloadedFile<Ui>>>, Receiver<DuatEvent>) {
     <Ui as ui::Ui>::load(ui_ms);
-    let mut cfg = SessionCfg::new(clipb);
 
-    if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
-        cfg_fn(&mut cfg)
-    }
-
-    let print_cfg = match PRINT_CFG.write().unwrap().take() {
+    let cfg = SessionCfg::new(clipb, match PRINT_CFG.write().unwrap().take() {
         Some(cfg) => cfg,
         None => PrintCfg::default_for_input(),
-    };
-
-    cfg.set_print_cfg(print_cfg);
+    });
 
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
     cfg.build(ui_ms, files, already_plugged)

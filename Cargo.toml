@@ -23,19 +23,19 @@ duat-core = { version = "0.7.0", path = "duat-core" }
 duat-utils = { version = "0.6.1", path = "duat-utils" }
 duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-filetype" }
 dirs-next = "2.0.0"
-log = "0.4.27"
+log = "0.4.28"
 
 # List of UIs.
 duat-term = { version = "0.6.1", path = "duat-term", optional = true }
 
 # Cli dependencies
 [dependencies.clap]
-version = "4.5.46"
+version = "4.5.48"
 features = ["derive"]
 optional = true
 
 [dependencies.libloading]
-version = "0.8.8"
+version = "0.8.9"
 optional = true
 
 [dependencies.notify]

@@ -98,7 +98,6 @@ mod shift_list;
 mod tags;
 
 use std::{
-    path::Path,
     rc::Rc,
     sync::{
         Arc,
@@ -117,12 +116,13 @@ pub use self::{
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
-        MainCaret, RawTag, Spacer, Tag, Tagger, Taggers, Tags, ToggleId,
+        MainCaret, RawTag, Spacer, SpawnId, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,
     },
 };
 use crate::{
     cfg::PrintCfg,
-    context, form,
+    data::Pass,
+    form,
     mode::{Selection, Selections},
     ui::Area,
 };
@@ -175,37 +175,6 @@ impl Text {
         )
     }
 
-    /// Creates a [`Text`] from a file's [path]
-    ///
-    /// [path]: Path
-    pub(crate) fn from_file(
-        bytes: Bytes,
-        selections: Selections,
-        path: impl AsRef<Path>,
-        has_unsaved_changes: bool,
-    ) -> Self {
-        let selections = if let Some(selection) = selections.get_main()
-            && bytes.len() > selection.caret()
-        {
-            let caret = bytes.point_at_byte(selection.caret().byte());
-            let anchor = selection.anchor().map(|p| p.min(bytes.last_point()));
-            Selections::new(Selection::new(caret, anchor))
-        } else {
-            Selections::new(Selection::default())
-        };
-
-        let mut text = Self::from_bytes(bytes, selections, true);
-        text.0
-            .has_unsaved_changes
-            .store(has_unsaved_changes, Ordering::Relaxed);
-
-        if let Ok(history) = context::Cache::new().load(path.as_ref()) {
-            text.0.history = Some(history);
-        }
-
-        text
-    }
-
     /// Creates a [`Text`] from [`Bytes`]
     pub(crate) fn from_bytes(mut bytes: Bytes, selections: Selections, with_history: bool) -> Self {
         if bytes.buffers(..).next_back().is_none_or(|b| b != b'\n') {
@@ -248,11 +217,6 @@ impl Text {
     /// ```
     pub fn builder() -> Builder {
         Builder::new()
-    }
-
-    /// Takes the [`Bytes`] from this [`Text`], consuming it
-    pub(crate) fn take_bytes(self) -> Bytes {
-        self.0.bytes
     }
 
     ////////// Querying functions
@@ -455,28 +419,22 @@ impl Text {
         self.0.tags.update_bounds();
     }
 
-    /// Inserts a [`Text`] into this [`Text`], in a specific [`Point`]
+    /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
     pub fn insert_text(&mut self, p: Point, text: Text) {
-        let insert = if p.char() == 1 && self.0.bytes == "\n" {
+        if p.char() == 1 && self.0.bytes == "\n" {
             let change = Change::new(
                 text.0.bytes.strs(..).unwrap().to_string(),
                 [Point::default(), p],
                 self,
             );
             self.apply_change_inner(0, change.as_ref());
-            Point::default()
         } else {
             let added_str = text.0.bytes.strs(..).unwrap().to_string();
             let change = Change::str_insert(&added_str, p);
             self.apply_change_inner(0, change);
-            p
         };
 
-        if insert == self.len() {
-            self.0.tags.extend(text.0.tags);
-        } else {
-            self.0.tags.insert_tags(insert, text.0.tags);
-        }
+        self.0.tags.insert_tags(p, text.0.tags);
     }
 
     ////////// History functions
@@ -553,7 +511,7 @@ impl Text {
         }
     }
 
-    /// Writes the contents of this [`Text`] to a [writer]
+    /// Writes the contents of this `Text` to a [writer]
     ///
     /// [writer]: std::io::Write
     pub fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
@@ -576,8 +534,11 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) {
-        self.0.tags.insert(tagger, r, tag);
+    pub fn insert_tag<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        self.0.tags.insert(tagger, r, tag)
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -612,7 +573,7 @@ impl Text {
         self.0.tags = InnerTags::new(self.0.bytes.len().byte());
     }
 
-    /////////// Selection functions
+    /////////// Internal synchronization functions
 
     /// Returns a [`Text`] without [`Selections`]
     ///
@@ -666,6 +627,28 @@ impl Text {
     /// Removes the [`Tag`]s for all [`Selection`]s
     pub(crate) fn remove_selections(&mut self) {
         self.remove_tags(Tagger::for_selections(), ..);
+    }
+
+    /// Prepares the `Text` for reloading, to be used on [`File`]s
+    ///
+    /// [`File`]: crate::file::File
+    pub(crate) fn prepare_for_reloading(&mut self) {
+        self.clear_tags();
+        if let Some(history) = self.0.history.as_mut() {
+            history.prepare_for_reloading()
+        }
+    }
+
+    /// Functions to add  all [`Widget`]s that were spawned in this
+    /// `Text`
+    ///
+    /// This function should only be called right before printing,
+    /// where it is "known" that `Widget`s can no longer get rid of
+    /// the [`SpawnTag`]s
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    pub(crate) fn get_widget_spawns(&mut self) -> Vec<Box<dyn FnOnce(&mut Pass, usize) + Send>> {
+        std::mem::take(&mut self.0.tags.spawn_fns)
     }
 
     /////////// Iterator methods
@@ -752,20 +735,25 @@ impl Text {
         self.0.tags.raw_rev_at(b)
     }
 
-    /// The [`Selections`] printed to this [`Text`], if they exist
+    /// The [`Selections`] printed to this `Text`, if they exist
     pub fn selections(&self) -> &Selections {
         &self.0.selections
     }
 
-    /// A mut reference to this [`Text`]'s [`Selections`] if they
+    /// A mut reference to this `Text`'s [`Selections`] if they
     /// exist
     pub fn selections_mut(&mut self) -> &mut Selections {
         &mut self.0.selections
     }
 
-    /// The [`History`] of [`Moment`]s in this [`Text`]
+    /// The [`History`] of [`Moment`]s in this `Text`
     pub fn history(&self) -> Option<&History> {
         self.0.history.as_ref()
+    }
+
+    /// A list of all [`SpawnId`]s that belong to this `Text`
+    pub fn get_spawned_ids(&self) -> &[SpawnId] {
+        self.0.tags.get_spawned_ids()
     }
 }
 

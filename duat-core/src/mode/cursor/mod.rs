@@ -231,7 +231,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
             count,
             self.widget.text(),
             self.area,
-            self.widget.print_cfg(),
+            self.widget.get_print_cfg(),
         )
     }
 
@@ -244,7 +244,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
             count,
             self.widget.text(),
             self.area,
-            self.widget.print_cfg(),
+            self.widget.get_print_cfg(),
         );
     }
 
@@ -615,7 +615,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     /// in order to preven extraneous calculations
     pub fn v_caret(&self) -> VPoint {
         self.selection
-            .v_caret(self.widget.text(), self.area, self.widget.print_cfg())
+            .v_caret(self.widget.text(), self.area, self.widget.get_print_cfg())
     }
 
     /// The [`VPoint`] of the anchor, if it exists
@@ -624,7 +624,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     /// in order to preven extraneous calculations
     pub fn v_anchor(&self) -> Option<VPoint> {
         self.selection
-            .v_anchor(self.widget.text(), self.area, self.widget.print_cfg())
+            .v_anchor(self.widget.text(), self.area, self.widget.get_print_cfg())
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`
@@ -644,7 +644,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
 
     /// The [`PrintCfg`] in use
     pub fn cfg(&self) -> PrintCfg {
-        self.widget.print_cfg()
+        self.widget.get_print_cfg()
     }
 }
 

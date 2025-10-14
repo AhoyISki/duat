@@ -634,7 +634,8 @@
     fn_traits,
     iter_array_chunks,
     thread_spawn_hook,
-    box_as_ptr
+    box_as_ptr,
+    default_field_values
 )]
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
@@ -664,7 +665,7 @@ pub mod prelude {
         cmd,
         context::{self, Handle},
         data::{Pass, RwData},
-        file::{File, FileTracker, Parser, ParserCfg},
+        file::{File, FileTracker, Parser},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
@@ -673,7 +674,7 @@ pub mod prelude {
             AlignCenter, AlignLeft, AlignRight, Bytes, Conceal, Ghost, Matcheable, Moment, Point,
             Spacer, Tagger, Text, txt,
         },
-        ui::{Area, BuildInfo, GetAreaId, PushSpecs, Ui, Widget, WidgetCfg},
+        ui::{Area, PushSpecs, Ui, Widget},
     };
 }
 
@@ -737,7 +738,7 @@ pub mod utils;
 ///
 /// [plugged]: Plugin::plug
 /// [`PhantomData`]: std::marker::PhantomData
-pub trait Plugin<U: Ui>: Default + 'static {
+pub trait Plugin<U: Ui>: 'static {
     /// Sets up the [`Plugin`]
     fn plug(self, plugins: &Plugins<U>);
 }

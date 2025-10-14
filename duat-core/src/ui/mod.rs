@@ -38,17 +38,16 @@ use bincode::{Decode, Encode};
 
 pub(crate) use self::widget::Node;
 pub use self::{
-    widget::{Widget, WidgetCfg},
-    window::{
-        BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias, Window, Windows,
-        id::{AreaId, GetAreaId},
-    },
+    widget::Widget,
+    window::{UiBuilder, Window, Windows},
 };
 use crate::{
     cfg::PrintCfg,
+    context::Handle,
+    data::Pass,
     form::Painter,
     session::DuatSender,
-    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
+    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
 };
 
 pub mod layout;
@@ -84,7 +83,7 @@ mod window;
 ///     }
 /// }
 /// ```
-pub trait Ui: Default + Clone + Send + 'static {
+pub trait Ui: Default + Debug + Clone + Send + 'static {
     /// The [`Area`] of this [`Ui`]
     type Area: Area<Ui = Self>;
     /// Variables to initialize at the Duat application, outside the
@@ -102,9 +101,15 @@ pub trait Ui: Default + Clone + Send + 'static {
     /// better to use the one from the Duat app, rather than one from
     /// the config crate
     ///
+    /// > [!NOTE]
+    /// >
+    /// > This trait member is only meant to be used by duat itself.
+    /// > This is why it implements the [`GetOnce`] trait, so it can
+    /// > only be acquired once on startup.
+    ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
     /// [`Mutex`]: std::sync::Mutex
-    type MetaStatics: Default + Send;
+    type MetaStatics: GetOnce<Self> + Send + Sync;
 
     ////////// Functions executed from the outer loop
 
@@ -127,6 +132,25 @@ pub trait Ui: Default + Clone + Send + 'static {
     ///
     /// [`Area`]: Ui::Area
     fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
+
+    /// Initiates and returns a new "floating" [`Area`]
+    ///
+    /// This is one of two ways of spawning floating [`Widget`]s. The
+    /// other way is with [`Area::spawn`], in which a [`Widget`] will
+    /// be bolted on the edges of another.
+    ///
+    /// TODO: There will probably be some way of defining floating
+    /// [`Widget`]s with coordinates in the not too distant future as
+    /// well.
+    ///
+    /// [`Area`]: Ui::Area
+    fn new_spawned(
+        ms: &'static Self::MetaStatics,
+        id: SpawnId,
+        specs: SpawnSpecs,
+        cache: <Self::Area as Area>::Cache,
+        win: usize,
+    ) -> Self::Area;
 
     /// Switches the currently active window
     ///
@@ -177,7 +201,7 @@ pub trait Ui: Default + Clone + Send + 'static {
 ///
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
-pub trait Area: Clone + PartialEq + Sized + 'static {
+pub trait Area: PartialEq + Sized + 'static {
     /// The [`Ui`] this [`Area`] belongs to
     type Ui: Ui<Area = Self>;
     /// Something to be kept between app instances/reloads
@@ -200,11 +224,12 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
 
     ////////// Area modification
 
-    /// Bisects the [`Area`][Ui::Area] with the given index into
-    /// two.
+    /// Creates an `Area` around this one
     ///
-    /// Will return 2 indices, the first one is the index of a new
-    /// area. The second is an index for a newly created parent
+    /// Will return the newly created `Area` as well as a parent
+    /// `Area`, if one was created to house both of them.
+    ///
+    /// If this `Area` was previously [deleted], will return [`None`].
     ///
     /// As an example, assuming that [`self`] has an index of `0`,
     /// pushing an area to [`self`] on [`Side::Left`] would create
@@ -236,56 +261,57 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
     /// ```
     ///
     /// And so [`Area::bisect`] should return `(3, None)`.
-    fn bisect(
+    ///
+    /// [deleted]: Area::delete
+    fn push(
         area: MutArea<Self>,
         specs: PushSpecs,
-        cluster: bool,
         on_files: bool,
         cache: Self::Cache,
-    ) -> (Self, Option<Self>);
-
-    /// Deletes this [`Area`], signaling the closing of a
-    /// [`Widget`]
-    ///
-    /// If the [`Area`]'s parent was also deleted, return it.
-    fn delete(area: MutArea<Self>) -> Option<Self>;
-
-    /// Swaps this [`Area`] with another one
-    ///
-    /// The swapped [`Area`]s will be cluster masters of the
-    /// respective [`Area`]s. As such, if they belong to the same
-    /// master, nothing happens.
-    fn swap(lhs: MutArea<Self>, rhs: &Self);
+    ) -> Option<(Self, Option<Self>)>;
 
     /// Spawns a floating area on this [`Area`]
     ///
     /// This function will take a list of [`SpawnSpecs`], taking the
     /// first one that fits, and readapting as the constraints are
     /// altered
-    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs) -> Result<Self, Text>;
-
-    /// Spawns a floating area
     ///
-    /// If the [`TwoPoints`] parameter is not specified, this new
-    /// [`Area`] will be pushed to the edges of the old one, the
-    /// pushed edge being the same as the [`Side`] used for pushing.
-    ///
-    /// If there is a [`TwoPoints`] argument, the
-    fn spawn_floating_at(
+    /// If this `Area` was previously [deleted], will return [`None`].
+    fn spawn(
         area: MutArea<Self>,
+        id: SpawnId,
         specs: SpawnSpecs,
-        at: impl TwoPoints,
-        text: &Text,
-        cfg: PrintCfg,
-    ) -> Result<Self, Text>;
+        cache: Self::Cache,
+    ) -> Option<Self>;
+
+    /// Deletes this [`Area`], signaling the closing of a
+    /// [`Widget`]
+    ///
+    /// If the [`Area`]'s parent was also deleted, return it.
+    fn delete(area: MutArea<Self>) -> (bool, Vec<Self>);
+
+    /// Swaps this `Area` with another one
+    ///
+    /// The swapped `Area`s will be cluster masters of the
+    /// respective `Area`s. As such, if they belong to the same
+    /// master, nothing happens.
+    ///
+    /// This function will _never_ be called such that one of the
+    /// `Area`s is a decendant of the other, so the [`Ui`] implementor
+    /// doesn't need to worry about that possibility.
+    ///
+    /// It can fail if either of the [`Area`]s was already deleted, or
+    /// if no swap happened because they belonged to the same cluster
+    /// master.
+    fn swap(lhs: MutArea<Self>, rhs: &Self) -> bool;
 
     ////////// Constraint changing functions
 
     /// Changes the horizontal constraint of the area
-    fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
+    fn set_width(&self, width: f32) -> Result<(), Text>;
 
     /// Changes the vertical constraint of the area
-    fn constrain_ver(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
+    fn set_height(&self, height: f32) -> Result<(), Text>;
 
     /// Changes [`Constraint`]s such that the [`Area`] becomes
     /// hidden
@@ -296,7 +322,7 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), Text>;
+    fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text>;
 
     /// Scrolls the [`Text`] veritcally by an amount
     ///
@@ -341,12 +367,12 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
     ////////// Printing
 
     /// Prints the [`Text`] via an [`Iterator`]
-    fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter);
+    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
 
     /// Prints the [`Text`] with a callback function
     fn print_with<'a>(
         &self,
-        text: &mut Text,
+        text: &Text,
         cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
@@ -418,10 +444,10 @@ pub trait Area: Clone + PartialEq + Sized + 'static {
     fn cache(&self) -> Option<Self::Cache>;
 
     /// Gets the width of the area
-    fn width(&self) -> u32;
+    fn width(&self) -> f32;
 
     /// Gets the height of the area
-    fn height(&self) -> u32;
+    fn height(&self) -> f32;
 
     /// The start points that should be printed
     fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
@@ -497,171 +523,50 @@ impl From<PushSpecs> for Axis {
 ///
 /// ```rust
 /// use duat_core::ui::PushSpecs;
-/// let specs = PushSpecs::left().hor_len(3.0).ver_ratio(2, 3);
+/// let specs = PushSpecs {
+///     side: Side::Left,
+///     width: Some(3.0),
+///     height: None,
+///     hidden: false,
+/// };
 /// ```
 ///
 /// Then the widget should be pushed to the left, with a width of 3,
-/// and its height should be equal to two thirds of the area directly
-/// below.
-#[derive(Clone, Copy, Debug)]
+/// an unspecified height, and _not_ hidden by default. Note that,
+/// with `#[feature(default_field_values)]`, the same can be
+/// accomplished by the following:
+///
+/// ```rust
+/// let specs = PushSpecs { side: Side::left, width: Some(3.0), .. };
+/// ```
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PushSpecs {
-    side: Side,
-    ver_cons: [Option<Constraint>; 4],
-    hor_cons: [Option<Constraint>; 4],
-    is_hidden: bool,
+    /// Which [`Side`] to push the [`Widget`] to
+    pub side: Side = Side::Below,
+    /// A width (in character cells) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub width: Option<f32> = None,
+    /// A height (in lines) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub height: Option<f32> = None,
+    /// Hide this `Widget` by default
+    ///
+    /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
+    /// this property.
+    pub hidden: bool = false,
+    /// Cluster this `Widget` when pushing
+    ///
+    /// This makes it so, if the main `Widget` is moved or deleted,
+    /// then this one will follow. Useful for things like
+    /// [`LineNumbers`], since they should follow their [`File`] around.
+    pub cluster: bool = true,
 }
 
 impl PushSpecs {
-    /// Push the [`Widget`] to the left
-    pub const fn left() -> Self {
-        Self {
-            side: Side::Left,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Push the [`Widget`] to the right
-    pub const fn right() -> Self {
-        Self {
-            side: Side::Right,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Push the [`Widget`] above
-    pub const fn above() -> Self {
-        Self {
-            side: Side::Above,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Push the [`Widget`] below
-    pub const fn below() -> Self {
-        Self {
-            side: Side::Below,
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-            is_hidden: false,
-        }
-    }
-
-    /// Turns this [`Widget`] hidden by default
-    ///
-    /// Hiding [`Widget`]s, as opposed to calling something like
-    /// [`PushSpecs::hor_len(0.0)`] has a few advantages.
-    ///
-    /// - Can be undone just by calling [`Area::reveal`]
-    /// - Can be redone just by calling [`Area::hide`]
-    /// - Is agnostic to other [`Constraint`]s, i.e., kind of
-    ///   memorizes what they should be before being hidden.
-    ///
-    /// [`PushSpecs::hor_len(0.0)`]: PushSpecs::hor_len
-    pub const fn hidden(self) -> Self {
-        Self { is_hidden: true, ..self }
-    }
-
-    /// Changes the direction of pushing to the left
-    pub const fn to_left(self) -> Self {
-        Self { side: Side::Left, ..self }
-    }
-
-    /// Changes the direction of pushing to the right
-    pub const fn to_right(self) -> Self {
-        Self { side: Side::Right, ..self }
-    }
-
-    /// Changes the direction of pushing to above
-    pub const fn to_above(self) -> Self {
-        Self { side: Side::Above, ..self }
-    }
-
-    /// Changes the direction of pushing to below
-    pub const fn to_below(self) -> Self {
-        Self { side: Side::Below, ..self }
-    }
-
-    /// Sets the required vertical length
-    pub const fn ver_len(mut self, len: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum vertical length
-    pub const fn ver_min(mut self, min: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum vertical length
-    pub const fn ver_max(mut self, max: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the vertical ratio between it and its parent
-    pub const fn ver_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    /// Adds a vertical [`Constraint`] directly
-    ///
-    /// Use this if you want to dinamically work with multiple kinds
-    /// of [`Constraint`]. Otherwise, the other `ver_*` methods are
-    /// more readable.
-    pub const fn constrain_ver(mut self, con: Constraint) -> Self {
-        constrain(&mut self.ver_cons, con);
-        self
-    }
-
-    /// Sets the required horizontal length
-    pub const fn hor_len(mut self, len: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum horizontal length
-    pub const fn hor_min(mut self, min: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum horizontal length
-    pub const fn hor_max(mut self, max: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the horizontal ratio between it and its parent
-    pub const fn hor_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    /// Adds a horizontal [`Constraint`] directly
-    ///
-    /// Use this if you want to dinamically work with multiple kinds
-    /// of [`Constraint`]. Otherwise, the other `hor_*` methods are
-    /// more readable.
-    pub const fn constrain_hor(mut self, con: Constraint) -> Self {
-        constrain(&mut self.hor_cons, con);
-        self
-    }
-
-    /// Wether this [`Widget`] should default to being [hidden] or not
-    ///
-    /// [hidden]: Self::hidden
-    pub const fn is_hidden(&self) -> bool {
-        self.is_hidden
-    }
-
     /// The [`Axis`] where it will be pushed
     ///
     /// - left/right: [`Axis::Horizontal`]
@@ -673,11 +578,6 @@ impl PushSpecs {
         }
     }
 
-    /// The [`Side`] where it will be pushed
-    pub const fn side(&self) -> Side {
-        self.side
-    }
-
     /// Wether this "comes earlier" on the screen
     ///
     /// This returns true if `self.side() == Side::Left || self.side()
@@ -687,230 +587,12 @@ impl PushSpecs {
         matches!(self.side, Side::Left | Side::Above)
     }
 
-    /// An [`Iterator`] over the vertical constraints
-    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
-        self.ver_cons.into_iter().flatten()
-    }
-
-    /// An [`Iterator`] over the horizontal constraints
-    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
-        self.hor_cons.into_iter().flatten()
-    }
-
     /// The constraints on a given [`Axis`]
-    pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
+    pub fn len_on(&self, axis: Axis) -> Option<f32> {
         match axis {
-            Axis::Horizontal => self.hor_cons.into_iter().flatten(),
-            Axis::Vertical => self.ver_cons.into_iter().flatten(),
+            Axis::Horizontal => self.width,
+            Axis::Vertical => self.height,
         }
-    }
-
-    /// Wether it is resizable in an [`Axis`]
-    ///
-    /// It will be resizable if there are no [`Constraint::Len`] in
-    /// that [`Axis`].
-    pub const fn is_resizable_on(&self, axis: Axis) -> bool {
-        let cons = match axis {
-            Axis::Horizontal => &self.hor_cons,
-            Axis::Vertical => &self.ver_cons,
-        };
-
-        let mut i = 0;
-
-        while i < 4 {
-            let (None | Some(Constraint::Min(..) | Constraint::Max(..))) = cons[i] else {
-                return false;
-            };
-
-            i += 1;
-        }
-
-        true
-    }
-}
-
-/// Much like [`PushSpecs`], but for floating [`Widget`]s
-#[derive(Debug, Clone)]
-pub struct SpawnSpecs {
-    /// Potential spawning [`Corner`]s to connect to and from
-    pub choices: Vec<[Corner; 2]>,
-    ver_cons: [Option<Constraint>; 4],
-    hor_cons: [Option<Constraint>; 4],
-}
-
-impl SpawnSpecs {
-    /// Returns a new [`SpawnSpecs`] from possible [`Corner`]s
-    pub fn new(choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
-        Self {
-            choices: choices.into_iter().collect(),
-            ver_cons: [None; 4],
-            hor_cons: [None; 4],
-        }
-    }
-
-    /// Adds more [`Corner`]s as fallback to spawn on
-    pub fn with_fallbacks(mut self, choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
-        self.choices.extend(choices);
-        self
-    }
-
-    /// Sets the required vertical length
-    pub fn ver_len(mut self, len: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum vertical length
-    pub fn ver_min(mut self, min: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum vertical length
-    pub fn ver_max(mut self, max: f32) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the vertical ratio between it and its parent
-    pub fn ver_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    /// Sets the required horizontal length
-    pub fn hor_len(mut self, len: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Len(len));
-        self
-    }
-
-    /// Sets the minimum horizontal length
-    pub fn hor_min(mut self, min: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Min(min));
-        self
-    }
-
-    /// Sets the maximum horizontal length
-    pub fn hor_max(mut self, max: f32) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Max(max));
-        self
-    }
-
-    /// Sets the horizontal ratio between it and its parent
-    pub fn hor_ratio(mut self, den: u16, div: u16) -> Self {
-        constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
-        self
-    }
-
-    /// An [`Iterator`] over the vertical [`Constraint`]s
-    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> {
-        self.ver_cons.into_iter().flatten()
-    }
-
-    /// An [`Iterator`] over the horizontal [`Constraint`]s
-    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> {
-        self.hor_cons.into_iter().flatten()
-    }
-
-    /// The constraints on a given [`Axis`]
-    pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
-        match axis {
-            Axis::Horizontal => self.hor_cons.into_iter().flatten(),
-            Axis::Vertical => self.ver_cons.into_iter().flatten(),
-        }
-    }
-
-    /// Wether it is resizable in an [`Axis`]
-    ///
-    /// It will be resizable if there are no [`Constraint::Len`] in
-    /// that [`Axis`].
-    pub fn is_resizable_on(&self, axis: Axis) -> bool {
-        let cons = match axis {
-            Axis::Horizontal => &self.hor_cons,
-            Axis::Vertical => &self.ver_cons,
-        };
-        cons.iter()
-            .flatten()
-            .all(|con| matches!(con, Constraint::Min(..) | Constraint::Max(..)))
-    }
-}
-
-/// A constraint used to determine the size of [`Widget`]s
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Constraint {
-    /// Constrain this dimension to a certain length
-    Len(f32),
-    /// The length in this dimension must be at least this long
-    Min(f32),
-    /// The length in this dimension must be at most this long
-    Max(f32),
-    /// The length in this dimension should be this fraction of its
-    /// parent
-    Ratio(u16, u16),
-}
-
-impl Eq for Constraint {}
-
-#[allow(clippy::non_canonical_partial_ord_impl)]
-impl PartialOrd for Constraint {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        fn discriminant(con: &Constraint) -> usize {
-            match con {
-                Constraint::Len(_) => 0,
-                Constraint::Min(_) => 1,
-                Constraint::Max(_) => 2,
-                Constraint::Ratio(..) => 3,
-            }
-        }
-        match (self, other) {
-            (Constraint::Len(lhs), Constraint::Len(rhs)) => lhs.partial_cmp(rhs),
-            (Constraint::Min(lhs), Constraint::Min(rhs)) => lhs.partial_cmp(rhs),
-            (Constraint::Max(lhs), Constraint::Max(rhs)) => lhs.partial_cmp(rhs),
-            (Constraint::Ratio(lhs_den, lhs_div), Constraint::Ratio(rhs_den, rhs_div)) => {
-                (lhs_den, lhs_div).partial_cmp(&(rhs_den, rhs_div))
-            }
-            (lhs, rhs) => discriminant(lhs).partial_cmp(&discriminant(rhs)),
-        }
-    }
-}
-
-impl Ord for Constraint {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-impl Constraint {
-    /// Returns `true` if the constraint is [`Len`].
-    ///
-    /// [`Len`]: Constraint::Len
-    #[must_use]
-    pub fn is_len(&self) -> bool {
-        matches!(self, Self::Len(..))
-    }
-
-    /// Returns `true` if the constraint is [`Min`].
-    ///
-    /// [`Min`]: Constraint::Min
-    #[must_use]
-    pub fn is_min(&self) -> bool {
-        matches!(self, Self::Min(..))
-    }
-
-    /// Returns `true` if the constraint is [`Max`].
-    ///
-    /// [`Max`]: Constraint::Max
-    #[must_use]
-    pub fn is_max(&self) -> bool {
-        matches!(self, Self::Max(..))
-    }
-
-    /// Returns `true` if the constraint is [`Ratio`].
-    ///
-    /// [`Ratio`]: Constraint::Ratio
-    #[must_use]
-    pub fn is_ratio(&self) -> bool {
-        matches!(self, Self::Ratio(..))
     }
 }
 
@@ -938,27 +620,161 @@ impl Side {
     }
 }
 
-/// A corner to attach a floating [`Widget`] to and from
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Corner {
-    /// Attach on/from the top left corner
-    TopLeft,
-    /// Attach on/from the top
-    Top,
-    /// Attach on/from the top right corner
-    TopRight,
-    /// Attach on/from the right
-    Right,
-    /// Attach on/from the bottom right corner
-    BottomRight,
-    /// Attach on/from the bottom
-    Bottom,
-    /// Attach on/from the bottom left  corner
-    BottomLeft,
-    /// Attach on/from the left
-    Left,
-    /// Attach on/from the center
-    Center,
+/// Much like [`PushSpecs`], but for floating [`Widget`]s
+#[derive(Default, Debug, Clone, Copy)]
+pub struct SpawnSpecs {
+    /// Potential spawning [`Corner`]s to connect to and from
+    pub orientation: Orientation = Orientation::VerLeftBelow,
+    /// A width (in character cells) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub width: Option<f32> = None,
+    /// A height (in lines) for this `Widget`
+    ///
+    /// Note that this may be ignored if it is not possible to
+    /// create an area big (or small) enough.
+    pub height: Option<f32> = None,
+    /// Hide this `Widget` by default
+    ///
+    /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
+    /// this property.
+    pub hidden: bool = false,
+}
+
+impl SpawnSpecs {
+    /// The constraints on a given [`Axis`]
+    pub fn len_on(&self, axis: Axis) -> Option<f32> {
+        match axis {
+            Axis::Horizontal => self.width,
+            Axis::Vertical => self.height,
+        }
+    }
+}
+
+/// Where to place a spawned [`Widget`]
+///
+/// The `Orientation` has 3 components of positioning, which follow
+/// priorities in order to relocate the `Widget` in case there isn't
+/// enough space. Respectively, they are the following:
+///
+/// - An axis to align the `Widget`.
+/// - How to align said `Widget` on said axis.
+/// - Which side of the parent should be prioritized.
+///
+/// For example, [`Orientation::HorTopLeft`] means: Spawn this
+/// `Widget` horizontally, trying to align its top edge with the top
+/// edge of the parent, prioritizing the left side. Visually speaking,
+/// it will try to spawn a `Widget` like this:
+///
+/// ```text
+/// ╭─────────┬────────╮
+/// │         │ Parent │
+/// │ Spawned ├────────╯
+/// │         │
+/// ╰─────────╯
+/// ```
+///
+/// Notice that their tops are aligned, the edges connect on the
+/// horizontal axis, and it is on the left side. However, if there is
+/// not enough space, (e.g. the parent is very close to the bottom
+/// left edge of the screen) it might try to spawn it like this:
+///
+/// ```text
+/// ╭─────────╮                                 ╭─────────╮
+/// │         ├────────╮                        │         │
+/// │ Spawned │ Parent │, or even like ╭────────┤ Spawned │
+/// │         ├────────╯               │ Parent │         │
+/// ╰─────────╯                        ╰────────┴─────────╯
+/// ```
+///
+/// This prioritization gives more flexibility to the spawning of
+/// `Widget`s, which usually follows patterns of where to spawn and
+/// how to place things, mostly to prevent obscuring information. The
+/// most notable example of this are completion lists. For obvious
+/// reasons, those should only be placed above or below (`Ver`),
+/// alignment should try to be on the left edge (`VerLeft`), and
+/// ideally below the cursor ([`Orientation::VerLeftBelow`]).
+/// Likewise, these completion lists are sometimes accompanied by
+/// description panels, which should ideally follow a
+/// [`HorCenterRight`] or [`HorBottomRight`] orientation.
+///
+/// [`HorCenterRight`]: Orientation::HorCenterRight
+/// [`HorBottomRight`]: Orientation::HorBottomRight
+#[derive(Clone, Copy, Debug)]
+pub enum Orientation {
+    /// Place the [`Widget`] vertically, prioritizing the left edge
+    /// above
+    VerLeftAbove,
+    /// Place the [`Widget`] vertically, prioritizing centering above
+    VerCenterAbove,
+    /// Place the [`Widget`] vertically, prioritizing the right edge
+    /// above
+    VerRightAbove,
+    /// Place the [`Widget`] vertically, prioritizing the left edge
+    /// below
+    VerLeftBelow,
+    /// Place the [`Widget`] vertically, prioritizing centering below
+    VerCenterBelow,
+    /// Place the [`Widget`] vertically, prioritizing the right edge
+    /// below
+    VerRightBelow,
+    /// Place the [`Widget`] horizontally, prioritizing the top edge
+    /// on the left
+    HorTopLeft,
+    /// Place the [`Widget`] horizontally, prioritizing centering
+    /// on the left
+    HorCenterLeft,
+    /// Place the [`Widget`] horizontally, prioritizing the right edge
+    /// on the left
+    HorBottomLeft,
+    /// Place the [`Widget`] horizontally, prioritizing the top edge
+    /// on the right
+    HorTopRight,
+    /// Place the [`Widget`] horizontally, prioritizing centering
+    /// on the right
+    HorCenterRight,
+    /// Place the [`Widget`] horizontally, prioritizing the bottom
+    /// edge on the right
+    HorBottomRight,
+}
+
+impl Orientation {
+    /// The [`Axis`] to which this `Orientation` pushes
+    pub fn axis(&self) -> Axis {
+        match self {
+            Orientation::VerLeftAbove
+            | Orientation::VerCenterAbove
+            | Orientation::VerRightAbove
+            | Orientation::VerLeftBelow
+            | Orientation::VerCenterBelow
+            | Orientation::VerRightBelow => Axis::Vertical,
+            Orientation::HorTopLeft
+            | Orientation::HorCenterLeft
+            | Orientation::HorBottomLeft
+            | Orientation::HorTopRight
+            | Orientation::HorCenterRight
+            | Orientation::HorBottomRight => Axis::Horizontal,
+        }
+    }
+
+    /// Wether this should prefer being pushed before (left or above)
+    pub fn prefers_before(&self) -> bool {
+        match self {
+            Orientation::VerLeftAbove
+            | Orientation::VerCenterAbove
+            | Orientation::VerRightAbove
+            | Orientation::HorTopLeft
+            | Orientation::HorCenterLeft
+            | Orientation::HorBottomLeft => true,
+            Orientation::VerLeftBelow
+            | Orientation::VerCenterBelow
+            | Orientation::VerRightBelow
+            | Orientation::HorTopRight
+            | Orientation::HorCenterRight
+            | Orientation::HorBottomRight => false,
+        }
+    }
 }
 
 /// A struct representing a "visual position" on the screen
@@ -989,25 +805,6 @@ impl Caret {
     }
 }
 
-const fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
-    let mut i = 0;
-
-    while i < 4 {
-        i += 1;
-
-        cons[i - 1] = match (cons[i - 1], con) {
-            (None, _)
-            | (Some(Constraint::Len(_)), Constraint::Len(_))
-            | (Some(Constraint::Min(_)), Constraint::Min(_))
-            | (Some(Constraint::Max(_)), Constraint::Max(_))
-            | (Some(Constraint::Ratio(..)), Constraint::Ratio(..)) => Some(con),
-            _ => continue,
-        };
-
-        break;
-    }
-}
-
 /// A struct used to modify the layout of [`Area`]s
 ///
 /// The end user should not have access to methods that directly
@@ -1021,64 +818,193 @@ const fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
 /// end user, in the more controled APIs of [`Area`]
 pub struct MutArea<'area, A: Area>(pub(crate) &'area A);
 
-impl<A: Area> MutArea<'_, A> {
-    /// Bisects the [`Area`] in two
-    pub fn bisect(
-        self,
-        specs: PushSpecs,
-        cluster: bool,
-        on_files: bool,
-        cache: A::Cache,
-    ) -> (A, Option<A>) {
-        A::bisect(self, specs, cluster, on_files, cache)
-    }
-
-    /// Calls [`Area::delete`] on `self`
-    pub fn delete(self) -> Option<A> {
-        A::delete(self)
-    }
-
-    /// Calls [`Area::swap`] on `self`
-    pub fn swap(self, other: &A) {
-        A::swap(self, other);
-    }
-
-    // /// Calls [`Area::spawn_floating`] on `self`
-    // pub fn spawn_floating<Cfg: WidgetCfg<A::Ui>>(
-    //     self,
-    //     pa: &mut Pass,
-    //     _cfg: Cfg,
-    //     specs: SpawnSpecs,
-    // ) -> Result<A, Text> {
-    //     let area = A::spawn_floating(MutArea(self.0), specs)?;
-    //     let mut windows = context::windows::<A::Ui>().borrow_mut();
-
-    //     let Some(_win) = windows
-    //         .iter_mut()
-    //         .find(|win| win.nodes().any(|n| n.area(pa) == self.0))
-    //     else {
-    //         return Err(txt!("Tried to spawn floating from a deleted
-    // Area").build());     };
-
-    //     Ok(area)
-    // }
-
-    /// Calls [`Area::spawn_floating_at`] on `self`
-    pub fn spawn_floating_at(
-        self,
-        specs: SpawnSpecs,
-        at: impl TwoPoints,
-        text: &Text,
-        cfg: PrintCfg,
-    ) -> Result<A, Text> {
-        A::spawn_floating_at(self, specs, at, text, cfg)
-    }
-}
-
 impl<A: Area> std::ops::Deref for MutArea<'_, A> {
     type Target = A;
 
     fn deref(&self) -> &Self::Target {
         self.0
     }
+}
+
+/// A target for pushing [`Widget`]s to
+///
+/// This can either be a [`Handle`], which will push around a `Widget`
+/// or a [`UiBuilder`], which will push around the window.
+///
+/// This trait is useful if you wish to let your [`Widget`] both be
+/// pushed around other `Widget`s and also around the window with the
+/// [`UiBuilder`]. One example of this is the [`StatusLine`] widget,
+/// which behaves differently depending on if it was pushed to a
+/// [`Handle<File>`].
+///
+/// [`StatusLine`]: https://docs.rs/duat_utils/duat-utils/latest/widgets/struct.StatusLine.html
+pub trait PushTarget<U: Ui> {
+    /// Pushes a [`Widget`] around `self`
+    ///
+    /// If `self` is a [`Handle`], this will push around the
+    /// [`Handle`]'s own [`Ui::Area`]. If this is a [`UiBuilder`],
+    /// this will push around the master [`Ui::Area`] of the central
+    /// region of files.
+    ///
+    /// This `Widget` will be placed internally, i.e., around the
+    /// [`Ui::Area`] of `self`. This is in contrast to
+    /// [`Handle::push_outer_widget`], which will push around the
+    /// "cluster master" of `self`.
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// below `self`, when pushing to the left, the following would
+    /// happen:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │ new │   self   │
+    /// │                │ -> │     │          │
+    /// ├────────────────┤    ├─────┴──────────┤
+    /// │      old       │    │      old       │
+    /// ╰────────────────╯    ╰────────────────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_outer_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │     │   self   │
+    /// │                │ -> │ new │          │
+    /// ├────────────────┤    │     ├──────────┤
+    /// │      old       │    │     │   old    │
+    /// ╰────────────────╯    ╰─────┴──────────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the second case, not just around `self`.
+    fn push_inner<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U>;
+
+    /// Pushes a [`Widget`] around the "master region" of `self`
+    ///
+    /// If `self` is a [`Handle`], this will push its "cluster
+    /// master". If this is a [`UiBuilder`], this will push the
+    /// `Widget` to the edges of the window.
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// This [`Widget`] will be placed externally, i.e., around every
+    /// other [`Widget`] that was pushed around `self`. This is in
+    /// contrast to [`Handle::push_inner_widget`], which will push
+    /// only around `self`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// to the left of `self`, when pushing to the left again, the
+    /// following would happen:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ new │ old │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_inner_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ old │ new │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the first case, not just around `self`.
+    fn push_outer<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U>;
+
+    /// Tries to downcast to a [`Handle`] of some `W`
+    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>>;
+}
+
+impl<W: Widget<U> + ?Sized, U: Ui> PushTarget<U> for Handle<W, U> {
+    #[doc(hidden)]
+    fn push_inner<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        self.push_inner_widget(pa, widget, specs)
+    }
+
+    #[doc(hidden)]
+    fn push_outer<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        self.push_outer_widget(pa, widget, specs)
+    }
+
+    fn try_downcast<DW: Widget<U>>(&self) -> Option<Handle<DW, U>> {
+        self.try_downcast()
+    }
+}
+
+impl<U: Ui> PushTarget<U> for UiBuilder<U> {
+    #[doc(hidden)]
+    fn push_inner<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        UiBuilder::push_inner(self, pa, widget, specs)
+    }
+
+    #[doc(hidden)]
+    fn push_outer<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        UiBuilder::push_outer(self, pa, widget, specs)
+    }
+
+    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
+        None
+    }
+}
+
+/// A trait meant to prevent getting multiple [`Ui::MetaStatics`]
+#[doc(hidden)]
+pub trait GetOnce<U: Ui> {
+    /// Return [`Some`] only on the first call
+    fn get_once() -> Option<&'static Self>;
 }

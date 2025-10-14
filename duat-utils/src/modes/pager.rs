@@ -91,7 +91,8 @@ pub struct PagerSearch<W: Widget<U>, U: Ui> {
 }
 
 impl<W: Widget<U>, U: Ui> PagerSearch<W, U> {
-    fn new(pa: &Pass, handle: &Handle<W, U>, is_fwd: bool) -> Prompt<U, Self> {
+    #[allow(clippy::new_ret_no_self)]
+    fn new(pa: &Pass, handle: &Handle<W, U>, is_fwd: bool) -> Prompt<U> {
         Prompt::new(Self {
             is_fwd,
             prev: String::new(),
@@ -204,8 +205,8 @@ impl<W: Widget<U>, U: Ui> PromptMode<U> for PagerSearch<W, U> {
         txt!("[prompt]pager search").build()
     }
 
-    fn return_handle(&self) -> Option<Handle<Self::ExitWidget, U>> {
-        Some(self.handle.clone())
+    fn return_handle(&self) -> Option<Handle<dyn Widget<U>, U>> {
+        Some(self.handle.clone().to_dyn())
     }
 }
 

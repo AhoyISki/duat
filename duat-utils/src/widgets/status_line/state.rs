@@ -70,7 +70,7 @@ where
             match self.appender {
                 Appender::TextFnCheckerArg(f) => Box::new(move |pa, b, _| f(pa, b)),
                 Appender::FromWidget(f) => Box::new(move |pa, b, reader| {
-                    if let Some((widget, area)) = reader.read_related(pa) {
+                    if let Some((widget, area, _)) = reader.read_related(pa).next() {
                         f(b, pa, widget, area);
                     }
                 }),
@@ -105,15 +105,10 @@ impl<U: Ui> From<Text> for State<U, ()> {
 
 impl<D: Display + Clone + Send + 'static, U: Ui> From<RwData<D>> for State<U, DataArg<D>> {
     fn from(value: RwData<D>) -> Self {
+        let checker = value.checker();
         Self {
-            appender: Appender::TextFnCheckerArg({
-                let value = value.clone();
-                Box::new(move |pa, b| b.push(value.read(pa)))
-            }),
-            checker: Some({
-                let checker = value.checker();
-                Box::new(move |_| checker())
-            }),
+            appender: Appender::TextFnCheckerArg(Box::new(move |pa, b| b.push(value.read(pa)))),
+            checker: Some(Box::new(move |_| checker())),
             ghost: PhantomData,
         }
     }

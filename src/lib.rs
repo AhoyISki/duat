@@ -370,9 +370,6 @@
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #![feature(decl_macro, thread_spawn_hook)]
 
-use std::sync::RwLock;
-
-use duat_core::session::SessionCfg;
 pub use duat_core::utils::{crate_dir, duat_name, src_crate};
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
@@ -413,7 +410,7 @@ pub mod cursor {
     pub use duat_core::form::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
-        unset_main_cursor as unset_main,
+        unset_main_cursor as unset_main, id_of
     };
 }
 
@@ -584,8 +581,8 @@ pub mod hook {
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
     //! [tabstop]: duat_core::cfg::PrintCfg::set_tabstop
-    use duat_core::data::Pass;
     pub use duat_core::hook::*;
+    use duat_core::{data::Pass, text::Text};
     pub use duat_utils::hooks::*;
 
     use crate::Ui;
@@ -630,7 +627,7 @@ pub mod hook {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     pub fn add<H: HookAlias<Ui, impl HookDummy>>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         duat_core::hook::add::<H, Ui>(f);
     }
@@ -646,7 +643,7 @@ pub mod hook {
     /// [`hook::add`]: add
     pub fn add_grouped<H: HookAlias<Ui, impl HookDummy>>(
         group: &'static str,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) {
         duat_core::hook::add_grouped::<H, Ui>(group, f);
     }
@@ -935,7 +932,7 @@ pub mod state {
 
 /// Duat's builtin widgets
 pub mod widgets {
-    pub use duat_core::ui::{Widget, WidgetCfg};
+    pub use duat_core::ui::Widget;
     pub use duat_utils::widgets::*;
 
     /// The widget that is used to print and edit files
@@ -943,7 +940,7 @@ pub mod widgets {
 }
 
 #[allow(unused_imports)]
-use duat_core::session::{DuatEvent, FileParts};
+use duat_core::session::{DuatEvent, ReloadedFile};
 
 /// Pre and post setup for Duat
 ///
@@ -953,14 +950,15 @@ pub macro setup_duat($setup:expr) {
     use std::sync::{Mutex, mpsc};
 
     use $crate::prelude::{File, Text, context::Logs, form::Palette};
+    type RlFile = ReloadedFile<$crate::Ui>;
 
     #[unsafe(no_mangle)]
     fn run(
         initials: Initials,
         ms: MetaStatics,
-        files: Vec<Vec<FileParts>>,
+        files: Vec<Vec<RlFile>>,
         (duat_tx, duat_rx, reload_tx): Channels,
-    ) -> (Vec<Vec<FileParts>>, mpsc::Receiver<DuatEvent>) {
+    ) -> (Vec<Vec<RlFile>>, mpsc::Receiver<DuatEvent>) {
         pre_setup(Some(initials), Some(duat_tx));
         $setup();
         run_duat(ms, files, duat_rx, Some(reload_tx))
@@ -977,8 +975,8 @@ pub mod prelude {
         file,
         prelude::Lender,
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
-            Text, txt,
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
+            Tagger, Text, txt,
         },
         ui::{self, Area as AreaTrait, Widget},
     };
@@ -1133,9 +1131,6 @@ pub type Ui = duat_term::Ui;
 ///
 /// [`ui::Area`]: duat_core::ui::Area
 pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
-
-/// A function that sets the [`SessionCfg`].
-type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 
 /// For testing mdBook examples.
 #[cfg(doctest)]

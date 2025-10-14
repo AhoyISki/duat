@@ -14,25 +14,21 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use self::{
-    bounds::Bounds,
-    taggers::TaggerExtents,
-    types::{TagId, Toggle},
-};
+use self::{bounds::Bounds, taggers::TaggerExtents, types::Toggle};
 pub use self::{
     ids::*,
     taggers::{Tagger, Taggers},
     types::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
-        Spacer, Tag,
+        Spacer, SpawnTag, Tag,
     },
 };
 use super::{
     Point, Text, TextRangeOrPoint,
     shift_list::{Shift, ShiftList, Shiftable},
 };
-use crate::utils::get_ends;
+use crate::{data::Pass, utils::get_ends};
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
 ///
@@ -48,8 +44,25 @@ pub struct Tags<'a>(pub(super) &'a mut InnerTags);
 
 impl Tags<'_> {
     /// Inserts a [`Tag`] at the given position
-    pub fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) {
-        self.0.insert(tagger, r, tag);
+    ///
+    /// Insertion may fail if you try to push a `Tag` to a position or
+    /// range which already has the exact same `Tag` with the exact
+    /// same `Tagger`.
+    ///
+    /// For some `Tag`s (like [`Ghost`]) can return an id (like
+    /// [`GhostId`]). This id can then be used in order to insert the
+    /// same `Tag`. In the [`Ghost`] example, that would print the
+    /// same ghost [`Text`] multiple times without needing to
+    /// pointlessly copy the [`Text`] for every time you want to
+    /// insert the same ghost.
+    ///
+    /// When the `Tag` doesn't return an id, it will return `Some(())`
+    /// if the `Tag` was successfully added, and `None` otherwise.
+    pub fn insert<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        self.0.insert(tagger, r, tag)
     }
 
     /// Removes the [`Tag`]s of a [tagger] from a region
@@ -115,6 +128,41 @@ impl Tags<'_> {
     pub fn clear(&mut self) {
         *self.0 = InnerTags::new(self.0.list.max() as usize);
     }
+
+    /////////// Querying functions
+
+    /// The lenght of this `Tags` struct
+    ///
+    /// This number is always identical to calling
+    /// [`bytes.len().byte()`] from the [`Bytes`] of the same
+    /// [`Text`], or calling `text.len().bytes()` from the `Text`
+    /// itself.
+    ///
+    /// [`bytes.len().byte()`]: super::Bytes::len
+    /// [`Bytes`]: super::Bytes
+    pub fn len_bytes(&self) -> usize {
+        self.0.len_bytes()
+    }
+
+    /// List of [`Widget`]s that were spawned on this `Tags`'s
+    /// [`Text`]
+    ///
+    /// These `Widget` are all guaranteed to still exist, although
+    /// they might not be printed on screen, in the situation where
+    /// the `Text` was not itself printed on screen.
+    ///
+    /// This information is particularly useful for [`Ui`]
+    /// implementors, since, upon printing a [`Text`], they will
+    /// iterate through all [`RawTag`]s that show up on screen. For
+    /// every [`RawTag::SpawnedWidget`] that _didn't_ show up on
+    /// screen, they will know that that `Widget` should not be
+    /// printed.
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    /// [`Ui`]: crate::ui::Ui
+    pub fn spawned_ids(&self) -> &[SpawnId] {
+        &self.0.spawns
+    }
 }
 
 impl std::ops::Deref for Tags<'_> {
@@ -135,145 +183,115 @@ impl std::fmt::Debug for Tags<'_> {
 ///
 /// It also holds the [`Text`]s of any [`Ghost`]s, and the
 /// functions of [`ToggleStart`]s
-#[derive(Clone)]
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
     ghosts: Vec<(GhostId, Text)>,
     toggles: Vec<(ToggleId, Toggle)>,
+    spawns: Vec<SpawnId>,
+    pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
 }
 
 impl InnerTags {
     /// Creates a new [`InnerTags`] with a given len
-    pub(super) fn new(max: usize) -> Self {
+    pub fn new(max: usize) -> Self {
         Self {
             list: ShiftList::new(max as i32),
             ghosts: Vec::new(),
             toggles: Vec::new(),
+            spawns: Vec::new(),
+            spawn_fns: Vec::new(),
             bounds: Bounds::new(max),
             extents: TaggerExtents::new(max),
         }
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub(super) fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
-        fn insert_id(tags: &mut InnerTags, id: Option<TagId>) -> Option<ToggleId> {
-            match id {
-                Some(TagId::Ghost(id, ghost)) => {
-                    tags.ghosts.push((id, ghost));
-                    None
-                }
-                Some(TagId::Toggle(id, toggle)) => {
-                    tags.toggles.push((id, toggle));
-                    Some(id)
-                }
-                None => None,
-            }
-        }
+    pub fn insert<I, R>(&mut self, tagger: Tagger, i: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        let (start, end, ret) = tag.get_raw(i, self.len_bytes(), tagger);
+        let inserted = self.insert_raw(start, end);
 
-        fn insert_raw_tags(
-            tags: &mut InnerTags,
-            (s_b, s_tag): (usize, RawTag),
-            end: Option<(usize, RawTag)>,
-        ) -> bool {
-            if let Some((e_b, e_tag)) = end
-                && s_b < e_b
-            {
-                let (s_i, e_i) = match (
-                    tags.list.find_by_key((s_b as i32, s_tag), |t| t),
-                    tags.list.find_by_key((e_b as i32, e_tag), |t| t),
-                ) {
-                    (Ok(_), Ok(_)) => return false,
-                    (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => {
-                        (s_i, e_i + 1)
-                    }
-                };
-
-                tags.list.insert(s_i, (s_b as i32, s_tag));
-                tags.list.insert(e_i, (e_b as i32, e_tag));
-
-                tags.bounds
-                    .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
-
-                tags.extents.insert(s_tag.tagger(), s_b);
-                tags.extents.insert(s_tag.tagger(), e_b);
-
-                true
-            } else if end.is_none() {
-                let (Ok(i) | Err(i)) = tags.list.find_by_key((s_b as i32, s_tag), |s| s);
-                tags.list.insert(i, (s_b as i32, s_tag));
-
-                tags.bounds.shift_by(i, [1, 0]);
-
-                tags.extents.insert(s_tag.tagger(), s_b);
-                true
-            } else {
-                false
-            }
-        }
-
-        let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), tagger);
-        if insert_raw_tags(self, start, end) {
-            insert_id(self, tag_id)
+        if inserted {
+            tag.on_insertion(ret, self);
+            Some(ret)
         } else {
             None
         }
     }
 
+    fn insert_raw(&mut self, (s_b, s_tag): (usize, RawTag), end: Option<(usize, RawTag)>) -> bool {
+        if let Some((e_b, e_tag)) = end
+            && s_b < e_b
+        {
+            let (s_i, e_i) = match (
+                self.list.find_by_key((s_b as i32, s_tag), |t| t),
+                self.list.find_by_key((e_b as i32, e_tag), |t| t),
+            ) {
+                (Ok(_), Ok(_)) => return false,
+                (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => (s_i, e_i + 1),
+            };
+
+            self.list.insert(s_i, (s_b as i32, s_tag));
+            self.list.insert(e_i, (e_b as i32, e_tag));
+
+            self.bounds
+                .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
+
+            self.extents.insert(s_tag.tagger(), s_b);
+            self.extents.insert(s_tag.tagger(), e_b);
+
+            true
+        } else if end.is_none() {
+            let (Ok(i) | Err(i)) = self.list.find_by_key((s_b as i32, s_tag), |s| s);
+            self.list.insert(i, (s_b as i32, s_tag));
+
+            self.bounds.shift_by(i, [1, 0]);
+
+            self.extents.insert(s_tag.tagger(), s_b);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Insert another [`InnerTags`] into this one
-    pub(super) fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
+    pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
-            let b = b as usize + p.char();
+            let b = b as usize + p.byte();
             match tag {
-                PushForm(..) => starts.push((b, tag)),
-                PopForm(tagger, id) => {
+                PushForm(..) | StartAlignCenter(_) | StartAlignRight(_) | StartConceal(_) => {
+                    starts.push((b, tag))
+                }
+                PopForm(..) | EndAlignCenter(_) | EndAlignRight(_) | EndConceal(_) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, id.to_tag(tag.priority()));
-                }
-                RawTag::MainCaret(tagger) => {
-                    self.insert(tagger, b, MainCaret);
-                }
-                RawTag::ExtraCaret(tagger) => {
-                    self.insert(tagger, b, ExtraCaret);
-                }
-                StartAlignCenter(_) => starts.push((b, tag)),
-                EndAlignCenter(tagger) => {
-                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, AlignCenter);
-                }
-                StartAlignRight(_) => starts.push((b, tag)),
-                EndAlignRight(tagger) => {
-                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, AlignRight);
-                }
-                RawTag::Spacer(tagger) => {
-                    self.insert(tagger, b, Spacer);
-                }
-                StartConceal(_) => starts.push((b, tag)),
-                EndConceal(tagger) => {
-                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
-                    let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, Conceal);
+                    let (sb, stag) = starts.remove(i);
+                    self.insert_raw((sb, stag), Some((b, tag)));
                 }
                 ConcealUntil(_) => unreachable!(),
-                RawTag::Ghost(tagger, id) => {
-                    let entry = other.ghosts.extract_if(.., |(l, _)| l == &id).next();
-                    self.insert(tagger, b, Ghost(entry.unwrap().1));
+                RawTag::Ghost(_, id) => {
+                    self.ghosts
+                        .extend(other.ghosts.extract_if(.., |(l, _)| l == &id).next());
+                    self.insert_raw((b, tag), None);
                 }
-                StartToggle(..) => todo!(),
-                EndToggle(..) => todo!(),
+                StartToggle(..) | EndToggle(..) => todo!(),
+                RawTag::MainCaret(_)
+                | RawTag::ExtraCaret(_)
+                | RawTag::Spacer(_)
+                | SpawnedWidget(..) => {
+                    self.insert_raw((b, tag), None);
+                }
             };
         }
     }
 
     /// Extends this [`InnerTags`] with another one
-    pub(super) fn extend(&mut self, other: InnerTags) {
+    pub fn extend(&mut self, other: InnerTags) {
         self.list.extend(other.list);
         self.ghosts.extend(other.ghosts);
         self.toggles.extend(other.toggles);
@@ -282,7 +300,7 @@ impl InnerTags {
     }
 
     /// Removes all [`RawTag`]s of a give [`Taggers`]
-    pub(super) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
+    pub fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let (start, end) = crate::utils::get_ends(within, self.len_bytes());
 
         for range in self
@@ -358,6 +376,8 @@ impl InnerTags {
                     } else {
                         ends.push(tag);
                     }
+                } else if let RawTag::SpawnedWidget(_, spawn_id) = tag {
+                    self.spawns.retain(|id| *id != spawn_id);
                 }
             });
 
@@ -446,7 +466,7 @@ impl InnerTags {
         self.extents.shift_by(old.start + 1, shift);
     }
 
-    pub(crate) fn update_bounds(&mut self) {
+    pub fn update_bounds(&mut self) {
         for range in self.bounds.take_ranges() {
             let mut starts = Vec::new();
             for (i, (b, tag)) in self.list.iter_fwd(range) {
@@ -465,15 +485,7 @@ impl InnerTags {
         self.bounds.cull_small_ranges();
     }
 
-    /// Returns true if there are no [`RawTag`]s
-    pub fn is_empty(&self) -> bool {
-        self.list.is_empty()
-    }
-
-    /// Returns the len of the [`InnerTags`] in bytes
-    pub fn len_bytes(&self) -> usize {
-        self.list.max() as usize
-    }
+    ////////// Iterator functions
 
     /// Returns a forward iterator at a given byte
     #[define_opaque(FwdTags)]
@@ -542,6 +554,18 @@ impl InnerTags {
             .map(|(_, (_, tag))| tag)
     }
 
+    ////////// Querying functions
+
+    /// Returns true if there are no [`RawTag`]s
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+
+    /// Returns the len of the [`InnerTags`] in bytes
+    pub fn len_bytes(&self) -> usize {
+        self.list.max() as usize
+    }
+
     /// Returns the length of all [`Ghost`]s in a byte
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
@@ -558,6 +582,25 @@ impl InnerTags {
         self.ghosts
             .iter()
             .find_map(|(lhs, text)| (*lhs == id).then_some(text))
+    }
+
+    /// A list of all [`SpawnId`]s that belong to this `Tags`
+    pub(crate) fn get_spawned_ids(&self) -> &[SpawnId] {
+        &self.spawns
+    }
+}
+
+impl Clone for InnerTags {
+    fn clone(&self) -> Self {
+        Self {
+            list: self.list.clone(),
+            ghosts: self.ghosts.clone(),
+            toggles: self.toggles.clone(),
+            spawns: self.spawns.clone(),
+            spawn_fns: Vec::new(),
+            bounds: self.bounds.clone(),
+            extents: self.extents.clone(),
+        }
     }
 }
 
@@ -662,8 +705,7 @@ mod ids {
 
     impl GhostId {
         /// Creates a new [`GhostId`]
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
+        pub(super) fn new() -> Self {
             static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
             Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
         }
@@ -681,8 +723,7 @@ mod ids {
 
     impl ToggleId {
         /// Creates a new [`ToggleId`]
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
+        pub(super) fn _new() -> Self {
             static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
             Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
         }
@@ -691,6 +732,27 @@ mod ids {
     impl std::fmt::Debug for ToggleId {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "ToggleId({})", self.0)
+        }
+    }
+
+    /// The id of a spawned [`Widget`]
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct SpawnId(u16);
+
+    impl SpawnId {
+        /// Creates a new [`SpawnId`]
+        #[allow(clippy::new_without_default)]
+        pub(crate) fn new() -> Self {
+            static SPAWN_COUNT: AtomicU16 = AtomicU16::new(0);
+            Self(SPAWN_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+
+    impl std::fmt::Debug for SpawnId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "SpawnId({})", self.0)
         }
     }
 }

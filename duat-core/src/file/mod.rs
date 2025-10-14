@@ -18,220 +18,38 @@ use std::{
     sync::Arc,
 };
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 
 use self::parser::Parsers;
-pub use self::parser::{FileTracker, Parser, ParserCfg};
+pub use self::parser::{FileTracker, Parser};
 use crate::{
-    cfg::{NewLine, PrintCfg, ScrollOff, TabStops, WordChars, WrapMethod},
+    cfg::PrintCfg,
     context::{self, Cache, Handle},
     data::Pass,
     form::Painter,
     hook::{self, FileWritten},
-    mode::{Selection, Selections},
+    mode::Selections,
     text::{BuilderPart, Bytes, Text, txt},
-    ui::{Area, BuildInfo, PushSpecs, Ui, Widget, WidgetCfg},
+    ui::{Area, Ui, Widget},
 };
 
 mod parser;
 
-/// The configuration for a new [`File`]
-#[derive(Default)]
-#[doc(hidden)]
-pub struct FileCfg<U: Ui> {
-    text_op: TextOp,
-    print_cfg: PrintCfg,
-    add_parsers: Option<Box<dyn FnOnce(&mut File<U>)>>,
+/// The widget that is used to print and edit files
+pub struct File<U: Ui> {
+    path: PathKind,
+    text: Text,
+    printed_lines: Mutex<Vec<(usize, bool)>>,
+    parsers: Parsers<U>,
+    /// The [`PrintCfg`] of this [`File`]
+    cfg: Arc<Mutex<PrintCfg>>,
+    pub(crate) layout_order: usize,
 }
 
-impl<U: Ui> FileCfg<U> {
-    /// Returns a new instance of [`FileCfg`], opening a new buffer
-    pub(crate) fn new() -> Self {
-        FileCfg {
-            text_op: TextOp::NewBuffer,
-            print_cfg: PrintCfg::default_for_input(),
-            add_parsers: None,
-        }
-    }
-
-    /// Adds a [`Parser`] to the [`File`]
-    pub fn with_parser(mut self, parser_cfg: impl ParserCfg<U> + 'static) -> Self {
-        let add_parsers = std::mem::take(&mut self.add_parsers);
-        self.add_parsers = Some(Box::new(move |file| {
-            if let Some(prev_add_parsers) = add_parsers {
-                prev_add_parsers(file)
-            }
-
-            if let Err(err) = file.parsers.add(file, parser_cfg) {
-                context::error!("{err}");
-            }
-        }));
-
-        self
-    }
-
-    ////////// PrintCfg functions
-
-    /// A mutable reference to the [`PrintCfg`]
-    ///
-    /// You mostly won't need this, as you can just use the other
-    /// [`PrintCfg`] derived methods for the [`FileCfg`].
-    pub fn print_cfg(&mut self) -> &mut PrintCfg {
-        &mut self.print_cfg
-    }
-
-    /// Don't wrap when reaching the end of the area
-    pub const fn dont_wrap(mut self) -> Self {
-        self.print_cfg.dont_wrap();
-        self
-    }
-
-    /// Wrap on the right edge of the area
-    pub const fn wrap_on_edge(mut self) -> Self {
-        self.print_cfg.wrap_method = WrapMethod::Edge;
-        self
-    }
-
-    /// Wrap on [word] terminations
-    ///
-    /// [word]: word_chars
-    pub const fn wrap_on_word(mut self) -> Self {
-        self.print_cfg.wrap_method = WrapMethod::Edge;
-        self
-    }
-
-    /// Wrap on a given distance from the left edge
-    ///
-    /// This can wrap beyond the screen, being a mix of [`unwrapped`]
-    /// and [`edge_wrapped`].
-    ///
-    /// [`unwrapped`]: Self::unwrapped
-    /// [`edge_wrapped`]: Self::edge_wrapped
-    pub const fn wrap_at(mut self, cap: u8) -> Self {
-        self.print_cfg.wrap_method = WrapMethod::Capped(cap);
-        self
-    }
-
-    /// Reindent wrapped lines to the same level of indentation
-    pub const fn indent_wraps(mut self, value: bool) -> Self {
-        self.print_cfg.indent_wrapped = value;
-        self
-    }
-
-    /// Sets the size of tabs
-    pub const fn tabstop(mut self, tabstop: u8) -> Self {
-        self.print_cfg.tab_stops = TabStops(tabstop);
-        self
-    }
-
-    /// Sets a character to replace `'\n'`s with
-    pub const fn new_line_as(mut self, char: char) -> Self {
-        self.print_cfg.new_line = NewLine::AlwaysAs(char);
-        self
-    }
-
-    /// Sets a character to replace `'\n'` only with trailing white
-    /// space
-    pub const fn trailing_new_line_as(mut self, char: char) -> Self {
-        self.print_cfg.new_line = NewLine::AfterSpaceAs(char);
-        self
-    }
-
-    /// Sets the horizontal and vertical scrolloff, respectively
-    pub const fn scrolloff(mut self, x: u8, y: u8) -> Self {
-        self.print_cfg.scrolloff = ScrollOff { x, y };
-        self
-    }
-
-    /// Sets the horizontal scrolloff
-    pub const fn x_scrolloff(mut self, x: u8) -> Self {
-        self.print_cfg.scrolloff = ScrollOff { y: self.print_cfg.scrolloff.y, x };
-        self
-    }
-
-    /// Sets the vertical scrolloff
-    pub const fn y_scrolloff(mut self, y: u8) -> Self {
-        self.print_cfg.scrolloff = ScrollOff { y, x: self.print_cfg.scrolloff.x };
-        self
-    }
-
-    /// Sets the [`WordChars`]
-    pub const fn word_chars(mut self, word_chars: WordChars) -> Self {
-        self.print_cfg.word_chars = word_chars;
-        self
-    }
-
-    /// Sets a forced horizontal scrolloff
-    ///
-    /// Without forced horizontal scrolloff, when you reach the end of
-    /// a long line of text, the cursor will also reach the edge of
-    /// the screen. With this enabled, Duat will keep a distance
-    /// between the cursor and the edge of the screen.
-    ///
-    /// This is particularly useful in a situation like the
-    /// [`PromptLine`] widget, in order to keep good visibility of the
-    /// command.
-    ///
-    /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
-    pub const fn forced_horizontal_scrolloff(mut self, value: bool) -> Self {
-        self.print_cfg.force_scrolloff = value;
-        self
-    }
-
-    ////////// Path functions
-
-    /// The path that the [`File`] will open with, if it was set
-    pub fn path_set(&self) -> Option<String> {
-        match &self.text_op {
-            TextOp::TakeBuf(_, PathKind::NotSet(_), _) | TextOp::NewBuffer => None,
-            TextOp::TakeBuf(_, PathKind::SetExists(path) | PathKind::SetAbsent(path), _)
-            | TextOp::OpenPath(path) => Some(path.to_str()?.to_string()),
-        }
-    }
-
-    /// Changes the path of this cfg
-    pub(crate) fn open_path(self, path: Option<PathBuf>) -> Self {
-        match path {
-            Some(path) => Self { text_op: TextOp::OpenPath(path), ..self },
-            None => Self { text_op: TextOp::NewBuffer, ..self },
-        }
-    }
-
-    /// Takes a previous [`File`]
-    pub(crate) fn take_from_prev(
-        self,
-        bytes: Bytes,
-        pk: PathKind,
-        has_unsaved_changes: bool,
-    ) -> Self {
-        Self {
-            text_op: TextOp::TakeBuf(bytes, pk, has_unsaved_changes),
-            ..self
-        }
-    }
-}
-
-impl<U: Ui> WidgetCfg<U> for FileCfg<U> {
-    type Widget = File<U>;
-
-    fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-        let (text, path) = match self.text_op {
-            TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
-            TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
-                PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                    let selections = {
-                        let cursor = Cache::new().load(path).unwrap_or_default();
-                        Selections::new(cursor)
-                    };
-                    let text = Text::from_file(bytes, selections, path, has_unsaved_changes);
-                    (text, pk)
-                }
-                PathKind::NotSet(_) => (
-                    Text::from_bytes(bytes, Selections::new(Selection::default()), true),
-                    pk,
-                ),
-            },
-            TextOp::OpenPath(path) => {
+impl<U: Ui> File<U> {
+    pub(crate) fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Self {
+        let (text, path) = match path {
+            Some(path) => {
                 let canon_path = path.canonicalize();
                 if let Ok(path) = &canon_path
                     && let Ok(file) = std::fs::read_to_string(path)
@@ -240,7 +58,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg<U> {
                         let cursor = Cache::new().load(path).unwrap_or_default();
                         Selections::new(cursor)
                     };
-                    let text = Text::from_file(Bytes::new(&file), selections, path, false);
+                    let text = Text::from_bytes(Bytes::new(&file), selections, true);
                     (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
@@ -251,51 +69,31 @@ impl<U: Ui> WidgetCfg<U> for FileCfg<U> {
                     (Text::new_with_history(), PathKind::new_unset())
                 }
             }
+            None => (Text::new_with_history(), PathKind::new_unset()),
         };
 
-        let mut file = File {
+        Self {
             path,
             text,
-            cfg: Arc::new(Mutex::new(self.print_cfg)),
-            printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
+            cfg: Arc::new(Mutex::new(print_cfg)),
+            printed_lines: Mutex::new(Vec::new()),
             parsers: Parsers::default(),
             layout_order: 0,
-            _ghost: PhantomData,
-        };
-
-        if let Some(add_parsers) = self.add_parsers {
-            add_parsers(&mut file);
-        }
-
-        // The PushSpecs don't matter
-        (file, PushSpecs::above())
-    }
-}
-
-impl<U: Ui> Clone for FileCfg<U> {
-    fn clone(&self) -> Self {
-        Self {
-            text_op: self.text_op.clone(),
-            print_cfg: self.print_cfg,
-            add_parsers: None,
         }
     }
-}
 
-/// The widget that is used to print and edit files
-pub struct File<U: Ui> {
-    path: PathKind,
-    text: Text,
-    printed_lines: Vec<(usize, bool)>,
-    parsers: Parsers<U>,
-    /// The [`PrintCfg`] of this [`File`]
-    cfg: Arc<Mutex<PrintCfg>>,
-    pub(crate) layout_order: usize,
-    _ghost: PhantomData<U>,
-}
+    /// Mutable reference to the [`PrintCfg`] of this `File`
+    ///
+    /// Note that, since every method of `PrintCfg` returns a mutable
+    /// reference to the `PrintCfg`, you can chain these methods
+    /// together, not needing to call this function more than once.
+    ///
+    /// TODO: EXAMPLES
+    pub fn cfg(&mut self) -> parking_lot::MutexGuard<'_, PrintCfg> {
+        self.cfg.lock()
+    }
 
-impl<U: Ui> File<U> {
-    ////////// Writing the File
+    ////////// Saving the File
 
     /// Writes the file to the current [`PathBuf`], if one was set
     pub fn save(&mut self) -> Result<Option<usize>, Text> {
@@ -449,8 +247,8 @@ impl<U: Ui> File<U> {
     /// These are returned as a `usize`, showing the index of the line
     /// in the file, and a `bool`, which is `true` when the line is
     /// wrapped.
-    pub fn printed_lines(&self) -> &[(usize, bool)] {
-        &self.printed_lines
+    pub fn printed_lines(&self) -> MutexGuard<'_, Vec<(usize, bool)>> {
+        self.printed_lines.lock()
     }
 
     ////////// General querying functions
@@ -490,6 +288,23 @@ impl<U: Ui> File<U> {
     pub fn exists(&self) -> bool {
         self.path_set()
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
+    }
+
+    ////////// Parser functions
+
+    /// Adds a [`Parser`] to this `File`
+    ///
+    /// The [`Parser`] will be able to keep track of every single
+    /// [`Change`] that takes place in the `File`'s [`Text`], and can
+    /// act on the `File` accordingly.
+    ///
+    /// This function will fail if a [`Parser`] of the same type was
+    /// already added to this [`File`]
+    pub fn add_parser<P: Parser<U>>(
+        &mut self,
+        f: impl FnOnce(FileTracker) -> P,
+    ) -> Result<(), Text> {
+        self.parsers.add(self, f)
     }
 
     /// Reads from a specific [`Parser`], if it was [added]
@@ -573,21 +388,35 @@ impl<U: Ui> File<U> {
     ) -> Option<Ret> {
         self.parsers.try_write_parser(write)
     }
+
+    /// Prepare this `File` for reloading
+    ///
+    /// This works by creating a new [`File`], which will take
+    /// ownership of a stripped down version of this one's [`Text`]
+    pub(crate) fn prepare_for_reloading(&mut self) -> Self {
+        self.text.prepare_for_reloading();
+        Self {
+            path: self.path.clone(),
+            text: std::mem::take(&mut self.text),
+            printed_lines: Mutex::new(Vec::new()),
+            parsers: Parsers::default(),
+            cfg: Arc::default(),
+            layout_order: self.layout_order,
+        }
+    }
 }
 
 impl<U: Ui> Widget<U> for File<U> {
-    type Cfg = FileCfg<U>;
-
     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
         let file = handle.read(pa);
-        let cfg = file.print_cfg();
+        let cfg = file.get_print_cfg();
 
         let (file, area) = handle.write_with_area(pa);
 
         if let Some(main) = file.text().selections().get_main() {
-            area.scroll_around_point(file.text(), main.caret(), file.print_cfg());
+            area.scroll_around_point(file.text(), main.caret(), file.get_print_cfg());
         }
 
         let (start, _) = area.start_points(&file.text, cfg);
@@ -613,11 +442,11 @@ impl<U: Ui> Widget<U> for File<U> {
         &mut self.text
     }
 
-    fn print_cfg(&self) -> PrintCfg {
+    fn get_print_cfg(&self) -> PrintCfg {
         *self.cfg.lock()
     }
 
-    fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
+    fn print(&self, painter: Painter, area: &<U as Ui>::Area) {
         let cfg = *self.cfg.lock();
         let (start, _) = area.start_points(&self.text, cfg);
 
@@ -625,12 +454,12 @@ impl<U: Ui> Widget<U> for File<U> {
             .rev_print_iter(self.text.iter_rev(start), cfg)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
-        self.printed_lines.clear();
-        let printed_lines = &mut self.printed_lines;
+        let mut printed_lines = self.printed_lines.lock();
+        printed_lines.clear();
 
         let mut has_wrapped = false;
 
-        area.print_with(&mut self.text, cfg, painter, move |caret, item| {
+        area.print_with(&self.text, cfg, painter, move |caret, item| {
             has_wrapped |= caret.wrap;
             if has_wrapped && item.part.is_char() {
                 has_wrapped = false;
@@ -647,12 +476,13 @@ impl<U: Ui> Handle<File<U>, U> {
     /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
     ///
     /// [`Change`]: crate::text::Change
-    pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
+    pub fn add_parser<P: Parser<U>>(
+        &self,
+        pa: &mut Pass,
+        f: impl FnOnce(FileTracker) -> P,
+    ) -> Result<(), Text> {
         let file = self.widget().read(pa);
-
-        if let Err(err) = file.parsers.add(file, cfg) {
-            context::error!("{err}");
-        }
+        file.parsers.add(file, f)
     }
 }
 
@@ -850,13 +680,4 @@ impl From<PathKind> for BuilderPart {
     fn from(value: PathKind) -> Self {
         BuilderPart::Text(value.name_txt())
     }
-}
-
-/// What to do when opening the [`File`]
-#[derive(Default, Clone)]
-enum TextOp {
-    #[default]
-    NewBuffer,
-    TakeBuf(Bytes, PathKind, bool),
-    OpenPath(PathBuf),
 }

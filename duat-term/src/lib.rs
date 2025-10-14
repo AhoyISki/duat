@@ -1,10 +1,17 @@
-#![feature(decl_macro, debug_closure_helpers, thread_spawn_hook)]
+#![feature(
+    decl_macro,
+    debug_closure_helpers,
+    thread_spawn_hook,
+    default_field_values,
+)]
 use std::{
-    cell::RefCell,
     fmt::Debug,
     io::{self, Write},
-    rc::Rc,
-    sync::{Arc, Mutex, mpsc},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
@@ -17,20 +24,25 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    form::{self, Color}, session::DuatSender, ui::{self}, MainThreadOnly
+    MainThreadOnly,
+    form::{self, Color},
+    session::DuatSender,
+    ui::{self, GetOnce},
 };
 
-use self::{layout::Layout, print::Printer};
+use self::{printer::Printer};
 pub use self::{
-    print::{Brush, Frame},
-    rules::{VertRule, VertRuleCfg},
+    printer::{Brush, Frame},
+    rules::{VertRule, VertRuleBuilder},
 };
+use crate::layout::Layouts;
 
 mod area;
 mod layout;
-mod print;
+mod printer;
 mod rules;
 
+#[derive(Debug)]
 pub struct Ui;
 
 impl ui::Ui for Ui {
@@ -56,6 +68,9 @@ impl ui::Ui for Ui {
                 unreachable!("Failed to load the Ui");
             };
 
+            // Initial terminal setup
+            // Some key chords (like alt+shift+o for some reason) don't work
+            // without this.
             execute!(
                 io::stdout(),
                 terminal::EnterAlternateScreen,
@@ -69,9 +84,6 @@ impl ui::Ui for Ui {
 
             terminal::enable_raw_mode().unwrap();
 
-            // Initial terminal setup
-            // Some key chords (like alt+shift+o for some reason) don't work
-            // without this.
             if let Ok(true) = terminal::supports_keyboard_enhancement() {
                 queue!(
                     io::stdout(),
@@ -84,7 +96,7 @@ impl ui::Ui for Ui {
             loop {
                 match term_rx.recv() {
                     Ok(Event::Print) => printer.print(),
-                    Ok(Event::UpdatePrinter) => printer.update(true),
+                    Ok(Event::UpdatePrinter) => printer.update(true, true),
                     Ok(Event::NewPrinter(new_printer)) => printer = new_printer,
                     Ok(Event::Quit) => break,
                     Err(_) => {}
@@ -97,23 +109,24 @@ impl ui::Ui for Ui {
             .no_hooks()
             .spawn(move || {
                 loop {
-                    let Ok(true) = ct_poll(Duration::from_millis(50)) else {
+                    let Ok(true) = ct_poll(Duration::from_millis(20)) else {
                         continue;
                     };
 
-                    match ct_read().unwrap() {
-                        CtEvent::Key(key) => {
+                    match ct_read() {
+                        Ok(CtEvent::Key(key)) => {
                             if !key.kind.is_release() {
                                 duat_tx.send_key(key).unwrap();
                             }
                         }
-                        CtEvent::Resize(..) => {
+                        Ok(CtEvent::Resize(..)) => {
                             term_tx.send(Event::UpdatePrinter).unwrap();
                             duat_tx.send_resize().unwrap();
                         }
-                        CtEvent::FocusGained => duat_tx.send_focused().unwrap(),
-                        CtEvent::FocusLost => duat_tx.send_unfocused().unwrap(),
-                        CtEvent::Mouse(_) | CtEvent::Paste(_) => {}
+                        Ok(CtEvent::FocusGained) => duat_tx.send_focused().unwrap(),
+                        Ok(CtEvent::FocusLost) => duat_tx.send_unfocused().unwrap(),
+                        Ok(CtEvent::Mouse(_) | CtEvent::Paste(_)) => {}
+                        Err(_) => {}
                     }
                 }
             });
@@ -148,15 +161,10 @@ impl ui::Ui for Ui {
         let mut ms = ms.lock().unwrap();
         let printer = (ms.printer_fn)();
 
-        let main_id = {
+        let main_id = 
             // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
             // from another thread
-            let mut layouts = unsafe { ms.layouts.get() }.borrow_mut();
-            let layout = Layout::new(ms.fr, printer.clone(), cache);
-            let main_id = layout.main_id();
-            layouts.push(layout);
-            main_id
-        };
+            unsafe { ms.layouts.get() }.new_layout(printer.clone(), ms.frame, cache);
 
         let root = Area::new(main_id, unsafe { ms.layouts.get() }.clone());
         ms.windows.push((root.clone(), printer.clone()));
@@ -167,6 +175,19 @@ impl ui::Ui for Ui {
         root
     }
 
+    fn new_spawned(
+        ms: &'static Self::MetaStatics,
+        id: duat_core::text::SpawnId,
+        specs: ui::SpawnSpecs,
+        cache: <Self::Area as ui::Area>::Cache,
+        win: usize,
+    ) -> Self::Area {
+        let ms = ms.lock().unwrap();
+        let id = unsafe { ms.layouts.get() }.spawn_on_text(id, specs, cache, win);
+
+        Area::new(id, unsafe { ms.layouts.get() }.clone())
+    }
+
     fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
         let mut ms = ms.lock().unwrap();
         ms.win = win;
@@ -174,7 +195,7 @@ impl ui::Ui for Ui {
     }
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
-        ms.lock().unwrap().cur_printer().update(true);
+        ms.lock().unwrap().cur_printer().update(true, false);
     }
 
     fn print(ms: &'static Self::MetaStatics) {
@@ -219,7 +240,7 @@ impl ui::Ui for Ui {
         ms.windows = Vec::new();
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        *unsafe { ms.layouts.get() }.borrow_mut() = Vec::new();
+        unsafe { ms.layouts.get() }.reset();
         ms.win = 0;
     }
 
@@ -228,7 +249,7 @@ impl ui::Ui for Ui {
         ms.windows.remove(win);
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        unsafe { ms.layouts.get() }.borrow_mut().remove(win);
+        unsafe { ms.layouts.get() }.remove_window(win);
         if ms.win > win {
             ms.win -= 1;
         }
@@ -250,9 +271,9 @@ impl Default for Ui {
 #[doc(hidden)]
 pub struct MetaStatics {
     windows: Vec<(Area, Arc<Printer>)>,
-    layouts: MainThreadOnly<Rc<RefCell<Vec<Layout>>>>,
+    layouts: MainThreadOnly<Layouts>,
     win: usize,
-    fr: Frame,
+    frame: Frame,
     printer_fn: fn() -> Arc<Printer>,
     rx: Option<mpsc::Receiver<Event>>,
     tx: mpsc::Sender<Event>,
@@ -263,7 +284,7 @@ impl MetaStatics {
         if let Some((_, printer)) = self.windows.get(self.win) {
             // On switching, the window size could've changed, so take that into
             // account
-            printer.update(true);
+            printer.update(true, true);
             printer.clone()
         } else {
             unreachable!("Started printing before a window was created");
@@ -271,18 +292,22 @@ impl MetaStatics {
     }
 }
 
-impl Default for MetaStatics {
-    fn default() -> Self {
+impl GetOnce<Ui> for Mutex<MetaStatics> {
+    fn get_once() -> Option<&'static Self> {
+        static GOT: AtomicBool = AtomicBool::new(false);
         let (tx, rx) = mpsc::channel();
-        Self {
-            windows: Vec::new(),
-            layouts: MainThreadOnly::default(),
-            win: 0,
-            fr: Frame::default(),
-            printer_fn: || Arc::new(Printer::new()),
-            rx: Some(rx),
-            tx,
-        }
+
+        (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
+            Box::leak(Box::new(Mutex::new(MetaStatics {
+                windows: Vec::new(),
+                layouts: MainThreadOnly::default(),
+                win: 0,
+                frame: Frame::default(),
+                printer_fn: || Arc::new(Printer::new()),
+                rx: Some(rx),
+                tx,
+            }))) as &'static Self
+        })
     }
 }
 
@@ -494,10 +519,6 @@ fn print_style(
 macro queue($writer:expr $(, $command:expr)* $(,)?) {
     crossterm::queue!($writer $(, $command)*).unwrap()
 }
-
-macro style($lines:expr, $ansi_codes:expr, $style:expr) {{
-    print_style(&mut $lines, $style, $ansi_codes);
-}}
 
 #[rustfmt::skip]
 macro color_values($name:ident, $p:literal, $s:literal) {

@@ -271,7 +271,7 @@ impl PrintCfg {
     ///
     /// [word]: word_chars
     pub const fn wrap_on_word(&mut self) -> &mut Self {
-        self.wrap_method = WrapMethod::Edge;
+        self.wrap_method = WrapMethod::Word;
         self
     }
 
@@ -357,12 +357,14 @@ impl PrintCfg {
 
     /// What the wrap width should be, given an area of a certain
     /// width
+    ///
+    /// If there is no cap ([`WrapMethod::NoWrap`]), returns [`None`]
     #[inline]
-    pub const fn wrap_width(&self, width: u32) -> u32 {
+    pub const fn wrap_width(&self, width: u32) -> Option<u32> {
         match self.wrap_method {
-            WrapMethod::Edge | WrapMethod::Word => width,
-            WrapMethod::Capped(cap) => cap as u32,
-            WrapMethod::NoWrap => u32::MAX,
+            WrapMethod::Edge | WrapMethod::Word => Some(width),
+            WrapMethod::Capped(cap) => Some(cap as u32),
+            WrapMethod::NoWrap => None,
         }
     }
 

@@ -7,6 +7,112 @@ use duat_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
+/// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
+///
+/// This function expects that `cap` has been validated, and that the
+/// iterator starts in the visual start of the line.
+pub fn print_iter(
+    mut iter: TextIter<'_>,
+    cap: Option<u32>,
+    cfg: PrintCfg,
+    points: (Point, Option<Point>),
+) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+    let cap = cap.unwrap_or(u32::MAX);
+    
+    let (Continue(indent) | Break(indent)) = iter
+        .clone()
+        .take_while(|&Item { real, ghost, .. }| (real, ghost) < points)
+        .try_fold(0, |indent, item| match item.part {
+            Part::Char(_) if indent >= cap => Break(0),
+            Part::Char('\t') => Continue(indent + cfg.tab_stops.spaces_at(indent)),
+            Part::Char(' ') => Continue(indent + 1),
+            Part::Char(_) => Break(indent),
+            _ => Continue(indent),
+        });
+
+    let iter_at_line_start = points == iter.points();
+    if !iter_at_line_start {
+        iter.skip_to(points);
+    }
+    inner_iter(iter, cap, (indent, iter_at_line_start), cfg)
+}
+
+pub fn rev_print_iter(
+    mut iter: RevTextIter<'_>,
+    cap: Option<u32>,
+    cfg: PrintCfg,
+) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+    let cap = cap.unwrap_or(u32::MAX);
+    
+    let mut returns = Vec::new();
+    let mut prev_line_nl = None;
+
+    std::iter::from_fn(move || {
+        if let Some(next) = returns.pop() {
+            Some(next)
+        } else {
+            let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
+            #[allow(clippy::while_let_on_iterator)]
+            while let Some(item) = iter.next() {
+                if let Part::Char('\n') = item.part {
+                    if items.is_empty() {
+                        items.push(item);
+                    } else {
+                        prev_line_nl = Some(item);
+                        break;
+                    }
+                } else {
+                    items.push(item);
+                }
+            }
+
+            returns.extend(inner_iter(items.into_iter().rev(), cap, (0, true), cfg));
+
+            returns.pop()
+        }
+    })
+}
+
+/// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
+///
+/// This function will function properly given that, elsewhere in
+/// the code, the passed [`PrintInfo`] and `width` have beend
+/// validated.
+pub(super) fn print_iter_indented(
+    iter: TextIter<'_>,
+    cap: u32,
+    cfg: PrintCfg,
+    indent: u32,
+) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+    inner_iter(iter, cap, (indent, false), cfg)
+}
+
+#[derive(Clone)]
+enum Iter<'a, Bits, Words>
+where
+    Bits: Iterator<Item = (Caret, Item)> + Clone + 'a,
+    Words: Iterator<Item = (Caret, Item)> + Clone + 'a,
+{
+    Parts(Bits, PhantomData<&'a ()>),
+    Words(Words),
+}
+
+impl<'a, Parts, Words> Iterator for Iter<'a, Parts, Words>
+where
+    Parts: Iterator<Item = (Caret, Item)> + Clone + 'a,
+    Words: Iterator<Item = (Caret, Item)> + Clone + 'a,
+{
+    type Item = (Caret, Item);
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Iter::Parts(parts, _) => parts.next(),
+            Iter::Words(words) => words.next(),
+        }
+    }
+}
+
 #[inline(always)]
 fn parts<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
@@ -175,108 +281,6 @@ fn process_part(
         }
         _ => (0, part),
     }
-}
-
-#[derive(Clone)]
-enum Iter<'a, Bits, Words>
-where
-    Bits: Iterator<Item = (Caret, Item)> + Clone + 'a,
-    Words: Iterator<Item = (Caret, Item)> + Clone + 'a,
-{
-    Parts(Bits, PhantomData<&'a ()>),
-    Words(Words),
-}
-
-impl<'a, Parts, Words> Iterator for Iter<'a, Parts, Words>
-where
-    Parts: Iterator<Item = (Caret, Item)> + Clone + 'a,
-    Words: Iterator<Item = (Caret, Item)> + Clone + 'a,
-{
-    type Item = (Caret, Item);
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Iter::Parts(parts, _) => parts.next(),
-            Iter::Words(words) => words.next(),
-        }
-    }
-}
-
-/// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
-///
-/// This function expects that `cap` has been validated, and that the
-/// iterator starts in the visual start of the line.
-pub fn print_iter(
-    mut iter: TextIter<'_>,
-    cap: u32,
-    cfg: PrintCfg,
-    points: (Point, Option<Point>),
-) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    let (Continue(indent) | Break(indent)) = iter
-        .clone()
-        .take_while(|&Item { real, ghost, .. }| (real, ghost) < points)
-        .try_fold(0, |indent, item| match item.part {
-            Part::Char(_) if indent >= cap => Break(0),
-            Part::Char('\t') => Continue(indent + cfg.tab_stops.spaces_at(indent)),
-            Part::Char(' ') => Continue(indent + 1),
-            Part::Char(_) => Break(indent),
-            _ => Continue(indent),
-        });
-
-    let iter_at_line_start = points == iter.points();
-    if !iter_at_line_start {
-        iter.skip_to(points);
-    }
-    inner_iter(iter, cap, (indent, iter_at_line_start), cfg)
-}
-
-/// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
-///
-/// This function will function properly given that, elsewhere in
-/// the code, the passed [`PrintInfo`] and `width` have beend
-/// validated.
-pub(super) fn print_iter_indented(
-    iter: TextIter<'_>,
-    cap: u32,
-    cfg: PrintCfg,
-    indent: u32,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    inner_iter(iter, cap, (indent, false), cfg)
-}
-
-pub fn rev_print_iter(
-    mut iter: RevTextIter<'_>,
-    cap: u32,
-    cfg: PrintCfg,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    let mut returns = Vec::new();
-    let mut prev_line_nl = None;
-
-    std::iter::from_fn(move || {
-        if let Some(next) = returns.pop() {
-            Some(next)
-        } else {
-            let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
-            #[allow(clippy::while_let_on_iterator)]
-            while let Some(item) = iter.next() {
-                if let Part::Char('\n') = item.part {
-                    if items.is_empty() {
-                        items.push(item);
-                    } else {
-                        prev_line_nl = Some(item);
-                        break;
-                    }
-                } else {
-                    items.push(item);
-                }
-            }
-
-            returns.extend(inner_iter(items.into_iter().rev(), cap, (0, true), cfg));
-
-            returns.pop()
-        }
-    })
 }
 
 fn inner_iter<'a>(

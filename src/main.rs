@@ -20,8 +20,8 @@ use duat::{Channels, Initials, MetaStatics, crate_dir, pre_setup, prelude::*, ru
 use duat_core::{
     clipboard::Clipboard,
     context,
-    session::{DuatEvent, FileParts, ReloadEvent},
-    ui::{self, Ui as UiTrait},
+    session::{DuatEvent, ReloadEvent, ReloadedFile},
+    ui::{self, GetOnce, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (duat_tx, mut duat_rx) = mpsc::channel();
     duat_core::context::set_sender(duat_tx.clone());
 
-    let ms: &'static _ = Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
+    let ms = <Ui as ui::Ui>::MetaStatics::get_once().unwrap();
 
     // Assert that the configuration crate actually exists.
     let (crate_dir, profile) = {
@@ -266,15 +266,15 @@ fn get_files(
     args: Args,
     crate_dir: &'static Path,
     profile: &'static str,
-) -> Result<Vec<Vec<FileParts>>, Box<dyn std::error::Error>> {
-    let files: Vec<FileParts> = args
+) -> Result<Vec<Vec<ReloadedFile<Ui>>>, Box<dyn std::error::Error>> {
+    let files: Vec<ReloadedFile<Ui>> = args
         .cfg
         .then(|| crate_dir.join("src").join("lib.rs"))
         .into_iter()
         .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
         .chain(args.files)
         .enumerate()
-        .map(|(i, path)| FileParts::by_args(Some(path), i == 0))
+        .map(|(i, path)| ReloadedFile::by_args(Some(path), i == 0))
         .try_collect()?;
 
     Ok(if files.is_empty() {
@@ -284,7 +284,7 @@ fn get_files(
         } else if args.clean || args.update {
             Vec::new()
         } else {
-            vec![vec![FileParts::by_args(None, true).unwrap()]]
+            vec![vec![ReloadedFile::by_args(None, true).unwrap()]]
         }
     } else {
         let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
@@ -316,6 +316,8 @@ fn spawn_config_watcher(
                 && let Some(parent) = out_path.parent()
                 && let Some(grand_parent) = parent.parent()
                 && grand_parent.ends_with("target")
+                // If it is Some, a manual reload was already triggered.
+                && RELOAD_INSTANT.lock().unwrap().is_none()
             {
                 let profile = if let Some(parent) = out_path.parent()
                     && let Some(parent) = parent.file_name()
@@ -375,16 +377,22 @@ fn spawn_reloader(
                         context::error!(target: "reload", "{err}");
                         duat_tx.send(DuatEvent::ReloadFailed).unwrap();
                     }
-                    Ok(_) => {
-                        config_tx
-                            .send((
-                                crate_dir
-                                    .join("target")
-                                    .join(&reload.profile)
-                                    .join(resolve_config_file()),
-                                reload.profile.to_string(),
-                            ))
-                            .unwrap();
+                    Ok(status) => {
+                        if status.success() {
+                            config_tx
+                                .send((
+                                    crate_dir
+                                        .join("target")
+                                        .join(&reload.profile)
+                                        .join(resolve_config_file()),
+                                    reload.profile.to_string(),
+                                ))
+                                .unwrap();
+                            duat_tx.send(DuatEvent::ReloadSucceeded).unwrap();
+                        } else {
+                            *RELOAD_INSTANT.lock().unwrap() = None;
+                            duat_tx.send(DuatEvent::ReloadFailed).unwrap();
+                        }
                     }
                 }
             }
@@ -598,6 +606,6 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
 type RunFn = fn(
     Initials,
     MetaStatics,
-    Vec<Vec<FileParts>>,
+    Vec<Vec<ReloadedFile<Ui>>>,
     Channels,
-) -> (Vec<Vec<FileParts>>, Receiver<DuatEvent>);
+) -> (Vec<Vec<ReloadedFile<Ui>>>, Receiver<DuatEvent>);

@@ -1,77 +1,174 @@
-use std::any::type_name;
-
-pub use self::{
-    builder::{BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias},
-    id::{AreaId, GetAreaId},
+use std::{
+    any::type_name,
+    sync::{Arc, Mutex},
 };
+
+pub use self::builder::UiBuilder;
 use super::{Area, Node, Ui, Widget, layout::Layout};
 use crate::{
+    cfg::PrintCfg,
     context::{self, Cache, Handle},
     data::{Pass, RwData},
-    file::{File, FileCfg, PathKind},
+    file::{File, PathKind},
     hook::{self, FileClosed, WidgetCreated, WindowCreated},
     mode,
-    text::{Text, txt},
-    ui::{MutArea, PushSpecs, WidgetCfg},
+    text::{SpawnId, Text, txt},
+    ui::{MutArea, PushSpecs, SpawnSpecs},
+    utils::duat_name,
 };
 
 mod builder;
 
 /// A list of all [`Window`]s in Duat
-pub struct Windows<U: Ui>(RwData<InnerWindows<U>>);
+pub struct Windows<U: Ui> {
+    inner: RwData<InnerWindows<U>>,
+    spawns_to_remove: Mutex<Vec<SpawnId>>,
+    ms: &'static U::MetaStatics,
+}
 
 impl<U: Ui> Windows<U> {
-    /// Returns an empty [`Windows`], for the purpose of having
-    /// [`Windows`] exist before anything is setup
-    pub(crate) fn new() -> Self {
-        Self(RwData::new(InnerWindows {
-            windows: Vec::new(),
-            areas: Vec::new(),
-        }))
+    /// Initializes the `Windows`, returning a [`Node`] for the first
+    /// [`File`]
+    pub(crate) fn initialize(
+        pa: &mut Pass,
+        file: File<U>,
+        layout: Box<Mutex<dyn Layout<U>>>,
+        ms: &'static U::MetaStatics,
+    ) {
+        let new_additions = Arc::new(Mutex::default());
+        let (window, node) = Window::new(0, pa, ms, file, new_additions.clone());
+
+        context::set_windows(Self {
+            inner: RwData::new(InnerWindows {
+                layout,
+                list: vec![window],
+                new_additions,
+                cur_file: RwData::new(node.try_downcast().unwrap()),
+                cur_widget: RwData::new(node.clone()),
+                cur_win: 0,
+            }),
+            spawns_to_remove: Mutex::new(Vec::new()),
+            ms,
+        });
+
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<File<U>>().unwrap()),
+        );
+        let builder = UiBuilder::<U>::new(0);
+        hook::trigger(pa, WindowCreated(builder));
     }
+
+    ////////// Functions for new Widgets
 
     /// Creates a new list of [`Window`]s, with a main one
     /// initialiazed
-    pub(crate) fn new_window(
-        &self,
-        pa: &mut Pass,
-        ms: &'static U::MetaStatics,
-        file_cfg: FileCfg<U>,
-        layout: Box<dyn Layout<U>>,
-        set_cur: bool,
-    ) -> Node<U> {
-        let widget_id = AreaId::new();
-        let (file_cfg, builder) = {
-            let wc = hook::trigger(
-                pa,
-                WidgetCreated::<File<U>, U>((
-                    Some(file_cfg),
-                    UiBuilder::new_main(self.0.read(pa).windows.len(), widget_id),
-                )),
-            );
-            (wc.0.0.unwrap(), wc.0.1)
-        };
+    pub(crate) fn new_window(&self, pa: &mut Pass, file: File<U>) -> Node<U> {
+        let win = self.inner.read(pa).list.len();
+        let new_additions = self.inner.read(pa).new_additions.clone();
+        let (window, node) = Window::new(win, pa, self.ms, file, new_additions);
 
-        let (file, _) = file_cfg.build(pa, BuildInfo::for_main());
-        let (window, node) = Window::new(pa, ms, file, widget_id, layout);
+        let inner = self.inner.write(pa);
+        inner.list.push(window);
 
-        let area = node.area(pa);
-        let inner = self.0.write(pa);
-        inner.windows.push(window);
-        inner.areas.push((node.area_id(), area.clone()));
-
-        if set_cur {
-            context::set_cur(pa, node.try_downcast(), node.clone());
-        }
-
-        let files_id = builder.finish_around_widget(pa, None, node.handle().clone());
-
-        let inner = self.0.write(pa);
-        let builder = UiBuilder::<U>::new_window(inner.windows.len() - 1);
-        let WindowCreated(builder) = hook::trigger(pa, WindowCreated(builder));
-        builder.finish_around_window(pa, files_id);
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<File<U>>().unwrap()),
+        );
+        let builder = UiBuilder::<U>::new(win);
+        hook::trigger(pa, WindowCreated(builder));
 
         node
+    }
+
+    /// Push a [`Widget`] to [`Handle`]
+    pub(crate) fn push_widget<W: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        (target, on_files, specs): (&U::Area, Option<bool>, PushSpecs),
+        widget: W,
+    ) -> Option<Handle<W, U>> {
+        self.push(pa, (target, on_files, specs), widget)?
+            .handle()
+            .try_downcast()
+    }
+
+    /// Spawn a [`Widget`] on a [`Handle`]
+    ///
+    /// Can fail if the `Handle` in question was already removed.
+    pub(crate) fn spawn_on_widget<W: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        (target, specs): (&U::Area, SpawnSpecs),
+        widget: W,
+    ) -> Option<Handle<W, U>> {
+        let (win, cluster_master) =
+            self.inner
+                .read(pa)
+                .list
+                .iter()
+                .enumerate()
+                .find_map(|(win, window)| {
+                    if window.master_area.is_master_of(target) {
+                        Some((win, None))
+                    } else if let Some((_, node)) = window
+                        .spawned
+                        .iter()
+                        .find(|(_, node)| node.area(pa).is_master_of(target))
+                    {
+                        Some((win, node.area(pa).get_cluster_master()))
+                    } else {
+                        None
+                    }
+                })?;
+
+        let widget = RwData::new(widget);
+        let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
+        let id = SpawnId::new();
+
+        let spawned = U::Area::spawn(
+            MutArea(cluster_master.as_ref().unwrap_or(target)),
+            id,
+            specs,
+            cache,
+        )?;
+
+        let node = Node::new(widget, Arc::new(spawned));
+
+        let wins = self.inner.write(pa);
+        wins.list[win].add(node.clone(), None, Location::Spawned(id));
+
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+        );
+
+        node.handle().try_downcast()
+    }
+
+    /// Spawns a [`Widget`]
+    pub(crate) fn spawn_on_text<W: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        (id, specs): (SpawnId, SpawnSpecs),
+        widget: W,
+        win: usize,
+    ) -> Handle<W, U> {
+        let widget = RwData::new(widget);
+        let cache = get_cache(pa, widget.to_dyn_widget(), self, None);
+        let spawned = U::new_spawned(self.ms, id, specs, cache, win);
+
+        let node = Node::new(widget, Arc::new(spawned));
+
+        let wins = self.inner.write(pa);
+        wins.list[win].add(node.clone(), None, Location::Spawned(id));
+
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+        );
+
+        node.handle().try_downcast().unwrap()
     }
 
     /// Pushes a [`File`] to the file's parent
@@ -80,116 +177,211 @@ impl<U: Ui> Windows<U> {
     /// This is an area, usually in the center, that contains all
     /// [`File`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
-    pub(crate) fn new_file(
-        &self,
-        pa: &mut Pass,
-        win: usize,
-        file_cfg: FileCfg<U>,
-    ) -> Result<Node<U>, Text> {
-        let widget_id = AreaId::new();
-        let (file_cfg, builder) = {
-            let wc = hook::trigger(
-                pa,
-                WidgetCreated::<File<U>, U>((Some(file_cfg), UiBuilder::new_main(win, widget_id))),
-            );
-            (wc.0.0.unwrap(), wc.0.1)
-        };
+    pub(crate) fn new_file(&self, pa: &mut Pass, file: File<U>) -> Node<U> {
+        let win = context::cur_window::<U>(pa);
+        let inner = self.inner.read(pa);
+        let (handle, specs) = inner
+            .layout
+            .lock()
+            .unwrap()
+            .new_file(pa, win, &file, &inner.list);
 
-        let (mut file, _) = file_cfg.build(pa, BuildInfo::for_main());
+        let specs = PushSpecs { cluster: false, ..specs };
 
-        let window = &self.0.read(pa).windows[win];
-        let file_handles = window.file_handles(pa);
-        file.layout_order = file_handles.len();
-
-        let window = &mut self.0.write(pa).windows[win];
-        let (handle, specs) = window.layout.new_file(&file, file_handles)?;
-
-        let master_id = {
-            let master_area = handle
-                .area(pa)
-                .get_cluster_master()
-                .unwrap_or(handle.area(pa).clone());
-
-            let id_of = |(id, area): &(_, U::Area)| (*area == master_area).then_some(*id);
-            self.0.read(pa).areas.iter().find_map(id_of).unwrap()
-        };
-
-        let (node, _) = self.push(
-            pa,
-            win,
-            (file, specs),
-            (master_id, widget_id),
-            (false, true),
-        );
-
-        builder.finish_around_widget(pa, None, node.handle().clone());
-
-        Ok(node)
+        if let Some(master) = handle.area(pa).get_cluster_master() {
+            self.push(pa, (&master, Some(true), specs), file).unwrap()
+        } else {
+            self.push(pa, (&handle.area, Some(true), specs), file)
+                .unwrap()
+        }
     }
 
-    pub(crate) fn close_file(&self, pa: &mut Pass, pk: PathKind, ms: &'static U::MetaStatics) {
-        let (win, lhs, nodes) = {
-            let (lhs_win, _, lhs) = self.file_entry(pa, pk.clone()).unwrap();
-            let lhs = lhs.clone();
+    /// Pushes a [`Widget`] to the [`Window`]s
+    ///
+    /// May return [`None`] if the [`U::Area`] was already deleted.
+    fn push<W: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        (target, on_files, mut specs): (&U::Area, Option<bool>, PushSpecs),
+        widget: W,
+    ) -> Option<Node<U>> {
+        let inner = self.inner.read(pa);
+        let win = inner
+            .list
+            .iter()
+            .position(|window| {
+                window.master_area.is_master_of(target)
+                    || window
+                        .nodes()
+                        .any(|node| node.area(pa).is_master_of(target))
+            })
+            .unwrap();
 
-            let lo = lhs.read(pa).layout_order;
+        let target_is_on_files = inner.list[win].files_area.is_master_of(target);
+        let on_files = on_files.unwrap_or(target_is_on_files) && target_is_on_files;
 
-            let nodes: Vec<Handle<File<U>, U>> = self.0.read(pa).windows[lhs_win]
-                .nodes()
-                .filter(|n| n.data_is::<File<U>>())
-                .skip(lo + 1)
-                .filter_map(Node::try_downcast)
-                .collect();
-
-            hook::trigger(pa, FileClosed((lhs.clone(), Cache::new())));
-
-            (lhs_win, lhs, nodes)
-        };
-
-        for rhs in nodes {
-            self.swap(pa, [win, win], [&lhs, &rhs]);
+        if target_is_on_files && !on_files {
+            specs.cluster = false;
         }
 
-        let mut windows = std::mem::take(&mut self.0.write(pa).windows);
+        let location = if on_files {
+            Location::OnFiles
+        } else if let Some((id, _)) = inner.list[win]
+            .spawned
+            .iter()
+            .find(|(_, node)| node.area(pa) == target)
+        {
+            Location::Spawned(*id)
+        } else {
+            Location::Regular
+        };
 
-        windows[win].remove_file(pa, pk);
-        if windows[win].file_names(pa).is_empty() {
-            windows.remove(win);
-            U::remove_window(ms, win);
-            let cur_win = context::cur_window();
-            if cur_win > win {
-                context::set_cur_window(cur_win - 1);
+        let widget = RwData::new(widget);
+        let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
+        let (pushed, parent) = U::Area::push(MutArea(target), specs, on_files, cache)?;
+
+        let node = Node::new(widget, Arc::new(pushed));
+
+        let inner = self.inner.write(pa);
+        inner.list[win].add(node.clone(), parent.map(Arc::new), location);
+
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+        );
+
+        Some(node)
+    }
+
+    ////////// Existing Widget manipulation
+
+    /// Closes a [`Handle`], removing it from the ui
+    pub(crate) fn close<W: Widget<U> + ?Sized, S>(
+        &self,
+        pa: &mut Pass,
+        handle: &Handle<W, U, S>,
+    ) -> Result<(), Text> {
+        let (win, wid) = self.handle_entry(pa, handle)?;
+
+        // If this is the active Handle, pick another one to make active.
+        let inner = self.inner.read(pa);
+        if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_file.read(pa) {
+            // SAFETY: This Pass is only used on known other types.
+            let internal_pass = &mut unsafe { Pass::new() };
+
+            if handle.widget().data_is::<File<U>>() {
+                let entry = self
+                    .iter_around_rev(pa, win, wid)
+                    .find_map(|(win, _, node)| {
+                        node.data_is::<File<U>>().then(|| (win, node.clone()))
+                    });
+
+                if let Some((win, node)) = entry {
+                    *inner.cur_file.write(internal_pass) = node.try_downcast().unwrap();
+                    *inner.cur_widget.write(internal_pass) = node.clone();
+                    self.inner.write(pa).cur_win = win;
+                } else {
+                    // If there is no previous File, just quit.
+                    context::sender()
+                        .send(crate::session::DuatEvent::Quit)
+                        .unwrap();
+                    return Ok(());
+                }
+            } else {
+                let (win, _) = self
+                    .handle_entry(pa, &inner.cur_file.read(pa).to_dyn())
+                    .unwrap();
+
+                let node = Node::from_handle(inner.cur_file.read(pa).clone());
+                *inner.cur_widget.write(internal_pass) = node;
+                self.inner.write(pa).cur_win = win;
             }
         }
 
-        self.0.write(pa).windows = windows;
+        // If it's a File, swap all files ahead, so this one becomes the last.
+        if let Some(file_handle) = handle.try_downcast::<File<U>>() {
+            hook::trigger(pa, FileClosed((file_handle.clone(), Cache::new())));
+
+            let files_ahead: Vec<Node<U>> = self.inner.read(pa).list[win]
+                .nodes()
+                .filter(|node| {
+                    node.handle()
+                        .read_as::<File<U>>(pa)
+                        .is_some_and(|file| file.layout_order > file_handle.read(pa).layout_order)
+                })
+                .cloned()
+                .collect();
+
+            for file_ahead in files_ahead {
+                self.swap(pa, handle, file_ahead.handle())?;
+            }
+        }
+
+        // Actually removing the Handle.
+        let mut windows = std::mem::take(&mut self.inner.write(pa).list);
+
+        if windows[win].close(pa, handle) {
+            windows.remove(win);
+            U::remove_window(self.ms, win);
+            let cur_win = context::cur_window::<U>(pa);
+            if cur_win > win {
+                self.inner.write(pa).cur_win -= 1;
+            }
+        }
+
+        let inner = self.inner.write(pa);
+        inner.list = windows;
+        inner.new_additions.lock().unwrap().get_or_insert_default();
+
+        Ok(())
     }
 
-    /// Swaps two [`File`]s, as well as their related [`Widget`]s
-    pub(crate) fn swap_files(
+    /// Swaps two [`Handle`]'s positions
+    pub(crate) fn swap<W1: Widget<U> + ?Sized, S1, W2: Widget<U> + ?Sized, S2>(
         &self,
         pa: &mut Pass,
-        lhs: PathKind,
-        rhs: PathKind,
-        ms: &'static U::MetaStatics,
-    ) {
-        let (wins, [lhs_node, rhs_node]) = {
-            let (lhs_win, _, lhs_node) = self.file_entry(pa, lhs.clone()).unwrap();
-            let (rhs_win, _, rhs_node) = self.file_entry(pa, rhs.clone()).unwrap();
-            let lhs_node = lhs_node.clone();
-            let rhs_node = rhs_node.clone();
-            ([lhs_win, rhs_win], [lhs_node, rhs_node])
-        };
+        lhs: &Handle<W1, U, S1>,
+        rhs: &Handle<W2, U, S2>,
+    ) -> Result<(), Text> {
+        let (lhs_win, _) = self.handle_entry(pa, lhs)?;
+        let (rhs_win, _) = self.handle_entry(pa, rhs)?;
 
-        self.swap(pa, wins, [&lhs_node, &rhs_node]);
+        let [lhs_file, rhs_file] = [lhs.try_downcast::<File<U>>(), rhs.try_downcast()];
+        let lhs_lo = lhs_file.as_ref().map(|handle| handle.read(pa).layout_order);
+        let rhs_lo = rhs_file.as_ref().map(|handle| handle.read(pa).layout_order);
 
-        let pk = context::fixed_file::<U>(pa).unwrap().read(pa).path_kind();
-        if wins[0] != wins[1]
-            && let Some(win) = [lhs, rhs].into_iter().position(|n| n == pk)
-        {
-            context::set_cur_window(win);
-            U::switch_window(ms, win);
+        if let [Some(lhs), Some(rhs)] = [lhs_file, rhs_file] {
+            let lhs_lo = lhs.read(pa).layout_order;
+            let rhs_lo = std::mem::replace(&mut rhs.write(pa).layout_order, lhs_lo);
+            lhs.write(pa).layout_order = rhs_lo
         }
+
+        let mut windows = std::mem::take(&mut self.inner.write(pa).list);
+
+        let lhs_nodes = windows[lhs_win].take_with_related_nodes(pa, lhs);
+        windows[rhs_win].insert_nodes(pa, rhs_lo, lhs_nodes);
+
+        let rhs_nodes = windows[rhs_win].take_with_related_nodes(pa, rhs);
+        windows[lhs_win].insert_nodes(pa, lhs_lo, rhs_nodes);
+
+        let wins = self.inner.write(pa);
+        wins.list = windows;
+        wins.new_additions.lock().unwrap().get_or_insert_default();
+
+        U::Area::swap(MutArea(lhs.area(pa)), rhs.area(pa));
+
+        let cur_file = context::cur_file::<U>(pa);
+        if lhs_win != rhs_win {
+            if *lhs == cur_file {
+                self.inner.write(pa).cur_win = lhs_win;
+                U::switch_window(self.ms, lhs_win);
+            } else if *rhs == cur_file {
+                self.inner.write(pa).cur_win = rhs_win;
+                U::switch_window(self.ms, rhs_win);
+            }
+        }
+
+        Ok(())
     }
 
     /// Opens a new [`File`] on a new [`Window`], or moves it there,
@@ -198,164 +390,127 @@ impl<U: Ui> Windows<U> {
         &self,
         pa: &mut Pass,
         pk: PathKind,
-        ms: &'static U::MetaStatics,
-        layout: Box<dyn Layout<U>>,
-        default_file_cfg: FileCfg<U>,
-    ) {
-        match self.file_entry(pa, pk.clone()) {
+        default_file_cfg: PrintCfg,
+    ) -> Node<U> {
+        let node = match self.file_entry(pa, pk.clone()) {
             Ok((win, _, handle)) if self.get(pa, win).unwrap().file_handles(pa).len() > 1 => {
                 // Take the nodes in the original Window
                 handle.write(pa).layout_order = 0;
 
                 let nodes = {
-                    let mut old_window = self.0.write(pa).windows.remove(win);
-                    let nodes = old_window.take_file_and_related_nodes(pa, &handle);
-                    self.0.write(pa).windows.insert(win, old_window);
+                    let mut old_window = self.inner.write(pa).list.remove(win);
+                    let nodes = old_window.take_with_related_nodes(pa, &handle.to_dyn());
+                    self.inner.write(pa).list.insert(win, old_window);
 
                     nodes
                 };
 
                 // Create a new Window Swapping the new root with files_area
-                let new_root = U::new_root(ms, <U::Area as Area>::Cache::default());
+                let new_root = U::new_root(self.ms, <U::Area as Area>::Cache::default());
                 U::Area::swap(MutArea(handle.area(pa)), &new_root);
-                let window = Window::<U>::from_raw(handle.area(pa).clone(), nodes, layout);
+                let window = Window::<U>::from_raw(
+                    win,
+                    handle.area.clone(),
+                    nodes,
+                    self.inner.read(pa).new_additions.clone(),
+                );
 
-                self.0.write(pa).windows.push(window);
+                self.inner.write(pa).list.push(window);
+
+                let wins = self.inner.write(pa);
+                let builder = UiBuilder::<U>::new(wins.list.len() - 1);
+                hook::trigger(pa, WindowCreated(builder));
 
                 // Swap the Files ahead of the swapped new_root
                 let lo = handle.read(pa).layout_order;
 
-                for handle in &self.0.read(pa).windows[win].file_handles(pa)[lo..] {
-                    MutArea(&new_root).swap(handle.area(pa));
+                for handle in &self.inner.read(pa).list[win].file_handles(pa)[lo..] {
+                    U::Area::swap(MutArea(&new_root), handle.area(pa));
                 }
 
                 // Delete the new_root, which should be the last "File" in the
                 // list of the original Window.
-                MutArea(&new_root).delete();
+                U::Area::delete(MutArea(&new_root));
+
+                self.inner
+                    .write(pa)
+                    .new_additions
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_default();
+
+                Node::from_handle(handle)
             }
             // The Handle in question is already in its own window, so no need
             // to move it to another one.
-            Ok(_) => {}
-            Err(_) => {
-                self.new_window(
-                    pa,
-                    ms,
-                    default_file_cfg.open_path(pk.as_path()),
-                    layout,
-                    false,
-                );
-            }
+            Ok((.., handle)) => Node::from_handle(handle),
+            Err(_) => self.new_window(pa, File::new(pk.as_path(), default_file_cfg)),
         };
 
-        if context::fixed_file::<U>(pa).unwrap().read(pa).path_kind() != pk {
-            mode::reset_to_file::<U>(pk, false);
+        if context::cur_file::<U>(pa).read(pa).path_kind() != pk {
+            mode::reset_to::<U>(node.handle().clone());
         }
 
         let new_win = context::windows::<U>().len(pa) - 1;
-        context::set_cur_window(new_win);
-        U::switch_window(ms, new_win);
+        self.inner.write(pa).cur_win = new_win;
+        U::switch_window(self.ms, new_win);
+
+        node
     }
 
-    /// Pushes a [`Widget`] to the [`Window`]s
-    fn push<W: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        win: usize,
-        (widget, specs): (W, PushSpecs),
-        (to_id, widget_id): (AreaId, AreaId),
-        (do_cluster, on_files): (bool, bool),
-    ) -> (Node<U>, Option<AreaId>) {
-        fn push_and_get_areas<U: Ui>(
-            windows: &Windows<U>,
-            pa: &mut Pass,
-            (widget, specs): (RwData<dyn Widget<U> + 'static>, PushSpecs),
-            (to_id, widget_id): (AreaId, AreaId),
-            (do_cluster, on_files): (bool, bool),
-        ) -> (U::Area, Option<(AreaId, U::Area)>) {
-            let area = windows.0.read(pa).find_area(to_id);
+    /// Sets the current active [`Handle`]
+    pub(crate) fn set_current_node(&self, pa: &mut Pass, node: Node<U>) -> Result<(), Text> {
+        // SAFETY: This Pass is only used when I'm already reborrowing a &mut
+        // Pass, and it is known that it only writes to other types.
+        let internal_pass = &mut unsafe { Pass::new() };
 
-            let cache = if let Some(file) = widget.read_as::<File<U>>(pa) {
-                match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
-                    Ok(cache) => cache,
-                    Err(err) => {
-                        context::error!("{err}");
-                        <U::Area as Area>::Cache::default()
-                    }
-                }
-            } else {
-                <U::Area as Area>::Cache::default()
-            };
+        let (win, _) = self.handle_entry(pa, node.handle())?;
+        let inner = self.inner.write(pa);
 
-            let (widget_area, parent_area) =
-                MutArea(area).bisect(specs, do_cluster, on_files, cache);
-
-            let parent = parent_area.map(|a| (AreaId::new(), a));
-
-            let areas = &mut windows.0.write(pa).areas;
-            areas.push((widget_id, widget_area.clone()));
-            areas.extend(parent.clone());
-
-            (widget_area, parent)
+        if let Some(handle) = node.try_downcast() {
+            *inner.cur_file.write(internal_pass) = handle;
         }
+        *inner.cur_widget.write(internal_pass) = node.clone();
+        inner.cur_win = win;
 
-        let widget = RwData::new(widget);
-
-        let (widget_area, parent) = push_and_get_areas(
-            self,
-            pa,
-            (widget.to_dyn_widget(), specs),
-            (to_id, widget_id),
-            (do_cluster, on_files),
-        );
-
-        let (parent_id, parent_area) = parent.unzip();
-
-        let node = self.0.write(pa).windows[win].add::<W>(
-            widget,
-            parent_area,
-            (widget_id, widget_area),
-            on_files,
-        );
-
-        (node, parent_id)
+        Ok(())
     }
 
-    fn swap(
+    ////////// Spawned Widget cleanup
+
+    /// Adds a [`SpawnId`] to be removed when a [`Pass`] is available
+    pub(crate) fn _queue_close_spawned(&self, id: SpawnId) {
+        let mut spawns_to_remove = self.spawns_to_remove.lock().unwrap();
+        if !spawns_to_remove.contains(&id) {
+            spawns_to_remove.push(id)
+        }
+    }
+
+    /// Removes all queued [`SpawnId`]'s [`Widget`]s
+    pub(crate) fn _cleanup_spawned(&self, pa: &mut Pass) {
+        let spawns_to_remove = std::mem::take(&mut *self.spawns_to_remove.lock().unwrap());
+        for id in spawns_to_remove {
+            if let Some((_, node)) = self
+                .windows(pa)
+                .flat_map(|window| &window.spawned)
+                .find(|(other, _)| *other == id)
+            {
+                self.close(pa, &node.handle().clone()).unwrap();
+            }
+        }
+    }
+
+    ////////// Entry lookup
+
+    /// An entry for a [`Handle`]
+    pub fn handle_entry<W: Widget<U> + ?Sized, S>(
         &self,
-        pa: &mut Pass,
-        [lhs_w, rhs_w]: [usize; 2],
-        [lhs, rhs]: [&Handle<File<U>, U>; 2],
-    ) {
-        let rhs_lo = rhs.widget().read(pa).layout_order;
-        let lhs_lo = std::mem::replace(&mut lhs.write(pa).layout_order, rhs_lo);
-
-        rhs.widget().write(pa).layout_order = lhs_lo;
-
-        let mut windows = std::mem::take(&mut self.0.write(pa).windows);
-
-        let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(pa, lhs);
-        windows[rhs_w].insert_file_nodes(pa, rhs_lo, lhs_nodes);
-
-        let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(pa, rhs);
-        windows[lhs_w].insert_file_nodes(pa, lhs_lo, rhs_nodes);
-
-        self.0.write(pa).windows = windows;
-
-        MutArea(lhs.area(pa)).swap(rhs.area(pa));
-    }
-
-    ////////// Querying functions
-
-    /// The number of open [`Window`]s
-    ///
-    /// Should never be 0, as that is not a valid state of affairs.
-    pub fn len(&self, pa: &Pass) -> usize {
-        self.0.read(pa).windows.len()
-    }
-
-    /// get's the `win`th [`Window`]
-    pub fn get<'a>(&'a self, pa: &'a Pass, win: usize) -> Option<&'a Window<U>> {
-        self.0.read(pa).windows.get(win)
+        pa: &Pass,
+        handle: &Handle<W, U, S>,
+    ) -> Result<(usize, usize), Text> {
+        self.entries(pa)
+            .find_map(|(win, wid, node)| (node.handle() == handle).then_some((win, wid)))
+            .ok_or_else(|| txt!("The Handle was already closed").build())
     }
 
     /// An entry for a file with the given name
@@ -364,12 +519,7 @@ impl<U: Ui> Windows<U> {
         pa: &Pass,
         pk: PathKind,
     ) -> Result<(usize, usize, Handle<File<U>, U>), Text> {
-        self.0
-            .read(pa)
-            .windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
+        self.entries(pa)
             .find_map(|(win, wid, node)| {
                 (node.read_as(pa).filter(|f: &&File<U>| f.path_kind() == pk))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
@@ -383,12 +533,7 @@ impl<U: Ui> Windows<U> {
         pa: &Pass,
         name: &str,
     ) -> Result<(usize, usize, Handle<File<U>, U>), Text> {
-        self.0
-            .read(pa)
-            .windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
+        self.entries(pa)
             .find_map(|(win, wid, node)| {
                 (node.read_as(pa).filter(|f: &&File<U>| f.name() == name))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
@@ -405,21 +550,38 @@ impl<U: Ui> Windows<U> {
         pa: &'a Pass,
         w: usize,
     ) -> Result<(usize, usize, &'a Node<U>), Text> {
-        let handle = context::fixed_file::<U>(pa).unwrap();
+        let handle = context::cur_file::<U>(pa);
 
-        if let Some(handle) = handle.get_related::<W>(pa) {
-            self.0
-                .read(pa)
-                .windows
-                .iter()
-                .enumerate()
-                .flat_map(window_index_widget)
-                .find(|(.., n)| n.ptr_eq(handle.widget()))
+        if let Some((handle, _)) = handle.get_related::<W>(pa).next() {
+            self.entries(pa).find(|(.., n)| n.ptr_eq(handle.widget()))
         } else {
             self.iter_around(pa, w, 0)
                 .find(|(.., node)| node.data_is::<W>())
         }
         .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()).build())
+    }
+
+    ////////// Entry iterators
+
+    /// Iterates over all widget entries, with window and widget
+    /// indices, in that order
+    pub(crate) fn entries<'a>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
+        self.inner
+            .read(pa)
+            .list
+            .iter()
+            .enumerate()
+            .flat_map(|(win, window)| {
+                window
+                    .nodes
+                    .iter()
+                    .chain(window.spawned.iter().map(|(_, node)| node))
+                    .enumerate()
+                    .map(move |(wid, node)| (win, wid, node))
+            })
     }
 
     /// Iterates around a specific widget, going forwards
@@ -429,7 +591,7 @@ impl<U: Ui> Windows<U> {
         win: usize,
         wid: usize,
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
-        let windows = &self.0.read(pa).windows;
+        let windows = &self.inner.read(pa).list;
 
         let prev_len: usize = windows.iter().take(win).map(Window::len_widgets).sum();
 
@@ -456,7 +618,7 @@ impl<U: Ui> Windows<U> {
         win: usize,
         wid: usize,
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
-        let windows = &self.0.read(pa).windows;
+        let windows = &self.inner.read(pa).list;
 
         let next_len: usize = windows.iter().skip(win).map(Window::len_widgets).sum();
 
@@ -481,14 +643,28 @@ impl<U: Ui> Windows<U> {
             )
     }
 
+    ////////// Querying functions
+
+    /// The number of open [`Window`]s
+    ///
+    /// Should never be 0, as that is not a valid state of affairs.
+    pub fn len(&self, pa: &Pass) -> usize {
+        self.inner.read(pa).list.len()
+    }
+
+    /// get's the `win`th [`Window`]
+    pub fn get<'a>(&'a self, pa: &'a Pass, win: usize) -> Option<&'a Window<U>> {
+        self.inner.read(pa).list.get(win)
+    }
+
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat
     pub fn handles<'a>(
         &'a self,
         pa: &'a Pass,
     ) -> impl Iterator<Item = &'a Handle<dyn Widget<U>, U>> {
-        self.0
+        self.inner
             .read(pa)
-            .windows
+            .list
             .iter()
             .flat_map(|w| w.nodes().map(|n| n.handle()))
     }
@@ -498,66 +674,67 @@ impl<U: Ui> Windows<U> {
         &'a self,
         pa: &'a Pass,
     ) -> impl Iterator<Item = Handle<File<U>, U>> + 'a {
-        self.0
+        self.inner
             .read(pa)
-            .windows
+            .list
             .iter()
             .flat_map(|w| w.file_handles(pa))
     }
 
-    /// Iterates over all widget entries, with window and widget
-    /// indices, in that order
-    pub(crate) fn entries<'a>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
-        self.0
-            .read(pa)
-            .windows
-            .iter()
-            .enumerate()
-            .flat_map(|(win, window)| {
-                window
-                    .nodes
-                    .iter()
-                    .enumerate()
-                    .map(move |(wid, node)| (win, wid, node))
-            })
+    /// The [`RwData`] that points to the currently active [`File`]
+    pub(crate) fn current_file(&self, pa: &Pass) -> RwData<Handle<File<U>, U>> {
+        self.inner.read(pa).cur_file.clone()
+    }
+
+    /// The [`RwData`] that points to the currently active [`Widget`]
+    pub(crate) fn current_widget(&self, pa: &Pass) -> RwData<Node<U>> {
+        self.inner.read(pa).cur_widget.clone()
+    }
+
+    /// The index of the currently active [`Window`]
+    pub(crate) fn current_window(&self, pa: &Pass) -> usize {
+        self.inner.read(pa).cur_win
+    }
+
+    /// Iterates through every [`Window`]
+    pub(crate) fn windows<'a>(&'a self, pa: &'a Pass) -> std::slice::Iter<'a, Window<U>> {
+        self.inner.read(pa).list.iter()
+    }
+
+    /// Gets the new additions to the [`Windows`]
+    pub(crate) fn get_additions(&self, pa: &mut Pass) -> Option<Vec<(usize, Node<U>)>> {
+        self.inner.write(pa).new_additions.lock().unwrap().take()
     }
 }
 
 /// Inner holder of [`Window`]s
 struct InnerWindows<U: Ui> {
-    windows: Vec<Window<U>>,
-    areas: Vec<(AreaId, U::Area)>,
-}
-
-impl<U: Ui> InnerWindows<U> {
-    /// Finds the [`Ui::Area`] of a given [`AreaId`]
-    fn find_area(&self, id: AreaId) -> &U::Area {
-        self.areas
-            .iter()
-            .find_map(|(lhs, area)| (*lhs == id).then_some(area))
-            .unwrap()
-    }
+    layout: Box<Mutex<dyn Layout<U>>>,
+    list: Vec<Window<U>>,
+    new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
+    cur_file: RwData<Handle<File<U>, U>>,
+    cur_widget: RwData<Node<U>>,
+    cur_win: usize,
 }
 
 /// A container for a master [`Area`] in Duat
 pub struct Window<U: Ui> {
+    index: usize,
     nodes: Vec<Node<U>>,
-    _floating: Vec<(U::Area, Node<U>)>,
-    files_area: U::Area,
-    layout: Box<dyn Layout<U>>,
+    spawned: Vec<(SpawnId, Node<U>)>,
+    files_area: Arc<U::Area>,
+    master_area: Arc<U::Area>,
+    new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
 }
 
 impl<U: Ui> Window<U> {
     /// Returns a new instance of [`Window`]
     fn new<W: Widget<U>>(
+        index: usize,
         pa: &mut Pass,
         ms: &'static U::MetaStatics,
         widget: W,
-        widget_id: AreaId,
-        layout: Box<dyn Layout<U>>,
+        new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
     ) -> (Self, Node<U>) {
         let widget = RwData::new(widget);
 
@@ -566,15 +743,22 @@ impl<U: Ui> Window<U> {
             .and_then(|f: &File<U>| Cache::new().load::<<U::Area as Area>::Cache>(f.path()).ok())
             .unwrap_or_default();
 
-        let area = U::new_root(ms, cache);
+        let area = Arc::new(U::new_root(ms, cache));
+        let node = Node::new::<W>(widget, area.clone());
 
-        let node = Node::new::<W>(widget, area.clone(), widget_id);
+        new_additions
+            .lock()
+            .unwrap()
+            .get_or_insert_default()
+            .push((index, node.clone()));
 
         let window = Self {
+            index,
             nodes: vec![node.clone()],
-            _floating: Vec::new(),
+            spawned: Vec::new(),
             files_area: area.clone(),
-            layout,
+            master_area: area.clone(),
+            new_additions,
         };
 
         (window, node)
@@ -582,100 +766,133 @@ impl<U: Ui> Window<U> {
 
     /// Returns a new [`Window`] from raw elements
     pub(crate) fn from_raw(
-        files_area: U::Area,
+        index: usize,
+        master_area: Arc<U::Area>,
         nodes: Vec<Node<U>>,
-        layout: Box<dyn Layout<U>>,
+        new_additions: Arc<Mutex<Option<Vec<(usize, Node<U>)>>>>,
     ) -> Self {
-        let files_area = files_area.get_cluster_master().unwrap_or(files_area);
+        let master_area = master_area
+            .get_cluster_master()
+            .map(Arc::new)
+            .unwrap_or(master_area.clone());
+
         Self {
+            index,
             nodes,
-            _floating: Vec::new(),
-            files_area,
-            layout,
+            spawned: Vec::new(),
+            files_area: master_area.clone(),
+            master_area,
+            new_additions,
         }
     }
 
-    ////////// Widget pushing functions
+    ////////// Widget addition/removal
 
-    /// Pushes a [`Widget`] onto an existing one
-    fn add<W: Widget<U>>(
-        &mut self,
-        widget: RwData<W>,
-        parent_area: Option<U::Area>,
-        (widget_id, widget_area): (AreaId, U::Area),
-        on_files: bool,
-    ) -> Node<U> {
-        self.nodes
-            .push(Node::new::<W>(widget, widget_area, widget_id));
+    /// Adds a [`Widget`] to the list of widgets of this [`Window`]
+    fn add(&mut self, node: Node<U>, parent: Option<Arc<U::Area>>, location: Location) {
+        match location {
+            Location::OnFiles => {
+                self.nodes.push(node.clone());
+                if let Some(parent) = &parent
+                    && parent.is_master_of(&self.files_area)
+                {
+                    self.files_area = parent.clone()
+                }
+            }
+            Location::Regular => self.nodes.push(node.clone()),
+            Location::Spawned(id) => self.spawned.push((id, node.clone())),
+        }
 
-        if let Some(parent) = &parent_area
-            && on_files
-            && parent.is_master_of(&self.files_area)
+        if let Some(parent) = &parent
+            && parent.is_master_of(&self.master_area)
         {
-            self.files_area = parent.clone();
+            self.master_area = parent.clone()
         }
 
-        self.nodes.last().unwrap().clone()
+        self.new_additions
+            .lock()
+            .unwrap()
+            .get_or_insert_default()
+            .push((self.index, node.clone()));
     }
 
-    pub(crate) fn _spawn<W: Widget<U>>(&mut self, _pa: &mut Pass, _widget: W) {}
+    /// Closes the [`Handle`] and all related ones
+    ///
+    /// Returns `true` if this `Window` is supposed to be removed.
+    fn close<W: Widget<U> + ?Sized, S>(&mut self, pa: &mut Pass, handle: &Handle<W, U, S>) -> bool {
+        let handle_eq = |node: &mut Node<U>| node.handle() == handle;
 
-    /// Removes all [`Node`]s whose [`Area`]s where deleted
-    pub(crate) fn remove_file(&mut self, pa: &Pass, pk: PathKind) {
-        let Some(node) = self
-            .nodes
-            .extract_if(.., |node| {
-                node.read_as(pa).map(|f: &File<U>| f.path_kind() == pk) == Some(true)
-            })
-            .next()
-        else {
+        let node = if let Some(node) = self.nodes.extract_if(.., handle_eq).next() {
+            node
+        } else if let Some((_, node)) = self.spawned.extract_if(.., |(_, n)| handle_eq(n)).next() {
+            node
+        } else {
             unreachable!("This isn't supposed to fail");
         };
 
-        // If this is the case, this means there is only one File left in this
-        // Window, so the files_area should be the cluster master of that
-        // File.
-        if let Some(parent) = MutArea(node.area(pa)).delete()
-            && parent == self.files_area
-        {
-            let files = self.file_handles(pa);
+        node.handle().declare_closed(pa);
+
+        let (do_rm_window, rm_areas) = U::Area::delete(MutArea(node.area(pa)));
+        if do_rm_window {
+            return true;
+        }
+
+        self.nodes.retain(|node| {
+            if rm_areas.contains(node.handle().area(pa)) {
+                node.handle().declare_closed(pa);
+                false
+            } else {
+                true
+            }
+        });
+        self.spawned.retain(|(_, node)| {
+            if rm_areas.contains(node.handle().area(pa)) {
+                node.handle().declare_closed(pa);
+                false
+            } else {
+                true
+            }
+        });
+
+        let files = self.file_handles(pa);
+        if files.len() == 1 {
             let handle = files.first().unwrap();
 
             let master_area = handle
                 .area(pa)
                 .get_cluster_master()
-                .unwrap_or(handle.area(pa).clone());
+                .map(Arc::new)
+                .unwrap_or(handle.area.clone());
 
             self.files_area = master_area;
         }
 
-        let related = node.related_widgets().read(pa);
-        for node in self
-            .nodes
-            .extract_if(.., |node| related.contains(node.handle()))
-        {
-            MutArea(node.area(pa)).delete();
-        }
+        false
     }
 
     /// Takes all [`Node`]s related to a given [`Node`]
-    pub(crate) fn take_file_and_related_nodes(
+    fn take_with_related_nodes<W: Widget<U> + ?Sized, S>(
         &mut self,
         pa: &mut Pass,
-        handle: &Handle<File<U>, U>,
+        handle: &Handle<W, U, S>,
     ) -> Vec<Node<U>> {
         let related = handle.related();
-        let lo = handle.widget().read(pa).layout_order;
 
         let related = related.read(pa);
         let nodes = self
             .nodes
-            .extract_if(.., |n| related.contains(n.handle()) || n == handle)
+            .extract_if(.., |node| {
+                related.iter().any(|(handle, _)| handle == node.handle()) || node.handle() == handle
+            })
             .collect();
 
-        for node in self.nodes.iter() {
-            if let Some(file) = node.widget().write_as::<File<U>>(pa) {
-                file.layout_order -= (file.layout_order > lo) as usize;
+        if let Some(handle) = handle.try_downcast::<File<U>>() {
+            let lo = handle.read(pa).layout_order;
+
+            for node in self.nodes.iter() {
+                if let Some(file) = node.widget().write_as::<File<U>>(pa) {
+                    file.layout_order -= (file.layout_order > lo) as usize;
+                }
             }
         }
 
@@ -683,17 +900,14 @@ impl<U: Ui> Window<U> {
     }
 
     /// Inserts [`File`] nodes orderly
-    pub(crate) fn insert_file_nodes(
-        &mut self,
-        pa: &mut Pass,
-        layout_order: usize,
-        nodes: Vec<Node<U>>,
-    ) {
-        if let Some(i) = self.nodes.iter().position(|node| {
-            node.widget()
-                .read_as(pa)
-                .is_some_and(|f: &File<U>| f.layout_order >= layout_order)
-        }) {
+    fn insert_nodes(&mut self, pa: &mut Pass, layout_order: Option<usize>, nodes: Vec<Node<U>>) {
+        if let Some(layout_order) = layout_order
+            && let Some(i) = self.nodes.iter().position(|node| {
+                node.widget()
+                    .read_as(pa)
+                    .is_some_and(|f: &File<U>| f.layout_order >= layout_order)
+            })
+        {
             for node in self.nodes[i..].iter() {
                 if let Some(file) = node.widget().write_as::<File<U>>(pa) {
                     file.layout_order += 1;
@@ -708,8 +922,36 @@ impl<U: Ui> Window<U> {
     ////////// Querying functions
 
     /// An [`Iterator`] over the [`Node`]s in a [`Window`]
+    #[define_opaque(InnerIter)]
     pub(crate) fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {
-        self.nodes.iter()
+        struct InnerChain<'a, U: Ui>(InnerIter<'a, U>, usize);
+
+        impl<'a, U: Ui> Iterator for InnerChain<'a, U> {
+            type Item = &'a Node<U>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.0.next()
+            }
+        }
+
+        impl<'a, U: Ui> DoubleEndedIterator for InnerChain<'a, U> {
+            fn next_back(&mut self) -> Option<Self::Item> {
+                self.0.next_back()
+            }
+        }
+
+        impl<'a, U: Ui> ExactSizeIterator for InnerChain<'a, U> {
+            fn len(&self) -> usize {
+                self.1
+            }
+        }
+
+        InnerChain(
+            self.nodes
+                .iter()
+                .chain(self.spawned.iter().map(|(_, node)| node)),
+            self.nodes.len() + self.spawned.len(),
+        )
     }
 
     /// Returns an [`Iterator`] over the names of [`File`]s
@@ -749,68 +991,16 @@ impl<U: Ui> Window<U> {
 
     /// How many [`Widget`]s are in this [`Window`]
     pub(crate) fn len_widgets(&self) -> usize {
-        self.nodes.len()
+        self.nodes.len() + self.spawned.len()
     }
 }
 
-pub(super) mod id {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use crate::{context, data::Pass, ui::Ui};
-
-    /// An id for uniquely identifying a [`Ui::Area`]
-    ///
-    /// > [!NOTE]
-    /// >
-    /// > If you acquired an [`AreaId`] within a [`WidgetCreated`] or
-    /// > [`WindowCreated`] [hook], by calling [`UiBuilder::push`] or
-    /// > [`UiBuilder::push_to`], *the id's area doesn't currently
-    /// > exist*. The [`Ui::Area`] will be created _after_ the [hook]
-    /// > takes place, but you can still use the [`AreaId`] for
-    /// > comparison purpuses with [`Handle`]s and other such things
-    ///
-    /// [`Ui::Area`]: super::Ui::Area
-    /// [`WidgetCreated`]: crate::hook::WidgetCreated
-    /// [`WindowCreated`]: crate::hook::WindowCreated
-    /// [hook]: crate::hook
-    /// [`UiBuilder::push`]: super::UiBuilder::push
-    /// [`UiBuilder::push_to`]: super::UiBuilder::push_to
-    /// [`Handle`]: crate::context::Handle
-    #[derive(Clone, Copy, Debug, Eq)]
-    pub struct AreaId(usize);
-
-    impl AreaId {
-        /// Returns a new [`AreaId`]
-        pub(in crate::ui) fn new() -> Self {
-            static AREA_COUNT: AtomicUsize = AtomicUsize::new(0);
-            AreaId(AREA_COUNT.fetch_add(1, Ordering::Relaxed))
-        }
-
-        /// The [`Ui::Area`] associated with this [`AreaId`]
-        pub fn area<'a, U: Ui>(&self, pa: &'a Pass) -> Option<&'a U::Area> {
-            context::windows::<U>()
-                .entries(pa)
-                .find_map(|(.., node)| (node.area_id() == *self).then(|| node.area(pa)))
-        }
-    }
-
-    impl<T: GetAreaId> PartialEq<T> for AreaId {
-        fn eq(&self, other: &T) -> bool {
-            self.0 == other.area_id().0
-        }
-    }
-
-    /// A generalized method for comparison between types that have
-    /// [`AreaId`]s
-    pub trait GetAreaId {
-        /// The [`AreaId`] of this type
-        fn area_id(&self) -> AreaId;
-    }
-
-    impl GetAreaId for AreaId {
-        fn area_id(&self) -> AreaId {
-            *self
-        }
+impl<U: Ui> std::fmt::Debug for Window<U> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Window")
+            .field("nodes", &self.nodes)
+            .field("floating", &self.spawned)
+            .finish_non_exhaustive()
     }
 }
 
@@ -823,3 +1013,44 @@ fn window_index_widget<U: Ui>(
         .enumerate()
         .map(move |(i, entry)| (index, i, entry))
 }
+
+fn get_cache<U: Ui>(
+    pa: &mut Pass,
+    widget: RwData<dyn Widget<U>>,
+    windows: &Windows<U>,
+    win: Option<usize>,
+) -> <<U as Ui>::Area as Area>::Cache {
+    let last_layout_order = if let Some(win) = win {
+        windows.inner.read(pa).list[win]
+            .file_handles(pa)
+            .iter()
+            .map(|handle| handle.read(pa).layout_order)
+            .max()
+    } else {
+        windows
+            .file_handles(pa)
+            .map(|handle| handle.read(pa).layout_order)
+            .max()
+    };
+
+    if let Some(file) = widget.write_as::<File<U>>(pa) {
+        file.layout_order = last_layout_order.map(|lo| lo + 1).unwrap_or(0);
+        match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
+            Ok(cache) => cache,
+            Err(err) => {
+                context::error!("{err}");
+                <U::Area as Area>::Cache::default()
+            }
+        }
+    } else {
+        <U::Area as Area>::Cache::default()
+    }
+}
+
+enum Location {
+    OnFiles,
+    Regular,
+    Spawned(SpawnId),
+}
+
+type InnerIter<'a, U: Ui> = impl DoubleEndedIterator<Item = &'a Node<U>>;

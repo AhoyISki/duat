@@ -12,10 +12,13 @@ use std::{ops::Range, sync::Arc};
 use RawTag::*;
 use crossterm::event::MouseEventKind;
 
-use super::{GhostId, Tagger, ToggleId};
+use super::{GhostId, SpawnId, Tagger, ToggleId};
 use crate::{
+    context,
+    data::Pass,
     form::FormId,
     text::{Point, Text, TextRange},
+    ui::{SpawnSpecs, Ui, Widget},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`]
@@ -46,15 +49,21 @@ use crate::{
 /// [range]: TextRange
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::ui::Widget
-pub trait Tag<I>: Sized + std::fmt::Debug {
-    /// Decomposes the [`Tag`] to its base elements
+pub trait Tag<Index, Return: Copy = ()>: Sized {
+    /// Gets the [`RawTag`]s and a possible return id from the `Tag`
     #[doc(hidden)]
-    fn decompose(
-        self,
-        index: I,
+    fn get_raw(
+        &self,
+        index: Index,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>);
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Return);
+
+    /// An action to take place if the [`RawTag`]s are successfully
+    /// added
+    #[doc(hidden)]
+    #[allow(unused_variables)]
+    fn on_insertion(self, ret: Return, tags: &mut super::InnerTags) {}
 }
 
 ////////// Form-like InnerTags
@@ -76,15 +85,15 @@ pub trait Tag<I>: Sized + std::fmt::Debug {
 pub struct FormTag(pub FormId, pub u8);
 
 impl<I: TextRange> Tag<I> for FormTag {
-    fn decompose(
-        self,
+    fn get_raw(
+        &self,
         index: I,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
-        let FormTag(id, prio) = self;
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+        let FormTag(id, prio) = *self;
         let range = index.to_range(max);
-        ranged(range, PushForm(key, id, prio), PopForm(key, id), None)
+        ranged(range, PushForm(tagger, id, prio), PopForm(tagger, id), ())
     }
 }
 
@@ -118,7 +127,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 pub struct ExtraCaret;
 simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
 
-/////////// Alignment InnerTags
+/////////// Alignment Tags
 
 /// [`Builder`] part: Begins centered alignment
 ///
@@ -192,7 +201,7 @@ pub struct AlignLeft;
 pub struct Spacer;
 simple_impl_Tag!(Spacer, RawTag::Spacer);
 
-////////// Text modification InnerTags
+////////// Text modification Tags
 
 /// [`Builder`] part and [`Tag`]: Places ghost text
 ///
@@ -203,32 +212,39 @@ simple_impl_Tag!(Spacer, RawTag::Spacer);
 #[derive(Debug, Clone, Copy)]
 pub struct Ghost<T: Into<Text>>(pub T);
 
-impl<T: Into<Text> + std::fmt::Debug> Tag<usize> for Ghost<T> {
-    fn decompose(
-        self,
+impl<T: Into<Text> + std::fmt::Debug> Tag<usize, GhostId> for Ghost<T> {
+    fn get_raw(
+        &self,
         byte: usize,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
         assert!(
             byte <= max,
             "index out of bounds: the len is {max}, but the index is {byte}",
         );
         let id = GhostId::new();
-        let tag_id = TagId::Ghost(id, Into::<Text>::into(self.0).without_last_nl());
-        ((byte, RawTag::Ghost(key, id)), None, Some(tag_id))
+        ((byte, RawTag::Ghost(tagger, id)), None, id)
+    }
+
+    fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
+        tags.ghosts.push((ret, self.0.into().without_last_nl()))
     }
 }
 
-impl<T: Into<Text> + std::fmt::Debug> Tag<Point> for Ghost<T> {
-    fn decompose(
-        self,
+impl<T: Into<Text> + std::fmt::Debug> Tag<Point, GhostId> for Ghost<T> {
+    fn get_raw(
+        &self,
         point: Point,
         max: usize,
-        key: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
         let byte = point.byte();
-        self.decompose(byte, max, key)
+        self.get_raw(byte, max, tagger)
+    }
+
+    fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
+        tags.ghosts.push((ret, self.0.into()))
     }
 }
 
@@ -242,6 +258,96 @@ impl<T: Into<Text> + std::fmt::Debug> Tag<Point> for Ghost<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct Conceal;
 ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
+
+////////// Layout modification Tags
+
+/// [`Tag`]: Spawns a [`Widget`] in the [`Text`]
+///
+/// The [`Widget`] will be placed according to the [`SpawnSpecs`], and
+/// should move automatically as the `SpawnTag` moves around the
+/// screen.
+pub struct SpawnTag(SpawnId, Box<dyn FnOnce(&mut Pass, usize) + Send>);
+
+impl SpawnTag {
+    /// Returns a new instance of `SpawnTag`
+    ///
+    /// You can then place this [`Tag`] inside of the [`Text`] via
+    /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
+    /// should be placed according to the [`SpawnSpecs`], and should
+    /// move around automatically reflecting where the `Tag` is at.
+    ///
+    /// Do note that this [`Widget`] will only be added to Duat and be
+    /// able to be printed to the screen once the [`Text`] itself
+    /// is printed. And it will be removed once the [`RawTag`] within
+    /// gets dropped, either by being removed from the `Text`, or by
+    /// the `Text` itself being dropped.
+    ///
+    /// > [!NOTE]
+    /// >
+    /// > For now, if you clone a [`Text`] with spawned [`Widget`]s
+    /// > within, those `Widget`s will not be cloned to the new
+    /// > `Text`, and the [`RawTag::SpawnedWidget`]s within will also
+    /// > be removed.
+    ///
+    /// [`Tags::insert`]: super::Tags::insert
+    pub fn new<U: Ui>(widget: impl Widget<U>, specs: SpawnSpecs) -> Self {
+        let id = SpawnId::new();
+        Self(
+            id,
+            Box::new(move |pa, win| {
+                context::windows::<U>().spawn_on_text(pa, (id, specs), widget, win);
+            }),
+        )
+    }
+}
+
+impl Tag<Point, SpawnId> for SpawnTag {
+    fn get_raw(
+        &self,
+        index: Point,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, SpawnId) {
+        (
+            (index.byte().min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            None,
+            self.0,
+        )
+    }
+
+    fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
+        tags.spawns.push(ret);
+        tags.spawn_fns.push(self.1);
+    }
+}
+
+impl Tag<usize, SpawnId> for SpawnTag {
+    fn get_raw(
+        &self,
+        index: usize,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, SpawnId) {
+        (
+            (index.min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            None,
+            self.0,
+        )
+    }
+
+    fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
+        tags.spawns.push(ret);
+        tags.spawn_fns.push(self.1);
+    }
+}
+
+struct SpawnCell(SpawnTag);
+
+impl Drop for SpawnCell {
+    fn drop(&mut self) {
+        
+    }
+}
 
 /// An internal representation of [`Tag`]s
 ///
@@ -303,6 +409,9 @@ pub enum RawTag {
     /// Text that shows up on screen, but is ignored otherwise.
     Ghost(Tagger, GhostId),
 
+    /// A spawned floating [`Widget`]
+    SpawnedWidget(Tagger, SpawnId),
+
     // Not Implemented:
     /// Begins a toggleable section in the text.
     StartToggle(Tagger, ToggleId),
@@ -314,16 +423,16 @@ impl RawTag {
     /// Inverts a [`RawTag`] that occupies a range
     pub fn inverse(&self) -> Option<Self> {
         match self {
-            Self::PushForm(key, id, _) => Some(Self::PopForm(*key, *id)),
-            Self::PopForm(key, id) => Some(Self::PushForm(*key, *id, 0)),
-            Self::StartToggle(key, id) => Some(Self::EndToggle(*key, *id)),
-            Self::EndToggle(key, id) => Some(Self::StartToggle(*key, *id)),
-            Self::StartConceal(key) => Some(Self::EndConceal(*key)),
-            Self::EndConceal(key) => Some(Self::StartConceal(*key)),
-            Self::StartAlignCenter(key) => Some(Self::EndAlignCenter(*key)),
-            Self::EndAlignCenter(key) => Some(Self::StartAlignCenter(*key)),
-            Self::StartAlignRight(key) => Some(Self::EndAlignRight(*key)),
-            Self::EndAlignRight(key) => Some(Self::StartAlignRight(*key)),
+            Self::PushForm(tagger, id, _) => Some(Self::PopForm(*tagger, *id)),
+            Self::PopForm(tagger, id) => Some(Self::PushForm(*tagger, *id, 0)),
+            Self::StartToggle(tagger, id) => Some(Self::EndToggle(*tagger, *id)),
+            Self::EndToggle(tagger, id) => Some(Self::StartToggle(*tagger, *id)),
+            Self::StartConceal(tagger) => Some(Self::EndConceal(*tagger)),
+            Self::EndConceal(tagger) => Some(Self::StartConceal(*tagger)),
+            Self::StartAlignCenter(tagger) => Some(Self::EndAlignCenter(*tagger)),
+            Self::EndAlignCenter(tagger) => Some(Self::StartAlignCenter(*tagger)),
+            Self::StartAlignRight(tagger) => Some(Self::EndAlignRight(*tagger)),
+            Self::EndAlignRight(tagger) => Some(Self::StartAlignRight(*tagger)),
             _ => None,
         }
     }
@@ -381,7 +490,7 @@ impl RawTag {
     /// The [`Tagger`] of this [`RawTag`]
     pub(in crate::text) fn tagger(&self) -> Tagger {
         match self.get_tagger() {
-            Some(key) => key,
+            Some(tagger) => tagger,
             None => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
             ),
@@ -395,20 +504,21 @@ impl RawTag {
     /// [`InnerTags`]: super::InnerTags
     fn get_tagger(&self) -> Option<Tagger> {
         match self {
-            Self::PushForm(key, ..)
-            | Self::PopForm(key, _)
-            | Self::MainCaret(key)
-            | Self::ExtraCaret(key)
-            | Self::StartAlignCenter(key)
-            | Self::EndAlignCenter(key)
-            | Self::StartAlignRight(key)
-            | Self::EndAlignRight(key)
-            | Self::Spacer(key)
-            | Self::StartConceal(key)
-            | Self::EndConceal(key)
-            | Self::Ghost(key, _)
-            | Self::StartToggle(key, _)
-            | Self::EndToggle(key, _) => Some(*key),
+            Self::PushForm(tagger, ..)
+            | Self::PopForm(tagger, _)
+            | Self::MainCaret(tagger)
+            | Self::ExtraCaret(tagger)
+            | Self::StartAlignCenter(tagger)
+            | Self::EndAlignCenter(tagger)
+            | Self::StartAlignRight(tagger)
+            | Self::EndAlignRight(tagger)
+            | Self::Spacer(tagger)
+            | Self::StartConceal(tagger)
+            | Self::EndConceal(tagger)
+            | Self::Ghost(tagger, _)
+            | Self::StartToggle(tagger, _)
+            | Self::EndToggle(tagger, _)
+            | Self::SpawnedWidget(tagger, _) => Some(*tagger),
             Self::ConcealUntil(_) => None,
         }
     }
@@ -421,18 +531,17 @@ impl RawTag {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
             Self::PopForm(..) => 0,
-            Self::MainCaret(..) => 4,
-            Self::ExtraCaret(..) => 4,
-            Self::StartAlignCenter(..) => 3,
-            Self::EndAlignCenter(..) => 1,
-            Self::StartAlignRight(..) => 3,
-            Self::EndAlignRight(..) => 1,
-            Self::Spacer(..) => 1,
-            Self::StartConceal(..) => 3,
-            Self::EndConceal(..) => 1,
-            Self::Ghost(..) => 2,
-            Self::StartToggle(..) => 3,
-            Self::EndToggle(..) => 1,
+            Self::MainCaret(..) | Self::ExtraCaret(..) => 4,
+            Self::StartAlignCenter(..)
+            | Self::StartAlignRight(..)
+            | Self::StartConceal(..)
+            | Self::StartToggle(..) => 3,
+            Self::EndAlignCenter(..)
+            | Self::EndAlignRight(..)
+            | Self::Spacer(..)
+            | Self::EndConceal(..)
+            | Self::EndToggle(..) => 1,
+            Self::SpawnedWidget(..) | Self::Ghost(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
@@ -521,23 +630,24 @@ impl Ord for RawTag {
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::PushForm(key, id, prio) => {
-                write!(f, "PushForm({key:?}, {}, {prio})", id.name())
+            Self::PushForm(tagger, id, prio) => {
+                write!(f, "PushForm({tagger:?}, {}, {prio})", id.name())
             }
-            Self::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
-            Self::MainCaret(key) => write!(f, "MainCaret({key:?})"),
-            Self::ExtraCaret(key) => write!(f, "ExtraCaret({key:?})"),
-            Self::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
-            Self::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
-            Self::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
-            Self::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
-            Self::Spacer(key) => write!(f, "Spacer({key:?})"),
-            Self::StartConceal(key) => write!(f, "StartConceal({key:?})"),
-            Self::EndConceal(key) => write!(f, "EndConceal({key:?})"),
-            Self::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            Self::Ghost(key, id) => write!(f, "Ghost({key:?}, {id:?})"),
-            Self::StartToggle(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
-            Self::EndToggle(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
+            Self::PopForm(tagger, id) => write!(f, "PopForm({tagger:?}, {})", id.name()),
+            Self::MainCaret(tagger) => write!(f, "MainCaret({tagger:?})"),
+            Self::ExtraCaret(tagger) => write!(f, "ExtraCaret({tagger:?})"),
+            Self::StartAlignCenter(tagger) => write!(f, "StartAlignCenter({tagger:?})"),
+            Self::EndAlignCenter(tagger) => write!(f, "EndAlignCenter({tagger:?})"),
+            Self::StartAlignRight(tagger) => write!(f, "StartAlignRight({tagger:?})"),
+            Self::EndAlignRight(tagger) => write!(f, "EndAlignRight({tagger:?})"),
+            Self::Spacer(tagger) => write!(f, "Spacer({tagger:?})"),
+            Self::StartConceal(tagger) => write!(f, "StartConceal({tagger:?})"),
+            Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
+            Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
+            Self::Ghost(tagger, id) => write!(f, "Ghost({tagger:?}, {id:?})"),
+            Self::StartToggle(tagger, id) => write!(f, "ToggleStart({tagger:?}), {id:?})"),
+            Self::EndToggle(tagger, id) => write!(f, "ToggleEnd({tagger:?}, {id:?})"),
+            Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),
         }
     }
 }
@@ -546,64 +656,57 @@ impl std::fmt::Debug for RawTag {
 /// button
 pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;
 
-#[derive(Clone)]
-#[allow(dead_code)]
-pub enum TagId {
-    Ghost(GhostId, Text),
-    Toggle(ToggleId, Toggle),
-}
-
-fn ranged(
+fn ranged<Return>(
     r: Range<usize>,
     s_tag: RawTag,
     e_tag: RawTag,
-    id: Option<TagId>,
-) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
-    ((r.start, s_tag), Some((r.end, e_tag)), id)
+    ret: Return,
+) -> ((usize, RawTag), Option<(usize, RawTag)>, Return) {
+    ((r.start, s_tag), Some((r.end, e_tag)), ret)
 }
 
 macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
     impl Tag<usize> for $tag {
-        fn decompose(
-            self,
+        fn get_raw(
+            &self,
             byte: usize,
             max: usize,
-            key: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            tagger: Tagger,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
             assert!(
                 byte <= max,
                 "byte out of bounds: the len is {max}, but the byte is {byte}",
             );
-            ((byte, $raw_tag(key)), None, None)
+            ((byte, $raw_tag(tagger)), None, ())
         }
     }
 
     impl Tag<Point> for $tag {
-        fn decompose(
-            self,
+        fn get_raw(
+            &self,
             point: Point,
             max: usize,
-            key: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            tagger: Tagger,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
             let byte = point.byte();
-            self.decompose(byte, max, key)
+            self.get_raw(byte, max, tagger)
         }
     }
 }
 
 macro ranged_impl_tag($tag:ty, $start:expr, $end:expr) {
     impl<I: TextRange> Tag<I> for $tag {
-        fn decompose(
-            self,
+        fn get_raw(
+            &self,
             index: I,
             max: usize,
-            key: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            tagger: Tagger,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
             let range = index.to_range(max);
             (
-                (range.start, $start(key)),
-                Some((range.end, $end(key))),
-                None,
+                (range.start, $start(tagger)),
+                Some((range.end, $end(tagger))),
+                (),
             )
         }
     }

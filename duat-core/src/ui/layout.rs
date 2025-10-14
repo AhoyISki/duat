@@ -39,16 +39,18 @@
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
 use super::{PushSpecs, Ui};
-use crate::{file::File, prelude::Handle, text::Text};
+use crate::{
+    data::Pass,
+    file::File,
+    prelude::Handle,
+    ui::{Side, Window},
+};
 
 /// A form of organizing opened [`File`]s
 ///
 /// Determines how the n'th [`File`] should be opened, given the
 /// previously opened [`File`]s on the same window.
-pub trait Layout<U>: Send + Sync
-where
-    U: Ui,
-{
+pub trait Layout<U: Ui>: Send + Sync {
     /// Opens a new [`File`]
     ///
     /// The returned [`Ok(Handle<File>, PushSpecs)`] value represents
@@ -62,9 +64,11 @@ where
     /// [`Ok(Handle<File>, PushSpecs)`]: Handle
     fn new_file(
         &mut self,
+        pa: &Pass,
+        cur_win: usize,
         file: &File<U>,
-        prev: Vec<Handle<File<U>, U>>,
-    ) -> Result<(Handle<File<U>, U>, PushSpecs), Text>;
+        windows: &[Window<U>],
+    ) -> (Handle<File<U>, U>, PushSpecs);
 }
 
 /// [`Layout`]: One [`File`] on the left, others on the right
@@ -74,20 +78,19 @@ where
 #[derive(Clone)]
 pub struct MasterOnLeft;
 
-impl<U> Layout<U> for MasterOnLeft
-where
-    U: Ui,
-{
+impl<U: Ui> Layout<U> for MasterOnLeft {
     fn new_file(
         &mut self,
+        pa: &Pass,
+        cur_win: usize,
         _file: &File<U>,
-        prev: Vec<Handle<File<U>, U>>,
-    ) -> Result<(Handle<File<U>, U>, PushSpecs), Text> {
-        let last = prev.last().unwrap().clone();
-        Ok(if prev.len() == 1 {
-            (last, PushSpecs::right())
+        windows: &[Window<U>],
+    ) -> (Handle<File<U>, U>, PushSpecs) {
+        let last = windows[cur_win].file_handles(pa).last().unwrap().clone();
+        if windows[cur_win].file_handles(pa).len() == 1 {
+            (last, PushSpecs { side: Side::Right, .. })
         } else {
-            (last, PushSpecs::below())
-        })
+            (last, PushSpecs { side: Side::Below, .. })
+        }
     }
 }

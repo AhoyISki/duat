@@ -12,10 +12,11 @@ use lender::Lender;
 
 use crate::{
     cfg::PrintCfg,
+    context,
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TextParts, TwoPoints},
-    ui::{Area, AreaId, GetAreaId, MutArea, SpawnSpecs, Ui, Widget, WidgetCfg},
+    ui::{Area, PushSpecs, SpawnSpecs, Ui, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -135,28 +136,27 @@ use crate::{
 /// [`U::Area`]: Ui::Area
 pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
     widget: RwData<W>,
-    area: U::Area,
+    pub(crate) area: Arc<U::Area>,
     mask: Arc<Mutex<&'static str>>,
-    id: AreaId,
     related: RelatedWidgets<U>,
     searcher: RefCell<S>,
+    is_closed: RwData<bool>,
 }
 
 impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
     /// Returns a new instance of a [`Handle<W, U>`]
     pub(crate) fn new(
         widget: RwData<W>,
-        area: U::Area,
+        area: Arc<U::Area>,
         mask: Arc<Mutex<&'static str>>,
-        id: AreaId,
     ) -> Self {
         Self {
             widget,
             area,
             mask,
-            id,
             related: RelatedWidgets(RwData::default()),
             searcher: RefCell::new(()),
+            is_closed: RwData::new(false),
         }
     }
 }
@@ -183,6 +183,16 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// Tries to read as a concrete [`Widget`] implementor
     pub fn read_as<'a, W2: Widget<U>>(&'a self, pa: &'a Pass) -> Option<&'a W2> {
         self.widget.read_as(pa)
+    }
+
+    /// Declares the [`Widget`] within as read
+    ///
+    /// Same as calling `handle.widget().declare_as_read()`. You
+    /// should use this function if you want to signal to others that
+    /// the widget was read, even if you don't have access to a
+    /// [`Pass`].
+    pub fn declare_as_read(&self) {
+        self.widget.declare_as_read();
     }
 
     /// Writes to the [`Widget`], making use of a [`Pass`]
@@ -218,15 +228,25 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         (self.widget.write(pa), &self.area)
     }
 
+    /// Declares the [`Widget`] within as written
+    ///
+    /// Same as calling `handle.widget().declare_written()`. You
+    /// should use this function if you want to signal to others that
+    /// the widget was written to, even if you don't have access to a
+    /// [`Pass`].
+    pub fn declare_written(&self) {
+        self.widget.declare_written();
+    }
+
     /// Tries to downcast from `dyn Widget` to a concrete [`Widget`]
     pub fn try_downcast<W2: Widget<U>>(&self) -> Option<Handle<W2, U>> {
         Some(Handle {
             widget: self.widget.try_downcast()?,
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: RefCell::new(()),
+            is_closed: self.is_closed.clone(),
         })
     }
 
@@ -459,7 +479,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
         let widget = self.widget.read(pa);
         self.area(pa)
-            .scroll_ver(widget.text(), dist, widget.print_cfg());
+            .scroll_ver(widget.text(), dist, widget.get_print_cfg());
         self.widget.declare_written();
     }
 
@@ -471,20 +491,21 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn scroll_to_points(&self, pa: &Pass, points: impl TwoPoints) {
         let widget = self.widget.read(pa);
         self.area
-            .scroll_to_points(widget.text(), points, widget.print_cfg());
+            .scroll_to_points(widget.text(), points, widget.get_print_cfg());
         self.widget.declare_written();
     }
 
     /// The start points that should be printed
     pub fn start_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
-        self.area.start_points(widget.text(), widget.print_cfg())
+        self.area
+            .start_points(widget.text(), widget.get_print_cfg())
     }
 
     /// The end points that should be printed
     pub fn end_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
-        self.area.end_points(widget.text(), widget.print_cfg())
+        self.area.end_points(widget.text(), widget.get_print_cfg())
     }
 
     ////////// Querying functions
@@ -558,10 +579,10 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
 
     /// The [`Widget`]'s [`PrintCfg`]
     pub fn cfg(&self, pa: &Pass) -> PrintCfg {
-        self.widget.read(pa).print_cfg()
+        self.widget.read(pa).get_print_cfg()
     }
 
-    /// Reads a related [`Widget`] of type `W2`, as well as it s
+    /// Reads related [`Widget`]s of type `W2`, as well as it s
     /// [`Ui::Area`]
     ///
     /// This can also be done by calling [`Handle::get_related`], and
@@ -570,33 +591,39 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn read_related<'a, W2: Widget<U>>(
         &'a self,
         pa: &'a Pass,
-    ) -> Option<(&'a W2, &'a U::Area)> {
-        self.read_as(pa).map(|w| (w, self.area(pa))).or_else(|| {
-            self.related
-                .0
-                .read(pa)
-                .iter()
-                .find_map(|handle| handle.read_as(pa).map(|w| (w, handle.area(pa))))
-        })
+    ) -> impl Iterator<Item = (&'a W2, &'a U::Area, WidgetRelation)> {
+        self.read_as(pa)
+            .map(|w| (w, self.area(pa), WidgetRelation::Main))
+            .into_iter()
+            .chain(
+                self.related.0.read(pa).iter().filter_map(|(handle, rel)| {
+                    handle.read_as(pa).map(|w| (w, handle.area(pa), *rel))
+                }),
+            )
     }
 
-    /// Gets the [`Handle`] of a related [`Widget`]
+    /// Gets related [`Handle`]s of type [`Widget`]
     ///
     /// If you are doing this just to read the [`Widget`] and
-    /// [`Ui::Area`], consider using [`Handle::read_related`], since
-    /// that function is generally faster.
-    pub fn get_related<W2: Widget<U>>(&self, pa: &Pass) -> Option<Handle<W2, U>> {
-        self.try_downcast().or_else(|| {
-            self.related
-                .0
-                .read(pa)
-                .iter()
-                .find_map(|handle| handle.try_downcast())
-        })
+    /// [`Ui::Area`], consider using [`Handle::read_related`].
+    pub fn get_related<'a, W2: Widget<U>>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = (Handle<W2, U>, WidgetRelation)> + 'a {
+        self.try_downcast()
+            .zip(Some(WidgetRelation::Main))
+            .into_iter()
+            .chain(
+                self.related
+                    .0
+                    .read(pa)
+                    .iter()
+                    .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel))),
+            )
     }
 
     /// Raw access to the related widgets
-    pub(crate) fn related(&self) -> &RwData<Vec<Handle<dyn Widget<U>, U>>> {
+    pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>> {
         &self.related.0
     }
 
@@ -627,26 +654,151 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: RefCell::new(searcher),
+            is_closed: self.is_closed.clone(),
+        }
+    }
+
+    /// Pushes a [`Widget`] around this one
+    ///
+    /// This `Widget` will be placed internally, i.e., around the
+    /// [`Ui::Area`] of `self`. This is in contrast to
+    /// [`Handle::push_outer_widget`], which will push around the
+    /// "cluster master" of `self`.
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// below `self`, when pushing to the left, the following would
+    /// happen:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │ new │   self   │
+    /// │                │ -> │     │          │
+    /// ├────────────────┤    ├─────┴──────────┤
+    /// │      old       │    │      old       │
+    /// ╰────────────────╯    ╰────────────────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_outer_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭────────────────╮    ╭─────┬──────────╮
+    /// │                │    │     │          │
+    /// │      self      │    │     │   self   │
+    /// │                │ -> │ new │          │
+    /// ├────────────────┤    │     ├──────────┤
+    /// │      old       │    │     │   old    │
+    /// ╰────────────────╯    ╰─────┴──────────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the second case, not just around `self`.
+    pub fn push_inner_widget<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        context::windows::<U>()
+            .push_widget(pa, (&self.area, None, specs), widget)
+            .unwrap()
+    }
+
+    /// Pushes a [`Widget`] around the "cluster master" of this one
+    ///
+    /// A cluster master is the collection of every `Widget` that was
+    /// pushed around a central one with [`PushSpecs::cluster`] set to
+    /// `true`.
+    ///
+    /// This [`Widget`] will be placed externally, i.e., around every
+    /// other [`Widget`] that was pushed around `self`. This is in
+    /// contrast to [`Handle::push_inner_widget`], which will push
+    /// only around `self`.
+    ///
+    /// Both of these functions behave identically in the situation
+    /// where no other [`Widget`]s were pushed around `self`.
+    ///
+    /// However, if, for example, a [`Widget`] was previously pushed
+    /// to the left of `self`, when pushing to the left again, the
+    /// following would happen:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ new │ old │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// While in [`Handle::push_inner_widget`], this happens instead:
+    ///
+    /// ```text
+    /// ╭──────┬──────────╮    ╭─────┬─────┬──────╮
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// │  old │   self   │ -> │ old │ new │ self │
+    /// │      │          │    │     │     │      │
+    /// │      │          │    │     │     │      │
+    /// ╰──────┴──────────╯    ╰─────┴─────┴──────╯
+    /// ```
+    ///
+    /// Note that `new` was pushed _around_ other clustered widgets in
+    /// the first case, not just around `self`.
+    pub fn push_outer_widget<PW: Widget<U>>(
+        &self,
+        pa: &mut Pass,
+        widget: PW,
+        specs: PushSpecs,
+    ) -> Handle<PW, U> {
+        if let Some(master) = self.area(pa).get_cluster_master() {
+            context::windows()
+                .push_widget(pa, (&master, None, specs), widget)
+                .unwrap()
+        } else {
+            context::windows::<U>()
+                .push_widget(pa, (&self.area, None, specs), widget)
+                .unwrap()
         }
     }
 
     /// Spawns a floating [`Widget`]
-    pub fn spawn_widget<Cfg: WidgetCfg<U>>(
+    pub fn spawn_widget<SW: Widget<U>>(
         &self,
-        _pa: &mut Pass,
-        _cfg: Cfg,
-        _specs: SpawnSpecs,
-    ) -> Result<AreaId, Text> {
-        let _area = MutArea(&self.area);
-        // let _spawned = area.spawn_floating(pa, cfg, specs)?;
-        todo!();
+        pa: &mut Pass,
+        widget: SW,
+        specs: SpawnSpecs,
+    ) -> Option<Handle<SW, U>> {
+        context::windows::<U>().spawn_on_widget(pa, (&self.area, specs), widget)
+    }
+
+    /// Closes this `Handle`, removing the [`Widget`] from the [`Ui`]
+    pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
+        context::windows().close(pa, self)
+    }
+
+    /// Wether this `Handle` was already closed
+    pub fn is_closed(&self, pa: &Pass) -> bool {
+        *self.is_closed.read(pa)
+    }
+
+    /// Declares that this `Handle` has been closed
+    pub(crate) fn declare_closed(&self, pa: &mut Pass) {
+        *self.is_closed.write(pa) = true;
     }
 }
 
-impl<W: Widget<U>, U: Ui> Handle<W, U> {
+impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`]
     pub fn to_dyn(&self) -> Handle<dyn Widget<U>, U> {
         Handle {
@@ -654,9 +806,9 @@ impl<W: Widget<U>, U: Ui> Handle<W, U> {
             // TODO: Arc wrapper, and Area: !Clone
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: RefCell::new(()),
+            is_closed: self.is_closed.clone(),
         }
     }
 }
@@ -664,18 +816,17 @@ impl<W: Widget<U>, U: Ui> Handle<W, U> {
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
-unsafe impl<W: Widget<U>, U: Ui, S> Send for Handle<W, U, S> {}
-unsafe impl<W: Widget<U>, U: Ui, S> Sync for Handle<W, U, S> {}
+unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Send for Handle<W, U, S> {}
+unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Sync for Handle<W, U, S> {}
 
-impl<W: Widget<U> + ?Sized, U: Ui, S> GetAreaId for Handle<W, U, S> {
-    fn area_id(&self) -> AreaId {
-        self.id
-    }
-}
-
-impl<T: GetAreaId, W: Widget<U> + ?Sized, U: Ui, S> PartialEq<T> for Handle<W, U, S> {
-    fn eq(&self, other: &T) -> bool {
-        self.area_id() == other.area_id()
+impl<W1, W2, U, S1, S2> PartialEq<Handle<W2, U, S2>> for Handle<W1, U, S1>
+where
+    W1: Widget<U> + ?Sized,
+    W2: Widget<U> + ?Sized,
+    U: Ui,
+{
+    fn eq(&self, other: &Handle<W2, U, S2>) -> bool {
+        self.widget().ptr_eq(other.widget())
     }
 }
 
@@ -685,12 +836,37 @@ impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id,
             related: self.related.clone(),
             searcher: self.searcher.clone(),
+            is_closed: self.is_closed.clone(),
         }
     }
 }
 
+impl<W: Widget<U> + ?Sized, U: Ui, S> std::fmt::Debug for Handle<W, U, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Handle")
+            .field("mask", &self.mask)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Clone)]
-struct RelatedWidgets<U: Ui>(RwData<Vec<Handle<dyn Widget<U>, U>>>);
+struct RelatedWidgets<U: Ui>(RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>>);
+
+/// What relation this [`Widget`] has to its parent
+#[derive(Clone, Copy, Debug)]
+pub enum WidgetRelation {
+    /// The main widget of the cluster, most commonly a [`File`]
+    ///
+    /// [`File`]: crate::file::File
+    Main,
+    /// A [`Widget`] that was pushed around the main `Widget`, e.g.
+    /// [`LineNumbers`]
+    ///
+    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+    Pushed,
+    /// A [`Widget`] that was spawned on the `Widget`, e.g. completion
+    /// lists
+    Spawned,
+}

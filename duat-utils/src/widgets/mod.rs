@@ -14,17 +14,20 @@
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
-    hook::{self, FocusedOn, UnfocusedFrom},
-    ui::{Area, AreaId, BuilderDummy, GetAreaId, Ui, Widget, WidgetAlias},
+    context,
+    data::Pass,
+    hook::{self, FocusedOn, KeysSentTo, UnfocusedFrom},
+    ui::{Area, PushTarget, Ui, Widget},
 };
 
 pub use self::{
-    line_numbers::{LineNumbers, LineNumbersCfg},
-    log_book::{LogBook, LogBookCfg},
-    notifications::{Notifications, NotificationsCfg},
-    prompt_line::{PromptLine, PromptLineCfg},
-    status_line::{State, StatusLine, StatusLineCfg, status},
+    line_numbers::{LineNumbers, LineNumbersBuilder},
+    log_book::{LogBook, LogBookBuilder},
+    notifications::{Notifications, NotificationsBuilder},
+    prompt_line::{PromptLine, PromptLineBuilder},
+    status_line::{State, StatusLine, StatusLineBuilder, status},
 };
+use crate::modes::Prompt;
 
 mod line_numbers;
 mod log_book;
@@ -76,16 +79,87 @@ mod status_line;
 /// [`prompt`]: FooterWidgets::prompt
 /// [`notifs`]: FooterWidgets::notifs
 /// [`above`]: FooterWidgets::above
-#[derive(Default)]
 pub struct FooterWidgets<U: Ui> {
-    status_cfg: StatusLineCfg<U>,
-    prompt_cfg: PromptLineCfg<U>,
-    notifs_cfg: NotificationsCfg<U>,
-    is_one_line: bool,
-    is_above: bool,
+    status: StatusLineBuilder<U>,
+    prompt: PromptLineBuilder<U>,
+    notifs: NotificationsBuilder,
+    one_line: bool,
+    above: bool,
 }
 
 impl<U: Ui> FooterWidgets<U> {
+    /// Returns a new default intance of `FooterWidgets`
+    pub fn default(pa: &Pass) -> Self {
+        Self {
+            status: StatusLine::builder(pa),
+            prompt: PromptLine::builder(),
+            notifs: Notifications::builder(),
+            one_line: false,
+            above: false,
+        }
+    }
+
+    /// Adds footer [`Widget`]s
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget<U>) {
+        let prompt_line = if self.above {
+            self.prompt.above().hidden().push_on(pa, push_target)
+        } else {
+            self.prompt.below().hidden().push_on(pa, push_target)
+        };
+
+        if self.one_line {
+            hook::add::<KeysSentTo<Prompt<U>, U>, U>({
+                let prompt_line = prompt_line.clone();
+                move |pa, (_, handle)| {
+                    if handle == &prompt_line
+                        && let Err(err) = handle
+                            .area(pa)
+                            .request_width_to_fit(handle.read(pa).get_print_cfg(), handle.text(pa))
+                    {
+                        context::error!("{err}")
+                    }
+                    Ok(())
+                }
+            });
+            self.status.right().push_on(pa, &prompt_line);
+        } else {
+            self.status.above().push_on(pa, &prompt_line);
+        };
+
+        let notifications = if self.one_line {
+            self.notifs.request_width().push_on(pa, &prompt_line)
+        } else {
+            self.notifs.push_on(pa, &prompt_line)
+        };
+
+        hook::add::<FocusedOn<PromptLine<U>, U>, U>({
+            let notifications = notifications.clone();
+            let prompt_line = prompt_line.clone();
+            move |pa, (_, handle)| {
+                if handle == &prompt_line {
+                    notifications.area(pa).hide()?;
+                    handle.area(pa).reveal()?;
+                    if self.one_line {
+                        handle
+                            .area(pa)
+                            .request_width_to_fit(handle.cfg(pa), handle.text(pa))?;
+                    }
+                };
+                Ok(())
+            }
+        });
+
+        hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>({
+            move |pa, (handle, _)| {
+                if handle == &prompt_line {
+                    notifications.area(pa).reveal()?;
+                    handle.area(pa).hide()?;
+                }
+                Ok(())
+            }
+        });
+    }
+
     /// Returns a new [`FooterWidgets`], with a [`StatusLine`] and
     /// default [`PromptLine`] and [`Notifications`]
     ///
@@ -94,79 +168,34 @@ impl<U: Ui> FooterWidgets<U> {
     ///
     /// [`prompt`]: FooterWidgets::prompt
     /// [`notifs`]: FooterWidgets::notifs
-    pub fn new(status_cfg: StatusLineCfg<U>) -> Self {
+    pub fn new(status_cfg: StatusLineBuilder<U>) -> Self {
         Self {
-            status_cfg,
-            prompt_cfg: PromptLine::cfg(),
-            notifs_cfg: Notifications::cfg(),
-            is_one_line: false,
-            is_above: false,
+            status: status_cfg,
+            prompt: PromptLine::builder(),
+            notifs: Notifications::builder(),
+            one_line: false,
+            above: false,
         }
     }
 
     /// Turns this footer into a Kakoune-like one liner, as opposed to
     /// a Neovim-like two liner
     pub fn one_line(self) -> Self {
-        Self { is_one_line: true, ..self }
+        Self { one_line: true, ..self }
     }
 
     /// Changes this footer to a header
     pub fn above(self) -> Self {
-        Self { is_above: true, ..self }
+        Self { above: true, ..self }
     }
 
     /// Sets the [`PromptLine`] to be used
-    pub fn prompt(self, prompt_cfg: PromptLineCfg<U>) -> Self {
-        Self { prompt_cfg, ..self }
+    pub fn prompt(self, prompt: PromptLineBuilder<U>) -> Self {
+        Self { prompt, ..self }
     }
 
     /// Sets the [`Notifications`] to be used
-    pub fn notifs(self, notifs_cfg: NotificationsCfg<U>) -> Self {
-        Self { notifs_cfg, ..self }
+    pub fn notifs(self, notifs: NotificationsBuilder) -> Self {
+        Self { notifs, ..self }
     }
 }
-
-impl<U: Ui> WidgetAlias<U, FooterWidgetsDummy> for FooterWidgets<U> {
-    fn push_alias(self, builder: &mut duat_core::ui::RawUiBuilder<U>) -> AreaId {
-        let status_id = if self.is_above {
-            builder.push(self.status_cfg.above())
-        } else {
-            builder.push(self.status_cfg.below())
-        };
-
-        let prompt_id = if self.is_one_line {
-            builder.push_to(status_id, self.prompt_cfg.left_ratioed(3, 7).hidden())
-        } else {
-            builder.push_to(status_id, self.prompt_cfg.below().hidden())
-        };
-
-        let notifs_id = builder.push_to(prompt_id, self.notifs_cfg);
-
-        hook::add::<FocusedOn<PromptLine<U>, U>, U>({
-            move |pa, (_, prompt)| {
-                if prompt.area_id() == prompt_id
-                    && let Some(notifs_area) = notifs_id.area::<U>(pa)
-                {
-                    notifs_area.hide().unwrap();
-                    prompt.area(pa).reveal().unwrap();
-                }
-            }
-        });
-
-        hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>(move |pa, (prompt, _)| {
-            if prompt.area_id() == prompt_id
-                && let Some(notifs_area) = notifs_id.area::<U>(pa)
-            {
-                notifs_area.reveal().unwrap();
-                prompt.area(pa).hide().unwrap();
-            }
-        });
-
-        notifs_id
-    }
-}
-
-#[doc(hidden)]
-pub struct FooterWidgetsDummy;
-
-impl BuilderDummy for FooterWidgetsDummy {}

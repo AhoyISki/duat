@@ -329,52 +329,6 @@ pub trait Parser<U: Ui>: Send + 'static {
     }
 }
 
-/// A [`Parser`] builder struct
-pub trait ParserCfg<U: Ui> {
-    /// The [`Parser`] that this [`ParserCfg`] will construct
-    type Parser: Parser<U>;
-
-    /// Builds the [`Parser`]
-    ///
-    /// The [`FileTracker`] argument is very important for parsing.
-    /// You are going to keep track of [`Change`]s to the [`File`], as
-    /// well as where the [`File`] needs updates, through methods in
-    /// the [`FileTracker`].
-    ///
-    /// # Ranges to update
-    ///
-    /// In order to update the [`File`], you will need to tell Duat
-    /// which byte/[`Point`] ranges need to be updated. This can be
-    /// done manually through the [`FileTracker::add_range`]
-    /// function, which will tell Duat that the added range should be
-    /// updated by calling [`Parser::update`].
-    ///
-    /// However, the [`FileTracker`] can also _automatically_ decide
-    /// which [`Range`]s need to be updated. This is done through the
-    /// following methods:
-    ///
-    /// - [`FileTracker::track_changed_ranges`]: Will add every
-    ///   [`Change::added_range`] to the list of [`Ranges`] to update.
-    /// - [`FileTracker::track_changed_lines`]: Will add every line
-    ///   that was changed to the list. This can be useful for, for
-    ///   example, single line limited regex parsing, where you know
-    ///   that matches won't cross lines.
-    /// - [`FileTracker::track_area`]: Instead of tracking which
-    ///   ranges need updating, it will instead track the range that
-    ///   was printed to the screen. You can use this, for example,
-    ///   highlight every occurance of a word on screen.
-    /// - [`FileTracker::turn_off_tracking`]: Disables the automatic
-    ///   tracking feature.
-    ///
-    /// Of course, with automatic tracking, you can still manually add
-    /// ranges.
-    ///
-    /// This all means that you should decide which tracking strategy
-    /// you want to use. You can change it later, but I don't really
-    /// see a purpose to that to be honest.
-    fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text>;
-}
-
 #[derive(Default)]
 pub(super) struct Parsers<U: Ui> {
     list: RefCell<Vec<ParserParts<U>>>,
@@ -382,15 +336,16 @@ pub(super) struct Parsers<U: Ui> {
 
 impl<U: Ui> Parsers<U> {
     /// Attempts to add  a [`Parser`]
-    pub(super) fn add<Cfg: ParserCfg<U>>(&self, file: &File<U>, cfg: Cfg) -> Result<(), Text> {
+    pub(super) fn add<P: Parser<U>>(
+        &self,
+        file: &File<U>,
+        f: impl FnOnce(FileTracker) -> P,
+    ) -> Result<(), Text> {
         let mut parsers = self.list.borrow_mut();
-        if parsers
-            .iter()
-            .any(|rb| rb.ty == TypeId::of::<Cfg::Parser>())
-        {
+        if parsers.iter().any(|rb| rb.ty == TypeId::of::<P>()) {
             Err(txt!(
                 "There is already a parser of type [a]{}",
-                crate::utils::duat_name::<Cfg::Parser>()
+                crate::utils::duat_name::<P>()
             ))?;
         }
 
@@ -409,10 +364,10 @@ impl<U: Ui> Parsers<U> {
         };
 
         parsers.push(ParserParts {
-            parser: Some(Box::new(cfg.build(file, tracker)?)),
+            parser: Some(Box::new(f(tracker))),
             ranges: ranges.clone(),
             update_requested,
-            ty: TypeId::of::<Cfg::Parser>(),
+            ty: TypeId::of::<P>(),
         });
 
         Ok(())

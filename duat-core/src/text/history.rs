@@ -115,31 +115,9 @@ impl History {
             index: remote.len() - 1,
         }
     }
-}
 
-impl Encode for History {
-    fn encode<E: bincode::enc::Encoder>(
-        &self,
-        encoder: &mut E,
-    ) -> Result<(), bincode::error::EncodeError> {
-        Encode::encode(&self.new_moment, encoder)?;
-        Encode::encode(&self.moments, encoder)?;
-        Encode::encode(&self.cur_moment, encoder)?;
-        Encode::encode(&*self.fetcher_moments.lock(), encoder)?;
-        Ok(())
-    }
-}
-
-impl<Context> Decode<Context> for History {
-    fn decode<D: bincode::de::Decoder<Context = Context>>(
-        decoder: &mut D,
-    ) -> Result<Self, bincode::error::DecodeError> {
-        Ok(History {
-            new_moment: Decode::decode(decoder)?,
-            moments: Decode::decode(decoder)?,
-            cur_moment: Decode::decode(decoder)?,
-            fetcher_moments: Arc::new(Mutex::new(Decode::decode(decoder)?)),
-        })
+    pub(super) fn prepare_for_reloading(&mut self) {
+        self.fetcher_moments = Arc::default();
     }
 }
 

@@ -249,7 +249,7 @@ use crossterm::style::Color;
 
 pub use self::{global::*, parameters::*};
 use crate::{
-    context::{self, sender},
+    context::{self, Handle, sender},
     data::{Pass, RwData},
     file::{File, PathKind},
     form::FormId,
@@ -276,28 +276,32 @@ pub(crate) fn add_session_commands<U: Ui>() {
     add!(["quit", "q"], |pa, handle: Option<Buffer<U>>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::fixed_file::<U>(pa)?,
+            None => context::cur_file::<U>(pa),
         };
 
         let file = handle.read(pa);
-        let pk = file.path_kind();
         if file.text().has_unsaved_changes() && file.exists() {
-            return Err(txt!("{} has unsaved changes", pk.clone()).build());
+            return Err(txt!("{} has unsaved changes", file.name()).build());
         }
 
-        sender().send(DuatEvent::CloseFile(pk.clone())).unwrap();
-        Ok(Some(txt!("Closed {pk}").build()))
+        context::windows::<U>().close(pa, &handle)?;
+
+        Ok(Some(
+            txt!("Closed [file]{}", handle.read(pa).name()).build(),
+        ))
     });
 
     add!(["quit!", "q!"], |pa, handle: Option<Buffer<U>>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::fixed_file::<U>(pa)?,
+            None => context::cur_file::<U>(pa),
         };
 
-        let pk = handle.read(pa).path_kind();
-        sender().send(DuatEvent::CloseFile(pk.clone())).unwrap();
-        Ok(Some(txt!("Closed {pk}").build()))
+        context::windows::<U>().close(pa, &handle)?;
+
+        Ok(Some(
+            txt!("Forcefully closed {}", handle.read(pa).name()).build(),
+        ))
     });
 
     add!(["quit-all", "qa"], |pa| {
@@ -326,7 +330,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["write", "w"], |pa, path: Option<ValidFile<U>>| {
-        let handle = context::fixed_file::<U>(pa)?;
+        let handle = context::cur_file::<U>(pa);
         let file = handle.write(pa);
 
         let (bytes, name) = if let Some(path) = path {
@@ -346,7 +350,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["write-quit", "wq"], |pa, path: Option<ValidFile<U>>| {
-        let handle = context::fixed_file::<U>(pa)?;
+        let handle = context::cur_file::<U>(pa);
 
         let (bytes, name) = {
             let file = handle.write(pa);
@@ -358,9 +362,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
             (bytes, file.name())
         };
 
-        sender()
-            .send(DuatEvent::CloseFile(handle.read(pa).path_kind()))
-            .unwrap();
+        context::windows::<U>().close(pa, &handle)?;
+
         match bytes {
             Some(bytes) => Ok(Some(
                 txt!("Closed [file]{name}[], writing [a]{bytes}[] bytes").build(),
@@ -444,6 +447,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["edit", "e"], |pa, arg: FileOrBufferOrCfg<U>| {
+        let windows = context::windows::<U>();
+
         let pk = match arg {
             FileOrBufferOrCfg::Cfg => {
                 PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs"))
@@ -453,13 +458,15 @@ pub(crate) fn add_session_commands<U: Ui>() {
             }
             FileOrBufferOrCfg::File(path) => PathKind::from(path),
             FileOrBufferOrCfg::Buffer(handle) => {
-                let pk = handle.read(pa).path_kind();
-                mode::reset_to_file::<U>(pk.clone(), true);
-                return Ok(Some(txt!("Switched to {pk}").build()));
+                mode::reset_to(handle.to_dyn());
+                return Ok(Some(txt!("Switched to {}", handle.read(pa).name()).build()));
             }
         };
 
-        sender().send(DuatEvent::OpenFile(pk.clone())).unwrap();
+        let file = File::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
+        let handle = windows.new_file(pa, file);
+        context::set_current_node(pa, handle);
+
         return Ok(Some(txt!("Opened {pk}").build()));
     });
 
@@ -487,20 +494,23 @@ pub(crate) fn add_session_commands<U: Ui>() {
             }
         };
 
-        sender().send(DuatEvent::OpenWindow(pk.clone())).unwrap();
+        let file_cfg = *crate::session::FILE_CFG.get().unwrap();
+        let node = windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
+
         return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window").build())));
     });
 
     add!(["buffer", "b"], |pa, handle: OtherBuffer<U>| {
-        let pk = handle.read(pa).path_kind();
-        mode::reset_to_file::<U>(pk.clone(), true);
-        Ok(Some(txt!("Switched to [a]{pk}").build()))
+        mode::reset_to::<U>(handle.to_dyn());
+        Ok(Some(
+            txt!("Switched to [file]{}", handle.read(pa).name()).build(),
+        ))
     });
 
     add!("next-file", |pa, flags: Flags| {
         let windows = context::windows::<U>();
-        let handle = context::fixed_file::<U>(pa)?;
-        let win = context::cur_window();
+        let handle = context::cur_file::<U>(pa);
+        let win = context::cur_window::<U>(pa);
 
         let wid = windows
             .get(pa, win)
@@ -509,27 +519,29 @@ pub(crate) fn add_session_commands<U: Ui>() {
             .position(|node| handle.ptr_eq(node.widget()))
             .unwrap();
 
-        let pk = if flags.word("global") {
+        let handle = if flags.word("global") {
             windows
                 .iter_around(pa, win, wid)
-                .find_map(get_pk(pa))
+                .find_map(as_file_handle)
                 .ok_or_else(|| txt!("There are no other open files"))?
         } else {
             windows
                 .iter_around(pa, win, wid)
                 .filter(|(lhs, ..)| *lhs == win)
-                .find_map(get_pk(pa))
+                .find_map(as_file_handle)
                 .ok_or_else(|| txt!("There are no other files open in this window"))?
         };
 
-        mode::reset_to_file::<U>(pk.clone(), true);
-        Ok(Some(txt!("Switched to {pk}").build()))
+        mode::reset_to(handle.to_dyn());
+        Ok(Some(
+            txt!("Switched to [file]{}", handle.read(pa).name()).build(),
+        ))
     });
 
     add!("prev-file", |pa, flags: Flags| {
         let windows = context::windows::<U>();
-        let handle = context::fixed_file::<U>(pa)?;
-        let win = context::cur_window();
+        let handle = context::cur_file::<U>(pa);
+        let win = context::cur_window::<U>(pa);
 
         let wid = windows
             .get(pa, win)
@@ -538,35 +550,38 @@ pub(crate) fn add_session_commands<U: Ui>() {
             .position(|node| handle.ptr_eq(node.widget()))
             .unwrap();
 
-        let pk = if flags.word("global") {
+        let handle = if flags.word("global") {
             windows
                 .iter_around_rev(pa, win, wid)
-                .find_map(get_pk(pa))
+                .find_map(as_file_handle)
                 .ok_or_else(|| txt!("There are no other open files"))?
         } else {
             windows
                 .iter_around(pa, win, wid)
                 .filter(|(lhs, ..)| *lhs == win)
-                .find_map(get_pk(pa))
+                .find_map(as_file_handle)
                 .ok_or_else(|| txt!("There are no other files open in this window"))?
         };
 
-        mode::reset_to_file::<U>(pk.clone(), true);
-
-        Ok(Some(txt!("Switched to {pk}").build()))
+        mode::reset_to(handle.to_dyn());
+        Ok(Some(
+            txt!("Switched to [file]{}", handle.read(pa).name()).build(),
+        ))
     });
 
     add!("swap", |pa, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
-        let lhs = lhs.read(pa).path_kind();
-        let rhs = match rhs {
-            Some(rhs) => rhs.read(pa).path_kind(),
-            None => context::fixed_file::<U>(pa)?.read(pa).path_kind(),
-        };
-        sender()
-            .send(DuatEvent::SwapFiles(lhs.clone(), rhs.clone()))
-            .unwrap();
+        let rhs = rhs.unwrap_or_else(|| context::cur_file(pa));
 
-        Ok(Some(txt!("Swapped {lhs} and {rhs}").build()))
+        context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
+
+        Ok(Some(
+            txt!(
+                "Swapped {} and {}",
+                lhs.read(pa).name(),
+                rhs.read(pa).name()
+            )
+            .build(),
+        ))
     });
 
     add!("colorscheme", |_pa, scheme: ColorSchemeArg| {
@@ -1136,6 +1151,8 @@ pub type CheckerFn = fn(
     Option<(Range<usize>, Text)>,
 );
 
-pub(crate) fn get_pk<U: Ui>(pa: &Pass) -> impl Fn((usize, usize, &Node<U>)) -> Option<PathKind> {
-    |(.., node)| node.read_as(pa).map(|f: &File<U>| f.path_kind())
+pub(crate) fn as_file_handle<U: Ui>(
+    (.., node): (usize, usize, &Node<U>),
+) -> Option<Handle<File<U>, U>> {
+    node.try_downcast()
 }

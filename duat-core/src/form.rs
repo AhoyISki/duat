@@ -21,8 +21,7 @@ pub trait ColorScheme: Send + Sync + 'static {
     ///
     /// This can technically do anything, mostly because one might
     /// want to do a bunch of `if`s and `else`s in order to get to a
-    /// finalized [`ColorScheme`], but you should refrain from doing
-    /// anything but that in this function.
+    /// finalized [`ColorScheme`].
     fn apply(&self);
 
     /// The name of this [`ColorScheme`], shouldn't be altered
@@ -396,9 +395,6 @@ mod global {
 
     /// Returns the [`FormId`] from the name of a [`Form`]
     ///
-    /// You can also pass multiple names, in order to get a list of
-    /// ids.
-    ///
     /// If there is no [`Form`] with the given name, a new one is
     /// created, which will behave according to the following
     /// priority:
@@ -423,32 +419,30 @@ mod global {
     ///
     /// [`HashMap`]: std::collections::HashMap
     /// [default `Form`]: Form::new
-    pub macro id_of {
-        ($form:expr) => {{
-            use $crate::form::{FormId, _set_many};
+    // SAFETY: Since _set_many always resolves to the same value, then the
+    // static muts should eventually be set to their correct values, after
+    // which no problems can occurr.
+    // Before that point, the absolute worst thing that could happen is
+    // DEFAULT_ID will be returned instead of the correct id (if the two
+    // unsafe setting statements are in the wrong order for some reason),
+    // but this should pretty much never happen.
+    pub macro id_of($form:expr) {{
+        use $crate::form::{_set_many, DEFAULT_ID, FormId};
 
-            static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
-            *ID.get_or_init(|| {
-                let name = $form.to_string();
-                _set_many(true, vec![(name, None)])[0]
-            })
-        }},
-        ($($form:expr),+) => {{
-            use $crate::form::{Form, FormId, Kind, _set_many};
-
-            static IDS: std::sync::OnceLock<&[FormId]> = std::sync::OnceLock::new();
-            let ids = *IDS.get_or_init(|| {
-                let mut ids = Vec::new();
-                let names = vec![$( ($form, None) ),+];
-                for name in names.iter() {
-                    ids.push(id_from_name(name));
-                }
-                _set_many(true, names);
-                ids.leak()
-            });
-            ids
-        }}
-    }
+        static mut WAS_SET: bool = false;
+        static mut ID: FormId = DEFAULT_ID;
+        if unsafe { WAS_SET } {
+            unsafe { ID }
+        } else {
+            let name = $form.to_string();
+            let id = _set_many(true, vec![(name, None)])[0];
+            unsafe {
+                ID = id;
+                WAS_SET = true;
+            }
+            id
+        }
+    }}
 
     /// Non static version of [`id_of!`]
     ///
@@ -1143,6 +1137,7 @@ impl Palette {
             set_bg: true,
             set_ul: true,
             reset_attrs: false,
+            prev_style: None,
         }
     }
 }
@@ -1325,6 +1320,7 @@ pub struct Painter {
     set_bg: bool,
     set_ul: bool,
     reset_attrs: bool,
+    prev_style: Option<ContentStyle>,
 }
 
 impl Painter {
@@ -1419,8 +1415,9 @@ impl Painter {
     ///
     /// [`absolute_style`]: Painter::absolute_style
     #[inline(always)]
-    pub fn relative_style(&mut self) -> ContentStyle {
-        let mut style = self.absolute_style();
+    pub fn relative_style(&mut self) -> Option<ContentStyle> {
+        let abs_style = self.absolute_style();
+        let mut style = abs_style;
 
         if style.attributes.has(Attribute::Reset) || self.reset_attrs {
             style.attributes.set(Attribute::Reset);
@@ -1430,13 +1427,16 @@ impl Painter {
         } else {
             style.foreground_color = self
                 .set_fg
-                .then_some(style.foreground_color.unwrap_or(Color::Reset));
+                .then_some(style.foreground_color.unwrap_or(Color::Reset))
+                .filter(|fg| Some(*fg) != self.prev_style.and_then(|s| s.foreground_color));
             style.background_color = self
                 .set_bg
-                .then_some(style.background_color.unwrap_or(Color::Reset));
+                .then_some(style.background_color.unwrap_or(Color::Reset))
+                .filter(|bg| Some(*bg) != self.prev_style.and_then(|s| s.background_color));
             style.underline_color = self
                 .set_ul
-                .then_some(style.underline_color.unwrap_or(Color::Reset));
+                .then_some(style.underline_color.unwrap_or(Color::Reset))
+                .filter(|ul| Some(*ul) != self.prev_style.and_then(|s| s.underline_color));
         }
 
         self.set_fg = false;
@@ -1444,7 +1444,24 @@ impl Painter {
         self.set_ul = false;
         self.reset_attrs = false;
 
-        style
+        if let Some(prev_style) = self.prev_style.replace(abs_style) {
+            (style != prev_style && style != Default::default()).then_some(style)
+        } else {
+            Some(style)
+        }
+    }
+
+    /// Makes it so the next call to [`relative_style`] returns the
+    /// same thing as a call to [`absolute_style`]
+    ///
+    /// [`relative_style`]: Self::relative_style
+    /// [`absolute_style`]: Self::absolute_style
+    pub fn reset_prev_style(&mut self) {
+        self.prev_style = None;
+        self.set_fg = true;
+        self.set_bg = true;
+        self.set_ul = true;
+        self.reset_attrs = true;
     }
 
     /// Applies the `"caret.main"` [`Form`]

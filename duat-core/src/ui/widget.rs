@@ -38,7 +38,7 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::sync::{Arc, Mutex};
 
-use super::{Area, AreaId, PushSpecs, Ui};
+use super::{Area, Ui};
 use crate::{
     cfg::PrintCfg,
     context::Handle,
@@ -46,7 +46,6 @@ use crate::{
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
-    ui::{BuildInfo, GetAreaId},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -288,29 +287,6 @@ use crate::{
 /// [`Plugin`]: crate::Plugin
 /// [`File`]: crate::file::File
 pub trait Widget<U: Ui>: Send + 'static {
-    /// The configuration type
-    ///
-    /// This configuration type is used when pushing [`Widget`]s
-    /// around the screen. It should follow the builder pattern,
-    /// making it very easy to concatenatively (?) modify it before
-    /// adding it in.
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    type Cfg: Default + WidgetCfg<U, Widget = Self>
-    where
-        Self: Sized;
-
-    /// Returns the default [`WidgetCfg`]
-    ///
-    /// Not meant to be manually implemented.
-    fn cfg() -> Self::Cfg
-    where
-        Self: Sized,
-    {
-        Self::Cfg::default()
-    }
-
     ////////// Stateful functions
 
     /// Updates the widget, allowing the modification of its
@@ -415,7 +391,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// implemented,can be found at [`PrintCfg::new`].
     ///
     /// [configuration]: PrintCfg
-    fn print_cfg(&self) -> PrintCfg {
+    fn get_print_cfg(&self) -> PrintCfg {
         PrintCfg::new()
     }
 
@@ -429,57 +405,10 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`File::print`]: crate::file::File::print
-    fn print(&mut self, painter: Painter, area: &U::Area) {
-        let cfg = self.print_cfg();
-        area.print(self.text_mut(), cfg, painter)
+    fn print(&self, painter: Painter, area: &U::Area) {
+        let cfg = self.get_print_cfg();
+        area.print(self.text(), cfg, painter)
     }
-}
-
-/// A configuration struct for a [`Widget`]
-///
-/// This configuration is used to make adjustments on how a widget
-/// will be added to a file or a window. These adjustments are
-/// primarily configurations for the widget itself, and to what
-/// direction it will be pushed:
-///
-/// ```rust
-/// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     hook::add::<File>(|_, (file_cfg, builder)| {
-///         // Change pushing direction to the right.
-///         let cfg = LineNumbers::cfg().on_the_right();
-///         // Changes the alignment of the numbers.
-///         // Then pushes the widget.
-///         builder.push(cfg.align_right().align_main_left());
-///         file_cfg
-///     });
-/// }
-/// ```
-///
-/// In this case, the `LineNumbers::cfg` function will return the
-/// `LineNumbers::Cfg` type, which can be modified to then be pushed
-/// to the [`File`] via the [`builder`].
-///
-/// [`File`]: crate::file::File
-/// [`builder`]: super::UiBuilder
-pub trait WidgetCfg<U: Ui>: Sized + 'static {
-    /// The [`Widget`] that will be created by this [`WidgetCfg`]
-    type Widget: Widget<U, Cfg = Self>;
-
-    /// Builds the [`Widget`] alongside [`PushSpecs`]
-    ///
-    /// The [`PushSpecs`] are determined by the [`WidgetCfg`] itself,
-    /// and the end user is meant to change it by public facing
-    /// functions in the [`WidgetCfg`]. This is to prevent nonsensical
-    /// [`Widget`] pushing, like [`LineNumbers`] on the bottom of a
-    /// [`File`], for example.
-    ///
-    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-    /// [`File`]: crate::file::File
-    fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs);
 }
 
 /// Elements related to the [`Widget`]s
@@ -493,12 +422,12 @@ pub(crate) struct Node<U: Ui> {
 }
 
 impl<U: Ui> Node<U> {
-    /// Returns a new [`Node`]
-    pub(crate) fn new<W: Widget<U>>(widget: RwData<W>, area: U::Area, id: AreaId) -> Self {
-        let handle = Handle::new(widget, area, Arc::new(Mutex::new("")), id);
-        Self::from_handle(handle)
+    /// Returns a new `Node`
+    pub(crate) fn new<W: Widget<U>>(widget: RwData<W>, area: Arc<U::Area>) -> Self {
+        Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new(""))))
     }
 
+    /// Returns a `Node` from an existing [`Handle`]
     pub(crate) fn from_handle<W: Widget<U>>(handle: Handle<W, U>) -> Self {
         Self {
             handle: handle.to_dyn(),
@@ -557,11 +486,6 @@ impl<U: Ui> Node<U> {
         &self.handle
     }
 
-    /// The [`Widget`]s that are related to this [`Widget`]
-    pub(crate) fn related_widgets(&self) -> &RwData<Vec<Handle<dyn Widget<U>, U>>> {
-        self.handle.related()
-    }
-
     ////////// Querying functions
 
     /// Wether the value within is `W`
@@ -582,17 +506,25 @@ impl<U: Ui> Node<U> {
     ////////// Eventful functions
 
     /// Updates and prints this [`Node`]
-    pub(crate) fn update_and_print(&self, pa: &mut Pass) {
+    pub(crate) fn update_and_print(&self, pa: &mut Pass, win: usize) {
+        if self.handle().is_closed(pa) {
+            return;
+        }
+
         (self.update)(pa);
 
         let (widget, area) = self.handle.write_with_area(pa);
-        let cfg = widget.print_cfg();
+        let cfg = widget.get_print_cfg();
         widget.text_mut().add_selections(area, cfg);
 
         if area.print_info() != <U::Area as Area>::PrintInfo::default() {
             widget.text_mut().update_bounds();
         }
 
+        let widgets_to_spawn = self.handle.text_mut(pa).get_widget_spawns();
+        for spawn in widgets_to_spawn {
+            spawn(pa, win);
+        }
         (self.print)(pa);
 
         self.handle.text_mut(pa).remove_selections();
@@ -610,16 +542,10 @@ impl<U: Ui> Node<U> {
     }
 }
 
-impl<U: Ui> GetAreaId for Node<U> {
-    fn area_id(&self) -> AreaId {
-        self.handle.area_id()
+impl<U: Ui> std::fmt::Debug for Node<U> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+            .field("handle", &self.handle)
+            .finish_non_exhaustive()
     }
 }
-
-impl<T: GetAreaId, U: Ui> PartialEq<T> for Node<U> {
-    fn eq(&self, other: &T) -> bool {
-        self.area_id() == other.area_id()
-    }
-}
-
-impl<U: Ui> Eq for Node<U> {}

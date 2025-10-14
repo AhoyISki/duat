@@ -10,7 +10,7 @@ use std::{
     any::TypeId,
     path::PathBuf,
     sync::{
-        Mutex,
+        Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
         mpsc,
     },
@@ -23,44 +23,44 @@ use crate::{
     Plugins,
     cfg::PrintCfg,
     clipboard::Clipboard,
-    cmd::{self, get_pk},
+    cmd,
     context::{self, Cache, sender},
     data::Pass,
-    file::{File, FileCfg, PathKind},
+    file::File,
     form,
     hook::{
         self, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileClosed, FileReloaded, FocusedOnDuat,
         UnfocusedFromDuat,
     },
     mode,
-    text::Bytes,
     ui::{
-        Area, Ui, Widget, Windows,
+        Area, Ui, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
 
+pub(crate) static FILE_CFG: OnceLock<PrintCfg> = OnceLock::new();
+
 /// Configuration for a session of Duat
 #[doc(hidden)]
 pub struct SessionCfg<U: Ui> {
-    file_cfg: FileCfg<U>,
-    layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
+    layout: Box<Mutex<dyn Layout<U>>>,
 }
 
 impl<U: Ui> SessionCfg<U> {
-    pub fn new(clipb: &'static Mutex<Clipboard>) -> Self {
+    pub fn new(clipb: &'static Mutex<Clipboard>, file_cfg: PrintCfg) -> Self {
         crate::clipboard::set_clipboard(clipb);
+        FILE_CFG.set(file_cfg).unwrap();
 
         SessionCfg {
-            file_cfg: FileCfg::new(),
-            layout_fn: Box::new(|| Box::new(MasterOnLeft)),
+            layout: Box::new(Mutex::new(MasterOnLeft)),
         }
     }
 
     pub fn build(
         self,
         ms: &'static U::MetaStatics,
-        files: Vec<Vec<FileParts>>,
+        files: Vec<Vec<ReloadedFile<U>>>,
         already_plugged: Vec<TypeId>,
     ) -> Session<U> {
         let plugins = Plugins::<U>::_new();
@@ -83,60 +83,35 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let pa = unsafe { &mut Pass::new() };
 
-        context::set_windows::<U>(Windows::new());
-
         cmd::add_session_commands::<U>();
 
-        let file_cfg = self.file_cfg.clone();
-        let inherited_cfgs = files.into_iter().enumerate().map(|(i, cfgs)| {
-            let cfgs = cfgs.into_iter().map(|file_ret| {
-                let bytes = file_ret.bytes;
-                let pk = file_ret.path_kind;
-                let unsaved = file_ret.has_unsaved_changes;
-                let file_cfg = file_cfg.clone().take_from_prev(bytes, pk, unsaved);
-                (file_cfg, file_ret.is_active)
-            });
-            (i, cfgs)
-        });
+        let session = Session { ms };
 
-        let mut session = Session {
-            ms,
-            file_cfg: self.file_cfg,
-            layout_fn: self.layout_fn,
-        };
+        let mut layout = Some(self.layout);
 
-        let mut hasnt_set_cur = true;
-        for (win, mut cfgs) in inherited_cfgs {
-            let (file_cfg, is_active) = cfgs.next().unwrap();
+        for mut rel_files in files.into_iter().map(|rf| rf.into_iter()) {
+            let ReloadedFile { mut file, is_active } = rel_files.next().unwrap();
+            *file.cfg() = *FILE_CFG.get().unwrap();
 
-            let node = context::windows().new_window(
-                pa,
-                ms,
-                file_cfg,
-                (session.layout_fn)(),
-                hasnt_set_cur,
-            );
-            hasnt_set_cur = false;
-
-            if is_active {
-                context::set_cur(pa, node.try_downcast(), node.clone());
-                if win != context::cur_window() {
-                    context::set_cur_window(win);
-                    U::switch_window(session.ms, win);
+            if let Some(layout) = layout.take() {
+                Windows::initialize(pa, file, layout, ms);
+            } else {
+                let node = context::windows().new_window(pa, file);
+                if is_active {
+                    context::set_current_node(pa, node);
                 }
             }
 
-            for (file_cfg, is_active) in cfgs {
-                session.open_file_from_cfg(pa, file_cfg, is_active, win);
+            for ReloadedFile { mut file, is_active } in rel_files {
+                *file.cfg() = *FILE_CFG.get().unwrap();
+                let node = context::windows::<U>().new_file(pa, file);
+                if is_active {
+                    context::set_current_node(pa, node);
+                }
             }
         }
 
         session
-    }
-
-    #[doc(hidden)]
-    pub fn set_print_cfg(&mut self, cfg: PrintCfg) {
-        *self.file_cfg.print_cfg() = cfg;
     }
 }
 
@@ -144,8 +119,6 @@ impl<U: Ui> SessionCfg<U> {
 #[doc(hidden)]
 pub struct Session<U: Ui> {
     ms: &'static U::MetaStatics,
-    file_cfg: FileCfg<U>,
-    layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
 
 impl<U: Ui> Session<U> {
@@ -155,15 +128,18 @@ impl<U: Ui> Session<U> {
         duat_rx: mpsc::Receiver<DuatEvent>,
         spawn_count: &'static AtomicUsize,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
-    ) -> (Vec<Vec<FileParts>>, mpsc::Receiver<DuatEvent>) {
+    ) -> (Vec<Vec<ReloadedFile<U>>>, mpsc::Receiver<DuatEvent>) {
+        fn get_windows_nodes<U: Ui>(pa: &Pass) -> Vec<Vec<crate::ui::Node<U>>> {
+            context::windows::<U>()
+                .windows(pa)
+                .map(|window| window.nodes().cloned().collect())
+                .collect()
+        }
+
         form::set_sender(DuatSender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
         let pa = unsafe { &mut Pass::new() };
-        // SAFETY: Windows won't be accessible via &mut Pass by the end user,
-        // so I should be able to use a shared Pass in order to allow easier
-        // use here, whilst using the other &mut Pass for mutation operations.
-        let wins_pa = unsafe { &Pass::new() };
 
         hook::trigger(pa, ConfigLoaded(()));
 
@@ -172,22 +148,55 @@ impl<U: Ui> Session<U> {
         };
         mode_fn(pa);
 
-        let win = context::cur_window();
-        for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
-            node.update_and_print(pa);
-        }
+        let mut reload_requested = false;
+        let mut reprint_screen = false;
 
         U::flush_layout(self.ms);
 
-        let mut reload_requested = false;
-        let mut reprint_screen = false;
+        let mut print_screen = {
+            let mut last_win = context::cur_window::<U>(pa);
+            let mut windows_nodes = get_windows_nodes::<U>(pa);
+
+            move |pa: &mut Pass, force: bool| {
+                let cur_win = context::cur_window::<U>(pa);
+
+                let mut printed_at_least_one = false;
+                for node in windows_nodes.get(last_win).unwrap() {
+                    if force || cur_win != last_win || node.needs_update(pa) {
+                        node.update_and_print(pa, last_win);
+                        printed_at_least_one = true;
+                    }
+                }
+
+				// Additional Widgets may have been created in the meantime.
+				// DDOS vulnerable i guess.
+                while let Some(new_additions) = context::windows::<U>().get_additions(pa) {
+                    U::flush_layout(self.ms);
+
+                    let cur_win = context::cur_window::<U>(pa);
+                    for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
+                        node.update_and_print(pa, cur_win);
+                    }
+
+                    windows_nodes = get_windows_nodes(pa);
+                }
+
+                if printed_at_least_one {
+                    U::print(self.ms);
+                }
+
+                last_win = cur_win;
+            }
+        };
+
+        print_screen(pa, true);
 
         loop {
             if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
                 mode_fn(pa);
             }
 
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
                 match event {
                     DuatEvent::KeySent(key) => {
                         mode::send_key(pa, key);
@@ -207,21 +216,6 @@ impl<U: Ui> Session<U> {
                     DuatEvent::Resized | DuatEvent::FormChange => {
                         reprint_screen = true;
                         continue;
-                    }
-                    DuatEvent::OpenFile(pk) => {
-                        self.open_file(pa, context::cur_window(), pk.as_path())
-                    }
-                    DuatEvent::CloseFile(pk) => {
-                        if self.close_file(pa, pk) {
-                            continue;
-                        }
-                    }
-                    DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(pa, lhs, rhs),
-                    DuatEvent::OpenWindow(pk) => self.open_window_with(pa, pk),
-                    DuatEvent::SwitchWindow(win) => {
-                        reprint_screen = true;
-                        context::set_cur_window(win);
-                        U::switch_window(self.ms, win);
                     }
                     DuatEvent::FocusedOnDuat => {
                         hook::trigger(pa, FocusedOnDuat(()));
@@ -244,7 +238,8 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        for handle in context::windows::<U>().file_handles(wins_pa) {
+                        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
+                        for handle in handles {
                             hook::trigger(pa, FileReloaded((handle, Cache::new())));
                         }
 
@@ -260,7 +255,8 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        for handle in context::windows::<U>().file_handles(wins_pa) {
+                        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
+                        for handle in handles {
                             hook::trigger(pa, FileClosed((handle, Cache::new())));
                         }
 
@@ -268,27 +264,14 @@ impl<U: Ui> Session<U> {
                         return (Vec::new(), duat_rx);
                     }
                 }
-            } else if reprint_screen {
-                let win = context::cur_window();
-                for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
-                    node.update_and_print(pa);
-                }
-                reprint_screen = false;
-                continue;
             }
 
-            let win = context::cur_window();
-            for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
-                if node.needs_update(pa) {
-                    node.update_and_print(pa);
-                }
-            }
-
-            U::print(self.ms);
+            print_screen(pa, reprint_screen);
+            reprint_screen = false;
         }
     }
 
-    fn take_files(self, pa: &mut Pass) -> Vec<Vec<FileParts>> {
+    fn take_files(self, pa: &mut Pass) -> Vec<Vec<ReloadedFile<U>>> {
         let files = context::windows::<U>().entries(pa).fold(
             Vec::new(),
             |mut file_handles, (win, _, node)| {
@@ -307,110 +290,18 @@ impl<U: Ui> Session<U> {
         files
             .into_iter()
             .map(|files| {
-                let files = files.into_iter().map(|handle| {
-                    let (file, area) = handle.write_with_area(pa);
+                files
+                    .into_iter()
+                    .map(|handle| {
+                        let (file, area) = handle.write_with_area(pa);
+                        let file = file.prepare_for_reloading();
+                        let is_active = area.is_active();
 
-                    let text = std::mem::take(file.text_mut());
-                    let has_unsaved_changes = text.has_unsaved_changes();
-                    let bytes = text.take_bytes();
-                    let path_kind = file.path_kind();
-                    let is_active = area.is_active();
-
-                    FileParts {
-                        bytes,
-                        path_kind,
-                        is_active,
-                        has_unsaved_changes,
-                    }
-                });
-                files.collect()
+                        ReloadedFile { file, is_active }
+                    })
+                    .collect()
             })
             .collect()
-    }
-
-    fn open_file_from_cfg(
-        &mut self,
-        pa: &mut Pass,
-        file_cfg: FileCfg<U>,
-        is_active: bool,
-        win: usize,
-    ) {
-        match context::windows::<U>().new_file(pa, win, file_cfg) {
-            Ok(node) => {
-                if is_active {
-                    context::set_cur(pa, node.try_downcast(), node.clone());
-                    if context::cur_window() != win {
-                        context::set_cur_window(win);
-                        U::switch_window(self.ms, win);
-                    }
-                }
-            }
-            Err(err) => context::error!("{err}"),
-        }
-    }
-
-    fn open_file(&self, pa: &mut Pass, win: usize, path: Option<PathBuf>) {
-        match context::windows::<U>().new_file(
-            pa,
-            win,
-            self.file_cfg.clone().open_path(path.clone()),
-        ) {
-            Ok(node) => {
-                let handle = node.handle().try_downcast::<File<U>>().unwrap();
-                mode::reset_to_file::<U>(handle.read(pa).path_kind(), false);
-            }
-            Err(err) => context::error!("{err}"),
-        }
-    }
-}
-
-// Loop functions
-impl<U: Ui> Session<U> {
-    /// Closes a [`File`], returns `true` if duat must `continue`
-    fn close_file(&self, pa: &mut Pass, pk: PathKind) -> bool {
-        let cur_pk = context::fixed_file::<U>(pa).unwrap().read(pa).path_kind();
-
-        let windows = context::windows::<U>();
-        let (win, wid) = match windows.file_entry(pa, pk.clone()) {
-            Ok((win, wid, _)) => (win, wid),
-            Err(err) => {
-                context::warn!("{err}");
-                return false;
-            }
-        };
-
-        // If we are on the current File, switch to the next one.
-        if pk == cur_pk {
-            let Some(next_pk) = windows.iter_around(pa, win, wid).find_map(get_pk(pa)) else {
-                sender().send(DuatEvent::Quit).unwrap();
-                return false;
-            };
-
-            // If I send the switch signal first, and the Window is deleted, I
-            // will have to synchronously change the current window number
-            // without affecting anything else.
-            mode::reset_to_file::<U>(next_pk.clone(), true);
-            context::windows::<U>().close_file(pa, pk, self.ms);
-
-            true
-        } else {
-            context::windows::<U>().close_file(pa, pk, self.ms);
-            false
-        }
-    }
-
-    fn swap_files(&self, pa: &mut Pass, lhs: PathKind, rhs: PathKind) {
-        context::windows::<U>().swap_files(pa, lhs, rhs, self.ms);
-    }
-
-    fn open_window_with(&self, pa: &mut Pass, pk: PathKind) {
-        context::windows::<U>().open_or_move_to_new_window(
-            pa,
-            pk,
-            self.ms,
-            (self.layout_fn)(),
-            self.file_cfg.clone(),
-        );
     }
 }
 
@@ -429,24 +320,6 @@ pub enum DuatEvent {
     ///
     /// [`Form`]: crate::form::Form
     FormChange,
-    /// Open a new [`File`]
-    ///
-    /// [`File`]: crate::file::File
-    OpenFile(PathKind),
-    /// Close an open [`File`]
-    ///
-    /// [`File`]: crate::file::File
-    CloseFile(PathKind),
-    /// Swap two [`File`]s
-    ///
-    /// [`File`]: crate::file::File
-    SwapFiles(PathKind, PathKind),
-    /// Open a new window with a [`File`]
-    ///
-    /// [`File`]: crate::file::File
-    OpenWindow(PathKind),
-    /// Switch to the n'th window
-    SwitchWindow(usize),
     /// Focused on Duat
     FocusedOnDuat,
     /// Unfocused from Duat
@@ -508,36 +381,20 @@ impl DuatSender {
 ///
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
-pub struct FileParts {
-    bytes: Bytes,
-    path_kind: PathKind,
+pub struct ReloadedFile<U: Ui> {
+    file: File<U>,
     is_active: bool,
-    has_unsaved_changes: bool,
 }
 
-impl FileParts {
+impl<U: Ui> ReloadedFile<U> {
     /// Creates a new [`FileParts`] from parts gathered from arguments
     ///
     /// **MEANT TO BE USED BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
     pub fn by_args(path: Option<PathBuf>, is_active: bool) -> Result<Self, std::io::Error> {
-        let (bytes, path_kind) = match path.map(|p| (std::fs::read(&p), p)) {
-            Some((Ok(bytes), path)) => (
-                unsafe { String::from_utf8_unchecked(bytes) },
-                PathKind::SetExists(path),
-            ),
-            Some((Err(err), path)) if err.kind() == std::io::ErrorKind::NotFound => {
-                (String::new(), PathKind::SetAbsent(path))
-            }
-            Some((Err(err), _)) => return Err(err),
-            None => (String::new(), PathKind::new_unset()),
-        };
-
         Ok(Self {
-            bytes: Bytes::new(&bytes),
-            path_kind,
+            file: File::new(path, PrintCfg::default_for_input()),
             is_active,
-            has_unsaved_changes: false,
         })
     }
 }
