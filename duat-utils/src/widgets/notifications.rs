@@ -11,7 +11,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use duat_core::{
     context::{Level, Record},
-    hook::KeysSent,
     prelude::*,
     ui::{PushTarget, Side},
 };

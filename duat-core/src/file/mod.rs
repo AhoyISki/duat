@@ -13,7 +13,6 @@
 //! [`Cursor`]: crate::mode::Cursor
 use std::{
     fs,
-    marker::PhantomData,
     path::{Path, PathBuf},
     sync::Arc,
 };

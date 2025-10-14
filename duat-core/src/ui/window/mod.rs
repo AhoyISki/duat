@@ -14,7 +14,6 @@ use crate::{
     mode,
     text::{SpawnId, Text, txt},
     ui::{MutArea, PushSpecs, SpawnSpecs},
-    utils::duat_name,
 };
 
 mod builder;
