@@ -84,7 +84,7 @@ mod window;
 ///     }
 /// }
 /// ```
-pub trait Ui: 'static {
+pub trait Ui: Send + Sync + 'static {
     /// The [`Area`] of this [`Ui`]
     type Area: Area<Ui = Self>
     where
@@ -1014,6 +1014,48 @@ impl<U: Ui> PushTarget<U> for UiBuilder<U> {
     }
 }
 
+struct TypeErasedUi {
+    ui: &'static dyn Any,
+    fns: &'static TypeErasedUiFunctions,
+}
+
+struct TypeErasedUiFunctions {
+    new_root: fn(pa: &Pass, &dyn Any, widget: &RwData<dyn Widget>) -> TypeErasedArea,
+    new_spawned: fn(
+        pa: &Pass,
+        &dyn Any,
+        widget: &RwData<dyn Widget>,
+        spawn_id: SpawnId,
+        specs: SpawnSpecs,
+        win: usize,
+    ) -> TypeErasedArea,
+}
+
+impl TypeErasedUiFunctions {
+    fn new<U: Ui>() -> &'static Self
+    where
+        U::Area: PartialEq,
+    {
+        &Self {
+            new_root: |pa, ui, widget| {
+                let ui: &U = ui.downcast_ref().unwrap();
+
+                TypeErasedArea::new::<U>(ui.new_root(get_cache::<U>(pa, widget)))
+            },
+            new_spawned: |pa, ui, widget, spawn_id, specs, win| {
+                let ui: &U = ui.downcast_ref().unwrap();
+
+                TypeErasedArea::new::<U>(ui.new_spawned(
+                    spawn_id,
+                    specs,
+                    get_cache::<U>(pa, widget),
+                    win,
+                ))
+            },
+        }
+    }
+}
+
 #[derive(Clone)]
 struct TypeErasedArea {
     area: RwData<dyn Area>,
@@ -1264,11 +1306,8 @@ impl TypeErasedPrintInfoFunctions {
     }
 }
 
-fn get_cache<U: Ui>(
-    pa: &mut Pass,
-    widget: &RwData<dyn Widget<U>>,
-) -> <<U as Ui>::Area as Area>::Cache {
-    if let Some(file) = widget.write_as::<File<U>>(pa) {
+fn get_cache<U: Ui>(pa: &Pass, widget: &RwData<dyn Widget<U>>) -> <<U as Ui>::Area as Area>::Cache {
+    if let Some(file) = widget.read_as::<File<U>>(pa) {
         match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
             Ok(cache) => cache,
             Err(err) => {
