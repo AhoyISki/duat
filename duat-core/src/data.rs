@@ -56,7 +56,7 @@ use std::{
     time::Duration,
 };
 
-use crate::ui::{Ui, Widget};
+use crate::ui::Widget;
 
 /// A container for shared read/write state
 ///
@@ -556,6 +556,79 @@ impl Pass {
     /// Be careful when using this!
     pub(crate) const unsafe fn new() -> Self {
         Pass(PhantomData)
+    }
+
+    /// Writes to two [`RwData`] at the same time
+    ///
+    /// This can only be done when the `RwData`s are of different
+    /// types since, if they were of the same type, they could be
+    /// pointing to the same data, which would be undefined behaviour.
+    ///
+    /// Also, this may only be done with sized types, since, if they
+    /// were unsized, like `dyn Widget` for example, if one of them
+    /// were statically known, their types would not be the same, even
+    /// though they may point to the same data.
+    ///
+    /// > [!IMPORTANT]
+    /// >
+    /// > For now, this type inequality check is only done when
+    /// > compiling the code with `cargo build`. This means thay you
+    /// > may not get diagnostics while just writing the code.
+    /// >
+    /// > Nevertheless, this is a compile-time check, so no need to
+    /// > worry about this failing at runtime.
+    pub fn write_two<'a, L: 'static, R: 'static>(
+        &'a mut self,
+        lhs: &'a RwData<L>,
+        rhs: &'a RwData<R>,
+    ) -> (&'a mut L, &'a mut R) {
+        static mut INTERNAL_PASS: Pass = unsafe { Pass::new() };
+
+        const {
+            assert!(
+                TypeId::of::<L>() != TypeId::of::<R>(),
+                "Can't write to two RwData of the same type, since they may point to the same data"
+            );
+        }
+
+        (lhs.write(self), rhs.write(unsafe { &mut INTERNAL_PASS }))
+    }
+
+    /// Writes to one [`RwData`] and reads from another at the same
+    /// time
+    ///
+    /// This can only be done when the `RwData`s are of different
+    /// types since, if they were of the same type, they could be
+    /// pointing to the same data, which would be undefined behaviour.
+    ///
+    /// Also, this may only be done with sized types, since, if they
+    /// were unsized, like `dyn Widget` for example, if one of them
+    /// were statically known, their types would not be the same, even
+    /// though they may point to the same data.
+    ///
+    /// > [!IMPORTANT]
+    /// >
+    /// > For now, this type inequality check is only done when
+    /// > compiling the code with `cargo build`. This means thay you
+    /// > may not get diagnostics while just writing the code.
+    /// >
+    /// > Nevertheless, this is a compile-time check, so no need to
+    /// > worry about this failing at runtime.
+    pub fn read_and_write<'a, L: 'static, R: 'static>(
+        &'a mut self,
+        lhs: &'a RwData<L>,
+        rhs: &'a RwData<R>,
+    ) -> (&'a mut L, &'a R) {
+        static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
+
+        const {
+            assert!(
+                TypeId::of::<L>() != TypeId::of::<R>(),
+                "Can't write to two RwData of the same type, since they may point to the same data"
+            );
+        }
+
+        (lhs.write(self), rhs.read(INTERNAL_PASS))
     }
 }
 

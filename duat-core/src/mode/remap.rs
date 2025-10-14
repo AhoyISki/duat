@@ -12,7 +12,7 @@ use crate::{
     data::{Pass, RwData},
     mode,
     text::{Ghost, Tagger, txt},
-    ui::{Ui, Widget},
+    ui::Widget,
 };
 
 mod global {
@@ -26,7 +26,6 @@ mod global {
         main_thread_only::MainThreadOnly,
         mode::Mode,
         text::{Builder, Text, txt},
-        ui::Ui,
     };
 
     static REMAPPER: MainThreadOnly<Remapper> = MainThreadOnly::new(Remapper::new());
@@ -384,7 +383,7 @@ mod global {
     /// The key sending function, to be used as a pointer
     fn send_key_fn<M: Mode>(pa: &mut Pass, key: KeyEvent) {
         // SAFETY: This function takes a Pass.
-        unsafe { REMAPPER.get() }.send_key::<M, U>(pa, key);
+        unsafe { REMAPPER.get() }.send_key::<M>(pa, key);
     }
 }
 
@@ -458,7 +457,7 @@ impl Remapper {
             if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
-                        remove_alias_and::<U>(pa, |_, _| {});
+                        remove_alias_and(pa, |_, _| {});
                     }
 
                     clear_cur_seq(pa);
@@ -479,7 +478,7 @@ impl Remapper {
                 } else if remap.is_alias {
                     remapper.cur_seq.write(pa).1 = true;
 
-                    remove_alias_and::<U>(pa, |widget, main| {
+                    remove_alias_and(pa, |widget, main| {
                         widget.text_mut().insert_tag(
                             Tagger::for_alias(),
                             main,
@@ -489,7 +488,7 @@ impl Remapper {
                 }
             } else if is_alias {
                 // Lock dropped here, before any .awaits
-                remove_alias_and::<U>(pa, |_, _| {});
+                remove_alias_and(pa, |_, _| {});
                 clear_cur_seq(pa);
                 mode::send_keys_to(pa, cur_seq);
             } else {
@@ -499,7 +498,7 @@ impl Remapper {
             }
         }
 
-        send_key_inner::<U>(self, pa, TypeId::of::<M>(), key);
+        send_key_inner(self, pa, TypeId::of::<M>(), key);
     }
 }
 

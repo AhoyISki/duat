@@ -225,7 +225,11 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     ///
     /// [`Area`]: crate::ui::Area
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a dyn Area) {
-        (self.widget.write(pa), self.area.read(pa))
+        // SAFETY: It is known that these types can't possibly point to the
+        // same data.
+        static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
+
+        (self.widget.write(pa), self.area.read(INTERNAL_PASS))
     }
 
     /// Declares the [`Widget`] within as written
@@ -451,12 +455,12 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     }
 
     fn get_iter<'a>(&'a self, pa: &'a mut Pass) -> Cursors<'a, W, S> {
-        let widget = self.widget.write(pa);
+        let (widget, area) = self.write_with_area(pa);
         widget.text_mut().selections_mut().populate();
 
         let searcher = self.searcher.borrow_mut();
 
-        Cursors::new(0, widget, &self.area, searcher)
+        Cursors::new(0, widget, area, searcher)
     }
 
     ////////// Area functions

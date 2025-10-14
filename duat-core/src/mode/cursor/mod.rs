@@ -18,7 +18,7 @@ use crate::{
     cfg::PrintCfg,
     file::{File, Parser},
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
-    ui::{Area, TypeErasedArea, Widget},
+    ui::{Area, Widget},
 };
 
 /// The [`Selection`] and [`Selections`] structs
@@ -748,7 +748,7 @@ impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
 pub struct Cursors<'a, W: Widget + ?Sized, S> {
     next_i: Rc<Cell<usize>>,
     widget: &'a mut W,
-    area: &'a TypeErasedArea,
+    area: &'a dyn Area,
     inc_searcher: RefMut<'a, S>,
 }
 
@@ -757,7 +757,7 @@ impl<'a, W: Widget + ?Sized, S> Cursors<'a, W, S> {
     pub(crate) fn new(
         next_i: usize,
         widget: &'a mut W,
-        area: &'a TypeErasedArea,
+        area: &'a dyn Area,
         inc_searcher: RefMut<'a, S>,
     ) -> Self {
         Self {

@@ -256,7 +256,7 @@ use crate::{
     mode,
     session::DuatEvent,
     text::{Text, txt},
-    ui::{Node, Ui, Widget},
+    ui::{Node, Widget},
 };
 
 mod parameters;

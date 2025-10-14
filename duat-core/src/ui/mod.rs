@@ -1346,13 +1346,36 @@ impl TypeErasedArea {
         (self.fns.get_cluster_master)(pa, &self.area)
     }
 
+    /// Stores the cache of the [`Area`], given a path to associate
+    /// with this cache
+    pub fn store_cache(&self, pa: &Pass, path: &str) -> Result<(), Text> {
+        (self.fns.store_cache)(pa, &self.area, path)
+    }
+
+    /// Gets the width of the area
+    pub fn width(&self, pa: &Pass) -> f32 {
+        self.area.read(pa).width()
+    }
+
+    /// Gets the height of the area
+    pub fn height(&self, pa: &Pass) -> f32 {
+        self.area.read(pa).height()
+    }
+
+    /// Returns `true` if this is the currently active [`Area`]
+    ///
+    /// Only one [`Area`] should be active at any given moment.
+    pub fn is_active(&self, pa: &Pass) -> bool {
+        self.area.read(pa).is_active()
+    }
+
     /// Wether this [`Area`] is the same as another
     pub fn area_is_eq(&self, pa: &Pass, other: &TypeErasedArea) -> bool {
         (self.fns.eq)(pa, &self.area, &other.area)
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 struct TypeErasedAreaFunctions {
     /// Push one [`Area`] to another
     push: fn(
@@ -1483,7 +1506,7 @@ impl TypeErasedAreaFunctions {
                 let area = area.read_as::<U::Area>(pa).unwrap();
 
                 if let Some(area_cache) = area.cache() {
-                    Cache::new().store(&path, area_cache)?;
+                    Cache::new().store(path, area_cache)?;
                 }
 
                 Ok(())
@@ -1492,7 +1515,8 @@ impl TypeErasedAreaFunctions {
     }
 }
 
-struct TypeErasedPrintInfo {
+/// Type erased [`Area::PrintInfo`]
+pub struct TypeErasedPrintInfo {
     info: Box<dyn Any + Send>,
     fns: &'static TypeErasedPrintInfoFunctions,
 }

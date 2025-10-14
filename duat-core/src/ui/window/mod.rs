@@ -480,7 +480,7 @@ impl Windows {
     ////////// Spawned Widget cleanup
 
     /// Adds a [`SpawnId`] to be removed when a [`Pass`] is available
-    pub(crate) fn _queue_close_spawned(&self, id: SpawnId) {
+    pub(crate) fn queue_close_spawned(&self, id: SpawnId) {
         let mut spawns_to_remove = self.spawns_to_remove.lock().unwrap();
         if !spawns_to_remove.contains(&id) {
             spawns_to_remove.push(id)
@@ -488,7 +488,7 @@ impl Windows {
     }
 
     /// Removes all queued [`SpawnId`]'s [`Widget`]s
-    pub(crate) fn _cleanup_spawned(&self, pa: &mut Pass) {
+    pub(crate) fn cleanup_spawned(&self, pa: &mut Pass) {
         let spawns_to_remove = std::mem::take(&mut *self.spawns_to_remove.lock().unwrap());
         for id in spawns_to_remove {
             if let Some((_, node)) = self

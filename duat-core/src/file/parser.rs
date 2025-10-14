@@ -27,7 +27,6 @@ use crate::{
     data::Pass,
     prelude::Ranges,
     text::{Bytes, Change, Moment, MomentFetcher, Point, Text, TextRange, txt},
-    ui::Ui,
 };
 
 /// A [`File`] parser, that can keep up with every [`Change`] that
