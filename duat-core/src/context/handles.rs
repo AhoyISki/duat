@@ -16,7 +16,7 @@ use crate::{
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TextParts, TwoPoints},
-    ui::{Area, PushSpecs, SpawnSpecs, TypeErasedArea, Ui, Widget},
+    ui::{Area, PushSpecs, SpawnSpecs, TypeErasedArea, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat

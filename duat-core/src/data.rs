@@ -591,6 +591,7 @@ impl Pass {
             );
         }
 
+        #[allow(static_mut_refs)]
         (lhs.write(self), rhs.write(unsafe { &mut INTERNAL_PASS }))
     }
 
@@ -624,7 +625,8 @@ impl Pass {
         const {
             assert!(
                 TypeId::of::<L>() != TypeId::of::<R>(),
-                "Can't write to two RwData of the same type, since they may point to the same data"
+                "Can't read and write to RwDatas of the same type, since they may point to the \
+                 same data"
             );
         }
 

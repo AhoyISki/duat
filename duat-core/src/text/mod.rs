@@ -752,7 +752,7 @@ impl Text {
     }
 
     /// A list of all [`SpawnId`]s that belong to this `Text`
-    pub fn get_spawned_ids(&self) -> &[SpawnId] {
+    pub fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
         self.0.tags.get_spawned_ids()
     }
 }

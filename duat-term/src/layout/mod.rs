@@ -275,7 +275,7 @@ impl Layouts {
         id: AreaId,
         lines: LinesBuilder,
         is_floating: bool,
-        spawns: &[SpawnId],
+        spawns: impl Iterator<Item = SpawnId>,
         observed_spawns: &[SpawnId],
     ) {
         let mut layouts = self.0.borrow_mut();

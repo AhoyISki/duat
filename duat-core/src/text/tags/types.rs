@@ -316,7 +316,7 @@ impl Tag<Point, SpawnId> for SpawnTag {
     }
 
     fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
-        tags.spawns.push(ret);
+        tags.spawns.push(super::SpawnCell(ret));
         tags.spawn_fns.push(self.1);
     }
 }
@@ -336,15 +336,9 @@ impl Tag<usize, SpawnId> for SpawnTag {
     }
 
     fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
-        tags.spawns.push(ret);
+        tags.spawns.push(super::SpawnCell(ret));
         tags.spawn_fns.push(self.1);
     }
-}
-
-struct SpawnCell(SpawnTag);
-
-impl Drop for SpawnCell {
-    fn drop(&mut self) {}
 }
 
 /// An internal representation of [`Tag`]s
