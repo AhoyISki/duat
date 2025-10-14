@@ -288,6 +288,8 @@ impl Layouts {
         let mut revealed_at_least_one = false;
         for spawn_id in spawns {
             if let Some((_, rect)) = layout.spawned.iter().find(|(info, _)| info.id == *spawn_id) {
+                let [tl, _] = rect.var_points();
+
                 let hidden = !observed_spawns.contains(spawn_id);
                 recurse_set_hidden(layout, rect.id(), hidden);
                 revealed_at_least_one = !hidden;
@@ -895,7 +897,25 @@ fn remove_dependents(
     rm_list
 }
 
+/// Sets a [`Rect`], as well as all of its children, to be hidden or
+/// revealed
 fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
+    let Some(rect) = layout.get(id) else {
+        return;
+    };
+
+    if layout.get_parent(id).is_none() {
+        let [tl, _] = rect.var_points();
+        for i in 0..layout.spawned.len() {
+            let (info, rect) = &layout.spawned[i];
+
+            let (_, [tl_x, _], _) = layout.printer.get_spawn_info(info.id).unwrap();
+            if tl_x.terms.iter().any(|term| term.variable == tl.x()) {
+                recurse_set_hidden(layout, rect.id(), hidden);
+            }
+        }
+    }
+
     let Some(rect) = layout.get(id) else {
         return;
     };
