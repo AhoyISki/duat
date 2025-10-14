@@ -53,7 +53,7 @@ use crate::{
     file::File,
     form::Painter,
     session::DuatSender,
-    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints, txt},
+    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
 };
 
 pub mod layout;
@@ -91,7 +91,7 @@ mod window;
 /// ```
 pub trait Ui: Send + Sync + 'static {
     /// The [`Area`] of this [`Ui`]
-    type Area: Area<Ui = Self>
+    type Area: Area
     where
         Self: Sized;
 
@@ -457,7 +457,7 @@ pub trait Area: 'static {
     /// If [`self`] belongs to a clustered group, return the most
     /// senior member of said cluster, which must hold all other
     /// members of the cluster.
-    fn get_cluster_master(&mut self) -> Option<Self>
+    fn get_cluster_master(&self) -> Option<Self>
     where
         Self: Sized;
 
@@ -989,8 +989,8 @@ impl PushTarget for UiBuilder {
 static DEFAULT_PRINT_INFO: OnceLock<fn() -> TypeErasedPrintInfo> = OnceLock::new();
 
 #[derive(Clone, Copy)]
-struct TypeErasedUi {
-    ui: &'static (dyn Any + Send + Sync),
+pub struct TypeErasedUi {
+    ui: &'static dyn Ui,
     fns: &'static TypeErasedUiFunctions,
 }
 
@@ -1084,10 +1084,10 @@ impl TypeErasedUiFunctions {
 }
 
 impl std::ops::Deref for TypeErasedUi {
-    type Target = dyn Ui + Send + Sync;
+    type Target = dyn Ui + 'static;
 
     fn deref(&self) -> &Self::Target {
-        &self.ui
+        self.ui
     }
 }
 
@@ -1342,7 +1342,7 @@ impl TypeErasedArea {
     }
 
     /// Returns the clustered master of the [`Area`], if there is one
-    pub fn get_cluster_master(&self, pa: &mut Pass) -> Option<Self> {
+    pub(crate) fn get_cluster_master(&self, pa: &Pass) -> Option<Self> {
         (self.fns.get_cluster_master)(pa, &self.area)
     }
 
@@ -1390,7 +1390,7 @@ struct TypeErasedAreaFunctions {
     /// Wether this [`Area`] is the master of another
     is_master_of: fn(pa: &Pass, lhs: &RwData<dyn Area>, rhs: &RwData<dyn Area>) -> bool,
     /// Gets the master [`Area`] of another's cluster
-    get_cluster_master: fn(pa: &mut Pass, area: &RwData<dyn Area>) -> Option<TypeErasedArea>,
+    get_cluster_master: fn(pa: &Pass, area: &RwData<dyn Area>) -> Option<TypeErasedArea>,
     /// Store the [`Area::Cache`] of this [`Area`]
     store_cache: fn(pa: &Pass, area: &RwData<dyn Area>, path: &str) -> Result<(), Text>,
     /// Wether two [`Area`]s are the same
@@ -1476,7 +1476,7 @@ impl TypeErasedAreaFunctions {
                 lhs.is_master_of(rhs)
             },
             get_cluster_master: |pa, area| {
-                let area = area.write_as::<U::Area>(pa).unwrap();
+                let area = area.read_as::<U::Area>(pa).unwrap();
                 area.get_cluster_master().map(TypeErasedArea::new::<U>)
             },
             store_cache: |pa, area, path| {
@@ -1557,7 +1557,7 @@ impl TypeErasedPrintInfoFunctions {
 }
 
 fn get_cache<U: Ui>(pa: &Pass, widget: &RwData<dyn Widget>) -> <<U as Ui>::Area as Area>::Cache {
-    if let Some(file) = widget.read_as::<File<U>>(pa) {
+    if let Some(file) = widget.read_as::<File>(pa) {
         match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
             Ok(cache) => cache,
             Err(err) => {

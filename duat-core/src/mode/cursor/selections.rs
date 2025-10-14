@@ -478,7 +478,7 @@ mod cursor {
             &mut self,
             by: i32,
             text: &Text,
-            area: &impl Area,
+            area: &dyn Area,
             mut cfg: PrintCfg,
         ) -> i32 {
             let by = by as isize;
@@ -527,7 +527,7 @@ mod cursor {
             &mut self,
             by: i32,
             text: &Text,
-            area: &impl Area,
+            area: &dyn Area,
             mut cfg: PrintCfg,
         ) -> i32 {
             if by == 0 {
@@ -785,7 +785,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_caret(&self, text: &Text, area: &impl Area, cfg: PrintCfg) -> VPoint {
+        pub fn v_caret(&self, text: &Text, area: &dyn Area, cfg: PrintCfg) -> VPoint {
             let vp = self.caret.get().calculate(text, area, cfg);
             self.caret.set(LazyVPoint::Known(vp));
             vp
@@ -796,7 +796,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_anchor(&self, text: &Text, area: &impl Area, cfg: PrintCfg) -> Option<VPoint> {
+        pub fn v_anchor(&self, text: &Text, area: &dyn Area, cfg: PrintCfg) -> Option<VPoint> {
             self.anchor.get().map(|anchor| {
                 let vp = anchor.calculate(text, area, cfg);
                 self.anchor.set(Some(LazyVPoint::Known(vp)));
@@ -810,7 +810,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_range(&self, text: &Text, area: &impl Area, cfg: PrintCfg) -> [VPoint; 2] {
+        pub fn v_range(&self, text: &Text, area: &dyn Area, cfg: PrintCfg) -> [VPoint; 2] {
             let v_caret = self.v_caret(text, area, cfg);
             let v_anchor = self.v_anchor(text, area, cfg).unwrap_or(v_caret);
             [v_caret.min(v_anchor), v_caret.max(v_anchor)]
@@ -853,7 +853,7 @@ mod cursor {
         }
 
         /// Calculates the [`VPoint`], to be used sparingly
-        fn calculate(self, text: &Text, area: &impl Area, cfg: PrintCfg) -> VPoint {
+        fn calculate(self, text: &Text, area: &dyn Area, cfg: PrintCfg) -> VPoint {
             match self {
                 Self::Known(vp) => vp,
                 Self::Unknown(p) => VPoint::new(p, text, area, cfg),
@@ -928,7 +928,7 @@ mod cursor {
 
     impl VPoint {
         /// Returns a new [`VPoint`]
-        fn new(p: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Self {
+        fn new(p: Point, text: &Text, area: &dyn Area, cfg: PrintCfg) -> Self {
             let [start, _] = text.points_of_line(p.line());
 
             let mut vcol = 0;

@@ -18,7 +18,7 @@ use crate::{
     data::Pass,
     form::FormId,
     text::{Point, Text, TextRange},
-    ui::{SpawnSpecs, Ui, Widget},
+    ui::{SpawnSpecs, Widget},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`]
@@ -290,12 +290,12 @@ impl SpawnTag {
     /// > be removed.
     ///
     /// [`Tags::insert`]: super::Tags::insert
-    pub fn new<U: Ui>(widget: impl Widget<U>, specs: SpawnSpecs) -> Self {
+    pub fn new(widget: impl Widget, specs: SpawnSpecs) -> Self {
         let id = SpawnId::new();
         Self(
             id,
             Box::new(move |pa, win| {
-                context::windows::<U>().spawn_on_text(pa, (id, specs), widget, win);
+                context::windows().spawn_on_text(pa, (id, specs), widget, win);
             }),
         )
     }
@@ -344,9 +344,7 @@ impl Tag<usize, SpawnId> for SpawnTag {
 struct SpawnCell(SpawnTag);
 
 impl Drop for SpawnCell {
-    fn drop(&mut self) {
-        
-    }
+    fn drop(&mut self) {}
 }
 
 /// An internal representation of [`Tag`]s

@@ -72,7 +72,7 @@ impl Widget<Ui> for VertRule {
             )
         } else {
             let full_line =
-                format!("{}\n", vr.sep_char.chars()[1]).repeat(handle.area(pa).height() as usize);
+                format!("{}\n", vr.sep_char.chars()[1]).repeat(handle.area().height(pa) as usize);
 
             txt!("{full_line}")
         };
@@ -80,9 +80,9 @@ impl Widget<Ui> for VertRule {
         handle.write(pa).text = text.build();
     }
 
-    fn needs_update(&self, _: &Pass) -> bool {
+    fn needs_update(&self, pa: &Pass) -> bool {
         matches!(self.sep_char, SepChar::ThreeWay(..) | SepChar::TwoWay(..))
-            && self.handle.as_ref().is_some_and(|fh| fh.has_changed())
+            && self.handle.as_ref().is_some_and(|fh| fh.has_changed(pa))
     }
 
     fn text(&self) -> &Text {

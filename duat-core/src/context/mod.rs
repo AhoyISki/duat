@@ -9,7 +9,7 @@ pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
     data::{Pass, RwData},
     file::File,
-    ui::{Area, Node, Ui, Widget},
+    ui::{Area, Node, Widget},
 };
 
 mod cache;

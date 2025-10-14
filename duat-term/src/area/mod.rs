@@ -262,7 +262,6 @@ impl Area {
 impl ui::Area for Area {
     type Cache = PrintInfo;
     type PrintInfo = PrintInfo;
-    type Ui = crate::Ui;
 
     /////////// Modification
 

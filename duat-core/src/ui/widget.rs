@@ -439,7 +439,7 @@ impl Node {
                 let handle = handle.clone();
                 move |pa| {
                     let painter = form::painter_with_mask::<W>(*handle.mask().lock().unwrap());
-                    W::print(handle.read(pa), pa, painter, handle.area().read(pa));
+                    W::print(handle.read(pa), pa, painter, handle.area());
                 }
             }),
             on_focus: Arc::new({

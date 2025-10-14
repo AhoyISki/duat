@@ -326,29 +326,29 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         n: usize,
         edit: impl FnOnce(Cursor<W, S>) -> Ret,
     ) -> Ret {
-        fn get_parts<'a, W: Widget + ?Sized>(
+        fn get_parts<'a, W: Widget + ?Sized, S>(
             pa: &'a mut Pass,
-            widget: &'a RwData<W>,
+            handle: &'a Handle<W, S>,
             n: usize,
-        ) -> (Selection, bool, &'a mut W) {
-            let widget = widget.write(pa);
+        ) -> (Selection, bool, &'a mut W, &'a dyn Area) {
+            let (widget, area) = handle.write_with_area(pa);
             let selections = widget.text_mut().selections_mut();
             selections.populate();
             let Some((selection, was_main)) = selections.remove(n) else {
                 panic!("Selection index {n} out of bounds");
             };
 
-            (selection, was_main, widget)
+            (selection, was_main, widget, area)
         }
 
-        let (selection, was_main, widget) = get_parts(pa, &self.widget, n);
+        let (selection, was_main, widget, area) = get_parts(pa, self, n);
 
         // This is safe because of the &mut Pass argument
         let mut searcher = self.searcher.borrow_mut();
 
         edit(Cursor::new(
             (selection, n, was_main),
-            (&mut *widget, &self.area),
+            (widget, area),
             None,
             &mut searcher,
             false,
@@ -374,11 +374,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// [`edit_last`]: Self::edit_last
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_main<Ret>(
-        &self,
-        pa: &mut Pass,
-        edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
-    ) -> Ret {
+    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W, S>) -> Ret) -> Ret {
         self.edit_nth(
             pa,
             self.widget.read(pa).text().selections().main_index(),
@@ -405,11 +401,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_last<Ret>(
-        &self,
-        pa: &mut Pass,
-        edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
-    ) -> Ret {
+    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W, S>) -> Ret) -> Ret {
         let len = self.widget.read(pa).text().selections().len();
         self.edit_nth(pa, len.saturating_sub(1), edit)
     }
@@ -709,7 +701,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW> {
-        context::windows::<U>()
+        context::windows()
             .push_widget(pa, (&self.area, None, specs), widget)
             .unwrap()
     }

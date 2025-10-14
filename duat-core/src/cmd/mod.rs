@@ -261,7 +261,7 @@ use crate::{
 
 mod parameters;
 
-pub(crate) fn add_session_commands<U: Ui>() {
+pub(crate) fn add_session_commands() {
     add!("alias", |pa,
                    flags: Flags,
                    alias: &str,
@@ -273,10 +273,10 @@ pub(crate) fn add_session_commands<U: Ui>() {
         }
     });
 
-    add!(["quit", "q"], |pa, handle: Option<Buffer<U>>| {
+    add!(["quit", "q"], |pa, handle: Option<Buffer>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::cur_file::<U>(pa),
+            None => context::cur_file(pa),
         };
 
         let file = handle.read(pa);
@@ -284,20 +284,20 @@ pub(crate) fn add_session_commands<U: Ui>() {
             return Err(txt!("{} has unsaved changes", file.name()).build());
         }
 
-        context::windows::<U>().close(pa, &handle)?;
+        context::windows().close(pa, &handle)?;
 
         Ok(Some(
             txt!("Closed [file]{}", handle.read(pa).name()).build(),
         ))
     });
 
-    add!(["quit!", "q!"], |pa, handle: Option<Buffer<U>>| {
+    add!(["quit!", "q!"], |pa, handle: Option<Buffer>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::cur_file::<U>(pa),
+            None => context::cur_file(pa),
         };
 
-        context::windows::<U>().close(pa, &handle)?;
+        context::windows().close(pa, &handle)?;
 
         Ok(Some(
             txt!("Forcefully closed {}", handle.read(pa).name()).build(),
@@ -305,7 +305,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["quit-all", "qa"], |pa| {
-        let windows = context::windows::<U>();
+        let windows = context::windows();
         let unwritten = windows
             .file_handles(pa)
             .filter(|handle| {
@@ -329,8 +329,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
         Ok(None)
     });
 
-    add!(["write", "w"], |pa, path: Option<ValidFile<U>>| {
-        let handle = context::cur_file::<U>(pa);
+    add!(["write", "w"], |pa, path: Option<ValidFile>| {
+        let handle = context::cur_file(pa);
         let file = handle.write(pa);
 
         let (bytes, name) = if let Some(path) = path {
@@ -349,8 +349,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
         }
     });
 
-    add!(["write-quit", "wq"], |pa, path: Option<ValidFile<U>>| {
-        let handle = context::cur_file::<U>(pa);
+    add!(["write-quit", "wq"], |pa, path: Option<ValidFile>| {
+        let handle = context::cur_file(pa);
 
         let (bytes, name) = {
             let file = handle.write(pa);
@@ -362,7 +362,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
             (bytes, file.name())
         };
 
-        context::windows::<U>().close(pa, &handle)?;
+        context::windows().close(pa, &handle)?;
 
         match bytes {
             Some(bytes) => Ok(Some(
@@ -373,7 +373,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["write-all", "wa"], |pa| {
-        let windows = context::windows::<U>();
+        let windows = context::windows();
 
         let mut written = 0;
         let handles: Vec<_> = windows
@@ -395,7 +395,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["write-all-quit", "waq"], |pa| {
-        let windows = context::windows::<U>();
+        let windows = context::windows();
 
         let mut written = 0;
         let handles: Vec<_> = windows
@@ -417,7 +417,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["write-all-quit!", "waq!"], |pa| {
-        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
+        let handles: Vec<_> = context::windows().file_handles(pa).collect();
 
         for handle in handles {
             let _ = handle.write(pa).save_quit(true);
@@ -446,8 +446,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
         Ok(None)
     });
 
-    add!(["edit", "e"], |pa, arg: FileOrBufferOrCfg<U>| {
-        let windows = context::windows::<U>();
+    add!(["edit", "e"], |pa, arg: FileOrBufferOrCfg| {
+        let windows = context::windows();
 
         let pk = match arg {
             FileOrBufferOrCfg::Cfg => {
@@ -470,8 +470,8 @@ pub(crate) fn add_session_commands<U: Ui>() {
         return Ok(Some(txt!("Opened {pk}").build()));
     });
 
-    add!(["open", "o"], |pa, arg: FileOrBufferOrCfg<U>| {
-        let windows = context::windows::<U>();
+    add!(["open", "o"], |pa, arg: FileOrBufferOrCfg| {
+        let windows = context::windows();
 
         let (pk, msg) = match arg {
             FileOrBufferOrCfg::Cfg => (
@@ -500,17 +500,17 @@ pub(crate) fn add_session_commands<U: Ui>() {
         return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window").build())));
     });
 
-    add!(["buffer", "b"], |pa, handle: OtherBuffer<U>| {
-        mode::reset_to::<U>(handle.to_dyn());
+    add!(["buffer", "b"], |pa, handle: OtherBuffer| {
+        mode::reset_to(handle.to_dyn());
         Ok(Some(
             txt!("Switched to [file]{}", handle.read(pa).name()).build(),
         ))
     });
 
     add!("next-file", |pa, flags: Flags| {
-        let windows = context::windows::<U>();
-        let handle = context::cur_file::<U>(pa);
-        let win = context::cur_window::<U>(pa);
+        let windows = context::windows();
+        let handle = context::cur_file(pa);
+        let win = context::cur_window(pa);
 
         let wid = windows
             .get(pa, win)
@@ -539,9 +539,9 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!("prev-file", |pa, flags: Flags| {
-        let windows = context::windows::<U>();
-        let handle = context::cur_file::<U>(pa);
-        let win = context::cur_window::<U>(pa);
+        let windows = context::windows();
+        let handle = context::cur_file(pa);
+        let win = context::cur_window(pa);
 
         let wid = windows
             .get(pa, win)
@@ -569,7 +569,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
         ))
     });
 
-    add!("swap", |pa, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
+    add!("swap", |pa, lhs: Buffer, rhs: Option<Buffer>| {
         let rhs = rhs.unwrap_or_else(|| context::cur_file(pa));
 
         context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
@@ -1151,8 +1151,6 @@ pub type CheckerFn = fn(
     Option<(Range<usize>, Text)>,
 );
 
-pub(crate) fn as_file_handle<U: Ui>(
-    (.., node): (usize, usize, &Node<U>),
-) -> Option<Handle<File<U>, U>> {
+pub(crate) fn as_file_handle((.., node): (usize, usize, &Node)) -> Option<Handle<File>> {
     node.try_downcast()
 }

@@ -4,7 +4,7 @@ use std::{
 };
 
 pub use self::builder::UiBuilder;
-use super::{Area, Node, Ui, Widget, layout::Layout};
+use super::{Node, Widget, layout::Layout};
 use crate::{
     cfg::PrintCfg,
     context::{self, Cache, Handle},
@@ -13,7 +13,7 @@ use crate::{
     hook::{self, FileClosed, WidgetCreated, WindowCreated},
     mode,
     text::{SpawnId, Text, txt},
-    ui::{MutArea, PushSpecs, SpawnSpecs, TypeErasedArea, TypeErasedUi},
+    ui::{PushSpecs, SpawnSpecs, TypeErasedArea, TypeErasedUi},
 };
 
 mod builder;
@@ -134,8 +134,9 @@ impl Windows {
 
         let node = Node::new(widget, spawned);
 
-        let wins = self.inner.write(pa);
-        wins.list[win].add(node.clone(), None, Location::Spawned(id));
+        let mut window = self.inner.write(pa).list.remove(win);
+        window.add(pa, node.clone(), None, Location::Spawned(id));
+        self.inner.write(pa).list.insert(win, window);
 
         hook::trigger(
             pa,
@@ -160,8 +161,9 @@ impl Windows {
 
         let node = Node::new(widget, spawned);
 
-        let wins = self.inner.write(pa);
-        wins.list[win].add(node.clone(), None, Location::Spawned(id));
+        let mut window = self.inner.write(pa).list.remove(win);
+        window.add(pa, node.clone(), None, Location::Spawned(id));
+        self.inner.write(pa).list.insert(win, window);
 
         hook::trigger(
             pa,
@@ -241,8 +243,9 @@ impl Windows {
 
         let node = Node::new(widget, pushed);
 
-        let inner = self.inner.write(pa);
-        inner.list[win].add(node.clone(), parent.map(Arc::new), location);
+        let mut window = self.inner.write(pa).list.remove(win);
+        window.add(pa, node.clone(), parent, location);
+        self.inner.write(pa).list.insert(win, window);
 
         hook::trigger(
             pa,

@@ -16,7 +16,7 @@ use crate::{
     file::File,
     form::{self, FormId},
     text::{Text, txt},
-    ui::{Ui, Widget},
+    ui::Widget,
 };
 
 /// A parameter for commands that can be called
@@ -231,14 +231,14 @@ impl<'a> Parameter<'a> for Buffer {
 /// Command [`Parameter`]: An open [`File`]'s name, except the current
 ///
 /// [`File`]: crate::file::File
-pub struct OtherBuffer(PhantomData);
+pub struct OtherBuffer;
 
 impl<'a> Parameter<'a> for OtherBuffer {
     type Returns = Handle<File>;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let handle = args.next_as::<Buffer>(pa)?;
-        let cur_handle = crate::context::cur_file::<U>(pa);
+        let cur_handle = crate::context::cur_file(pa);
         if cur_handle == handle {
             Err(txt!("Argument can't be the current file").build())
         } else {
@@ -281,7 +281,7 @@ impl Parameter<'_> for ValidFile {
             return Err(txt!("Path's parent doesn't exist").build());
         }
 
-        let form = if crate::context::windows::<U>()
+        let form = if crate::context::windows()
             .file_handles(pa)
             .map(|handle| handle.read(pa).path())
             .any(|p| std::path::Path::new(&p) == path)
@@ -313,10 +313,10 @@ impl Parameter<'_> for FileOrBufferOrCfg {
             Ok((Self::Cfg, None))
         } else if args.flags.word("cfg-manifest") {
             Ok((Self::CfgManifest, None))
-        } else if let Ok((handle, form)) = args.next_as_with_form::<Buffer<U>>(pa) {
+        } else if let Ok((handle, form)) = args.next_as_with_form::<Buffer>(pa) {
             Ok((Self::Buffer(handle), form))
         } else {
-            let (path, form) = args.next_as_with_form::<ValidFile<U>>(pa)?;
+            let (path, form) = args.next_as_with_form::<ValidFile>(pa)?;
             Ok((Self::File(path), form))
         }
     }
@@ -449,9 +449,9 @@ impl<'a> Parameter<'a> for FormName {
 /// [`on_each`]: Self::on_each
 /// [`on_window`]: Self::on_window
 /// [`on_flags`]: Self::on_flags
-pub struct Handles<'a, W: Widget<U>, U: Ui>(Flags<'a>, PhantomData<(W, U)>);
+pub struct Handles<'a, W: Widget>(Flags<'a>, PhantomData<W>);
 
-impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
+impl<'a, W: Widget> Handles<'a, W> {
     /// Acts on [`Handle`]s related to the currently active [`File`]
     ///
     /// This will trigger on every `Handle` of the given widget type
@@ -462,8 +462,8 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// This function will be called by [`Handles::on_flags`] if no
     /// context choosing [`Flags`] are passed (i.e., no `--global`,
     /// `-g`, `--window` or `--w`).
-    pub fn on_current(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
-        let get_related: Vec<_> = context::cur_file::<U>(pa).get_related(pa).collect();
+    pub fn on_current(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
+        let get_related: Vec<_> = context::cur_file(pa).get_related(pa).collect();
 
         for (handle, _) in get_related {
             f(pa, handle)
@@ -477,8 +477,8 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     ///
     /// This function will be called by [`Handles::on_flags`], if the
     /// `--global` or `-g` [`Flags`] are passed.
-    pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
-        let handles: Vec<_> = context::windows::<U>().handles(pa).cloned().collect();
+    pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
+        let handles: Vec<_> = context::windows().handles(pa).cloned().collect();
         for handle in handles.iter().filter_map(Handle::try_downcast) {
             f(pa, handle)
         }
@@ -490,9 +490,9 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     ///
     /// This function will be called by [`Handles::on_flags`], if the
     /// `--window` or `-w` [`Flags`] are passed.
-    pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
-        let cur_win = context::cur_window::<U>(pa);
-        let nodes: Vec<_> = context::windows::<U>()
+    pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
+        let cur_win = context::cur_window(pa);
+        let nodes: Vec<_> = context::windows()
             .entries(pa)
             .filter(|&(win, ..)| win == cur_win)
             .map(|(.., node)| node.handle().clone())
@@ -516,7 +516,7 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     ///
     /// [`word`]: Flags::word
     /// [`blob`]: Flags::blob
-    pub fn on_flags(&self, pa: &mut Pass, f: impl FnMut(&mut Pass, Handle<W, U>)) {
+    pub fn on_flags(&self, pa: &mut Pass, f: impl FnMut(&mut Pass, Handle<W>)) {
         let is_global = self.0.word("global") || self.0.blob("g");
         let is_window = self.0.word("window") || self.0.blob("w");
         if is_global && !is_window {
@@ -534,7 +534,7 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     }
 }
 
-impl<'a, W: Widget<U>, U: Ui> Parameter<'a> for Handles<'a, W, U> {
+impl<'a, W: Widget> Parameter<'a> for Handles<'a, W> {
     type Returns = Self;
 
     fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {

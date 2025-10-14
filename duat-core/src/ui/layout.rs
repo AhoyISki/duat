@@ -38,7 +38,7 @@
 //!
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
-use super::{PushSpecs, Ui};
+use super::PushSpecs;
 use crate::{
     data::Pass,
     file::File,

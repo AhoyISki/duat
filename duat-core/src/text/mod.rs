@@ -264,7 +264,7 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, area: &impl Area, mut cfg: PrintCfg) -> usize {
+    pub fn indent(&self, p: Point, area: &dyn Area, mut cfg: PrintCfg) -> usize {
         let [start, _] = self.points_of_line(p.line());
         let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
         area.print_iter(t_iter, *cfg.new_line_as('\n'))
