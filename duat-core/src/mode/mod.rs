@@ -32,13 +32,7 @@ pub use self::{
     remap::*,
     switch::*,
 };
-use crate::{
-    context::Handle,
-    data::Pass,
-    file::File,
-    session::DuatEvent,
-    ui::{Ui, Widget},
-};
+use crate::{context::Handle, data::Pass, file::File, session::DuatEvent, ui::Widget};
 
 mod cursor;
 mod remap;
@@ -97,11 +91,11 @@ mod switch;
 #[derive(Clone, Copy, Debug)]
 pub struct User;
 
-impl<U: Ui> Mode<U> for User {
-    type Widget = File<U>;
+impl Mode for User {
+    type Widget = File;
 
-    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {
-        reset::<File<U>, U>();
+    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
+        reset::<File>();
     }
 }
 
@@ -440,12 +434,12 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`Text`]: crate::text::Text
 /// [`&mut Selections`]: Selections
 #[allow(unused_variables)]
-pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
+pub trait Mode: Sized + Clone + Send + 'static {
     /// The [`Widget`] that this [`Mode`] controls
-    type Widget: Widget<U>;
+    type Widget: Widget;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>);
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>);
 
     /// A function to trigger after switching to this [`Mode`]
     ///
@@ -455,7 +449,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
-    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {}
+    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {}
 
     /// A function to trigger before switching off this [`Mode`]
     ///
@@ -472,7 +466,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
     /// [`mode::set`]: set
     /// [`mode::reset`]: reset
     /// [`before_exit`]: Mode::before_exit
-    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {}
+    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {}
 
     /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
     #[doc(hidden)]
@@ -483,11 +477,11 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
 
 // This implementation exists only to allow &strs to be passed to
 // remaps.
-impl<U: Ui> Mode<U> for &'static str {
+impl Mode for &'static str {
     // Doesn't matter
-    type Widget = File<U>;
+    type Widget = File;
 
-    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
     }
 

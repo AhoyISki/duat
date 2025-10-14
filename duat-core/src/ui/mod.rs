@@ -195,11 +195,6 @@ pub trait Ui: Send + Sync + 'static {
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
 pub trait Area: 'static {
-    /// The [`Ui`] this [`Area`] belongs to
-    type Ui: Ui<Area = Self>
-    where
-        Self: Sized;
-
     /// Something to be kept between app instances/reloads
     ///
     /// The most useful thing to keep in this case is the
@@ -995,7 +990,7 @@ static DEFAULT_PRINT_INFO: OnceLock<fn() -> TypeErasedPrintInfo> = OnceLock::new
 
 #[derive(Clone, Copy)]
 struct TypeErasedUi {
-    ui: &'static dyn Any,
+    ui: &'static (dyn Any + Send + Sync),
     fns: &'static TypeErasedUiFunctions,
 }
 
@@ -1088,6 +1083,14 @@ impl TypeErasedUiFunctions {
     }
 }
 
+impl std::ops::Deref for TypeErasedUi {
+    type Target = dyn Ui + Send + Sync;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ui
+    }
+}
+
 /// A type erased [`Area`]
 ///
 /// This type houses the inner `Area`, and provides type erased access
@@ -1146,6 +1149,17 @@ impl TypeErasedArea {
         specs: SpawnSpecs,
     ) -> Option<Self> {
         (self.fns.spawn)(pa, &self.area, widget, spawn_id, specs)
+    }
+
+    /// Deletes this [`Area`], returning wether the window should be
+    /// removed, as well as all the other ares that were deleted
+    fn delete(&self, pa: &mut Pass) -> (bool, Vec<Self>) {
+        (self.fns.delete)(pa, &self.area)
+    }
+
+    /// Swaps this [`Area`] with another
+    fn swap(&self, pa: &mut Pass, rhs: &Self) -> bool {
+        (self.fns.swap)(pa, self, rhs)
     }
 
     ////////// Constraint changing functions

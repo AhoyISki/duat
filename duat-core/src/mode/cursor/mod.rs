@@ -660,7 +660,7 @@ impl<U: Ui, S> Cursor<'_, File<U>, U::Area, S> {
 /// Incremental search functions, only available on [`IncSearcher`]s
 ///
 /// [`IncSearcher`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearcher.html
-impl<W: Widget<A::Ui> + ?Sized, A: Area> Cursor<'_, W, A, Searcher> {
+impl<W: Widget + ?Sized, A: Area> Cursor<'_, W, A, Searcher> {
     /// Search incrementally from an [`IncSearch`] request
     ///
     /// This will match the Regex pattern from the current position of
@@ -712,7 +712,7 @@ impl<W: Widget<A::Ui> + ?Sized, A: Area> Cursor<'_, W, A, Searcher> {
 // borrowing from said W, and you can only get a Cursor from Handles.
 // Thus, the only thing which may have been dropped is the Selections
 // within, which are accounted for.
-unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + ?Sized + 'a, A: Area + 'a, S: 'a> Drop
+unsafe impl<#[may_dangle] 'a, W: Widget + ?Sized + 'a, A: Area + 'a, S: 'a> Drop
     for Cursor<'a, W, A, S>
 {
     fn drop(&mut self) {

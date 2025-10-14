@@ -69,11 +69,11 @@ mod global {
     /// If another sequence already exists on the same mode, which
     /// would intersect with this one, the new sequence will not be
     /// added.
-    pub fn map<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
+    pub fn map<M: Mode>(take: &str, give: impl AsGives) {
         let keys = str_to_keys(take);
         crate::context::queue(move |_| {
             let remapper = unsafe { REMAPPER.get() };
-            remapper.remap::<M, U>(keys, give.into_gives(), false);
+            remapper.remap::<M>(keys, give.into_gives(), false);
         });
     }
 
@@ -100,11 +100,11 @@ mod global {
     ///
     /// [ghost text]: crate::text::Ghost
     /// [form]: crate::form::Form
-    pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
+    pub fn alias<M: Mode>(take: &str, give: impl AsGives) {
         let keys = str_to_keys(take);
         crate::context::queue(move |_| {
             let remapper = unsafe { REMAPPER.get() };
-            remapper.remap::<M, U>(keys, give.into_gives(), true);
+            remapper.remap::<M>(keys, give.into_gives(), true);
         });
     }
 
@@ -346,11 +346,11 @@ mod global {
 
     /// Trait to distinguish [`Mode`]s from [`KeyEvent`]s
     #[doc(hidden)]
-    pub trait AsGives<U>: Send + 'static {
+    pub trait AsGives: Send + 'static {
         fn into_gives(self) -> Gives;
     }
 
-    impl<M: Mode<U>, U: Ui> AsGives<U> for M {
+    impl<M: Mode> AsGives for M {
         fn into_gives(self) -> Gives {
             if let Some(keys) = self.just_keys() {
                 Gives::Taggers(str_to_keys(keys))
@@ -377,12 +377,12 @@ mod global {
     }
 
     /// Sets the key sending function
-    pub(in crate::mode) unsafe fn set_send_key<M: Mode<U>, U: Ui>() {
-        *unsafe { SEND_KEY.get() }.borrow_mut() = |pa, key| send_key_fn::<M, U>(pa, key)
+    pub(in crate::mode) unsafe fn set_send_key<M: Mode>() {
+        *unsafe { SEND_KEY.get() }.borrow_mut() = |pa, key| send_key_fn::<M>(pa, key)
     }
 
     /// The key sending function, to be used as a pointer
-    fn send_key_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, key: KeyEvent) {
+    fn send_key_fn<M: Mode>(pa: &mut Pass, key: KeyEvent) {
         // SAFETY: This function takes a Pass.
         unsafe { REMAPPER.get() }.send_key::<M, U>(pa, key);
     }
@@ -404,7 +404,7 @@ impl Remapper {
     }
 
     /// Maps a sequence of characters to another
-    fn remap<M: Mode<U>, U: Ui>(&self, take: Vec<KeyEvent>, give: Gives, is_alias: bool) {
+    fn remap<M: Mode>(&self, take: Vec<KeyEvent>, give: Gives, is_alias: bool) {
         fn remap_inner(
             remapper: &Remapper,
             type_id: TypeId,
@@ -432,8 +432,8 @@ impl Remapper {
 
     /// Sends a key to be remapped or not
     #[allow(clippy::await_holding_lock)]
-    fn send_key<M: Mode<U>, U: Ui>(&self, pa: &mut Pass, key: KeyEvent) {
-        fn send_key_inner<U: Ui>(remapper: &Remapper, pa: &mut Pass, ty: TypeId, key: KeyEvent) {
+    fn send_key<M: Mode>(&self, pa: &mut Pass, key: KeyEvent) {
+        fn send_key_inner(remapper: &Remapper, pa: &mut Pass, ty: TypeId, key: KeyEvent) {
             // Lock acquired here
             let remaps_list = remapper.remaps.lock().unwrap();
 
@@ -524,8 +524,8 @@ pub enum Gives {
     Mode(Box<dyn Fn()>),
 }
 
-fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, usize)) {
-    let widget = context::cur_widget::<U>(pa);
+fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
+    let widget = context::cur_widget(pa);
     // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
     widget.mutate_data(pa, |handle| {

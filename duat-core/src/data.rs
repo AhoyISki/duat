@@ -381,16 +381,12 @@ impl<T: ?Sized> RwData<T> {
     }
 }
 
-impl<W> RwData<W> {
-    /// Downcasts [`RwData<impl Widget<U>>`] to [`RwData<dyn
-    /// Widget<U>>`]
-    pub fn to_dyn_widget<U: Ui>(&self) -> RwData<dyn Widget<U>>
-    where
-        W: Widget<U>,
-    {
+impl<W: Widget> RwData<W> {
+    /// Downcasts [`RwData<impl Widget>`] to [`RwData<dyn Widget>`]
+    pub fn to_dyn_widget(&self) -> RwData<dyn Widget> {
         let ptr = Arc::into_raw(self.value.clone());
-        // SAFETY: Implements Widget<U>
-        let value = unsafe { Arc::from_raw(ptr as *const UnsafeCell<dyn Widget<U>>) };
+        // SAFETY: Implements Widget
+        let value = unsafe { Arc::from_raw(ptr as *const UnsafeCell<dyn Widget>) };
         RwData {
             value,
             cur_state: self.cur_state.clone(),

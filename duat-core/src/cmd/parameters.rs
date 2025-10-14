@@ -210,14 +210,14 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
 /// Command [`Parameter`]: An open [`File`]'s name
 ///
 /// [`File`]: crate::file::File
-pub struct Buffer<U>(PhantomData<U>);
+pub struct Buffer;
 
-impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
-    type Returns = Handle<File<U>, U>;
+impl<'a> Parameter<'a> for Buffer {
+    type Returns = Handle<File>;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer_name = args.next()?;
-        if let Some(handle) = crate::context::windows::<U>()
+        if let Some(handle) = crate::context::windows()
             .file_handles(pa)
             .find(|handle| handle.read(pa).name() == buffer_name)
         {
@@ -231,13 +231,13 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
 /// Command [`Parameter`]: An open [`File`]'s name, except the current
 ///
 /// [`File`]: crate::file::File
-pub struct OtherBuffer<U>(PhantomData<U>);
+pub struct OtherBuffer(PhantomData);
 
-impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherBuffer<U> {
-    type Returns = Handle<File<U>, U>;
+impl<'a> Parameter<'a> for OtherBuffer {
+    type Returns = Handle<File>;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
-        let handle = args.next_as::<Buffer<U>>(pa)?;
+        let handle = args.next_as::<Buffer>(pa)?;
         let cur_handle = crate::context::cur_file::<U>(pa);
         if cur_handle == handle {
             Err(txt!("Argument can't be the current file").build())
@@ -250,9 +250,9 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherBuffer<U> {
 /// Command [`Parameter`]: A [`File`] whose parent is real
 ///
 /// [`File`]: crate::file::File
-pub struct ValidFile<U>(PhantomData<U>);
+pub struct ValidFile;
 
-impl<U: Ui> Parameter<'_> for ValidFile<U> {
+impl Parameter<'_> for ValidFile {
     type Returns = PathBuf;
 
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
@@ -298,14 +298,14 @@ impl<U: Ui> Parameter<'_> for ValidFile<U> {
 }
 
 /// A [`ValidFile`] or `--cfg` or `--cfg-manifest`
-pub(super) enum FileOrBufferOrCfg<U: Ui> {
+pub(super) enum FileOrBufferOrCfg {
     File(PathBuf),
-    Buffer(Handle<File<U>, U>),
+    Buffer(Handle<File>),
     Cfg,
     CfgManifest,
 }
 
-impl<U: Ui> Parameter<'_> for FileOrBufferOrCfg<U> {
+impl Parameter<'_> for FileOrBufferOrCfg {
     type Returns = Self;
 
     fn new(pa: &Pass, args: &mut Args<'_>) -> Result<(Self::Returns, Option<FormId>), Text> {
