@@ -122,7 +122,7 @@ impl<U: Ui> Windows<U> {
                 })?;
 
         let widget = RwData::new(widget);
-        let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
+        let cache = get_cache(pa, widget.to_dyn_widget(), self);
         let id = SpawnId::new();
 
         let spawned = U::Area::spawn(
@@ -154,7 +154,7 @@ impl<U: Ui> Windows<U> {
         win: usize,
     ) -> Handle<W, U> {
         let widget = RwData::new(widget);
-        let cache = get_cache(pa, widget.to_dyn_widget(), self, None);
+        let cache = get_cache(pa, widget.to_dyn_widget(), self);
         let spawned = U::new_spawned(self.ms, id, specs, cache, win);
 
         let node = Node::new(widget, Arc::new(spawned));
@@ -236,7 +236,7 @@ impl<U: Ui> Windows<U> {
         };
 
         let widget = RwData::new(widget);
-        let cache = get_cache(pa, widget.to_dyn_widget(), self, Some(win));
+        let cache = get_cache(pa, widget.to_dyn_widget(), self);
         let (pushed, parent) = U::Area::push(MutArea(target), specs, on_files, cache)?;
 
         let node = Node::new(widget, Arc::new(pushed));
@@ -1017,20 +1017,11 @@ fn get_cache<U: Ui>(
     pa: &mut Pass,
     widget: RwData<dyn Widget<U>>,
     windows: &Windows<U>,
-    win: Option<usize>,
 ) -> <<U as Ui>::Area as Area>::Cache {
-    let last_layout_order = if let Some(win) = win {
-        windows.inner.read(pa).list[win]
-            .file_handles(pa)
-            .iter()
-            .map(|handle| handle.read(pa).layout_order)
-            .max()
-    } else {
-        windows
-            .file_handles(pa)
-            .map(|handle| handle.read(pa).layout_order)
-            .max()
-    };
+    let last_layout_order = windows
+        .file_handles(pa)
+        .map(|handle| handle.read(pa).layout_order)
+        .max();
 
     if let Some(file) = widget.write_as::<File<U>>(pa) {
         file.layout_order = last_layout_order.map(|lo| lo + 1).unwrap_or(0);

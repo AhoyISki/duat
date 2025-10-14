@@ -517,7 +517,7 @@ impl<U: Ui> Node<U> {
         let cfg = widget.get_print_cfg();
         widget.text_mut().add_selections(area, cfg);
 
-        if area.print_info() != <U::Area as Area>::PrintInfo::default() {
+        if area.get_print_info() != <U::Area as Area>::PrintInfo::default() {
             widget.text_mut().update_bounds();
         }
 

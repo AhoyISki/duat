@@ -490,7 +490,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
         self.orig = Some((
             handle.read(pa).selections().clone(),
-            handle.area(pa).print_info(),
+            handle.area(pa).get_print_info(),
         ));
 
         text

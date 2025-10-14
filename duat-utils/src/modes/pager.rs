@@ -96,7 +96,7 @@ impl<W: Widget<U>, U: Ui> PagerSearch<W, U> {
         Prompt::new(Self {
             is_fwd,
             prev: String::new(),
-            orig: handle.area(pa).print_info(),
+            orig: handle.area(pa).get_print_info(),
             handle: handle.clone(),
         })
     }

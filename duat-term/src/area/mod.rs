@@ -535,7 +535,7 @@ impl ui::Area for Area {
         end_points
     }
 
-    fn print_info(&self) -> Self::PrintInfo {
+    fn get_print_info(&self) -> Self::PrintInfo {
         self.layouts.get_info_of(self.id).unwrap_or_default()
     }
 

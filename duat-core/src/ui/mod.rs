@@ -32,7 +32,7 @@
 //! [`hook`]: crate::hook
 //! [`File`]: crate::file::File
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
-use std::fmt::Debug;
+use std::{any::Any, cell::UnsafeCell, fmt::Debug, sync::Arc};
 
 use bincode::{Decode, Encode};
 
@@ -43,11 +43,12 @@ pub use self::{
 };
 use crate::{
     cfg::PrintCfg,
-    context::Handle,
-    data::Pass,
+    context::{self, Cache, Handle},
+    data::{Pass, RwData},
+    file::File,
     form::Painter,
     session::DuatSender,
-    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
+    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, txt},
 };
 
 pub mod layout;
@@ -83,45 +84,28 @@ mod window;
 ///     }
 /// }
 /// ```
-pub trait Ui: Default + Debug + Clone + Send + 'static {
+pub trait Ui: 'static {
     /// The [`Area`] of this [`Ui`]
-    type Area: Area<Ui = Self>;
-    /// Variables to initialize at the Duat application, outside the
-    /// config
-    ///
-    /// Of the ways that Duat can be extended and modified, only the
-    /// [`Ui`] can be accessed by the Duat executor itself, since it
-    /// is one of its dependencies. This means that it is possible to
-    /// keep some things between reloads.
-    ///
-    /// This is particularly useful for some kinds of static
-    /// variables. For example, in [`term-ui`], it makes heavy use of
-    /// [`std`] defined functions to print to the terminal. Those use
-    /// a static [`Mutex`] internally, and I have found that it is
-    /// better to use the one from the Duat app, rather than one from
-    /// the config crate
-    ///
-    /// > [!NOTE]
-    /// >
-    /// > This trait member is only meant to be used by duat itself.
-    /// > This is why it implements the [`GetOnce`] trait, so it can
-    /// > only be acquired once on startup.
-    ///
-    /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
-    /// [`Mutex`]: std::sync::Mutex
-    type MetaStatics: GetOnce<Self> + Send + Sync;
+    type Area: Area<Ui = Self>
+    where
+        Self: Sized;
+
+    /// Return [`Some`] only on the first call
+    fn get_once() -> Option<&'static Self>
+    where
+        Self: Sized;
 
     ////////// Functions executed from the outer loop
 
     /// Functions to trigger when the program begins
     ///
     /// These will happen in the main `duat` runner
-    fn open(ms: &'static Self::MetaStatics, duat_tx: DuatSender);
+    fn open(&self, duat_tx: DuatSender);
 
     /// Functions to trigger when the program ends
     ///
     /// These will happen in the main `duat` runner
-    fn close(ms: &'static Self::MetaStatics);
+    fn close(&self);
 
     ////////// Functions executed from within the configuration loop
 
@@ -131,7 +115,9 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
-    fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
+    fn new_root(&self, cache: <Self::Area as Area>::Cache) -> Self::Area
+    where
+        Self: Sized;
 
     /// Initiates and returns a new "floating" [`Area`]
     ///
@@ -145,39 +131,41 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     ///
     /// [`Area`]: Ui::Area
     fn new_spawned(
-        ms: &'static Self::MetaStatics,
+        &self,
         id: SpawnId,
         specs: SpawnSpecs,
         cache: <Self::Area as Area>::Cache,
         win: usize,
-    ) -> Self::Area;
+    ) -> Self::Area
+    where
+        Self: Sized;
 
     /// Switches the currently active window
     ///
     /// This will only happen to with window indices that are actual
     /// windows. If at some point, a window index comes up that is not
     /// actually a window, that's a bug.
-    fn switch_window(ms: &'static Self::MetaStatics, win: usize);
+    fn switch_window(&self, win: usize);
 
     /// Flush the layout
     ///
     /// When this function is called, it means that Duat has finished
     /// adding or removing widgets, so the ui should calculate the
     /// layout.
-    fn flush_layout(ms: &'static Self::MetaStatics);
+    fn flush_layout(&self);
 
     /// Prints the layout
     ///
     /// Since printing runs all on the same thread, it is most
     /// efficient to call a printing function after all the widgets
     /// are done updating, I think.
-    fn print(ms: &'static Self::MetaStatics);
+    fn print(&self);
 
     /// Functions to trigger when the program reloads
     ///
     /// These will happen inside of the dynamically loaded config
     /// crate.
-    fn load(ms: &'static Self::MetaStatics);
+    fn load(&self);
 
     /// Unloads the [`Ui`]
     ///
@@ -186,7 +174,7 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     ///
     /// These will happen inside of the dynamically loaded config
     /// crate.
-    fn unload(ms: &'static Self::MetaStatics);
+    fn unload(&self);
 
     /// Removes a window from the [`Ui`]
     ///
@@ -194,23 +182,28 @@ pub trait Ui: Default + Debug + Clone + Send + 'static {
     /// is, if the current window was ahead of the deleted one, it
     /// should be shifted back, so that the same window is still
     /// displayed.
-    fn remove_window(ms: &'static Self::MetaStatics, win: usize);
+    fn remove_window(&self, win: usize);
 }
 
 /// An [`Area`] that supports printing [`Text`]
 ///
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
-pub trait Area: PartialEq + Sized + 'static {
+pub trait Area: 'static {
     /// The [`Ui`] this [`Area`] belongs to
-    type Ui: Ui<Area = Self>;
+    type Ui: Ui<Area = Self>
+    where
+        Self: Sized;
+
     /// Something to be kept between app instances/reloads
     ///
     /// The most useful thing to keep in this case is the
     /// [`PrintInfo`], but you could include other things
     ///
     /// [`PrintInfo`]: Area::PrintInfo
-    type Cache: Default + Encode + Decode<()> + 'static;
+    type Cache: Default + Encode + Decode<()> + 'static
+    where
+        Self: Sized;
     /// Information about what parts of a [`Text`] should be printed
     ///
     /// For the [`term-ui`], for example, this is quite simple, it
@@ -220,7 +213,9 @@ pub trait Area: PartialEq + Sized + 'static {
     /// use of smooth scrolling, for example.
     ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
-    type PrintInfo: Default + Clone + Send + PartialEq + Eq;
+    type PrintInfo: Default + Clone + Send + PartialEq + Eq + 'static
+    where
+        Self: Sized;
 
     ////////// Area modification
 
@@ -264,31 +259,35 @@ pub trait Area: PartialEq + Sized + 'static {
     ///
     /// [deleted]: Area::delete
     fn push(
-        area: MutArea<Self>,
+        &mut self,
         specs: PushSpecs,
         on_files: bool,
         cache: Self::Cache,
-    ) -> Option<(Self, Option<Self>)>;
+    ) -> Option<(Self, Option<Self>)>
+    where
+        Self: Sized;
 
-    /// Spawns a floating area on this [`Area`]
+    /// Spawns a floating area on this `Area`
     ///
     /// This function will take a list of [`SpawnSpecs`], taking the
     /// first one that fits, and readapting as the constraints are
     /// altered
     ///
     /// If this `Area` was previously [deleted], will return [`None`].
-    fn spawn(
-        area: MutArea<Self>,
-        id: SpawnId,
-        specs: SpawnSpecs,
-        cache: Self::Cache,
-    ) -> Option<Self>;
+    fn spawn(&mut self, id: SpawnId, specs: SpawnSpecs, cache: Self::Cache) -> Option<Self>
+    where
+        Self: Sized;
 
-    /// Deletes this [`Area`], signaling the closing of a
+    /// Deletes this `Area`, signaling the closing of a
     /// [`Widget`]
     ///
+    /// The first return value shall be `true` if the window housing
+    /// this `Area` should be removed.
+    ///
     /// If the [`Area`]'s parent was also deleted, return it.
-    fn delete(area: MutArea<Self>) -> (bool, Vec<Self>);
+    fn delete(&mut self) -> (bool, Vec<Self>)
+    where
+        Self: Sized;
 
     /// Swaps this `Area` with another one
     ///
@@ -303,7 +302,9 @@ pub trait Area: PartialEq + Sized + 'static {
     /// It can fail if either of the [`Area`]s was already deleted, or
     /// if no swap happened because they belonged to the same cluster
     /// master.
-    fn swap(lhs: MutArea<Self>, rhs: &Self) -> bool;
+    fn swap(&mut self, rhs: &mut Self) -> bool
+    where
+        Self: Sized;
 
     ////////// Constraint changing functions
 
@@ -355,7 +356,7 @@ pub trait Area: PartialEq + Sized + 'static {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::cfg::WrapMethod
-    fn scroll_to_points(&self, text: &Text, points: impl TwoPoints, cfg: PrintCfg);
+    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg);
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
@@ -376,12 +377,20 @@ pub trait Area: PartialEq + Sized + 'static {
         cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
-    );
+    ) where
+        Self: Sized;
+
+    /// The current printing information of the area
+    fn get_print_info(&self) -> Self::PrintInfo
+    where
+        Self: Sized;
 
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
     /// [`PrintInfo`]: Area::PrintInfo
-    fn set_print_info(&self, info: Self::PrintInfo);
+    fn set_print_info(&mut self, info: Self::PrintInfo)
+    where
+        Self: Sized;
 
     /// Returns a printing iterator
     ///
@@ -398,7 +407,7 @@ pub trait Area: PartialEq + Sized + 'static {
         &self,
         iter: FwdIter<'a>,
         cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>;
 
     /// Returns a reversed printing iterator
     ///
@@ -414,7 +423,7 @@ pub trait Area: PartialEq + Sized + 'static {
         &self,
         iter: RevIter<'a>,
         cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>;
 
     ////////// Queries
 
@@ -431,17 +440,23 @@ pub trait Area: PartialEq + Sized + 'static {
     ///
     /// This can only happen if, by following [`self`]'s children, you
     /// would eventually reach `other`.
-    fn is_master_of(&self, other: &Self) -> bool;
+    fn is_master_of(&self, other: &Self) -> bool
+    where
+        Self: Sized;
 
     /// Returns the clustered master of [`self`], if there is one
     ///
     /// If [`self`] belongs to a clustered group, return the most
     /// senior member of said cluster, which must hold all other
     /// members of the cluster.
-    fn get_cluster_master(&self) -> Option<Self>;
+    fn get_cluster_master(&mut self) -> Option<Self>
+    where
+        Self: Sized;
 
     /// Returns the statics from `self`
-    fn cache(&self) -> Option<Self::Cache>;
+    fn cache(&mut self) -> Option<Self::Cache>
+    where
+        Self: Sized;
 
     /// Gets the width of the area
     fn width(&self) -> f32;
@@ -454,9 +469,6 @@ pub trait Area: PartialEq + Sized + 'static {
 
     /// The points immediately after the last printed [`Point`]
     fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
-
-    /// The current printing information of the area
-    fn print_info(&self) -> Self::PrintInfo;
 
     /// Returns `true` if this is the currently active [`Area`]
     ///
@@ -1002,9 +1014,269 @@ impl<U: Ui> PushTarget<U> for UiBuilder<U> {
     }
 }
 
-/// A trait meant to prevent getting multiple [`Ui::MetaStatics`]
-#[doc(hidden)]
-pub trait GetOnce<U: Ui> {
-    /// Return [`Some`] only on the first call
-    fn get_once() -> Option<&'static Self>;
+#[derive(Clone)]
+struct TypeErasedArea {
+    area: RwData<dyn Area>,
+    fns: &'static TypeErasedAreaFunctions,
+}
+
+impl TypeErasedArea {
+    fn new<U: Ui>(area: U::Area) -> Self
+    where
+        U::Area: PartialEq,
+        <U::Area as Area>::PrintInfo: Default + Clone + Send + PartialEq + Eq,
+    {
+        Self {
+            area: unsafe { RwData::new_unsized::<U::Area>(Arc::new(UnsafeCell::new(area))) },
+            fns: TypeErasedAreaFunctions::new::<U>(),
+        }
+    }
+
+    fn push(
+        &self,
+        pa: &mut Pass,
+        widget: &RwData<dyn Widget>,
+        specs: PushSpecs,
+        on_files: bool,
+    ) -> Option<(Self, Option<Self>)> {
+        (self.fns.push)(pa, &self.area, widget, specs, on_files)
+    }
+
+    fn area_is_eq(&self, pa: &Pass, other: &TypeErasedArea) -> bool {
+        (self.fns.eq)(pa, &self.area, &other.area)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct TypeErasedAreaFunctions {
+    /// Push one [`Area`] to another
+    push: fn(
+        pa: &mut Pass,
+        area: &RwData<dyn Area>,
+        widget: &RwData<dyn Widget>,
+        specs: PushSpecs,
+        on_files: bool,
+    ) -> Option<(TypeErasedArea, Option<TypeErasedArea>)>,
+    /// Spawn an [`Area`] on another
+    spawn: fn(
+        pa: &mut Pass,
+        area: &RwData<dyn Area>,
+        widget: &RwData<dyn Widget>,
+        spawn_id: SpawnId,
+        specs: SpawnSpecs,
+    ) -> Option<TypeErasedArea>,
+    /// Deletes an [`Area`]
+    delete: fn(pa: &mut Pass, area: &RwData<dyn Area>) -> (bool, Vec<TypeErasedArea>),
+    /// Swaps two [`Area`]s
+    swap: fn(pa: &mut Pass, lhs: &TypeErasedArea, rhs: &TypeErasedArea) -> bool,
+    /// Prints to an [`Area`], with a callback function
+    print_with: for<'a> fn(
+        pa: &Pass,
+        area: &RwData<dyn Area>,
+        text: &Text,
+        cfg: PrintCfg,
+        painter: Painter,
+        f: Box<dyn FnMut(&Caret, &Item) + 'a>,
+    ),
+    /// Gets the type erased [`Area::PrintInfo`]
+    get_print_info: fn(pa: &Pass, area: &RwData<dyn Area>) -> TypeErasedPrintInfo,
+    /// Sets the type erased [`Area::PrintInfo`]
+    set_print_info: fn(pa: &mut Pass, area: &RwData<dyn Area>, info: TypeErasedPrintInfo),
+    /// Wether this [`Area`] is the master of another
+    is_master_of: fn(pa: &Pass, lhs: &RwData<dyn Area>, rhs: &RwData<dyn Area>) -> bool,
+    /// Gets the master [`Area`] of another's cluster
+    get_cluster_master: fn(pa: &mut Pass, area: &RwData<dyn Area>) -> Option<TypeErasedArea>,
+    /// Store the [`Area::Cache`] of this [`Area`]
+    store_cache: fn(pa: &Pass, area: &RwData<dyn Area>, path: &str) -> Result<(), Text>,
+    /// Wether two [`Area`]s are the same
+    eq: fn(pa: &Pass, lhs: &RwData<dyn Area>, rhs: &RwData<dyn Area>) -> bool,
+}
+
+impl TypeErasedAreaFunctions {
+    const fn new<U: Ui>() -> &'static Self
+    where
+        U::Area: PartialEq,
+    {
+        &Self {
+            push: |pa, area, widget, specs, on_files| {
+                let cache = get_cache::<U>(pa, widget);
+                let area: &mut U::Area = area.write_as(pa)?;
+                let (child, parent) = area.push(specs, on_files, cache)?;
+
+                let child = TypeErasedArea::new::<U>(child);
+                let parent = parent.map(TypeErasedArea::new::<U>);
+
+                Some((child, parent))
+            },
+            spawn: |pa, area, widget, spawn_id, specs| {
+                let cache = get_cache::<U>(pa, widget);
+                let area: &mut U::Area = area.write_as(pa)?;
+                let spawned = area.spawn(spawn_id, specs, cache)?;
+
+                Some(TypeErasedArea::new::<U>(spawned))
+            },
+            delete: |pa, area| {
+                let Some(area) = area.write_as::<U::Area>(pa) else {
+                    context::error!("Tried to delete an Area of the incorrect type");
+                    return (false, Vec::new());
+                };
+
+                let (do_rm_window, removed) = area.delete();
+
+                (
+                    do_rm_window,
+                    removed.into_iter().map(TypeErasedArea::new::<U>).collect(),
+                )
+            },
+            swap: |pa, lhs, rhs| {
+                if lhs.area_is_eq(pa, rhs) {
+                    context::warn!("Attempted two swap an Area with itself");
+                    return false;
+                }
+
+                // SAFETY: The check above ensures the two Areas
+                // don't point to the same thing.
+                let internal_pass = &mut unsafe { Pass::new() };
+
+                let [Some(lhs), Some(rhs)] = [
+                    lhs.area.write_as::<U::Area>(pa),
+                    rhs.area.write_as(internal_pass),
+                ] else {
+                    panic!("The two Areas are not of the same type");
+                };
+
+                lhs.swap(rhs)
+            },
+            print_with: |pa, area, text, print_cfg, painter, f| {
+                let Some(area) = area.read_as::<U::Area>(pa) else {
+                    context::error!("Tried to delete an Area of the incorrect type");
+                    return;
+                };
+
+                area.print_with(text, print_cfg, painter, f);
+            },
+            get_print_info: |pa, area| {
+                let Some(area) = area.read_as::<U::Area>(pa) else {
+                    panic!("Attempted to get PrintInfo of the wrong type");
+                };
+
+                TypeErasedPrintInfo::new::<U>(area.get_print_info())
+            },
+            set_print_info: |pa, area, info| {
+                let (Some(area), Some(info)) = (
+                    area.write_as::<U::Area>(pa),
+                    info.info.downcast_ref::<<U::Area as Area>::PrintInfo>(),
+                ) else {
+                    panic!("Attempted to get PrintInfo of the wrong type");
+                };
+
+                area.set_print_info(info.clone());
+            },
+            eq: |pa, lhs, rhs| {
+                let [Some(lhs), Some(rhs)] = [lhs.read_as::<U::Area>(pa), rhs.read_as(pa)] else {
+                    context::error!("Tried to compare Areas of the incorrect type");
+                    return false;
+                };
+
+                lhs == rhs
+            },
+            is_master_of: |pa, lhs, rhs| {
+                let [Some(lhs), Some(rhs)] = [lhs.read_as::<U::Area>(pa), rhs.read_as(pa)] else {
+                    panic!("Tried to compare two areas of the wrong type");
+                };
+
+                lhs.is_master_of(rhs)
+            },
+            get_cluster_master: |pa, area| {
+                let area = area.write_as::<U::Area>(pa)?;
+                area.get_cluster_master().map(TypeErasedArea::new::<U>)
+            },
+            store_cache: |pa, area, path| {
+                let area = area
+                    .read_as::<U::Area>(pa)
+                    .ok_or_else(|| txt!("Attempted to store cache of wrong Area type"))?;
+
+                if let Some(area_cache) = area.cache() {
+                    Cache::new().store(&path, area_cache)?;
+                }
+
+                Ok(())
+            },
+        }
+    }
+}
+
+struct TypeErasedPrintInfo {
+    info: Box<dyn Any + Send>,
+    fns: &'static TypeErasedPrintInfoFunctions,
+}
+
+impl TypeErasedPrintInfo {
+    fn new<U: Ui>(info: <U::Area as Area>::PrintInfo) -> Self {
+        Self {
+            info: Box::new(info),
+            fns: TypeErasedPrintInfoFunctions::new::<U>(),
+        }
+    }
+}
+
+impl Clone for TypeErasedPrintInfo {
+    fn clone(&self) -> Self {
+        (self.fns.clone)(&self.info)
+    }
+}
+
+impl PartialEq for TypeErasedPrintInfo {
+    fn eq(&self, other: &Self) -> bool {
+        (self.fns.eq)(&self.info, &other.info)
+    }
+}
+
+struct TypeErasedPrintInfoFunctions {
+    clone: fn(info: &(dyn Any + Send)) -> TypeErasedPrintInfo,
+    eq: fn(lhs: &(dyn Any + Send), rhs: &(dyn Any + Send)) -> bool,
+}
+
+impl TypeErasedPrintInfoFunctions {
+    fn new<U: Ui>() -> &'static Self {
+        &Self {
+            clone: |info| {
+                let Some(info) = info.downcast_ref::<<U::Area as Area>::PrintInfo>() else {
+                    panic!("Attempted to get PrintInfo of wrong type");
+                };
+
+                TypeErasedPrintInfo {
+                    info: Box::new(info.clone()),
+                    fns: Self::new::<U>(),
+                }
+            },
+            eq: |lhs, rhs| {
+                let [Some(lhs), Some(rhs)] = [
+                    lhs.downcast_ref::<<U::Area as Area>::PrintInfo>(),
+                    rhs.downcast_ref(),
+                ] else {
+                    panic!("Attempted to get PrintInfo of wrong type");
+                };
+
+                lhs == rhs
+            },
+        }
+    }
+}
+
+fn get_cache<U: Ui>(
+    pa: &mut Pass,
+    widget: &RwData<dyn Widget<U>>,
+) -> <<U as Ui>::Area as Area>::Cache {
+    if let Some(file) = widget.write_as::<File<U>>(pa) {
+        match Cache::new().load::<<U::Area as Area>::Cache>(file.path()) {
+            Ok(cache) => cache,
+            Err(err) => {
+                context::error!("{err}");
+                <U::Area as Area>::Cache::default()
+            }
+        }
+    } else {
+        <U::Area as Area>::Cache::default()
+    }
 }
