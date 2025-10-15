@@ -34,7 +34,7 @@ use crate::{
     },
     mode,
     ui::{
-        TypeErasedUi, Windows,
+        Ui, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
@@ -59,7 +59,7 @@ impl SessionCfg {
 
     pub fn build(
         self,
-        ui: TypeErasedUi,
+        ui: Ui,
         files: Vec<Vec<ReloadedFile>>,
         already_plugged: Vec<TypeId>,
     ) -> Session {
@@ -74,7 +74,7 @@ impl SessionCfg {
                 .find_map(|(f, ty)| f.take().zip(Some(*ty)))
         } {
             if !already_plugged.contains(&ty) {
-                plug(&plugins);
+                plug(plugins);
             }
         }
 
@@ -118,7 +118,7 @@ impl SessionCfg {
 /// A session of Duat
 #[doc(hidden)]
 pub struct Session {
-    ui: TypeErasedUi,
+    ui: Ui,
 }
 
 impl Session {
@@ -158,6 +158,7 @@ impl Session {
             let mut windows_nodes = get_windows_nodes(pa);
 
             move |pa: &mut Pass, force: bool| {
+                context::windows().cleanup_despawned(pa);
                 let cur_win = context::cur_window(pa);
 
                 let mut printed_at_least_one = false;

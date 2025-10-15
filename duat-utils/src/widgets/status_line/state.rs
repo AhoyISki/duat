@@ -21,14 +21,15 @@ use duat_core::{
     data::{DataMap, RwData},
     prelude::*,
     text::{Builder, BuilderPart},
+    ui::traits::Area,
 };
 
 use crate::widgets::status_line::CheckerFn;
 
 /// A struct that reads state in order to return [`Text`].
-enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W: Widget<U> = File<U>> {
+enum Appender<_T: Clone = (), D: Display + Clone = String, W: Widget = File> {
     TextFnCheckerArg(TextFnCheckerFn),
-    FromWidget(WidgetAreaFn<W, U>),
+    FromWidget(WidgetAreaFn<W>),
     Part(BuilderPart<D, _T>),
 }
 
@@ -42,36 +43,34 @@ enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W: Widget<U> =
 /// [`impl Display`]: std::fmt::Display
 /// [`File`]: crate::file::File
 #[doc(hidden)]
-pub struct State<U, _T = (), D = String, W = File<U>>
+pub struct State<_T = (), D = String, W = File>
 where
-    U: Ui,
     _T: Clone + Send,
     D: Display + Clone + Send,
-    W: Widget<U>,
+    W: Widget,
 {
-    appender: Appender<U, _T, D, W>,
+    appender: Appender<_T, D, W>,
     checker: Option<CheckerFn>,
     ghost: PhantomData<_T>,
 }
 
-impl<U, _T, D, W> State<U, _T, D, W>
+impl<_T, D, W> State<_T, D, W>
 where
-    U: Ui,
     _T: Clone + Send + 'static,
     D: Display + Clone + Send + 'static,
-    W: Widget<U>,
+    W: Widget,
 {
     /// Returns the two building block functions for the
     /// [`Statusline`]
     ///
     /// [`StatusLine`]: super::StatusLine
-    pub fn fns(self) -> StateFns<U> {
+    pub fn fns(self) -> StateFns {
         (
             match self.appender {
                 Appender::TextFnCheckerArg(f) => Box::new(move |pa, b, _| f(pa, b)),
                 Appender::FromWidget(f) => Box::new(move |pa, b, reader| {
                     if let Some((widget, area, _)) = reader.read_related(pa).next() {
-                        f(b, pa, widget, area);
+                        f(b, pa, widget, area.read(pa));
                     }
                 }),
                 Appender::Part(builder_part) => {
@@ -83,7 +82,7 @@ where
     }
 }
 
-impl<D: Display + Clone + Send + 'static, U: Ui> From<D> for State<U, D, D> {
+impl<D: Display + Clone + Send + 'static> From<D> for State<D, D> {
     fn from(value: D) -> Self {
         Self {
             appender: Appender::Part(value.into()),
@@ -93,7 +92,7 @@ impl<D: Display + Clone + Send + 'static, U: Ui> From<D> for State<U, D, D> {
     }
 }
 
-impl<U: Ui> From<Text> for State<U, ()> {
+impl From<Text> for State<()> {
     fn from(value: Text) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(value)),
@@ -103,7 +102,7 @@ impl<U: Ui> From<Text> for State<U, ()> {
     }
 }
 
-impl<D: Display + Clone + Send + 'static, U: Ui> From<RwData<D>> for State<U, DataArg<D>> {
+impl<D: Display + Clone + Send + 'static> From<RwData<D>> for State<DataArg<D>> {
     fn from(value: RwData<D>) -> Self {
         let checker = value.checker();
         Self {
@@ -114,7 +113,7 @@ impl<D: Display + Clone + Send + 'static, U: Ui> From<RwData<D>> for State<U, Da
     }
 }
 
-impl<U: Ui> From<RwData<Text>> for State<U, DataArg<()>> {
+impl From<RwData<Text>> for State<DataArg<()>> {
     fn from(value: RwData<Text>) -> Self {
         let checker = value.checker();
         Self {
@@ -127,7 +126,7 @@ impl<U: Ui> From<RwData<Text>> for State<U, DataArg<()>> {
     }
 }
 
-impl<I: ?Sized, O: Display, U: Ui> From<DataMap<I, O>> for State<U, DataArg<String>> {
+impl<I: ?Sized, O: Display> From<DataMap<I, O>> for State<DataArg<String>> {
     fn from(value: DataMap<I, O>) -> Self {
         let checker = value.checker();
         State {
@@ -138,7 +137,7 @@ impl<I: ?Sized, O: Display, U: Ui> From<DataMap<I, O>> for State<U, DataArg<Stri
     }
 }
 
-impl<U: Ui, I: ?Sized> From<DataMap<I, Text>> for State<U, DataArg<Text>> {
+impl<I: ?Sized> From<DataMap<I, Text>> for State<DataArg<Text>> {
     fn from(value: DataMap<I, Text>) -> Self {
         let checker = value.checker();
         State {
@@ -149,12 +148,11 @@ impl<U: Ui, I: ?Sized> From<DataMap<I, Text>> for State<U, DataArg<Text>> {
     }
 }
 
-impl<D, TextFn, Checker, U> From<(TextFn, Checker)> for State<U, TextFnCheckerArg<String>>
+impl<D, TextFn, Checker> From<(TextFn, Checker)> for State<TextFnCheckerArg<String>>
 where
     D: Display,
     TextFn: Fn(&Pass) -> D + Send + 'static,
     Checker: Fn(&Pass) -> bool + Send + 'static,
-    U: Ui,
 {
     fn from((value, checker): (TextFn, Checker)) -> Self {
         State {
@@ -165,11 +163,10 @@ where
     }
 }
 
-impl<TextFn, Checker, U> From<(TextFn, Checker)> for State<U, TextFnCheckerArg<Text>>
+impl<TextFn, Checker> From<(TextFn, Checker)> for State<TextFnCheckerArg<Text>>
 where
     TextFn: Fn(&Pass) -> Text + Send + 'static,
     Checker: Fn(&Pass) -> bool + Send + 'static,
-    U: Ui,
 {
     fn from((value, checker): (TextFn, Checker)) -> Self {
         State {
@@ -180,12 +177,11 @@ where
     }
 }
 
-impl<D, W, ReadFn, U> From<ReadFn> for State<U, WidgetArg<String>, String, W>
+impl<D, W, ReadFn> From<ReadFn> for State<WidgetArg<String>, String, W>
 where
     D: Display + 'static,
-    W: Widget<U> + Sized,
+    W: Widget + Sized,
     ReadFn: Fn(&W) -> D + Send + 'static,
-    U: Ui,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -196,11 +192,10 @@ where
     }
 }
 
-impl<W, ReadFn, U> From<ReadFn> for State<U, WidgetArg<Text>, String, W>
+impl<W, ReadFn> From<ReadFn> for State<WidgetArg<Text>, String, W>
 where
-    W: Widget<U> + Sized,
+    W: Widget + Sized,
     ReadFn: Fn(&W) -> Text + Send + 'static,
-    U: Ui,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -211,12 +206,11 @@ where
     }
 }
 
-impl<D, W, ReadFn, U> From<ReadFn> for State<U, WidgetAreaArg<String>, String, W>
+impl<D, W, ReadFn> From<ReadFn> for State<WidgetAreaArg<String>, String, W>
 where
     D: Display + 'static,
-    W: Widget<U> + Sized,
-    ReadFn: Fn(&W, &U::Area) -> D + Send + 'static,
-    U: Ui,
+    W: Widget + Sized,
+    ReadFn: Fn(&W, &dyn Area) -> D + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -229,11 +223,10 @@ where
     }
 }
 
-impl<W, ReadFn, U> From<ReadFn> for State<U, WidgetAreaArg<Text>, String, W>
+impl<W, ReadFn> From<ReadFn> for State<WidgetAreaArg<Text>, String, W>
 where
-    W: Widget<U> + Sized,
-    ReadFn: Fn(&W, &U::Area) -> Text + Send + 'static,
-    U: Ui,
+    W: Widget + Sized,
+    ReadFn: Fn(&W, &dyn Area) -> Text + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -246,12 +239,11 @@ where
     }
 }
 
-impl<D, W, ReadFn, U> From<ReadFn> for State<U, PassWidgetArg<String>, String, W>
+impl<D, W, ReadFn> From<ReadFn> for State<PassWidgetArg<String>, String, W>
 where
     D: Display + 'static,
-    W: Widget<U> + Sized,
+    W: Widget + Sized,
     ReadFn: Fn(&Pass, &W) -> D + Send + 'static,
-    U: Ui,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -264,11 +256,10 @@ where
     }
 }
 
-impl<W, ReadFn, U> From<ReadFn> for State<U, PassWidgetArg<Text>, String, W>
+impl<W, ReadFn> From<ReadFn> for State<PassWidgetArg<Text>, String, W>
 where
-    W: Widget<U> + Sized,
+    W: Widget + Sized,
     ReadFn: Fn(&Pass, &W) -> Text + Send + 'static,
-    U: Ui,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -281,12 +272,11 @@ where
     }
 }
 
-impl<D, W, ReadFn, U> From<ReadFn> for State<U, PassWidgetAreaArg<String>, String, W>
+impl<D, W, ReadFn> From<ReadFn> for State<PassWidgetAreaArg<String>, String, W>
 where
     D: Display + 'static,
-    W: Widget<U> + Sized,
-    ReadFn: Fn(&Pass, &W, &U::Area) -> D + Send + 'static,
-    U: Ui,
+    W: Widget + Sized,
+    ReadFn: Fn(&Pass, &W, &dyn Area) -> D + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -299,11 +289,10 @@ where
     }
 }
 
-impl<W, ReadFn, U> From<ReadFn> for State<U, PassWidgetAreaArg<Text>, String, W>
+impl<W, ReadFn> From<ReadFn> for State<PassWidgetAreaArg<Text>, String, W>
 where
-    W: Widget<U> + Sized,
-    ReadFn: Fn(&Pass, &W, &U::Area) -> Text + Send + 'static,
-    U: Ui,
+    W: Widget + Sized,
+    ReadFn: Fn(&Pass, &W, &dyn Area) -> Text + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -316,7 +305,7 @@ where
     }
 }
 
-impl<U: Ui> From<AlignLeft> for State<U, AlignLeft> {
+impl From<AlignLeft> for State<AlignLeft> {
     fn from(_: AlignLeft) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::AlignLeft),
@@ -326,7 +315,7 @@ impl<U: Ui> From<AlignLeft> for State<U, AlignLeft> {
     }
 }
 
-impl<U: Ui> From<AlignCenter> for State<U, AlignCenter> {
+impl From<AlignCenter> for State<AlignCenter> {
     fn from(_: AlignCenter) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::AlignCenter),
@@ -336,7 +325,7 @@ impl<U: Ui> From<AlignCenter> for State<U, AlignCenter> {
     }
 }
 
-impl<U: Ui> From<AlignRight> for State<U, AlignRight> {
+impl From<AlignRight> for State<AlignRight> {
     fn from(_: AlignRight) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::AlignRight),
@@ -346,7 +335,7 @@ impl<U: Ui> From<AlignRight> for State<U, AlignRight> {
     }
 }
 
-impl<U: Ui> From<Spacer> for State<U, ()> {
+impl From<Spacer> for State<()> {
     fn from(_: Spacer) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(Spacer)),
@@ -356,7 +345,7 @@ impl<U: Ui> From<Spacer> for State<U, ()> {
     }
 }
 
-impl<T: Into<Text> + Clone, U: Ui> From<Ghost<T>> for State<U, ()> {
+impl<T: Into<Text> + Clone> From<Ghost<T>> for State<()> {
     fn from(value: Ghost<T>) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(value)),
@@ -390,6 +379,6 @@ pub struct PassWidgetAreaArg<W>(PhantomData<W>);
 
 // The various types of function aliases
 type TextFnCheckerFn = Box<dyn Fn(&Pass, &mut Builder) + 'static + Send>;
-type WidgetAreaFn<W, U> = Box<dyn Fn(&mut Builder, &Pass, &W, &<U as Ui>::Area) + Send + 'static>;
-type BuilderFn<U> = Box<dyn Fn(&Pass, &mut Builder, &Handle<File<U>, U>) + Send>;
-type StateFns<U> = (BuilderFn<U>, Box<dyn Fn(&Pass) -> bool + Send>);
+type WidgetAreaFn<W> = Box<dyn Fn(&mut Builder, &Pass, &W, &dyn Area) + Send + 'static>;
+type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle<File>) + Send>;
+type StateFns = (BuilderFn, Box<dyn Fn(&Pass) -> bool + Send>);

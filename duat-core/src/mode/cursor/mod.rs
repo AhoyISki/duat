@@ -18,7 +18,7 @@ use crate::{
     cfg::PrintCfg,
     file::{File, Parser},
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
-    ui::{Area, Widget},
+    ui::{traits::Area, Widget},
 };
 
 /// The [`Selection`] and [`Selections`] structs

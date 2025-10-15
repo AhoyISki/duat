@@ -15,7 +15,7 @@
 //! [user made functionalities]: PromptMode
 //! [`Mode`]: crate::mode::Mode
 //! [`Prompt`]: crate::modes::Prompt
-use std::{any::TypeId, collections::HashMap, marker::PhantomData};
+use std::{any::TypeId, collections::HashMap};
 
 use duat_core::{
     prelude::*,
@@ -45,26 +45,25 @@ use crate::modes::PromptMode;
 /// [`File`]: duat_core::file::File
 /// [`IncSearcher`]: crate::modes::IncSearcher
 /// [`PipeSelections`]: crate::modes::PipeSelections
-pub struct PromptLine<U: Ui> {
+pub struct PromptLine {
     text: Text,
     prompts: HashMap<TypeId, Text>,
-    _ghost: PhantomData<U>,
 }
 
-impl<U: Ui> PromptLine<U> {
+impl PromptLine {
     /// Returns a [`PromptLineBuilder`], which can be used to push
     /// `PromptLine`s around
-    pub fn builder() -> PromptLineBuilder<U> {
+    pub fn builder() -> PromptLineBuilder {
         PromptLineBuilder::default()
     }
 
     /// Returns the prompt for a [`PromptMode`] if there is any
-    pub fn prompt_of<M: PromptMode<U>>(&self) -> Option<Text> {
+    pub fn prompt_of<M: PromptMode>(&self) -> Option<Text> {
         self.prompts.get(&TypeId::of::<M>()).cloned()
     }
 
     /// Sets the prompt for the given [`PromptMode`]
-    pub fn set_prompt<M: PromptMode<U>>(&mut self, text: Text) {
+    pub fn set_prompt<M: PromptMode>(&mut self, text: Text) {
         self.prompts.entry(TypeId::of::<M>()).or_insert(text);
     }
 
@@ -74,13 +73,13 @@ impl<U: Ui> PromptLine<U> {
     }
 }
 
-impl<U: Ui> Widget<U> for PromptLine<U> {
-    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
+impl Widget for PromptLine {
+    fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let pl = handle.read(pa);
         if let Some(main) = pl.text.selections().get_main() {
             handle
-                .area(pa)
-                .scroll_around_point(&pl.text, main.caret(), pl.get_print_cfg());
+                .area()
+                .scroll_around_points(pa, &pl.text, main.caret(), pl.get_print_cfg());
         }
     }
 
@@ -103,22 +102,16 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
 
 #[doc(hidden)]
 #[derive(Default)]
-pub struct PromptLineBuilder<U: Ui> {
+pub struct PromptLineBuilder {
     prompts: Option<HashMap<TypeId, Text>> = None,
     specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
-    _ghost: PhantomData<U> = PhantomData
 }
 
-impl<U: Ui> PromptLineBuilder<U> {
-    pub fn push_on(
-        self,
-        pa: &mut Pass,
-        push_target: &impl PushTarget<U>,
-    ) -> Handle<PromptLine<U>, U> {
+impl PromptLineBuilder {
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<PromptLine> {
         let prompt_line = PromptLine {
             text: Text::default(),
             prompts: self.prompts.unwrap_or_default(),
-            _ghost: PhantomData,
         };
 
         push_target.push_outer(pa, prompt_line, self.specs)
@@ -128,7 +121,7 @@ impl<U: Ui> PromptLineBuilder<U> {
     ///
     /// [prompt]: Text
     /// [mode]: PromptMode
-    pub fn set_prompt<M: PromptMode<U>>(mut self, prompt: Text) -> Self {
+    pub fn set_prompt<M: PromptMode>(mut self, prompt: Text) -> Self {
         self.prompts
             .get_or_insert_default()
             .insert(TypeId::of::<M>(), prompt);
@@ -155,16 +148,6 @@ impl<U: Ui> PromptLineBuilder<U> {
     pub fn hidden(self) -> Self {
         Self {
             specs: PushSpecs { hidden: true, ..self.specs },
-            ..self
-        }
-    }
-
-    /// Push to the left, to be used by [`FooterWidgets`]
-    ///
-    /// [`FooterWidgets`]: crate::widgets::FooterWidgets
-    pub(crate) fn left(self) -> Self {
-        Self {
-            specs: PushSpecs { side: Side::Left, ..self.specs },
             ..self
         }
     }

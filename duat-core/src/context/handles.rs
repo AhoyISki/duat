@@ -16,7 +16,7 @@ use crate::{
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TextParts, TwoPoints},
-    ui::{Area, PushSpecs, SpawnSpecs, TypeErasedArea, Widget},
+    ui::{Area, PushSpecs, SpawnSpecs, Widget, traits},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -136,7 +136,7 @@ use crate::{
 /// [`U::Area`]: Ui::Area
 pub struct Handle<W: Widget + ?Sized, S = ()> {
     widget: RwData<W>,
-    pub(crate) area: TypeErasedArea,
+    pub(crate) area: Area,
     mask: Arc<Mutex<&'static str>>,
     related: RelatedWidgets,
     searcher: RefCell<S>,
@@ -145,11 +145,7 @@ pub struct Handle<W: Widget + ?Sized, S = ()> {
 
 impl<W: Widget + ?Sized> Handle<W> {
     /// Returns a new instance of a [`Handle<W, U>`]
-    pub(crate) fn new(
-        widget: RwData<W>,
-        area: TypeErasedArea,
-        mask: Arc<Mutex<&'static str>>,
-    ) -> Self {
+    pub(crate) fn new(widget: RwData<W>, area: Area, mask: Arc<Mutex<&'static str>>) -> Self {
         Self {
             widget,
             area,
@@ -224,7 +220,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// relatively large amount of shareable state.
     ///
     /// [`Area`]: crate::ui::Area
-    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a dyn Area) {
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a dyn traits::Area) {
         // SAFETY: It is known that these types can't possibly point to the
         // same data.
         static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
@@ -334,7 +330,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             pa: &'a mut Pass,
             handle: &'a Handle<W, S>,
             n: usize,
-        ) -> (Selection, bool, &'a mut W, &'a dyn Area) {
+        ) -> (Selection, bool, &'a mut W, &'a dyn traits::Area) {
             let (widget, area) = handle.write_with_area(pa);
             let selections = widget.text_mut().selections_mut();
             selections.populate();
@@ -515,7 +511,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// This [`Handle`]'s [`U::Area`]
     ///
     /// [`U::Area`]: crate::ui::Ui::Area
-    pub fn area(&self) -> &TypeErasedArea {
+    pub fn area(&self) -> &Area {
         &self.area
     }
 
@@ -588,7 +584,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     pub fn read_related<'a, W2: Widget>(
         &'a self,
         pa: &'a Pass,
-    ) -> impl Iterator<Item = (&'a W2, &'a TypeErasedArea, WidgetRelation)> {
+    ) -> impl Iterator<Item = (&'a W2, &'a Area, WidgetRelation)> {
         self.read_as(pa)
             .map(|w| (w, self.area(), WidgetRelation::Main))
             .into_iter()

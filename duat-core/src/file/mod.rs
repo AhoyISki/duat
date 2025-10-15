@@ -29,7 +29,7 @@ use crate::{
     hook::{self, FileWritten},
     mode::Selections,
     text::{BuilderPart, Bytes, Text, TwoPoints, txt},
-    ui::{TypeErasedArea, Widget},
+    ui::{Area, Widget},
 };
 
 mod parser;
@@ -439,7 +439,7 @@ impl Widget for File {
         *self.cfg.lock()
     }
 
-    fn print(&self, pa: &Pass, painter: Painter, area: &TypeErasedArea) {
+    fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
         let cfg = *self.cfg.lock();
         let (start, _) = area.start_points(pa, &self.text, cfg);
 

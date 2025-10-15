@@ -273,7 +273,7 @@ mod private_exports {
         let (mut appender, checker) = $appender_checker;
         let (mut ap, _) = State::from($str).fns();
 
-        let appender = move |pa: &Pass, builder: &mut Builder, reader: &Handle<File<_>, _>| {
+        let appender = move |pa: &Pass, builder: &mut Builder, reader: &Handle<File>| {
             appender(pa, builder, reader);
             ap(pa, builder, reader);
         };
@@ -296,7 +296,7 @@ mod private_exports {
 
             let checker = move |pa: &Pass| checker(pa) || ch(pa);
 
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File>| {
                 appender(pa, builder, handle);
                 ap(pa, builder, handle);
             };
@@ -316,7 +316,7 @@ mod private_exports {
 
             let checker = move |pa: &Pass| checker(pa) || ch(pa);
 
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File>| {
                 appender(pa, builder, handle);
                 ap(pa, builder, handle);
             };
@@ -332,7 +332,7 @@ mod private_exports {
             };
 
             let (appender, checker) = $appender_checker;
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File>| {
                 appender(pa, builder, handle);
                 builder.push(form::DEFAULT_ID);
             };
@@ -347,7 +347,7 @@ mod private_exports {
             let (appender, checker) = $appender_checker;
             let id = form::id_of!(concat!($(stringify!($form)),*));
 
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File<_>, _>| {
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle<File>| {
                 appender(pa, builder, handle);
                 builder.push(id);
             };

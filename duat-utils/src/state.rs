@@ -12,10 +12,13 @@
 //! [`status!`]: crate::widgets::status
 //! [`Cursor`]: duat_core::mode::Cursor
 //! [`Mode`]: duat_core::mode::Mode
+use std::sync::LazyLock;
+
 use duat_core::{
     data::{DataMap, RwData},
     hook::KeysSent,
     prelude::*,
+    ui::traits::Area,
 };
 
 /// [`StatusLine`] part: The [`File`]'s name, formatted
@@ -47,7 +50,7 @@ use duat_core::{
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn name_txt(file: &File<impl Ui>) -> Text {
+pub fn name_txt(file: &File) -> Text {
     let mut b = Text::builder();
 
     b.push(file.name_txt());
@@ -84,7 +87,7 @@ pub fn name_txt(file: &File<impl Ui>) -> Text {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn path_txt(file: &File<impl Ui>) -> Text {
+pub fn path_txt(file: &File) -> Text {
     let mut b = Text::builder();
 
     b.push(file.name_txt());
@@ -162,28 +165,28 @@ pub fn mode_txt(pa: &Pass) -> DataMap<&'static str, Text> {
 /// [`StatusLine`] part: Byte of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_byte(file: &File<impl Ui>) -> usize {
+pub fn main_byte(file: &File) -> usize {
     file.selections().get_main().unwrap().byte() + 1
 }
 
 /// [`StatusLine`] part: Char of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_char(file: &File<impl Ui>) -> usize {
+pub fn main_char(file: &File) -> usize {
     file.selections().get_main().unwrap().char() + 1
 }
 
 /// [`StatusLine`] part: Line of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_line(file: &File<impl Ui>) -> usize {
+pub fn main_line(file: &File) -> usize {
     file.selections().get_main().unwrap().line() + 1
 }
 
 /// [`StatusLine`] part: Column of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_col<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
+pub fn main_col(file: &File, area: &dyn Area) -> usize {
     let main = file.selections().get_main().unwrap();
     main.v_caret(file.text(), area, file.get_print_cfg())
         .char_col()
@@ -198,7 +201,7 @@ pub fn main_col<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_txt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
+pub fn main_txt(file: &File, area: &dyn Area) -> Text {
     txt!(
         "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
         main_col(file, area),
@@ -211,7 +214,7 @@ pub fn main_txt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
 /// [`StatusLine`] part: The number of selections
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn selections(file: &File<impl Ui>) -> usize {
+pub fn selections(file: &File) -> usize {
     file.selections().len()
 }
 
@@ -233,7 +236,7 @@ pub fn selections(file: &File<impl Ui>) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: duat_core::mode::Cursor
-pub fn sels_txt(file: &File<impl Ui>) -> Text {
+pub fn sels_txt(file: &File) -> Text {
     if file.selections().len() == 1 {
         txt!("[selections]1 sel").build()
     } else {
@@ -274,21 +277,19 @@ pub fn cur_map_txt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [key]: KeyEvent
 pub fn last_key() -> RwData<String> {
-    thread_local! {
-        static LAST_KEY: RwData<String> = {
-            let last_key = RwData::new(String::new());
+    static LAST_KEY: LazyLock<RwData<String>> = LazyLock::new(|| {
+        let last_key = RwData::new(String::new());
 
-            hook::add_no_alias::<KeysSent>({
-                let last_key = last_key.clone();
-                move |pa, keys| {
-                    *last_key.write(pa) = mode::keys_to_string(keys);
-                    Ok(())
-                }
-            });
+        hook::add::<KeysSent>({
+            let last_key = last_key.clone();
+            move |pa, keys| {
+                *last_key.write(pa) = mode::keys_to_string(keys);
+                Ok(())
+            }
+        });
 
-            last_key
-        };
-    }
+        last_key
+    });
 
-    LAST_KEY.with(|lk| lk.clone())
+    LAST_KEY.clone()
 }

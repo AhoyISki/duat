@@ -10,7 +10,7 @@
 //! selection's line number.
 //!
 //! [`File`]: duat_core::file::File
-use std::{fmt::Alignment, marker::PhantomData};
+use std::fmt::Alignment;
 
 use duat_core::{prelude::*, text::Builder, ui::Side};
 
@@ -19,8 +19,8 @@ use duat_core::{prelude::*, text::Builder, ui::Side};
 /// This can be configured through [`LineNumbers::cfg`], in order to
 /// get, for example: relative numbering, different alignment,
 /// hidden/shown wrapped lines, etc.
-pub struct LineNumbers<U: Ui> {
-    handle: Handle<File<U>, U>,
+pub struct LineNumbers {
+    handle: Handle<File>,
     text: Text,
     /// The numbering of lines, [`Numbering::Abs`] by default
     ///
@@ -40,10 +40,10 @@ pub struct LineNumbers<U: Ui> {
     pub on_the_right: bool = false,
 }
 
-impl<U: Ui> LineNumbers<U> {
+impl LineNumbers {
     /// Returns a [`LineNumbersBuilder`], used to create a new
     /// `LineNumbers`
-    pub fn builder() -> LineNumbersBuilder<U> {
+    pub fn builder() -> LineNumbersBuilder {
         LineNumbersBuilder::default()
     }
 
@@ -95,16 +95,16 @@ impl<U: Ui> LineNumbers<U> {
     }
 }
 
-impl<U: Ui> Widget<U> for LineNumbers<U> {
-    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
+impl Widget for LineNumbers {
+    fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let width = handle.read(pa).calculate_width(pa);
-        handle.area(pa).set_width(width + 1.0).unwrap();
+        handle.area().set_width(pa, width + 1.0).unwrap();
 
         handle.write(pa).text = handle.read(pa).form_text(pa);
     }
 
-    fn needs_update(&self, _: &Pass) -> bool {
-        self.handle.has_changed()
+    fn needs_update(&self, pa: &Pass) -> bool {
+        self.handle.has_changed(pa)
     }
 
     fn text(&self) -> &Text {
@@ -123,7 +123,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// builder pattern.
 #[derive(Default, Clone, Copy, Debug)]
 #[doc(hidden)]
-pub struct LineNumbersBuilder<U: Ui> {
+pub struct LineNumbersBuilder {
     /// The numbering of lines, [`Numbering::Abs`] by default
     ///
     /// Can be:
@@ -140,11 +140,10 @@ pub struct LineNumbersBuilder<U: Ui> {
     pub show_wraps: bool = false,
     /// Place this [`Widget`] on the right, `false` by default
     pub on_the_right: bool = false,
-    _ghost: PhantomData<U> = PhantomData,
 }
 
-impl<U: Ui> LineNumbersBuilder<U> {
-    pub fn push_on(self, pa: &mut Pass, handle: &Handle<File<U>, U>) -> Handle<LineNumbers<U>, U> {
+impl LineNumbersBuilder {
+    pub fn push_on(self, pa: &mut Pass, handle: &Handle<File>) -> Handle<LineNumbers> {
         let mut line_numbers = LineNumbers {
             handle: handle.clone(),
             text: Text::default(),
@@ -170,13 +169,7 @@ impl<U: Ui> LineNumbersBuilder<U> {
 }
 
 /// Writes the text of the line number to a given [`String`].
-fn push_text<U: Ui>(
-    b: &mut Builder,
-    line: usize,
-    main: usize,
-    is_wrapped: bool,
-    cfg: &LineNumbers<U>,
-) {
+fn push_text(b: &mut Builder, line: usize, main: usize, is_wrapped: bool, cfg: &LineNumbers) {
     if (!is_wrapped || cfg.show_wraps) && main != usize::MAX {
         let num = match cfg.numbering {
             Numbering::Abs => line + 1,

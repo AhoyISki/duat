@@ -45,7 +45,7 @@ use crate::{
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
-    ui::{TypeErasedArea, TypeErasedPrintInfo},
+    ui::{Area, PrintInfo},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -405,7 +405,7 @@ pub trait Widget: Send + 'static {
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`File::print`]: crate::file::File::print
-    fn print(&self, pa: &Pass, painter: Painter, area: &TypeErasedArea) {
+    fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
         let cfg = self.get_print_cfg();
         area.print(pa, self.text(), cfg, painter)
     }
@@ -415,15 +415,15 @@ pub trait Widget: Send + 'static {
 #[derive(Clone)]
 pub(crate) struct Node {
     handle: Handle<dyn Widget>,
-    update: Arc<dyn Fn(&mut Pass) + Send>,
-    print: Arc<dyn Fn(&mut Pass) + Send>,
-    on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send>,
-    on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send>,
+    update: Arc<dyn Fn(&mut Pass) + Send + Sync>,
+    print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
+    on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
+    on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
 }
 
 impl Node {
     /// Returns a new `Node`
-    pub(crate) fn new<W: Widget>(widget: RwData<W>, area: TypeErasedArea) -> Self {
+    pub(crate) fn new<W: Widget>(widget: RwData<W>, area: Area) -> Self {
         Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new(""))))
     }
 
@@ -471,7 +471,7 @@ impl Node {
     }
 
     /// The [`Ui::Area`] of this [`Widget`]
-    pub(crate) fn area(&self) -> &TypeErasedArea {
+    pub(crate) fn area(&self) -> &Area {
         self.handle.area()
     }
 
@@ -517,7 +517,7 @@ impl Node {
         let cfg = widget.get_print_cfg();
         widget.text_mut().add_selections(area, cfg);
 
-        if print_info != TypeErasedPrintInfo::default() {
+        if print_info != PrintInfo::default() {
             widget.text_mut().update_bounds();
         }
 

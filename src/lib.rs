@@ -370,7 +370,11 @@
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #![feature(decl_macro, thread_spawn_hook)]
 
-pub use duat_core::utils::{crate_dir, duat_name, src_crate};
+pub use duat_core::{self, clipboard, cmd, context, data, file, text, ui, utils};
+/// Common [`StatusLine`] fields
+///
+/// [`StatusLine`]: duat_utils::widgets::StatusLine
+pub use duat_utils::state;
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
@@ -378,39 +382,14 @@ pub mod print;
 mod regular;
 mod setup;
 
-pub mod cmd {
-    //! Command creation and calling utilities
-    pub use duat_core::cmd::*;
-
-    /// Command [`Parameter`]: [`Handle`]s for a given type of
-    /// [`Widget`]
-    ///
-    /// This [`Parameter`] lets you act upon [`Handle`]s of a type of
-    /// [`Widget`] with the following methods:
-    ///
-    /// - [`on_current`]: Acts on the current, most relevant instance.
-    /// - [`on_each`]: Acts on every instance, on every window.
-    /// - [`on_window`]: Acts on all instances on the current window.
-    /// - [`on_flags`]: Acts based on [`Flags`] passed, `"global"` for
-    ///   [`on_each`], `"window"` for [`on_window`].
-    ///
-    /// [`on_current`]: Handles::on_current
-    /// [`on_each`]: Handles::on_each
-    /// [`on_window`]: Handles::on_window
-    /// [`on_flags`]: Handles::on_flags
-    /// [`Widget`]: crate::prelude::Widget
-    /// [`Handle`]: crate::prelude::Handle
-    pub type Handles<'a, W> = duat_core::cmd::Handles<'a, W, crate::Ui>;
-}
-
 pub mod cursor {
     //! Functions to alter the [`Cursors`] of Duat
     //!
     //! [`Cursors`]: duat_core::mode::Cursors
     pub use duat_core::form::{
-        extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
+        extra_cursor as get_extra, id_of, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
-        unset_main_cursor as unset_main, id_of
+        unset_main_cursor as unset_main,
     };
 }
 
@@ -439,7 +418,7 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<LineNumbers<Ui>>(|pa, (line_nums, _)| {
+    //!     hook::add::<LineNumbers>(|pa, (line_nums, _)| {
     //!         line_nums.align_right().align_main_left().rel_abs()
     //!     });
     //! }
@@ -582,243 +561,7 @@ pub mod hook {
     //! [`Output`]: Hookable::Output
     //! [tabstop]: duat_core::cfg::PrintCfg::set_tabstop
     pub use duat_core::hook::*;
-    use duat_core::{data::Pass, text::Text};
     pub use duat_utils::hooks::*;
-
-    use crate::Ui;
-
-    /// Adds a [hook]
-    ///
-    /// This hook is ungrouped, that is, it cannot be removed. If you
-    /// want a hook that is removable, see [`hook::add_grouped`].
-    ///
-    /// ```rust
-    /// # mod kak {
-    /// #     use duat::{prelude::{*, mode::KeyEvent}};
-    /// #     #[derive(Clone)]
-    /// #     pub struct Normal;
-    /// #     impl Mode<Ui> for Normal {
-    /// #         type Widget = File;
-    /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
-    /// #             todo!();
-    /// #         }
-    /// #     }
-    /// #     impl Normal {
-    /// #         pub fn f_and_t_set_search(self) -> Self { todo!() }
-    /// #     }
-    /// #     #[derive(Default)]
-    /// #     pub struct Kak;
-    /// #     impl Kak {
-    /// #         pub fn new() -> Self { Self }
-    /// #     }
-    /// #     impl duat_core::Plugin<Ui> for Kak {
-    /// #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
-    /// #     }
-    /// # }
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    /// use kak::*;
-    ///
-    /// pub fn setup() {
-    ///     hook::add::<Normal>(|pa, (normal_mode, handle)| normal_mode.f_and_t_set_search());
-    /// }
-    /// ```
-    ///
-    /// [hook]: Hookable
-    /// [`hook::add_grouped`]: add_grouped
-    pub fn add<H: HookAlias<Ui, impl HookDummy>>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
-    ) {
-        duat_core::hook::add::<H, Ui>(f);
-    }
-
-    /// Adds a grouped [hook]
-    ///
-    /// A grouped hook is one that, along with others on the same
-    /// group, can be removed by [`hook::remove`]. If you do
-    /// not need/want this feature, take a look at [`hook::add`].
-    ///
-    /// [hook]: Hookable
-    /// [`hook::remove`]: remove
-    /// [`hook::add`]: add
-    pub fn add_grouped<H: HookAlias<Ui, impl HookDummy>>(
-        group: &'static str,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
-    ) {
-        duat_core::hook::add_grouped::<H, Ui>(group, f);
-    }
-
-    /// [`Hookable`]: Triggers when a [`Widget`]'s [cfg] is created
-    ///
-    /// # Arguments
-    ///
-    /// - The [`WidgetCfg`] in question.
-    /// - A [`UiBuilder`], which lets you push [`Widget`]s around this
-    ///   one.
-    ///
-    /// # Aliases
-    ///
-    /// Since every [`Widget`] implements the [`HookAlias`] trait,
-    /// instead of writing this in the config crate:
-    ///
-    /// ```rust
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, _)| ln.rel_abs());
-    /// }
-    /// ```
-    ///
-    /// You can just write this:
-    ///
-    /// ```rust
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     hook::add::<LineNumbers<Ui>>(|_, (ln, _)| ln.rel_abs());
-    /// }
-    /// ```
-    ///
-    /// # Changing the layout
-    ///
-    /// Assuming you are using `duat-term`, you could make it so every
-    /// [`LineNumbers`] comes with a [`VertRule`] on the right, like
-    /// this:
-    ///
-    /// ```rust
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     hook::add::<LineNumbers<Ui>>(|_, (ln, builder)| {
-    ///         builder.push(VertRule::cfg().on_the_right());
-    ///         ln
-    ///     });
-    /// }
-    /// ```
-    ///
-    /// Now, every time a [`LineNumbers`]s [`Widget`] is inserted in
-    /// Duat, a [`VertRule`] will be pushed on the right of it.
-    /// You could even further add a [hook] on [`VertRule`], that
-    /// would push further [`Widget`]s if you wanted to.
-    ///
-    /// By default, this is [hook]
-    ///
-    /// [cfg]: crate::widgets::Widget::Cfg
-    /// [`WidgetCfg`]: crate::widgets::WidgetCfg
-    /// [hook]: self
-    /// [direction]: duat_core::ui::PushSpecs
-    /// [`LineNumbers`]: duat_utils::widgets::LineNumbers
-    /// [`VertRule`]: duat_term::VertRule
-    /// [`Widget`]: duat_core::ui::Widget
-    /// [`UiBuilder`]: duat_core::ui::UiBuilder
-    pub type WidgetCreated<W> = duat_core::hook::WidgetCreated<W, Ui>;
-
-    /// [`Hookable`]: Triggers when a new window is opened
-    ///
-    /// # Arguments
-    ///
-    /// - The window [builder], which can be used to push widgets to
-    ///   the edges of the window, surrounding the inner file region.
-    ///
-    ///
-    /// This is a rather "advanced" [hook], since it lets you change
-    /// the layout of [`Widget`]s around the screen. If you don't
-    /// need all that power, you can check out [`WidgetCreated`],
-    /// which is a more straightforward form of changing
-    /// [`Widget`]s, and doesn't interfere with the default hooks
-    /// of `"FileWidgets"` and `"FooterWidgets"`, preset by Duat.
-    ///
-    /// [`File`]: crate::prelude::File
-    /// [`Widget`]: crate::prelude::Widget
-    /// [builder]: crate::prelude::ui::UiBuilder
-    /// [hook]: self
-    pub type WindowCreated = duat_core::hook::WindowCreated<Ui>;
-
-    /// [`Hookable`]: Triggers before closing a [`File`]
-    ///
-    /// # Arguments
-    ///
-    /// - The [`File`]'s [`Handle`].
-    /// - A [`Cache`]. This can be used in order to decide wether or
-    ///   not some things will be reloaded on the next opening of
-    ///   Duat.
-    ///
-    /// This will not trigger upon reloading Duat. For that, see
-    /// [`FileClosed`].
-    ///
-    /// [`File`]: crate::prelude::File
-    /// [`Handle`]: crate::prelude::Handle
-    /// [`Cache`]: duat_core::context::Cache
-    pub type FileClosed = duat_core::hook::FileClosed<Ui>;
-
-    /// [`Hookable`]: Triggers before reloading a [`File`]
-    ///
-    /// # Arguments
-    ///
-    /// - The [`File`]'s [`Handle`].
-    /// - A [`Cache`]. This can be used in order to decide wether or
-    ///   not some things will be reloaded on the next opening of
-    ///   Duat.
-    ///
-    /// This will not trigger upon closing Duat. For that, see
-    /// [`FileClosed`].
-    ///
-    /// [`File`]: crate::prelude::File
-    /// [`Handle`]: crate::prelude::Handle
-    /// [`Cache`]: duat_core::context::Cache
-    pub type FileReloaded = duat_core::hook::FileReloaded<Ui>;
-
-    /// [`Hookable`]: Triggers when the [`Widget`] is focused
-    ///
-    /// # Arguments
-    ///
-    /// - The [`Handle`] for the [`Widget`]
-    ///
-    /// [`Handle`]: crate::prelude::Handle
-    /// [`Widget`]: crate::prelude::Widget
-    pub type FocusedOn<W> = duat_core::hook::FocusedOn<W, Ui>;
-
-    /// [`Hookable`]: Triggers when the [`Widget`] is unfocused
-    ///
-    /// # Arguments
-    ///
-    /// - The [`Handle`] for the [`Widget`]
-    ///
-    /// [`Handle`]: crate::prelude::Handle
-    /// [`Widget`]: crate::prelude::Widget
-    pub type UnfocusedFrom<W> = duat_core::hook::UnfocusedFrom<W, Ui>;
-
-    /// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
-    ///
-    /// # Arguments
-    ///
-    /// - The [key] sent.
-    /// - The [`Handle`] for its [`Widget`].
-    ///
-    /// [key]: crate::mode::KeyEvent
-    /// [`Handle`]: crate::prelude::Handle
-    /// [`Widget`]: crate::prelude::Widget
-    pub type KeySentTo<W> = duat_core::hook::KeysSentTo<W, Ui>;
-
-    /// [`Hookable`]: Lets you modify a [`Mode`] as it is set
-    ///
-    /// # Arguments
-    ///
-    /// - The new mode.
-    /// - The [`Handle`] for its [`Widget`].
-    ///
-    /// This hook is very useful if you want to, for example, set
-    /// different options upon switching to modes, depending on things
-    /// like the language of a [`File`].
-    ///
-    /// [`Mode`]: crate::mode::Mode
-    /// [`File`]: crate::widgets::File
-    /// [`Handle`]: crate::prelude::Handle
-    /// [`Widget`]: crate::prelude::Widget
-    pub type ModeCreated<M> = duat_core::hook::ModeCreated<M, Ui>;
 }
 
 /// Commands for the manipulation of [`Mode`]s
@@ -826,117 +569,15 @@ pub mod hook {
 /// [`Mode`]: crate::mode::Mode
 pub mod mode {
     pub use duat_core::mode::*;
-    use duat_core::{mode, ui::Widget};
     pub use duat_utils::modes::*;
 
-    use crate::Ui;
-
-    /// Sets the new default mode
-    ///
-    /// This is the mode that will be set when [`mode::reset`] is
-    /// called.
-    ///
-    /// [`mode::reset`]: reset
-    pub fn set_default(mode: impl Mode<Ui>) {
-        mode::set_default(mode);
-    }
-
-    /// Sets the [`Mode`], switching to the appropriate [`Widget`]
-    ///
-    /// [`Widget`]: Mode::Widget
-    pub fn set(mode: impl Mode<Ui>) {
-        mode::set(mode);
-    }
-
-    /// Resets the mode to the [default] of a given [`Widget`]
-    ///
-    /// Does nothing if no default was set for the given [`Widget`].
-    ///
-    /// [default]: set_default
-    pub fn reset<W: Widget<Ui>>() {
-        mode::reset::<W, Ui>();
-    }
-
-    /// Maps a sequence of keys to another
-    ///
-    /// The keys follow the same rules as Vim, so regular, standalone
-    /// characters are mapped verbatim, while "`<{mod}-{key}>`" and
-    /// "`<{special}>`" sequences are mapped like in Vim.
-    ///
-    /// Here are the available special keys:
-    ///
-    /// - `<Enter> => Enter`,
-    /// - `<Tab> => Tab`,
-    /// - `<Bspc> => Backspace`,
-    /// - `<Del> => Delete`,
-    /// - `<Esc> => Esc`,
-    /// - `<Up> => Up`,
-    /// - `<Down> => Down`,
-    /// - `<Left> => Left`,
-    /// - `<Right> => Right`,
-    /// - `<PageU> => PageUp`,
-    /// - `<PageD> => PageDown`,
-    /// - `<Home> => Home`,
-    /// - `<End> => End`,
-    /// - `<Ins> => Insert`,
-    /// - `<F{1-12}> => F({1-12})`,
-    ///
-    /// And the following modifiers are available:
-    ///
-    /// - `C => Control`,
-    /// - `A => Alt`,
-    /// - `S => Shift`,
-    /// - `M => Meta`,
-    ///
-    /// If another sequence already exists on the same mode, which
-    /// would intersect with this one, the new sequence will not be
-    /// added.
-    pub fn map<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
-        mode::map::<M, Ui>(take, give);
-    }
-
-    /// Aliases a sequence of keys to another
-    ///
-    /// The difference between aliasing and mapping is that an alias
-    /// will be displayed on the text as a [ghost text], making it
-    /// seem like you are typing normally. This text will be printed
-    /// with the `Alias` [form].
-    ///
-    /// If another sequence already exists on the same mode, which
-    /// would intersect with this one, the new sequence will not be
-    /// added.
-    ///
-    /// # Note
-    ///
-    /// This sequence is not like Vim's `alias`, in that if you make a
-    /// mistake while typing the sequence, the alias is undone, and
-    /// you will be just typing normally.
-    ///
-    /// The alias command also works on any [`Mode`], not just
-    /// "insert like" modes. You can also use any key in the input or
-    /// output of this `alias`
-    ///
-    /// [ghost text]: duat_core::text::Ghost
-    /// [form]: crate::form::Form
-    pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
-        mode::alias::<M, Ui>(take, give);
-    }
-}
-
-/// Common [`StatusLine`] fields
-///
-/// [`StatusLine`]: duat_utils::widgets::StatusLine
-pub mod state {
-    pub use duat_utils::state::*;
+    pub use crate::regular::Regular;
 }
 
 /// Duat's builtin widgets
 pub mod widgets {
-    pub use duat_core::ui::Widget;
+    pub use duat_core::{file::File, ui::Widget};
     pub use duat_utils::widgets::*;
-
-    /// The widget that is used to print and edit files
-    pub type File = duat_core::file::File<super::Ui>;
 }
 
 #[allow(unused_imports)]
@@ -969,25 +610,19 @@ pub macro setup_duat($setup:expr) {
 pub mod prelude {
     use std::{any::TypeId, process::Output};
 
-    pub use duat_core::{
-        self, clipboard, context,
-        data::{self, Pass},
-        file,
-        prelude::Lender,
-        text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
-            Tagger, Text, txt,
-        },
-        ui::{self, Area as AreaTrait, Widget},
-    };
+    pub use duat_core::prelude::Lender;
     use duat_core::{Plugin, Plugins};
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
-    pub use duat_term::{self as term, VertRule};
+    pub use duat_term::{self, VertRule};
 
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
-        Area, Ui, cmd, cursor,
+        clipboard, cmd,
+        context::{self, Handle},
+        cursor,
+        data::{self, Pass},
+        file,
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
@@ -998,6 +633,11 @@ pub mod prelude {
         mode::{self, Mode, Pager, Prompt, User, alias, map},
         print, setup_duat,
         state::*,
+        text::{
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
+            Tagger, Text, txt,
+        },
+        ui::{self, Widget},
         widgets::*,
     };
 
@@ -1029,7 +669,7 @@ pub mod prelude {
     ///     }
     /// }
     /// ```
-    pub fn plug<P: Plugin<Ui>>(plugin: P) {
+    pub fn plug<P: Plugin>(plugin: P) {
         let mut already_plugged = ALREADY_PLUGGED.lock().unwrap();
         if already_plugged.contains(&TypeId::of::<P>()) {
             context::warn!(
@@ -1038,7 +678,7 @@ pub mod prelude {
             );
         } else {
             already_plugged.push(TypeId::of::<P>());
-            plugin.plug(&Plugins::_new());
+            plugin.plug(Plugins::_new());
         }
     }
 
@@ -1083,35 +723,6 @@ pub mod prelude {
 
         cmd.output().ok()
     }
-
-    /// A handle to a [`Widget`] in Duat
-    ///
-    /// The [`Handle`] lets you do all sorts of edits on a [`Widget`].
-    /// You can, for example, make use of the [`Selection`]s in
-    /// its [`Text`] in order to edit the [`Text`] in a very
-    /// declarative way.
-    ///
-    /// ```rust
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     hook::add::<UnfocusedFrom<File>>(|pa, (unfocused_handle, _)| {
-    ///         unfocused_handle.edit_all(pa, |mut cursor| {
-    ///             cursor.set_caret_on_end();
-    ///             cursor.unset_anchor();
-    ///         });
-    ///     });
-    /// }
-    /// ```
-    ///
-    /// In this case, the hook above will unset every `anchor` of each
-    /// [`Selection`] when you unfocus from a [`File`]. You could call
-    /// this from the [setup] function, in order to enable said [hook]
-    ///
-    /// [`Selection`]: crate::mode::Selection
-    /// [setup]: crate::prelude::setup_duat
-    pub type Handle<W> = duat_core::context::Handle<W, Ui>;
 }
 
 // This will eventually be a NOT AND to check if any Uis have been
@@ -1120,17 +731,6 @@ pub mod prelude {
 // chosen.
 #[cfg(not(feature = "term-ui"))]
 compile_error!("No ui has been chosen to compile Duat with.");
-
-/// The [`Ui`](duat_core::ui::Ui) that Duat is using
-///
-/// In this case, that would be [`duat_term`]'s [`Ui`]
-#[cfg(feature = "term-ui")]
-pub type Ui = duat_term::Ui;
-#[cfg(feature = "term-ui")]
-/// The [`ui::Area`] of the [`Ui`]
-///
-/// [`ui::Area`]: duat_core::ui::Area
-pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
 
 /// For testing mdBook examples.
 #[cfg(doctest)]

@@ -296,35 +296,6 @@ mod global {
         );
     }
 
-    /// Adds a [hook], without accepting aliases
-    ///
-    /// Use this if you want to add a hook, but have no access to
-    /// [`Ui`] parameter, like when declaring static variables on
-    /// plugins.
-    ///
-    /// [hook]: Hookable
-    #[doc(hidden)]
-    pub fn add_no_alias<H: Hookable>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
-    ) {
-        HOOKS.add::<H>(None, Box::new(f));
-    }
-
-    /// Adds a grouped [hook], without accepting aliases
-    ///
-    /// Use this if you want to add a hook, but have no access to
-    /// [`Ui`] parameter, like when declaring static variables on
-    /// plugins.
-    ///
-    /// [hook]: Hookable
-    #[doc(hidden)]
-    pub fn add_grouped_no_alias<H: Hookable>(
-        group: impl Into<InnerGroupId>,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
-    ) {
-        HOOKS.add::<H>(Some(group.into()), Box::new(f));
-    }
-
     /// Removes a [hook] group
     ///
     /// The hook can either be a string type, or a [`GroupId`].

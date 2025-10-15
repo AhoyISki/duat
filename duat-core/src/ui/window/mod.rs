@@ -13,7 +13,7 @@ use crate::{
     hook::{self, FileClosed, WidgetCreated, WindowCreated},
     mode,
     text::{SpawnId, Text, txt},
-    ui::{PushSpecs, SpawnSpecs, TypeErasedArea, TypeErasedUi},
+    ui::{Area, PushSpecs, SpawnSpecs, Ui},
 };
 
 mod builder;
@@ -22,18 +22,13 @@ mod builder;
 pub struct Windows {
     inner: RwData<InnerWindows>,
     spawns_to_remove: Mutex<Vec<SpawnId>>,
-    ui: TypeErasedUi,
+    ui: Ui,
 }
 
 impl Windows {
     /// Initializes the `Windows`, returning a [`Node`] for the first
     /// [`File`]
-    pub(crate) fn initialize(
-        pa: &mut Pass,
-        file: File,
-        layout: Box<Mutex<dyn Layout>>,
-        ui: TypeErasedUi,
-    ) {
+    pub(crate) fn initialize(pa: &mut Pass, file: File, layout: Box<Mutex<dyn Layout>>, ui: Ui) {
         let new_additions = Arc::new(Mutex::default());
         let (window, node) = Window::new(0, pa, ui, file, new_additions.clone());
 
@@ -85,7 +80,7 @@ impl Windows {
     pub(crate) fn push_widget<W: Widget>(
         &self,
         pa: &mut Pass,
-        (target, on_files, specs): (&TypeErasedArea, Option<bool>, PushSpecs),
+        (target, on_files, specs): (&Area, Option<bool>, PushSpecs),
         widget: W,
     ) -> Option<Handle<W>> {
         self.push(pa, (target, on_files, specs), widget)?
@@ -99,7 +94,7 @@ impl Windows {
     pub(crate) fn spawn_on_widget<W: Widget>(
         &self,
         pa: &mut Pass,
-        (target, specs): (&TypeErasedArea, SpawnSpecs),
+        (target, specs): (&Area, SpawnSpecs),
         widget: W,
     ) -> Option<Handle<W>> {
         let (win, cluster_master) =
@@ -204,7 +199,7 @@ impl Windows {
     fn push<W: Widget>(
         &self,
         pa: &mut Pass,
-        (target, on_files, mut specs): (&TypeErasedArea, Option<bool>, PushSpecs),
+        (target, on_files, mut specs): (&Area, Option<bool>, PushSpecs),
         widget: W,
     ) -> Option<Node> {
         let inner = self.inner.read(pa);
@@ -487,8 +482,9 @@ impl Windows {
         }
     }
 
-    /// Removes all queued [`SpawnId`]'s [`Widget`]s
-    pub(crate) fn cleanup_spawned(&self, pa: &mut Pass) {
+    /// Removes all [`SpawnId`]'s [`Widget`]s which were queued for
+    /// closure
+    pub(crate) fn cleanup_despawned(&self, pa: &mut Pass) {
         let spawns_to_remove = std::mem::take(&mut *self.spawns_to_remove.lock().unwrap());
         for id in spawns_to_remove {
             if let Some((_, node)) = self
@@ -717,8 +713,8 @@ pub struct Window {
     index: usize,
     nodes: Vec<Node>,
     spawned: Vec<(SpawnId, Node)>,
-    files_area: TypeErasedArea,
-    master_area: TypeErasedArea,
+    files_area: Area,
+    master_area: Area,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
 }
 
@@ -727,7 +723,7 @@ impl Window {
     fn new<W: Widget>(
         index: usize,
         pa: &mut Pass,
-        ui: TypeErasedUi,
+        ui: Ui,
         widget: W,
         new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     ) -> (Self, Node) {
@@ -761,7 +757,7 @@ impl Window {
     pub(crate) fn from_raw(
         pa: &mut Pass,
         index: usize,
-        master_area: TypeErasedArea,
+        master_area: Area,
         nodes: Vec<Node>,
         new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     ) -> Self {
@@ -782,7 +778,7 @@ impl Window {
     ////////// Widget addition/removal
 
     /// Adds a [`Widget`] to the list of widgets of this [`Window`]
-    fn add(&mut self, pa: &Pass, node: Node, parent: Option<TypeErasedArea>, location: Location) {
+    fn add(&mut self, pa: &Pass, node: Node, parent: Option<Area>, location: Location) {
         match location {
             Location::OnFiles => {
                 self.nodes.push(node.clone());

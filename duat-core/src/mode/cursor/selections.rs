@@ -387,7 +387,7 @@ mod cursor {
     use crate::{
         cfg::PrintCfg,
         text::{Bytes, Change, Point, Text},
-        ui::{Area, Caret},
+        ui::{traits::Area, Caret},
     };
 
     /// A cursor in the text file. This is an editing cursor, -(not

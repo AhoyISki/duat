@@ -9,7 +9,7 @@ pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
     data::{Pass, RwData},
     file::File,
-    ui::{Area, Node, Widget},
+    ui::{traits::Area, Node, Widget},
 };
 
 mod cache;
@@ -257,7 +257,7 @@ impl DynFile {
     /// Writes to the [`File`] and [`Area`], making use of a
     /// [`Pass`]
     ///
-    /// [`Area`]: crate::ui::Ui::Area
+    /// [`Area`]: crate::ui::traits::Ui::Area
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut File, &'a dyn Area) {
         // SAFETY: Because I already got a &mut Pass, the RwData can't be
         // accessed anyways.
@@ -309,14 +309,14 @@ impl CurWidget {
         self.0.read(pa).widget().type_id()
     }
 
-    /// Reads the [`Widget`] and its [`Area`](crate::ui::Area)
+    /// Reads the [`Widget`] and its [`Area`]
     pub fn _read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget, &dyn Area) -> R) -> R {
         let node = self.0.read(pa);
         f(node.handle().read(pa), node.area().read(pa))
     }
 
     /// Reads the [`Widget`] as `W` and its
-    /// [`Area`](crate::ui::Area)
+    /// [`Area`]
     pub fn _read_as<W: Widget, R>(
         &self,
         pa: &Pass,
@@ -327,13 +327,13 @@ impl CurWidget {
     }
 
     /// Mutates the [`RwData<dyn Widget<U>>`], its
-    /// [`Area`](crate::ui::Area), and related [`Widget`]s
+    /// [`Area`], and related [`Widget`]s
     pub(crate) fn mutate_data<R>(&self, pa: &Pass, f: impl FnOnce(&Handle<dyn Widget>) -> R) -> R {
         f(self.0.read(pa).handle())
     }
 
     /// Mutates the [`RwData<dyn Widget<U>>`] as `W`, its
-    /// [`Area`](crate::ui::Area), and related [`Widget`]s
+    /// [`Area`], and related [`Widget`]s
     pub(crate) fn mutate_data_as<W: Widget, R>(
         &self,
         pa: &Pass,

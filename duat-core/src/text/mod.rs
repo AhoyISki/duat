@@ -124,7 +124,7 @@ use crate::{
     data::Pass,
     form,
     mode::{Selection, Selections},
-    ui::Area,
+    ui::traits::Area,
 };
 
 /// The text of a given [`Widget`]
