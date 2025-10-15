@@ -399,7 +399,7 @@ pub mod form {
     //! [`Form`]: crate::form::Form
     pub use duat_core::form::{
         Color, ColorScheme, CursorShape, Form, Palette, add_colorscheme, enable_mask, from_id,
-        id_of, set, set_colorscheme, set_many,
+        id_of, set, set_colorscheme, set_many, set_weak, set_many_weak
     };
 }
 
