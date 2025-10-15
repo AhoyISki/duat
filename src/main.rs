@@ -212,9 +212,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
 
+    let mut reloading_profile: Option<String> = None;
+
     loop {
         let running_lib = lib.take();
-        let mut run_fn = running_lib.as_ref().and_then(find_run_duat);
+        let mut running_duat_fn = running_lib.as_ref().and_then(find_run_duat);
+
+        if let Some(profile) = reloading_profile {
+            let time = match RELOAD_INSTANT.lock().unwrap().take() {
+                Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
+                None => Text::builder(),
+            };
+            context::info!("[a]{profile}[] profile reloaded{time}");
+        }
 
         let (duat_tx, reload_tx) = (duat_tx.clone(), reload_tx.clone());
         (files, duat_rx) = std::thread::scope(|s| {
@@ -222,7 +232,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // thread counter hook sets in.
             let clipb = &*CLIPBOARD;
             s.spawn(|| {
-                if let Some(run_duat) = run_fn.take() {
+                if let Some(run_duat) = running_duat_fn.take() {
                     let initials = (logs.clone(), forms_init, (crate_dir, profile));
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
                     run_duat(initials, (ui, clipb), files, channel)
@@ -246,15 +256,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let (config_path, profile) = config_rx.recv().unwrap();
-        
+
         lib = unsafe { Library::new(config_path) }.ok();
-
-        let time = match RELOAD_INSTANT.lock().unwrap().take() {
-            Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
-            None => Text::builder(),
-        };
-
-        context::info!("[a]{profile}[] profile reloaded{time}");
+        reloading_profile = Some(profile);
     }
 
     ui.close();
