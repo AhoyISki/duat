@@ -591,15 +591,14 @@ pub macro setup_duat($setup:expr) {
     use std::sync::{Mutex, mpsc};
 
     use $crate::prelude::{File, Text, context::Logs, form::Palette};
-    type RlFile = ReloadedFile<$crate::Ui>;
 
     #[unsafe(no_mangle)]
     fn run(
         initials: Initials,
         ms: MetaStatics,
-        files: Vec<Vec<RlFile>>,
+        files: Vec<Vec<ReloadedFile>>,
         (duat_tx, duat_rx, reload_tx): Channels,
-    ) -> (Vec<Vec<RlFile>>, mpsc::Receiver<DuatEvent>) {
+    ) -> (Vec<Vec<ReloadedFile>>, mpsc::Receiver<DuatEvent>) {
         pre_setup(Some(initials), Some(duat_tx));
         $setup();
         run_duat(ms, files, duat_rx, Some(reload_tx))

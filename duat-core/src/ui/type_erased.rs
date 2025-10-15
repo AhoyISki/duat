@@ -40,6 +40,7 @@ use crate::{
 pub struct Ui {
     ui: &'static dyn traits::Ui,
     fns: &'static UiFunctions,
+    default_print_info: fn() -> PrintInfo,
 }
 
 impl Ui {
@@ -51,13 +52,12 @@ impl Ui {
     where
         U::Area: PartialEq,
     {
-        DEFAULT_PRINT_INFO
-            .set(|| PrintInfo::new::<U>(<U::Area as traits::Area>::PrintInfo::default()))
-            .expect("Multiple Uis were setup, you are not supposed to do that");
-
         Ui {
             ui: U::get_once().expect("Ui was acquired more than once"),
             fns: UiFunctions::new::<U>(),
+            default_print_info: || {
+                PrintInfo::new::<U>(<U::Area as traits::Area>::PrintInfo::default())
+            },
         }
     }
 
@@ -68,7 +68,7 @@ impl Ui {
     ///
     /// [`Area`]: Ui::Area
     pub fn new_root(&self, pa: &Pass, widget: &RwData<dyn Widget>) -> Area {
-        (self.fns.new_root)(pa, &self.ui, widget)
+        (self.fns.new_root)(pa, self.ui, widget)
     }
 
     /// Initiates and returns a new "floating" [`Area`]
@@ -90,15 +90,22 @@ impl Ui {
         specs: SpawnSpecs,
         win: usize,
     ) -> Area {
-        (self.fns.new_spawned)(pa, &self.ui, widget, spawn_id, specs, win)
+        (self.fns.new_spawned)(pa, self.ui, widget, spawn_id, specs, win)
+    }
+
+    /// Sets the default [`PrintInfo`]
+    pub(crate) fn setup_default_print_info(&self) {
+        DEFAULT_PRINT_INFO
+            .set(self.default_print_info)
+            .expect("PrintInfo was set twice");
     }
 }
 
 struct UiFunctions {
-    new_root: fn(pa: &Pass, &dyn Any, widget: &RwData<dyn Widget>) -> Area,
+    new_root: fn(pa: &Pass, &dyn traits::Ui, widget: &RwData<dyn Widget>) -> Area,
     new_spawned: fn(
         pa: &Pass,
-        &dyn Any,
+        &dyn traits::Ui,
         widget: &RwData<dyn Widget>,
         spawn_id: SpawnId,
         specs: SpawnSpecs,
@@ -113,12 +120,12 @@ impl UiFunctions {
     {
         &Self {
             new_root: |pa, ui, widget| {
-                let ui: &U = ui.downcast_ref().unwrap();
+                let ui = unsafe { (ui as *const dyn traits::Ui as *const U).as_ref() }.unwrap();
 
                 Area::new::<U>(ui.new_root(get_cache::<U>(pa, widget)))
             },
             new_spawned: |pa, ui, widget, spawn_id, specs, win| {
-                let ui: &U = ui.downcast_ref().unwrap();
+                let ui = unsafe { (ui as *const dyn traits::Ui as *const U).as_ref() }.unwrap();
 
                 Area::new::<U>(ui.new_spawned(spawn_id, specs, get_cache::<U>(pa, widget), win))
             },
@@ -541,9 +548,10 @@ impl AreaFunctions {
                 let area = area.write_as::<U::Area>(pa).unwrap();
                 let Some(info) = info
                     .info
+                    .as_ref()
                     .downcast_ref::<<U::Area as traits::Area>::PrintInfo>()
                 else {
-                    panic!("Attempted to get PrintInfo of the wrong type");
+                    panic!("Attempted to get PrintInfo of wrong type");
                 };
 
                 area.set_print_info(info.clone());
@@ -608,7 +616,7 @@ impl Clone for PrintInfo {
 
 impl PartialEq for PrintInfo {
     fn eq(&self, other: &Self) -> bool {
-        (self.fns.eq)(&self.info, &other.info)
+        (self.fns.eq)(&(*self.info), &(*other.info))
     }
 }
 

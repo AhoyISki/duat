@@ -63,6 +63,8 @@ impl SessionCfg {
         files: Vec<Vec<ReloadedFile>>,
         already_plugged: Vec<TypeId>,
     ) -> Session {
+        ui.setup_default_print_info();
+
         let plugins = Plugins::_new();
         // SAFETY: The only externally available function for Plugins is to
         // add more plugins, accessing the plugging functions happens only on

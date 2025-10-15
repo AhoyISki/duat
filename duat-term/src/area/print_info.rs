@@ -294,6 +294,9 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
+        if self.vert_dist > 0 {
+            panic!("{}", self.vert_dist);
+        }
         let cap = cfg.wrap_width(coords.width());
 
         let points = text.ghost_max_points_at(self.prev_main.byte());
