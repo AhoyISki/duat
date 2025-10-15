@@ -1,6 +1,6 @@
 use std::sync::{LazyLock, Mutex};
 
-use duat_core::{
+use duat::{
     mode::{KeyCode::*, KeyMod},
     prelude::*,
 };
@@ -20,12 +20,12 @@ pub(crate) enum OneKey {
     Replace,
 }
 
-impl<U: Ui> Mode<U> for OneKey {
-    type Widget = File<U>;
+impl Mode for OneKey {
+    type Widget = File;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
         let sel_type = match *self {
-            OneKey::GoTo(st) => match_goto::<(), U>(pa, &handle, key, st),
+            OneKey::GoTo(st) => match_goto(pa, &handle, key, st),
             OneKey::Find(st, ss) | OneKey::Until(st, ss) if let Some(char) = just_char(key) => {
                 match_find_until(pa, handle, char, matches!(*self, OneKey::Until(..)), st);
                 if ss {
@@ -52,17 +52,17 @@ impl<U: Ui> Mode<U> for OneKey {
             _ => SelType::Normal,
         };
 
-        mode::set::<U>(Normal::new_with_sel_type(sel_type));
+        mode::set(Normal::new_with_sel_type(sel_type));
     }
 
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget, U>) {
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget>) {
         handle.set_mask("OneKey");
     }
 }
 
-fn match_goto<S, U: Ui>(
+fn match_goto<S>(
     pa: &mut Pass,
-    handle: &Handle<File<U>, U, S>,
+    handle: &Handle<File, S>,
     key: KeyEvent,
     mut sel_type: SelType,
 ) -> SelType {
@@ -130,13 +130,7 @@ fn match_goto<S, U: Ui>(
     sel_type
 }
 
-fn match_find_until<U: Ui>(
-    pa: &mut Pass,
-    handle: Handle<File<U>, U, ()>,
-    char: char,
-    is_t: bool,
-    st: SelType,
-) {
+fn match_find_until(pa: &mut Pass, handle: Handle<File, ()>, char: char, is_t: bool, st: SelType) {
     use SelType::*;
     handle.edit_all(pa, |mut c| {
         let search = format!("\\x{{{:X}}}", char as u32);
@@ -164,9 +158,9 @@ fn match_find_until<U: Ui>(
     });
 }
 
-fn match_inside_around<U: Ui>(
+fn match_inside_around(
     pa: &mut Pass,
-    handle: Handle<File<U>, U, ()>,
+    handle: Handle<File, ()>,
     event: KeyEvent,
     brackets: Brackets,
     is_inside: bool,

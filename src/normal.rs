@@ -1,9 +1,10 @@
 use std::sync::atomic::Ordering;
 
-use duat_core::{
-    cfg::WordChars,
+use duat::{
     mode::{KeyCode::*, KeyMod as Mod, VPoint},
     prelude::*,
+    print::WordChars,
+    text::Point,
 };
 use duat_utils::modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
@@ -85,10 +86,10 @@ impl Normal {
     }
 }
 
-impl<U: Ui> Mode<U> for Normal {
-    type Widget = File<U>;
+impl Mode for Normal {
+    type Widget = File;
 
-    fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {
         let wc = handle.cfg(pa).word_chars;
 
         handle.write(pa).text_mut().new_moment();
@@ -263,7 +264,7 @@ impl<U: Ui> Mode<U> for Normal {
                     (false, false) => SelType::Normal,
                 };
 
-                mode::set::<U>(if let Char('f' | 'F') = event.code {
+                mode::set(if let Char('f' | 'F') = event.code {
                     OneKey::Find(sel_type, self.f_and_t_set_search)
                 } else {
                     OneKey::Until(sel_type, self.f_and_t_set_search)
@@ -283,8 +284,8 @@ impl<U: Ui> Mode<U> for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(-(c.v_caret().char_col() as i32));
             }),
-            key!(Char('a'), Mod::ALT) => mode::set::<U>(OneKey::Around(self.brackets)),
-            key!(Char('i'), Mod::ALT) => mode::set::<U>(OneKey::Inside(self.brackets)),
+            key!(Char('a'), Mod::ALT) => mode::set(OneKey::Around(self.brackets)),
+            key!(Char('i'), Mod::ALT) => mode::set(OneKey::Inside(self.brackets)),
             key!(Char('%')) => handle.edit_main(pa, |mut c| {
                 c.move_to_start();
                 c.set_anchor();
@@ -353,7 +354,7 @@ impl<U: Ui> Mode<U> for Normal {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_start();
                 });
-                mode::set::<U>(Insert::new());
+                mode::set(Insert::new());
             }
             key!(Char('I')) => {
                 handle.edit_all(pa, |mut c| {
@@ -364,14 +365,14 @@ impl<U: Ui> Mode<U> for Normal {
                         c.move_to_col(c.indent());
                     }
                 });
-                mode::set::<U>(Insert::new());
+                mode::set(Insert::new());
             }
             key!(Char('a')) => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_end();
                     c.move_hor(1);
                 });
-                mode::set::<U>(Insert::new());
+                mode::set(Insert::new());
             }
             key!(Char('A')) => {
                 handle.edit_all(pa, |mut c| {
@@ -379,7 +380,7 @@ impl<U: Ui> Mode<U> for Normal {
                     let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
                     c.move_to(p);
                 });
-                mode::set::<U>(Insert::new());
+                mode::set(Insert::new());
             }
             key!(Char('o' | 'O'), Mod::NONE | Mod::ALT) => {
                 handle.edit_all(pa, |mut c| {
@@ -408,12 +409,12 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 });
                 if event.modifiers == Mod::NONE {
-                    mode::set::<U>(Insert::new());
+                    mode::set(Insert::new());
                 }
             }
 
             ////////// Selection alteration keys
-            key!(Char('r')) => mode::set::<U>(OneKey::Replace),
+            key!(Char('r')) => mode::set(OneKey::Replace),
             key!(Char('`')) => handle.edit_all(pa, |mut c| {
                 let lower = c
                     .selection()
@@ -654,7 +655,7 @@ impl<U: Ui> Mode<U> for Normal {
                     c.unset_anchor();
                 });
                 if event.code == Char('c') {
-                    mode::set::<U>(Insert::new());
+                    mode::set(Insert::new());
                 }
             }
             key!(Char('p' | 'P')) => {
@@ -741,12 +742,12 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Search keys
-            key!(Char('/')) => mode::set::<U>(IncSearch::new(SearchFwd)),
-            key!(Char('/'), Mod::ALT) => mode::set::<U>(IncSearch::new(SearchRev)),
-            key!(Char('?')) => mode::set::<U>(IncSearch::new(ExtendFwd)),
-            key!(Char('?'), Mod::ALT) => mode::set::<U>(IncSearch::new(ExtendRev)),
-            key!(Char('s')) => mode::set::<U>(IncSearch::new(Select)),
-            key!(Char('S')) => mode::set::<U>(IncSearch::new(Split)),
+            key!(Char('/')) => mode::set(IncSearch::new(SearchFwd)),
+            key!(Char('/'), Mod::ALT) => mode::set(IncSearch::new(SearchRev)),
+            key!(Char('?')) => mode::set(IncSearch::new(ExtendFwd)),
+            key!(Char('?'), Mod::ALT) => mode::set(IncSearch::new(ExtendRev)),
+            key!(Char('s')) => mode::set(IncSearch::new(Select)),
+            key!(Char('S')) => mode::set(IncSearch::new(Split)),
             key!(Char('n' | 'N'), Mod::NONE | Mod::ALT) => {
                 let search = SEARCH.lock().unwrap();
                 if search.is_empty() {
@@ -810,11 +811,11 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Other mode changing keys
-            key!(Char(':')) => mode::set::<U>(RunCommands::new()),
-            key!(Char('|')) => mode::set::<U>(PipeSelections::new()),
-            key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
-            key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
-            key!(Char(' ')) => mode::set::<U>(mode::User),
+            key!(Char(':')) => mode::set(RunCommands::new()),
+            key!(Char('|')) => mode::set(PipeSelections::new()),
+            key!(Char('G')) => mode::set(OneKey::GoTo(SelType::Extend)),
+            key!(Char('g')) => mode::set(OneKey::GoTo(SelType::Normal)),
+            key!(Char(' ')) => mode::set(mode::User),
 
             ////////// History manipulation
             key!(Char('u')) => handle.text_mut(pa).undo(),
@@ -823,7 +824,7 @@ impl<U: Ui> Mode<U> for Normal {
         }
     }
 
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget, U>) {
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget>) {
         handle.set_mask("Normal");
     }
 }

@@ -284,13 +284,12 @@ use std::{
     sync::{LazyLock, Mutex, atomic::Ordering},
 };
 
-use duat_core::{
-    cfg::WordChars,
-    mode::{Cursor, KeyCode::*},
+use duat::{
+    mode::{self, Cursor, KeyCode::*},
     prelude::*,
+    print::WordChars,
     text::Point,
 };
-use duat_utils::hooks::SearchPerformed;
 
 use crate::normal::Brackets;
 pub use crate::{insert::Insert, normal::Normal};
@@ -389,16 +388,16 @@ impl Kak {
     }
 }
 
-impl<U: Ui> Plugin<U> for Kak {
-    fn plug(self, plugins: &Plugins<U>) {
+impl Plugin for Kak {
+    fn plug(self, plugins: &Plugins) {
         plugins.require::<jump_list::JumpList>();
         plugins.require::<treesitter::TreeSitter>();
 
         mode::set_alt_is_reverse(true);
-        duat_core::mode::set_default::<Normal, U>(Normal::new());
+        mode::set_default::<Normal>(Normal::new());
         insert::INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
 
-        hook::add::<SearchPerformed, U>(|_, search| {
+        hook::add::<SearchPerformed>(|_, search| {
             *SEARCH.lock().unwrap() = search.to_string();
             Ok(())
         });
@@ -419,11 +418,11 @@ impl Default for Kak {
 
 ////////// Cursor utility functions
 
-fn edit_or_destroy_all<U: Ui, S>(
+fn edit_or_destroy_all<S>(
     pa: &mut Pass,
-    handle: &Handle<File<U>, U, S>,
+    handle: &Handle<File, S>,
     failed_at_least_once: &mut bool,
-    mut f: impl FnMut(&mut Cursor<File<U>, U::Area, S>) -> Option<()> + Clone,
+    mut f: impl FnMut(&mut Cursor<File, S>) -> Option<()> + Clone,
 ) {
     handle.edit_all(pa, move |mut c| {
         let ret: Option<()> = f(&mut c);
@@ -435,7 +434,7 @@ fn edit_or_destroy_all<U: Ui, S>(
     })
 }
 
-fn select_to_end_of_line<S, U: Ui>(set_anchor: bool, mut c: Cursor<File<U>, U::Area, S>) {
+fn select_to_end_of_line<S>(set_anchor: bool, mut c: Cursor<File, S>) {
     set_anchor_if_needed(set_anchor, &mut c);
     c.set_desired_vcol(usize::MAX);
     let pre_nl = match c.char() {
@@ -447,7 +446,7 @@ fn select_to_end_of_line<S, U: Ui>(set_anchor: bool, mut c: Cursor<File<U>, U::A
     }
 }
 
-fn set_anchor_if_needed<S, U: Ui>(set_anchor: bool, c: &mut Cursor<File<U>, U::Area, S>) {
+fn set_anchor_if_needed<S>(set_anchor: bool, c: &mut Cursor<File, S>) {
     if set_anchor {
         if c.anchor().is_none() {
             c.set_anchor();
@@ -546,9 +545,9 @@ impl<'a> Object<'a> {
         }
     }
 
-    fn find_ahead<S, U: Ui>(
+    fn find_ahead<S>(
         self,
-        c: &mut Cursor<File<U>, U::Area, S>,
+        c: &mut Cursor<File, S>,
         s_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
@@ -577,9 +576,9 @@ impl<'a> Object<'a> {
         }
     }
 
-    fn find_behind<S, U: Ui>(
+    fn find_behind<S>(
         self,
-        c: &mut Cursor<File<U>, U::Area, S>,
+        c: &mut Cursor<File, S>,
         c_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {

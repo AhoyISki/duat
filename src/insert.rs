@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use duat_core::{
+use duat::{
     mode::{Cursor, KeyCode::*, KeyMod as Mod},
     prelude::*,
 };
@@ -53,10 +53,10 @@ impl Default for Insert {
     }
 }
 
-impl<U: Ui> Mode<U> for Insert {
-    type Widget = File<U>;
+impl Mode for Insert {
+    type Widget = File;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
         if let key!(Left | Down | Up | Right, mods) = key
             && mods.contains(Mod::SHIFT)
         {
@@ -161,19 +161,19 @@ impl<U: Ui> Mode<U> for Insert {
 
             key!(Esc) => {
                 handle.text_mut(pa).new_moment();
-                mode::set::<U>(Normal::new());
+                mode::set(Normal::new());
             }
             _ => {}
         }
     }
 
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget, U>) {
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget>) {
         handle.set_mask("Insert");
     }
 }
 
 /// removes an empty line
-fn remove_empty_line<S, U: Ui>(c: &mut Cursor<File<U>, U::Area, S>) {
+fn remove_empty_line<S>(c: &mut Cursor<File, S>) {
     let mut lines = c.lines_on(c.caret()..);
     let (_, line) = lines.next().unwrap();
     if !line.chars().all(char::is_whitespace) || line.is_empty() {
