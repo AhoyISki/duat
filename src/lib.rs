@@ -630,7 +630,7 @@ pub mod prelude {
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
             WindowCreated,
         },
-        mode::{self, Mode, Pager, Prompt, User, alias, map, KeyEvent, KeyCode},
+        mode::{self, Mode, Pager, Prompt, User, alias, map, KeyEvent, KeyCode, key},
         print, setup_duat,
         state::*,
         text::{
