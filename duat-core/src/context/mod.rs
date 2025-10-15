@@ -9,7 +9,7 @@ pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
     data::{Pass, RwData},
     file::File,
-    ui::{traits::Area, Node, Widget},
+    ui::{Node, Widget, traits::Area},
 };
 
 mod cache;
@@ -18,7 +18,6 @@ mod log;
 
 mod global {
     use std::{
-        any::Any,
         path::PathBuf,
         sync::{
             LazyLock, Mutex, OnceLock,
@@ -37,7 +36,7 @@ mod global {
         ui::Windows,
     };
 
-    static WINDOWS: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
+    static WINDOWS: OnceLock<&Windows> = OnceLock::new();
     static MODE_NAME: LazyLock<RwData<&str>> = LazyLock::new(RwData::default);
 
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
@@ -69,9 +68,9 @@ mod global {
 
     /// Sets the [`Window`]s for Duat
     pub(crate) fn set_windows(windows: Windows) {
-        WINDOWS
-            .set(Box::leak(Box::new(windows)))
-            .expect("Setup ran twice")
+        if WINDOWS.set(Box::leak(Box::new(windows))).is_err() {
+            panic!("Setup ran twice");
+        }
     }
 
     /// Orders to quit Duat
@@ -132,7 +131,9 @@ mod global {
 
     /// The [`Window`]s of Duat, must be used on main thread
     pub(crate) fn windows() -> &'static Windows {
-        WINDOWS.get().unwrap().downcast_ref().expect("1 Ui only")
+        WINDOWS
+            .get()
+            .unwrap_or_else(|| panic!("alksdjfalksdjfalskjfklasdjfkl"))
     }
 
     /// The index of the currently active window

@@ -582,7 +582,28 @@ pub struct PrintInfo {
 }
 
 impl PrintInfo {
-    fn new<U: traits::Ui>(info: <U::Area as traits::Area>::PrintInfo) -> Self {
+    /// Creates a new [`U::Area::PrintInfo`]
+    ///
+    /// This should be used by [`Ui`] implementations, in order to
+    /// type erase their own [`PrintInfo`]s.
+    ///
+    /// > [!NOTE]
+    /// >
+    /// > The reason why this should be the responsibility of [`Ui`]
+    /// > implementations, and not of Duat itself, is because, in
+    /// > order to do that in Duat, I would need to type erase the
+    /// > [`ui::traits`] functions before the initial startup of the
+    /// > configuration, i.e., in the address space of the Duat
+    /// > executable, _not_ in the configuration crate address space.
+    /// >
+    /// > This would make implementing a [`Ui`] incredibly confusing,
+    /// > since there are already 3 functions that are called from
+    /// > that address space, and bringin
+    ///
+    /// [`U::Area::PrintInfo`]: traits::Area::PrintInfo
+    /// [`Ui`]: traits::Ui
+    /// [`ui::traits`]: super::traits
+    pub fn new<U: traits::Ui>(info: <U::Area as traits::Area>::PrintInfo) -> Self {
         Self {
             info: Box::new(info),
             fns: PrintInfoFunctions::new::<U>(),
@@ -598,13 +619,13 @@ impl Default for PrintInfo {
 
 impl Clone for PrintInfo {
     fn clone(&self) -> Self {
-        (self.fns.clone)(&self.info)
+        (self.fns.clone)(self.info.as_ref())
     }
 }
 
 impl PartialEq for PrintInfo {
     fn eq(&self, other: &Self) -> bool {
-        (self.fns.eq)(&(*self.info), &(*other.info))
+        (self.fns.eq)(self.info.as_ref(), other.info.as_ref())
     }
 }
 

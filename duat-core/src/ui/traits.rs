@@ -24,35 +24,19 @@ use crate::{
     ui::{Caret, PushSpecs, SpawnSpecs},
 };
 
-/// All the methods that a working gui/tui will need to implement, in
-/// order to use Duat.
+/// All the methods that a working gui/tui will need to implement in
+/// order to be used by Duat.
 ///
-/// # NOTE
+/// This includes the following functionalities:
 ///
-/// The dependencies on [`Clone`] and [`Default`] is only here for
-/// convenience. Many types require a [`Ui`] as a generic parameter,
-/// and if [`Ui`] does not implement [`Clone`] or [`Default`],
-/// deriving [`Clone`] or [`Default`] for said types would
-/// be a very manual task.
-///
-/// Below is the recommended implementation of [`Clone`] adn
-/// [`Default`] for all types that implement [`Ui`]:
-///
-/// ```rust
-/// # mod duat_smart_fridge {
-/// #     pub struct Ui;
-/// # }
-/// impl Clone for duat_smart_fridge::Ui {
-///     fn clone(&self) -> Self {
-///         panic!("You are not supposed to clone the Ui");
-///     }
-/// }
-/// impl Default for duat_smart_fridge::Ui {
-///     fn default() -> Self {
-///         panic!("You are not supposed to call the Ui's default constructor");
-///     }
-/// }
-/// ```
+/// - Creating new windows, which start out with one [`Area`].
+/// - Spawning floating [`Area`]s around other [`Area`]s.
+/// - Spawning floating [`Area`]s in text [`Point`]s, which should be
+///   able to move as the [`Text`] itself does.
+/// - Pushing [`Area`]s around other [`Area`]s, which include floating
+///   ones.
+/// - Closing [`Area`]s at will, which should cascading all pushed or
+///   spawned [`Area`]s
 pub trait Ui: Send + Sync + 'static {
     /// The [`Area`] of this [`Ui`]
     type Area: Area
@@ -60,23 +44,26 @@ pub trait Ui: Send + Sync + 'static {
         Self: Sized;
 
     /// Return [`Some`] only on the first call
+    ///
+    /// Will happen on the address space of the Duat application,
+    /// rather than the configuration crate. This means that you can't
+    /// rely on `static` variables to contain the same values as they
+    /// do in the config crate.
     fn get_once() -> Option<&'static Self>
     where
         Self: Sized;
 
-    ////////// Functions executed from the outer loop
-
     /// Functions to trigger when the program begins
     ///
-    /// These will happen in the main `duat` runner
+    /// Will happen on the address space of the Duat application,
+    /// rather than the configuration crate.
     fn open(&self, duat_tx: DuatSender);
 
     /// Functions to trigger when the program ends
     ///
-    /// These will happen in the main `duat` runner
+    /// Will happen on the address space of the Duat application,
+    /// rather than the configuration crate.
     fn close(&self);
-
-    ////////// Functions executed from within the configuration loop
 
     /// Initiates and returns a new "master" [`Area`]
     ///

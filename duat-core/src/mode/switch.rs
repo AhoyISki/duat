@@ -261,6 +261,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
 
     hook::trigger(pa, ModeSwitched((old_name, new_name)));
 
+    *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
     unsafe {
         MODE.get().replace(Box::new(mode));
         SEND_KEYS
@@ -287,3 +288,5 @@ fn before_exit_fn<M: Mode>(pa: &mut Pass) {
 
     mode.before_exit(pa, handle);
 }
+
+static MODE_NAME: Mutex<&str> = Mutex::new("");

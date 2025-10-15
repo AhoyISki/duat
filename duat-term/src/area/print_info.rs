@@ -41,9 +41,6 @@ impl PrintInfo {
         {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {
-            if coords.height() > 35 && coords.width() > 100 {
-                duat_core::context::debug!("info: {self:#?}");
-            }
             self.set_first_start(coords, text, cfg)
         } else {
             Default::default()
@@ -161,6 +158,8 @@ impl PrintInfo {
                     .unwrap_or_default(),
             );
         }
+
+        self.prev_coords = coords;
     }
 
     pub(super) fn scroll_to_points(
@@ -333,7 +332,12 @@ impl PrintInfo {
         let points = rev_print_iter(text.iter_rev(after), cap, cfg)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
             .inspect(|_| lines_traversed += 1)
-            .nth(self.vert_dist.max(cfg.scrolloff.y as u32) as usize)
+            .nth(
+                self.vert_dist
+                    .max(cfg.scrolloff.y as u32)
+                    .min(coords.height().saturating_sub(cfg.scrolloff.y as u32 + 1))
+                    as usize,
+            )
             .unwrap_or_default();
 
         // We don't want to count the the main cursor's line's wrap.

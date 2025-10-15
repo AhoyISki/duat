@@ -104,7 +104,6 @@ impl Area {
 
             let (s_points, x_shift) = {
                 let mut info = self.layouts.get_info_of(self.id).unwrap();
-
                 let s_points = info.start_points(coords, text, cfg);
                 self.layouts.set_info_of(self.id, info);
                 (s_points, info.x_shift())

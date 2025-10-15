@@ -46,6 +46,7 @@ FOR NEXT UPDATE:
 [ ] Remove requirement of Clone on Modes.
 
 KNOWN BUGS:
+[ ] Type erasure makes it hard to get concrete Area.
 [ ] For now, spawned widgets don't care about spacing or alignment.
 [ ] tree-sitter-duat-text is not being used.
 [x] Canceling git commit panics.
@@ -70,6 +71,7 @@ KNOWN BUGS:
 [x] Failing to compile locks up recompilation.
 
 FUTURE UPDATES:
+[ ] Make all Ui and Area methods use the address space of the Duat app.
 [ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.
 [ ] Finalize the Windows API for more public use.
 [ ] Coordinates based tagging.
@@ -83,7 +85,7 @@ FUTURE UPDATES:
 [ ] Handle mostly utf-8 strings.
 [ ] Allow Modes to detect when a key is mapped.
 [ ] Add a failure mode for remapping.
-[ ] Bring back multithreading?
+[/] Bring back multithreading?
 [ ] Abuse the shit out of catch_unwind.
 [ ] Additive Forms.
 [ ] Remapping on `Mode` creation.
@@ -100,7 +102,6 @@ FUTURE UPDATES:
 [ ] Crumple zone tags (?).
 [ ] Document print.rs (jesus christ man)
 [ ] Custom error messages for unimplemented on status!.
-[ ] Create a Text wrapper for Parsers, which can tell when a conceal was placed.
 [ ] It is technically possible to reverse iterate without going over the whole line, if you know where in the screen said line ends.
 [ ] add options to the build script, about which type of UI you want, and where to get your config files.
 [ ] general undo/redo, that can delete/create files.
