@@ -12,7 +12,7 @@
 
 use std::ops::Range;
 
-use duat_core::prelude::*;
+use duat::prelude::*;
 use gapbuf::GapBuffer;
 
 /// [`Plugin`]: Adds a [`Jumps`] parser to every [`File`]
@@ -22,9 +22,9 @@ use gapbuf::GapBuffer;
 #[derive(Default)]
 pub struct JumpList;
 
-impl<U: Ui> Plugin<U> for JumpList {
-    fn plug(self, _: &Plugins<U>) {
-        hook::add::<File<U>, U>(|pa, handle| handle.add_parser(pa, Jumps::new));
+impl Plugin for JumpList {
+    fn plug(self, _: &Plugins) {
+        hook::add::<File>(|pa, handle| handle.add_parser(pa, Jumps::new));
     }
 }
 
@@ -74,7 +74,7 @@ impl Jumps {
     }
 }
 
-impl<U: Ui> Parser<U> for Jumps {
+impl Parser for Jumps {
     fn parse(&mut self) -> bool {
         false
     }
@@ -115,7 +115,7 @@ impl<U: Ui> Parser<U> for Jumps {
     }
 
     fn before_try_get(&mut self) -> bool {
-        Parser::<U>::before_get(self);
+        self.before_get();
         true
     }
 }
@@ -134,7 +134,7 @@ enum Saved {
 ///
 /// [`Selections`]: duat_core::mode::Selections
 /// [`Change`]: duat_core::text::Change
-pub trait FileJumps<U: Ui> {
+pub trait FileJumps {
     /// Record the [`File`]'s [`Selections`]
     ///
     /// If `allow_duplicates` is set to `false`, then the selections
@@ -171,7 +171,7 @@ pub trait FileJumps<U: Ui> {
     fn jump_to_selections(&mut self, n: usize) -> Option<Jump>;
 }
 
-impl<U: Ui> FileJumps<U> for File<U> {
+impl FileJumps for File {
     fn record_selections(&mut self, allow_duplicates: bool) -> bool {
         self.write_parser(|jumps: &mut Jumps| {
             let selections = self.selections();
@@ -331,7 +331,7 @@ struct Changes {
 
 impl Changes {
     fn add_change(&mut self, (start, taken_end, added_end): (i32, i32, i32)) {
-        let m_range = duat_core::utils::merging_range_by_guess_and_lazy_shift(
+        let m_range = duat::utils::merging_range_by_guess_and_lazy_shift(
             (&self.list, self.list.len()),
             (0, [start, taken_end]),
             (self.from, self.by, 0, std::ops::Add::add),
