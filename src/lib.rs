@@ -622,7 +622,7 @@ pub mod prelude {
         context::{self, Handle},
         cursor,
         data::{self, Pass},
-        file,
+        file::{File, FileTracker, Parser},
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
