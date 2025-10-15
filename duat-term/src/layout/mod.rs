@@ -339,7 +339,7 @@ impl Layouts {
     /// Also returns wether or not they have changed.
     ///
     /// Returns [`None`] if the `Rect` in question was deleted.
-    pub fn coords_of(&self, id: AreaId, is_printing: bool) -> Option<(Coords, bool)> {
+    pub fn coords_of(&self, id: AreaId, is_printing: bool) -> Option<Coords> {
         let layouts = self.0.borrow();
         layouts
             .list
@@ -659,7 +659,7 @@ impl Layout {
     ///
     /// Returns [`None`] if this `Layout` does not contain the
     /// [`AreaId`]'s [`Rect`].
-    fn coords_of(&self, id: AreaId, is_printing: bool) -> Option<(Coords, bool)> {
+    fn coords_of(&self, id: AreaId, is_printing: bool) -> Option<Coords> {
         let rect = self.get(id)?;
         Some(self.printer.coords(rect.var_points(), is_printing))
     }

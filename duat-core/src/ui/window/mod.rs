@@ -120,9 +120,10 @@ impl Windows {
         let widget = RwData::new(widget);
         let id = SpawnId::new();
 
+        let path = widget.read_as::<File>(pa).and_then(|file| file.path_set());
         let spawned = cluster_master.as_ref().unwrap_or(target).spawn(
             pa,
-            &widget.to_dyn_widget(),
+            path.as_ref().map(|p| p.as_ref()),
             id,
             specs,
         )?;
@@ -150,9 +151,10 @@ impl Windows {
         win: usize,
     ) -> Handle<W> {
         let widget = RwData::new(widget);
+        let path = widget.read_as::<File>(pa).and_then(|file| file.path_set());
         let spawned = self
             .ui
-            .new_spawned(pa, &widget.to_dyn_widget(), id, specs, win);
+            .new_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
         let node = Node::new(widget, spawned);
 
@@ -234,7 +236,9 @@ impl Windows {
         };
 
         let widget = RwData::new(widget);
-        let (pushed, parent) = target.push(pa, &widget.to_dyn_widget(), specs, on_files)?;
+        let path = widget.read_as::<File>(pa).and_then(|file| file.path_set());
+        let (pushed, parent) =
+            target.push(pa, path.as_ref().map(|p| p.as_ref()), specs, on_files)?;
 
         let node = Node::new(widget, pushed);
 
@@ -401,7 +405,8 @@ impl Windows {
                 };
 
                 // Create a new Window Swapping the new root with files_area
-                let new_root = self.ui.new_root(pa, &handle.widget().to_dyn_widget());
+                let path = handle.read(pa).path_set();
+                let new_root = self.ui.new_root(path.as_ref().map(|p| p.as_ref()));
                 handle.area().swap(pa, &new_root);
                 let window = Window::from_raw(
                     pa,
@@ -728,11 +733,14 @@ impl Window {
         new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     ) -> (Self, Node) {
         let widget = RwData::new(widget);
-        if let Some(file) = widget.write_as::<File>(pa) {
+        let path = if let Some(file) = widget.write_as::<File>(pa) {
             file.layout_order = get_layout_order();
-        }
+            file.path_set()
+        } else {
+            None
+        };
 
-        let area = ui.new_root(pa, &widget.to_dyn_widget());
+        let area = ui.new_root(path.as_ref().map(|p| p.as_ref()));
         let node = Node::new::<W>(widget, area.clone());
 
         new_additions

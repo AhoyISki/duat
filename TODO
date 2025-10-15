@@ -7,18 +7,18 @@ FOR NEXT UPDATE:
   [x] Extend regular Widget functions to floating Widgets.
 [ ] Rename File to Buffer.
 [ ] Make Handles not a Parameter.
-[ ] No more U arguments, plugins will now use duat instead of duat-core.
-  [ ] Gut duat-core, so that it only defines the Ui/Area traits and the text and form modules.
-  [ ] Move everything else to duat.
-  [ ] Make use of a generic Area for Handles.
+[x] No more U arguments, plugins will now use duat instead of duat-core.
+  [/] Gut duat-core, so that it only defines the Ui/Area traits and the text and form modules.
+  [/] Move everything else to duat.
+  [x] Make use of a generic Area for Handles.
     [x] Make Ui and Area dyn compatible.
     [~] Move some of the more intensive calculations (like Text vertical movement) to the Area trait.
     [ ] Possibly get rid of printed iterators?
     [ ] Add the ability to query the Area if it is a specific implementation.
-  [ ] Don't have duat(lib) depend on a specific Ui, have duat(bin) send a type erased Ui to it.
-  [ ] No plugins on duat(lib)
-    [ ] Make all default plugins into default config crate dependencies.
-    [ ] Create a setup_no_default_plugins in order to circumvent them.
+  [/] Don't have duat(lib) depend on a specific Ui, have duat(bin) send a type erased Ui to it.
+  [/] No plugins on duat(lib)
+    [/] Make all default plugins into default config crate dependencies.
+    [/] Create a setup_no_default_plugins in order to circumvent them.
 [/] Set title for better performance apparently (???).
 [x] Get rid of AreaId.
 [ ] Add completion lists.
@@ -100,7 +100,6 @@ FUTURE UPDATES:
 [ ] Crumple zone tags (?).
 [ ] Document print.rs (jesus christ man)
 [ ] Custom error messages for unimplemented on status!.
-[ ] Try to create a macro to generate a prelude, where types don't have U as a type argument.
 [ ] Create a Text wrapper for Parsers, which can tell when a conceal was placed.
 [ ] It is technically possible to reverse iterate without going over the whole line, if you know where in the screen said line ends.
 [ ] add options to the build script, about which type of UI you want, and where to get your config files.

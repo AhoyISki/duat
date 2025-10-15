@@ -19,6 +19,7 @@
 use std::{
     any::Any,
     cell::UnsafeCell,
+    path::Path,
     sync::{Arc, OnceLock},
 };
 
@@ -26,11 +27,10 @@ use crate::{
     cfg::PrintCfg,
     context::{self, Cache},
     data::{Pass, RwData},
-    file::File,
     form::Painter,
     text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
     ui::{
-        Caret, PushSpecs, SpawnSpecs, Widget,
+        Caret, PushSpecs, SpawnSpecs,
         traits::{self, Area as AreaTrait},
     },
 };
@@ -67,8 +67,8 @@ impl Ui {
     /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
-    pub fn new_root(&self, pa: &Pass, widget: &RwData<dyn Widget>) -> Area {
-        (self.fns.new_root)(pa, self.ui, widget)
+    pub fn new_root(&self, file_path: Option<&Path>) -> Area {
+        (self.fns.new_root)(self.ui, file_path)
     }
 
     /// Initiates and returns a new "floating" [`Area`]
@@ -84,13 +84,12 @@ impl Ui {
     /// [`Area`]: Ui::Area
     pub fn new_spawned(
         &self,
-        pa: &Pass,
-        widget: &RwData<dyn Widget>,
+        file_path: Option<&Path>,
         spawn_id: SpawnId,
         specs: SpawnSpecs,
         win: usize,
     ) -> Area {
-        (self.fns.new_spawned)(pa, self.ui, widget, spawn_id, specs, win)
+        (self.fns.new_spawned)(self.ui, file_path, spawn_id, specs, win)
     }
 
     /// Sets the default [`PrintInfo`]
@@ -102,15 +101,8 @@ impl Ui {
 }
 
 struct UiFunctions {
-    new_root: fn(pa: &Pass, &dyn traits::Ui, widget: &RwData<dyn Widget>) -> Area,
-    new_spawned: fn(
-        pa: &Pass,
-        &dyn traits::Ui,
-        widget: &RwData<dyn Widget>,
-        spawn_id: SpawnId,
-        specs: SpawnSpecs,
-        win: usize,
-    ) -> Area,
+    new_root: fn(&dyn traits::Ui, Option<&Path>) -> Area,
+    new_spawned: fn(&dyn traits::Ui, Option<&Path>, SpawnId, SpawnSpecs, usize) -> Area,
 }
 
 impl UiFunctions {
@@ -119,15 +111,15 @@ impl UiFunctions {
         U::Area: PartialEq,
     {
         &Self {
-            new_root: |pa, ui, widget| {
+            new_root: |ui, file_path| {
                 let ui = unsafe { (ui as *const dyn traits::Ui as *const U).as_ref() }.unwrap();
 
-                Area::new::<U>(ui.new_root(get_cache::<U>(pa, widget)))
+                Area::new::<U>(ui.new_root(get_cache::<U>(file_path)))
             },
-            new_spawned: |pa, ui, widget, spawn_id, specs, win| {
+            new_spawned: |ui, file_path, spawn_id, specs, win| {
                 let ui = unsafe { (ui as *const dyn traits::Ui as *const U).as_ref() }.unwrap();
 
-                Area::new::<U>(ui.new_spawned(spawn_id, specs, get_cache::<U>(pa, widget), win))
+                Area::new::<U>(ui.new_spawned(spawn_id, specs, get_cache::<U>(file_path), win))
             },
         }
     }
@@ -196,22 +188,22 @@ impl Area {
     pub(super) fn push(
         &self,
         pa: &mut Pass,
-        widget: &RwData<dyn Widget>,
+        file_path: Option<&Path>,
         specs: PushSpecs,
         on_files: bool,
     ) -> Option<(Self, Option<Self>)> {
-        (self.fns.push)(pa, &self.area, widget, specs, on_files)
+        (self.fns.push)(pa, &self.area, file_path, specs, on_files)
     }
 
     /// Spawns a [`Widget`] on this [`Area`]
     pub(super) fn spawn(
         &self,
         pa: &mut Pass,
-        widget: &RwData<dyn Widget>,
+        file_path: Option<&Path>,
         spawn_id: SpawnId,
         specs: SpawnSpecs,
     ) -> Option<Self> {
-        (self.fns.spawn)(pa, &self.area, widget, spawn_id, specs)
+        (self.fns.spawn)(pa, &self.area, file_path, spawn_id, specs)
     }
 
     /// Deletes this [`Area`], returning wether the window should be
@@ -444,46 +436,45 @@ impl Area {
 struct AreaFunctions {
     /// Push one [`Area`] to another
     push: fn(
-        pa: &mut Pass,
-        area: &RwData<dyn traits::Area>,
-        widget: &RwData<dyn Widget>,
-        specs: PushSpecs,
-        on_files: bool,
+        &mut Pass,
+        &RwData<dyn traits::Area>,
+        Option<&Path>,
+        PushSpecs,
+        bool,
     ) -> Option<(Area, Option<Area>)>,
     /// Spawn an [`Area`] on another
     spawn: fn(
-        pa: &mut Pass,
-        area: &RwData<dyn traits::Area>,
-        widget: &RwData<dyn Widget>,
-        spawn_id: SpawnId,
-        specs: SpawnSpecs,
+        &mut Pass,
+        &RwData<dyn traits::Area>,
+        Option<&Path>,
+        SpawnId,
+        SpawnSpecs,
     ) -> Option<Area>,
     /// Deletes an [`Area`]
-    delete: fn(pa: &mut Pass, area: &RwData<dyn traits::Area>) -> (bool, Vec<Area>),
+    delete: fn(&mut Pass, &RwData<dyn traits::Area>) -> (bool, Vec<Area>),
     /// Swaps two [`Area`]s
-    swap: fn(pa: &mut Pass, lhs: &Area, rhs: &Area) -> bool,
+    swap: fn(&mut Pass, &Area, &Area) -> bool,
     /// Prints to an [`Area`], with a callback function
     print_with: for<'a> fn(
-        pa: &Pass,
-        area: &RwData<dyn traits::Area>,
-        text: &Text,
-        cfg: PrintCfg,
-        painter: Painter,
-        f: Box<dyn FnMut(&Caret, &Item) + 'a>,
+        &Pass,
+        &RwData<dyn traits::Area>,
+        &Text,
+        PrintCfg,
+        Painter,
+        Box<dyn FnMut(&Caret, &Item) + 'a>,
     ),
     /// Gets the type erased [`Area::PrintInfo`]
-    get_print_info: fn(pa: &Pass, area: &RwData<dyn traits::Area>) -> PrintInfo,
+    get_print_info: fn(&Pass, &RwData<dyn traits::Area>) -> PrintInfo,
     /// Sets the type erased [`Area::PrintInfo`]
-    set_print_info: fn(pa: &mut Pass, area: &RwData<dyn traits::Area>, info: PrintInfo),
+    set_print_info: fn(&mut Pass, &RwData<dyn traits::Area>, PrintInfo),
     /// Wether this [`Area`] is the master of another
-    is_master_of:
-        fn(pa: &Pass, lhs: &RwData<dyn traits::Area>, rhs: &RwData<dyn traits::Area>) -> bool,
+    is_master_of: fn(&Pass, &RwData<dyn traits::Area>, &RwData<dyn traits::Area>) -> bool,
     /// Gets the master [`Area`] of another's cluster
-    get_cluster_master: fn(pa: &Pass, area: &RwData<dyn traits::Area>) -> Option<Area>,
+    get_cluster_master: fn(&Pass, &RwData<dyn traits::Area>) -> Option<Area>,
     /// Store the [`Area::Cache`] of this [`Area`]
-    store_cache: fn(pa: &Pass, area: &RwData<dyn traits::Area>, path: &str) -> Result<(), Text>,
+    store_cache: fn(&Pass, &RwData<dyn traits::Area>, &str) -> Result<(), Text>,
     /// Wether two [`Area`]s are the same
-    eq: fn(pa: &Pass, lhs: &RwData<dyn traits::Area>, rhs: &RwData<dyn traits::Area>) -> bool,
+    eq: fn(&Pass, &RwData<dyn traits::Area>, &RwData<dyn traits::Area>) -> bool,
 }
 
 impl AreaFunctions {
@@ -492,18 +483,15 @@ impl AreaFunctions {
         U::Area: PartialEq,
     {
         &Self {
-            push: |pa, area, widget, specs, on_files| {
-                let cache = get_cache::<U>(pa, widget);
+            push: |pa, area, file_path, specs, on_files| {
+                let cache = get_cache::<U>(file_path);
                 let area = area.write_as::<U::Area>(pa).unwrap();
                 let (child, parent) = area.push(specs, on_files, cache)?;
 
-                let child = Area::new::<U>(child);
-                let parent = parent.map(Area::new::<U>);
-
-                Some((child, parent))
+                Some((Area::new::<U>(child), parent.map(Area::new::<U>)))
             },
-            spawn: |pa, area, widget, spawn_id, specs| {
-                let cache = get_cache::<U>(pa, widget);
+            spawn: |pa, area, file_path, spawn_id, specs| {
+                let cache = get_cache::<U>(file_path);
                 let area = area.write_as::<U::Area>(pa).unwrap();
                 let spawned = area.spawn(spawn_id, specs, cache)?;
 
@@ -653,11 +641,10 @@ impl PrintInfoFunctions {
 }
 
 fn get_cache<U: traits::Ui>(
-    pa: &Pass,
-    widget: &RwData<dyn Widget>,
+    path: Option<&Path>,
 ) -> <<U as traits::Ui>::Area as traits::Area>::Cache {
-    if let Some(file) = widget.read_as::<File>(pa) {
-        match Cache::new().load::<<U::Area as traits::Area>::Cache>(file.path()) {
+    if let Some(file_path) = path {
+        match Cache::new().load::<<U::Area as traits::Area>::Cache>(file_path) {
             Ok(cache) => cache,
             Err(err) => {
                 context::error!("{err}");

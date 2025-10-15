@@ -6,7 +6,7 @@ use std::{fmt::Alignment, sync::Arc};
 use crossterm::{cursor, style::Attribute};
 use duat_core::{
     cfg::PrintCfg,
-    context,
+    context::{self, Decode, Encode},
     form::{CONTROL_CHAR_ID, Painter},
     text::{FwdIter, Item, Part, Point, RevIter, SpawnId, Text, txt},
     ui::{self, Caret, PushSpecs, SpawnSpecs},
@@ -16,7 +16,8 @@ use iter::{print_iter, print_iter_indented, rev_print_iter};
 pub use self::print_info::PrintInfo;
 use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::LinesBuilder, queue};
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
+#[bincode(crate = "duat_core::context::bincode")]
 pub struct Coord {
     pub x: u32,
     pub y: u32,
@@ -34,7 +35,8 @@ impl Coord {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
+#[bincode(crate = "duat_core::context::bincode")]
 pub struct Coords {
     pub tl: Coord,
     pub br: Coord,
@@ -91,7 +93,7 @@ impl Area {
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
         let (mut lines, iter) = {
-            let Some((coords, has_changed)) = self.layouts.coords_of(self.id, true) else {
+            let Some(coords) = self.layouts.coords_of(self.id, true) else {
                 context::warn!("This Area was already deleted");
                 return;
             };
@@ -102,7 +104,8 @@ impl Area {
 
             let (s_points, x_shift) = {
                 let mut info = self.layouts.get_info_of(self.id).unwrap();
-                let s_points = info.start_points(coords, text, cfg, has_changed);
+
+                let s_points = info.start_points(coords, text, cfg);
                 self.layouts.set_info_of(self.id, info);
                 (s_points, info.x_shift())
             };
@@ -368,12 +371,15 @@ impl ui::traits::Area for Area {
             return;
         }
 
-        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
+        if coords.height() > 35 && coords.width() > 100 {
+            context::debug!("scroll_around_points: {info:#?}");
+        }
         info.scroll_ver(by, coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
     }
@@ -381,23 +387,29 @@ impl ui::traits::Area for Area {
     ////////// Printing
 
     fn scroll_around_points(&self, text: &Text, p: (Point, Option<Point>), cfg: PrintCfg) {
-        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
+        if coords.height() > 35 && coords.width() > 100 {
+            context::debug!("scroll_around_points: {info:#?}");
+        }
         info.scroll_around(p.0, coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
     }
 
     fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg) {
-        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
+        if coords.height() > 35 && coords.width() > 100 {
+            context::debug!("scroll_to_points: {info:#?}");
+        }
         info.scroll_to_points(points, coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
     }
@@ -490,38 +502,43 @@ impl ui::traits::Area for Area {
     }
 
     fn cache(&self) -> Option<Self::Cache> {
-        Some(self.layouts.get_info_of(self.id)?.for_caching())
+        let info = self.layouts.get_info_of(self.id)?.for_caching();
+        context::debug!("for caching: {info:#?}");
+        Some(info)
     }
 
     fn width(&self) -> f32 {
         self.layouts
             .coords_of(self.id, false)
-            .map(|(coords, _)| coords.width() as f32)
+            .map(|coords| coords.width() as f32)
             .unwrap_or(0.0)
     }
 
     fn height(&self) -> f32 {
         self.layouts
             .coords_of(self.id, false)
-            .map(|(coords, _)| coords.height() as f32)
+            .map(|coords| coords.height() as f32)
             .unwrap_or(0.0)
     }
 
     fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
-        let Some((coords, has_changed)) = self.layouts.coords_of(self.id, false) else {
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        let start_points = info.start_points(coords, text, cfg, has_changed);
+        if coords.height() > 35 && coords.width() > 100 {
+            context::debug!("start_points: {info:#?}");
+        }
+        let start_points = info.start_points(coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
 
         start_points
     }
 
     fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
-        let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
         };

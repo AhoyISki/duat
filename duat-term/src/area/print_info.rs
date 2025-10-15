@@ -21,6 +21,7 @@ pub struct PrintInfo {
     s_points: Option<(Point, Option<Point>)>,
     x_shift: u32,
     prev_main: Point,
+    prev_coords: Coords,
     vert_dist: u32,
 }
 
@@ -31,19 +32,26 @@ impl PrintInfo {
         coords: Coords,
         text: &Text,
         cfg: PrintCfg,
-        has_changed: bool,
     ) -> (Point, Option<Point>) {
         self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
 
-        if let Some(s_points) = self.s_points
-            && !has_changed
+        let points = if let Some(s_points) = self.s_points
+            && coords.width() == self.prev_coords.width()
+            && coords.height() == self.prev_coords.height()
         {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {
+            if coords.height() > 35 && coords.width() > 100 {
+                duat_core::context::debug!("info: {self:#?}");
+            }
             self.set_first_start(coords, text, cfg)
         } else {
             Default::default()
-        }
+        };
+
+        self.prev_coords = coords;
+
+        points
     }
 
     /// The ending [`TwoPoints`] of the [`PrintInfo`]
@@ -53,7 +61,12 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
-        let s_points = if let Some(s_points) = self.s_points {
+        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+
+        let s_points = if let Some(s_points) = self.s_points
+            && coords.width() == self.prev_coords.width()
+            && coords.height() == self.prev_coords.height()
+        {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {
             self.set_first_start(coords, text, cfg)
@@ -74,6 +87,8 @@ impl PrintInfo {
             print_iter(iter, cfg.wrap_width(coords.width()), cfg, s_points)
         };
 
+        self.prev_coords = coords;
+
         iter.find_map(|(Caret { wrap, .. }, Item { part, real, ghost })| {
             y += (wrap && part.is_char()) as u32;
             (y > coords.height()).then_some((real, ghost))
@@ -88,8 +103,13 @@ impl PrintInfo {
 
     /// Scrolls around a given [`Point`]
     pub(super) fn scroll_around(&mut self, p: Point, coords: Coords, text: &Text, cfg: PrintCfg) {
+        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+
         if coords.width() > 0 && coords.height() > 0 {
-            if let Some(s_points) = self.s_points {
+            if let Some(s_points) = self.s_points
+                && coords.width() == self.prev_coords.width()
+                && coords.height() == self.prev_coords.height()
+            {
                 self.scroll_ver_around(p, coords, text, cfg, s_points);
             } else {
                 self.prev_main = p;
@@ -98,12 +118,18 @@ impl PrintInfo {
             self.scroll_hor_around(p, coords.width(), text, cfg);
         }
 
+        self.prev_coords = coords;
         self.prev_main = p;
     }
 
     /// Scrolls vertically
     pub(super) fn scroll_ver(&mut self, by: i32, coords: Coords, text: &Text, cfg: PrintCfg) {
-        let s_points = if let Some(s_points) = self.s_points {
+        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+
+        let s_points = if let Some(s_points) = self.s_points
+            && coords.width() == self.prev_coords.width()
+            && coords.height() == self.prev_coords.height()
+        {
             s_points
         } else {
             let s_points = self.set_first_start(coords, text, cfg);
@@ -144,6 +170,8 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) {
+        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+
         let cap = cfg.wrap_width(coords.width());
 
         let line_start = rev_print_iter(text.iter_rev(points), cap, cfg)
@@ -160,8 +188,8 @@ impl PrintInfo {
         }
     }
 
-    /// Scrolls down until the gap between the main cursor and the
-    /// bottom of the widget is equal to `config.scrolloff.y_gap`.
+    /// Scrolls down or up until the gap between the main cursor and
+    /// the bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_around(
         &mut self,
         p: Point,
@@ -294,9 +322,6 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
-        if self.vert_dist > 0 {
-            panic!("{}", self.vert_dist);
-        }
         let cap = cfg.wrap_width(coords.width());
 
         let points = text.ghost_max_points_at(self.prev_main.byte());
@@ -304,11 +329,15 @@ impl PrintInfo {
             .points_after(points)
             .unwrap_or_else(|| text.len_points());
 
+        let mut lines_traversed: u32 = 0;
         let points = rev_print_iter(text.iter_rev(after), cap, cfg)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-            .nth(self.vert_dist as usize)
+            .inspect(|_| lines_traversed += 1)
+            .nth(self.vert_dist.max(cfg.scrolloff.y as u32) as usize)
             .unwrap_or_default();
 
+        // We don't want to count the the main cursor's line's wrap.
+        self.vert_dist = lines_traversed.saturating_sub(1);
         self.s_points = Some(points);
         points
     }

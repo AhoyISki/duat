@@ -165,7 +165,7 @@ pub trait Area: 'static {
     /// [`PrintInfo`], but you could include other things
     ///
     /// [`PrintInfo`]: Area::PrintInfo
-    type Cache: Default + Encode + Decode<()> + 'static
+    type Cache: Default + std::fmt::Debug + Encode + Decode<()> + 'static
     where
         Self: Sized;
     /// Information about what parts of a [`Text`] should be printed

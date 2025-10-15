@@ -406,11 +406,11 @@ impl Printer {
     }
 
     /// Gets [`Coords`] from two [`VarPoint`]s
-    pub fn coords(&self, var_points: [VarPoint; 2], is_printing: bool) -> (Coords, bool) {
+    pub fn coords(&self, var_points: [VarPoint; 2], is_printing: bool) -> Coords {
         let mut vars = self.vars.lock().unwrap();
-        let (tl, tl_has_changed) = vars.coord(var_points[0], is_printing);
-        let (br, br_has_changed) = vars.coord(var_points[1], is_printing);
-        (Coords::new(tl, br), tl_has_changed || br_has_changed)
+        let (tl, _) = vars.coord(var_points[0], is_printing);
+        let (br, _) = vars.coord(var_points[1], is_printing);
+        Coords::new(tl, br)
     }
 
     /// Wether a [`Variable`] has changed
