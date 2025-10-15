@@ -246,6 +246,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let (config_path, profile) = config_rx.recv().unwrap();
+        
+        lib = unsafe { Library::new(config_path) }.ok();
 
         let time = match RELOAD_INSTANT.lock().unwrap().take() {
             Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
@@ -253,7 +255,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         context::info!("[a]{profile}[] profile reloaded{time}");
-        lib = unsafe { Library::new(config_path) }.ok();
     }
 
     ui.close();
