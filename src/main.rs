@@ -256,7 +256,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let (config_path, profile) = config_rx.recv().unwrap();
-
         lib = unsafe { Library::new(config_path) }.ok();
         reloading_profile = Some(profile);
     }

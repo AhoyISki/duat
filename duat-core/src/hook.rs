@@ -207,9 +207,7 @@ mod global {
     /// Adds a [hook]
     ///
     /// This hook is ungrouped, that is, it cannot be removed. If you
-    /// want a hook that is removable, see [`hook::add_grouped`]. If
-    /// you don't have access to a [`Ui`] argument for some reason,
-    /// see [`hook::add_no_alias`].
+    /// want a hook that is removable, see [`hook::add_grouped`].
     ///
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
@@ -236,15 +234,11 @@ mod global {
     ///
     /// Alternatively, if you don't have a use for removing hooks, you
     /// can just call [`hook::add`] in order to add them without a
-    /// group. In addition, if you don't have access to a [`Ui`]
-    /// argument (inside of a static definition, for example), you can
-    /// call [`hook::add_grouped_no_alias`], which doesn't require a
-    /// [`Ui`] argument.
+    /// group.
     ///
     /// [hook]: Hookable
     /// [`hook::remove`]: remove
     /// [`hook::add`]: add
-    /// [`hook::add_grouped_no_alias`]: add_grouped_no_alias
     /// [`&str`]: str
     #[inline(never)]
     pub fn add_grouped<H: HookAlias<impl HookDummy>>(
@@ -275,10 +269,7 @@ mod global {
     /// ```
     ///
     /// This hook should only be triggered on the first opened window,
-    /// after which it self destructs via [`GroupId::remove`]. This
-    /// method also allows for any number of triggers to this hook, or
-    /// for a condition to cause its removal, unlike
-    /// [`hook::add_once`].
+    /// after which it self destructs via [`GroupId::remove`].
     ///
     /// [hook]: Hookable
     /// [`hook::add_once`]: add_once
