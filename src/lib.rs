@@ -611,7 +611,7 @@ pub mod prelude {
     use std::{any::TypeId, process::Output};
 
     pub use duat_core::prelude::Lender;
-    use duat_core::{Plugin, Plugins};
+    use use duat_core::{Plugin, Plugins};
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self, VertRule};
