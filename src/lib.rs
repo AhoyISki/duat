@@ -399,7 +399,7 @@ pub mod form {
     //! [`Form`]: crate::form::Form
     pub use duat_core::form::{
         Color, ColorScheme, CursorShape, Form, Palette, add_colorscheme, enable_mask, from_id,
-        id_of, set, set_colorscheme, set_many, set_weak, set_many_weak
+        id_of, set, set_colorscheme, set_many, set_many_weak, set_weak,
     };
 }
 
@@ -610,8 +610,7 @@ pub macro setup_duat($setup:expr) {
 pub mod prelude {
     use std::{any::TypeId, process::Output};
 
-    pub use duat_core::prelude::Lender;
-    pub use duat_core::{Plugin, Plugins};
+    pub use duat_core::{Plugin, Plugins, prelude::Lender};
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self, VertRule};
@@ -630,7 +629,7 @@ pub mod prelude {
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
             WindowCreated,
         },
-        mode::{self, Mode, Pager, Prompt, User, alias, map, KeyEvent, KeyCode, key},
+        mode::{self, KeyCode, KeyEvent, KeyMod, Mode, Pager, Prompt, User, alias, key, map},
         print, setup_duat,
         state::*,
         text::{
