@@ -34,435 +34,19 @@
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
 use std::fmt::Debug;
 
-use bincode::{Decode, Encode};
-
 pub(crate) use self::widget::Node;
 pub use self::{
+    type_erased::{Area, PrintInfo, Ui},
     widget::Widget,
     window::{UiBuilder, Window, Windows},
 };
-use crate::{
-    cfg::PrintCfg,
-    context::Handle,
-    data::Pass,
-    form::Painter,
-    session::DuatSender,
-    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
-};
+use crate::{context::Handle, data::Pass};
 
 pub mod layout;
+pub mod traits;
+mod type_erased;
 mod widget;
 mod window;
-
-/// All the methods that a working gui/tui will need to implement, in
-/// order to use Duat.
-///
-/// # NOTE
-///
-/// The dependencies on [`Clone`] and [`Default`] is only here for
-/// convenience. Many types require a [`Ui`] as a generic parameter,
-/// and if [`Ui`] does not implement [`Clone`] or [`Default`],
-/// deriving [`Clone`] or [`Default`] for said types would
-/// be a very manual task.
-///
-/// Below is the recommended implementation of [`Clone`] adn
-/// [`Default`] for all types that implement [`Ui`]:
-///
-/// ```rust
-/// # mod duat_smart_fridge {
-/// #     pub struct Ui;
-/// # }
-/// impl Clone for duat_smart_fridge::Ui {
-///     fn clone(&self) -> Self {
-///         panic!("You are not supposed to clone the Ui");
-///     }
-/// }
-/// impl Default for duat_smart_fridge::Ui {
-///     fn default() -> Self {
-///         panic!("You are not supposed to call the Ui's default constructor");
-///     }
-/// }
-/// ```
-pub trait Ui: Default + Debug + Clone + Send + 'static {
-    /// The [`Area`] of this [`Ui`]
-    type Area: Area<Ui = Self>;
-    /// Variables to initialize at the Duat application, outside the
-    /// config
-    ///
-    /// Of the ways that Duat can be extended and modified, only the
-    /// [`Ui`] can be accessed by the Duat executor itself, since it
-    /// is one of its dependencies. This means that it is possible to
-    /// keep some things between reloads.
-    ///
-    /// This is particularly useful for some kinds of static
-    /// variables. For example, in [`term-ui`], it makes heavy use of
-    /// [`std`] defined functions to print to the terminal. Those use
-    /// a static [`Mutex`] internally, and I have found that it is
-    /// better to use the one from the Duat app, rather than one from
-    /// the config crate
-    ///
-    /// > [!NOTE]
-    /// >
-    /// > This trait member is only meant to be used by duat itself.
-    /// > This is why it implements the [`GetOnce`] trait, so it can
-    /// > only be acquired once on startup.
-    ///
-    /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
-    /// [`Mutex`]: std::sync::Mutex
-    type MetaStatics: GetOnce<Self> + Send + Sync;
-
-    ////////// Functions executed from the outer loop
-
-    /// Functions to trigger when the program begins
-    ///
-    /// These will happen in the main `duat` runner
-    fn open(ms: &'static Self::MetaStatics, duat_tx: DuatSender);
-
-    /// Functions to trigger when the program ends
-    ///
-    /// These will happen in the main `duat` runner
-    fn close(ms: &'static Self::MetaStatics);
-
-    ////////// Functions executed from within the configuration loop
-
-    /// Initiates and returns a new "master" [`Area`]
-    ///
-    /// This [`Area`] must not have any parents, and must be placed on
-    /// a new window, that is, a plain region with nothing in it.
-    ///
-    /// [`Area`]: Ui::Area
-    fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
-
-    /// Initiates and returns a new "floating" [`Area`]
-    ///
-    /// This is one of two ways of spawning floating [`Widget`]s. The
-    /// other way is with [`Area::spawn`], in which a [`Widget`] will
-    /// be bolted on the edges of another.
-    ///
-    /// TODO: There will probably be some way of defining floating
-    /// [`Widget`]s with coordinates in the not too distant future as
-    /// well.
-    ///
-    /// [`Area`]: Ui::Area
-    fn new_spawned(
-        ms: &'static Self::MetaStatics,
-        id: SpawnId,
-        specs: SpawnSpecs,
-        cache: <Self::Area as Area>::Cache,
-        win: usize,
-    ) -> Self::Area;
-
-    /// Switches the currently active window
-    ///
-    /// This will only happen to with window indices that are actual
-    /// windows. If at some point, a window index comes up that is not
-    /// actually a window, that's a bug.
-    fn switch_window(ms: &'static Self::MetaStatics, win: usize);
-
-    /// Flush the layout
-    ///
-    /// When this function is called, it means that Duat has finished
-    /// adding or removing widgets, so the ui should calculate the
-    /// layout.
-    fn flush_layout(ms: &'static Self::MetaStatics);
-
-    /// Prints the layout
-    ///
-    /// Since printing runs all on the same thread, it is most
-    /// efficient to call a printing function after all the widgets
-    /// are done updating, I think.
-    fn print(ms: &'static Self::MetaStatics);
-
-    /// Functions to trigger when the program reloads
-    ///
-    /// These will happen inside of the dynamically loaded config
-    /// crate.
-    fn load(ms: &'static Self::MetaStatics);
-
-    /// Unloads the [`Ui`]
-    ///
-    /// Unlike [`Ui::close`], this will happen both when Duat reloads
-    /// the configuratio and when it closes the app.
-    ///
-    /// These will happen inside of the dynamically loaded config
-    /// crate.
-    fn unload(ms: &'static Self::MetaStatics);
-
-    /// Removes a window from the [`Ui`]
-    ///
-    /// This should keep the current active window consistent. That
-    /// is, if the current window was ahead of the deleted one, it
-    /// should be shifted back, so that the same window is still
-    /// displayed.
-    fn remove_window(ms: &'static Self::MetaStatics, win: usize);
-}
-
-/// An [`Area`] that supports printing [`Text`]
-///
-/// These represent the entire GUI of Duat, the only parts of the
-/// screen where text may be printed.
-pub trait Area: PartialEq + Sized + 'static {
-    /// The [`Ui`] this [`Area`] belongs to
-    type Ui: Ui<Area = Self>;
-    /// Something to be kept between app instances/reloads
-    ///
-    /// The most useful thing to keep in this case is the
-    /// [`PrintInfo`], but you could include other things
-    ///
-    /// [`PrintInfo`]: Area::PrintInfo
-    type Cache: Default + Encode + Decode<()> + 'static;
-    /// Information about what parts of a [`Text`] should be printed
-    ///
-    /// For the [`term-ui`], for example, this is quite simple, it
-    /// only needs to include the real and ghost [`Point`]s on the
-    /// top left corner in order to print correctly, but your own
-    /// [`Ui`] could differ in what it needs to keep, if it makes
-    /// use of smooth scrolling, for example.
-    ///
-    /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
-    type PrintInfo: Default + Clone + Send + PartialEq + Eq;
-
-    ////////// Area modification
-
-    /// Creates an `Area` around this one
-    ///
-    /// Will return the newly created `Area` as well as a parent
-    /// `Area`, if one was created to house both of them.
-    ///
-    /// If this `Area` was previously [deleted], will return [`None`].
-    ///
-    /// As an example, assuming that [`self`] has an index of `0`,
-    /// pushing an area to [`self`] on [`Side::Left`] would create
-    /// 2 new areas:
-    ///
-    /// ```text
-    /// ╭────────0────────╮     ╭────────1────────╮
-    /// │                 │     │╭──2───╮╭───0───╮│
-    /// │      self       │ --> ││      ││ self  ││
-    /// │                 │     │╰──────╯╰───────╯│
-    /// ╰─────────────────╯     ╰─────────────────╯
-    /// ```
-    ///
-    /// So now, there is a new area `1`, which is the parent of the
-    /// areas `0` and `2`. When a new parent is created, it should be
-    /// returned as the second element in the tuple.
-    ///
-    /// That doesn't always happen though. For example, pushing
-    /// another area to the [`Side::Right`] of `1`, `2`, or `0`,
-    /// in this situation, should not result in the creation of a
-    /// new parent:
-    ///
-    /// ```text
-    /// ╭────────1────────╮     ╭────────1────────╮
-    /// │╭──2───╮╭───0───╮│     │╭─2─╮╭──0──╮╭─3─╮│
-    /// ││      ││ self  ││     ││   ││self ││   ││
-    /// │╰──────╯╰───────╯│     │╰───╯╰─────╯╰───╯│
-    /// ╰─────────────────╯     ╰─────────────────╯
-    /// ```
-    ///
-    /// And so [`Area::bisect`] should return `(3, None)`.
-    ///
-    /// [deleted]: Area::delete
-    fn push(
-        area: MutArea<Self>,
-        specs: PushSpecs,
-        on_files: bool,
-        cache: Self::Cache,
-    ) -> Option<(Self, Option<Self>)>;
-
-    /// Spawns a floating area on this [`Area`]
-    ///
-    /// This function will take a list of [`SpawnSpecs`], taking the
-    /// first one that fits, and readapting as the constraints are
-    /// altered
-    ///
-    /// If this `Area` was previously [deleted], will return [`None`].
-    fn spawn(
-        area: MutArea<Self>,
-        id: SpawnId,
-        specs: SpawnSpecs,
-        cache: Self::Cache,
-    ) -> Option<Self>;
-
-    /// Deletes this [`Area`], signaling the closing of a
-    /// [`Widget`]
-    ///
-    /// If the [`Area`]'s parent was also deleted, return it.
-    fn delete(area: MutArea<Self>) -> (bool, Vec<Self>);
-
-    /// Swaps this `Area` with another one
-    ///
-    /// The swapped `Area`s will be cluster masters of the
-    /// respective `Area`s. As such, if they belong to the same
-    /// master, nothing happens.
-    ///
-    /// This function will _never_ be called such that one of the
-    /// `Area`s is a decendant of the other, so the [`Ui`] implementor
-    /// doesn't need to worry about that possibility.
-    ///
-    /// It can fail if either of the [`Area`]s was already deleted, or
-    /// if no swap happened because they belonged to the same cluster
-    /// master.
-    fn swap(lhs: MutArea<Self>, rhs: &Self) -> bool;
-
-    ////////// Constraint changing functions
-
-    /// Changes the horizontal constraint of the area
-    fn set_width(&self, width: f32) -> Result<(), Text>;
-
-    /// Changes the vertical constraint of the area
-    fn set_height(&self, height: f32) -> Result<(), Text>;
-
-    /// Changes [`Constraint`]s such that the [`Area`] becomes
-    /// hidden
-    fn hide(&self) -> Result<(), Text>;
-
-    /// Changes [`Constraint`]s such that the [`Area`] is revealed
-    fn reveal(&self) -> Result<(), Text>;
-
-    /// Requests that the width be enough to fit a certain piece of
-    /// text.
-    fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text>;
-
-    /// Scrolls the [`Text`] veritcally by an amount
-    ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg);
-
-    /// Scrolls the [`Text`] on all four directions until the given
-    /// [`Point`] is within the [`ScrollOff`] range
-    ///
-    /// There are two other scrolling methods for [`Area`]:
-    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
-    /// between this and [`scroll_to_points`] is that this method
-    /// doesn't do anything if the [`Point`] is already on screen.
-    ///
-    /// [`ScrollOff`]: crate::cfg::ScrollOff
-    /// [`scroll_ver`]: Area::scroll_ver
-    /// [`scroll_to_points`]: Area::scroll_to_points
-    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
-
-    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
-    ///
-    /// This method takes [line wrapping] into account, so it's not
-    /// the same as setting the starting points to the
-    /// [`Text::visual_line_start`] of these [`TwoPoints`].
-    ///
-    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
-    /// to scroll beyond the last line, up until reaching the
-    /// `scrolloff.y` value.
-    ///
-    /// [line wrapping]: crate::cfg::WrapMethod
-    fn scroll_to_points(&self, text: &Text, points: impl TwoPoints, cfg: PrintCfg);
-
-    /// Tells the [`Ui`] that this [`Area`] is the one that is
-    /// currently focused.
-    ///
-    /// Should make [`self`] the active [`Area`] while deactivating
-    /// any other active [`Area`].
-    fn set_as_active(&self);
-
-    ////////// Printing
-
-    /// Prints the [`Text`] via an [`Iterator`]
-    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
-
-    /// Prints the [`Text`] with a callback function
-    fn print_with<'a>(
-        &self,
-        text: &Text,
-        cfg: PrintCfg,
-        painter: Painter,
-        f: impl FnMut(&Caret, &Item) + 'a,
-    );
-
-    /// Sets a previously acquired [`PrintInfo`] to the area
-    ///
-    /// [`PrintInfo`]: Area::PrintInfo
-    fn set_print_info(&self, info: Self::PrintInfo);
-
-    /// Returns a printing iterator
-    ///
-    /// Given an iterator of [`text::Item`]s, returns an iterator
-    /// which assigns to each of them a [`Caret`]. This struct
-    /// essentially represents where horizontally would this character
-    /// be printed.
-    ///
-    /// If you want a reverse iterator, see
-    /// [`Area::rev_print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    fn print_iter<'a>(
-        &self,
-        iter: FwdIter<'a>,
-        cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
-
-    /// Returns a reversed printing iterator
-    ///
-    /// Given an iterator of [`text::Item`]s, returns a reversed
-    /// iterator which assigns to each of them a [`Caret`]. This
-    /// struct essentially represents where horizontally each
-    /// character would be printed.
-    ///
-    /// If you want a forwards iterator, see [`Area::print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    fn rev_print_iter<'a>(
-        &self,
-        iter: RevIter<'a>,
-        cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
-
-    ////////// Queries
-
-    /// Whether or not [`self`] has changed
-    ///
-    /// This would mean anything relevant that wouldn't be determined
-    /// by [`PrintInfo`], this is most likely going to be the bounding
-    /// box, but it may be something else.
-    ///
-    /// [`PrintInfo`]: Area::PrintInfo
-    fn has_changed(&self) -> bool;
-
-    /// Whether or not [`self`] is the "master" of `other`
-    ///
-    /// This can only happen if, by following [`self`]'s children, you
-    /// would eventually reach `other`.
-    fn is_master_of(&self, other: &Self) -> bool;
-
-    /// Returns the clustered master of [`self`], if there is one
-    ///
-    /// If [`self`] belongs to a clustered group, return the most
-    /// senior member of said cluster, which must hold all other
-    /// members of the cluster.
-    fn get_cluster_master(&self) -> Option<Self>;
-
-    /// Returns the statics from `self`
-    fn cache(&self) -> Option<Self::Cache>;
-
-    /// Gets the width of the area
-    fn width(&self) -> f32;
-
-    /// Gets the height of the area
-    fn height(&self) -> f32;
-
-    /// The start points that should be printed
-    fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
-
-    /// The points immediately after the last printed [`Point`]
-    fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
-
-    /// The current printing information of the area
-    fn print_info(&self) -> Self::PrintInfo;
-
-    /// Returns `true` if this is the currently active [`Area`]
-    ///
-    /// Only one [`Area`] should be active at any given moment.
-    fn is_active(&self) -> bool;
-}
 
 /// A dimension on screen, can either be horizontal or vertical
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -805,27 +389,6 @@ impl Caret {
     }
 }
 
-/// A struct used to modify the layout of [`Area`]s
-///
-/// The end user should not have access to methods that directly
-/// modify the layout, like [`Area::delete`] or
-/// [`Area::bisect`], since they will modify the layout without
-/// any coordination with the rest of Duat, so this struct is used to
-/// "hide" those methods, in order to prevent users from directly
-/// accessing them.
-///
-/// Higher lever versions of these methods are still available to the
-/// end user, in the more controled APIs of [`Area`]
-pub struct MutArea<'area, A: Area>(pub(crate) &'area A);
-
-impl<A: Area> std::ops::Deref for MutArea<'_, A> {
-    type Target = A;
-
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
-
 /// A target for pushing [`Widget`]s to
 ///
 /// This can either be a [`Handle`], which will push around a `Widget`
@@ -838,7 +401,7 @@ impl<A: Area> std::ops::Deref for MutArea<'_, A> {
 /// [`Handle<File>`].
 ///
 /// [`StatusLine`]: https://docs.rs/duat_utils/duat-utils/latest/widgets/struct.StatusLine.html
-pub trait PushTarget<U: Ui> {
+pub trait PushTarget {
     /// Pushes a [`Widget`] around `self`
     ///
     /// If `self` is a [`Handle`], this will push around the
@@ -886,12 +449,7 @@ pub trait PushTarget<U: Ui> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the second case, not just around `self`.
-    fn push_inner<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U>;
+    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW>;
 
     /// Pushes a [`Widget`] around the "master region" of `self`
     ///
@@ -939,72 +497,40 @@ pub trait PushTarget<U: Ui> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the first case, not just around `self`.
-    fn push_outer<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U>;
+    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW>;
 
     /// Tries to downcast to a [`Handle`] of some `W`
-    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>>;
+    fn try_downcast<W: Widget>(&self) -> Option<Handle<W>>;
 }
 
-impl<W: Widget<U> + ?Sized, U: Ui> PushTarget<U> for Handle<W, U> {
+impl<W: Widget + ?Sized> PushTarget for Handle<W> {
     #[doc(hidden)]
-    fn push_inner<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         self.push_inner_widget(pa, widget, specs)
     }
 
     #[doc(hidden)]
-    fn push_outer<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         self.push_outer_widget(pa, widget, specs)
     }
 
-    fn try_downcast<DW: Widget<U>>(&self) -> Option<Handle<DW, U>> {
+    fn try_downcast<DW: Widget>(&self) -> Option<Handle<DW>> {
         self.try_downcast()
     }
 }
 
-impl<U: Ui> PushTarget<U> for UiBuilder<U> {
+impl PushTarget for UiBuilder {
     #[doc(hidden)]
-    fn push_inner<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         UiBuilder::push_inner(self, pa, widget, specs)
     }
 
     #[doc(hidden)]
-    fn push_outer<PW: Widget<U>>(
-        &self,
-        pa: &mut Pass,
-        widget: PW,
-        specs: PushSpecs,
-    ) -> Handle<PW, U> {
+    fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         UiBuilder::push_outer(self, pa, widget, specs)
     }
 
-    fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
+    fn try_downcast<W: Widget>(&self) -> Option<Handle<W>> {
         None
     }
-}
-
-/// A trait meant to prevent getting multiple [`Ui::MetaStatics`]
-#[doc(hidden)]
-pub trait GetOnce<U: Ui> {
-    /// Return [`Some`] only on the first call
-    fn get_once() -> Option<&'static Self>;
 }

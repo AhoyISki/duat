@@ -1,11 +1,10 @@
 use std::{
     any::TypeId,
     io::Write,
-    marker::PhantomData,
     sync::{Arc, LazyLock, Mutex, Once},
 };
 
-use duat_core::{prelude::*, text::Searcher};
+use duat_core::{prelude::*, text::Searcher, ui::PrintInfo};
 
 use super::IncSearcher;
 use crate::{
@@ -38,57 +37,57 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///
 /// [`Parameter`]: cmd::Parameter
 /// [`Selection`]: mode::Selection
-pub struct Prompt<U: Ui> {
-    mode: Box<dyn PromptMode<U>>,
+pub struct Prompt {
+    mode: Box<dyn PromptMode>,
     starting_text: String,
     ty: TypeId,
-    clone_fn: Arc<Mutex<ModeCloneFn<U>>>,
+    clone_fn: Arc<Mutex<ModeCloneFn>>,
     reset_fn: fn(),
 }
 
-impl<U: Ui> Prompt<U> {
+impl Prompt {
     /// Returns a new [`Prompt`] from this [`PromptMode`]
     ///
     /// For convenience, you should make it so `new` methods in
-    /// [`PromptMode`] implementors return a [`Prompt<Self, U>`],
+    /// [`PromptMode`] implementors return a [`Prompt<Self>`],
     /// rather than the [`PromptMode`] itself.
-    pub fn new<M: PromptMode<U> + Clone>(mode: M) -> Self {
+    pub fn new<M: PromptMode + Clone>(mode: M) -> Self {
         let clone_fn = Arc::new(Mutex::new({
             let mode = mode.clone();
-            move || -> Box<dyn PromptMode<U>> { Box::new(mode.clone()) }
+            move || -> Box<dyn PromptMode> { Box::new(mode.clone()) }
         }));
         Self {
             mode: Box::new(mode),
             starting_text: String::new(),
             ty: TypeId::of::<M>(),
             clone_fn,
-            reset_fn: mode::reset::<M::ExitWidget, U>,
+            reset_fn: mode::reset::<M::ExitWidget>,
         }
     }
 
     /// Returns a new [`Prompt`] with some initial text
-    pub fn new_with<M: PromptMode<U> + Clone>(mode: M, initial: impl ToString) -> Self {
+    pub fn new_with<M: PromptMode + Clone>(mode: M, initial: impl ToString) -> Self {
         let clone_fn = Arc::new(Mutex::new({
             let mode = mode.clone();
-            move || -> Box<dyn PromptMode<U>> { Box::new(mode.clone()) }
+            move || -> Box<dyn PromptMode> { Box::new(mode.clone()) }
         }));
         Self {
             mode: Box::new(mode),
             starting_text: initial.to_string(),
             ty: TypeId::of::<M>(),
             clone_fn,
-            reset_fn: mode::reset::<M::ExitWidget, U>,
+            reset_fn: mode::reset::<M::ExitWidget>,
         }
     }
 }
 
-impl<U: Ui> mode::Mode<U> for Prompt<U> {
-    type Widget = PromptLine<U>;
+impl mode::Mode for Prompt {
+    type Widget = PromptLine;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
         let mut update = |pa: &mut Pass| {
             let text = std::mem::take(handle.write(pa).text_mut());
-            let text = self.mode.update(pa, text, handle.area(pa));
+            let text = self.mode.update(pa, text, handle.area());
             *handle.write(pa).text_mut() = text;
         };
 
@@ -165,7 +164,7 @@ impl<U: Ui> mode::Mode<U> for Prompt<U> {
         }
     }
 
-    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
+    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
         let text = {
             let pl = handle.write(pa);
             *pl.text_mut() = Text::new_with_selections();
@@ -180,18 +179,18 @@ impl<U: Ui> mode::Mode<U> for Prompt<U> {
             std::mem::take(pl.text_mut())
         };
 
-        let text = self.mode.on_switch(pa, text, handle.area(pa));
+        let text = self.mode.on_switch(pa, text, handle.area());
 
         *handle.write(pa).text_mut() = text;
     }
 
-    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
+    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
         let text = std::mem::take(handle.write(pa).text_mut());
-        self.mode.before_exit(pa, text, handle.area(pa));
+        self.mode.before_exit(pa, text, handle.area());
     }
 }
 
-impl<U: Ui> Clone for Prompt<U> {
+impl Clone for Prompt {
     fn clone(&self) -> Self {
         Self {
             mode: self.clone_fn.lock().unwrap()(),
@@ -204,7 +203,7 @@ impl<U: Ui> Clone for Prompt<U> {
 }
 
 /// A mode to control the [`Prompt`], by acting on its [`Text`] and
-/// [`U::Area`]
+/// [`Area`]
 ///
 /// Through the [`Pass`], one can act on the entirety of Duat's shared
 /// state:
@@ -220,8 +219,8 @@ impl<U: Ui> Clone for Prompt<U> {
 ///     name_was_correct: bool,
 /// };
 ///
-/// impl<U: Ui> PromptMode<U> for RealTimeSwitch {
-///     fn update(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
+/// impl PromptMode for RealTimeSwitch {
+///     fn update(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text {
 ///         let name = text.to_string();
 ///
 ///         self.name_was_correct = if name != *self.current.as_ref().unwrap() {
@@ -238,14 +237,14 @@ impl<U: Ui> Clone for Prompt<U> {
 ///         text
 ///     }
 ///
-///     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
-///         self.initial = Some(context::fixed_file::<U>(pa).unwrap().read(pa).name());
+///     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text {
+///         self.initial = Some(context::fixed_file(pa).unwrap().read(pa).name());
 ///         self.current = self.initial.clone();
 ///
 ///         text
 ///     }
 ///
-///     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) {
+///     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &Area) {
 ///         if !self.name_was_correct {
 ///             cmd::buffer(pa, self.initial.take().unwrap());
 ///         }
@@ -261,13 +260,13 @@ impl<U: Ui> Clone for Prompt<U> {
 /// name as the one in the [`PromptLine`], returning to the initial
 /// file if the match failed.
 ///
-/// [`U::Area`]: Ui::Area
+/// [`Area`]: Ui::Area
 #[allow(unused_variables)]
-pub trait PromptMode<U: Ui>: Send + 'static {
+pub trait PromptMode: Send + 'static {
     /// What [`Widget`] to exit to, upon pressing enter, esc, or
     /// backspace in an empty [`PromptLine`]
-    type ExitWidget: Widget<U>
-        = File<U>
+    type ExitWidget: Widget
+        = File
     where
         Self: Sized;
 
@@ -275,7 +274,7 @@ pub trait PromptMode<U: Ui>: Send + 'static {
     ///
     /// This function is triggered every time the user presses a key
     /// in the [`Prompt`] mode.
-    fn update(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text;
+    fn update(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text;
 
     /// What to do when switchin onto this [`PromptMode`]
     ///
@@ -283,7 +282,7 @@ pub trait PromptMode<U: Ui>: Send + 'static {
     /// [`Ghost`] at the beginning of the line.
     ///
     /// [prompt]: PromptMode::prompt
-    fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
+    fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text {
         text
     }
 
@@ -292,7 +291,7 @@ pub trait PromptMode<U: Ui>: Send + 'static {
     /// This usually involves some sor of "commitment" to the result,
     /// e.g., [`RunCommands`] executes the call, [`IncSearch`]
     /// finishes the search, etc.
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) {}
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &Area) {}
 
     /// What text should be at the beginning of the [`PromptLine`], as
     /// a [`Ghost`]
@@ -301,7 +300,7 @@ pub trait PromptMode<U: Ui>: Send + 'static {
     /// An optional returning [`Handle`] for the [`ExitWidget`]
     ///
     /// [`ExitWidget`]: PromptMode::ExitWidget
-    fn return_handle(&self) -> Option<Handle<dyn Widget<U>, U>> {
+    fn return_handle(&self) -> Option<Handle<dyn Widget>> {
         None
     }
 }
@@ -316,13 +315,13 @@ pub struct RunCommands;
 impl RunCommands {
     /// Crates a new [`RunCommands`]
     #[allow(clippy::new_ret_no_self)]
-    pub fn new<U: Ui>() -> Prompt<U> {
+    pub fn new() -> Prompt {
         Self::call_once();
         Prompt::new(Self)
     }
 
     /// Opens a [`RunCommands`] with some initial text
-    pub fn new_with<U: Ui>(initial: impl ToString) -> Prompt<U> {
+    pub fn new_with(initial: impl ToString) -> Prompt {
         Self::call_once();
         Prompt::new_with(Self, initial)
     }
@@ -338,8 +337,8 @@ impl RunCommands {
     }
 }
 
-impl<U: Ui> PromptMode<U> for RunCommands {
-    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
+impl PromptMode for RunCommands {
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &Area) -> Text {
         text.remove_tags(*TAGGER, ..);
 
         let command = text.to_string();
@@ -366,7 +365,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         text
     }
 
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) {
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &Area) {
         let call = text.to_string();
         if !call.is_empty() {
             cmd::queue_notify(call);
@@ -390,42 +389,40 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 /// #[derive(Clone)]
 /// struct Emacs;
 ///
-/// impl<U: Ui> Mode<U> for Emacs {
-///     type Widget = File<U>;
+/// impl Mode for Emacs {
+///     type Widget = File;
 ///
-///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget, U>) {
+///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {
 ///         match event {
-///             key!(Char('s'), KeyMod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
+///             key!(Char('s'), KeyMod::CONTROL) => mode::set(IncSearch::new(SearchFwd)),
 ///             other_keys_oh_god => todo!(),
 ///         }
 ///     }
 /// }
 /// ```
 ///
-/// This function returns a [`Prompt<IncSearch<SearchFwd, U>, U>`],
-pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
+/// This function returns a [`Prompt<IncSearch<SearchFwd>>`],
+pub struct IncSearch<I: IncSearcher> {
     inc: I,
-    orig: Option<(mode::Selections, <U::Area as Area>::PrintInfo)>,
-    ghost: PhantomData<U>,
+    orig: Option<(mode::Selections, PrintInfo)>,
     prev: String,
 }
 
-impl<I: IncSearcher<U>, U: Ui> Clone for IncSearch<I, U> {
+impl<I: IncSearcher> Clone for IncSearch<I> {
     fn clone(&self) -> Self {
         Self {
             inc: self.inc.clone(),
             orig: self.orig.clone(),
-            ghost: self.ghost,
             prev: self.prev.clone(),
         }
     }
 }
 
-impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
-    /// Returns a [`Prompt`] with [`IncSearch<I, U>`] as its
+impl<I: IncSearcher> IncSearch<I> {
+    /// Returns a [`Prompt`] with [`IncSearch<I>`] as its
     /// [`PromptMode`]
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(inc: I) -> Prompt<U> {
+    pub fn new(inc: I) -> Prompt {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
             form::set_weak("regex.error", "accent.error");
@@ -433,21 +430,16 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
             form::set_weak("regex.class", "constant");
             form::set_weak("regex.bracket", "punctuation.bracket");
         });
-        Prompt::new(Self {
-            inc,
-            orig: None,
-            ghost: PhantomData,
-            prev: String::new(),
-        })
+        Prompt::new(Self { inc, orig: None, prev: String::new() })
     }
 }
 
-impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
-    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
+impl<I: IncSearcher> PromptMode for IncSearch<I> {
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &Area) -> Text {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*TAGGER, ..);
 
-        let handle = context::cur_file::<U>(pa);
+        let handle = context::cur_file(pa);
 
         if text == self.prev {
             return text;
@@ -458,8 +450,8 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
-                let (file, area) = handle.write_with_area(pa);
-                area.set_print_info(orig_print_info.clone());
+                handle.area().set_print_info(pa, orig_print_info.clone());
+                let file = handle.write(pa);
                 *file.selections_mut() = orig_selections.clone();
 
                 let ast = regex_syntax::ast::parse::Parser::new()
@@ -485,18 +477,18 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
         text
     }
 
-    fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
-        let handle = context::cur_file::<U>(pa);
+    fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &Area) -> Text {
+        let handle = context::cur_file(pa);
 
         self.orig = Some((
             handle.read(pa).selections().clone(),
-            handle.area(pa).print_info(),
+            handle.area().get_print_info(pa),
         ));
 
         text
     }
 
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) {
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &Area) {
         if !text.is_empty() {
             if let Err(err) = Searcher::new(text.to_string()) {
                 let regex_syntax::Error::Parse(err) = *err else {
@@ -530,19 +522,19 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 /// [`PipeSelections`] with `fold` as the command, or things of the
 /// sort.
 #[derive(Clone, Copy)]
-pub struct PipeSelections<U>(PhantomData<U>);
+pub struct PipeSelections;
 
-impl<U: Ui> PipeSelections<U> {
+impl PipeSelections {
     /// Returns a [`Prompt`] with [`PipeSelections`] as its
     /// [`PromptMode`]
     #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> Prompt<U> {
-        Prompt::new(Self(PhantomData))
+    pub fn new() -> Prompt {
+        Prompt::new(Self)
     }
 }
 
-impl<U: Ui> PromptMode<U> for PipeSelections<U> {
-    fn update(&mut self, _: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
+impl PromptMode for PipeSelections {
+    fn update(&mut self, _: &mut Pass, mut text: Text, _: &Area) -> Text {
         fn is_in_path(program: &str) -> bool {
             if let Ok(path) = std::env::var("PATH") {
                 for p in path.split(":") {
@@ -583,7 +575,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         text
     }
 
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) {
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &Area) {
         use std::process::{Command, Stdio};
 
         let command = text.to_string();
@@ -591,7 +583,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return;
         };
 
-        let handle = context::cur_file::<U>(pa);
+        let handle = context::cur_file(pa);
         handle.edit_all(pa, |mut c| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))
@@ -621,4 +613,4 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
     }
 }
 
-type ModeCloneFn<U> = dyn Fn() -> Box<dyn PromptMode<U>> + Send;
+type ModeCloneFn = dyn Fn() -> Box<dyn PromptMode> + Send;

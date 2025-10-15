@@ -28,24 +28,24 @@ use crate::{
     form::Painter,
     hook::{self, FileWritten},
     mode::Selections,
-    text::{BuilderPart, Bytes, Text, txt},
-    ui::{Area, Ui, Widget},
+    text::{BuilderPart, Bytes, Text, TwoPoints, txt},
+    ui::{Area, Widget},
 };
 
 mod parser;
 
 /// The widget that is used to print and edit files
-pub struct File<U: Ui> {
+pub struct File {
     path: PathKind,
     text: Text,
     printed_lines: Mutex<Vec<(usize, bool)>>,
-    parsers: Parsers<U>,
+    parsers: Parsers,
     /// The [`PrintCfg`] of this [`File`]
     cfg: Arc<Mutex<PrintCfg>>,
     pub(crate) layout_order: usize,
 }
 
-impl<U: Ui> File<U> {
+impl File {
     pub(crate) fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Self {
         let (text, path) = match path {
             Some(path) => {
@@ -299,10 +299,7 @@ impl<U: Ui> File<U> {
     ///
     /// This function will fail if a [`Parser`] of the same type was
     /// already added to this [`File`]
-    pub fn add_parser<P: Parser<U>>(
-        &mut self,
-        f: impl FnOnce(FileTracker) -> P,
-    ) -> Result<(), Text> {
+    pub fn add_parser<P: Parser>(&mut self, f: impl FnOnce(FileTracker) -> P) -> Result<(), Text> {
         self.parsers.add(self, f)
     }
 
@@ -322,7 +319,7 @@ impl<U: Ui> File<U> {
     ///
     /// [added]: Handle::add_parser
     /// [`Change`]: crate::text::Change
-    pub fn read_parser<P: Parser<U>, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
+    pub fn read_parser<P: Parser, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
         self.parsers.read_parser(read)
     }
 
@@ -340,7 +337,7 @@ impl<U: Ui> File<U> {
     /// [added]: Handle::add_parser
     /// [`Change`]: crate::text::Change
     /// [`try_read_parser`]: Self::try_read_parser
-    pub fn try_read_parser<P: Parser<U>, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
+    pub fn try_read_parser<P: Parser, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
         self.parsers.try_read_parser(read)
     }
 
@@ -360,10 +357,7 @@ impl<U: Ui> File<U> {
     ///
     /// [added]: Handle::add_parser
     /// [`Change`]: crate::text::Change
-    pub fn write_parser<P: Parser<U>, Ret>(
-        &self,
-        write: impl FnOnce(&mut P) -> Ret,
-    ) -> Option<Ret> {
+    pub fn write_parser<P: Parser, Ret>(&self, write: impl FnOnce(&mut P) -> Ret) -> Option<Ret> {
         self.parsers.write_parser(write)
     }
 
@@ -381,7 +375,7 @@ impl<U: Ui> File<U> {
     /// [added]: Handle::add_parser
     /// [`Change`]: crate::text::Change
     /// [`try_write_parser`]: Self::try_write_parser
-    pub fn try_write_parser<P: Parser<U>, Ret>(
+    pub fn try_write_parser<P: Parser, Ret>(
         &self,
         write: impl FnOnce(&mut P) -> Ret,
     ) -> Option<Ret> {
@@ -405,8 +399,8 @@ impl<U: Ui> File<U> {
     }
 }
 
-impl<U: Ui> Widget<U> for File<U> {
-    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
+impl Widget for File {
+    fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
         let file = handle.read(pa);
@@ -415,7 +409,7 @@ impl<U: Ui> Widget<U> for File<U> {
         let (file, area) = handle.write_with_area(pa);
 
         if let Some(main) = file.text().selections().get_main() {
-            area.scroll_around_point(file.text(), main.caret(), file.get_print_cfg());
+            area.scroll_around_points(file.text(), main.caret().to_points(), file.get_print_cfg());
         }
 
         let (start, _) = area.start_points(&file.text, cfg);
@@ -445,12 +439,12 @@ impl<U: Ui> Widget<U> for File<U> {
         *self.cfg.lock()
     }
 
-    fn print(&self, painter: Painter, area: &<U as Ui>::Area) {
+    fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
         let cfg = *self.cfg.lock();
-        let (start, _) = area.start_points(&self.text, cfg);
+        let (start, _) = area.start_points(pa, &self.text, cfg);
 
         let mut last_line = area
-            .rev_print_iter(self.text.iter_rev(start), cfg)
+            .rev_print_iter(pa, self.text.iter_rev(start), cfg)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         let mut printed_lines = self.printed_lines.lock();
@@ -458,7 +452,7 @@ impl<U: Ui> Widget<U> for File<U> {
 
         let mut has_wrapped = false;
 
-        area.print_with(&self.text, cfg, painter, move |caret, item| {
+        area.print_with(pa, &self.text, cfg, painter, move |caret, item| {
             has_wrapped |= caret.wrap;
             if has_wrapped && item.part.is_char() {
                 has_wrapped = false;
@@ -471,11 +465,11 @@ impl<U: Ui> Widget<U> for File<U> {
     }
 }
 
-impl<U: Ui> Handle<File<U>, U> {
+impl Handle<File> {
     /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
     ///
     /// [`Change`]: crate::text::Change
-    pub fn add_parser<P: Parser<U>>(
+    pub fn add_parser<P: Parser>(
         &self,
         pa: &mut Pass,
         f: impl FnOnce(FileTracker) -> P,

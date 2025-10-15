@@ -16,7 +16,7 @@ use crate::{
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TextParts, TwoPoints},
-    ui::{Area, PushSpecs, SpawnSpecs, Ui, Widget},
+    ui::{Area, PushSpecs, SpawnSpecs, Widget, traits},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -134,22 +134,18 @@ use crate::{
 /// [moving]: Cursor
 /// [`Mode`]: crate::mode::Mode
 /// [`U::Area`]: Ui::Area
-pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
+pub struct Handle<W: Widget + ?Sized, S = ()> {
     widget: RwData<W>,
-    pub(crate) area: Arc<U::Area>,
+    pub(crate) area: Area,
     mask: Arc<Mutex<&'static str>>,
-    related: RelatedWidgets<U>,
+    related: RelatedWidgets,
     searcher: RefCell<S>,
     is_closed: RwData<bool>,
 }
 
-impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
+impl<W: Widget + ?Sized> Handle<W> {
     /// Returns a new instance of a [`Handle<W, U>`]
-    pub(crate) fn new(
-        widget: RwData<W>,
-        area: Arc<U::Area>,
-        mask: Arc<Mutex<&'static str>>,
-    ) -> Self {
+    pub(crate) fn new(widget: RwData<W>, area: Area, mask: Arc<Mutex<&'static str>>) -> Self {
         Self {
             widget,
             area,
@@ -161,7 +157,7 @@ impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
     }
 }
 
-impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
+impl<W: Widget + ?Sized, S> Handle<W, S> {
     ////////// Read and write access functions
 
     /// Reads from the [`Widget`], making use of a [`Pass`]
@@ -181,7 +177,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     }
 
     /// Tries to read as a concrete [`Widget`] implementor
-    pub fn read_as<'a, W2: Widget<U>>(&'a self, pa: &'a Pass) -> Option<&'a W2> {
+    pub fn read_as<'a, W2: Widget>(&'a self, pa: &'a Pass) -> Option<&'a W2> {
         self.widget.read_as(pa)
     }
 
@@ -224,8 +220,12 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// relatively large amount of shareable state.
     ///
     /// [`Area`]: crate::ui::Area
-    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a U::Area) {
-        (self.widget.write(pa), &self.area)
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a dyn traits::Area) {
+        // SAFETY: It is known that these types can't possibly point to the
+        // same data.
+        static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
+
+        (self.widget.write(pa), self.area.read(INTERNAL_PASS))
     }
 
     /// Declares the [`Widget`] within as written
@@ -239,7 +239,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     }
 
     /// Tries to downcast from `dyn Widget` to a concrete [`Widget`]
-    pub fn try_downcast<W2: Widget<U>>(&self) -> Option<Handle<W2, U>> {
+    pub fn try_downcast<W2: Widget>(&self) -> Option<Handle<W2>> {
         Some(Handle {
             widget: self.widget.try_downcast()?,
             area: self.area.clone(),
@@ -324,31 +324,31 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         &self,
         pa: &mut Pass,
         n: usize,
-        edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
+        edit: impl FnOnce(Cursor<W, S>) -> Ret,
     ) -> Ret {
-        fn get_parts<'a, W: Widget<U> + ?Sized, U: Ui>(
+        fn get_parts<'a, W: Widget + ?Sized, S>(
             pa: &'a mut Pass,
-            widget: &'a RwData<W>,
+            handle: &'a Handle<W, S>,
             n: usize,
-        ) -> (Selection, bool, &'a mut W) {
-            let widget = widget.write(pa);
+        ) -> (Selection, bool, &'a mut W, &'a dyn traits::Area) {
+            let (widget, area) = handle.write_with_area(pa);
             let selections = widget.text_mut().selections_mut();
             selections.populate();
             let Some((selection, was_main)) = selections.remove(n) else {
                 panic!("Selection index {n} out of bounds");
             };
 
-            (selection, was_main, widget)
+            (selection, was_main, widget, area)
         }
 
-        let (selection, was_main, widget) = get_parts(pa, &self.widget, n);
+        let (selection, was_main, widget, area) = get_parts(pa, self, n);
 
         // This is safe because of the &mut Pass argument
         let mut searcher = self.searcher.borrow_mut();
 
         edit(Cursor::new(
             (selection, n, was_main),
-            (&mut *widget, &self.area),
+            (widget, area),
             None,
             &mut searcher,
             false,
@@ -374,11 +374,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`edit_last`]: Self::edit_last
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_main<Ret>(
-        &self,
-        pa: &mut Pass,
-        edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
-    ) -> Ret {
+    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W, S>) -> Ret) -> Ret {
         self.edit_nth(
             pa,
             self.widget.read(pa).text().selections().main_index(),
@@ -405,11 +401,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_last<Ret>(
-        &self,
-        pa: &mut Pass,
-        edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
-    ) -> Ret {
+    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W, S>) -> Ret) -> Ret {
         let len = self.widget.read(pa).text().selections().len();
         self.edit_nth(pa, len.saturating_sub(1), edit)
     }
@@ -435,7 +427,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn edit_iter<Ret>(
         &self,
         pa: &mut Pass,
-        edit: impl FnOnce(Cursors<'_, W, U::Area, S>) -> Ret,
+        edit: impl FnOnce(Cursors<'_, W, S>) -> Ret,
     ) -> Ret {
         edit(self.get_iter(pa))
     }
@@ -454,17 +446,17 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// But it can't return a value, and is meant to reduce the
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
-    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(Cursor<W, U::Area, S>)) {
+    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(Cursor<W, S>)) {
         self.get_iter(pa).for_each(edit);
     }
 
-    fn get_iter<'a>(&'a self, pa: &'a mut Pass) -> Cursors<'a, W, U::Area, S> {
-        let widget = self.widget.write(pa);
+    fn get_iter<'a>(&'a self, pa: &'a mut Pass) -> Cursors<'a, W, S> {
+        let (widget, area) = self.write_with_area(pa);
         widget.text_mut().selections_mut().populate();
 
         let searcher = self.searcher.borrow_mut();
 
-        Cursors::new(0, widget, &self.area, searcher)
+        Cursors::new(0, widget, area, searcher)
     }
 
     ////////// Area functions
@@ -478,8 +470,8 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`PrintCfg.allow_overscroll`]: crate::cfg::PrintCfg::allow_overscroll
     pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
         let widget = self.widget.read(pa);
-        self.area(pa)
-            .scroll_ver(widget.text(), dist, widget.get_print_cfg());
+        self.area()
+            .scroll_ver(pa, widget.text(), dist, widget.get_print_cfg());
         self.widget.declare_written();
     }
 
@@ -491,7 +483,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn scroll_to_points(&self, pa: &Pass, points: impl TwoPoints) {
         let widget = self.widget.read(pa);
         self.area
-            .scroll_to_points(widget.text(), points, widget.get_print_cfg());
+            .scroll_to_points(pa, widget.text(), points, widget.get_print_cfg());
         self.widget.declare_written();
     }
 
@@ -499,13 +491,14 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn start_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
         self.area
-            .start_points(widget.text(), widget.get_print_cfg())
+            .start_points(pa, widget.text(), widget.get_print_cfg())
     }
 
     /// The end points that should be printed
     pub fn end_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
-        self.area.end_points(widget.text(), widget.get_print_cfg())
+        self.area
+            .end_points(pa, widget.text(), widget.get_print_cfg())
     }
 
     ////////// Querying functions
@@ -518,7 +511,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// This [`Handle`]'s [`U::Area`]
     ///
     /// [`U::Area`]: crate::ui::Ui::Area
-    pub fn area(&self, _: &Pass) -> &U::Area {
+    pub fn area(&self) -> &Area {
         &self.area
     }
 
@@ -567,8 +560,8 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::ui::Widget
     /// [`needs_update`]: crate::ui::Widget::needs_update
-    pub fn has_changed(&self) -> bool {
-        self.widget.has_changed() || self.area.has_changed()
+    pub fn has_changed(&self, pa: &Pass) -> bool {
+        self.widget.has_changed() || self.area.has_changed(pa)
     }
 
     /// Wether the [`RwData`] within and another point to the same
@@ -588,16 +581,16 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// This can also be done by calling [`Handle::get_related`], and
     /// [`Handle::read`], but this function should generally be
     /// faster, since there is no cloning of [`Arc`]s going on.
-    pub fn read_related<'a, W2: Widget<U>>(
+    pub fn read_related<'a, W2: Widget>(
         &'a self,
         pa: &'a Pass,
-    ) -> impl Iterator<Item = (&'a W2, &'a U::Area, WidgetRelation)> {
+    ) -> impl Iterator<Item = (&'a W2, &'a Area, WidgetRelation)> {
         self.read_as(pa)
-            .map(|w| (w, self.area(pa), WidgetRelation::Main))
+            .map(|w| (w, self.area(), WidgetRelation::Main))
             .into_iter()
             .chain(
                 self.related.0.read(pa).iter().filter_map(|(handle, rel)| {
-                    handle.read_as(pa).map(|w| (w, handle.area(pa), *rel))
+                    handle.read_as(pa).map(|w| (w, handle.area(), *rel))
                 }),
             )
     }
@@ -606,10 +599,10 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ///
     /// If you are doing this just to read the [`Widget`] and
     /// [`Ui::Area`], consider using [`Handle::read_related`].
-    pub fn get_related<'a, W2: Widget<U>>(
+    pub fn get_related<'a, W2: Widget>(
         &'a self,
         pa: &'a Pass,
-    ) -> impl Iterator<Item = (Handle<W2, U>, WidgetRelation)> + 'a {
+    ) -> impl Iterator<Item = (Handle<W2>, WidgetRelation)> + 'a {
         self.try_downcast()
             .zip(Some(WidgetRelation::Main))
             .into_iter()
@@ -623,7 +616,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     }
 
     /// Raw access to the related widgets
-    pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>> {
+    pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>> {
         &self.related.0
     }
 
@@ -649,7 +642,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
     /// [prompt]: https://docs.rs/duat-utils/latest/duat_utils/modes/trait.PromptMode.html
     /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
-    pub fn attach_searcher(&self, searcher: Searcher) -> Handle<W, U, Searcher> {
+    pub fn attach_searcher(&self, searcher: Searcher) -> Handle<W, Searcher> {
         Handle {
             widget: self.widget.clone(),
             area: self.area.clone(),
@@ -702,13 +695,13 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the second case, not just around `self`.
-    pub fn push_inner_widget<PW: Widget<U>>(
+    pub fn push_inner_widget<PW: Widget>(
         &self,
         pa: &mut Pass,
         widget: PW,
         specs: PushSpecs,
-    ) -> Handle<PW, U> {
-        context::windows::<U>()
+    ) -> Handle<PW> {
+        context::windows()
             .push_widget(pa, (&self.area, None, specs), widget)
             .unwrap()
     }
@@ -755,31 +748,31 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ///
     /// Note that `new` was pushed _around_ other clustered widgets in
     /// the first case, not just around `self`.
-    pub fn push_outer_widget<PW: Widget<U>>(
+    pub fn push_outer_widget<PW: Widget>(
         &self,
         pa: &mut Pass,
         widget: PW,
         specs: PushSpecs,
-    ) -> Handle<PW, U> {
-        if let Some(master) = self.area(pa).get_cluster_master() {
+    ) -> Handle<PW> {
+        if let Some(master) = self.area().get_cluster_master(pa) {
             context::windows()
                 .push_widget(pa, (&master, None, specs), widget)
                 .unwrap()
         } else {
-            context::windows::<U>()
+            context::windows()
                 .push_widget(pa, (&self.area, None, specs), widget)
                 .unwrap()
         }
     }
 
     /// Spawns a floating [`Widget`]
-    pub fn spawn_widget<SW: Widget<U>>(
+    pub fn spawn_widget<SW: Widget>(
         &self,
         pa: &mut Pass,
         widget: SW,
         specs: SpawnSpecs,
-    ) -> Option<Handle<SW, U>> {
-        context::windows::<U>().spawn_on_widget(pa, (&self.area, specs), widget)
+    ) -> Option<Handle<SW>> {
+        context::windows().spawn_on_widget(pa, (&self.area, specs), widget)
     }
 
     /// Closes this `Handle`, removing the [`Widget`] from the [`Ui`]
@@ -798,9 +791,9 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     }
 }
 
-impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
+impl<W: Widget, S> Handle<W, S> {
     /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`]
-    pub fn to_dyn(&self) -> Handle<dyn Widget<U>, U> {
+    pub fn to_dyn(&self) -> Handle<dyn Widget> {
         Handle {
             widget: self.widget.to_dyn_widget(),
             // TODO: Arc wrapper, and Area: !Clone
@@ -816,21 +809,20 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
-unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Send for Handle<W, U, S> {}
-unsafe impl<W: Widget<U> + ?Sized, U: Ui, S> Sync for Handle<W, U, S> {}
+unsafe impl<W: Widget + ?Sized, S> Send for Handle<W, S> {}
+unsafe impl<W: Widget + ?Sized, S> Sync for Handle<W, S> {}
 
-impl<W1, W2, U, S1, S2> PartialEq<Handle<W2, U, S2>> for Handle<W1, U, S1>
+impl<W1, W2, S1, S2> PartialEq<Handle<W2, S2>> for Handle<W1, S1>
 where
-    W1: Widget<U> + ?Sized,
-    W2: Widget<U> + ?Sized,
-    U: Ui,
+    W1: Widget + ?Sized,
+    W2: Widget + ?Sized,
 {
-    fn eq(&self, other: &Handle<W2, U, S2>) -> bool {
+    fn eq(&self, other: &Handle<W2, S2>) -> bool {
         self.widget().ptr_eq(other.widget())
     }
 }
 
-impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
+impl<W: Widget + ?Sized> Clone for Handle<W> {
     fn clone(&self) -> Self {
         Self {
             widget: self.widget.clone(),
@@ -843,7 +835,7 @@ impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
     }
 }
 
-impl<W: Widget<U> + ?Sized, U: Ui, S> std::fmt::Debug for Handle<W, U, S> {
+impl<W: Widget + ?Sized, S> std::fmt::Debug for Handle<W, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Handle")
             .field("mask", &self.mask)
@@ -852,7 +844,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> std::fmt::Debug for Handle<W, U, S> {
 }
 
 #[derive(Clone)]
-struct RelatedWidgets<U: Ui>(RwData<Vec<(Handle<dyn Widget<U>, U>, WidgetRelation)>>);
+struct RelatedWidgets(RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>);
 
 /// What relation this [`Widget`] has to its parent
 #[derive(Clone, Copy, Debug)]

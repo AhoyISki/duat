@@ -1,19 +1,21 @@
 FOR NEXT UPDATE:
-[ ] Add floating widgets.
+[x] Add floating widgets.
   [x] Get rid of min, max, and ratio constraints,they don't really make any sense in conjunction with the length constraint.
   [x] Use forward propagation in order to figure out where to spawn the widget.
   [x] Add Widget defined floating Widgets.
-  [ ] Add Tag defined floating Widgets.
-  [ ] Extend regular Widget functions to floating Widgets.
+  [x] Add Tag defined floating Widgets.
+  [x] Extend regular Widget functions to floating Widgets.
+[ ] Rename File to Buffer.
+[ ] Make Handles not a Parameter.
 [ ] No more U arguments, plugins will now use duat instead of duat-core.
   [ ] Gut duat-core, so that it only defines the Ui/Area traits and the text and form modules.
   [ ] Move everything else to duat.
   [ ] Make use of a generic Area for Handles.
-    [ ] Make Ui and Area dyn compatible.
-    [ ] Move some of the more intensive calculations (like Text vertical movement) to the Area trait.
+    [x] Make Ui and Area dyn compatible.
+    [~] Move some of the more intensive calculations (like Text vertical movement) to the Area trait.
     [ ] Possibly get rid of printed iterators?
     [ ] Add the ability to query the Area if it is a specific implementation.
-  [ ] Don't have duat(lib) depend on a specific Ui, have duat(bin) send a Box<dyn Ui> to it.
+  [ ] Don't have duat(lib) depend on a specific Ui, have duat(bin) send a type erased Ui to it.
   [ ] No plugins on duat(lib)
     [ ] Make all default plugins into default config crate dependencies.
     [ ] Create a setup_no_default_plugins in order to circumvent them.
@@ -44,6 +46,7 @@ FOR NEXT UPDATE:
 [ ] Remove requirement of Clone on Modes.
 
 KNOWN BUGS:
+[ ] For now, spawned widgets don't care about spacing or alignment.
 [ ] tree-sitter-duat-text is not being used.
 [x] Canceling git commit panics.
 [x] `C` key is broken on more than one cell.

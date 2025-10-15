@@ -17,7 +17,7 @@ use duat_core::{
     context,
     data::Pass,
     hook::{self, FocusedOn, KeysSentTo, UnfocusedFrom},
-    ui::{Area, PushTarget, Ui, Widget},
+    ui::{PushTarget, Widget},
 };
 
 pub use self::{
@@ -79,15 +79,15 @@ mod status_line;
 /// [`prompt`]: FooterWidgets::prompt
 /// [`notifs`]: FooterWidgets::notifs
 /// [`above`]: FooterWidgets::above
-pub struct FooterWidgets<U: Ui> {
-    status: StatusLineBuilder<U>,
-    prompt: PromptLineBuilder<U>,
+pub struct FooterWidgets {
+    status: StatusLineBuilder,
+    prompt: PromptLineBuilder,
     notifs: NotificationsBuilder,
     one_line: bool,
     above: bool,
 }
 
-impl<U: Ui> FooterWidgets<U> {
+impl FooterWidgets {
     /// Returns a new default intance of `FooterWidgets`
     pub fn default(pa: &Pass) -> Self {
         Self {
@@ -100,7 +100,7 @@ impl<U: Ui> FooterWidgets<U> {
     }
 
     /// Adds footer [`Widget`]s
-    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget<U>) {
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) {
         let prompt_line = if self.above {
             self.prompt.above().hidden().push_on(pa, push_target)
         } else {
@@ -108,13 +108,15 @@ impl<U: Ui> FooterWidgets<U> {
         };
 
         if self.one_line {
-            hook::add::<KeysSentTo<Prompt<U>, U>, U>({
+            hook::add::<KeysSentTo<Prompt>>({
                 let prompt_line = prompt_line.clone();
                 move |pa, (_, handle)| {
                     if handle == &prompt_line
-                        && let Err(err) = handle
-                            .area(pa)
-                            .request_width_to_fit(handle.read(pa).get_print_cfg(), handle.text(pa))
+                        && let Err(err) = handle.area().request_width_to_fit(
+                            pa,
+                            handle.read(pa).get_print_cfg(),
+                            handle.text(pa),
+                        )
                     {
                         context::error!("{err}")
                     }
@@ -132,28 +134,28 @@ impl<U: Ui> FooterWidgets<U> {
             self.notifs.push_on(pa, &prompt_line)
         };
 
-        hook::add::<FocusedOn<PromptLine<U>, U>, U>({
+        hook::add::<FocusedOn<PromptLine>>({
             let notifications = notifications.clone();
             let prompt_line = prompt_line.clone();
             move |pa, (_, handle)| {
                 if handle == &prompt_line {
-                    notifications.area(pa).hide()?;
-                    handle.area(pa).reveal()?;
+                    notifications.area().hide(pa)?;
+                    handle.area().reveal(pa)?;
                     if self.one_line {
                         handle
-                            .area(pa)
-                            .request_width_to_fit(handle.cfg(pa), handle.text(pa))?;
+                            .area()
+                            .request_width_to_fit(pa, handle.cfg(pa), handle.text(pa))?;
                     }
                 };
                 Ok(())
             }
         });
 
-        hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>({
+        hook::add::<UnfocusedFrom<PromptLine>>({
             move |pa, (handle, _)| {
                 if handle == &prompt_line {
-                    notifications.area(pa).reveal()?;
-                    handle.area(pa).hide()?;
+                    notifications.area().reveal(pa)?;
+                    handle.area().hide(pa)?;
                 }
                 Ok(())
             }
@@ -168,7 +170,7 @@ impl<U: Ui> FooterWidgets<U> {
     ///
     /// [`prompt`]: FooterWidgets::prompt
     /// [`notifs`]: FooterWidgets::notifs
-    pub fn new(status_cfg: StatusLineBuilder<U>) -> Self {
+    pub fn new(status_cfg: StatusLineBuilder) -> Self {
         Self {
             status: status_cfg,
             prompt: PromptLine::builder(),
@@ -190,7 +192,7 @@ impl<U: Ui> FooterWidgets<U> {
     }
 
     /// Sets the [`PromptLine`] to be used
-    pub fn prompt(self, prompt: PromptLineBuilder<U>) -> Self {
+    pub fn prompt(self, prompt: PromptLineBuilder) -> Self {
         Self { prompt, ..self }
     }
 

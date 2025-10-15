@@ -10,7 +10,8 @@ pub struct LogBook {
     len_of_taken: usize,
     text: Text,
     fmt: Box<dyn FnMut(Record) -> Option<Text> + Send>,
-    /// Wether to close this [`Widget`] after unfocusing, `true` by default
+    /// Wether to close this [`Widget`] after unfocusing, `true` by
+    /// default
     pub close_on_unfocus: bool,
 }
 
@@ -27,8 +28,8 @@ impl LogBook {
     }
 }
 
-impl<U: Ui> Widget<U> for LogBook {
-    fn update(pa: &mut Pass, handle: &Handle<Self, U>)
+impl Widget for LogBook {
+    fn update(pa: &mut Pass, handle: &Handle<Self>)
     where
         Self: Sized,
     {
@@ -45,7 +46,7 @@ impl<U: Ui> Widget<U> for LogBook {
         }
 
         if records_were_added {
-            area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::get_print_cfg(lb));
+            area.scroll_to_points(&lb.text, lb.text.len_points(), lb.get_print_cfg());
         }
     }
 
@@ -65,13 +66,13 @@ impl<U: Ui> Widget<U> for LogBook {
         *PrintCfg::new().wrap_on_word().set_scrolloff(0, 0)
     }
 
-    fn on_focus(pa: &mut Pass, handle: &Handle<Self, U>) {
-        handle.area(pa).reveal().unwrap();
+    fn on_focus(pa: &mut Pass, handle: &Handle<Self>) {
+        handle.area().reveal(pa).unwrap();
     }
 
-    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self, U>) {
+    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self>) {
         if handle.read(pa).close_on_unfocus {
-            handle.area(pa).hide().unwrap()
+            handle.area().hide(pa).unwrap()
         }
     }
 }
@@ -93,11 +94,7 @@ pub struct LogBookBuilder {
 
 impl LogBookBuilder {
     /// Push a [`LogBook`] around the given [`PushTarget`]
-    pub fn push_on<U: Ui>(
-        mut self,
-        pa: &mut Pass,
-        push_target: &impl PushTarget<U>,
-    ) -> Handle<LogBook, U> {
+    pub fn push_on(mut self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<LogBook> {
         let logs = context::logs();
 
         let mut text = Text::new();

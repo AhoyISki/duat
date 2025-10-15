@@ -69,8 +69,8 @@ impl Notifications {
     }
 }
 
-impl<U: Ui> Widget<U> for Notifications {
-    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
+impl Widget for Notifications {
+    fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         let notifs = handle.write(pa);
 
@@ -85,8 +85,8 @@ impl<U: Ui> Widget<U> for Notifications {
             if notifs.request_width {
                 let notifs = handle.read(pa);
                 handle
-                    .area(pa)
-                    .request_width_to_fit(Widget::<U>::get_print_cfg(notifs), &notifs.text)
+                    .area()
+                    .request_width_to_fit(pa, notifs.get_print_cfg(), &notifs.text)
                     .unwrap();
             }
         } else if clear_notifs {
@@ -96,8 +96,8 @@ impl<U: Ui> Widget<U> for Notifications {
             if notifs.request_width {
                 let notifs = handle.read(pa);
                 handle
-                    .area(pa)
-                    .request_width_to_fit(Widget::<U>::get_print_cfg(notifs), &notifs.text)
+                    .area()
+                    .request_width_to_fit(pa, notifs.get_print_cfg(), &notifs.text)
                     .unwrap();
             }
         }
@@ -137,11 +137,7 @@ pub struct NotificationsBuilder {
 
 impl NotificationsBuilder {
     /// Pushes the [`Notifications`] to another [`Widget`]
-    pub fn push_on<U: Ui>(
-        self,
-        pa: &mut Pass,
-        push_target: &impl PushTarget<U>,
-    ) -> Handle<Notifications, U> {
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<Notifications> {
         let notifications = Notifications {
             logs: context::logs(),
             text: Text::new(),

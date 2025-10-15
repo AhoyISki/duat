@@ -38,7 +38,7 @@
 //!
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
-use super::{PushSpecs, Ui};
+use super::PushSpecs;
 use crate::{
     data::Pass,
     file::File,
@@ -50,7 +50,7 @@ use crate::{
 ///
 /// Determines how the n'th [`File`] should be opened, given the
 /// previously opened [`File`]s on the same window.
-pub trait Layout<U: Ui>: Send + Sync {
+pub trait Layout: Send + Sync {
     /// Opens a new [`File`]
     ///
     /// The returned [`Ok(Handle<File>, PushSpecs)`] value represents
@@ -66,9 +66,9 @@ pub trait Layout<U: Ui>: Send + Sync {
         &mut self,
         pa: &Pass,
         cur_win: usize,
-        file: &File<U>,
-        windows: &[Window<U>],
-    ) -> (Handle<File<U>, U>, PushSpecs);
+        file: &File,
+        windows: &[Window],
+    ) -> (Handle<File>, PushSpecs);
 }
 
 /// [`Layout`]: One [`File`] on the left, others on the right
@@ -78,14 +78,14 @@ pub trait Layout<U: Ui>: Send + Sync {
 #[derive(Clone)]
 pub struct MasterOnLeft;
 
-impl<U: Ui> Layout<U> for MasterOnLeft {
+impl Layout for MasterOnLeft {
     fn new_file(
         &mut self,
         pa: &Pass,
         cur_win: usize,
-        _file: &File<U>,
-        windows: &[Window<U>],
-    ) -> (Handle<File<U>, U>, PushSpecs) {
+        _file: &File,
+        windows: &[Window],
+    ) -> (Handle<File>, PushSpecs) {
         let last = windows[cur_win].file_handles(pa).last().unwrap().clone();
         if windows[cur_win].file_handles(pa).len() == 1 {
             (last, PushSpecs { side: Side::Right, .. })

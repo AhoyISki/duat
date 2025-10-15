@@ -27,7 +27,7 @@ use duat_core::{
     MainThreadOnly,
     form::{self, Color},
     session::DuatSender,
-    ui::{self, GetOnce},
+    ui::{self},
 };
 
 use self::{printer::Printer};
@@ -42,21 +42,63 @@ mod layout;
 mod printer;
 mod rules;
 
-#[derive(Debug)]
-pub struct Ui;
+pub struct Ui(Mutex<InnerUi>);
 
-impl ui::Ui for Ui {
+struct InnerUi {
+    windows: Vec<(Area, Arc<Printer>)>,
+    layouts: MainThreadOnly<Layouts>,
+    win: usize,
+    frame: Frame,
+    printer_fn: fn() -> Arc<Printer>,
+    rx: Option<mpsc::Receiver<Event>>,
+    tx: mpsc::Sender<Event>,
+}
+
+impl InnerUi {
+    fn cur_printer(&self) -> Arc<Printer> {
+        if let Some((_, printer)) = self.windows.get(self.win) {
+            // On switching, the window size could've changed, so take that into
+            // account
+            printer.update(true, true);
+            printer.clone()
+        } else {
+            unreachable!("Started printing before a window was created");
+        }
+    }
+}
+
+// SAFETY: The Area (the part that is not Send + Sync) is only ever
+// accessed from the main thread.
+unsafe impl Send for InnerUi {}
+
+impl ui::traits::Ui for Ui {
     type Area = Area;
-    type MetaStatics = Mutex<MetaStatics>;
 
-    fn open(ms: &'static Self::MetaStatics, duat_tx: DuatSender) {
+    fn get_once() -> Option<&'static Self> {
+            static GOT: AtomicBool = AtomicBool::new(false);
+            let (tx, rx) = mpsc::channel();
+            
+            (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
+                Box::leak(Box::new(Self(Mutex::new(InnerUi {
+                    windows: Vec::new(),
+                    layouts: MainThreadOnly::default(),
+                    win: 0,
+                    frame: Frame::default(),
+                    printer_fn: || Arc::new(Printer::new()),
+                    rx: Some(rx),
+                    tx,
+                })))) as &'static Self
+            })
+        }
+
+    fn open(&self, duat_tx: DuatSender) {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
         
         form::set_weak("rule.upper", "default.VertRule");
         form::set_weak("rule.lower", "default.VertRule");
 
-        let term_rx = ms.lock().unwrap().rx.take().unwrap();
-        let term_tx = ms.lock().unwrap().tx.clone();
+        let term_rx = self.0.lock().unwrap().rx.take().unwrap();
+        let term_tx = self.0.lock().unwrap().tx.clone();
 
         let print_thread = std::thread::Builder::new()
             .no_hooks()
@@ -132,8 +174,8 @@ impl ui::Ui for Ui {
             });
     }
 
-    fn close(ms: &'static Self::MetaStatics) {
-        ms.lock().unwrap().tx.send(Event::Quit).unwrap();
+    fn close(&self) {
+        self.0.lock().unwrap().tx.send(Event::Quit).unwrap();
 
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags);
@@ -155,54 +197,54 @@ impl ui::Ui for Ui {
     }
 
     fn new_root(
-        ms: &'static Self::MetaStatics,
-        cache: <Self::Area as ui::Area>::Cache,
+        &self,
+        cache: <Self::Area as ui::traits::Area>::Cache,
     ) -> Self::Area {
-        let mut ms = ms.lock().unwrap();
-        let printer = (ms.printer_fn)();
+        let mut ui = self.0.lock().unwrap();
+        let printer = (ui.printer_fn)();
 
         let main_id = 
             // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
             // from another thread
-            unsafe { ms.layouts.get() }.new_layout(printer.clone(), ms.frame, cache);
+            unsafe { ui.layouts.get() }.new_layout(printer.clone(), ui.frame, cache);
 
-        let root = Area::new(main_id, unsafe { ms.layouts.get() }.clone());
-        ms.windows.push((root.clone(), printer.clone()));
-        if ms.windows.len() == 1 {
-            ms.tx.send(Event::NewPrinter(printer)).unwrap();
+        let root = Area::new(main_id, unsafe { ui.layouts.get() }.clone());
+        ui.windows.push((root.clone(), printer.clone()));
+        if ui.windows.len() == 1 {
+            ui.tx.send(Event::NewPrinter(printer)).unwrap();
         }
 
         root
     }
 
     fn new_spawned(
-        ms: &'static Self::MetaStatics,
+        &self,
         id: duat_core::text::SpawnId,
         specs: ui::SpawnSpecs,
-        cache: <Self::Area as ui::Area>::Cache,
+        cache: <Self::Area as ui::traits::Area>::Cache,
         win: usize,
     ) -> Self::Area {
-        let ms = ms.lock().unwrap();
-        let id = unsafe { ms.layouts.get() }.spawn_on_text(id, specs, cache, win);
+        let ui = self.0.lock().unwrap();
+        let id = unsafe { ui.layouts.get() }.spawn_on_text(id, specs, cache, win);
 
-        Area::new(id, unsafe { ms.layouts.get() }.clone())
+        Area::new(id, unsafe { ui.layouts.get() }.clone())
     }
 
-    fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
-        let mut ms = ms.lock().unwrap();
-        ms.win = win;
-        ms.tx.send(Event::NewPrinter(ms.cur_printer())).unwrap()
+    fn switch_window(&self, win: usize) {
+        let mut ui = self.0.lock().unwrap();
+        ui.win = win;
+        ui.tx.send(Event::NewPrinter(ui.cur_printer())).unwrap()
     }
 
-    fn flush_layout(ms: &'static Self::MetaStatics) {
-        ms.lock().unwrap().cur_printer().update(true, false);
+    fn flush_layout(&self) {
+        self.0.lock().unwrap().cur_printer().update(true, false);
     }
 
-    fn print(ms: &'static Self::MetaStatics) {
-        ms.lock().unwrap().tx.send(Event::Print).unwrap();
+    fn print(&self) {
+        self.0.lock().unwrap().tx.send(Event::Print).unwrap();
     }
 
-    fn load(_ms: &'static Self::MetaStatics) {
+    fn load(&self) {
         // Hook for returning to regular terminal state
         std::panic::set_hook(Box::new(|info| {
             let trace = std::backtrace::Backtrace::capture();
@@ -235,85 +277,26 @@ impl ui::Ui for Ui {
         }));
     }
 
-    fn unload(ms: &'static Self::MetaStatics) {
-        let mut ms = ms.lock().unwrap();
-        ms.windows = Vec::new();
+    fn unload(&self) {
+        let mut ui = self.0.lock().unwrap();
+        ui.windows = Vec::new();
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        unsafe { ms.layouts.get() }.reset();
-        ms.win = 0;
+        unsafe { ui.layouts.get() }.reset();
+        ui.win = 0;
     }
 
-    fn remove_window(ms: &'static Self::MetaStatics, win: usize) {
-        let mut ms = ms.lock().unwrap();
-        ms.windows.remove(win);
+    fn remove_window(&self, win: usize) {
+        let mut ui = self.0.lock().unwrap();
+        ui.windows.remove(win);
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        unsafe { ms.layouts.get() }.remove_window(win);
-        if ms.win > win {
-            ms.win -= 1;
+        unsafe { ui.layouts.get() }.remove_window(win);
+        if ui.win > win {
+            ui.win -= 1;
         }
     }
 }
-
-impl Clone for Ui {
-    fn clone(&self) -> Self {
-        panic!("You are not supposed to clone the Ui");
-    }
-}
-
-impl Default for Ui {
-    fn default() -> Self {
-        panic!("You are not supposed to use the default constructor of the Ui");
-    }
-}
-
-#[doc(hidden)]
-pub struct MetaStatics {
-    windows: Vec<(Area, Arc<Printer>)>,
-    layouts: MainThreadOnly<Layouts>,
-    win: usize,
-    frame: Frame,
-    printer_fn: fn() -> Arc<Printer>,
-    rx: Option<mpsc::Receiver<Event>>,
-    tx: mpsc::Sender<Event>,
-}
-
-impl MetaStatics {
-    fn cur_printer(&self) -> Arc<Printer> {
-        if let Some((_, printer)) = self.windows.get(self.win) {
-            // On switching, the window size could've changed, so take that into
-            // account
-            printer.update(true, true);
-            printer.clone()
-        } else {
-            unreachable!("Started printing before a window was created");
-        }
-    }
-}
-
-impl GetOnce<Ui> for Mutex<MetaStatics> {
-    fn get_once() -> Option<&'static Self> {
-        static GOT: AtomicBool = AtomicBool::new(false);
-        let (tx, rx) = mpsc::channel();
-
-        (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
-            Box::leak(Box::new(Mutex::new(MetaStatics {
-                windows: Vec::new(),
-                layouts: MainThreadOnly::default(),
-                win: 0,
-                frame: Frame::default(),
-                printer_fn: || Arc::new(Printer::new()),
-                rx: Some(rx),
-                tx,
-            }))) as &'static Self
-        })
-    }
-}
-
-// SAFETY: The Area (the part that is not Send + Sync) is only ever
-// accessed from the main thread.
-unsafe impl Send for MetaStatics {}
 
 #[derive(Debug)]
 pub enum Anchor {

@@ -143,26 +143,6 @@ impl Tags<'_> {
     pub fn len_bytes(&self) -> usize {
         self.0.len_bytes()
     }
-
-    /// List of [`Widget`]s that were spawned on this `Tags`'s
-    /// [`Text`]
-    ///
-    /// These `Widget` are all guaranteed to still exist, although
-    /// they might not be printed on screen, in the situation where
-    /// the `Text` was not itself printed on screen.
-    ///
-    /// This information is particularly useful for [`Ui`]
-    /// implementors, since, upon printing a [`Text`], they will
-    /// iterate through all [`RawTag`]s that show up on screen. For
-    /// every [`RawTag::SpawnedWidget`] that _didn't_ show up on
-    /// screen, they will know that that `Widget` should not be
-    /// printed.
-    ///
-    /// [`Widget`]: crate::ui::Widget
-    /// [`Ui`]: crate::ui::Ui
-    pub fn spawned_ids(&self) -> &[SpawnId] {
-        &self.0.spawns
-    }
 }
 
 impl std::ops::Deref for Tags<'_> {
@@ -187,7 +167,7 @@ pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
     ghosts: Vec<(GhostId, Text)>,
     toggles: Vec<(ToggleId, Toggle)>,
-    spawns: Vec<SpawnId>,
+    spawns: Vec<SpawnCell>,
     pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
@@ -377,7 +357,7 @@ impl InnerTags {
                         ends.push(tag);
                     }
                 } else if let RawTag::SpawnedWidget(_, spawn_id) = tag {
-                    self.spawns.retain(|id| *id != spawn_id);
+                    self.spawns.retain(|spawn_cell| spawn_cell.0 != spawn_id);
                 }
             });
 
@@ -585,8 +565,8 @@ impl InnerTags {
     }
 
     /// A list of all [`SpawnId`]s that belong to this `Tags`
-    pub(crate) fn get_spawned_ids(&self) -> &[SpawnId] {
-        &self.spawns
+    pub(crate) fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
+        self.spawns.iter().map(|spawn_cell| spawn_cell.0)
     }
 }
 
@@ -596,7 +576,7 @@ impl Clone for InnerTags {
             list: self.list.clone(),
             ghosts: self.ghosts.clone(),
             toggles: self.toggles.clone(),
-            spawns: self.spawns.clone(),
+            spawns: Vec::new(),
             spawn_fns: Vec::new(),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
@@ -772,5 +752,14 @@ impl Shift for i32 {
 
     fn add(self, other: Self) -> Self {
         self + other
+    }
+}
+
+/// A destructor for spawned `Widget`s
+struct SpawnCell(SpawnId);
+
+impl Drop for SpawnCell {
+    fn drop(&mut self) {
+        crate::context::windows().queue_close_spawned(self.0);
     }
 }

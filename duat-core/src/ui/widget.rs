@@ -38,7 +38,6 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::sync::{Arc, Mutex};
 
-use super::{Area, Ui};
 use crate::{
     cfg::PrintCfg,
     context::Handle,
@@ -46,6 +45,7 @@ use crate::{
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
+    ui::{Area, PrintInfo},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -286,7 +286,7 @@ use crate::{
 /// [`txt!`]: crate::text::txt
 /// [`Plugin`]: crate::Plugin
 /// [`File`]: crate::file::File
-pub trait Widget<U: Ui>: Send + 'static {
+pub trait Widget: Send + 'static {
     ////////// Stateful functions
 
     /// Updates the widget, allowing the modification of its
@@ -311,7 +311,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
     #[allow(unused)]
-    fn update(pa: &mut Pass, handle: &Handle<Self, U>)
+    fn update(pa: &mut Pass, handle: &Handle<Self>)
     where
         Self: Sized;
 
@@ -320,7 +320,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// When implementing this, you are free to remove the `where`
     /// clause.
     #[allow(unused)]
-    fn on_focus(pa: &mut Pass, handle: &Handle<Self, U>)
+    fn on_focus(pa: &mut Pass, handle: &Handle<Self>)
     where
         Self: Sized,
     {
@@ -331,7 +331,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// When implementing this, you are free to remove the `where`
     /// clause.
     #[allow(unused)]
-    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self, U>)
+    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self>)
     where
         Self: Sized,
     {
@@ -405,30 +405,30 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`File::print`]: crate::file::File::print
-    fn print(&self, painter: Painter, area: &U::Area) {
+    fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
         let cfg = self.get_print_cfg();
-        area.print(self.text(), cfg, painter)
+        area.print(pa, self.text(), cfg, painter)
     }
 }
 
 /// Elements related to the [`Widget`]s
 #[derive(Clone)]
-pub(crate) struct Node<U: Ui> {
-    handle: Handle<dyn Widget<U>, U>,
-    update: Arc<dyn Fn(&mut Pass) + Send>,
-    print: Arc<dyn Fn(&mut Pass) + Send>,
-    on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget<U>, U>) + Send>,
-    on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget<U>, U>) + Send>,
+pub(crate) struct Node {
+    handle: Handle<dyn Widget>,
+    update: Arc<dyn Fn(&mut Pass) + Send + Sync>,
+    print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
+    on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
+    on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
 }
 
-impl<U: Ui> Node<U> {
+impl Node {
     /// Returns a new `Node`
-    pub(crate) fn new<W: Widget<U>>(widget: RwData<W>, area: Arc<U::Area>) -> Self {
+    pub(crate) fn new<W: Widget>(widget: RwData<W>, area: Area) -> Self {
         Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new(""))))
     }
 
     /// Returns a `Node` from an existing [`Handle`]
-    pub(crate) fn from_handle<W: Widget<U>>(handle: Handle<W, U>) -> Self {
+    pub(crate) fn from_handle<W: Widget>(handle: Handle<W>) -> Self {
         Self {
             handle: handle.to_dyn(),
             update: Arc::new({
@@ -439,8 +439,7 @@ impl<U: Ui> Node<U> {
                 let handle = handle.clone();
                 move |pa| {
                     let painter = form::painter_with_mask::<W>(*handle.mask().lock().unwrap());
-                    let (widget, area) = handle.write_with_area(pa);
-                    W::print(widget, painter, area);
+                    W::print(handle.read(pa), pa, painter, handle.area());
                 }
             }),
             on_focus: Arc::new({
@@ -462,27 +461,27 @@ impl<U: Ui> Node<U> {
 
     ////////// Reading and parts acquisition
 
-    pub(crate) fn read_as<'a, W: Widget<U>>(&'a self, pa: &'a Pass) -> Option<&'a W> {
+    pub(crate) fn read_as<'a, W: Widget>(&'a self, pa: &'a Pass) -> Option<&'a W> {
         self.handle.read_as(pa)
     }
 
     /// The [`Widget`] of this [`Node`]
-    pub(crate) fn widget(&self) -> &RwData<dyn Widget<U>> {
+    pub(crate) fn widget(&self) -> &RwData<dyn Widget> {
         self.handle.widget()
     }
 
     /// The [`Ui::Area`] of this [`Widget`]
-    pub(crate) fn area(&self, pa: &Pass) -> &U::Area {
-        self.handle.area(pa)
+    pub(crate) fn area(&self) -> &Area {
+        self.handle.area()
     }
 
     /// Returns the downcast ref of this [`Widget`].
-    pub(crate) fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
+    pub(crate) fn try_downcast<W: Widget>(&self) -> Option<Handle<W>> {
         self.handle.try_downcast()
     }
 
     /// The "parts" of this [`Node`]
-    pub(crate) fn handle(&self) -> &Handle<dyn Widget<U>, U> {
+    pub(crate) fn handle(&self) -> &Handle<dyn Widget> {
         &self.handle
     }
 
@@ -500,7 +499,7 @@ impl<U: Ui> Node<U> {
 
     /// Wether this [`Widget`] needs to be updated
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
-        self.handle.has_changed() || self.handle.read(pa).needs_update(pa)
+        self.handle.has_changed(pa) || self.handle.read(pa).needs_update(pa)
     }
 
     ////////// Eventful functions
@@ -513,11 +512,12 @@ impl<U: Ui> Node<U> {
 
         (self.update)(pa);
 
+        let print_info = self.handle.area().get_print_info(pa);
         let (widget, area) = self.handle.write_with_area(pa);
         let cfg = widget.get_print_cfg();
         widget.text_mut().add_selections(area, cfg);
 
-        if area.print_info() != <U::Area as Area>::PrintInfo::default() {
+        if print_info != PrintInfo::default() {
             widget.text_mut().update_bounds();
         }
 
@@ -531,18 +531,18 @@ impl<U: Ui> Node<U> {
     }
 
     /// What to do when focusing
-    pub(crate) fn on_focus(&self, pa: &mut Pass, old: Handle<dyn Widget<U>, U>) {
-        self.handle.area(pa).set_as_active();
+    pub(crate) fn on_focus(&self, pa: &mut Pass, old: Handle<dyn Widget>) {
+        self.handle.area().set_as_active(pa);
         (self.on_focus)(pa, old)
     }
 
     /// What to do when unfocusing
-    pub(crate) fn on_unfocus(&self, pa: &mut Pass, new: Handle<dyn Widget<U>, U>) {
+    pub(crate) fn on_unfocus(&self, pa: &mut Pass, new: Handle<dyn Widget>) {
         (self.on_unfocus)(pa, new)
     }
 }
 
-impl<U: Ui> std::fmt::Debug for Node<U> {
+impl std::fmt::Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
             .field("handle", &self.handle)

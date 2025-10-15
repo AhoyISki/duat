@@ -3,8 +3,6 @@ use duat_core::{
     ui::{PushTarget, Side},
 };
 
-use crate::Ui;
-
 /// A vertical line on screen, useful, for example, for the separation
 /// of a [`File`] and [`LineNumbers`].
 ///
@@ -29,7 +27,7 @@ use crate::Ui;
 /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 /// [`with_main_char`]: VertRuleCfg::with_main_char
 pub struct VertRule {
-    handle: Option<Handle<File<Ui>, Ui>>,
+    handle: Option<Handle<File>>,
     text: Text,
     sep_char: SepChar,
 }
@@ -42,8 +40,8 @@ impl VertRule {
     }
 }
 
-impl Widget<Ui> for VertRule {
-    fn update(pa: &mut Pass, handle: &Handle<Self, Ui>) {
+impl Widget for VertRule {
+    fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let vr = handle.read(pa);
         let text = if let Some(handle) = vr.handle.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char
@@ -72,7 +70,7 @@ impl Widget<Ui> for VertRule {
             )
         } else {
             let full_line =
-                format!("{}\n", vr.sep_char.chars()[1]).repeat(handle.area(pa).height() as usize);
+                format!("{}\n", vr.sep_char.chars()[1]).repeat(handle.area().height(pa) as usize);
 
             txt!("{full_line}")
         };
@@ -80,9 +78,9 @@ impl Widget<Ui> for VertRule {
         handle.write(pa).text = text.build();
     }
 
-    fn needs_update(&self, _: &Pass) -> bool {
+    fn needs_update(&self, pa: &Pass) -> bool {
         matches!(self.sep_char, SepChar::ThreeWay(..) | SepChar::TwoWay(..))
-            && self.handle.as_ref().is_some_and(|fh| fh.has_changed())
+            && self.handle.as_ref().is_some_and(|fh| fh.has_changed(pa))
     }
 
     fn text(&self) -> &Text {
@@ -126,7 +124,7 @@ pub struct VertRuleBuilder {
 
 impl VertRuleBuilder {
     /// Pushes a [`VertRule`] to a [`PushTarget`]
-    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget<Ui>) -> Handle<VertRule, Ui> {
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<VertRule> {
         let vert_rule = VertRule {
             handle: push_target.try_downcast(),
             text: Text::default(),

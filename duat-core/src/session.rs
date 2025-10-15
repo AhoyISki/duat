@@ -34,7 +34,7 @@ use crate::{
     },
     mode,
     ui::{
-        Area, Ui, Windows,
+        Ui, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
@@ -43,11 +43,11 @@ pub(crate) static FILE_CFG: OnceLock<PrintCfg> = OnceLock::new();
 
 /// Configuration for a session of Duat
 #[doc(hidden)]
-pub struct SessionCfg<U: Ui> {
-    layout: Box<Mutex<dyn Layout<U>>>,
+pub struct SessionCfg {
+    layout: Box<Mutex<dyn Layout>>,
 }
 
-impl<U: Ui> SessionCfg<U> {
+impl SessionCfg {
     pub fn new(clipb: &'static Mutex<Clipboard>, file_cfg: PrintCfg) -> Self {
         crate::clipboard::set_clipboard(clipb);
         FILE_CFG.set(file_cfg).unwrap();
@@ -59,11 +59,11 @@ impl<U: Ui> SessionCfg<U> {
 
     pub fn build(
         self,
-        ms: &'static U::MetaStatics,
-        files: Vec<Vec<ReloadedFile<U>>>,
+        ui: Ui,
+        files: Vec<Vec<ReloadedFile>>,
         already_plugged: Vec<TypeId>,
-    ) -> Session<U> {
-        let plugins = Plugins::<U>::_new();
+    ) -> Session {
+        let plugins = Plugins::_new();
         // SAFETY: The only externally available function for Plugins is to
         // add more plugins, accessing the plugging functions happens only on
         // this thread.
@@ -74,7 +74,7 @@ impl<U: Ui> SessionCfg<U> {
                 .find_map(|(f, ty)| f.take().zip(Some(*ty)))
         } {
             if !already_plugged.contains(&ty) {
-                plug(&plugins);
+                plug(plugins);
             }
         }
 
@@ -83,9 +83,9 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let pa = unsafe { &mut Pass::new() };
 
-        cmd::add_session_commands::<U>();
+        cmd::add_session_commands();
 
-        let session = Session { ms };
+        let session = Session { ui };
 
         let mut layout = Some(self.layout);
 
@@ -94,7 +94,7 @@ impl<U: Ui> SessionCfg<U> {
             *file.cfg() = *FILE_CFG.get().unwrap();
 
             if let Some(layout) = layout.take() {
-                Windows::initialize(pa, file, layout, ms);
+                Windows::initialize(pa, file, layout, ui);
             } else {
                 let node = context::windows().new_window(pa, file);
                 if is_active {
@@ -104,7 +104,7 @@ impl<U: Ui> SessionCfg<U> {
 
             for ReloadedFile { mut file, is_active } in rel_files {
                 *file.cfg() = *FILE_CFG.get().unwrap();
-                let node = context::windows::<U>().new_file(pa, file);
+                let node = context::windows().new_file(pa, file);
                 if is_active {
                     context::set_current_node(pa, node);
                 }
@@ -117,20 +117,20 @@ impl<U: Ui> SessionCfg<U> {
 
 /// A session of Duat
 #[doc(hidden)]
-pub struct Session<U: Ui> {
-    ms: &'static U::MetaStatics,
+pub struct Session {
+    ui: Ui,
 }
 
-impl<U: Ui> Session<U> {
+impl Session {
     /// Start the application, initiating a read/response loop.
     pub fn start(
         self,
         duat_rx: mpsc::Receiver<DuatEvent>,
         spawn_count: &'static AtomicUsize,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
-    ) -> (Vec<Vec<ReloadedFile<U>>>, mpsc::Receiver<DuatEvent>) {
-        fn get_windows_nodes<U: Ui>(pa: &Pass) -> Vec<Vec<crate::ui::Node<U>>> {
-            context::windows::<U>()
+    ) -> (Vec<Vec<ReloadedFile>>, mpsc::Receiver<DuatEvent>) {
+        fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
+            context::windows()
                 .windows(pa)
                 .map(|window| window.nodes().cloned().collect())
                 .collect()
@@ -151,14 +151,15 @@ impl<U: Ui> Session<U> {
         let mut reload_requested = false;
         let mut reprint_screen = false;
 
-        U::flush_layout(self.ms);
+        self.ui.flush_layout();
 
         let mut print_screen = {
-            let mut last_win = context::cur_window::<U>(pa);
-            let mut windows_nodes = get_windows_nodes::<U>(pa);
+            let mut last_win = context::cur_window(pa);
+            let mut windows_nodes = get_windows_nodes(pa);
 
             move |pa: &mut Pass, force: bool| {
-                let cur_win = context::cur_window::<U>(pa);
+                context::windows().cleanup_despawned(pa);
+                let cur_win = context::cur_window(pa);
 
                 let mut printed_at_least_one = false;
                 for node in windows_nodes.get(last_win).unwrap() {
@@ -168,12 +169,12 @@ impl<U: Ui> Session<U> {
                     }
                 }
 
-				// Additional Widgets may have been created in the meantime.
-				// DDOS vulnerable i guess.
-                while let Some(new_additions) = context::windows::<U>().get_additions(pa) {
-                    U::flush_layout(self.ms);
+                // Additional Widgets may have been created in the meantime.
+                // DDOS vulnerable i guess.
+                while let Some(new_additions) = context::windows().get_additions(pa) {
+                    self.ui.flush_layout();
 
-                    let cur_win = context::cur_window::<U>(pa);
+                    let cur_win = context::cur_window(pa);
                     for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
                         node.update_and_print(pa, cur_win);
                     }
@@ -182,7 +183,7 @@ impl<U: Ui> Session<U> {
                 }
 
                 if printed_at_least_one {
-                    U::print(self.ms);
+                    self.ui.print()
                 }
 
                 last_win = cur_win;
@@ -238,14 +239,14 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
+                        let handles: Vec<_> = context::windows().file_handles(pa).collect();
                         for handle in handles {
                             hook::trigger(pa, FileReloaded((handle, Cache::new())));
                         }
 
-                        let ms = self.ms;
+                        let ui = self.ui;
                         let files = self.take_files(pa);
-                        U::unload(ms);
+                        ui.unload();
                         return (files, duat_rx);
                     }
                     DuatEvent::ReloadFailed => reload_requested = false,
@@ -255,12 +256,12 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
+                        let handles: Vec<_> = context::windows().file_handles(pa).collect();
                         for handle in handles {
                             hook::trigger(pa, FileClosed((handle, Cache::new())));
                         }
 
-                        U::unload(self.ms);
+                        self.ui.unload();
                         return (Vec::new(), duat_rx);
                     }
                 }
@@ -271,21 +272,21 @@ impl<U: Ui> Session<U> {
         }
     }
 
-    fn take_files(self, pa: &mut Pass) -> Vec<Vec<ReloadedFile<U>>> {
-        let files = context::windows::<U>().entries(pa).fold(
-            Vec::new(),
-            |mut file_handles, (win, _, node)| {
-                if win >= file_handles.len() {
-                    file_handles.push(Vec::new());
-                }
+    fn take_files(self, pa: &mut Pass) -> Vec<Vec<ReloadedFile>> {
+        let files =
+            context::windows()
+                .entries(pa)
+                .fold(Vec::new(), |mut file_handles, (win, _, node)| {
+                    if win >= file_handles.len() {
+                        file_handles.push(Vec::new());
+                    }
 
-                if let Some(handle) = node.try_downcast::<File<U>>() {
-                    file_handles.last_mut().unwrap().push(handle)
-                }
+                    if let Some(handle) = node.try_downcast::<File>() {
+                        file_handles.last_mut().unwrap().push(handle)
+                    }
 
-                file_handles
-            },
-        );
+                    file_handles
+                });
 
         files
             .into_iter()
@@ -381,12 +382,12 @@ impl DuatSender {
 ///
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
-pub struct ReloadedFile<U: Ui> {
-    file: File<U>,
+pub struct ReloadedFile {
+    file: File,
     is_active: bool,
 }
 
-impl<U: Ui> ReloadedFile<U> {
+impl ReloadedFile {
     /// Creates a new [`FileParts`] from parts gathered from arguments
     ///
     /// **MEANT TO BE USED BY THE DUAT EXECUTABLE ONLY**

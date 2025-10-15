@@ -21,7 +21,7 @@ use duat_core::{
     form::{Form, Palette},
     session::{DuatEvent, ReloadEvent, ReloadedFile, SessionCfg},
     text::History,
-    ui::{self, Area, Widget},
+    ui::{Ui, Widget},
 };
 use duat_filetype::FileType;
 use duat_term::VertRule;
@@ -31,7 +31,7 @@ use duat_utils::{
 };
 
 use crate::{
-    Ui, form,
+    form,
     hook::{self, FileClosed, FileReloaded, WindowCreated},
     mode,
     prelude::{FileWritten, LineNumbers},
@@ -60,7 +60,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     }
 
     mode::set_default(crate::regular::Regular);
-    mode::set_default(Pager::<LogBook, Ui>::new());
+    mode::set_default(Pager::<LogBook>::new());
 
     hook::add_grouped::<File>("FileWidgets", |pa, handle| {
         VertRule::builder().push_on(pa, handle);
@@ -81,7 +81,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
         let path = Path::new(path);
         if !is_quitting
-            && let Ok(crate_dir) = crate::crate_dir()
+            && let Ok(crate_dir) = crate::utils::crate_dir()
             && path.starts_with(crate_dir)
         {
             crate::prelude::cmd::queue("reload");
@@ -90,23 +90,18 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     });
 
     hook::add::<FileReloaded>(|pa, (handle, cache)| {
-        let (file, area) = handle.write_with_area(pa);
+        let file = handle.write(pa);
 
         let path = file.path();
         file.text_mut().new_moment();
 
-        if let Some(area_cache) = area.cache()
-            && let Err(err) = cache.store(&path, area_cache)
+        if let Some(main) = file.selections().get_main()
+            && let Err(err) = cache.store(&path, main.clone())
         {
             context::error!(target: "FileReloaded", "{err}");
         }
 
-        if let Some(main) = file.selections_mut().get_main()
-            && let Err(err) = cache.store(path, main.clone())
-        {
-            context::error!(target: "FileReloaded", "{err}");
-        }
-        Ok(())
+        handle.area().store_cache(pa, &path)
     });
 
     hook::add::<FileClosed>(|pa, (handle, cache)| {
@@ -121,7 +116,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     });
 
     hook::add_grouped::<FileClosed>("CacheCursorPosition", |pa, (handle, cache)| {
-        let (file, area) = handle.write_with_area(pa);
+        let file = handle.write(pa);
 
         let path = file.path();
         file.text_mut().new_moment();
@@ -131,18 +126,13 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
             return Ok(());
         }
 
-        if let Some(area_cache) = area.cache()
-            && let Err(err) = cache.store(&path, area_cache)
+        if let Some(main) = file.selections().get_main()
+            && let Err(err) = cache.store(&path, main.clone())
         {
             context::error!(target: "FileClosed", "{err}");
         }
 
-        if let Some(main) = file.selections_mut().get_main()
-            && let Err(err) = cache.store(path, main.clone())
-        {
-            context::error!(target: "FileClosed", "{err}");
-        }
-        Ok(())
+        handle.area().store_cache(pa, &path)
     });
 
     form::enable_mask("error");
@@ -174,28 +164,28 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     duat_core::form::set_weak("log_book.target", "module");
 
     crate::cmd::add!("logs", |pa| {
-        mode::set(Pager::<LogBook, Ui>::new());
+        mode::set(Pager::<LogBook>::new());
         Ok(None)
     });
 
-    mode::map::<mode::User>("L", Pager::<LogBook, Ui>::new());
+    mode::map::<mode::User>("L", Pager::<LogBook>::new());
 
     #[cfg(feature = "treesitter")]
     {
         use duat_core::Plugins;
 
-        Plugins::<Ui>::_new().require::<duat_match_pairs::MatchPairs>();
+        Plugins::_new().require::<duat_match_pairs::MatchPairs>();
     }
 }
 
 #[doc(hidden)]
 pub fn run_duat(
-    (ui_ms, clipb): MetaStatics,
-    files: Vec<Vec<ReloadedFile<Ui>>>,
+    (ui, clipb): MetaStatics,
+    files: Vec<Vec<ReloadedFile>>,
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
-) -> (Vec<Vec<ReloadedFile<Ui>>>, Receiver<DuatEvent>) {
-    <Ui as ui::Ui>::load(ui_ms);
+) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>) {
+    ui.load();
 
     let cfg = SessionCfg::new(clipb, match PRINT_CFG.write().unwrap().take() {
         Some(cfg) => cfg,
@@ -203,11 +193,11 @@ pub fn run_duat(
     });
 
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
-    cfg.build(ui_ms, files, already_plugged)
+    cfg.build(ui, files, already_plugged)
         .start(duat_rx, &SPAWN_COUNT, reload_tx)
 }
 
-type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
+type PluginFn = dyn FnOnce(&mut SessionCfg) + Send + Sync + 'static;
 
 ////////// Types used for startup and reloading
 
@@ -216,10 +206,7 @@ type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
 pub type Channels = (Sender<DuatEvent>, Receiver<DuatEvent>, Sender<ReloadEvent>);
 /// Items that will live for the duration of Duat
 #[doc(hidden)]
-pub type MetaStatics = (
-    &'static <Ui as ui::Ui>::MetaStatics,
-    &'static Mutex<Clipboard>,
-);
+pub type MetaStatics = (Ui, &'static Mutex<Clipboard>);
 /// Initial setup items
 #[doc(hidden)]
 pub type Initials = (

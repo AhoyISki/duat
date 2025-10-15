@@ -18,7 +18,7 @@ use crate::{
     cfg::PrintCfg,
     file::{File, Parser},
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
-    ui::{Area, Ui, Widget},
+    ui::{traits::Area, Widget},
 };
 
 /// The [`Selection`] and [`Selections`] structs
@@ -67,23 +67,23 @@ mod selections;
 /// [`replace`]: Cursor::replace
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
-pub struct Cursor<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> {
+pub struct Cursor<'a, W: Widget + ?Sized, S> {
     initial: Selection,
     selection: Selection,
     n: usize,
     was_main: bool,
     widget: &'a mut W,
-    area: &'a A,
+    area: &'a dyn Area,
     next_i: Option<Rc<Cell<usize>>>,
     inc_searcher: &'a mut S,
     is_copy: bool,
 }
 
-impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
+impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
         (selection, n, was_main): (Selection, usize, bool),
-        (widget, area): (&'a mut W, &'a A),
+        (widget, area): (&'a mut W, &'a dyn Area),
         next_i: Option<Rc<Cell<usize>>>,
         searcher: &'a mut S,
         is_copy: bool,
@@ -371,7 +371,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     /// you [destroy] it.
     ///
     /// [destroy]: Self::destroy
-    pub fn copy(&mut self) -> Cursor<'_, W, A, S> {
+    pub fn copy(&mut self) -> Cursor<'_, W, S> {
         Cursor::new(
             (self.selection.clone(), self.n, false),
             (self.widget, self.area),
@@ -648,11 +648,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursor<'a, W, A, S> {
     }
 }
 
-impl<U: Ui, S> Cursor<'_, File<U>, U::Area, S> {
+impl<S> Cursor<'_, File, S> {
     /// Reads the [`Bytes`] and a [`Parser`]
     ///
     /// [`Bytes`]: crate::text::Bytes
-    pub fn read_parser<Rd: Parser<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
+    pub fn read_parser<Rd: Parser, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
         self.widget.read_parser(read)
     }
 }
@@ -660,7 +660,7 @@ impl<U: Ui, S> Cursor<'_, File<U>, U::Area, S> {
 /// Incremental search functions, only available on [`IncSearcher`]s
 ///
 /// [`IncSearcher`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearcher.html
-impl<W: Widget<A::Ui> + ?Sized, A: Area> Cursor<'_, W, A, Searcher> {
+impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     /// Search incrementally from an [`IncSearch`] request
     ///
     /// This will match the Regex pattern from the current position of
@@ -712,9 +712,7 @@ impl<W: Widget<A::Ui> + ?Sized, A: Area> Cursor<'_, W, A, Searcher> {
 // borrowing from said W, and you can only get a Cursor from Handles.
 // Thus, the only thing which may have been dropped is the Selections
 // within, which are accounted for.
-unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + ?Sized + 'a, A: Area + 'a, S: 'a> Drop
-    for Cursor<'a, W, A, S>
-{
+unsafe impl<#[may_dangle] 'a, W: Widget + ?Sized + 'a, S: 'a> Drop for Cursor<'a, W, S> {
     fn drop(&mut self) {
         let selection = std::mem::take(&mut self.selection);
         let ([inserted_i, selections_taken], last_selection_overhangs) = self
@@ -738,7 +736,7 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + ?Sized + 'a, A: Area + 'a, S: '
     }
 }
 
-impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> std::fmt::Debug for Cursor<'a, W, A, S> {
+impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Cursor")
             .field("selection", &self.selection)
@@ -747,19 +745,19 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> std::fmt::Debug for Cursor<'a, W
 }
 
 /// An [`Iterator`] overf all [`Cursor`]s
-pub struct Cursors<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> {
+pub struct Cursors<'a, W: Widget + ?Sized, S> {
     next_i: Rc<Cell<usize>>,
     widget: &'a mut W,
-    area: &'a A,
+    area: &'a dyn Area,
     inc_searcher: RefMut<'a, S>,
 }
 
-impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursors<'a, W, A, S> {
+impl<'a, W: Widget + ?Sized, S> Cursors<'a, W, S> {
     /// Creates a new [`Cursors`]
     pub(crate) fn new(
         next_i: usize,
         widget: &'a mut W,
-        area: &'a A,
+        area: &'a dyn Area,
         inc_searcher: RefMut<'a, S>,
     ) -> Self {
         Self {
@@ -771,11 +769,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Cursors<'a, W, A, S> {
     }
 }
 
-impl<'a, 'lend, W: Widget<A::Ui> + ?Sized, A: Area, S> Lending<'lend> for Cursors<'a, W, A, S> {
-    type Lend = Cursor<'lend, W, A, S>;
+impl<'a, 'lend, W: Widget + ?Sized, S> Lending<'lend> for Cursors<'a, W, S> {
+    type Lend = Cursor<'lend, W, S>;
 }
 
-impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Lender for Cursors<'a, W, A, S> {
+impl<'a, W: Widget + ?Sized, S> Lender for Cursors<'a, W, S> {
     fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
         let current_i = self.next_i.get();
         let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
@@ -794,17 +792,17 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Lender for Cursors<'a, W, A, S> 
 pub trait PointOrPoints {
     /// Internal movement function for monomorphization
     #[doc(hidden)]
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>);
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>);
 }
 
 impl PointOrPoints for Point {
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.selection.move_to(self, cursor.widget.text());
     }
 }
 
 impl PointOrPoints for Range<Point> {
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         assert!(
             self.start <= self.end,
             "slice index start is larger than end"
@@ -822,7 +820,7 @@ impl PointOrPoints for Range<Point> {
 }
 
 impl PointOrPoints for RangeInclusive<Point> {
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         assert!(
             self.start() <= self.end(),
             "slice index start is larger than end"
@@ -837,7 +835,7 @@ impl PointOrPoints for RangeInclusive<Point> {
 }
 
 impl PointOrPoints for RangeFrom<Point> {
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.selection.move_to(self.start, cursor.widget.text());
         if self.start < cursor.text().len() {
             cursor.set_anchor();
@@ -850,7 +848,7 @@ impl PointOrPoints for RangeFrom<Point> {
 }
 
 impl PointOrPoints for RangeTo<Point> {
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         if Point::default() < self.end {
             cursor.set_anchor();
@@ -861,7 +859,7 @@ impl PointOrPoints for RangeTo<Point> {
 }
 
 impl PointOrPoints for RangeToInclusive<Point> {
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
         cursor.selection.move_to(self.end, cursor.widget.text());
@@ -869,7 +867,7 @@ impl PointOrPoints for RangeToInclusive<Point> {
 }
 
 impl PointOrPoints for RangeFull {
-    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
         cursor

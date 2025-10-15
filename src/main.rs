@@ -16,12 +16,11 @@ use std::{
     time::Instant,
 };
 
-use duat::{Channels, Initials, MetaStatics, crate_dir, pre_setup, prelude::*, run_duat};
+use duat::{Channels, Initials, MetaStatics, pre_setup, prelude::*, run_duat, utils::crate_dir};
 use duat_core::{
     clipboard::Clipboard,
     context,
     session::{DuatEvent, ReloadEvent, ReloadedFile},
-    ui::{self, GetOnce, Ui as UiTrait},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
@@ -103,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (duat_tx, mut duat_rx) = mpsc::channel();
     duat_core::context::set_sender(duat_tx.clone());
 
-    let ms = <Ui as ui::Ui>::MetaStatics::get_once().unwrap();
+    let ui = duat_core::ui::Ui::new::<UiImplementation>();
 
     // Assert that the configuration crate actually exists.
     let (crate_dir, profile) = {
@@ -120,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(crate_dir) = crate_dir {
             (crate_dir, profile)
         } else {
-            Ui::open(ms, duat_core::session::DuatSender::new(duat_tx.clone()));
+            ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
 
             if args.no_load {
                 context::info!("Opened with the default configuration");
@@ -130,13 +129,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             pre_setup(None, None);
             run_duat(
-                (ms, &CLIPBOARD),
+                (ui, &CLIPBOARD),
                 get_files(args, Path::new(""), "")?,
                 duat_rx,
                 None,
             );
 
-            Ui::close(ms);
+            ui.close();
             return Ok(());
         }
     };
@@ -211,7 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (reload_tx, reload_rx) = mpsc::channel();
     spawn_reloader(reload_rx, config_tx.clone(), duat_tx.clone());
 
-    Ui::open(ms, duat_core::session::DuatSender::new(duat_tx.clone()));
+    ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
 
     loop {
         let running_lib = lib.take();
@@ -226,11 +225,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(run_duat) = run_fn.take() {
                     let initials = (logs.clone(), forms_init, (crate_dir, profile));
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
-                    run_duat(initials, (ms, clipb), files, channel)
+                    run_duat(initials, (ui, clipb), files, channel)
                 } else {
                     context::error!("No config at [a]{crate_dir}[], loading default");
                     pre_setup(None, None);
-                    run_duat((ms, clipb), files, duat_rx, Some(reload_tx))
+                    run_duat((ui, clipb), files, duat_rx, Some(reload_tx))
                 }
             })
             .join()
@@ -257,7 +256,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         lib = unsafe { Library::new(config_path) }.ok();
     }
 
-    Ui::close(ms);
+    ui.close();
 
     Ok(())
 }
@@ -266,8 +265,8 @@ fn get_files(
     args: Args,
     crate_dir: &'static Path,
     profile: &'static str,
-) -> Result<Vec<Vec<ReloadedFile<Ui>>>, Box<dyn std::error::Error>> {
-    let files: Vec<ReloadedFile<Ui>> = args
+) -> Result<Vec<Vec<ReloadedFile>>, Box<dyn std::error::Error>> {
+    let files: Vec<ReloadedFile> = args
         .cfg
         .then(|| crate_dir.join("src").join("lib.rs"))
         .into_iter()
@@ -606,6 +605,12 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
 type RunFn = fn(
     Initials,
     MetaStatics,
-    Vec<Vec<ReloadedFile<Ui>>>,
+    Vec<Vec<ReloadedFile>>,
     Channels,
-) -> (Vec<Vec<ReloadedFile<Ui>>>, Receiver<DuatEvent>);
+) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>);
+
+#[cfg(feature = "term-ui")]
+type UiImplementation = duat_term::Ui;
+
+#[cfg(not(feature = "term-ui"))]
+compile_error!("No Ui was chosen to compile Duat with");

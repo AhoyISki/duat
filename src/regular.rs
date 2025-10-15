@@ -6,7 +6,6 @@ use duat_treesitter::TsCursor;
 use duat_utils::modes::{IncSearch, RunCommands, SearchFwd};
 
 use crate::{
-    Ui,
     prelude::{
         Handle, cmd,
         data::Pass,
@@ -28,7 +27,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Regular;
 
-impl mode::Mode<Ui> for Regular {
+impl mode::Mode for Regular {
     type Widget = File;
 
     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {

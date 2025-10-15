@@ -635,19 +635,19 @@
     iter_array_chunks,
     thread_spawn_hook,
     box_as_ptr,
-    default_field_values
+    default_field_values,
+    const_trait_impl,
+    const_cmp
 )]
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
 
-use std::{any::TypeId, sync::OnceLock};
+use std::any::TypeId;
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use main_thread_only::MainThreadOnly;
 use parking_lot::Mutex;
-
-use self::ui::Ui;
 
 pub mod prelude {
     //! The prelude of Duat
@@ -738,29 +738,24 @@ pub mod utils;
 ///
 /// [plugged]: Plugin::plug
 /// [`PhantomData`]: std::marker::PhantomData
-pub trait Plugin<U: Ui>: 'static {
+pub trait Plugin: 'static {
     /// Sets up the [`Plugin`]
-    fn plug(self, plugins: &Plugins<U>);
+    fn plug(self, plugins: &Plugins);
 }
 
-static PLUGINS: OnceLock<Box<dyn std::any::Any + Send + Sync>> = OnceLock::new();
+static PLUGINS: Plugins = Plugins(MainThreadOnly::new(Mutex::new(Vec::new())));
 
 /// A struct for [`Plugin`]s to declare dependencies on other
 /// [`Plugin`]s
-pub struct Plugins<'a, U: Ui>(&'a MainThreadOnly<Mutex<Vec<(PluginFn<U>, TypeId)>>>);
+pub struct Plugins(MainThreadOnly<Mutex<Vec<(PluginFn, TypeId)>>>);
 
-impl<U: Ui> Plugins<'_, U> {
+impl Plugins {
     /// Returnss a new instance of [`Plugins`]
     ///
     /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
-    pub fn _new() -> Self {
-        let plugins = PLUGINS.get_or_init(|| {
-            Box::new(MainThreadOnly::new(Mutex::new(
-                Vec::<(PluginFn<U>, TypeId)>::new(),
-            )))
-        });
-        Self(plugins.downcast_ref().expect("Used two different Uis."))
+    pub fn _new() -> &'static Self {
+        &PLUGINS
     }
 
     /// Require that a [`Plugin`] be added
@@ -775,7 +770,7 @@ impl<U: Ui> Plugins<'_, U> {
     /// > calling the [`plug!`] macro, is allowed to do that.
     ///
     /// [`plug!`]: https://docs.rs/duat/latest/duat/macro.plug.html
-    pub fn require<P: Plugin<U> + Default>(&self) {
+    pub fn require<P: Plugin + Default>(&self) {
         // SAFETY: This function can only push new elements to the list, not
         // accessing the !Send functions within.
         let mut plugins = unsafe { self.0.get() }.lock();
@@ -970,7 +965,7 @@ pub const fn priority(priority: &str) -> u8 {
     val as u8
 }
 
-type PluginFn<U> = Option<Box<dyn FnOnce(&Plugins<U>)>>;
+type PluginFn = Option<Box<dyn FnOnce(&Plugins)>>;
 
 #[cfg(doctest)]
 /// ```rust

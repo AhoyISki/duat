@@ -9,7 +9,7 @@ use duat_core::{
     context,
     form::{CONTROL_CHAR_ID, Painter},
     text::{FwdIter, Item, Part, Point, RevIter, SpawnId, Text, txt},
-    ui::{self, Caret, MutArea, PushSpecs, SpawnSpecs},
+    ui::{self, Caret, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -259,52 +259,46 @@ impl Area {
     }
 }
 
-impl ui::Area for Area {
+impl ui::traits::Area for Area {
     type Cache = PrintInfo;
     type PrintInfo = PrintInfo;
-    type Ui = crate::Ui;
 
     /////////// Modification
 
     fn push(
-        area: MutArea<Self>,
+        &mut self,
         specs: PushSpecs,
         on_files: bool,
         cache: PrintInfo,
     ) -> Option<(Area, Option<Area>)> {
-        let (child, parent) = area.layouts.push(area.id, specs, on_files, cache)?;
+        let (child, parent) = self.layouts.push(self.id, specs, on_files, cache)?;
 
         Some((
-            Self::new(child, area.layouts.clone()),
-            parent.map(|parent| Self::new(parent, area.layouts.clone())),
+            Self::new(child, self.layouts.clone()),
+            parent.map(|parent| Self::new(parent, self.layouts.clone())),
         ))
     }
 
-    fn delete(area: MutArea<Self>) -> (bool, Vec<Self>) {
-        let (do_rm_window, rm_areas) = area.layouts.delete(area.id);
+    fn delete(&mut self) -> (bool, Vec<Self>) {
+        let (do_rm_window, rm_areas) = self.layouts.delete(self.id);
         (
             do_rm_window,
             rm_areas
                 .into_iter()
-                .map(|id| Self::new(id, area.layouts.clone()))
+                .map(|id| Self::new(id, self.layouts.clone()))
                 .collect(),
         )
     }
 
-    fn swap(lhs: MutArea<Self>, rhs: &Self) -> bool {
-        lhs.layouts.swap(lhs.id, rhs.id)
+    fn swap(&mut self, rhs: &mut Self) -> bool {
+        self.layouts.swap(self.id, rhs.id)
     }
 
-    fn spawn(
-        area: MutArea<Self>,
-        spawn_id: SpawnId,
-        specs: SpawnSpecs,
-        cache: Self::Cache,
-    ) -> Option<Self> {
+    fn spawn(&mut self, spawn_id: SpawnId, specs: SpawnSpecs, cache: Self::Cache) -> Option<Self> {
         Some(Self::new(
-            area.layouts
-                .spawn_on_widget(area.id, spawn_id, specs, cache)?,
-            area.layouts.clone(),
+            self.layouts
+                .spawn_on_widget(self.id, spawn_id, specs, cache)?,
+            self.layouts.clone(),
         ))
     }
 
@@ -386,23 +380,18 @@ impl ui::Area for Area {
 
     ////////// Printing
 
-    fn scroll_around_point(&self, text: &Text, p: Point, cfg: PrintCfg) {
+    fn scroll_around_points(&self, text: &Text, p: (Point, Option<Point>), cfg: PrintCfg) {
         let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        info.scroll_around(p, coords, text, cfg);
+        info.scroll_around(p.0, coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn scroll_to_points(
-        &self,
-        text: &Text,
-        points: impl duat_core::text::TwoPoints,
-        cfg: PrintCfg,
-    ) {
+    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg) {
         let Some((coords, _)) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -433,7 +422,7 @@ impl ui::Area for Area {
 
     ////////// Queries
 
-    fn set_print_info(&self, info: Self::PrintInfo) {
+    fn set_print_info(&mut self, info: Self::PrintInfo) {
         self.layouts.set_info_of(self.id, info);
     }
 
@@ -441,17 +430,26 @@ impl ui::Area for Area {
         &self,
         iter: FwdIter<'a>,
         cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
         let points = iter.points();
-        print_iter(iter, cfg.wrap_width(self.width() as u32), cfg, points)
+        Box::new(print_iter(
+            iter,
+            cfg.wrap_width(self.width() as u32),
+            cfg,
+            points,
+        ))
     }
 
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
         cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        rev_print_iter(iter, cfg.wrap_width(self.width() as u32), cfg)
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
+        Box::new(rev_print_iter(
+            iter,
+            cfg.wrap_width(self.width() as u32),
+            cfg,
+        ))
     }
 
     fn has_changed(&self) -> bool {
@@ -535,7 +533,7 @@ impl ui::Area for Area {
         end_points
     }
 
-    fn print_info(&self) -> Self::PrintInfo {
+    fn get_print_info(&self) -> Self::PrintInfo {
         self.layouts.get_info_of(self.id).unwrap_or_default()
     }
 
