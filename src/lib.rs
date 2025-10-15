@@ -61,7 +61,7 @@ pub trait FileType {
     fn filetype(&self) -> Option<&'static str>;
 }
 
-impl<U: duat_core::ui::Ui> FileType for File<U> {
+impl FileType for File {
     fn filetype(&self) -> Option<&'static str> {
         PathBuf::from(self.path_set()?).filetype()
     }
@@ -105,13 +105,13 @@ pub trait PassFileType {
     fn filetype(&self, pa: &Pass) -> Option<&'static str>;
 }
 
-impl<U: Ui> PassFileType for RwData<File<U>> {
+impl PassFileType for RwData<File> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa).filetype()
     }
 }
 
-impl<U: Ui> PassFileType for Handle<File<U>, U> {
+impl PassFileType for Handle<File> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa).filetype()
     }
