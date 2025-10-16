@@ -2,14 +2,14 @@ use std::sync::atomic::Ordering;
 
 use duat::{
     mode::{KeyCode::*, KeyMod as Mod, VPoint},
+    opts::WordChars,
     prelude::*,
-    print::WordChars,
     text::Point,
 };
 use duat_utils::modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
 };
-use jump_list::FileJumps;
+use jump_list::BufferJumps;
 use treesitter::TsCursor;
 
 use crate::{
@@ -80,16 +80,17 @@ impl Normal {
     /// Makes the `'f'` and `'t'` keys set the search pattern
     ///
     /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
-    /// will search for the next instance of an `'m'` in the [`File`]
+    /// will search for the next instance of an `'m'` in the
+    /// [`Buffer`]
     pub fn f_and_t_set_search(self) -> Self {
         Self { f_and_t_set_search: true, ..self }
     }
 }
 
 impl Mode for Normal {
-    type Widget = File;
+    type Widget = Buffer;
 
-    fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
         let wc = handle.cfg(pa).word_chars;
 
         handle.write(pa).text_mut().new_moment();
@@ -828,7 +829,7 @@ impl Mode for Normal {
         }
     }
 
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget>) {
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle) {
         handle.set_mask("Normal");
     }
 }

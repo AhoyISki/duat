@@ -256,13 +256,13 @@
 //! Go to the last line.
 //!
 //! `a`\
-//! Go to the previous [`File`].
+//! Go to the previous [`Buffer`].
 //!
 //! `n`\
-//! Go to the next [`File`] (includes other windows).
+//! Go to the next [`Buffer`] (includes other windows).
 //!
 //! `N`\
-//! Go to the previous [`File`] (includes other windows).
+//! Go to the previous [`Buffer`] (includes other windows).
 //!
 //! [kakoune]: https://github.com/mawww/kakoune
 //! [word chars]: duat_core::cfg::word_chars
@@ -271,7 +271,7 @@
 //! [`Cursor`]: duat_core::mode::Cursor
 //! [Undoes]: duat_core::text::Text::undo
 //! [Redoes]: duat_core::text::Text::redo
-//! [`File`]: duat_core::file::File
+//! [`Buffer`]: duat_core::buffer::Buffer
 //! [`Cargo.toml`'s `dependencies` section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [`IncSearch`]: duat_utils::modes::IncSearch
 //! [`IncSearcher`]: duat_utils::modes::IncSearcher
@@ -286,8 +286,8 @@ use std::{
 
 use duat::{
     mode::{self, Cursor, KeyCode::*},
+    opts::WordChars,
     prelude::*,
-    print::WordChars,
     text::Point,
 };
 
@@ -379,7 +379,8 @@ impl Kak {
     /// Makes the `'f'` and `'t'` keys set the search pattern
     ///
     /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
-    /// will search for the next instance of an `'m'` in the [`File`]
+    /// will search for the next instance of an `'m'` in the
+    /// [`Buffer`]
     pub fn f_and_t_set_search(self) -> Self {
         Self {
             normal: self.normal.f_and_t_set_search(),
@@ -418,11 +419,11 @@ impl Default for Kak {
 
 ////////// Cursor utility functions
 
-fn edit_or_destroy_all<S>(
+fn edit_or_destroy_all(
     pa: &mut Pass,
-    handle: &Handle<File, S>,
+    handle: &Handle,
     failed_at_least_once: &mut bool,
-    mut f: impl FnMut(&mut Cursor<File, S>) -> Option<()> + Clone,
+    mut f: impl FnMut(&mut Cursor) -> Option<()> + Clone,
 ) {
     handle.edit_all(pa, move |mut c| {
         let ret: Option<()> = f(&mut c);
@@ -434,7 +435,7 @@ fn edit_or_destroy_all<S>(
     })
 }
 
-fn select_to_end_of_line<S>(set_anchor: bool, mut c: Cursor<File, S>) {
+fn select_to_end_of_line(set_anchor: bool, mut c: Cursor) {
     set_anchor_if_needed(set_anchor, &mut c);
     c.set_desired_vcol(usize::MAX);
     let pre_nl = match c.char() {
@@ -446,7 +447,7 @@ fn select_to_end_of_line<S>(set_anchor: bool, mut c: Cursor<File, S>) {
     }
 }
 
-fn set_anchor_if_needed<S>(set_anchor: bool, c: &mut Cursor<File, S>) {
+fn set_anchor_if_needed(set_anchor: bool, c: &mut Cursor) {
     if set_anchor {
         if c.anchor().is_none() {
             c.set_anchor();
@@ -547,7 +548,7 @@ impl<'a> Object<'a> {
 
     fn find_ahead<S>(
         self,
-        c: &mut Cursor<File, S>,
+        c: &mut Cursor<Buffer, S>,
         s_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
@@ -578,7 +579,7 @@ impl<'a> Object<'a> {
 
     fn find_behind<S>(
         self,
-        c: &mut Cursor<File, S>,
+        c: &mut Cursor<Buffer, S>,
         c_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {

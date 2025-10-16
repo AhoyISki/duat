@@ -21,9 +21,9 @@ pub(crate) enum OneKey {
 }
 
 impl Mode for OneKey {
-    type Widget = File;
+    type Widget = Buffer;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
         let sel_type = match *self {
             OneKey::GoTo(st) => match_goto(pa, &handle, key, st),
             OneKey::Find(st, ss) | OneKey::Until(st, ss) if let Some(char) = just_char(key) => {
@@ -55,17 +55,12 @@ impl Mode for OneKey {
         mode::set(Normal::new_with_sel_type(sel_type));
     }
 
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget>) {
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle) {
         handle.set_mask("OneKey");
     }
 }
 
-fn match_goto<S>(
-    pa: &mut Pass,
-    handle: &Handle<File, S>,
-    key: KeyEvent,
-    mut sel_type: SelType,
-) -> SelType {
+fn match_goto(pa: &mut Pass, handle: &Handle, key: KeyEvent, mut sel_type: SelType) -> SelType {
     static LAST_FILE: LazyLock<Mutex<Option<String>>> = LazyLock::new(Mutex::default);
 
     let cur_name = handle.read(pa).name();
@@ -130,7 +125,7 @@ fn match_goto<S>(
     sel_type
 }
 
-fn match_find_until(pa: &mut Pass, handle: Handle<File, ()>, char: char, is_t: bool, st: SelType) {
+fn match_find_until(pa: &mut Pass, handle: Handle, char: char, is_t: bool, st: SelType) {
     use SelType::*;
     handle.edit_all(pa, |mut c| {
         let search = format!("\\x{{{:X}}}", char as u32);
@@ -160,7 +155,7 @@ fn match_find_until(pa: &mut Pass, handle: Handle<File, ()>, char: char, is_t: b
 
 fn match_inside_around(
     pa: &mut Pass,
-    handle: Handle<File, ()>,
+    handle: Handle,
     event: KeyEvent,
     brackets: Brackets,
     is_inside: bool,

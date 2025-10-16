@@ -54,9 +54,9 @@ impl Default for Insert {
 }
 
 impl Mode for Insert {
-    type Widget = File;
+    type Widget = Buffer;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
         if let key!(Left | Down | Up | Right, mods) = key
             && mods.contains(Mod::SHIFT)
         {
@@ -167,13 +167,13 @@ impl Mode for Insert {
         }
     }
 
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget>) {
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle) {
         handle.set_mask("Insert");
     }
 }
 
 /// removes an empty line
-fn remove_empty_line<S>(c: &mut Cursor<File, S>) {
+fn remove_empty_line(c: &mut Cursor) {
     let mut lines = c.lines_on(c.caret()..);
     let (_, line) = lines.next().unwrap();
     if !line.chars().all(char::is_whitespace) || line.is_empty() {

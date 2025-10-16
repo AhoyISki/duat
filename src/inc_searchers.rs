@@ -5,7 +5,7 @@ use duat_utils::modes::IncSearcher;
 pub(crate) struct Select;
 
 impl IncSearcher for Select {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             if let Some(anchor) = c.anchor() {
@@ -37,7 +37,7 @@ impl IncSearcher for Select {
 pub(crate) struct Split;
 
 impl IncSearcher for Split {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             if let Some(anchor) = c.anchor() {
