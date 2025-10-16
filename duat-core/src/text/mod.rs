@@ -495,10 +495,10 @@ impl Text {
         for (i, change) in changes.enumerate() {
             self.apply_change_inner(0, change);
 
-            let start = change.start();
+            let start = change.start().min(self.last_point());
             let added_end = match change.added_str().chars().next_back() {
                 Some(last) => change.added_end().rev(last),
-                None => change.start(),
+                None => start,
             };
 
             let selection = Selection::new(added_end, (start != added_end).then_some(start));
