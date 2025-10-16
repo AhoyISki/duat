@@ -13,10 +13,11 @@ use std::sync::{
 };
 
 use duat_core::{
-    context::{Level, Record},
-    hook::KeysSent,
-    prelude::*,
-    ui::{PushTarget, Side},
+    context::{self, Handle, Level, Record},
+    data::Pass,
+    hook::{self, KeysSent},
+    text::{Text, txt},
+    ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
 /// A [`Widget`] to show notifications
@@ -36,7 +37,7 @@ use duat_core::{
 /// fn setup() {
 ///     hook::remove("WindowWidgets");
 ///     hook::add::<WindowCreated>(|_, builder| {
-///         let footer = FooterWidgets::default().notifs(Notifications::cfg().formatted(|rec| {
+///         let footer = FooterWidgets::default().notifs(Notifications::opts().formatted(|rec| {
 ///             txt!(
 ///                 "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
 ///                 rec.target(),
@@ -97,7 +98,7 @@ impl Widget for Notifications {
                 let notifs = handle.read(pa);
                 handle
                     .area()
-                    .request_width_to_fit(pa, notifs.get_print_cfg(), &notifs.text)
+                    .request_width_to_fit(pa, notifs.get_print_opts(), &notifs.text)
                     .unwrap();
             }
         } else if clear_notifs {
@@ -108,7 +109,7 @@ impl Widget for Notifications {
                 let notifs = handle.read(pa);
                 handle
                     .area()
-                    .request_width_to_fit(pa, notifs.get_print_cfg(), &notifs.text)
+                    .request_width_to_fit(pa, notifs.get_print_opts(), &notifs.text)
                     .unwrap();
             }
         }

@@ -43,7 +43,7 @@ macro_rules! doc_duat {
                 pub use $crate::{
                     Plugin, clipboard, context,
                     data::{self, Pass, RwData},
-                    file,
+                    buffer,
                     form::{self, CursorShape, Form},
                     text::{
                         self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer,
@@ -363,7 +363,7 @@ macro_rules! doc_duat {
                     type Cfg = LineNumbersOptions<U>;
                     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
                     fn needs_update(&self, _: &Pass) -> bool { false }
-                    fn cfg() -> Self::Cfg { LineNumbersOptions(PhantomData) }
+                    fn opts() -> Self::Cfg { LineNumbersOptions(PhantomData) }
                     fn text(&self) -> &Text { &self.0 }
                     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
                     fn once() -> Result<(), Text> { Ok(()) }
@@ -395,7 +395,7 @@ macro_rules! doc_duat {
                     type Cfg = StatusLineCfg<U>;
                     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
                     fn needs_update(&self, _: &Pass) -> bool { false }
-                    fn cfg() -> Self::Cfg { StatusLineCfg(PhantomData) }
+                    fn opts() -> Self::Cfg { StatusLineCfg(PhantomData) }
                     fn text(&self) -> &Text { &self.0 }
                     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
                     fn once() -> Result<(), Text> { Ok(()) }
@@ -432,7 +432,7 @@ macro_rules! doc_duat {
                     type Cfg = PromptLineCfg<U>;
                     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
                     fn needs_update(&self, _: &Pass) -> bool { false }
-                    fn cfg() -> Self::Cfg { PromptLineCfg(PhantomData) }
+                    fn opts() -> Self::Cfg { PromptLineCfg(PhantomData) }
                     fn text(&self) -> &Text { &self.0 }
                     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
                     fn once() -> Result<(), Text> { Ok(()) }
@@ -458,7 +458,7 @@ macro_rules! doc_duat {
                     type Cfg = NotificationsCfg<U>;
                     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
                     fn needs_update(&self, _: &Pass) -> bool { false }
-                    fn cfg() -> Self::Cfg { NotificationsCfg(PhantomData) }
+                    fn opts() -> Self::Cfg { NotificationsCfg(PhantomData) }
                     fn text(&self) -> &Text { &self.0 }
                     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
                     fn once() -> Result<(), Text> { Ok(()) }
@@ -487,7 +487,7 @@ macro_rules! doc_duat {
                     type Cfg = LogBookCfg<U>;
                     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
                     fn needs_update(&self, _: &Pass) -> bool { false }
-                    fn cfg() -> Self::Cfg { LogBookCfg(PhantomData) }
+                    fn opts() -> Self::Cfg { LogBookCfg(PhantomData) }
                     fn text(&self) -> &Text { &self.0 }
                     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
                     fn once() -> Result<(), Text> { Ok(()) }

@@ -21,18 +21,18 @@ use crossterm::event::KeyEvent;
 
 use crate::{
     Plugins,
-    opts::PrintOpts,
+    buffer::Buffer,
     clipboard::Clipboard,
     cmd,
     context::{self, Cache, sender},
     data::Pass,
-    buffer::Buffer,
     form,
     hook::{
-        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, BufferClosed, BufferReloaded, FocusedOnDuat,
-        UnfocusedFromDuat,
+        self, BufferClosed, BufferReloaded, ConfigLoaded, ConfigUnloaded, ExitedDuat,
+        FocusedOnDuat, UnfocusedFromDuat,
     },
     mode,
+    opts::PrintOpts,
     ui::{
         Ui, Windows,
         layout::{Layout, MasterOnLeft},
@@ -60,7 +60,7 @@ impl SessionCfg {
     pub fn build(
         self,
         ui: Ui,
-        files: Vec<Vec<ReloadedBuffer>>,
+        buffers: Vec<Vec<ReloadedBuffer>>,
         already_plugged: Vec<TypeId>,
     ) -> Session {
         ui.setup_default_print_info();
@@ -91,22 +91,22 @@ impl SessionCfg {
 
         let mut layout = Some(self.layout);
 
-        for mut rel_files in files.into_iter().map(|rf| rf.into_iter()) {
-            let ReloadedBuffer { mut file, is_active } = rel_files.next().unwrap();
-            *file.cfg() = *FILE_CFG.get().unwrap();
+        for mut rel_files in buffers.into_iter().map(|rf| rf.into_iter()) {
+            let ReloadedBuffer { mut buffer, is_active } = rel_files.next().unwrap();
+            buffer.opts = *FILE_CFG.get().unwrap();
 
             if let Some(layout) = layout.take() {
-                Windows::initialize(pa, file, layout, ui);
+                Windows::initialize(pa, buffer, layout, ui);
             } else {
-                let node = context::windows().new_window(pa, file);
+                let node = context::windows().new_window(pa, buffer);
                 if is_active {
                     context::set_current_node(pa, node);
                 }
             }
 
-            for ReloadedBuffer { mut file, is_active } in rel_files {
-                *file.cfg() = *FILE_CFG.get().unwrap();
-                let node = context::windows().new_file(pa, file);
+            for ReloadedBuffer { mut buffer, is_active } in rel_files {
+                buffer.opts = *FILE_CFG.get().unwrap();
+                let node = context::windows().new_file(pa, buffer);
                 if is_active {
                     context::set_current_node(pa, node);
                 }
@@ -247,9 +247,9 @@ impl Session {
                         }
 
                         let ui = self.ui;
-                        let files = self.take_files(pa);
+                        let buffers = self.take_files(pa);
                         ui.unload();
-                        return (files, duat_rx);
+                        return (buffers, duat_rx);
                     }
                     DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
@@ -275,7 +275,7 @@ impl Session {
     }
 
     fn take_files(self, pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
-        let files =
+        let buffers =
             context::windows()
                 .entries(pa)
                 .fold(Vec::new(), |mut file_handles, (win, _, node)| {
@@ -290,17 +290,17 @@ impl Session {
                     file_handles
                 });
 
-        files
+        buffers
             .into_iter()
-            .map(|files| {
-                files
+            .map(|buffers| {
+                buffers
                     .into_iter()
                     .map(|handle| {
-                        let (file, area) = handle.write_with_area(pa);
-                        let file = file.prepare_for_reloading();
+                        let (buffer, area) = handle.write_with_area(pa);
+                        let buffer = buffer.prepare_for_reloading();
                         let is_active = area.is_active();
 
-                        ReloadedBuffer { file, is_active }
+                        ReloadedBuffer { buffer, is_active }
                     })
                     .collect()
             })
@@ -385,18 +385,19 @@ impl DuatSender {
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
 pub struct ReloadedBuffer {
-    file: Buffer,
+    buffer: Buffer,
     is_active: bool,
 }
 
 impl ReloadedBuffer {
-    /// Creates a new [`BufferParts`] from parts gathered from arguments
+    /// Creates a new [`BufferParts`] from parts gathered from
+    /// arguments
     ///
     /// **MEANT TO BE USED BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
     pub fn by_args(path: Option<PathBuf>, is_active: bool) -> Result<Self, std::io::Error> {
         Ok(Self {
-            file: Buffer::new(path, PrintOpts::default_for_input()),
+            buffer: Buffer::new(path, PrintOpts::default_for_input()),
             is_active,
         })
     }

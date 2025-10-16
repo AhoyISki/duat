@@ -242,8 +242,8 @@ impl Area {
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    pub fn request_width_to_fit(&self, pa: &Pass, cfg: PrintOpts, text: &Text) -> Result<(), Text> {
-        self.area.read(pa).request_width_to_fit(cfg, text)
+    pub fn request_width_to_fit(&self, pa: &Pass, opts: PrintOpts, text: &Text) -> Result<(), Text> {
+        self.area.read(pa).request_width_to_fit(opts, text)
     }
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
@@ -258,8 +258,8 @@ impl Area {
     ////////// Printing functions
 
     /// Prints the [`Text`] via an [`Iterator`]
-    pub fn print(&self, pa: &Pass, text: &Text, cfg: PrintOpts, painter: Painter) {
-        self.area.read(pa).print(text, cfg, painter)
+    pub fn print(&self, pa: &Pass, text: &Text, opts: PrintOpts, painter: Painter) {
+        self.area.read(pa).print(text, opts, painter)
     }
 
     /// Prints the [`Text`] with a callback function
@@ -267,11 +267,11 @@ impl Area {
         &self,
         pa: &Pass,
         text: &Text,
-        cfg: PrintOpts,
+        opts: PrintOpts,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        (self.fns.print_with)(pa, &self.area, text, cfg, painter, Box::new(f))
+        (self.fns.print_with)(pa, &self.area, text, opts, painter, Box::new(f))
     }
 
     /// The current printing information of the area
@@ -301,9 +301,9 @@ impl Area {
         &self,
         pa: &Pass,
         iter: FwdIter<'a>,
-        cfg: PrintOpts,
+        opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.area.read(pa).print_iter(iter, cfg)
+        self.area.read(pa).print_iter(iter, opts)
     }
 
     /// Returns a reversed printing iterator
@@ -320,9 +320,9 @@ impl Area {
         &self,
         pa: &Pass,
         iter: RevIter<'a>,
-        cfg: PrintOpts,
+        opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.area.read(pa).rev_print_iter(iter, cfg)
+        self.area.read(pa).rev_print_iter(iter, opts)
     }
 
     ////////// Points functions
@@ -332,8 +332,8 @@ impl Area {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    pub fn scroll_ver(&self, pa: &Pass, text: &Text, dist: i32, cfg: PrintOpts) {
-        self.area.read(pa).scroll_ver(text, dist, cfg);
+    pub fn scroll_ver(&self, pa: &Pass, text: &Text, dist: i32, opts: PrintOpts) {
+        self.area.read(pa).scroll_ver(text, dist, opts);
     }
 
     /// Scrolls the [`Text`] on all four directions until the given
@@ -352,11 +352,11 @@ impl Area {
         pa: &Pass,
         text: &Text,
         points: impl TwoPoints,
-        cfg: PrintOpts,
+        opts: PrintOpts,
     ) {
         self.area
             .read(pa)
-            .scroll_around_points(text, points.to_points(), cfg);
+            .scroll_around_points(text, points.to_points(), opts);
     }
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
@@ -370,20 +370,20 @@ impl Area {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::opts::WrapMethod
-    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: impl TwoPoints, cfg: PrintOpts) {
+    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: impl TwoPoints, opts: PrintOpts) {
         self.area
             .read(pa)
-            .scroll_to_points(text, points.to_points(), cfg);
+            .scroll_to_points(text, points.to_points(), opts);
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
-    pub fn start_points(&self, pa: &Pass, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>) {
-        self.area.read(pa).start_points(text, cfg)
+    pub fn start_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> (Point, Option<Point>) {
+        self.area.read(pa).start_points(text, opts)
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
-    pub fn end_points(&self, pa: &Pass, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>) {
-        self.area.read(pa).end_points(text, cfg)
+    pub fn end_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> (Point, Option<Point>) {
+        self.area.read(pa).end_points(text, opts)
     }
 
     /////////// Querying functions
@@ -522,10 +522,10 @@ impl AreaFunctions {
 
                 lhs.swap(rhs)
             },
-            print_with: |pa, area, text, print_cfg, painter, f| {
+            print_with: |pa, area, text, print_opts, painter, f| {
                 let area = area.read_as::<U::Area>(pa).unwrap();
 
-                area.print_with(text, print_cfg, painter, f);
+                area.print_with(text, print_opts, painter, f);
             },
             get_print_info: |pa, area| {
                 let area = area.read_as::<U::Area>(pa).unwrap();

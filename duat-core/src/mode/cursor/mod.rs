@@ -197,7 +197,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         }
     }
 
-    /// Edits the file with a [`Change`]
+    /// Edits the buffer with a [`Change`]
     fn edit(&mut self, change: Change) {
         let text = self.widget.text_mut();
         let (change_i, selections_taken) =
@@ -231,7 +231,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             count,
             self.widget.text(),
             self.area,
-            self.widget.get_print_cfg(),
+            self.widget.get_print_opts(),
         )
     }
 
@@ -244,7 +244,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             count,
             self.widget.text(),
             self.area,
-            self.widget.get_print_cfg(),
+            self.widget.get_print_opts(),
         );
     }
 
@@ -579,12 +579,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     pub fn indent(&self) -> usize {
         self.widget
             .text()
-            .indent(self.caret(), self.area, self.cfg())
+            .indent(self.caret(), self.area, self.opts())
     }
 
     /// Gets the indentation level on the given [`Point`]
     pub fn indent_on(&self, p: Point) -> usize {
-        self.widget.text().indent(p, self.area, self.cfg())
+        self.widget.text().indent(p, self.area, self.opts())
     }
 
     ////////// Selection queries
@@ -615,7 +615,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// in order to preven extraneous calculations
     pub fn v_caret(&self) -> VPoint {
         self.selection
-            .v_caret(self.widget.text(), self.area, self.widget.get_print_cfg())
+            .v_caret(self.widget.text(), self.area, self.widget.get_print_opts())
     }
 
     /// The [`VPoint`] of the anchor, if it exists
@@ -624,7 +624,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// in order to preven extraneous calculations
     pub fn v_anchor(&self) -> Option<VPoint> {
         self.selection
-            .v_anchor(self.widget.text(), self.area, self.widget.get_print_cfg())
+            .v_anchor(self.widget.text(), self.area, self.widget.get_print_opts())
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`
@@ -643,8 +643,8 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 
     /// The [`PrintOpts`] in use
-    pub fn cfg(&self) -> PrintOpts {
-        self.widget.get_print_cfg()
+    pub fn opts(&self) -> PrintOpts {
+        self.widget.get_print_opts()
     }
 }
 

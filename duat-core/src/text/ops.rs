@@ -55,7 +55,7 @@ impl Point {
         }
     }
 
-    /// Returns the byte (relative to the beginning of the file)
+    /// Returns the byte (relative to the beginning of the buffer)
     /// of self. Indexed at 0
     ///
     /// You can use byte indices to index the [`Text`] or [`Bytes`]
@@ -69,7 +69,7 @@ impl Point {
     }
 
     /// Returns the char index (relative to the beginning of the
-    /// file). Indexed at 0
+    /// buffer). Indexed at 0
     ///
     /// This is the primary value used when indexing the [`Text`] and
     /// [`Bytes`]. That is, the [`Bytes::point_at_byte`],

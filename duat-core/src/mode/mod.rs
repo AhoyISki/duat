@@ -304,7 +304,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///         &mut self.text
 ///     }
 ///
-///     fn cfg() -> Self::Cfg {
+///     fn opts() -> Self::Cfg {
 ///         MenuCfg
 ///     }
 ///
@@ -341,7 +341,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # }
 /// impl<U: Ui> Widget<U> for Menu {
 /// #     type Cfg = MenuCfg;
-/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn opts() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
@@ -392,7 +392,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # }
 /// # impl<U: Ui> Widget<U> for Menu {
 /// #     type Cfg = MenuCfg;
-/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn opts() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
 /// #     fn once() -> Result<(), Text> { Ok(()) }

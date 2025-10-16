@@ -216,7 +216,7 @@ impl<'a> Parameter<'a> for Buffer {
             .file_handles(pa)
             .find(|handle| handle.read(pa).name() == buffer_name)
         {
-            Ok((handle, Some(form::id_of!("param.file.open"))))
+            Ok((handle, Some(form::id_of!("param.buffer.open"))))
         } else {
             Err(txt!("No buffer called [a]{buffer_name}[] open").build())
         }
@@ -236,9 +236,9 @@ impl<'a> Parameter<'a> for OtherBuffer {
         let handle = args.next_as::<Buffer>(pa)?;
         let cur_handle = crate::context::cur_file(pa);
         if cur_handle == handle {
-            Err(txt!("Argument can't be the current file").build())
+            Err(txt!("Argument can't be the current buffer").build())
         } else {
-            Ok((handle, Some(form::id_of!("param.file.open"))))
+            Ok((handle, Some(form::id_of!("param.buffer.open"))))
         }
     }
 }
@@ -257,7 +257,7 @@ impl Parameter<'_> for ValidBuffer {
         let canon_path = path.canonicalize();
         let path = if let Ok(path) = &canon_path {
             if !path.is_file() {
-                return Err(txt!("Path is not a file").build());
+                return Err(txt!("Path is not a buffer").build());
             }
             path.clone()
         } else if canon_path.is_err()
@@ -265,7 +265,7 @@ impl Parameter<'_> for ValidBuffer {
         {
             canon_path.join(
                 path.file_name()
-                    .ok_or_else(|| txt!("Path has no file name"))?,
+                    .ok_or_else(|| txt!("Path has no buffer name"))?,
             )
         } else {
             return Err(txt!("Path was not found").build());
@@ -282,18 +282,18 @@ impl Parameter<'_> for ValidBuffer {
             .map(|handle| handle.read(pa).path())
             .any(|p| std::path::Path::new(&p) == path)
         {
-            form::id_of!("param.file.open")
+            form::id_of!("param.buffer.open")
         } else if let Ok(true) = path.try_exists() {
-            form::id_of!("param.file.exists")
+            form::id_of!("param.buffer.exists")
         } else {
-            form::id_of!("param.file")
+            form::id_of!("param.buffer")
         };
 
         Ok((path, Some(form)))
     }
 }
 
-/// A [`ValidBuffer`] or `--cfg` or `--cfg-manifest`
+/// A [`ValidBuffer`] or `--opts` or `--opts-manifest`
 pub(super) enum PathOrBufferOrCfg {
     Path(PathBuf),
     Buffer(Handle),
@@ -305,9 +305,9 @@ impl Parameter<'_> for PathOrBufferOrCfg {
     type Returns = Self;
 
     fn new(pa: &Pass, args: &mut Args<'_>) -> Result<(Self::Returns, Option<FormId>), Text> {
-        if args.flags.word("cfg") {
+        if args.flags.word("opts") {
             Ok((Self::Cfg, None))
-        } else if args.flags.word("cfg-manifest") {
+        } else if args.flags.word("opts-manifest") {
             Ok((Self::CfgManifest, None))
         } else if let Ok((handle, form)) = args.next_as_with_form::<Buffer>(pa) {
             Ok((Self::Buffer(handle), form))

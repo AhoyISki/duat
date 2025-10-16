@@ -407,7 +407,7 @@ pub trait PushTarget {
     /// If `self` is a [`Handle`], this will push around the
     /// [`Handle`]'s own [`Ui::Area`]. If this is a [`UiBuilder`],
     /// this will push around the master [`Ui::Area`] of the central
-    /// region of files.
+    /// region of buffers.
     ///
     /// This `Widget` will be placed internally, i.e., around the
     /// [`Ui::Area`] of `self`. This is in contrast to

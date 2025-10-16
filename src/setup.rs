@@ -15,10 +15,10 @@ use std::{
 };
 
 use duat_core::{
-    opts::PrintOpts,
     clipboard::Clipboard,
     context::{self, Logs},
     form::{Form, Palette},
+    opts::PrintOpts,
     session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
     text::History,
     ui::{Ui, Widget},
@@ -34,12 +34,12 @@ use crate::{
     form,
     hook::{self, BufferClosed, BufferReloaded, WindowCreated},
     mode,
+    opts::BUFFER_OPTS,
     prelude::{BufferWritten, LineNumbers},
     widgets::Buffer,
 };
 
 // Setup statics.
-pub static FILE_PRINT_CFG: RwLock<Option<PrintOpts>> = RwLock::new(None);
 pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
@@ -90,12 +90,12 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     });
 
     hook::add::<BufferReloaded>(|pa, (handle, cache)| {
-        let file = handle.write(pa);
+        let buffer = handle.write(pa);
 
-        let path = file.path();
-        file.text_mut().new_moment();
+        let path = buffer.path();
+        buffer.text_mut().new_moment();
 
-        if let Some(main) = file.selections().get_main()
+        if let Some(main) = buffer.selections().get_main()
             && let Err(err) = cache.store(&path, main.clone())
         {
             context::error!(target: "BufferReloaded", "{err}");
@@ -105,28 +105,28 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     });
 
     hook::add::<BufferClosed>(|pa, (handle, cache)| {
-        let file = handle.write(pa);
+        let buffer = handle.write(pa);
 
-        let path = file.path();
+        let path = buffer.path();
         cache.delete_for::<History>(&path);
-        if !file.exists() || file.text().has_unsaved_changes() {
+        if !buffer.exists() || buffer.text().has_unsaved_changes() {
             cache.delete(path);
         }
         Ok(())
     });
 
     hook::add_grouped::<BufferClosed>("CacheCursorPosition", |pa, (handle, cache)| {
-        let file = handle.write(pa);
+        let buffer = handle.write(pa);
 
-        let path = file.path();
-        file.text_mut().new_moment();
+        let path = buffer.path();
+        buffer.text_mut().new_moment();
 
         if let Some("gitcommit") = path.filetype() {
             cache.delete(path);
             return Ok(());
         }
 
-        if let Some(main) = file.selections().get_main()
+        if let Some(main) = buffer.selections().get_main()
             && let Err(err) = cache.store(&path, main.clone())
         {
             context::error!(target: "BufferClosed", "{err}");
@@ -146,7 +146,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     duat_core::form::set_weak("linenum.wrapped.main", "linenum.wrapped");
 
     // Setup for the StatusLine
-    duat_core::form::set_weak("file", Form::yellow().italic());
+    duat_core::form::set_weak("buffer", Form::yellow().italic());
     duat_core::form::set_weak("selections", Form::dark_blue());
     duat_core::form::set_weak("coord", Form::dark_yellow());
     duat_core::form::set_weak("separator", Form::cyan());
@@ -181,7 +181,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 #[doc(hidden)]
 pub fn run_duat(
     (ui, clipb): MetaStatics,
-    files: Vec<Vec<ReloadedBuffer>>,
+    buffers: Vec<Vec<ReloadedBuffer>>,
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
 ) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>) {
@@ -193,15 +193,11 @@ pub fn run_duat(
 
     ui.load();
 
-    let cfg = SessionCfg::new(clipb, match FILE_PRINT_CFG.write().unwrap().take() {
-        Some(cfg) => cfg,
-        None => PrintOpts::default_for_input(),
-    });
-
+    let opts = SessionCfg::new(clipb, *BUFFER_OPTS.read().unwrap());
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
     std::panic::abort_unwind(|| {
-        cfg.build(ui, files, already_plugged)
+        opts.build(ui, buffers, already_plugged)
             .start(duat_rx, &SPAWN_COUNT, reload_tx)
     })
 }

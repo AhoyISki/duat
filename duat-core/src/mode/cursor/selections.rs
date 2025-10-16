@@ -385,12 +385,12 @@ mod cursor {
     use bincode::{Decode, Encode};
 
     use crate::{
-        opts::PrintOpts,
+        opts::{NewLine, PrintOpts},
         text::{Bytes, Change, Point, Text},
-        ui::{traits::Area, Caret},
+        ui::{Caret, traits::Area},
     };
 
-    /// A cursor in the text file. This is an editing cursor, -(not
+    /// A cursor in the text buffer. This is an editing cursor, -(not
     /// a printing cursor.
     #[derive(Default, Clone, Encode, Decode)]
     pub struct Selection {
@@ -479,15 +479,16 @@ mod cursor {
             by: i32,
             text: &Text,
             area: &dyn Area,
-            mut cfg: PrintOpts,
+            mut opts: PrintOpts,
         ) -> i32 {
+            opts.new_line = NewLine::AlwaysAs('\n');
             let by = by as isize;
             if by == 0 {
                 return 0;
             };
 
             let (vp, moved) = {
-                let vp = self.caret.get().calculate(text, area, cfg);
+                let vp = self.caret.get().calculate(text, area, opts);
                 let line_start = {
                     let target = self.caret.get().point().line().saturating_add_signed(by);
                     text.point_at_line(target.min(text.last_point().line()))
@@ -497,7 +498,7 @@ mod cursor {
                 let mut vcol = 0;
 
                 let (wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), *cfg.new_line_as('\n'))
+                    .print_iter(text.iter_fwd(line_start), opts)
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
                         if let Some((p, char)) = item.as_real_char()
@@ -528,12 +529,13 @@ mod cursor {
             by: i32,
             text: &Text,
             area: &dyn Area,
-            mut cfg: PrintOpts,
+            mut opts: PrintOpts,
         ) -> i32 {
+            opts.new_line = NewLine::AlwaysAs('\n');
             if by == 0 {
                 return 0;
             };
-            let vp = self.caret.get().calculate(text, area, cfg);
+            let vp = self.caret.get().calculate(text, area, opts);
 
             let mut wraps = 0;
 
@@ -544,7 +546,7 @@ mod cursor {
                 let mut last_valid = (vp.vcol, vp.wcol, vp.p);
 
                 let (vcol, wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), *cfg.new_line_as('\n'))
+                    .print_iter(text.iter_fwd(line_start), opts)
                     .skip_while(|(_, item)| item.char() <= self.char())
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
@@ -571,7 +573,7 @@ mod cursor {
                 let mut just_wrapped = false;
                 let mut last_valid = (vp.wcol, vp.p);
 
-                let mut iter = area.rev_print_iter(text.iter_rev(end_points), cfg);
+                let mut iter = area.rev_print_iter(text.iter_rev(end_points), opts);
                 let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
                     if let Some((p, _)) = item.as_real_char() {
                         // max(1) because it could be a '\n'
@@ -601,7 +603,7 @@ mod cursor {
                 } else {
                     let (wcol, p) = last_valid;
                     let (ccol, vcol) = area
-                        .rev_print_iter(text.iter_rev(p), *cfg.new_line_as('\n'))
+                        .rev_print_iter(text.iter_rev(p), opts)
                         .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
                         .fold((0, 0), |(ccol, vcol), (caret, item)| {
                             (ccol + item.is_real() as u16, vcol + caret.len as u16)
@@ -640,10 +642,10 @@ mod cursor {
         }
 
         /// Sets the position of the anchor to be the same as the
-        /// current cursor position in the file
+        /// current cursor position in the buffer
         ///
         /// The `anchor` and `current` act as a range of text on the
-        /// file.
+        /// buffer.
         pub fn set_anchor(&mut self) {
             *self.anchor.get_mut() = Some(self.caret.get())
         }
@@ -673,13 +675,13 @@ mod cursor {
             self.anchor.get().map(|a| a.point())
         }
 
-        /// The byte (relative to the beginning of the file) of the
+        /// The byte (relative to the beginning of the buffer) of the
         /// caret. Indexed at 0
         pub fn byte(&self) -> usize {
             self.caret.get().point().byte()
         }
 
-        /// The char (relative to the beginning of the file) of the
+        /// The char (relative to the beginning of the buffer) of the
         /// caret. Indexed at 0
         pub fn char(&self) -> usize {
             self.caret.get().point().char()
@@ -785,8 +787,8 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_caret(&self, text: &Text, area: &dyn Area, cfg: PrintOpts) -> VPoint {
-            let vp = self.caret.get().calculate(text, area, cfg);
+        pub fn v_caret(&self, text: &Text, area: &dyn Area, opts: PrintOpts) -> VPoint {
+            let vp = self.caret.get().calculate(text, area, opts);
             self.caret.set(LazyVPoint::Known(vp));
             vp
         }
@@ -796,9 +798,9 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_anchor(&self, text: &Text, area: &dyn Area, cfg: PrintOpts) -> Option<VPoint> {
+        pub fn v_anchor(&self, text: &Text, area: &dyn Area, opts: PrintOpts) -> Option<VPoint> {
             self.anchor.get().map(|anchor| {
-                let vp = anchor.calculate(text, area, cfg);
+                let vp = anchor.calculate(text, area, opts);
                 self.anchor.set(Some(LazyVPoint::Known(vp)));
                 vp
             })
@@ -810,9 +812,9 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_range(&self, text: &Text, area: &dyn Area, cfg: PrintOpts) -> [VPoint; 2] {
-            let v_caret = self.v_caret(text, area, cfg);
-            let v_anchor = self.v_anchor(text, area, cfg).unwrap_or(v_caret);
+        pub fn v_range(&self, text: &Text, area: &dyn Area, opts: PrintOpts) -> [VPoint; 2] {
+            let v_caret = self.v_caret(text, area, opts);
+            let v_anchor = self.v_anchor(text, area, opts).unwrap_or(v_caret);
             [v_caret.min(v_anchor), v_caret.max(v_anchor)]
         }
 
@@ -853,12 +855,12 @@ mod cursor {
         }
 
         /// Calculates the [`VPoint`], to be used sparingly
-        fn calculate(self, text: &Text, area: &dyn Area, cfg: PrintOpts) -> VPoint {
+        fn calculate(self, text: &Text, area: &dyn Area, opts: PrintOpts) -> VPoint {
             match self {
                 Self::Known(vp) => vp,
-                Self::Unknown(p) => VPoint::new(p, text, area, cfg),
+                Self::Unknown(p) => VPoint::new(p, text, area, opts),
                 Self::Desired { p, dvcol, dwcol } => {
-                    let mut vp = VPoint::new(p, text, area, cfg);
+                    let mut vp = VPoint::new(p, text, area, opts);
                     vp.dvcol = dvcol;
                     vp.dwcol = dwcol;
                     vp
@@ -928,13 +930,13 @@ mod cursor {
 
     impl VPoint {
         /// Returns a new [`VPoint`]
-        fn new(p: Point, text: &Text, area: &dyn Area, cfg: PrintOpts) -> Self {
+        fn new(p: Point, text: &Text, area: &dyn Area, opts: PrintOpts) -> Self {
             let [start, _] = text.points_of_line(p.line());
 
             let mut vcol = 0;
 
             let wcol = area
-                .print_iter(text.iter_fwd(text.visual_line_start(start)), cfg)
+                .print_iter(text.iter_fwd(text.visual_line_start(start)), opts)
                 .find_map(|(caret, item)| {
                     if let Some((lhs, _)) = item.as_real_char()
                         && lhs == p

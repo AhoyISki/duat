@@ -35,7 +35,7 @@ compile_error!("The Duat app needs the \"cli\" feature to work.");
 #[command(version, about)]
 struct Args {
     /// Buffers to open
-    files: Vec<PathBuf>,
+    buffers: Vec<PathBuf>,
     /// Open the config's src/lib.rs
     #[arg(long)]
     cfg: bool,
@@ -57,7 +57,7 @@ struct Args {
     /// Profile to load
     #[arg(long, default_value = "release")]
     profile: String,
-    /// Open N windows [default: one per file]
+    /// Open N windows [default: one per buffer]
     #[arg(short, long, value_name = "N", value_parser = clap::value_parser!(u16).range(1..))]
     open: Option<u16>,
     /// Recompile the config crate
@@ -173,8 +173,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut files = get_files(args.clone(), crate_dir, profile)?;
-    if files.is_empty() {
+    let mut buffers = get_files(args.clone(), crate_dir, profile)?;
+    if buffers.is_empty() {
         return Ok(());
     }
 
@@ -227,7 +227,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let (duat_tx, reload_tx) = (duat_tx.clone(), reload_tx.clone());
-        (files, duat_rx) = std::thread::scope(|s| {
+        (buffers, duat_rx) = std::thread::scope(|s| {
             // Initialize now in order to prevent thread activation after the
             // thread counter hook sets in.
             let clipb = &*CLIPBOARD;
@@ -235,11 +235,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(run_duat) = running_duat_fn.take() {
                     let initials = (logs.clone(), forms_init, (crate_dir, profile));
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
-                    run_duat(initials, (ui, clipb), files, channel)
+                    run_duat(initials, (ui, clipb), buffers, channel)
                 } else {
                     context::error!("No config at [a]{crate_dir}[], loading default");
                     pre_setup(None, None);
-                    run_duat((ui, clipb), files, duat_rx, Some(reload_tx))
+                    run_duat((ui, clipb), buffers, duat_rx, Some(reload_tx))
                 }
             })
             .join()
@@ -251,7 +251,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         running_lib.close().unwrap();
 
-        if files.is_empty() {
+        if buffers.is_empty() {
             break;
         }
 
@@ -270,17 +270,17 @@ fn get_files(
     crate_dir: &'static Path,
     profile: &'static str,
 ) -> Result<Vec<Vec<ReloadedBuffer>>, Box<dyn std::error::Error>> {
-    let files: Vec<ReloadedBuffer> = args
+    let buffers: Vec<ReloadedBuffer> = args
         .cfg
         .then(|| crate_dir.join("src").join("lib.rs"))
         .into_iter()
         .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
-        .chain(args.files)
+        .chain(args.buffers)
         .enumerate()
         .map(|(i, path)| ReloadedBuffer::by_args(Some(path), i == 0))
         .try_collect()?;
 
-    Ok(if files.is_empty() {
+    Ok(if buffers.is_empty() {
         if args.reload {
             cargo::build(crate_dir, profile, true)?;
             Vec::new()
@@ -290,14 +290,14 @@ fn get_files(
             vec![vec![ReloadedBuffer::by_args(None, true).unwrap()]]
         }
     } else {
-        let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
+        let n = (buffers.len() / args.open.map(|n| n as usize).unwrap_or(buffers.len())).max(1);
         let mut files_per_window = Vec::new();
 
-        for (i, file) in files.into_iter().enumerate() {
+        for (i, buffer) in buffers.into_iter().enumerate() {
             if i % n == 0 {
                 files_per_window.push(Vec::new());
             }
-            files_per_window.last_mut().unwrap().push(file);
+            files_per_window.last_mut().unwrap().push(buffer);
         }
 
         files_per_window

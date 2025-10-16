@@ -209,7 +209,7 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 /// [`Text::remove_tags`] to add and remove [`Tag`]s on the [`Text`].
 ///
 /// The reason why keys exist is mainly for the sake of [`Buffer`]
-/// widgets. In files, it is very expected that there will be many
+/// widgets. In buffers, it is very expected that there will be many
 /// different sources of modifiers, which can add and remove tags on
 /// their own accord. Taggers exist so that these actors don't
 /// interfere with eachother's work:

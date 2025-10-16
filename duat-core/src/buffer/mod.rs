@@ -1,4 +1,4 @@
-//! The primary widget of Duat, used to display files.
+//! The primary widget of Duat, used to display buffers.
 //!
 //! Most extensible features of Duat have the primary purpose of
 //! serving the [`Buffer`], such as multiple [`Cursor`]s, a
@@ -22,42 +22,47 @@ use parking_lot::{Mutex, MutexGuard};
 use self::parser::Parsers;
 pub use self::parser::{BufferTracker, Parser};
 use crate::{
-    opts::PrintOpts,
     context::{self, Cache, Handle},
     data::Pass,
     form::Painter,
     hook::{self, BufferWritten},
     mode::Selections,
+    opts::PrintOpts,
     text::{BuilderPart, Bytes, Text, TwoPoints, txt},
     ui::{Area, Widget},
 };
 
 mod parser;
 
-/// The widget that is used to print and edit files
+/// The widget that is used to print and edit buffers
 pub struct Buffer {
     path: PathKind,
     text: Text,
     printed_lines: Mutex<Vec<(usize, bool)>>,
     parsers: Parsers,
-    /// The [`PrintOpts`] of this [`Buffer`]
-    cfg: Arc<Mutex<PrintOpts>>,
+    sync_opts: Arc<Mutex<PrintOpts>>,
     pub(crate) layout_order: usize,
+    /// The [`PrintOpts`] of this [`Buffer`]
+    ///
+    /// You can use this member to change the way this `Buffer` will
+    /// be printed specifically.
+    pub opts: PrintOpts,
+    prev_opts: PrintOpts,
 }
 
 impl Buffer {
-    pub(crate) fn new(path: Option<PathBuf>, print_cfg: PrintOpts) -> Self {
+    pub(crate) fn new(path: Option<PathBuf>, opts: PrintOpts) -> Self {
         let (text, path) = match path {
             Some(path) => {
                 let canon_path = path.canonicalize();
                 if let Ok(path) = &canon_path
-                    && let Ok(file) = std::fs::read_to_string(path)
+                    && let Ok(buffer) = std::fs::read_to_string(path)
                 {
                     let selections = {
                         let selection = Cache::new().load(path).unwrap_or_default();
                         Selections::new(selection)
                     };
-                    let text = Text::from_bytes(Bytes::new(&file), selections, true);
+                    let text = Text::from_bytes(Bytes::new(&buffer), selections, true);
                     (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
@@ -74,27 +79,18 @@ impl Buffer {
         Self {
             path,
             text,
-            cfg: Arc::new(Mutex::new(print_cfg)),
+            sync_opts: Arc::new(Mutex::new(opts)),
             printed_lines: Mutex::new(Vec::new()),
             parsers: Parsers::default(),
             layout_order: 0,
+            opts,
+            prev_opts: opts,
         }
-    }
-
-    /// Mutable reference to the [`PrintOpts`] of this `Buffer`
-    ///
-    /// Note that, since every method of `PrintOpts` returns a mutable
-    /// reference to the `PrintOpts`, you can chain these methods
-    /// together, not needing to call this function more than once.
-    ///
-    /// TODO: EXAMPLES
-    pub fn cfg(&mut self) -> parking_lot::MutexGuard<'_, PrintOpts> {
-        self.cfg.lock()
     }
 
     ////////// Saving the Buffer
 
-    /// Writes the file to the current [`PathBuf`], if one was set
+    /// Writes the buffer to the current [`PathBuf`], if one was set
     pub fn save(&mut self) -> Result<Option<usize>, Text> {
         self.save_quit(false)
     }
@@ -117,18 +113,18 @@ impl Buffer {
                 Ok(None)
             }
         } else {
-            Err(txt!("No file was set").build())
+            Err(txt!("No buffer was set").build())
         }
     }
 
-    /// Writes the file to the given [`Path`]
+    /// Writes the buffer to the given [`Path`]
     ///
     /// [`Path`]: std::path::Path
     pub fn save_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<usize>> {
         self.save_quit_to(path, false)
     }
 
-    /// Writes the file to the given [`Path`]
+    /// Writes the buffer to the given [`Path`]
     ///
     /// [`Path`]: std::path::Path
     pub(crate) fn save_quit_to(
@@ -159,17 +155,17 @@ impl Buffer {
 
     ////////// Path querying functions
 
-    /// The full path of the file.
+    /// The full path of the buffer.
     ///
-    /// If there is no set path, returns `"*scratch file*#{id}"`.
+    /// If there is no set path, returns `"*scratch buffer*#{id}"`.
     pub fn path(&self) -> String {
         self.path.path()
     }
 
-    /// The full path of the file.
+    /// The full path of the buffer.
     ///
     /// Returns [`None`] if the path has not been set yet, i.e., if
-    /// the file is a scratch file.
+    /// the buffer is a scratch buffer.
     pub fn path_set(&self) -> Option<String> {
         self.path.path_set()
     }
@@ -178,32 +174,32 @@ impl Buffer {
     ///
     /// # Formatting
     ///
-    /// If the file's `path` was set:
+    /// If the buffer's `path` was set:
     ///
     /// ```text
-    /// [file]{path}
+    /// [buffer]{path}
     /// ```
     ///
-    /// If the file's `path` was not set:
+    /// If the buffer's `path` was not set:
     ///
     /// ```text
-    /// [file.new.scratch]*scratch file #{id}*
+    /// [buffer.new.scratch]*scratch buffer #{id}*
     /// ```
     pub fn path_txt(&self) -> Text {
         self.path_kind().path_txt()
     }
 
-    /// The file's name.
+    /// The buffer's name.
     ///
-    /// If there is no set path, returns `"*scratch file #{id}*"`.
+    /// If there is no set path, returns `"*scratch buffer #{id}*"`.
     pub fn name(&self) -> String {
         self.path.name()
     }
 
-    /// The file's name.
+    /// The buffer's name.
     ///
     /// Returns [`None`] if the path has not been set yet, i.e., if
-    /// the file is a scratch file.
+    /// the buffer is a scratch buffer.
     pub fn name_set(&self) -> Option<String> {
         self.path.name_set()
     }
@@ -218,16 +214,16 @@ impl Buffer {
     ///
     /// # Formatting
     ///
-    /// If the file's `name` was set:
+    /// If the buffer's `name` was set:
     ///
     /// ```text
-    /// [file]{name}
+    /// [buffer]{name}
     /// ```
     ///
-    /// If the file's `name` was not set:
+    /// If the buffer's `name` was not set:
     ///
     /// ```text
-    /// [file.new.scratch]*scratch file #{id}*
+    /// [buffer.new.scratch]*scratch buffer #{id}*
     /// ```
     pub fn name_txt(&self) -> Text {
         self.path.name_txt()
@@ -245,7 +241,7 @@ impl Buffer {
     /// Returns the currently printed set of lines.
     ///
     /// These are returned as a `usize`, showing the index of the line
-    /// in the file, and a `bool`, which is `true` when the line is
+    /// in the buffer, and a `bool`, which is `true` when the line is
     /// wrapped.
     pub fn printed_lines(&self) -> MutexGuard<'_, Vec<(usize, bool)>> {
         self.printed_lines.lock()
@@ -258,17 +254,17 @@ impl Buffer {
         self.text.bytes()
     }
 
-    /// The number of bytes in the file.
+    /// The number of bytes in the buffer.
     pub fn len_bytes(&self) -> usize {
         self.text.len().byte()
     }
 
-    /// The number of [`char`]s in the file.
+    /// The number of [`char`]s in the buffer.
     pub fn len_chars(&self) -> usize {
         self.text.len().char()
     }
 
-    /// The number of lines in the file.
+    /// The number of lines in the buffer.
     pub fn len_lines(&self) -> usize {
         self.text.len().line()
     }
@@ -397,8 +393,10 @@ impl Buffer {
             text: std::mem::take(&mut self.text),
             printed_lines: Mutex::new(Vec::new()),
             parsers: Parsers::default(),
-            cfg: Arc::default(),
+            sync_opts: Arc::default(),
             layout_order: self.layout_order,
+            opts: PrintOpts::default(),
+            prev_opts: PrintOpts::default(),
         }
     }
 }
@@ -407,24 +405,31 @@ impl Widget for Buffer {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
-        let file = handle.read(pa);
-        let cfg = file.get_print_cfg();
+        let opts = handle.read(pa).opts;
 
-        let (file, area) = handle.write_with_area(pa);
-
-        if let Some(main) = file.text().selections().get_main() {
-            area.scroll_around_points(file.text(), main.caret().to_points(), file.get_print_cfg());
+        let (buffer, area) = handle.write_with_area(pa);
+        if buffer.prev_opts != opts {
+            *buffer.sync_opts.lock() = opts;
+            buffer.prev_opts = opts;
         }
 
-        let (start, _) = area.start_points(&file.text, cfg);
-        let (end, _) = area.end_points(&file.text, cfg);
+        if let Some(main) = buffer.text().selections().get_main() {
+            area.scroll_around_points(
+                buffer.text(),
+                main.caret().to_points(),
+                buffer.get_print_opts(),
+            );
+        }
+
+        let (start, _) = area.start_points(&buffer.text, opts);
+        let (end, _) = area.end_points(&buffer.text, opts);
 
         parsers.update(pa, handle, start.byte()..end.byte());
 
-        let file = handle.write(pa);
-        file.parsers = parsers;
+        let buffer = handle.write(pa);
+        buffer.parsers = parsers;
 
-        file.text.update_bounds();
+        buffer.text.update_bounds();
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
@@ -439,16 +444,16 @@ impl Widget for Buffer {
         &mut self.text
     }
 
-    fn get_print_cfg(&self) -> PrintOpts {
-        *self.cfg.lock()
+    fn get_print_opts(&self) -> PrintOpts {
+        self.opts
     }
 
     fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
-        let cfg = *self.cfg.lock();
-        let (start, _) = area.start_points(pa, &self.text, cfg);
+        let opts = self.opts;
+        let (start, _) = area.start_points(pa, &self.text, opts);
 
         let mut last_line = area
-            .rev_print_iter(pa, self.text.iter_rev(start), cfg)
+            .rev_print_iter(pa, self.text.iter_rev(start), opts)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         let mut printed_lines = self.printed_lines.lock();
@@ -456,7 +461,7 @@ impl Widget for Buffer {
 
         let mut has_wrapped = false;
 
-        area.print_with(pa, &self.text, cfg, painter, move |caret, item| {
+        area.print_with(pa, &self.text, opts, painter, move |caret, item| {
             has_wrapped |= caret.wrap;
             if has_wrapped && item.part.is_char() {
                 has_wrapped = false;
@@ -478,23 +483,24 @@ impl Handle {
         pa: &mut Pass,
         f: impl FnOnce(BufferTracker) -> P,
     ) -> Result<(), Text> {
-        let file = self.widget().read(pa);
-        file.parsers.add(file, f)
+        let buffer = self.widget().read(pa);
+        buffer.parsers.add(buffer, f)
     }
 }
 
 /// Represents the presence or absence of a path
 #[derive(Debug, Clone)]
 pub enum PathKind {
-    /// A [`PathBuf`] that has been defined and points to a real file
+    /// A [`PathBuf`] that has been defined and points to a real
+    /// buffer
     SetExists(PathBuf),
-    /// A [`PathBuf`] that has been defined but isn't a real file
+    /// A [`PathBuf`] that has been defined but isn't a real buffer
     SetAbsent(PathBuf),
     /// A [`PathBuf`] that has not been defined
     ///
     /// The number within represents a specific [`Buffer`], and when
     /// printed to, for example, the [`StatusLine`], would show up as
-    /// `txt!("[file]*scratch file*#{id}")`
+    /// `txt!("[buffer]*scratch buffer*#{id}")`
     ///
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     NotSet(usize),
@@ -518,21 +524,21 @@ impl PathKind {
         }
     }
 
-    /// The full path of the file.
+    /// The full path of the buffer.
     ///
-    /// If there is no set path, returns `"*scratch file*#{id}"`.
+    /// If there is no set path, returns `"*scratch buffer*#{id}"`.
     pub fn path(&self) -> String {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 path.to_string_lossy().to_string()
             }
             PathKind::NotSet(id) => {
-                format!("*scratch file*#{id}")
+                format!("*scratch buffer*#{id}")
             }
         }
     }
 
-    /// The full path of the file.
+    /// The full path of the buffer.
     ///
     /// Returns [`None`] if the path has not been set yet.
     pub fn path_set(&self) -> Option<String> {
@@ -544,9 +550,9 @@ impl PathKind {
         }
     }
 
-    /// The file's name.
+    /// The buffer's name.
     ///
-    /// If there is no set path, returns `"*scratch file #{id}*"`.
+    /// If there is no set path, returns `"*scratch buffer #{id}*"`.
     pub fn name(&self) -> String {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
@@ -561,11 +567,11 @@ impl PathKind {
                     path.to_string_lossy().to_string()
                 }
             }
-            PathKind::NotSet(id) => format!("*scratch file #{id}*"),
+            PathKind::NotSet(id) => format!("*scratch buffer #{id}*"),
         }
     }
 
-    /// The file's name.
+    /// The buffer's name.
     ///
     /// Returns [`None`] if the path has not been set yet.
     pub fn name_set(&self) -> Option<String> {
@@ -590,21 +596,21 @@ impl PathKind {
     ///
     /// # Formatting
     ///
-    /// If the file's `path` was set:
+    /// If the buffer's `path` was set:
     ///
     /// ```text
-    /// [file]{path}
+    /// [buffer]{path}
     /// ```
     ///
-    /// If the file's `path` was not set:
+    /// If the buffer's `path` was not set:
     ///
     /// ```text
-    /// [file.new.scratch]*scratch file #{id}*
+    /// [buffer.new.scratch]*scratch buffer #{id}*
     /// ```
     pub fn path_txt(&self) -> Text {
         match self {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => txt!("[file]{path}").build(),
-            PathKind::NotSet(id) => txt!("[file.new.scratch]*scratch file #{id}*").build(),
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => txt!("[buffer]{path}").build(),
+            PathKind::NotSet(id) => txt!("[buffer.new.scratch]*scratch buffer #{id}*").build(),
         }
     }
 
@@ -618,32 +624,32 @@ impl PathKind {
     ///
     /// # Formatting
     ///
-    /// If the file's `name` was set:
+    /// If the buffer's `name` was set:
     ///
     /// ```text
-    /// [file]{name}
+    /// [buffer]{name}
     /// ```
     ///
-    /// If the file's `name` was not set:
+    /// If the buffer's `name` was not set:
     ///
     /// ```text
-    /// [file.new.scratch]*scratch file #{id}*
+    /// [buffer.new.scratch]*scratch buffer #{id}*
     /// ```
     pub fn name_txt(&self) -> Text {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 let cur_dir = context::cur_dir();
                 if let Ok(path) = path.strip_prefix(cur_dir) {
-                    txt!("[file]{path}").build()
+                    txt!("[buffer]{path}").build()
                 } else if let Some(home_dir) = dirs_next::home_dir()
                     && let Ok(path) = path.strip_prefix(home_dir)
                 {
-                    txt!("[file]{}", Path::new("~").join(path)).build()
+                    txt!("[buffer]{}", Path::new("~").join(path)).build()
                 } else {
-                    txt!("[file]{path}").build()
+                    txt!("[buffer]{path}").build()
                 }
             }
-            PathKind::NotSet(id) => txt!("[file.new.scratch]*scratch file #{id}*").build(),
+            PathKind::NotSet(id) => txt!("[buffer.new.scratch]*scratch buffer #{id}*").build(),
         }
     }
 }

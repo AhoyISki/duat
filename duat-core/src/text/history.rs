@@ -135,7 +135,7 @@ impl Clone for History {
 /// A moment in history, which may contain changes, or may just
 /// contain selections
 ///
-/// It also contains information about how to print the file, so that
+/// It also contains information about how to print the buffer, so that
 /// going back in time is less jarring.
 #[derive(Clone, Default, Debug, Encode, Decode)]
 pub struct Moment {
@@ -215,8 +215,8 @@ impl Moment {
     /// [`parse`] is always sent, in order to update [`Buffer`]s
     /// every time they are printed.
     ///
-    /// [`Parser`]: crate::file::Parser
-    /// [`parse`]: crate::file::Parser::parse
+    /// [`Parser`]: crate::buffer::Parser
+    /// [`parse`]: crate::buffer::Parser::parse
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn len(&self) -> usize {
         self.changes.len()
@@ -231,7 +231,7 @@ impl Moment {
     }
 }
 
-/// A change in a file, with a start, taken text, and added text
+/// A change in a buffer, with a start, taken text, and added text
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
 pub struct Change<S = String> {
     start: [i32; 3],

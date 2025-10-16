@@ -22,10 +22,10 @@ use parking_lot::Mutex;
 
 use super::Buffer;
 use crate::{
-    opts::PrintOpts,
     context::Handle,
     data::Pass,
-    prelude::Ranges,
+    opts::PrintOpts,
+    ranges::Ranges,
     text::{Bytes, Change, Moment, MomentFetcher, Point, Text, TextRange, txt},
 };
 
@@ -54,14 +54,14 @@ use crate::{
 ///
 /// The gist of it is that a `Parser` will be called to read the
 /// `Bytes` of the `Buffer` as well as any [`Change`]s that are done
-/// to said `Buffer`. Duat will then call upon the `Parser` to "act" on
-/// a region of the `Buffer`'s [`Text`], this region being determined by
-/// what is shown on screen, in order to help plugin writers minimize
-/// the work done.
+/// to said `Buffer`. Duat will then call upon the `Parser` to "act"
+/// on a region of the `Buffer`'s [`Text`], this region being
+/// determined by what is shown on screen, in order to help plugin
+/// writers minimize the work done.
 ///
 /// When creating a `Parser`, you will also be given a
-/// [`BufferTracker`]. It will be used to keep track of the [`Change`]s,
-/// and it is also used by the `Parser` to tell which
+/// [`BufferTracker`]. It will be used to keep track of the
+/// [`Change`]s, and it is also used by the `Parser` to tell which
 /// [`Range<usize>`]s of the [`Text`] the `Parser` cares about. So,
 /// for example, if you're matching non-multiline regex patterns, for
 /// every `Change`, you might want to add the lines of that `Change`
@@ -114,7 +114,8 @@ use crate::{
 /// The example above just keeps track of every occurance of a
 /// specific `char`. Every time the `Buffer` is updated, the `parse`
 /// function will be called, and you can use [`BufferTracker::update`]
-/// to be notified of _every_ `Change` that takes place in the `Buffer`.
+/// to be notified of _every_ `Change` that takes place in the
+/// `Buffer`.
 ///
 /// ## [`Parser::update`]
 ///
@@ -179,7 +180,8 @@ use crate::{
 /// >
 /// > In the example above, the [`BufferTracker`] is acting _slightly_
 /// > differently. When setting up this `Parser` with a [`ParserCfg`],
-/// > I called [`BufferTracker::track_area`]. This function makes it so,
+/// > I called [`BufferTracker::track_area`]. This function makes it
+/// > so,
 /// > instead of tracking changed [`Range<Point>`]s,
 /// > [`Parser::update`] will always return a list of ranges
 /// > equivalent to the printed region of the [`Text`].
@@ -288,7 +290,7 @@ pub trait Parser: Send + 'static {
     /// [range]: std::ops::Range
     /// [`parse`]: Parser::parse
     /// [`Conceal`]: crate::text::Conceal
-    fn update(&mut self, pa: &mut Pass, file: &Handle, on: Vec<Range<Point>>) {}
+    fn update(&mut self, pa: &mut Pass, buffer: &Handle, on: Vec<Range<Point>>) {}
 
     /// Prepare this [`Parser`] before [`Buffer::read_parser`] call
     ///
@@ -337,7 +339,7 @@ impl Parsers {
     /// Attempts to add  a [`Parser`]
     pub(super) fn add<P: Parser>(
         &self,
-        file: &Buffer,
+        buffer: &Buffer,
         f: impl FnOnce(BufferTracker) -> P,
     ) -> Result<(), Text> {
         let mut parsers = self.list.borrow_mut();
@@ -350,13 +352,13 @@ impl Parsers {
 
         let update_requested = Arc::new(AtomicBool::new(false));
         let ranges = Arc::new(Mutex::new(RangesTracker::Manual(Ranges::new(
-            0..file.bytes().len().byte(),
+            0..buffer.bytes().len().byte(),
         ))));
 
         let tracker = BufferTracker {
-            bytes: file.bytes().clone(),
-            cfg: file.cfg.clone(),
-            fetcher: file.text.history().unwrap().new_fetcher(),
+            bytes: buffer.bytes().clone(),
+            opts: buffer.sync_opts.clone(),
+            fetcher: buffer.text.history().unwrap().new_fetcher(),
             moment: Moment::default(),
             ranges: ranges.clone(),
             update_requested: update_requested.clone(),
@@ -500,7 +502,7 @@ struct ParserParts {
 #[derive(Debug)]
 pub struct BufferTracker {
     bytes: Bytes,
-    cfg: Arc<Mutex<PrintOpts>>,
+    opts: Arc<Mutex<PrintOpts>>,
     fetcher: MomentFetcher,
     moment: Moment,
     ranges: Arc<Mutex<RangesTracker>>,
@@ -624,8 +626,8 @@ impl BufferTracker {
     /// }
     ///
     /// impl<U: Ui> Parser<U> for SelectionLen {
-    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
-    ///         let mut parts = file.write(pa).text_mut().parts();
+    ///     fn update(&mut self, pa: &mut Pass, buffer: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
+    ///         let mut parts = buffer.write(pa).text_mut().parts();
     ///         // This is efficient even in very large `Text`s.
     ///         parts.tags.remove(self.tagger, ..);
     ///
@@ -701,8 +703,8 @@ impl BufferTracker {
 
     /// The last [`Moment`] that was processed
     ///
-    /// This is **not** the last [`Moment`] sent to the [`Buffer`], nor
-    /// does it necessarily correspond to a [`Moment`] in the
+    /// This is **not** the last [`Moment`] sent to the [`Buffer`],
+    /// nor does it necessarily correspond to a [`Moment`] in the
     /// [`Text`]'s history. It's just a collection of [`Change`]s that
     /// took place in between calls to [`Self::update`].
     ///
@@ -722,15 +724,16 @@ impl BufferTracker {
     /// [`Area`]: crate::ui::Area
     /// [`TabStops`]: crate::opts::TabStops
     pub fn indent(&self, p: Point) -> usize {
-        self.bytes.indent(p, *self.cfg.lock())
+        self.bytes.indent(p, *self.opts.lock())
     }
 
     /// The [`PrintOpts`] of the [`Buffer`]
     ///
     /// Unlike the other parts of this struct, the [`PrintOpts`] will
-    /// always be up to date with what it currently is in the [`Buffer`]
-    pub fn cfg(&self) -> PrintOpts {
-        *self.cfg.lock()
+    /// always be up to date with what it currently is in the
+    /// [`Buffer`]
+    pub fn opts(&self) -> PrintOpts {
+        *self.opts.lock()
     }
 }
 

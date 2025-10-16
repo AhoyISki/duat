@@ -9,8 +9,8 @@
 //! The crate has the following elements:
 //!
 //! - 5 [`widgets`]:
-//!   - [`LineNumbers`] shows the numbers on a [`Buffer`] (for now), and
-//!     you can configure their alignment, relativeness, etc.
+//!   - [`LineNumbers`] shows the numbers on a [`Buffer`] (for now),
+//!     and you can configure their alignment, relativeness, etc.
 //!   - The [`PromptLine`] lets you run commands and do other things,
 //!     like incremental search
 //!   - The [`StatusLine`] lets you display information that gets
@@ -112,7 +112,10 @@
     associated_type_defaults
 )]
 
-use duat_core::prelude::*;
+use duat_core::{
+    form,
+    text::{Tagger, Text},
+};
 use regex_syntax::ast::Ast;
 
 pub mod modes;
@@ -266,7 +269,9 @@ mod private_exports {
 
     pub macro parse_str($appender_checker:expr, $str:literal) {{
         use crate::{
-            private_exports::duat_core::{context::Handle, data::Pass, buffer::Buffer, text::Builder},
+            private_exports::duat_core::{
+                buffer::Buffer, context::Handle, data::Pass, text::Builder,
+            },
             widgets::State,
         };
 

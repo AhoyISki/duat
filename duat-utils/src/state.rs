@@ -15,10 +15,13 @@
 use std::sync::LazyLock;
 
 use duat_core::{
-    data::{DataMap, RwData},
-    hook::KeysSent,
-    prelude::*,
-    ui::traits::Area,
+    buffer::Buffer,
+    context,
+    data::{DataMap, Pass, RwData},
+    hook::{self, KeysSent},
+    mode::{self, KeyEvent},
+    text::{Text, txt},
+    ui::{Widget, traits::Area},
 };
 
 /// [`StatusLine`] part: The [`Buffer`]'s name, formatted
@@ -28,36 +31,36 @@ use duat_core::{
 /// strip away the home directory, replacing it with `"~"`. If
 /// that also fails, it will just show the full path.
 ///
-/// This status part also includes wether or not the file is written
+/// This status part also includes wether or not the buffer is written
 /// and wether or not it exists.
 ///
 /// # Formatting
 ///
-/// If the file's `name` was set:
+/// If the buffer's `name` was set:
 ///
 /// ```text
-/// [file]{name}
+/// [buffer]{name}
 /// ```
 ///
-/// If it has unwritten changes, a `[file.unsaved][[+]]` will be
-/// appended. If it doesn't exist, a `[file.new][[new file]]` will be
-/// appendedk.
+/// If it has unwritten changes, a `[buffer.unsaved][[+]]` will be
+/// appended. If it doesn't exist, a `[buffer.new][[new buffer]]` will
+/// be appendedk.
 ///
-/// If the file's `name` was not set:
+/// If the buffer's `name` was not set:
 ///
 /// ```text
-/// [file.new.scratch]{scratch_name}
+/// [buffer.new.scratch]{scratch_name}
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn name_txt(file: &Buffer) -> Text {
+pub fn name_txt(buffer: &Buffer) -> Text {
     let mut b = Text::builder();
 
-    b.push(file.name_txt());
-    if !file.exists() {
-        b.push(txt!("[file.new][[new file]]"));
-    } else if file.text().has_unsaved_changes() {
-        b.push(txt!("[file.unsaved][[+]]"));
+    b.push(buffer.name_txt());
+    if !buffer.exists() {
+        b.push(txt!("[buffer.new][[new buffer]]"));
+    } else if buffer.text().has_unsaved_changes() {
+        b.push(txt!("[buffer.unsaved][[+]]"));
     }
 
     b.build()
@@ -65,36 +68,36 @@ pub fn name_txt(file: &Buffer) -> Text {
 
 /// [`StatusLine`] part: The [`Buffer`]'s path, formatted
 ///
-/// This status part also includes wether or not the file is written
+/// This status part also includes wether or not the buffer is written
 /// and wether or not it exists.
 ///
 /// # Formatting
 ///
-/// If the file's `path` was set:
+/// If the buffer's `path` was set:
 ///
 /// ```text
-/// [file]{path}
+/// [buffer]{path}
 /// ```
 ///
-/// If it has unwritten changes, a `[file.unsaved][[+]]` will be
-/// appended. If it doesn't exist, a `[file.new][[new file]]` will be
-/// appendedk.
+/// If it has unwritten changes, a `[buffer.unsaved][[+]]` will be
+/// appended. If it doesn't exist, a `[buffer.new][[new buffer]]` will
+/// be appendedk.
 ///
-/// If the file's `path` was not set:
+/// If the buffer's `path` was not set:
 ///
 /// ```text
-/// [file.new.scratch]{scratch_path}
+/// [buffer.new.scratch]{scratch_path}
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn path_txt(file: &Buffer) -> Text {
+pub fn path_txt(buffer: &Buffer) -> Text {
     let mut b = Text::builder();
 
-    b.push(file.name_txt());
-    if !file.exists() {
-        b.push(txt!("[file.new][[new file]]"));
-    } else if file.text().has_unsaved_changes() {
-        b.push(txt!("[file.unsaved][[+]]"));
+    b.push(buffer.name_txt());
+    if !buffer.exists() {
+        b.push(txt!("[buffer.new][[new buffer]]"));
+    } else if buffer.text().has_unsaved_changes() {
+        b.push(txt!("[buffer.unsaved][[+]]"));
     }
 
     b.build()
@@ -119,7 +122,7 @@ pub fn path_txt(file: &Buffer) -> Text {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
+///     hook::add::<StatusLine<Ui>>(|pa, (opts, _)| {
 ///         let mode_upper = state::mode_name(pa).map(pa, |mode| {
 ///             let mode = match mode.split_once('<') {
 ///                 Some((mode, _)) => mode,
@@ -128,7 +131,7 @@ pub fn path_txt(file: &Buffer) -> Text {
 ///             txt!("[mode]{}", mode.to_uppercase()).build()
 ///         });
 ///
-///         cfg.fmt(status!(
+///         opts.fmt(status!(
 ///             "{name_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
 ///         ))
 ///     });
@@ -165,30 +168,30 @@ pub fn mode_txt(pa: &Pass) -> DataMap<&'static str, Text> {
 /// [`StatusLine`] part: Byte of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_byte(file: &Buffer) -> usize {
-    file.selections().get_main().unwrap().byte() + 1
+pub fn main_byte(buffer: &Buffer) -> usize {
+    buffer.selections().get_main().unwrap().byte() + 1
 }
 
 /// [`StatusLine`] part: Char of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_char(file: &Buffer) -> usize {
-    file.selections().get_main().unwrap().char() + 1
+pub fn main_char(buffer: &Buffer) -> usize {
+    buffer.selections().get_main().unwrap().char() + 1
 }
 
 /// [`StatusLine`] part: Line of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_line(file: &Buffer) -> usize {
-    file.selections().get_main().unwrap().line() + 1
+pub fn main_line(buffer: &Buffer) -> usize {
+    buffer.selections().get_main().unwrap().line() + 1
 }
 
 /// [`StatusLine`] part: Column of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_col(file: &Buffer, area: &dyn Area) -> usize {
-    let main = file.selections().get_main().unwrap();
-    main.v_caret(file.text(), area, file.get_print_cfg())
+pub fn main_col(buffer: &Buffer, area: &dyn Area) -> usize {
+    let main = buffer.selections().get_main().unwrap();
+    main.v_caret(buffer.text(), area, buffer.get_print_opts())
         .char_col()
 }
 
@@ -201,12 +204,12 @@ pub fn main_col(file: &Buffer, area: &dyn Area) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_txt(file: &Buffer, area: &dyn Area) -> Text {
+pub fn main_txt(buffer: &Buffer, area: &dyn Area) -> Text {
     txt!(
         "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
-        main_col(file, area),
-        main_line(file),
-        file.len_lines()
+        main_col(buffer, area),
+        main_line(buffer),
+        buffer.len_lines()
     )
     .build()
 }
@@ -214,8 +217,8 @@ pub fn main_txt(file: &Buffer, area: &dyn Area) -> Text {
 /// [`StatusLine`] part: The number of selections
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn selections(file: &Buffer) -> usize {
-    file.selections().len()
+pub fn selections(buffer: &Buffer) -> usize {
+    buffer.selections().len()
 }
 
 /// [`StatusLine`] part: The number of selections, formatted
@@ -236,11 +239,11 @@ pub fn selections(file: &Buffer) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: duat_core::mode::Cursor
-pub fn sels_txt(file: &Buffer) -> Text {
-    if file.selections().len() == 1 {
+pub fn sels_txt(buffer: &Buffer) -> Text {
+    if buffer.selections().len() == 1 {
         txt!("[selections]1 sel").build()
     } else {
-        txt!("[selections]{} sels", file.selections().len()).build()
+        txt!("[selections]{} sels", buffer.selections().len()).build()
     }
 }
 

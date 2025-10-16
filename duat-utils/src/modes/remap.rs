@@ -423,8 +423,8 @@ impl Remapper {
                             Tag::ghost(main, text!([Alias] { keys_to_string(cur_seq) })),
                         );
 
-                        let cfg = widget.print_cfg();
-                        widget.text_mut().add_cursors(area, cfg);
+                        let opts = widget.print_opts();
+                        widget.text_mut().add_cursors(area, opts);
                         widget.update(area);
                         widget.print(area);
                     })
@@ -465,8 +465,8 @@ fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) 
     let widget = context::cur_widget::<U>().unwrap();
     widget.mutate_data(|widget, area, _| {
         let mut widget = widget.write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_cursors(area, cfg);
+        let opts = widget.print_opts();
+        widget.text_mut().remove_cursors(area, opts);
 
         if let Some(main) = widget.cursors().unwrap().get_main() {
             let main = main.byte();

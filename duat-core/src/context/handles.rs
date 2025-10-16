@@ -11,10 +11,10 @@ use std::{
 use lender::Lender;
 
 use crate::{
-    opts::PrintOpts,
     context,
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
+    opts::PrintOpts,
     text::{Point, Searcher, Text, TextParts, TwoPoints},
     ui::{Area, PushSpecs, SpawnSpecs, Widget, traits},
 };
@@ -141,11 +141,17 @@ pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
     related: RelatedWidgets,
     searcher: RefCell<S>,
     is_closed: RwData<bool>,
+    master: Option<Box<Handle<dyn Widget>>>,
 }
 
 impl<W: Widget + ?Sized> Handle<W> {
     /// Returns a new instance of a [`Handle<W, U>`]
-    pub(crate) fn new(widget: RwData<W>, area: Area, mask: Arc<Mutex<&'static str>>) -> Self {
+    pub(crate) fn new(
+        widget: RwData<W>,
+        area: Area,
+        mask: Arc<Mutex<&'static str>>,
+        master: Option<Handle<dyn Widget>>,
+    ) -> Self {
         Self {
             widget,
             area,
@@ -153,6 +159,7 @@ impl<W: Widget + ?Sized> Handle<W> {
             related: RelatedWidgets(RwData::default()),
             searcher: RefCell::new(()),
             is_closed: RwData::new(false),
+            master: master.map(Box::new),
         }
     }
 }
@@ -247,6 +254,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             related: self.related.clone(),
             searcher: RefCell::new(()),
             is_closed: self.is_closed.clone(),
+            master: self.master.clone(),
         })
     }
 
@@ -471,7 +479,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
         let widget = self.widget.read(pa);
         self.area()
-            .scroll_ver(pa, widget.text(), dist, widget.get_print_cfg());
+            .scroll_ver(pa, widget.text(), dist, widget.get_print_opts());
         self.widget.declare_written();
     }
 
@@ -483,7 +491,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     pub fn scroll_to_points(&self, pa: &Pass, points: impl TwoPoints) {
         let widget = self.widget.read(pa);
         self.area
-            .scroll_to_points(pa, widget.text(), points, widget.get_print_cfg());
+            .scroll_to_points(pa, widget.text(), points, widget.get_print_opts());
         self.widget.declare_written();
     }
 
@@ -491,14 +499,14 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     pub fn start_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
         self.area
-            .start_points(pa, widget.text(), widget.get_print_cfg())
+            .start_points(pa, widget.text(), widget.get_print_opts())
     }
 
     /// The end points that should be printed
     pub fn end_points(&self, pa: &Pass) -> (Point, Option<Point>) {
         let widget = self.widget.read(pa);
         self.area
-            .end_points(pa, widget.text(), widget.get_print_cfg())
+            .end_points(pa, widget.text(), widget.get_print_opts())
     }
 
     ////////// Querying functions
@@ -571,8 +579,8 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     }
 
     /// The [`Widget`]'s [`PrintOpts`]
-    pub fn cfg(&self, pa: &Pass) -> PrintOpts {
-        self.widget.read(pa).get_print_cfg()
+    pub fn opts(&self, pa: &Pass) -> PrintOpts {
+        self.widget.read(pa).get_print_opts()
     }
 
     /// Reads related [`Widget`]s of type `W2`, as well as it s
@@ -650,6 +658,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             related: self.related.clone(),
             searcher: RefCell::new(searcher),
             is_closed: self.is_closed.clone(),
+            master: self.master.clone(),
         }
     }
 
@@ -702,7 +711,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         specs: PushSpecs,
     ) -> Handle<PW> {
         context::windows()
-            .push_widget(pa, (&self.area, None, specs), widget)
+            .push_widget(pa, (&self.area, None, specs), widget, Some(&self.area))
             .unwrap()
     }
 
@@ -756,11 +765,11 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     ) -> Handle<PW> {
         if let Some(master) = self.area().get_cluster_master(pa) {
             context::windows()
-                .push_widget(pa, (&master, None, specs), widget)
+                .push_widget(pa, (&master, None, specs), widget, Some(self.area()))
                 .unwrap()
         } else {
             context::windows()
-                .push_widget(pa, (&self.area, None, specs), widget)
+                .push_widget(pa, (&self.area, None, specs), widget, Some(self.area()))
                 .unwrap()
         }
     }
@@ -802,6 +811,7 @@ impl<W: Widget, S> Handle<W, S> {
             related: self.related.clone(),
             searcher: RefCell::new(()),
             is_closed: self.is_closed.clone(),
+            master: self.master.clone(),
         }
     }
 }
@@ -831,6 +841,7 @@ impl<W: Widget + ?Sized> Clone for Handle<W> {
             related: self.related.clone(),
             searcher: self.searcher.clone(),
             is_closed: self.is_closed.clone(),
+            master: self.master.clone(),
         }
     }
 }

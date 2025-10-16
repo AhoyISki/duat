@@ -2,8 +2,8 @@
 //!
 //! This is essentially the things that you'd expect to change in a
 //! text editor such as Neovim or Kakoune. They are contained in a
-//! [`PrintOpts`] struct, which is very light and cheap to copy around,
-//! and is used not only by the [`Buffer`], but by every other
+//! [`PrintOpts`] struct, which is very light and cheap to copy
+//! around, and is used not only by the [`Buffer`], but by every other
 //! [`Widget`] as well. Right now, these options are:
 //!
 //! - [`WrapMethod`]: How to wrap lines;
@@ -29,7 +29,7 @@ use std::{ops::RangeInclusive, sync::LazyLock};
 use regex_cursor::regex_automata::meta::Regex;
 
 /// If and how to wrap lines at the end of the screen.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WrapMethod {
     /// Wrap on the edge of the screen
     Edge,
@@ -68,19 +68,13 @@ impl WrapMethod {
 }
 
 /// Where the tabs are placed on screen
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TabStops(pub u8);
 
 impl TabStops {
     /// How many spaces to put in place of a tab
     pub fn size(&self) -> u32 {
         self.0 as u32
-    }
-
-    /// How many spaces should come at a given x position
-    #[inline]
-    pub fn spaces_at(&self, x: u32) -> u32 {
-        self.0 as u32 - (x % self.0 as u32)
     }
 }
 
@@ -121,7 +115,7 @@ impl NewLine {
 /// screen when scrolling
 ///
 /// [`Cursor`]: crate::mode::Cursor
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScrollOff {
     /// The horizontal scrolloff
     pub x: u8,
@@ -175,27 +169,117 @@ impl std::cmp::PartialEq for WordChars {
 impl std::cmp::Eq for WordChars {}
 
 /// Configuration options for printing.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PrintOpts {
-    /// How to wrap the file
+    /// How to wrap the buffer
+    ///
+    /// In [`Buffer`]s, the default is [`WrapMethod::NoWrap`].
+    ///
+    /// This can be one of four values:
+    ///
+    /// - [`WrapMethod::NoWrap`]: No wrapping.
+    /// - [`WrapMethod::Edge`]: Wrap at the edge of the screen.
+    /// - [`WrapMethod::Word`]: Wrap on word terminations.
+    /// - [`WrapMethod::Capped`]: Wrap a specific distance from the
+    ///   left edge.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`NoWrap`]: WrapMethod::NoWrap
     pub wrap_method: WrapMethod,
     /// Whether to indent wrapped lines or not
+    ///
+    /// In [`Buffer`]s, the default is `true`.
+    ///
+    /// This turns this:
+    ///
+    /// ```text
+    ///     This is a very long line of text, so long that it
+    /// wraps around
+    /// ```
+    ///
+    /// Into this:
+    ///
+    /// ```text
+    ///     This is a very long line of text, so long that it
+    ///     wraps around
+    /// ```
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
     pub indent_wrapped: bool,
-    /// Which places are considered a "tab stop"
-    pub tab_stops: TabStops,
-    /// Whether (and how) to show new lines
+    /// How long tabs should be on screen
+    ///
+    /// In [`Buffer`]s, the default is `4`
+    ///
+    /// This also affect other things, like if your tabs are converted
+    /// into spaces, this will also set how many spaces should be
+    /// added.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub tabstop: u8,
+    /// How to show new lines
+    ///
+    /// In [`Buffer`]s, the default is [`AlwaysAs(' ')`].
+    ///
+    /// This can be one of two values:
+    ///
+    /// - [`NewLine::AlwaysAs({char})`]: Shows `{char}` at every `\n`.
+    /// - [`NewLine::AfterSpaceAs({char})`]: Shows `{char}`, but only
+    ///   on `\n` preceded by empty space.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`AlwaysAs(' ')`]: NewLine::AlwaysAs
+    /// [`NewLine::AlwaysAs({char})`]: NewLine::AlwaysAs
+    /// [`NewLine::AfterSpaceAs({char})`]: NewLine::AfterSpaceAs
     pub new_line: NewLine,
     /// How much space to keep between the cursor and edges
+    ///
+    /// In [`Buffer`]s, the default is `ScrollOff { x: 3, y: 3 }`
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
     pub scrolloff: ScrollOff,
-    /// Whether to limit scrolloff on the end of lines
+    /// Whether to limit scrolloff at the end of lines
+    ///
+    /// In [`Buffer`]s, the default is `false`
+    ///
+    /// This makes it so, as you reach the end of a long line of text,
+    /// the cursor line will continue scrolling to the left,
+    /// maintaining the `scrolloff.x`'s gap.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
     pub force_scrolloff: bool,
     /// Characters that are considered to be part of a word
+    ///
+    /// The default is [`word_chars!("A-Za-z0-9_-_")`].
+    ///
+    /// Which characters should be considered "word characters". This
+    /// matters not only for [`WrapMethod::Word`], as you'd expect,
+    /// but also for certain control schemes, that make distinctions
+    /// between `word` (word characters) and `WORD` (non whitespace
+    /// characters).
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`word_chars!("A-Za-z0-9_-_")`]: word_chars
     pub word_chars: WordChars,
-    /// Whether to show ghosts
+    /// Whether to show [ghoxt text]
+    ///
+    /// In [`Buffer`]s, the default is `true`
+    ///
+    /// This is just a switch to decide if you want ghosts or not.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [ghoxt text]: crate::text::Ghost
     pub show_ghosts: bool,
     /// Wether to allow the [`Text`] to scroll until only
     /// `scrolloff.y` line are on screen
     ///
+    /// In [`Buffer`]s, the default is `true`
+    ///
+    /// If you disable this, when your cursor reaches the end of the
+    /// text, if try to scroll the text down, nothing will happen.
+    /// Otherwise, the text will continue scrolling down until there
+    /// are only `scrolloff.y` lines visible on screen.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
     /// [`Text`]: crate::text::Text
     pub allow_overscroll: bool,
 }
@@ -212,7 +296,7 @@ impl PrintOpts {
     /// change.
     ///
     /// The lack of need to customize this is reflected in
-    /// [`Widget::print_cfg`], which calls this function by default.
+    /// [`Widget::print_opts`], which calls this function by default.
     /// However, in a [`Buffer`], you'll probably want to look at the
     /// options below.
     ///
@@ -223,7 +307,7 @@ impl PrintOpts {
     /// PrintOpts {
     ///     wrap_method: WrapMethod::Edge,
     ///     indent_wrapped: true,
-    ///     tab_stops: TabStops(4),
+    ///     tab_stops: 4,
     ///     new_line: NewLine::AlwaysAs('\n'),
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
     ///     word_chars: word_chars!("A-Za-z0-9_-_"),
@@ -238,12 +322,12 @@ impl PrintOpts {
     /// [default `PrintInfo`]: crate::ui::Area::PrintInfo
     /// [`Area`]: crate::ui::Area
     /// [`Text`]: crate::text::Text
-    /// [`Widget::print_cfg`]: crate::ui::Widget::print_cfg
+    /// [`Widget::print_opts`]: crate::ui::Widget::print_opts
     pub const fn new() -> Self {
         Self {
             wrap_method: WrapMethod::Edge,
             indent_wrapped: true,
-            tab_stops: TabStops(4),
+            tabstop: 4,
             new_line: NewLine::AlwaysAs('\n'),
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
@@ -253,104 +337,19 @@ impl PrintOpts {
         }
     }
 
-    ////////// Configuration
-
-    /// Don't wrap when reaching the end of the area
-    pub const fn dont_wrap(&mut self) -> &mut Self {
-        self.wrap_method = WrapMethod::NoWrap;
-        self
-    }
-
-    /// Wrap on the right edge of the area
-    pub const fn wrap_on_edge(&mut self) -> &mut Self {
-        self.wrap_method = WrapMethod::Edge;
-        self
-    }
-
-    /// Wrap on [word] terminations
-    ///
-    /// [word]: word_chars
-    pub const fn wrap_on_word(&mut self) -> &mut Self {
-        self.wrap_method = WrapMethod::Word;
-        self
-    }
-
-    /// Wrap on a given distance from the left edge
-    ///
-    /// This can wrap beyond the screen, being a mix of [`dont_wrap`]
-    /// and [`wrap_on_edge`].
-    ///
-    /// [`dont_wrap`]: Self::dont_wrap
-    /// [`wrap_on_edge`]: Self::wrap_on_edge
-    pub const fn wrap_at(&mut self, cap: u8) -> &mut Self {
-        self.wrap_method = WrapMethod::Capped(cap);
-        self
-    }
-
-    /// Reindent wrapped lines to the same level of indentation
-    pub const fn indent_wraps(&mut self, value: bool) -> &mut Self {
-        self.indent_wrapped = value;
-        self
-    }
-
-    /// Sets the size of tabs
-    pub const fn set_tabstop(&mut self, tabstop: u8) -> &mut Self {
-        self.tab_stops = TabStops(tabstop);
-        self
-    }
-
-    /// Sets a character to replace `'\n'`s with
-    pub const fn new_line_as(&mut self, char: char) -> &mut Self {
-        self.new_line = NewLine::AlwaysAs(char);
-        self
-    }
-
-    /// Sets a character to replace `'\n'` only with trailing white
-    /// space
-    pub const fn trailing_new_line_as(&mut self, char: char) -> &mut Self {
-        self.new_line = NewLine::AfterSpaceAs(char);
-        self
-    }
-
-    /// Sets the horizontal and vertical scrolloff, respectively
-    pub const fn set_scrolloff(&mut self, x: u8, y: u8) -> &mut Self {
-        self.scrolloff = ScrollOff { x, y };
-        self
-    }
-
-    /// Sets the horizontal scrolloff
-    pub const fn set_x_scrolloff(&mut self, x: u8) -> &mut Self {
-        self.scrolloff = ScrollOff { y: self.scrolloff.y, x };
-        self
-    }
-
-    /// Sets the vertical scrolloff
-    pub const fn set_y_scrolloff(&mut self, y: u8) -> &mut Self {
-        self.scrolloff = ScrollOff { y, x: self.scrolloff.x };
-        self
-    }
-
-    /// Sets the [`WordChars`]
-    pub const fn set_word_chars(&mut self, word_chars: WordChars) -> &mut Self {
-        self.word_chars = word_chars;
-        self
-    }
-
-    /// Sets a forced horizontal scrolloff
-    ///
-    /// Without forced horizontal scrolloff, when you reach the end of
-    /// a long line of text, the cursor will also reach the edge of
-    /// the screen. With this enabled, Duat will keep a distance
-    /// between the cursor and the edge of the screen.
-    ///
-    /// This is particularly useful in a situation like the
-    /// [`PromptLine`] widget, in order to keep good visibility of the
-    /// command.
-    ///
-    /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
-    pub const fn set_forced_horizontal_scrolloff(&mut self, value: bool) -> &mut Self {
-        self.force_scrolloff = value;
-        self
+    /// The default used in buffers and other such inputs
+    pub const fn default_for_input() -> Self {
+        Self {
+            wrap_method: WrapMethod::NoWrap,
+            indent_wrapped: true,
+            tabstop: 4,
+            new_line: NewLine::AlwaysAs(' '),
+            scrolloff: ScrollOff { x: 3, y: 3 },
+            word_chars: WordChars::default(),
+            force_scrolloff: false,
+            show_ghosts: true,
+            allow_overscroll: true,
+        }
     }
 
     ////////// Queries
@@ -368,19 +367,10 @@ impl PrintOpts {
         }
     }
 
-    /// The default used in files and other such inputs
-    pub const fn default_for_input() -> Self {
-        Self {
-            wrap_method: WrapMethod::NoWrap,
-            indent_wrapped: true,
-            tab_stops: TabStops(4),
-            new_line: NewLine::AlwaysAs(' '),
-            scrolloff: ScrollOff { x: 3, y: 3 },
-            word_chars: WordChars::default(),
-            force_scrolloff: false,
-            show_ghosts: true,
-            allow_overscroll: true,
-        }
+    /// How many spaces should come at a given x position
+    #[inline]
+    pub fn tabstop_spaces_at(&self, x: u32) -> u32 {
+        self.tabstop as u32 - (x % self.tabstop as u32)
     }
 }
 

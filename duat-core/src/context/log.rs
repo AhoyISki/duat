@@ -14,7 +14,7 @@ mod macros {
     /// Use this, as opposed to [`warn!`], [`info!`] or [`debug!`],
     /// if you want to tell the user that something explicitely
     /// failed, and they need to find a workaround, like failing
-    /// to write to/read from a file, for example.
+    /// to write to/read from a buffer, for example.
     ///
     /// This error follows the same construction as the [`txt!`]
     /// macro, and will create a [`Record`] inside of the [`Logs`],
@@ -294,7 +294,7 @@ impl Logs {
                 .target(cmd.leak())
                 .build(),
             module_path: None,
-            file: None,
+            buffer: None,
             line: None,
             text: Box::leak(Box::new(res.no_selections())),
         };
@@ -343,8 +343,8 @@ impl log::Log for Logs {
                     .module_path()
                     .map(|mp| -> &str { mp.to_string().leak() }),
             },
-            file: match rec.file_static() {
-                Some(file) => Some(file),
+            buffer: match rec.file_static() {
+                Some(buffer) => Some(buffer),
                 None => rec.file().map(|mp| -> &str { mp.to_string().leak() }),
             },
             line: rec.line(),
@@ -366,7 +366,7 @@ pub struct Record {
     text: &'static Selectionless,
     metadata: log::Metadata<'static>,
     module_path: Option<&'static str>,
-    file: Option<&'static str>,
+    buffer: Option<&'static str>,
     line: Option<u32>,
 }
 
@@ -378,7 +378,7 @@ impl Record {
         level: Level,
         target: &'static str,
         module_path: Option<&'static str>,
-        file: Option<&'static str>,
+        buffer: Option<&'static str>,
         line: Option<u32>,
     ) -> Self {
         Self {
@@ -388,7 +388,7 @@ impl Record {
                 .target(target)
                 .build(),
             module_path,
-            file,
+            buffer,
             line,
         }
     }
@@ -423,10 +423,10 @@ impl Record {
         self.module_path
     }
 
-    /// The source file containing the message
+    /// The source buffer containing the message
     #[inline]
-    pub fn file(&self) -> Option<&'static str> {
-        self.file
+    pub fn buffer(&self) -> Option<&'static str> {
+        self.buffer
     }
 
     /// The line containing the message

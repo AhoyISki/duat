@@ -4,7 +4,16 @@ use std::{
     sync::{Arc, LazyLock, Mutex, Once},
 };
 
-use duat_core::{prelude::*, text::Searcher, ui::PrintInfo};
+use duat_core::{
+    buffer::Buffer,
+    cmd,
+    context::{self, Handle},
+    data::Pass,
+    form, hook,
+    mode::{self, KeyCode, KeyEvent, key},
+    text::{Ghost, Searcher, Tagger, Text, txt},
+    ui::{Area, PrintInfo, Widget},
+};
 
 use super::IncSearcher;
 use crate::{
@@ -256,9 +265,9 @@ impl Clone for Prompt {
 /// }
 /// ```
 ///
-/// The [`PromptMode`] above will switch to the file with the same
+/// The [`PromptMode`] above will switch to the buffer with the same
 /// name as the one in the [`PromptLine`], returning to the initial
-/// file if the match failed.
+/// buffer if the match failed.
 ///
 /// [`Area`]: Ui::Area
 #[allow(unused_variables)]
@@ -451,8 +460,8 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
                 handle.area().set_print_info(pa, orig_print_info.clone());
-                let file = handle.write(pa);
-                *file.selections_mut() = orig_selections.clone();
+                let buffer = handle.write(pa);
+                *buffer.selections_mut() = orig_selections.clone();
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string())

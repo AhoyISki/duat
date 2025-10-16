@@ -18,10 +18,11 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use duat_core::{
-    data::{DataMap, RwData},
-    prelude::*,
-    text::{Builder, BuilderPart},
-    ui::traits::Area,
+    buffer::Buffer,
+    context::Handle,
+    data::{DataMap, Pass, RwData},
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
+    ui::{Widget, traits::Area},
 };
 
 use crate::widgets::status_line::CheckerFn;
@@ -36,8 +37,8 @@ enum Appender<_T: Clone = (), D: Display + Clone = String, W: Widget = Buffer> {
 /// A part of the [`StatusLine`]
 ///
 /// This can either be a static part, like [`Text`], [`impl Display`]
-/// type, or it can be a reader of the [`Buffer`] and its structs, or it
-/// can update independently.
+/// type, or it can be a reader of the [`Buffer`] and its structs, or
+/// it can update independently.
 ///
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
@@ -380,5 +381,5 @@ pub struct PassWidgetAreaArg<W>(PhantomData<W>);
 // The various types of function aliases
 type TextFnCheckerFn = Box<dyn Fn(&Pass, &mut Builder) + 'static + Send>;
 type WidgetAreaFn<W> = Box<dyn Fn(&mut Builder, &Pass, &W, &dyn Area) + Send + 'static>;
-type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle<Buffer>) + Send>;
+type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle) + Send>;
 type StateFns = (BuilderFn, Box<dyn Fn(&Pass) -> bool + Send>);

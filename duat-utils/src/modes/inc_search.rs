@@ -7,7 +7,12 @@
 //!
 //! [`duat-core`]: duat_core
 //! [`Cursor`]: duat_core::mode::Cursor
-use duat_core::{prelude::*, text::Searcher};
+use duat_core::{
+    buffer::Buffer,
+    context::Handle,
+    data::Pass,
+    text::{Searcher, Text, txt},
+};
 
 /// An abstraction trait used to handle incremental search
 ///

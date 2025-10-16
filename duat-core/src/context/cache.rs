@@ -5,9 +5,9 @@
 //! crate.
 //!
 //! One example for where this is used is the [`Ui`], which has
-//! information about how much a given file should be scrolled when
+//! information about how much a given buffer should be scrolled when
 //! opening it in Duat. Another example is [`Cursors`], which stores a
-//! list of open [`Cursor`]s, to start the file on.
+//! list of open [`Cursor`]s, to start the buffer on.
 //!
 //! Plugins are able to cache any type that implements [`Encode`]
 //! and [`Decode`]. Duat provides these traits from the [`bincode`]
@@ -58,7 +58,7 @@ impl Cache {
     /// Tries to load the cache stored by Duat for the given type
     ///
     /// The cache must have been previously stored by
-    /// [`Cache::store`]. If it does not exist, or the file can't
+    /// [`Cache::store`]. If it does not exist, or the buffer can't
     /// be correctly interpreted, returns [`None`]
     pub fn load<C: Decode<()> + Default + 'static>(
         &self,
@@ -74,7 +74,7 @@ impl Cache {
         bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}").build())
     }
 
-    /// Stores the cache for the given type for that file
+    /// Stores the cache for the given type for that buffer
     ///
     /// The cache will be stored under
     /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
@@ -92,7 +92,7 @@ impl Cache {
 
     /// Deletes the cache for all types for `path`
     ///
-    /// This is done if the file no longer exists, in order to prevent
+    /// This is done if the buffer no longer exists, in order to prevent
     /// incorrect storage.
     pub fn delete(&self, path: impl Into<PathBuf>) {
         fn delete_cache_inner(path: PathBuf) {
@@ -162,7 +162,7 @@ fn cache_file<C: 'static>(path: &Path, truncate: bool) -> std::io::Result<File> 
         name.push(path.file_name().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::IsADirectory,
-                format!("{path:?} is a directory, not a file for caching"),
+                format!("{path:?} is a directory, not a buffer for caching"),
             )
         })?);
         name

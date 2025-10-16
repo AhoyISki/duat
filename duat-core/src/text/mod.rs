@@ -13,7 +13,7 @@
 //! - Arbitrary [ghost text], that is, [`Text`] that shows up, but is
 //!   not actually part of the [`Text`], i.e., it can be easily
 //!   ignored by external modifiers (like an LSP or tree-sitter) of
-//!   the file, without any special checks;
+//!   the buffer, without any special checks;
 //! - [Left]/[right]/[center] alignment of output (although that is
 //!   implemented by the [`Ui`]);
 //! - [Spacers] for even more advanced alignment
@@ -109,7 +109,7 @@ pub(crate) use self::history::MomentFetcher;
 use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
     builder::{Builder, BuilderPart, txt},
-    bytes::{Slices, Bytes, Lines, Strs},
+    bytes::{Bytes, Lines, Slices, Strs},
     history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
@@ -120,11 +120,12 @@ pub use self::{
     },
 };
 use crate::{
-    opts::PrintOpts,
+    context::Handle,
     data::Pass,
     form,
     mode::{Selection, Selections},
-    ui::traits::Area,
+    opts::{NewLine, PrintOpts},
+    ui::{Widget, traits::Area},
 };
 
 /// The text of a given [`Widget`]
@@ -275,10 +276,11 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, area: &dyn Area, mut cfg: PrintOpts) -> usize {
+    pub fn indent(&self, p: Point, area: &dyn Area, mut opts: PrintOpts) -> usize {
         let [start, _] = self.points_of_line(p.line());
         let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
-        area.print_iter(t_iter, *cfg.new_line_as('\n'))
+        opts.new_line = NewLine::AlwaysAs('\n');
+        area.print_iter(t_iter, opts)
             .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
             .find(|(_, char)| !char.is_whitespace() || *char == '\n')
             .map(|(caret, _)| caret.x as usize)
@@ -558,7 +560,7 @@ impl Text {
     ///
     /// While it is fine to do this on your own widgets, you should
     /// refrain from using this function in a [`Buffer`]s [`Text`], as
-    /// it must iterate over all tags in the file, so if there are a
+    /// it must iterate over all tags in the buffer, so if there are a
     /// lot of other tags, this operation may be slow.
     ///
     /// # [`TextRange`] behavior
@@ -575,9 +577,9 @@ impl Text {
 
     /// Removes all [`Tag`]s
     ///
-    /// Refrain from using this function on [`Buffer`]s, as there may be
-    /// other [`Tag`] providers, and you should avoid messing with
-    /// their tags.
+    /// Refrain from using this function on [`Buffer`]s, as there may
+    /// be other [`Tag`] providers, and you should avoid messing
+    /// with their tags.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn clear_tags(&mut self) {
@@ -597,10 +599,10 @@ impl Text {
 
     /// Removes the tags for all the selections, used before they are
     /// expected to move
-    pub(crate) fn add_selections(&mut self, area: &dyn Area, cfg: PrintOpts) {
+    pub(crate) fn add_selections(&mut self, area: &dyn Area, opts: PrintOpts) {
         let within = (self.0.selections.len() >= 500).then(|| {
-            let (start, _) = area.start_points(self, cfg);
-            let (end, _) = area.end_points(self, cfg);
+            let (start, _) = area.start_points(self, opts);
+            let (end, _) = area.end_points(self, opts);
             (start, end)
         });
 
@@ -658,7 +660,9 @@ impl Text {
     /// the [`SpawnTag`]s
     ///
     /// [`Widget`]: crate::ui::Widget
-    pub(crate) fn get_widget_spawns(&mut self) -> Vec<Box<dyn FnOnce(&mut Pass, usize) + Send>> {
+    pub(crate) fn get_widget_spawns(
+        &mut self,
+    ) -> Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>> {
         std::mem::take(&mut self.0.tags.spawn_fns)
     }
 

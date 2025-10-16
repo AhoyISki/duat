@@ -12,14 +12,14 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     hook::add::<Buffer>(|pa: &mut Pass, (cfg, builder)| {
+//!     hook::add::<Buffer>(|pa: &mut Pass, (opts, builder)| {
 //!         // `LineNumbers` comes from duat-utils
-//!         builder.push(LineNumbers::cfg());
+//!         builder.push(LineNumbers::opts());
 //!
-//!         if let Some("lisp") = cfg.filetype() {
-//!             cfg.dont_wrap()
+//!         if let Some("lisp") = opts.filetype() {
+//!             opts.dont_wrap()
 //!         } else {
-//!             cfg
+//!             opts
 //!         }
 //!     });
 //! }
@@ -42,13 +42,13 @@
 //! - [`ExitedDuat`] triggers after Duat has exited.
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
-//! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is created,
+//! - [`WidgetCreated`] triggers when a [`Widget`]'s [opts] is created,
 //!   letting you change it, [`Widget`] can be used as its [alias]
 //! - [`WindowCreated`], which lets you push widgets around the
 //!   window.
 //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
-//! - [`BufferClosed`] triggers on every file upon closing Duat.
-//! - [`BufferReloaded`] triggers on every file upon reloading Duat.
+//! - [`BufferClosed`] triggers on every buffer upon closing Duat.
+//! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
 //! - [`KeysSent`] lets you act on a [dyn Widget], given a [key].
@@ -141,7 +141,7 @@
 //!
 //! [`Buffer`]: crate::buffer::Buffer
 //! [alias]: HookAlias
-//! [cfg]: crate::ui::Widget::Cfg
+//! [opts]: crate::ui::Widget::Cfg
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [widget]: Widget
 //! [dyn Widget]: Widget
@@ -432,7 +432,7 @@ impl Hookable for UnfocusedFromDuat {
     fn get_input(&mut self) -> Self::Input<'_> {}
 }
 
-/// [`Hookable`]: Triggers when a [`Widget`]'s [cfg] is created
+/// [`Hookable`]: Triggers when a [`Widget`]'s [opts] is created
 ///
 /// # Arguments
 ///
@@ -479,7 +479,7 @@ impl Hookable for UnfocusedFromDuat {
 /// #     type Cfg = VertRuleCfg;
 /// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
 /// #     fn needs_update(&self, _: &Pass) -> bool { false }
-/// #     fn cfg() -> Self::Cfg { VertRuleCfg }
+/// #     fn opts() -> Self::Cfg { VertRuleCfg }
 /// #     fn text(&self) -> &Text { &self.0 }
 /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
@@ -500,7 +500,7 @@ impl Hookable for UnfocusedFromDuat {
 ///
 /// fn setup() {
 ///     hook::add::<LineNumbers<Ui>>(|_, (ln, builder)| {
-///         builder.push(VertRule::cfg().on_the_right());
+///         builder.push(VertRule::opts().on_the_right());
 ///         ln
 ///     });
 /// }
@@ -511,7 +511,7 @@ impl Hookable for UnfocusedFromDuat {
 /// further add a [hook] on `VertRule`, that would push further
 /// `Widget`s if you wanted to.
 ///
-/// [cfg]: crate::ui::Widget::Cfg
+/// [opts]: crate::ui::Widget::Cfg
 /// [`WidgetCfg`]: crate::ui::WidgetCfg
 /// [hook]: self
 /// [direction]: crate::ui::PushSpecs
@@ -532,7 +532,7 @@ impl<W: Widget> Hookable for WidgetCreated<W> {
 /// # Arguments
 ///
 /// - The window [builder], which can be used to push widgets to the
-///   edges of the window, surrounding the inner file region.
+///   edges of the window, surrounding the inner buffer region.
 ///
 /// This is a rather "advanced" [hook], since it lets you change the
 /// layout of `Widget`s around the screen. If you don't need all
@@ -800,12 +800,12 @@ impl Hookable for ColorSchemeSet {
 
 /// [`Hookable`]: Triggers after [`Buffer::save`] or [`Buffer::save_to`]
 ///
-/// Only triggers if the file was actually updated.
+/// Only triggers if the buffer was actually updated.
 ///
 /// # Arguments
 ///
-/// - The path of the file
-/// - The number of bytes written to said file
+/// - The path of the buffer
+/// - The number of bytes written to said buffer
 /// - Wether Duat is in the process of quitting (happens when calling
 ///   the `wq` or `waq` commands)
 ///

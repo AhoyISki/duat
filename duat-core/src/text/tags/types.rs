@@ -14,7 +14,7 @@ use crossterm::event::MouseEventKind;
 
 use super::{GhostId, SpawnId, Tagger, ToggleId};
 use crate::{
-    context,
+    context::{self, Handle},
     data::Pass,
     form::FormId,
     text::{Point, Text, TextRange},
@@ -262,7 +262,10 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 /// The [`Widget`] will be placed according to the [`SpawnSpecs`], and
 /// should move automatically as the `SpawnTag` moves around the
 /// screen.
-pub struct SpawnTag(SpawnId, Box<dyn FnOnce(&mut Pass, usize) + Send>);
+pub struct SpawnTag(
+    SpawnId,
+    Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+);
 
 impl SpawnTag {
     /// Returns a new instance of `SpawnTag`
@@ -290,8 +293,8 @@ impl SpawnTag {
         let id = SpawnId::new();
         Self(
             id,
-            Box::new(move |pa, win| {
-                context::windows().spawn_on_text(pa, (id, specs), widget, win);
+            Box::new(move |pa, win, master| {
+                context::windows().spawn_on_text(pa, (id, specs), widget, win, master);
             }),
         )
     }

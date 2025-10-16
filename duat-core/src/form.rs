@@ -38,9 +38,9 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("selection.extra", Form::white().on_grey().0, Ref(5)),
     ("cloak", Form::grey().on_black().0, Normal),
     ("character.control", Form::grey().0, Normal),
-    ("param.file", Form::yellow().0, Normal),
-    ("param.file.open", Form::yellow().0, Ref(8)),
-    ("param.file.exists", Form::yellow().underlined().0, Normal),
+    ("param.buffer", Form::yellow().0, Normal),
+    ("param.buffer.open", Form::yellow().0, Ref(8)),
+    ("param.buffer.exists", Form::yellow().underlined().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
@@ -668,7 +668,7 @@ mod global {
 /// cannot be destroyed.
 ///
 /// The main use for keeping these things directly is in order to
-/// modify a file's text in an efficient manner, by adding tags
+/// modify a buffer's text in an efficient manner, by adding tags
 /// directly, instead of using a macro like [`txt!`]
 ///
 /// [`txt!`]: crate::text::txt

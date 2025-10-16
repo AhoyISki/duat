@@ -1,26 +1,26 @@
-//! A widget that shows general information, usually about a [`Buffer`]
+//! A widget that shows general information, usually about a
+//! [`Buffer`]
 //!
 //! The [`StatusLine`] is a very convenient widget when the user
 //! simply wants to show some informatioon. The information, when
-//! relevant, can automatically be tied to the active file, saving
+//! relevant, can automatically be tied to the active buffer, saving
 //! some keystrokes for the user's configuration.
 //!
 //! There is also the [`status!`] macro, which is an extremely
 //! convenient way to modify the text of the status line, letting you
 //! place form, in the same way that [`text!`] does, and
 //! automatically recognizing a ton of different types of functions,
-//! that can read from the file, from other places, from [data] types,
-//! etc.
+//! that can read from the buffer, from other places, from [data]
+//! types, etc.
 //!
 //! [data]: crate::data
 mod state;
 
 use duat_core::{
-    context::DynBuffer,
-    data::DataMap,
-    prelude::*,
-    text::Builder,
-    ui::{PushTarget, Side},
+    context::{self, DynBuffer, Handle},
+    data::{DataMap, Pass},
+    text::{AlignRight, Builder, Spacer, Text},
+    ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
 pub use self::{macros::status, state::State};
@@ -30,10 +30,11 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 ///
 /// This widget is updated whenever any of its parts needs to be
 /// updated, and it also automatically adjusts to where it was pushed.
-/// For example, if you push it to a file (via `hook::add::<Buffer>`,
-/// for example), it's information will point to the [`Buffer`] to which
-/// it was pushed. However, if you push it with [`WindowCreated`], it
-/// will always point to the currently active [`Buffer`]:
+/// For example, if you push it to a buffer (via
+/// `hook::add::<Buffer>`, for example), it's information will point
+/// to the [`Buffer`] to which it was pushed. However, if you push it
+/// with [`WindowCreated`], it will always point to the currently
+/// active [`Buffer`]:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -42,9 +43,9 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|_, (cfg, builder)| {
+///     hook::add::<Buffer>(|_, (opts, builder)| {
 ///         builder.push(status!("{name_txt}").above());
-///         cfg
+///         opts
 ///     });
 ///
 ///     hook::remove("WindowWidgets");
@@ -57,10 +58,10 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// }
 /// ```
 ///
-/// In the above example, each file would have a status line with the
-/// name of the file, and by pushing [`FooterWidgets`], you will push
-/// a [`StatusLine`], [`PromptLine`] and [`Notifications`] combo to
-/// each window. This [`StatusLine`] will point to the currently
+/// In the above example, each buffer would have a status line with
+/// the name of the buffer, and by pushing [`FooterWidgets`], you will
+/// push a [`StatusLine`], [`PromptLine`] and [`Notifications`] combo
+/// to each window. This [`StatusLine`] will point to the currently
 /// active [`Buffer`], instead of a specific one.
 ///
 /// You will usually want to create [`StatusLine`]s via the
@@ -75,10 +76,10 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 ///
 /// fn setup() {
 ///     hook::remove("BufferWidgets");
-///     hook::add::<Buffer>(|_, (cfg, builder)| {
-///         builder.push(LineNumbers::cfg());
-///         builder.push(StatusLine::cfg().above());
-///         cfg
+///     hook::add::<Buffer>(|_, (opts, builder)| {
+///         builder.push(LineNumbers::opts());
+///         builder.push(StatusLine::opts().above());
+///         opts
 ///     });
 /// }
 /// ```
@@ -104,7 +105,7 @@ impl StatusLine {
                 unreachable!("mode_txt not xor with the default config");
             };
 
-            let cfg = match builder.specs.side {
+            let opts = match builder.specs.side {
                 Side::Above | Side::Below => {
                     macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
                 }
@@ -114,7 +115,7 @@ impl StatusLine {
                 Side::Left => unreachable!(),
             };
 
-            cfg.fns.unwrap()
+            opts.fns.unwrap()
         };
 
         Self {
@@ -158,7 +159,7 @@ impl Widget for StatusLine {
         let sl = handle.read(pa);
 
         handle.write(pa).text = match &sl.file_handle {
-            BufferHandle::Fixed(file) => (sl.text_fn)(pa, file),
+            BufferHandle::Fixed(buffer) => (sl.text_fn)(pa, buffer),
             BufferHandle::Dynamic(dyn_file) => (sl.text_fn)(pa, dyn_file.handle()),
         };
 
@@ -261,7 +262,8 @@ mod macros {
     /// as arguments. These functions take the following parameters:
     ///
     /// * The [`&Buffer`] widget;
-    /// * A specific [`&impl Widget`], which is glued to the [`Buffer`];
+    /// * A specific [`&impl Widget`], which is glued to the
+    ///   [`Buffer`];
     ///
     /// Both of these can also have a second argument of type
     /// [`&Area`]. This will include the [`Widget`]'s [`Area`] when
@@ -278,8 +280,9 @@ mod macros {
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
-    /// fn name_but_funky(file: &Buffer) -> String {
-    ///     file.name()
+    /// fn name_but_funky(buffer: &Buffer) -> String {
+    ///     buffer
+    ///         .name()
     ///         .chars()
     ///         .enumerate()
     ///         .map(|(i, char)| {
@@ -292,26 +295,26 @@ mod macros {
     ///         .collect()
     /// }
     ///
-    /// fn powerline_main_txt(file: &Buffer, area: &Area) -> Text {
-    ///     let selections = file.selections();
-    ///     let cfg = file.print_cfg();
+    /// fn powerline_main_txt(buffer: &Buffer, area: &Area) -> Text {
+    ///     let selections = buffer.selections();
+    ///     let opts = buffer.print_opts();
     ///     let v_caret = selections
     ///         .get_main()
     ///         .unwrap()
-    ///         .v_caret(file.text(), area, cfg);
+    ///         .v_caret(buffer.text(), area, opts);
     ///
     ///     txt!(
     ///         "[separator][coord]{}[separator][coord]{}[separator][coord]{}",
     ///         v_caret.visual_col(),
     ///         v_caret.line(),
-    ///         file.len_lines()
+    ///         buffer.len_lines()
     ///     )
     ///     .build()
     /// }
     ///
     /// fn setup() {
     ///     hook::add::<WindowCreated>(|_, builder| {
-    ///         builder.push(status!("[file]{name_but_funky}[] {powerline_main_txt}"));
+    ///         builder.push(status!("[buffer]{name_but_funky}[] {powerline_main_txt}"));
     ///     });
     /// }
     /// ```
@@ -433,12 +436,12 @@ mod macros {
     }}
 }
 
-type TextFn = Box<dyn Fn(&Pass, &Handle<Buffer>) -> Text + Send>;
-type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle<Buffer>) -> Text + Send>;
+type TextFn = Box<dyn Fn(&Pass, &Handle) -> Text + Send>;
+type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle) -> Text + Send>;
 type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;
 
 #[derive(Clone)]
 enum BufferHandle {
-    Fixed(Handle<Buffer>),
+    Fixed(Handle),
     Dynamic(DynBuffer),
 }

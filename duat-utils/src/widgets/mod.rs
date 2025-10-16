@@ -21,7 +21,7 @@ use duat_core::{
 };
 
 pub use self::{
-    line_numbers::{LineNumbers, LineNumbersBuilder},
+    line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookBuilder},
     notifications::{Notifications, NotificationsBuilder},
     prompt_line::{PromptLine, PromptLineBuilder},
@@ -49,12 +49,12 @@ mod status_line;
 /// use duat_utils::widgets::{FooterWidgets, status};
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|pa, (cfg, builder)| {
+///     hook::add::<Buffer>(|pa, (opts, builder)| {
 ///         builder.push(FooterWidgets::new(status!(
 ///             "{name_txt}{Spacer}{} {sels_txt} {main_txt}",
 ///             mode_txt(pa)
 ///         )));
-///         cfg
+///         opts
 ///     });
 /// }
 /// ```
@@ -114,7 +114,7 @@ impl FooterWidgets {
                     if handle == &prompt_line
                         && let Err(err) = handle.area().request_width_to_fit(
                             pa,
-                            handle.read(pa).get_print_cfg(),
+                            handle.read(pa).get_print_opts(),
                             handle.text(pa),
                         )
                     {
@@ -144,7 +144,7 @@ impl FooterWidgets {
                     if self.one_line {
                         handle
                             .area()
-                            .request_width_to_fit(pa, handle.cfg(pa), handle.text(pa))?;
+                            .request_width_to_fit(pa, handle.opts(pa), handle.text(pa))?;
                     }
                 };
                 Ok(())

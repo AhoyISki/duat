@@ -154,10 +154,10 @@ pub fn profile() -> &'static str {
     PROFILE.get().expect("Profile not set yet")
 }
 
-/// The path for a plugin's auxiliary files
+/// The path for a plugin's auxiliary buffers
 ///
 /// If you want to store something in a more permanent basis, and also
-/// possibly allow for the user to modify some files (e.g. a TOML file
+/// possibly allow for the user to modify some buffers (e.g. a TOML buffer
 /// with definitions for various LSPs), you should place it in here.
 ///
 /// This function will also create said directory, if it doesn't

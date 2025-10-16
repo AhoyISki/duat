@@ -1,7 +1,9 @@
 use duat_core::{
-    context::{Logs, Record},
-    prelude::*,
-    ui::{PushTarget, Side},
+    context::{self, Handle, Logs, Record},
+    data::Pass,
+    opts::{PrintOpts, WrapMethod},
+    text::{Text, txt},
+    ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
 /// A [`Widget`] to display [`Logs`] sent to Duat
@@ -30,10 +32,7 @@ impl LogBook {
 }
 
 impl Widget for LogBook {
-    fn update(pa: &mut Pass, handle: &Handle<Self>)
-    where
-        Self: Sized,
-    {
+    fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let (lb, area) = handle.write_with_area(pa);
 
         let Some(new_records) = lb.logs.get(lb.len_of_taken..) else {
@@ -48,10 +47,10 @@ impl Widget for LogBook {
         }
 
         if !lb.has_updated_once && area.width() > 0.0 {
-            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_cfg());
+            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
             lb.has_updated_once = true;
         } else if records_were_added {
-            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_cfg());
+            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
         }
     }
 
@@ -67,8 +66,10 @@ impl Widget for LogBook {
         &mut self.text
     }
 
-    fn get_print_cfg(&self) -> PrintOpts {
-        *PrintOpts::new().wrap_on_word().set_scrolloff(0, 0)
+    fn get_print_opts(&self) -> PrintOpts {
+        let mut opts = PrintOpts::new();
+        opts.wrap_method = WrapMethod::Word;
+        opts
     }
 
     fn on_focus(pa: &mut Pass, handle: &Handle<Self>) {
@@ -151,7 +152,7 @@ impl LogBookBuilder {
 impl Default for LogBookBuilder {
     fn default() -> Self {
         fn default_fmt(rec: Record) -> Option<Text> {
-            use context::Level::*;
+            use duat_core::context::Level::*;
             let mut builder = match rec.level() {
                 Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
                 Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]: "),

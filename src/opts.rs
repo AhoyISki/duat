@@ -7,12 +7,12 @@
 //! This module is primarily concerned with adding configuration for
 //! the following [`Widget`]s:
 //!
-//! [`Buffer`]: The main `Widget` for writing and saving files.
-//! [`LineNumbers`]: The line numbers of `Buffer`s.
-//! [`StatusLine`]: Shows information about Duat at the bottom.
-//! [`PromptLine`]: Used primarily for running commands and searching.
-//! [`Notifications`]: Displays notifications, normally joined with `PromptLine`.
-//! [`LogBook`]: Displays the logs, i.e. the history of notifications.
+//! - [`Buffer`], through [`opts::set`].
+//! - [`LineNumbers`], through [`opts::set_lines`].
+//! - [`StatusLine`], through [`opts::set_status`].
+//! - [`PromptLine`], through [`opts::set_prompt`].
+//! - [`Notifications`], through [`opts::set_notifs`].
+//! - [`LogBook`], through [`opts::set_logs`].
 //!
 //! [widgets]: crate::widgets
 //! [hooks]: crate::hook
@@ -23,166 +23,178 @@
 //! [`PromptLine`]: crate::widgets::PromptLine
 //! [`Notifications`]: crate::widgets::Notifications
 //! [`LogBook`]: crate::widgets::LogBook
+//! [`opts::set`]: set
+//! [`opts::set_lines`]: set_lines
+//! [`opts::set_status`]: set_status
+//! [`opts::set_prompt`]: set_prompt
+//! [`opts::set_notifs`]: set_notifs
+//! [`opts::set_logs`]: set_logs
+use std::sync::RwLock;
+
 #[allow(unused_imports)]
 pub use duat_core::opts::word_chars as w_chars;
-pub use duat_core::opts::{PrintOpts, WordChars};
+pub use duat_core::opts::*;
+use duat_utils::widgets::LineNumbersOpts;
 
-use crate::setup::FILE_PRINT_CFG;
-
-
-/// Disables wrapping for all [`Buffer`]s
-///
+/// Options for the [`Buffer`]
 ///
 /// [`Buffer`]: crate::widgets::Buffer
-#[inline(never)]
-pub fn dont_wrap() {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
+pub(crate) static BUFFER_OPTS: RwLock<PrintOpts> = RwLock::new(PrintOpts::default_for_input());
+pub(crate) static LINENUMBERS_OPTS: RwLock<LineNumbersOpts> = RwLock::new(LineNumbersOpts { .. });
 
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.dont_wrap(),
-        None => *PrintOpts::default_for_input().dont_wrap(),
-    })
-}
-
-/// Wraps [`Buffer`]s on the right edge of the area
+/// Change the global [`PrintOpts`] for [`Buffer`]s
 ///
-/// [`Buffer`]: crate::widgets::Buffer
-#[inline(never)]
-pub fn wrap_on_edge() {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.wrap_on_edge(),
-        None => *PrintOpts::default_for_input().wrap_on_edge(),
-    })
-}
-
-/// Wraps [`Buffer`]s on [word] terminations
+/// In this function, you can modify the members of `PrintOpts`, which
+/// are the following:
 ///
-/// [`Buffer`]: crate::widgets::Buffer
-/// [word]: word_chars!
-#[inline(never)]
-pub fn wrap_on_word() {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.wrap_on_word(),
-        None => *PrintOpts::default_for_input().wrap_on_word(),
-    })
-}
-
-/// Wraps [`Buffer`]s a certain distance from the left edge
+/// - `opts.wrap_method: WrapMethod` - How to wrap lines in the buffer
 ///
-/// This can wrap beyond the screen, being a mix of [`dont_wrap`]
-/// and [`wrap_on_edge`].
+///   The default is [`WrapMethod::NoWrap`]
 ///
-/// [`Buffer`]: crate::widgets::Buffer
-#[inline(never)]
-pub fn wrap_at(cap: u8) {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.wrap_at(cap),
-        None => *PrintOpts::default_for_input().wrap_at(cap),
-    })
-}
-
-/// Reindent wrapped lines on [`Buffer`]s to the same level of
-/// indentation
+/// - `opts.indent_wrapped`: bool - Whether to indent wrapped lines
 ///
-/// [`Buffer`]: crate::widgets::Buffer
-#[inline(never)]
-pub fn indent_wraps(value: bool) {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.indent_wraps(value),
-        None => *PrintOpts::default_for_input().indent_wraps(value),
-    })
-}
-
-/// Sets the size of tabs
-#[inline(never)]
-pub fn tabstop(tab_size: u8) {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.set_tabstop(tab_size),
-        None => *PrintOpts::default_for_input().set_tabstop(tab_size),
-    })
-}
-
-/// Sets a character to replace `'\n'`s with
-#[inline(never)]
-pub fn new_line(char: char) {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.new_line_as(char),
-        None => *PrintOpts::default_for_input().new_line_as(char),
-    })
-}
-
-/// Sets a character to replace `'\n'` only with trailing white space
-#[inline(never)]
-pub fn trailing_new_line(char: char) {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.trailing_new_line_as(char),
-        None => *PrintOpts::default_for_input().trailing_new_line_as(char),
-    })
-}
-
-/// Sets the scrolloff for [`Buffer`]s
+///   The default is `true`
 ///
-/// [`Buffer`]: crate::widgets::Buffer
-#[inline(never)]
-pub fn scrolloff(x: u8, y: u8) {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.set_scrolloff(x, y),
-        None => *PrintOpts::default_for_input().set_scrolloff(x, y),
-    })
-}
-
-/// Sets the [`w_chars!`] for all [`Buffer`]s
+/// - `opts.tabstop: u8` - How long tabs should be on screen
 ///
-/// You can use the [`w_chars!`] macro to set it to individual files
-/// if you wish to.
+///   The default is `4`
 ///
-/// The syntax (as well as the default definition) is as follows:
+/// - `opts.new_line: NewLine` - How to show new lines
+///
+///   The default is [`NewLine::AlwaysAs(' ')`].
+///
+/// - `opts.scrolloff: ScrollOff` - How much space to keep between the
+///   cursor and edges
+///
+///   The default is [`ScrollOff { x: 3, y: 3 }`]
+///
+/// - `opts.force_scrolloff: bool` - Whether to limit scrolloff at the
+///   end of lines
+///
+///   The default is `false`
+///
+/// - `opts.word_chars: WordChars` - Characters to be considered part
+///   of a word  The default is [`word_chars!("A-Za-z0-9_-_")`].
+///
+/// - `opts.show_ghosts: bool` Whether to show [ghoxt text]
+///
+///   The default is `true`
+///   
+/// - `opts.allow_overscroll: bool` Wether to allow the [`Text`] to
+///   scroll until only `scrolloff.y` line are on screen
+///
+///   The default is `true`
+///
+/// Within the `setup` function, this is how you'd use this function;
 ///
 /// ```rust
-/// # use duat::print::word_chars;
-/// word_chars!("a-zA-Z0-9_-_");
+/// use duat::prelude::*;
+///
+/// opts::set(|opts| {
+///     opts.tabstop = 2;
+///     opts.scrolloff.x = 0;
+/// });
 /// ```
 ///
-/// [`Buffer`]: crate::prelude::Buffer
-pub macro word_chars($($w_chars:tt)+) {
-    set_word_chars(w_chars!($($w_chars)+))
+/// If you want to set these options on a [`Buffer`] by `Buffer`
+/// basis, you should reach out for [hooks], where the same
+///
+/// ```rust
+/// use duat::prelude::*;
+///
+/// hook::add::<Buffer>(|pa, handle| {
+///     let buffer = handle.write(pa);
+///
+///     match buffer.filetype() {
+///         Some("lua" | "c" | "javascript") => {
+///             buffer.opts.tabstop = 2;
+///         }
+///         Some("markdown") => {
+///             buffer.opts.word_chars = word_chars!("A-Za-z0-9_-_---");
+///             buffer.opts.wrap_method = WrapMethod::Word;
+///         }
+///         _ => {}
+///     }
+///     Ok(())
+/// });
+/// ```
+///
+/// More options will come in the future!
+///
+/// [`Buffer`]: crate::widgets::Buffer
+/// [`WrapMethod::NoWrap`]: WrapMethod
+/// [`NewLine::AlwaysAs(' ')`]: NewLine
+/// [`ScrollOff { x: 3, y: 3 }`]: ScrollOff
+/// [`word_chars!("A-Za-z0-9_-_")`]: word_chars
+/// [hooks]: crate::hook
+pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
+    set_fn(&mut BUFFER_OPTS.write().unwrap())
 }
 
-/// Sets the [`WordChars`]
-#[doc(hidden)]
-#[allow(dead_code)]
-#[inline(never)]
-pub fn set_word_chars(word_chars: WordChars) {
-    let mut print_cfg = FILE_PRINT_CFG.write().unwrap();
-    let prev = print_cfg.take();
-
-    *print_cfg = Some(match prev {
-        Some(mut prev) => *prev.set_word_chars(word_chars),
-        None => *PrintOpts::default_for_input().set_word_chars(word_chars),
-    })
+/// Change the global [`PrintOpts`] for [`LineNumber`]s
+///
+/// In this function, you can modify the members of `PrintOpts`, which
+/// are the following:
+///
+/// - `relative: bool` - Wether to show relative numbering
+///
+///   The default is `false`
+///
+/// - `align: std::fmt::Alignment` Where to align the numbers
+///
+///   The default is [`std::fmt::Alignment::Left`]
+///
+/// - `main_align: std::fmt::Alignment` Where to align the main line
+///   number
+///
+///   The default is [`std::fmt::Alignment::Right`]
+///
+/// - `opts.show_wraps: bool` - Wether to show wrapped line's numbers
+///
+///   The default is `false`
+///
+/// - `opts.on_the_right: bool` - Place this [`Widget`] on the right,
+///   as opposed to on the left
+///
+///   The default is `false`
+///   
+/// Within the `setup` function, this is how you'd use this function;
+///
+/// ```rust
+/// use duat::prelude::*;
+///
+/// opts::set_lines(|opts| {
+///     opts.align = std::fmt::Alignment::Right;
+///     opts.relative = true
+/// });
+/// ```
+///
+/// If you want to set these options on a [`Buffer`] by `Buffer`
+/// basis, you should reach out for [hooks], where the same
+///
+/// ```rust
+/// use duat::prelude::*;
+///
+/// hook::add::<LineNumbers>(|pa, handle| {
+///     let buffer = handle.write(pa);
+///
+///     match buffer.filetype() {
+///         Some("lua" | "c" | "javascript") => {
+///             buffer.opts.tabstop = 2;
+///         }
+///         Some("markdown") => {
+///             buffer.opts.word_chars = word_chars!("A-Za-z0-9_-_---");
+///             buffer.opts.wrap_method = WrapMethod::Word;
+///         }
+///         _ => {}
+///     }
+///     Ok(())
+/// });
+/// ```
+///
+/// [`Buffer`]: crate::widgets::Buffer
+/// [`LineNumber`]: crate::widgets::LineNumbers
+/// [hooks]: crate::hook
+pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
+    set_fn(&mut LINENUMBERS_OPTS.write().unwrap())
 }

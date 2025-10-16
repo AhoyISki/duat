@@ -1,6 +1,8 @@
 use duat_core::{
-    prelude::*,
-    ui::{PushTarget, Side},
+    context::Handle,
+    data::Pass,
+    text::{Text, txt},
+    ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
 /// A vertical line on screen, useful, for example, for the separation
@@ -27,7 +29,7 @@ use duat_core::{
 /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 /// [`with_main_char`]: VertRuleCfg::with_main_char
 pub struct VertRule {
-    handle: Option<Handle<Buffer>>,
+    handle: Option<Handle>,
     text: Text,
     sep_char: SepChar,
 }

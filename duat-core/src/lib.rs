@@ -17,7 +17,7 @@
 //!   - [`Widget`]s: As the name implies, this is the trait for
 //!     objects that will show up on the screen. The most noteworthy
 //!     `Widget` is the [`Buffer`], which displays the contents of a
-//!     file.
+//!     buffer.
 //!   - [`WidgetCfg`]s: These are `Widget` builders. They are used in
 //!     the `setup` function of Duat's config, through the
 //!     `WidgetCreated` and `WindowCreated` hooks.
@@ -138,9 +138,9 @@
 //! In the code above, `WordCount` is a plugin that can be included in
 //! Duat's `config` crate. It will give the user the ability to get
 //! how many words are in a `Buffer`, without having to reparse the
-//! whole buffer every time, given that it could be a very large file.
-//! In order to configure the `Plugin`, you should make use of the
-//! builder pattern, returning the `Plugin` on every modification.
+//! whole buffer every time, given that it could be a very large
+//! buffer. In order to configure the `Plugin`, you should make use of
+//! the builder pattern, returning the `Plugin` on every modification.
 //!
 //! ```rust
 //! use duat_core::prelude::*;
@@ -287,11 +287,11 @@
 //! ```
 //!
 //! You'll notice that the `BufferTracker` has a
-//! [`BufferTracker::moment`] method. This method returns a [`Moment`],
-//! which is a list of all the `Change`s that took place since the
-//! previous call to `BufferTracker::update`. By iterating through these
-//! changes, the `Parser` can keep up with every `Change` that takes
-//! place in the `Buffer`.
+//! [`BufferTracker::moment`] method. This method returns a
+//! [`Moment`], which is a list of all the `Change`s that took place
+//! since the previous call to `BufferTracker::update`. By iterating
+//! through these changes, the `Parser` can keep up with every
+//! `Change` that takes place in the `Buffer`.
 //!
 //! And that's it for the `Parser` implementation! Now, how do we add
 //! it to a `Buffer`?
@@ -316,9 +316,9 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn build(self, file: &Buffer<U>, tracker: BufferTracker) -> Result<Self::Parser, Text> {
+//!     fn build(self, buffer: &Buffer<U>, tracker: BufferTracker) -> Result<Self::Parser, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
-//!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
+//!         let words = buffer.bytes().search_fwd(regex, ..).unwrap().count();
 //!
 //!         Ok(WordCounter { tracker, words, regex })
 //!     }
@@ -376,8 +376,8 @@
 //!     fn plug(self, _: &Plugins<U>) {
 //!         let not_whitespace = self.0;
 //!
-//!         hook::add::<Buffer<U>, U>(move |pa, (mut cfg, _)| {
-//!             cfg.with_parser(WordCounterCfg(not_whitespace))
+//!         hook::add::<Buffer<U>, U>(move |pa, (mut opts, _)| {
+//!             opts.with_parser(WordCounterCfg(not_whitespace))
 //!         });
 //!     }
 //! }
@@ -410,8 +410,8 @@
 //! use duat_core::prelude::*;
 //!
 //! /// The number of words in a [`Buffer`]
-//! pub fn file_words<U: Ui>(file: &Buffer<U>) -> usize {
-//!     file.read_parser(|word_counter: &WordCounter| word_counter.words)
+//! pub fn file_words<U: Ui>(buffer: &Buffer<U>) -> usize {
+//!     buffer.read_parser(|word_counter: &WordCounter| word_counter.words)
 //!         .unwrap_or(0)
 //! }
 //! ```
@@ -440,15 +440,16 @@
 //! impl<U: Ui> Plugin<U> for WordCount {
 //!     fn plug(self, _: &Plugins<U>) {
 //!         let not_whitespace = self.0;
-//!         hook::add::<Buffer<U>, U>(move |_, (mut cfg, _)| {
-//!             cfg.with_parser(WordCounterCfg(not_whitespace))
+//!         hook::add::<Buffer<U>, U>(move |_, (mut opts, _)| {
+//!             opts.with_parser(WordCounterCfg(not_whitespace))
 //!         });
 //!     }
 //! }
 //!
 //! /// The number of words in a [`Buffer`]
-//! pub fn file_words<U: Ui>(file: &Buffer<U>) -> usize {
-//!     file.read_parser(|word_counter: &WordCounter| word_counter.words)
+//! pub fn file_words<U: Ui>(buffer: &Buffer<U>) -> usize {
+//!     buffer
+//!         .read_parser(|word_counter: &WordCounter| word_counter.words)
 //!         .unwrap_or(0)
 //! }
 //!
@@ -477,9 +478,9 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn build(self, file: &Buffer<U>, tracker: BufferTracker) -> Result<Self::Parser, Text> {
+//!     fn build(self, buffer: &Buffer<U>, tracker: BufferTracker) -> Result<Self::Parser, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
-//!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
+//!         let words = buffer.bytes().search_fwd(regex, ..).unwrap().count();
 //!
 //!         Ok(WordCounter { tracker, words, regex })
 //!     }
@@ -590,18 +591,18 @@
 //! [command]: crate::cmd
 //! [`cargo`]: https://doc.rust-lang.org/book/ch01-01-installation.html
 //! [builder pattern]: https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
-//! [`Parser`]: crate::file::Parser
-//! [`ParserCfg`]: crate::file::ParserCfg
+//! [`Parser`]: crate::buffer::Parser
+//! [`ParserCfg`]: crate::buffer::ParserCfg
 //! [`Moment`]: crate::text::Moment
 //! [`Change`]: crate::text::Change
-//! [`Parser::parse`]: crate::file::Parser::parse
-//! [`Parser::update`]: crate::file::Parser::update
+//! [`Parser::parse`]: crate::buffer::Parser::parse
+//! [`Parser::update`]: crate::buffer::Parser::update
 //! [`Bytes`]: crate::text::Bytes
 //! [`Bytes::points_of_line`]: crate::text::Bytes::points_of_line
 //! [`Point`]: crate::text::Point
 //! [was taken]: crate::text::Change::taken_str
 //! [what was added]: crate::text::Change::added_str
-//! [`<WordCounter as Parser>::parse`]: crate::file::Parser::parse
+//! [`<WordCounter as Parser>::parse`]: crate::buffer::Parser::parse
 //! [`read`]: crate::data::RwData::read
 //! [`write`]: crate::data::RwData::write
 //! [number one rule of Rust]: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html
@@ -610,13 +611,13 @@
 //! [`plug`]: https://docs.rs/duat/latest/duat/prelude/function.plug.html
 //! [crates.io]: https://crates.io
 //! [these guidelines]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
-//! [installed duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
+//! [installed duat]: https://github.com/AhoyISki/duat?tab=readme-ov-buffer#getting-started
 //! [dependencies]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
 //! [commands]: crate::cmd
 //! [`RwData<Self>`]: crate::data::RwData
-//! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
-//! [`parse`]: crate::file::Parser::parse
+//! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-buffer#getting-started
+//! [`parse`]: crate::buffer::Parser::parse
 //! [`PrintOpts`]: crate::opts::PrintOpts
 //! [`Text`]: crate::text::Text
 //! [`txt!`]: crate::text::txt
@@ -646,40 +647,12 @@ use std::any::TypeId;
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
-pub use main_thread_only::MainThreadOnly;
+pub use lender::Lender;
 use parking_lot::Mutex;
 
-pub mod prelude {
-    //! The prelude of Duat
-    //!
-    //! I recommend adding `use duat_core::prelude::*` to the top of
-    //! modules, in order to bring everything that you could possibly
-    //! need into scope. This is especially the case if you're not
-    //! working with an LSP which can just bring those symbols into
-    //! scope.
-    pub use lender::Lender;
-
-    pub use crate::{
-        Plugin, Plugins,
-        buffer::{Buffer, BufferTracker, Parser},
-        opts::PrintOpts,
-        cmd,
-        context::{self, Handle},
-        data::{Pass, RwData},
-        form::{self, Form},
-        hook,
-        mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
-        ranges::Ranges,
-        text::{
-            AlignCenter, AlignLeft, AlignRight, Bytes, Conceal, Ghost, Matcheable, Moment, Point,
-            Spacer, Tagger, Text, txt,
-        },
-        ui::{Area, PushSpecs, Ui, Widget},
-    };
-}
+pub use self::{main_thread_only::MainThreadOnly, ranges::Ranges};
 
 pub mod buffer;
-pub mod opts;
 pub mod cmd;
 pub mod context;
 pub mod data;
@@ -687,6 +660,7 @@ mod doc_duat_macro;
 pub mod form;
 pub mod hook;
 pub mod mode;
+pub mod opts;
 mod ranges;
 #[doc(hidden)]
 pub mod session;

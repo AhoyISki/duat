@@ -40,7 +40,7 @@
 //! [`Cursor`]: duat_core::mode::Cursor
 use std::sync::Mutex;
 
-use duat_core::{data::Pass, buffer::Buffer, prelude::Handle};
+use duat_core::{buffer::Buffer, context::Handle, data::Pass};
 
 pub use self::{
     inc_search::{ExtendFwd, ExtendRev, IncSearcher, SearchFwd, SearchRev},

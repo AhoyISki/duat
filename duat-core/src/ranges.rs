@@ -13,7 +13,7 @@ use crate::utils::merging_range_by_guess_and_lazy_shift;
 ///
 /// [`Text`]: crate::text::Text
 /// [`Buffer`]: crate::prelude::Buffer
-/// [`Parser`]: crate::file::Parser
+/// [`Parser`]: crate::buffer::Parser
 #[derive(Clone, Default, Debug)]
 pub struct Ranges {
     list: GapBuffer<Range<i32>>,

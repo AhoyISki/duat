@@ -124,7 +124,7 @@
 //! announcing that the command succedeed. For the [`Err`] variant,
 //! however, the return value is just [`Text`], because you should say
 //! what went wrong in the command. Most of the time, this happens
-//! because of something out of your control, like a file not
+//! because of something out of your control, like a buffer not
 //! existing. In these cases, the `?` is enough to return an
 //! appropriate [`Text`].
 //!
@@ -279,15 +279,15 @@ pub(crate) fn add_session_commands() {
             None => context::cur_file(pa),
         };
 
-        let file = handle.read(pa);
-        if file.text().has_unsaved_changes() && file.exists() {
-            return Err(txt!("{} has unsaved changes", file.name()).build());
+        let buffer = handle.read(pa);
+        if buffer.text().has_unsaved_changes() && buffer.exists() {
+            return Err(txt!("{} has unsaved changes", buffer.name()).build());
         }
 
         context::windows().close(pa, &handle)?;
 
         Ok(Some(
-            txt!("Closed [file]{}", handle.read(pa).name()).build(),
+            txt!("Closed [buffer]{}", handle.read(pa).name()).build(),
         ))
     });
 
@@ -309,8 +309,8 @@ pub(crate) fn add_session_commands() {
         let unwritten = windows
             .file_handles(pa)
             .filter(|handle| {
-                let file = handle.read(pa);
-                file.text().has_unsaved_changes() && file.exists()
+                let buffer = handle.read(pa);
+                buffer.text().has_unsaved_changes() && buffer.exists()
             })
             .count();
 
@@ -318,9 +318,9 @@ pub(crate) fn add_session_commands() {
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
-            Err(txt!("There is [a]1[] unsaved file").build())
+            Err(txt!("There is [a]1[] unsaved buffer").build())
         } else {
-            Err(txt!("There are [a]{unwritten}[] unsaved files").build())
+            Err(txt!("There are [a]{unwritten}[] unsaved buffers").build())
         }
     });
 
@@ -331,19 +331,19 @@ pub(crate) fn add_session_commands() {
 
     add!(["write", "w"], |pa, path: Option<ValidBuffer>| {
         let handle = context::cur_file(pa);
-        let file = handle.write(pa);
+        let buffer = handle.write(pa);
 
         let (bytes, name) = if let Some(path) = path {
-            (file.save_to(&path)?, path)
-        } else if let Some(name) = file.name_set() {
-            (file.save()?, std::path::PathBuf::from(name))
+            (buffer.save_to(&path)?, path)
+        } else if let Some(name) = buffer.name_set() {
+            (buffer.save()?, std::path::PathBuf::from(name))
         } else {
             return Err(txt!("Buffer has no name path to write to").build());
         };
 
         match bytes {
             Some(bytes) => Ok(Some(
-                txt!("Wrote [a]{bytes}[] bytes to [file]{name}").build(),
+                txt!("Wrote [a]{bytes}[] bytes to [buffer]{name}").build(),
             )),
             None => Ok(Some(txt!("Nothing to be written").build())),
         }
@@ -353,22 +353,22 @@ pub(crate) fn add_session_commands() {
         let handle = context::cur_file(pa);
 
         let (bytes, name) = {
-            let file = handle.write(pa);
+            let buffer = handle.write(pa);
             let bytes = if let Some(path) = path {
-                file.save_quit_to(path, true)?
+                buffer.save_quit_to(path, true)?
             } else {
-                file.save_quit(true)?
+                buffer.save_quit(true)?
             };
-            (bytes, file.name())
+            (bytes, buffer.name())
         };
 
         context::windows().close(pa, &handle)?;
 
         match bytes {
             Some(bytes) => Ok(Some(
-                txt!("Closed [file]{name}[], writing [a]{bytes}[] bytes").build(),
+                txt!("Closed [buffer]{name}[], writing [a]{bytes}[] bytes").build(),
             )),
-            None => Ok(Some(txt!("Closed [file]{name}[]").build())),
+            None => Ok(Some(txt!("Closed [buffer]{name}[]").build())),
         }
     });
 
@@ -386,11 +386,11 @@ pub(crate) fn add_session_commands() {
         }
 
         if written == handles.len() {
-            Ok(Some(txt!("Wrote to [a]{written}[] files").build()))
+            Ok(Some(txt!("Wrote to [a]{written}[] buffers").build()))
         } else {
             let unwritten = handles.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(txt!("Failed to write to [a]{unwritten}[] file{plural}").build())
+            Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}").build())
         }
     });
 
@@ -412,7 +412,7 @@ pub(crate) fn add_session_commands() {
         } else {
             let unwritten = handles.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(txt!("Failed to write to [a]{unwritten}[] file{plural}").build())
+            Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}").build())
         }
     });
 
@@ -463,8 +463,8 @@ pub(crate) fn add_session_commands() {
             }
         };
 
-        let file = Buffer::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
-        let handle = windows.new_file(pa, file);
+        let buffer = Buffer::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
+        let handle = windows.new_file(pa, buffer);
         context::set_current_node(pa, handle);
 
         return Ok(Some(txt!("Opened {pk}").build()));
@@ -503,11 +503,11 @@ pub(crate) fn add_session_commands() {
     add!(["buffer", "b"], |pa, handle: OtherBuffer| {
         mode::reset_to(handle.to_dyn());
         Ok(Some(
-            txt!("Switched to [file]{}", handle.read(pa).name()).build(),
+            txt!("Switched to [buffer]{}", handle.read(pa).name()).build(),
         ))
     });
 
-    add!("next-file", |pa, flags: Flags| {
+    add!("next-buffer", |pa, flags: Flags| {
         let windows = context::windows();
         let handle = context::cur_file(pa);
         let win = context::cur_window(pa);
@@ -523,22 +523,22 @@ pub(crate) fn add_session_commands() {
             windows
                 .iter_around(pa, win, wid)
                 .find_map(as_file_handle)
-                .ok_or_else(|| txt!("There are no other open files"))?
+                .ok_or_else(|| txt!("There are no other open buffers"))?
         } else {
             windows
                 .iter_around(pa, win, wid)
                 .filter(|(lhs, ..)| *lhs == win)
                 .find_map(as_file_handle)
-                .ok_or_else(|| txt!("There are no other files open in this window"))?
+                .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
         mode::reset_to(handle.to_dyn());
         Ok(Some(
-            txt!("Switched to [file]{}", handle.read(pa).name()).build(),
+            txt!("Switched to [buffer]{}", handle.read(pa).name()).build(),
         ))
     });
 
-    add!("prev-file", |pa, flags: Flags| {
+    add!("prev-buffer", |pa, flags: Flags| {
         let windows = context::windows();
         let handle = context::cur_file(pa);
         let win = context::cur_window(pa);
@@ -554,18 +554,18 @@ pub(crate) fn add_session_commands() {
             windows
                 .iter_around_rev(pa, win, wid)
                 .find_map(as_file_handle)
-                .ok_or_else(|| txt!("There are no other open files"))?
+                .ok_or_else(|| txt!("There are no other open buffers"))?
         } else {
             windows
                 .iter_around(pa, win, wid)
                 .filter(|(lhs, ..)| *lhs == win)
                 .find_map(as_file_handle)
-                .ok_or_else(|| txt!("There are no other files open in this window"))?
+                .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
         mode::reset_to(handle.to_dyn());
         Ok(Some(
-            txt!("Switched to [file]{}", handle.read(pa).name()).build(),
+            txt!("Switched to [buffer]{}", handle.read(pa).name()).build(),
         ))
     });
 
@@ -723,70 +723,70 @@ mod global {
 
     /// Switches to/opens a [`Buffer`] with the given name.
     ///
-    /// If you wish to specifically switch to files that are already
+    /// If you wish to specifically switch to buffers that are already
     /// open, use [`buffer`].
     ///
     /// If there are more arguments, they will be ignored.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn edit(pa: &mut Pass, file: impl std::fmt::Display) -> CmdResult {
-        call(pa, format!("edit {file}"))
+    pub fn edit(pa: &mut Pass, buffer: impl std::fmt::Display) -> CmdResult {
+        call(pa, format!("edit {buffer}"))
     }
 
     /// Switches to a [`Buffer`] with the given name.
     ///
-    /// If there is no file open with that name, does nothing. Use
-    /// [`edit`] if you wish to open files.
+    /// If there is no buffer open with that name, does nothing. Use
+    /// [`edit`] if you wish to open buffers.
     ///
     /// If there are more arguments, they will be ignored.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn buffer(pa: &mut Pass, file: impl std::fmt::Display) -> CmdResult {
-        call(pa, format!("buffer {file}"))
+    pub fn buffer(pa: &mut Pass, buffer: impl std::fmt::Display) -> CmdResult {
+        call(pa, format!("buffer {buffer}"))
     }
 
     /// Switches to the next [`Buffer`].
     ///
-    /// This function will only look at files that are opened in the
+    /// This function will only look at buffers that are opened in the
     /// current window. If you want to include other windows in the
     /// search, use [`next_global_file`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn next_file(pa: &mut Pass) -> CmdResult {
-        call(pa, "next-file")
+        call(pa, "next-buffer")
     }
 
     /// Switches to the previous [`Buffer`].
     ///
-    /// This function will only look at files that are opened in the
+    /// This function will only look at buffers that are opened in the
     /// current window. If you want to include other windows in the
     /// search, use [`prev_global_file`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn prev_file(pa: &mut Pass) -> CmdResult {
-        call(pa, "prev-file")
+        call(pa, "prev-buffer")
     }
 
     /// Switches to the next [`Buffer`].
     ///
-    /// This function will look for files in all windows. If you want
+    /// This function will look for buffers in all windows. If you want
     /// to limit the search to just the current window, use
     /// [`next_file`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn next_global_file(pa: &mut Pass) -> CmdResult {
-        call(pa, "next-file --global")
+        call(pa, "next-buffer --global")
     }
 
     /// Switches to the previous [`Buffer`].
     ///
-    /// This function will look for files in all windows. If you want
+    /// This function will look for buffers in all windows. If you want
     /// to limit the search to just the current window, use
     /// [`prev_file`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn prev_global_file(pa: &mut Pass) -> CmdResult {
-        call(pa, "prev-file --global")
+        call(pa, "prev-buffer --global")
     }
 
     /// Tries to alias a `caller` to an existing `command`.

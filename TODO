@@ -45,6 +45,7 @@ FOR NEXT UPDATE:
 [ ] Add convenience methods for the duat-utils Widgets.
 [ ] Remove requirement of Clone on Modes.
 [ ] Rename duat-utils to duat-base.
+[ ] Get rid of NewLine and WrapMethod (and maybe word_chars!?).
 
 KNOWN BUGS:
 [ ] For now, spawned widgets don't care about spacing or alignment.

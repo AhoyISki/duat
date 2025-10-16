@@ -39,11 +39,11 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    opts::PrintOpts,
     context::Handle,
     data::{Pass, RwData},
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
+    opts::PrintOpts,
     text::Text,
     ui::{Area, PrintInfo},
 };
@@ -80,7 +80,7 @@ use crate::{
 /// impl<U: Ui> Widget<U> for UpTime {
 ///     type Cfg = UpTimeCfg;
 ///
-///     fn cfg() -> Self::Cfg {
+///     fn opts() -> Self::Cfg {
 ///         UpTimeCfg
 ///     }
 ///     // more methods remain below
@@ -117,7 +117,7 @@ use crate::{
 /// }
 /// # impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg;
-/// #     fn cfg() -> Self::Cfg { UpTimeCfg }
+/// #     fn opts() -> Self::Cfg { UpTimeCfg }
 /// #     fn text(&self) -> &Text { &self.0 }
 /// #     fn text_mut(&mut self) -> &mut Text{ &mut self.0 }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
@@ -178,7 +178,7 @@ use crate::{
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
 /// impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg;
-/// #     fn cfg() -> Self::Cfg { UpTimeCfg }
+/// #     fn opts() -> Self::Cfg { UpTimeCfg }
 /// #     fn text(&self) -> &Text { &self.0 }
 /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
 /// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
@@ -231,7 +231,7 @@ use crate::{
 ///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s").build();
 ///     }
 ///
-///     fn cfg() -> Self::Cfg {
+///     fn opts() -> Self::Cfg {
 ///         UpTimeCfg
 ///     }
 ///
@@ -269,7 +269,7 @@ use crate::{
 /// ```
 ///
 /// [`Mode`]: crate::mode::Mode
-/// [`cfg`]: Widget::cfg
+/// [`opts`]: Widget::opts
 /// [`build`]: WidgetCfg::build
 /// [How]: PushSpecs
 /// [`PeriodicChecker`]: crate::data::PeriodicChecker
@@ -355,7 +355,7 @@ pub trait Widget: Send + 'static {
     ///
     /// impl<U: Ui> Widget<U> for MyWidget<U> {
     /// #   type Cfg = Cfg;
-    /// #   fn cfg() -> Self::Cfg { todo!() }
+    /// #   fn opts() -> Self::Cfg { todo!() }
     /// #   fn update(_: &mut Pass, handle: &Handle<Self, U>) { todo!() }
     /// #   fn text(&self) -> &Text { todo!() }
     /// #   fn text_mut(&mut self) -> &mut Text { todo!() }
@@ -368,13 +368,13 @@ pub trait Widget: Send + 'static {
     /// ```
     ///
     /// In this case, `MyWidget` is telling Duat that it should be
-    /// updated whenever the file in the [`Handle<Buffer>`] gets
+    /// updated whenever the buffer in the [`Handle<Buffer>`] gets
     /// changed.
     ///
     /// One exception to this is the [`StatusLine`], which can be
     /// altered if any of its parts get changed, some of them depend
-    /// on a [`Handle<Buffer>`], but a lot of others depend on checking
-    /// functions which might need to be triggered.
+    /// on a [`Handle<Buffer>`], but a lot of others depend on
+    /// checking functions which might need to be triggered.
     ///
     /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat_utils/widgets/struct.StatusLine.html
     fn needs_update(&self, pa: &Pass) -> bool;
@@ -387,11 +387,11 @@ pub trait Widget: Send + 'static {
 
     /// The [configuration] for how to print [`Text`]
     ///
-    /// The default configuration, used when `print_cfg` is not
+    /// The default configuration, used when `print_opts` is not
     /// implemented,can be found at [`PrintOpts::new`].
     ///
     /// [configuration]: PrintOpts
-    fn get_print_cfg(&self) -> PrintOpts {
+    fn get_print_opts(&self) -> PrintOpts {
         PrintOpts::new()
     }
 
@@ -406,8 +406,8 @@ pub trait Widget: Send + 'static {
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`Buffer::print`]: crate::buffer::Buffer::print
     fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
-        let cfg = self.get_print_cfg();
-        area.print(pa, self.text(), cfg, painter)
+        let opts = self.get_print_opts();
+        area.print(pa, self.text(), opts, painter)
     }
 }
 
@@ -423,8 +423,12 @@ pub(crate) struct Node {
 
 impl Node {
     /// Returns a new `Node`
-    pub(crate) fn new<W: Widget>(widget: RwData<W>, area: Area) -> Self {
-        Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new(""))))
+    pub(crate) fn new<W: Widget>(
+        widget: RwData<W>,
+        area: Area,
+        master: Option<Handle<dyn Widget>>,
+    ) -> Self {
+        Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new("")), master))
     }
 
     /// Returns a `Node` from an existing [`Handle`]
@@ -514,8 +518,8 @@ impl Node {
 
         let print_info = self.handle.area().get_print_info(pa);
         let (widget, area) = self.handle.write_with_area(pa);
-        let cfg = widget.get_print_cfg();
-        widget.text_mut().add_selections(area, cfg);
+        let opts = widget.get_print_opts();
+        widget.text_mut().add_selections(area, opts);
 
         if print_info != PrintInfo::default() {
             widget.text_mut().update_bounds();
@@ -523,7 +527,7 @@ impl Node {
 
         let widgets_to_spawn = self.handle.text_mut(pa).get_widget_spawns();
         for spawn in widgets_to_spawn {
-            spawn(pa, win);
+            spawn(pa, win, self.handle.clone());
         }
         (self.print)(pa);
 

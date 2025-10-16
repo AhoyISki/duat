@@ -1,10 +1,10 @@
 //! Builder helpers for Duat
 //!
 //! These builders are used primarily to push widgets to either a
-//! [`Buffer`] or a window. They offer a convenient way to make massive
-//! changes to the layout, in a very intuitive "inner-outer" order,
-//! where widgets get pushed to a "main area" which holds all of the
-//! widgets that were added to that helper.
+//! [`Buffer`] or a window. They offer a convenient way to make
+//! massive changes to the layout, in a very intuitive "inner-outer"
+//! order, where widgets get pushed to a "main area" which holds all
+//! of the widgets that were added to that helper.
 //!
 //! This pushing to an unnamed, but known area makes the syntax for
 //! layout modification fairly minimal, with minimal boilerplate.
@@ -25,8 +25,8 @@ use crate::{
 /// interface quite friendly.
 ///
 /// It will also be called once per window, from the [`WindowCreated`]
-/// [hook], letting you place [`Widget`]s "around" the common [`Buffer`]
-/// area, at the edges of the screen.
+/// [hook], letting you place [`Widget`]s "around" the common
+/// [`Buffer`] area, at the edges of the screen.
 ///
 /// # Examples
 ///
@@ -39,16 +39,16 @@ use crate::{
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|_, (cfg, builder)| {
-///         builder.push(LineNumbers::cfg());
-///         cfg
+///     hook::add::<Buffer>(|_, (opts, builder)| {
+///         builder.push(LineNumbers::opts());
+///         opts
 ///     });
 /// }
 /// ```
 ///
 /// In the example above, I pushed a [`LineNumbers`] widget to the
-/// [`Buffer`]. By default, this widget will go on the left, but you can
-/// change that:
+/// [`Buffer`]. By default, this widget will go on the left, but you
+/// can change that:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -56,10 +56,10 @@ use crate::{
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|_, (cfg, builder)| {
-///         let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
+///     hook::add::<Buffer>(|_, (opts, builder)| {
+///         let line_numbers_cfg = LineNumbers::opts().relative().on_the_right();
 ///         builder.push(line_numbers_cfg);
-///         cfg
+///         opts
 ///     });
 /// }
 /// ```
@@ -68,9 +68,9 @@ use crate::{
 /// show relative numbers, instead of absolute, like it usually does.
 ///
 /// By default, there already exists a [hook group] that adds widgets
-/// to a file, the `"BufferWidgets"` group. If you want to get rid of
-/// this group in order to create your own widget layout, you should
-/// use [`hook::remove`]:
+/// to a buffer, the `"BufferWidgets"` group. If you want to get rid
+/// of this group in order to create your own widget layout, you
+/// should use [`hook::remove`]:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -79,13 +79,13 @@ use crate::{
 ///
 /// fn setup() {
 ///     hook::remove("BufferWidgets");
-///     hook::add::<Buffer>(|_, (cfg, builder)| {
-///         builder.push(LineNumbers::cfg().relative().on_the_right());
+///     hook::add::<Buffer>(|_, (opts, builder)| {
+///         builder.push(LineNumbers::opts().relative().on_the_right());
 ///         // Push a StatusLine to the bottom.
-///         builder.push(StatusLine::cfg());
+///         builder.push(StatusLine::opts());
 ///         // Push a PromptLine to the bottom.
-///         builder.push(PromptLine::cfg());
-///         cfg
+///         builder.push(PromptLine::opts());
+///         opts
 ///     });
 /// }
 /// ```
@@ -142,17 +142,17 @@ impl UiBuilder {
     ///
     /// fn setup() {
     ///     hook::remove("BufferWidgets");
-    ///     hook::add::<Buffer>(|_, (cfg, builder)| {
-    ///         builder.push(LineNumbers::cfg().rel_abs());
+    ///     hook::add::<Buffer>(|_, (opts, builder)| {
+    ///         builder.push(LineNumbers::opts().rel_abs());
     ///         builder.push(status!("{name_txt} {selections_txt} {main_txt}"));
-    ///         cfg
+    ///         opts
     ///     });
     /// }
     /// ```
     ///
-    /// In this case, each file will have [`LineNumbers`] with
+    /// In this case, each buffer will have [`LineNumbers`] with
     /// relative/absolute numbering, and a [`StatusLine`] showing
-    /// the file's name, how many selections are in it, and its main
+    /// the buffer's name, how many selections are in it, and its main
     /// selection.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
@@ -168,13 +168,13 @@ impl UiBuilder {
         let target = context::windows()
             .get(pa, self.win)
             .unwrap()
-            .files_area
+            .buffers_area
             .clone();
 
         specs.cluster = false;
 
         context::windows()
-            .push_widget(pa, (&target, Some(false), specs), widget)
+            .push_widget(pa, (&target, Some(false), specs), widget, None)
             .unwrap()
     }
 
@@ -194,7 +194,7 @@ impl UiBuilder {
         specs.cluster = false;
 
         context::windows()
-            .push_widget(pa, (&target, Some(false), specs), widget)
+            .push_widget(pa, (&target, Some(false), specs), widget, None)
             .unwrap()
     }
 }

@@ -28,7 +28,7 @@ use super::{
     Point, Text, TextRangeOrPoint,
     shift_list::{Shift, ShiftList, Shiftable},
 };
-use crate::{data::Pass, utils::get_ends};
+use crate::{context::Handle, data::Pass, ui::Widget, utils::get_ends};
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
 ///
@@ -72,7 +72,7 @@ impl Tags<'_> {
     /// implementing a [`Parser`] that applies [`Tag`]s to the
     /// [`Text`] [when changes happen]/[on updates], you can "refresh"
     /// those [`Tag`]s in a very efficient way -- even in very large
-    /// files -- just by doing this:
+    /// buffers -- just by doing this:
     ///
     /// ```rust
     /// use std::ops::Range;
@@ -84,10 +84,10 @@ impl Tags<'_> {
     /// }
     ///
     /// impl<U: Ui> Parser<U> for MyParser {
-    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
-    ///         let file = file.write(pa);
+    ///     fn update(&mut self, pa: &mut Pass, buffer: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
+    ///         let buffer = buffer.write(pa);
     ///         // Removing on the whole Buffer
-    ///         file.text_mut().remove_tags(self.tagger, ..);
+    ///         buffer.text_mut().remove_tags(self.tagger, ..);
     ///         // Logic to add Tags with self.tagger...
     ///     }
     /// }
@@ -95,8 +95,8 @@ impl Tags<'_> {
     ///
     /// [tagger]: Taggers
     /// [range]: RangeBounds
-    /// [`Parser`]: crate::file::Parser
-    /// [when changes happen]: crate::file::Parser::parse
+    /// [`Parser`]: crate::buffer::Parser
+    /// [when changes happen]: crate::buffer::Parser::parse
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(taggers, range)
@@ -120,9 +120,9 @@ impl Tags<'_> {
 
     /// Removes all [`Tag`]s
     ///
-    /// Refrain from using this function on [`Buffer`]s, as there may be
-    /// other [`Tag`] providers, and you should avoid measing with
-    /// their tags.
+    /// Refrain from using this function on [`Buffer`]s, as there may
+    /// be other [`Tag`] providers, and you should avoid measing
+    /// with their tags.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn clear(&mut self) {
@@ -168,7 +168,7 @@ pub struct InnerTags {
     ghosts: Vec<(GhostId, Text)>,
     toggles: Vec<(ToggleId, Toggle)>,
     spawns: Vec<SpawnCell>,
-    pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize) + Send>>,
+    pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
 }

@@ -12,57 +12,63 @@
 //! [`Buffer`]: duat_core::buffer::Buffer
 use std::fmt::Alignment;
 
-use duat_core::{prelude::*, text::Builder, ui::Side};
+use duat_core::{
+    context::Handle,
+    data::Pass,
+    form,
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text},
+    ui::{PushSpecs, Side, Widget},
+};
 
 /// Shows a column of line numbers beside the [`Buffer`]
 ///
-/// This can be configured through [`LineNumbers::cfg`], in order to
+/// This can be configured through [`LineNumbers::opts`], in order to
 /// get, for example: relative numbering, different alignment,
 /// hidden/shown wrapped lines, etc.
 pub struct LineNumbers {
-    handle: Handle<Buffer>,
+    buffer: Handle,
     text: Text,
-    /// The numbering of lines, [`Numbering::Abs`] by default
+    /// Wether to show relative numbering
     ///
-    /// Can be:
+    /// The default is `false`
+    pub relative: bool,
+    /// Where to align the numbers
     ///
-    /// - [`Numbering::Abs`] for absolute numbering.
-    /// - [`Numbering::Rel`] for relative to the main line.
-    /// - [`Numbering::RelAbs`] for relative on every line other than the main line.
-    pub numbering: Numbering = Numbering::Abs,
-    /// Where to align the numbers, [`Alignment::Left`] by default
+    /// The default is [`Alignment::Left`]
     pub align: Alignment = Alignment::Left,
-    /// Where to align main line number, [`Alignment::Left`] by default
+    /// Where to align the main line number
+    ///
+    /// The default is [`Alignment::Right`]
     pub main_align: Alignment = Alignment::Right,
-    /// Wether to show wrapped line's numbers, `false` by default
+    /// Wether to show wrapped line's numbers
+    ///
+    /// The default is `false`
     pub show_wraps: bool = false,
-    /// Place this [`Widget`] on the right, `false` by default
-    pub on_the_right: bool = false,
 }
 
 impl LineNumbers {
     /// Returns a [`LineNumbersBuilder`], used to create a new
     /// `LineNumbers`
-    pub fn builder() -> LineNumbersBuilder {
-        LineNumbersBuilder::default()
+    pub fn builder() -> LineNumbersOpts {
+        LineNumbersOpts::default()
     }
 
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&self, pa: &Pass) -> f32 {
-        let len = self.handle.read(pa).text().len().line();
+        let len = self.buffer.read(pa).text().len().line();
         len.ilog10() as f32
     }
 
     fn form_text(&self, pa: &Pass) -> Text {
         let (main_line, printed_lines) = {
-            let file = self.handle.read(pa);
-            let main_line = if file.selections().is_empty() {
+            let buffer = self.buffer.read(pa);
+            let main_line = if buffer.selections().is_empty() {
                 usize::MAX
             } else {
-                file.selections().get_main().unwrap().line()
+                buffer.selections().get_main().unwrap().line()
             };
 
-            (main_line, file.printed_lines().to_vec())
+            (main_line, buffer.printed_lines().to_vec())
         };
 
         let mut builder = Text::builder();
@@ -104,7 +110,7 @@ impl Widget for LineNumbers {
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
-        self.handle.has_changed(pa)
+        self.buffer.has_changed(pa)
     }
 
     fn text(&self) -> &Text {
@@ -122,36 +128,39 @@ impl Widget for LineNumbers {
 /// [`LineNumbersCfg`], is modified by the `&mut` version of the
 /// builder pattern.
 #[derive(Default, Clone, Copy, Debug)]
-#[doc(hidden)]
-pub struct LineNumbersBuilder {
-    /// The numbering of lines, [`Numbering::Abs`] by default
+pub struct LineNumbersOpts {
+    /// Wether to show relative numbering
     ///
-    /// Can be:
+    /// The default is `false`
+    pub relative: bool = false,
+    /// Where to align the numbers
     ///
-    /// - [`Numbering::Abs`] for absolute numbering.
-    /// - [`Numbering::Rel`] for relative to the main line.
-    /// - [`Numbering::RelAbs`] for relative on every line other than the main line.
-    pub numbering: Numbering = Numbering::Abs,
-    /// Where to align the numbers, [`Alignment::Left`] by default
+    /// The default is [`Alignment::Left`]
     pub align: Alignment = Alignment::Left,
-    /// Where to align main line number, [`Alignment::Left`] by default
+    /// Where to align the main line number
+    ///
+    /// The default is [`Alignment::Right`]
     pub main_align: Alignment = Alignment::Right,
-    /// Wether to show wrapped line's numbers, `false` by default
+    /// Wether to show wrapped line's numbers
+    ///
+    /// The default is `false`
     pub show_wraps: bool = false,
-    /// Place this [`Widget`] on the right, `false` by default
+    /// Place this [`Widget`] on the right, as opposed to on the left
+    ///
+    /// The default is `false`
     pub on_the_right: bool = false,
 }
 
-impl LineNumbersBuilder {
-    pub fn push_on(self, pa: &mut Pass, handle: &Handle<Buffer>) -> Handle<LineNumbers> {
+impl LineNumbersOpts {
+    /// Push the [`LineNumbers`] to a [`Handle`]
+    pub fn push_on(self, pa: &mut Pass, handle: &Handle) -> Handle<LineNumbers> {
         let mut line_numbers = LineNumbers {
-            handle: handle.clone(),
+            buffer: handle.clone(),
             text: Text::default(),
-            numbering: self.numbering,
+            relative: self.relative,
             align: self.align,
             main_align: self.main_align,
             show_wraps: self.show_wraps,
-            on_the_right: self.on_the_right,
         };
         line_numbers.text = line_numbers.form_text(pa);
 
@@ -169,18 +178,16 @@ impl LineNumbersBuilder {
 }
 
 /// Writes the text of the line number to a given [`String`].
-fn push_text(b: &mut Builder, line: usize, main: usize, is_wrapped: bool, cfg: &LineNumbers) {
-    if (!is_wrapped || cfg.show_wraps) && main != usize::MAX {
-        let num = match cfg.numbering {
-            Numbering::Abs => line + 1,
-            Numbering::Rel => line.abs_diff(main),
-            Numbering::RelAbs => {
-                if line != main {
-                    line.abs_diff(main)
-                } else {
-                    line + 1
-                }
+fn push_text(b: &mut Builder, line: usize, main: usize, is_wrapped: bool, opts: &LineNumbers) {
+    if (!is_wrapped || opts.show_wraps) && main != usize::MAX {
+        let num = if opts.relative {
+            if line != main {
+                line.abs_diff(main)
+            } else {
+                line + 1
             }
+        } else {
+            line + 1
         };
         b.push(num);
     }
@@ -195,18 +202,4 @@ fn align(b: &mut Builder, alignment: Alignment) {
         Alignment::Center => b.push(AlignCenter),
         Alignment::Right => b.push(AlignRight),
     }
-}
-
-/// How to show the line numbers on screen.
-#[derive(Default, Debug, Clone, Copy)]
-pub enum Numbering {
-    #[default]
-    /// Line numbers relative to the beginning of the file.
-    Abs,
-    /// Line numbers relative to the main selection's line, including
-    /// that line.
-    Rel,
-    /// Relative line numbers on every line, except the main
-    /// selection's.
-    RelAbs,
 }

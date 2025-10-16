@@ -1,10 +1,10 @@
 //! Ways to organize opened [`Buffer`]s
 //!
 //! By default, when calling `:e some_file<Enter>`, Duat will follow
-//! [`MasterOnLeft`], a type of [`Layout`] for opening [`Buffer`]s. That
-//! is, the first opened [`Buffer`] will be on the left of the screeng,
-//! and all subsequent [`Buffer`]s will be stacked vertically on the
-//! right of the screen.
+//! [`MasterOnLeft`], a type of [`Layout`] for opening [`Buffer`]s.
+//! That is, the first opened [`Buffer`] will be on the left of the
+//! screeng, and all subsequent [`Buffer`]s will be stacked vertically
+//! on the right of the screen.
 //!
 //! You can create your own [`Layout`] fairly trivially, for example,
 //! here's a spiraled layout:
@@ -20,7 +20,7 @@
 //! impl<U: Ui> Layout<U> for Spiraled {
 //!     fn new_file(
 //!         &mut self,
-//!         file: &Buffer<U>,
+//!         buffer: &Buffer<U>,
 //!         prev: Vec<Handle<Buffer<U>, U>>,
 //!     ) -> Result<(Handle<Buffer<U>, U>, PushSpecs), Text> {
 //!         // One Buffer is always open.
@@ -40,9 +40,9 @@
 //! limit to how many [`Buffer`]s should can open in a single window.
 use super::PushSpecs;
 use crate::{
-    data::Pass,
     buffer::Buffer,
-    prelude::Handle,
+    context::Handle,
+    data::Pass,
     ui::{Side, Window},
 };
 
@@ -53,10 +53,10 @@ use crate::{
 pub trait Layout: Send + Sync {
     /// Opens a new [`Buffer`]
     ///
-    /// The returned [`Ok(Handle<Buffer>, PushSpecs)`] value represents
-    /// the [`PushSpecs`] to use when pushing this new [`Buffer`],
-    /// and the [`Handle<Buffer>`] representing which [`Buffer`] to push
-    /// this [`Buffer`] to.
+    /// The returned [`Ok(Handle<Buffer>, PushSpecs)`] value
+    /// represents the [`PushSpecs`] to use when pushing this new
+    /// [`Buffer`], and the [`Handle<Buffer>`] representing which
+    /// [`Buffer`] to push this [`Buffer`] to.
     ///
     /// There will _always_ be at least one [`Buffer`] open, since the
     /// first opened [`Buffer`] doesn't follow layouts.
@@ -66,7 +66,7 @@ pub trait Layout: Send + Sync {
         &mut self,
         pa: &Pass,
         cur_win: usize,
-        file: &Buffer,
+        buffer: &Buffer,
         windows: &[Window],
     ) -> (Handle, PushSpecs);
 }
@@ -74,7 +74,7 @@ pub trait Layout: Send + Sync {
 /// [`Layout`]: One [`Buffer`] on the left, others on the right
 ///
 /// One [`Buffer`] will occupy the whole left side of the screen, and
-/// future files will be vertically stacked on the right
+/// future buffers will be vertically stacked on the right
 #[derive(Clone)]
 pub struct MasterOnLeft;
 

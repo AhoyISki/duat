@@ -105,7 +105,7 @@ use crate::ui::Widget;
 ///
 /// [`Arc<Mutex>`]: std::sync::Arc
 /// [`Mutex`]: std::sync::Mutex
-/// [`Parser`]: crate::file::Parser
+/// [`Parser`]: crate::buffer::Parser
 /// [`Text`]: crate::text::Text
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {

@@ -3,7 +3,9 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use duat_core::{prelude::*, text::Searcher, ui::PrintInfo};
+use duat_core::{
+    buffer::Buffer, context::{self, Handle}, data::Pass, form, hook, mode::{self, KeyEvent, KeyMod, Mode, key}, text::{Searcher, Tagger, Text, txt}, ui::{Area, PrintInfo, Widget}
+};
 
 use crate::{
     hooks::{SearchPerformed, SearchUpdated},
@@ -27,7 +29,7 @@ impl<W: Widget> Mode for Pager<W> {
     type Widget = W;
 
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
-        use KeyCode::*;
+        use duat_core::mode::KeyCode::*;
         match (key, duat_core::mode::alt_is_reverse()) {
             (key!(Char('j') | Down), _) => handle.scroll_ver(pa, 1),
             (key!(Char('J')) | key!(Down, KeyMod::SHIFT), _) => handle.scroll_ver(pa, i32::MAX),

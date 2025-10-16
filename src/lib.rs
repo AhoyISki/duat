@@ -84,13 +84,13 @@
 //!
 //! ## Configuration
 //!
-//! In the configuration file, there should be a `setup_duat!` macro,
-//! which takes in a function with no parameters.
+//! In the configuration buffer, there should be a `setup_duat!`
+//! macro, which takes in a function with no parameters.
 //!
 //! This function is the setup for duat, and it can be empty, which is
 //! the equivalent of the default configuration for Duat.
 //!
-//! Here's an example configuration file, which makes use of the
+//! Here's an example configuration buffer, which makes use of the
 //! `duat-kak` crate, which is a plugin for Duat. This plugin, like
 //! all others, is included without the `duat_` prefix, so in the
 //! config it is just `kak`.
@@ -185,9 +185,9 @@
 //! ```
 //!
 //! In the example above, `[form1]` will change the style of the text
-//! to the `"form1"` [`Form`], while `{Spacer}` will place a [spacer] in
-//! between the two parts of the text (See the status line in the GIF,
-//! it uses spacers).
+//! to the `"form1"` [`Form`], while `{Spacer}` will place a [spacer]
+//! in between the two parts of the text (See the status line in the
+//! GIF, it uses spacers).
 //!
 //! This macro works very similarly to the [`format!`] family of
 //! macros, so you also have inlining, as you can see with the
@@ -245,7 +245,7 @@
 //! - [`duat-treesitter`] brings [tree-sitter] to Duat in the form of
 //!   syntax highlighting and indentation calculation, which can be
 //!   used by Modes (such as those from `duat-kak`) in order to give
-//!   better feedback when editing files.
+//!   better feedback when editing buffers.
 //! - [`duat-match-pairs`] adds matched parentheses highlighting to
 //!   duat. Has some ntegration with `duat-treesitter`.
 //! - [`duat-utils`] adds all of the default plugins that you see,
@@ -323,7 +323,7 @@
 //!
 //! I don't know what your personal reasoning would be, but in my
 //! case, I really like Kakoune's editing model, but was frustrated
-//! with the lack of some features, like folding, multiple file
+//! with the lack of some features, like folding, multiple buffer
 //! editing, the general barebonesness of the configuration, etc.
 //!
 //! I know that Neovim has all of these features, and Helix supposedly
@@ -383,12 +383,12 @@
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [custom commands]: crate::prelude::cmd
 //! [windows]: crate::hook::WindowCreated
-//! [`Parser`]: duat_core::file::Parser
+//! [`Parser`]: duat_core::buffer::Parser
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #![feature(decl_macro, thread_spawn_hook, abort_unwind)]
 
-pub use duat_core::{self, clipboard, cmd, context, data, buffer, text, ui, utils};
+pub use duat_core::{self, buffer, clipboard, cmd, context, data, text, ui, utils};
 /// Common [`StatusLine`] fields
 ///
 /// [`StatusLine`]: duat_utils::widgets::StatusLine
@@ -453,9 +453,9 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<Buffer>(|_, (cfg, builder)| {
+    //!     hook::add::<Buffer>(|_, (opts, builder)| {
     //!         builder.push(status!("{name_txt} {main_txt}").above());
-    //!         cfg
+    //!         opts
     //!     });
     //! }
     //! ```
@@ -463,13 +463,13 @@ pub mod hook {
     //! [That hook] lets you push more [`Widget`]s to a [`Buffer`],
     //! whenever one is opened. In this case, I'm pushing a
     //! [`StatusLine`] on top of the [`Buffer`], which displays the
-    //! [file's name], as well as its [main `Selection`].
+    //! [buffer's name], as well as its [main `Selection`].
     //!
     //! Do note that this won't be the only [`Widget`] that will be
     //! pushed around the [`Buffer`], since there are some predefined
     //! [hook groups] in Duat.
     //!
-    //! From the `cfg` argument, you can also change settings on that
+    //! From the `opts` argument, you can also change settings on that
     //! [`Buffer`], in a similar vein to the [`print`](crate::print)
     //! module:
     //!
@@ -478,18 +478,18 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<Buffer>(|_, (mut cfg, _)| {
-    //!         if let Some("yaml" | "json") = cfg.filetype() {
-    //!             cfg.tabstop(2)
+    //!     hook::add::<Buffer>(|_, (mut opts, _)| {
+    //!         if let Some("yaml" | "json") = opts.filetype() {
+    //!             opts.tabstop(2)
     //!         } else {
-    //!             cfg
+    //!             opts
     //!         }
     //!     });
     //! }
     //! ```
     //!
     //! The hook above will change the [tabstop] value to `2` on
-    //! `"yaml"` and `"json"` files.
+    //! `"yaml"` and `"json"` buffers.
     //!
     //! # Default hook groups
     //!
@@ -515,15 +515,15 @@ pub mod hook {
     //! These are the default [hook groups]:
     //!
     //! - `"BufferWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
-    //!   to new [`Buffer`]s, via [`WidgetCreated`], (using [`Buffer`] as
-    //!   an alias for [`WidgetCreated<Buffer>`]).
+    //!   to new [`Buffer`]s, via [`WidgetCreated`], (using [`Buffer`]
+    //!   as an alias for [`WidgetCreated<Buffer>`]).
     //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
     //!   and [`Notifications`] to new windows, via [`WindowCreated`].
     //! - `"HidePromptLine"`: Is responsible for [hiding] the
     //!   [`PromptLine`] when it is not in use, giving way to the
     //!   [`Notifications`], via [`FocusedOn`] and [`UnfocusedFrom`].
     //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
-    //!   file in it is written to, via [`BufferWritten`].
+    //!   buffer in it is written to, via [`BufferWritten`].
     //!
     //! # Available hooks
     //!
@@ -534,7 +534,7 @@ pub mod hook {
     //! - [`ConfigUnloaded`] triggers after unloading the config
     //!   crate.
     //! - [`ExitedDuat`] triggers after Duat has exited.
-    //! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is
+    //! - [`WidgetCreated`] triggers when a [`Widget`]'s [opts] is
     //!   created, letting you change it, the [`Widget`] can be used
     //!   as its [alias]
     //! - [`WindowCreated`], which lets you push widgets around the
@@ -558,7 +558,7 @@ pub mod hook {
     //! [hook above]: WidgetCreated
     //! [That hook]: crate::prelude::WidgetCreated
     //! [`StatusLine`]: crate::prelude::StatusLine
-    //! [file's name]: crate::prelude::name_txt
+    //! [buffer's name]: crate::prelude::name_txt
     //! [main `Selection`]: crate::prelude::main_txt
     //! [hook groups]: crate::hook::add_grouped
     //! [`VertRule`]: crate::prelude::VertRule
@@ -566,7 +566,7 @@ pub mod hook {
     //! [`Notifications`]: crate::prelude::Notifications
     //! [`WindowCreated`]: crate::prelude::WindowCreated
     //! [hiding]: duat_core::ui::Area::constrain_ver
-    //! [cfg]: crate::prelude::Widget::Cfg
+    //! [opts]: crate::prelude::Widget::Cfg
     //! [`Buffer`]: crate::prelude::Buffer
     //! [`LineNumbers`]: crate::prelude::LineNumbers
     //! [`dyn Widget`]: crate::prelude::Widget
@@ -614,12 +614,12 @@ pub macro setup_duat($setup:expr) {
     fn run(
         initials: Initials,
         ms: MetaStatics,
-        files: Vec<Vec<ReloadedBuffer>>,
+        buffers: Vec<Vec<ReloadedBuffer>>,
         (duat_tx, duat_rx, reload_tx): Channels,
     ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
         pre_setup(Some(initials), Some(duat_tx));
         $setup();
-        run_duat(ms, files, duat_rx, Some(reload_tx))
+        run_duat(ms, buffers, duat_rx, Some(reload_tx))
     }
 }
 
@@ -634,20 +634,21 @@ pub mod prelude {
 
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
+        buffer::{Buffer, BufferTracker, Parser},
         clipboard, cmd,
         context::{self, Handle},
         cursor,
         data::{self, Pass},
-        buffer::{Buffer, BufferTracker, Parser},
         form::{self, CursorShape, Form},
         hook::{
-            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, BufferWritten, FocusedOn,
-            FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched,
+            self, BufferWritten, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat,
+            FocusedOn, FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched,
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
             WindowCreated,
         },
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, Pager, Prompt, User, alias, key, map},
-        opts, setup_duat,
+        opts::{self, NewLine, ScrollOff, WrapMethod, word_chars},
+        setup_duat,
         state::*,
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,

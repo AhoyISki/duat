@@ -18,8 +18,11 @@
 use std::{any::TypeId, collections::HashMap};
 
 use duat_core::{
-    prelude::*,
-    ui::{PushTarget, Side},
+    context::Handle,
+    data::Pass,
+    opts::PrintOpts,
+    text::Text,
+    ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
 use crate::modes::PromptMode;
@@ -79,7 +82,7 @@ impl Widget for PromptLine {
         if let Some(main) = pl.text.selections().get_main() {
             handle
                 .area()
-                .scroll_around_points(pa, &pl.text, main.caret(), pl.get_print_cfg());
+                .scroll_around_points(pa, &pl.text, main.caret(), pl.get_print_opts());
         }
     }
 
@@ -95,8 +98,10 @@ impl Widget for PromptLine {
         &mut self.text
     }
 
-    fn get_print_cfg(&self) -> PrintOpts {
-        *PrintOpts::default_for_input().set_forced_horizontal_scrolloff(true)
+    fn get_print_opts(&self) -> PrintOpts {
+        let mut opts = PrintOpts::default_for_input();
+        opts.force_scrolloff = true;
+        opts
     }
 }
 

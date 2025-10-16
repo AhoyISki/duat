@@ -484,13 +484,13 @@ impl Bytes {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, cfg: PrintOpts) -> usize {
+    pub fn indent(&self, p: Point, opts: PrintOpts) -> usize {
         let [start, _] = self.points_of_line(p.line());
         self.chars_fwd(start..)
             .unwrap()
             .map_while(|(_, c)| match c {
                 ' ' => Some(1),
-                '\t' => Some(cfg.tab_stops.size() as usize),
+                '\t' => Some(opts.tabstop as usize),
                 _ => None,
             })
             .sum()
