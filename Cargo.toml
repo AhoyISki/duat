@@ -16,7 +16,7 @@ missing_docs = "warn"
 
 [workspace]
 members = ["duat-core", "duat-term", "duat-utils"]
-exclude = ["config"]
+exclude = ["templates/config"]
 
 [dependencies]
 duat-core = { version = "0.7.0", path = "duat-core" }

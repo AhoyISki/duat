@@ -30,9 +30,12 @@ fn setup() {
 
     //// Hooks
     // Changes every LineNumbers Widget.
-    hook::add::<LineNumbers<Ui>>(|_, (ln, _)| ln.align_right().align_main_left().rel_abs());
+    hook::add::<LineNumbers>(|pa, handle| {
+        handle.write(pa).align = std::fmt::Alignment::Right;
+        Ok(())
+    });
 
-    hook::add::<StatusLine<Ui>>(|pa, (cfg, _)| {
+    hook::add::<StatusLine>(|pa, handle| {
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
         let mode_upper = mode_name(pa).map(pa, |mode| match mode.split_once('<') {
@@ -40,9 +43,10 @@ fn setup() {
             None => txt!("[mode]{}", mode.to_uppercase()).build(),
         });
 
-        cfg.fmt(status!(
+        handle.write(pa).fmt(status!(
             "[mode]{mode_upper}{Spacer}{custom_name_txt} {sels_txt} {main_txt}"
-        ))
+        ));
+        Ok(())
     });
     // // See what happens when you uncomment this hook removal:
     // hook::remove("HidePromptLine");
