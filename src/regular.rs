@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use duat_core::prelude::Lender;
+use duat_core::Lender;
 #[cfg(feature = "treesitter")]
 use duat_treesitter::TsCursor;
 use duat_utils::modes::{IncSearch, RunCommands, SearchFwd};

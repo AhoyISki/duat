@@ -386,7 +386,7 @@
 //! [`Parser`]: duat_core::buffer::Parser
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
-#![feature(decl_macro, thread_spawn_hook, abort_unwind)]
+#![feature(decl_macro, thread_spawn_hook, abort_unwind, default_field_values)]
 
 pub use duat_core::{self, buffer, clipboard, cmd, context, data, text, ui, utils};
 /// Common [`StatusLine`] fields
@@ -627,7 +627,7 @@ pub macro setup_duat($setup:expr) {
 pub mod prelude {
     use std::{any::TypeId, process::Output};
 
-    pub use duat_core::{Plugin, Plugins, prelude::Lender};
+    pub use duat_core::{Lender, Plugin, Plugins};
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self, VertRule};

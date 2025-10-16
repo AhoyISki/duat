@@ -18,7 +18,6 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, Logs},
     form::{Form, Palette},
-    opts::PrintOpts,
     session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
     text::History,
     ui::{Ui, Widget},
