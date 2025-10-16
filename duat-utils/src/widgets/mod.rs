@@ -8,7 +8,7 @@
 //!
 //! [`Widget`]: duat_core::ui::Widget
 //! [`Text`]: duat_core::text::Text
-//! [`File`]: duat_core::file::File
+//! [`Buffer`]: duat_core::buffer::Buffer
 //! [`WindowCreated`]: duat_core::hook::WindowCreated
 //! [`Constraint`]: duat_core::ui::Constraint
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
@@ -40,7 +40,7 @@ mod status_line;
 ///
 /// These are the default [`Widget`]s placed in the footer position of
 /// Duat. By default, they will be placed [around the window], but
-/// they can also be placed around individual [`File`]s:
+/// they can also be placed around individual [`Buffer`]s:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -49,7 +49,7 @@ mod status_line;
 /// use duat_utils::widgets::{FooterWidgets, status};
 ///
 /// fn setup() {
-///     hook::add::<File>(|pa, (cfg, builder)| {
+///     hook::add::<Buffer>(|pa, (cfg, builder)| {
 ///         builder.push(FooterWidgets::new(status!(
 ///             "{name_txt}{Spacer}{} {sels_txt} {main_txt}",
 ///             mode_txt(pa)
@@ -74,7 +74,7 @@ mod status_line;
 /// the footer as a header instead.
 ///
 /// [around the window]: duat_core::hook::WindowCreated
-/// [`File`]: duat_core::file::File
+/// [`Buffer`]: duat_core::buffer::Buffer
 /// [`one_line`]: FooterWidgets::one_line
 /// [`prompt`]: FooterWidgets::prompt
 /// [`notifs`]: FooterWidgets::notifs

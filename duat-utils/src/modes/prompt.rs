@@ -28,7 +28,7 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///   detect if your [`Parameter`]s are correct and show that in real
 ///   time.
 /// - [`PipeSelections`] pipes each [`Selection`]'s selection in the
-///   current [`File`] to an external application, replacing each
+///   current [`Buffer`] to an external application, replacing each
 ///   selection with the returned value.
 /// - [`IncSearch`] has a further inner abstraction, [`IncSearcher`],
 ///   which lets you abstract over what the incremental search will
@@ -266,7 +266,7 @@ pub trait PromptMode: Send + 'static {
     /// What [`Widget`] to exit to, upon pressing enter, esc, or
     /// backspace in an empty [`PromptLine`]
     type ExitWidget: Widget
-        = File
+        = Buffer
     where
         Self: Sized;
 
@@ -390,7 +390,7 @@ impl PromptMode for RunCommands {
 /// struct Emacs;
 ///
 /// impl Mode for Emacs {
-///     type Widget = File;
+///     type Widget = Buffer;
 ///
 ///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {
 ///         match event {
@@ -515,7 +515,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
     }
 }
 
-/// Pipes the selections of a [`File`] through an external command
+/// Pipes the selections of a [`Buffer`] through an external command
 ///
 /// This can be useful if you, for example, don't have access to a
 /// formatter, but want to format text, so you pass it to

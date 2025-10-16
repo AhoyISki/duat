@@ -4,7 +4,7 @@
 //! same as the ones that can be put inside a [`text!`] macro,
 //! however, some additions are made.
 //!
-//! Specifically, arguments that read from the [`File`] and its
+//! Specifically, arguments that read from the [`Buffer`] and its
 //! related structs are also accepted by [`status!`].
 //!
 //! In addition, arguments with arbitrary update schedules are also
@@ -13,7 +13,7 @@
 //!
 //! [`StatusLine`]: super::StatusLine
 //! [`status!`]: super::status
-//! [`File`]: super::File
+//! [`Buffer`]: super::Buffer
 //! [data]: crate::data
 use std::{fmt::Display, marker::PhantomData};
 
@@ -27,7 +27,7 @@ use duat_core::{
 use crate::widgets::status_line::CheckerFn;
 
 /// A struct that reads state in order to return [`Text`].
-enum Appender<_T: Clone = (), D: Display + Clone = String, W: Widget = File> {
+enum Appender<_T: Clone = (), D: Display + Clone = String, W: Widget = Buffer> {
     TextFnCheckerArg(TextFnCheckerFn),
     FromWidget(WidgetAreaFn<W>),
     Part(BuilderPart<D, _T>),
@@ -36,14 +36,14 @@ enum Appender<_T: Clone = (), D: Display + Clone = String, W: Widget = File> {
 /// A part of the [`StatusLine`]
 ///
 /// This can either be a static part, like [`Text`], [`impl Display`]
-/// type, or it can be a reader of the [`File`] and its structs, or it
+/// type, or it can be a reader of the [`Buffer`] and its structs, or it
 /// can update independently.
 ///
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 #[doc(hidden)]
-pub struct State<_T = (), D = String, W = File>
+pub struct State<_T = (), D = String, W = Buffer>
 where
     _T: Clone + Send,
     D: Display + Clone + Send,
@@ -380,5 +380,5 @@ pub struct PassWidgetAreaArg<W>(PhantomData<W>);
 // The various types of function aliases
 type TextFnCheckerFn = Box<dyn Fn(&Pass, &mut Builder) + 'static + Send>;
 type WidgetAreaFn<W> = Box<dyn Fn(&mut Builder, &Pass, &W, &dyn Area) + Send + 'static>;
-type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle<File>) + Send>;
+type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle<Buffer>) + Send>;
 type StateFns = (BuilderFn, Box<dyn Fn(&Pass) -> bool + Send>);

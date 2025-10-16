@@ -21,9 +21,9 @@ use duat_core::{
     ui::traits::Area,
 };
 
-/// [`StatusLine`] part: The [`File`]'s name, formatted
+/// [`StatusLine`] part: The [`Buffer`]'s name, formatted
 ///
-/// The name of a [`File`] widget is the same as the path, but it
+/// The name of a [`Buffer`] widget is the same as the path, but it
 /// strips away the current directory. If it can't, it will try to
 /// strip away the home directory, replacing it with `"~"`. If
 /// that also fails, it will just show the full path.
@@ -50,7 +50,7 @@ use duat_core::{
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn name_txt(file: &File) -> Text {
+pub fn name_txt(file: &Buffer) -> Text {
     let mut b = Text::builder();
 
     b.push(file.name_txt());
@@ -63,7 +63,7 @@ pub fn name_txt(file: &File) -> Text {
     b.build()
 }
 
-/// [`StatusLine`] part: The [`File`]'s path, formatted
+/// [`StatusLine`] part: The [`Buffer`]'s path, formatted
 ///
 /// This status part also includes wether or not the file is written
 /// and wether or not it exists.
@@ -87,7 +87,7 @@ pub fn name_txt(file: &File) -> Text {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn path_txt(file: &File) -> Text {
+pub fn path_txt(file: &Buffer) -> Text {
     let mut b = Text::builder();
 
     b.push(file.name_txt());
@@ -165,28 +165,28 @@ pub fn mode_txt(pa: &Pass) -> DataMap<&'static str, Text> {
 /// [`StatusLine`] part: Byte of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_byte(file: &File) -> usize {
+pub fn main_byte(file: &Buffer) -> usize {
     file.selections().get_main().unwrap().byte() + 1
 }
 
 /// [`StatusLine`] part: Char of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_char(file: &File) -> usize {
+pub fn main_char(file: &Buffer) -> usize {
     file.selections().get_main().unwrap().char() + 1
 }
 
 /// [`StatusLine`] part: Line of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_line(file: &File) -> usize {
+pub fn main_line(file: &Buffer) -> usize {
     file.selections().get_main().unwrap().line() + 1
 }
 
 /// [`StatusLine`] part: Column of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_col(file: &File, area: &dyn Area) -> usize {
+pub fn main_col(file: &Buffer, area: &dyn Area) -> usize {
     let main = file.selections().get_main().unwrap();
     main.v_caret(file.text(), area, file.get_print_cfg())
         .char_col()
@@ -201,7 +201,7 @@ pub fn main_col(file: &File, area: &dyn Area) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_txt(file: &File, area: &dyn Area) -> Text {
+pub fn main_txt(file: &Buffer, area: &dyn Area) -> Text {
     txt!(
         "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
         main_col(file, area),
@@ -214,7 +214,7 @@ pub fn main_txt(file: &File, area: &dyn Area) -> Text {
 /// [`StatusLine`] part: The number of selections
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn selections(file: &File) -> usize {
+pub fn selections(file: &Buffer) -> usize {
     file.selections().len()
 }
 
@@ -236,7 +236,7 @@ pub fn selections(file: &File) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: duat_core::mode::Cursor
-pub fn sels_txt(file: &File) -> Text {
+pub fn sels_txt(file: &Buffer) -> Text {
     if file.selections().len() == 1 {
         txt!("[selections]1 sel").build()
     } else {

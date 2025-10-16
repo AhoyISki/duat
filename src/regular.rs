@@ -16,7 +16,7 @@ use crate::{
         },
         ui::Widget,
     },
-    widgets::File,
+    widgets::Buffer,
 };
 
 /// The regular, bogstandard mode, a.k.a., supposed to be like VSCode
@@ -28,7 +28,7 @@ use crate::{
 pub struct Regular;
 
 impl mode::Mode for Regular {
-    type Widget = File;
+    type Widget = Buffer;
 
     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {
         static LAST_CODE: Mutex<Option<KeyCode>> = Mutex::new(None);

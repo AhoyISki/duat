@@ -34,7 +34,7 @@ use crate::modes::PromptMode;
 /// - [`RunCommands`]: Will interpret the prompt as a Duat command to
 ///   be executed.
 /// - [`IncSearch`]: Will read the prompt as a regex, and modify the
-///   active [`File`] according to a given [`IncSearcher`].
+///   active [`Buffer`] according to a given [`IncSearcher`].
 /// - [`PipeSelections`]: Will pass each selection to a shell command,
 ///   replacing the selections with the `stdout`.
 ///
@@ -42,7 +42,7 @@ use crate::modes::PromptMode;
 /// [`Mode`]: duat_core::mode::Mode
 /// [`RunCommands`]: crate::modes::RunCommands
 /// [`IncSearch`]: crate::modes::IncSearch
-/// [`File`]: duat_core::file::File
+/// [`Buffer`]: duat_core::buffer::Buffer
 /// [`IncSearcher`]: crate::modes::IncSearcher
 /// [`PipeSelections`]: crate::modes::PipeSelections
 pub struct PromptLine {

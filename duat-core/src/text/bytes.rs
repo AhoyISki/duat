@@ -96,9 +96,9 @@ impl Bytes {
     ///
     /// [`strs`]: Self::strs
     #[track_caller]
-    pub fn buffers(&self, range: impl RangeBounds<usize>) -> Buffers<'_> {
+    pub fn buffers(&self, range: impl RangeBounds<usize>) -> Slices<'_> {
         let (s0, s1) = self.buf.range(range).as_slices();
-        Buffers([s0.iter(), s1.iter()])
+        Slices([s0.iter(), s1.iter()])
     }
 
     /// An [`Iterator`] over the [`&str`]s of the [`Text`]
@@ -643,9 +643,9 @@ impl<'a> ExactSizeLender for Lines<'a> {}
 ///
 /// [`Text`]: super::Text
 #[derive(Clone)]
-pub struct Buffers<'a>([std::slice::Iter<'a, u8>; 2]);
+pub struct Slices<'a>([std::slice::Iter<'a, u8>; 2]);
 
-impl<'a> Buffers<'a> {
+impl<'a> Slices<'a> {
     /// Converts this [`Iterator`] into an array of its two parts
     pub fn to_array(&self) -> [&'a [u8]; 2] {
         self.0.clone().map(|iter| iter.as_slice())
@@ -685,7 +685,7 @@ impl<'a> Buffers<'a> {
     }
 }
 
-impl<'a> Iterator for Buffers<'a> {
+impl<'a> Iterator for Slices<'a> {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -699,9 +699,9 @@ impl<'a> Iterator for Buffers<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for Buffers<'a> {}
+impl<'a> ExactSizeIterator for Slices<'a> {}
 
-impl<'a> DoubleEndedIterator for Buffers<'a> {
+impl<'a> DoubleEndedIterator for Slices<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0[1]
             .next_back()

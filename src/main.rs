@@ -20,7 +20,7 @@ use duat::{Channels, Initials, MetaStatics, pre_setup, prelude::*, run_duat, uti
 use duat_core::{
     clipboard::Clipboard,
     context,
-    session::{DuatEvent, ReloadEvent, ReloadedFile},
+    session::{DuatEvent, ReloadEvent, ReloadedBuffer},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
@@ -34,7 +34,7 @@ compile_error!("The Duat app needs the \"cli\" feature to work.");
 #[derive(Clone, Debug, clap::Parser)]
 #[command(version, about)]
 struct Args {
-    /// Files to open
+    /// Buffers to open
     files: Vec<PathBuf>,
     /// Open the config's src/lib.rs
     #[arg(long)]
@@ -269,15 +269,15 @@ fn get_files(
     args: Args,
     crate_dir: &'static Path,
     profile: &'static str,
-) -> Result<Vec<Vec<ReloadedFile>>, Box<dyn std::error::Error>> {
-    let files: Vec<ReloadedFile> = args
+) -> Result<Vec<Vec<ReloadedBuffer>>, Box<dyn std::error::Error>> {
+    let files: Vec<ReloadedBuffer> = args
         .cfg
         .then(|| crate_dir.join("src").join("lib.rs"))
         .into_iter()
         .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
         .chain(args.files)
         .enumerate()
-        .map(|(i, path)| ReloadedFile::by_args(Some(path), i == 0))
+        .map(|(i, path)| ReloadedBuffer::by_args(Some(path), i == 0))
         .try_collect()?;
 
     Ok(if files.is_empty() {
@@ -287,7 +287,7 @@ fn get_files(
         } else if args.clean || args.update {
             Vec::new()
         } else {
-            vec![vec![ReloadedFile::by_args(None, true).unwrap()]]
+            vec![vec![ReloadedBuffer::by_args(None, true).unwrap()]]
         }
     } else {
         let n = (files.len() / args.open.map(|n| n as usize).unwrap_or(files.len())).max(1);
@@ -609,9 +609,9 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
 type RunFn = fn(
     Initials,
     MetaStatics,
-    Vec<Vec<ReloadedFile>>,
+    Vec<Vec<ReloadedBuffer>>,
     Channels,
-) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>);
+) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>);
 
 #[cfg(feature = "term-ui")]
 type UiImplementation = duat_term::Ui;

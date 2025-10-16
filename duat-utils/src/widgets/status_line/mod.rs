@@ -1,4 +1,4 @@
-//! A widget that shows general information, usually about a [`File`]
+//! A widget that shows general information, usually about a [`Buffer`]
 //!
 //! The [`StatusLine`] is a very convenient widget when the user
 //! simply wants to show some informatioon. The information, when
@@ -16,7 +16,7 @@
 mod state;
 
 use duat_core::{
-    context::DynFile,
+    context::DynBuffer,
     data::DataMap,
     prelude::*,
     text::Builder,
@@ -26,14 +26,14 @@ use duat_core::{
 pub use self::{macros::status, state::State};
 use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 
-/// A widget to show information, usually about a [`File`]
+/// A widget to show information, usually about a [`Buffer`]
 ///
 /// This widget is updated whenever any of its parts needs to be
 /// updated, and it also automatically adjusts to where it was pushed.
-/// For example, if you push it to a file (via `hook::add::<File>`,
-/// for example), it's information will point to the [`File`] to which
+/// For example, if you push it to a file (via `hook::add::<Buffer>`,
+/// for example), it's information will point to the [`Buffer`] to which
 /// it was pushed. However, if you push it with [`WindowCreated`], it
-/// will always point to the currently active [`File`]:
+/// will always point to the currently active [`Buffer`]:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -42,7 +42,7 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<File>(|_, (cfg, builder)| {
+///     hook::add::<Buffer>(|_, (cfg, builder)| {
 ///         builder.push(status!("{name_txt}").above());
 ///         cfg
 ///     });
@@ -61,7 +61,7 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// name of the file, and by pushing [`FooterWidgets`], you will push
 /// a [`StatusLine`], [`PromptLine`] and [`Notifications`] combo to
 /// each window. This [`StatusLine`] will point to the currently
-/// active [`File`], instead of a specific one.
+/// active [`Buffer`], instead of a specific one.
 ///
 /// You will usually want to create [`StatusLine`]s via the
 /// [`status!`] macro, since that is how you can customize it.
@@ -74,8 +74,8 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::remove("FileWidgets");
-///     hook::add::<File>(|_, (cfg, builder)| {
+///     hook::remove("BufferWidgets");
+///     hook::add::<Buffer>(|_, (cfg, builder)| {
 ///         builder.push(LineNumbers::cfg());
 ///         builder.push(StatusLine::cfg().above());
 ///         cfg
@@ -83,20 +83,20 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// }
 /// ```
 ///
-/// [`File`]: duat_core::file::File
+/// [`Buffer`]: duat_core::buffer::Buffer
 /// [`WindowCreated`]: duat_core::hook::WindowCreated
 /// [`PromptLine`]: super::PromptLine
 /// [`Notifications`]: super::Notifications
 /// [`FooterWidgets`]: super::FooterWidgets
 pub struct StatusLine {
-    file_handle: FileHandle,
+    file_handle: BufferHandle,
     text_fn: TextFn,
     text: Text,
     checker: Box<dyn Fn(&Pass) -> bool + Send>,
 }
 
 impl StatusLine {
-    fn new(builder: StatusLineBuilder, file_handle: FileHandle) -> Self {
+    fn new(builder: StatusLineBuilder, file_handle: BufferHandle) -> Self {
         let (builder_fn, checker) = if let Some((builder, checker)) = builder.fns {
             (builder, checker)
         } else {
@@ -151,28 +151,28 @@ impl StatusLine {
 
 impl Widget for StatusLine {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        if let FileHandle::Dynamic(dyn_file) = &mut handle.write(pa).file_handle {
+        if let BufferHandle::Dynamic(dyn_file) = &mut handle.write(pa).file_handle {
             dyn_file.swap_to_current();
         }
 
         let sl = handle.read(pa);
 
         handle.write(pa).text = match &sl.file_handle {
-            FileHandle::Fixed(file) => (sl.text_fn)(pa, file),
-            FileHandle::Dynamic(dyn_file) => (sl.text_fn)(pa, dyn_file.handle()),
+            BufferHandle::Fixed(file) => (sl.text_fn)(pa, file),
+            BufferHandle::Dynamic(dyn_file) => (sl.text_fn)(pa, dyn_file.handle()),
         };
 
-        // Do this in case the File is never read during Text construction
+        // Do this in case the Buffer is never read during Text construction
         match &handle.read(pa).file_handle {
-            FileHandle::Fixed(handle) => handle.declare_as_read(),
-            FileHandle::Dynamic(dyn_file) => dyn_file.declare_as_read(),
+            BufferHandle::Fixed(handle) => handle.declare_as_read(),
+            BufferHandle::Dynamic(dyn_file) => dyn_file.declare_as_read(),
         }
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
         let file_changed = match &self.file_handle {
-            FileHandle::Fixed(handle) => handle.has_changed(pa),
-            FileHandle::Dynamic(dyn_file) => dyn_file.has_changed(pa),
+            BufferHandle::Fixed(handle) => handle.has_changed(pa),
+            BufferHandle::Dynamic(dyn_file) => dyn_file.has_changed(pa),
         };
         let checkered = (self.checker)(pa);
 
@@ -199,15 +199,15 @@ pub struct StatusLineBuilder {
 impl StatusLineBuilder {
     /// Push the [`StatusLine`]
     ///
-    /// If the handle's [`Widget`] is a [`File`], then this
+    /// If the handle's [`Widget`] is a [`Buffer`], then this
     /// `StatusLine` will refer to it when printing information about
-    /// `File`s. Otherwise, the `StatusLine` will print information
-    /// about the currently active `File`.
+    /// `Buffer`s. Otherwise, the `StatusLine` will print information
+    /// about the currently active `Buffer`.
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<StatusLine> {
         let specs = self.specs;
         let status_line = StatusLine::new(self, match push_target.try_downcast() {
-            Some(handle) => FileHandle::Fixed(handle),
-            None => FileHandle::Dynamic(context::dyn_file(pa)),
+            Some(handle) => BufferHandle::Fixed(handle),
+            None => BufferHandle::Dynamic(context::dyn_file(pa)),
         });
 
         push_target.push_outer(pa, status_line, specs)
@@ -256,17 +256,17 @@ mod macros {
     /// evaluated immediately, while [`status!`] is evaluated when
     /// updates occur.
     ///
-    /// The macro will mostly read from the [`File`] widget and its
+    /// The macro will mostly read from the [`Buffer`] widget and its
     /// related structs. In order to do that, it will accept functions
     /// as arguments. These functions take the following parameters:
     ///
-    /// * The [`&File`] widget;
-    /// * A specific [`&impl Widget`], which is glued to the [`File`];
+    /// * The [`&Buffer`] widget;
+    /// * A specific [`&impl Widget`], which is glued to the [`Buffer`];
     ///
     /// Both of these can also have a second argument of type
     /// [`&Area`]. This will include the [`Widget`]'s [`Area`] when
     /// creating the status part. Additionally, you may include a
-    /// first argument of type [`&Pass`] (e.g. `fn(&Pass, &File)`,
+    /// first argument of type [`&Pass`] (e.g. `fn(&Pass, &Buffer)`,
     /// `fn(&Pass, &Widget, &Area), etc.), giving you _non mutating_
     /// access to global state.
     ///
@@ -278,7 +278,7 @@ mod macros {
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
-    /// fn name_but_funky(file: &File) -> String {
+    /// fn name_but_funky(file: &Buffer) -> String {
     ///     file.name()
     ///         .chars()
     ///         .enumerate()
@@ -292,7 +292,7 @@ mod macros {
     ///         .collect()
     /// }
     ///
-    /// fn powerline_main_txt(file: &File, area: &Area) -> Text {
+    /// fn powerline_main_txt(file: &Buffer, area: &Area) -> Text {
     ///     let selections = file.selections();
     ///     let cfg = file.print_cfg();
     ///     let v_caret = selections
@@ -318,7 +318,7 @@ mod macros {
     ///
     /// Now, there are other types of arguments that you can also
     /// pass. They update differently from the previous ones. The
-    /// previous arguments update when the [`File`] updates. The
+    /// previous arguments update when the [`Buffer`] updates. The
     /// following types of arguments update independently or not
     /// at all:
     ///
@@ -364,7 +364,7 @@ mod macros {
     ///
     ///             let text = txt!("Static text").build();
     ///
-    ///             let counter = move |_: &File| counter(checker());
+    ///             let counter = move |_: &Buffer| counter(checker());
     ///
     ///             builder.push(status!("{changing_str} [counter]{counter}[] {text}",));
     ///         }
@@ -384,8 +384,8 @@ mod macros {
     ///
     /// [`StatusLine`]: super::StatusLine
     /// [`txt!`]: duat_core::text::txt
-    /// [`File`]: duat_core::file::File
-    /// [`&File`]: duat_core::file::File
+    /// [`Buffer`]: duat_core::buffer::Buffer
+    /// [`&Buffer`]: duat_core::buffer::Buffer
     /// [`&Selections`]: duat_core::mode::Selections
     /// [`&impl Widget`]: duat_core::ui::Widget
     /// [`impl Display`]: std::fmt::Display
@@ -405,13 +405,13 @@ mod macros {
         #[allow(unused_imports)]
         use $crate::{
             private_exports::{
-                duat_core::{context::Handle, data::Pass, file::File, ui::PushSpecs, text::Builder},
+                duat_core::{context::Handle, data::Pass, buffer::Buffer, ui::PushSpecs, text::Builder},
                 format_like, parse_form, parse_status_part, parse_str
             },
             widgets::StatusLineBuilder,
         };
 
-        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<File>| {};
+        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<Buffer>| {};
         let checker = |_: &Pass| false;
 
         let (text_fn, checker) = format_like!(
@@ -423,7 +423,7 @@ mod macros {
 
         StatusLineBuilder::new_with(
             (
-                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<File>| {
+                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<Buffer>| {
                     text_fn(pa, &mut builder, &handle);
                     builder.build()
                 }),
@@ -433,12 +433,12 @@ mod macros {
     }}
 }
 
-type TextFn = Box<dyn Fn(&Pass, &Handle<File>) -> Text + Send>;
-type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle<File>) -> Text + Send>;
+type TextFn = Box<dyn Fn(&Pass, &Handle<Buffer>) -> Text + Send>;
+type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle<Buffer>) -> Text + Send>;
 type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;
 
 #[derive(Clone)]
-enum FileHandle {
-    Fixed(Handle<File>),
-    Dynamic(DynFile),
+enum BufferHandle {
+    Fixed(Handle<Buffer>),
+    Dynamic(DynBuffer),
 }

@@ -16,7 +16,7 @@ use lender::{Lender, Lending};
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
     cfg::PrintCfg,
-    file::{File, Parser},
+    buffer::{Buffer, Parser},
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{traits::Area, Widget},
 };
@@ -41,7 +41,7 @@ mod selections;
 ///
 /// ```rust
 /// # use duat_core::prelude::*;
-/// # fn test<U: Ui, S>(mut pa: Pass, handle: &mut Handle<File<U>, U, S>) {
+/// # fn test<U: Ui, S>(mut pa: Pass, handle: &mut Handle<Buffer<U>, U, S>) {
 /// let sel: String = handle.edit_main(&mut pa, |mut c| {
 ///     c.set_anchor();
 ///     c.set_caret_on_end();
@@ -451,7 +451,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// fn search_nth_paren<U: Ui, S>(pa: &mut Pass, handle: &mut Handle<File<U>, U, S>, n: usize) {
+    /// fn search_nth_paren<U: Ui, S>(pa: &mut Pass, handle: &mut Handle<Buffer<U>, U, S>, n: usize) {
     ///     handle.edit_all(pa, |mut e| {
     ///         let mut nth = e.search_fwd('(', None).nth(n);
     ///         if let Some([p0, p1]) = nth {
@@ -489,7 +489,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// # use duat_core::prelude::*;
     /// fn search_nth_paren<U: Ui, S>(
     ///     pa: &mut Pass,
-    ///     handle: &mut Handle<File<U>, U, S>,
+    ///     handle: &mut Handle<Buffer<U>, U, S>,
     ///     s: &str,
     ///     n: usize,
     /// ) {
@@ -648,7 +648,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 }
 
-impl<S> Cursor<'_, File, S> {
+impl<S> Cursor<'_, Buffer, S> {
     /// Reads the [`Bytes`] and a [`Parser`]
     ///
     /// [`Bytes`]: crate::text::Bytes

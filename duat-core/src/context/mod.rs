@@ -2,13 +2,13 @@
 //!
 //! This module lets you access and mutate some things:
 //!
-//! # Files
+//! # Buffers
 use std::any::TypeId;
 
 pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
+    buffer::Buffer,
     data::{Pass, RwData},
-    file::File,
     ui::{Node, Widget, traits::Area},
 };
 
@@ -26,11 +26,10 @@ mod global {
         },
     };
 
-    use super::{CurWidget, DynFile};
+    use super::{CurWidget, DynBuffer};
     use crate::{
         context::Handle,
         data::{DataMap, Pass, RwData},
-        file::File,
         session::DuatEvent,
         text::Text,
         ui::Windows,
@@ -46,7 +45,7 @@ mod global {
     /// Queues a function to be done on the main thread with a
     /// [`Pass`]
     ///
-    /// You can use this whenever you don't have access to a [`Pass`],
+    /// You can use this whenever you don't have access to a `Pass`,
     /// in order to execute an action on the main thread, gaining
     /// access to Duat's global state within that function.
     pub fn queue(f: impl FnOnce(&mut Pass) + Send + 'static) {
@@ -88,35 +87,36 @@ mod global {
 
     ////////// Widget Handle getters
 
-    /// Returns a "fixed" [`Handle`] for the currently active [`File`]
+    /// Returns a "fixed" [`Handle`] for the currently active
+    /// [`Buffer`]
     ///
-    /// This [`Handle`] will always point to the same [`File`],
-    /// even when it is not active. If you want a [`Handle`] that
-    /// always points to the current [`File`], see [`dyn_file`]
+    /// This `Handle` will always point to the same `Buffer`,
+    /// even when it is not active. If you want a `Handle` that
+    /// always points to the current Buffer, see dyn_file
     ///
-    /// [`File`]: crate::file::File
-    pub fn cur_file(pa: &Pass) -> Handle<File> {
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn cur_file(pa: &Pass) -> Handle {
         windows().current_file(pa).read(pa).clone()
     }
 
-    /// Returns a "dynamic" [`Handle`] for the active [`File`]
+    /// Returns a "dynamic" [`Handle`] for the active [`Buffer`]
     ///
-    /// This [`Handle`] will change to point to the current [`File`],
-    /// whenever the user swicthes which [`File`] is active. If you
-    /// want a [`Handle`] that will stay on the current [`File`], see
+    /// This `Handle` will change to point to the current `Buffer`,
+    /// whenever the user swicthes which `Buffer` is active. If you
+    /// want a `Handle` that will stay on the current `Buffer`, see
     /// [`cur_file`].
     ///
-    /// [`File`]: crate::file::File
-    pub fn dyn_file(pa: &Pass) -> DynFile {
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn dyn_file(pa: &Pass) -> DynBuffer {
         let dyn_file = windows().current_file(pa);
         let cur_file = RwData::new(dyn_file.read(pa).clone());
-        DynFile { dyn_file, cur_file }
+        DynBuffer { dyn_file, cur_file }
     }
 
-    /// Returns a [`Handle`] for a [`File`] with the given name
+    /// Returns a [`Handle`] for a [`Buffer`] with the given name
     ///
-    /// [`File`]: crate::file::File
-    pub fn file_named(pa: &Pass, name: impl ToString) -> Result<Handle<File>, Text> {
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn file_named(pa: &Pass, name: impl ToString) -> Result<Handle, Text> {
         let (.., handle) = windows().named_file_entry(pa, &name.to_string())?;
 
         Ok(handle)
@@ -130,6 +130,8 @@ mod global {
     ////////// Other getters
 
     /// The [`Window`]s of Duat, must be used on main thread
+    ///
+    /// [`Window`]: crate::ui::Window
     pub(crate) fn windows() -> &'static Windows {
         WINDOWS
             .get()
@@ -178,21 +180,18 @@ mod global {
     }
 }
 
-/// A "dynamic" [`Handle`] wrapper for [`File`]s
+/// A "dynamic" [`Handle`] wrapper for [`Buffer`]s
 ///
-/// This [`Handle`] wrapper will always point to the presently active
-/// [`File`]. It can also detect when that [`File`] has been changed
-/// or when another [`File`] becomes the active [`File`].
-///
-/// [`read`]: DynFile::read
-/// [`write`]: DynFile::write
-pub struct DynFile {
-    dyn_file: RwData<Handle<File>>,
-    cur_file: RwData<Handle<File>>,
+/// This `Handle` wrapper will always point to the presently active
+/// `Buffer`. It can also detect when that `Buffer` has been changed
+/// or when another `Buffer` becomes the active `Buffer`.
+pub struct DynBuffer {
+    dyn_file: RwData<Handle>,
+    cur_file: RwData<Handle>,
 }
 
-impl DynFile {
-    /// Wether the [`File`] pointed to has changed or swapped with
+impl DynBuffer {
+    /// Wether the [`Buffer`] pointed to has changed or swapped with
     /// another
     pub fn has_changed(&self, pa: &Pass) -> bool {
         if self.cur_file.has_changed() {
@@ -202,7 +201,7 @@ impl DynFile {
         }
     }
 
-    /// Swaps the [`DynFile`] to the currently active [`File`]
+    /// Swaps the [`DynBuffer`] to the currently active [`Buffer`]
     pub fn swap_to_current(&mut self) {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
@@ -212,13 +211,13 @@ impl DynFile {
         }
     }
 
-    /// Reads the presently active [`File`]
-    pub fn read<'a>(&'a mut self, pa: &'a Pass) -> &'a File {
+    /// Reads the presently active [`Buffer`]
+    pub fn read<'a>(&'a mut self, pa: &'a Pass) -> &'a Buffer {
         self.dyn_file.read(pa).read(pa)
     }
 
-    /// The [`Handle<File>`] currently being pointed to
-    pub fn handle(&self) -> &Handle<File> {
+    /// The [`Handle<Buffer>`] currently being pointed to
+    pub fn handle(&self) -> &Handle {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
@@ -231,7 +230,7 @@ impl DynFile {
     /// [`has_changed`] to return `true`, but you don't have a
     /// [`Pass`] available to [`read`] the value.
     ///
-    /// This assumes that you don't care about the active [`File`]
+    /// This assumes that you don't care about the active [`Buffer`]
     /// possibly being swapped.
     ///
     /// [`read`]: Self::read
@@ -246,8 +245,8 @@ impl DynFile {
 
     ////////// Writing functions
 
-    /// Reads the presently active [`File`]
-    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut File {
+    /// Reads the presently active [`Buffer`]
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Buffer {
         // SAFETY: Because I already got a &mut Pass, the RwData can't be
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
@@ -255,11 +254,11 @@ impl DynFile {
         self.dyn_file.read(INTERNAL_PASS).write(pa)
     }
 
-    /// Writes to the [`File`] and [`Area`], making use of a
+    /// Writes to the [`Buffer`] and [`Area`], making use of a
     /// [`Pass`]
     ///
     /// [`Area`]: crate::ui::traits::Ui::Area
-    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut File, &'a dyn Area) {
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut Buffer, &'a dyn Area) {
         // SAFETY: Because I already got a &mut Pass, the RwData can't be
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
@@ -280,14 +279,14 @@ impl DynFile {
     }
 }
 
-impl Clone for DynFile {
+impl Clone for DynBuffer {
     /// Returns a _deep cloned_ duplicate of the value
     ///
     /// In this case, what this means is that the clone and `self`
     /// will have different internal pointers for the current
-    /// [`File`]. So if, for example, you call
-    /// [`DynFile::swap_to_current`] on `self`, that will switch
-    /// `self` to point to the current `File`, but the same will not
+    /// [`Buffer`]. So if, for example, you call
+    /// [`DynBuffer::swap_to_current`] on `self`, that will switch
+    /// `self` to point to the current `Buffer`, but the same will not
     /// be done in the clone.
     fn clone(&self) -> Self {
         // SAFETY: Because I already got a &mut Pass, the RwData can't be

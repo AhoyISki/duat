@@ -1,9 +1,9 @@
-//! General printing options for printing [`File`]s
+//! General printing options for printing [`Buffer`]s
 //!
 //! This is essentially the things that you'd expect to change in a
 //! text editor such as Neovim or Kakoune. They are contained in a
 //! [`PrintCfg`] struct, which is very light and cheap to copy around,
-//! and is used not only by the [`File`], but by every other
+//! and is used not only by the [`Buffer`], but by every other
 //! [`Widget`] as well. Right now, these options are:
 //!
 //! - [`WrapMethod`]: How to wrap lines;
@@ -19,7 +19,7 @@
 //! If you have any other recomendations of printing options that are
 //! common, feel free to recomend them!
 //!
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
 //! [`Area`]: crate::ui::Ui::Area
 //! [forced_scrolloff]: PrintCfg::set_forced_horizontal_scrolloff
@@ -204,7 +204,7 @@ impl PrintCfg {
     /// The default [`PrintCfg`]
     ///
     /// There is, essentially, almost no reason to deviate from this
-    /// in any [`Widget`] other than a [`File`], since those most
+    /// in any [`Widget`] other than a [`Buffer`], since those most
     /// likely will only be printed with the [default `PrintInfo`]
     /// from a [`Area`], i.e., no scrolling is involved, and you
     /// should usually strive to control the other elements of
@@ -213,7 +213,7 @@ impl PrintCfg {
     ///
     /// The lack of need to customize this is reflected in
     /// [`Widget::print_cfg`], which calls this function by default.
-    /// However, in a [`File`], you'll probably want to look at the
+    /// However, in a [`Buffer`], you'll probably want to look at the
     /// options below.
     ///
     /// The default value is:
@@ -234,7 +234,7 @@ impl PrintCfg {
     /// ```
     ///
     /// [`Widget`]: crate::ui::Widget
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     /// [default `PrintInfo`]: crate::ui::Area::PrintInfo
     /// [`Area`]: crate::ui::Area
     /// [`Text`]: crate::text::Text

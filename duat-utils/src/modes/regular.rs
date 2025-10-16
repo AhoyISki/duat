@@ -1,6 +1,6 @@
 use duat_core::{
     data::Pass,
-    file::File,
+    buffer::Buffer,
     mode::{self, KeyCode::*, KeyEvent, KeyMod as Mod, key},
     prelude::Handle,
     ui::Ui,
@@ -13,7 +13,7 @@ use super::{IncSearch, RunCommands, SearchFwd, SearchRev};
 pub struct Regular;
 
 impl<U: Ui> mode::Mode<U> for Regular {
-    type Widget = File<U>;
+    type Widget = Buffer<U>;
 
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
         match key {

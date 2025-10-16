@@ -16,7 +16,7 @@
 //!   includes things like:
 //!   - [`Widget`]s: As the name implies, this is the trait for
 //!     objects that will show up on the screen. The most noteworthy
-//!     `Widget` is the [`File`], which displays the contents of a
+//!     `Widget` is the [`Buffer`], which displays the contents of a
 //!     file.
 //!   - [`WidgetCfg`]s: These are `Widget` builders. They are used in
 //!     the `setup` function of Duat's config, through the
@@ -99,8 +99,8 @@
 //! for syntax highlighting, indentation, and much more.
 //!
 //! For this demonstration, I will create a `Plugin` that keeps
-//! track of the word count in a `File`, without counting the words
-//! every time said `File` changes.
+//! track of the word count in a `Buffer`, without counting the words
+//! every time said `Buffer` changes.
 //!
 //! ## Creating a `Plugin`
 //!
@@ -120,7 +120,7 @@
 //! // In duat-word-count/src/lib.rs
 //! use duat_core::prelude::*;
 //!
-//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! /// A [`Plugin`] to count the number of words in [`Buffer`]s
 //! #[derive(Default)]
 //! pub struct WordCount;
 //!
@@ -137,7 +137,7 @@
 //!
 //! In the code above, `WordCount` is a plugin that can be included in
 //! Duat's `config` crate. It will give the user the ability to get
-//! how many words are in a `File`, without having to reparse the
+//! how many words are in a `Buffer`, without having to reparse the
 //! whole buffer every time, given that it could be a very large file.
 //! In order to configure the `Plugin`, you should make use of the
 //! builder pattern, returning the `Plugin` on every modification.
@@ -145,7 +145,7 @@
 //! ```rust
 //! use duat_core::prelude::*;
 //!
-//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! /// A [`Plugin`] to count the number of words in [`Buffer`]s
 //! #[derive(Default)]
 //! pub struct WordCount(bool);
 //!
@@ -173,15 +173,15 @@
 //! example "x(x^3 + 3)" as 3 words, rather than 4.
 //!
 //! Next, I need to add something to keep track of the number of words
-//! in a `File`. For `File`s specifically, there is a built-in way to
-//! keep track of changes through the [`Parser`] trait:
+//! in a `Buffer`. For `Buffer`s specifically, there is a built-in way
+//! to keep track of changes through the [`Parser`] trait:
 //!
 //! ```rust
 //! use duat_core::prelude::*;
 //!
-//! /// A [`Parser`] to keep track of words in a [`File`]
+//! /// A [`Parser`] to keep track of words in a [`Buffer`]
 //! struct WordCounter {
-//!     tracker: FileTracker,
+//!     tracker: BufferTracker,
 //!     words: usize,
 //!     regex: &'static str,
 //! }
@@ -195,19 +195,19 @@
 //!
 //! There are a few things to unpack here:
 //!
-//! - The `WordCounter` has a [`FileTracker`] struct within: This
+//! - The `WordCounter` has a [`BufferTracker`] struct within: This
 //!   tracker is acquired when constructing the `Parser`, and it can
-//!   track [`Change`]s to the `File`. It does this by having its own
-//!   copy of the `File`s [`Bytes`], which it updates as requested,
-//!   allowing parsers to work in different threads.
+//!   track [`Change`]s to the `Buffer`. It does this by having its
+//!   own copy of the `Buffer`s [`Bytes`], which it updates as
+//!   requested, allowing parsers to work in different threads.
 //! - The [`Parser::parse`] function: This function is called every
-//!   time the `File` is updated, and a return value of `true` means
-//!   that this `Parser` wants to update the `File` itself, which will
-//!   call [`Parser::update`]. I won't be using this feature, so I can
-//!   just return `false`.
+//!   time the `Buffer` is updated, and a return value of `true` means
+//!   that this `Parser` wants to update the `Buffer` itself, which
+//!   will call [`Parser::update`]. I won't be using this feature, so
+//!   I can just return `false`.
 //!
 //! This is the basic layout for a `Parser` that doesn't need to
-//! modify the `File` itself, which is our case.
+//! modify the `Buffer` itself, which is our case.
 //!
 //! Next, I'll make use of duat's `Text` API in order to figure out
 //! the word count difference given a `Change` to the text:
@@ -258,16 +258,16 @@
 //! # fn word_diff(_: &str, _: &Bytes, _: Change<&str>) -> i32 { 0 }
 //! use duat_core::{prelude::*, text::Change};
 //!
-//! /// A [`Parser`] to keep track of words in a [`File`]
+//! /// A [`Parser`] to keep track of words in a [`Buffer`]
 //! struct WordCounter {
-//!     tracker: FileTracker,
+//!     tracker: BufferTracker,
 //!     words: usize,
 //!     regex: &'static str,
 //! }
 //!
 //! impl<U: Ui> Parser<U> for WordCounter {
 //!     fn parse(&mut self) -> bool {
-//!         // Fetches the latest updates from the File
+//!         // Fetches the latest updates from the Buffer
 //!         self.tracker.update();
 //!
 //!         // Rust iterators are magic 🪄
@@ -280,29 +280,29 @@
 //!
 //!         self.words = (self.words as i32 + diff) as usize;
 //!
-//!         // We don't care about updating the File, so just return false.
+//!         // We don't care about updating the Buffer, so just return false.
 //!         false
 //!     }
 //! }
 //! ```
 //!
-//! You'll notice that the `FileTracker` has a
-//! [`FileTracker::moment`] method. This method returns a [`Moment`],
+//! You'll notice that the `BufferTracker` has a
+//! [`BufferTracker::moment`] method. This method returns a [`Moment`],
 //! which is a list of all the `Change`s that took place since the
-//! previous call to `FileTracker::update`. By iterating through these
+//! previous call to `BufferTracker::update`. By iterating through these
 //! changes, the `Parser` can keep up with every `Change` that takes
-//! place in the `File`.
+//! place in the `Buffer`.
 //!
 //! And that's it for the `Parser` implementation! Now, how do we add
-//! it to a `File`?
+//! it to a `Buffer`?
 //!
-//! In order to add this `Parser` to a `File`, we're going to need a
+//! In order to add this `Parser` to a `Buffer`, we're going to need a
 //! [`ParserCfg`], which is used for configuring `Parser`s before they
 //! are added:
 //!
 //! ```rust
 //! # struct WordCounter {
-//! #     tracker: FileTracker,
+//! #     tracker: BufferTracker,
 //! #     words: usize,
 //! #     regex: &'static str,
 //! # }
@@ -316,7 +316,7 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text> {
+//!     fn build(self, file: &Buffer<U>, tracker: BufferTracker) -> Result<Self::Parser, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
@@ -327,27 +327,27 @@
 //!
 //! In this function, I am returning the `WordCounter` with a
 //! precalculated number of words (since I have to calculate this
-//! value at some point), based on the current state of the `File`.
+//! value at some point), based on the current state of the `Buffer`.
 //!
-//! This is the point where you are given the `FileTracker`, which a
-//! `Parser` can use to track that specific `File`. This
-//! `Plugin` is a relatively simple example, but the `FileTracker`
+//! This is the point where you are given the `BufferTracker`, which a
+//! `Parser` can use to track that specific `Buffer`. This
+//! `Plugin` is a relatively simple example, but the `BufferTracker`
 //! is really useful for Duat to inform plugin writers when they
-//! actually need to update some part of the `File`'s `Text`, in
+//! actually need to update some part of the `Buffer`'s `Text`, in
 //! order to prevent inefficient updates to the text.
 //!
 //! Now, to wrap this all up, the plugin needs to add this `Parser`
-//! to every `File`. We do this through the use of a hook:
+//! to every `Buffer`. We do this through the use of a hook:
 //!
 //! ```rust
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //! #     type Parser = WordCounter;
-//! #     fn build(self, _: &File<U>, _: FileTracker) -> Result<Self::Parser, Text> { todo!() }
+//! #     fn build(self, _: &Buffer<U>, _: BufferTracker) -> Result<Self::Parser, Text> { todo!() }
 //! # }
-//! # /// A [`Parser`] to keep track of words in a [`File`]
+//! # /// A [`Parser`] to keep track of words in a [`Buffer`]
 //! # struct WordCounter {
-//! #     tracker: FileTracker,
+//! #     tracker: BufferTracker,
 //! #     words: usize,
 //! #     regex: &'static str
 //! # }
@@ -356,7 +356,7 @@
 //! # }
 //! use duat_core::prelude::*;
 //!
-//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! /// A [`Plugin`] to count the number of words in [`Buffer`]s
 //! #[derive(Default)]
 //! pub struct WordCount(bool);
 //!
@@ -376,14 +376,14 @@
 //!     fn plug(self, _: &Plugins<U>) {
 //!         let not_whitespace = self.0;
 //!
-//!         hook::add::<File<U>, U>(move |pa, (mut cfg, _)| {
+//!         hook::add::<Buffer<U>, U>(move |pa, (mut cfg, _)| {
 //!             cfg.with_parser(WordCounterCfg(not_whitespace))
 //!         });
 //!     }
 //! }
 //! ```
 //!
-//! Now, whenever a `File` is opened, this `Parser` will be added
+//! Now, whenever a `Buffer` is opened, this `Parser` will be added
 //! to it. This is just one out of many types of hook that Duat
 //! provides by default. In Duat, you can even [create your own], and
 //! [choose when to trigger them].
@@ -396,11 +396,11 @@
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //! #     type Parser = WordCounter;
-//! #     fn build(self, _: &File<U>, _: FileTracker) -> Result<Self::Parser, Text> { todo!() }
+//! #     fn build(self, _: &Buffer<U>, _: BufferTracker) -> Result<Self::Parser, Text> { todo!() }
 //! # }
-//! # /// A [`Parser`] to keep track of words in a [`File`]
+//! # /// A [`Parser`] to keep track of words in a [`Buffer`]
 //! # struct WordCounter {
-//! #     tracker: FileTracker,
+//! #     tracker: BufferTracker,
 //! #     words: usize,
 //! #     regex: &'static str
 //! # }
@@ -409,8 +409,8 @@
 //! # }
 //! use duat_core::prelude::*;
 //!
-//! /// The number of words in a [`File`]
-//! pub fn file_words<U: Ui>(file: &File<U>) -> usize {
+//! /// The number of words in a [`Buffer`]
+//! pub fn file_words<U: Ui>(file: &Buffer<U>) -> usize {
 //!     file.read_parser(|word_counter: &WordCounter| word_counter.words)
 //!         .unwrap_or(0)
 //! }
@@ -421,7 +421,7 @@
 //! ```rust
 //! use duat_core::{prelude::*, text::Change};
 //!
-//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! /// A [`Plugin`] to count the number of words in [`Buffer`]s
 //! #[derive(Default)]
 //! pub struct WordCount(bool);
 //!
@@ -440,21 +440,21 @@
 //! impl<U: Ui> Plugin<U> for WordCount {
 //!     fn plug(self, _: &Plugins<U>) {
 //!         let not_whitespace = self.0;
-//!         hook::add::<File<U>, U>(move |_, (mut cfg, _)| {
+//!         hook::add::<Buffer<U>, U>(move |_, (mut cfg, _)| {
 //!             cfg.with_parser(WordCounterCfg(not_whitespace))
 //!         });
 //!     }
 //! }
 //!
-//! /// The number of words in a [`File`]
-//! pub fn file_words<U: Ui>(file: &File<U>) -> usize {
+//! /// The number of words in a [`Buffer`]
+//! pub fn file_words<U: Ui>(file: &Buffer<U>) -> usize {
 //!     file.read_parser(|word_counter: &WordCounter| word_counter.words)
 //!         .unwrap_or(0)
 //! }
 //!
-//! /// A [`Parser`] to keep track of words in a [`File`]
+//! /// A [`Parser`] to keep track of words in a [`Buffer`]
 //! struct WordCounter {
-//!     tracker: FileTracker,
+//!     tracker: BufferTracker,
 //!     words: usize,
 //!     regex: &'static str,
 //! }
@@ -477,7 +477,7 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn build(self, file: &File<U>, tracker: FileTracker) -> Result<Self::Parser, Text> {
+//!     fn build(self, file: &Buffer<U>, tracker: BufferTracker) -> Result<Self::Parser, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
@@ -561,7 +561,7 @@
 //! function, imported by `use word_count::*;`, into the status line.
 //!
 //! [`Widget`]: crate::ui::Widget
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 //! [`WidgetCfg`]: crate::ui::WidgetCfg
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
 //! [`WindowCreated`]: crate::hook::WindowCreated
@@ -620,9 +620,9 @@
 //! [`PrintCfg`]: crate::cfg::PrintCfg
 //! [`Text`]: crate::text::Text
 //! [`txt!`]: crate::text::txt
-//! [`FileTracker`]: crate::file::FileTracker
-//! [`FileTracker::moment`]: crate::file::FileTracker::moment
-//! [`FileTracker::update`]: crate::file::FileTracker::update
+//! [`BufferTracker`]: crate::buffer::BufferTracker
+//! [`BufferTracker::moment`]: crate::buffer::BufferTracker::moment
+//! [`BufferTracker::update`]: crate::buffer::BufferTracker::update
 #![feature(
     decl_macro,
     step_trait,
@@ -661,11 +661,11 @@ pub mod prelude {
 
     pub use crate::{
         Plugin, Plugins,
+        buffer::{Buffer, BufferTracker, Parser},
         cfg::PrintCfg,
         cmd,
         context::{self, Handle},
         data::{Pass, RwData},
-        file::{File, FileTracker, Parser},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
@@ -678,12 +678,12 @@ pub mod prelude {
     };
 }
 
+pub mod buffer;
 pub mod cfg;
 pub mod cmd;
 pub mod context;
 pub mod data;
 mod doc_duat_macro;
-pub mod file;
 pub mod form;
 pub mod hook;
 pub mod mode;

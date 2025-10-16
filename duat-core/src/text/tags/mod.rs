@@ -84,9 +84,9 @@ impl Tags<'_> {
     /// }
     ///
     /// impl<U: Ui> Parser<U> for MyParser {
-    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
     ///         let file = file.write(pa);
-    ///         // Removing on the whole File
+    ///         // Removing on the whole Buffer
     ///         file.text_mut().remove_tags(self.tagger, ..);
     ///         // Logic to add Tags with self.tagger...
     ///     }
@@ -120,11 +120,11 @@ impl Tags<'_> {
 
     /// Removes all [`Tag`]s
     ///
-    /// Refrain from using this function on [`File`]s, as there may be
+    /// Refrain from using this function on [`Buffer`]s, as there may be
     /// other [`Tag`] providers, and you should avoid measing with
     /// their tags.
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn clear(&mut self) {
         *self.0 = InnerTags::new(self.0.list.max() as usize);
     }

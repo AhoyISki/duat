@@ -30,7 +30,7 @@ macro_rules! doc_duat {
                     doc_cmd as cmd, doc_cursor as cursor,
                     doc_hook::{
                         self as hook, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat,
-                        FileWritten, FocusedOn, FormSet, KeysSent, KeysSentTo, ModeCreated,
+                        BufferWritten, FocusedOn, FormSet, KeysSent, KeysSentTo, ModeCreated,
                         ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
                         WindowCreated,
                     },
@@ -74,36 +74,36 @@ macro_rules! doc_duat {
                 pub type Handle<W> = $crate::context::Handle<W, Ui>;
 
                 #[doc(hidden)]
-                pub trait DocFileType {
+                pub trait DocBufferType {
                     fn filetype(&self) -> Option<&'static str> {
                         Some("This code is only meant for documentation!")
                     }
                 }
 
-                impl DocFileType for File {}
+                impl DocBufferType for Buffer {}
 
-                impl DocFileType for $crate::file::FileCfg<Ui> {}
+                impl DocBufferType for $crate::buffer::BufferCfg<Ui> {}
 
-                impl DocFileType for String {}
+                impl DocBufferType for String {}
 
-                impl DocFileType for &'_ str {}
+                impl DocBufferType for &'_ str {}
 
-                impl DocFileType for std::path::PathBuf {}
+                impl DocBufferType for std::path::PathBuf {}
 
-                impl DocFileType for &'_ std::path::Path {}
+                impl DocBufferType for &'_ std::path::Path {}
 
                 #[doc(hidden)]
-                pub trait DocPassFileType {
+                pub trait DocPassBufferType {
                     fn filetype(&self, _: &Pass) -> Option<&'static str> {
                         Some("This code is only meant for documentation!")
                     }
                 }
 
-                impl DocPassFileType for RwData<File> {}
+                impl DocPassBufferType for RwData<Buffer> {}
 
-                impl DocPassFileType for Handle<File> {}
+                impl DocPassBufferType for Handle<Buffer> {}
 
-                impl DocPassFileType for $crate::context::CurFile<Ui> {}
+                impl DocPassBufferType for $crate::context::CurBuffer<Ui> {}
             }
 
             pub mod doc_cmd {
@@ -124,17 +124,17 @@ macro_rules! doc_duat {
 
             mod doc_filetype {
                 use super::doc_ui::Ui;
-                use $crate::{data::Pass, file::File};
+                use $crate::{data::Pass, buffer::Buffer};
 
-                pub trait FileType {
+                pub trait BufferType {
                     fn filetype(&self) -> Option<&'static str> { Some("") }
                 }
-                impl FileType for File<Ui> {}
+                impl BufferType for Buffer<Ui> {}
 
-                pub trait HandleFileType {
+                pub trait HandleBufferType {
                     fn filetype(&self, _: &Pass) -> Option<&'static str> { Some("") }
                 }
-                impl HandleFileType for $crate::context::Handle<File<Ui>, Ui> {}
+                impl HandleBufferType for $crate::context::Handle<Buffer<Ui>, Ui> {}
             }
 
             pub mod doc_hook {
@@ -209,23 +209,23 @@ macro_rules! doc_duat {
 
             mod doc_state {
                 use $crate::mode::KeyEvent;
-                use $crate::{data::{DataMap, Pass, RwData}, file::File, text::Text, ui::Ui};
+                use $crate::{data::{DataMap, Pass, RwData}, buffer::Buffer, text::Text, ui::Ui};
 
-                pub fn name_txt(_: &File<impl Ui>) -> Text { Text::default() }
+                pub fn name_txt(_: &Buffer<impl Ui>) -> Text { Text::default() }
                 pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
                     RwData::default().map(pa, |_| "")
                 }
                 pub fn mode_txt(pa: &Pass) -> DataMap<&'static str, Text> {
                     RwData::default().map(pa, |_| Text::new())
                 }
-                pub fn main_byte(_: &File<impl Ui>) -> usize { 0 }
-                pub fn main_char(_: &File<impl Ui>) -> usize { 0 }
-                pub fn main_line(_: &File<impl Ui>) -> usize { 0 }
-                pub fn main_col<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
-                pub fn main_dwcol<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
-                pub fn main_txt<U: Ui>(_: &File<U>, _: &U::Area) -> Text { Text::default() }
-                pub fn selections(_: &File<impl Ui>) -> usize { 0 }
-                pub fn sels_txt(_: &File<impl Ui>) -> Text { Text::default() }
+                pub fn main_byte(_: &Buffer<impl Ui>) -> usize { 0 }
+                pub fn main_char(_: &Buffer<impl Ui>) -> usize { 0 }
+                pub fn main_line(_: &Buffer<impl Ui>) -> usize { 0 }
+                pub fn main_col<U: Ui>(_: &Buffer<U>, _: &U::Area) -> usize { 0 }
+                pub fn main_dwcol<U: Ui>(_: &Buffer<U>, _: &U::Area) -> usize { 0 }
+                pub fn main_txt<U: Ui>(_: &Buffer<U>, _: &U::Area) -> Text { Text::default() }
+                pub fn selections(_: &Buffer<impl Ui>) -> usize { 0 }
+                pub fn sels_txt(_: &Buffer<impl Ui>) -> Text { Text::default() }
                 pub fn cur_map_txt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
                     RwData::default().map(pa, |_| Text::new())
                 }
@@ -512,7 +512,7 @@ macro_rules! doc_duat {
                     pub fn above(self) -> Self { self }
                 }
 
-                pub type File = $crate::file::File<super::doc_ui::Ui>;
+                pub type Buffer = $crate::buffer::Buffer<super::doc_ui::Ui>;
             }
         }
     }

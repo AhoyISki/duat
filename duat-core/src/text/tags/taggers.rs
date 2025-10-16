@@ -208,7 +208,7 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 /// With keys, you can use the methods [`Text::insert_tag`] and,
 /// [`Text::remove_tags`] to add and remove [`Tag`]s on the [`Text`].
 ///
-/// The reason why keys exist is mainly for the sake of [`File`]
+/// The reason why keys exist is mainly for the sake of [`Buffer`]
 /// widgets. In files, it is very expected that there will be many
 /// different sources of modifiers, which can add and remove tags on
 /// their own accord. Taggers exist so that these actors don't
@@ -243,7 +243,7 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 ///
 /// [`Tag`]: super::Tag
 /// [`Text`]: super::Text
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 /// [`Text::insert_tag`]: super::Text::insert_tag
 /// [`Text::remove_tags`]: super::Text::remove_tags
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -277,14 +277,14 @@ impl Tagger {
     /// A simple key with no uniqueness guarantee
     ///
     /// You should use this if you're editing widgets that are not the
-    /// [`File`] widget, since you're probably the only one that is
+    /// [`Buffer`] widget, since you're probably the only one that is
     /// going to be modifying said widget anyway.
     ///
     /// The advantage of this function is speed. Since it is a
     /// `const` function, it's value is just substituted in with the
     /// code, so there is no need to store it in structs or statics.
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub const fn basic() -> Self {
         Self(0)
     }

@@ -355,7 +355,7 @@ mod global {
     ///   to correspond to the [`Level`] of their severity.
     /// - When you want to have [`Widget`]s change [`Form`] based on
     ///   [hooks], so you could have, for example, an `"inactive"`
-    ///   mask for your [`File`]s
+    ///   mask for your [`Buffer`]s
     /// - If you want to quickly cycle through [`Form`]s in a
     ///   [`Text`], this is the most efficient way of doing that,
     ///   since it relies on static remaps, not on changing the
@@ -370,7 +370,7 @@ mod global {
     /// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
     /// [`Level`]: crate::context::Level
     /// [hooks]: crate::hook
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     /// [`Text`]: crate::text::Text
     pub fn enable_mask(mask: impl AsRef<str> + Send + Sync + 'static) {
         queue(move || {
@@ -1293,7 +1293,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 ///   [`Level`] of their severity.
 /// - When you want to have [`Widget`]s change [`Form`] based on
 ///   [hooks], so you could have, for example, an `"inactive"` mask
-///   for your [`File`]s
+///   for your [`Buffer`]s
 /// - If you want to quickly cycle through [`Form`]s in a [`Text`],
 ///   this is the most efficient way of doing that, since it relies on
 ///   static remaps, not on changing the [`Form`]s themselves.
@@ -1306,7 +1306,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 /// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
 /// [`Level`]: crate::context::Level
 /// [hooks]: crate::hook
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 /// [`Text`]: crate::text::Text
 ///
 /// [`RawTag`]: crate::text::RawTag

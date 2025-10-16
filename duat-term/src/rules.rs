@@ -27,7 +27,7 @@ use duat_core::{
 /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 /// [`with_main_char`]: VertRuleCfg::with_main_char
 pub struct VertRule {
-    handle: Option<Handle<File>>,
+    handle: Option<Handle<Buffer>>,
     text: Text,
     sep_char: SepChar,
 }

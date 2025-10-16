@@ -27,7 +27,7 @@
 //!
 //! The first method is recommended if you want a [`Text`] that will
 //! be modified by input. This is often the case if your [`Widget`] is
-//! some sort of text box, chief of which is the [`File`], which is
+//! some sort of text box, chief of which is the [`Buffer`], which is
 //! the central [`Widget`] of every text editor.
 //!
 //! The second method is what should be used most of the time, as it
@@ -71,7 +71,7 @@
 //! A general rule of thumb for "too expensive" is this: if your
 //! [`Text`] can't scroll more than a few lines, it is not too
 //! expensive to rebuild. This way of editing the [`Text`] is mostly
-//! used on the [`File`] widget and other textbox-like [`Widget`]s.
+//! used on the [`Buffer`] widget and other textbox-like [`Widget`]s.
 //!
 //! [Left]: AlignLeft
 //! [right]: AlignRight
@@ -83,7 +83,7 @@
 //! [colored]: crate::form::Form
 //! [ghost text]: Ghost
 //! [`Ui`]: crate::ui::Ui
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
@@ -109,7 +109,7 @@ pub(crate) use self::history::MomentFetcher;
 use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
     builder::{Builder, BuilderPart, txt},
-    bytes::{Buffers, Bytes, Lines, Strs},
+    bytes::{Slices, Bytes, Lines, Strs},
     history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
@@ -143,7 +143,7 @@ struct InnerText {
     bytes: Bytes,
     tags: InnerTags,
     selections: Selections,
-    // Specific to Files
+    // Specific to Buffers
     history: Option<History>,
     has_changed: bool,
     has_unsaved_changes: AtomicBool,
@@ -557,7 +557,7 @@ impl Text {
     /// # Caution
     ///
     /// While it is fine to do this on your own widgets, you should
-    /// refrain from using this function in a [`File`]s [`Text`], as
+    /// refrain from using this function in a [`Buffer`]s [`Text`], as
     /// it must iterate over all tags in the file, so if there are a
     /// lot of other tags, this operation may be slow.
     ///
@@ -567,7 +567,7 @@ impl Text {
     /// a one byte range.
     ///
     /// [key]: Taggers
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(taggers, range)
@@ -575,11 +575,11 @@ impl Text {
 
     /// Removes all [`Tag`]s
     ///
-    /// Refrain from using this function on [`File`]s, as there may be
+    /// Refrain from using this function on [`Buffer`]s, as there may be
     /// other [`Tag`] providers, and you should avoid messing with
     /// their tags.
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn clear_tags(&mut self) {
         self.0.tags = InnerTags::new(self.0.bytes.len().byte());
     }
@@ -640,9 +640,9 @@ impl Text {
         self.remove_tags(Tagger::for_selections(), ..);
     }
 
-    /// Prepares the `Text` for reloading, to be used on [`File`]s
+    /// Prepares the `Text` for reloading, to be used on [`Buffer`]s
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub(crate) fn prepare_for_reloading(&mut self) {
         self.clear_tags();
         if let Some(history) = self.0.history.as_mut() {

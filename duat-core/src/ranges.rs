@@ -9,10 +9,10 @@ use crate::utils::merging_range_by_guess_and_lazy_shift;
 /// The primary purpose of this struct is to serve [`Parser`]s by
 /// telling Duat which ranges need to be updated. This lets Duat
 /// minimize as much as possible the amount of work done to update
-/// the [`Text`] when it changes in a [`File`].
+/// the [`Text`] when it changes in a [`Buffer`].
 ///
 /// [`Text`]: crate::text::Text
-/// [`File`]: crate::prelude::File
+/// [`Buffer`]: crate::prelude::Buffer
 /// [`Parser`]: crate::file::Parser
 #[derive(Clone, Default, Debug)]
 pub struct Ranges {

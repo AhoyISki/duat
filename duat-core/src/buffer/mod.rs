@@ -1,13 +1,13 @@
 //! The primary widget of Duat, used to display files.
 //!
 //! Most extensible features of Duat have the primary purpose of
-//! serving the [`File`], such as multiple [`Cursor`]s, a
+//! serving the [`Buffer`], such as multiple [`Cursor`]s, a
 //! `History` system, [`Area::PrintInfo`], etc.
 //!
-//! The [`File`] also provides a list of printed lines through the
-//! [`File::printed_lines`] method. This method is notably used by the
-//! [`LineNumbers`] widget, that shows the numbers of the currently
-//! printed lines.
+//! The [`Buffer`] also provides a list of printed lines through the
+//! [`Buffer::printed_lines`] method. This method is notably used by
+//! the [`LineNumbers`] widget, that shows the numbers of the
+//! currently printed lines.
 //!
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
@@ -20,13 +20,13 @@ use std::{
 use parking_lot::{Mutex, MutexGuard};
 
 use self::parser::Parsers;
-pub use self::parser::{FileTracker, Parser};
+pub use self::parser::{BufferTracker, Parser};
 use crate::{
     cfg::PrintCfg,
     context::{self, Cache, Handle},
     data::Pass,
     form::Painter,
-    hook::{self, FileWritten},
+    hook::{self, BufferWritten},
     mode::Selections,
     text::{BuilderPart, Bytes, Text, TwoPoints, txt},
     ui::{Area, Widget},
@@ -35,17 +35,17 @@ use crate::{
 mod parser;
 
 /// The widget that is used to print and edit files
-pub struct File {
+pub struct Buffer {
     path: PathKind,
     text: Text,
     printed_lines: Mutex<Vec<(usize, bool)>>,
     parsers: Parsers,
-    /// The [`PrintCfg`] of this [`File`]
+    /// The [`PrintCfg`] of this [`Buffer`]
     cfg: Arc<Mutex<PrintCfg>>,
     pub(crate) layout_order: usize,
 }
 
-impl File {
+impl Buffer {
     pub(crate) fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Self {
         let (text, path) = match path {
             Some(path) => {
@@ -81,7 +81,7 @@ impl File {
         }
     }
 
-    /// Mutable reference to the [`PrintCfg`] of this `File`
+    /// Mutable reference to the [`PrintCfg`] of this `Buffer`
     ///
     /// Note that, since every method of `PrintCfg` returns a mutable
     /// reference to the `PrintCfg`, you can chain these methods
@@ -92,7 +92,7 @@ impl File {
         self.cfg.lock()
     }
 
-    ////////// Saving the File
+    ////////// Saving the Buffer
 
     /// Writes the file to the current [`PathBuf`], if one was set
     pub fn save(&mut self) -> Result<Option<usize>, Text> {
@@ -110,7 +110,7 @@ impl File {
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
                 let path = path.to_string_lossy().to_string();
-                hook::queue(FileWritten((path, bytes, quit)));
+                hook::queue(BufferWritten((path, bytes, quit)));
 
                 Ok(Some(bytes))
             } else {
@@ -144,7 +144,7 @@ impl File {
                 .map(Some);
 
             if let Ok(Some(bytes)) = res.as_ref() {
-                hook::queue(FileWritten((
+                hook::queue(BufferWritten((
                     path.to_string_lossy().to_string(),
                     *bytes,
                     quit,
@@ -210,10 +210,11 @@ impl File {
 
     /// A [`Text`] from the name of this [`PathKind`]
     ///
-    /// The name of a [`File`] widget is the same as the path, but it
-    /// strips away the current directory. If it can't, it will try to
-    /// strip away the home directory, replacing it with `"~"`. If
-    /// that also fails, it will just show the full path.
+    /// The name of a [`Buffer`] widget is the same as the path, but
+    /// it strips away the current directory. If it can't, it will
+    /// try to strip away the home directory, replacing it with
+    /// `"~"`. If that also fails, it will just show the full
+    /// path.
     ///
     /// # Formatting
     ///
@@ -234,9 +235,9 @@ impl File {
 
     /// The type of [`PathBuf`]
     ///
-    /// This represents the three possible states for a [`File`]'s
-    /// [`PathBuf`], as it could either represent a real [`File`], not
-    /// exist, or not have been defined yet.
+    /// This represents the three possible states for a [`Buffer`]'s
+    /// [`PathBuf`], as it could either represent a real [`Buffer`],
+    /// not exist, or not have been defined yet.
     pub fn path_kind(&self) -> PathKind {
         self.path.clone()
     }
@@ -252,7 +253,7 @@ impl File {
 
     ////////// General querying functions
 
-    /// The [`Bytes`] of the [`File`]'s [`Text`]
+    /// The [`Bytes`] of the [`Buffer`]'s [`Text`]
     pub fn bytes(&self) -> &Bytes {
         self.text.bytes()
     }
@@ -283,7 +284,7 @@ impl File {
         self.text.selections_mut()
     }
 
-    /// Whether o not the [`File`] exists or not
+    /// Whether o not the [`Buffer`] exists or not
     pub fn exists(&self) -> bool {
         self.path_set()
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
@@ -291,15 +292,18 @@ impl File {
 
     ////////// Parser functions
 
-    /// Adds a [`Parser`] to this `File`
+    /// Adds a [`Parser`] to this `Buffer`
     ///
     /// The [`Parser`] will be able to keep track of every single
-    /// [`Change`] that takes place in the `File`'s [`Text`], and can
-    /// act on the `File` accordingly.
+    /// [`Change`] that takes place in the `Buffer`'s [`Text`], and
+    /// can act on the `Buffer` accordingly.
     ///
     /// This function will fail if a [`Parser`] of the same type was
-    /// already added to this [`File`]
-    pub fn add_parser<P: Parser>(&mut self, f: impl FnOnce(FileTracker) -> P) -> Result<(), Text> {
+    /// already added to this [`Buffer`]
+    pub fn add_parser<P: Parser>(
+        &mut self,
+        f: impl FnOnce(BufferTracker) -> P,
+    ) -> Result<(), Text> {
         self.parsers.add(self, f)
     }
 
@@ -315,7 +319,7 @@ impl File {
     /// to the same [`Parser`] will always return [`None`].
     ///
     /// If you want to read in a non blocking way, see
-    /// [`File::try_read_parser`].
+    /// [`Buffer::try_read_parser`].
     ///
     /// [added]: Handle::add_parser
     /// [`Change`]: crate::text::Change
@@ -325,7 +329,7 @@ impl File {
 
     /// Tries tor read from a specific [`Parser`], if it was [added]
     ///
-    /// Unlike [`File::read_parser`], this function will only be
+    /// Unlike [`Buffer::read_parser`], this function will only be
     /// called when the [`Parser`] is ready to be read. This may not
     /// be the case if, for example, it is still processing
     /// [`Change`]s to the [`Text`]. In that case, the function will
@@ -353,7 +357,7 @@ impl File {
     /// to the same [`Parser`] will always return [`None`].
     ///
     /// If you want to write in a non blocking way, see
-    /// [`File::try_write_parser`].
+    /// [`Buffer::try_write_parser`].
     ///
     /// [added]: Handle::add_parser
     /// [`Change`]: crate::text::Change
@@ -363,7 +367,7 @@ impl File {
 
     /// Tries tor read a specific [`Parser`], if it was [added]
     ///
-    /// Unlike [`File::write_parser`], this function will only be
+    /// Unlike [`Buffer::write_parser`], this function will only be
     /// called when the [`Parser`] is ready to be written to. This may
     /// not be the case if, for example, it is still processing
     /// [`Change`]s to the [`Text`]. In that case, the function will
@@ -382,9 +386,9 @@ impl File {
         self.parsers.try_write_parser(write)
     }
 
-    /// Prepare this `File` for reloading
+    /// Prepare this `Buffer` for reloading
     ///
-    /// This works by creating a new [`File`], which will take
+    /// This works by creating a new [`Buffer`], which will take
     /// ownership of a stripped down version of this one's [`Text`]
     pub(crate) fn prepare_for_reloading(&mut self) -> Self {
         self.text.prepare_for_reloading();
@@ -399,7 +403,7 @@ impl File {
     }
 }
 
-impl Widget for File {
+impl Widget for Buffer {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
@@ -465,14 +469,14 @@ impl Widget for File {
     }
 }
 
-impl Handle<File> {
+impl Handle {
     /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_parser<P: Parser>(
         &self,
         pa: &mut Pass,
-        f: impl FnOnce(FileTracker) -> P,
+        f: impl FnOnce(BufferTracker) -> P,
     ) -> Result<(), Text> {
         let file = self.widget().read(pa);
         file.parsers.add(file, f)
@@ -488,7 +492,7 @@ pub enum PathKind {
     SetAbsent(PathBuf),
     /// A [`PathBuf`] that has not been defined
     ///
-    /// The number within represents a specific [`File`], and when
+    /// The number within represents a specific [`Buffer`], and when
     /// printed to, for example, the [`StatusLine`], would show up as
     /// `txt!("[file]*scratch file*#{id}")`
     ///
@@ -606,10 +610,11 @@ impl PathKind {
 
     /// A [`Text`] from the name of this [`PathKind`]
     ///
-    /// The name of a [`File`] widget is the same as the path, but it
-    /// strips away the current directory. If it can't, it will try to
-    /// strip away the home directory, replacing it with `"~"`. If
-    /// that also fails, it will just show the full path.
+    /// The name of a [`Buffer`] widget is the same as the path, but
+    /// it strips away the current directory. If it can't, it will
+    /// try to strip away the home directory, replacing it with
+    /// `"~"`. If that also fails, it will just show the full
+    /// path.
     ///
     /// # Formatting
     ///

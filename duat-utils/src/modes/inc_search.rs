@@ -30,7 +30,7 @@ use duat_core::{prelude::*, text::Searcher};
 /// struct SearchAround;
 ///
 /// impl IncSearcher for SearchAround {
-///     fn search(&mut self, pa: &mut Pass, handle: Handle<File, U, Searcher>) {
+///     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, U, Searcher>) {
 ///         handle.edit_all(pa, |mut e| {
 ///             e.set_caret_on_end();
 ///             let Some([_, p1]) = e.search_inc_fwd(None).next() else {
@@ -59,7 +59,7 @@ use duat_core::{prelude::*, text::Searcher};
 /// [`duat-kak`]: https://docs.rs/duat-kak
 pub trait IncSearcher: Clone + Send + 'static {
     /// Performs the incremental search
-    fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>);
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>);
 
     /// What prompt to show in the [`PromptLine`]
     ///
@@ -74,7 +74,7 @@ pub trait IncSearcher: Clone + Send + 'static {
 pub struct SearchFwd;
 
 impl IncSearcher for SearchFwd {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
@@ -101,7 +101,7 @@ impl IncSearcher for SearchFwd {
 pub struct SearchRev;
 
 impl IncSearcher for SearchRev {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
@@ -128,7 +128,7 @@ impl IncSearcher for SearchRev {
 pub struct ExtendFwd;
 
 impl IncSearcher for ExtendFwd {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
@@ -153,7 +153,7 @@ impl IncSearcher for ExtendFwd {
 pub struct ExtendRev;
 
 impl IncSearcher for ExtendRev {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);

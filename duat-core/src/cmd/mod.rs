@@ -197,12 +197,12 @@
 //! ```rust
 //! # duat_core::doc_duat!(duat);
 //! setup_duat!(setup);
-//! use duat::prelude::{file::File, *};
+//! use duat::prelude::{buffer::Buffer, *};
 //!
 //! fn setup() {
 //!     cmd::add!(
 //!         "set-mask",
-//!         |pa, mask: String, handles: cmd::Handles<File<Ui>>| {
+//!         |pa, mask: String, handles: cmd::Handles<Buffer<Ui>>| {
 //!             handles.on_flags(pa, |pa, handle| {
 //!                 handle.set_mask(mask.clone().leak());
 //!             });
@@ -213,13 +213,13 @@
 //! }
 //! ```
 //!
-//! In this case, [`Handles<File<Ui>>`] will grab every single
-//! [`Handle<File<Ui>>`] open at the moment, and lets you act on them.
-//! The function [`Handles::on_flags`] will act based on the [`Flags`]
-//! that were passed, i.e. if `"--global"` was passed, [`on_flags`]
-//! will act on every [`Handle`] of a a [`File`]. You can also ignore
-//! the [`Flags`] by calling something like [`Handles::on_window`], or
-//! [`Handles::on_current`].
+//! In this case, [`Handles<Buffer<Ui>>`] will grab every single
+//! [`Handle<Buffer<Ui>>`] open at the moment, and lets you act on
+//! them. The function [`Handles::on_flags`] will act based on the
+//! [`Flags`] that were passed, i.e. if `"--global"` was passed,
+//! [`on_flags`] will act on every [`Handle`] of a a [`Buffer`]. You
+//! can also ignore the [`Flags`] by calling something like
+//! [`Handles::on_window`], or [`Handles::on_current`].
 //!
 //! [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
 //! [`cmd::call_notify`]: call_notify
@@ -228,14 +228,14 @@
 //! [`Send + 'static`]: Send
 //! [`Color`]: crate::form::Color
 //! [`Widget`]: crate::ui::Widget
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 //! [`&str`]: str
 //! [`cmd`]: self
 //! [`txt!`]: crate::prelude::txt
 //! [`Ok(Some({Text}))`]: Ok
 //! [`Form`]: crate::form::Form
 //! [`Area`]: crate::ui::Ui::Area
-//! [`Handle<File<Ui>>`]: crate::context::Handle
+//! [`Handle<Buffer<Ui>>`]: crate::context::Handle
 //! [`on_flags`]: Handles::on_flags
 //! [`Handle`]: crate::context::Handle
 use std::{
@@ -249,9 +249,9 @@ use crossterm::style::Color;
 
 pub use self::{global::*, parameters::*};
 use crate::{
+    buffer::{Buffer, PathKind},
     context::{self, Handle, sender},
     data::{Pass, RwData},
-    file::{File, PathKind},
     form::FormId,
     mode,
     session::DuatEvent,
@@ -329,7 +329,7 @@ pub(crate) fn add_session_commands() {
         Ok(None)
     });
 
-    add!(["write", "w"], |pa, path: Option<ValidFile>| {
+    add!(["write", "w"], |pa, path: Option<ValidBuffer>| {
         let handle = context::cur_file(pa);
         let file = handle.write(pa);
 
@@ -338,7 +338,7 @@ pub(crate) fn add_session_commands() {
         } else if let Some(name) = file.name_set() {
             (file.save()?, std::path::PathBuf::from(name))
         } else {
-            return Err(txt!("File has no name path to write to").build());
+            return Err(txt!("Buffer has no name path to write to").build());
         };
 
         match bytes {
@@ -349,7 +349,7 @@ pub(crate) fn add_session_commands() {
         }
     });
 
-    add!(["write-quit", "wq"], |pa, path: Option<ValidFile>| {
+    add!(["write-quit", "wq"], |pa, path: Option<ValidBuffer>| {
         let handle = context::cur_file(pa);
 
         let (bytes, name) = {
@@ -446,44 +446,44 @@ pub(crate) fn add_session_commands() {
         Ok(None)
     });
 
-    add!(["edit", "e"], |pa, arg: FileOrBufferOrCfg| {
+    add!(["edit", "e"], |pa, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
 
         let pk = match arg {
-            FileOrBufferOrCfg::Cfg => {
+            PathOrBufferOrCfg::Cfg => {
                 PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs"))
             }
-            FileOrBufferOrCfg::CfgManifest => {
+            PathOrBufferOrCfg::CfgManifest => {
                 PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml"))
             }
-            FileOrBufferOrCfg::File(path) => PathKind::from(path),
-            FileOrBufferOrCfg::Buffer(handle) => {
+            PathOrBufferOrCfg::Path(path) => PathKind::from(path),
+            PathOrBufferOrCfg::Buffer(handle) => {
                 mode::reset_to(handle.to_dyn());
                 return Ok(Some(txt!("Switched to {}", handle.read(pa).name()).build()));
             }
         };
 
-        let file = File::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
+        let file = Buffer::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
         let handle = windows.new_file(pa, file);
         context::set_current_node(pa, handle);
 
         return Ok(Some(txt!("Opened {pk}").build()));
     });
 
-    add!(["open", "o"], |pa, arg: FileOrBufferOrCfg| {
+    add!(["open", "o"], |pa, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
 
         let (pk, msg) = match arg {
-            FileOrBufferOrCfg::Cfg => (
+            PathOrBufferOrCfg::Cfg => (
                 PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs")),
                 None,
             ),
-            FileOrBufferOrCfg::CfgManifest => (
+            PathOrBufferOrCfg::CfgManifest => (
                 PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml")),
                 None,
             ),
-            FileOrBufferOrCfg::File(path) => (PathKind::from(path), None),
-            FileOrBufferOrCfg::Buffer(handle) => {
+            PathOrBufferOrCfg::Path(path) => (PathKind::from(path), None),
+            PathOrBufferOrCfg::Buffer(handle) => {
                 let pk = handle.read(pa).path_kind();
                 let (win, ..) = windows.file_entry(pa, pk.clone()).unwrap();
                 if windows.get(pa, win).unwrap().file_handles(pa).len() == 1 {
@@ -721,70 +721,70 @@ mod global {
         queue("quit");
     }
 
-    /// Switches to/opens a [`File`] with the given name.
+    /// Switches to/opens a [`Buffer`] with the given name.
     ///
     /// If you wish to specifically switch to files that are already
     /// open, use [`buffer`].
     ///
     /// If there are more arguments, they will be ignored.
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn edit(pa: &mut Pass, file: impl std::fmt::Display) -> CmdResult {
         call(pa, format!("edit {file}"))
     }
 
-    /// Switches to a [`File`] with the given name.
+    /// Switches to a [`Buffer`] with the given name.
     ///
     /// If there is no file open with that name, does nothing. Use
     /// [`edit`] if you wish to open files.
     ///
     /// If there are more arguments, they will be ignored.
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn buffer(pa: &mut Pass, file: impl std::fmt::Display) -> CmdResult {
         call(pa, format!("buffer {file}"))
     }
 
-    /// Switches to the next [`File`].
+    /// Switches to the next [`Buffer`].
     ///
     /// This function will only look at files that are opened in the
     /// current window. If you want to include other windows in the
     /// search, use [`next_global_file`].
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn next_file(pa: &mut Pass) -> CmdResult {
         call(pa, "next-file")
     }
 
-    /// Switches to the previous [`File`].
+    /// Switches to the previous [`Buffer`].
     ///
     /// This function will only look at files that are opened in the
     /// current window. If you want to include other windows in the
     /// search, use [`prev_global_file`].
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn prev_file(pa: &mut Pass) -> CmdResult {
         call(pa, "prev-file")
     }
 
-    /// Switches to the next [`File`].
+    /// Switches to the next [`Buffer`].
     ///
     /// This function will look for files in all windows. If you want
     /// to limit the search to just the current window, use
     /// [`next_file`].
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn next_global_file(pa: &mut Pass) -> CmdResult {
         call(pa, "next-file --global")
     }
 
-    /// Switches to the previous [`File`].
+    /// Switches to the previous [`Buffer`].
     ///
     /// This function will look for files in all windows. If you want
     /// to limit the search to just the current window, use
     /// [`prev_file`].
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn prev_global_file(pa: &mut Pass) -> CmdResult {
         call(pa, "prev-file --global")
     }
@@ -937,10 +937,10 @@ mod global {
 /// A list of commands.
 ///
 /// This list contains all of the commands that have been
-/// added to Duat, as well as info on the current [`File`],
+/// added to Duat, as well as info on the current [`Buffer`],
 /// [widget] and all of the [windows].
 ///
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 /// [widget]: crate::ui::Widget
 /// [windows]: crate::ui::Window
 struct Commands(LazyLock<RwData<InnerCommands>>);
@@ -1151,6 +1151,6 @@ pub type CheckerFn = fn(
     Option<(Range<usize>, Text)>,
 );
 
-pub(crate) fn as_file_handle((.., node): (usize, usize, &Node)) -> Option<Handle<File>> {
+pub(crate) fn as_file_handle((.., node): (usize, usize, &Node)) -> Option<Handle> {
     node.try_downcast()
 }

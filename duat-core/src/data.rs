@@ -6,7 +6,7 @@
 //! the data within has been modified.
 //!
 //! This is used in many places, for example, [`Widget`]s can read
-//! from [`File`]s, and Duat can know when a [`File`] has been
+//! from [`Buffer`]s, and Duat can know when a [`Buffer`] has been
 //! altered, so these [`Widget`]s may be [updated] automatically.
 //!
 //! Another struct from this module is [`DataMap`]. This is
@@ -36,7 +36,7 @@
 //! [read]: RwData::read
 //! [written to]: RwData::write
 //! [`Widget`]: crate::ui::Widget
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 //! [updated]: crate::ui::Widget::update
 //! [`Text`]: crate::text::Text
 //! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html

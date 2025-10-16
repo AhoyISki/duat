@@ -3,11 +3,11 @@
 //! Each [`Mode`] controls a specifig type of [`Widget`], and
 //! switching [`Mode`]s is how one sets the current [`Widget`]. For
 //! example, the [`Standard`] (like most [`Mode`]s), controls the
-//! [`File`] [`Widget`]. So when you switch to that [`Mode`], you
-//! return to the active [`File`] if you were focused on another
+//! [`Buffer`] [`Widget`]. So when you switch to that [`Mode`], you
+//! return to the active [`Buffer`] if you were focused on another
 //! [`Widget`].
 //!
-//! Other than the [`File`] the main [`Widget`] that is controled by
+//! Other than the [`Buffer`] the main [`Widget`] that is controled by
 //! [`Mode`]s is the [`PromptLine`]. It is an example of a [`Widget`]
 //! that has many [`Mode`]s implemented for it. Chief of which is
 //! [`RunCommands`], but there is also [`IncSearch`] and
@@ -32,7 +32,7 @@ pub use self::{
     remap::*,
     switch::*,
 };
-use crate::{context::Handle, data::Pass, file::File, session::DuatEvent, ui::Widget};
+use crate::{context::Handle, data::Pass, buffer::Buffer, session::DuatEvent, ui::Widget};
 
 mod cursor;
 mod remap;
@@ -40,7 +40,7 @@ mod switch;
 
 /// A blank [`Mode`], intended for plugin authors to use
 ///
-/// This [`Mode`] just resets to the default [`File`] [`Mode`], no
+/// This [`Mode`] just resets to the default [`Buffer`] [`Mode`], no
 /// matter what key is pressed. It is instead used for mapping keys to
 /// other [`Mode`]s in a common place:
 ///
@@ -51,7 +51,7 @@ mod switch;
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct PluginMode0;
 /// #     impl<U: Ui> Mode<U> for PluginMode0 {
-/// #         type Widget = File<U>;
+/// #         type Widget = Buffer<U>;
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
 /// #     }
 /// # }
@@ -60,7 +60,7 @@ mod switch;
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct PluginMode1;
 /// #     impl<U: Ui> Mode<U> for PluginMode1 {
-/// #         type Widget = File<U>;
+/// #         type Widget = Buffer<U>;
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
 /// #     }
 /// # }
@@ -69,7 +69,7 @@ mod switch;
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct Normal;
 /// #     impl<U: Ui> Mode<U> for Normal {
-/// #         type Widget = File<U>;
+/// #         type Widget = Buffer<U>;
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
 /// #     }
 /// # }
@@ -92,10 +92,10 @@ mod switch;
 pub struct User;
 
 impl Mode for User {
-    type Widget = File;
+    type Widget = Buffer;
 
     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
-        reset::<File>();
+        reset::<Buffer>();
     }
 }
 
@@ -479,7 +479,7 @@ pub trait Mode: Sized + Clone + Send + 'static {
 // remaps.
 impl Mode for &'static str {
     // Doesn't matter
-    type Widget = File;
+    type Widget = Buffer;
 
     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");

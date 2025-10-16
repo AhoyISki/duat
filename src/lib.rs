@@ -101,8 +101,8 @@
 //! #     #[derive(Clone)]
 //! #     pub struct Insert;
 //! #     impl Mode for Insert {
-//! #         type Widget = File;
-//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
+//! #         type Widget = Buffer;
+//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Buffer>) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -122,7 +122,7 @@
 //!     plug(kak::Kak::new());
 //!     map::<kak::Insert>("jk", "<Esc>");
 //!
-//!     print::wrap_on_edge();
+//!     opts::wrap_on_edge();
 //!
 //!     hook::add::<LineNumbers>(|pa, handle| {
 //!         handle.write(pa).align = std::fmt::Alignment::Right;
@@ -169,7 +169,7 @@
 //! These are only some of the options available to configure Duat,
 //! you can also add [custom commands], place widgets around other
 //! [`Widget`](crate::hook::WidgetCreated)s and [windows], create
-//! [`Parser`]s that can track every change on a [`File`], and many
+//! [`Parser`]s that can track every change on a [`Buffer`], and many
 //! other things.
 //!
 //! Duat also comes with a fully fledged [text creation system], which
@@ -291,7 +291,7 @@
 //! - [x] Make all of these things easy to use on a public interface;
 //! - [x] Create a number line and a separator line;
 //! - [x] Create a status line;
-//! - [x] File switching;
+//! - [x] Buffer switching;
 //! - [x] Create a command creation interface and a command line;
 //! - [x] Add the ability to frame areas;
 //! - [x] Implement concealment;
@@ -384,11 +384,11 @@
 //! [custom commands]: crate::prelude::cmd
 //! [windows]: crate::hook::WindowCreated
 //! [`Parser`]: duat_core::file::Parser
-//! [`File`]: crate::prelude::File
+//! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #![feature(decl_macro, thread_spawn_hook, abort_unwind)]
 
-pub use duat_core::{self, clipboard, cmd, context, data, file, text, ui, utils};
+pub use duat_core::{self, clipboard, cmd, context, data, buffer, text, ui, utils};
 /// Common [`StatusLine`] fields
 ///
 /// [`StatusLine`]: duat_utils::widgets::StatusLine
@@ -396,7 +396,7 @@ pub use duat_utils::state;
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
-pub mod print;
+pub mod opts;
 mod regular;
 mod setup;
 
@@ -453,24 +453,24 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<File>(|_, (cfg, builder)| {
+    //!     hook::add::<Buffer>(|_, (cfg, builder)| {
     //!         builder.push(status!("{name_txt} {main_txt}").above());
     //!         cfg
     //!     });
     //! }
     //! ```
     //!
-    //! [That hook] lets you push more [`Widget`]s to a [`File`],
+    //! [That hook] lets you push more [`Widget`]s to a [`Buffer`],
     //! whenever one is opened. In this case, I'm pushing a
-    //! [`StatusLine`] on top of the [`File`], which displays the
+    //! [`StatusLine`] on top of the [`Buffer`], which displays the
     //! [file's name], as well as its [main `Selection`].
     //!
     //! Do note that this won't be the only [`Widget`] that will be
-    //! pushed around the [`File`], since there are some predefined
+    //! pushed around the [`Buffer`], since there are some predefined
     //! [hook groups] in Duat.
     //!
     //! From the `cfg` argument, you can also change settings on that
-    //! [`File`], in a similar vein to the [`print`](crate::print)
+    //! [`Buffer`], in a similar vein to the [`print`](crate::print)
     //! module:
     //!
     //! ```rust
@@ -478,7 +478,7 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<File>(|_, (mut cfg, _)| {
+    //!     hook::add::<Buffer>(|_, (mut cfg, _)| {
     //!         if let Some("yaml" | "json") = cfg.filetype() {
     //!             cfg.tabstop(2)
     //!         } else {
@@ -514,16 +514,16 @@ pub mod hook {
     //!
     //! These are the default [hook groups]:
     //!
-    //! - `"FileWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
-    //!   to new [`File`]s, via [`WidgetCreated`], (using [`File`] as
-    //!   an alias for [`WidgetCreated<File>`]).
+    //! - `"BufferWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
+    //!   to new [`Buffer`]s, via [`WidgetCreated`], (using [`Buffer`] as
+    //!   an alias for [`WidgetCreated<Buffer>`]).
     //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
     //!   and [`Notifications`] to new windows, via [`WindowCreated`].
     //! - `"HidePromptLine"`: Is responsible for [hiding] the
     //!   [`PromptLine`] when it is not in use, giving way to the
     //!   [`Notifications`], via [`FocusedOn`] and [`UnfocusedFrom`].
     //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
-    //!   file in it is written to, via [`FileWritten`].
+    //!   file in it is written to, via [`BufferWritten`].
     //!
     //! # Available hooks
     //!
@@ -548,7 +548,7 @@ pub mod hook {
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
     //! - [`ModeSwitched`] triggers when you change [`Mode`].
     //! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
-    //! - [`FileWritten`] triggers after the [`File`] is written.
+    //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
     //! - [`SearchPerformed`] (from duat-utils) triggers after a
     //!   search is performed.
     //! - [`SearchUpdated`] (from duat-utils) triggers after a search
@@ -567,7 +567,7 @@ pub mod hook {
     //! [`WindowCreated`]: crate::prelude::WindowCreated
     //! [hiding]: duat_core::ui::Area::constrain_ver
     //! [cfg]: crate::prelude::Widget::Cfg
-    //! [`File`]: crate::prelude::File
+    //! [`Buffer`]: crate::prelude::Buffer
     //! [`LineNumbers`]: crate::prelude::LineNumbers
     //! [`dyn Widget`]: crate::prelude::Widget
     //! [`Widget`]: crate::prelude::Widget
@@ -594,12 +594,12 @@ pub mod mode {
 
 /// Duat's builtin widgets
 pub mod widgets {
-    pub use duat_core::{file::File, ui::Widget};
+    pub use duat_core::{buffer::Buffer, ui::Widget};
     pub use duat_utils::widgets::*;
 }
 
 #[allow(unused_imports)]
-use duat_core::session::{DuatEvent, ReloadedFile};
+use duat_core::session::{DuatEvent, ReloadedBuffer};
 
 /// Pre and post setup for Duat
 ///
@@ -608,15 +608,15 @@ use duat_core::session::{DuatEvent, ReloadedFile};
 pub macro setup_duat($setup:expr) {
     use std::sync::{Mutex, mpsc};
 
-    use $crate::prelude::{File, Text, context::Logs, form::Palette};
+    use $crate::prelude::{Buffer, Text, context::Logs, form::Palette};
 
     #[unsafe(no_mangle)]
     fn run(
         initials: Initials,
         ms: MetaStatics,
-        files: Vec<Vec<ReloadedFile>>,
+        files: Vec<Vec<ReloadedBuffer>>,
         (duat_tx, duat_rx, reload_tx): Channels,
-    ) -> (Vec<Vec<ReloadedFile>>, mpsc::Receiver<DuatEvent>) {
+    ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
         pre_setup(Some(initials), Some(duat_tx));
         $setup();
         run_duat(ms, files, duat_rx, Some(reload_tx))
@@ -638,16 +638,16 @@ pub mod prelude {
         context::{self, Handle},
         cursor,
         data::{self, Pass},
-        file::{File, FileTracker, Parser},
+        buffer::{Buffer, BufferTracker, Parser},
         form::{self, CursorShape, Form},
         hook::{
-            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
+            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, BufferWritten, FocusedOn,
             FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched,
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
             WindowCreated,
         },
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, Pager, Prompt, User, alias, key, map},
-        print, setup_duat,
+        opts, setup_duat,
         state::*,
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
@@ -773,16 +773,16 @@ mod book;
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
 /// #     impl Mode<Ui> for Normal {
-/// #         type Widget = File;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
+/// #         type Widget = Buffer;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Buffer>) {
 /// #             todo!();
 /// #         }
 /// #     }
 /// #     #[derive(Clone)]
 /// #     pub struct Insert;
 /// #     impl Mode<Ui> for Insert {
-/// #         type Widget = File;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
+/// #         type Widget = Buffer;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Buffer>) {
 /// #             todo!();
 /// #         }
 /// #     }

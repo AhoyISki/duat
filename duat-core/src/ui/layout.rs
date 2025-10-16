@@ -1,9 +1,9 @@
-//! Ways to organize opened [`File`]s
+//! Ways to organize opened [`Buffer`]s
 //!
 //! By default, when calling `:e some_file<Enter>`, Duat will follow
-//! [`MasterOnLeft`], a type of [`Layout`] for opening [`File`]s. That
-//! is, the first opened [`File`] will be on the left of the screeng,
-//! and all subsequent [`File`]s will be stacked vertically on the
+//! [`MasterOnLeft`], a type of [`Layout`] for opening [`Buffer`]s. That
+//! is, the first opened [`Buffer`] will be on the left of the screeng,
+//! and all subsequent [`Buffer`]s will be stacked vertically on the
 //! right of the screen.
 //!
 //! You can create your own [`Layout`] fairly trivially, for example,
@@ -20,10 +20,10 @@
 //! impl<U: Ui> Layout<U> for Spiraled {
 //!     fn new_file(
 //!         &mut self,
-//!         file: &File<U>,
-//!         prev: Vec<Handle<File<U>, U>>,
-//!     ) -> Result<(Handle<File<U>, U>, PushSpecs), Text> {
-//!         // One File is always open.
+//!         file: &Buffer<U>,
+//!         prev: Vec<Handle<Buffer<U>, U>>,
+//!     ) -> Result<(Handle<Buffer<U>, U>, PushSpecs), Text> {
+//!         // One Buffer is always open.
 //!         let last = prev.last().unwrap().clone();
 //!         match prev.len() % 4 {
 //!             1 => Ok((last, PushSpecs::right())),
@@ -37,43 +37,43 @@
 //! ```
 //!
 //! Also notice that this function can fail, which means you can set a
-//! limit to how many [`File`]s should can open in a single window.
+//! limit to how many [`Buffer`]s should can open in a single window.
 use super::PushSpecs;
 use crate::{
     data::Pass,
-    file::File,
+    buffer::Buffer,
     prelude::Handle,
     ui::{Side, Window},
 };
 
-/// A form of organizing opened [`File`]s
+/// A form of organizing opened [`Buffer`]s
 ///
-/// Determines how the n'th [`File`] should be opened, given the
-/// previously opened [`File`]s on the same window.
+/// Determines how the n'th [`Buffer`] should be opened, given the
+/// previously opened [`Buffer`]s on the same window.
 pub trait Layout: Send + Sync {
-    /// Opens a new [`File`]
+    /// Opens a new [`Buffer`]
     ///
-    /// The returned [`Ok(Handle<File>, PushSpecs)`] value represents
-    /// the [`PushSpecs`] to use when pushing this new [`File`],
-    /// and the [`Handle<File>`] representing which [`File`] to push
-    /// this [`File`] to.
+    /// The returned [`Ok(Handle<Buffer>, PushSpecs)`] value represents
+    /// the [`PushSpecs`] to use when pushing this new [`Buffer`],
+    /// and the [`Handle<Buffer>`] representing which [`Buffer`] to push
+    /// this [`Buffer`] to.
     ///
-    /// There will _always_ be at least one [`File`] open, since the
-    /// first opened [`File`] doesn't follow layouts.
+    /// There will _always_ be at least one [`Buffer`] open, since the
+    /// first opened [`Buffer`] doesn't follow layouts.
     ///
-    /// [`Ok(Handle<File>, PushSpecs)`]: Handle
+    /// [`Ok(Handle<Buffer>, PushSpecs)`]: Handle
     fn new_file(
         &mut self,
         pa: &Pass,
         cur_win: usize,
-        file: &File,
+        file: &Buffer,
         windows: &[Window],
-    ) -> (Handle<File>, PushSpecs);
+    ) -> (Handle, PushSpecs);
 }
 
-/// [`Layout`]: One [`File`] on the left, others on the right
+/// [`Layout`]: One [`Buffer`] on the left, others on the right
 ///
-/// One [`File`] will occupy the whole left side of the screen, and
+/// One [`Buffer`] will occupy the whole left side of the screen, and
 /// future files will be vertically stacked on the right
 #[derive(Clone)]
 pub struct MasterOnLeft;
@@ -83,9 +83,9 @@ impl Layout for MasterOnLeft {
         &mut self,
         pa: &Pass,
         cur_win: usize,
-        _file: &File,
+        _file: &Buffer,
         windows: &[Window],
-    ) -> (Handle<File>, PushSpecs) {
+    ) -> (Handle, PushSpecs) {
         let last = windows[cur_win].file_handles(pa).last().unwrap().clone();
         if windows[cur_win].file_handles(pa).len() == 1 {
             (last, PushSpecs { side: Side::Right, .. })

@@ -27,7 +27,7 @@
 //! This module also describes a [`WidgetCfg`], which is used in
 //! widget construction.
 //!
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 //! [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
 //! [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [`StatusLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
@@ -93,7 +93,7 @@ use crate::{
 /// ```
 ///
 /// Notice the `UpTimeCfg` defined as the `Widget::Cfg` for `UpTime`.
-/// [`WidgetCfg`]s  exist to let users push [`Widget`]s to [`File`]s
+/// [`WidgetCfg`]s  exist to let users push [`Widget`]s to [`Buffer`]s
 /// and the window through the [`WidgetCreated`] and [`WindowCreated`]
 /// [hooks]. It lets users configure widgets through methods defined
 /// by the widget author.
@@ -285,7 +285,7 @@ use crate::{
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`txt!`]: crate::text::txt
 /// [`Plugin`]: crate::Plugin
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 pub trait Widget: Send + 'static {
     ////////// Stateful functions
 
@@ -351,7 +351,7 @@ pub trait Widget: Send + 'static {
     /// #         todo!();
     /// #     }
     /// # }
-    /// struct MyWidget<U: Ui>(Handle<File<U>, U>);
+    /// struct MyWidget<U: Ui>(Handle<Buffer<U>, U>);
     ///
     /// impl<U: Ui> Widget<U> for MyWidget<U> {
     /// #   type Cfg = Cfg;
@@ -368,12 +368,12 @@ pub trait Widget: Send + 'static {
     /// ```
     ///
     /// In this case, `MyWidget` is telling Duat that it should be
-    /// updated whenever the file in the [`Handle<File>`] gets
+    /// updated whenever the file in the [`Handle<Buffer>`] gets
     /// changed.
     ///
     /// One exception to this is the [`StatusLine`], which can be
     /// altered if any of its parts get changed, some of them depend
-    /// on a [`Handle<File>`], but a lot of others depend on checking
+    /// on a [`Handle<Buffer>`], but a lot of others depend on checking
     /// functions which might need to be triggered.
     ///
     /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat_utils/widgets/struct.StatusLine.html
@@ -399,12 +399,12 @@ pub trait Widget: Send + 'static {
     ///
     /// Very rarely shouuld you actually implement this method, one
     /// example of where this is actually implemented is in
-    /// [`File::print`], where [`Area::print_with`] is called in
+    /// [`Buffer::print`], where [`Area::print_with`] is called in
     /// order to simultaneously update the list of lines numbers,
     /// for widgets like [`LineNumbers`] to read.
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-    /// [`File::print`]: crate::file::File::print
+    /// [`Buffer::print`]: crate::buffer::Buffer::print
     fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
         let cfg = self.get_print_cfg();
         area.print(pa, self.text(), cfg, painter)

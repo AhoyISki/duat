@@ -9,8 +9,8 @@ use crate::{
     cfg::PrintCfg,
     context::{self, Cache, Handle},
     data::{Pass, RwData},
-    file::{File, PathKind},
-    hook::{self, FileClosed, WidgetCreated, WindowCreated},
+    buffer::{Buffer, PathKind},
+    hook::{self, BufferClosed, WidgetCreated, WindowCreated},
     mode,
     text::{SpawnId, Text, txt},
     ui::{Area, PushSpecs, SpawnSpecs, Ui},
@@ -27,8 +27,8 @@ pub struct Windows {
 
 impl Windows {
     /// Initializes the `Windows`, returning a [`Node`] for the first
-    /// [`File`]
-    pub(crate) fn initialize(pa: &mut Pass, file: File, layout: Box<Mutex<dyn Layout>>, ui: Ui) {
+    /// [`Buffer`]
+    pub(crate) fn initialize(pa: &mut Pass, file: Buffer, layout: Box<Mutex<dyn Layout>>, ui: Ui) {
         let new_additions = Arc::new(Mutex::default());
         let (window, node) = Window::new(0, pa, ui, file, new_additions.clone());
 
@@ -47,7 +47,7 @@ impl Windows {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<File>().unwrap()),
+            WidgetCreated(node.handle().try_downcast::<Buffer>().unwrap()),
         );
 
         let builder = UiBuilder::new(0);
@@ -58,7 +58,7 @@ impl Windows {
 
     /// Creates a new list of [`Window`]s, with a main one
     /// initialiazed
-    pub(crate) fn new_window(&self, pa: &mut Pass, file: File) -> Node {
+    pub(crate) fn new_window(&self, pa: &mut Pass, file: Buffer) -> Node {
         let win = self.inner.read(pa).list.len();
         let new_additions = self.inner.read(pa).new_additions.clone();
         let (window, node) = Window::new(win, pa, self.ui, file, new_additions);
@@ -68,7 +68,7 @@ impl Windows {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<File>().unwrap()),
+            WidgetCreated(node.handle().try_downcast::<Buffer>().unwrap()),
         );
         let builder = UiBuilder::new(win);
         hook::trigger(pa, WindowCreated(builder));
@@ -120,7 +120,7 @@ impl Windows {
         let widget = RwData::new(widget);
         let id = SpawnId::new();
 
-        let path = widget.read_as::<File>(pa).and_then(|file| file.path_set());
+        let path = widget.read_as::<Buffer>(pa).and_then(|file| file.path_set());
         let spawned = cluster_master.as_ref().unwrap_or(target).spawn(
             pa,
             path.as_ref().map(|p| p.as_ref()),
@@ -151,7 +151,7 @@ impl Windows {
         win: usize,
     ) -> Handle<W> {
         let widget = RwData::new(widget);
-        let path = widget.read_as::<File>(pa).and_then(|file| file.path_set());
+        let path = widget.read_as::<Buffer>(pa).and_then(|file| file.path_set());
         let spawned = self
             .ui
             .new_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
@@ -170,13 +170,13 @@ impl Windows {
         node.handle().try_downcast().unwrap()
     }
 
-    /// Pushes a [`File`] to the file's parent
+    /// Pushes a [`Buffer`] to the file's parent
     ///
     /// This function will push to the edge of `self.files_parent`
     /// This is an area, usually in the center, that contains all
-    /// [`File`]s, and their associated [`Widget`]s,
+    /// [`Buffer`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
-    pub(crate) fn new_file(&self, pa: &mut Pass, file: File) -> Node {
+    pub(crate) fn new_file(&self, pa: &mut Pass, file: Buffer) -> Node {
         let win = context::cur_window(pa);
         let inner = self.inner.read(pa);
         let (handle, specs) = inner
@@ -224,7 +224,7 @@ impl Windows {
         }
 
         let location = if on_files {
-            Location::OnFiles
+            Location::OnBuffers
         } else if let Some((id, _)) = inner.list[win]
             .spawned
             .iter()
@@ -236,7 +236,7 @@ impl Windows {
         };
 
         let widget = RwData::new(widget);
-        let path = widget.read_as::<File>(pa).and_then(|file| file.path_set());
+        let path = widget.read_as::<Buffer>(pa).and_then(|file| file.path_set());
         let (pushed, parent) =
             target.push(pa, path.as_ref().map(|p| p.as_ref()), specs, on_files)?;
 
@@ -270,17 +270,17 @@ impl Windows {
             // SAFETY: This Pass is only used on known other types.
             let internal_pass = &mut unsafe { Pass::new() };
 
-            if handle.widget().data_is::<File>() {
+            if handle.widget().data_is::<Buffer>() {
                 let entry = self
                     .iter_around_rev(pa, win, wid)
-                    .find_map(|(win, _, node)| node.data_is::<File>().then(|| (win, node.clone())));
+                    .find_map(|(win, _, node)| node.data_is::<Buffer>().then(|| (win, node.clone())));
 
                 if let Some((win, node)) = entry {
                     *inner.cur_file.write(internal_pass) = node.try_downcast().unwrap();
                     *inner.cur_widget.write(internal_pass) = node.clone();
                     self.inner.write(pa).cur_win = win;
                 } else {
-                    // If there is no previous File, just quit.
+                    // If there is no previous Buffer, just quit.
                     context::sender()
                         .send(crate::session::DuatEvent::Quit)
                         .unwrap();
@@ -297,15 +297,15 @@ impl Windows {
             }
         }
 
-        // If it's a File, swap all files ahead, so this one becomes the last.
-        if let Some(file_handle) = handle.try_downcast::<File>() {
-            hook::trigger(pa, FileClosed((file_handle.clone(), Cache::new())));
+        // If it's a Buffer, swap all files ahead, so this one becomes the last.
+        if let Some(file_handle) = handle.try_downcast::<Buffer>() {
+            hook::trigger(pa, BufferClosed((file_handle.clone(), Cache::new())));
 
             let files_ahead: Vec<Node> = self.inner.read(pa).list[win]
                 .nodes()
                 .filter(|node| {
                     node.handle()
-                        .read_as::<File>(pa)
+                        .read_as::<Buffer>(pa)
                         .is_some_and(|file| file.layout_order > file_handle.read(pa).layout_order)
                 })
                 .cloned()
@@ -345,7 +345,7 @@ impl Windows {
         let (lhs_win, _) = self.handle_entry(pa, lhs)?;
         let (rhs_win, _) = self.handle_entry(pa, rhs)?;
 
-        let [lhs_file, rhs_file] = [lhs.try_downcast::<File>(), rhs.try_downcast()];
+        let [lhs_file, rhs_file] = [lhs.try_downcast::<Buffer>(), rhs.try_downcast()];
         let lhs_lo = lhs_file.as_ref().map(|handle| handle.read(pa).layout_order);
         let rhs_lo = rhs_file.as_ref().map(|handle| handle.read(pa).layout_order);
 
@@ -383,7 +383,7 @@ impl Windows {
         Ok(())
     }
 
-    /// Opens a new [`File`] on a new [`Window`], or moves it there,
+    /// Opens a new [`Buffer`] on a new [`Window`], or moves it there,
     /// if it is already open
     pub(crate) fn open_or_move_to_new_window(
         &self,
@@ -422,14 +422,14 @@ impl Windows {
                 let builder = UiBuilder::new(wins.list.len() - 1);
                 hook::trigger(pa, WindowCreated(builder));
 
-                // Swap the Files ahead of the swapped new_root
+                // Swap the Buffers ahead of the swapped new_root
                 let lo = handle.read(pa).layout_order;
 
                 for handle in &self.inner.read(pa).list[win].file_handles(pa)[lo..] {
                     new_root.swap(pa, handle.area());
                 }
 
-                // Delete the new_root, which should be the last "File" in the
+                // Delete the new_root, which should be the last "Buffer" in the
                 // list of the original Window.
                 new_root.delete(pa);
 
@@ -445,7 +445,7 @@ impl Windows {
             // The Handle in question is already in its own window, so no need
             // to move it to another one.
             Ok((.., handle)) => Node::from_handle(handle),
-            Err(_) => self.new_window(pa, File::new(pk.as_path(), default_file_cfg)),
+            Err(_) => self.new_window(pa, Buffer::new(pk.as_path(), default_file_cfg)),
         };
 
         if context::cur_file(pa).read(pa).path_kind() != pk {
@@ -520,13 +520,13 @@ impl Windows {
         &self,
         pa: &Pass,
         pk: PathKind,
-    ) -> Result<(usize, usize, Handle<File>), Text> {
+    ) -> Result<(usize, usize, Handle), Text> {
         self.entries(pa)
             .find_map(|(win, wid, node)| {
-                (node.read_as(pa).filter(|f: &&File| f.path_kind() == pk))
+                (node.read_as(pa).filter(|f: &&Buffer| f.path_kind() == pk))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
             })
-            .ok_or_else(|| txt!("File {pk} not found").build())
+            .ok_or_else(|| txt!("Buffer {pk} not found").build())
     }
 
     /// An entry for a file with the given name
@@ -534,13 +534,13 @@ impl Windows {
         &self,
         pa: &Pass,
         name: &str,
-    ) -> Result<(usize, usize, Handle<File>), Text> {
+    ) -> Result<(usize, usize, Handle), Text> {
         self.entries(pa)
             .find_map(|(win, wid, node)| {
-                (node.read_as(pa).filter(|f: &&File| f.name() == name))
+                (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
                     .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
             })
-            .ok_or_else(|| txt!("File {name} not found").build())
+            .ok_or_else(|| txt!("Buffer {name} not found").build())
     }
 
     /// An entry for a widget of a specific type
@@ -668,8 +668,8 @@ impl Windows {
             .flat_map(|w| w.nodes().map(|n| n.handle()))
     }
 
-    /// Iterates over all [`Handle<File>`]s in Duat
-    pub fn file_handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle<File>> + 'a {
+    /// Iterates over all [`Handle<Buffer>`]s in Duat
+    pub fn file_handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle> + 'a {
         self.inner
             .read(pa)
             .list
@@ -677,8 +677,8 @@ impl Windows {
             .flat_map(|w| w.file_handles(pa))
     }
 
-    /// The [`RwData`] that points to the currently active [`File`]
-    pub(crate) fn current_file(&self, pa: &Pass) -> RwData<Handle<File>> {
+    /// The [`RwData`] that points to the currently active [`Buffer`]
+    pub(crate) fn current_file(&self, pa: &Pass) -> RwData<Handle> {
         self.inner.read(pa).cur_file.clone()
     }
 
@@ -708,7 +708,7 @@ struct InnerWindows {
     layout: Box<Mutex<dyn Layout>>,
     list: Vec<Window>,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
-    cur_file: RwData<Handle<File>>,
+    cur_file: RwData<Handle>,
     cur_widget: RwData<Node>,
     cur_win: usize,
 }
@@ -733,7 +733,7 @@ impl Window {
         new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     ) -> (Self, Node) {
         let widget = RwData::new(widget);
-        let path = if let Some(file) = widget.write_as::<File>(pa) {
+        let path = if let Some(file) = widget.write_as::<Buffer>(pa) {
             file.layout_order = get_layout_order();
             file.path_set()
         } else {
@@ -788,7 +788,7 @@ impl Window {
     /// Adds a [`Widget`] to the list of widgets of this [`Window`]
     fn add(&mut self, pa: &Pass, node: Node, parent: Option<Area>, location: Location) {
         match location {
-            Location::OnFiles => {
+            Location::OnBuffers => {
                 self.nodes.push(node.clone());
                 if let Some(parent) = &parent
                     && parent.is_master_of(pa, &self.files_area)
@@ -888,11 +888,11 @@ impl Window {
             })
             .collect();
 
-        if let Some(handle) = handle.try_downcast::<File>() {
+        if let Some(handle) = handle.try_downcast::<Buffer>() {
             let lo = handle.read(pa).layout_order;
 
             for node in self.nodes.iter() {
-                if let Some(file) = node.widget().write_as::<File>(pa) {
+                if let Some(file) = node.widget().write_as::<Buffer>(pa) {
                     file.layout_order -= (file.layout_order > lo) as usize;
                 }
             }
@@ -901,17 +901,17 @@ impl Window {
         nodes
     }
 
-    /// Inserts [`File`] nodes orderly
+    /// Inserts [`Buffer`] nodes orderly
     fn insert_nodes(&mut self, pa: &mut Pass, layout_order: Option<usize>, nodes: Vec<Node>) {
         if let Some(layout_order) = layout_order
             && let Some(i) = self.nodes.iter().position(|node| {
                 node.widget()
                     .read_as(pa)
-                    .is_some_and(|f: &File| f.layout_order >= layout_order)
+                    .is_some_and(|f: &Buffer| f.layout_order >= layout_order)
             })
         {
             for node in self.nodes[i..].iter() {
-                if let Some(file) = node.widget().write_as::<File>(pa) {
+                if let Some(file) = node.widget().write_as::<Buffer>(pa) {
                     file.layout_order += 1;
                 }
             }
@@ -956,7 +956,7 @@ impl Window {
         )
     }
 
-    /// Returns an [`Iterator`] over the names of [`File`]s
+    /// Returns an [`Iterator`] over the names of [`Buffer`]s
     /// and their respective [`Widget`] indices
     ///
     /// [`Widget`]: crate::ui::Widget
@@ -967,7 +967,7 @@ impl Window {
             .collect()
     }
 
-    /// Returns an [`Iterator`] over the paths of [`File`]s
+    /// Returns an [`Iterator`] over the paths of [`Buffer`]s
     /// and their respective [`Widget`] indices
     ///
     /// [`Widget`]: crate::ui::Widget
@@ -978,9 +978,9 @@ impl Window {
             .collect()
     }
 
-    /// An [`Iterator`] over the [`File`] [`Node`]s in a [`Window`]
-    pub(crate) fn file_handles(&self, pa: &Pass) -> Vec<Handle<File>> {
-        let mut files: Vec<Handle<File>> = self
+    /// An [`Iterator`] over the [`Buffer`] [`Node`]s in a [`Window`]
+    pub(crate) fn file_handles(&self, pa: &Pass) -> Vec<Handle> {
+        let mut files: Vec<Handle> = self
             .nodes
             .iter()
             .filter_map(|node| node.try_downcast())
@@ -1026,7 +1026,7 @@ fn get_layout_order() -> usize {
 }
 
 enum Location {
-    OnFiles,
+    OnBuffers,
     Regular,
     Spawned(SpawnId),
 }

@@ -11,7 +11,7 @@ use super::Mode;
 use crate::{
     context::{self, Handle},
     data::Pass,
-    file::File,
+    buffer::Buffer,
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
     ui::{Node, Widget},
@@ -68,7 +68,7 @@ pub fn set_default<M: Mode>(mode: M) {
         reset_modes.len() - 1
     };
 
-    if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
+    if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
         let mut set_mode = SET_MODE.lock().unwrap();
         let prev = set_mode.take();
         *set_mode = Some(Box::new(move |pa| {
@@ -106,7 +106,7 @@ pub fn reset<W: Widget>() {
         .position(|(ty, _)| *ty == TypeId::of::<W>())
     {
         *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| RESET_MODES.lock().unwrap()[i].1(pa)));
-    } else if TypeId::of::<W>() == TypeId::of::<File>() {
+    } else if TypeId::of::<W>() == TypeId::of::<Buffer>() {
         panic!("Something went terribly wrong, somehow");
     } else {
         context::error!(
@@ -217,7 +217,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
         let node = {
             let windows = context::windows();
             let w = context::cur_window(pa);
-            if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
+            if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
                 let pk = context::cur_file(pa).read(pa).path_kind();
                 windows
                     .file_entry(pa, pk)

@@ -35,11 +35,11 @@ use crate::{
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
 ///
-/// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-///     type Widget = File<U>;
+/// impl Mode for PlacesCharactersAndMoves {
+///     type Widget = Buffer;
 ///
 ///     // ...
-///     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {
+///     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {
 ///         todo!();
 ///     }
 /// }
@@ -57,10 +57,10 @@ use crate::{
 /// use duat_core::prelude::*;
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
-/// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-///     type Widget = File<U>;
+/// impl Mode for PlacesCharactersAndMoves {
+///     type Widget = Buffer;
 ///
-///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<File<U>, U>) {
+///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
@@ -83,10 +83,10 @@ use crate::{
 /// # use duat_core::prelude::*;
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
-/// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-/// #   type Widget = File<U>;
+/// impl Mode for PlacesCharactersAndMoves {
+/// #   type Widget = Buffer;
 ///     /* ... */
-///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
+///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
 ///                 handle.edit_all(pa, |mut e| {
@@ -134,7 +134,7 @@ use crate::{
 /// [moving]: Cursor
 /// [`Mode`]: crate::mode::Mode
 /// [`U::Area`]: Ui::Area
-pub struct Handle<W: Widget + ?Sized, S = ()> {
+pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
     widget: RwData<W>,
     pub(crate) area: Area,
     mask: Arc<Mutex<&'static str>>,
@@ -438,7 +438,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// # fn test<U: Ui>(pa: &mut Pass, handle: Handle<File<U>, U, ()>) {
+    /// # fn test<U: Ui>(pa: &mut Pass, handle: Handle<Buffer<U>, U, ()>) {
     /// handle.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
     /// # }
     /// ```
@@ -849,9 +849,9 @@ struct RelatedWidgets(RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>);
 /// What relation this [`Widget`] has to its parent
 #[derive(Clone, Copy, Debug)]
 pub enum WidgetRelation {
-    /// The main widget of the cluster, most commonly a [`File`]
+    /// The main widget of the cluster, most commonly a [`Buffer`]
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     Main,
     /// A [`Widget`] that was pushed around the main `Widget`, e.g.
     /// [`LineNumbers`]

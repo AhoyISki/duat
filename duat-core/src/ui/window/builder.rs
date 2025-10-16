@@ -1,7 +1,7 @@
 //! Builder helpers for Duat
 //!
 //! These builders are used primarily to push widgets to either a
-//! [`File`] or a window. They offer a convenient way to make massive
+//! [`Buffer`] or a window. They offer a convenient way to make massive
 //! changes to the layout, in a very intuitive "inner-outer" order,
 //! where widgets get pushed to a "main area" which holds all of the
 //! widgets that were added to that helper.
@@ -9,7 +9,7 @@
 //! This pushing to an unnamed, but known area makes the syntax for
 //! layout modification fairly minimal, with minimal boilerplate.
 //!
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 
 use super::{PushSpecs, Widget};
 use crate::{
@@ -25,13 +25,13 @@ use crate::{
 /// interface quite friendly.
 ///
 /// It will also be called once per window, from the [`WindowCreated`]
-/// [hook], letting you place [`Widget`]s "around" the common [`File`]
+/// [hook], letting you place [`Widget`]s "around" the common [`Buffer`]
 /// area, at the edges of the screen.
 ///
 /// # Examples
 ///
 /// Here's some examples involving one of the main ways this will be
-/// done, in the [`File`] [`Widget`]:
+/// done, in the [`Buffer`] [`Widget`]:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -39,7 +39,7 @@ use crate::{
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<File>(|_, (cfg, builder)| {
+///     hook::add::<Buffer>(|_, (cfg, builder)| {
 ///         builder.push(LineNumbers::cfg());
 ///         cfg
 ///     });
@@ -47,7 +47,7 @@ use crate::{
 /// ```
 ///
 /// In the example above, I pushed a [`LineNumbers`] widget to the
-/// [`File`]. By default, this widget will go on the left, but you can
+/// [`Buffer`]. By default, this widget will go on the left, but you can
 /// change that:
 ///
 /// ```rust
@@ -56,7 +56,7 @@ use crate::{
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<File>(|_, (cfg, builder)| {
+///     hook::add::<Buffer>(|_, (cfg, builder)| {
 ///         let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
 ///         builder.push(line_numbers_cfg);
 ///         cfg
@@ -68,7 +68,7 @@ use crate::{
 /// show relative numbers, instead of absolute, like it usually does.
 ///
 /// By default, there already exists a [hook group] that adds widgets
-/// to a file, the `"FileWidgets"` group. If you want to get rid of
+/// to a file, the `"BufferWidgets"` group. If you want to get rid of
 /// this group in order to create your own widget layout, you should
 /// use [`hook::remove`]:
 ///
@@ -78,8 +78,8 @@ use crate::{
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::remove("FileWidgets");
-///     hook::add::<File>(|_, (cfg, builder)| {
+///     hook::remove("BufferWidgets");
+///     hook::add::<Buffer>(|_, (cfg, builder)| {
 ///         builder.push(LineNumbers::cfg().relative().on_the_right());
 ///         // Push a StatusLine to the bottom.
 ///         builder.push(StatusLine::cfg());
@@ -90,7 +90,7 @@ use crate::{
 /// }
 /// ```
 ///
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 /// [`LineNumbers`]: https://crates.io/duat-utils/latest/duat_utils/wigets/struct.LineNumbers.html
 /// [hook group]: crate::hook::add_grouped
 /// [`hook::remove`]: crate::hook::remove
@@ -109,9 +109,9 @@ impl UiBuilder {
 
     /// Pushes a widget to the main area of the [`UiBuilder`]
     ///
-    /// If this [`Widget`] is being pushed to a [`File`]'s group,
-    /// then this [`Widget`] will be included in that [`File`]'s
-    /// group. This means that, if that [`File`] is moved around
+    /// If this [`Widget`] is being pushed to a [`Buffer`]'s group,
+    /// then this [`Widget`] will be included in that [`Buffer`]'s
+    /// group. This means that, if that [`Buffer`] is moved around
     /// or deleted, this [`Widget`] (and all others in its group)
     /// will follow suit.
     ///
@@ -126,7 +126,7 @@ impl UiBuilder {
     /// ```text
     /// ╭───┬──────────╮
     /// │   │          │
-    /// │ A │   File   │
+    /// │ A │   Buffer   │
     /// │   │          │
     /// ├───┴──────────┤
     /// │      B       │
@@ -141,8 +141,8 @@ impl UiBuilder {
     /// use duat::prelude::*;
     ///
     /// fn setup() {
-    ///     hook::remove("FileWidgets");
-    ///     hook::add::<File>(|_, (cfg, builder)| {
+    ///     hook::remove("BufferWidgets");
+    ///     hook::add::<Buffer>(|_, (cfg, builder)| {
     ///         builder.push(LineNumbers::cfg().rel_abs());
     ///         builder.push(status!("{name_txt} {selections_txt} {main_txt}"));
     ///         cfg
@@ -155,7 +155,7 @@ impl UiBuilder {
     /// the file's name, how many selections are in it, and its main
     /// selection.
     ///
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     /// [`WindowCreated`]: crate::hook::WindowCreated

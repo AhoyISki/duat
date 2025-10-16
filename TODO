@@ -44,6 +44,7 @@ FOR NEXT UPDATE:
 [x] Get rid of the various Cfgs.
 [ ] Add convenience methods for the duat-utils Widgets.
 [ ] Remove requirement of Clone on Modes.
+[ ] Rename duat-utils to duat-base.
 
 KNOWN BUGS:
 [ ] Type erasure makes it hard to get concrete Area.
@@ -71,6 +72,7 @@ KNOWN BUGS:
 [x] Failing to compile locks up recompilation.
 
 FUTURE UPDATES:
+[ ] Hook::add_for/add_grouped_for/add_once_for.
 [ ] Get rid of Widget::needs_update?
 [ ] Make all Ui and Area methods use the address space of the Duat app.
 [ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.

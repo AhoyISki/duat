@@ -20,7 +20,7 @@ use std::{
 
 use parking_lot::Mutex;
 
-use super::File;
+use super::Buffer;
 use crate::{
     cfg::PrintCfg,
     context::Handle,
@@ -29,11 +29,11 @@ use crate::{
     text::{Bytes, Change, Moment, MomentFetcher, Point, Text, TextRange, txt},
 };
 
-/// A [`File`] parser, that can keep up with every [`Change`] that
+/// A [`Buffer`] parser, that can keep up with every [`Change`] that
 /// took place
 ///
 /// A parser's purpose is generally to look out for changes to the
-/// [`File`]'s [`Bytes`], and update some internal state that
+/// `Buffer`'s [`Bytes`], and update some internal state that
 /// represents them. Examples of things that should be implemented as
 /// `Parser`s are:
 ///
@@ -53,19 +53,19 @@ use crate::{
 /// # What a parser does
 ///
 /// The gist of it is that a `Parser` will be called to read the
-/// [`Bytes`] of the [`File`] as well as any [`Change`]s that are done
-/// to said `File`. Duat will then call upon the `Parser` to "act" on
-/// a region of the `File`'s [`Text`], this region being determined by
+/// `Bytes` of the `Buffer` as well as any [`Change`]s that are done
+/// to said `Buffer`. Duat will then call upon the `Parser` to "act" on
+/// a region of the `Buffer`'s [`Text`], this region being determined by
 /// what is shown on screen, in order to help plugin writers minimize
 /// the work done.
 ///
 /// When creating a `Parser`, you will also be given a
-/// [`FileTracker`]. It will be used to keep track of the [`Change`]s,
+/// [`BufferTracker`]. It will be used to keep track of the [`Change`]s,
 /// and it is also used by the `Parser` to tell which
 /// [`Range<usize>`]s of the [`Text`] the `Parser` cares about. So,
 /// for example, if you're matching non-multiline regex patterns, for
 /// every `Change`, you might want to add the lines of that `Change`
-/// to the `FileTracker`, and when Duat decides which ranges need to
+/// to the `BufferTracker`, and when Duat decides which ranges need to
 /// be updated, it will inform you: "Hey, you asked for this range to
 /// be updated, it's on screen now, so update it.".
 ///
@@ -86,12 +86,12 @@ use crate::{
 /// struct CharCounter {
 ///     count: usize,
 ///     ch: char,
-///     tracker: FileTracker,
+///     tracker: BufferTracker,
 /// }
 ///
 /// impl<U: Ui> Parser<U> for CharCounter {
 ///     fn parse(&mut self) -> bool {
-///         // Fetches the latest Changes and Bytes of the File
+///         // Fetches the latest Changes and Bytes of the Buffer
 ///         self.tracker.update();
 ///
 ///         // A Moment is a list of Changes
@@ -104,7 +104,7 @@ use crate::{
 ///         }
 ///
 ///         // Return true if you want to call `Parser::update`, for
-///         // this Parser, since we never change the File, it's fine
+///         // this Parser, since we never change the Buffer, it's fine
 ///         // to always return false.
 ///         false
 ///     }
@@ -112,15 +112,15 @@ use crate::{
 /// ```
 ///
 /// The example above just keeps track of every occurance of a
-/// specific `char`. Every time the `File` is updated, the `parse`
-/// function will be called, and you can use [`FileTracker::update`]
-/// to be notified of _every_ `Change` that takes place in the `File`.
+/// specific `char`. Every time the `Buffer` is updated, the `parse`
+/// function will be called, and you can use [`BufferTracker::update`]
+/// to be notified of _every_ `Change` that takes place in the `Buffer`.
 ///
 /// ## [`Parser::update`]
 ///
 /// The purpose of this funcion is for the `Parser` to modify the
-/// `File` itself. In the previous funcion, you may notice that you
-/// are not given access to the `File` directly, nor are you given a
+/// `Buffer` itself. In the previous funcion, you may notice that you
+/// are not given access to the `Buffer` directly, nor are you given a
 /// [`Pass`] in order to access global state. That's what this
 /// function is for.
 ///
@@ -134,12 +134,12 @@ use crate::{
 /// use duat_core::prelude::*;
 ///
 /// struct HighlightMatch {
-///     _tracker: FileTracker,
+///     _tracker: BufferTracker,
 ///     tagger: Tagger,
 /// }
 ///
 /// impl<U: Ui> Parser<U> for HighlightMatch {
-///     fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+///     fn update(&mut self, pa: &mut Pass, handle: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
 ///         // Remove all Tags previously added with self.tagger
 ///         handle.text_mut(pa).remove_tags(self.tagger, ..);
 ///
@@ -171,15 +171,15 @@ use crate::{
 /// The `Parser` above reads the word under the main cursor (if there
 /// is one) and highlights every ocurrence of said word _on screen_.
 /// This function would be called if [`Parser::parse`] returns `true`,
-/// i.e. when the `Parser` is "ready" to update the `File`. The
+/// i.e. when the `Parser` is "ready" to update the `Buffer`. The
 /// default implementation of `Parser::parse` is to just return
 /// `true`.
 ///
 /// > [!IMPORTANT]
 /// >
-/// > In the example above, the [`FileTracker`] is acting _slightly_
+/// > In the example above, the [`BufferTracker`] is acting _slightly_
 /// > differently. When setting up this `Parser` with a [`ParserCfg`],
-/// > I called [`FileTracker::track_area`]. This function makes it so,
+/// > I called [`BufferTracker::track_area`]. This function makes it so,
 /// > instead of tracking changed [`Range<Point>`]s,
 /// > [`Parser::update`] will always return a list of ranges
 /// > equivalent to the printed region of the [`Text`].
@@ -188,15 +188,15 @@ use crate::{
 /// functions, you can roughly divide which ones you'll implement
 /// based on the following criteria:
 ///
-/// - If your `Parser` does not update the `File`, and just keeps
+/// - If your `Parser` does not update the `Buffer`, and just keeps
 ///   track of [`Change`]s, e.g. a word counter, or a filetype
 ///   checker, etc, then you should only have to implement the
 ///   [`Parser::parse`] function.
-/// - If your `Parser` actively updates the `File` every time it is
+/// - If your `Parser` actively updates the `Buffer` every time it is
 ///   printed, e.g. the word match finder above, or a current line
 ///   highlighter, then you should only have to implement the
 ///   [`Parser::update`] function.
-/// - If, in order to update the [`File`], you need to keep track of
+/// - If, in order to update the [`Buffer`], you need to keep track of
 ///   some current state, and you may even update the `Parser`'s state
 ///   in other threads, like a treesitter parser for example, then you
 ///   should implement both.
@@ -204,8 +204,8 @@ use crate::{
 /// ## [`Parser::before_get`] and [`Parser::before_try_get`]
 ///
 /// These functions have the same purpose as [`Parser::parse`], but
-/// they are called before calls to [`File::read_parser`],
-/// [`File::write_parser`], and their [try equivalents].
+/// they are called before calls to [`Buffer::read_parser`],
+/// [`Buffer::write_parser`], and their [try equivalents].
 ///
 /// They serve to kind of "prepare" the `Parser` for functions that
 /// access it, much like [`Parser::parse`] "prepares" the `Parser` for
@@ -217,34 +217,34 @@ use crate::{
 /// that only ever updates its internal state when it is accessed
 /// externally. The reason for that is because it is only used to
 /// store and retrieve previous versions of the [`Selections`] of the
-/// [`File`], so it doesn't need to update itself _every time_ there
-/// are new changes to the [`File`], but only when it is requested.
+/// [`Buffer`], so it doesn't need to update itself _every time_ there
+/// are new changes to the [`Buffer`], but only when it is requested.
 ///
 /// > [!TIP]
 /// >
 /// > You can keep a `Parser` private in your plugin in order to
 /// > prevent the end user from reading or writing to it. You can
 /// > then create standalone functions or implement traits on the
-/// > [`File`] widget in order to give controled access to the
+/// > [`Buffer`] widget in order to give controled access to the
 /// > parser. For an example of this, you can see the
 /// > [`duat-jump-list`] crate, which defines traits for saving and
 /// > retrieving jumps, but doesn't grant direct access to the parser.
 ///
 /// [`Change`]: crate::text::Change
 /// [`Selection`]: crate::mode::Selection
-/// [try equivalents]: File::try_read_parser
+/// [try equivalents]: Buffer::try_read_parser
 /// [`duat-jump-list`]: https://github.com/AhoyISki/duat-jump-list
 #[allow(unused_variables)]
 pub trait Parser: Send + 'static {
-    /// Parses the [`Bytes`] of the [`File`]
+    /// Parses the [`Bytes`] of the [`Buffer`]
     ///
-    /// This function is called every time the [`File`] is updated,
+    /// This function is called every time the [`Buffer`] is updated,
     /// and it's where you should update the internal state of the
     /// [`Parser`] to reflect any [`Change`]s that took place.
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`Change`]: crate::text::Change
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     /// [add]: Ranges::add
     /// [remove]: Ranges::remove
     /// [`update`]: Parser::update
@@ -252,15 +252,15 @@ pub trait Parser: Send + 'static {
         true
     }
 
-    /// Updates the [`File`] in some given [`Range<Point>`]s
+    /// Updates the [`Buffer`] in some given [`Range<Point>`]s
     ///
     /// As this function is called, the state of the [`Parser`] needs
     /// to already be synced up with the latest [`Change`]s to the
-    /// [`File`].
+    /// [`Buffer`].
     ///
     /// The list of [`Range`]s is the collection of [`Range`]s that
     /// were requested to be updated and are within the printed region
-    /// of the [`File`].
+    /// of the [`Buffer`].
     ///
     /// Do note that, if more regions become visible on the screen
     /// (this could happen if a [`Conceal`] tag is placed, for
@@ -283,16 +283,16 @@ pub trait Parser: Send + 'static {
     /// request if that [`Tag`] was already there.
     ///
     /// [`Tag`]: crate::text::Tag
-    /// [`File`]: crate::file::File
+    /// [`Buffer`]: crate::buffer::Buffer
     /// [`Change`]: crate::text::Change
     /// [range]: std::ops::Range
     /// [`parse`]: Parser::parse
     /// [`Conceal`]: crate::text::Conceal
-    fn update(&mut self, pa: &mut Pass, file: &Handle<File>, on: Vec<Range<Point>>) {}
+    fn update(&mut self, pa: &mut Pass, file: &Handle, on: Vec<Range<Point>>) {}
 
-    /// Prepare this [`Parser`] before [`File::read_parser`] call
+    /// Prepare this [`Parser`] before [`Buffer::read_parser`] call
     ///
-    /// The [`File::read_parser`]/[`File::write_parser`] functions
+    /// The [`Buffer::read_parser`]/[`Buffer::write_parser`] functions
     /// block the current thread until the [`Parser`] is
     /// available. Therefore, [`before_get`] should finish _all_
     /// parsing, so if the parsing is taking place in
@@ -308,7 +308,7 @@ pub trait Parser: Send + 'static {
         self.parse();
     }
 
-    /// Prepare the [`Parser`] before [`File::try_read_parser`] call
+    /// Prepare the [`Parser`] before [`Buffer::try_read_parser`] call
     ///
     /// The purpose of [`try_read_parser`], unlike [`read_parser`], is
     /// to _only_ call the function passed if the [`Parser`] is ready
@@ -320,8 +320,8 @@ pub trait Parser: Send + 'static {
     /// (which should be the case for almost every single [`Parser`]),
     /// then this function should just return `true` all the time.
     ///
-    /// [`try_read_parser`]: File::try_read_parser
-    /// [`read_parser`]: File::read_parser
+    /// [`try_read_parser`]: Buffer::try_read_parser
+    /// [`read_parser`]: Buffer::read_parser
     fn before_try_get(&mut self) -> bool {
         self.before_get();
         true
@@ -337,8 +337,8 @@ impl Parsers {
     /// Attempts to add  a [`Parser`]
     pub(super) fn add<P: Parser>(
         &self,
-        file: &File,
-        f: impl FnOnce(FileTracker) -> P,
+        file: &Buffer,
+        f: impl FnOnce(BufferTracker) -> P,
     ) -> Result<(), Text> {
         let mut parsers = self.list.borrow_mut();
         if parsers.iter().any(|rb| rb.ty == TypeId::of::<P>()) {
@@ -353,7 +353,7 @@ impl Parsers {
             0..file.bytes().len().byte(),
         ))));
 
-        let tracker = FileTracker {
+        let tracker = BufferTracker {
             bytes: file.bytes().clone(),
             cfg: file.cfg.clone(),
             fetcher: file.text.history().unwrap().new_fetcher(),
@@ -455,7 +455,7 @@ impl Parsers {
 
     /// Updates the [`Parser`]s on a given range
     // TODO: Deal with reparsing if Changes took place.
-    pub(super) fn update(&self, pa: &mut Pass, handle: &Handle<File>, on: Range<usize>) {
+    pub(super) fn update(&self, pa: &mut Pass, handle: &Handle, on: Range<usize>) {
         let len = self.list.borrow().len();
         for i in 0..len {
             let mut parts = self.list.borrow_mut().remove(i);
@@ -494,11 +494,11 @@ struct ParserParts {
     ty: TypeId,
 }
 
-/// A tracker for [`Change`]s that happen to a [`File`]
+/// A tracker for [`Change`]s that happen to a [`Buffer`]
 ///
 /// [`Change`]: crate::text::Change
 #[derive(Debug)]
-pub struct FileTracker {
+pub struct BufferTracker {
     bytes: Bytes,
     cfg: Arc<Mutex<PrintCfg>>,
     fetcher: MomentFetcher,
@@ -507,7 +507,7 @@ pub struct FileTracker {
     update_requested: Arc<AtomicBool>,
 }
 
-impl FileTracker {
+impl BufferTracker {
     /// Updates the inner [`Bytes`] and retrieves latest [`Moment`]
     ///
     /// [`Change`]: crate::text::Change
@@ -519,11 +519,11 @@ impl FileTracker {
         }
     }
 
-    /// Request for the [`File`] to call [`Parser::parse`]
+    /// Request for the [`Buffer`] to call [`Parser::parse`]
     ///
-    /// This will prompt the [`File`] to be updated and only update
+    /// This will prompt the [`Buffer`] to be updated and only update
     /// relevant [`Range`]s, i.e., those that actually show up on
-    /// area and that have been added by to the [`FileTracker`] via
+    /// area and that have been added by to the [`BufferTracker`] via
     /// [`add_range`].
     ///
     /// [`add_range`]: Self::add_range
@@ -572,7 +572,7 @@ impl FileTracker {
     /// manually through [`add_range`].
     ///
     /// [added range]: Change::added_range
-    /// [`add_range`]: FileTracker::add_range
+    /// [`add_range`]: BufferTracker::add_range
     pub fn track_changed_ranges(&mut self) {
         let mut tracker = self.ranges.lock();
         *tracker = RangesTracker::ChangedRanges(tracker.take_ranges());
@@ -596,7 +596,7 @@ impl FileTracker {
     /// For the other tracking options, this won't be the case.
     ///
     /// [added range]: Change::added_range
-    /// [`add_range`]: FileTracker::add_range
+    /// [`add_range`]: BufferTracker::add_range
     pub fn track_changed_lines(&mut self) {
         let mut tracker = self.ranges.lock();
         *tracker = RangesTracker::ChangedLines(tracker.take_ranges());
@@ -619,12 +619,12 @@ impl FileTracker {
     ///
     /// // When construction the SelectionLen, I turned on area tracking
     /// struct SelectionLen {
-    ///     _tracker: FileTracker,
+    ///     _tracker: BufferTracker,
     ///     tagger: Tagger,
     /// }
     ///
     /// impl<U: Ui> Parser<U> for SelectionLen {
-    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+    ///     fn update(&mut self, pa: &mut Pass, file: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
     ///         let mut parts = file.write(pa).text_mut().parts();
     ///         // This is efficient even in very large `Text`s.
     ///         parts.tags.remove(self.tagger, ..);
@@ -678,7 +678,7 @@ impl FileTracker {
     ///
     /// This is the default method of tracking [`Change`]s.
     ///
-    /// [`add_range`]: FileTracker::add_range
+    /// [`add_range`]: BufferTracker::add_range
     pub fn turn_off_tracking(&mut self) {
         let mut tracker = self.ranges.lock();
         *tracker = RangesTracker::Manual(tracker.take_ranges());
@@ -690,7 +690,7 @@ impl FileTracker {
     ///
     /// Do note that, because this tracks calls to [`update`], this
     /// version of the [`Bytes`] may not reflect what the [`Bytes`]
-    /// look like in the [`File`] _right now_, as more [`Change`]s
+    /// look like in the [`Buffer`] _right now_, as more [`Change`]s
     /// could have taken place since the last call.
     ///
     /// [`update`]: Self::update
@@ -701,7 +701,7 @@ impl FileTracker {
 
     /// The last [`Moment`] that was processed
     ///
-    /// This is **not** the last [`Moment`] sent to the [`File`], nor
+    /// This is **not** the last [`Moment`] sent to the [`Buffer`], nor
     /// does it necessarily correspond to a [`Moment`] in the
     /// [`Text`]'s history. It's just a collection of [`Change`]s that
     /// took place in between calls to [`Self::update`].
@@ -725,10 +725,10 @@ impl FileTracker {
         self.bytes.indent(p, *self.cfg.lock())
     }
 
-    /// The [`PrintCfg`] of the [`File`]
+    /// The [`PrintCfg`] of the [`Buffer`]
     ///
     /// Unlike the other parts of this struct, the [`PrintCfg`] will
-    /// always be up to date with what it currently is in the [`File`]
+    /// always be up to date with what it currently is in the [`Buffer`]
     pub fn cfg(&self) -> PrintCfg {
         *self.cfg.lock()
     }

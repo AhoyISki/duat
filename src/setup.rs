@@ -1,7 +1,7 @@
 //! Pre configuration setup of Duat
 //!
 //! Before loading the user's config crate, Duat needs to do some
-//! initial setup. For example, the [`CurFile`] and [`CurWidget`]
+//! initial setup. For example, the [`CurBuffer`] and [`CurWidget`]
 //! variables are not set in the start of the program, since they
 //! require a [`Ui`], which cannot be defined in static time.
 use std::{
@@ -19,11 +19,11 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, Logs},
     form::{Form, Palette},
-    session::{DuatEvent, ReloadEvent, ReloadedFile, SessionCfg},
+    session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
     text::History,
     ui::{Ui, Widget},
 };
-use duat_filetype::FileType;
+use duat_filetype::BufferType;
 use duat_term::VertRule;
 use duat_utils::{
     modes::Pager,
@@ -32,14 +32,14 @@ use duat_utils::{
 
 use crate::{
     form,
-    hook::{self, FileClosed, FileReloaded, WindowCreated},
+    hook::{self, BufferClosed, BufferReloaded, WindowCreated},
     mode,
-    prelude::{FileWritten, LineNumbers},
-    widgets::File,
+    prelude::{BufferWritten, LineNumbers},
+    widgets::Buffer,
 };
 
 // Setup statics.
-pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
+pub static FILE_PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
@@ -62,7 +62,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     mode::set_default(crate::regular::Regular);
     mode::set_default(Pager::<LogBook>::new());
 
-    hook::add_grouped::<File>("FileWidgets", |pa, handle| {
+    hook::add_grouped::<Buffer>("BufferWidgets", |pa, handle| {
         VertRule::builder().push_on(pa, handle);
         LineNumbers::builder().push_on(pa, handle);
         Ok(())
@@ -78,7 +78,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         Ok(())
     });
 
-    hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
+    hook::add_grouped::<BufferWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
         let path = Path::new(path);
         if !is_quitting
             && let Ok(crate_dir) = crate::utils::crate_dir()
@@ -89,7 +89,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         Ok(())
     });
 
-    hook::add::<FileReloaded>(|pa, (handle, cache)| {
+    hook::add::<BufferReloaded>(|pa, (handle, cache)| {
         let file = handle.write(pa);
 
         let path = file.path();
@@ -98,13 +98,13 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         if let Some(main) = file.selections().get_main()
             && let Err(err) = cache.store(&path, main.clone())
         {
-            context::error!(target: "FileReloaded", "{err}");
+            context::error!(target: "BufferReloaded", "{err}");
         }
 
         handle.area().store_cache(pa, &path)
     });
 
-    hook::add::<FileClosed>(|pa, (handle, cache)| {
+    hook::add::<BufferClosed>(|pa, (handle, cache)| {
         let file = handle.write(pa);
 
         let path = file.path();
@@ -115,7 +115,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         Ok(())
     });
 
-    hook::add_grouped::<FileClosed>("CacheCursorPosition", |pa, (handle, cache)| {
+    hook::add_grouped::<BufferClosed>("CacheCursorPosition", |pa, (handle, cache)| {
         let file = handle.write(pa);
 
         let path = file.path();
@@ -129,7 +129,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         if let Some(main) = file.selections().get_main()
             && let Err(err) = cache.store(&path, main.clone())
         {
-            context::error!(target: "FileClosed", "{err}");
+            context::error!(target: "BufferClosed", "{err}");
         }
 
         handle.area().store_cache(pa, &path)
@@ -181,10 +181,10 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 #[doc(hidden)]
 pub fn run_duat(
     (ui, clipb): MetaStatics,
-    files: Vec<Vec<ReloadedFile>>,
+    files: Vec<Vec<ReloadedBuffer>>,
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
-) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>) {
+) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         ui.close();
         println!("Duat panicked: {panic_info}");
@@ -193,7 +193,7 @@ pub fn run_duat(
 
     ui.load();
 
-    let cfg = SessionCfg::new(clipb, match PRINT_CFG.write().unwrap().take() {
+    let cfg = SessionCfg::new(clipb, match FILE_PRINT_CFG.write().unwrap().take() {
         Some(cfg) => cfg,
         None => PrintCfg::default_for_input(),
     });

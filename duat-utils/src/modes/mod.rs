@@ -16,7 +16,7 @@
 //! struct KeepMatching;
 //!
 //! impl IncSearcher for KeepMatching {
-//!     fn search(&mut self, pa: &mut Pass, handle: Handle<File, Searcher>) {
+//!     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
 //!         handle.edit_all(pa, |mut c| {
 //!             c.set_caret_on_start();
 //!             let [_, end] = c.range();
@@ -40,7 +40,7 @@
 //! [`Cursor`]: duat_core::mode::Cursor
 use std::sync::Mutex;
 
-use duat_core::{data::Pass, file::File, prelude::Handle};
+use duat_core::{data::Pass, buffer::Buffer, prelude::Handle};
 
 pub use self::{
     inc_search::{ExtendFwd, ExtendRev, IncSearcher, SearchFwd, SearchRev},
@@ -65,7 +65,7 @@ static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// clipboard.
 ///
 /// [`Selection`]: duat_core::mode::Selection
-pub fn copy_selections(pa: &mut Pass, handle: &Handle<File, ()>) {
+pub fn copy_selections(pa: &mut Pass, handle: &Handle<Buffer, ()>) {
     let mut copies: Vec<String> = Vec::new();
     handle.edit_all(pa, |c| copies.push(c.selection().collect()));
     if copies.len() == 1 && !copies.first().unwrap().is_empty() {

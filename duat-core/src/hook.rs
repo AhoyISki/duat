@@ -12,7 +12,7 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     hook::add::<File>(|pa: &mut Pass, (cfg, builder)| {
+//!     hook::add::<Buffer>(|pa: &mut Pass, (cfg, builder)| {
 //!         // `LineNumbers` comes from duat-utils
 //!         builder.push(LineNumbers::cfg());
 //!
@@ -25,13 +25,13 @@
 //! }
 //! ```
 //!
-//! The hook above is triggered whenever a [`File`] widget is opened.
+//! The hook above is triggered whenever a [`Buffer`] widget is opened.
 //! Like every other hook, it gives you access to the global state via
 //! the [`Pass`], and this one also gets you a [`UiBuilder`] and a
 //! [`Widget::Cfg`] argument. The [`UiBuilder`] lets you push new
-//! [`Widget`]s around the [`File`], while the [`Widget::Cfg`]
+//! [`Widget`]s around the [`Buffer`], while the [`Widget::Cfg`]
 //! argument lets you modify a [`Widget`] before it gets added in. You
-//! can call this hook with any [`Widget`], not just the [`File`].
+//! can call this hook with any [`Widget`], not just the [`Buffer`].
 //!
 //! This is just one of many built-in [`Hookable`]s. Currently, these
 //! are the existing hooks in `duat-core`, but you can also make your
@@ -46,9 +46,9 @@
 //!   letting you change it, [`Widget`] can be used as its [alias]
 //! - [`WindowCreated`], which lets you push widgets around the
 //!   window.
-//! - [`FileWritten`] triggers after the [`File`] is written.
-//! - [`FileClosed`] triggers on every file upon closing Duat.
-//! - [`FileReloaded`] triggers on every file upon reloading Duat.
+//! - [`BufferWritten`] triggers after the [`Buffer`] is written.
+//! - [`BufferClosed`] triggers on every file upon closing Duat.
+//! - [`BufferReloaded`] triggers on every file upon reloading Duat.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
 //! - [`KeysSent`] lets you act on a [dyn Widget], given a [key].
@@ -139,6 +139,7 @@
 //!
 //! This is, for example, the pattern that [`ModeCreated`] follows.
 //!
+//! [`Buffer`]: crate::buffer::Buffer
 //! [alias]: HookAlias
 //! [cfg]: crate::ui::Widget::Cfg
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
@@ -158,7 +159,6 @@ pub use self::global::*;
 use crate::{
     context::{Cache, Handle},
     data::Pass,
-    file::File,
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
     text::Text,
@@ -437,12 +437,12 @@ impl Hookable for UnfocusedFromDuat {
 /// # Arguments
 ///
 /// - The [`WidgetCfg`] in question.
-/// - A [`UiBuilder`], which lets you push [`Widget`]s around this
+/// - A [`UiBuilder`], which lets you push `Widget`s around this
 ///   one.
 ///
 /// # Aliases
 ///
-/// Since every [`Widget`] implements the [`HookAlias`] trait, instead
+/// Since every `Widget` implements the `HookAlias` trait, instead
 /// of writing this in the config crate:
 ///
 /// ```rust
@@ -506,10 +506,10 @@ impl Hookable for UnfocusedFromDuat {
 /// }
 /// ```
 ///
-/// Now, every time a [`LineNumbers`]s [`Widget`] is inserted in Duat,
+/// Now, every time a [`LineNumbers`]s `Widget` is inserted in Duat,
 /// a [`VertRule`] will be pushed on the right of it. You could even
-/// further add a [hook] on [`VertRule`], that would push further
-/// [`Widget`]s if you wanted to.
+/// further add a [hook] on `VertRule`, that would push further
+/// `Widget`s if you wanted to.
 ///
 /// [cfg]: crate::ui::Widget::Cfg
 /// [`WidgetCfg`]: crate::ui::WidgetCfg
@@ -535,10 +535,10 @@ impl<W: Widget> Hookable for WidgetCreated<W> {
 ///   edges of the window, surrounding the inner file region.
 ///
 /// This is a rather "advanced" [hook], since it lets you change the
-/// layout of [`Widget`]s around the screen. If you don't need all
+/// layout of `Widget`s around the screen. If you don't need all
 /// that power, you can check out [`WidgetCreated`], which is a more
-/// straightforward form of changing [`Widget`]s, and doesn't
-/// interfere with the default hooks of `"FileWidgets"` and
+/// straightforward form of changing `Widget`s, and doesn't
+/// interfere with the default hooks of `"BufferWidgets"` and
 /// `"WindowWidgets"`, preset by Duat.
 ///
 /// [builder]: crate::ui::UiBuilder
@@ -553,40 +553,44 @@ impl Hookable for WindowCreated {
     }
 }
 
-/// [`Hookable`]: Triggers before closing a [`File`]
+/// [`Hookable`]: Triggers before closing a [`Buffer`]
 ///
 /// # Arguments
 ///
-/// - The [`File`]'s [`Handle`].
+/// - The [`Buffer`]'s [`Handle`].
 /// - A [`Cache`]. This can be used in order to decide wether or not
 ///   some things will be reloaded on the next opening of Duat.
 ///
 /// This will not trigger upon reloading Duat. For that, see
-/// [`FileClosed`].
-pub struct FileClosed(pub(crate) (Handle<File>, Cache));
+/// [`BufferClosed`].
+///
+/// [`Buffer`]: crate::buffer::Buffer
+pub struct BufferClosed(pub(crate) (Handle, Cache));
 
-impl Hookable for FileClosed {
-    type Input<'h> = &'h (Handle<File>, Cache);
+impl Hookable for BufferClosed {
+    type Input<'h> = &'h (Handle, Cache);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
     }
 }
 
-/// [`Hookable`]: Triggers before reloading a [`File`]
+/// [`Hookable`]: Triggers before reloading a [`Buffer`]
 ///
 /// # Arguments
 ///
-/// - The [`File`]'s [`Handle`].
+/// - The [`Buffer`]'s [`Handle`].
 /// - A [`Cache`]. This can be used in order to decide wether or not
 ///   some things will be reloaded on the next opening of Duat.
 ///
 /// This will not trigger upon closing Duat. For that, see
-/// [`FileClosed`].
-pub struct FileReloaded(pub(crate) (Handle<File>, Cache));
+/// [`BufferClosed`].
+///
+/// [`Buffer`]: crate::buffer::Buffer
+pub struct BufferReloaded(pub(crate) (Handle, Cache));
 
-impl Hookable for FileReloaded {
-    type Input<'h> = &'h (Handle<File>, Cache);
+impl Hookable for BufferReloaded {
+    type Input<'h> = &'h (Handle, Cache);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
@@ -597,8 +601,8 @@ impl Hookable for FileReloaded {
 ///
 /// # Arguments
 ///
-/// - The [`Handle<dyn Widget>`] for the unfocused [`Widget`]
-/// - The [`Handle<W>`] for the newly focused [`Widget`]
+/// - The [`Handle<dyn Widget>`] for the unfocused `Widget`
+/// - The [`Handle<W>`] for the newly focused `Widget`
 pub struct FocusedOn<W: Widget>(pub(crate) (Handle<dyn Widget>, Handle<W>));
 
 impl<W: Widget> Hookable for FocusedOn<W> {
@@ -613,8 +617,8 @@ impl<W: Widget> Hookable for FocusedOn<W> {
 ///
 /// # Arguments
 ///
-/// - The [`Handle<W>`] for the unfocused [`Widget`]
-/// - The [`Handle<dyn Widget>`] for the newly focused [`Widget`]
+/// - The [`Handle<W>`] for the unfocused `Widget`
+/// - The [`Handle<dyn Widget>`] for the newly focused `Widget`
 pub struct UnfocusedFrom<W: Widget>(pub(crate) (Handle<W>, Handle<dyn Widget>));
 
 impl<W: Widget> Hookable for UnfocusedFrom<W> {
@@ -634,7 +638,7 @@ impl<W: Widget> Hookable for UnfocusedFrom<W> {
 ///
 /// # Aliases
 ///
-/// Since every [`Mode`] implements the [`HookAlias`] trait, given a
+/// Since every `Mode` implements the `HookAlias` trait, given a
 /// `duat_kak` plugin imported as `kak`, instead of writing this:
 ///
 /// ```rust
@@ -643,7 +647,7 @@ impl<W: Widget> Hookable for UnfocusedFrom<W> {
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
 /// #     impl Mode for Normal {
-/// #         type Widget = File;
+/// #         type Widget = Buffer;
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
 /// #     }
 /// # }
@@ -665,7 +669,7 @@ impl<W: Widget> Hookable for UnfocusedFrom<W> {
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
 /// #     impl Mode for Normal {
-/// #         type Widget = File;
+/// #         type Widget = Buffer;
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
 /// #     }
 /// # }
@@ -705,7 +709,9 @@ impl Hookable for ModeSwitched {
 ///
 /// This hook is very useful if you want to, for example, set
 /// different options upon switching to modes, depending on things
-/// like the language of a [`File`].
+/// like the language of a [`Buffer`].
+///
+/// [`Buffer`]: crate::buffer::Buffer
 pub struct ModeCreated<M: Mode>(pub(crate) (M, Handle<M::Widget>));
 
 impl<M: Mode> Hookable for ModeCreated<M> {
@@ -753,13 +759,13 @@ impl<M: Mode> Hookable for KeysSentTo<M> {
 
 /// [`Hookable`]: Triggers whenever a [`Form`] is set
 ///
-/// This can be a creation or alteration of a [`Form`].
-/// If the [`Form`] is a reference to another, the reference's
-/// [`Form`] will be returned instead.
+/// This can be a creation or alteration of a `Form`.
+/// If the `Form` is a reference to another, the reference's
+/// `Form` will be returned instead.
 ///
 /// # Arguments
 ///
-/// - The [`Form`]'s name.
+/// - The `Form`'s name.
 /// - Its [`FormId`].
 /// - Its new value.
 pub struct FormSet(pub(crate) (&'static str, FormId, Form));
@@ -775,11 +781,11 @@ impl Hookable for FormSet {
 /// [`Hookable`]: Triggers when a [`ColorScheme`] is set
 ///
 /// Since [`Form`]s are set asynchronously, this may happen before the
-/// [`ColorScheme`] is done with its changes.
+/// `ColorScheme` is done with its changes.
 ///
 /// # Arguments
 ///
-/// - The name of the [`ColorScheme`]
+/// - The name of the `ColorScheme`
 ///
 /// [`ColorScheme`]: crate::form::ColorScheme
 pub struct ColorSchemeSet(pub(crate) &'static str);
@@ -792,7 +798,7 @@ impl Hookable for ColorSchemeSet {
     }
 }
 
-/// [`Hookable`]: Triggers after [`File::save`] or [`File::save_to`]
+/// [`Hookable`]: Triggers after [`Buffer::save`] or [`Buffer::save_to`]
 ///
 /// Only triggers if the file was actually updated.
 ///
@@ -803,11 +809,11 @@ impl Hookable for ColorSchemeSet {
 /// - Wether Duat is in the process of quitting (happens when calling
 ///   the `wq` or `waq` commands)
 ///
-/// [`File::save`]: crate::file::File::save
-/// [`File::save_to`]: crate::file::File::save_to
-pub struct FileWritten(pub(crate) (String, usize, bool));
+/// [`Buffer::save`]: crate::buffer::Buffer::save
+/// [`Buffer::save_to`]: crate::buffer::Buffer::save_to
+pub struct BufferWritten(pub(crate) (String, usize, bool));
 
-impl Hookable for FileWritten {
+impl Hookable for BufferWritten {
     type Input<'h> = (&'h str, usize, bool);
 
     fn get_input(&mut self) -> Self::Input<'_> {

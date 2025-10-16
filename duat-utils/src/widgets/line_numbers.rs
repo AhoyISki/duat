@@ -1,7 +1,7 @@
-//! Line numbers for a [`File`]
+//! Line numbers for a [`Buffer`]
 //!
 //! These are pretty standard like in most text editors. Usually,
-//! they'll be printed on the right of the [`File`], but there is an
+//! they'll be printed on the right of the [`Buffer`], but there is an
 //! option to print them on the right, if you need such functionality.
 //!
 //! You can also change other things, like the
@@ -9,18 +9,18 @@
 //! of the numbers, with one more option to change that of the main
 //! selection's line number.
 //!
-//! [`File`]: duat_core::file::File
+//! [`Buffer`]: duat_core::buffer::Buffer
 use std::fmt::Alignment;
 
 use duat_core::{prelude::*, text::Builder, ui::Side};
 
-/// Shows a column of line numbers beside the [`File`]
+/// Shows a column of line numbers beside the [`Buffer`]
 ///
 /// This can be configured through [`LineNumbers::cfg`], in order to
 /// get, for example: relative numbering, different alignment,
 /// hidden/shown wrapped lines, etc.
 pub struct LineNumbers {
-    handle: Handle<File>,
+    handle: Handle<Buffer>,
     text: Text,
     /// The numbering of lines, [`Numbering::Abs`] by default
     ///
@@ -143,7 +143,7 @@ pub struct LineNumbersBuilder {
 }
 
 impl LineNumbersBuilder {
-    pub fn push_on(self, pa: &mut Pass, handle: &Handle<File>) -> Handle<LineNumbers> {
+    pub fn push_on(self, pa: &mut Pass, handle: &Handle<Buffer>) -> Handle<LineNumbers> {
         let mut line_numbers = LineNumbers {
             handle: handle.clone(),
             text: Text::default(),

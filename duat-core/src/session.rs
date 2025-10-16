@@ -26,10 +26,10 @@ use crate::{
     cmd,
     context::{self, Cache, sender},
     data::Pass,
-    file::File,
+    buffer::Buffer,
     form,
     hook::{
-        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileClosed, FileReloaded, FocusedOnDuat,
+        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, BufferClosed, BufferReloaded, FocusedOnDuat,
         UnfocusedFromDuat,
     },
     mode,
@@ -60,7 +60,7 @@ impl SessionCfg {
     pub fn build(
         self,
         ui: Ui,
-        files: Vec<Vec<ReloadedFile>>,
+        files: Vec<Vec<ReloadedBuffer>>,
         already_plugged: Vec<TypeId>,
     ) -> Session {
         ui.setup_default_print_info();
@@ -92,7 +92,7 @@ impl SessionCfg {
         let mut layout = Some(self.layout);
 
         for mut rel_files in files.into_iter().map(|rf| rf.into_iter()) {
-            let ReloadedFile { mut file, is_active } = rel_files.next().unwrap();
+            let ReloadedBuffer { mut file, is_active } = rel_files.next().unwrap();
             *file.cfg() = *FILE_CFG.get().unwrap();
 
             if let Some(layout) = layout.take() {
@@ -104,7 +104,7 @@ impl SessionCfg {
                 }
             }
 
-            for ReloadedFile { mut file, is_active } in rel_files {
+            for ReloadedBuffer { mut file, is_active } in rel_files {
                 *file.cfg() = *FILE_CFG.get().unwrap();
                 let node = context::windows().new_file(pa, file);
                 if is_active {
@@ -130,7 +130,7 @@ impl Session {
         duat_rx: mpsc::Receiver<DuatEvent>,
         spawn_count: &'static AtomicUsize,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
-    ) -> (Vec<Vec<ReloadedFile>>, mpsc::Receiver<DuatEvent>) {
+    ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
         fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
             context::windows()
                 .windows(pa)
@@ -243,7 +243,7 @@ impl Session {
 
                         let handles: Vec<_> = context::windows().file_handles(pa).collect();
                         for handle in handles {
-                            hook::trigger(pa, FileReloaded((handle, Cache::new())));
+                            hook::trigger(pa, BufferReloaded((handle, Cache::new())));
                         }
 
                         let ui = self.ui;
@@ -260,7 +260,7 @@ impl Session {
 
                         let handles: Vec<_> = context::windows().file_handles(pa).collect();
                         for handle in handles {
-                            hook::trigger(pa, FileClosed((handle, Cache::new())));
+                            hook::trigger(pa, BufferClosed((handle, Cache::new())));
                         }
 
                         self.ui.unload();
@@ -274,7 +274,7 @@ impl Session {
         }
     }
 
-    fn take_files(self, pa: &mut Pass) -> Vec<Vec<ReloadedFile>> {
+    fn take_files(self, pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
         let files =
             context::windows()
                 .entries(pa)
@@ -283,7 +283,7 @@ impl Session {
                         file_handles.push(Vec::new());
                     }
 
-                    if let Some(handle) = node.try_downcast::<File>() {
+                    if let Some(handle) = node.try_downcast::<Buffer>() {
                         file_handles.last_mut().unwrap().push(handle)
                     }
 
@@ -300,7 +300,7 @@ impl Session {
                         let file = file.prepare_for_reloading();
                         let is_active = area.is_active();
 
-                        ReloadedFile { file, is_active }
+                        ReloadedBuffer { file, is_active }
                     })
                     .collect()
             })
@@ -380,23 +380,23 @@ impl DuatSender {
     }
 }
 
-/// The parts that compose a [`File`] widget
+/// The parts that compose a [`Buffer`] widget
 ///
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
-pub struct ReloadedFile {
-    file: File,
+pub struct ReloadedBuffer {
+    file: Buffer,
     is_active: bool,
 }
 
-impl ReloadedFile {
-    /// Creates a new [`FileParts`] from parts gathered from arguments
+impl ReloadedBuffer {
+    /// Creates a new [`BufferParts`] from parts gathered from arguments
     ///
     /// **MEANT TO BE USED BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
     pub fn by_args(path: Option<PathBuf>, is_active: bool) -> Result<Self, std::io::Error> {
         Ok(Self {
-            file: File::new(path, PrintCfg::default_for_input()),
+            file: Buffer::new(path, PrintCfg::default_for_input()),
             is_active,
         })
     }

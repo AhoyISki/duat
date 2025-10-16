@@ -18,11 +18,11 @@
 //! main [`Ui::Area`] that was split many times over.
 //!
 //! The [`Ui`] also supports the concept of "clustering", that is,
-//! when you push a [`Widget`] to a [`File`] via the [`WidgetCreated`]
-//! [`hook`], it gets "clustered" to that [`File`]. This means a few
-//! things. For one, if you close a [`File`], all of its clustered
-//! [`Widget`]s will also close. If you swap two [`File`]s, what you
-//! will actually swap is the [`Ui::Area`] that contains the [`File`]
+//! when you push a [`Widget`] to a [`Buffer`] via the [`WidgetCreated`]
+//! [`hook`], it gets "clustered" to that [`Buffer`]. This means a few
+//! things. For one, if you close a [`Buffer`], all of its clustered
+//! [`Widget`]s will also close. If you swap two [`Buffer`]s, what you
+//! will actually swap is the [`Ui::Area`] that contains the [`Buffer`]
 //! and all of its clustered [`Widget`].
 //!
 //! Additionally, on the terminal [`Ui`], clustering is used to
@@ -30,7 +30,7 @@
 //! should be used like that in other [`Ui`] implementations as well.
 //!
 //! [`hook`]: crate::hook
-//! [`File`]: crate::file::File
+//! [`Buffer`]: crate::buffer::Buffer
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
 use std::fmt::Debug;
 
@@ -146,7 +146,7 @@ pub struct PushSpecs {
     ///
     /// This makes it so, if the main `Widget` is moved or deleted,
     /// then this one will follow. Useful for things like
-    /// [`LineNumbers`], since they should follow their [`File`] around.
+    /// [`LineNumbers`], since they should follow their [`Buffer`] around.
     pub cluster: bool = true,
 }
 
@@ -398,7 +398,7 @@ impl Caret {
 /// pushed around other `Widget`s and also around the window with the
 /// [`UiBuilder`]. One example of this is the [`StatusLine`] widget,
 /// which behaves differently depending on if it was pushed to a
-/// [`Handle<File>`].
+/// [`Handle<Buffer>`].
 ///
 /// [`StatusLine`]: https://docs.rs/duat_utils/duat-utils/latest/widgets/struct.StatusLine.html
 pub trait PushTarget {

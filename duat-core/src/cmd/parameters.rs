@@ -11,9 +11,9 @@ use std::{iter::Peekable, marker::PhantomData, ops::Range, path::PathBuf};
 use crossterm::style::Color;
 
 use crate::{
+    buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    file::File,
     form::{self, FormId},
     text::{Text, txt},
     ui::Widget,
@@ -207,13 +207,8 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
     }
 }
 
-/// Command [`Parameter`]: An open [`File`]'s name
-///
-/// [`File`]: crate::file::File
-pub struct Buffer;
-
 impl<'a> Parameter<'a> for Buffer {
-    type Returns = Handle<File>;
+    type Returns = Handle;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer_name = args.next()?;
@@ -228,13 +223,14 @@ impl<'a> Parameter<'a> for Buffer {
     }
 }
 
-/// Command [`Parameter`]: An open [`File`]'s name, except the current
+/// Command [`Parameter`]: An open [`Buffer`]'s name, except the
+/// current
 ///
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 pub struct OtherBuffer;
 
 impl<'a> Parameter<'a> for OtherBuffer {
-    type Returns = Handle<File>;
+    type Returns = Handle;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let handle = args.next_as::<Buffer>(pa)?;
@@ -247,12 +243,12 @@ impl<'a> Parameter<'a> for OtherBuffer {
     }
 }
 
-/// Command [`Parameter`]: A [`File`] whose parent is real
+/// Command [`Parameter`]: A [`Buffer`] whose parent is real
 ///
-/// [`File`]: crate::file::File
-pub struct ValidFile;
+/// [`Buffer`]: crate::buffer::Buffer
+pub struct ValidBuffer;
 
-impl Parameter<'_> for ValidFile {
+impl Parameter<'_> for ValidBuffer {
     type Returns = PathBuf;
 
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
@@ -297,15 +293,15 @@ impl Parameter<'_> for ValidFile {
     }
 }
 
-/// A [`ValidFile`] or `--cfg` or `--cfg-manifest`
-pub(super) enum FileOrBufferOrCfg {
-    File(PathBuf),
-    Buffer(Handle<File>),
+/// A [`ValidBuffer`] or `--cfg` or `--cfg-manifest`
+pub(super) enum PathOrBufferOrCfg {
+    Path(PathBuf),
+    Buffer(Handle),
     Cfg,
     CfgManifest,
 }
 
-impl Parameter<'_> for FileOrBufferOrCfg {
+impl Parameter<'_> for PathOrBufferOrCfg {
     type Returns = Self;
 
     fn new(pa: &Pass, args: &mut Args<'_>) -> Result<(Self::Returns, Option<FormId>), Text> {
@@ -316,8 +312,8 @@ impl Parameter<'_> for FileOrBufferOrCfg {
         } else if let Ok((handle, form)) = args.next_as_with_form::<Buffer>(pa) {
             Ok((Self::Buffer(handle), form))
         } else {
-            let (path, form) = args.next_as_with_form::<ValidFile>(pa)?;
-            Ok((Self::File(path), form))
+            let (path, form) = args.next_as_with_form::<ValidBuffer>(pa)?;
+            Ok((Self::Path(path), form))
         }
     }
 }
@@ -452,12 +448,12 @@ impl<'a> Parameter<'a> for FormName {
 pub struct Handles<'a, W: Widget>(Flags<'a>, PhantomData<W>);
 
 impl<'a, W: Widget> Handles<'a, W> {
-    /// Acts on [`Handle`]s related to the currently active [`File`]
+    /// Acts on [`Handle`]s related to the currently active [`Buffer`]
     ///
     /// This will trigger on every `Handle` of the given widget type
-    /// on the `File`. This _does_ include the `File` itself, so if `W
-    /// == File`, then that would act on the `File` itself, as well as
-    /// any other `File`s pushed to it.
+    /// on the `Buffer`. This _does_ include the `Buffer` itself, so
+    /// if `W == Buffer`, then that would act on the `Buffer`
+    /// itself, as well as any other `Buffer`s pushed to it.
     ///
     /// This function will be called by [`Handles::on_flags`] if no
     /// context choosing [`Flags`] are passed (i.e., no `--global`,

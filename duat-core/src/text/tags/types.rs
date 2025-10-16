@@ -40,14 +40,14 @@ use crate::{
 ///   [`Text`] that can be easily ignored when parsing the regular
 ///   [`Text`], and `caret`s can't interact with;
 /// - [`Conceal`]: Hides a [range] in the [`Text`], mostly only useful
-///   in the [`File`] [`Widget`];
+///   in the [`Buffer`] [`Widget`];
 ///
 /// Additionally, there is also a `Toggle` internal [`Tag`], but it is
 /// not currently implemented.
 ///
 /// [`Form`]: crate::form::Form
 /// [range]: TextRange
-/// [`File`]: crate::file::File
+/// [`Buffer`]: crate::buffer::Buffer
 /// [`Widget`]: crate::ui::Widget
 pub trait Tag<Index, Return: Copy = ()>: Sized {
     /// Gets the [`RawTag`]s and a possible return id from the `Tag`

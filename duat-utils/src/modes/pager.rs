@@ -63,7 +63,7 @@ impl<W: Widget> Mode for Pager<W> {
 
                 handle.scroll_to_points(pa, point);
             }
-            (key!(Esc), _) => mode::reset::<File>(),
+            (key!(Esc), _) => mode::reset::<Buffer>(),
             (key!(Char(':')), _) => mode::set(RunCommands::new()),
             _ => {}
         }
