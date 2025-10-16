@@ -480,6 +480,8 @@ impl Text {
     ) {
         self.0.selections.clear();
 
+        panic!();
+
         let len = changes.len();
         for (i, change) in changes.enumerate() {
             self.apply_change_inner(0, change);

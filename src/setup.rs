@@ -185,6 +185,12 @@ pub fn run_duat(
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
 ) -> (Vec<Vec<ReloadedFile>>, Receiver<DuatEvent>) {
+    std::panic::set_hook(Box::new(move |panic_info| {
+        ui.close();
+        println!("Duat panicked: {panic_info}");
+        std::process::exit(-1);
+    }));
+
     ui.load();
 
     let cfg = SessionCfg::new(clipb, match PRINT_CFG.write().unwrap().take() {
@@ -193,6 +199,7 @@ pub fn run_duat(
     });
 
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
+
     cfg.build(ui, files, already_plugged)
         .start(duat_rx, &SPAWN_COUNT, reload_tx)
 }

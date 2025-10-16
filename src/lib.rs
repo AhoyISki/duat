@@ -51,10 +51,10 @@
 //! rustup install nightly-x86_64-pc-windows-gnu
 //! ```
 //!
-//! To install Duat, another dependency that you will need is `gcc`.
-//! On unix-like operating systems, that should already be installed.
-//! But on Windows, you need to manually install it, most likely
-//! through Visual Studio.
+//! To install Duat, another dependency that you will need is a c
+//! compiler. On unix-like operating systems, that should already
+//! be installed. But on Windows, you need to manually install it,
+//! probably through the most convenient way, which is Visual Studio.
 //! You can follow the instructions on [this guide] in order to do
 //! that. You can skip the prerequesits section, it's vscode specific.
 //!
@@ -185,7 +185,7 @@
 //! ```
 //!
 //! In the example above, `[form1]` will change the style of the text
-//! to the `"form1"` [`Form`], while `{Spacer}` will place a spacer in
+//! to the `"form1"` [`Form`], while `{Spacer}` will place a [spacer] in
 //! between the two parts of the text (See the status line in the GIF,
 //! it uses spacers).
 //!
