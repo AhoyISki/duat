@@ -16,10 +16,10 @@ duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
 duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-filetype" }
 
 streaming-iterator = "0.1.9"
-tree-sitter = "0.25.6"
+tree-sitter = "0.25.10"
 tree-sitter-language = "0.1.5"
 indoc = "2.0.6"
-libloading = "0.8.8"
+libloading = "0.8.9"
 
 [build-dependencies]
 dirs-next = "2.0.0"

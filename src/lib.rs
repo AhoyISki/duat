@@ -73,8 +73,8 @@ mod languages;
 #[derive(Default)]
 pub struct TreeSitter;
 
-impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
-    fn plug(self, _: &Plugins<U>) {
+impl duat_core::Plugin for TreeSitter {
+    fn plug(self, _: &Plugins) {
         const MAX_LEN_FOR_LOCAL: usize = 100_000;
 
         form::set_many_weak!(
@@ -118,7 +118,7 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("node.field", "variable.member"),
         );
 
-        hook::add_grouped::<File<U>, U>("TreeSitter", |pa, handle| {
+        hook::add_grouped::<File>("TreeSitter", |pa, handle| {
             let file = handle.write(pa);
 
             let path = file.path_kind();
@@ -208,7 +208,7 @@ impl TsParser {
     }
 }
 
-impl<U: Ui> file::Parser<U> for TsParser {
+impl file::Parser for TsParser {
     fn parse(&mut self) -> bool {
         // In this function, the changes will be applied and the Ranges will
         // be updated to include the following regions to be updated:
@@ -224,7 +224,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
         do_update
     }
 
-    fn update(&mut self, pa: &mut Pass, file: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+    fn update(&mut self, pa: &mut Pass, file: &Handle<File>, on: Vec<Range<Point>>) {
         match self.0.as_mut().unwrap() {
             ParserState::Present(parser) => {
                 let mut parts = file.write(pa).text_mut().parts();
@@ -242,7 +242,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
     }
 
     fn before_get(&mut self) {
-        duat_core::file::Parser::<U>::parse(self);
+        self.parse();
     }
 
     fn before_try_get(&mut self) -> bool {
@@ -253,7 +253,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
                 match join_handle.join().unwrap() {
                     Ok(parser) => {
                         self.0 = Some(ParserState::Present(parser));
-                        file::Parser::<U>::parse(self)
+                        self.parse()
                     }
                     Err(tracker) => {
                         self.0 = Some(ParserState::NotSet(tracker));
@@ -362,6 +362,7 @@ impl InnerTsParser {
                     .point_at_byte(range.end_byte.min(bytes.len().byte()))
                     .line(),
             );
+
             new_ranges.add(start.byte()..end.byte())
         }
 
@@ -757,9 +758,9 @@ fn forms_from_lang_parts(
 ) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
     const PRIORITIES: &[&str] = &[
-        "markup", "comment", "string", "diff", "variable", "module", "label", "character",
-        "boolean", "number", "type", "attribute", "property", "function", "constant",
-        "constructor", "operator", "keyword", "punctuation",
+        "markup", "operator", "comment", "string", "diff", "variable", "module", "label",
+        "character", "boolean", "number", "type", "attribute", "property", "function", "constant",
+        "constructor", "keyword", "punctuation",
     ];
     type MemoizedForms<'a> = HashMap<&'a str, &'a [(FormId, u8)]>;
 
@@ -906,7 +907,7 @@ pub trait TsFile {
     fn ts_indent_on(&self, p: Point) -> Option<usize>;
 }
 
-impl<U: Ui> TsFile for File<U> {
+impl TsFile for File {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
         self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.get_print_cfg()))
             .flatten()
@@ -937,7 +938,7 @@ pub trait TsCursor {
     fn ts_reindent(&mut self);
 }
 
-impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
+impl<S> TsCursor for Cursor<'_, File, S> {
     fn ts_indent(&self) -> Option<usize> {
         self.ts_indent_on(self.caret())
     }
@@ -950,9 +951,7 @@ impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
     }
 
     fn ts_reindent(&mut self) {
-        fn prev_non_empty_line_points<S, U: Ui>(
-            c: &mut Cursor<File<U>, U::Area, S>,
-        ) -> Option<[Point; 2]> {
+        fn prev_non_empty_line_points<S>(c: &mut Cursor<File, S>) -> Option<[Point; 2]> {
             let byte_col = c
                 .text()
                 .buffers(..c.caret().byte())
