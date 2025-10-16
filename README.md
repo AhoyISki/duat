@@ -62,10 +62,10 @@ rustup install nightly
 rustup install nightly-x86_64-pc-windows-gnu
 ```
 
-To install Duat, another dependency that you will need is `gcc`.
-On unix-like operating systems, that should already be installed.
-But on Windows, you need to manually install it, most likely
-through Visual Studio.
+To install Duat, another dependency that you will need is a c
+compiler. On unix-like operating systems, that should already
+be installed. But on Windows, you need to manually install it,
+probably through the most convenient way, which is Visual Studio.
 You can follow the instructions on [this guide][__link1] in order to do
 that. You can skip the prerequesits section, it’s vscode specific.
 
@@ -174,11 +174,11 @@ let text = txt!("This {infix} is [form1]colored and {Spacer} distant").build();
 ```
 
 In the example above, `[form1]` will change the style of the text
-to the `"form1"` [`Form`][__link21], while `{Spacer}` will place a spacer in
+to the `"form1"` [`Form`][__link21], while `{Spacer}` will place a [spacer][__link22] in
 between the two parts of the text (See the status line in the GIF,
 it uses spacers).
 
-This macro works very similarly to the [`format!`][__link22] family of
+This macro works very similarly to the [`format!`][__link23] family of
 macros, so you also have inlining, as you can see with the
 `{infix}` part. All of this is, of course, checked at compile
 time.
@@ -219,25 +219,25 @@ In that case open an issue
 When you install duat, the default config crate will come with
 the following plugins:
 
-* [`duat-kak`][__link23] is a plugin that changes the default mode of Duat
-  to one inspired by [Kakoune][__link24]’s “Normal”, also bringing with it
+* [`duat-kak`][__link24] is a plugin that changes the default mode of Duat
+  to one inspired by [Kakoune][__link25]’s “Normal”, also bringing with it
   various other modes from Kakoune.
-* [`duat-catppuccin`][__link25] is a just a simple colorscheme plugin, it
-  adds the four flavors from the [catppuccin][__link26] colorscheme. You can
+* [`duat-catppuccin`][__link26] is a just a simple colorscheme plugin, it
+  adds the four flavors from the [catppuccin][__link27] colorscheme. You can
   pick between the four of them, you can apply its colors to other
-  [`Form`][__link27]s and you can allow or disallow the colorscheme to set
+  [`Form`][__link28]s and you can allow or disallow the colorscheme to set
   the background color.
 
 It also comes with the following built-in plugins, which I will
 later on add the ability to disable:
 
-* [`duat-treesitter`][__link28] brings [tree-sitter][__link29] to Duat in the form of
+* [`duat-treesitter`][__link29] brings [tree-sitter][__link30] to Duat in the form of
   syntax highlighting and indentation calculation, which can be
   used by Modes (such as those from `duat-kak`) in order to give
   better feedback when editing files.
-* [`duat-match-pairs`][__link30] adds matched parentheses highlighting to
+* [`duat-match-pairs`][__link31] adds matched parentheses highlighting to
   duat. Has some ntegration with `duat-treesitter`.
-* [`duat-utils`][__link31] adds all of the default plugins that you see,
+* [`duat-utils`][__link32] adds all of the default plugins that you see,
   like the line numbers, status line, prompt line, etc.
 
 ### Features
@@ -300,7 +300,7 @@ way:
 * [ ] Create an Iced frontend;
 
 An internal (and more detailed) TODO list, which might hard to
-understand, can be found in [TODO][__link32]. This list will is
+understand, can be found in [TODO][__link33]. This list will is
 *not* a comprehensive roadmap, as I will ocasionally remove
 entries from it, particularly those in the `FOR NEXT UPDATE`
 section, when said update comes out.
@@ -336,7 +336,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG4WbY4MJ0rc6G_pj_BVh_9_EGzTgv4doF_TYGxcx191s9oQ6YWSCgmRkdWF0ZTAuNy4wgmlkdWF0X2NvcmVlMC43LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG60V0Tu5CbAYGz44HWmx87__G2NIq58yfzSHGw29UB1uSc7cYWSCgmRkdWF0ZTAuNy4wgmlkdWF0X2NvcmVlMC43LjA
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://code.visualstudio.com/docs/cpp/config-mingw
  [__link10]: https://docs.rs/duat/0.7.0/duat/?search=prelude::mode_name
@@ -352,18 +352,19 @@ I don’t like it.
  [__link2]: https://docs.rs/duat/0.7.0/duat/?search=prelude::plug
  [__link20]: https://docs.rs/duat/0.7.0/duat/?search=prelude::text::txt
  [__link21]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
- [__link22]: https://doc.rust-lang.org/stable/std/macro.format.html
- [__link23]: https://github.com/AhoyISki/duat-kak
- [__link24]: https://github.com/mawww/kakoune
- [__link25]: https://github.com/AhoyISki/duat-catppuccin
- [__link26]: https://catppuccin.com
- [__link27]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
- [__link28]: https://github.com/AhoyISki/duat-treesitter
- [__link29]: https://tree-sitter.github.io/tree-sitter
+ [__link22]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Spacer
+ [__link23]: https://doc.rust-lang.org/stable/std/macro.format.html
+ [__link24]: https://github.com/AhoyISki/duat-kak
+ [__link25]: https://github.com/mawww/kakoune
+ [__link26]: https://github.com/AhoyISki/duat-catppuccin
+ [__link27]: https://catppuccin.com
+ [__link28]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
+ [__link29]: https://github.com/AhoyISki/duat-treesitter
  [__link3]: https://docs.rs/duat/0.7.0/duat/?search=prelude::mode::set_default
- [__link30]: https://github.com/AhoyISki/duat-match-pairs
- [__link31]: https://github.com/AhoyISki/duat/tree/master/duat-utils
- [__link32]: ./TODO
+ [__link30]: https://tree-sitter.github.io/tree-sitter
+ [__link31]: https://github.com/AhoyISki/duat-match-pairs
+ [__link32]: https://github.com/AhoyISki/duat/tree/master/duat-utils
+ [__link33]: ./TODO
  [__link4]: https://docs.rs/duat/0.7.0/duat/?search=prelude::map
  [__link5]: https://docs.rs/duat/0.7.0/duat/?search=prelude::print::wrap_on_edge
  [__link6]: https://docs.rs/duat/0.7.0/duat/?search=prelude::LineNumbers
