@@ -84,7 +84,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use duat_core::prelude::*;
+use duat_core::{Plugin, Plugins, buffer::{Buffer, Parser}, context::Handle, data::Pass, form, hook, text::{Point, Tagger}, ui::Widget};
 use duat_filetype::FileType;
 use duat_treesitter::TsParser;
 
