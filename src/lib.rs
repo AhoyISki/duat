@@ -3,10 +3,10 @@
 //! This [`Plugin`] is included by default, as it is considered a core
 //! utility of duat. It adds the two following traits:
 //!
-//! - [`FileType`](FileType): This trait grants the [`filetype`] method, which
-//!   lets you access the filetype directly. Its implementors are the
-//!   [`Buffer`] widget, [`String`] and [`&str`] and [`PathBuf`] and
-//!   [`Path`].
+//! - [`FileType`](FileType): This trait grants the [`filetype`]
+//!   method, which lets you access the filetype directly. Its
+//!   implementors are the [`Buffer`] widget, [`String`] and [`&str`]
+//!   and [`PathBuf`] and [`Path`].
 //! - [`PassFileType`]: This trait also has a
 //!   [`filetype`](PassFileType::filetype) method, but it requires a
 //!   [`Pass`], bypassing the need to, for example, [`read`] a
@@ -54,7 +54,7 @@ use std::{
     sync::LazyLock,
 };
 
-use duat_core::prelude::*;
+use duat_core::{buffer::Buffer, context::Handle, data::{Pass, RwData}};
 use regex::RegexSet;
 
 pub trait FileType {
