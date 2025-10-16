@@ -162,11 +162,11 @@ impl MatchPairs {
     }
 }
 
-impl<U: Ui> Plugin<U> for MatchPairs {
-    fn plug(self, plugins: &Plugins<U>) {
+impl Plugin for MatchPairs {
+    fn plug(self, plugins: &Plugins) {
         plugins.require::<duat_treesitter::TreeSitter>();
 
-        hook::add::<File<U>, U>(move |pa, handle| {
+        hook::add::<File>(move |pa, handle| {
             let mut match_pairs = self.clone();
 
             let file = handle.write(pa);
@@ -189,8 +189,8 @@ impl<U: Ui> Plugin<U> for MatchPairs {
 
 struct MatchPairsParser(MatchPairs);
 
-impl<U: Ui> Parser<U> for MatchPairsParser {
-    fn update(&mut self, pa: &mut Pass, handle: &Handle<File<U>, U>, on: Vec<Range<Point>>) {
+impl Parser for MatchPairsParser {
+    fn update(&mut self, pa: &mut Pass, handle: &Handle<File>, on: Vec<Range<Point>>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
         }
