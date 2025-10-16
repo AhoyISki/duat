@@ -200,8 +200,10 @@ pub fn run_duat(
 
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
-    cfg.build(ui, files, already_plugged)
-        .start(duat_rx, &SPAWN_COUNT, reload_tx)
+    std::panic::abort_unwind(|| {
+        cfg.build(ui, files, already_plugged)
+            .start(duat_rx, &SPAWN_COUNT, reload_tx)
+    })
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg) + Send + Sync + 'static;

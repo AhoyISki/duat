@@ -386,7 +386,7 @@
 //! [`Parser`]: duat_core::file::Parser
 //! [`File`]: crate::prelude::File
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
-#![feature(decl_macro, thread_spawn_hook)]
+#![feature(decl_macro, thread_spawn_hook, abort_unwind)]
 
 pub use duat_core::{self, clipboard, cmd, context, data, file, text, ui, utils};
 /// Common [`StatusLine`] fields

@@ -71,6 +71,7 @@ KNOWN BUGS:
 [x] Failing to compile locks up recompilation.
 
 FUTURE UPDATES:
+[ ] Get rid of Widget::needs_update?
 [ ] Make all Ui and Area methods use the address space of the Duat app.
 [ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.
 [ ] Finalize the Windows API for more public use.

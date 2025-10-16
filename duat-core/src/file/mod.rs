@@ -54,8 +54,8 @@ impl File {
                     && let Ok(file) = std::fs::read_to_string(path)
                 {
                     let selections = {
-                        let cursor = Cache::new().load(path).unwrap_or_default();
-                        Selections::new(cursor)
+                        let selection = Cache::new().load(path).unwrap_or_default();
+                        Selections::new(selection)
                     };
                     let text = Text::from_bytes(Bytes::new(&file), selections, true);
                     (text, PathKind::SetExists(path.clone()))

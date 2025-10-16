@@ -183,6 +183,17 @@ impl Text {
         }
         let tags = InnerTags::new(bytes.len().byte());
 
+        let selections = if selections.iter().any(|(sel, _)| {
+            [Some(sel.caret()), sel.anchor()]
+                .into_iter()
+                .flatten()
+                .any(|p| p >= bytes.len())
+        }) {
+            Selections::new(Selection::default())
+        } else {
+            selections
+        };
+
         Self(Box::new(InnerText {
             bytes,
             tags,
@@ -479,8 +490,6 @@ impl Text {
         changes: impl ExactSizeIterator<Item = Change<&'a str>>,
     ) {
         self.0.selections.clear();
-
-        panic!();
 
         let len = changes.len();
         for (i, change) in changes.enumerate() {

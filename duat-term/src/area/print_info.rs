@@ -33,7 +33,7 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
-        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+        self.prev_main = self.prev_main.min(text.last_point());
 
         let points = if let Some(s_points) = self.s_points
             && coords.width() == self.prev_coords.width()
@@ -58,7 +58,7 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
-        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+        self.prev_main = self.prev_main.min(text.last_point());
 
         let s_points = if let Some(s_points) = self.s_points
             && coords.width() == self.prev_coords.width()
@@ -100,7 +100,7 @@ impl PrintInfo {
 
     /// Scrolls around a given [`Point`]
     pub(super) fn scroll_around(&mut self, p: Point, coords: Coords, text: &Text, cfg: PrintCfg) {
-        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+        self.prev_main = self.prev_main.min(text.last_point());
 
         if coords.width() > 0 && coords.height() > 0 {
             if let Some(s_points) = self.s_points
@@ -121,7 +121,7 @@ impl PrintInfo {
 
     /// Scrolls vertically
     pub(super) fn scroll_ver(&mut self, by: i32, coords: Coords, text: &Text, cfg: PrintCfg) {
-        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+        self.prev_main = self.prev_main.min(text.last_point());
 
         let s_points = if let Some(s_points) = self.s_points
             && coords.width() == self.prev_coords.width()
@@ -169,7 +169,7 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) {
-        self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
+        self.prev_main = self.prev_main.min(text.last_point());
 
         let cap = cfg.wrap_width(coords.width());
 
