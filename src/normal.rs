@@ -382,30 +382,34 @@ impl Mode for Normal {
                 });
                 mode::set(Insert::new());
             }
-            key!(Char('o' | 'O'), Mod::NONE | Mod::ALT) => {
+            key!(Char('o'), Mod::NONE | Mod::ALT) => {
                 handle.edit_all(pa, |mut c| {
-                    if event.code == Char('O') {
-                        c.set_caret_on_start();
-                        let char_col = c.v_caret().char_col();
-                        c.move_hor(-(char_col as i32));
-                        c.insert("\n");
-                        if event.modifiers == Mod::NONE {
-                            c.ts_reindent();
-                        } else {
-                            c.move_hor(char_col as i32 + 1);
-                        }
+                    c.set_caret_on_end();
+                    let caret = c.caret();
+                    let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
+                    c.move_to(p);
+                    c.append("\n");
+                    if event.modifiers == Mod::NONE {
+                        c.move_hor(1);
+                        c.ts_reindent();
                     } else {
-                        c.set_caret_on_end();
-                        let caret = c.caret();
-                        let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
-                        c.move_to(p);
-                        c.append("\n");
-                        if event.modifiers == Mod::NONE {
-                            c.move_hor(1);
-                            c.ts_reindent();
-                        } else {
-                            c.move_to(caret);
-                        }
+                        c.move_to(caret);
+                    }
+                });
+                if event.modifiers == Mod::NONE {
+                    mode::set(Insert::new());
+                }
+            }
+            key!(Char('O'), Mod::NONE | Mod::ALT) => {
+                handle.edit_all(pa, |mut c| {
+                    c.set_caret_on_start();
+                    let char_col = c.v_caret().char_col();
+                    c.move_hor(-(char_col as i32));
+                    c.insert("\n");
+                    if event.modifiers == Mod::NONE {
+                        c.ts_reindent();
+                    } else {
+                        c.move_hor(char_col as i32 + 1);
                     }
                 });
                 if event.modifiers == Mod::NONE {
