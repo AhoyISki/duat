@@ -34,11 +34,16 @@ use std::{
 };
 
 use duat_core::{
-    buffer::{self, PathKind},
-    form::FormId,
+    Lender, Plugins, Ranges,
+    buffer::{self, Buffer, BufferTracker, PathKind},
+    context::{self, Handle},
+    data::Pass,
+    form::{self, Form, FormId},
+    hook,
     mode::Cursor,
-    prelude::*,
-    text::{Builder, Bytes, Change, Matcheable, Point, Tags},
+    opts::PrintOpts,
+    text::{Builder, Bytes, Change, Matcheable, Point, Tagger, Tags, Text, txt},
+    ui::Widget,
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
@@ -198,7 +203,7 @@ impl TsParser {
     /// there is no indentation query for this language.
     ///
     /// [`filetype`]: BufferType::filetype
-    pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
+    pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
         let Some(ParserState::Present(parser)) = &self.0 else {
             context::warn!("Called function that shouldn't be possible without present parser");
             return None;
@@ -224,7 +229,7 @@ impl buffer::Parser for TsParser {
         do_update
     }
 
-    fn update(&mut self, pa: &mut Pass, file: &Handle<Buffer>, on: Vec<Range<Point>>) {
+    fn update(&mut self, pa: &mut Pass, file: &Handle, on: Vec<Range<Point>>) {
         match self.0.as_mut().unwrap() {
             ParserState::Present(parser) => {
                 let mut parts = file.write(pa).text_mut().parts();
@@ -398,7 +403,7 @@ impl InnerTsParser {
     ////////// Querying functions
 
     /// The expected level of indentation on a given [`Point`]
-    fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
+    fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
         let start = bytes.point_at_line(p.line());
 
         let (root, indents, range) = self
@@ -508,7 +513,7 @@ impl InnerTsParser {
             return Some(0);
         }
 
-        let tab = cfg.tab_stops.size() as i32;
+        let tab = cfg.tabstop as i32;
         let mut indent = if root.start_byte() != 0 {
             bytes.indent(bytes.point_at_byte(root.start_byte()), cfg) as i32
         } else {
@@ -909,8 +914,10 @@ pub trait TsBuffer {
 
 impl TsBuffer for Buffer {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.get_print_cfg()))
-            .flatten()
+        self.read_parser(|ts: &TsParser| {
+            ts.indent_on(p, self.text().bytes(), self.get_print_opts())
+        })
+        .flatten()
     }
 }
 
@@ -944,9 +951,9 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
     }
 
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        let cfg = self.cfg();
+        let opts = self.opts();
 
-        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), cfg))
+        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), opts))
             .flatten()
     }
 
@@ -1114,12 +1121,7 @@ fn highlight_and_inject(
             })
             .or_else(|| {
                 let cap = qm.captures.iter().find(is_language)?;
-                Some(
-                    bytes
-                        .slices(cap.node.byte_range())
-                        .try_to_string()
-                        .unwrap(),
-                )
+                Some(bytes.slices(cap.node.byte_range()).try_to_string().unwrap())
             })
         else {
             continue;

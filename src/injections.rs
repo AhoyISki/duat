@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use duat_core::{
+    Ranges,
     form::FormId,
-    prelude::Ranges,
     text::{Bytes, Tags},
 };
 use tree_sitter::{InputEdit, Node, Parser, Point as TsPoint, Query, Range as TsRange, Tree};
