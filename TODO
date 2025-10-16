@@ -5,7 +5,7 @@ FOR NEXT UPDATE:
   [x] Add Widget defined floating Widgets.
   [x] Add Tag defined floating Widgets.
   [x] Extend regular Widget functions to floating Widgets.
-[ ] Rename File to Buffer.
+[x] Rename File to Buffer.
 [ ] Make Handles not a Parameter.
 [x] No more U arguments, plugins will now use duat instead of duat-core.
   [/] Gut duat-core, so that it only defines the Ui/Area traits and the text and form modules.

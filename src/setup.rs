@@ -23,7 +23,7 @@ use duat_core::{
     text::History,
     ui::{Ui, Widget},
 };
-use duat_filetype::BufferType;
+use duat_filetype::FileType;
 use duat_term::VertRule;
 use duat_utils::{
     modes::Pager,

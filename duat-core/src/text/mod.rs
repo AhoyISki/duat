@@ -177,7 +177,7 @@ impl Text {
 
     /// Creates a [`Text`] from [`Bytes`]
     pub(crate) fn from_bytes(mut bytes: Bytes, selections: Selections, with_history: bool) -> Self {
-        if bytes.buffers(..).next_back().is_none_or(|b| b != b'\n') {
+        if bytes.slices(..).next_back().is_none_or(|b| b != b'\n') {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
         }
@@ -527,7 +527,7 @@ impl Text {
     /// [writer]: std::io::Write
     pub fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
         self.0.has_unsaved_changes.store(false, Ordering::Relaxed);
-        let [s0, s1] = self.0.bytes.buffers(..).to_array();
+        let [s0, s1] = self.0.bytes.slices(..).to_array();
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 

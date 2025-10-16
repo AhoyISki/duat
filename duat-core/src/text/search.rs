@@ -438,13 +438,13 @@ impl Searcher {
             // sequence will be utf8.
             let start = unsafe {
                 bytes
-                    .buffers(last_point.byte()..range.start + h_start)
+                    .slices(last_point.byte()..range.start + h_start)
                     .chars_unchecked()
                     .fold(last_point, |p, b| p.fwd(b))
             };
             let end = unsafe {
                 bytes
-                    .buffers(start.byte()..range.start + h_end)
+                    .slices(start.byte()..range.start + h_end)
                     .chars_unchecked()
                     .fold(start, |p, b| p.fwd(b))
             };
@@ -504,13 +504,13 @@ impl Searcher {
             // sequence will be utf8.
             let end = unsafe {
                 bytes
-                    .buffers(range.start + h_end..last_point.byte())
+                    .slices(range.start + h_end..last_point.byte())
                     .chars_unchecked()
                     .fold(last_point, |p, b| p.rev(b))
             };
             let start = unsafe {
                 bytes
-                    .buffers(range.start + h_start..end.byte())
+                    .slices(range.start + h_start..end.byte())
                     .chars_unchecked()
                     .fold(end, |p, b| p.rev(b))
             };
@@ -765,7 +765,7 @@ fn get_inputs(
     bytes: &Bytes,
     range: std::ops::Range<usize>,
 ) -> (Input<SearchBytes<'_>>, Input<SearchBytes<'_>>) {
-    let haystack = SearchBytes(bytes.buffers(range).to_array(), 0);
+    let haystack = SearchBytes(bytes.slices(range).to_array(), 0);
     let fwd_input = Input::new(haystack);
     let rev_input = Input::new(haystack);
     (fwd_input, rev_input)

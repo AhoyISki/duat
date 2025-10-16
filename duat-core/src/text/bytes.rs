@@ -96,7 +96,7 @@ impl Bytes {
     ///
     /// [`strs`]: Self::strs
     #[track_caller]
-    pub fn buffers(&self, range: impl RangeBounds<usize>) -> Slices<'_> {
+    pub fn slices(&self, range: impl RangeBounds<usize>) -> Slices<'_> {
         let (s0, s1) = self.buf.range(range).as_slices();
         Slices([s0.iter(), s1.iter()])
     }
