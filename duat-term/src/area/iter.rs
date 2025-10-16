@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, ops::ControlFlow::*};
 
 use duat_core::{
-    cfg::{PrintCfg, WrapMethod},
+    opts::{PrintOpts, WrapMethod},
     text::{FwdIter as TextIter, Item, Part, Point, RevIter as RevTextIter},
     ui::Caret,
 };
@@ -14,7 +14,7 @@ use unicode_width::UnicodeWidthChar;
 pub fn print_iter(
     mut iter: TextIter<'_>,
     cap: Option<u32>,
-    cfg: PrintCfg,
+    cfg: PrintOpts,
     points: (Point, Option<Point>),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let cap = cap.unwrap_or(u32::MAX);
@@ -40,7 +40,7 @@ pub fn print_iter(
 pub fn rev_print_iter(
     mut iter: RevTextIter<'_>,
     cap: Option<u32>,
-    cfg: PrintCfg,
+    cfg: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let cap = cap.unwrap_or(u32::MAX);
     
@@ -81,7 +81,7 @@ pub fn rev_print_iter(
 pub(super) fn print_iter_indented(
     iter: TextIter<'_>,
     cap: u32,
-    cfg: PrintCfg,
+    cfg: PrintOpts,
     indent: u32,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     inner_iter(iter, cap, (indent, false), cfg)
@@ -117,7 +117,7 @@ where
 fn parts<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
-    cfg: PrintCfg,
+    cfg: PrintOpts,
     initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let (mut x, mut needs_to_wrap, mut prev_char) = (0, true, None);
@@ -177,7 +177,7 @@ fn parts<'a>(
 fn words<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
-    cfg: PrintCfg,
+    cfg: PrintOpts,
     initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let max_indent = if cfg.indent_wrapped { cap } else { 0 };
@@ -234,7 +234,7 @@ fn attach_caret(
     indent: u32,
     mut item: Item,
     cap: u32,
-    cfg: &PrintCfg,
+    cfg: &PrintOpts,
 ) -> Option<(Caret, Item)> {
     let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, cap);
 
@@ -263,7 +263,7 @@ fn attach_caret(
 #[inline(always)]
 fn process_part(
     part: Part,
-    cfg: &PrintCfg,
+    cfg: &PrintOpts,
     prev_char: &mut Option<char>,
     x: u32,
     cap: u32,
@@ -287,7 +287,7 @@ fn inner_iter<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
     initial: (u32, bool),
-    cfg: PrintCfg,
+    cfg: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     match cfg.wrap_method {
         WrapMethod::Edge | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
@@ -298,7 +298,7 @@ fn inner_iter<'a>(
 }
 
 #[inline(always)]
-fn len_from(char: char, start: u32, max_width: u32, cfg: &PrintCfg) -> u32 {
+fn len_from(char: char, start: u32, max_width: u32, cfg: &PrintOpts) -> u32 {
     match char {
         '\t' => (cfg.tab_stops.spaces_at(start))
             .min(max_width.saturating_sub(start))

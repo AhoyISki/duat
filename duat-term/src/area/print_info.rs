@@ -1,5 +1,5 @@
 use duat_core::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context::{Decode, Encode},
     text::{Item, Part, Point, Text, TwoPoints},
     ui::Caret,
@@ -31,7 +31,7 @@ impl PrintInfo {
         &mut self,
         coords: Coords,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> (Point, Option<Point>) {
         self.prev_main = self.prev_main.min(text.last_point());
 
@@ -56,7 +56,7 @@ impl PrintInfo {
         &mut self,
         coords: Coords,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> (Point, Option<Point>) {
         self.prev_main = self.prev_main.min(text.last_point());
 
@@ -99,7 +99,7 @@ impl PrintInfo {
     }
 
     /// Scrolls around a given [`Point`]
-    pub(super) fn scroll_around(&mut self, p: Point, coords: Coords, text: &Text, cfg: PrintCfg) {
+    pub(super) fn scroll_around(&mut self, p: Point, coords: Coords, text: &Text, cfg: PrintOpts) {
         self.prev_main = self.prev_main.min(text.last_point());
 
         if coords.width() > 0 && coords.height() > 0 {
@@ -120,7 +120,7 @@ impl PrintInfo {
     }
 
     /// Scrolls vertically
-    pub(super) fn scroll_ver(&mut self, by: i32, coords: Coords, text: &Text, cfg: PrintCfg) {
+    pub(super) fn scroll_ver(&mut self, by: i32, coords: Coords, text: &Text, cfg: PrintOpts) {
         self.prev_main = self.prev_main.min(text.last_point());
 
         let s_points = if let Some(s_points) = self.s_points
@@ -167,7 +167,7 @@ impl PrintInfo {
         points: impl TwoPoints,
         coords: Coords,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) {
         self.prev_main = self.prev_main.min(text.last_point());
 
@@ -194,7 +194,7 @@ impl PrintInfo {
         p: Point,
         coords: Coords,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
         s_points: (Point, Option<Point>),
     ) {
         if self.prev_main == p {
@@ -237,7 +237,7 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, cfg: PrintCfg) {
+    fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, cfg: PrintOpts) {
         let cap = cfg.wrap_width(width).unwrap_or(width);
         // Quick shortcut to avoid iteration.
         if cap <= width {
@@ -319,7 +319,7 @@ impl PrintInfo {
         &mut self,
         coords: Coords,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> (Point, Option<Point>) {
         let cap = cfg.wrap_width(coords.width());
 
@@ -353,7 +353,7 @@ impl PrintInfo {
 
 fn max_s_points(
     text: &Text,
-    cfg: PrintCfg,
+    cfg: PrintOpts,
     height: u32,
     cap: Option<u32>,
 ) -> (Point, Option<Point>) {

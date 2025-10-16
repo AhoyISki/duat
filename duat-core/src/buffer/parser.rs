@@ -22,7 +22,7 @@ use parking_lot::Mutex;
 
 use super::Buffer;
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context::Handle,
     data::Pass,
     prelude::Ranges,
@@ -500,7 +500,7 @@ struct ParserParts {
 #[derive(Debug)]
 pub struct BufferTracker {
     bytes: Bytes,
-    cfg: Arc<Mutex<PrintCfg>>,
+    cfg: Arc<Mutex<PrintOpts>>,
     fetcher: MomentFetcher,
     moment: Moment,
     ranges: Arc<Mutex<RangesTracker>>,
@@ -716,20 +716,20 @@ impl BufferTracker {
     /// This value only takes ascii spaces and tabs into account,
     /// which may differ from the value from [`Text::indent`],
     /// since that one calculates the indent through the [`Area`],
-    /// while this one only makes use of the [`PrintCfg`]'s
+    /// while this one only makes use of the [`PrintOpts`]'s
     /// [`TabStops`].
     ///
     /// [`Area`]: crate::ui::Area
-    /// [`TabStops`]: crate::cfg::TabStops
+    /// [`TabStops`]: crate::opts::TabStops
     pub fn indent(&self, p: Point) -> usize {
         self.bytes.indent(p, *self.cfg.lock())
     }
 
-    /// The [`PrintCfg`] of the [`Buffer`]
+    /// The [`PrintOpts`] of the [`Buffer`]
     ///
-    /// Unlike the other parts of this struct, the [`PrintCfg`] will
+    /// Unlike the other parts of this struct, the [`PrintOpts`] will
     /// always be up to date with what it currently is in the [`Buffer`]
-    pub fn cfg(&self) -> PrintCfg {
+    pub fn cfg(&self) -> PrintOpts {
         *self.cfg.lock()
     }
 }

@@ -24,7 +24,7 @@ use std::{
 };
 
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context::{self, Cache},
     data::{Pass, RwData},
     form::Painter,
@@ -242,7 +242,7 @@ impl Area {
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    pub fn request_width_to_fit(&self, pa: &Pass, cfg: PrintCfg, text: &Text) -> Result<(), Text> {
+    pub fn request_width_to_fit(&self, pa: &Pass, cfg: PrintOpts, text: &Text) -> Result<(), Text> {
         self.area.read(pa).request_width_to_fit(cfg, text)
     }
 
@@ -258,7 +258,7 @@ impl Area {
     ////////// Printing functions
 
     /// Prints the [`Text`] via an [`Iterator`]
-    pub fn print(&self, pa: &Pass, text: &Text, cfg: PrintCfg, painter: Painter) {
+    pub fn print(&self, pa: &Pass, text: &Text, cfg: PrintOpts, painter: Painter) {
         self.area.read(pa).print(text, cfg, painter)
     }
 
@@ -267,7 +267,7 @@ impl Area {
         &self,
         pa: &Pass,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
@@ -301,7 +301,7 @@ impl Area {
         &self,
         pa: &Pass,
         iter: FwdIter<'a>,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
         self.area.read(pa).print_iter(iter, cfg)
     }
@@ -320,7 +320,7 @@ impl Area {
         &self,
         pa: &Pass,
         iter: RevIter<'a>,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
         self.area.read(pa).rev_print_iter(iter, cfg)
     }
@@ -332,7 +332,7 @@ impl Area {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    pub fn scroll_ver(&self, pa: &Pass, text: &Text, dist: i32, cfg: PrintCfg) {
+    pub fn scroll_ver(&self, pa: &Pass, text: &Text, dist: i32, cfg: PrintOpts) {
         self.area.read(pa).scroll_ver(text, dist, cfg);
     }
 
@@ -344,7 +344,7 @@ impl Area {
     /// between this and [`scroll_to_points`] is that this method
     /// doesn't do anything if the [`Point`] is already on screen.
     ///
-    /// [`ScrollOff`]: crate::cfg::ScrollOff
+    /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
     /// [`scroll_to_points`]: Area::scroll_to_points
     pub fn scroll_around_points(
@@ -352,7 +352,7 @@ impl Area {
         pa: &Pass,
         text: &Text,
         points: impl TwoPoints,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) {
         self.area
             .read(pa)
@@ -369,20 +369,20 @@ impl Area {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::cfg::WrapMethod
-    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: impl TwoPoints, cfg: PrintCfg) {
+    /// [line wrapping]: crate::opts::WrapMethod
+    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: impl TwoPoints, cfg: PrintOpts) {
         self.area
             .read(pa)
             .scroll_to_points(text, points.to_points(), cfg);
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
-    pub fn start_points(&self, pa: &Pass, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
+    pub fn start_points(&self, pa: &Pass, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>) {
         self.area.read(pa).start_points(text, cfg)
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
-    pub fn end_points(&self, pa: &Pass, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
+    pub fn end_points(&self, pa: &Pass, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>) {
         self.area.read(pa).end_points(text, cfg)
     }
 
@@ -459,7 +459,7 @@ struct AreaFunctions {
         &Pass,
         &RwData<dyn traits::Area>,
         &Text,
-        PrintCfg,
+        PrintOpts,
         Painter,
         Box<dyn FnMut(&Caret, &Item) + 'a>,
     ),

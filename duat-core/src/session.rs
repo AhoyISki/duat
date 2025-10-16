@@ -21,7 +21,7 @@ use crossterm::event::KeyEvent;
 
 use crate::{
     Plugins,
-    cfg::PrintCfg,
+    opts::PrintOpts,
     clipboard::Clipboard,
     cmd,
     context::{self, Cache, sender},
@@ -39,7 +39,7 @@ use crate::{
     },
 };
 
-pub(crate) static FILE_CFG: OnceLock<PrintCfg> = OnceLock::new();
+pub(crate) static FILE_CFG: OnceLock<PrintOpts> = OnceLock::new();
 
 /// Configuration for a session of Duat
 #[doc(hidden)]
@@ -48,7 +48,7 @@ pub struct SessionCfg {
 }
 
 impl SessionCfg {
-    pub fn new(clipb: &'static Mutex<Clipboard>, file_cfg: PrintCfg) -> Self {
+    pub fn new(clipb: &'static Mutex<Clipboard>, file_cfg: PrintOpts) -> Self {
         crate::clipboard::set_clipboard(clipb);
         FILE_CFG.set(file_cfg).unwrap();
 
@@ -396,7 +396,7 @@ impl ReloadedBuffer {
     #[doc(hidden)]
     pub fn by_args(path: Option<PathBuf>, is_active: bool) -> Result<Self, std::io::Error> {
         Ok(Self {
-            file: Buffer::new(path, PrintCfg::default_for_input()),
+            file: Buffer::new(path, PrintOpts::default_for_input()),
             is_active,
         })
     }

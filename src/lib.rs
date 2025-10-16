@@ -577,7 +577,7 @@ pub mod hook {
     //! [`Mode`]: crate::mode::Mode
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
-    //! [tabstop]: duat_core::cfg::PrintCfg::set_tabstop
+    //! [tabstop]: duat_core::opts::PrintOpts::set_tabstop
     pub use duat_core::hook::*;
     pub use duat_utils::hooks::*;
 }

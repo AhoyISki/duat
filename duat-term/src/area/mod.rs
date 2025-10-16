@@ -5,7 +5,7 @@ use std::{fmt::Alignment, sync::Arc};
 
 use crossterm::{cursor, style::Attribute};
 use duat_core::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context::{self, Decode, Encode},
     form::{CONTROL_CHAR_ID, Painter},
     text::{FwdIter, Item, Part, Point, RevIter, SpawnId, Text, txt},
@@ -88,7 +88,7 @@ impl Area {
     fn print<'a>(
         &self,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
@@ -348,7 +348,7 @@ impl ui::traits::Area for Area {
         }
     }
 
-    fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text> {
+    fn request_width_to_fit(&self, cfg: PrintOpts, text: &Text) -> Result<(), Text> {
         let max = self
             .layouts
             .inspect(self.id, |_, layout| layout.max_value())
@@ -365,7 +365,7 @@ impl ui::traits::Area for Area {
         self.set_width(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
     }
 
-    fn scroll_ver(&self, text: &Text, by: i32, cfg: PrintCfg) {
+    fn scroll_ver(&self, text: &Text, by: i32, cfg: PrintOpts) {
         if by == 0 {
             return;
         }
@@ -382,7 +382,7 @@ impl ui::traits::Area for Area {
 
     ////////// Printing
 
-    fn scroll_around_points(&self, text: &Text, p: (Point, Option<Point>), cfg: PrintCfg) {
+    fn scroll_around_points(&self, text: &Text, p: (Point, Option<Point>), cfg: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -393,7 +393,7 @@ impl ui::traits::Area for Area {
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg) {
+    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -408,14 +408,14 @@ impl ui::traits::Area for Area {
         self.layouts.set_active_id(self.id);
     }
 
-    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter) {
+    fn print(&self, text: &Text, cfg: PrintOpts, painter: Painter) {
         self.print(text, cfg, painter, |_, _| {})
     }
 
     fn print_with<'a>(
         &self,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
@@ -431,7 +431,7 @@ impl ui::traits::Area for Area {
     fn print_iter<'a>(
         &self,
         iter: FwdIter<'a>,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
         let points = iter.points();
         Box::new(print_iter(
@@ -445,7 +445,7 @@ impl ui::traits::Area for Area {
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
         Box::new(rev_print_iter(
             iter,
@@ -510,7 +510,7 @@ impl ui::traits::Area for Area {
             .unwrap_or(0.0)
     }
 
-    fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
+    fn start_points(&self, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
@@ -523,7 +523,7 @@ impl ui::traits::Area for Area {
         start_points
     }
 
-    fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
+    fn end_points(&self, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();

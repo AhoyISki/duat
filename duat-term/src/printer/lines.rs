@@ -1,7 +1,7 @@
 use std::fmt::Alignment;
 
 use crossterm::style::{Attribute, Attributes};
-use duat_core::{cfg::PrintCfg, form::Painter};
+use duat_core::{opts::PrintOpts, form::Painter};
 
 use super::Lines;
 use crate::{CStyle, Coords, print_style, printer::InnerLineInfo};
@@ -24,7 +24,7 @@ pub struct LinesBuilder {
 impl LinesBuilder {
     /// Returns a new `LinesBuilder`, which is used to send [`Lines`]
     /// to be printed
-    pub fn new(coords: Coords, shift: u32, cfg: PrintCfg) -> Self {
+    pub fn new(coords: Coords, shift: u32, cfg: PrintOpts) -> Self {
         let cap = cfg.wrap_width(coords.width());
 
         LinesBuilder {

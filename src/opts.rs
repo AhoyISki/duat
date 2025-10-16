@@ -7,16 +7,28 @@
 //! This module is primarily concerned with adding configuration for
 //! the following [`Widget`]s:
 //!
-//! [`Buffer`]: The `Widget`
+//! [`Buffer`]: The main `Widget` for writing and saving files.
+//! [`LineNumbers`]: The line numbers of `Buffer`s.
+//! [`StatusLine`]: Shows information about Duat at the bottom.
+//! [`PromptLine`]: Used primarily for running commands and searching.
+//! [`Notifications`]: Displays notifications, normally joined with `PromptLine`.
+//! [`LogBook`]: Displays the logs, i.e. the history of notifications.
 //!
 //! [widgets]: crate::widgets
 //! [hooks]: crate::hook
 //! [`Widget`]: crate::widgets::Widget
+//! [`Buffer`]: crate::widgets::Buffer
+//! [`LineNumbers`]: crate::widgets::LineNumbers
+//! [`StatusLine`]: crate::widgets::StatusLine
+//! [`PromptLine`]: crate::widgets::PromptLine
+//! [`Notifications`]: crate::widgets::Notifications
+//! [`LogBook`]: crate::widgets::LogBook
 #[allow(unused_imports)]
-pub use duat_core::cfg::word_chars as w_chars;
-pub use duat_core::cfg::{PrintCfg, WordChars};
+pub use duat_core::opts::word_chars as w_chars;
+pub use duat_core::opts::{PrintOpts, WordChars};
 
 use crate::setup::FILE_PRINT_CFG;
+
 
 /// Disables wrapping for all [`Buffer`]s
 ///
@@ -29,7 +41,7 @@ pub fn dont_wrap() {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.dont_wrap(),
-        None => *PrintCfg::default_for_input().dont_wrap(),
+        None => *PrintOpts::default_for_input().dont_wrap(),
     })
 }
 
@@ -43,7 +55,7 @@ pub fn wrap_on_edge() {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.wrap_on_edge(),
-        None => *PrintCfg::default_for_input().wrap_on_edge(),
+        None => *PrintOpts::default_for_input().wrap_on_edge(),
     })
 }
 
@@ -58,7 +70,7 @@ pub fn wrap_on_word() {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.wrap_on_word(),
-        None => *PrintCfg::default_for_input().wrap_on_word(),
+        None => *PrintOpts::default_for_input().wrap_on_word(),
     })
 }
 
@@ -75,7 +87,7 @@ pub fn wrap_at(cap: u8) {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.wrap_at(cap),
-        None => *PrintCfg::default_for_input().wrap_at(cap),
+        None => *PrintOpts::default_for_input().wrap_at(cap),
     })
 }
 
@@ -90,7 +102,7 @@ pub fn indent_wraps(value: bool) {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.indent_wraps(value),
-        None => *PrintCfg::default_for_input().indent_wraps(value),
+        None => *PrintOpts::default_for_input().indent_wraps(value),
     })
 }
 
@@ -102,7 +114,7 @@ pub fn tabstop(tab_size: u8) {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.set_tabstop(tab_size),
-        None => *PrintCfg::default_for_input().set_tabstop(tab_size),
+        None => *PrintOpts::default_for_input().set_tabstop(tab_size),
     })
 }
 
@@ -114,7 +126,7 @@ pub fn new_line(char: char) {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.new_line_as(char),
-        None => *PrintCfg::default_for_input().new_line_as(char),
+        None => *PrintOpts::default_for_input().new_line_as(char),
     })
 }
 
@@ -126,7 +138,7 @@ pub fn trailing_new_line(char: char) {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.trailing_new_line_as(char),
-        None => *PrintCfg::default_for_input().trailing_new_line_as(char),
+        None => *PrintOpts::default_for_input().trailing_new_line_as(char),
     })
 }
 
@@ -140,7 +152,7 @@ pub fn scrolloff(x: u8, y: u8) {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.set_scrolloff(x, y),
-        None => *PrintCfg::default_for_input().set_scrolloff(x, y),
+        None => *PrintOpts::default_for_input().set_scrolloff(x, y),
     })
 }
 
@@ -171,6 +183,6 @@ pub fn set_word_chars(word_chars: WordChars) {
 
     *print_cfg = Some(match prev {
         Some(mut prev) => *prev.set_word_chars(word_chars),
-        None => *PrintCfg::default_for_input().set_word_chars(word_chars),
+        None => *PrintOpts::default_for_input().set_word_chars(word_chars),
     })
 }

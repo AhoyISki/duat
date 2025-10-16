@@ -39,7 +39,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context::Handle,
     data::{Pass, RwData},
     form::{self, Painter},
@@ -388,11 +388,11 @@ pub trait Widget: Send + 'static {
     /// The [configuration] for how to print [`Text`]
     ///
     /// The default configuration, used when `print_cfg` is not
-    /// implemented,can be found at [`PrintCfg::new`].
+    /// implemented,can be found at [`PrintOpts::new`].
     ///
-    /// [configuration]: PrintCfg
-    fn get_print_cfg(&self) -> PrintCfg {
-        PrintCfg::new()
+    /// [configuration]: PrintOpts
+    fn get_print_cfg(&self) -> PrintOpts {
+        PrintOpts::new()
     }
 
     /// Prints the widget

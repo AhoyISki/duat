@@ -6,7 +6,7 @@ use std::{
 pub use self::builder::UiBuilder;
 use super::{Node, Widget, layout::Layout};
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context::{self, Cache, Handle},
     data::{Pass, RwData},
     buffer::{Buffer, PathKind},
@@ -389,7 +389,7 @@ impl Windows {
         &self,
         pa: &mut Pass,
         pk: PathKind,
-        default_file_cfg: PrintCfg,
+        default_file_cfg: PrintOpts,
     ) -> Node {
         let node = match self.file_entry(pa, pk.clone()) {
             Ok((win, _, handle)) if self.get(pa, win).unwrap().file_handles(pa).len() > 1 => {

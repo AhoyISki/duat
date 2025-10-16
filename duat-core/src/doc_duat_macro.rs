@@ -204,7 +204,7 @@ macro_rules! doc_duat {
                         set_word_chars(w_chars!($dol($dol w_chars)+));
                     }
                 }
-                pub fn set_word_chars(_: $crate::cfg::WordChars) {}
+                pub fn set_word_chars(_: $crate::opts::WordChars) {}
             }
 
             mod doc_state {
@@ -234,7 +234,7 @@ macro_rules! doc_duat {
 
             mod doc_ui {
                 use $crate::{
-                    cfg::PrintCfg, form::Painter, text::{
+                    opts::PrintOpts, form::Painter, text::{
                         FwdIter, Item, Point, RevIter, Text, TwoPoints
                     },
                     ui::{Caret, Constraint, MutArea, PushSpecs, SpawnSpecs}
@@ -287,7 +287,7 @@ macro_rules! doc_duat {
                         _: SpawnSpecs,
                         _: impl TwoPoints,
                         _: &Text,
-                        _: PrintCfg,
+                        _: PrintOpts,
                     ) -> Result<Self, Text> {
                         Ok(Area)
                     }
@@ -306,15 +306,15 @@ macro_rules! doc_duat {
                     fn hide(&self) -> Result<(), Text> { Ok(()) }
                     fn reveal(&self) -> Result<(), Text> { Ok(()) }
                     fn request_width_to_fit(&self, _: &str) -> Result<(), Text> { Ok(()) }
-                    fn scroll_ver(&self, _: &Text, _: i32, _: PrintCfg) {}
-                    fn scroll_around_point(&self, _: &Text, _: Point, _: PrintCfg) {}
-                    fn scroll_to_points(&self, _: &Text, _: impl TwoPoints, _: PrintCfg) {}
+                    fn scroll_ver(&self, _: &Text, _: i32, _: PrintOpts) {}
+                    fn scroll_around_point(&self, _: &Text, _: Point, _: PrintOpts) {}
+                    fn scroll_to_points(&self, _: &Text, _: impl TwoPoints, _: PrintOpts) {}
                     fn set_as_active(&self) {}
-                    fn print(&self, _: &mut Text, _: PrintCfg, _: Painter) {}
+                    fn print(&self, _: &mut Text, _: PrintOpts, _: Painter) {}
                     fn print_with<'a>(
                         &self,
                         _: &mut Text,
-                        _: PrintCfg,
+                        _: PrintOpts,
                         _: Painter,
                         _: impl FnMut(&Caret, &Item ) + 'a,
                     ) {
@@ -323,14 +323,14 @@ macro_rules! doc_duat {
                     fn print_iter<'a>(
                         &self,
                         _: FwdIter<'a>,
-                        _: PrintCfg,
+                        _: PrintOpts,
                     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
                         [].into_iter()
                     }
                     fn rev_print_iter<'a>(
                         &self,
                         _: RevIter<'a>,
-                        _: PrintCfg,
+                        _: PrintOpts,
                     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
                         [].into_iter()
                     }
@@ -340,10 +340,10 @@ macro_rules! doc_duat {
                     fn cache(&self) -> Option<Self::Cache> { None }
                     fn width(&self) -> u32 { 0 }
                     fn height(&self) -> u32 { 0 }
-                    fn start_points(&self, _: &Text, _: PrintCfg) -> (Point, Option<Point>) {
+                    fn start_points(&self, _: &Text, _: PrintOpts) -> (Point, Option<Point>) {
                         (Point::default(), None)
                     }
-                    fn end_points(&self, _: &Text, _: PrintCfg) -> (Point, Option<Point>) {
+                    fn end_points(&self, _: &Text, _: PrintOpts) -> (Point, Option<Point>) {
                         (Point::default(), None)
                     }
                     fn print_info(&self) -> Self::PrintInfo {}

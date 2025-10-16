@@ -8,7 +8,7 @@ use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
 use super::{Point, RegexPattern, TextRange, records::Records};
-use crate::cfg::PrintCfg;
+use crate::opts::PrintOpts;
 
 /// The bytes of a [`Text`], encoded in UTF-8
 ///
@@ -484,7 +484,7 @@ impl Bytes {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, cfg: PrintCfg) -> usize {
+    pub fn indent(&self, p: Point, cfg: PrintOpts) -> usize {
         let [start, _] = self.points_of_line(p.line());
         self.chars_fwd(start..)
             .unwrap()

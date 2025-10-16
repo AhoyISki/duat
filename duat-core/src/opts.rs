@@ -2,7 +2,7 @@
 //!
 //! This is essentially the things that you'd expect to change in a
 //! text editor such as Neovim or Kakoune. They are contained in a
-//! [`PrintCfg`] struct, which is very light and cheap to copy around,
+//! [`PrintOpts`] struct, which is very light and cheap to copy around,
 //! and is used not only by the [`Buffer`], but by every other
 //! [`Widget`] as well. Right now, these options are:
 //!
@@ -22,8 +22,8 @@
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
 //! [`Area`]: crate::ui::Ui::Area
-//! [forced_scrolloff]: PrintCfg::set_forced_horizontal_scrolloff
-//! [show_ghosts]: PrintCfg::show_ghosts
+//! [forced_scrolloff]: PrintOpts::set_forced_horizontal_scrolloff
+//! [show_ghosts]: PrintOpts::show_ghosts
 use std::{ops::RangeInclusive, sync::LazyLock};
 
 use regex_cursor::regex_automata::meta::Regex;
@@ -176,7 +176,7 @@ impl std::cmp::Eq for WordChars {}
 
 /// Configuration options for printing.
 #[derive(Clone, Copy, Debug)]
-pub struct PrintCfg {
+pub struct PrintOpts {
     /// How to wrap the file
     pub wrap_method: WrapMethod,
     /// Whether to indent wrapped lines or not
@@ -200,15 +200,15 @@ pub struct PrintCfg {
     pub allow_overscroll: bool,
 }
 
-impl PrintCfg {
-    /// The default [`PrintCfg`]
+impl PrintOpts {
+    /// The default [`PrintOpts`]
     ///
     /// There is, essentially, almost no reason to deviate from this
     /// in any [`Widget`] other than a [`Buffer`], since those most
     /// likely will only be printed with the [default `PrintInfo`]
     /// from a [`Area`], i.e., no scrolling is involved, and you
     /// should usually strive to control the other elements of
-    /// [`Text`]s that the options of a [`PrintCfg`] will want to
+    /// [`Text`]s that the options of a [`PrintOpts`] will want to
     /// change.
     ///
     /// The lack of need to customize this is reflected in
@@ -219,8 +219,8 @@ impl PrintCfg {
     /// The default value is:
     ///
     /// ```rust
-    /// use duat_core::cfg::*;
-    /// PrintCfg {
+    /// use duat_core::opts::*;
+    /// PrintOpts {
     ///     wrap_method: WrapMethod::Edge,
     ///     indent_wrapped: true,
     ///     tab_stops: TabStops(4),
@@ -384,7 +384,7 @@ impl PrintCfg {
     }
 }
 
-impl Default for PrintCfg {
+impl Default for PrintOpts {
     fn default() -> Self {
         Self::new()
     }
@@ -396,7 +396,7 @@ impl Default for PrintCfg {
 /// The syntax is as follows:
 ///
 /// ```rust
-/// # use duat_core::cfg::word_chars;
+/// # use duat_core::opts::word_chars;
 /// let word_chars = word_chars!("a-zA-Z0-9---_-_");
 /// ```
 ///
@@ -409,9 +409,9 @@ impl Default for PrintCfg {
 pub macro word_chars($ranges:literal) {{
     const { validate_ranges($ranges) };
     static MATCHERS: LazyLock<(Regex, &'static [RangeInclusive<char>])> = LazyLock::new(|| {
-        let regex = $crate::cfg::escaped_regex($ranges);
+        let regex = $crate::opts::escaped_regex($ranges);
         let regex = Regex::new(&format!("[{regex}]")).unwrap();
-        (regex, $crate::cfg::vec_from_ranges($ranges).leak())
+        (regex, $crate::opts::vec_from_ranges($ranges).leak())
     });
     WordChars(&MATCHERS)
 }}

@@ -617,7 +617,7 @@
 //! [`RwData<Self>`]: crate::data::RwData
 //! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
 //! [`parse`]: crate::file::Parser::parse
-//! [`PrintCfg`]: crate::cfg::PrintCfg
+//! [`PrintOpts`]: crate::opts::PrintOpts
 //! [`Text`]: crate::text::Text
 //! [`txt!`]: crate::text::txt
 //! [`BufferTracker`]: crate::buffer::BufferTracker
@@ -662,7 +662,7 @@ pub mod prelude {
     pub use crate::{
         Plugin, Plugins,
         buffer::{Buffer, BufferTracker, Parser},
-        cfg::PrintCfg,
+        opts::PrintOpts,
         cmd,
         context::{self, Handle},
         data::{Pass, RwData},
@@ -679,7 +679,7 @@ pub mod prelude {
 }
 
 pub mod buffer;
-pub mod cfg;
+pub mod opts;
 pub mod cmd;
 pub mod context;
 pub mod data;

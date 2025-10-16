@@ -47,29 +47,14 @@ FOR NEXT UPDATE:
 [ ] Rename duat-utils to duat-base.
 
 KNOWN BUGS:
-[ ] Type erasure makes it hard to get concrete Area.
 [ ] For now, spawned widgets don't care about spacing or alignment.
 [ ] tree-sitter-duat-text is not being used.
-[x] Canceling git commit panics.
-[x] `C` key is broken on more than one cell.
-[x] History got fucked up.
 [ ] Locking a Mutex on every Change is surely slow.
 [ ] std::mem::replace (grrrr...).
-[x] Deleting last character crashes.
-[x] Treesitter not highlighting injections at first.
-[x] There might still be some issues with tree-sitter hightlight.
-[ ] Tree-sitter also not really indenting.
-[x] Tree-sitter not yielding as parsers are built.
-[x] Kakoune 'm' and <A-i> not working properly.
-[x] Conflicting versions of tree-sitter.
 [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
-[x] Closing windows crashes Duat.
 [ ] Aliases turn lines wrapped in the LineNumbers eyes.
-[x] Treesitter crashes seemingly randomly.
 [ ] First Point not updating when there are changes before the start of the screen.
 [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
-[ ] Appending to the text doesn't seem to update treesitter.
-[x] Failing to compile locks up recompilation.
 
 FUTURE UPDATES:
 [ ] Hook::add_for/add_grouped_for/add_once_for.

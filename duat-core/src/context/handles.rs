@@ -11,7 +11,7 @@ use std::{
 use lender::Lender;
 
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context,
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
@@ -463,11 +463,11 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
 
     /// Scrolls the [`Text`] veritcally by an amount
     ///
-    /// If [`PrintCfg.allow_overscroll`] is set, then the [`Text`]
+    /// If [`PrintOpts.allow_overscroll`] is set, then the [`Text`]
     /// will be allowed to scroll beyond the last line, up until
     /// reaching the `scrolloff.y` value.
     ///
-    /// [`PrintCfg.allow_overscroll`]: crate::cfg::PrintCfg::allow_overscroll
+    /// [`PrintOpts.allow_overscroll`]: crate::opts::PrintOpts::allow_overscroll
     pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
         let widget = self.widget.read(pa);
         self.area()
@@ -570,8 +570,8 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         self.widget.ptr_eq(other)
     }
 
-    /// The [`Widget`]'s [`PrintCfg`]
-    pub fn cfg(&self, pa: &Pass) -> PrintCfg {
+    /// The [`Widget`]'s [`PrintOpts`]
+    pub fn cfg(&self, pa: &Pass) -> PrintOpts {
         self.widget.read(pa).get_print_cfg()
     }
 

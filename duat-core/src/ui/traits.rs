@@ -17,7 +17,7 @@
 use bincode::{Decode, Encode};
 
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     form::Painter,
     session::DuatSender,
     text::{FwdIter, Item, Point, RevIter, SpawnId, Text},
@@ -274,7 +274,7 @@ pub trait Area: 'static {
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&self, cfg: PrintCfg, text: &Text) -> Result<(), Text>;
+    fn request_width_to_fit(&self, cfg: PrintOpts, text: &Text) -> Result<(), Text>;
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
@@ -286,13 +286,13 @@ pub trait Area: 'static {
     ////////// Printing functions
 
     /// Prints the [`Text`] via an [`Iterator`]
-    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
+    fn print(&self, text: &Text, cfg: PrintOpts, painter: Painter);
 
     /// Prints the [`Text`] with a callback function
     fn print_with<'a>(
         &self,
         text: &Text,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) where
@@ -324,7 +324,7 @@ pub trait Area: 'static {
     fn print_iter<'a>(
         &self,
         iter: FwdIter<'a>,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>;
 
     /// Returns a reversed printing iterator
@@ -340,7 +340,7 @@ pub trait Area: 'static {
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
-        cfg: PrintCfg,
+        cfg: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>;
 
     ////////// Points functions
@@ -350,7 +350,7 @@ pub trait Area: 'static {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg);
+    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintOpts);
 
     /// Scrolls the [`Text`] on all four directions until the given
     /// [`Point`] is within the [`ScrollOff`] range
@@ -360,10 +360,10 @@ pub trait Area: 'static {
     /// between this and [`scroll_to_points`] is that this method
     /// doesn't do anything if the [`Point`] is already on screen.
     ///
-    /// [`ScrollOff`]: crate::cfg::ScrollOff
+    /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
     /// [`scroll_to_points`]: Area::scroll_to_points
-    fn scroll_around_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg);
+    fn scroll_around_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintOpts);
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
     ///
@@ -375,14 +375,14 @@ pub trait Area: 'static {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::cfg::WrapMethod
-    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintCfg);
+    /// [line wrapping]: crate::opts::WrapMethod
+    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), cfg: PrintOpts);
 
     /// The start points that should be printed
-    fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+    fn start_points(&self, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>);
 
     /// The points immediately after the last printed [`Point`]
-    fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+    fn end_points(&self, text: &Text, cfg: PrintOpts) -> (Point, Option<Point>);
 
     ////////// Queries
 

@@ -15,7 +15,7 @@ use std::{
 };
 
 use duat_core::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     clipboard::Clipboard,
     context::{self, Logs},
     form::{Form, Palette},
@@ -39,7 +39,7 @@ use crate::{
 };
 
 // Setup statics.
-pub static FILE_PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
+pub static FILE_PRINT_CFG: RwLock<Option<PrintOpts>> = RwLock::new(None);
 pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
@@ -195,7 +195,7 @@ pub fn run_duat(
 
     let cfg = SessionCfg::new(clipb, match FILE_PRINT_CFG.write().unwrap().take() {
         Some(cfg) => cfg,
-        None => PrintCfg::default_for_input(),
+        None => PrintOpts::default_for_input(),
     });
 
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());

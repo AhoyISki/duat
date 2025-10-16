@@ -67,8 +67,8 @@ impl Widget for LogBook {
         &mut self.text
     }
 
-    fn get_print_cfg(&self) -> PrintCfg {
-        *PrintCfg::new().wrap_on_word().set_scrolloff(0, 0)
+    fn get_print_cfg(&self) -> PrintOpts {
+        *PrintOpts::new().wrap_on_word().set_scrolloff(0, 0)
     }
 
     fn on_focus(pa: &mut Pass, handle: &Handle<Self>) {

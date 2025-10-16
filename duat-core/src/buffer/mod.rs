@@ -22,7 +22,7 @@ use parking_lot::{Mutex, MutexGuard};
 use self::parser::Parsers;
 pub use self::parser::{BufferTracker, Parser};
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     context::{self, Cache, Handle},
     data::Pass,
     form::Painter,
@@ -40,13 +40,13 @@ pub struct Buffer {
     text: Text,
     printed_lines: Mutex<Vec<(usize, bool)>>,
     parsers: Parsers,
-    /// The [`PrintCfg`] of this [`Buffer`]
-    cfg: Arc<Mutex<PrintCfg>>,
+    /// The [`PrintOpts`] of this [`Buffer`]
+    cfg: Arc<Mutex<PrintOpts>>,
     pub(crate) layout_order: usize,
 }
 
 impl Buffer {
-    pub(crate) fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Self {
+    pub(crate) fn new(path: Option<PathBuf>, print_cfg: PrintOpts) -> Self {
         let (text, path) = match path {
             Some(path) => {
                 let canon_path = path.canonicalize();
@@ -81,14 +81,14 @@ impl Buffer {
         }
     }
 
-    /// Mutable reference to the [`PrintCfg`] of this `Buffer`
+    /// Mutable reference to the [`PrintOpts`] of this `Buffer`
     ///
-    /// Note that, since every method of `PrintCfg` returns a mutable
-    /// reference to the `PrintCfg`, you can chain these methods
+    /// Note that, since every method of `PrintOpts` returns a mutable
+    /// reference to the `PrintOpts`, you can chain these methods
     /// together, not needing to call this function more than once.
     ///
     /// TODO: EXAMPLES
-    pub fn cfg(&mut self) -> parking_lot::MutexGuard<'_, PrintCfg> {
+    pub fn cfg(&mut self) -> parking_lot::MutexGuard<'_, PrintOpts> {
         self.cfg.lock()
     }
 
@@ -439,7 +439,7 @@ impl Widget for Buffer {
         &mut self.text
     }
 
-    fn get_print_cfg(&self) -> PrintCfg {
+    fn get_print_cfg(&self) -> PrintOpts {
         *self.cfg.lock()
     }
 

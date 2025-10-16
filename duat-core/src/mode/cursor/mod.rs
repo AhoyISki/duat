@@ -15,7 +15,7 @@ use lender::{Lender, Lending};
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
-    cfg::PrintCfg,
+    opts::PrintOpts,
     buffer::{Buffer, Parser},
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{traits::Area, Widget},
@@ -642,8 +642,8 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         self.widget.text()
     }
 
-    /// The [`PrintCfg`] in use
-    pub fn cfg(&self) -> PrintCfg {
+    /// The [`PrintOpts`] in use
+    pub fn cfg(&self) -> PrintOpts {
         self.widget.get_print_cfg()
     }
 }

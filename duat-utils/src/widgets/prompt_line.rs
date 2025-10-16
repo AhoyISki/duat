@@ -95,8 +95,8 @@ impl Widget for PromptLine {
         &mut self.text
     }
 
-    fn get_print_cfg(&self) -> PrintCfg {
-        *PrintCfg::default_for_input().set_forced_horizontal_scrolloff(true)
+    fn get_print_cfg(&self) -> PrintOpts {
+        *PrintOpts::default_for_input().set_forced_horizontal_scrolloff(true)
     }
 }
 
