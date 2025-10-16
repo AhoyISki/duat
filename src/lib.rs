@@ -61,7 +61,7 @@ pub trait FileType {
     fn filetype(&self) -> Option<&'static str>;
 }
 
-impl FileType for File {
+impl FileType for Buffer {
     fn filetype(&self) -> Option<&'static str> {
         PathBuf::from(self.path_set()?).filetype()
     }
@@ -105,13 +105,13 @@ pub trait PassFileType {
     fn filetype(&self, pa: &Pass) -> Option<&'static str>;
 }
 
-impl PassFileType for RwData<File> {
+impl PassFileType for RwData<Buffer> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa).filetype()
     }
 }
 
-impl PassFileType for Handle<File> {
+impl PassFileType for Handle<Buffer> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa).filetype()
     }

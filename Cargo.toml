@@ -11,10 +11,10 @@ keywords = ["duat", "plugin"]
 categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
-dirs-next = "2.0.0"
-duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
+dirs-next = "2.0"
+duat-core = { version = "0.7", git = "https://github.com/AhoyISki/duat" }
 
 [dependencies.regex]
-version = "1.11.1"
+version = "1.11"
 default-features = false
 features = ["perf", "std"]
