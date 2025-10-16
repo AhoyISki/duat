@@ -34,7 +34,7 @@ use std::{
 };
 
 use duat_core::{
-    file::{self, PathKind},
+    buffer::{self, PathKind},
     form::FormId,
     mode::Cursor,
     prelude::*,
@@ -118,7 +118,7 @@ impl duat_core::Plugin for TreeSitter {
             ("node.field", "variable.member"),
         );
 
-        hook::add_grouped::<File>("TreeSitter", |pa, handle| {
+        hook::add_grouped::<Buffer>("TreeSitter", |pa, handle| {
             let file = handle.write(pa);
 
             let path = file.path_kind();
@@ -166,7 +166,7 @@ impl duat_core::Plugin for TreeSitter {
     }
 }
 
-/// [`Parser`] that parses [`File`]'s as [tree-sitter] syntax trees
+/// [`Parser`] that parses [`Buffer`]'s as [tree-sitter] syntax trees
 ///
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 pub struct TsParser(Option<ParserState>);
@@ -197,7 +197,7 @@ impl TsParser {
     /// Will be [`None`] if the [`filetype`] hasn't been set yet or if
     /// there is no indentation query for this language.
     ///
-    /// [`filetype`]: FileType::filetype
+    /// [`filetype`]: BufferType::filetype
     pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
         let Some(ParserState::Present(parser)) = &self.0 else {
             context::warn!("Called function that shouldn't be possible without present parser");
@@ -208,7 +208,7 @@ impl TsParser {
     }
 }
 
-impl file::Parser for TsParser {
+impl buffer::Parser for TsParser {
     fn parse(&mut self) -> bool {
         // In this function, the changes will be applied and the Ranges will
         // be updated to include the following regions to be updated:
@@ -224,7 +224,7 @@ impl file::Parser for TsParser {
         do_update
     }
 
-    fn update(&mut self, pa: &mut Pass, file: &Handle<File>, on: Vec<Range<Point>>) {
+    fn update(&mut self, pa: &mut Pass, file: &Handle<Buffer>, on: Vec<Range<Point>>) {
         match self.0.as_mut().unwrap() {
             ParserState::Present(parser) => {
                 let mut parts = file.write(pa).text_mut().parts();
@@ -278,12 +278,12 @@ struct InnerTsParser {
     tree: Tree,
     old_tree: Option<Tree>,
     injections: Vec<InjectedTree>,
-    tracker: FileTracker,
+    tracker: BufferTracker,
 }
 
 impl InnerTsParser {
     /// Returns a new [`InnerTsParser`]
-    fn new(lang_parts: LangParts<'static>, tracker: FileTracker) -> InnerTsParser {
+    fn new(lang_parts: LangParts<'static>, tracker: BufferTracker) -> InnerTsParser {
         let (.., lang, _) = &lang_parts;
         let forms = forms_from_lang_parts(lang_parts);
 
@@ -574,7 +574,7 @@ impl InnerTsParser {
                     let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
                         line.split_whitespace().any(|w| w != delim)
                     } else {
-                        let line = bytes.buffers(range).try_to_string().unwrap();
+                        let line = bytes.slices(range).try_to_string().unwrap();
                         line.split_whitespace().any(|w| w != delim)
                     };
 
@@ -674,7 +674,7 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
 
     fn text(&mut self, node: tree_sitter::Node) -> Self::I {
         let range = node.range();
-        let buffers = self.0.buffers(range.start_byte..range.end_byte);
+        let buffers = self.0.slices(range.start_byte..range.end_byte);
         buffers.to_array().into_iter()
     }
 }
@@ -691,7 +691,7 @@ struct Queries<'a> {
 enum ParserState {
     Present(InnerTsParser),
     Remote(std::thread::JoinHandle<RemoteResult>),
-    NotSet(FileTracker),
+    NotSet(BufferTracker),
 }
 
 impl ParserState {
@@ -725,7 +725,7 @@ fn descendant_in(node: Node, byte: usize) -> Node {
 }
 
 fn parser_fn<'a>(bytes: &'a Bytes) -> impl FnMut(usize, TsPoint) -> &'a [u8] {
-    let [s0, s1] = bytes.buffers(..).to_array();
+    let [s0, s1] = bytes.slices(..).to_array();
     |byte, _point| {
         if byte < s0.len() {
             &s0[byte..]
@@ -736,7 +736,7 @@ fn parser_fn<'a>(bytes: &'a Bytes) -> impl FnMut(usize, TsPoint) -> &'a [u8] {
 }
 
 fn ts_point(point: Point, buffer: &Bytes) -> TsPoint {
-    let strs = buffer.buffers(..point.byte());
+    let strs = buffer.slices(..point.byte());
     let iter = strs.into_iter().rev();
     let col = iter.take_while(|&b| b != b'\n').count();
 
@@ -897,8 +897,8 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
     })
 }
 
-/// Convenience methods for use of tree-sitter in [`File`]s
-pub trait TsFile {
+/// Convenience methods for use of tree-sitter in [`Buffer`]s
+pub trait TsBuffer {
     /// The level of indentation required at a certain [`Point`]
     ///
     /// This is determined by a query, currently, it is the query
@@ -907,7 +907,7 @@ pub trait TsFile {
     fn ts_indent_on(&self, p: Point) -> Option<usize>;
 }
 
-impl TsFile for File {
+impl TsBuffer for Buffer {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
         self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.get_print_cfg()))
             .flatten()
@@ -938,7 +938,7 @@ pub trait TsCursor {
     fn ts_reindent(&mut self);
 }
 
-impl<S> TsCursor for Cursor<'_, File, S> {
+impl<S> TsCursor for Cursor<'_, Buffer, S> {
     fn ts_indent(&self) -> Option<usize> {
         self.ts_indent_on(self.caret())
     }
@@ -951,10 +951,10 @@ impl<S> TsCursor for Cursor<'_, File, S> {
     }
 
     fn ts_reindent(&mut self) {
-        fn prev_non_empty_line_points<S>(c: &mut Cursor<File, S>) -> Option<[Point; 2]> {
+        fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<[Point; 2]> {
             let byte_col = c
                 .text()
-                .buffers(..c.caret().byte())
+                .slices(..c.caret().byte())
                 .take_while(|b| *b != b'\n')
                 .count();
             let mut lines = c.lines_on(..c.caret().byte() - byte_col);
@@ -1116,7 +1116,7 @@ fn highlight_and_inject(
                 let cap = qm.captures.iter().find(is_language)?;
                 Some(
                     bytes
-                        .buffers(cap.node.byte_range())
+                        .slices(cap.node.byte_range())
                         .try_to_string()
                         .unwrap(),
                 )
@@ -1235,4 +1235,4 @@ fn refactor_injections(
     ranges.merge(inj_ranges);
 }
 
-type RemoteResult = Result<InnerTsParser, FileTracker>;
+type RemoteResult = Result<InnerTsParser, BufferTracker>;
