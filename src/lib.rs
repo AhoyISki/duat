@@ -15,7 +15,7 @@ use std::ops::Range;
 use duat::prelude::*;
 use gapbuf::GapBuffer;
 
-/// [`Plugin`]: Adds a [`Jumps`] parser to every [`File`]
+/// [`Plugin`]: Adds a [`Jumps`] parser to every [`Buffer`]
 ///
 /// This [`Jumps`] parser can be used to retrieve previous
 /// [`Selections`] values, "jumping" around in the history.
@@ -24,7 +24,7 @@ pub struct JumpList;
 
 impl Plugin for JumpList {
     fn plug(self, _: &Plugins) {
-        hook::add::<File>(|pa, handle| handle.add_parser(pa, Jumps::new));
+        hook::add::<Buffer>(|pa, handle| handle.add_parser(pa, Jumps::new));
     }
 }
 
@@ -64,12 +64,12 @@ impl Jump {
 #[derive(Debug)]
 struct Jumps {
     list: GapBuffer<Saved>,
-    tracker: FileTracker,
+    tracker: BufferTracker,
     cur: usize,
 }
 
 impl Jumps {
-    fn new(tracker: FileTracker) -> Self {
+    fn new(tracker: BufferTracker) -> Self {
         Self { list: GapBuffer::new(), tracker, cur: 0 }
     }
 }
@@ -134,8 +134,8 @@ enum Saved {
 ///
 /// [`Selections`]: duat_core::mode::Selections
 /// [`Change`]: duat_core::text::Change
-pub trait FileJumps {
-    /// Record the [`File`]'s [`Selections`]
+pub trait BufferJumps {
+    /// Record the [`Buffer`]'s [`Selections`]
     ///
     /// If `allow_duplicates` is set to `false`, then the selections
     /// will not be recorded if that would mean two identical jumps in
@@ -171,7 +171,7 @@ pub trait FileJumps {
     fn jump_to_selections(&mut self, n: usize) -> Option<Jump>;
 }
 
-impl FileJumps for File {
+impl BufferJumps for Buffer {
     fn record_selections(&mut self, allow_duplicates: bool) -> bool {
         self.write_parser(|jumps: &mut Jumps| {
             let selections = self.selections();
