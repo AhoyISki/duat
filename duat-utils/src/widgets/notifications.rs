@@ -7,10 +7,14 @@
 //!
 //! [`PromptLine`]: super::PromptLine
 //! [hook]: hooks
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Once,
+    atomic::{AtomicBool, Ordering},
+};
 
 use duat_core::{
     context::{Level, Record},
+    hook::KeysSent,
     prelude::*,
     ui::{PushTarget, Side},
 };
@@ -65,6 +69,13 @@ impl Notifications {
     /// Returns a [`NotificationsBuilder`], which can be used to push
     /// `Notifications` around
     pub fn builder() -> NotificationsBuilder {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            hook::add::<KeysSent>(|_, _| {
+                CLEAR_NOTIFS.store(true, Ordering::Relaxed);
+                Ok(())
+            });
+        });
         NotificationsBuilder::default()
     }
 }
