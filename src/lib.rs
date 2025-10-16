@@ -166,7 +166,7 @@ impl Plugin for MatchPairs {
     fn plug(self, plugins: &Plugins) {
         plugins.require::<duat_treesitter::TreeSitter>();
 
-        hook::add::<File>(move |pa, handle| {
+        hook::add::<Buffer>(move |pa, handle| {
             let mut match_pairs = self.clone();
 
             let file = handle.write(pa);
@@ -190,7 +190,7 @@ impl Plugin for MatchPairs {
 struct MatchPairsParser(MatchPairs);
 
 impl Parser for MatchPairsParser {
-    fn update(&mut self, pa: &mut Pass, handle: &Handle<File>, on: Vec<Range<Point>>) {
+    fn update(&mut self, pa: &mut Pass, handle: &Handle, on: Vec<Range<Point>>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
         }
@@ -208,7 +208,7 @@ impl Parser for MatchPairsParser {
             .collect();
 
         'selections: for (range, is_main) in selections {
-            let str: Vec<u8> = file.bytes().buffers(range.clone()).collect();
+            let str: Vec<u8> = file.bytes().slices(range.clone()).collect();
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.0.ts_and_reg.iter().position(ends(&str)) {
