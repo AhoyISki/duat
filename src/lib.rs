@@ -546,9 +546,9 @@ impl<'a> Object<'a> {
         }
     }
 
-    fn find_ahead<S>(
+    fn find_ahead(
         self,
-        c: &mut Cursor<Buffer, S>,
+        c: &mut Cursor,
         s_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
@@ -577,9 +577,9 @@ impl<'a> Object<'a> {
         }
     }
 
-    fn find_behind<S>(
+    fn find_behind(
         self,
-        c: &mut Cursor<Buffer, S>,
+        c: &mut Cursor,
         c_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
