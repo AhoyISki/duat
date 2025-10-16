@@ -10,6 +10,7 @@ pub struct LogBook {
     len_of_taken: usize,
     text: Text,
     fmt: Box<dyn FnMut(Record) -> Option<Text> + Send>,
+    has_updated_once: bool,
     /// Wether to close this [`Widget`] after unfocusing, `true` by
     /// default
     pub close_on_unfocus: bool,
@@ -34,6 +35,7 @@ impl Widget for LogBook {
         Self: Sized,
     {
         let (lb, area) = handle.write_with_area(pa);
+
         let Some(new_records) = lb.logs.get(lb.len_of_taken..) else {
             return;
         };
@@ -45,8 +47,11 @@ impl Widget for LogBook {
             lb.text.insert_text(lb.text.len(), rec_text);
         }
 
-        if records_were_added {
-            area.scroll_to_points(&lb.text, lb.text.len_points(), lb.get_print_cfg());
+        if !lb.has_updated_once && area.width() > 0.0 {
+            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_cfg());
+            lb.has_updated_once = true;
+        } else if records_were_added {
+            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_cfg());
         }
     }
 
@@ -109,6 +114,7 @@ impl LogBookBuilder {
             logs,
             len_of_taken,
             text,
+            has_updated_once: false,
             fmt: self.fmt,
             close_on_unfocus: self.close_on_unfocus,
         };
