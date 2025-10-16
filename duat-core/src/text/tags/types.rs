@@ -129,8 +129,6 @@ simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
 
 /////////// Alignment Tags
 
-/// [`Builder`] part: Begins centered alignment
-///
 /// [`Tag`]: Aligns the [`Text`] on the center in a [range]
 ///
 /// [`Builder`]: crate::text::Builder
@@ -143,8 +141,6 @@ ranged_impl_tag!(
     RawTag::EndAlignCenter
 );
 
-/// [`Builder`] part: Begins alignment on the right
-///
 /// [`Tag`]: Aligns the [`Text`] on the right in a [range]
 ///
 /// [`Builder`]: crate::text::Builder
@@ -166,7 +162,7 @@ ranged_impl_tag!(AlignRight, RawTag::StartAlignRight, RawTag::EndAlignRight);
 #[derive(Debug, Clone, Copy)]
 pub struct AlignLeft;
 
-/// [`Builder`] part and [`Tag`]: A spacer for more advanced alignment
+/// [`Tag`]: A spacer for more advanced alignment
 ///
 /// When printing this screen line (one row on screen, i.e. until
 /// it wraps), Instead of following the current alignment, will

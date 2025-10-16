@@ -376,9 +376,6 @@ impl ui::traits::Area for Area {
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        if coords.height() > 35 && coords.width() > 100 {
-            context::debug!("scroll_around_points: {info:#?}");
-        }
         info.scroll_ver(by, coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
     }
@@ -392,9 +389,6 @@ impl ui::traits::Area for Area {
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        if coords.height() > 35 && coords.width() > 100 {
-            context::debug!("scroll_around_points: {info:#?}");
-        }
         info.scroll_around(p.0, coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
     }
@@ -406,9 +400,6 @@ impl ui::traits::Area for Area {
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        if coords.height() > 35 && coords.width() > 100 {
-            context::debug!("scroll_to_points: {info:#?}");
-        }
         info.scroll_to_points(points, coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
     }
@@ -502,7 +493,6 @@ impl ui::traits::Area for Area {
 
     fn cache(&self) -> Option<Self::Cache> {
         let info = self.layouts.get_info_of(self.id)?.for_caching();
-        context::debug!("for caching: {info:#?}");
         Some(info)
     }
 
@@ -527,9 +517,6 @@ impl ui::traits::Area for Area {
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        if coords.height() > 35 && coords.width() > 100 {
-            context::debug!("start_points: {info:#?}");
-        }
         let start_points = info.start_points(coords, text, cfg);
         self.layouts.set_info_of(self.id, info);
 
