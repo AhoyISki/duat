@@ -67,7 +67,7 @@ mod selections;
 /// [`replace`]: Cursor::replace
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
-pub struct Cursor<'a, W: Widget + ?Sized, S> {
+pub struct Cursor<'a, W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
     initial: Selection,
     selection: Selection,
     n: usize,
