@@ -428,7 +428,7 @@ impl Bytes {
             .chars_fwd(start..)
             .unwrap()
             .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
-            .unwrap_or(start);
+            .unwrap_or(self.len());
         [start, end]
     }
 
