@@ -81,7 +81,7 @@ impl Mode for Insert {
                     c.insert('\t');
                     c.move_hor(1);
                 } else {
-                    let tab_len = c.cfg().tab_stops.spaces_at(c.v_caret().visual_col() as u32);
+                    let tab_len = c.opts().tabstop_spaces_at(c.v_caret().visual_col() as u32);
                     c.insert(" ".repeat(tab_len as usize));
                     c.move_hor(tab_len as i32);
                 }

@@ -265,7 +265,7 @@
 //! Go to the previous [`Buffer`] (includes other windows).
 //!
 //! [kakoune]: https://github.com/mawww/kakoune
-//! [word chars]: duat_core::cfg::word_chars
+//! [word chars]: duat_core::opts::word_chars
 //! [caret]: duat_core::mode::Cursor::caret
 //! [anchor]: duat_core::mode::Cursor::anchor
 //! [`Cursor`]: duat_core::mode::Cursor

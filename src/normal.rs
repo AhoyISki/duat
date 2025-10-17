@@ -91,7 +91,7 @@ impl Mode for Normal {
     type Widget = Buffer;
 
     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
-        let wc = handle.cfg(pa).word_chars;
+        let wc = handle.opts(pa).word_chars;
 
         handle.write(pa).text_mut().new_moment();
         let rec = if handle.write(pa).record_selections(false) {
@@ -296,7 +296,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(event, c.cfg().word_chars, self.brackets).unwrap();
+                    let object = Object::new(event, c.opts().word_chars, self.brackets).unwrap();
                     let [p2, p3] = object.find_ahead(c, 0, None)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(event.code == Char('M'), c);
@@ -325,7 +325,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(event, c.cfg().word_chars, self.brackets).unwrap();
+                    let object = Object::new(event, c.opts().word_chars, self.brackets).unwrap();
                     let [p0, p1] = object.find_behind(c, 0, None)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(event.code == Char('M'), c);
@@ -533,7 +533,7 @@ impl Mode for Normal {
                     let insert = if INSERT_TABS.load(Ordering::Relaxed) {
                         "\t".to_string()
                     } else {
-                        " ".repeat(c.cfg().tab_stops.spaces_at(0) as usize)
+                        " ".repeat(c.opts().tabstop_spaces_at(0) as usize)
                     };
 
                     for line in range[0].line()..=range[1].line() {
@@ -564,7 +564,7 @@ impl Mode for Normal {
 
                     c.unset_anchor();
 
-                    let find = format!("^(\t| {{1,{}}})", c.cfg().tab_stops.spaces_at(0) as usize);
+                    let find = format!("^(\t| {{1,{}}})", c.opts().tabstop_spaces_at(0) as usize);
 
                     for line in (range[0].line()..=range[1].line()).rev() {
                         if processed_lines.contains(&line) {

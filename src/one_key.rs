@@ -165,7 +165,7 @@ fn match_inside_around(
         return;
     };
 
-    let wc = handle.cfg(pa).word_chars;
+    let wc = handle.opts(pa).word_chars;
     let initial_cursors_len = handle.selections(pa).len();
 
     let mut failed = false;
