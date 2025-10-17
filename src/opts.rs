@@ -29,18 +29,21 @@
 //! [`opts::set_prompt`]: set_prompt
 //! [`opts::set_notifs`]: set_notifs
 //! [`opts::set_logs`]: set_logs
-use std::sync::RwLock;
+use std::sync::{LazyLock, Mutex};
 
+use duat_core::data::Pass;
 #[allow(unused_imports)]
 pub use duat_core::opts::word_chars as w_chars;
 pub use duat_core::opts::*;
-use duat_utils::widgets::LineNumbersOpts;
+use duat_utils::widgets::{LineNumbersOpts, StatusLineFmt};
 
 /// Options for the [`Buffer`]
 ///
 /// [`Buffer`]: crate::widgets::Buffer
-pub(crate) static BUFFER_OPTS: RwLock<PrintOpts> = RwLock::new(PrintOpts::default_for_input());
-pub(crate) static LINENUMBERS_OPTS: RwLock<LineNumbersOpts> = RwLock::new(LineNumbersOpts { .. });
+pub(crate) static BUFFER_OPTS: Mutex<PrintOpts> = Mutex::new(PrintOpts::default_for_input());
+pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts { .. });
+pub(crate) static STATUSLINE_FMT: LazyLock<StatusLineFn> =
+    LazyLock::new(|| Mutex::new(Box::new(|_| StatusLineFmt::default())));
 
 /// Change the global [`PrintOpts`] for [`Buffer`]s
 ///
@@ -128,7 +131,7 @@ pub(crate) static LINENUMBERS_OPTS: RwLock<LineNumbersOpts> = RwLock::new(LineNu
 /// [`word_chars!("A-Za-z0-9_-_")`]: word_chars
 /// [hooks]: crate::hook
 pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
-    set_fn(&mut BUFFER_OPTS.write().unwrap())
+    set_fn(&mut BUFFER_OPTS.lock().unwrap())
 }
 
 /// Change the global [`PrintOpts`] for [`LineNumber`]s
@@ -180,7 +183,7 @@ pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
 ///
 ///     handle.write(pa).relative = match filetype {
 ///         Some("cpp" | "rust") => true,
-///         _ => false
+///         _ => false,
 ///     };
 ///     Ok(())
 /// });
@@ -190,8 +193,37 @@ pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
 /// [`LineNumber`]: crate::widgets::LineNumbers
 /// [hooks]: crate::hook
 pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
-    set_fn(&mut LINENUMBERS_OPTS.write().unwrap())
+    set_fn(&mut LINENUMBERS_OPTS.lock().unwrap())
 }
 
-pub fn set_status(set_fn: impl FnOnce(&mut StatusLineOpts)) {
+/// Reformat the [`StatusLine`] using the [`status!`] macro
+///
+/// The `status!` macro is very convenient for showing information
+/// about Duat, but most importantly to show information about [`Buffer`]s.
+///
+/// Here's the default configuration for the `StatusLIne`:
+///
+/// ```rust
+/// # use duat::prelude::*;
+/// 
+/// status!("{
+/// ```
+///
+/// - If there is one `StatusLine` per `Buffer`, the most relevant
+///   `Buffer` is the one each `StatusLine` is attached to.
+/// - If there is only one `StatusLine` per window, the most relevant
+///   `Buffer` is the active one.
+/// 
+///
+/// Here's what the regular [`StatusLine`] looks like:
+///
+/// 
+///
+/// [`StatusLine`]: crate::widgets::StatusLine
+/// [`status!`]: crate::widgets::status
+/// [`Buffer`]: crate::widgets::Buffer
+pub fn set_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
+    *STATUSLINE_FMT.lock().unwrap() = Box::new(set_fn);
 }
+
+type StatusLineFn = Mutex<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>;

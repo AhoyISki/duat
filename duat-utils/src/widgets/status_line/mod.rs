@@ -18,7 +18,7 @@ mod state;
 
 use duat_core::{
     context::{self, DynBuffer, Handle},
-    data::{DataMap, Pass},
+    data::Pass,
     text::{AlignRight, Builder, Spacer, Text},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
@@ -97,13 +97,11 @@ pub struct StatusLine {
 }
 
 impl StatusLine {
-    fn new(builder: StatusLineOpts, buffer_handle: BufferHandle) -> Self {
+    fn new(builder: StatusLineFmt, buffer_handle: BufferHandle) -> Self {
         let (builder_fn, checker) = if let Some((builder, checker)) = builder.fns {
             (builder, checker)
         } else {
-            let Some(mode_txt) = builder.mode_txt else {
-                unreachable!("mode_txt not xor with the default config");
-            };
+            let mode_txt = mode_txt();
 
             let opts = match builder.specs.side {
                 Side::Above | Side::Below => {
@@ -130,23 +128,19 @@ impl StatusLine {
     }
 
     /// Replaces this `StatusLine` with a new one
-    pub fn fmt(&mut self, new: StatusLineOpts) {
+    pub fn fmt(&mut self, new: StatusLineFmt) {
         let handle = self.buffer_handle.clone();
         *self = StatusLine::new(new, handle);
     }
 
-    /// Returns a [`StatusLineOpts`], which can be used to push
+    /// Returns a [`StatusLineFmt`], which can be used to push
     /// around `StatusLine`s
     ///
     /// The same can be done more conveniently with the [`status!`]
     /// macro, which is imported by default in the configuration
     /// crate.
-    pub fn builder(pa: &Pass) -> StatusLineOpts {
-        StatusLineOpts {
-            mode_txt: Some(mode_txt(pa)),
-            fns: None,
-            ..
-        }
+    pub fn builder() -> StatusLineFmt {
+        StatusLineFmt { fns: None, .. }
     }
 }
 
@@ -190,19 +184,21 @@ impl Widget for StatusLine {
 }
 
 /// The [`WidgetCfg`] for a [`StatusLine`]
-pub struct StatusLineOpts {
-    mode_txt: Option<DataMap<&'static str, Text>>,
+#[derive(Default)]
+pub struct StatusLineFmt {
     fns: Option<(BuilderFn, CheckerFn)>,
     specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
 }
 
-impl StatusLineOpts {
+impl StatusLineFmt {
     /// Push the [`StatusLine`]
     ///
     /// If the handle's [`Widget`] is a [`Buffer`], then this
     /// `StatusLine` will refer to it when printing information about
     /// `Buffer`s. Otherwise, the `StatusLine` will print information
     /// about the currently active `Buffer`.
+    ///
+    /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<StatusLine> {
         let specs = self.specs;
         let status_line = StatusLine::new(self, match push_target.try_downcast() {
@@ -213,9 +209,11 @@ impl StatusLineOpts {
         push_target.push_outer(pa, status_line, specs)
     }
 
+    /// Returns a new `StatusLineFmt`, meant to be called only be the
+    /// [`status!`] macro
     #[doc(hidden)]
     pub fn new_with(fns: (BuilderFn, CheckerFn)) -> Self {
-        Self { mode_txt: None, fns: Some(fns), .. }
+        Self { fns: Some(fns), .. }
     }
 
     /// Puts the [`StatusLine`] above, as opposed to below
@@ -410,7 +408,7 @@ mod macros {
                 duat_core::{context::Handle, data::Pass, buffer::Buffer, ui::PushSpecs, text::Builder},
                 format_like, parse_form, parse_status_part, parse_str
             },
-            widgets::StatusLineOpts,
+            widgets::StatusLineFmt,
         };
 
         let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<Buffer>| {};
@@ -423,7 +421,7 @@ mod macros {
             $($parts)*
         );
 
-        StatusLineOpts::new_with(
+        StatusLineFmt::new_with(
             (
                 Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<Buffer>| {
                     text_fn(pa, &mut builder, &handle);

@@ -267,6 +267,10 @@ mod private_exports {
     pub use duat_core;
     pub use format_like::format_like;
 
+    impl crate::widgets::StatusLineFmt {
+        
+    }
+
     pub macro parse_str($appender_checker:expr, $str:literal) {{
         use crate::{
             private_exports::duat_core::{

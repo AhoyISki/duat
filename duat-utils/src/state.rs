@@ -17,7 +17,7 @@ use std::sync::LazyLock;
 use duat_core::{
     buffer::Buffer,
     context,
-    data::{DataMap, Pass, RwData},
+    data::{DataMap, RwData},
     hook::{self, KeysSent},
     mode::{self, KeyEvent},
     text::{Text, txt},
@@ -141,8 +141,8 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [mode]: duat_core::mode::Mode
 /// [`IncSearch`]: crate::modes::IncSearch
-pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
-    context::mode_name(pa)
+pub fn mode_name() -> DataMap<&'static str, &'static str> {
+    context::mode_name()
 }
 
 /// [`StatusLine`] part: The active mode of Duat, formatted
@@ -154,8 +154,8 @@ pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn mode_txt(pa: &Pass) -> DataMap<&'static str, Text> {
-    context::mode_name(pa).map(pa, |mode| {
+pub fn mode_txt() -> DataMap<&'static str, Text> {
+    context::mode_name().map(|mode| {
         let mode = mode.to_lowercase();
         let mode = match mode.split_once('<') {
             Some((mode, _)) => mode,
@@ -265,8 +265,8 @@ pub fn sels_txt(buffer: &Buffer) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [keys]: KeyEvent
-pub fn cur_map_txt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
-    mode::cur_sequence(pa).map(pa, |(keys, is_alias)| {
+pub fn cur_map_txt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
+    mode::cur_sequence().map(|(keys, is_alias)| {
         if is_alias {
             Text::default()
         } else {

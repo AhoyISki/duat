@@ -28,7 +28,7 @@ mod global {
         text::{Builder, Text, txt},
     };
 
-    static REMAPPER: MainThreadOnly<Remapper> = MainThreadOnly::new(Remapper::new());
+    static REMAPPER: Remapper = Remapper::new();
     static SEND_KEY: LazyLock<MainThreadOnly<RefCell<fn(&mut Pass, KeyEvent)>>> =
         LazyLock::new(|| MainThreadOnly::new(RefCell::new(|_, _| {})));
 
@@ -71,8 +71,7 @@ mod global {
     pub fn map<M: Mode>(take: &str, give: impl AsGives) {
         let keys = str_to_keys(take);
         crate::context::queue(move |_| {
-            let remapper = unsafe { REMAPPER.get() };
-            remapper.remap::<M>(keys, give.into_gives(), false);
+            REMAPPER.remap::<M>(keys, give.into_gives(), false);
         });
     }
 
@@ -102,15 +101,13 @@ mod global {
     pub fn alias<M: Mode>(take: &str, give: impl AsGives) {
         let keys = str_to_keys(take);
         crate::context::queue(move |_| {
-            let remapper = unsafe { REMAPPER.get() };
-            remapper.remap::<M>(keys, give.into_gives(), true);
+            REMAPPER.remap::<M>(keys, give.into_gives(), true);
         });
     }
 
     /// The current sequence of [`KeyEvent`]s being mapped
-    pub fn cur_sequence(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
-        let remapper = unsafe { REMAPPER.get() };
-        remapper.cur_seq.map(pa, |seq| seq.clone())
+    pub fn cur_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
+        REMAPPER.cur_seq.map(|seq| seq.clone())
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
@@ -383,7 +380,7 @@ mod global {
     /// The key sending function, to be used as a pointer
     fn send_key_fn<M: Mode>(pa: &mut Pass, key: KeyEvent) {
         // SAFETY: This function takes a Pass.
-        unsafe { REMAPPER.get() }.send_key::<M>(pa, key);
+        REMAPPER.send_key::<M>(pa, key);
     }
 }
 
@@ -520,7 +517,7 @@ impl Remap {
 #[doc(hidden)]
 pub enum Gives {
     Taggers(Vec<KeyEvent>),
-    Mode(Box<dyn Fn()>),
+    Mode(Box<dyn Fn() + Send>),
 }
 
 fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {

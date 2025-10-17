@@ -23,7 +23,7 @@ pub use self::{
     log_book::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
     prompt_line::{PromptLine, PromptLineBuilder},
-    status_line::{State, StatusLine, StatusLineOpts, status},
+    status_line::{State, StatusLine, StatusLineFmt, status},
 };
 use crate::modes::Prompt;
 
@@ -78,7 +78,7 @@ mod status_line;
 /// [`notifs`]: FooterWidgets::notifs
 /// [`above`]: FooterWidgets::above
 pub struct FooterWidgets {
-    status: StatusLineOpts,
+    status: StatusLineFmt,
     prompt: PromptLineBuilder,
     notifs: NotificationsOpts,
     one_line: bool,
@@ -86,17 +86,6 @@ pub struct FooterWidgets {
 }
 
 impl FooterWidgets {
-    /// Returns a new default intance of `FooterWidgets`
-    pub fn default(pa: &Pass) -> Self {
-        Self {
-            status: StatusLine::builder(pa),
-            prompt: PromptLine::builder(),
-            notifs: Notifications::builder(),
-            one_line: false,
-            above: false,
-        }
-    }
-
     /// Adds footer [`Widget`]s
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) {
         let prompt_line = if self.above {
@@ -168,7 +157,7 @@ impl FooterWidgets {
     ///
     /// [`prompt`]: FooterWidgets::prompt
     /// [`notifs`]: FooterWidgets::notifs
-    pub fn new(status_cfg: StatusLineOpts) -> Self {
+    pub fn new(status_cfg: StatusLineFmt) -> Self {
         Self {
             status: status_cfg,
             prompt: PromptLine::builder(),
@@ -197,5 +186,17 @@ impl FooterWidgets {
     /// Sets the [`Notifications`] to be used
     pub fn notifs(self, notifs: NotificationsOpts) -> Self {
         Self { notifs, ..self }
+    }
+}
+
+impl Default for FooterWidgets {
+    fn default() -> Self {
+        Self {
+            status: StatusLine::builder(),
+            prompt: PromptLine::builder(),
+            notifs: Notifications::builder(),
+            one_line: false,
+            above: false,
+        }
     }
 }

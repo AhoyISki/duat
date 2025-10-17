@@ -288,11 +288,7 @@ impl<T: ?Sized> RwData<T> {
     /// This function will return a struct that acts like a "read
     /// only" version of [`RwData`], which also maps the value to
     /// a return type.
-    pub fn map<Ret: 'static>(
-        &self,
-        _: &Pass,
-        map: impl FnMut(&T) -> Ret + 'static,
-    ) -> DataMap<T, Ret> {
+    pub fn map<Ret: 'static>(&self, map: impl FnMut(&T) -> Ret + 'static) -> DataMap<T, Ret> {
         let RwData { value, cur_state, .. } = self.clone();
         let data = RwData {
             value,
@@ -434,9 +430,8 @@ pub struct DataMap<I: ?Sized + 'static, O: 'static> {
 
 impl<I: ?Sized, O> DataMap<I, O> {
     /// Maps the value within, works just like [`RwData::map`]
-    pub fn map<O2>(self, pa: &Pass, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
-        self.data
-            .map(pa, move |input| f(self.map.borrow_mut()(input)))
+    pub fn map<O2>(self, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
+        self.data.map(move |input| f(self.map.borrow_mut()(input)))
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the

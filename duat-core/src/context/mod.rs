@@ -149,8 +149,8 @@ mod global {
     /// name.
     ///
     /// [`Mode`]: crate::mode::Mode
-    pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
-        MODE_NAME.map(pa, |name| *name)
+    pub fn mode_name() -> DataMap<&'static str, &'static str> {
+        MODE_NAME.map(|name| *name)
     }
 
     // pub(crate) in order to keep just the DataMap one public

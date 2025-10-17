@@ -33,8 +33,8 @@ use crate::{
     form,
     hook::{self, BufferClosed, BufferReloaded, WindowCreated},
     mode,
-    opts::BUFFER_OPTS,
-    prelude::{BufferWritten, LineNumbers},
+    opts::{BUFFER_OPTS, LINENUMBERS_OPTS},
+    prelude::BufferWritten,
     widgets::Buffer,
 };
 
@@ -63,12 +63,12 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
     hook::add_grouped::<Buffer>("BufferWidgets", |pa, handle| {
         VertRule::builder().push_on(pa, handle);
-        LineNumbers::builder().push_on(pa, handle);
+        LINENUMBERS_OPTS.lock().unwrap().push_on(pa, handle);
         Ok(())
     });
 
     hook::add_grouped::<WindowCreated>("FooterWidgets", |pa, builder| {
-        FooterWidgets::default(pa).push_on(pa, builder);
+        FooterWidgets::default().push_on(pa, builder);
         Ok(())
     });
 
@@ -192,7 +192,7 @@ pub fn run_duat(
 
     ui.load();
 
-    let opts = SessionCfg::new(clipb, *BUFFER_OPTS.read().unwrap());
+    let opts = SessionCfg::new(clipb, *BUFFER_OPTS.lock().unwrap());
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
     std::panic::abort_unwind(|| {
