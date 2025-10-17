@@ -15,7 +15,7 @@ use crate::{
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     opts::PrintOpts,
-    text::{Point, Searcher, Text, TextParts, TwoPoints},
+    text::{Point, Searcher, Text, TextParts, TwoPoints, txt},
     ui::{Area, PushSpecs, SpawnSpecs, Widget, traits},
 };
 
@@ -581,6 +581,40 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// The [`Widget`]'s [`PrintOpts`]
     pub fn opts(&self, pa: &Pass) -> PrintOpts {
         self.widget.read(pa).get_print_opts()
+    }
+
+    ////////// Related Handles
+
+    /// Returns the [`Handle`] this one was pushed to, if it was
+    /// pushed to another
+    ///
+    /// Will return [`Some`] if this `self` was created by calling
+    /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
+    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
+    /// on the master's [`Text`]
+    ///
+    /// [spawned]: crate::text::SpawnTag
+    pub fn master(&self) -> Result<&Handle<dyn Widget>, Text> {
+        self.master
+            .as_ref()
+            .map(|handle| handle.as_ref())
+            .ok_or_else(|| txt!("Widget was not pushed to another").build())
+    }
+
+    /// Returns the [`Handle<Buffer>`] this one was pushed to, if it
+    /// was pushed to one
+    ///
+    /// Will return [`Some`] if this `self` was created by calling
+    /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
+    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
+    /// on the master's [`Text`]
+    ///
+    /// [spawned]: crate::text::SpawnTag
+    pub fn buffer(&self) -> Result<Handle, Text> {
+        self.master
+            .as_ref()
+            .and_then(|handle| handle.try_downcast())
+            .ok_or_else(|| txt!("Widget was not pushed to a [a]Buffer").build())
     }
 
     /// Reads related [`Widget`]s of type `W2`, as well as it s

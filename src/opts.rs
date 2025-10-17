@@ -176,18 +176,12 @@ pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
 /// use duat::prelude::*;
 ///
 /// hook::add::<LineNumbers>(|pa, handle| {
-///     let buffer = handle.write(pa);
+///     let filetype = handle.buffer()?.filetype(pa);
 ///
-///     match buffer.filetype() {
-///         Some("lua" | "c" | "javascript") => {
-///             buffer.opts.tabstop = 2;
-///         }
-///         Some("markdown") => {
-///             buffer.opts.word_chars = word_chars!("A-Za-z0-9_-_---");
-///             buffer.opts.wrap_method = WrapMethod::Word;
-///         }
-///         _ => {}
-///     }
+///     handle.write(pa).relative = match filetype {
+///         Some("cpp" | "rust") => true,
+///         _ => false
+///     };
 ///     Ok(())
 /// });
 /// ```
@@ -197,4 +191,7 @@ pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
 /// [hooks]: crate::hook
 pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
     set_fn(&mut LINENUMBERS_OPTS.write().unwrap())
+}
+
+pub fn set_status(set_fn: impl FnOnce(&mut StatusLineOpts)) {
 }

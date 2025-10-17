@@ -26,8 +26,8 @@ impl LogBook {
 
     /// Returns a [`LogBookBuilder`], so you can push `LogBook`s
     /// around
-    pub fn builder() -> LogBookBuilder {
-        LogBookBuilder::default()
+    pub fn builder() -> LogBookOpts {
+        LogBookOpts::default()
     }
 }
 
@@ -84,7 +84,7 @@ impl Widget for LogBook {
 }
 
 /// Configuration for the [`LogBook`]
-pub struct LogBookBuilder {
+pub struct LogBookOpts {
     fmt: Box<dyn FnMut(Record) -> Option<Text> + Send>,
     /// Wether to close the `LogBook` when unfocusing
     pub close_on_unfocus: bool = true,
@@ -98,7 +98,7 @@ pub struct LogBookBuilder {
     pub width: f32 = 50.0,
 }
 
-impl LogBookBuilder {
+impl LogBookOpts {
     /// Push a [`LogBook`] around the given [`PushTarget`]
     pub fn push_on(mut self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<LogBook> {
         let logs = context::logs();
@@ -149,7 +149,7 @@ impl LogBookBuilder {
     }
 }
 
-impl Default for LogBookBuilder {
+impl Default for LogBookOpts {
     fn default() -> Self {
         fn default_fmt(rec: Record) -> Option<Text> {
             use duat_core::context::Level::*;

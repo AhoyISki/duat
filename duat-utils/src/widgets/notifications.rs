@@ -69,7 +69,7 @@ static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
 impl Notifications {
     /// Returns a [`NotificationsBuilder`], which can be used to push
     /// `Notifications` around
-    pub fn builder() -> NotificationsBuilder {
+    pub fn builder() -> NotificationsOpts {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
             hook::add::<KeysSent>(|_, _| {
@@ -77,7 +77,7 @@ impl Notifications {
                 Ok(())
             });
         });
-        NotificationsBuilder::default()
+        NotificationsOpts::default()
     }
 }
 
@@ -140,14 +140,14 @@ impl Widget for Notifications {
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
-pub struct NotificationsBuilder {
+pub struct NotificationsOpts {
     fmt: Box<dyn FnMut(Record) -> Text + Send>,
     get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
     allowed_levels: Vec<Level>,
     request_width: bool,
 }
 
-impl NotificationsBuilder {
+impl NotificationsOpts {
     /// Pushes the [`Notifications`] to another [`Widget`]
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<Notifications> {
         let notifications = Notifications {
@@ -200,7 +200,7 @@ impl NotificationsBuilder {
     }
 }
 
-impl Default for NotificationsBuilder {
+impl Default for NotificationsOpts {
     fn default() -> Self {
         fn default_fmt(rec: Record) -> Text {
             txt!(

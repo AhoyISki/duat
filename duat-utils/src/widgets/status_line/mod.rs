@@ -90,14 +90,14 @@ use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 /// [`Notifications`]: super::Notifications
 /// [`FooterWidgets`]: super::FooterWidgets
 pub struct StatusLine {
-    file_handle: BufferHandle,
+    buffer_handle: BufferHandle,
     text_fn: TextFn,
     text: Text,
     checker: Box<dyn Fn(&Pass) -> bool + Send>,
 }
 
 impl StatusLine {
-    fn new(builder: StatusLineBuilder, file_handle: BufferHandle) -> Self {
+    fn new(builder: StatusLineOpts, buffer_handle: BufferHandle) -> Self {
         let (builder_fn, checker) = if let Some((builder, checker)) = builder.fns {
             (builder, checker)
         } else {
@@ -119,7 +119,7 @@ impl StatusLine {
         };
 
         Self {
-            file_handle,
+            buffer_handle,
             text_fn: Box::new(move |pa, fh| {
                 let builder = Text::builder();
                 builder_fn(pa, builder, fh)
@@ -130,19 +130,19 @@ impl StatusLine {
     }
 
     /// Replaces this `StatusLine` with a new one
-    pub fn fmt(&mut self, new: StatusLineBuilder) {
-        let handle = self.file_handle.clone();
+    pub fn fmt(&mut self, new: StatusLineOpts) {
+        let handle = self.buffer_handle.clone();
         *self = StatusLine::new(new, handle);
     }
 
-    /// Returns a [`StatusLineBuilder`], which can be used to push
+    /// Returns a [`StatusLineOpts`], which can be used to push
     /// around `StatusLine`s
     ///
     /// The same can be done more conveniently with the [`status!`]
     /// macro, which is imported by default in the configuration
     /// crate.
-    pub fn builder(pa: &Pass) -> StatusLineBuilder {
-        StatusLineBuilder {
+    pub fn builder(pa: &Pass) -> StatusLineOpts {
+        StatusLineOpts {
             mode_txt: Some(mode_txt(pa)),
             fns: None,
             ..
@@ -152,26 +152,26 @@ impl StatusLine {
 
 impl Widget for StatusLine {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        if let BufferHandle::Dynamic(dyn_file) = &mut handle.write(pa).file_handle {
+        if let BufferHandle::Dynamic(dyn_file) = &mut handle.write(pa).buffer_handle {
             dyn_file.swap_to_current();
         }
 
         let sl = handle.read(pa);
 
-        handle.write(pa).text = match &sl.file_handle {
+        handle.write(pa).text = match &sl.buffer_handle {
             BufferHandle::Fixed(buffer) => (sl.text_fn)(pa, buffer),
             BufferHandle::Dynamic(dyn_file) => (sl.text_fn)(pa, dyn_file.handle()),
         };
 
         // Do this in case the Buffer is never read during Text construction
-        match &handle.read(pa).file_handle {
+        match &handle.read(pa).buffer_handle {
             BufferHandle::Fixed(handle) => handle.declare_as_read(),
             BufferHandle::Dynamic(dyn_file) => dyn_file.declare_as_read(),
         }
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
-        let file_changed = match &self.file_handle {
+        let file_changed = match &self.buffer_handle {
             BufferHandle::Fixed(handle) => handle.has_changed(pa),
             BufferHandle::Dynamic(dyn_file) => dyn_file.has_changed(pa),
         };
@@ -190,14 +190,13 @@ impl Widget for StatusLine {
 }
 
 /// The [`WidgetCfg`] for a [`StatusLine`]
-#[doc(hidden)]
-pub struct StatusLineBuilder {
+pub struct StatusLineOpts {
     mode_txt: Option<DataMap<&'static str, Text>>,
     fns: Option<(BuilderFn, CheckerFn)>,
     specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
 }
 
-impl StatusLineBuilder {
+impl StatusLineOpts {
     /// Push the [`StatusLine`]
     ///
     /// If the handle's [`Widget`] is a [`Buffer`], then this
@@ -411,7 +410,7 @@ mod macros {
                 duat_core::{context::Handle, data::Pass, buffer::Buffer, ui::PushSpecs, text::Builder},
                 format_like, parse_form, parse_status_part, parse_str
             },
-            widgets::StatusLineBuilder,
+            widgets::StatusLineOpts,
         };
 
         let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<Buffer>| {};
@@ -424,7 +423,7 @@ mod macros {
             $($parts)*
         );
 
-        StatusLineBuilder::new_with(
+        StatusLineOpts::new_with(
             (
                 Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<Buffer>| {
                     text_fn(pa, &mut builder, &handle);

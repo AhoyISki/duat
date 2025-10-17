@@ -4,8 +4,6 @@
 //! pretty much every `config` of Duat, since they are Duat
 //! equivalents to what is commonly found in other text editors.
 //!
-//!
-//!
 //! [`Widget`]: duat_core::ui::Widget
 //! [`Text`]: duat_core::text::Text
 //! [`Buffer`]: duat_core::buffer::Buffer
@@ -22,10 +20,10 @@ use duat_core::{
 
 pub use self::{
     line_numbers::{LineNumbers, LineNumbersOpts},
-    log_book::{LogBook, LogBookBuilder},
-    notifications::{Notifications, NotificationsBuilder},
+    log_book::{LogBook, LogBookOpts},
+    notifications::{Notifications, NotificationsOpts},
     prompt_line::{PromptLine, PromptLineBuilder},
-    status_line::{State, StatusLine, StatusLineBuilder, status},
+    status_line::{State, StatusLine, StatusLineOpts, status},
 };
 use crate::modes::Prompt;
 
@@ -80,9 +78,9 @@ mod status_line;
 /// [`notifs`]: FooterWidgets::notifs
 /// [`above`]: FooterWidgets::above
 pub struct FooterWidgets {
-    status: StatusLineBuilder,
+    status: StatusLineOpts,
     prompt: PromptLineBuilder,
-    notifs: NotificationsBuilder,
+    notifs: NotificationsOpts,
     one_line: bool,
     above: bool,
 }
@@ -170,7 +168,7 @@ impl FooterWidgets {
     ///
     /// [`prompt`]: FooterWidgets::prompt
     /// [`notifs`]: FooterWidgets::notifs
-    pub fn new(status_cfg: StatusLineBuilder) -> Self {
+    pub fn new(status_cfg: StatusLineOpts) -> Self {
         Self {
             status: status_cfg,
             prompt: PromptLine::builder(),
@@ -197,7 +195,7 @@ impl FooterWidgets {
     }
 
     /// Sets the [`Notifications`] to be used
-    pub fn notifs(self, notifs: NotificationsBuilder) -> Self {
+    pub fn notifs(self, notifs: NotificationsOpts) -> Self {
         Self { notifs, ..self }
     }
 }
