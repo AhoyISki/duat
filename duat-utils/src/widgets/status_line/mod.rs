@@ -203,7 +203,7 @@ impl StatusLineFmt {
         let specs = self.specs;
         let status_line = StatusLine::new(self, match push_target.try_downcast() {
             Some(handle) => BufferHandle::Fixed(handle),
-            None => BufferHandle::Dynamic(context::dyn_file(pa)),
+            None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
         });
 
         push_target.push_outer(pa, status_line, specs)

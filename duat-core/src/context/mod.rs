@@ -92,11 +92,11 @@ mod global {
     ///
     /// This `Handle` will always point to the same `Buffer`,
     /// even when it is not active. If you want a `Handle` that
-    /// always points to the current Buffer, see dyn_file
+    /// always points to the current Buffer, see dyn_buffer
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn cur_file(pa: &Pass) -> Handle {
-        windows().current_file(pa).read(pa).clone()
+    pub fn current_buffer<'a>(pa: &'a Pass) -> &'a Handle {
+        &windows().current_buffer(pa).read(pa)
     }
 
     /// Returns a "dynamic" [`Handle`] for the active [`Buffer`]
@@ -104,26 +104,26 @@ mod global {
     /// This `Handle` will change to point to the current `Buffer`,
     /// whenever the user swicthes which `Buffer` is active. If you
     /// want a `Handle` that will stay on the current `Buffer`, see
-    /// [`cur_file`].
+    /// [`cur_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn dyn_file(pa: &Pass) -> DynBuffer {
-        let dyn_file = windows().current_file(pa);
-        let cur_file = RwData::new(dyn_file.read(pa).clone());
-        DynBuffer { dyn_file, cur_file }
+    pub fn dynamic_buffer(pa: &Pass) -> DynBuffer {
+        let dyn_buffer = windows().current_buffer(pa).clone();
+        let cur_buffer = RwData::new(dyn_buffer.read(pa).clone());
+        DynBuffer { dyn_buffer, cur_buffer }
     }
 
     /// Returns a [`Handle`] for a [`Buffer`] with the given name
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn file_named(pa: &Pass, name: impl ToString) -> Result<Handle, Text> {
-        let (.., handle) = windows().named_file_entry(pa, &name.to_string())?;
+    pub fn get_buffer(pa: &Pass, name: impl ToString) -> Result<Handle, Text> {
+        let (.., handle) = windows().named_buffer_entry(pa, &name.to_string())?;
 
         Ok(handle)
     }
 
     /// The [`CurWidget`]
-    pub(crate) fn cur_widget(pa: &Pass) -> CurWidget {
+    pub(crate) fn current_widget(pa: &Pass) -> CurWidget {
         CurWidget(windows().current_widget(pa))
     }
 
@@ -139,7 +139,7 @@ mod global {
     }
 
     /// The index of the currently active window
-    pub fn cur_window(pa: &Pass) -> usize {
+    pub fn current_window(pa: &Pass) -> usize {
         windows().current_window(pa)
     }
 
@@ -159,7 +159,7 @@ mod global {
     }
 
     /// The current directory
-    pub fn cur_dir() -> PathBuf {
+    pub fn current_dir() -> PathBuf {
         CUR_DIR
             .get_or_init(|| Mutex::new(std::env::current_dir().unwrap()))
             .lock()
@@ -186,18 +186,18 @@ mod global {
 /// `Buffer`. It can also detect when that `Buffer` has been changed
 /// or when another `Buffer` becomes the active `Buffer`.
 pub struct DynBuffer {
-    dyn_file: RwData<Handle>,
-    cur_file: RwData<Handle>,
+    dyn_buffer: RwData<Handle>,
+    cur_buffer: RwData<Handle>,
 }
 
 impl DynBuffer {
     /// Wether the [`Buffer`] pointed to has changed or swapped with
     /// another
     pub fn has_changed(&self, pa: &Pass) -> bool {
-        if self.cur_file.has_changed() {
+        if self.cur_buffer.has_changed() {
             true
         } else {
-            self.dyn_file.read(pa).has_changed(pa)
+            self.dyn_buffer.read(pa).has_changed(pa)
         }
     }
 
@@ -206,14 +206,14 @@ impl DynBuffer {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         let pa = unsafe { &mut Pass::new() };
-        if self.cur_file.has_changed() {
-            *self.dyn_file.write(pa) = self.cur_file.read(pa).clone();
+        if self.cur_buffer.has_changed() {
+            *self.dyn_buffer.write(pa) = self.cur_buffer.read(pa).clone();
         }
     }
 
     /// Reads the presently active [`Buffer`]
     pub fn read<'a>(&'a mut self, pa: &'a Pass) -> &'a Buffer {
-        self.dyn_file.read(pa).read(pa)
+        self.dyn_buffer.read(pa).read(pa)
     }
 
     /// The [`Handle<Buffer>`] currently being pointed to
@@ -221,7 +221,7 @@ impl DynBuffer {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
-        self.dyn_file.read(INTERNAL_PASS)
+        self.dyn_buffer.read(INTERNAL_PASS)
     }
 
     /// Simulates a [`read`] without actually reading
@@ -239,8 +239,8 @@ impl DynBuffer {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
-        self.dyn_file.read(INTERNAL_PASS).declare_as_read();
-        self.cur_file.declare_as_read();
+        self.dyn_buffer.read(INTERNAL_PASS).declare_as_read();
+        self.cur_buffer.declare_as_read();
     }
 
     ////////// Writing functions
@@ -251,7 +251,7 @@ impl DynBuffer {
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
-        self.dyn_file.read(INTERNAL_PASS).write(pa)
+        self.dyn_buffer.read(INTERNAL_PASS).write(pa)
     }
 
     /// Writes to the [`Buffer`] and [`Area`], making use of a
@@ -263,7 +263,7 @@ impl DynBuffer {
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
-        self.dyn_file.read(INTERNAL_PASS).write_with_area(pa)
+        self.dyn_buffer.read(INTERNAL_PASS).write_with_area(pa)
     }
 
     /// Simulates a [`write`] without actually writing
@@ -275,7 +275,7 @@ impl DynBuffer {
     /// [`write`]: Self::write
     /// [`has_changed`]: Self::has_changed
     pub fn declare_written(&self) {
-        self.dyn_file.declare_written();
+        self.dyn_buffer.declare_written();
     }
 }
 
@@ -294,8 +294,8 @@ impl Clone for DynBuffer {
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
         Self {
-            dyn_file: RwData::new(self.dyn_file.read(INTERNAL_PASS).clone()),
-            cur_file: self.cur_file.clone(),
+            dyn_buffer: RwData::new(self.dyn_buffer.read(INTERNAL_PASS).clone()),
+            cur_buffer: self.cur_buffer.clone(),
         }
     }
 }

@@ -106,7 +106,7 @@ impl SessionCfg {
 
             for ReloadedBuffer { mut buffer, is_active } in rel_files {
                 buffer.opts = *FILE_CFG.get().unwrap();
-                let node = context::windows().new_file(pa, buffer);
+                let node = context::windows().new_buffer(pa, buffer);
                 if is_active {
                     context::set_current_node(pa, node);
                 }
@@ -156,12 +156,12 @@ impl Session {
         self.ui.flush_layout();
 
         let mut print_screen = {
-            let mut last_win = context::cur_window(pa);
+            let mut last_win = context::current_window(pa);
             let mut windows_nodes = get_windows_nodes(pa);
 
             move |pa: &mut Pass, force: bool| {
                 context::windows().cleanup_despawned(pa);
-                let cur_win = context::cur_window(pa);
+                let cur_win = context::current_window(pa);
 
                 let mut printed_at_least_one = false;
                 for node in windows_nodes.get(last_win).unwrap() {
@@ -176,7 +176,7 @@ impl Session {
                 while let Some(new_additions) = context::windows().get_additions(pa) {
                     self.ui.flush_layout();
 
-                    let cur_win = context::cur_window(pa);
+                    let cur_win = context::current_window(pa);
                     for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
                         node.update_and_print(pa, cur_win);
                     }

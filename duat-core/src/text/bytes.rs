@@ -419,7 +419,7 @@ impl Bytes {
     pub fn points_of_line(&self, l: usize) -> [Point; 2] {
         assert!(
             l <= self.len().line(),
-            "byte out of bounds: the len is {}, but the line is {l}",
+            "line out of bounds: the len is {}, but the line is {l}",
             self.len().line()
         );
 

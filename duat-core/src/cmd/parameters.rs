@@ -234,8 +234,8 @@ impl<'a> Parameter<'a> for OtherBuffer {
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let handle = args.next_as::<Buffer>(pa)?;
-        let cur_handle = crate::context::cur_file(pa);
-        if cur_handle == handle {
+        let cur_handle = crate::context::current_buffer(pa);
+        if *cur_handle == handle {
             Err(txt!("Argument can't be the current buffer").build())
         } else {
             Ok((handle, Some(form::id_of!("param.buffer.open"))))
@@ -459,7 +459,7 @@ impl<'a, W: Widget> Handles<'a, W> {
     /// context choosing [`Flags`] are passed (i.e., no `--global`,
     /// `-g`, `--window` or `--w`).
     pub fn on_current(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
-        let get_related: Vec<_> = context::cur_file(pa).get_related(pa).collect();
+        let get_related: Vec<_> = context::current_buffer(pa).get_related(pa).collect();
 
         for (handle, _) in get_related {
             f(pa, handle)
@@ -487,7 +487,7 @@ impl<'a, W: Widget> Handles<'a, W> {
     /// This function will be called by [`Handles::on_flags`], if the
     /// `--window` or `-w` [`Flags`] are passed.
     pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
-        let cur_win = context::cur_window(pa);
+        let cur_win = context::current_window(pa);
         let nodes: Vec<_> = context::windows()
             .entries(pa)
             .filter(|&(win, ..)| win == cur_win)

@@ -52,10 +52,19 @@ impl<'a> FwdIter<'a> {
         let (r, g) = tp.to_points();
         let point = r.min(text.len());
 
-        let ghost = g.and_then(|offset| {
+        // The second usize argument of ghost is the "distance traversed".
+        // When iterating over this starting point, the Tags iterator will
+        // still iterate over prior Ghosts in the same byte, even if they were
+        // supposed to be skipped.
+        // The "distance traversed" serves the purpose of skipping those
+        // ghosts until the correct one is reached, hence why it starts at 0.
+        let ghost = if let Some(offset) = g {
             let (_, max) = text.ghost_max_points_at(r.byte());
             max.map(|max| (max.min(offset), 0))
-        });
+        } else {
+            let (_, max) = text.ghost_max_points_at(r.byte());
+            max.zip(Some(0))
+        };
 
         Self {
             text,
@@ -138,7 +147,7 @@ impl<'a> FwdIter<'a> {
         if let Some((real, ..)) = self.main_iter.as_ref() {
             (*real, self.ghost.map(|(tg, _)| tg))
         } else {
-            (self.point, self.ghost.map(|(p, _)| p))
+            (self.point, None)
         }
     }
 
@@ -490,11 +499,8 @@ impl Item {
     ///
     /// [`Ghost`]: super::Ghost
     pub fn as_real_char(self) -> Option<(Point, char)> {
-        if self.ghost.is_none() {
-            Some(self.real).zip(self.part.as_char())
-        } else {
-            None
-        }
+        let char = self.part.as_char()?;
+        self.ghost.is_none().then_some((self.real, char))
     }
 
     /// The real [byte](Point::byte)

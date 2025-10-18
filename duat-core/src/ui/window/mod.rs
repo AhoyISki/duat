@@ -42,7 +42,7 @@ impl Windows {
                 layout,
                 list: vec![window],
                 new_additions,
-                cur_file: RwData::new(node.try_downcast().unwrap()),
+                cur_buffer: RwData::new(node.try_downcast().unwrap()),
                 cur_widget: RwData::new(node.clone()),
                 cur_win: 0,
             }),
@@ -193,14 +193,15 @@ impl Windows {
     /// This is an area, usually in the center, that contains all
     /// [`Buffer`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
-    pub(crate) fn new_file(&self, pa: &mut Pass, buffer: Buffer) -> Node {
-        let win = context::cur_window(pa);
+    pub(crate) fn new_buffer(&self, pa: &mut Pass, buffer: Buffer) -> Node {
+        let win = context::current_window(pa);
         let inner = self.inner.read(pa);
-        let (handle, specs) = inner
-            .layout
-            .lock()
-            .unwrap()
-            .new_file(pa, win, &buffer, &inner.list);
+        let (handle, specs) =
+            inner
+                .layout
+                .lock()
+                .unwrap()
+                .new_buffer(pa, win, &buffer, &inner.list);
 
         let specs = PushSpecs { cluster: false, ..specs };
 
@@ -295,7 +296,7 @@ impl Windows {
 
         // If this is the active Handle, pick another one to make active.
         let inner = self.inner.read(pa);
-        if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_file.read(pa) {
+        if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_buffer.read(pa) {
             // SAFETY: This Pass is only used on known other types.
             let internal_pass = &mut unsafe { Pass::new() };
 
@@ -307,7 +308,7 @@ impl Windows {
                     });
 
                 if let Some((win, node)) = entry {
-                    *inner.cur_file.write(internal_pass) = node.try_downcast().unwrap();
+                    *inner.cur_buffer.write(internal_pass) = node.try_downcast().unwrap();
                     *inner.cur_widget.write(internal_pass) = node.clone();
                     self.inner.write(pa).cur_win = win;
                 } else {
@@ -319,10 +320,10 @@ impl Windows {
                 }
             } else {
                 let (win, _) = self
-                    .handle_entry(pa, &inner.cur_file.read(pa).to_dyn())
+                    .handle_entry(pa, &inner.cur_buffer.read(pa).to_dyn())
                     .unwrap();
 
-                let node = Node::from_handle(inner.cur_file.read(pa).clone());
+                let node = Node::from_handle(inner.cur_buffer.read(pa).clone());
                 *inner.cur_widget.write(internal_pass) = node;
                 self.inner.write(pa).cur_win = win;
             }
@@ -354,7 +355,7 @@ impl Windows {
         if windows[win].close(pa, handle) {
             windows.remove(win);
             self.ui.remove_window(win);
-            let cur_win = context::cur_window(pa);
+            let cur_win = context::current_window(pa);
             if cur_win > win {
                 self.inner.write(pa).cur_win -= 1;
             }
@@ -377,11 +378,15 @@ impl Windows {
         let (lhs_win, _) = self.handle_entry(pa, lhs)?;
         let (rhs_win, _) = self.handle_entry(pa, rhs)?;
 
-        let [lhs_file, rhs_file] = [lhs.try_downcast::<Buffer>(), rhs.try_downcast()];
-        let lhs_lo = lhs_file.as_ref().map(|handle| handle.read(pa).layout_order);
-        let rhs_lo = rhs_file.as_ref().map(|handle| handle.read(pa).layout_order);
+        let [lhs_buffer, rhs_buffer] = [lhs.try_downcast::<Buffer>(), rhs.try_downcast()];
+        let lhs_lo = lhs_buffer
+            .as_ref()
+            .map(|handle| handle.read(pa).layout_order);
+        let rhs_lo = rhs_buffer
+            .as_ref()
+            .map(|handle| handle.read(pa).layout_order);
 
-        if let [Some(lhs), Some(rhs)] = [lhs_file, rhs_file] {
+        if let [Some(lhs), Some(rhs)] = [lhs_buffer, rhs_buffer] {
             let lhs_lo = lhs.read(pa).layout_order;
             let rhs_lo = std::mem::replace(&mut rhs.write(pa).layout_order, lhs_lo);
             lhs.write(pa).layout_order = rhs_lo
@@ -401,12 +406,12 @@ impl Windows {
 
         lhs.area().swap(pa, rhs.area());
 
-        let cur_file = context::cur_file(pa);
+        let cur_buffer = context::current_buffer(pa);
         if lhs_win != rhs_win {
-            if *lhs == cur_file {
+            if lhs == cur_buffer {
                 self.inner.write(pa).cur_win = lhs_win;
                 self.ui.switch_window(lhs_win);
-            } else if *rhs == cur_file {
+            } else if rhs == cur_buffer {
                 self.inner.write(pa).cur_win = rhs_win;
                 self.ui.switch_window(rhs_win);
             }
@@ -421,7 +426,7 @@ impl Windows {
         &self,
         pa: &mut Pass,
         pk: PathKind,
-        default_file_cfg: PrintOpts,
+        default_buffer_cfg: PrintOpts,
     ) -> Node {
         let node = match self.file_entry(pa, pk.clone()) {
             Ok((win, _, handle)) if self.get(pa, win).unwrap().file_handles(pa).len() > 1 => {
@@ -477,10 +482,10 @@ impl Windows {
             // The Handle in question is already in its own window, so no need
             // to move it to another one.
             Ok((.., handle)) => Node::from_handle(handle),
-            Err(_) => self.new_window(pa, Buffer::new(pk.as_path(), default_file_cfg)),
+            Err(_) => self.new_window(pa, Buffer::new(pk.as_path(), default_buffer_cfg)),
         };
 
-        if context::cur_file(pa).read(pa).path_kind() != pk {
+        if context::current_buffer(pa).read(pa).path_kind() != pk {
             mode::reset_to(node.handle().clone());
         }
 
@@ -501,7 +506,7 @@ impl Windows {
         let inner = self.inner.write(pa);
 
         if let Some(handle) = node.try_downcast() {
-            *inner.cur_file.write(internal_pass) = handle;
+            *inner.cur_buffer.write(internal_pass) = handle;
         }
         *inner.cur_widget.write(internal_pass) = node.clone();
         inner.cur_win = win;
@@ -558,7 +563,11 @@ impl Windows {
     }
 
     /// An entry for a buffer with the given name
-    pub fn named_file_entry(&self, pa: &Pass, name: &str) -> Result<(usize, usize, Handle), Text> {
+    pub fn named_buffer_entry(
+        &self,
+        pa: &Pass,
+        name: &str,
+    ) -> Result<(usize, usize, Handle), Text> {
         self.entries(pa)
             .find_map(|(win, wid, node)| {
                 (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
@@ -576,7 +585,7 @@ impl Windows {
         pa: &'a Pass,
         w: usize,
     ) -> Result<(usize, usize, &'a Node), Text> {
-        let handle = context::cur_file(pa);
+        let handle = context::current_buffer(pa);
 
         if let Some((handle, _)) = handle.get_related::<W>(pa).next() {
             self.entries(pa).find(|(.., n)| n.ptr_eq(handle.widget()))
@@ -702,8 +711,8 @@ impl Windows {
     }
 
     /// The [`RwData`] that points to the currently active [`Buffer`]
-    pub(crate) fn current_file(&self, pa: &Pass) -> RwData<Handle> {
-        self.inner.read(pa).cur_file.clone()
+    pub(crate) fn current_buffer<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Handle> {
+        &self.inner.read(pa).cur_buffer
     }
 
     /// The [`RwData`] that points to the currently active [`Widget`]
@@ -732,7 +741,7 @@ struct InnerWindows {
     layout: Box<Mutex<dyn Layout>>,
     list: Vec<Window>,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
-    cur_file: RwData<Handle>,
+    cur_buffer: RwData<Handle>,
     cur_widget: RwData<Node>,
     cur_win: usize,
 }

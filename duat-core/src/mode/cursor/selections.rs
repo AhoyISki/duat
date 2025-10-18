@@ -498,13 +498,13 @@ mod cursor {
                 let mut vcol = 0;
 
                 let (wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), opts)
+                    .print_iter(text.iter_fwd((line_start, Some(Point::default()))), opts)
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
-                        if let Some((p, char)) = item.as_real_char()
-                            && (vcol + len as u16 > vp.dvcol || char == '\n')
-                        {
-                            return Some((x as u16, p));
+                        if let Some((p, char)) = item.as_real_char() {
+                            if vcol + len as u16 > vp.dvcol || char == '\n' {
+                                return Some((x as u16, p));
+                            }
                         }
 
                         vcol += len as u16;
@@ -546,7 +546,7 @@ mod cursor {
                 let mut last_valid = (vp.vcol, vp.wcol, vp.p);
 
                 let (vcol, wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), opts)
+                    .print_iter(text.iter_fwd((line_start, Some(Point::default()))), opts)
                     .skip_while(|(_, item)| item.char() <= self.char())
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
@@ -1036,7 +1036,7 @@ mod cursor {
     impl std::fmt::Debug for LazyVPoint {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                Self::Known(vp) => write!(f, "Known({:?})", vp.p),
+                Self::Known(vp) => write!(f, "Known({:?}, {})", vp.p, vp.dwcol),
                 Self::Unknown(p) => write!(f, "Unknown({p:?}"),
                 Self::Desired { p, dvcol, dwcol } => write!(f, "Desired({p:?}, {dvcol}, {dwcol})"),
             }

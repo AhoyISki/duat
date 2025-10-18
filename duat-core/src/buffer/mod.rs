@@ -556,7 +556,7 @@ impl PathKind {
     pub fn name(&self) -> String {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                let cur_dir = context::cur_dir();
+                let cur_dir = context::current_dir();
                 if let Ok(path) = path.strip_prefix(cur_dir) {
                     path.to_string_lossy().to_string()
                 } else if let Some(home_dir) = dirs_next::home_dir()
@@ -577,7 +577,7 @@ impl PathKind {
     pub fn name_set(&self) -> Option<String> {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                let cur_dir = context::cur_dir();
+                let cur_dir = context::current_dir();
                 Some(if let Ok(path) = path.strip_prefix(cur_dir) {
                     path.to_string_lossy().to_string()
                 } else if let Some(home_dir) = dirs_next::home_dir()
@@ -638,7 +638,7 @@ impl PathKind {
     pub fn name_txt(&self) -> Text {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                let cur_dir = context::cur_dir();
+                let cur_dir = context::current_dir();
                 if let Ok(path) = path.strip_prefix(cur_dir) {
                     txt!("[buffer]{path}").build()
                 } else if let Some(home_dir) = dirs_next::home_dir()

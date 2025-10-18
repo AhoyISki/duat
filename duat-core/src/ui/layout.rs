@@ -62,7 +62,7 @@ pub trait Layout: Send + Sync {
     /// first opened [`Buffer`] doesn't follow layouts.
     ///
     /// [`Ok(Handle<Buffer>, PushSpecs)`]: Handle
-    fn new_file(
+    fn new_buffer(
         &mut self,
         pa: &Pass,
         cur_win: usize,
@@ -79,7 +79,7 @@ pub trait Layout: Send + Sync {
 pub struct MasterOnLeft;
 
 impl Layout for MasterOnLeft {
-    fn new_file(
+    fn new_buffer(
         &mut self,
         pa: &Pass,
         cur_win: usize,

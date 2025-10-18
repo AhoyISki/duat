@@ -276,7 +276,7 @@ pub(crate) fn add_session_commands() {
     add!(["quit", "q"], |pa, handle: Option<Buffer>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::cur_file(pa),
+            None => context::current_buffer(pa).clone(),
         };
 
         let buffer = handle.read(pa);
@@ -294,7 +294,7 @@ pub(crate) fn add_session_commands() {
     add!(["quit!", "q!"], |pa, handle: Option<Buffer>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::cur_file(pa),
+            None => context::current_buffer(pa).clone(),
         };
 
         context::windows().close(pa, &handle)?;
@@ -330,7 +330,7 @@ pub(crate) fn add_session_commands() {
     });
 
     add!(["write", "w"], |pa, path: Option<ValidBuffer>| {
-        let handle = context::cur_file(pa);
+        let handle = context::current_buffer(pa).clone();
         let buffer = handle.write(pa);
 
         let (bytes, name) = if let Some(path) = path {
@@ -350,7 +350,7 @@ pub(crate) fn add_session_commands() {
     });
 
     add!(["write-quit", "wq"], |pa, path: Option<ValidBuffer>| {
-        let handle = context::cur_file(pa);
+        let handle = context::current_buffer(pa).clone();
 
         let (bytes, name) = {
             let buffer = handle.write(pa);
@@ -464,7 +464,7 @@ pub(crate) fn add_session_commands() {
         };
 
         let buffer = Buffer::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
-        let handle = windows.new_file(pa, buffer);
+        let handle = windows.new_buffer(pa, buffer);
         context::set_current_node(pa, handle);
 
         return Ok(Some(txt!("Opened {pk}").build()));
@@ -509,8 +509,8 @@ pub(crate) fn add_session_commands() {
 
     add!("next-buffer", |pa, flags: Flags| {
         let windows = context::windows();
-        let handle = context::cur_file(pa);
-        let win = context::cur_window(pa);
+        let handle = context::current_buffer(pa);
+        let win = context::current_window(pa);
 
         let wid = windows
             .get(pa, win)
@@ -540,8 +540,8 @@ pub(crate) fn add_session_commands() {
 
     add!("prev-buffer", |pa, flags: Flags| {
         let windows = context::windows();
-        let handle = context::cur_file(pa);
-        let win = context::cur_window(pa);
+        let handle = context::current_buffer(pa);
+        let win = context::current_window(pa);
 
         let wid = windows
             .get(pa, win)
@@ -570,7 +570,7 @@ pub(crate) fn add_session_commands() {
     });
 
     add!("swap", |pa, lhs: Buffer, rhs: Option<Buffer>| {
-        let rhs = rhs.unwrap_or_else(|| context::cur_file(pa));
+        let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa).clone());
 
         context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
 
@@ -769,8 +769,8 @@ mod global {
 
     /// Switches to the next [`Buffer`].
     ///
-    /// This function will look for buffers in all windows. If you want
-    /// to limit the search to just the current window, use
+    /// This function will look for buffers in all windows. If you
+    /// want to limit the search to just the current window, use
     /// [`next_file`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
@@ -780,8 +780,8 @@ mod global {
 
     /// Switches to the previous [`Buffer`].
     ///
-    /// This function will look for buffers in all windows. If you want
-    /// to limit the search to just the current window, use
+    /// This function will look for buffers in all windows. If you
+    /// want to limit the search to just the current window, use
     /// [`prev_file`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
