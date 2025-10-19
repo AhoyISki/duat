@@ -51,6 +51,7 @@ use crate::modes::PromptMode;
 pub struct PromptLine {
     text: Text,
     prompts: HashMap<TypeId, Text>,
+    request_width: bool,
 }
 
 impl PromptLine {
@@ -79,6 +80,16 @@ impl PromptLine {
 impl Widget for PromptLine {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let pl = handle.read(pa);
+        if pl.request_width {
+            let width = handle
+                .area()
+                .width_of_text(pa, handle.opts(pa), handle.text(pa))
+                .unwrap();
+            handle
+                .area()
+                .set_width(pa, width + handle.opts(pa).scrolloff.x as f32)
+                .unwrap();
+        }
         if let Some(main) = pl.text.selections().get_main() {
             handle
                 .area()
@@ -110,6 +121,7 @@ impl Widget for PromptLine {
 pub struct PromptLineBuilder {
     prompts: Option<HashMap<TypeId, Text>> = None,
     specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
+    request_width: bool = false
 }
 
 impl PromptLineBuilder {
@@ -117,6 +129,7 @@ impl PromptLineBuilder {
         let prompt_line = PromptLine {
             text: Text::default(),
             prompts: self.prompts.unwrap_or_default(),
+            request_width: self.request_width,
         };
 
         push_target.push_outer(pa, prompt_line, self.specs)
@@ -155,5 +168,10 @@ impl PromptLineBuilder {
             specs: PushSpecs { hidden: true, ..self.specs },
             ..self
         }
+    }
+
+    /// Requests the width when printing to the screen
+    pub(crate) fn request_width(self) -> Self {
+        Self { request_width: true, ..self }
     }
 }

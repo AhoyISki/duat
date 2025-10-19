@@ -12,7 +12,6 @@
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
-    context,
     data::Pass,
     hook::{self, FocusedOn, KeysSentTo, UnfocusedFrom},
     ui::{PushTarget, Widget},
@@ -88,26 +87,18 @@ pub struct FooterWidgets {
 impl FooterWidgets {
     /// Adds footer [`Widget`]s
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) {
-        let prompt_line = if self.above {
-            self.prompt.above().hidden().push_on(pa, push_target)
+        let prompt_line = if self.one_line {
+            self.prompt.request_width()
         } else {
-            self.prompt.below().hidden().push_on(pa, push_target)
+            self.prompt
+        };
+        let prompt_line = if self.above {
+            prompt_line.above().hidden().push_on(pa, push_target)
+        } else {
+            prompt_line.below().hidden().push_on(pa, push_target)
         };
 
         if self.one_line {
-            hook::add::<KeysSentTo<Prompt>>({
-                let prompt_line = prompt_line.clone();
-                move |pa, (_, handle)| {
-                    if handle == &prompt_line {
-                        handle.area().request_width_to_fit(
-                            pa,
-                            handle.read(pa).get_print_opts(),
-                            handle.text(pa),
-                        )?;
-                    }
-                    Ok(())
-                }
-            });
             self.status.right().push_on(pa, &prompt_line);
         } else {
             self.status.above().push_on(pa, &prompt_line);
@@ -126,11 +117,6 @@ impl FooterWidgets {
                 if handle == &prompt_line {
                     notifications.area().hide(pa)?;
                     handle.area().reveal(pa)?;
-                    if self.one_line {
-                        handle
-                            .area()
-                            .request_width_to_fit(pa, handle.opts(pa), handle.text(pa))?;
-                    }
                 };
                 Ok(())
             }

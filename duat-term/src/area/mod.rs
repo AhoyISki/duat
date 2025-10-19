@@ -348,7 +348,7 @@ impl ui::traits::Area for Area {
         }
     }
 
-    fn request_width_to_fit(&self, opts: PrintOpts, text: &Text) -> Result<(), Text> {
+    fn width_of_text(&self, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
         let max = self
             .layouts
             .inspect(self.id, |_, layout| layout.max_value())
@@ -362,7 +362,7 @@ impl ui::traits::Area for Area {
         );
 
         // It can be None if there is total concalment.
-        self.set_width(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
+        Ok(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
     }
 
     fn scroll_ver(&self, text: &Text, by: i32, opts: PrintOpts) {

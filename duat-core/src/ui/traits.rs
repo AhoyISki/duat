@@ -272,9 +272,8 @@ pub trait Area: 'static {
     /// Changes [`Constraint`]s such that the [`Area`] is revealed
     fn reveal(&self) -> Result<(), Text>;
 
-    /// Requests that the width be enough to fit a certain piece of
-    /// text.
-    fn request_width_to_fit(&self, opts: PrintOpts, text: &Text) -> Result<(), Text>;
+    /// What width the given [`Text`] would occupy, if unwrapped
+    fn width_of_text(&self, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.

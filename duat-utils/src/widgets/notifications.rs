@@ -96,10 +96,11 @@ impl Widget for Notifications {
 
             if notifs.request_width {
                 let notifs = handle.read(pa);
-                handle
+                let width = handle
                     .area()
-                    .request_width_to_fit(pa, notifs.get_print_opts(), &notifs.text)
+                    .width_of_text(pa, notifs.get_print_opts(), &notifs.text)
                     .unwrap();
+                handle.area().set_width(pa, width).unwrap();
             }
         } else if clear_notifs {
             handle.set_mask("");
@@ -108,10 +109,11 @@ impl Widget for Notifications {
 
                 if notifs.request_width {
                     let notifs = handle.read(pa);
-                    handle
+                    let width = handle
                         .area()
-                        .request_width_to_fit(pa, notifs.get_print_opts(), &notifs.text)
+                        .width_of_text(pa, notifs.get_print_opts(), &notifs.text)
                         .unwrap();
+                    handle.area().set_width(pa, width).unwrap();
                 }
             }
         }

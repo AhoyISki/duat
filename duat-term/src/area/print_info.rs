@@ -237,8 +237,8 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, cfg: PrintOpts) {
-        let cap = cfg.wrap_width(width).unwrap_or(width);
+    fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, opts: PrintOpts) {
+        let cap = opts.wrap_width(width).unwrap_or(u32::MAX);
         // Quick shortcut to avoid iteration.
         if cap <= width {
             self.x_shift = 0;
@@ -251,7 +251,7 @@ impl PrintInfo {
                 .points_after(points)
                 .unwrap_or_else(|| text.len_points());
 
-            let mut iter = rev_print_iter(text.iter_rev(after), Some(cap), cfg);
+            let mut iter = rev_print_iter(text.iter_rev(after), Some(cap), opts);
 
             let (points, start, end, wrap) = iter
                 .find_map(|(Caret { x, len, wrap }, item)| {
@@ -269,7 +269,7 @@ impl PrintInfo {
                         .unwrap()
                 };
 
-                let len = print_iter_indented(text.iter_fwd(points), cap, cfg, indent)
+                let len = print_iter_indented(text.iter_fwd(points), cap, opts, indent)
                     .inspect(|(_, Item { part, real, .. })| match part {
                         Part::AlignLeft => gaps = Gaps::OnRight,
                         Part::AlignCenter => gaps = Gaps::OnSides,
@@ -304,14 +304,16 @@ impl PrintInfo {
 
         self.x_shift = self
             .x_shift
-            .min(start.saturating_sub(cfg.scrolloff.x as u32))
-            .max(if cfg.force_scrolloff {
-                (end + cfg.scrolloff.x as u32).saturating_sub(width)
+            .min(start.saturating_sub(opts.scrolloff.x as u32))
+            .max(if opts.force_scrolloff {
+                (end + opts.scrolloff.x as u32).saturating_sub(width)
             } else {
-                (end + cfg.scrolloff.x as u32)
+                (end + opts.scrolloff.x as u32)
                     .min(max_shift)
                     .saturating_sub(width)
             });
+
+        duat_core::context::debug!("{self.x_shift}");
     }
 
     /// Sets and returns the first [`TwoPoints`]

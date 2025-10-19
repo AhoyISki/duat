@@ -24,10 +24,10 @@ use std::{
 };
 
 use crate::{
-    opts::PrintOpts,
     context::{self, Cache},
     data::{Pass, RwData},
     form::Painter,
+    opts::PrintOpts,
     text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
     ui::{
         Caret, PushSpecs, SpawnSpecs,
@@ -240,10 +240,9 @@ impl Area {
         self.area.read(pa).reveal()
     }
 
-    /// Requests that the width be enough to fit a certain piece of
-    /// text.
-    pub fn request_width_to_fit(&self, pa: &Pass, opts: PrintOpts, text: &Text) -> Result<(), Text> {
-        self.area.read(pa).request_width_to_fit(opts, text)
+    /// What width the given [`Text`] would occupy, if unwrapped
+    pub fn width_of_text(&self, pa: &Pass, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
+        self.area.read(pa).width_of_text(opts, text)
     }
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
@@ -370,7 +369,13 @@ impl Area {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::opts::WrapMethod
-    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: impl TwoPoints, opts: PrintOpts) {
+    pub fn scroll_to_points(
+        &self,
+        pa: &Pass,
+        text: &Text,
+        points: impl TwoPoints,
+        opts: PrintOpts,
+    ) {
         self.area
             .read(pa)
             .scroll_to_points(text, points.to_points(), opts);
