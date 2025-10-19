@@ -12,11 +12,10 @@ use crossterm::style::Color;
 
 use crate::{
     buffer::Buffer,
-    context::{self, Handle},
+    context::Handle,
     data::Pass,
     form::{self, FormId},
     text::{Text, txt},
-    ui::Widget,
 };
 
 /// A parameter for commands that can be called
@@ -427,114 +426,6 @@ impl<'a> Parameter<'a> for FormName {
         } else {
             Err(txt!("The form [a]{arg}[] has not been set").build())
         }
-    }
-}
-
-/// Command [`Parameter`]: [`Handle`]s for a given type of [`Widget`]
-///
-/// This [`Parameter`] lets you act upon [`Handle`]s of a type of
-/// [`Widget`] with the following methods:
-///
-/// - [`on_current`]: Acts on the current, most relevant instance.
-/// - [`on_each`]: Acts on every instance, on every window.
-/// - [`on_window`]: Acts on all instances on the current window.
-/// - [`on_flags`]: Acts based on [`Flags`] passed, `"global"` for
-///   [`on_each`], `"window"` for [`on_window`].
-///
-/// [`on_current`]: Self::on_current
-/// [`on_each`]: Self::on_each
-/// [`on_window`]: Self::on_window
-/// [`on_flags`]: Self::on_flags
-pub struct Handles<'a, W: Widget>(Flags<'a>, PhantomData<W>);
-
-impl<'a, W: Widget> Handles<'a, W> {
-    /// Acts on [`Handle`]s related to the currently active [`Buffer`]
-    ///
-    /// This will trigger on every `Handle` of the given widget type
-    /// on the `Buffer`. This _does_ include the `Buffer` itself, so
-    /// if `W == Buffer`, then that would act on the `Buffer`
-    /// itself, as well as any other `Buffer`s pushed to it.
-    ///
-    /// This function will be called by [`Handles::on_flags`] if no
-    /// context choosing [`Flags`] are passed (i.e., no `--global`,
-    /// `-g`, `--window` or `--w`).
-    pub fn on_current(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
-        let get_related: Vec<_> = context::current_buffer(pa).get_related(pa).collect();
-
-        for (handle, _) in get_related {
-            f(pa, handle)
-        }
-    }
-
-    /// Acts on a each [`Handle`] of any instance of `W`
-    ///
-    /// This will trigger in all windows, starting from the first, in
-    /// the order that they were pushed.
-    ///
-    /// This function will be called by [`Handles::on_flags`], if the
-    /// `--global` or `-g` [`Flags`] are passed.
-    pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
-        let handles: Vec<_> = context::windows().handles(pa).cloned().collect();
-        for handle in handles.iter().filter_map(Handle::try_downcast) {
-            f(pa, handle)
-        }
-    }
-
-    /// Acts on each [`Handle`] of `W` on the current window
-    ///
-    /// Will trigger in the order that they were pushed.
-    ///
-    /// This function will be called by [`Handles::on_flags`], if the
-    /// `--window` or `-w` [`Flags`] are passed.
-    pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W>)) {
-        let cur_win = context::current_window(pa);
-        let nodes: Vec<_> = context::windows()
-            .entries(pa)
-            .filter(|&(win, ..)| win == cur_win)
-            .map(|(.., node)| node.handle().clone())
-            .collect();
-
-        for handle in nodes.iter().filter_map(Handle::try_downcast) {
-            f(pa, handle)
-        }
-    }
-
-    /// Acts on [`Handle`]s of `W`, based on which[`Flags`] were
-    /// passed
-    ///
-    /// If the `"--global"` [`word`] or the `"-g"` [`blob`] flag are
-    /// passed, then will call [`Handles::on_each`]. If `"--window"`
-    /// or `"w"` are passed, then will call [`Handles::on_window`].
-    /// Otherwise, will call [`Handles::on_current`].
-    ///
-    /// If there are conflicting contexts, e.g. `"--global -w"`, then
-    /// nothing will be done, and an error will be notified.
-    ///
-    /// [`word`]: Flags::word
-    /// [`blob`]: Flags::blob
-    pub fn on_flags(&self, pa: &mut Pass, f: impl FnMut(&mut Pass, Handle<W>)) {
-        let is_global = self.0.word("global") || self.0.blob("g");
-        let is_window = self.0.word("window") || self.0.blob("w");
-        if is_global && !is_window {
-            self.on_each(pa, f);
-        } else if is_window && !is_global {
-            self.on_window(pa, f);
-        } else if !is_global && !is_window {
-            self.on_current(pa, f);
-        } else {
-            context::error!(
-                "Multiple contexts chosen, either pick a [a]global[] context or a [a]window[] \
-                 context"
-            )
-        }
-    }
-}
-
-impl<'a, W: Widget> Parameter<'a> for Handles<'a, W> {
-    type Returns = Self;
-
-    fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
-        Ok((Self(args.flags.clone(), PhantomData), None))
     }
 }
 

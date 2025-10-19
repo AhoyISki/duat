@@ -1,7 +1,7 @@
 use duat_core::{
     context::{self, Handle, Logs, Record},
     data::Pass,
-    opts::{PrintOpts, WrapMethod},
+    opts::PrintOpts,
     text::{Text, txt},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
@@ -68,7 +68,8 @@ impl Widget for LogBook {
 
     fn get_print_opts(&self) -> PrintOpts {
         let mut opts = PrintOpts::new();
-        opts.wrap_method = WrapMethod::Word;
+        opts.dont_wrap = false;
+        opts.wrap_on_word = true;
         opts
     }
 

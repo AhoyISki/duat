@@ -647,7 +647,7 @@ pub mod prelude {
             WindowCreated,
         },
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, Pager, Prompt, User, alias, key, map},
-        opts::{self, NewLine, ScrollOff, WrapMethod, word_chars},
+        opts::{self, ScrollOff, word_chars},
         setup_duat,
         state::*,
         text::{

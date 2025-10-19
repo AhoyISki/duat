@@ -385,7 +385,7 @@ mod cursor {
     use bincode::{Decode, Encode};
 
     use crate::{
-        opts::{NewLine, PrintOpts},
+        opts::PrintOpts,
         text::{Bytes, Change, Point, Text},
         ui::{Caret, traits::Area},
     };
@@ -481,7 +481,7 @@ mod cursor {
             area: &dyn Area,
             mut opts: PrintOpts,
         ) -> i32 {
-            opts.new_line = NewLine::AlwaysAs('\n');
+            opts.print_new_line = false;
             let by = by as isize;
             if by == 0 {
                 return 0;
@@ -531,7 +531,7 @@ mod cursor {
             area: &dyn Area,
             mut opts: PrintOpts,
         ) -> i32 {
-            opts.new_line = NewLine::AlwaysAs('\n');
+            opts.print_new_line = false;
             if by == 0 {
                 return 0;
             };

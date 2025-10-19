@@ -28,89 +28,6 @@ use std::{ops::RangeInclusive, sync::LazyLock};
 
 use regex_cursor::regex_automata::meta::Regex;
 
-/// If and how to wrap lines at the end of the screen.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WrapMethod {
-    /// Wrap on the edge of the screen
-    Edge,
-    /// Wraps after a certain number of cells.
-    ///
-    /// Note that this can be a number greater than the width, which
-    /// will wrap outside of the screen, sort of like a mix of
-    /// [`WrapMethod::Edge`] and [`WrapMethod::NoWrap`].
-    Capped(u8),
-    /// Wraps on [word] terminations
-    ///
-    /// [word]: word_chars
-    Word,
-    /// No wrapping
-    NoWrap,
-}
-
-impl WrapMethod {
-    /// Returns `true` if the wrap method is [`NoWrap`].
-    ///
-    /// [`NoWrap`]: WrapMethod::NoWrap
-    #[must_use]
-    pub fn is_no_wrap(&self) -> bool {
-        matches!(self, Self::NoWrap)
-    }
-
-    /// What the cap should be, given a certain [`Area`] width
-    ///
-    /// [`Area`]: crate::ui::Area
-    pub fn cap(&self, width: usize) -> usize {
-        match self {
-            WrapMethod::Capped(cap) => *cap as usize,
-            _ => width,
-        }
-    }
-}
-
-/// Where the tabs are placed on screen
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TabStops(pub u8);
-
-impl TabStops {
-    /// How many spaces to put in place of a tab
-    pub fn size(&self) -> u32 {
-        self.0 as u32
-    }
-}
-
-impl Default for TabStops {
-    fn default() -> Self {
-        TabStops(4)
-    }
-}
-
-/// Whether to show the new line or not.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum NewLine {
-    /// Show the given character on every new line.
-    AlwaysAs(char),
-    /// Show the given character only when there is whitespace at end
-    /// of the line.
-    AfterSpaceAs(char),
-}
-
-impl NewLine {
-    /// Given the previous character, which character should show up
-    #[inline]
-    pub fn char(&self, last_char: Option<char>) -> char {
-        match *self {
-            NewLine::AlwaysAs(char) => char,
-            NewLine::AfterSpaceAs(char) => {
-                if last_char.is_some_and(|lc| lc.is_whitespace() && lc != '\n') {
-                    char
-                } else {
-                    ' '
-                }
-            }
-        }
-    }
-}
-
 /// The distance to keep between the [`Cursor`] and the edges of the
 /// screen when scrolling
 ///
@@ -171,21 +88,27 @@ impl std::cmp::Eq for WordChars {}
 /// Configuration options for printing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PrintOpts {
-    /// How to wrap the buffer
+    /// Disable wrapping entirely
     ///
-    /// In [`Buffer`]s, the default is [`WrapMethod::NoWrap`].
+    /// The default is `true`
+    pub dont_wrap: bool = true,
+    /// Wrap on word boundaries, rather than on any character
     ///
-    /// This can be one of four values:
+    /// The default is `false`.
+    pub wrap_on_word: bool = false,
+    /// Where to start wrapping
     ///
-    /// - [`WrapMethod::NoWrap`]: No wrapping.
-    /// - [`WrapMethod::Edge`]: Wrap at the edge of the screen.
-    /// - [`WrapMethod::Word`]: Wrap on word terminations.
-    /// - [`WrapMethod::Capped`]: Wrap a specific distance from the
-    ///   left edge.
+    /// The default is `None`
     ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    /// [`NoWrap`]: WrapMethod::NoWrap
-    pub wrap_method: WrapMethod,
+    /// If this value is `None` and `opts.dont_wrap == false`, then
+    /// wrapping will take place at the right edge of the screen.
+    ///
+    /// Otherwise, if it is `Some({cap})`, then wrapping will take
+    /// place `{cap}` cells from the left edge. This value may or may
+    /// not be greater than the width of the area. If it is greater
+    /// than it, then wrapping will take place slightly outside the
+    /// screen as a concequence.
+    pub wrapping_cap: Option<u32> = None,
     /// Whether to indent wrapped lines or not
     ///
     /// In [`Buffer`]s, the default is `true`.
@@ -205,7 +128,7 @@ pub struct PrintOpts {
     /// ```
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub indent_wrapped: bool,
+    pub indent_wrapped: bool = true,
     /// How long tabs should be on screen
     ///
     /// In [`Buffer`]s, the default is `4`
@@ -215,22 +138,13 @@ pub struct PrintOpts {
     /// added.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub tabstop: u8,
-    /// How to show new lines
+    pub tabstop: u8 = 4,
+    /// Wether to print the `'\n'` character as an empty space (`' '`)
     ///
-    /// In [`Buffer`]s, the default is [`AlwaysAs(' ')`].
-    ///
-    /// This can be one of two values:
-    ///
-    /// - [`NewLine::AlwaysAs({char})`]: Shows `{char}` at every `\n`.
-    /// - [`NewLine::AfterSpaceAs({char})`]: Shows `{char}`, but only
-    ///   on `\n` preceded by empty space.
+    /// In [`Buffer`]s, the default is `true`
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    /// [`AlwaysAs(' ')`]: NewLine::AlwaysAs
-    /// [`NewLine::AlwaysAs({char})`]: NewLine::AlwaysAs
-    /// [`NewLine::AfterSpaceAs({char})`]: NewLine::AfterSpaceAs
-    pub new_line: NewLine,
+    pub print_new_line: bool,
     /// How much space to keep between the cursor and edges
     ///
     /// In [`Buffer`]s, the default is `ScrollOff { x: 3, y: 3 }`
@@ -305,7 +219,9 @@ impl PrintOpts {
     /// ```rust
     /// use duat_core::opts::*;
     /// PrintOpts {
-    ///     wrap_method: WrapMethod::Edge,
+    ///     dont_wrap: true,
+    ///     wrap_on_word: false,
+    ///     wrapping_cap: None,
     ///     indent_wrapped: true,
     ///     tab_stops: 4,
     ///     new_line: NewLine::AlwaysAs('\n'),
@@ -325,10 +241,12 @@ impl PrintOpts {
     /// [`Widget::print_opts`]: crate::ui::Widget::print_opts
     pub const fn new() -> Self {
         Self {
-            wrap_method: WrapMethod::Edge,
+            dont_wrap: true,
+            wrap_on_word: false,
+            wrapping_cap: None,
             indent_wrapped: true,
             tabstop: 4,
-            new_line: NewLine::AlwaysAs('\n'),
+            print_new_line: false,
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
             force_scrolloff: false,
@@ -338,12 +256,41 @@ impl PrintOpts {
     }
 
     /// The default used in buffers and other such inputs
+    ///
+    /// This different default exists because on [`Widget`]s with
+    /// [`Selection`]s, some extra considerations need to be taken
+    /// into account, like new lines needing to be printed in order
+    /// for the `Selection` to visually occupy a `\n` character.
+    ///
+    /// The default value is:
+    ///
+    /// ```rust
+    /// use duat_core::opts::*;
+    /// PrintOpts {
+    ///     dont_wrap: true,
+    ///     wrap_on_word: false,
+    ///     wrapping_cap: None,
+    ///     indent_wrapped: true,
+    ///     tab_stops: 4,
+    ///     print_new_line: true,
+    ///     scrolloff: ScrollOff { x: 3, y: 3 },
+    ///     word_chars: word_chars!("A-Za-z0-9_-_"),
+    ///     force_scrolloff: false,
+    ///     show_ghosts: true,
+    ///     allow_overscroll: false,
+    /// };
+    /// ```
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    /// [`Selection`]: crate::mode::Selection
     pub const fn default_for_input() -> Self {
         Self {
-            wrap_method: WrapMethod::NoWrap,
+            dont_wrap: true,
+            wrap_on_word: false,
+            wrapping_cap: None,
             indent_wrapped: true,
             tabstop: 4,
-            new_line: NewLine::AlwaysAs(' '),
+            print_new_line: true,
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
             force_scrolloff: false,
@@ -356,14 +303,14 @@ impl PrintOpts {
 
     /// What the wrap width should be, given an area of a certain
     /// width
-    ///
-    /// If there is no cap ([`WrapMethod::NoWrap`]), returns [`None`]
     #[inline]
     pub const fn wrap_width(&self, width: u32) -> Option<u32> {
-        match self.wrap_method {
-            WrapMethod::Edge | WrapMethod::Word => Some(width),
-            WrapMethod::Capped(cap) => Some(cap as u32),
-            WrapMethod::NoWrap => None,
+        if self.dont_wrap {
+            None
+        } else if let Some(cap) = self.wrapping_cap {
+            Some(cap)
+        } else {
+            Some(width)
         }
     }
 

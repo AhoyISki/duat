@@ -13,8 +13,8 @@
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
     data::Pass,
-    hook::{self, FocusedOn, KeysSentTo, UnfocusedFrom},
-    ui::{PushTarget, Widget},
+    hook::{self, FocusedOn, UnfocusedFrom},
+    ui::PushTarget,
 };
 
 pub use self::{
@@ -24,7 +24,6 @@ pub use self::{
     prompt_line::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
 };
-use crate::modes::Prompt;
 
 mod line_numbers;
 mod log_book;

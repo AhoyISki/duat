@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, ops::ControlFlow::*};
 
 use duat_core::{
-    opts::{PrintOpts, WrapMethod},
+    opts::PrintOpts,
     text::{FwdIter as TextIter, Item, Part, Point, RevIter as RevTextIter},
     ui::Caret,
 };
@@ -132,7 +132,7 @@ fn parts<'a>(
                     let ret = if char == '\n' {
                         indent = 0;
                         on_indent = true;
-                        let char = opts.new_line.char(prev_char);
+                        let char = if opts.print_new_line { ' ' } else { '\n' };
                         (len_from(char, x, cap, &opts), Part::Char(char))
                     } else {
                         let len = len_from(char, x, cap, &opts);
@@ -271,7 +271,7 @@ fn process_part(
     match part {
         Part::Char(char) => {
             let ret = if char == '\n' {
-                let char = opts.new_line.char(*prev_char);
+                let char = if opts.print_new_line { ' ' } else { '\n' };
                 (len_from(char, x, cap, opts), Part::Char(char))
             } else {
                 (len_from(char, x, cap, opts), Part::Char(char))
@@ -289,11 +289,10 @@ fn inner_iter<'a>(
     initial: (u32, bool),
     opts: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    match opts.wrap_method {
-        WrapMethod::Edge | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
-            Iter::Parts(parts(iter, cap, opts, initial), PhantomData)
-        }
-        WrapMethod::Word => Iter::Words(words(iter, cap, opts, initial)),
+    if opts.wrap_on_word {
+        Iter::Words(words(iter, cap, opts, initial))
+    } else {
+        Iter::Parts(parts(iter, cap, opts, initial), PhantomData)
     }
 }
 
