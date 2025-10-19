@@ -501,10 +501,10 @@ mod cursor {
                     .print_iter(text.iter_fwd((line_start, Some(Point::default()))), opts)
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
-                        if let Some((p, char)) = item.as_real_char() {
-                            if vcol + len as u16 > vp.dvcol || char == '\n' {
-                                return Some((x as u16, p));
-                            }
+                        if let Some((p, char)) = item.as_real_char()
+                            && (vcol + len as u16 > vp.dvcol || char == '\n')
+                        {
+                            return Some((x as u16, p));
                         }
 
                         vcol += len as u16;

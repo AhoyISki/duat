@@ -9,9 +9,9 @@ use crossterm::event::KeyEvent;
 
 use super::Mode;
 use crate::{
+    buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    buffer::Buffer,
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
     ui::{Node, Widget},
@@ -216,16 +216,13 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
     if context::current_widget(pa).type_id(pa) != TypeId::of::<M::Widget>() {
         let node = {
             let windows = context::windows();
-            let w = context::current_window(pa);
             if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
                 let pk = context::current_buffer(pa).read(pa).path_kind();
                 windows
-                    .file_entry(pa, pk)
+                    .buffer_entry(pa, pk)
                     .map(|(.., handle)| Node::from_handle(handle))
             } else {
-                windows
-                    .widget_entry::<M::Widget>(pa, w)
-                    .map(|(.., node)| node.clone())
+                windows.node_of::<M::Widget>(pa).cloned()
             }
         };
 

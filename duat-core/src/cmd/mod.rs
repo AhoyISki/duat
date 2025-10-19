@@ -485,7 +485,7 @@ pub(crate) fn add_session_commands() {
             PathOrBufferOrCfg::Path(path) => (PathKind::from(path), None),
             PathOrBufferOrCfg::Buffer(handle) => {
                 let pk = handle.read(pa).path_kind();
-                let (win, ..) = windows.file_entry(pa, pk.clone()).unwrap();
+                let (win, ..) = windows.buffer_entry(pa, pk.clone()).unwrap();
                 if windows.get(pa, win).unwrap().file_handles(pa).len() == 1 {
                     (pk.clone(), Some(txt!("Switched to {pk}").build()))
                 } else {

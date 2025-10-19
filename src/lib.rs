@@ -654,7 +654,7 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
             Tagger, Text, txt,
         },
-        ui::{self, Widget},
+        ui::{self, Widget, traits::Area},
         widgets::*,
     };
 

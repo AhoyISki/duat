@@ -33,7 +33,7 @@ use crate::{
     form,
     hook::{self, BufferClosed, BufferReloaded, WindowCreated},
     mode,
-    opts::{BUFFER_OPTS, LINENUMBERS_OPTS},
+    opts::{BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, ONE_LINE_FOOTER, STATUSLINE_FMT},
     prelude::BufferWritten,
     widgets::Buffer,
 };
@@ -68,7 +68,17 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     });
 
     hook::add_grouped::<WindowCreated>("FooterWidgets", |pa, builder| {
-        FooterWidgets::default().push_on(pa, builder);
+        let status = STATUSLINE_FMT.lock().unwrap()(pa);
+        let mut footer = FooterWidgets::new(status);
+        if FOOTER_ON_TOP.load(Ordering::Relaxed) {
+            footer = footer.above();
+        }
+
+        if ONE_LINE_FOOTER.load(Ordering::Relaxed) {
+            footer = footer.one_line();
+        }
+
+        footer.push_on(pa, builder);
         Ok(())
     });
 

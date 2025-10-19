@@ -331,29 +331,29 @@ impl Windows {
 
         // If it's a Buffer, swap all buffers ahead, so this one becomes the
         // last.
-        if let Some(file_handle) = handle.try_downcast::<Buffer>() {
-            hook::trigger(pa, BufferClosed((file_handle.clone(), Cache::new())));
+        if let Some(buf_handle) = handle.try_downcast::<Buffer>() {
+            hook::trigger(pa, BufferClosed((buf_handle.clone(), Cache::new())));
 
             let buffers_ahead: Vec<Node> = self.inner.read(pa).list[win]
                 .nodes()
                 .filter(|node| {
                     node.handle().read_as::<Buffer>(pa).is_some_and(|buffer| {
-                        buffer.layout_order > file_handle.read(pa).layout_order
+                        buffer.layout_order > buf_handle.read(pa).layout_order
                     })
                 })
                 .cloned()
                 .collect();
 
-            for file_ahead in buffers_ahead {
-                self.swap(pa, handle, file_ahead.handle())?;
+            for buffer_ahead in buffers_ahead {
+                self.swap(pa, handle, buffer_ahead.handle())?;
             }
         }
 
         // Actually removing the Handle.
-        let mut windows = std::mem::take(&mut self.inner.write(pa).list);
+        let mut list = std::mem::take(&mut self.inner.write(pa).list);
 
-        if windows[win].close(pa, handle) {
-            windows.remove(win);
+        if list[win].close(pa, handle) {
+            list.remove(win);
             self.ui.remove_window(win);
             let cur_win = context::current_window(pa);
             if cur_win > win {
@@ -362,7 +362,7 @@ impl Windows {
         }
 
         let inner = self.inner.write(pa);
-        inner.list = windows;
+        inner.list = list;
         inner.new_additions.lock().unwrap().get_or_insert_default();
 
         Ok(())
@@ -428,7 +428,7 @@ impl Windows {
         pk: PathKind,
         default_buffer_cfg: PrintOpts,
     ) -> Node {
-        let node = match self.file_entry(pa, pk.clone()) {
+        let node = match self.buffer_entry(pa, pk.clone()) {
             Ok((win, _, handle)) if self.get(pa, win).unwrap().file_handles(pa).len() > 1 => {
                 // Take the nodes in the original Window
                 handle.write(pa).layout_order = 0;
@@ -553,7 +553,7 @@ impl Windows {
     }
 
     /// An entry for a buffer with the given name
-    pub fn file_entry(&self, pa: &Pass, pk: PathKind) -> Result<(usize, usize, Handle), Text> {
+    pub fn buffer_entry(&self, pa: &Pass, pk: PathKind) -> Result<(usize, usize, Handle), Text> {
         self.entries(pa)
             .find_map(|(win, wid, node)| {
                 (node.read_as(pa).filter(|f: &&Buffer| f.path_kind() == pk))
@@ -580,18 +580,20 @@ impl Windows {
     ///
     /// Returns the index of the window, the index of the [`Widget`],
     /// and the [`Widget`]'s [`Node`]
-    pub(crate) fn widget_entry<'a, W: Widget>(
-        &'a self,
-        pa: &'a Pass,
-        w: usize,
-    ) -> Result<(usize, usize, &'a Node), Text> {
+    pub(crate) fn node_of<'a, W: Widget>(&'a self, pa: &'a Pass) -> Result<&'a Node, Text> {
         let handle = context::current_buffer(pa);
 
         if let Some((handle, _)) = handle.get_related::<W>(pa).next() {
-            self.entries(pa).find(|(.., n)| n.ptr_eq(handle.widget()))
+            self.entries(pa)
+                .find_map(|(.., node)| node.ptr_eq(handle.widget()).then_some(node))
         } else {
-            self.iter_around(pa, w, 0)
-                .find(|(.., node)| node.data_is::<W>())
+            let cur_win = self.inner.read(pa).cur_win;
+            let list = &self.inner.read(pa).list;
+            list[cur_win]
+                .nodes()
+                .chain(list[cur_win + 1..].iter().flat_map(Window::nodes))
+                .chain(list[..cur_win].iter().flat_map(Window::nodes))
+                .find(|node| node.data_is::<W>())
         }
         .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()).build())
     }

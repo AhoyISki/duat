@@ -43,12 +43,14 @@ FOR NEXT UPDATE:
 [/] Get rid of WidgetCreated (that's right).
 [x] Get rid of the various Cfgs.
 [ ] Add convenience methods for the duat-utils Widgets.
-[ ] Remove requirement of Clone on Modes.
 [ ] Rename duat-utils to duat-base.
 [ ] Get rid of NewLine and WrapMethod (and maybe word_chars!?).
 [ ] Perfect print iterators.
 
 KNOWN BUGS:
+[ ] Style bleed persists.
+[ ] track_area not actually tracking correctly.
+[x] Problems with iterators.
 [ ] For now, spawned widgets don't care about spacing or alignment.
 [ ] tree-sitter-duat-text is not being used.
 [ ] Locking a Mutex on every Change is surely slow.
@@ -59,6 +61,7 @@ KNOWN BUGS:
 [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
 
 FUTURE UPDATES:
+[ ] Remove requirement of Clone on Modes.
 [ ] Hook::add_for/add_grouped_for/add_once_for.
 [ ] Get rid of Widget::needs_update?
 [ ] Make all Ui and Area methods use the address space of the Duat app.

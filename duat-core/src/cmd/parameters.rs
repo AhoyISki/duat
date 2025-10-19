@@ -305,9 +305,9 @@ impl Parameter<'_> for PathOrBufferOrCfg {
     type Returns = Self;
 
     fn new(pa: &Pass, args: &mut Args<'_>) -> Result<(Self::Returns, Option<FormId>), Text> {
-        if args.flags.word("opts") {
+        if args.flags.word("cfg") {
             Ok((Self::Cfg, None))
-        } else if args.flags.word("opts-manifest") {
+        } else if args.flags.word("cfg-manifest") {
             Ok((Self::CfgManifest, None))
         } else if let Ok((handle, form)) = args.next_as_with_form::<Buffer>(pa) {
             Ok((Self::Buffer(handle), form))

@@ -95,8 +95,8 @@ mod global {
     /// always points to the current Buffer, see dyn_buffer
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn current_buffer<'a>(pa: &'a Pass) -> &'a Handle {
-        &windows().current_buffer(pa).read(pa)
+    pub fn current_buffer(pa: &Pass) -> &Handle {
+        windows().current_buffer(pa).read(pa)
     }
 
     /// Returns a "dynamic" [`Handle`] for the active [`Buffer`]
