@@ -133,7 +133,7 @@ impl LinesBuilder {
         let effective_cap = self.cap.unwrap_or(self.coords().width());
         let bytes = &mut self.lines.bytes;
 
-        let spaces = self.gaps.get_spaces(effective_cap - self.len);
+        let spaces = self.gaps.get_spaces(effective_cap.saturating_sub(self.len));
         let offset = bytes.len();
 
         // Shortcut
@@ -142,8 +142,8 @@ impl LinesBuilder {
         {
             let start_d = match &self.gaps {
                 Gaps::OnRight => 0,
-                Gaps::OnLeft => cap - self.len,
-                Gaps::OnSides => (cap - self.len) / 2,
+                Gaps::OnLeft => cap.saturating_sub(self.len),
+                Gaps::OnSides => cap.saturating_sub(self.len) / 2,
                 Gaps::Spacers(indices) => {
                     let spacers = indices.iter().zip(spaces);
                     let mut start = 0;
@@ -172,8 +172,8 @@ impl LinesBuilder {
         let (start_i, start_d) = {
             let mut dist = match &self.gaps {
                 Gaps::OnRight | Gaps::Spacers(_) => 0,
-                Gaps::OnLeft => effective_cap - self.len,
-                Gaps::OnSides => (effective_cap - self.len) / 2,
+                Gaps::OnLeft => effective_cap.saturating_sub(self.len),
+                Gaps::OnSides => effective_cap.saturating_sub(self.len) / 2,
             };
 
             // Using a different loop when there are no spacers in order to
@@ -217,7 +217,7 @@ impl LinesBuilder {
             let mut dist = match &self.gaps {
                 Gaps::OnRight => self.len,
                 Gaps::OnLeft | Gaps::Spacers(_) => effective_cap,
-                Gaps::OnSides => self.len + (effective_cap - self.len) / 2,
+                Gaps::OnSides => self.len + effective_cap.saturating_sub(self.len) / 2,
             };
             let found_end = if let Gaps::Spacers(indices) = &self.gaps {
                 let mut sb = spaces.iter().zip(indices).rev().peekable();

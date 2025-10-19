@@ -42,6 +42,7 @@ FOR NEXT UPDATE:
 [ ] Rename duat-utils to duat-base.
 [x] Get rid of NewLine, WrapMethod.
 [ ] Perfect print iterators.
+[ ] Make Windows public.
 
 KNOWN BUGS:
 [ ] Style bleed persists.

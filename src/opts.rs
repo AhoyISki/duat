@@ -84,9 +84,19 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 /// In this function, you can modify the members of `PrintOpts`, which
 /// are the following:
 ///
-/// - `opts.wrap_method: WrapMethod` - How to wrap lines in the buffer
+/// - `opts.dont_wrap: bool` - Don't wrap at all
 ///
-///   The default is [`WrapMethod::NoWrap`]
+///   The default is `true`
+///
+/// - `opts.wrap_on_word: bool` - Try to wrap at word boundaries
+///
+///   The default is `false`
+///
+/// - `opts.wrappint_cap: Option<u32>` - Distance to wrap from. This
+///   will ignore the area's width, so you can wrap from outside the
+///   screen, for example
+///
+///   The default is `None`
 ///
 /// - `opts.indent_wrapped`: bool - Whether to indent wrapped lines
 ///
@@ -96,9 +106,11 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 ///
 ///   The default is `4`
 ///
-/// - `opts.new_line: NewLine` - How to show new lines
+/// - `opts.print_new_line` - Will show new lines as `' '` characters.
+///   Otherwise, they won't get printed, and a cursor on them will
+///   look invisible
 ///
-///   The default is [`NewLine::AlwaysAs(' ')`].
+///   The default is `true`
 ///
 /// - `opts.scrolloff: ScrollOff` - How much space to keep between the
 ///   cursor and edges
