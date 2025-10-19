@@ -102,7 +102,7 @@ impl Buffer {
             if self.text.has_unsaved_changes() {
                 let bytes = self
                     .text
-                    .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
+                    .save_on(std::io::BufWriter::new(fs::File::create(&path)?))
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
                 let path = path.to_string_lossy().to_string();
@@ -120,7 +120,7 @@ impl Buffer {
     /// Writes the buffer to the given [`Path`]
     ///
     /// [`Path`]: std::path::Path
-    pub fn save_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<usize>> {
+    pub fn save_to(&mut self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<usize>> {
         self.save_quit_to(path, false)
     }
 
@@ -128,7 +128,7 @@ impl Buffer {
     ///
     /// [`Path`]: std::path::Path
     pub(crate) fn save_quit_to(
-        &self,
+        &mut self,
         path: impl AsRef<std::path::Path>,
         quit: bool,
     ) -> std::io::Result<Option<usize>> {
@@ -136,7 +136,7 @@ impl Buffer {
             let path = path.as_ref();
             let res = self
                 .text
-                .write_to(std::io::BufWriter::new(fs::File::create(path)?))
+                .save_on(std::io::BufWriter::new(fs::File::create(path)?))
                 .map(Some);
 
             if let Ok(Some(bytes)) = res.as_ref() {

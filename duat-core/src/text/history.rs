@@ -29,6 +29,7 @@ pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
     fetcher_moments: Arc<Mutex<Vec<FetcherState>>>,
+    saved_moment: Option<usize>,
 }
 
 impl History {
@@ -50,6 +51,13 @@ impl History {
         }
 
         self.moments.truncate(self.cur_moment);
+
+        if let Some(saved_moment) = self.saved_moment
+            && saved_moment >= self.cur_moment
+        {
+            self.saved_moment = None;
+        }
+
         self.moments.push(std::mem::take(&mut self.new_moment));
         self.cur_moment += 1;
     }
@@ -58,7 +66,9 @@ impl History {
     ///
     /// Applying these [`Change`]s in the order that they're given
     /// will result in a correct redoing.
-    pub(super) fn move_forward(&mut self) -> Option<impl ExactSizeIterator<Item = Change<&str>>> {
+    pub(super) fn move_forward(
+        &mut self,
+    ) -> Option<(impl ExactSizeIterator<Item = Change<&str>>, bool)> {
         self.new_moment();
         if self.cur_moment == self.moments.len() {
             None
@@ -66,15 +76,16 @@ impl History {
             let mut remote = self.fetcher_moments.lock();
             self.cur_moment += 1;
 
-            Some(
-                self.moments[self.cur_moment - 1]
-                    .changes()
-                    .inspect(move |change| {
-                        for state in remote.iter_mut() {
-                            state.add_change(change.to_string_change());
-                        }
-                    }),
-            )
+            let iter = self.moments[self.cur_moment - 1]
+                .changes()
+                .inspect(move |change| {
+                    for state in remote.iter_mut() {
+                        state.add_change(change.to_string_change());
+                    }
+                });
+
+            let is_saved = self.saved_moment.is_some_and(|m| m == self.cur_moment);
+            Some((iter, is_saved))
         }
     }
 
@@ -83,7 +94,9 @@ impl History {
     /// These [`Change`]s will already be shifted corectly, such that
     /// applying them in sequential order, without further
     /// modifications, will result in a correct undoing.
-    pub(super) fn move_backwards(&mut self) -> Option<impl ExactSizeIterator<Item = Change<&str>>> {
+    pub(super) fn move_backwards(
+        &mut self,
+    ) -> Option<(impl ExactSizeIterator<Item = Change<&str>>, bool)> {
         self.new_moment();
         if self.cur_moment == 0 {
             None
@@ -92,7 +105,7 @@ impl History {
             self.cur_moment -= 1;
 
             let mut shift = [0; 3];
-            Some(self.moments[self.cur_moment].changes().map(move |change| {
+            let iter = self.moments[self.cur_moment].changes().map(move |change| {
                 let mut change = change.reverse();
                 change.shift_by(shift);
                 shift = add(shift, change.shift());
@@ -102,7 +115,10 @@ impl History {
                 }
 
                 change
-            }))
+            });
+
+            let is_saved = self.saved_moment.is_some_and(|m| m == self.cur_moment);
+            Some((iter, is_saved))
         }
     }
 
@@ -116,8 +132,15 @@ impl History {
         }
     }
 
+    /// Prepare this `History` for reloading
     pub(super) fn prepare_for_reloading(&mut self) {
         self.fetcher_moments = Arc::default();
+    }
+
+    /// Declares that the current state of the [`Text`] was saved on
+    /// disk
+    pub(super) fn declare_saved(&mut self) {
+        self.saved_moment = Some(self.cur_moment)
     }
 }
 
@@ -128,6 +151,7 @@ impl Clone for History {
             moments: self.moments.clone(),
             cur_moment: self.cur_moment,
             fetcher_moments: Arc::default(),
+            saved_moment: self.saved_moment,
         }
     }
 }
@@ -135,8 +159,8 @@ impl Clone for History {
 /// A moment in history, which may contain changes, or may just
 /// contain selections
 ///
-/// It also contains information about how to print the buffer, so that
-/// going back in time is less jarring.
+/// It also contains information about how to print the buffer, so
+/// that going back in time is less jarring.
 #[derive(Clone, Default, Debug, Encode, Decode)]
 pub struct Moment {
     changes: Vec<Change>,

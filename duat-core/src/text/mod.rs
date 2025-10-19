@@ -97,13 +97,7 @@ mod search;
 mod shift_list;
 mod tags;
 
-use std::{
-    rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{rc::Rc, sync::Arc};
 
 pub(crate) use self::history::MomentFetcher;
 use self::tags::{FwdTags, InnerTags, RevTags};
@@ -147,7 +141,7 @@ struct InnerText {
     // Specific to Buffers
     history: Option<History>,
     has_changed: bool,
-    has_unsaved_changes: AtomicBool,
+    has_unsaved_changes: bool,
 }
 
 impl Text {
@@ -201,7 +195,7 @@ impl Text {
             selections,
             history: with_history.then(History::default),
             has_changed: false,
-            has_unsaved_changes: AtomicBool::new(false),
+            has_unsaved_changes: false,
         }))
     }
 
@@ -213,7 +207,7 @@ impl Text {
             selections: Selections::new_empty(),
             history: None,
             has_changed: false,
-            has_unsaved_changes: AtomicBool::new(false),
+            has_unsaved_changes: false,
         }))
     }
 
@@ -409,7 +403,7 @@ impl Text {
             change.added_end().byte(),
         );
 
-        *self.0.has_unsaved_changes.get_mut() = true;
+        self.0.has_unsaved_changes = true;
         self.0.selections.apply_change(guess_i, change)
     }
 
@@ -457,10 +451,11 @@ impl Text {
         let mut history = self.0.history.take();
 
         if let Some(history) = history.as_mut()
-            && let Some(changes) = history.move_backwards()
+            && let Some((changes, saved_moment)) = history.move_backwards()
         {
             self.apply_and_process_changes(changes);
             self.0.has_changed = true;
+            self.0.has_unsaved_changes = !saved_moment;
         }
 
         self.0.history = history;
@@ -471,10 +466,11 @@ impl Text {
         let mut history = self.0.history.take();
 
         if let Some(history) = history.as_mut()
-            && let Some(changes) = history.move_forward()
+            && let Some((changes, saved_moment)) = history.move_forward()
         {
             self.apply_and_process_changes(changes);
             self.0.has_changed = true;
+            self.0.has_unsaved_changes = !saved_moment;
         }
 
         self.0.history = history;
@@ -527,8 +523,12 @@ impl Text {
     /// Writes the contents of this `Text` to a [writer]
     ///
     /// [writer]: std::io::Write
-    pub fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
-        self.0.has_unsaved_changes.store(false, Ordering::Relaxed);
+    pub fn save_on(&mut self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
+        self.0.has_unsaved_changes = false;
+        if let Some(history) = &mut self.0.history {
+            history.declare_saved();
+        }
+
         let [s0, s1] = self.0.bytes.slices(..).to_array();
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
@@ -541,7 +541,7 @@ impl Text {
     ///
     /// [write]: Text::write_to
     pub fn has_unsaved_changes(&self) -> bool {
-        self.0.has_unsaved_changes.load(Ordering::Relaxed)
+        self.0.has_unsaved_changes
     }
 
     ////////// Tag addition/deletion functions
@@ -803,7 +803,7 @@ impl Clone for Text {
             selections: self.0.selections.clone(),
             history: self.0.history.clone(),
             has_changed: self.0.has_changed,
-            has_unsaved_changes: AtomicBool::new(false),
+            has_unsaved_changes: false,
         }))
     }
 }

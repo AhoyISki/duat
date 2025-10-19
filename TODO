@@ -6,7 +6,7 @@ FOR NEXT UPDATE:
   [x] Add Tag defined floating Widgets.
   [x] Extend regular Widget functions to floating Widgets.
 [x] Rename File to Buffer.
-[ ] Make Handles not a Parameter.
+[/] Make Handles not a Parameter.
 [x] No more U arguments, plugins will now use duat instead of duat-core.
   [/] Gut duat-core, so that it only defines the Ui/Area traits and the text and form modules.
   [/] Move everything else to duat.
@@ -23,28 +23,24 @@ FOR NEXT UPDATE:
 [x] Get rid of AreaId.
 [ ] Add completion lists.
 [ ] Remembering at which Moment the Text was saved.
-[ ] Create a fun lil' spinner.
 [x] Create a jumplist.
 [x] Rework Parsers (again).
 [ ] Get started on a Vim mode.
 [x] Make the Regular mode more usable.
-[ ] Named colors.
-[ ] Turn the History into a tree.
 [x] New Parser API.
 [x] Make TreeSitter and MatchPairs default plugins.
 [x] More sophisticated Plugin API.
 [x] Fix the Windows version.
 [x] Superior thread counting method.
-[ ] Named StatusParts.
 [x] Start using clap.
 [x] Handle non printable code points.
 [x] Finish new parser documentation.
 [x] Simplify Widget API.
 [/] Get rid of WidgetCreated (that's right).
 [x] Get rid of the various Cfgs.
-[ ] Add convenience methods for the duat-utils Widgets.
+[x] Add convenience methods for the duat-utils Widgets.
 [ ] Rename duat-utils to duat-base.
-[ ] Get rid of NewLine and WrapMethod (and maybe word_chars!?).
+[x] Get rid of NewLine, WrapMethod.
 [ ] Perfect print iterators.
 
 KNOWN BUGS:
@@ -61,6 +57,11 @@ KNOWN BUGS:
 [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
 
 FUTURE UPDATES:
+[ ] Create a fun lil' spinner.
+[ ] Named StatusParts.
+[ ] Bring back 
+[ ] Named colors.
+[ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.
 [ ] Hook::add_for/add_grouped_for/add_once_for.
 [ ] Get rid of Widget::needs_update?

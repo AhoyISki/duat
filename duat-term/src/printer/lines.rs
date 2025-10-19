@@ -1,7 +1,7 @@
 use std::fmt::Alignment;
 
 use crossterm::style::{Attribute, Attributes};
-use duat_core::{opts::PrintOpts, form::Painter};
+use duat_core::{form::Painter, opts::PrintOpts};
 
 use super::Lines;
 use crate::{CStyle, Coords, print_style, printer::InnerLineInfo};
@@ -64,15 +64,13 @@ impl LinesBuilder {
 
     /// Realign the line to a new [`Alignment`]
     pub fn realign(&mut self, alignment: Alignment) {
-        if self.cap.is_some() {
-            self.default_gaps = match alignment {
-                Alignment::Left => Gaps::OnRight,
-                Alignment::Right => Gaps::OnLeft,
-                Alignment::Center => Gaps::OnSides,
-            };
-            if let Gaps::OnRight | Gaps::OnLeft | Gaps::OnSides = self.gaps {
-                self.gaps = self.default_gaps.clone();
-            }
+        self.default_gaps = match alignment {
+            Alignment::Left => Gaps::OnRight,
+            Alignment::Right => Gaps::OnLeft,
+            Alignment::Center => Gaps::OnSides,
+        };
+        if let Gaps::OnRight | Gaps::OnLeft | Gaps::OnSides = self.gaps {
+            self.gaps = self.default_gaps.clone();
         }
     }
 
