@@ -28,7 +28,7 @@ use crate::{
     data::{Pass, RwData},
     form::Painter,
     opts::PrintOpts,
-    text::{FwdIter, Item, Point, RevIter, SpawnId, Text, TwoPoints},
+    text::{FwdIter, Item, RevIter, SpawnId, Text, TwoPoints},
     ui::{
         Caret, PushSpecs, SpawnSpecs,
         traits::{self, Area as AreaTrait},
@@ -126,10 +126,10 @@ impl UiFunctions {
 }
 
 impl std::ops::Deref for Ui {
-    type Target = dyn traits::Ui + 'static;
+    type Target = &'static dyn traits::Ui;
 
     fn deref(&self) -> &Self::Target {
-        self.ui
+        &self.ui
     }
 }
 
@@ -346,16 +346,8 @@ impl Area {
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
     /// [`scroll_to_points`]: Area::scroll_to_points
-    pub fn scroll_around_points(
-        &self,
-        pa: &Pass,
-        text: &Text,
-        points: impl TwoPoints,
-        opts: PrintOpts,
-    ) {
-        self.area
-            .read(pa)
-            .scroll_around_points(text, points.to_points(), opts);
+    pub fn scroll_around_points(&self, pa: &Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
+        self.area.read(pa).scroll_around_points(text, points, opts);
     }
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
@@ -369,25 +361,17 @@ impl Area {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::opts::WrapMethod
-    pub fn scroll_to_points(
-        &self,
-        pa: &Pass,
-        text: &Text,
-        points: impl TwoPoints,
-        opts: PrintOpts,
-    ) {
-        self.area
-            .read(pa)
-            .scroll_to_points(text, points.to_points(), opts);
+    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
+        self.area.read(pa).scroll_to_points(text, points, opts);
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
-    pub fn start_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> (Point, Option<Point>) {
+    pub fn start_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> TwoPoints {
         self.area.read(pa).start_points(text, opts)
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
-    pub fn end_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> (Point, Option<Point>) {
+    pub fn end_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> TwoPoints {
         self.area.read(pa).end_points(text, opts)
     }
 

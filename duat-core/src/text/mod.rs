@@ -272,7 +272,11 @@ impl Text {
     /// Gets the indentation level on the current line
     pub fn indent(&self, p: Point, area: &dyn Area, mut opts: PrintOpts) -> usize {
         let [start, _] = self.points_of_line(p.line());
-        let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
+        let t_iter = self
+            .iter_fwd(start.to_two_points_after())
+            .no_ghosts()
+            .no_conceals();
+
         opts.print_new_line = false;
         area.print_iter(t_iter, opts)
             .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
@@ -292,9 +296,13 @@ impl Text {
     /// [points]: TwoPoints
     /// [point]: Bytes::point_at_byte
     #[inline(always)]
-    pub fn ghost_max_points_at(&self, b: usize) -> (Point, Option<Point>) {
+    pub fn ghost_max_points_at(&self, b: usize) -> TwoPoints {
         let point = self.point_at_byte(b);
-        (point, self.0.tags.ghosts_total_at(point.byte()))
+        if let Some(total_ghost) = self.0.tags.ghosts_total_at(point.byte()) {
+            TwoPoints::new(point, total_ghost)
+        } else {
+            TwoPoints::new_after_ghost(point)
+        }
     }
 
     /// The [points] at the end of the text
@@ -305,7 +313,7 @@ impl Text {
     ///
     /// [points]: TwoPoints
     /// [last point]: Bytes::len
-    pub fn len_points(&self) -> (Point, Option<Point>) {
+    pub fn len_points(&self) -> TwoPoints {
         self.ghost_max_points_at(self.len().byte())
     }
 
@@ -318,7 +326,7 @@ impl Text {
     /// This method is useful if you want to iterator reversibly
     /// right after a certain point, thus including the character
     /// of said point.
-    pub fn points_after(&self, tp: impl TwoPoints) -> Option<(Point, Option<Point>)> {
+    pub fn points_after(&self, tp: TwoPoints) -> Option<TwoPoints> {
         self.iter_fwd(tp)
             .filter_map(|item| item.part.as_char().map(|_| item.points()))
             .chain([self.len_points()])
@@ -332,17 +340,14 @@ impl Text {
     /// [`Tag`]s create ghost text or omit text from multiple
     /// different lines, this point may differ from where in the
     /// [`Text`] the physical line actually begins.
-    pub fn visual_line_start(&self, p: impl TwoPoints) -> (Point, Option<Point>) {
-        let (real, ghost) = p.to_points();
-
-        let mut iter = self.iter_rev((real, ghost)).peekable();
-        let mut points = (real, ghost);
+    pub fn visual_line_start(&self, mut points: TwoPoints) -> TwoPoints {
+        let mut iter = self.iter_rev(points).peekable();
         while let Some(peek) = iter.peek() {
             match peek.part {
                 Part::Char('\n') => {
                     return points;
                 }
-                Part::Char(_) => points = iter.next().unwrap().to_points(),
+                Part::Char(_) => points = iter.next().unwrap().points(),
                 _ => drop(iter.next()),
             }
         }
@@ -601,9 +606,9 @@ impl Text {
     /// expected to move
     pub(crate) fn add_selections(&mut self, area: &dyn Area, opts: PrintOpts) {
         let within = (self.0.selections.len() >= 500).then(|| {
-            let (start, _) = area.start_points(self, opts);
-            let (end, _) = area.end_points(self, opts);
-            (start, end)
+            let start = area.start_points(self, opts);
+            let end = area.end_points(self, opts);
+            (start.real, end.real)
         });
 
         let mut add_selection = |selection: &Selection, bytes: &mut Bytes, is_main: bool| {
@@ -671,14 +676,14 @@ impl Text {
     /// A forward iterator of the [chars and tags] of the [`Text`]
     ///
     /// [chars and tags]: Part
-    pub fn iter_fwd(&self, at: impl TwoPoints) -> FwdIter<'_> {
+    pub fn iter_fwd(&self, at: TwoPoints) -> FwdIter<'_> {
         FwdIter::new_at(self, at)
     }
 
     /// A reverse iterator of the [chars and tags] of the [`Text`]
     ///
     /// [chars and tags]: Part
-    pub fn iter_rev(&self, at: impl TwoPoints) -> RevIter<'_> {
+    pub fn iter_rev(&self, at: TwoPoints) -> RevIter<'_> {
         RevIter::new_at(self, at)
     }
 

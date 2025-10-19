@@ -18,10 +18,10 @@ use std::{
 };
 
 use super::{
-    Point, SpawnId, Text, ToggleId, TwoPoints,
+    Point, SpawnId, Text, ToggleId,
     tags::{self, RawTag},
 };
-use crate::mode::Selection;
+use crate::{mode::Selection, text::TwoPoints};
 
 /// An [`Iterator`] over the [`Part`]s of the [`Text`].
 ///
@@ -48,9 +48,9 @@ pub struct FwdIter<'a> {
 impl<'a> FwdIter<'a> {
     /// Returns a new forward [`Iterator`] over the [`Item`]s in the
     /// [`Text`]
-    pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
-        let (r, g) = tp.to_points();
-        let point = r.min(text.len());
+    pub(super) fn new_at(text: &'a Text, points: TwoPoints) -> Self {
+        let TwoPoints { real, ghost } = points;
+        let point = real.min(text.len());
 
         // The second usize argument of ghost is the "distance traversed".
         // When iterating over this starting point, the Tags iterator will
@@ -58,11 +58,11 @@ impl<'a> FwdIter<'a> {
         // supposed to be skipped.
         // The "distance traversed" serves the purpose of skipping those
         // ghosts until the correct one is reached, hence why it starts at 0.
-        let ghost = if let Some(offset) = g {
-            let (_, max) = text.ghost_max_points_at(r.byte());
+        let ghost = if let Some(offset) = ghost {
+            let (_, max) = text.ghost_max_points_at(real.byte());
             max.map(|max| (max.min(offset), 0))
         } else {
-            let (_, max) = text.ghost_max_points_at(r.byte());
+            let (_, max) = text.ghost_max_points_at(real.byte());
             max.zip(Some(0))
         };
 
@@ -126,8 +126,8 @@ impl<'a> FwdIter<'a> {
     /// Skips to a certain [`TwoPoints`]
     ///
     /// Does nothing if the [`TwoPoints`] are behind.
-    pub fn skip_to(&mut self, tp: impl TwoPoints) {
-        *self = self.text.iter_fwd(tp.to_points().max(self.points()))
+    pub fn skip_to(&mut self, points: TwoPoints) {
+        *self = self.text.iter_fwd(points.max(self.points()))
     }
 
     ////////// Querying functions
@@ -143,12 +143,17 @@ impl<'a> FwdIter<'a> {
     /// Returns the current real and ghost [`Point`]s of the
     /// [`Iterator`]
     #[inline(always)]
-    pub fn points(&self) -> (Point, Option<Point>) {
+    pub fn points(&self) -> TwoPoints {
         if let Some((real, ..)) = self.main_iter.as_ref() {
-            (*real, self.ghost.map(|(tg, _)| tg))
+            TwoPoints::new(*real, self.ghost.map(|(tg, _)| tg).unwrap())
         } else {
-            (self.point, None)
+            TwoPoints::new_after_ghost(self.point)
         }
+    }
+
+    /// The [`Text`] that's being iterated over
+    pub fn text(&self) -> &'a Text {
+        self.text
     }
 
     /// Handles special [`Tag`]s and [`Tag`] exceptions
@@ -173,7 +178,7 @@ impl<'a> FwdIter<'a> {
                     (Point::default(), Point::default())
                 };
 
-                let iter = text.iter_fwd(this_ghost);
+                let iter = text.iter_fwd(this_ghost.to_two_points_before());
                 let point = std::mem::replace(&mut self.point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
@@ -196,7 +201,7 @@ impl<'a> FwdIter<'a> {
             }
             RawTag::ConcealUntil(b) => {
                 let point = self.text.point_at_byte(*b as usize);
-                *self = FwdIter::new_at(self.text, point);
+                *self = FwdIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
             RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::SpawnedWidget(..)
@@ -268,13 +273,13 @@ pub struct RevIter<'a> {
 impl<'a> RevIter<'a> {
     /// Returns a new reverse [`Iterator`] over the [`Item`]s in the
     /// [`Text`]
-    pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
-        let (r, g) = tp.to_points();
-        let point = r.min(text.len());
+    pub(super) fn new_at(text: &'a Text, points: TwoPoints) -> Self {
+        let TwoPoints { real, ghost } = points;
+        let point = real.min(text.len());
 
-        let ghost = g.and_then(|offset| {
-            let (_, max) = text.ghost_max_points_at(r.byte());
-            max.map(|max| (max.min(offset), max.byte()))
+        let ghost = ghost.and_then(|offset| {
+            let points = text.ghost_max_points_at(real.byte());
+            points.ghost.map(|max| (max.min(offset), max.byte()))
         });
 
         Self {
@@ -324,11 +329,13 @@ impl<'a> RevIter<'a> {
     ////////// Querying functions
 
     /// Returns the current real and ghost [`Point`]s
-    pub fn points(&self) -> (Point, Option<Point>) {
+    pub fn points(&self) -> TwoPoints {
         if let Some((real, ..)) = self.main_iter.as_ref() {
-            (*real, Some(self.point))
+            TwoPoints::new(*real, self.point)
+        } else if let Some((ghost, _)) = self.ghost {
+            TwoPoints::new(self.point, ghost)
         } else {
-            (self.point, self.ghost.map(|(p, _)| p))
+            TwoPoints::new_after_ghost(self.point)
         }
     }
 
@@ -362,11 +369,11 @@ impl<'a> RevIter<'a> {
                     )
                 } else {
                     let this = text.len();
-                    let (_, max) = self.text.ghost_max_points_at(b);
-                    (this, max.unwrap())
+                    let points = self.text.ghost_max_points_at(b);
+                    (this, points.ghost.unwrap())
                 };
 
-                let iter = text.iter_rev(ghost_b);
+                let iter = text.iter_rev(ghost_b.to_two_points_before());
                 let point = std::mem::replace(&mut self.point, offset);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
@@ -386,7 +393,7 @@ impl<'a> RevIter<'a> {
             RawTag::EndConceal(_) => self.conceals += 1,
             RawTag::ConcealUntil(b) => {
                 let point = self.text.point_at_byte(*b as usize);
-                *self = RevIter::new_at(self.text, point);
+                *self = RevIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
             RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::SpawnedWidget(..)
@@ -483,44 +490,54 @@ pub struct Item {
 impl Item {
     /// Returns a new [`Item`]
     #[inline]
-    fn new(tp: impl TwoPoints, part: Part) -> Self {
-        let (real, ghost) = tp.to_points();
+    const fn new(points: TwoPoints, part: Part) -> Self {
+        let TwoPoints { real, ghost } = points;
         Self { real, ghost, part }
     }
 
     /// Whether this [`Item`] is in a [`Ghost`]
     ///
     /// [`Ghost`]: super::Ghost
-    pub fn is_real(&self) -> bool {
+    pub const fn is_real(&self) -> bool {
         self.ghost.is_none()
     }
 
     /// Returns the real position, if not on a [`Ghost`]
     ///
     /// [`Ghost`]: super::Ghost
-    pub fn as_real_char(self) -> Option<(Point, char)> {
-        let char = self.part.as_char()?;
-        self.ghost.is_none().then_some((self.real, char))
+    pub const fn as_real_char(self) -> Option<(Point, char)> {
+        let Some(char) = self.part.as_char() else {
+            return None;
+        };
+        if self.ghost.is_none() {
+            Some((self.real, char))
+        } else {
+            None
+        }
     }
 
     /// The real [byte](Point::byte)
-    pub fn byte(&self) -> usize {
+    pub const fn byte(&self) -> usize {
         self.real.byte()
     }
 
     /// The real [char](Point::char)
-    pub fn char(&self) -> usize {
+    pub const fn char(&self) -> usize {
         self.real.char()
     }
 
     /// The real [line](Point::line)
-    pub fn line(&self) -> usize {
+    pub const fn line(&self) -> usize {
         self.real.line()
     }
 
     /// The real and ghost [`Point`]s, can be used as [`TwoPoints`]
-    pub fn points(&self) -> (Point, Option<Point>) {
-        (self.real, self.ghost)
+    pub const fn points(&self) -> TwoPoints {
+        if let Some(ghost) = self.ghost {
+            TwoPoints::new(self.real, ghost)
+        } else {
+            TwoPoints::new_after_ghost(self.real)
+        }
     }
 }
 
@@ -650,7 +667,7 @@ impl Part {
     /// [`Char`]: Part::Char
     #[must_use]
     #[inline]
-    pub fn is_char(&self) -> bool {
+    pub const fn is_char(&self) -> bool {
         matches!(self, Part::Char(_))
     }
 
@@ -658,7 +675,7 @@ impl Part {
     ///
     /// [`Char`]: Part::Char
     #[inline]
-    pub fn as_char(&self) -> Option<char> {
+    pub const fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self {
             Some(*v)
         } else {
@@ -670,7 +687,7 @@ impl Part {
     ///
     /// [`Char`]: Part::Char
     #[inline]
-    pub fn is_tag(&self) -> bool {
+    pub const fn is_tag(&self) -> bool {
         !self.is_char()
     }
 }

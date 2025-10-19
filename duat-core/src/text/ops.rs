@@ -10,8 +10,6 @@ use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToIncl
 
 use bincode::{Decode, Encode};
 
-use super::Item;
-
 /// A position in [`Text`]
 ///
 /// [`Text`]: super::Text
@@ -23,17 +21,31 @@ pub struct Point {
 }
 
 impl Point {
-    ////////// Creation of a Point
-
     /// Returns a new [`Point`], at the first byte
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Point { b: 0, c: 0, l: 0 }
     }
 
     /// Internal function to create [`Point`]s
-    pub(super) fn from_raw(b: usize, c: usize, l: usize) -> Self {
+    pub(super) const fn from_raw(b: usize, c: usize, l: usize) -> Self {
         let (b, c, l) = (b as u32, c as u32, l as u32);
         Self { b, c, l }
+    }
+
+    /// Returns a new [`TwoPoints`] that includes the [`Ghost`]s in
+    /// the same byte, if there is one
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub const fn to_two_points_before(self) -> TwoPoints {
+        TwoPoints::new_before_ghost(self)
+    }
+
+    /// Returns a new [`TwoPoints`] that skips the [`Ghost`]s in the
+    /// same byte, if there is one
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub const fn to_two_points_after(self) -> TwoPoints {
+        TwoPoints::new_after_ghost(self)
     }
 
     ////////// Querying functions
@@ -64,7 +76,7 @@ impl Point {
     /// [`Text`]: super::Text
     /// [`Bytes`]: super::Bytes
     /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
-    pub fn byte(&self) -> usize {
+    pub const fn byte(&self) -> usize {
         self.b as usize
     }
 
@@ -81,7 +93,7 @@ impl Point {
     /// [`Bytes`]: super::Bytes
     /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
     /// [`Bytes::strs`]: super::Bytes::strs
-    pub fn char(&self) -> usize {
+    pub const fn char(&self) -> usize {
         self.c as usize
     }
 
@@ -93,7 +105,7 @@ impl Point {
     /// [`Text`]: super::Text
     /// [`Bytes`]: super::Bytes
     /// [`Bytes::point_at_line`]: super::Bytes::point_at_line
-    pub fn line(&self) -> usize {
+    pub const fn line(&self) -> usize {
         self.l as usize
     }
 
@@ -110,7 +122,7 @@ impl Point {
 
     /// Moves a [`Point`] forward by one character
     #[inline(always)]
-    pub(crate) fn fwd(self, char: char) -> Self {
+    pub(crate) const fn fwd(self, char: char) -> Self {
         Self {
             b: self.b + char.len_utf8() as u32,
             c: self.c + 1,
@@ -120,7 +132,7 @@ impl Point {
 
     /// Moves a [`Point`] in reverse by one character
     #[inline(always)]
-    pub(crate) fn rev(self, char: char) -> Self {
+    pub(crate) const fn rev(self, char: char) -> Self {
         Self {
             b: self.b - char.len_utf8() as u32,
             c: self.c - 1,
@@ -131,7 +143,7 @@ impl Point {
     /// Shifts the [`Point`] by a "signed point"
     ///
     /// This assumes that no overflow is going to happen
-    pub(crate) fn shift_by(self, [b, c, l]: [i32; 3]) -> Self {
+    pub(crate) const fn shift_by(self, [b, c, l]: [i32; 3]) -> Self {
         Self {
             b: (self.b as i32 + b) as u32,
             c: (self.c as i32 + c) as u32,
@@ -143,7 +155,7 @@ impl Point {
     ///
     /// In this representation, the indices 0, 1 and 2 are the byte,
     /// char and line, respectively.
-    pub(crate) fn as_signed(self) -> [i32; 3] {
+    pub(crate) const fn as_signed(self) -> [i32; 3] {
         [self.b as i32, self.c as i32, self.l as i32]
     }
 }
@@ -300,41 +312,76 @@ implTextRangeOrPoint!(RangeTo);
 implTextRangeOrPoint!(RangeToInclusive);
 implTextRangeOrPoint!(RangeFrom);
 
-/// Two positions, one for the [`Text`], and one for [ghost text]
+/// A struct used to exactly pinpoint a position in [`Text`], used
+/// when printing
 ///
-/// This can either be a [`Point`] or `(Point, Option<Point>)` or
-/// even `(Point, Point)`. If a second [`Point`] is excluded, it
-/// is assumed to be [`Point::default()`], i.e., this
-/// [`TwoPoints`] represents the beginning of a [ghost text].
+/// This struct has two inner components, a `real` [`Point`], and a
+/// `ghost` [`Option<Point>`]. The second component is used whenever
+/// you want to print a [`Ghost`] `Text`, either fully or partially.
+///
+/// The `ghost` component represents the "sum position" of all
+/// `Ghost`s in that same byte. For example if there are two ghosts in
+/// a single byte, if you pass `ghost == ghost1.len()`, then only the
+/// second ghost will be included in this iteration.
+///
+/// [`TwoPoints::default`] will include the first [`Ghost`].
 ///
 /// [`Text`]: super::Text
-/// [ghost text]: super::Ghost
-pub trait TwoPoints: Clone + Copy + std::fmt::Debug {
-    /// Returns two [`Point`]s, for `Text` and ghosts
-    fn to_points(self) -> (Point, Option<Point>);
+/// [`Ghost`]: super::Ghost
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Ord)]
+pub struct TwoPoints {
+    /// The real `Point` in the [`Text`]
+    ///
+    /// [`Text`]: super::Text
+    pub real: Point = Point::new(),
+    /// A possible point in a [`Ghost`]
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub ghost: Option<Point> = Some(Point::new()),
 }
 
-impl TwoPoints for Point {
-    fn to_points(self) -> (Point, Option<Point>) {
-        (self, None)
+impl TwoPoints {
+    /// Returns a fully qualified `TwoPoints`
+    ///
+    /// This will include a precise `real` [`Point`] as well as a
+    /// precise `ghost` [`Point`].
+    ///
+    /// If you don't want to deal with ghosts, see
+    /// [`TwoPoints::new_before_ghost`] and
+    /// [`TwoPoints::new_after_ghost`].
+    pub const fn new(real: Point, ghost: Point) -> Self {
+        Self { real, ghost: Some(ghost) }
+    }
+
+    /// Returns a new `TwoPoints` that will include the [`Ghost`]
+    /// before the real [`Point`]
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub const fn new_before_ghost(real: Point) -> Self {
+        Self { real, ghost: Some(Point::default()) }
+    }
+
+    /// Returns a new `TwoPoints` that will exclude the [`Ghost`]
+    /// before the real [`Point`]
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub const fn new_after_ghost(real: Point) -> Self {
+        Self { real, ghost: None }
     }
 }
 
-impl TwoPoints for (Point, Point) {
-    fn to_points(self) -> (Point, Option<Point>) {
-        (self.0, Some(self.1))
-    }
-}
-
-impl TwoPoints for (Point, Option<Point>) {
-    fn to_points(self) -> (Point, Option<Point>) {
-        self
-    }
-}
-
-impl TwoPoints for Item {
-    fn to_points(self) -> (Point, Option<Point>) {
-        (self.real, self.ghost)
+impl std::cmp::PartialOrd for TwoPoints {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.real.partial_cmp(&other.real) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match (&self.ghost, &other.ghost) {
+            (Some(l), Some(r)) => l.partial_cmp(r),
+            (Some(_), None) => Some(std::cmp::Ordering::Less),
+            (None, Some(_)) => Some(std::cmp::Ordering::Greater),
+            (None, None) => Some(std::cmp::Ordering::Equal),
+        }
     }
 }
 

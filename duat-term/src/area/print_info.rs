@@ -1,17 +1,15 @@
+use std::io::Write;
+
 use duat_core::{
-    opts::PrintOpts,
     context::{Decode, Encode},
-    text::{Item, Part, Point, Text, TwoPoints},
+    opts::PrintOpts,
+    text::{Item, Point, Text, ToTwoPoints},
     ui::Caret,
 };
 
 use crate::{
     Coords,
-    area::{
-        iter::{print_iter, rev_print_iter},
-        print_iter_indented,
-    },
-    printer::Gaps,
+    area::iter::{print_iter, rev_print_iter},
 };
 
 /// Information about how to print the file on the `Label`.
@@ -71,18 +69,20 @@ impl PrintInfo {
             return Default::default();
         };
 
-        let (line_start, mut y) = if let Some(main) = text.selections().get_main()
+        let (points, mut y) = if let Some(main) = text.selections().get_main()
             && main.caret() == self.prev_main
         {
-            (text.visual_line_start(self.prev_main), self.vert_dist)
+            ((self.prev_main, None), self.vert_dist)
         } else {
-            (text.visual_line_start(s_points), 0)
+            (s_points, 0)
         };
 
-        let mut iter = {
-            let iter = text.iter_fwd(line_start);
-            print_iter(iter, cfg.wrap_width(coords.width()), cfg, s_points)
-        };
+        let mut iter = print_iter(
+            text,
+            points,
+            cfg.wrap_width(coords.width()).unwrap_or(coords.width()),
+            cfg,
+        );
 
         self.prev_coords = coords;
 
@@ -137,7 +137,7 @@ impl PrintInfo {
         let cap = cfg.wrap_width(coords.width());
 
         if by > 0 {
-            let line_start = print_iter(text.iter_fwd(s_points), cap, cfg, s_points)
+            let line_start = print_iter(text, s_points, cap.unwrap_or(coords.width()), cfg)
                 .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
                 .take(by as usize + 1)
                 .last()
@@ -164,7 +164,7 @@ impl PrintInfo {
 
     pub(super) fn scroll_to_points(
         &mut self,
-        points: impl TwoPoints,
+        points: impl ToTwoPoints,
         coords: Coords,
         text: &Text,
         cfg: PrintOpts,
@@ -233,6 +233,13 @@ impl PrintInfo {
 
             self.vert_dist = below_dist - 1;
         }
+        
+            let mut log = std::fs::OpenOptions::new()
+                .append(true)
+                .open("log")
+                .unwrap();
+
+		write!(log, "{:?}", self.s_points).unwrap();
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is
@@ -253,53 +260,20 @@ impl PrintInfo {
 
             let mut iter = rev_print_iter(text.iter_rev(after), Some(cap), opts);
 
-            let (points, start, end, wrap) = iter
-                .find_map(|(Caret { x, len, wrap }, item)| {
+            let (points, start, end) = iter
+                .find_map(|(Caret { x, len, .. }, item)| {
                     let points = item.points();
-                    item.part.as_char().and(Some((points, x, x + len, wrap)))
+                    item.part.as_char().and(Some((points, x, x + len)))
                 })
-                .unwrap_or(((Point::default(), None), 0, 0, true));
+                .unwrap_or(((Point::default(), None), 0, 0));
 
-            let (line_len, gaps) = {
-                let mut gaps = Gaps::OnRight;
-                let (indent, points) = if wrap {
-                    (start, points)
-                } else {
-                    iter.find_map(|(caret, item)| caret.wrap.then_some((caret.x, item.points())))
-                        .unwrap()
-                };
+            let line_len = print_iter(text, points, cap, opts)
+                .take_while(|(caret, item)| !caret.wrap || item.points() == points)
+                .last()
+                .map(|(Caret { x, len, .. }, _)| x + len)
+                .unwrap_or(0);
 
-                let len = print_iter_indented(text.iter_fwd(points), cap, opts, indent)
-                    .inspect(|(_, Item { part, real, .. })| match part {
-                        Part::AlignLeft => gaps = Gaps::OnRight,
-                        Part::AlignCenter => gaps = Gaps::OnSides,
-                        Part::AlignRight => gaps = Gaps::OnLeft,
-                        Part::Spacer => gaps.add_spacer(real.byte()),
-                        _ => {}
-                    })
-                    .take_while(|(caret, item)| !caret.wrap || item.points() == points)
-                    .last()
-                    .map(|(Caret { x, len, .. }, _)| x + len)
-                    .unwrap_or(0);
-
-                (len, gaps)
-            };
-
-            let diff = match &gaps {
-                Gaps::OnRight => 0,
-                Gaps::OnLeft => cap - line_len,
-                Gaps::OnSides => (cap - line_len) / 2,
-                Gaps::Spacers(bytes) => {
-                    let spaces = gaps.get_spaces(cap - line_len);
-                    bytes
-                        .iter()
-                        .take_while(|b| **b <= p.byte())
-                        .zip(spaces)
-                        .fold(0, |prev_len, (_, len)| prev_len + len)
-                }
-            };
-
-            (line_len + diff, start + diff, end + diff)
+            (line_len, start, end)
         };
 
         self.x_shift = self

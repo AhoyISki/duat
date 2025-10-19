@@ -1,9 +1,12 @@
 mod iter;
 mod print_info;
 
-use std::{fmt::Alignment, sync::Arc};
+use std::{io::Write, sync::Arc};
 
-use crossterm::{cursor, style::Attribute};
+use crossterm::{
+    cursor,
+    style::{Attribute, Attributes},
+};
 use duat_core::{
     context::{self, Decode, Encode},
     form::{CONTROL_CHAR_ID, Painter},
@@ -11,10 +14,10 @@ use duat_core::{
     text::{FwdIter, Item, Part, Point, RevIter, SpawnId, Text, txt},
     ui::{self, Caret, PushSpecs, SpawnSpecs},
 };
-use iter::{print_iter, print_iter_indented, rev_print_iter};
+use iter::{print_iter, rev_print_iter};
 
 pub use self::print_info::PrintInfo;
-use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::LinesBuilder, queue};
+use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::Lines, queue};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
 #[bincode(crate = "duat_core::context::bincode")]
@@ -92,11 +95,41 @@ impl Area {
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        let (mut lines, iter) = {
+        const SPACES: &[u8] = &[b' '; 3000];
+
+        fn end_line(
+            lines: &mut Lines,
+            painter: &Painter,
+            ansi_codes: &mut micromap::Map<CStyle, String, 16>,
+            len: u32,
+            max_x: u32,
+        ) {
+            let mut default_style = painter.get_default();
+            default_style.style.foreground_color = None;
+            default_style.style.underline_color = None;
+            default_style.style.attributes = Attributes::from(Attribute::Reset);
+
+            print_style(lines, default_style.style, ansi_codes);
+            if lines.coords().br.x == max_x {
+                lines.write_all(b"\x1b[0K").unwrap();
+            } else {
+                lines
+                    .write_all(&SPACES[..(lines.coords().width() - len) as usize])
+                    .unwrap();
+            }
+            lines.flush().unwrap();
+        }
+
+        let (mut lines, iter, x_shift, max_x) = {
             let Some(coords) = self.layouts.coords_of(self.id, true) else {
                 context::warn!("This Area was already deleted");
                 return;
             };
+
+            let max = self
+                .layouts
+                .inspect(self.id, |_, layout| layout.max_value())
+                .unwrap();
 
             if coords.width() == 0 || coords.height() == 0 {
                 return;
@@ -109,15 +142,11 @@ impl Area {
                 (s_points, info.x_shift())
             };
 
-            let lines = LinesBuilder::new(coords, x_shift, opts);
+            let lines = Lines::new(coords);
+            let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
+            let iter = print_iter(text, s_points, width, opts);
 
-            let iter = {
-                let line_start = text.visual_line_start(s_points);
-                let iter = text.iter_fwd(line_start);
-                print_iter(iter, lines.cap(), opts, s_points)
-            };
-
-            (lines, iter)
+            (lines, iter, x_shift, max.x)
         };
 
         let mut observed_spawns = Vec::new();
@@ -142,6 +171,7 @@ impl Area {
             let mut y = tl_y;
             let mut cursor = None;
             let mut spawns_for_next: Vec<SpawnId> = Vec::new();
+            let mut last_len = 0;
 
             for (caret, item) in iter {
                 f(&caret, &item);
@@ -154,36 +184,42 @@ impl Area {
                         break;
                     }
                     if y > lines.coords().tl.y {
-                        lines.end_line(ansi_codes, painter);
+                        end_line(lines, painter, ansi_codes, last_len, max_x);
                     }
                     if x > 0 {
                         let mut default_style = painter.get_default().style;
                         default_style.attributes.set(Attribute::Reset);
                         print_style(lines, default_style, ansi_codes);
-                        (0..x).for_each(|_| lines.push_char(' ', 1));
+                        lines.write_all(&SPACES[..x as usize]).unwrap();
                     }
                     painter.reset_prev_style();
                     style_was_set = true;
-                    y += 1
+                    y += 1;
                 }
 
+                let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
+
                 match part {
-                    Part::Char(char) => {
+                    Part::Char(char) if is_contained => {
                         if let Some(str) = get_control_str(char) {
                             painter.apply(CONTROL_CHAR_ID, 100);
                             if style_was_set && let Some(style) = painter.relative_style() {
                                 print_style(lines, style, ansi_codes);
                             }
-                            str.chars().for_each(|c| lines.push_char(c, 1));
+                            lines.write_all(str.as_bytes()).unwrap();
                             painter.remove(CONTROL_CHAR_ID)
                         } else {
                             if style_was_set && let Some(style) = painter.relative_style() {
                                 print_style(lines, style, ansi_codes);
                             }
                             match char {
-                                '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
+                                '\t' => lines.write_all(&SPACES[0..len as usize]).unwrap(),
                                 '\n' | '\r' => {}
-                                char => lines.push_char(char, len),
+                                char => {
+                                    let mut bytes = [0; 4];
+                                    char.encode_utf8(&mut bytes);
+                                    lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                                }
                             }
                         }
 
@@ -233,25 +269,24 @@ impl Area {
                         painter.apply_extra_cursor();
                         style_was_set = true;
                     }
-                    Part::AlignLeft => lines.realign(Alignment::Left),
-                    Part::AlignCenter => lines.realign(Alignment::Center),
-                    Part::AlignRight => lines.realign(Alignment::Right),
-                    Part::Spacer => lines.add_spacer(),
+                    Part::Spacer => {}
                     Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                     Part::SpawnedWidget(id) => spawns_for_next.push(id),
                     Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                         todo!("Toggles have not been implemented yet.")
                     }
+                    Part::Char(_) | Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
                 }
+                last_len = x + len;
             }
 
-            lines.end_line(ansi_codes, painter);
+            end_line(lines, painter, ansi_codes, last_len, max_x);
 
             lines.coords().br.y - y
         };
 
         for _ in 0..lines_left {
-            lines.end_line(&mut ansi_codes, &mut painter);
+            end_line(&mut lines, &painter, &mut ansi_codes, 0, max_x);
         }
 
         let spawns = text.get_spawned_ids();
@@ -355,10 +390,10 @@ impl ui::traits::Area for Area {
             .ok_or_else(|| txt!("This Area was already deleted"))?;
 
         let iter = iter::print_iter(
-            text.iter_fwd((Point::default(), Point::default())),
-            opts.wrap_width(max.x),
+            text,
+            (Point::default(), Some(Point::default())),
+            opts.wrap_width(max.x).unwrap_or(max.x),
             opts,
-            (Point::default(), None),
         );
 
         // It can be None if there is total concalment.
@@ -433,12 +468,13 @@ impl ui::traits::Area for Area {
         iter: FwdIter<'a>,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        let points = iter.points();
+        let width = self.width() as u32;
         Box::new(print_iter(
-            iter,
-            opts.wrap_width(self.width() as u32),
+            iter.text(),
+            iter.points(),
+            opts.wrap_width(width).unwrap_or(width),
             opts,
-            points,
+            false
         ))
     }
 

@@ -1,8 +1,8 @@
-use std::{marker::PhantomData, ops::ControlFlow::*};
+use std::marker::PhantomData;
 
 use duat_core::{
     opts::PrintOpts,
-    text::{FwdIter as TextIter, Item, Part, Point, RevIter as RevTextIter},
+    text::{Item, Part, Point, Text},
     ui::Caret,
 };
 use unicode_width::UnicodeWidthChar;
@@ -12,40 +12,116 @@ use unicode_width::UnicodeWidthChar;
 /// This function expects that `cap` has been validated, and that the
 /// iterator starts in the visual start of the line.
 pub fn print_iter(
-    mut iter: TextIter<'_>,
-    cap: Option<u32>,
-    opts: PrintOpts,
+    text: &Text,
     points: (Point, Option<Point>),
+    cap: u32,
+    opts: PrintOpts,
+    include_prior: bool
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    let cap = cap.unwrap_or(u32::MAX);
+    let start_points = text.visual_line_start(points);
+    let max_indent = if opts.indent_wrapped { cap } else { 0 };
 
-    let (Continue(indent) | Break(indent)) = iter
-        .clone()
-        .take_while(|&Item { real, ghost, .. }| (real, ghost) < points)
-        .try_fold(0, |indent, item| match item.part {
-            Part::Char(_) if indent >= cap => Break(0),
-            Part::Char('\t') => Continue(indent + opts.tabstop_spaces_at(indent)),
-            Part::Char(' ') => Continue(indent + 1),
-            Part::Char(_) => Break(indent),
-            _ => Continue(indent),
-        });
+    // Line return variables.
+    let mut line: Vec<(u32, Item)> = Vec::new();
+    let (mut x, mut i) = (0, 0);
 
-    let iter_at_line_start = points == iter.points();
-    if !iter_at_line_start {
-        iter.skip_to(points);
-    }
-    inner_iter(iter, cap, (indent, iter_at_line_start), opts)
+    // Line construction variables.
+    let (mut total_len, mut gaps) = (0, Gaps::OnRight);
+    let (mut indent, mut on_indent, mut tab_leftovers) = (0, true, 0);
+
+    let mut iter = if start_points != points && !include_prior {
+        for item in text.iter_fwd(start_points).take_while(|item| item.points() < points) {
+            let old_indent = indent * (indent < max_indent) as u32;
+            let (len, _) = match item.part {
+                Part::Char('\n') => process_nl(&mut indent, &mut on_indent, x, opts),
+                Part::Char(char) => process_char(&mut indent, &mut on_indent, x, char, opts),
+                _ => (0, item.part),
+            };
+            
+            total_len += len;
+        }
+        
+        text.iter_fwd(points).peekable()
+    } else {
+        text.iter_fwd(start_points).peekable()
+    };
+
+    std::iter::from_fn(move || {
+        if let Some(&(len, item)) = line.get(i) {
+            let caret = Caret { x, len, wrap: false };
+            i += 1;
+            x += len;
+            return Some((caret, item));
+        }
+
+        line.clear();
+        i = 0;
+        x = 0;
+
+        let mut first_x = None;
+
+        while let Some(&item) = iter.peek() {
+            let old_indent = indent * (indent < max_indent) as u32;
+            let (len, processed_part) = match item.part {
+                Part::Char('\n') => process_nl(&mut indent, &mut on_indent, x, opts),
+                Part::Char(char) => process_char(&mut indent, &mut on_indent, x, char, opts),
+                _ => (0, item.part),
+            };
+
+            gaps = gaps.replace_by_part(item.part);
+
+            let old_total_len = total_len;
+            total_len += len;
+            if (total_len > cap && !opts.dont_wrap) || item.part == Part::Char('\n') {
+                x = first_x.unwrap_or(0) + gaps.space_line(&mut line, cap, total_len);
+
+                total_len = (old_indent + tab_leftovers) * (item.part != Part::Char('\n')) as u32;
+
+                if let Part::Char('\t' | '\n') = item.part {
+                    tab_leftovers = (old_total_len + len).saturating_sub(cap);
+                    first_x.get_or_insert(old_total_len);
+                    let len = len - tab_leftovers;
+                    line.push((len, Item { part: processed_part, ..item }));
+                    iter.next();
+                }
+
+                if !line.is_empty() {
+                    break;
+                }
+            } else {
+                first_x.get_or_insert(old_total_len);
+                line.push((len, Item { part: processed_part, ..item }));
+            }
+
+            iter.next();
+        }
+
+        line.first().map(|&(len, item)| {
+            let caret = Caret { x, len, wrap: true };
+            i += 1;
+            x += len;
+            (caret, item)
+        })
+    })
 }
 
 pub fn rev_print_iter(
-    mut iter: RevTextIter<'_>,
-    cap: Option<u32>,
+    text: &Text,
+    mut points: (Point, Option<Point>),
+    cap: u32,
     opts: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    let cap = cap.unwrap_or(u32::MAX);
+    let start_points = text.visual_line_start(points);
+    let max_indent = if opts.indent_wrapped { cap } else { 0 };
 
-    let mut returns = Vec::new();
-    let mut prev_line_nl = None;
+    // Line return variables.
+    let mut line: Vec<(u32, Item)> = Vec::new();
+    let (mut x, mut i) = (0, 0);
+
+    // Line construction variables.
+    let mut iter = text.iter_fwd(start_points).peekable();
+    let (mut total_len, mut gaps) = (0, Gaps::OnRight);
+    let (mut indent, mut on_indent, mut tab_leftovers) = (0, true, 0);
 
     std::iter::from_fn(move || {
         if let Some(next) = returns.pop() {
@@ -53,7 +129,7 @@ pub fn rev_print_iter(
         } else {
             let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
             #[allow(clippy::while_let_on_iterator)]
-            while let Some(item) = iter.next() {
+            for item in items {
                 if let Part::Char('\n') = item.part {
                     if items.is_empty() {
                         items.push(item);
@@ -66,25 +142,11 @@ pub fn rev_print_iter(
                 }
             }
 
-            returns.extend(inner_iter(items.into_iter().rev(), cap, (0, true), opts));
+print_iter(iter.text(), )            returns.extend();
 
             returns.pop()
         }
     })
-}
-
-/// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
-///
-/// This function will function properly given that, elsewhere in
-/// the code, the passed [`PrintInfo`] and `width` have beend
-/// validated.
-pub(super) fn print_iter_indented(
-    iter: TextIter<'_>,
-    cap: u32,
-    opts: PrintOpts,
-    indent: u32,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    inner_iter(iter, cap, (indent, false), opts)
 }
 
 #[derive(Clone)]
@@ -133,9 +195,9 @@ fn parts<'a>(
                         indent = 0;
                         on_indent = true;
                         let char = if opts.print_new_line { ' ' } else { '\n' };
-                        (len_from(char, x, cap, &opts), Part::Char(char))
+                        (len_from(char, x, &opts), Part::Char(char))
                     } else {
-                        let len = len_from(char, x, cap, &opts);
+                        let len = len_from(char, x, &opts);
                         if on_indent && (char == ' ' || char == '\t') {
                             indent += len;
                         } else {
@@ -208,7 +270,7 @@ fn words<'a>(
                 }
 
                 if opts.word_chars.contains(char) {
-                    word_len += len_from(char, x + word_len, cap, &opts)
+                    word_len += len_from(char, x + word_len, &opts)
                 } else {
                     word.push(iter.next().unwrap());
                     break;
@@ -236,7 +298,7 @@ fn attach_caret(
     cap: u32,
     opts: &PrintOpts,
 ) -> Option<(Caret, Item)> {
-    let (len, processed_part) = process_part(item.part, opts, prev_char, *x, cap);
+    let (len, processed_part) = process_part(item.part, opts, prev_char, *x);
 
     let mut old_x = *x;
     *x += len;
@@ -261,20 +323,14 @@ fn attach_caret(
 }
 
 #[inline(always)]
-fn process_part(
-    part: Part,
-    opts: &PrintOpts,
-    prev_char: &mut Option<char>,
-    x: u32,
-    cap: u32,
-) -> (u32, Part) {
+fn process_part(part: Part, opts: &PrintOpts, prev_char: &mut Option<char>, x: u32) -> (u32, Part) {
     match part {
         Part::Char(char) => {
             let ret = if char == '\n' {
                 let char = if opts.print_new_line { ' ' } else { '\n' };
-                (len_from(char, x, cap, opts), Part::Char(char))
+                (len_from(char, x, opts), Part::Char(char))
             } else {
-                (len_from(char, x, cap, opts), Part::Char(char))
+                (len_from(char, x, opts), Part::Char(char))
             };
             *prev_char = Some(char);
             ret
@@ -297,14 +353,84 @@ fn inner_iter<'a>(
 }
 
 #[inline(always)]
-fn len_from(char: char, start: u32, max_width: u32, opts: &PrintOpts) -> u32 {
+fn len_from(char: char, start: u32, opts: &PrintOpts) -> u32 {
     match char {
-        '\t' => (opts.tabstop_spaces_at(start))
-            .min(max_width.saturating_sub(start))
-            .max(1),
+        '\t' => (opts.tabstop_spaces_at(start)).max(1),
         '\n' => 0,
         '\0'..='\u{1f}' => 2,
         '\u{80}'..='\u{9f}' => 4,
         char => UnicodeWidthChar::width(char).unwrap_or(0) as u32,
+    }
+}
+
+#[inline(always)]
+fn process_char(indent: &mut u32, on_indent: &mut bool, x: u32, char: char, opts: PrintOpts) -> (u32, Part) {
+    let len = len_from(char, x, &opts);
+    if *on_indent && (char == ' ' || char == '\t') {
+        *indent += len;
+    } else {
+        *on_indent = false
+    }
+    (len, Part::Char(char))
+}
+
+#[inline(always)]
+fn process_nl(indent: &mut u32, on_indent: &mut bool, x: u32, opts: PrintOpts) -> (u32, Part) {
+    *indent = 0;
+    *on_indent = true;
+    let char = if opts.print_new_line { ' ' } else { '\n' };
+    (len_from(char, x, &opts), Part::Char(char))
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Gaps {
+    OnRight,
+    OnLeft,
+    OnSides,
+    Spacers(usize),
+}
+
+impl Gaps {
+    /// Adds a [`Spacer`] to this [`Gaps`]
+    ///
+    /// [`Spacer`]: duat_core::text::Tag::Spacer
+    fn replace_by_part(self, part: Part) -> Self {
+        match (self, part) {
+            (_, Part::AlignLeft) => Gaps::OnRight,
+            (_, Part::AlignCenter) => Gaps::OnSides,
+            (_, Part::AlignRight) => Gaps::OnLeft,
+            (Gaps::Spacers(count), Part::Spacer) => Gaps::Spacers(count + 1),
+            (_, Part::Spacer) => Gaps::Spacers(1),
+            _ => self
+        }
+    }
+
+	/// Adds spacing to a line, and returns the initial amount of space needed
+    fn space_line(self, line: &mut Vec<(u32, Item)>, cap: u32, total_len: u32) -> u32 {
+        match self {
+            Gaps::OnRight => 0,
+            Gaps::OnLeft => cap.saturating_sub(total_len),
+            Gaps::OnSides => cap.saturating_sub(total_len) / 2,
+            Gaps::Spacers(count) => {
+                let space = cap.saturating_sub(total_len) as usize;
+                let mut enough_space = space;
+                while !enough_space.is_multiple_of(count) {
+                    enough_space += 1;
+                }
+                let diff = enough_space - cap.saturating_sub(total_len) as usize;
+
+				// Do it in reverse, so skipped Spacers won't change.
+                for (i, (len, _)) in line
+                    .iter_mut()
+                    .rev()
+                    .filter(|(_, item)| matches!(item.part, Part::Spacer))
+                    .enumerate()
+                {
+                    *len = ((enough_space / count) - (i < diff) as usize) as u32;
+                }
+
+                0
+            }
+        }
     }
 }

@@ -14,14 +14,10 @@ use self::{sync_solver::SyncSolver, variables::Variables};
 use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect, queue};
 
 mod edges;
-mod lines;
 mod sync_solver;
 mod variables;
 
-pub use self::{
-    edges::{Brush, Frame},
-    lines::{Gaps, LinesBuilder},
-};
+pub use self::edges::{Brush, Frame};
 
 pub struct Printer {
     sync_solver: Mutex<SyncSolver>,
@@ -265,7 +261,6 @@ impl Printer {
     /// consistent
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-        const SPACES: &[u8] = &[b' '; 3000];
 
         let stdout = if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
             let mut stdout = stdout::get();
@@ -298,23 +293,21 @@ impl Printer {
             let mut old_iter = old_lines.iter().filter_map(|lines| lines.on(y));
             let mut new_iter = new_lines.iter().filter_map(|lines| lines.on(y)).peekable();
 
-            while let Some((line, [start, end])) = new_iter
+            while let Some((bytes, [start, end])) = new_iter
                 .next_if(|(_, [start, _])| spawned_lines.is_empty() || *start == x)
                 .or_else(|| {
-                    old_iter.find(|(_, [start, _])| !spawned_lines.is_empty() && *start >= x)
+                    if !spawned_lines.is_empty() {
+                        old_iter.find(|(_, [start, _])| *start >= x)
+                    } else {
+                        None
+                    }
                 })
             {
                 if x != start {
                     queue!(stdout, MoveToColumn(start as u16));
                 }
 
-                stdout.write_all(line.bytes).unwrap();
-
-                if end == max.x {
-                    stdout.write_all(b"\x1b[K").unwrap();
-                } else {
-                    stdout.write_all(&SPACES[..line.end_spaces]).unwrap();
-                }
+                stdout.write_all(bytes).unwrap();
 
                 x = end;
             }
@@ -334,9 +327,8 @@ impl Printer {
         for (_, lines) in spawned_lines.iter() {
             for y in lines.coords.tl.y..lines.coords.br.y {
                 queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
-                let (info, ..) = lines.on(y).unwrap();
-                stdout.write_all(info.bytes).unwrap();
-                stdout.write_all(&SPACES[..info.end_spaces]).unwrap();
+                let (bytes, ..) = lines.on(y).unwrap();
+                stdout.write_all(bytes).unwrap();
             }
         }
 
@@ -361,31 +353,31 @@ impl Printer {
     ////////// Lines functions
 
     /// Sends the finished [`Lines`], off to be printed
-    pub fn send_lines(&self, builder: LinesBuilder) {
+    pub fn send_lines(&self, lines: Lines) {
         let mut new_lines = self.new_lines.lock().unwrap();
         // Areas that intersect with this one came from a previous
         // organization of areas or are a previous version of itself, so they
         // should also be removed.
-        new_lines.retain(|l| !l.coords.intersects(builder.coords()));
+        new_lines.retain(|l| !l.coords.intersects(lines.coords));
 
-        let Err(i) = new_lines.binary_search_by_key(&builder.coords(), |lines| lines.coords) else {
+        let Err(i) = new_lines.binary_search_by_key(&lines.coords, |lines| lines.coords) else {
             unreachable!("Colliding Lines should have been removed already");
         };
 
-        new_lines.insert(i, builder.build());
+        new_lines.insert(i, lines);
     }
 
     /// Sends the finished [`Lines`] of a floating `Widget` to be
     /// printed
-    pub fn send_spawned_lines(&self, id: AreaId, builder: LinesBuilder) {
+    pub fn send_spawned_lines(&self, id: AreaId, lines: Lines) {
         let mut spawned_lines = self.spawned_lines.lock().unwrap();
 
         // This is done in order to preserve the order in which the floating
         // Widgets were sent.
         if let Some((_, old_lines)) = spawned_lines.iter_mut().find(|(other, _)| *other == id) {
-            *old_lines = builder.build();
+            *old_lines = lines;
         } else {
-            spawned_lines.push((id, builder.build()));
+            spawned_lines.push((id, lines));
         }
     }
 
@@ -426,46 +418,72 @@ unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
 
 /// A list of lines to print, belonging to some `Widget`
-struct Lines {
+#[derive(Debug)]
+pub struct Lines {
     bytes: Vec<u8>,
-    line_infos: Vec<InnerLineInfo>,
+    offsets: Vec<usize>,
     coords: Coords,
     real_cursor: Option<bool>,
 }
 
 impl Lines {
+    /// Returns a new `Lines`, which is used to send stuff to be
+    /// printed on screen
+    pub fn new(coords: Coords) -> Self {
+        let mut offsets = Vec::with_capacity(coords.height() as usize);
+        offsets.push(0);
+        Self {
+            bytes: Vec::with_capacity(2 * (coords.width() * coords.height()) as usize),
+            offsets,
+            coords,
+            real_cursor: None,
+        }
+    }
+
+    /// Show the real cursor, making the main cursor [`CursorShape`]
+    /// based
+    ///
+    /// [`CursorShape`]: duat_core::form::CursorShape
+    pub fn show_real_cursor(&mut self) {
+        self.real_cursor = Some(true);
+    }
+
+    /// Hide the real cursor, making the main cursor [`Form`] based
+    ///
+    /// [`Form`]: duat_core::form::Form
+    pub fn hide_real_cursor(&mut self) {
+        self.real_cursor = Some(false);
+    }
+
     /// A line on a given `y` position
     ///
     /// Returns [`None`] if these [`Lines`] don't intersect with the
     /// given `y`.
-    pub fn on(&self, y: u32) -> Option<(LineInfo<'_>, [u32; 2])> {
+    fn on(&self, y: u32) -> Option<(&'_ [u8], [u32; 2])> {
         let (tl, br) = (self.coords.tl, self.coords.br);
         let y = y.checked_sub(tl.y)? as usize;
 
-        self.line_infos.get(y).map(|info| {
-            let end = self
-                .line_infos
-                .get(y + 1)
-                .map(|i| i.offset)
-                .unwrap_or(self.bytes.len());
-            let info = LineInfo {
-                bytes: &self.bytes[info.offset..end],
-                end_spaces: info.end_spaces,
-            };
-            (info, [tl.x, br.x])
+        self.offsets.get(y).map(|offset| {
+            let end = self.offsets.get(y + 1).copied().unwrap_or(self.bytes.len());
+            (&self.bytes[*offset..end], [tl.x, br.x])
         })
+    }
+
+    /// Returns the [`Coords`] the bytes will be printed to
+    pub fn coords(&self) -> Coords {
+        self.coords
     }
 }
 
-struct InnerLineInfo {
-    offset: usize,
-    end_spaces: usize,
-}
+impl std::io::Write for Lines {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.bytes.write(buf)
+    }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct LineInfo<'a> {
-    bytes: &'a [u8],
-    end_spaces: usize,
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.offsets.push(self.bytes.len());
+        Ok(())
+    }
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]

@@ -28,7 +28,7 @@ use crate::{
     hook::{self, BufferWritten},
     mode::Selections,
     opts::PrintOpts,
-    text::{BuilderPart, Bytes, Text, TwoPoints, txt},
+    text::{BuilderPart, Bytes, Text, txt},
     ui::{Area, Widget},
 };
 
@@ -416,15 +416,15 @@ impl Widget for Buffer {
         if let Some(main) = buffer.text().selections().get_main() {
             area.scroll_around_points(
                 buffer.text(),
-                main.caret().to_points(),
+                main.caret().to_two_points_after(),
                 buffer.get_print_opts(),
             );
         }
 
-        let (start, _) = area.start_points(&buffer.text, opts);
-        let (end, _) = area.end_points(&buffer.text, opts);
+        let start = area.start_points(&buffer.text, opts);
+        let end = area.end_points(&buffer.text, opts);
 
-        parsers.update(pa, handle, start.byte()..end.byte());
+        parsers.update(pa, handle, start.real.byte()..end.real.byte());
 
         let buffer = handle.write(pa);
         buffer.parsers = parsers;
@@ -450,10 +450,10 @@ impl Widget for Buffer {
 
     fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
         let opts = self.opts;
-        let (start, _) = area.start_points(pa, &self.text, opts);
+        let start_points = area.start_points(pa, &self.text, opts);
 
         let mut last_line = area
-            .rev_print_iter(pa, self.text.iter_rev(start), opts)
+            .rev_print_iter(pa, self.text.iter_rev(start_points), opts)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         let mut printed_lines = self.printed_lines.lock();

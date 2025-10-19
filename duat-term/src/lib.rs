@@ -177,23 +177,21 @@ impl ui::traits::Ui for Ui {
     fn close(&self) {
         self.0.lock().unwrap().tx.send(Event::Quit).unwrap();
 
+            terminal::disable_raw_mode().unwrap();
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags);
         }
 
-        execute!(
-            io::stdout(),
-            terminal::Clear(ClearType::All),
-            terminal::EnableLineWrap,
-            event::DisableBracketedPaste,
-            event::DisableFocusChange,
-            event::DisableMouseCapture,
-            cursor::Show,
-            terminal::LeaveAlternateScreen,
-        )
-        .unwrap();
-
-        terminal::disable_raw_mode().unwrap();
+            execute!(
+                io::stdout(),
+                terminal::Clear(ClearType::All),
+                terminal::LeaveAlternateScreen,
+                cursor::MoveToColumn(0),
+                terminal::Clear(ClearType::FromCursorDown),
+                terminal::EnableLineWrap,
+                cursor::Show,
+            )
+            .unwrap();
     }
 
     fn new_root(
@@ -244,36 +242,11 @@ impl ui::traits::Ui for Ui {
         self.0.lock().unwrap().tx.send(Event::Print).unwrap();
     }
 
-    fn load(&self) {
+    fn load(&'static self) {
         // Hook for returning to regular terminal state
         std::panic::set_hook(Box::new(|info| {
-            let trace = std::backtrace::Backtrace::capture();
-            terminal::disable_raw_mode().unwrap();
-            execute!(
-                io::stdout(),
-                terminal::Clear(ClearType::All),
-                terminal::LeaveAlternateScreen,
-                cursor::MoveToColumn(0),
-                terminal::Clear(ClearType::FromCursorDown),
-                terminal::EnableLineWrap,
-                cursor::Show,
-                Print(info)
-            )
-            .unwrap();
-            if let std::backtrace::BacktraceStatus::Captured = trace.status() {
-                println!();
-                execute!(io::stdout(), cursor::MoveToColumn(0)).unwrap();
-                for line in trace.to_string().lines() {
-                    if !line.contains("             at ") {
-                        println!("{line}");
-                        queue!(io::stdout(), cursor::MoveToColumn(0));
-                    }
-                }
-            }
-            for line in info.to_string().lines() {
-                println!("{line}");
-                execute!(io::stdout(), cursor::MoveToColumn(0)).unwrap();
-            }
+            self.close();
+            execute!(io::stdout(), Print(info)) .unwrap();
         }));
     }
 

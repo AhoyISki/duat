@@ -17,10 +17,10 @@
 use bincode::{Decode, Encode};
 
 use crate::{
-    opts::PrintOpts,
     form::Painter,
+    opts::PrintOpts,
     session::DuatSender,
-    text::{FwdIter, Item, Point, RevIter, SpawnId, Text},
+    text::{FwdIter, Item, RevIter, SpawnId, Text, TwoPoints},
     ui::{Caret, PushSpecs, SpawnSpecs},
 };
 
@@ -57,13 +57,13 @@ pub trait Ui: Send + Sync + 'static {
     ///
     /// Will happen on the address space of the Duat application,
     /// rather than the configuration crate.
-    fn open(&self, duat_tx: DuatSender);
+    fn open(&'static self, duat_tx: DuatSender);
 
     /// Functions to trigger when the program ends
     ///
     /// Will happen on the address space of the Duat application,
     /// rather than the configuration crate.
-    fn close(&self);
+    fn close(&'static self);
 
     /// Initiates and returns a new "master" [`Area`]
     ///
@@ -71,7 +71,7 @@ pub trait Ui: Send + Sync + 'static {
     /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
-    fn new_root(&self, cache: <Self::Area as Area>::Cache) -> Self::Area
+    fn new_root(&'static self, cache: <Self::Area as Area>::Cache) -> Self::Area
     where
         Self: Sized;
 
@@ -87,7 +87,7 @@ pub trait Ui: Send + Sync + 'static {
     ///
     /// [`Area`]: Ui::Area
     fn new_spawned(
-        &self,
+        &'static self,
         id: SpawnId,
         specs: SpawnSpecs,
         cache: <Self::Area as Area>::Cache,
@@ -101,27 +101,27 @@ pub trait Ui: Send + Sync + 'static {
     /// This will only happen to with window indices that are actual
     /// windows. If at some point, a window index comes up that is not
     /// actually a window, that's a bug.
-    fn switch_window(&self, win: usize);
+    fn switch_window(&'static self, win: usize);
 
     /// Flush the layout
     ///
     /// When this function is called, it means that Duat has finished
     /// adding or removing widgets, so the ui should calculate the
     /// layout.
-    fn flush_layout(&self);
+    fn flush_layout(&'static self);
 
     /// Prints the layout
     ///
     /// Since printing runs all on the same thread, it is most
     /// efficient to call a printing function after all the widgets
     /// are done updating, I think.
-    fn print(&self);
+    fn print(&'static self);
 
     /// Functions to trigger when the program reloads
     ///
     /// These will happen inside of the dynamically loaded config
     /// crate.
-    fn load(&self);
+    fn load(&'static self);
 
     /// Unloads the [`Ui`]
     ///
@@ -130,7 +130,7 @@ pub trait Ui: Send + Sync + 'static {
     ///
     /// These will happen inside of the dynamically loaded config
     /// crate.
-    fn unload(&self);
+    fn unload(&'static self);
 
     /// Removes a window from the [`Ui`]
     ///
@@ -138,7 +138,7 @@ pub trait Ui: Send + Sync + 'static {
     /// is, if the current window was ahead of the deleted one, it
     /// should be shifted back, so that the same window is still
     /// displayed.
-    fn remove_window(&self, win: usize);
+    fn remove_window(&'static self, win: usize);
 }
 
 /// An [`Area`] that supports printing [`Text`]
@@ -362,7 +362,7 @@ pub trait Area: 'static {
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
     /// [`scroll_to_points`]: Area::scroll_to_points
-    fn scroll_around_points(&self, text: &Text, points: (Point, Option<Point>), opts: PrintOpts);
+    fn scroll_around_points(&self, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
     ///
@@ -375,13 +375,13 @@ pub trait Area: 'static {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::opts::WrapMethod
-    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), opts: PrintOpts);
+    fn scroll_to_points(&self, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// The start points that should be printed
-    fn start_points(&self, text: &Text, opts: PrintOpts) -> (Point, Option<Point>);
+    fn start_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints;
 
     /// The points immediately after the last printed [`Point`]
-    fn end_points(&self, text: &Text, opts: PrintOpts) -> (Point, Option<Point>);
+    fn end_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints;
 
     ////////// Queries
 

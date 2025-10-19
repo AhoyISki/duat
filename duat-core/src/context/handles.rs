@@ -15,7 +15,7 @@ use crate::{
     data::{Pass, RwData},
     mode::{Cursor, Cursors, Selection, Selections},
     opts::PrintOpts,
-    text::{Point, Searcher, Text, TextParts, TwoPoints, txt},
+    text::{Searcher, Text, TextParts, TwoPoints, txt},
     ui::{Area, PushSpecs, SpawnSpecs, Widget, traits},
 };
 
@@ -488,7 +488,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    pub fn scroll_to_points(&self, pa: &Pass, points: impl TwoPoints) {
+    pub fn scroll_to_points(&self, pa: &Pass, points: TwoPoints) {
         let widget = self.widget.read(pa);
         self.area
             .scroll_to_points(pa, widget.text(), points, widget.get_print_opts());
@@ -496,14 +496,14 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     }
 
     /// The start points that should be printed
-    pub fn start_points(&self, pa: &Pass) -> (Point, Option<Point>) {
+    pub fn start_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
         self.area
             .start_points(pa, widget.text(), widget.get_print_opts())
     }
 
     /// The end points that should be printed
-    pub fn end_points(&self, pa: &Pass) -> (Point, Option<Point>) {
+    pub fn end_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
         self.area
             .end_points(pa, widget.text(), widget.get_print_opts())

@@ -10,7 +10,7 @@ pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
 use crate::{
     AreaId, Coords, Frame,
     area::{Coord, PrintInfo},
-    printer::{LinesBuilder, Printer},
+    printer::{Lines, Printer},
 };
 
 mod rect;
@@ -273,7 +273,7 @@ impl Layouts {
     pub fn send_lines(
         &self,
         id: AreaId,
-        lines: LinesBuilder,
+        lines: Lines,
         is_floating: bool,
         spawns: impl Iterator<Item = SpawnId>,
         observed_spawns: &[SpawnId],

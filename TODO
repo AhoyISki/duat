@@ -42,7 +42,10 @@ FOR NEXT UPDATE:
 [ ] Rename duat-utils to duat-base.
 [x] Get rid of NewLine, WrapMethod.
 [ ] Perfect print iterators.
+  [ ] Perfect parts iterator.
+  [ ] Perfect words iterator.
 [ ] Make Windows public.
+[ ] RwArea, ErasedArea.
 
 KNOWN BUGS:
 [ ] Style bleed persists.
