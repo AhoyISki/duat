@@ -14,6 +14,33 @@
 //! - [`Notifications`], through [`opts::set_notifs`].
 //! - [`LogBook`], through [`opts::set_logs`].
 //!
+//! Additionally, there are some options pertaining to the group of
+//! `Widget`s at the bottom (`StatusLine`, `PromptLine` and
+//! `Notifications`):
+//!
+//! - [`opts::footer_on_top`]: Places them on top of the screen.
+//! - [`opts::one_line_footer`]: Makes the footer a one line group.
+//!
+//! If you want to, you can also add:
+//!
+//! ```rust
+//! # use duat::prelude::*;
+//! hook::remove_group("BufferWidgets");
+//! ```
+//!
+//! To completely remove the `Buffer` `Widget`s (`LineNumbers` and
+//! `VertRule`). And you can also add:
+//!
+//! ```rust
+//! # use duat::prelude::*;
+//! hook::remove_group("FooterWidgets");
+//! ```
+//!
+//! To remove the [`FooterWidgets`]. **WARNING: If you do this, you'll
+//! lose access to a [`PromptLine`], so you'll be unable to run
+//! commands. Remember, you can recompile your config with `duat
+//! --reload`.
+//!
 //! [widgets]: crate::widgets
 //! [hooks]: crate::hook
 //! [`Widget`]: crate::widgets::Widget
@@ -29,6 +56,8 @@
 //! [`opts::set_prompt`]: set_prompt
 //! [`opts::set_notifs`]: set_notifs
 //! [`opts::set_logs`]: set_logs
+//! [`opts::footer_on_top`]: footer_on_top
+//! [`opts::one_line_footer`]: one_line_footer
 use std::sync::{
     LazyLock, Mutex,
     atomic::{AtomicBool, Ordering},
