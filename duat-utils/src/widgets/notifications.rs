@@ -103,14 +103,16 @@ impl Widget for Notifications {
             }
         } else if clear_notifs {
             handle.set_mask("");
-            notifs.text = Text::new();
+            if notifs.text != Text::new() {
+                notifs.text = Text::new();
 
-            if notifs.request_width {
-                let notifs = handle.read(pa);
-                handle
-                    .area()
-                    .request_width_to_fit(pa, notifs.get_print_opts(), &notifs.text)
-                    .unwrap();
+                if notifs.request_width {
+                    let notifs = handle.read(pa);
+                    handle
+                        .area()
+                        .request_width_to_fit(pa, notifs.get_print_opts(), &notifs.text)
+                        .unwrap();
+                }
             }
         }
     }

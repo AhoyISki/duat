@@ -98,14 +98,12 @@ impl FooterWidgets {
             hook::add::<KeysSentTo<Prompt>>({
                 let prompt_line = prompt_line.clone();
                 move |pa, (_, handle)| {
-                    if handle == &prompt_line
-                        && let Err(err) = handle.area().request_width_to_fit(
+                    if handle == &prompt_line {
+                        handle.area().request_width_to_fit(
                             pa,
                             handle.read(pa).get_print_opts(),
                             handle.text(pa),
-                        )
-                    {
-                        context::error!("{err}")
+                        )?;
                     }
                     Ok(())
                 }
