@@ -205,8 +205,15 @@ impl PrintInfo {
 
         let mut below_dist = 0;
         let mut total_dist = 0;
+        let mut wrapped_char = false;
         let mut iter = rev_print_iter(text, after, cap, cfg)
-            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
+            .filter_map(|(caret, item)| {
+                wrapped_char |= caret.wrap;
+                (item.part.is_char() && wrapped_char).then(|| {
+                    wrapped_char = false;
+                    item.points()
+                })
+            })
             .inspect(|points| {
                 total_dist += 1;
                 below_dist += (*points >= s_points) as u32;

@@ -22,9 +22,9 @@ pub fn print_iter(
 
     // Line construction variables.
     let (mut total_len, mut gaps) = (0, Gaps::OnRight);
-    let (mut indent, mut on_indent, mut tab_leftovers) = (0, true, 0);
+    let (mut indent, mut on_indent, mut wrapped_indent) = (0, true, 0);
 
-    let iter = if start_points != points {
+    if start_points != points {
         for item in text
             .iter_fwd(start_points)
             .take_while(|item| item.points() < points)
@@ -42,23 +42,21 @@ pub fn print_iter(
 
             total_len += len;
             if total_len > cap && !opts.dont_wrap {
-                total_len = (old_indent + tab_leftovers) * (item.part != Part::Char('\n')) as u32;
-
                 if let Part::Char('\t') = item.part {
-                    tab_leftovers = total_len.saturating_sub(cap);
+                    wrapped_indent = old_indent + total_len - cap;
+                    total_len = wrapped_indent;
+                } else {
+                    wrapped_indent = old_indent;
+                    total_len = wrapped_indent + len;
                 }
             }
         }
-
-        text.iter_fwd(points).peekable()
-    } else {
-        text.iter_fwd(start_points).peekable()
-    };
+    }
 
     inner_iter(
-        iter,
+        text.iter_fwd(points),
         (total_len, gaps),
-        (indent, on_indent, tab_leftovers),
+        (indent, on_indent, wrapped_indent),
         (cap, opts),
     )
 }
@@ -192,7 +190,7 @@ fn parts<'a>(
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
-fn words<'a>(
+fn _words<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
     opts: PrintOpts,
@@ -212,7 +210,7 @@ fn words<'a>(
         let old_indent = indent * (indent < max_indent) as u32;
         if let Some(item) = finished_word.pop() {
             let vars = (&mut x, &mut needs_wrap, &mut prev_char);
-            return attach_caret(vars, old_indent, item, cap, &opts);
+            return _attach_caret(vars, old_indent, item, cap, &opts);
         }
 
         let mut word_len = 0;
@@ -241,20 +239,20 @@ fn words<'a>(
         finished_word.reverse();
         finished_word.pop().and_then(|item| {
             let vars = (&mut x, &mut needs_wrap, &mut prev_char);
-            attach_caret(vars, indent, item, cap, &opts)
+            _attach_caret(vars, indent, item, cap, &opts)
         })
     })
 }
 
 #[inline(always)]
-fn attach_caret(
+fn _attach_caret(
     (x, needs_to_wrap, prev_char): (&mut u32, &mut bool, &mut Option<char>),
     indent: u32,
     mut item: Item,
     cap: u32,
     opts: &PrintOpts,
 ) -> Option<(Caret, Item)> {
-    let (len, processed_part) = process_part(item.part, opts, prev_char, *x);
+    let (len, processed_part) = _process_part(item.part, opts, prev_char, *x);
 
     let mut old_x = *x;
     *x += len;
@@ -279,7 +277,12 @@ fn attach_caret(
 }
 
 #[inline(always)]
-fn process_part(part: Part, opts: &PrintOpts, prev_char: &mut Option<char>, x: u32) -> (u32, Part) {
+fn _process_part(
+    part: Part,
+    opts: &PrintOpts,
+    prev_char: &mut Option<char>,
+    x: u32,
+) -> (u32, Part) {
     match part {
         Part::Char(char) => {
             let ret = if char == '\n' {
@@ -295,64 +298,68 @@ fn process_part(part: Part, opts: &PrintOpts, prev_char: &mut Option<char>, x: u
     }
 }
 
+#[inline(always)]
 fn inner_iter<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     (mut total_len, mut gaps): (u32, Gaps),
-    (mut indent, mut on_indent, mut tab_leftovers): (u32, bool, u32),
+    (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let max_indent = if opts.indent_wrapped { cap } else { 0 };
 
     // Line return variables.
     let mut line: Vec<(u32, Item)> = Vec::new();
-    let (mut x, mut i) = (0, 0);
+    let (mut x, mut i, mut first_char_was_printed) = (0, 0, false);
 
     let mut iter = iter.peekable();
+    let mut new_x = 0;
 
     std::iter::from_fn(move || {
         if let Some(&(len, item)) = line.get(i) {
-            let caret = Caret { x, len, wrap: false };
+            let wrap = !first_char_was_printed && item.part.is_char();
+            if wrap {
+                x = new_x;
+            }
+            let caret = Caret { x, len, wrap };
             i += 1;
             x += len;
+            first_char_was_printed |= item.part.is_char();
             return Some((caret, item));
         }
 
         line.clear();
         i = 0;
-        x = 0;
-
-        let mut first_x = None;
+        first_char_was_printed = false;
 
         while let Some(&item) = iter.peek() {
             let old_indent = indent * (indent < max_indent) as u32;
             let (len, processed_part) = match item.part {
-                Part::Char('\n') => process_nl(&mut indent, &mut on_indent, x, opts),
-                Part::Char(char) => process_char(&mut indent, &mut on_indent, x, char, opts),
+                Part::Char('\n') => process_nl(&mut indent, &mut on_indent, total_len, opts),
+                Part::Char(char) => {
+                    process_char(&mut indent, &mut on_indent, total_len, char, opts)
+                }
                 _ => (0, item.part),
             };
 
             gaps = gaps.replace_by_part(item.part);
 
-            let old_total_len = total_len;
             total_len += len;
             if (total_len > cap && !opts.dont_wrap) || item.part == Part::Char('\n') {
-                x = first_x.unwrap_or(0) + gaps.space_line(&mut line, cap, total_len);
+                new_x = wrapped_indent + gaps.space_line(&mut line, cap, total_len);
 
-                total_len = (old_indent + tab_leftovers) * (item.part != Part::Char('\n')) as u32;
+                wrapped_indent =
+                    old_indent * (item.part != Part::Char('\n') && opts.indent_wrapped) as u32;
 
-                if let Part::Char('\t' | '\n') = item.part {
-                    tab_leftovers = (old_total_len + len).saturating_sub(cap);
-                    first_x.get_or_insert(old_total_len);
-                    let len = len - tab_leftovers;
-                    line.push((len, Item { part: processed_part, ..item }));
+                if let Part::Char(char @ ('\t' | '\n')) = item.part {
+                    let leftover_tab = (char == '\t') as u32 * total_len.saturating_sub(cap);
+                    wrapped_indent += leftover_tab;
+                    line.push((len - leftover_tab, Item { part: processed_part, ..item }));
                     iter.next();
                 }
 
-                if !line.is_empty() {
-                    break;
-                }
+                total_len = wrapped_indent;
+                break;
             } else {
-                first_x.get_or_insert(old_total_len);
                 line.push((len, Item { part: processed_part, ..item }));
             }
 
@@ -360,9 +367,14 @@ fn inner_iter<'a>(
         }
 
         line.first().map(|&(len, item)| {
-            let caret = Caret { x, len, wrap: true };
+            let wrap = !first_char_was_printed && item.part.is_char();
+            if wrap {
+                x = new_x;
+            }
+            let caret = Caret { x, len, wrap };
             i += 1;
             x += len;
+            first_char_was_printed |= item.part.is_char();
             (caret, item)
         })
     })
@@ -388,11 +400,8 @@ fn process_char(
     opts: PrintOpts,
 ) -> (u32, Part) {
     let len = len_from(char, x, &opts);
-    if *on_indent && (char == ' ' || char == '\t') {
-        *indent += len;
-    } else {
-        *on_indent = false
-    }
+    *on_indent &= char == ' ' || char == '\t';
+    *indent += len * *on_indent as u32;
     (len, Part::Char(char))
 }
 

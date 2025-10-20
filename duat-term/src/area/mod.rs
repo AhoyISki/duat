@@ -183,6 +183,7 @@ impl Area {
                     if y == lines.coords().br.y {
                         break;
                     }
+                    
                     if y > lines.coords().tl.y {
                         end_line(lines, painter, ansi_codes, last_len, max_x);
                     }

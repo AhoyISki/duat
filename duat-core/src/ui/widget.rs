@@ -442,13 +442,6 @@ impl Node {
             print: Arc::new({
                 let handle = handle.clone();
                 move |pa| {
-                    let mut log = std::fs::OpenOptions::new()
-                        .append(true)
-                        .open("log")
-                        .unwrap();
-                    use std::io::Write;
-                    writeln!(log, "printing {}", crate::utils::duat_name::<W>()).unwrap();
-
                     let painter = form::painter_with_mask::<W>(*handle.mask().lock().unwrap());
                     W::print(handle.read(pa), pa, painter, handle.area());
                 }
