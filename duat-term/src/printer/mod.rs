@@ -463,9 +463,9 @@ impl Lines {
         let (tl, br) = (self.coords.tl, self.coords.br);
         let y = y.checked_sub(tl.y)? as usize;
 
-        self.offsets.get(y).map(|offset| {
-            let end = self.offsets.get(y + 1).copied().unwrap_or(self.bytes.len());
-            (&self.bytes[*offset..end], [tl.x, br.x])
+        self.offsets.get(y).and_then(|offset| {
+            let end = *self.offsets.get(y + 1)?;
+            Some((&self.bytes[*offset..end], [tl.x, br.x]))
         })
     }
 

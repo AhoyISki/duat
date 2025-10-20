@@ -164,129 +164,126 @@ impl Area {
             Extra,
         }
 
-        let lines_left = {
-            // The y here represents the bottom of the current row of cells.
-            let tl_y = lines.coords().tl.y;
+        // The y here represents the bottom of the current row of cells.
+        let tl_y = lines.coords().tl.y;
+        let mut y = tl_y;
+        let mut cursor = None;
+        let mut spawns_for_next: Vec<SpawnId> = Vec::new();
+        let mut last_len = 0;
+
+        for (caret, item) in iter {
             let (painter, lines, ansi_codes) = (&mut painter, &mut lines, &mut ansi_codes);
-            let mut y = tl_y;
-            let mut cursor = None;
-            let mut spawns_for_next: Vec<SpawnId> = Vec::new();
-            let mut last_len = 0;
+            f(&caret, &item);
 
-            for (caret, item) in iter {
-                f(&caret, &item);
+            let Caret { x, len, wrap } = caret;
+            let Item { part, .. } = item;
 
-                let Caret { x, len, wrap } = caret;
-                let Item { part, .. } = item;
-
-                if wrap {
-                    if y == lines.coords().br.y {
-                        break;
-                    }
-
-                    if y > lines.coords().tl.y {
-                        end_line(lines, painter, ansi_codes, last_len, max_x);
-                    }
-                    if x > 0 {
-                        let mut default_style = painter.get_default().style;
-                        default_style.attributes.set(Attribute::Reset);
-                        print_style(lines, default_style, ansi_codes);
-                        lines.write_all(&SPACES[..x as usize]).unwrap();
-                    }
-                    painter.reset_prev_style();
-                    style_was_set = true;
-                    y += 1;
+            if wrap {
+                if y == lines.coords().br.y {
+                    break;
                 }
-
-                let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
-
-                match part {
-                    Part::Char(char) if is_contained => {
-                        if let Some(str) = get_control_str(char) {
-                            painter.apply(CONTROL_CHAR_ID, 100);
-                            if style_was_set && let Some(style) = painter.relative_style() {
-                                print_style(lines, style, ansi_codes);
-                            }
-                            lines.write_all(str.as_bytes()).unwrap();
-                            painter.remove(CONTROL_CHAR_ID)
-                        } else {
-                            if style_was_set && let Some(style) = painter.relative_style() {
-                                print_style(lines, style, ansi_codes);
-                            }
-                            match char {
-                                '\t' => lines.write_all(&SPACES[0..len as usize]).unwrap(),
-                                '\n' | '\r' => {}
-                                char => {
-                                    let mut bytes = [0; 4];
-                                    char.encode_utf8(&mut bytes);
-                                    lines.write_all(&bytes[..char.len_utf8()]).unwrap();
-                                }
-                            }
-                        }
-
-                        if let Some(cursor) = cursor.take() {
-                            match cursor {
-                                Cursor::Main => painter.remove_main_caret(),
-                                Cursor::Extra => painter.remove_extra_caret(),
-                            }
-                            if let Some(style) = painter.relative_style() {
-                                print_style(lines, style, ansi_codes)
-                            }
-                        }
-                        for id in spawns_for_next.drain(..) {
-                            observed_spawns.push(id);
-                            self.layouts.move_spawn_to(
-                                id,
-                                Coord::new(lines.coords().tl.x + x, y - 1),
-                                len,
-                            );
-                        }
-
-                        style_was_set = false;
-                    }
-                    Part::PushForm(id, prio) => {
-                        painter.apply(id, prio);
-                        style_was_set = true;
-                    }
-                    Part::PopForm(id) => {
-                        painter.remove(id);
-                        style_was_set = true;
-                    }
-                    Part::MainCaret => {
-                        if let Some(shape) = painter.main_cursor()
-                            && is_active
-                        {
-                            lines.show_real_cursor();
-                            queue!(lines, shape, cursor::SavePosition);
-                        } else {
-                            cursor = Some(Cursor::Main);
-                            lines.hide_real_cursor();
-                            painter.apply_main_cursor();
-                            style_was_set = true;
-                        }
-                    }
-                    Part::ExtraCaret => {
-                        cursor = Some(Cursor::Extra);
-                        painter.apply_extra_cursor();
-                        style_was_set = true;
-                    }
-                    Part::Spacer => {}
-                    Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
-                    Part::SpawnedWidget(id) => spawns_for_next.push(id),
-                    Part::ToggleStart(_) | Part::ToggleEnd(_) => {
-                        todo!("Toggles have not been implemented yet.")
-                    }
-                    Part::Char(_) | Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
+                if y > lines.coords().tl.y {
+                    end_line(lines, painter, ansi_codes, last_len, max_x);
                 }
-                last_len = x + len;
+                let initial_space = (x - x_shift).min(lines.coords().width());
+                if initial_space > 0 {
+                    let mut default_style = painter.get_default().style;
+                    default_style.attributes.set(Attribute::Reset);
+                    print_style(lines, default_style, ansi_codes);
+                    lines.write_all(&SPACES[..initial_space as usize]).unwrap();
+                }
+                painter.reset_prev_style();
+                style_was_set = true;
+                y += 1;
+                last_len = initial_space;
             }
 
-            end_line(lines, painter, ansi_codes, last_len, max_x);
+            let is_contained = x + len > x_shift && x + len <= x_shift + lines.coords().width();
 
-            lines.coords().br.y - y
-        };
+            match part {
+                Part::Char(char) if is_contained => {
+                    if let Some(str) = get_control_str(char) {
+                        painter.apply(CONTROL_CHAR_ID, 100);
+                        if style_was_set && let Some(style) = painter.relative_style() {
+                            print_style(lines, style, ansi_codes);
+                        }
+                        lines.write_all(str.as_bytes()).unwrap();
+                        painter.remove(CONTROL_CHAR_ID)
+                    } else {
+                        if style_was_set && let Some(style) = painter.relative_style() {
+                            print_style(lines, style, ansi_codes);
+                        }
+                        match char {
+                            '\t' => lines.write_all(&SPACES[0..len as usize]).unwrap(),
+                            '\n' | '\r' => {}
+                            char => {
+                                let mut bytes = [0; 4];
+                                char.encode_utf8(&mut bytes);
+                                lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                            }
+                        }
+                    }
 
-        for _ in 0..lines_left {
+                    if let Some(cursor) = cursor.take() {
+                        match cursor {
+                            Cursor::Main => painter.remove_main_caret(),
+                            Cursor::Extra => painter.remove_extra_caret(),
+                        }
+                        if let Some(style) = painter.relative_style() {
+                            print_style(lines, style, ansi_codes)
+                        }
+                    }
+                    for id in spawns_for_next.drain(..) {
+                        observed_spawns.push(id);
+                        self.layouts.move_spawn_to(
+                            id,
+                            Coord::new(lines.coords().tl.x + x, y - 1),
+                            len,
+                        );
+                    }
+
+                    last_len = x + len - x_shift;
+                    style_was_set = false;
+                }
+                Part::PushForm(id, prio) => {
+                    painter.apply(id, prio);
+                    style_was_set = true;
+                }
+                Part::PopForm(id) => {
+                    painter.remove(id);
+                    style_was_set = true;
+                }
+                Part::MainCaret => {
+                    if let Some(shape) = painter.main_cursor()
+                        && is_active
+                    {
+                        lines.show_real_cursor();
+                        queue!(lines, shape, cursor::SavePosition);
+                    } else {
+                        cursor = Some(Cursor::Main);
+                        lines.hide_real_cursor();
+                        painter.apply_main_cursor();
+                        style_was_set = true;
+                    }
+                }
+                Part::ExtraCaret => {
+                    cursor = Some(Cursor::Extra);
+                    painter.apply_extra_cursor();
+                    style_was_set = true;
+                }
+                Part::Spacer => {}
+                Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
+                Part::SpawnedWidget(id) => spawns_for_next.push(id),
+                Part::ToggleStart(_) | Part::ToggleEnd(_) => {
+                    todo!("Toggles have not been implemented yet.")
+                }
+                Part::Char(_) | Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
+            }
+        }
+
+        end_line(&mut lines, &painter, &mut ansi_codes, last_len, max_x);
+
+        for _ in 0..lines.coords().br.y - y {
             end_line(&mut lines, &painter, &mut ansi_codes, 0, max_x);
         }
 

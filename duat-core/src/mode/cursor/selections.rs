@@ -507,6 +507,8 @@ mod cursor {
                             return Some((x as u16, p));
                         }
 
+                        crate::context::debug!("{x}, {len}, {item:?}");
+
                         vcol += len as u16;
                         None
                     })
