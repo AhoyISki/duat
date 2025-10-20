@@ -238,11 +238,6 @@ impl PrintInfo {
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
     fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, opts: PrintOpts) {
-        let mut log = std::fs::OpenOptions::new()
-            .append(true)
-            .open("log")
-            .unwrap();
-
         let cap = opts.wrap_width(width).unwrap_or(u32::MAX);
         // Quick shortcut to avoid iteration.
         if cap <= width {
@@ -284,14 +279,6 @@ impl PrintInfo {
                     .min(max_shift)
                     .saturating_sub(width)
             });
-
-        use std::io::Write;
-        writeln!(
-            log,
-            "max_shift: {max_shift}, ({start}, {end}), x_shift: {}",
-            self.x_shift
-        )
-        .unwrap();
     }
 
     /// Sets and returns the first [`TwoPoints`]

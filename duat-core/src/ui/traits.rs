@@ -20,7 +20,7 @@ use crate::{
     form::Painter,
     opts::PrintOpts,
     session::DuatSender,
-    text::{FwdIter, Item, RevIter, SpawnId, Text, TwoPoints},
+    text::{Item, SpawnId, Text, TwoPoints},
     ui::{Caret, PushSpecs, SpawnSpecs},
 };
 
@@ -322,7 +322,8 @@ pub trait Area: 'static {
     /// [`text::Item`]: Item
     fn print_iter<'a>(
         &self,
-        iter: FwdIter<'a>,
+        text: &'a Text,
+        points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>;
 
@@ -338,7 +339,8 @@ pub trait Area: 'static {
     /// [`text::Item`]: Item
     fn rev_print_iter<'a>(
         &self,
-        iter: RevIter<'a>,
+        text: &'a Text,
+        points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>;
 

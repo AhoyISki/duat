@@ -453,7 +453,7 @@ impl Widget for Buffer {
         let start_points = area.start_points(pa, &self.text, opts);
 
         let mut last_line = area
-            .rev_print_iter(pa, self.text.iter_rev(start_points), opts)
+            .rev_print_iter(pa, &self.text, start_points, opts)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         let mut printed_lines = self.printed_lines.lock();

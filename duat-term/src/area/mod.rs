@@ -11,7 +11,7 @@ use duat_core::{
     context::{self, Decode, Encode},
     form::{CONTROL_CHAR_ID, Painter},
     opts::PrintOpts,
-    text::{FwdIter, Item, Part, RevIter, SpawnId, Text, TwoPoints, txt},
+    text::{Item, Part, SpawnId, Text, TwoPoints, txt},
     ui::{self, Caret, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, rev_print_iter};
@@ -466,13 +466,14 @@ impl ui::traits::Area for Area {
 
     fn print_iter<'a>(
         &self,
-        iter: FwdIter<'a>,
+        text: &'a Text,
+        points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
         let width = self.width() as u32;
         Box::new(print_iter(
-            iter.text(),
-            iter.points(),
+            text,
+            points,
             opts.wrap_width(width).unwrap_or(width),
             opts,
         ))
@@ -480,13 +481,14 @@ impl ui::traits::Area for Area {
 
     fn rev_print_iter<'a>(
         &self,
-        iter: RevIter<'a>,
+        text: &'a Text,
+        points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
         let width = self.width() as u32;
         Box::new(rev_print_iter(
-            iter.text(),
-            iter.points(),
+            text,
+            points,
             opts.wrap_width(width).unwrap_or(width),
             opts,
         ))

@@ -498,7 +498,7 @@ mod cursor {
                 let mut vcol = 0;
 
                 let (wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start.to_two_points_before()), opts)
+                    .print_iter(text, line_start.to_two_points_before(), opts)
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
                         if let Some((p, char)) = item.as_real_char()
@@ -546,7 +546,7 @@ mod cursor {
                 let mut last_valid = (vp.vcol, vp.wcol, vp.p);
 
                 let (vcol, wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start.to_two_points_after()), opts)
+                    .print_iter(text, line_start.to_two_points_after(), opts)
                     .skip_while(|(_, item)| item.char() <= self.char())
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
@@ -573,7 +573,7 @@ mod cursor {
                 let mut just_wrapped = false;
                 let mut last_valid = (vp.wcol, vp.p);
 
-                let mut iter = area.rev_print_iter(text.iter_rev(end_points), opts);
+                let mut iter = area.rev_print_iter(text, end_points, opts);
                 let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
                     if let Some((p, _)) = item.as_real_char() {
                         // max(1) because it could be a '\n'
@@ -603,7 +603,7 @@ mod cursor {
                 } else {
                     let (wcol, p) = last_valid;
                     let (ccol, vcol) = area
-                        .rev_print_iter(text.iter_rev(p.to_two_points_before()), opts)
+                        .rev_print_iter(text, p.to_two_points_before(), opts)
                         .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
                         .fold((0, 0), |(ccol, vcol), (caret, item)| {
                             (ccol + item.is_real() as u16, vcol + caret.len as u16)
@@ -936,7 +936,7 @@ mod cursor {
             let mut vcol = 0;
 
             let wcol = area
-                .print_iter(text.iter_fwd(p.to_two_points_after()), opts)
+                .print_iter(text, p.to_two_points_after(), opts)
                 .find_map(|(caret, item)| {
                     if let Some((lhs, _)) = item.as_real_char()
                         && lhs == p

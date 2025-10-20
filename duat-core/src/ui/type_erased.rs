@@ -28,7 +28,7 @@ use crate::{
     data::{Pass, RwData},
     form::Painter,
     opts::PrintOpts,
-    text::{FwdIter, Item, RevIter, SpawnId, Text, TwoPoints},
+    text::{Item, SpawnId, Text, TwoPoints},
     ui::{
         Caret, PushSpecs, SpawnSpecs,
         traits::{self, Area as AreaTrait},
@@ -299,10 +299,11 @@ impl Area {
     pub fn print_iter<'a>(
         &self,
         pa: &Pass,
-        iter: FwdIter<'a>,
+        text: &'a Text,
+        points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.area.read(pa).print_iter(iter, opts)
+        self.area.read(pa).print_iter(text, points, opts)
     }
 
     /// Returns a reversed printing iterator
@@ -318,10 +319,11 @@ impl Area {
     pub fn rev_print_iter<'a>(
         &self,
         pa: &Pass,
-        iter: RevIter<'a>,
+        text: &'a Text,
+        points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.area.read(pa).rev_print_iter(iter, opts)
+        self.area.read(pa).rev_print_iter(text, points, opts)
     }
 
     ////////// Points functions
