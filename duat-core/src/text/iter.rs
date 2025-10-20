@@ -59,11 +59,11 @@ impl<'a> FwdIter<'a> {
         // The "distance traversed" serves the purpose of skipping those
         // ghosts until the correct one is reached, hence why it starts at 0.
         let ghost = if let Some(offset) = ghost {
-            let (_, max) = text.ghost_max_points_at(real.byte());
-            max.map(|max| (max.min(offset), 0))
+            let points = text.ghost_max_points_at(real.byte());
+            points.ghost.map(|max| (max.min(offset), 0))
         } else {
-            let (_, max) = text.ghost_max_points_at(real.byte());
-            max.zip(Some(0))
+            let points = text.ghost_max_points_at(real.byte());
+            points.ghost.zip(Some(0))
         };
 
         Self {
@@ -337,6 +337,11 @@ impl<'a> RevIter<'a> {
         } else {
             TwoPoints::new_after_ghost(self.point)
         }
+    }
+
+    /// The [`Text`] that's being iterated over
+    pub fn text(&self) -> &'a Text {
+        self.text
     }
 
     /// Wether the [`Iterator`] is on a [`Ghost`]

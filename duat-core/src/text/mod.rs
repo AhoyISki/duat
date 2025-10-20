@@ -339,13 +339,21 @@ impl Text {
     /// but by where the last '\n' was located. For example, if
     /// [`Tag`]s create ghost text or omit text from multiple
     /// different lines, this point may differ from where in the
-    /// [`Text`] the physical line actually begins.
-    pub fn visual_line_start(&self, mut points: TwoPoints) -> TwoPoints {
+    /// [`Text`] the real line actually begins.
+    ///
+    /// The `skip` value is how many `\n` should be skipped before
+    /// returning.
+    pub fn visual_line_start(&self, mut points: TwoPoints, skip: usize) -> TwoPoints {
         let mut iter = self.iter_rev(points).peekable();
+        let mut total_seen = 0;
         while let Some(peek) = iter.peek() {
             match peek.part {
                 Part::Char('\n') => {
-                    return points;
+                    if total_seen == skip {
+                        return points;
+                    } else {
+                        total_seen += 1;
+                    }
                 }
                 Part::Char(_) => points = iter.next().unwrap().points(),
                 _ => drop(iter.next()),

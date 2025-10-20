@@ -11,7 +11,7 @@ use duat_core::{
     context::{self, Decode, Encode},
     form::{CONTROL_CHAR_ID, Painter},
     opts::PrintOpts,
-    text::{FwdIter, Item, Part, Point, RevIter, SpawnId, Text, txt},
+    text::{FwdIter, Item, Part, RevIter, SpawnId, Text, TwoPoints, txt},
     ui::{self, Caret, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, rev_print_iter};
@@ -391,7 +391,7 @@ impl ui::traits::Area for Area {
 
         let iter = iter::print_iter(
             text,
-            (Point::default(), Some(Point::default())),
+            TwoPoints::default(),
             opts.wrap_width(max.x).unwrap_or(max.x),
             opts,
         );
@@ -417,18 +417,18 @@ impl ui::traits::Area for Area {
 
     ////////// Printing
 
-    fn scroll_around_points(&self, text: &Text, p: (Point, Option<Point>), opts: PrintOpts) {
+    fn scroll_around_points(&self, text: &Text, points: TwoPoints, opts: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
         };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
-        info.scroll_around(p.0, coords, text, opts);
+        info.scroll_around(points.real, coords, text, opts);
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn scroll_to_points(&self, text: &Text, points: (Point, Option<Point>), opts: PrintOpts) {
+    fn scroll_to_points(&self, text: &Text, points: TwoPoints, opts: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -474,7 +474,6 @@ impl ui::traits::Area for Area {
             iter.points(),
             opts.wrap_width(width).unwrap_or(width),
             opts,
-            false
         ))
     }
 
@@ -483,9 +482,11 @@ impl ui::traits::Area for Area {
         iter: RevIter<'a>,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
+        let width = self.width() as u32;
         Box::new(rev_print_iter(
-            iter,
-            opts.wrap_width(self.width() as u32),
+            iter.text(),
+            iter.points(),
+            opts.wrap_width(width).unwrap_or(width),
             opts,
         ))
     }
@@ -546,7 +547,7 @@ impl ui::traits::Area for Area {
             .unwrap_or(0.0)
     }
 
-    fn start_points(&self, text: &Text, opts: PrintOpts) -> (Point, Option<Point>) {
+    fn start_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
@@ -559,7 +560,7 @@ impl ui::traits::Area for Area {
         start_points
     }
 
-    fn end_points(&self, text: &Text, opts: PrintOpts) -> (Point, Option<Point>) {
+    fn end_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();

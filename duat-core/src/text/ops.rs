@@ -328,7 +328,7 @@ implTextRangeOrPoint!(RangeFrom);
 ///
 /// [`Text`]: super::Text
 /// [`Ghost`]: super::Ghost
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub struct TwoPoints {
     /// The real `Point` in the [`Text`]
     ///
@@ -358,7 +358,7 @@ impl TwoPoints {
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn new_before_ghost(real: Point) -> Self {
-        Self { real, ghost: Some(Point::default()) }
+        Self { real, ghost: Some(Point::new()) }
     }
 
     /// Returns a new `TwoPoints` that will exclude the [`Ghost`]
@@ -372,15 +372,21 @@ impl TwoPoints {
 
 impl std::cmp::PartialOrd for TwoPoints {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.real.partial_cmp(&other.real) {
-            Some(core::cmp::Ordering::Equal) => {}
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TwoPoints {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.real.cmp(&other.real) {
+            core::cmp::Ordering::Equal => {}
             ord => return ord,
         }
         match (&self.ghost, &other.ghost) {
-            (Some(l), Some(r)) => l.partial_cmp(r),
-            (Some(_), None) => Some(std::cmp::Ordering::Less),
-            (None, Some(_)) => Some(std::cmp::Ordering::Greater),
-            (None, None) => Some(std::cmp::Ordering::Equal),
+            (Some(l), Some(r)) => l.cmp(r),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
         }
     }
 }

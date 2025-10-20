@@ -4,7 +4,13 @@ use std::{
 };
 
 use duat_core::{
-    buffer::Buffer, context::{self, Handle}, data::Pass, form, hook, mode::{self, KeyEvent, KeyMod, Mode, key}, text::{Searcher, Tagger, Text, txt}, ui::{Area, PrintInfo, Widget}
+    buffer::Buffer,
+    context::{self, Handle},
+    data::Pass,
+    form, hook,
+    mode::{self, KeyEvent, KeyMod, Mode, key},
+    text::{Searcher, Tagger, Text, txt},
+    ui::{Area, PrintInfo, Widget},
 };
 
 use crate::{
@@ -42,7 +48,7 @@ impl<W: Widget> Mode for Pager<W> {
             (key!(Char('n')), _) => {
                 let se = SEARCH.lock().unwrap();
 
-                let (point, _) = handle.start_points(pa);
+                let point = handle.start_points(pa).real;
 
                 let text = handle.read(pa).text();
                 let Some([point, _]) = text.search_fwd(&*se, point..).unwrap().next() else {
@@ -50,12 +56,12 @@ impl<W: Widget> Mode for Pager<W> {
                     return;
                 };
 
-                handle.scroll_to_points(pa, point);
+                handle.scroll_to_points(pa, point.to_two_points_after());
             }
             (key!(Char('n'), KeyMod::ALT), true) | (key!(Char('N')), false) => {
                 let se = SEARCH.lock().unwrap();
 
-                let (point, _) = handle.start_points(pa);
+                let point = handle.start_points(pa).real;
 
                 let text = handle.read(pa).text();
                 let Some([point, _]) = text.search_rev(&*se, ..point).unwrap().next() else {
@@ -63,7 +69,7 @@ impl<W: Widget> Mode for Pager<W> {
                     return;
                 };
 
-                handle.scroll_to_points(pa, point);
+                handle.scroll_to_points(pa, point.to_two_points_after());
             }
             (key!(Esc), _) => mode::reset::<Buffer>(),
             (key!(Char(':')), _) => mode::set(RunCommands::new()),
@@ -161,7 +167,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &Area) {
         match Searcher::new(text.to_string()) {
             Ok(mut se) => {
-                let (point, _) = self.handle.start_points(pa);
+                let point = self.handle.start_points(pa).real;
                 if self.is_fwd {
                     let Some([point, _]) =
                         se.search_fwd(self.handle.read(pa).text(), point..).next()
@@ -170,7 +176,8 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                         return;
                     };
 
-                    self.handle.scroll_to_points(pa, point);
+                    self.handle
+                        .scroll_to_points(pa, point.to_two_points_after());
                 } else {
                     let Some([point, _]) =
                         se.search_rev(self.handle.read(pa).text(), ..point).next()
@@ -179,7 +186,8 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                         return;
                     };
 
-                    self.handle.scroll_to_points(pa, point);
+                    self.handle
+                        .scroll_to_points(pa, point.to_two_points_after());
                 }
 
                 *SEARCH.lock().unwrap() = text.to_string();

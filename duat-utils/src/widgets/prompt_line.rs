@@ -91,9 +91,12 @@ impl Widget for PromptLine {
                 .unwrap();
         }
         if let Some(main) = pl.text.selections().get_main() {
-            handle
-                .area()
-                .scroll_around_points(pa, &pl.text, main.caret(), pl.get_print_opts());
+            handle.area().scroll_around_points(
+                pa,
+                &pl.text,
+                main.caret().to_two_points_after(),
+                pl.get_print_opts(),
+            );
         }
     }
 
