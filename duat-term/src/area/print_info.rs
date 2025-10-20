@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use duat_core::{
     context::{Decode, Encode},
     opts::PrintOpts,
@@ -240,7 +238,12 @@ impl PrintInfo {
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
     fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, opts: PrintOpts) {
-        let cap = opts.wrap_width(width).unwrap_or(width);
+        let mut log = std::fs::OpenOptions::new()
+            .append(true)
+            .open("log")
+            .unwrap();
+
+        let cap = opts.wrap_width(width).unwrap_or(u32::MAX);
         // Quick shortcut to avoid iteration.
         if cap <= width {
             self.x_shift = 0;
@@ -282,7 +285,13 @@ impl PrintInfo {
                     .saturating_sub(width)
             });
 
-        duat_core::context::debug!("{self.x_shift}");
+        use std::io::Write;
+        writeln!(
+            log,
+            "max_shift: {max_shift}, ({start}, {end}), x_shift: {}",
+            self.x_shift
+        )
+        .unwrap();
     }
 
     /// Sets and returns the first [`TwoPoints`]

@@ -128,7 +128,7 @@ pub struct PrintOpts {
     /// ```
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub indent_wrapped: bool = true,
+    pub indent_wraps: bool = true,
     /// How long tabs should be on screen
     ///
     /// In [`Buffer`]s, the default is `4`
@@ -244,7 +244,7 @@ impl PrintOpts {
             dont_wrap: true,
             wrap_on_word: false,
             wrapping_cap: None,
-            indent_wrapped: true,
+            indent_wraps: true,
             tabstop: 4,
             print_new_line: false,
             scrolloff: ScrollOff { x: 3, y: 3 },
@@ -288,7 +288,7 @@ impl PrintOpts {
             dont_wrap: true,
             wrap_on_word: false,
             wrapping_cap: None,
-            indent_wrapped: true,
+            indent_wraps: true,
             tabstop: 4,
             print_new_line: true,
             scrolloff: ScrollOff { x: 3, y: 3 },
