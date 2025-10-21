@@ -253,7 +253,11 @@ impl Area {
                     style_was_set = false;
                 }
                 Part::Char(_) => {
-                    cursor = None;
+                    match cursor.take() {
+                        Some(Cursor::Main) => painter.remove_main_caret(),
+                        Some(Cursor::Extra) => painter.remove_extra_caret(),
+                        None => {}
+                    }
                     spawns_for_next.clear();
                 }
                 Part::PushForm(id, prio) => {

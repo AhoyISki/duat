@@ -502,7 +502,6 @@ mod cursor {
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
 
-                        crate::context::debug!("{x}, {len}, {item:?}");
                         if let Some((p, char)) = item.as_real_char()
                             && (vcol + len as u16 > vp.dvcol || char == '\n')
                         {
@@ -958,8 +957,6 @@ mod cursor {
                 wcol,
                 dwcol: wcol,
             };
-
-            crate::context::debug!("{v_point:#?}");
 
             v_point
         }
