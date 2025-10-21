@@ -474,8 +474,7 @@ mod cursor {
         /// Internal vertical movement function.
         ///
         /// Returns the distance moved in lines.
-        pub fn move_ver(&mut self, by: i32, text: &Text, area: &Area, mut opts: PrintOpts) -> i32 {
-            opts.print_new_line = false;
+        pub fn move_ver(&mut self, by: i32, text: &Text, area: &Area, opts: PrintOpts) -> i32 {
             let by = by as isize;
             if by == 0 {
                 return 0;
@@ -524,9 +523,8 @@ mod cursor {
             by: i32,
             text: &Text,
             area: &Area,
-            mut opts: PrintOpts,
+            opts: PrintOpts,
         ) -> i32 {
-            opts.print_new_line = false;
             if by == 0 {
                 return 0;
             };
