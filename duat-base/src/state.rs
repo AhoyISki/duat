@@ -21,7 +21,7 @@ use duat_core::{
     hook::{self, KeysSent},
     mode::{self, KeyEvent},
     text::{Text, txt},
-    ui::{Widget, traits::Area},
+    ui::{Area, Widget},
 };
 
 /// [`StatusLine`] part: The [`Buffer`]'s name, formatted
@@ -189,7 +189,7 @@ pub fn main_line(buffer: &Buffer) -> usize {
 /// [`StatusLine`] part: Column of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_col(buffer: &Buffer, area: &dyn Area) -> usize {
+pub fn main_col(buffer: &Buffer, area: &Area) -> usize {
     let main = buffer.selections().get_main().unwrap();
     main.v_caret(buffer.text(), area, buffer.get_print_opts())
         .char_col()
@@ -204,7 +204,7 @@ pub fn main_col(buffer: &Buffer, area: &dyn Area) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_txt(buffer: &Buffer, area: &dyn Area) -> Text {
+pub fn main_txt(buffer: &Buffer, area: &Area) -> Text {
     txt!(
         "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
         main_col(buffer, area),

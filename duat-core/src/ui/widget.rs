@@ -45,7 +45,7 @@ use crate::{
     hook::{self, FocusedOn, UnfocusedFrom},
     opts::PrintOpts,
     text::Text,
-    ui::{Area, PrintInfo},
+    ui::{RwArea, PrintInfo},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -405,7 +405,7 @@ pub trait Widget: Send + 'static {
     ///
     /// [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
     /// [`Buffer::print`]: crate::buffer::Buffer::print
-    fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
+    fn print(&self, pa: &Pass, painter: Painter, area: &RwArea) {
         let opts = self.get_print_opts();
         area.print(pa, self.text(), opts, painter)
     }
@@ -425,7 +425,7 @@ impl Node {
     /// Returns a new `Node`
     pub(crate) fn new<W: Widget>(
         widget: RwData<W>,
-        area: Area,
+        area: RwArea,
         master: Option<Handle<dyn Widget>>,
     ) -> Self {
         Self::from_handle(Handle::new(widget, area, Arc::new(Mutex::new("")), master))
@@ -475,7 +475,7 @@ impl Node {
     }
 
     /// The [`Ui::Area`] of this [`Widget`]
-    pub(crate) fn area(&self) -> &Area {
+    pub(crate) fn area(&self) -> &RwArea {
         self.handle.area()
     }
 

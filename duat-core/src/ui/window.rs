@@ -12,7 +12,7 @@ use crate::{
     mode,
     opts::PrintOpts,
     text::{SpawnId, Text, txt},
-    ui::{Area, PushSpecs, SpawnSpecs, Ui},
+    ui::{PushSpecs, RwArea, SpawnSpecs, Ui},
 };
 
 /// A list of all [`Window`]s in Duat
@@ -92,9 +92,9 @@ impl Windows {
     pub(crate) fn push_widget<W: Widget>(
         &self,
         pa: &mut Pass,
-        (target, on_buffers, specs): (&Area, Option<bool>, PushSpecs),
+        (target, on_buffers, specs): (&RwArea, Option<bool>, PushSpecs),
         widget: W,
-        master: Option<&Area>,
+        master: Option<&RwArea>,
     ) -> Option<Handle<W>> {
         self.push(pa, (target, on_buffers, specs), widget, master)?
             .handle()
@@ -107,7 +107,7 @@ impl Windows {
     pub(crate) fn spawn_on_widget<W: Widget>(
         &self,
         pa: &mut Pass,
-        (target, specs): (&Area, SpawnSpecs),
+        (target, specs): (&RwArea, SpawnSpecs),
         widget: W,
     ) -> Option<Handle<W>> {
         let (win, cluster_master, master) =
@@ -228,9 +228,9 @@ impl Windows {
     fn push<W: Widget>(
         &self,
         pa: &mut Pass,
-        (target, on_buffers, mut specs): (&Area, Option<bool>, PushSpecs),
+        (target, on_buffers, mut specs): (&RwArea, Option<bool>, PushSpecs),
         widget: W,
-        master: Option<&Area>,
+        master: Option<&RwArea>,
     ) -> Option<Node> {
         let inner = self.inner.read(pa);
         let win = inner
@@ -760,8 +760,8 @@ struct InnerWindow {
     index: usize,
     nodes: Vec<Node>,
     spawned: Vec<(SpawnId, Node)>,
-    buffers_area: Area,
-    master_area: Area,
+    buffers_area: RwArea,
+    master_area: RwArea,
     new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
 }
 
@@ -807,7 +807,7 @@ impl Window {
     pub(crate) fn new_from_raw(
         pa: &mut Pass,
         index: usize,
-        master_area: Area,
+        master_area: RwArea,
         nodes: Vec<Node>,
         new_additions: Arc<Mutex<Option<Vec<(usize, Node)>>>>,
     ) -> Self {
@@ -911,7 +911,7 @@ impl Window {
     }
 
     /// Adds a [`Widget`] to the list of widgets of this [`Window`]
-    fn add(&self, pa: &mut Pass, node: Node, parent: Option<Area>, location: Location) {
+    fn add(&self, pa: &mut Pass, node: Node, parent: Option<RwArea>, location: Location) {
         match location {
             Location::OnBuffers => {
                 self.0.write(pa).nodes.push(node.clone());
@@ -1020,15 +1020,14 @@ impl Window {
     ) -> Vec<Node> {
         let related = handle.related();
 
-        let (inner, related) = pa.read_and_write(&self.0, related);
-        let nodes = inner
+        let (related, inner) = pa.read_and_write(related, &self.0);
+
+        inner
             .nodes
             .extract_if(.., |node| {
                 related.iter().any(|(handle, _)| handle == node.handle()) || node.handle() == handle
             })
-            .collect();
-
-        nodes
+            .collect()
     }
 
     /// Inserts [`Buffer`] nodes orderly

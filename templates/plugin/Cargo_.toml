@@ -12,4 +12,4 @@ keywords = ["editor", "text", "plugin", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
-duat = { version = "0.6.0", git = "https://github.com/AhoyISki/duat" }
+duat = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }

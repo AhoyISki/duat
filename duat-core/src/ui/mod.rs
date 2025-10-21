@@ -37,7 +37,7 @@ use std::fmt::Debug;
 
 pub(crate) use self::widget::Node;
 pub use self::{
-    type_erased::{Area, PrintInfo, Ui},
+    type_erased::{Area, PrintInfo, RwArea, Ui},
     widget::Widget,
     window::{Window, Windows},
 };

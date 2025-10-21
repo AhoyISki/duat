@@ -38,13 +38,13 @@ FOR NEXT UPDATE:
 [/] Get rid of WidgetCreated (that's right).
 [x] Get rid of the various Cfgs.
 [x] Add convenience methods for the duat-utils Widgets.
-[ ] Rename duat-utils to duat-base.
+[x] Rename duat-utils to duat-base.
 [x] Get rid of NewLine, WrapMethod.
 [ ] Perfect print iterators.
   [x] Perfect parts iterator.
   [ ] Perfect words iterator.
 [x] Make Windows public.
-[ ] RwArea, ErasedArea.
+[x] RwArea, ErasedArea.
 
 KNOWN BUGS:
 [ ] track_area not actually tracking correctly.

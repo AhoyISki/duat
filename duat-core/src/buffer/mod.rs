@@ -29,7 +29,7 @@ use crate::{
     mode::Selections,
     opts::PrintOpts,
     text::{BuilderPart, Bytes, Text, txt},
-    ui::{Area, Widget},
+    ui::{RwArea, Widget},
 };
 
 mod parser;
@@ -448,7 +448,7 @@ impl Widget for Buffer {
         self.opts
     }
 
-    fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
+    fn print(&self, pa: &Pass, painter: Painter, area: &RwArea) {
         let opts = self.opts;
         let start_points = area.start_points(pa, &self.text, opts);
 

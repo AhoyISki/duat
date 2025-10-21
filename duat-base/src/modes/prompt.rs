@@ -12,7 +12,7 @@ use duat_core::{
     form, hook,
     mode::{self, KeyCode, KeyEvent, key},
     text::{Ghost, Searcher, Tagger, Text, txt},
-    ui::{Area, PrintInfo, Widget},
+    ui::{RwArea, PrintInfo, Widget},
 };
 
 use super::IncSearcher;
@@ -283,7 +283,7 @@ pub trait PromptMode: Send + 'static {
     ///
     /// This function is triggered every time the user presses a key
     /// in the [`Prompt`] mode.
-    fn update(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text;
+    fn update(&mut self, pa: &mut Pass, text: Text, area: &RwArea) -> Text;
 
     /// What to do when switchin onto this [`PromptMode`]
     ///
@@ -291,7 +291,7 @@ pub trait PromptMode: Send + 'static {
     /// [`Ghost`] at the beginning of the line.
     ///
     /// [prompt]: PromptMode::prompt
-    fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text {
+    fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &RwArea) -> Text {
         text
     }
 
@@ -300,7 +300,7 @@ pub trait PromptMode: Send + 'static {
     /// This usually involves some sor of "commitment" to the result,
     /// e.g., [`RunCommands`] executes the call, [`IncSearch`]
     /// finishes the search, etc.
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &Area) {}
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &RwArea) {}
 
     /// What text should be at the beginning of the [`PromptLine`], as
     /// a [`Ghost`]
@@ -347,7 +347,7 @@ impl RunCommands {
 }
 
 impl PromptMode for RunCommands {
-    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &Area) -> Text {
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         text.remove_tags(*TAGGER, ..);
 
         let command = text.to_string();
@@ -374,7 +374,7 @@ impl PromptMode for RunCommands {
         text
     }
 
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &Area) {
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
         let call = text.to_string();
         if !call.is_empty() {
             cmd::queue_notify(call);
@@ -444,7 +444,7 @@ impl<I: IncSearcher> IncSearch<I> {
 }
 
 impl<I: IncSearcher> PromptMode for IncSearch<I> {
-    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &Area) -> Text {
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*TAGGER, ..);
 
@@ -486,7 +486,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         text
     }
 
-    fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &Area) -> Text {
+    fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &RwArea) -> Text {
         let handle = context::current_buffer(pa);
 
         self.orig = Some((
@@ -497,7 +497,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         text
     }
 
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &Area) {
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
         if !text.is_empty() {
             if let Err(err) = Searcher::new(text.to_string()) {
                 let regex_syntax::Error::Parse(err) = *err else {
@@ -543,7 +543,7 @@ impl PipeSelections {
 }
 
 impl PromptMode for PipeSelections {
-    fn update(&mut self, _: &mut Pass, mut text: Text, _: &Area) -> Text {
+    fn update(&mut self, _: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         fn is_in_path(program: &str) -> bool {
             if let Ok(path) = std::env::var("PATH") {
                 for p in path.split(":") {
@@ -584,7 +584,7 @@ impl PromptMode for PipeSelections {
         text
     }
 
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &Area) {
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         use std::process::{Command, Stdio};
 
         let command = text.to_string();

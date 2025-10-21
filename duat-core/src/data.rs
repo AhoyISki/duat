@@ -618,7 +618,7 @@ impl Pass {
         &'a mut self,
         lhs: &'a RwData<L>,
         rhs: &'a RwData<R>,
-    ) -> (&'a mut L, &'a R) {
+    ) -> (&'a L, &'a mut R) {
         static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
 
         const {
@@ -629,7 +629,59 @@ impl Pass {
             );
         }
 
-        (lhs.write(self), rhs.read(INTERNAL_PASS))
+        (lhs.read(INTERNAL_PASS), rhs.write(self))
+    }
+
+    /// Tries to write to two [`RwData`] at the same time, failing if
+    /// they point to the same data
+    ///
+    /// Almost all the time, you will want to use [`Pass::write_two`]
+    /// instead of this function, since it always returns and is
+    /// checked at compile time. There are only two situations
+    /// where you should consider using this function:
+    ///
+    /// - One or two of the [`RwData`]s point to unsized types.
+    /// - They point to the same type.
+    ///
+    /// Given these two constraints however, you should still make
+    /// sure that the two [`RwData`]s don't point to the same data.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn try_write_two<'a, L: ?Sized + 'static, R: ?Sized + 'static>(
+        &'a mut self,
+        lhs: &'a RwData<L>,
+        rhs: &'a RwData<R>,
+    ) -> Option<(&'a mut L, &'a mut R)> {
+        static mut INTERNAL_PASS: Pass = unsafe { Pass::new() };
+
+        #[allow(static_mut_refs)]
+        (!lhs.ptr_eq(rhs)).then_some((lhs.write(self), rhs.write(unsafe { &mut INTERNAL_PASS })))
+    }
+
+    /// Tries to write to one [`RwData`] and reads from another at the
+    /// same time
+    ///
+    /// Almost all the time, you will want to use
+    /// [`Pass::read_and_write`] instead of this function, since
+    /// it always returns and is checked at compile time. There
+    /// are only two situations where you should consider using
+    /// this function:
+    ///
+    /// - One or two of the [`RwData`]s point to unsized types.
+    /// - They point to the same type.
+    ///
+    /// Given these two constraints however, you should still make
+    /// sure that the two [`RwData`]s don't point to the same data.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn try_read_and_write<'a, L: ?Sized + 'static, R: ?Sized + 'static>(
+        &'a mut self,
+        lhs: &'a RwData<L>,
+        rhs: &'a RwData<R>,
+    ) -> Option<(&'a L, &'a mut R)> {
+        static INTERNAL_PASS: Pass = unsafe { Pass::new() };
+
+        (!lhs.ptr_eq(rhs)).then_some((lhs.read(&INTERNAL_PASS), rhs.write(self)))
     }
 }
 

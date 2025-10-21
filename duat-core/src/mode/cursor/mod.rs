@@ -15,10 +15,10 @@ use lender::{Lender, Lending};
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
-    opts::PrintOpts,
     buffer::{Buffer, Parser},
+    opts::PrintOpts,
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
-    ui::{traits::Area, Widget},
+    ui::{Area, Widget},
 };
 
 /// The [`Selection`] and [`Selections`] structs
@@ -73,7 +73,7 @@ pub struct Cursor<'a, W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
     n: usize,
     was_main: bool,
     widget: &'a mut W,
-    area: &'a dyn Area,
+    area: &'a Area,
     next_i: Option<Rc<Cell<usize>>>,
     inc_searcher: &'a mut S,
     is_copy: bool,
@@ -83,7 +83,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
         (selection, n, was_main): (Selection, usize, bool),
-        (widget, area): (&'a mut W, &'a dyn Area),
+        (widget, area): (&'a mut W, &'a Area),
         next_i: Option<Rc<Cell<usize>>>,
         searcher: &'a mut S,
         is_copy: bool,
@@ -748,7 +748,7 @@ impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
 pub struct Cursors<'a, W: Widget + ?Sized, S> {
     next_i: Rc<Cell<usize>>,
     widget: &'a mut W,
-    area: &'a dyn Area,
+    area: &'a Area,
     inc_searcher: RefMut<'a, S>,
 }
 
@@ -757,7 +757,7 @@ impl<'a, W: Widget + ?Sized, S> Cursors<'a, W, S> {
     pub(crate) fn new(
         next_i: usize,
         widget: &'a mut W,
-        area: &'a dyn Area,
+        area: &'a Area,
         inc_searcher: RefMut<'a, S>,
     ) -> Self {
         Self {

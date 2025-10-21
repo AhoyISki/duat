@@ -9,7 +9,7 @@ pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
     buffer::Buffer,
     data::{Pass, RwData},
-    ui::{Node, Widget, traits::Area},
+    ui::{Area, Node, Widget},
 };
 
 mod cache;
@@ -277,7 +277,7 @@ impl DynBuffer {
     /// [`Pass`]
     ///
     /// [`Area`]: crate::ui::traits::Ui::Area
-    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut Buffer, &'a dyn Area) {
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut Buffer, &'a mut Area) {
         // SAFETY: Because I already got a &mut Pass, the RwData can't be
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
@@ -329,18 +329,14 @@ impl CurWidget {
     }
 
     /// Reads the [`Widget`] and its [`Area`]
-    pub fn _read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget, &dyn Area) -> R) -> R {
+    pub fn _read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget, &Area) -> R) -> R {
         let node = self.0.read(pa);
         f(node.handle().read(pa), node.area().read(pa))
     }
 
     /// Reads the [`Widget`] as `W` and its
     /// [`Area`]
-    pub fn _read_as<W: Widget, R>(
-        &self,
-        pa: &Pass,
-        f: impl FnOnce(&W, &dyn Area) -> R,
-    ) -> Option<R> {
+    pub fn _read_as<W: Widget, R>(&self, pa: &Pass, f: impl FnOnce(&W, &Area) -> R) -> Option<R> {
         let node = self.0.read(pa);
         Some(f(node.read_as(pa)?, node.area().read(pa)))
     }

@@ -16,29 +16,25 @@
 //! [`ui`]: super
 //! [`Area`]: super::traits::Area
 //! [`Area::PrintInfo`]: super::traits::Area::PrintInfo
-use std::{
-    any::Any,
-    cell::UnsafeCell,
-    path::Path,
-    sync::{Arc, OnceLock},
-};
+use std::{any::Any, path::Path, sync::OnceLock};
 
 use crate::{
     context::{self, Cache},
     data::{Pass, RwData},
     form::Painter,
     opts::PrintOpts,
+    session::DuatSender,
     text::{Item, SpawnId, Text, TwoPoints},
     ui::{
         Caret, PushSpecs, SpawnSpecs,
-        traits::{self, Area as AreaTrait},
+        traits::{CoreAccess, RawArea, RawUi},
     },
 };
 
 /// A type erased [`Ui`]
 #[derive(Clone, Copy)]
 pub struct Ui {
-    ui: &'static dyn traits::Ui,
+    ui: &'static (dyn Any + Send + Sync),
     fns: &'static UiFunctions,
     default_print_info: fn() -> PrintInfo,
 }
@@ -48,17 +44,31 @@ impl Ui {
     ///
     /// Given the [`Ui::get_once`] function, this should only be
     /// callable _once_.
-    pub fn new<U: traits::Ui>() -> Self
+    pub fn new<U: RawUi>() -> Self
     where
         U::Area: PartialEq,
     {
         Ui {
             ui: U::get_once().expect("Ui was acquired more than once"),
             fns: UiFunctions::new::<U>(),
-            default_print_info: || {
-                PrintInfo::new::<U>(<U::Area as traits::Area>::PrintInfo::default())
-            },
+            default_print_info: || PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default()),
         }
+    }
+
+    /// Functions to trigger when the program begins
+    ///
+    /// Will happen on the address space of the Duat application,
+    /// rather than the configuration crate.
+    pub fn open(&self, duat_tx: DuatSender) {
+        (self.fns.open)(self.ui, duat_tx)
+    }
+
+    /// Functions to trigger when the program ends
+    ///
+    /// Will happen on the address space of the Duat application,
+    /// rather than the configuration crate.
+    pub fn close(&self) {
+        (self.fns.close)(self.ui)
     }
 
     /// Initiates and returns a new "master" [`Area`]
@@ -66,8 +76,8 @@ impl Ui {
     /// This [`Area`] must not have any parents, and must be placed on
     /// a new window, that is, a plain region with nothing in it.
     ///
-    /// [`Area`]: Ui::Area
-    pub fn new_root(&self, file_path: Option<&Path>) -> Area {
+    /// [`Area`]: RawUi::Area
+    pub fn new_root(&self, file_path: Option<&Path>) -> RwArea {
         (self.fns.new_root)(self.ui, file_path)
     }
 
@@ -81,15 +91,72 @@ impl Ui {
     /// [`Widget`]s with coordinates in the not too distant future as
     /// well.
     ///
-    /// [`Area`]: Ui::Area
+    /// [`Area`]: RawUi::Area
+    /// [`Widget`]: super::Widget
     pub fn new_spawned(
         &self,
         file_path: Option<&Path>,
         spawn_id: SpawnId,
         specs: SpawnSpecs,
         win: usize,
-    ) -> Area {
+    ) -> RwArea {
         (self.fns.new_spawned)(self.ui, file_path, spawn_id, specs, win)
+    }
+
+    /// Switches the currently active window
+    ///
+    /// This will only happen to with window indices that are actual
+    /// windows. If at some point, a window index comes up that is not
+    /// actually a window, that's a bug.
+    pub fn switch_window(&self, win: usize) {
+        (self.fns.switch_window)(self.ui, win)
+    }
+
+    /// Flush the layout
+    ///
+    /// When this function is called, it means that Duat has finished
+    /// adding or removing widgets, so the ui should calculate the
+    /// layout.
+    pub fn flush_layout(&self) {
+        (self.fns.flush_layout)(self.ui)
+    }
+
+    /// Prints the layout
+    ///
+    /// Since printing runs all on the same thread, it is most
+    /// efficient to call a printing function after all the widgets
+    /// are done updating, I think.
+    pub fn print(&self) {
+        (self.fns.print)(self.ui)
+    }
+
+    /// Functions to trigger when the program reloads
+    ///
+    /// These will happen inside of the dynamically loaded config
+    /// crate.
+    pub fn load(&self) {
+        (self.fns.load)(self.ui)
+    }
+
+    /// Unloads the [`Ui`]
+    ///
+    /// Unlike [`RawUi::close`], this will happen both when Duat
+    /// reloads the configuratio and when it closes the app.
+    ///
+    /// These will happen inside of the dynamically loaded config
+    /// crate.
+    pub fn unload(&self) {
+        (self.fns.unload)(self.ui)
+    }
+
+    /// Removes a window from the [`Ui`]
+    ///
+    /// This should keep the current active window consistent. That
+    /// is, if the current window was ahead of the deleted one, it
+    /// should be shifted back, so that the same window is still
+    /// displayed.
+    pub fn remove_window(&self, win: usize) {
+        (self.fns.remove_window)(self.ui, win)
     }
 
     /// Sets the default [`PrintInfo`]
@@ -101,35 +168,62 @@ impl Ui {
 }
 
 struct UiFunctions {
-    new_root: fn(&dyn traits::Ui, Option<&Path>) -> Area,
-    new_spawned: fn(&dyn traits::Ui, Option<&Path>, SpawnId, SpawnSpecs, usize) -> Area,
+    open: fn(&'static dyn Any, DuatSender),
+    close: fn(&'static dyn Any),
+    new_root: fn(&'static dyn Any, Option<&Path>) -> RwArea,
+    new_spawned: fn(&'static dyn Any, Option<&Path>, SpawnId, SpawnSpecs, usize) -> RwArea,
+    switch_window: fn(&'static dyn Any, win: usize),
+    flush_layout: fn(&'static dyn Any),
+    print: fn(&'static dyn Any),
+    load: fn(&'static dyn Any),
+    unload: fn(&'static dyn Any),
+    remove_window: fn(&'static dyn Any, win: usize),
 }
 
 impl UiFunctions {
-    fn new<U: traits::Ui>() -> &'static Self
-    where
-        U::Area: PartialEq,
-    {
+    const fn new<U: RawUi>() -> &'static Self {
         &Self {
+            open: |ui, duat_tx| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.open(duat_tx)
+            },
+            close: |ui| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.close()
+            },
             new_root: |ui, file_path| {
-                let ui = unsafe { (ui as *const dyn traits::Ui as *const U).as_ref() }.unwrap();
-
-                Area::new::<U>(ui.new_root(get_cache::<U>(file_path)))
+                let ui = ui.downcast_ref::<U>().unwrap();
+                RwArea::new::<U>(ui.new_root(get_cache::<U>(file_path)))
             },
             new_spawned: |ui, file_path, spawn_id, specs, win| {
-                let ui = unsafe { (ui as *const dyn traits::Ui as *const U).as_ref() }.unwrap();
-
-                Area::new::<U>(ui.new_spawned(spawn_id, specs, get_cache::<U>(file_path), win))
+                let ui = ui.downcast_ref::<U>().unwrap();
+                RwArea::new::<U>(ui.new_spawned(spawn_id, specs, get_cache::<U>(file_path), win))
+            },
+            switch_window: |ui, win| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.switch_window(win);
+            },
+            flush_layout: |ui| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.flush_layout();
+            },
+            print: |ui| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.print();
+            },
+            load: |ui| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.load();
+            },
+            unload: |ui| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.unload();
+            },
+            remove_window: |ui, win| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                ui.remove_window(win);
             },
         }
-    }
-}
-
-impl std::ops::Deref for Ui {
-    type Target = &'static dyn traits::Ui;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ui
     }
 }
 
@@ -138,12 +232,9 @@ impl std::ops::Deref for Ui {
 /// This type houses the inner `Area`, and provides type erased access
 /// to its functions.
 #[derive(Clone)]
-pub struct Area {
-    area: RwData<dyn traits::Area>,
-    fns: &'static AreaFunctions,
-}
+pub struct RwArea(pub(crate) RwData<Area>);
 
-impl Area {
+impl RwArea {
     /// Returns a new type erased [`Area`]
     ///
     /// This is the only moment where the [`Ui`] and `Area` will be
@@ -151,35 +242,69 @@ impl Area {
     ///
     /// [`Ui`]: super::traits::Ui
     /// [`Area`]: super::traits::Area
-    fn new<U: traits::Ui>(area: U::Area) -> Self
-    where
-        U::Area: PartialEq,
-        <U::Area as traits::Area>::PrintInfo: Default + Clone + Send + PartialEq + Eq,
-    {
-        Self {
-            area: unsafe { RwData::new_unsized::<U::Area>(Arc::new(UnsafeCell::new(area))) },
+    fn new<U: RawUi>(area: U::Area) -> Self {
+        Self(RwData::new(Area {
+            inner: Box::new(area),
             fns: AreaFunctions::new::<U>(),
-        }
+        }))
     }
 
-    /// Shared access to an [`Area`] trait object
+    /// Shared access to an [`Area`]
     ///
-    /// You can use this to call any of the non restricted functions
-    /// from the [`Area`] trait, which include a bunch internal
-    /// mutability, like with [`Area::set_width`],
-    /// [`Area::set_height`], [`Area::reveal`], etc.
+    /// You should use this if you want "prolonged" access to the
+    /// [`Area`]'s methods, without necessarily bringing a [`Pass`]
+    /// with you.
     ///
-    /// [`Area`]: super::traits::Area
     /// [`Area::set_width`]: super::traits::Area::set_width
     /// [`Area::set_height`]: super::traits::Area::set_height
     /// [`Area::reveal`]: super::traits::Area::reveal
-    pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a dyn traits::Area {
-        self.area.read(pa)
+    pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a Area {
+        self.0.read(pa)
     }
 
-    /// Attempts to read this [`Area`]
-    pub fn read_as<'a, A: traits::Area>(&'a self, pa: &'a Pass) -> Option<&'a A> {
-        self.area.read_as(pa)
+    /// Mutable access to an [`Area`]
+    ///
+    /// You should use this if you want "prolonged" access to the
+    /// [`Area`]'s methods, without necessarily bringing a [`Pass`]
+    /// with you.
+    ///
+    /// [`Area::set_width`]: super::traits::Area::set_width
+    /// [`Area::set_height`]: super::traits::Area::set_height
+    /// [`Area::reveal`]: super::traits::Area::reveal
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Area {
+        self.0.write(pa)
+    }
+
+    /// Attempt to read this as a specific implementation of
+    /// [`RawArea`]
+    ///
+    /// You can use this to deal with individual [`RawArea`]s, so you
+    /// can do a "per Ui" configuration for your
+    /// [`Plugin`]/configuration.
+    ///
+    /// This will return [`None`] if the `RawArea` within is of a
+    /// different type.
+    ///
+    /// [`Plugin`]: crate::Plugin
+    pub fn read_as<'a, A: RawArea>(&'a self, pa: &'a Pass) -> Option<&'a A> {
+        self.0.read(pa).inner.downcast_ref()
+    }
+
+    /// Attempt to write this as a specific implementation of
+    /// [`RawArea`]
+    ///
+    /// You can use this to deal with individual [`RawArea`]s, so you
+    /// can do a "per Ui" configuration for your
+    /// [`Plugin`]/configuration. This could be used to, for example,
+    /// place frames around an [`Area`] when making use of a terminal
+    /// `Ui`, or using some custom css when using a web `Ui`.
+    ///
+    /// This will return [`None`] if the `RawArea` within is of a
+    /// different type.
+    ///
+    /// [`Plugin`]: crate::Plugin
+    pub fn write_as<'a, A: RawArea>(&'a self, pa: &'a mut Pass) -> Option<&'a mut A> {
+        self.0.write(pa).inner.downcast_mut()
     }
 
     ////////// Area Modification functions
@@ -192,7 +317,7 @@ impl Area {
         specs: PushSpecs,
         on_files: bool,
     ) -> Option<(Self, Option<Self>)> {
-        (self.fns.push)(pa, &self.area, file_path, specs, on_files)
+        (self.0.read(pa).fns.push)(self.0.read(pa), file_path, specs, on_files)
     }
 
     /// Spawns a [`Widget`] on this [`Area`]
@@ -203,46 +328,41 @@ impl Area {
         spawn_id: SpawnId,
         specs: SpawnSpecs,
     ) -> Option<Self> {
-        (self.fns.spawn)(pa, &self.area, file_path, spawn_id, specs)
+        (self.0.read(pa).fns.spawn)(self.0.read(pa), file_path, spawn_id, specs)
     }
 
     /// Deletes this [`Area`], returning wether the window should be
     /// removed, as well as all the other ares that were deleted
     pub(super) fn delete(&self, pa: &mut Pass) -> (bool, Vec<Self>) {
-        (self.fns.delete)(pa, &self.area)
+        (self.0.read(pa).fns.delete)(self.0.read(pa))
     }
 
     /// Swaps this [`Area`] with another
     pub(super) fn swap(&self, pa: &mut Pass, rhs: &Self) -> bool {
-        (self.fns.swap)(pa, self, rhs)
+        (self.0.read(pa).fns.swap)(self.0.read(pa), rhs.read(pa))
     }
 
     ////////// Constraint changing functions
 
     /// Changes the horizontal constraint of the area
-    pub fn set_width(&self, pa: &Pass, width: f32) -> Result<(), Text> {
-        self.area.read(pa).set_width(width)
+    pub fn set_width(&self, pa: &mut Pass, width: f32) -> Result<(), Text> {
+        self.0.write(pa).set_width(width)
     }
 
     /// Changes the vertical constraint of the area
-    pub fn set_height(&self, pa: &Pass, height: f32) -> Result<(), Text> {
-        self.area.read(pa).set_height(height)
+    pub fn set_height(&self, pa: &mut Pass, height: f32) -> Result<(), Text> {
+        self.0.write(pa).set_height(height)
     }
 
     /// Changes [`Constraint`]s such that the [`Area`] becomes
     /// hidden
-    pub fn hide(&self, pa: &Pass) -> Result<(), Text> {
-        self.area.read(pa).hide()
+    pub fn hide(&self, pa: &mut Pass) -> Result<(), Text> {
+        self.0.write(pa).hide()
     }
 
     /// Changes [`Constraint`]s such that the [`Area`] is revealed
-    pub fn reveal(&self, pa: &Pass) -> Result<(), Text> {
-        self.area.read(pa).reveal()
-    }
-
-    /// What width the given [`Text`] would occupy, if unwrapped
-    pub fn width_of_text(&self, pa: &Pass, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
-        self.area.read(pa).width_of_text(opts, text)
+    pub fn reveal(&self, pa: &mut Pass) -> Result<(), Text> {
+        self.0.write(pa).reveal()
     }
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
@@ -250,15 +370,20 @@ impl Area {
     ///
     /// Should make [`self`] the active [`Area`] while deactivating
     /// any other active [`Area`].
-    pub fn set_as_active(&self, pa: &Pass) {
-        self.area.read(pa).set_as_active()
+    pub fn set_as_active(&self, pa: &mut Pass) {
+        self.0.write(pa).set_as_active()
+    }
+
+    /// What width the given [`Text`] would occupy, if unwrapped
+    pub fn width_of_text(&self, pa: &Pass, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
+        self.0.read(pa).width_of_text(opts, text)
     }
 
     ////////// Printing functions
 
     /// Prints the [`Text`] via an [`Iterator`]
     pub fn print(&self, pa: &Pass, text: &Text, opts: PrintOpts, painter: Painter) {
-        self.area.read(pa).print(text, opts, painter)
+        self.0.read(pa).print(text, opts, painter)
     }
 
     /// Prints the [`Text`] with a callback function
@@ -270,19 +395,19 @@ impl Area {
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        (self.fns.print_with)(pa, &self.area, text, opts, painter, Box::new(f))
+        self.0.read(pa).print_with(text, opts, painter, Box::new(f))
     }
 
     /// The current printing information of the area
     pub fn get_print_info(&self, pa: &Pass) -> PrintInfo {
-        (self.fns.get_print_info)(pa, &self.area)
+        self.0.read(pa).get_print_info()
     }
 
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
     /// [`PrintInfo`]: Area::PrintInfo
     pub fn set_print_info(&self, pa: &mut Pass, info: PrintInfo) {
-        (self.fns.set_print_info)(pa, &self.area, info)
+        self.0.write(pa).set_print_info(info)
     }
 
     /// Returns a printing iterator
@@ -303,7 +428,7 @@ impl Area {
         points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.area.read(pa).print_iter(text, points, opts)
+        self.0.read(pa).print_iter(text, points, opts)
     }
 
     /// Returns a reversed printing iterator
@@ -323,7 +448,7 @@ impl Area {
         points: TwoPoints,
         opts: PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.area.read(pa).rev_print_iter(text, points, opts)
+        self.0.read(pa).rev_print_iter(text, points, opts)
     }
 
     ////////// Points functions
@@ -333,8 +458,8 @@ impl Area {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    pub fn scroll_ver(&self, pa: &Pass, text: &Text, dist: i32, opts: PrintOpts) {
-        self.area.read(pa).scroll_ver(text, dist, opts);
+    pub fn scroll_ver(&self, pa: &mut Pass, text: &Text, dist: i32, opts: PrintOpts) {
+        self.0.write(pa).scroll_ver(text, dist, opts)
     }
 
     /// Scrolls the [`Text`] on all four directions until the given
@@ -348,8 +473,14 @@ impl Area {
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
     /// [`scroll_to_points`]: Area::scroll_to_points
-    pub fn scroll_around_points(&self, pa: &Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
-        self.area.read(pa).scroll_around_points(text, points, opts);
+    pub fn scroll_around_points(
+        &self,
+        pa: &mut Pass,
+        text: &Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) {
+        self.0.write(pa).scroll_around_points(text, points, opts)
     }
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
@@ -363,202 +494,470 @@ impl Area {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::opts::WrapMethod
-    pub fn scroll_to_points(&self, pa: &Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
-        self.area.read(pa).scroll_to_points(text, points, opts);
+    pub fn scroll_to_points(&self, pa: &mut Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
+        self.0.write(pa).scroll_to_points(text, points, opts)
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
     pub fn start_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> TwoPoints {
-        self.area.read(pa).start_points(text, opts)
+        self.0.read(pa).start_points(text, opts)
     }
 
     /// Scrolls the [`Area`] to the given [`TwoPoints`]
     pub fn end_points(&self, pa: &Pass, text: &Text, opts: PrintOpts) -> TwoPoints {
-        self.area.read(pa).end_points(text, opts)
+        self.0.read(pa).end_points(text, opts)
     }
 
     /////////// Querying functions
 
     /// Wether this [`Area`] has changed since last being printed
     pub fn has_changed(&self, pa: &Pass) -> bool {
-        self.area.read(pa).has_changed()
+        self.0.read(pa).has_changed()
     }
 
     /// Whether or not this [`Area`] is the "master" of another
     pub fn is_master_of(&self, pa: &Pass, other: &Self) -> bool {
-        (self.fns.is_master_of)(pa, &self.area, &other.area)
+        self.0.read(pa).is_master_of(other.read(pa))
     }
 
     /// Returns the clustered master of the [`Area`], if there is one
     pub(crate) fn get_cluster_master(&self, pa: &Pass) -> Option<Self> {
-        (self.fns.get_cluster_master)(pa, &self.area)
+        (self.0.read(pa).fns.get_cluster_master)(self.0.read(pa))
     }
 
     /// Stores the cache of the [`Area`], given a path to associate
     /// with this cache
     pub fn store_cache(&self, pa: &Pass, path: &str) -> Result<(), Text> {
-        (self.fns.store_cache)(pa, &self.area, path)
+        (self.0.read(pa).fns.store_cache)(self.0.read(pa), path)
     }
 
     /// Gets the width of the area
     pub fn width(&self, pa: &Pass) -> f32 {
-        self.area.read(pa).width()
+        self.0.read(pa).width()
     }
 
     /// Gets the height of the area
     pub fn height(&self, pa: &Pass) -> f32 {
-        self.area.read(pa).height()
+        self.0.read(pa).height()
     }
 
     /// Returns `true` if this is the currently active [`Area`]
     ///
     /// Only one [`Area`] should be active at any given moment.
     pub fn is_active(&self, pa: &Pass) -> bool {
-        self.area.read(pa).is_active()
+        self.0.read(pa).is_active()
     }
 
     /// Wether this [`Area`] is the same as another
-    pub fn area_is_eq(&self, pa: &Pass, other: &Area) -> bool {
-        (self.fns.eq)(pa, &self.area, &other.area)
+    pub fn area_is_eq(&self, pa: &Pass, other: &RwArea) -> bool {
+        self.0.read(pa).area_is_eq(other.0.read(pa))
+    }
+}
+
+/// A type erased [`RawUi::Area`]
+///
+/// This struct is accessed by calling [`RwArea::read`] or
+/// [`RwData::write`].
+pub struct Area {
+    inner: Box<dyn Any>,
+    fns: &'static AreaFunctions,
+}
+
+impl Area {
+    /// Changes the horizontal constraint of the area
+    pub fn set_width(&mut self, width: f32) -> Result<(), Text> {
+        (self.fns.set_width)(self, width)
+    }
+
+    /// Changes the vertical constraint of the area
+    pub fn set_height(&mut self, height: f32) -> Result<(), Text> {
+        (self.fns.set_height)(self, height)
+    }
+
+    /// Changes [`Constraint`]s such that the [`Area`] becomes
+    /// hidden
+    pub fn hide(&mut self) -> Result<(), Text> {
+        (self.fns.hide)(self)
+    }
+
+    /// Changes [`Constraint`]s such that the [`Area`] is revealed
+    pub fn reveal(&mut self) -> Result<(), Text> {
+        (self.fns.reveal)(self)
+    }
+
+    /// Tells the [`Ui`] that this [`Area`] is the one that is
+    /// currently focused.
+    ///
+    /// Should make [`self`] the active [`Area`] while deactivating
+    /// any other active [`Area`].
+    pub fn set_as_active(&mut self) {
+        (self.fns.set_as_active)(self)
+    }
+
+    /// What width the given [`Text`] would occupy, if unwrapped
+    pub fn width_of_text(&self, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
+        (self.fns.width_of_text)(self, opts, text)
+    }
+
+    ////////// Printing functions
+
+    /// Prints the [`Text`] via an [`Iterator`]
+    pub fn print(&self, text: &Text, opts: PrintOpts, painter: Painter) {
+        (self.fns.print)(self, text, opts, painter)
+    }
+
+    /// Prints the [`Text`] with a callback function
+    pub fn print_with<'a>(
+        &self,
+        text: &Text,
+        opts: PrintOpts,
+        painter: Painter,
+        f: impl FnMut(&Caret, &Item) + 'a,
+    ) {
+        (self.fns.print_with)(self, text, opts, painter, Box::new(f))
+    }
+
+    /// The current printing information of the area
+    pub fn get_print_info(&self) -> PrintInfo {
+        (self.fns.get_print_info)(self)
+    }
+
+    /// Sets a previously acquired [`PrintInfo`] to the area
+    ///
+    /// [`PrintInfo`]: Area::PrintInfo
+    pub fn set_print_info(&mut self, info: PrintInfo) {
+        (self.fns.set_print_info)(self, info)
+    }
+
+    /// Returns a printing iterator
+    ///
+    /// Given an iterator of [`text::Item`]s, returns an iterator
+    /// which assigns to each of them a [`Caret`]. This struct
+    /// essentially represents where horizontally would this character
+    /// be printed.
+    ///
+    /// If you want a reverse iterator, see
+    /// [`Area::rev_print_iter`].
+    ///
+    /// [`text::Item`]: Item
+    pub fn print_iter<'a>(
+        &self,
+        text: &'a Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
+        (self.fns.print_iter)(self, text, points, opts)
+    }
+
+    /// Returns a reversed printing iterator
+    ///
+    /// Given an iterator of [`text::Item`]s, returns a reversed
+    /// iterator which assigns to each of them a [`Caret`]. This
+    /// struct essentially represents where horizontally each
+    /// character would be printed.
+    ///
+    /// If you want a forwards iterator, see [`Area::print_iter`].
+    ///
+    /// [`text::Item`]: Item
+    pub fn rev_print_iter<'a>(
+        &self,
+        text: &'a Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
+        (self.fns.rev_print_iter)(self, text, points, opts)
+    }
+
+    ////////// Points functions
+
+    /// Scrolls the [`Text`] veritcally by an amount
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    pub fn scroll_ver(&mut self, text: &Text, dist: i32, opts: PrintOpts) {
+        (self.fns.scroll_ver)(self, text, dist, opts);
+    }
+
+    /// Scrolls the [`Text`] on all four directions until the given
+    /// [`Point`] is within the [`ScrollOff`] range
+    ///
+    /// There are two other scrolling methods for [`Area`]:
+    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
+    /// between this and [`scroll_to_points`] is that this method
+    /// doesn't do anything if the [`Point`] is already on screen.
+    ///
+    /// [`ScrollOff`]: crate::opts::ScrollOff
+    /// [`scroll_ver`]: Area::scroll_ver
+    /// [`scroll_to_points`]: Area::scroll_to_points
+    pub fn scroll_around_points(&mut self, text: &Text, points: TwoPoints, opts: PrintOpts) {
+        (self.fns.scroll_around_points)(self, text, points, opts);
+    }
+
+    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
+    ///
+    /// This method takes [line wrapping] into account, so it's not
+    /// the same as setting the starting points to the
+    /// [`Text::visual_line_start`] of these [`TwoPoints`].
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    ///
+    /// [line wrapping]: crate::opts::WrapMethod
+    pub fn scroll_to_points(&mut self, text: &Text, points: TwoPoints, opts: PrintOpts) {
+        (self.fns.scroll_to_points)(self, text, points, opts);
+    }
+
+    /// Scrolls the [`Area`] to the given [`TwoPoints`]
+    pub fn start_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints {
+        (self.fns.start_points)(self, text, opts)
+    }
+
+    /// Scrolls the [`Area`] to the given [`TwoPoints`]
+    pub fn end_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints {
+        (self.fns.end_points)(self, text, opts)
+    }
+
+    /////////// Querying functions
+
+    /// Wether this [`Area`] has changed since last being printed
+    pub fn has_changed(&self) -> bool {
+        (self.fns.has_changed)(self)
+    }
+
+    /// Whether or not this [`Area`] is the "master" of another
+    pub fn is_master_of(&self, other: &Self) -> bool {
+        (self.fns.is_master_of)(self, other)
+    }
+
+    /// Stores the cache of the [`Area`], given a path to associate
+    /// with this cache
+    pub fn store_cache(&mut self, path: &str) -> Result<(), Text> {
+        (self.fns.store_cache)(self, path)
+    }
+
+    /// Gets the width of the area
+    pub fn width(&self) -> f32 {
+        (self.fns.width)(self)
+    }
+
+    /// Gets the height of the area
+    pub fn height(&self) -> f32 {
+        (self.fns.height)(self)
+    }
+
+    /// Returns `true` if this is the currently active [`Area`]
+    ///
+    /// Only one [`Area`] should be active at any given moment.
+    pub fn is_active(&self) -> bool {
+        (self.fns.is_active)(self)
+    }
+
+    /// Wether this [`Area`] is the same as another
+    pub fn area_is_eq(&self, other: &Area) -> bool {
+        (self.fns.eq)(self, other)
     }
 }
 
 #[derive(Clone, Copy)]
 struct AreaFunctions {
-    /// Push one [`Area`] to another
-    push: fn(
-        &mut Pass,
-        &RwData<dyn traits::Area>,
-        Option<&Path>,
-        PushSpecs,
-        bool,
-    ) -> Option<(Area, Option<Area>)>,
-    /// Spawn an [`Area`] on another
-    spawn: fn(
-        &mut Pass,
-        &RwData<dyn traits::Area>,
-        Option<&Path>,
-        SpawnId,
-        SpawnSpecs,
-    ) -> Option<Area>,
-    /// Deletes an [`Area`]
-    delete: fn(&mut Pass, &RwData<dyn traits::Area>) -> (bool, Vec<Area>),
-    /// Swaps two [`Area`]s
-    swap: fn(&mut Pass, &Area, &Area) -> bool,
-    /// Prints to an [`Area`], with a callback function
-    print_with: for<'a> fn(
-        &Pass,
-        &RwData<dyn traits::Area>,
-        &Text,
-        PrintOpts,
-        Painter,
-        Box<dyn FnMut(&Caret, &Item) + 'a>,
-    ),
-    /// Gets the type erased [`Area::PrintInfo`]
-    get_print_info: fn(&Pass, &RwData<dyn traits::Area>) -> PrintInfo,
-    /// Sets the type erased [`Area::PrintInfo`]
-    set_print_info: fn(&mut Pass, &RwData<dyn traits::Area>, PrintInfo),
-    /// Wether this [`Area`] is the master of another
-    is_master_of: fn(&Pass, &RwData<dyn traits::Area>, &RwData<dyn traits::Area>) -> bool,
-    /// Gets the master [`Area`] of another's cluster
-    get_cluster_master: fn(&Pass, &RwData<dyn traits::Area>) -> Option<Area>,
-    /// Store the [`Area::Cache`] of this [`Area`]
-    store_cache: fn(&Pass, &RwData<dyn traits::Area>, &str) -> Result<(), Text>,
-    /// Wether two [`Area`]s are the same
-    eq: fn(&Pass, &RwData<dyn traits::Area>, &RwData<dyn traits::Area>) -> bool,
+    push: fn(&Area, Option<&Path>, PushSpecs, bool) -> Option<(RwArea, Option<RwArea>)>,
+    spawn: fn(&Area, Option<&Path>, SpawnId, SpawnSpecs) -> Option<RwArea>,
+    delete: fn(&Area) -> (bool, Vec<RwArea>),
+    swap: fn(&Area, &Area) -> bool,
+    set_width: fn(&Area, width: f32) -> Result<(), Text>,
+    set_height: fn(&Area, height: f32) -> Result<(), Text>,
+    hide: fn(&Area) -> Result<(), Text>,
+    reveal: fn(&Area) -> Result<(), Text>,
+    width_of_text: fn(&Area, opts: PrintOpts, text: &Text) -> Result<f32, Text>,
+    set_as_active: fn(&Area),
+    print: fn(&Area, text: &Text, opts: PrintOpts, painter: Painter),
+    print_with: for<'a> fn(&Area, &Text, PrintOpts, Painter, Box<dyn FnMut(&Caret, &Item) + 'a>),
+    get_print_info: fn(&Area) -> PrintInfo,
+    set_print_info: fn(&Area, PrintInfo),
+    print_iter: for<'a> fn(
+        &Area,
+        text: &'a Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>,
+    rev_print_iter: for<'a> fn(
+        &Area,
+        text: &'a Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>,
+    scroll_ver: fn(&Area, text: &Text, dist: i32, opts: PrintOpts),
+    scroll_around_points: fn(&Area, text: &Text, points: TwoPoints, opts: PrintOpts),
+    scroll_to_points: fn(&Area, text: &Text, points: TwoPoints, opts: PrintOpts),
+    start_points: fn(&Area, text: &Text, opts: PrintOpts) -> TwoPoints,
+    end_points: fn(&Area, text: &Text, opts: PrintOpts) -> TwoPoints,
+    has_changed: fn(&Area) -> bool,
+    is_master_of: fn(&Area, &Area) -> bool,
+    get_cluster_master: fn(&Area) -> Option<RwArea>,
+    store_cache: fn(&Area, &str) -> Result<(), Text>,
+    eq: fn(&Area, &Area) -> bool,
+    width: fn(&Area) -> f32,
+    height: fn(&Area) -> f32,
+    is_active: fn(&Area) -> bool,
 }
 
 impl AreaFunctions {
-    const fn new<U: traits::Ui>() -> &'static Self
-    where
-        U::Area: PartialEq,
-    {
+    const fn new<U: RawUi>() -> &'static Self {
         &Self {
-            push: |pa, area, file_path, specs, on_files| {
+            push: |area, file_path, specs, on_files| {
                 let cache = get_cache::<U>(file_path);
-                let area = area.write_as::<U::Area>(pa).unwrap();
-                let (child, parent) = area.push(specs, on_files, cache)?;
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                let (child, parent) = CoreAccess::new(area).push(specs, on_files, cache)?;
 
-                Some((Area::new::<U>(child), parent.map(Area::new::<U>)))
+                Some((RwArea::new::<U>(child), parent.map(RwArea::new::<U>)))
             },
-            spawn: |pa, area, file_path, spawn_id, specs| {
+            spawn: |area, file_path, spawn_id, specs| {
                 let cache = get_cache::<U>(file_path);
-                let area = area.write_as::<U::Area>(pa).unwrap();
-                let spawned = area.spawn(spawn_id, specs, cache)?;
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                let spawned = CoreAccess::new(area).spawn(spawn_id, specs, cache)?;
 
-                Some(Area::new::<U>(spawned))
+                Some(RwArea::new::<U>(spawned))
             },
-            delete: |pa, area| {
-                let area: &mut U::Area = area.write_as(pa).unwrap();
-
-                let (do_rm_window, removed) = area.delete();
+            delete: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                let (do_rm_window, removed) = CoreAccess::new(area).delete();
 
                 (
                     do_rm_window,
-                    removed.into_iter().map(Area::new::<U>).collect(),
+                    removed.into_iter().map(RwArea::new::<U>).collect(),
                 )
             },
-            swap: |pa, lhs, rhs| {
-                if lhs.area_is_eq(pa, rhs) {
+            swap: |lhs, rhs| {
+                let lhs = lhs.inner.downcast_ref::<U::Area>().unwrap();
+                let rhs = rhs.inner.downcast_ref::<U::Area>().unwrap();
+
+                if lhs == rhs {
                     context::warn!("Attempted two swap an Area with itself");
                     return false;
                 }
 
-                // SAFETY: The check above ensures the two Areas
-                // don't point to the same thing.
-                let internal_pass = &mut unsafe { Pass::new() };
-
-                let lhs = lhs.area.write_as::<U::Area>(pa).unwrap();
-                let rhs = rhs.area.write_as(internal_pass).unwrap();
-
-                lhs.swap(rhs)
+                CoreAccess::new(lhs).swap(rhs)
             },
-            print_with: |pa, area, text, print_opts, painter, f| {
-                let area = area.read_as::<U::Area>(pa).unwrap();
-
-                area.print_with(text, print_opts, painter, f);
+            set_width: |area, width| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).set_width(width)
             },
-            get_print_info: |pa, area| {
-                let area = area.read_as::<U::Area>(pa).unwrap();
-
-                PrintInfo::new::<U>(area.get_print_info())
+            set_height: |area, height| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).set_height(height)
             },
-            set_print_info: |pa, area, info| {
-                let area = area.write_as::<U::Area>(pa).unwrap();
+            hide: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).hide()
+            },
+            reveal: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).reveal()
+            },
+            width_of_text: |area, opts, text| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).width_of_text(opts, text)
+            },
+            set_as_active: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).set_as_active()
+            },
+            print: |area, text, opts, painter| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).print(text, opts, painter)
+            },
+            print_with: |area, text, print_opts, painter, f| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).print_with(text, print_opts, painter, f);
+            },
+            get_print_info: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                PrintInfo::new::<U>(CoreAccess::new(area).get_print_info())
+            },
+            set_print_info: |area, info| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 let Some(info) = info
                     .info
                     .as_ref()
-                    .downcast_ref::<<U::Area as traits::Area>::PrintInfo>()
+                    .downcast_ref::<<U::Area as RawArea>::PrintInfo>()
                 else {
                     panic!("Attempted to get PrintInfo of wrong type");
                 };
 
-                area.set_print_info(info.clone());
+                CoreAccess::new(area).set_print_info(info.clone());
             },
-            eq: |pa, lhs, rhs| {
-                let lhs = lhs.read_as::<U::Area>(pa).unwrap();
-                let rhs = rhs.read_as::<U::Area>(pa).unwrap();
+            print_iter: |area, text, points, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                Box::new(CoreAccess::new(area).print_iter(text, points, opts))
+            },
+            rev_print_iter: |area, text, points, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                Box::new(CoreAccess::new(area).rev_print_iter(text, points, opts))
+            },
+            scroll_ver: |area, text, dist, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).scroll_ver(text, dist, opts)
+            },
+            scroll_around_points: |area, text, dist, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).scroll_around_points(text, dist, opts)
+            },
+            scroll_to_points: |area, text, dist, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).scroll_to_points(text, dist, opts)
+            },
+            start_points: |area, text, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).start_points(text, opts)
+            },
+            end_points: |area, text, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).end_points(text, opts)
+            },
+            has_changed: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).has_changed()
+            },
+            eq: |lhs, rhs| {
+                let lhs = lhs.inner.downcast_ref::<U::Area>().unwrap();
+                let rhs = rhs.inner.downcast_ref::<U::Area>().unwrap();
 
                 lhs == rhs
             },
-            is_master_of: |pa, lhs, rhs| {
-                let lhs = lhs.read_as::<U::Area>(pa).unwrap();
-                let rhs = rhs.read_as::<U::Area>(pa).unwrap();
+            is_master_of: |lhs, rhs| {
+                let lhs = lhs.inner.downcast_ref::<U::Area>().unwrap();
+                let rhs = rhs.inner.downcast_ref::<U::Area>().unwrap();
 
-                lhs.is_master_of(rhs)
+                CoreAccess::new(lhs).is_master_of(rhs)
             },
-            get_cluster_master: |pa, area| {
-                let area = area.read_as::<U::Area>(pa).unwrap();
-                area.get_cluster_master().map(Area::new::<U>)
+            get_cluster_master: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area)
+                    .get_cluster_master()
+                    .map(RwArea::new::<U>)
             },
-            store_cache: |pa, area, path| {
-                let area = area.read_as::<U::Area>(pa).unwrap();
+            store_cache: |area, path| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
 
-                if let Some(area_cache) = area.cache() {
+                if let Some(area_cache) = CoreAccess::new(area).cache() {
                     Cache::new().store(path, area_cache)?;
                 }
 
                 Ok(())
+            },
+            width: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).width()
+            },
+            height: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).height()
+            },
+            is_active: |area| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                CoreAccess::new(area).is_active()
             },
         }
     }
@@ -594,7 +993,7 @@ impl PrintInfo {
     /// [`U::Area::PrintInfo`]: traits::Area::PrintInfo
     /// [`Ui`]: traits::Ui
     /// [`ui::traits`]: super::traits
-    pub fn new<U: traits::Ui>(info: <U::Area as traits::Area>::PrintInfo) -> Self {
+    pub fn new<U: RawUi>(info: <U::Area as RawArea>::PrintInfo) -> Self {
         Self {
             info: Box::new(info),
             fns: PrintInfoFunctions::new::<U>(),
@@ -626,10 +1025,10 @@ struct PrintInfoFunctions {
 }
 
 impl PrintInfoFunctions {
-    fn new<U: traits::Ui>() -> &'static Self {
+    fn new<U: RawUi>() -> &'static Self {
         &Self {
             clone: |info| {
-                let Some(info) = info.downcast_ref::<<U::Area as traits::Area>::PrintInfo>() else {
+                let Some(info) = info.downcast_ref::<<U::Area as RawArea>::PrintInfo>() else {
                     panic!("Attempted to get PrintInfo of wrong type");
                 };
 
@@ -640,7 +1039,7 @@ impl PrintInfoFunctions {
             },
             eq: |lhs, rhs| {
                 let [Some(lhs), Some(rhs)] = [
-                    lhs.downcast_ref::<<U::Area as traits::Area>::PrintInfo>(),
+                    lhs.downcast_ref::<<U::Area as RawArea>::PrintInfo>(),
                     rhs.downcast_ref(),
                 ] else {
                     panic!("Attempted to get PrintInfo of wrong type");
@@ -652,19 +1051,17 @@ impl PrintInfoFunctions {
     }
 }
 
-fn get_cache<U: traits::Ui>(
-    path: Option<&Path>,
-) -> <<U as traits::Ui>::Area as traits::Area>::Cache {
+fn get_cache<U: RawUi>(path: Option<&Path>) -> <<U as RawUi>::Area as RawArea>::Cache {
     if let Some(file_path) = path {
-        match Cache::new().load::<<U::Area as traits::Area>::Cache>(file_path) {
+        match Cache::new().load::<<U::Area as RawArea>::Cache>(file_path) {
             Ok(cache) => cache,
             Err(err) => {
                 context::error!("{err}");
-                <U::Area as traits::Area>::Cache::default()
+                <U::Area as RawArea>::Cache::default()
             }
         }
     } else {
-        <U::Area as traits::Area>::Cache::default()
+        <U::Area as RawArea>::Cache::default()
     }
 }
 

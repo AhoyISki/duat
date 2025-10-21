@@ -387,7 +387,7 @@ mod cursor {
     use crate::{
         opts::PrintOpts,
         text::{Bytes, Change, Point, Text},
-        ui::{Caret, traits::Area},
+        ui::{Area, Caret},
     };
 
     /// A cursor in the text buffer. This is an editing cursor, -(not
@@ -474,13 +474,7 @@ mod cursor {
         /// Internal vertical movement function.
         ///
         /// Returns the distance moved in lines.
-        pub fn move_ver(
-            &mut self,
-            by: i32,
-            text: &Text,
-            area: &dyn Area,
-            mut opts: PrintOpts,
-        ) -> i32 {
+        pub fn move_ver(&mut self, by: i32, text: &Text, area: &Area, mut opts: PrintOpts) -> i32 {
             opts.print_new_line = false;
             let by = by as isize;
             if by == 0 {
@@ -529,7 +523,7 @@ mod cursor {
             &mut self,
             by: i32,
             text: &Text,
-            area: &dyn Area,
+            area: &Area,
             mut opts: PrintOpts,
         ) -> i32 {
             opts.print_new_line = false;
@@ -788,7 +782,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_caret(&self, text: &Text, area: &dyn Area, opts: PrintOpts) -> VPoint {
+        pub fn v_caret(&self, text: &Text, area: &Area, opts: PrintOpts) -> VPoint {
             let vp = self.caret.get().calculate(text, area, opts);
             self.caret.set(LazyVPoint::Known(vp));
             vp
@@ -799,7 +793,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_anchor(&self, text: &Text, area: &dyn Area, opts: PrintOpts) -> Option<VPoint> {
+        pub fn v_anchor(&self, text: &Text, area: &Area, opts: PrintOpts) -> Option<VPoint> {
             self.anchor.get().map(|anchor| {
                 let vp = anchor.calculate(text, area, opts);
                 self.anchor.set(Some(LazyVPoint::Known(vp)));
@@ -813,7 +807,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_range(&self, text: &Text, area: &dyn Area, opts: PrintOpts) -> [VPoint; 2] {
+        pub fn v_range(&self, text: &Text, area: &Area, opts: PrintOpts) -> [VPoint; 2] {
             let v_caret = self.v_caret(text, area, opts);
             let v_anchor = self.v_anchor(text, area, opts).unwrap_or(v_caret);
             [v_caret.min(v_anchor), v_caret.max(v_anchor)]
@@ -856,7 +850,7 @@ mod cursor {
         }
 
         /// Calculates the [`VPoint`], to be used sparingly
-        fn calculate(self, text: &Text, area: &dyn Area, opts: PrintOpts) -> VPoint {
+        fn calculate(self, text: &Text, area: &Area, opts: PrintOpts) -> VPoint {
             match self {
                 Self::Known(vp) => vp,
                 Self::Unknown(p) => VPoint::new(p, text, area, opts),
@@ -931,7 +925,7 @@ mod cursor {
 
     impl VPoint {
         /// Returns a new [`VPoint`]
-        fn new(p: Point, text: &Text, area: &dyn Area, opts: PrintOpts) -> Self {
+        fn new(p: Point, text: &Text, area: &Area, opts: PrintOpts) -> Self {
             let [start, _] = text.points_of_line(p.line());
 
             let mut vcol = 0;
@@ -949,16 +943,14 @@ mod cursor {
                 })
                 .unwrap_or(0);
 
-            let v_point = Self {
+            Self {
                 p,
                 ccol: (p.char() - start.char()) as u16,
                 vcol,
                 dvcol: vcol,
                 wcol,
                 dwcol: wcol,
-            };
-
-            v_point
+            }
         }
 
         /// Returns a new [`VPoint`] from raw data

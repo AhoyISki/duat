@@ -638,7 +638,8 @@
     box_as_ptr,
     default_field_values,
     const_trait_impl,
-    const_cmp
+    const_cmp,
+    arbitrary_self_types
 )]
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]

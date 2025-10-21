@@ -3,6 +3,7 @@
     debug_closure_helpers,
     thread_spawn_hook,
     default_field_values,
+    arbitrary_self_types
 )]
 use std::{
     fmt::Debug,
@@ -27,7 +28,7 @@ use duat_core::{
     MainThreadOnly,
     form::{self, Color},
     session::DuatSender,
-    ui::{self},
+    ui::{self, traits::{RawArea, RawUi}},
 };
 
 use self::{printer::Printer};
@@ -71,7 +72,7 @@ impl InnerUi {
 // accessed from the main thread.
 unsafe impl Send for InnerUi {}
 
-impl ui::traits::Ui for Ui {
+impl RawUi for Ui {
     type Area = Area;
 
     fn get_once() -> Option<&'static Self> {
@@ -196,7 +197,7 @@ impl ui::traits::Ui for Ui {
 
     fn new_root(
         &self,
-        cache: <Self::Area as ui::traits::Area>::Cache,
+        cache: <Self::Area as RawArea>::Cache,
     ) -> Self::Area {
         let mut ui = self.0.lock().unwrap();
         let printer = (ui.printer_fn)();
@@ -219,7 +220,7 @@ impl ui::traits::Ui for Ui {
         &self,
         id: duat_core::text::SpawnId,
         specs: ui::SpawnSpecs,
-        cache: <Self::Area as ui::traits::Area>::Cache,
+        cache: <Self::Area as RawArea>::Cache,
         win: usize,
     ) -> Self::Area {
         let ui = self.0.lock().unwrap();

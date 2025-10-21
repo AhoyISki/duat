@@ -10,7 +10,7 @@ use duat_core::{
     form, hook,
     mode::{self, KeyEvent, KeyMod, Mode, key},
     text::{Searcher, Tagger, Text, txt},
-    ui::{Area, PrintInfo, Widget},
+    ui::{RwArea, PrintInfo, Widget},
 };
 
 use crate::{
@@ -113,7 +113,7 @@ impl<W: Widget> PagerSearch<W> {
 impl<W: Widget> PromptMode for PagerSearch<W> {
     type ExitWidget = W;
 
-    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &Area) -> Text {
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         let tagger = *PAGER_TAGGER;
         text.remove_tags(tagger, ..);
 
@@ -164,7 +164,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
         text
     }
 
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &Area) {
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         match Searcher::new(text.to_string()) {
             Ok(mut se) => {
                 let point = self.handle.start_points(pa).real;

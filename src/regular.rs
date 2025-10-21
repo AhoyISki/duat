@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 
+use duat_base::modes::{IncSearch, RunCommands, SearchFwd};
 use duat_core::Lender;
 #[cfg(feature = "treesitter")]
 use duat_treesitter::TsCursor;
-use duat_utils::modes::{IncSearch, RunCommands, SearchFwd};
 
 use crate::{
     prelude::{
@@ -147,7 +147,7 @@ impl mode::Mode for Regular {
                         c.move_to(start..end);
                     }
                 });
-                duat_utils::modes::copy_selections(pa, &handle);
+                crate::mode::copy_selections(pa, &handle);
                 let mut ranges = prev.into_iter();
                 handle.edit_all(pa, |mut c| {
                     if event.code == Char('x') {
@@ -162,7 +162,7 @@ impl mode::Mode for Regular {
                 });
             }
             key!(Char('v'), Mod::CONTROL) => {
-                let pastes = duat_utils::modes::paste_strings();
+                let pastes = crate::mode::paste_strings();
                 if !pastes.is_empty() {
                     handle.write(pa).text_mut().new_moment();
                     let mut p_iter = pastes.iter().cycle();

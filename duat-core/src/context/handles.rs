@@ -16,7 +16,7 @@ use crate::{
     mode::{Cursor, Cursors, Selection, Selections},
     opts::PrintOpts,
     text::{Searcher, Text, TextParts, TwoPoints, txt},
-    ui::{Area, PushSpecs, SpawnSpecs, Widget, traits},
+    ui::{Area, PushSpecs, RwArea, SpawnSpecs, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -136,7 +136,7 @@ use crate::{
 /// [`U::Area`]: Ui::Area
 pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
     widget: RwData<W>,
-    pub(crate) area: Area,
+    pub(crate) area: RwArea,
     mask: Arc<Mutex<&'static str>>,
     related: RelatedWidgets,
     searcher: RefCell<S>,
@@ -148,7 +148,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// Returns a new instance of a [`Handle<W, U>`]
     pub(crate) fn new(
         widget: RwData<W>,
-        area: Area,
+        area: RwArea,
         mask: Arc<Mutex<&'static str>>,
         master: Option<Handle<dyn Widget>>,
     ) -> Self {
@@ -227,12 +227,8 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// relatively large amount of shareable state.
     ///
     /// [`Area`]: crate::ui::Area
-    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a dyn traits::Area) {
-        // SAFETY: It is known that these types can't possibly point to the
-        // same data.
-        static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
-
-        (self.widget.write(pa), self.area.read(INTERNAL_PASS))
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a mut Area) {
+        pa.try_write_two(&self.widget, &self.area.0).unwrap()
     }
 
     /// Declares the [`Widget`] within as written
@@ -338,7 +334,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             pa: &'a mut Pass,
             handle: &'a Handle<W, S>,
             n: usize,
-        ) -> (Selection, bool, &'a mut W, &'a dyn traits::Area) {
+        ) -> (Selection, bool, &'a mut W, &'a Area) {
             let (widget, area) = handle.write_with_area(pa);
             let selections = widget.text_mut().selections_mut();
             selections.populate();
@@ -476,10 +472,9 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// reaching the `scrolloff.y` value.
     ///
     /// [`PrintOpts.allow_overscroll`]: crate::opts::PrintOpts::allow_overscroll
-    pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
-        let widget = self.widget.read(pa);
-        self.area()
-            .scroll_ver(pa, widget.text(), dist, widget.get_print_opts());
+    pub fn scroll_ver(&self, pa: &mut Pass, dist: i32) {
+        let (widget, area) = self.write_with_area(pa);
+        area.scroll_ver(widget.text(), dist, widget.get_print_opts());
         self.widget.declare_written();
     }
 
@@ -488,10 +483,9 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    pub fn scroll_to_points(&self, pa: &Pass, points: TwoPoints) {
-        let widget = self.widget.read(pa);
-        self.area
-            .scroll_to_points(pa, widget.text(), points, widget.get_print_opts());
+    pub fn scroll_to_points(&self, pa: &mut Pass, points: TwoPoints) {
+        let (widget, area) = self.write_with_area(pa);
+        area.scroll_to_points(widget.text(), points, widget.get_print_opts());
         self.widget.declare_written();
     }
 
@@ -519,7 +513,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// This [`Handle`]'s [`U::Area`]
     ///
     /// [`U::Area`]: crate::ui::Ui::Area
-    pub fn area(&self) -> &Area {
+    pub fn area(&self) -> &RwArea {
         &self.area
     }
 
@@ -626,7 +620,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     pub fn read_related<'a, W2: Widget>(
         &'a self,
         pa: &'a Pass,
-    ) -> impl Iterator<Item = (&'a W2, &'a Area, WidgetRelation)> {
+    ) -> impl Iterator<Item = (&'a W2, &'a RwArea, WidgetRelation)> {
         self.read_as(pa)
             .map(|w| (w, self.area(), WidgetRelation::Main))
             .into_iter()

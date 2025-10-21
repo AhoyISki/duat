@@ -22,7 +22,7 @@ use duat_core::{
     context::Handle,
     data::{DataMap, Pass, RwData},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
-    ui::{Widget, traits::Area},
+    ui::{Area, Widget},
 };
 
 use crate::widgets::status_line::CheckerFn;
@@ -211,7 +211,7 @@ impl<D, W, ReadFn> From<ReadFn> for State<WidgetAreaArg<String>, String, W>
 where
     D: Display + 'static,
     W: Widget + Sized,
-    ReadFn: Fn(&W, &dyn Area) -> D + Send + 'static,
+    ReadFn: Fn(&W, &Area) -> D + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -227,7 +227,7 @@ where
 impl<W, ReadFn> From<ReadFn> for State<WidgetAreaArg<Text>, String, W>
 where
     W: Widget + Sized,
-    ReadFn: Fn(&W, &dyn Area) -> Text + Send + 'static,
+    ReadFn: Fn(&W, &Area) -> Text + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -277,7 +277,7 @@ impl<D, W, ReadFn> From<ReadFn> for State<PassWidgetAreaArg<String>, String, W>
 where
     D: Display + 'static,
     W: Widget + Sized,
-    ReadFn: Fn(&Pass, &W, &dyn Area) -> D + Send + 'static,
+    ReadFn: Fn(&Pass, &W, &Area) -> D + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -293,7 +293,7 @@ where
 impl<W, ReadFn> From<ReadFn> for State<PassWidgetAreaArg<Text>, String, W>
 where
     W: Widget + Sized,
-    ReadFn: Fn(&Pass, &W, &dyn Area) -> Text + Send + 'static,
+    ReadFn: Fn(&Pass, &W, &Area) -> Text + Send + 'static,
 {
     fn from(value: ReadFn) -> Self {
         State {
@@ -380,6 +380,6 @@ pub struct PassWidgetAreaArg<W>(PhantomData<W>);
 
 // The various types of function aliases
 type TextFnCheckerFn = Box<dyn Fn(&Pass, &mut Builder) + 'static + Send>;
-type WidgetAreaFn<W> = Box<dyn Fn(&mut Builder, &Pass, &W, &dyn Area) + Send + 'static>;
+type WidgetAreaFn<W> = Box<dyn Fn(&mut Builder, &Pass, &W, &Area) + Send + 'static>;
 type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle) + Send>;
 type StateFns = (BuilderFn, Box<dyn Fn(&Pass) -> bool + Send>);

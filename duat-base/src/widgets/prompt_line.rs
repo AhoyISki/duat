@@ -79,20 +79,14 @@ impl PromptLine {
 
 impl Widget for PromptLine {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let pl = handle.read(pa);
+        let (pl, area) = handle.write_with_area(pa);
         if pl.request_width {
-            let width = handle
-                .area()
-                .width_of_text(pa, handle.opts(pa), handle.text(pa))
-                .unwrap();
-            handle
-                .area()
-                .set_width(pa, width + handle.opts(pa).scrolloff.x as f32)
+            let width = area.width_of_text(pl.get_print_opts(), &pl.text).unwrap();
+            area.set_width(width + pl.get_print_opts().scrolloff.x as f32)
                 .unwrap();
         }
         if let Some(main) = pl.text.selections().get_main() {
-            handle.area().scroll_around_points(
-                pa,
+            area.scroll_around_points(
                 &pl.text,
                 main.caret().to_two_points_after(),
                 pl.get_print_opts(),

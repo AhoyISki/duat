@@ -24,7 +24,7 @@ use duat_core::{
 };
 use duat_filetype::FileType;
 use duat_term::VertRule;
-use duat_utils::{
+use duat_base::{
     modes::Pager,
     widgets::{FooterWidgets, LogBook},
 };

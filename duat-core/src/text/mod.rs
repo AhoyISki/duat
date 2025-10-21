@@ -119,7 +119,7 @@ use crate::{
     form,
     mode::{Selection, Selections},
     opts::PrintOpts,
-    ui::{Widget, traits::Area},
+    ui::{Area, Widget},
 };
 
 /// The text of a given [`Widget`]
@@ -270,7 +270,7 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, area: &dyn Area, mut opts: PrintOpts) -> usize {
+    pub fn indent(&self, p: Point, area: &Area, mut opts: PrintOpts) -> usize {
         let [start, _] = self.points_of_line(p.line());
 
         opts.print_new_line = false;
@@ -608,7 +608,7 @@ impl Text {
 
     /// Removes the tags for all the selections, used before they are
     /// expected to move
-    pub(crate) fn add_selections(&mut self, area: &dyn Area, opts: PrintOpts) {
+    pub(crate) fn add_selections(&mut self, area: &Area, opts: PrintOpts) {
         let within = (self.0.selections.len() >= 500).then(|| {
             let start = area.start_points(self, opts);
             let end = area.end_points(self, opts);

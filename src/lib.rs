@@ -366,7 +366,7 @@
 //! [style]: prelude::form::Form
 //! [text creation system]: prelude::text::txt
 //! [`status!`]: prelude::status
-//! [numbering]: duat_utils::widgets::LineNumbersCfg::rel_abs
+//! [numbering]: duat_base::widgets::LineNumbersCfg::rel_abs
 //! [`LineNumbers`]: prelude::LineNumbers
 //! [`Widget`]: prelude::Widget
 //! [tags]: duat_core::text::Tag
@@ -388,11 +388,11 @@
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 #![feature(decl_macro, thread_spawn_hook, abort_unwind, default_field_values)]
 
-pub use duat_core::{self, buffer, clipboard, cmd, context, data, text, ui, utils};
 /// Common [`StatusLine`] fields
 ///
-/// [`StatusLine`]: duat_utils::widgets::StatusLine
-pub use duat_utils::state;
+/// [`StatusLine`]: duat_base::widgets::StatusLine
+pub use duat_base::state;
+pub use duat_core::{self, buffer, clipboard, cmd, context, data, text, ui, utils};
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
@@ -578,24 +578,24 @@ pub mod hook {
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
     //! [tabstop]: duat_core::opts::PrintOpts::set_tabstop
+    pub use duat_base::hooks::*;
     pub use duat_core::hook::*;
-    pub use duat_utils::hooks::*;
 }
 
 /// Commands for the manipulation of [`Mode`]s
 ///
 /// [`Mode`]: crate::mode::Mode
 pub mod mode {
+    pub use duat_base::modes::*;
     pub use duat_core::mode::*;
-    pub use duat_utils::modes::*;
 
     pub use crate::regular::Regular;
 }
 
 /// Duat's builtin widgets
 pub mod widgets {
+    pub use duat_base::widgets::*;
     pub use duat_core::{buffer::Buffer, ui::Widget};
-    pub use duat_utils::widgets::*;
 }
 
 #[allow(unused_imports)]
@@ -654,7 +654,7 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
             Tagger, Text, txt,
         },
-        ui::{self, Widget, traits::Area},
+        ui::{self, Widget},
         widgets::*,
     };
 

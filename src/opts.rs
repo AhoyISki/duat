@@ -63,11 +63,11 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+use duat_base::widgets::{LineNumbersOpts, StatusLineFmt};
 use duat_core::data::Pass;
 #[allow(unused_imports)]
 pub use duat_core::opts::word_chars as w_chars;
 pub use duat_core::opts::*;
-use duat_utils::widgets::{LineNumbersOpts, StatusLineFmt};
 
 /// Options for the [`Buffer`]
 ///

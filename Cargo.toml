@@ -26,7 +26,7 @@ dirs-next = "2.0.0"
 log = "0.4.28"
 
 # List of UIs.
-duat-term = { version = "0.6.1", path = "duat-term", optional = true }
+duat-term = { version = "0.7.0", path = "duat-term", optional = true }
 
 # Cli dependencies
 [dependencies.clap]
