@@ -217,9 +217,11 @@ impl Area {
                         }
                         match char {
                             '\t' => {
-                                let tab_len = len
-                                    .min(x_shift + lines.coords().width() - x)
-                                    .min(x + len - x_shift);
+                                let truncated_start = x_shift.saturating_sub(x);
+                                let truncated_end =
+                                    (x + len).saturating_sub(lines.coords().width() + x_shift);
+                                let tab_len = len - (truncated_start + truncated_end);
+
                                 lines.write_all(&SPACES[0..tab_len as usize]).unwrap()
                             }
                             '\n' | '\r' => {}
@@ -286,12 +288,18 @@ impl Area {
                     painter.apply_extra_cursor();
                     style_was_set = true;
                 }
+                Part::Spacer => {
+                    let truncated_start = x_shift.saturating_sub(x);
+                    let truncated_end = (x + len).saturating_sub(lines.coords().width() + x_shift);
+                    let spacer_len = len - (truncated_start + truncated_end);
+                    lines.write_all(&SPACES[0..spacer_len as usize]).unwrap()
+                }
                 Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                 Part::SpawnedWidget(id) => spawns_for_next.push(id),
                 Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                     todo!("Toggles have not been implemented yet.")
                 }
-                Part::Spacer | Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
+                Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
             }
         }
 

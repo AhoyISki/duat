@@ -25,7 +25,6 @@ FOR NEXT UPDATE:
 [ ] Remembering at which Moment the Text was saved.
 [x] Create a jumplist.
 [x] Rework Parsers (again).
-[ ] Get started on a Vim mode.
 [x] Make the Regular mode more usable.
 [x] New Parser API.
 [x] Make TreeSitter and MatchPairs default plugins.
@@ -42,16 +41,13 @@ FOR NEXT UPDATE:
 [ ] Rename duat-utils to duat-base.
 [x] Get rid of NewLine, WrapMethod.
 [ ] Perfect print iterators.
-  [ ] Perfect parts iterator.
+  [x] Perfect parts iterator.
   [ ] Perfect words iterator.
-[ ] Make Windows public.
+[x] Make Windows public.
 [ ] RwArea, ErasedArea.
 
 KNOWN BUGS:
-[ ] Style bleed persists.
 [ ] track_area not actually tracking correctly.
-[x] Problems with iterators.
-[ ] For now, spawned widgets don't care about spacing or alignment.
 [ ] tree-sitter-duat-text is not being used.
 [ ] Locking a Mutex on every Change is surely slow.
 [ ] std::mem::replace (grrrr...).
@@ -61,6 +57,7 @@ KNOWN BUGS:
 [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
 
 FUTURE UPDATES:
+[ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.
 [ ] Named StatusParts.
 [ ] Bring back 
@@ -107,9 +104,7 @@ FUTURE UPDATES:
 [ ] mouse drag binding to resize widgets.
 [ ] adaptive widget size.
 [ ] transition the ranges system to 4 lists.
-[ ] Tracker for the tags you have added.
 [ ] Least common denominator for showing paths.
-[ ] Macro for the creation of commands, utilizing a closure syntax with types for autocompletion.
 [ ] An updater function that returns true if a certain hook was triggered.
 [ ] File statics.
 [ ] No wrapping Tag.
