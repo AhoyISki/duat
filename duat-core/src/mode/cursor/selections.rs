@@ -501,13 +501,13 @@ mod cursor {
                     .print_iter(text, line_start.to_two_points_before(), opts)
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
+
+                        crate::context::debug!("{x}, {len}, {item:?}");
                         if let Some((p, char)) = item.as_real_char()
                             && (vcol + len as u16 > vp.dvcol || char == '\n')
                         {
                             return Some((x as u16, p));
                         }
-
-                        crate::context::debug!("{x}, {len}, {item:?}");
 
                         vcol += len as u16;
                         None
@@ -938,7 +938,7 @@ mod cursor {
             let mut vcol = 0;
 
             let wcol = area
-                .print_iter(text, p.to_two_points_after(), opts)
+                .print_iter(text, start.to_two_points_before(), opts)
                 .find_map(|(caret, item)| {
                     if let Some((lhs, _)) = item.as_real_char()
                         && lhs == p
@@ -950,14 +950,18 @@ mod cursor {
                 })
                 .unwrap_or(0);
 
-            Self {
+            let v_point = Self {
                 p,
                 ccol: (p.char() - start.char()) as u16,
                 vcol,
                 dvcol: vcol,
                 wcol,
                 dwcol: wcol,
-            }
+            };
+
+            crate::context::debug!("{v_point:#?}");
+
+            v_point
         }
 
         /// Returns a new [`VPoint`] from raw data

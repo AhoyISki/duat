@@ -185,7 +185,7 @@ impl Area {
                 if y > lines.coords().tl.y {
                     end_line(lines, painter, ansi_codes, last_len, max_x);
                 }
-                let initial_space = (x - x_shift).min(lines.coords().width());
+                let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
                 if initial_space > 0 {
                     let mut default_style = painter.get_default().style;
                     default_style.attributes.set(Attribute::Reset);
@@ -214,7 +214,12 @@ impl Area {
                             print_style(lines, style, ansi_codes);
                         }
                         match char {
-                            '\t' => lines.write_all(&SPACES[0..len as usize]).unwrap(),
+                            '\t' => {
+                                let tab_len = len
+                                    .min(x_shift + lines.coords().width() - x)
+                                    .min(x + len - x_shift);
+                                lines.write_all(&SPACES[0..tab_len as usize]).unwrap()
+                            }
                             '\n' | '\r' => {}
                             char => {
                                 let mut bytes = [0; 4];
