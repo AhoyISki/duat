@@ -221,7 +221,6 @@ impl Area {
                                 let truncated_end =
                                     (x + len).saturating_sub(lines.coords().width() + x_shift);
                                 let tab_len = len - (truncated_start + truncated_end);
-
                                 lines.write_all(&SPACES[0..tab_len as usize]).unwrap()
                             }
                             '\n' | '\r' => {}

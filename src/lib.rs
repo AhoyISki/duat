@@ -578,64 +578,9 @@ pub mod hook {
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
     //! [tabstop]: duat_core::opts::PrintOpts::set_tabstop
-
-    /// [`Hookable`]: Triggers when a new window is opened
-    ///
-    /// # Arguments
-    ///
-    /// - The [`Window`] that was created
-    ///
-    /// One of the main reasons to use this [hook] is to push new
-    /// [`Widget`]s to a `Window`. That is, you can push [outer
-    /// `Widget`s] or [inner `Widget`s], just like with
-    /// [`Handle`]s.
-    ///
-    /// Here's how that works: `Window`s are divided into two main
-    /// regions, the inner "[`Buffer`] region", and the outer "master
-    /// region". This means that, on every `Window`, you'll have a
-    /// collection of `Buffer`s in the middle, with their satellite
-    /// `Widget`s, and various `Widget`s on the outer rims of the
-    /// `Window`, not necessarily associated with any single `Buffer`.
-    ///
-    /// As an example, this is how the default layout of Duat is layed
-    /// out:
-    ///
-    /// ```text
-    /// ╭┄┄┬┄┄┄┄┄┄┄┄┄┬┄┄┬┄┄┄┄┄┄┄┄┬───────╮
-    /// ┊  │         │  │        ┊       │
-    /// ┊LN│         │LN│        ┊       │
-    /// ┊  │ Buffer  │  │ Buffer ┊       │
-    /// ┊VR│         │VR│        ┊LogBook│
-    /// ┊  │         │  │        ┊       │
-    /// ├┄┄┴┄┄┄┄┄┄┄┄┄┴┄┄┴┄┄┄┄┄┄┄┄┤       │
-    /// │     FooterWidgets      │       │
-    /// ╰────────────────────────┴───────╯
-    /// ```
-    ///
-    /// In this configuration, you can see the delineation between the
-    /// "`Buffer` region" (surrounded by dotted lines) and the "master
-    /// region", where:
-    ///
-    /// - For each [`Buffer`], we are adding a [`LineNumbers`] (LN)
-    ///   and a [`VertRule`] `Widget`s. Each of these is related to a
-    ///   specific `Buffer`, and if that `Buffer` moves around, they
-    ///   will follow.
-    ///
-    /// - On the outer edges, we have a [`FooterWidgets`], which
-    ///   includes a [`StatusLine`], [`PromptLine`] and
-    ///   [`Notifications`], as well as a
-    ///
-    /// [hook]: self
-    /// [outer `Widget`s]: Window::push_outer
-    /// [inner `Widget`s]: Window::push_inner
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub use duat_core::hook::WindowCreated;
-    
     pub use duat_core::hook::*;
     pub use duat_utils::hooks::*;
 }
-
-use hook::WindowCreated;
 
 /// Commands for the manipulation of [`Mode`]s
 ///

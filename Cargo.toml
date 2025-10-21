@@ -15,12 +15,12 @@ include = ["src/", "templates/*", "build.rs"]
 missing_docs = "warn"
 
 [workspace]
-members = ["duat-core", "duat-term", "duat-utils"]
+members = ["duat-core", "duat-term", "duat-base"]
 exclude = ["templates/config"]
 
 [dependencies]
 duat-core = { version = "0.7.0", path = "duat-core" }
-duat-utils = { version = "0.6.1", path = "duat-utils" }
+duat-base = { version = "0.6.1", path = "duat-base" }
 duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-filetype" }
 dirs-next = "2.0.0"
 log = "0.4.28"

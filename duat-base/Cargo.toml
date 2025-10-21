@@ -1,10 +1,10 @@
 [package]
-name = "duat-utils"
-version = "0.6.1"
+name = "duat-base"
+version = "0.7.0"
 edition = "2024"
 authors = ["AhoyISki"]
-description = "Basic components common in Duat, such as widgets and modes"
-repository = "https://github.com/AhoyISki/duat/tree/master/duat-utils"
+description = "Basic components common in Duat, included by default on duat"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-base"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
