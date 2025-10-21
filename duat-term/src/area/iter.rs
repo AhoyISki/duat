@@ -304,13 +304,13 @@ fn inner_iter<'a>(
                     wrapped_indent += leftover_tab;
                     line.push((len - leftover_tab, Item { part: processed_part, ..item }));
                     iter.next();
-                    if old_indent + leftover_tab < cap && opts.indent_wraps && char != '\n' {
+                    if old_indent + leftover_tab < max_indent && opts.indent_wraps && char != '\n' {
                         old_indent + leftover_tab
                     } else {
                         leftover_tab
                     }
                 } else {
-                    old_indent * (old_indent < cap && opts.indent_wraps) as u32
+                    old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
                 };
 
                 total_len = wrapped_indent;
