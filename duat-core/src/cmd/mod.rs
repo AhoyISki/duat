@@ -307,7 +307,7 @@ pub(crate) fn add_session_commands() {
     add!(["quit-all", "qa"], |pa| {
         let windows = context::windows();
         let unwritten = windows
-            .file_handles(pa)
+            .buffers(pa)
             .filter(|handle| {
                 let buffer = handle.read(pa);
                 buffer.text().has_unsaved_changes() && buffer.exists()
@@ -377,7 +377,7 @@ pub(crate) fn add_session_commands() {
 
         let mut written = 0;
         let handles: Vec<_> = windows
-            .file_handles(pa)
+            .buffers(pa)
             .filter(|handle| handle.read(pa).path_set().is_some())
             .collect();
 
@@ -399,7 +399,7 @@ pub(crate) fn add_session_commands() {
 
         let mut written = 0;
         let handles: Vec<_> = windows
-            .file_handles(pa)
+            .buffers(pa)
             .filter(|handle| handle.read(pa).path_set().is_some())
             .collect();
         for handle in &handles {
@@ -417,7 +417,7 @@ pub(crate) fn add_session_commands() {
     });
 
     add!(["write-all-quit!", "waq!"], |pa| {
-        let handles: Vec<_> = context::windows().file_handles(pa).collect();
+        let handles: Vec<_> = context::windows().buffers(pa).collect();
 
         for handle in handles {
             let _ = handle.write(pa).save_quit(true);
@@ -486,7 +486,7 @@ pub(crate) fn add_session_commands() {
             PathOrBufferOrCfg::Buffer(handle) => {
                 let pk = handle.read(pa).path_kind();
                 let (win, ..) = windows.buffer_entry(pa, pk.clone()).unwrap();
-                if windows.get(pa, win).unwrap().file_handles(pa).len() == 1 {
+                if windows.get(pa, win).unwrap().buffers(pa).len() == 1 {
                     (pk.clone(), Some(txt!("Switched to {pk}").build()))
                 } else {
                     (pk.clone(), Some(txt!("Moved {pk} to a new window").build()))
@@ -510,12 +510,12 @@ pub(crate) fn add_session_commands() {
     add!("next-buffer", |pa, flags: Flags| {
         let windows = context::windows();
         let handle = context::current_buffer(pa);
-        let win = context::current_window(pa);
+        let win = context::current_win_index(pa);
 
         let wid = windows
             .get(pa, win)
             .unwrap()
-            .nodes()
+            .nodes(pa)
             .position(|node| handle.ptr_eq(node.widget()))
             .unwrap();
 
@@ -541,12 +541,12 @@ pub(crate) fn add_session_commands() {
     add!("prev-buffer", |pa, flags: Flags| {
         let windows = context::windows();
         let handle = context::current_buffer(pa);
-        let win = context::current_window(pa);
+        let win = context::current_win_index(pa);
 
         let wid = windows
             .get(pa, win)
             .unwrap()
-            .nodes()
+            .nodes(pa)
             .position(|node| handle.ptr_eq(node.widget()))
             .unwrap();
 
@@ -1151,6 +1151,6 @@ pub type CheckerFn = fn(
     Option<(Range<usize>, Text)>,
 );
 
-pub(crate) fn as_file_handle((.., node): (usize, usize, &Node)) -> Option<Handle> {
+pub(crate) fn as_file_handle((.., node): (usize, &Node)) -> Option<Handle> {
     node.try_downcast()
 }

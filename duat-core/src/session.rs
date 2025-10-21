@@ -134,7 +134,7 @@ impl Session {
         fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
             context::windows()
                 .windows(pa)
-                .map(|window| window.nodes().cloned().collect())
+                .map(|window| window.nodes(pa).cloned().collect())
                 .collect()
         }
 
@@ -156,12 +156,12 @@ impl Session {
         self.ui.flush_layout();
 
         let mut print_screen = {
-            let mut last_win = context::current_window(pa);
+            let mut last_win = context::current_win_index(pa);
             let mut windows_nodes = get_windows_nodes(pa);
 
             move |pa: &mut Pass, force: bool| {
                 context::windows().cleanup_despawned(pa);
-                let cur_win = context::current_window(pa);
+                let cur_win = context::current_win_index(pa);
 
                 let mut printed_at_least_one = false;
                 for node in windows_nodes.get(last_win).unwrap() {
@@ -176,7 +176,7 @@ impl Session {
                 while let Some(new_additions) = context::windows().get_additions(pa) {
                     self.ui.flush_layout();
 
-                    let cur_win = context::current_window(pa);
+                    let cur_win = context::current_win_index(pa);
                     for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
                         node.update_and_print(pa, cur_win);
                     }
@@ -241,7 +241,7 @@ impl Session {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        let handles: Vec<_> = context::windows().file_handles(pa).collect();
+                        let handles: Vec<_> = context::windows().buffers(pa).collect();
                         for handle in handles {
                             hook::trigger(pa, BufferReloaded((handle, Cache::new())));
                         }
@@ -258,7 +258,7 @@ impl Session {
                         context::order_reload_or_quit();
                         wait_for_threads_to_end(spawn_count);
 
-                        let handles: Vec<_> = context::windows().file_handles(pa).collect();
+                        let handles: Vec<_> = context::windows().buffers(pa).collect();
                         for handle in handles {
                             hook::trigger(pa, BufferClosed((handle, Cache::new())));
                         }

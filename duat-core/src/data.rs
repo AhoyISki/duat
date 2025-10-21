@@ -559,10 +559,10 @@ impl Pass {
     /// types since, if they were of the same type, they could be
     /// pointing to the same data, which would be undefined behaviour.
     ///
-    /// Also, this may only be done with sized types, since, if they
-    /// were unsized, like `dyn Widget` for example, if one of them
-    /// were statically known, their types would not be the same, even
-    /// though they may point to the same data.
+    /// Also, this may only be done with sized types, since for
+    /// example, an [`RwData<Buffer>`] could point to the same
+    /// [`Buffer`] as some [`RwData<dyn Widget>`], even if `dyn
+    /// Widget` and `Buffer` are "different types.
     ///
     /// > [!IMPORTANT]
     /// >
@@ -572,6 +572,8 @@ impl Pass {
     /// >
     /// > Nevertheless, this is a compile-time check, so no need to
     /// > worry about this failing at runtime.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn write_two<'a, L: 'static, R: 'static>(
         &'a mut self,
         lhs: &'a RwData<L>,
@@ -597,10 +599,10 @@ impl Pass {
     /// types since, if they were of the same type, they could be
     /// pointing to the same data, which would be undefined behaviour.
     ///
-    /// Also, this may only be done with sized types, since, if they
-    /// were unsized, like `dyn Widget` for example, if one of them
-    /// were statically known, their types would not be the same, even
-    /// though they may point to the same data.
+    /// Also, this may only be done with sized types, since for
+    /// example, an [`RwData<Buffer>`] could point to the same
+    /// [`Buffer`] as some [`RwData<dyn Widget>`], even if `dyn
+    /// Widget` and `Buffer` are "different types.
     ///
     /// > [!IMPORTANT]
     /// >
@@ -610,6 +612,8 @@ impl Pass {
     /// >
     /// > Nevertheless, this is a compile-time check, so no need to
     /// > worry about this failing at runtime.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
     pub fn read_and_write<'a, L: 'static, R: 'static>(
         &'a mut self,
         lhs: &'a RwData<L>,

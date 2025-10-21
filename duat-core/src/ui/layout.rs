@@ -86,8 +86,8 @@ impl Layout for MasterOnLeft {
         _file: &Buffer,
         windows: &[Window],
     ) -> (Handle, PushSpecs) {
-        let last = windows[cur_win].file_handles(pa).last().unwrap().clone();
-        if windows[cur_win].file_handles(pa).len() == 1 {
+        let last = windows[cur_win].buffers(pa).last().unwrap().clone();
+        if windows[cur_win].buffers(pa).len() == 1 {
             (last, PushSpecs { side: Side::Right, .. })
         } else {
             (last, PushSpecs { side: Side::Below, .. })

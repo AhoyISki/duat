@@ -25,11 +25,11 @@
 //! }
 //! ```
 //!
-//! The hook above is triggered whenever a [`Buffer`] widget is opened.
-//! Like every other hook, it gives you access to the global state via
-//! the [`Pass`], and this one also gets you a [`UiBuilder`] and a
-//! [`Widget::Cfg`] argument. The [`UiBuilder`] lets you push new
-//! [`Widget`]s around the [`Buffer`], while the [`Widget::Cfg`]
+//! The hook above is triggered whenever a [`Buffer`] widget is
+//! opened. Like every other hook, it gives you access to the global
+//! state via the [`Pass`], and this one also gets you a [`UiBuilder`]
+//! and a [`Widget::Cfg`] argument. The [`UiBuilder`] lets you push
+//! new [`Widget`]s around the [`Buffer`], while the [`Widget::Cfg`]
 //! argument lets you modify a [`Widget`] before it gets added in. You
 //! can call this hook with any [`Widget`], not just the [`Buffer`].
 //!
@@ -42,8 +42,9 @@
 //! - [`ExitedDuat`] triggers after Duat has exited.
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
-//! - [`WidgetCreated`] triggers when a [`Widget`]'s [opts] is created,
-//!   letting you change it, [`Widget`] can be used as its [alias]
+//! - [`WidgetCreated`] triggers when a [`Widget`]'s [opts] is
+//!   created, letting you change it, [`Widget`] can be used as its
+//!   [alias]
 //! - [`WindowCreated`], which lets you push widgets around the
 //!   window.
 //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
@@ -162,7 +163,7 @@ use crate::{
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
     text::Text,
-    ui::{UiBuilder, Widget},
+    ui::{Widget, Window},
 };
 
 /// Hook functions
@@ -437,8 +438,7 @@ impl Hookable for UnfocusedFromDuat {
 /// # Arguments
 ///
 /// - The [`WidgetCfg`] in question.
-/// - A [`UiBuilder`], which lets you push `Widget`s around this
-///   one.
+/// - A [`UiBuilder`], which lets you push `Widget`s around this one.
 ///
 /// # Aliases
 ///
@@ -531,22 +531,74 @@ impl<W: Widget> Hookable for WidgetCreated<W> {
 ///
 /// # Arguments
 ///
-/// - The window [builder], which can be used to push widgets to the
-///   edges of the window, surrounding the inner buffer region.
+/// - The [`Window`] that was created
 ///
-/// This is a rather "advanced" [hook], since it lets you change the
-/// layout of `Widget`s around the screen. If you don't need all
-/// that power, you can check out [`WidgetCreated`], which is a more
-/// straightforward form of changing `Widget`s, and doesn't
-/// interfere with the default hooks of `"BufferWidgets"` and
-/// `"WindowWidgets"`, preset by Duat.
+/// One of the main reasons to use this [hook] is to push new
+/// [`Widget`]s to a `Window`. That is, you can push [outer
+/// `Widget`s] or [inner `Widget`s], just like with
+/// [`Handle`]s.
 ///
-/// [builder]: crate::ui::UiBuilder
+/// Here's how that works: `Window`s are divided into two main
+/// regions, the inner "[`Buffer`] region", and the outer "master
+/// region". This means that, on every `Window`, you'll have a
+/// collection of `Buffer`s in the middle, with their satellite
+/// `Widget`s, and various `Widget`s on the outer rims of the
+/// `Window`, not necessarily associated with any single `Buffer`.
+///
+/// As an example, this is how the default layout of Duat is layed
+/// out:
+///
+/// ```text
+/// ╭┄┄┬┄┄┄┄┄┄┄┄┬┄┄┬┄┄┄┄┄┄┄┄┬───────╮
+/// ┊  │        │  │        ┊       │
+/// ┊LN│        │LN│        ┊       │
+/// ┊  │ Buffer │  │ Buffer ┊       │
+/// ┊VR│        │VR│        ┊LogBook│
+/// ┊  │        │  │        ┊       │
+/// ├┄┄┴┄┄┄┄┄┄┄┄┴┄┄┴┄┄┄┄┄┄┄┄┤       │
+/// │     FooterWidgets     │       │
+/// ╰───────────────────────┴───────╯
+/// ```
+///
+/// In this configuration, you can see the delineation between the
+/// "`Buffer` region" (surrounded by dotted lines) and the "master
+/// region", where:
+///
+/// - For each [`Buffer`], we are adding a [`LineNumbers`] (LN) and a
+///   [`VertRule`] (VR) `Widget`s. Each of these is related to a specific
+///   `Buffer`, and if that `Buffer` moves around, they will follow.
+///
+/// - On the outer edges, we have a [`FooterWidgets`], which includes
+///   a [`StatusLine`], [`PromptLine`] and [`Notifications`], as well
+///   as a [`LogBook`] on the side, which is hidden by default. These
+///   [`Widget`]s are not related to any `Buffer`, and will not move
+///   around or be removed, unless directly.
+///
+/// So the distinction here is that, if you call
+/// [`Window::push_inner`], you will be pushing [`Widget`]s _around_
+/// the "`Buffer` region", but _not_ within it. If you want to push to
+/// specific [`Buffer`]s, you should look at
+/// [`Handle::push_inner_widget`] and [`Handle::push_outer_widget`].
+///
+/// On the other hand, by calling [`Window::push_outer`], you will be
+/// pushing [`Widget`]s around the "master region", so they will go on
+/// the edges of the screen.
+///
 /// [hook]: self
-pub struct WindowCreated(pub(crate) UiBuilder);
+/// [outer `Widget`s]: Window::push_outer
+/// [inner `Widget`s]: Window::push_inner
+/// [`Buffer`]: crate::buffer::Buffer
+/// [`LineNumbers`]: https://docs.rs/duat/duat/latest/widgets/struct.LineNumbers.html
+/// [`VertRule`]: https://docs.rs/duat/duat/latest/widgets/struct.VertRule.html
+/// [`FooterWidgets`]: https://docs.rs/duat/duat/latest/widgets/struct.FooterWidgets.html
+/// [`StatusLine`]: https://docs.rs/duat/duat/latest/widgets/struct.StatusLine.html
+/// [`PromptLine`]: https://docs.rs/duat/duat/latest/widgets/struct.PromptLine.html
+/// [`Notifications`]: https://docs.rs/duat/duat/latest/widgets/struct.Notifications.html
+/// [`LogBook`]: https://docs.rs/duat/duat/latest/widgets/struct.LogBook.html
+pub struct WindowCreated(pub(crate) Window);
 
 impl Hookable for WindowCreated {
-    type Input<'h> = &'h mut UiBuilder;
+    type Input<'h> = &'h mut Window;
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &mut self.0

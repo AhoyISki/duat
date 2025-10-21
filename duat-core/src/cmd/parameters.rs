@@ -212,7 +212,7 @@ impl<'a> Parameter<'a> for Buffer {
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer_name = args.next()?;
         if let Some(handle) = crate::context::windows()
-            .file_handles(pa)
+            .buffers(pa)
             .find(|handle| handle.read(pa).name() == buffer_name)
         {
             Ok((handle, Some(form::id_of!("param.buffer.open"))))
@@ -277,7 +277,7 @@ impl Parameter<'_> for ValidBuffer {
         }
 
         let form = if crate::context::windows()
-            .file_handles(pa)
+            .buffers(pa)
             .map(|handle| handle.read(pa).path())
             .any(|p| std::path::Path::new(&p) == path)
         {

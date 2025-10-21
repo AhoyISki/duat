@@ -32,7 +32,7 @@ mod global {
         data::{DataMap, Pass, RwData},
         session::DuatEvent,
         text::Text,
-        ui::Windows,
+        ui::{Window, Windows},
     };
 
     static WINDOWS: OnceLock<&Windows> = OnceLock::new();
@@ -129,17 +129,36 @@ mod global {
 
     ////////// Other getters
 
-    /// The [`Window`]s of Duat, must be used on main thread
+    /// The [`Window`]s of Duat
     ///
-    /// [`Window`]: crate::ui::Window
-    pub(crate) fn windows() -> &'static Windows {
-        WINDOWS
-            .get()
-            .unwrap_or_else(|| panic!("alksdjfalksdjfalskjfklasdjfkl"))
+    /// This struct gives you reading access to every [`Window`] in
+    /// Duat with [`Windows::get`], you also get access to every
+    /// [`Handle<dyn Widget>`], including every [`Handle<Buffer>`],
+    /// through the [`Windows::handles`], [`Window::handles`] and
+    /// [`Window::buffers`] function
+    pub fn windows() -> &'static Windows {
+        WINDOWS.get().unwrap()
+    }
+
+    /// The current [`Window`]
+    ///
+    /// You can iterate through all [`Handle<Buffer>`]s and
+    /// [`Handle<dyn Widget>`] with [`Window::buffers`] and
+    /// [`Window::handles`] respectively.
+    ///
+    /// If you wish to access other [`Window`]s, you can use
+    /// `context::windows().get(pa, n)` to get the `n`th [`Window`].
+    /// The current window number can be found with
+    /// [`context::current_win_index`]
+    ///
+    /// [`context::current_win_index`]: current_win_index
+    pub fn current_window(pa: &Pass) -> &Window {
+        let win = current_win_index(pa);
+        WINDOWS.get().unwrap().get(pa, win).unwrap()
     }
 
     /// The index of the currently active window
-    pub fn current_window(pa: &Pass) -> usize {
+    pub fn current_win_index(pa: &Pass) -> usize {
         windows().current_window(pa)
     }
 

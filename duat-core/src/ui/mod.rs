@@ -18,12 +18,13 @@
 //! main [`Ui::Area`] that was split many times over.
 //!
 //! The [`Ui`] also supports the concept of "clustering", that is,
-//! when you push a [`Widget`] to a [`Buffer`] via the [`WidgetCreated`]
-//! [`hook`], it gets "clustered" to that [`Buffer`]. This means a few
-//! things. For one, if you close a [`Buffer`], all of its clustered
-//! [`Widget`]s will also close. If you swap two [`Buffer`]s, what you
-//! will actually swap is the [`Ui::Area`] that contains the [`Buffer`]
-//! and all of its clustered [`Widget`].
+//! when you push a [`Widget`] to a [`Buffer`] via the
+//! [`WidgetCreated`] [`hook`], it gets "clustered" to that
+//! [`Buffer`]. This means a few things. For one, if you close a
+//! [`Buffer`], all of its clustered [`Widget`]s will also close. If
+//! you swap two [`Buffer`]s, what you will actually swap is the
+//! [`Ui::Area`] that contains the [`Buffer`] and all of its clustered
+//! [`Widget`].
 //!
 //! Additionally, on the terminal [`Ui`], clustering is used to
 //! determine where to draw borders between [`Ui::Area`]s, and it
@@ -38,7 +39,7 @@ pub(crate) use self::widget::Node;
 pub use self::{
     type_erased::{Area, PrintInfo, Ui},
     widget::Widget,
-    window::{UiBuilder, Window, Windows},
+    window::{Window, Windows},
 };
 use crate::{context::Handle, data::Pass};
 
@@ -519,15 +520,15 @@ impl<W: Widget + ?Sized> PushTarget for Handle<W> {
     }
 }
 
-impl PushTarget for UiBuilder {
+impl PushTarget for Window {
     #[doc(hidden)]
     fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
-        UiBuilder::push_inner(self, pa, widget, specs)
+        Window::push_inner(self, pa, widget, specs)
     }
 
     #[doc(hidden)]
     fn push_outer<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
-        UiBuilder::push_outer(self, pa, widget, specs)
+        Window::push_outer(self, pa, widget, specs)
     }
 
     fn try_downcast<W: Widget>(&self) -> Option<Handle<W>> {
