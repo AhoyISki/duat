@@ -226,6 +226,7 @@ impl Area {
                                 let tab_len = len - (truncated_start + truncated_end);
                                 lines.write_all(&SPACES[0..tab_len as usize]).unwrap()
                             }
+                            '\n' if opts.print_new_line => lines.write_all(b" ").unwrap(),
                             '\n' | '\r' => {}
                             char => {
                                 let mut bytes = [0; 4];
