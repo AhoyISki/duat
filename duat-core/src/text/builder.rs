@@ -82,7 +82,7 @@ impl Builder {
     /// [builder]: Builder
     /// [`Builder::into::<Text>`]: Into::into
     /// [`Widget`]: crate::ui::Widget
-    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
         self.push_str("\n");
         self.build_no_nl()

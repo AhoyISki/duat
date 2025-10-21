@@ -9,7 +9,7 @@
 //! the [`LineNumbers`] widget, that shows the numbers of the
 //! currently printed lines.
 //!
-//! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+//! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
 use std::{
     fs,
@@ -502,7 +502,7 @@ pub enum PathKind {
     /// printed to, for example, the [`StatusLine`], would show up as
     /// `txt!("[buffer]*scratch buffer*#{id}")`
     ///
-    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     NotSet(usize),
 }
 

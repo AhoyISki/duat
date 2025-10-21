@@ -221,7 +221,7 @@
 //! can also ignore the [`Flags`] by calling something like
 //! [`Handles::on_window`], or [`Handles::on_current`].
 //!
-//! [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+//! [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
 //! [`cmd::call_notify`]: call_notify
 //! [`cmd::queue`]: queue
 //! [`cmd::queue_and`]: queue_and
@@ -641,7 +641,7 @@ mod global {
     ///     });
     ///
     ///     hook::add::<WindowCreated>(move |mut pa, builder| {
-    ///         // status! macro is from duat-utils.
+    ///         // status! macro is from duat.
     ///         builder.push(status!("The value is currently {var}").above());
     ///     });
     /// }
@@ -650,7 +650,7 @@ mod global {
     /// Since `var` is an [`RwData`], it will be updated
     /// automatically in the [`StatusLine`]
     ///
-    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RwData`]: crate::data::RwData
     /// [`Parameter`]: super::Parameter
     pub macro add($callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block) {{
@@ -828,7 +828,7 @@ mod global {
     ///
     /// [`cmd::queue`]: queue
     /// [`cmd::call_notify`]: call_notify
-    /// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+    /// [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
     /// [`Flags`]: super::Flags
     pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
         // SAFETY: Function has a Pass argument.

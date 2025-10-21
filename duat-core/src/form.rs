@@ -367,7 +367,7 @@ mod global {
     ///
     /// [`form::from_id`]: from_id
     /// [`Widget`]: crate::ui::Widget
-    /// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
+    /// [`Notifications`]: https://docs.rs/duat/latest/duat
     /// [`Level`]: crate::context::Level
     /// [hooks]: crate::hook
     /// [`Buffer`]: crate::buffer::Buffer
@@ -1303,7 +1303,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 /// masks, see [`enable_mask`].
 ///
 /// [`Widget`]: crate::ui::Widget
-/// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
+/// [`Notifications`]: https://docs.rs/duat/latest/duat
 /// [`Level`]: crate::context::Level
 /// [hooks]: crate::hook
 /// [`Buffer`]: crate::buffer::Buffer

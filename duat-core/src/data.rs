@@ -39,7 +39,7 @@
 //! [`Buffer`]: crate::buffer::Buffer
 //! [updated]: crate::ui::Widget::update
 //! [`Text`]: crate::text::Text
-//! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+//! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`context`]: crate::context
 //! [`Mutex`]: std::sync::Mutex
 //! [`Arc<Mutex>`]: std::sync::Arc

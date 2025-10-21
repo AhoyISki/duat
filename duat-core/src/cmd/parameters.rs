@@ -522,7 +522,7 @@ impl<'a> Args<'a> {
     ///
     /// Mostly used for error feedback by the [`PromptLine`]
     ///
-    /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+    /// [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
     pub fn next_start(&mut self) -> Option<usize> {
         self.args.peek().map(|(_, r)| r.start)
     }
@@ -531,7 +531,7 @@ impl<'a> Args<'a> {
     ///
     /// Mostly used for error feedback by the [`PromptLine`]
     ///
-    /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+    /// [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
     pub fn param_range(&self) -> Range<usize> {
         self.param_range.clone()
     }

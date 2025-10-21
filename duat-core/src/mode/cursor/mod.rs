@@ -659,7 +659,7 @@ impl<S> Cursor<'_, Buffer, S> {
 
 /// Incremental search functions, only available on [`IncSearcher`]s
 ///
-/// [`IncSearcher`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearcher.html
+/// [`IncSearcher`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearcher.html
 impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     /// Search incrementally from an [`IncSearch`] request
     ///
@@ -667,7 +667,7 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     /// the caret. if `end` is [`Some`], the search will end at the
     /// requested [`Point`].
     ///
-    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
     pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
         let range = if let Some(end) = end {
             (self.selection.caret()..end).to_range(self.text().len().byte())
@@ -683,7 +683,7 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     /// the caret in reverse. if `start` is [`Some`], the search will
     /// end at the requested [`Point`].
     ///
-    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
     pub fn search_inc_rev(
         &mut self,
         start: Option<Point>,
@@ -699,7 +699,7 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     /// Whether the [`Selection`]'s selection matches the
     /// [`IncSearch`] request
     ///
-    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
     pub fn matches_inc(&mut self) -> bool {
         let range = self.selection.byte_range(self.widget.text());
         self.inc_searcher

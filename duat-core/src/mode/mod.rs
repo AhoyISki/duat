@@ -14,11 +14,11 @@
 //! [`PipeSelections`], and the creation of more [`Mode`]s for the
 //! [`PromptLine`] is very much encouraged.
 //!
-//! [`Standard`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.Standard.html
-//! [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
-//! [`RunCommands`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.RunCommands.html
-//! [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
-//! [`PipeSelections`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.PipeSelections.html
+//! [`Standard`]: docs.rs/duat/latest/duat/modes/struct.Standard.html
+//! [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
+//! [`RunCommands`]: docs.rs/duat/latest/duat/modes/struct.RunCommands.html
+//! [`IncSearch`]: docs.rs/duat/latest/duat/modes/struct.IncSearch.html
+//! [`PipeSelections`]: docs.rs/duat/latest/duat/modes/struct.PipeSelections.html
 use core::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -142,7 +142,7 @@ static ALT_IS_REFERSE: AtomicBool = AtomicBool::new(false);
 /// consistency reasons).
 ///
 /// Changing this key via [`set_alt_is_reverse`] does not cause any
-/// internal changes in [`duat-core`] or [`duat-utils`]. It is only
+/// internal changes in [`duat-core`] or [`duat`]. It is only
 /// meant to serve as a general setting for plugins to follow.
 ///
 /// [modifier]: KeyMod
@@ -150,7 +150,7 @@ static ALT_IS_REFERSE: AtomicBool = AtomicBool::new(false);
 /// [alt]: KeyMod::ALT
 /// [`duat-kak`]: docs.rs/duat-kak/latest/duat_kak
 /// [`duat-core`]: docs.rs/duat-core/latest/duat_core
-/// [`duat-utils`]: docs.rs/duat-utils/latest/duat_utils
+/// [`duat`]: docs.rs/duat/latest/duat
 pub fn alt_is_reverse() -> bool {
     ALT_IS_REFERSE.load(Ordering::Relaxed)
 }
@@ -172,7 +172,7 @@ pub fn alt_is_reverse() -> bool {
 /// [alt]: KeyMod::ALT
 /// [`duat-kak`]: docs.rs/duat-kak/latest/duat_kak
 /// [`duat-core`]: docs.rs/duat-core/latest/duat_core
-/// [`duat-utils`]: docs.rs/duat-utils/latest/duat_utils
+/// [`duat`]: docs.rs/duat/latest/duat
 pub fn set_alt_is_reverse(value: bool) -> bool {
     ALT_IS_REFERSE.swap(value, Ordering::Relaxed)
 }

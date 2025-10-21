@@ -6,9 +6,9 @@
 //! [`PromptLine`]. This iterator is then used in a [`IncSearcher`]
 //! that can decide what to do with the results.
 //!
-//! [incremental search]: https://docs.rs/duat_utils/latest/duat-utils/modes/struct.IncSearcher.html
-//! [`PromptLine`]: https://docs.rs/duat_utils/latest/duat-utils/widgets/struct.PromptLine.html
-//! [`IncSearcher`]: https://docs.rs/duat_utils/latest/duat-utils/modes/trait.IncSearcher.html
+//! [incremental search]: https://docs.rs/duat/latest/duat/modes/struct.IncSearcher.html
+//! [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
+//! [`IncSearcher`]: https://docs.rs/duat/latest/duat/modes/trait.IncSearcher.html
 use std::{
     collections::HashMap,
     ops::RangeBounds,
@@ -366,7 +366,7 @@ impl<S: AsRef<str>> Matcheable for S {
 
 /// A struct for incremental searching in [`IncSearch`]
 ///
-/// [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+/// [`IncSearch`]: docs.rs/duat/latest/duat/modes/struct.IncSearch.html
 pub struct Searcher {
     pat: String,
     fwd_dfa: &'static DFA,

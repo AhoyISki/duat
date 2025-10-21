@@ -401,7 +401,7 @@ impl Caret {
 /// which behaves differently depending on if it was pushed to a
 /// [`Handle<Buffer>`].
 ///
-/// [`StatusLine`]: https://docs.rs/duat_utils/duat-utils/latest/widgets/struct.StatusLine.html
+/// [`StatusLine`]: https://docs.rs/duat/duat/latest/widgets/struct.StatusLine.html
 pub trait PushTarget {
     /// Pushes a [`Widget`] around `self`
     ///

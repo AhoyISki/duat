@@ -117,7 +117,7 @@ use crate::{
 /// [`Mode`]: crate::mode::Mode
 /// [`Mode::Widget`]: crate::mode::Mode::Widget
 /// [`&mut Pass`]: Pass
-/// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+/// [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
 /// [`Mode::send_key`]: crate::mode::Mode::send_key
 /// [key]: crate::mode::KeyEvent
 /// [mapped]: crate::mode::map
@@ -670,19 +670,19 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// An [`Handle`] with a [`Searcher`] not only has its usual
     /// editing capabilities, but is also able to act on requested
     /// regex searches, like those from [`IncSearch`], in
-    /// [`duat-utils`]. This means that a user can type up a
+    /// [`duat`]. This means that a user can type up a
     /// [prompt] to search for something, and the [`Handle`]
     /// can use the [`Searcher`] to interpret how that search will
     /// be utilized. Examples of this can be found in the
-    /// [`duat-utils`] crate, as well as the [`duat-kak`] crate,
+    /// [`duat`] crate, as well as the [`duat-kak`] crate,
     /// which has some more advanced usage.
     ///
     /// [`Searcher`]: crate::text::Searcher
     /// [`Selection`]: crate::mode::Selection
     /// [`Cursor`]: crate::mode::Cursor
-    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
-    /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
-    /// [prompt]: https://docs.rs/duat-utils/latest/duat_utils/modes/trait.PromptMode.html
+    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
+    /// [`duat`]: https://docs.rs/duat/lastest/
+    /// [prompt]: https://docs.rs/duat/latest/duat/modes/trait.PromptMode.html
     /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
     pub fn attach_searcher(&self, searcher: Searcher) -> Handle<W, Searcher> {
         Handle {
@@ -901,7 +901,7 @@ pub enum WidgetRelation {
     /// A [`Widget`] that was pushed around the main `Widget`, e.g.
     /// [`LineNumbers`]
     ///
-    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+    /// [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
     Pushed,
     /// A [`Widget`] that was spawned on the `Widget`, e.g. completion
     /// lists

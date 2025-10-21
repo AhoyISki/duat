@@ -28,9 +28,9 @@
 //! widget construction.
 //!
 //! [`Buffer`]: crate::buffer::Buffer
-//! [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
-//! [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-//! [`StatusLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+//! [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
+//! [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
+//! [`StatusLine`]: docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
@@ -376,7 +376,7 @@ pub trait Widget: Send + 'static {
     /// on a [`Handle<Buffer>`], but a lot of others depend on
     /// checking functions which might need to be triggered.
     ///
-    /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat_utils/widgets/struct.StatusLine.html
+    /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat/widgets/struct.StatusLine.html
     fn needs_update(&self, pa: &Pass) -> bool;
 
     /// The text that this widget prints out
@@ -403,7 +403,7 @@ pub trait Widget: Send + 'static {
     /// order to simultaneously update the list of lines numbers,
     /// for widgets like [`LineNumbers`] to read.
     ///
-    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+    /// [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
     /// [`Buffer::print`]: crate::buffer::Buffer::print
     fn print(&self, pa: &Pass, painter: Painter, area: &Area) {
         let opts = self.get_print_opts();

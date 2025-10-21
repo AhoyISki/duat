@@ -85,7 +85,7 @@
 //! [`Ui`]: crate::ui::Ui
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
-//! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+//! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
 mod builder;
 mod bytes;

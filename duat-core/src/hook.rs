@@ -13,7 +13,7 @@
 //!
 //! fn setup() {
 //!     hook::add::<Buffer>(|pa: &mut Pass, (opts, builder)| {
-//!         // `LineNumbers` comes from duat-utils
+//!         // `LineNumbers` comes from duat
 //!         builder.push(LineNumbers::opts());
 //!
 //!         if let Some("lisp") = opts.filetype() {
@@ -57,9 +57,9 @@
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
-//! - [`SearchPerformed`] (from `duat-utils`) triggers after a search
+//! - [`SearchPerformed`] (from `duat`) triggers after a search
 //!   is performed.
-//! - [`SearchUpdated`] (from `duat-utils`) triggers after a search
+//! - [`SearchUpdated`] (from `duat`) triggers after a search
 //!   updates.
 //!
 //! # Basic makeout
@@ -143,7 +143,7 @@
 //! [`Buffer`]: crate::buffer::Buffer
 //! [alias]: HookAlias
 //! [opts]: crate::ui::Widget::Cfg
-//! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+//! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 //! [widget]: Widget
 //! [dyn Widget]: Widget
 //! [key]: KeyEvent
@@ -152,8 +152,8 @@
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
 //! [`Output`]: Hookable::Output
-//! [`SearchPerformed`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchPerformed.html
-//! [`SearchUpdated`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchUpdated.html
+//! [`SearchPerformed`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchPerformed.html
+//! [`SearchUpdated`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchUpdated.html
 use std::{any::TypeId, cell::RefCell, collections::HashMap, sync::Mutex};
 
 pub use self::global::*;
@@ -515,7 +515,7 @@ impl Hookable for UnfocusedFromDuat {
 /// [`WidgetCfg`]: crate::ui::WidgetCfg
 /// [hook]: self
 /// [direction]: crate::ui::PushSpecs
-/// [`LineNumbers`]: https://docs.rs/duat_utils/latest/duat-utils/widgets/struct.LineNumbers.html
+/// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 /// [`VertRule`]: https://docs.rs/duat_term/latest/duat-term/struct.VertRule.html
 pub struct WidgetCreated<W: Widget>(pub(crate) Handle<W>);
 
