@@ -20,7 +20,7 @@ exclude = ["templates/config"]
 
 [dependencies]
 duat-core = { version = "0.7.0", path = "duat-core" }
-duat-base = { version = "0.6.1", path = "duat-base" }
+duat-base = { version = "0.7.0", path = "duat-base" }
 duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-filetype" }
 dirs-next = "2.0.0"
 log = "0.4.28"
@@ -30,7 +30,7 @@ duat-term = { version = "0.6.1", path = "duat-term", optional = true }
 
 # Cli dependencies
 [dependencies.clap]
-version = "4.5.48"
+version = "4.5.50"
 features = ["derive"]
 optional = true
 

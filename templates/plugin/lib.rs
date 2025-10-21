@@ -4,7 +4,7 @@
 // examples in this file work.
 //
 // #![doc = include_str!("README.md")]
-use duat_core::prelude::*;
+use duat::prelude::*;
 
 /// A plugin for ...
 ///
@@ -24,10 +24,10 @@ impl PluginName {
     }
 }
 
-impl<U: Ui> Plugin<U> for PluginName {
-    fn plug(self, plugins: &Plugins<U>) {
+impl Plugin for PluginName {
+    fn plug(self, plugins: &Plugins) {
         // Plugin requirement example:
-        // plugins.require::<SomeOtherPlugin<U>>();
+        // plugins.require::<SomeOtherPlugin>();
 
         // Further processing, like adding hooks, parsers, widgets,
         // etc. ...
