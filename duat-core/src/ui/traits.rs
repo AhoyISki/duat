@@ -1,17 +1,18 @@
 //! Traits that should be implemented by interface implementations of
 //! Duat
 //!
-//! This module contains the traits [`Ui`] and [`RawArea`], which
-//! should be used by Ui implementations of Duat. By implementing
+//! This module contains the traits [`RawUi`] and [`RawArea`], which
+//! should be used by RawUi implementations of Duat. By implementing
 //! those traits, you will comply with the requirements to run Duat
 //! with a custom interface, such as web app or some other type of
 //! GUI.
 //!
 //! Normally, in user code, they will encounter the
 //! [`RawArea`](super::type_erased::RawArea) and (sometimes) the
-//! [`Ui`](super::type_erased::Ui) from the [`type_erased`] module.
-//! These are dynamic containers for the traits in this module, and
-//! are used in order to improve ergonomics and compile times.
+//! [`RawUi`](super::type_erased::RawUi) from the [`type_erased`]
+//! module. These are dynamic containers for the traits in this
+//! module, and are used in order to improve ergonomics and compile
+//! times.
 //!
 //! [`type_erased`]: super::type_erased
 
@@ -38,28 +39,38 @@ use crate::{
 ///   floating ones.
 /// - Closing [`RawArea`]s at will, which should cascading all pushed
 ///   or spawned [`RawArea`]s
+///
+/// # Two address spaces
+///
+/// With the `RawUi` and [`RawArea`] traits, there is a dystinction
+/// that can be made between two address spaces. Since the `RawUi` is
+/// the only thing that gets initialized in the Duat runner, rather
+/// than the configuration crate, it uses the address space of Duat,
+/// not the configuration, like every other thing in Duat uses.
+///
+/// There are two main consequences to this:
+///
+/// - `&'static' references will not match (!).
+/// - [`TypeId`]s will not match.
+///
+/// Which address space is in use is easy to tell however. If calling
+/// a function from the [`RawUi`] or [`RawArea`] traits, then the
+/// address space of Duat will be used. If calling any other function,
+/// _not inherent_ to these traits, then the address space of the
+/// configuration crate will be used.
+///
+/// [`TypeId`]: std::any::TypeId
 pub trait RawUi: Sized + Send + Sync + 'static {
-    /// The [`RawArea`] of this [`Ui`]
+    /// The [`RawArea`] of this [`RawUi`]
     type Area: RawArea;
 
     /// Return [`Some`] only on the first call
-    ///
-    /// Will happen on the address space of the Duat application,
-    /// rather than the configuration crate. This means that you can't
-    /// rely on `static` variables to contain the same values as they
-    /// do in the config crate.
     fn get_once() -> Option<&'static Self>;
 
     /// Functions to trigger when the program begins
-    ///
-    /// Will happen on the address space of the Duat application,
-    /// rather than the configuration crate.
     fn open(&'static self, duat_tx: DuatSender);
 
     /// Functions to trigger when the program ends
-    ///
-    /// Will happen on the address space of the Duat application,
-    /// rather than the configuration crate.
     fn close(&'static self);
 
     /// Initiates and returns a new "master" [`RawArea`]
@@ -68,7 +79,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// on a new window, that is, a plain region with nothing in
     /// it.
     ///
-    /// [`RawArea`]: Ui::RawArea
+    /// [`RawArea`]: RawUi::Area
     fn new_root(&'static self, cache: <Self::Area as RawArea>::Cache) -> Self::Area;
 
     /// Initiates and returns a new "floating" [`RawArea`]
@@ -81,7 +92,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// [`Widget`]s with coordinates in the not too distant future as
     /// well.
     ///
-    /// [`RawArea`]: Ui::RawArea
+    /// [`RawArea`]: RawUi::Area
     fn new_spawned(
         &'static self,
         id: SpawnId,
@@ -117,16 +128,16 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// crate.
     fn load(&'static self);
 
-    /// Unloads the [`Ui`]
+    /// Unloads the [`RawUi`]
     ///
-    /// Unlike [`Ui::close`], this will happen both when Duat reloads
-    /// the configuratio and when it closes the app.
+    /// Unlike [`RawUi::close`], this will happen both when Duat
+    /// reloads the configuratio and when it closes the app.
     ///
     /// These will happen inside of the dynamically loaded config
     /// crate.
     fn unload(&'static self);
 
-    /// Removes a window from the [`Ui`]
+    /// Removes a window from the [`RawUi`]
     ///
     /// This should keep the current active window consistent. That
     /// is, if the current window was ahead of the deleted one, it
@@ -139,6 +150,27 @@ pub trait RawUi: Sized + Send + Sync + 'static {
 ///
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
+///
+/// # Two address spaces
+///
+/// With the `RawUi` and [`RawArea`] traits, there is a dystinction
+/// that can be made between two address spaces. Since the `RawUi` is
+/// the only thing that gets initialized in the Duat runner, rather
+/// than the configuration crate, it uses the address space of Duat,
+/// not the configuration, like every other thing in Duat uses.
+///
+/// There are two main consequences to this:
+///
+/// - `&'static' references will not match (!).
+/// - [`TypeId`]s will not match.
+///
+/// Which address space is in use is easy to tell however. If calling
+/// a function from the [`RawUi`] or [`RawArea`] traits, then the
+/// address space of Duat will be used. If calling any other function,
+/// _not inherent_ to these traits, then the address space of the
+/// configuration crate will be used.
+///
+/// [`TypeId`]: std::any::TypeId
 pub trait RawArea: Sized + PartialEq + 'static {
     /// Something to be kept between app instances/reloads
     ///
@@ -152,7 +184,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// For the [`term-ui`], for example, this is quite simple, it
     /// only needs to include the real and ghost [`Point`]s on the
     /// top left corner in order to print correctly, but your own
-    /// [`Ui`] could differ in what it needs to keep, if it makes
+    /// [`RawUi`] could differ in what it needs to keep, if it makes
     /// use of smooth scrolling, for example.
     ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
@@ -238,7 +270,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// master, nothing happens.
     ///
     /// This function will _never_ be called such that one of the
-    /// `RawArea`s is a decendant of the other, so the [`Ui`]
+    /// `RawArea`s is a decendant of the other, so the [`RawUi`]
     /// implementor doesn't need to worry about that possibility.
     ///
     /// It can fail if either of the [`RawArea`]s was already deleted,
@@ -264,7 +296,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// What width the given [`Text`] would occupy, if unwrapped
     fn width_of_text(self: CoreAccess<Self>, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
 
-    /// Tells the [`Ui`] that this [`RawArea`] is the one that is
+    /// Tells the [`RawUi`] that this [`RawArea`] is the one that is
     /// currently focused.
     ///
     /// Should make [`self`] the active [`RawArea`] while deactivating
