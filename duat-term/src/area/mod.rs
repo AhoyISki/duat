@@ -192,13 +192,15 @@ impl Area {
                     print_style(lines, default_style, ansi_codes);
                     lines.write_all(&SPACES[..initial_space as usize]).unwrap();
                 }
+                y += 1;
+
+                // Resetting space to prevent erroneous printing.
                 painter.reset_prev_style();
                 style_was_set = true;
-                y += 1;
                 last_len = initial_space;
             }
 
-            let is_contained = x + len > x_shift && x + len <= x_shift + lines.coords().width();
+            let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
 
             match part {
                 Part::Char(char) if is_contained => {
@@ -250,6 +252,10 @@ impl Area {
                     last_len = x + len - x_shift;
                     style_was_set = false;
                 }
+                Part::Char(_) => {
+                    cursor = None;
+                    spawns_for_next.clear();
+                }
                 Part::PushForm(id, prio) => {
                     painter.apply(id, prio);
                     style_was_set = true;
@@ -276,13 +282,12 @@ impl Area {
                     painter.apply_extra_cursor();
                     style_was_set = true;
                 }
-                Part::Spacer => {}
                 Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                 Part::SpawnedWidget(id) => spawns_for_next.push(id),
                 Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                     todo!("Toggles have not been implemented yet.")
                 }
-                Part::Char(_) | Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
+                Part::Spacer | Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
             }
         }
 
