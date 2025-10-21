@@ -1,13 +1,13 @@
 use std::sync::atomic::Ordering;
 
 use duat::{
-    mode::{KeyCode::*, KeyMod as Mod, VPoint},
+    mode::{
+        ExtendFwd, ExtendRev, IncSearch, KeyCode::*, KeyMod as Mod, PipeSelections, RunCommands,
+        SearchFwd, SearchRev, VPoint,
+    },
     opts::WordChars,
     prelude::*,
     text::Point,
-};
-use duat_utils::modes::{
-    ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
 };
 use jump_list::BufferJumps;
 use treesitter::TsCursor;
@@ -640,10 +640,10 @@ impl Mode for Normal {
             }
 
             ////////// Clipboard keys
-            key!(Char('y')) => duat_utils::modes::copy_selections(pa, &handle),
+            key!(Char('y')) => duat::mode::copy_selections(pa, &handle),
             key!(Char('d' | 'c'), Mod::NONE | Mod::ALT) => {
                 if event.modifiers == Mod::NONE {
-                    duat_utils::modes::copy_selections(pa, &handle);
+                    duat::mode::copy_selections(pa, &handle);
                 }
                 handle.edit_all(pa, |mut c| {
                     let prev_char = c.chars_rev().next();
@@ -664,7 +664,7 @@ impl Mode for Normal {
                 }
             }
             key!(Char('p' | 'P')) => {
-                let pastes = duat_utils::modes::paste_strings();
+                let pastes = duat::mode::paste_strings();
                 if pastes.is_empty() {
                     return;
                 }
@@ -709,7 +709,7 @@ impl Mode for Normal {
                 });
             }
             key!(Char('R')) => {
-                let pastes = duat_utils::modes::paste_strings();
+                let pastes = duat::mode::paste_strings();
                 if !pastes.is_empty() {
                     let mut p_iter = pastes.iter().cycle();
                     handle.edit_all(pa, |mut c| c.replace(p_iter.next().unwrap()));

@@ -106,12 +106,12 @@ fn match_goto(pa: &mut Pass, handle: &Handle, key: KeyEvent, mut sel_type: SelTy
             }),
             None => context::error!("There is no previous file"),
         },
-        key!(Char('n')) => cmd::queue_notify_and("next-file --global", |res| {
+        key!(Char('n')) => cmd::queue_notify_and("next-buffer --global", |res| {
             if res.is_ok() {
                 *LAST_FILE.lock().unwrap() = Some(cur_name)
             }
         }),
-        key!(Char('N')) => cmd::queue_notify_and("prev-file --global", |res| {
+        key!(Char('N')) => cmd::queue_notify_and("prev-buffer --global", |res| {
             if res.is_ok() {
                 *LAST_FILE.lock().unwrap() = Some(cur_name)
             }

@@ -1,5 +1,5 @@
 use duat::{prelude::*, text::Searcher};
-use duat_utils::modes::IncSearcher;
+use duat::mode::IncSearcher;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Select;

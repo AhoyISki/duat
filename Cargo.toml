@@ -12,7 +12,6 @@ edition = "2024"
 
 [dependencies]
 duat = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
-duat-utils = { version = "0.6.1", git = "https://github.com/AhoyISki/duat" }
 
 [dependencies.treesitter]
 git = "https://github.com/AhoyISki/duat-treesitter"
