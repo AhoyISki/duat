@@ -293,6 +293,7 @@ impl Layouts {
                 revealed_at_least_one = !hidden;
             }
         }
+        
 
         if revealed_at_least_one {
             layout.printer.update(false, false);

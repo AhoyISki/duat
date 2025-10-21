@@ -40,13 +40,13 @@ FOR NEXT UPDATE:
 [x] Add convenience methods for the duat-utils Widgets.
 [x] Rename duat-utils to duat-base.
 [x] Get rid of NewLine, WrapMethod.
-[ ] Perfect print iterators.
-  [x] Perfect parts iterator.
-  [ ] Perfect words iterator.
 [x] Make Windows public.
 [x] RwArea, ErasedArea.
 
 KNOWN BUGS:
+[ ] Perfect print iterators.
+  [x] Perfect parts iterator.
+  [ ] Perfect words iterator.
 [ ] track_area not actually tracking correctly.
 [ ] tree-sitter-duat-text is not being used.
 [ ] Locking a Mutex on every Change is surely slow.
@@ -120,6 +120,5 @@ FUTURE UPDATES:
 [ ] Option to show colored text on the txt! macro.
 
 PERFORMANCE IDEAS:
-[/] Scroll screen instead of printing every time.
 [ ] Try not iterating over every character in scroll_vertically.
-[ ] Try getting all the lines ready first, and only then print process them.
+
