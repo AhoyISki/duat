@@ -60,7 +60,7 @@ FUTURE UPDATES:
 [ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.
 [ ] Named StatusParts.
-[ ] Bring back 
+[ ] OptsParser for the Buffer.
 [ ] Named colors.
 [ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.

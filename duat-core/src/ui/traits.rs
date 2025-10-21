@@ -8,8 +8,8 @@
 //! GUI.
 //!
 //! Normally, in user code, they will encounter the
-//! [`RawArea`](super::type_erased::RawArea) and (sometimes) the
-//! [`RawUi`](super::type_erased::RawUi) from the [`type_erased`]
+//! [`Area`](super::type_erased::Area) and (sometimes) the
+//! [`Ui`](super::type_erased::Ui) from the [`type_erased`]
 //! module. These are dynamic containers for the traits in this
 //! module, and are used in order to improve ergonomics and compile
 //! times.
