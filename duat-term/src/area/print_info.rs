@@ -233,8 +233,6 @@ impl PrintInfo {
 
             self.vert_dist = below_dist - 1;
         }
-        
-        duat_core::context::debug!("first: {first:#?}\npoints: {points:#?}");
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is
