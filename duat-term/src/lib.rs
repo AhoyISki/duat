@@ -21,7 +21,7 @@ use crossterm::{
     cursor,
     event::{self, Event as CtEvent, poll as ct_poll, read as ct_read},
     execute,
-    style::{ContentStyle, Print},
+    style::{ContentStyle},
     terminal::{self, ClearType},
 };
 use duat_core::{
@@ -247,7 +247,8 @@ impl RawUi for Ui {
         // Hook for returning to regular terminal state
         std::panic::set_hook(Box::new(|info| {
             self.close();
-            execute!(io::stdout(), Print(info)) .unwrap();
+            println!("{}", std::backtrace::Backtrace::force_capture());
+            println!("{info}");
         }));
     }
 

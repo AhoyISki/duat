@@ -201,8 +201,8 @@ pub fn run_duat(
 ) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         ui.close();
+        println!("{}", std::backtrace::Backtrace::force_capture());
         println!("Duat panicked: {panic_info}");
-        std::process::exit(-1);
     }));
 
     ui.load();
@@ -210,10 +210,18 @@ pub fn run_duat(
     let opts = SessionCfg::new(clipb, *BUFFER_OPTS.lock().unwrap());
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
-    std::panic::abort_unwind(|| {
+    let unwind_safe = std::panic::AssertUnwindSafe((ui, buffers));
+
+    let Ok(ret) = std::panic::catch_unwind(move || {
+        let unwind_safe = unwind_safe;
+        let std::panic::AssertUnwindSafe((ui, buffers)) = unwind_safe;
         opts.build(ui, buffers, already_plugged)
             .start(duat_rx, &SPAWN_COUNT, reload_tx)
-    })
+    }) else {
+        std::process::exit(-1);
+    };
+
+    ret
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg) + Send + Sync + 'static;

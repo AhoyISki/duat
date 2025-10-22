@@ -43,7 +43,8 @@ FOR NEXT UPDATE:
 [x] Make Windows public.
 [x] RwArea, ErasedArea.
 [x] Perfect parts iterator.
-[ ] PartialEq on Hookables.
+[x] PartialEq on Hookables.
+[x] HookBuilder struct.
 
 KNOWN BUGS:
 [ ] Perfect print iterators.

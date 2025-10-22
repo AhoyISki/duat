@@ -171,8 +171,10 @@ fn inner_iter<'a>(
                 gaps = gaps.replace_by_part(item.part);
 
                 total_len += len;
+
+                let must_wrap = total_len > cap && !opts.dont_wrap;
                 if let Part::Char(char) = item.part
-                    && ((total_len > cap && !opts.dont_wrap) || char == '\n')
+                    && (must_wrap || char == '\n')
                 {
                     new_x = first_x + wrapped_indent + gaps.space_line(&mut line, cap, total_len);
 
@@ -188,7 +190,7 @@ fn inner_iter<'a>(
                             }
                         }
                         '\n' => {
-                            match (opts.print_new_line, total_len > cap) {
+                            match (opts.print_new_line, must_wrap) {
                                 (true, true) => {
                                     let position = old_indent
                                         * (old_indent < max_indent && opts.indent_wraps) as u32;

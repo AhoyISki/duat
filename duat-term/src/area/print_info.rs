@@ -194,7 +194,7 @@ impl PrintInfo {
             return;
         }
 
-        let points = text.ghost_max_points_at(p.byte());
+        let points = text.ghost_max_points_at(p.min(text.len()).byte());
         let after = text
             .points_after(points)
             .unwrap_or_else(|| text.len_points());
@@ -233,6 +233,8 @@ impl PrintInfo {
 
             self.vert_dist = below_dist - 1;
         }
+        
+        duat_core::context::debug!("first: {first:#?}\npoints: {points:#?}");
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is
@@ -246,7 +248,7 @@ impl PrintInfo {
         }
 
         let (max_shift, start, end) = {
-            let points = text.ghost_max_points_at(p.byte());
+            let points = text.ghost_max_points_at(p.min(text.len()).byte());
             let after = text
                 .points_after(points)
                 .unwrap_or_else(|| text.len_points());
@@ -285,7 +287,7 @@ impl PrintInfo {
     fn set_first_start(&mut self, coords: Coords, text: &Text, cfg: PrintOpts) -> TwoPoints {
         let cap = cfg.wrap_width(coords.width());
 
-        let points = text.ghost_max_points_at(self.prev_main.byte());
+        let points = text.ghost_max_points_at(self.prev_main.min(text.len()).byte());
         let after = text
             .points_after(points)
             .unwrap_or_else(|| text.len_points());
@@ -305,6 +307,7 @@ impl PrintInfo {
         // We don't want to count the the main cursor's line's wrap.
         self.vert_dist = lines_traversed.saturating_sub(1);
         self.s_points = Some(points);
+        
         points
     }
 
