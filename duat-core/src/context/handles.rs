@@ -84,31 +84,26 @@ use crate::{
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl Mode for PlacesCharactersAndMoves {
-/// #   type Widget = Buffer;
-///     /* ... */
+///     type Widget = Buffer;
+///
+///     // ...
 ///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
 ///         match key {
-///             key!(KeyCode::Char(c)) => {
-///                 handle.edit_all(pa, |mut e| {
-///                     e.insert('c');
-///                     e.move_hor(1);
-///                 });
-///             },
-///             key!(KeyCode::Right, KeyMod::SHIFT) => {
-///                 handle.edit_all(pa, |mut e| {
-///                     if e.anchor().is_none() {
-///                         e.set_anchor();
-///                     }
-///                     e.move_hor(1);
-///                 });
-///             }
-///             key!(KeyCode::Right) => {
-///                 handle.edit_all(pa, |mut e| {
-///                     e.unset_anchor();
-///                     e.move_hor(1);
-///                 });
-///             }
-///             _ => todo!("Predictable remaining implementations")
+///             key!(KeyCode::Char(c)) => handle.edit_all(pa, |mut c| {
+///                 c.insert('c');
+///                 c.move_hor(1);
+///             }),
+///             key!(KeyCode::Right, KeyMod::SHIFT) => handle.edit_all(pa, |mut c| {
+///                 if c.anchor().is_none() {
+///                     c.set_anchor();
+///                 }
+///                 c.move_hor(1);
+///             }),
+///             key!(KeyCode::Right) => handle.edit_all(pa, |mut c| {
+///                 c.unset_anchor();
+///                 c.move_hor(1);
+///             }),
+///             _ => todo!("Predictable remaining implementations"),
 ///         }
 ///     }
 /// # }

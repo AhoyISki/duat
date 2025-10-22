@@ -23,6 +23,7 @@ pub use self::{
     notifications::{Notifications, NotificationsOpts},
     prompt_line::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
+    completions::Completions
 };
 
 mod line_numbers;
@@ -30,6 +31,7 @@ mod log_book;
 mod notifications;
 mod prompt_line;
 mod status_line;
+mod completions;
 
 /// A footer [`WidgetAlias`] consisting of a [`StatusLine`],
 /// [`PromptLine`] and [`Notifications`] combo

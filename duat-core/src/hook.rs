@@ -50,17 +50,17 @@
 //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
 //! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
-//! - [`FocusedOn`] lets you act on a [widget] when focused.
-//! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
-//! - [`KeysSent`] lets you act on a [dyn Widget], given a [key].
+//! - [`FocusedOn`] triggers when a [widget] is focused.
+//! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
+//! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
+//! - [`KeysSent`] lets you act on a [dyn `Widget`], given a [key].
 //! - [`KeysSentTo`] lets you act on a given [widget], given a [key].
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
-//! - [`SearchPerformed`] (from `duat`) triggers after a search
-//!   is performed.
-//! - [`SearchUpdated`] (from `duat`) triggers after a search
-//!   updates.
+//! - [`SearchPerformed`] (from `duat`) triggers after a search is
+//!   performed.
+//! - [`SearchUpdated`] (from `duat`) triggers after a search updates.
 //!
 //! # Basic makeout
 //!
@@ -145,7 +145,7 @@
 //! [opts]: crate::ui::Widget::Cfg
 //! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 //! [widget]: Widget
-//! [dyn Widget]: Widget
+//! [dyn `Widget`]: Widget
 //! [key]: KeyEvent
 //! [deadlocks]: https://en.wikipedia.org/wiki/Deadlock_(computer_science)
 //! [commands]: crate::cmd
@@ -565,8 +565,9 @@ impl<W: Widget> Hookable for WidgetCreated<W> {
 /// region", where:
 ///
 /// - For each [`Buffer`], we are adding a [`LineNumbers`] (LN) and a
-///   [`VertRule`] (VR) `Widget`s. Each of these is related to a specific
-///   `Buffer`, and if that `Buffer` moves around, they will follow.
+///   [`VertRule`] (VR) `Widget`s. Each of these is related to a
+///   specific `Buffer`, and if that `Buffer` moves around, they will
+///   follow.
 ///
 /// - On the outer edges, we have a [`FooterWidgets`], which includes
 ///   a [`StatusLine`], [`PromptLine`] and [`Notifications`], as well
@@ -675,6 +676,25 @@ pub struct UnfocusedFrom<W: Widget>(pub(crate) (Handle<W>, Handle<dyn Widget>));
 
 impl<W: Widget> Hookable for UnfocusedFrom<W> {
     type Input<'h> = &'h (Handle<W>, Handle<dyn Widget>);
+
+    fn get_input(&mut self) -> Self::Input<'_> {
+        &self.0
+    }
+}
+
+/// [`Hookable`]: Triggers when focus changes between two [`Widget`]s
+///
+/// # Arguments
+///
+/// - The [`Handle<dyn Widget>`] for the unfocused `Widget`
+/// - The [`Handle<dyn Widget>`] for the newly focused `Widget`
+///
+/// This `Hookable` is triggered _before_ [`FocusedOn`] and
+/// [`UnfocusedFrom`] are triggered.
+pub struct FocusChanged(pub(crate) (Handle<dyn Widget>, Handle<dyn Widget>));
+
+impl Hookable for FocusChanged {
+    type Input<'h> = &'h (Handle<dyn Widget>, Handle<dyn Widget>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0

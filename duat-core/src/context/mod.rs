@@ -26,13 +26,13 @@ mod global {
         },
     };
 
-    use super::{CurWidget, DynBuffer};
+    use super::{CurWidgetNode, DynBuffer};
     use crate::{
         context::Handle,
         data::{DataMap, Pass, RwData},
         session::DuatEvent,
         text::Text,
-        ui::{Window, Windows},
+        ui::{Widget, Window, Windows},
     };
 
     static WINDOWS: OnceLock<&Windows> = OnceLock::new();
@@ -122,9 +122,20 @@ mod global {
         Ok(handle)
     }
 
-    /// The [`CurWidget`]
-    pub(crate) fn current_widget(pa: &Pass) -> CurWidget {
-        CurWidget(windows().current_widget(pa))
+    /// Returns the current active [`Handle`]
+    ///
+    /// Unlike [`current_buffer`], this function will return a
+    /// [`Handle<dyn Widget>`], which means it could be any
+    /// [`Widget`], not just a [`Buffer`].
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn current_widget(pa: &Pass) -> &Handle<dyn Widget> {
+        windows().current_widget(pa).read(pa).handle()
+    }
+
+    /// The [`CurWidgetNode`]
+    pub(crate) fn current_widget_node(pa: &Pass) -> CurWidgetNode {
+        CurWidgetNode(windows().current_widget(pa).clone())
     }
 
     ////////// Other getters
@@ -320,9 +331,9 @@ impl Clone for DynBuffer {
 }
 
 /// The current [`Widget`]
-pub(crate) struct CurWidget(RwData<Node>);
+pub(crate) struct CurWidgetNode(RwData<Node>);
 
-impl CurWidget {
+impl CurWidgetNode {
     /// The [`Widget`]'s [`TypeId`]
     pub fn type_id(&self, pa: &Pass) -> TypeId {
         self.0.read(pa).widget().type_id()

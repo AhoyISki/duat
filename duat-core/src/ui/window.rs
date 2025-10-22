@@ -729,8 +729,8 @@ impl Windows {
     }
 
     /// The [`RwData`] that points to the currently active [`Widget`]
-    pub(crate) fn current_widget(&self, pa: &Pass) -> RwData<Node> {
-        self.inner.read(pa).cur_widget.clone()
+    pub(crate) fn current_widget<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Node> {
+        &self.inner.read(pa).cur_widget
     }
 
     /// The index of the currently active [`Window`]

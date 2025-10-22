@@ -12,7 +12,7 @@ use crate::{
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
+    hook::{self, FocusChanged, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
     ui::{Node, Widget},
     utils::duat_name,
@@ -148,10 +148,16 @@ pub fn reset_to(handle: Handle<dyn Widget>) {
 
 /// Switches to a certain widget
 pub(super) fn switch_widget(pa: &mut Pass, node: Node) {
-    let cur_widget = context::current_widget(pa);
+    let cur_widget = context::current_widget_node(pa);
     unsafe { BEFORE_EXIT.get() }.replace(|_| {})(pa);
 
     let handle = node.handle().clone();
+
+    hook::trigger(
+        pa,
+        FocusChanged((cur_widget.node(pa).handle().clone(), node.handle().clone())),
+    );
+
     cur_widget.node(pa).on_unfocus(pa, handle);
 
     context::set_current_node(pa, node.clone());
@@ -184,7 +190,10 @@ pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
 /// Static dispatch function that sends keys to a [`Mode`]
 #[allow(clippy::await_holding_refcell_ref)]
 fn send_keys_fn<M: Mode>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>) -> Option<ModeFn> {
-    let handle = context::current_widget(pa).node(pa).try_downcast().unwrap();
+    let handle = context::current_widget_node(pa)
+        .node(pa)
+        .try_downcast()
+        .unwrap();
 
     let mut sent_keys = Vec::new();
 
@@ -213,7 +222,7 @@ fn send_keys_fn<M: Mode>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>) -> Option
 /// Static dispatch function to set the [`Mode`]
 fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
     // If we are on the correct widget, no switch is needed.
-    if context::current_widget(pa).type_id(pa) != TypeId::of::<M::Widget>() {
+    if context::current_widget_node(pa).type_id(pa) != TypeId::of::<M::Widget>() {
         let node = {
             let windows = context::windows();
             if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
@@ -237,7 +246,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
         unsafe { BEFORE_EXIT.get() }.borrow_mut()(pa);
     }
 
-    let wid = context::current_widget(pa);
+    let wid = context::current_widget_node(pa);
 
     let handle = wid
         .mutate_data_as(pa, |handle: &Handle<M::Widget>| handle.clone())
@@ -273,7 +282,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
 /// Static dispatch function to use before exiting a given
 /// [`Mode`]
 fn before_exit_fn<M: Mode>(pa: &mut Pass) {
-    let wid = context::current_widget(pa);
+    let wid = context::current_widget_node(pa);
 
     let handle = wid
         .mutate_data_as(pa, |handle: &Handle<M::Widget>| handle.clone())
