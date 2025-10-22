@@ -689,9 +689,9 @@ impl Hookable for BufferReloaded {
 ///
 /// - By a focused [`Handle<_>`].
 /// - By a `(Handle<_>, Handle<_>)` pair.
-pub struct FocusedOn<W: Widget + ?Sized>(pub(crate) (Handle<dyn Widget>, Handle<W>));
+pub struct FocusedOn<W: Widget>(pub(crate) (Handle<dyn Widget>, Handle<W>));
 
-impl<W: Widget + ?Sized> Hookable for FocusedOn<W> {
+impl<W: Widget> Hookable for FocusedOn<W> {
     type Input<'h> = &'h (Handle<dyn Widget>, Handle<W>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
@@ -705,8 +705,8 @@ impl<W1: Widget, W2: Widget + ?Sized> PartialEq<Handle<W2>> for FocusedOn<W1> {
     }
 }
 
-impl<W1: Widget + ?Sized, W2: Widget + ?Sized, W3: Widget + ?Sized>
-    PartialEq<(Handle<W2>, Handle<W3>)> for FocusedOn<W1>
+impl<W1: Widget, W2: Widget + ?Sized, W3: Widget + ?Sized> PartialEq<(Handle<W2>, Handle<W3>)>
+    for FocusedOn<W1>
 {
     fn eq(&self, other: &(Handle<W2>, Handle<W3>)) -> bool {
         self.0.0 == other.0 && self.0.1 == other.1
@@ -726,6 +726,20 @@ impl<W: Widget> Hookable for UnfocusedFrom<W> {
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
+    }
+}
+
+impl<W1: Widget, W2: Widget + ?Sized> PartialEq<Handle<W2>> for UnfocusedFrom<W1> {
+    fn eq(&self, other: &Handle<W2>) -> bool {
+        self.0.0 == *other
+    }
+}
+
+impl<W1: Widget, W2: Widget + ?Sized, W3: Widget + ?Sized> PartialEq<(Handle<W2>, Handle<W3>)>
+    for UnfocusedFrom<W1>
+{
+    fn eq(&self, other: &(Handle<W2>, Handle<W3>)) -> bool {
+        self.0.0 == other.0 && self.0.1 == other.1
     }
 }
 

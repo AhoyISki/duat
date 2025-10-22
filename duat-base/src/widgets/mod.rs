@@ -113,25 +113,22 @@ impl FooterWidgets {
 
         hook::add::<FocusedOn<PromptLine>>({
             let notifications = notifications.clone();
-            let prompt_line = prompt_line.clone();
             move |pa, (_, handle)| {
-                if handle == &prompt_line {
-                    notifications.area().hide(pa)?;
-                    handle.area().reveal(pa)?;
-                };
+                notifications.area().hide(pa)?;
+                handle.area().reveal(pa)?;
                 Ok(())
             }
-        });
+        })
+        .filter(prompt_line.clone());
 
         hook::add::<UnfocusedFrom<PromptLine>>({
             move |pa, (handle, _)| {
-                if handle == &prompt_line {
-                    notifications.area().reveal(pa)?;
-                    handle.area().hide(pa)?;
-                }
+                notifications.area().reveal(pa)?;
+                handle.area().hide(pa)?;
                 Ok(())
             }
-        });
+        })
+        .filter(prompt_line);
     }
 
     /// Returns a new [`FooterWidgets`], with a [`StatusLine`] and
