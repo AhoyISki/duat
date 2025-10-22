@@ -46,12 +46,14 @@ impl Widget for LogBook {
             lb.text.insert_text(lb.text.len(), rec_text);
         }
 
-        if !lb.has_updated_once && area.width() > 0.0 {
-            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
-            lb.has_updated_once = true;
-        } else if records_were_added {
-            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
-        }
+		if area.width() > 0.0 && area.height() > 0.0 {
+            if !lb.has_updated_once {
+                area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
+                lb.has_updated_once = true;
+            } else if records_were_added {
+                area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
+            }
+		}
     }
 
     fn needs_update(&self, _: &Pass) -> bool {

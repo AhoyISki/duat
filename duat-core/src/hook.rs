@@ -205,87 +205,113 @@ mod global {
         }
     }
 
-    /// Adds a [hook]
+    /// A struct used in order to specify more options for [hook]s
     ///
-    /// This hook is ungrouped, that is, it cannot be removed. If you
-    /// want a hook that is removable, see [`hook::add_grouped`].
+    /// You can set three options currently:
     ///
-    /// [hook]: Hookable
-    /// [`hook::add_grouped`]: add_grouped
-    /// [`hook::add_no_alias`]: add_no_alias
+    /// - [`HookBuilder::grouped`]: Groups this hook with others,
+    ///   allowing them to all be [removed] at once.
+    /// - [`HookBuilder::filter`]: Filters when this hook should be
+    ///   called, by giving a struct for which  `H` implements
+    ///   [`PartialEq`]. An example is the [`FocusedOn`] hook, which
+    ///   accepts [`Handle`]s and [`Handle`] pairs.
+    /// - [`HookBuilder::once`]: Calls the hook only once.
+    ///
+    /// [hook]: crate::hook
+    /// [`FocusedOn`]: super::FocusedOn
+    /// [`Handle`]: crate::context::Handle
+    /// [removed]: remove
+    pub struct HookBuilder<H: Hookable> {
+        callback:
+            Option<Box<dyn FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static>>,
+        group: Option<InnerGroupId>,
+        filter: Option<Box<dyn Fn(&H) -> bool + Send>>,
+        once: bool,
+    }
+
+    impl<H: Hookable> HookBuilder<H> {
+        /// Add a group to this hook
+        ///
+        /// This makes it so you can call [`hook::remove`] in order to
+        /// remove this hook as well as every other hook added to the
+        /// same group.
+        ///
+        /// There are two types of group, a private [`GroupId`] and
+        /// [`impl ToString`] types, which can be removed by an end
+        /// user.
+        ///
+        /// [`impl ToString`]: ToString
+        /// [`hook::remove`]: super::remove
+        pub fn grouped(mut self, group: impl Into<InnerGroupId>) -> Self {
+            self.group = Some(group.into());
+            self
+        }
+
+        /// Calls this hook only once
+        ///
+        /// This makes it so the hook will only be called once. Note
+        /// that, if the hook is removed via [`hook::remove`] before
+        /// being called, then it never will be.
+        ///
+        /// [`hook::remove`]: super::remove
+        pub fn once(mut self) -> Self {
+            self.once = true;
+            self
+        }
+
+        /// Filter when this hook will be called
+        ///
+        /// This is mostly for convenience's sake, since you _could_
+        /// just add a check inside of the callback itself.
+        ///
+        /// This is useful if for example, you want to trigger a hook
+        /// on only some specific [`Handle`], or some [`Buffer`],
+        /// things of the sort.
+        ///
+        /// [`Handle`]: crate::context::Handle
+        /// [`Buffer`]: crate::buffer::Buffer
+        pub fn filter<T: Send + 'static>(mut self, filter: T) -> Self
+        where
+            H: PartialEq<T>,
+        {
+            self.filter = Some(Box::new(move |hookable| *hookable == filter));
+            self
+        }
+    }
+
+    impl<H: Hookable> Drop for HookBuilder<H> {
+        fn drop(&mut self) {
+            HOOKS.add::<H>(
+                self.callback.take().unwrap(),
+                self.group.take(),
+                self.filter.take(),
+                self.once,
+            )
+        }
+    }
+
+    /// Adds a hook, which will be called whenever the [`Hookable`] is
+    /// triggered
+    ///
+    /// [`hook::add`] will return a [`HookBuilder`], which is a struct
+    /// that can be used to further modify the behaviour of the hook,
+    /// and will add said hook when [`Drop`]ped.
+    ///
+    /// For example, [`HookBuilder::grouped`] will group this hook
+    /// with others of the same group, while [`HookBuilder::once`]
+    /// will make it so the hook is only called one time.
+    ///
+    /// [`hook::add`]: add
     #[inline(never)]
     pub fn add<H: HookAlias<impl HookDummy>>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
-    ) {
-        HOOKS.add::<H::Hookable>(None, Box::new(f));
-    }
-
-    /// Adds a grouped [hook]
-    ///
-    /// The group can either be a type that implements
-    /// [`std::fmt::Display`], like [`String`] or [`&str`], or it can
-    /// be a [`GroupId`], which is a dedicated structure for anonymous
-    /// hook grouping.
-    ///
-    /// As a plugin writer, when you use a string as the hook group,
-    /// you are allowing an end user to remove that hook group. If you
-    /// use a [`GroupId`], only you can remove it, since only you have
-    /// access to the [`GroupId`]. Which one you choose depends on
-    /// those two options.
-    ///
-    /// Alternatively, if you don't have a use for removing hooks, you
-    /// can just call [`hook::add`] in order to add them without a
-    /// group.
-    ///
-    /// [hook]: Hookable
-    /// [`hook::remove`]: remove
-    /// [`hook::add`]: add
-    /// [`&str`]: str
-    #[inline(never)]
-    pub fn add_grouped<H: HookAlias<impl HookDummy>>(
-        group: impl Into<InnerGroupId>,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
-    ) {
-        HOOKS.add::<H::Hookable>(Some(group.into()), Box::new(f));
-    }
-
-    /// Adds a [hook] to be executed only once
-    ///
-    /// This hook will only trigger once, being removed after the
-    /// fact. Alternatively, this can also be achieved by making
-    /// use of a [`GroupId`], like so:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     let group_id = hook::GroupId::new();
-    ///     hook::add_grouped::<WindowCreated>(group_id, move |_, builder| {
-    ///         builder.push(status!("Main Window").above());
-    ///         group_id.remove();
-    ///     });
-    /// }
-    /// ```
-    ///
-    /// This hook should only be triggered on the first opened window,
-    /// after which it self destructs via [`GroupId::remove`].
-    ///
-    /// [hook]: Hookable
-    /// [`hook::add_once`]: add_once
-    pub fn add_once<H: HookAlias<impl HookDummy>>(
-        mut f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
-    ) {
-        let group_id = GroupId::new();
-        HOOKS.add::<H::Hookable>(
-            Some(group_id.into()),
-            Box::new(move |pa, input| {
-                let ret = f(pa, input);
-                group_id.remove();
-                ret
-            }),
-        );
+    ) -> HookBuilder<H::Hookable> {
+        HookBuilder {
+            callback: Some(Box::new(f)),
+            group: None,
+            once: false,
+            filter: None,
+        }
     }
 
     /// Removes a [hook] group
@@ -654,15 +680,36 @@ impl Hookable for BufferReloaded {
 ///
 /// # Arguments
 ///
-/// - The [`Handle<dyn Widget>`] for the unfocused `Widget`
-/// - The [`Handle<W>`] for the newly focused `Widget`
-pub struct FocusedOn<W: Widget>(pub(crate) (Handle<dyn Widget>, Handle<W>));
+/// - The [`Handle<dyn Widget>`] for the unfocused `Widget`.
+/// - The [`Handle<W>`] for the newly focused `Widget`.
+///
+/// # Filters
+///
+/// This `Hookable` can be filtered in two ways
+///
+/// - By a focused [`Handle<_>`].
+/// - By a `(Handle<_>, Handle<_>)` pair.
+pub struct FocusedOn<W: Widget + ?Sized>(pub(crate) (Handle<dyn Widget>, Handle<W>));
 
-impl<W: Widget> Hookable for FocusedOn<W> {
+impl<W: Widget + ?Sized> Hookable for FocusedOn<W> {
     type Input<'h> = &'h (Handle<dyn Widget>, Handle<W>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &self.0
+    }
+}
+
+impl<W1: Widget, W2: Widget + ?Sized> PartialEq<Handle<W2>> for FocusedOn<W1> {
+    fn eq(&self, other: &Handle<W2>) -> bool {
+        self.0.1 == *other
+    }
+}
+
+impl<W1: Widget + ?Sized, W2: Widget + ?Sized, W3: Widget + ?Sized>
+    PartialEq<(Handle<W2>, Handle<W3>)> for FocusedOn<W1>
+{
+    fn eq(&self, other: &(Handle<W2>, Handle<W3>)) -> bool {
+        self.0.0 == other.0 && self.0.1 == other.1
     }
 }
 
@@ -921,12 +968,14 @@ impl InnerHooks {
     /// Adds a hook for a [`Hookable`]
     fn add<H: Hookable>(
         &self,
-        group_id: Option<InnerGroupId>,
-        f: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + 'static>,
+        callback: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + 'static>,
+        group: Option<InnerGroupId>,
+        filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
+        once: bool,
     ) {
         let mut map = self.types.lock().unwrap();
 
-        if let Some(group_id) = group_id.clone() {
+        if let Some(group_id) = group.clone() {
             let mut groups = self.groups.lock().unwrap();
             if !groups.contains(&group_id) {
                 groups.push(group_id)
@@ -940,12 +989,19 @@ impl InnerHooks {
             };
 
             let mut hooks = hooks_of.0.borrow_mut();
-            hooks.push((group_id, Box::leak(Box::new(RefCell::new(f)))));
+            hooks.push(Hook {
+                callback: Box::leak(Box::new(RefCell::new(callback))),
+                group,
+                filter,
+                once,
+            });
         } else {
-            let hooks_of = HooksOf::<H>(RefCell::new(vec![(
-                group_id,
-                Box::leak(Box::new(RefCell::new(f))),
-            )]));
+            let hooks_of = HooksOf::<H>(RefCell::new(vec![Hook {
+                callback: Box::leak(Box::new(RefCell::new(callback))),
+                group,
+                filter,
+                once,
+            }]));
 
             map.insert(TypeId::of::<H>(), Box::new(hooks_of));
         }
@@ -974,16 +1030,24 @@ impl InnerHooks {
             Box::from_raw(ptr)
         };
 
-        for (group, hook) in hooks_of.0.borrow_mut().iter() {
+        hooks_of.0.borrow_mut().retain_mut(|hook| {
+            if let Some(filter) = hook.filter.as_ref()
+                && !filter(&hookable)
+            {
+                return true;
+            }
+
             let input = hookable.get_input();
-            if let Err(err) = hook.borrow_mut()(pa, input) {
-                if let Some(InnerGroupId::Named(group)) = group {
+            if let Err(err) = hook.callback.borrow_mut()(pa, input) {
+                if let Some(InnerGroupId::Named(group)) = hook.group.as_ref() {
                     crate::context::error!(target: group, "{err}");
                 } else {
                     crate::context::error!(target: crate::utils::duat_name::<H>(), "{err}");
                 }
             }
-        }
+
+            !hook.once
+        });
 
         self.types
             .lock()
@@ -1020,17 +1084,22 @@ trait HookHolder {
 }
 
 /// An intermediary struct, meant to hold the hooks of a [`Hookable`]
-struct HooksOf<H: Hookable>(RefCell<Vec<(Option<InnerGroupId>, InnerHookFn<H>)>>);
+struct HooksOf<H: Hookable>(RefCell<Vec<Hook<H>>>);
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
     fn remove(&self, group_id: &InnerGroupId) {
         let mut hooks = self.0.borrow_mut();
-        hooks.retain(|(g, _)| g.as_ref().is_none_or(|g| g != group_id));
+        hooks.retain(|hook| hook.group.as_ref().is_none_or(|g| g != group_id));
     }
 }
 
-type InnerHookFn<H> =
-    &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> Result<(), Text>>;
+struct Hook<H: Hookable> {
+    callback:
+        &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> Result<(), Text>>,
+    group: Option<InnerGroupId>,
+    filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
+    once: bool,
+}
 
 /// An alias for a [`Hookable`]
 ///

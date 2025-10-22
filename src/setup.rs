@@ -14,6 +14,10 @@ use std::{
     },
 };
 
+use duat_base::{
+    modes::Pager,
+    widgets::{FooterWidgets, LogBook},
+};
 use duat_core::{
     clipboard::Clipboard,
     context::{self, Logs},
@@ -24,10 +28,6 @@ use duat_core::{
 };
 use duat_filetype::FileType;
 use duat_term::VertRule;
-use duat_base::{
-    modes::Pager,
-    widgets::{FooterWidgets, LogBook},
-};
 
 use crate::{
     form,
@@ -61,13 +61,14 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     mode::set_default(crate::regular::Regular);
     mode::set_default(Pager::<LogBook>::new());
 
-    hook::add_grouped::<Buffer>("BufferWidgets", |pa, handle| {
+    hook::add::<Buffer>(|pa, handle| {
         VertRule::builder().push_on(pa, handle);
         LINENUMBERS_OPTS.lock().unwrap().push_on(pa, handle);
         Ok(())
-    });
+    })
+    .grouped("BufferWidgets");
 
-    hook::add_grouped::<WindowCreated>("FooterWidgets", |pa, builder| {
+    hook::add::<WindowCreated>(|pa, builder| {
         let status = STATUSLINE_FMT.lock().unwrap()(pa);
         let mut footer = FooterWidgets::new(status);
         if FOOTER_ON_TOP.load(Ordering::Relaxed) {
@@ -80,14 +81,16 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
         footer.push_on(pa, builder);
         Ok(())
-    });
+    })
+    .grouped("FooterWidgets");
 
-    hook::add_grouped::<WindowCreated>("LogBook", |pa, builder| {
+    hook::add::<WindowCreated>(|pa, builder| {
         LogBook::builder().push_on(pa, builder);
         Ok(())
-    });
+    })
+    .grouped("LogBook");
 
-    hook::add_grouped::<BufferWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
+    hook::add::<BufferWritten>(|_, (path, _, is_quitting)| {
         let path = Path::new(path);
         if !is_quitting
             && let Ok(crate_dir) = crate::utils::crate_dir()
@@ -96,7 +99,8 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
             crate::prelude::cmd::queue("reload");
         }
         Ok(())
-    });
+    })
+    .grouped("ReloadOnWrite");
 
     hook::add::<BufferReloaded>(|pa, (handle, cache)| {
         let buffer = handle.write(pa);
@@ -124,7 +128,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         Ok(())
     });
 
-    hook::add_grouped::<BufferClosed>("CacheCursorPosition", |pa, (handle, cache)| {
+    hook::add::<BufferClosed>(|pa, (handle, cache)| {
         let buffer = handle.write(pa);
 
         let path = buffer.path();
@@ -142,7 +146,8 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         }
 
         handle.area().store_cache(pa, &path)
-    });
+    })
+    .grouped("CacheCursorPosition");
 
     form::enable_mask("error");
     form::enable_mask("warn");

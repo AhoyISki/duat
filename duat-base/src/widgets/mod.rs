@@ -18,20 +18,20 @@ use duat_core::{
 };
 
 pub use self::{
+    completions::Completions,
     line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
     prompt_line::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
-    completions::Completions
 };
 
+mod completions;
 mod line_numbers;
 mod log_book;
 mod notifications;
 mod prompt_line;
 mod status_line;
-mod completions;
 
 /// A footer [`WidgetAlias`] consisting of a [`StatusLine`],
 /// [`PromptLine`] and [`Notifications`] combo

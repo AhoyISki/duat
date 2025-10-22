@@ -295,7 +295,8 @@ impl Area {
                     let truncated_start = x_shift.saturating_sub(x);
                     let truncated_end = (x + len).saturating_sub(lines.coords().width() + x_shift);
                     let spacer_len = len - (truncated_start + truncated_end);
-                    lines.write_all(&SPACES[0..spacer_len as usize]).unwrap()
+                    lines.write_all(&SPACES[0..spacer_len as usize]).unwrap();
+                    last_len = x + len - x_shift;
                 }
                 Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                 Part::SpawnedWidget(id) => spawns_for_next.push(id),
@@ -438,6 +439,14 @@ impl RawArea for Area {
             return;
         };
 
+        if coords.width() == 0 {
+            context::warn!("Can't scroll an Area with no width");
+            return;
+        } else if coords.width() == 0 {
+            context::warn!("Can't scroll an Area with no width");
+            return;
+        }
+
         let mut info = self.layouts.get_info_of(self.id).unwrap();
         info.scroll_ver(by, coords, text, opts);
         self.layouts.set_info_of(self.id, info);
@@ -456,6 +465,14 @@ impl RawArea for Area {
             return;
         };
 
+        if coords.width() == 0 {
+            context::warn!("Can't scroll an Area with no width");
+            return;
+        } else if coords.width() == 0 {
+            context::warn!("Can't scroll an Area with no width");
+            return;
+        }
+
         let mut info = self.layouts.get_info_of(self.id).unwrap();
         info.scroll_around(points.real, coords, text, opts);
         self.layouts.set_info_of(self.id, info);
@@ -466,6 +483,14 @@ impl RawArea for Area {
             context::warn!("This Area was already deleted");
             return;
         };
+
+        if coords.width() == 0 {
+            context::warn!("Can't scroll an Area with no width");
+            return;
+        } else if coords.width() == 0 {
+            context::warn!("Can't scroll an Area with no width");
+            return;
+        }
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
         info.scroll_to_points(points, coords, text, opts);

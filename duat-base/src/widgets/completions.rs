@@ -5,7 +5,7 @@ use duat_core::{
     data::Pass,
     hook::{self, FocusChanged},
     opts::PrintOpts,
-    text::{SpawnTag, Tagger, Text, txt},
+    text::{Spacer, SpawnTag, Tagger, Text, txt},
     ui::{Orientation, SpawnSpecs, Widget},
 };
 
@@ -25,7 +25,7 @@ impl Completions {
             hook::add::<FocusChanged>(|pa, (prev, _)| {
                 prev.text_mut(pa).remove_tags(*TAGGER, ..);
                 Ok(())
-            })
+            });
         });
 
         let handle = context::current_widget(pa).clone();
@@ -63,6 +63,38 @@ impl Completions {
         let handle = context::current_widget(pa).clone();
         handle.text_mut(pa).remove_tags(*TAGGER, ..);
     }
+
+    /// Goes to the next entry on the list.
+    pub fn next_entry(pa: &mut Pass) {
+        let Some(handle) = context::windows()
+            .handles(pa)
+            .find_map(Handle::try_downcast::<Completions>)
+        else {
+            context::warn!("No Completions open to go to next entry");
+            return;
+        };
+
+        let comp = handle.write(pa);
+        comp.active = (comp.active + 1) % comp.list.len();
+    }
+
+    /// Goes to the next entry on the list.
+    pub fn prev_entry(pa: &mut Pass) {
+        let Some(handle) = context::windows()
+            .handles(pa)
+            .find_map(Handle::try_downcast::<Completions>)
+        else {
+            context::warn!("No Completions open to go to next entry");
+            return;
+        };
+
+        let comp = handle.write(pa);
+        comp.active = if comp.active == 0 {
+            comp.list.len() - 1
+        } else {
+            comp.active - 1
+        };
+    }
 }
 
 impl Widget for Completions {
@@ -71,12 +103,14 @@ impl Widget for Completions {
         let mut builder = Text::builder();
         for (i, line) in comp.list.iter().enumerate() {
             if i == comp.active {
-                builder.push(txt!("[selected.Completions]{line}\n"));
+                builder.push(txt!("[selected.Completions]{line}{Spacer}\n"));
             } else {
                 builder.push(line);
                 builder.push('\n');
             }
         }
+
+        comp.text = builder.build();
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
