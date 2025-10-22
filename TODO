@@ -42,10 +42,10 @@ FOR NEXT UPDATE:
 [x] Get rid of NewLine, WrapMethod.
 [x] Make Windows public.
 [x] RwArea, ErasedArea.
+[x] Perfect parts iterator.
 
 KNOWN BUGS:
 [ ] Perfect print iterators.
-  [x] Perfect parts iterator.
   [ ] Perfect words iterator.
 [ ] track_area not actually tracking correctly.
 [ ] tree-sitter-duat-text is not being used.
