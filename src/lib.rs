@@ -123,7 +123,7 @@ impl duat_core::Plugin for TreeSitter {
             ("node.field", "variable.member"),
         );
 
-        hook::add_grouped::<Buffer>("TreeSitter", |pa, handle| {
+        hook::add::<Buffer>(|pa, handle| {
             let file = handle.write(pa);
 
             let path = file.path_kind();
@@ -167,7 +167,8 @@ impl duat_core::Plugin for TreeSitter {
                     }))))
                 })
             }
-        });
+        })
+        .grouped("TreeSitter");
     }
 }
 

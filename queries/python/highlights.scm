@@ -360,7 +360,6 @@
 [
   "try"
   "except"
-  "except*"
   "raise"
   "finally"
 ] @keyword.exception
