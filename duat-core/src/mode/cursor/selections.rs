@@ -698,8 +698,8 @@ mod cursor {
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
         pub fn byte_range(&self, bytes: &Bytes) -> Range<usize> {
-            let [start, end] = self.point_range(bytes);
-            start.byte()..end.byte()
+            let range = self.point_range(bytes);
+            range.start.byte()..range.end.byte()
         }
 
         /// The starting [`Point`] of this [`Selection`]
@@ -728,15 +728,15 @@ mod cursor {
             }
         }
 
-        pub(crate) fn tag_points(&self, bytes: &Bytes) -> (Point, Option<[Point; 2]>) {
+        pub(crate) fn tag_points(&self, bytes: &Bytes) -> (Point, Option<Range<Point>>) {
             let caret = self.caret();
             if let Some(anchor) = self.anchor() {
                 match anchor.cmp(&caret) {
-                    Ordering::Less => (caret, Some([anchor, caret])),
+                    Ordering::Less => (caret, Some(anchor..caret)),
                     Ordering::Equal => (caret, None),
                     Ordering::Greater => {
                         let end = anchor.fwd(bytes.char_at(anchor).unwrap());
-                        (caret, Some([caret, end]))
+                        (caret, Some(caret..end))
                     }
                 }
             } else {
@@ -748,15 +748,15 @@ mod cursor {
         ///
         /// If `anchor` isn't set, returns a range that contains only
         /// the `caret`'s current `char`.
-        pub fn point_range(&self, bytes: &Bytes) -> [Point; 2] {
-            [self.start(), self.end(bytes)]
+        pub fn point_range(&self, bytes: &Bytes) -> Range<Point> {
+            self.start()..self.end(bytes)
         }
 
         /// Returns an exclusive range between `caret` and `anchor`
         ///
         /// If `anchor` isn't set, both [`Point`]s will be the same.
-        pub fn point_range_excl(&self) -> [Point; 2] {
-            [self.start(), self.end_excl()]
+        pub fn point_range_excl(&self) -> Range<Point> {
+            self.start()..self.end_excl()
         }
 
         /// Sets both the desired visual column, as well as the

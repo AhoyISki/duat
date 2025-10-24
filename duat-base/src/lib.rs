@@ -109,7 +109,7 @@
     decl_macro,
     closure_lifetime_binder,
     default_field_values,
-    associated_type_defaults
+    associated_type_defaults,
 )]
 
 use duat_core::{

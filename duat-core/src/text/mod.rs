@@ -379,7 +379,7 @@ impl Text {
             self.point_at_byte(range.start),
             self.point_at_byte(range.end),
         );
-        let change = Change::new(edit, [start, end], self);
+        let change = Change::new(edit, start..end, self);
 
         self.0.has_changed = true;
         self.apply_change_inner(0, change.as_ref());
@@ -392,7 +392,7 @@ impl Text {
     pub(crate) fn apply_change(
         &mut self,
         guess_i: Option<usize>,
-        change: Change,
+        change: Change<'static, String>,
     ) -> (Option<usize>, usize) {
         self.0.has_changed = true;
 
@@ -439,7 +439,7 @@ impl Text {
         if p.char() == 1 && self.0.bytes == "\n" {
             let change = Change::new(
                 text.0.bytes.strs(..).unwrap().to_string(),
-                [Point::default(), p],
+                Point::default()..p,
                 self,
             );
             self.apply_change_inner(0, change.as_ref());
@@ -493,7 +493,7 @@ impl Text {
 
     fn apply_and_process_changes<'a>(
         &mut self,
-        changes: impl ExactSizeIterator<Item = Change<&'a str>>,
+        changes: impl ExactSizeIterator<Item = Change<'a, &'a str>>,
     ) {
         self.0.selections.clear();
 
@@ -628,8 +628,7 @@ impl Text {
 
             bytes.add_record([caret.byte(), caret.char(), caret.line()]);
 
-            if let Some([start, end]) = selection {
-                let range = start.byte()..end.byte();
+            if let Some(range) = selection {
                 self.0.tags.insert(key, range, form.to_tag(95));
             }
         };

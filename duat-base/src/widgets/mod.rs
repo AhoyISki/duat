@@ -18,7 +18,7 @@ use duat_core::{
 };
 
 pub use self::{
-    completions::Completions,
+    completions::{Completions, WordsCompletionParser},
     line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},

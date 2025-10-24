@@ -215,7 +215,7 @@
 //! ```rust
 //! use duat_core::{prelude::*, text::Change};
 //!
-//! fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
+//! fn word_diff(regex: &str, bytes: &Bytes, change: Change) -> i32 {
 //!     // The starting and ending points of the lines where the Change
 //!     // took place.
 //!     let [start, _] = bytes.points_of_line(change.start().line());
@@ -255,7 +255,7 @@
 //! Now, just call this on `Parser::parse`:
 //!
 //! ```rust
-//! # fn word_diff(_: &str, _: &Bytes, _: Change<&str>) -> i32 { 0 }
+//! # fn word_diff(_: &str, _: &Bytes, _: Change) -> i32 { 0 }
 //! use duat_core::{prelude::*, text::Change};
 //!
 //! /// A [`Parser`] to keep track of words in a [`Buffer`]
@@ -486,7 +486,7 @@
 //!     }
 //! }
 //!
-//! fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
+//! fn word_diff(regex: &str, bytes: &Bytes, change: Change) -> i32 {
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!

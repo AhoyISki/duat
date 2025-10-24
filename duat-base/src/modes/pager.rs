@@ -10,7 +10,7 @@ use duat_core::{
     form, hook,
     mode::{self, KeyEvent, KeyMod, Mode, key},
     text::{Searcher, Tagger, Text, txt},
-    ui::{RwArea, PrintInfo, Widget},
+    ui::{PrintInfo, RwArea, Widget},
 };
 
 use crate::{
@@ -51,12 +51,12 @@ impl<W: Widget> Mode for Pager<W> {
                 let point = handle.start_points(pa).real;
 
                 let text = handle.read(pa).text();
-                let Some([point, _]) = text.search_fwd(&*se, point..).unwrap().next() else {
+                let Some(r) = text.search_fwd(&*se, point..).unwrap().next() else {
                     context::error!("[a]{se}[] was not found");
                     return;
                 };
 
-                handle.scroll_to_points(pa, point.to_two_points_after());
+                handle.scroll_to_points(pa, r.start.to_two_points_after());
             }
             (key!(Char('n'), KeyMod::ALT), true) | (key!(Char('N')), false) => {
                 let se = SEARCH.lock().unwrap();
@@ -64,12 +64,12 @@ impl<W: Widget> Mode for Pager<W> {
                 let point = handle.start_points(pa).real;
 
                 let text = handle.read(pa).text();
-                let Some([point, _]) = text.search_rev(&*se, ..point).unwrap().next() else {
+                let Some(r) = text.search_rev(&*se, ..point).unwrap().next() else {
                     context::error!("[a]{se}[] was not found");
                     return;
                 };
 
-                handle.scroll_to_points(pa, point.to_two_points_after());
+                handle.scroll_to_points(pa, r.start.to_two_points_after());
             }
             (key!(Esc), _) => mode::reset::<Buffer>(),
             (key!(Char(':')), _) => mode::set(RunCommands::new()),

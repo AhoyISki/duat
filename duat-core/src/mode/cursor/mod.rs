@@ -121,9 +121,10 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     pub fn replace(&mut self, edit: impl ToString) {
         let change = {
             let edit = edit.to_string();
-            let [p0, p1] = self.selection.point_range(self.widget.text());
+            let range = self.selection.point_range(self.widget.text());
+            let (p0, p1) = (range.start, range.end);
             let p1 = if self.anchor().is_some() { p1 } else { p0 };
-            Change::new(edit, [p0, p1], self.widget.text())
+            Change::new(edit, p0..p1, self.widget.text())
         };
 
         // Disconsider null changes.
@@ -153,7 +154,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [`replace`]: Self::replace
     /// [`append`]: Self::append
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = [self.selection.caret(), self.selection.caret()];
+        let range = self.selection.caret()..self.selection.caret();
         let change = Change::new(edit.to_string(), range, self.widget.text());
         let (added, taken) = (change.added_end(), change.taken_end());
 
@@ -182,7 +183,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     pub fn append(&mut self, edit: impl ToString) {
         let caret = self.selection.caret();
         let p = caret.fwd(self.widget.text().char_at(caret).unwrap());
-        let change = Change::new(edit.to_string(), [p, p], self.widget.text());
+        let change = Change::new(edit.to_string(), p..p, self.widget.text());
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
@@ -198,7 +199,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 
     /// Edits the buffer with a [`Change`]
-    fn edit(&mut self, change: Change) {
+    fn edit(&mut self, change: Change<'static, String>) {
         let text = self.widget.text_mut();
         let (change_i, selections_taken) =
             text.apply_change(self.selection.change_i.map(|i| i as usize), change);
@@ -600,12 +601,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 
     /// The [`Point`] range of the [`Selection`]
-    pub fn range(&self) -> [Point; 2] {
+    pub fn range(&self) -> Range<Point> {
         self.selection.point_range(self.text())
     }
 
     /// An exclusive [`Point`] range of the [`Selection`]
-    pub fn range_excl(&self) -> [Point; 2] {
+    pub fn range_excl(&self) -> Range<Point> {
         self.selection.point_range_excl()
     }
 

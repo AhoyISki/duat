@@ -154,7 +154,7 @@ impl mode::Mode for Regular {
                         c.replace("");
                     } else {
                         let (range, anchor_is_start) = ranges.next().unwrap();
-                        c.move_to(range[0]..range[1]);
+                        c.move_to(range);
                         if !anchor_is_start {
                             c.swap_ends();
                         }

@@ -66,7 +66,7 @@ FUTURE UPDATES:
 [ ] Named colors.
 [ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.
-[ ] Hook::add_for/add_grouped_for/add_once_for.
+[x] Hook::add_for/add_grouped_for/add_once_for.
 [ ] Get rid of Widget::needs_update?
 [ ] Make all Ui and Area methods use the address space of the Duat app.
 [ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.

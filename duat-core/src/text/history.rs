@@ -11,9 +11,9 @@
 //!
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
-use std::{ops::Range, sync::Arc};
+use std::{marker::PhantomData, ops::Range, sync::Arc};
 
-use bincode::{Decode, Encode};
+use bincode::{BorrowDecode, Decode, Encode};
 use parking_lot::Mutex;
 
 use super::{Point, Text};
@@ -34,7 +34,11 @@ pub struct History {
 
 impl History {
     /// Adds a [`Change`] to the [`History`]
-    pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
+    pub fn apply_change(
+        &mut self,
+        guess_i: Option<usize>,
+        change: Change<'static, String>,
+    ) -> usize {
         let mut remote = self.fetcher_moments.lock();
         for state in remote.iter_mut() {
             state.add_change(change.clone());
@@ -68,7 +72,7 @@ impl History {
     /// will result in a correct redoing.
     pub(super) fn move_forward(
         &mut self,
-    ) -> Option<(impl ExactSizeIterator<Item = Change<&str>>, bool)> {
+    ) -> Option<(impl ExactSizeIterator<Item = Change<'_>>, bool)> {
         self.new_moment();
         if self.cur_moment == self.moments.len() {
             None
@@ -96,7 +100,7 @@ impl History {
     /// modifications, will result in a correct undoing.
     pub(super) fn move_backwards(
         &mut self,
-    ) -> Option<(impl ExactSizeIterator<Item = Change<&str>>, bool)> {
+    ) -> Option<(impl ExactSizeIterator<Item = Change<'_>>, bool)> {
         self.new_moment();
         if self.cur_moment == 0 {
             None
@@ -163,14 +167,14 @@ impl Clone for History {
 /// that going back in time is less jarring.
 #[derive(Clone, Default, Debug, Encode, Decode)]
 pub struct Moment {
-    changes: Vec<Change>,
+    changes: Vec<Change<'static, String>>,
     shift_state: (usize, [i32; 3]),
 }
 
 impl Moment {
     /// First try to merge this change with as many changes as
     /// possible, then add it in
-    fn add_change(&mut self, guess_i: Option<usize>, mut change: Change) -> usize {
+    fn add_change(&mut self, guess_i: Option<usize>, mut change: Change<'static, String>) -> usize {
         let new_shift = change.shift();
         let (from, shift) = self.shift_state;
 
@@ -222,7 +226,7 @@ impl Moment {
     ///
     /// These may represent forward or backwards [`Change`]s, forward
     /// for newly introduced [`Change`]s and backwards when undoing.
-    pub fn changes(&self) -> impl ExactSizeIterator<Item = Change<&str>> + '_ {
+    pub fn changes(&self) -> impl ExactSizeIterator<Item = Change<'_>> + '_ {
         let (from, shift) = self.shift_state;
         self.changes.iter().enumerate().map(move |(i, change)| {
             let mut change = change.as_ref();
@@ -256,47 +260,50 @@ impl Moment {
 }
 
 /// A change in a buffer, with a start, taken text, and added text
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
-pub struct Change<S = String> {
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Change<'s, S = &'s str> {
     start: [i32; 3],
     added: S,
     taken: S,
     added_end: [i32; 3],
     taken_end: [i32; 3],
+    _ghost: PhantomData<&'s str>,
 }
 
-impl Change {
+impl Change<'static, String> {
     /// Returns a new [Change].
-    pub fn new(edit: impl ToString, [p0, p1]: [Point; 2], text: &Text) -> Self {
+    pub fn new(edit: impl ToString, range: Range<Point>, text: &Text) -> Self {
         let added = {
             let edit = edit.to_string();
             // A '\n' must be kept at the end, no matter what.
-            if p1 == text.len() && !edit.ends_with('\n') {
+            if range.start == text.len() && !edit.ends_with('\n') {
                 edit + "\n"
             } else {
                 edit
             }
         };
 
-        let taken = text.strs(p0..p1).unwrap().collect();
-        let added_end = add(p0.as_signed(), Point::len_of(&added).as_signed());
+        let taken = text.strs(range.clone()).unwrap().collect();
+        let added_end = add(range.start.as_signed(), Point::len_of(&added).as_signed());
         Change {
-            start: p0.as_signed(),
+            start: range.start.as_signed(),
             added,
             taken,
             added_end,
-            taken_end: p1.as_signed(),
+            taken_end: range.end.as_signed(),
+            _ghost: PhantomData,
         }
     }
 
     /// Returns a copyable [`Change`]
-    pub fn as_ref(&self) -> Change<&str> {
+    pub fn as_ref(&self) -> Change<'_, &str> {
         Change {
             start: self.start,
             added: &self.added,
             taken: &self.taken,
             added_end: self.added_end,
             taken_end: self.taken_end,
+            _ghost: PhantomData,
         }
     }
 
@@ -336,15 +343,16 @@ impl Change {
     }
 }
 
-impl<'a> Change<&'a str> {
+impl<'a> Change<'a> {
     /// Creates a [`Change<String>`] from a [`Change<&str>`]
-    pub fn to_string_change(&self) -> Change {
+    pub fn to_string_change(&self) -> Change<'static, String> {
         Change {
             start: self.start,
             added: self.added.to_string(),
             taken: self.taken.to_string(),
             added_end: self.added_end,
             taken_end: self.taken_end,
+            _ghost: PhantomData,
         }
     }
 
@@ -356,29 +364,32 @@ impl<'a> Change<&'a str> {
             taken: "",
             added_end: (start + Point::len_of(added_str)).as_signed(),
             taken_end: start.as_signed(),
+            _ghost: PhantomData,
         }
     }
 
-    pub(super) fn remove_last_nl(len: Point) -> Self {
-        Self {
+    pub(super) fn remove_last_nl(len: Point) -> Change<'static> {
+        Change {
             start: len.rev('\n').as_signed(),
             added: "",
             taken: "\n",
             added_end: len.rev('\n').as_signed(),
             taken_end: len.as_signed(),
+            _ghost: PhantomData,
         }
     }
 }
 
-impl<S: std::borrow::Borrow<str>> Change<S> {
+impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     /// Returns a reversed version of this [`Change`]
-    pub fn reverse(self) -> Change<S> {
-        Change {
+    pub fn reverse(self) -> Self {
+        Self {
             start: self.start,
             added: self.taken,
             taken: self.added,
             added_end: self.taken_end,
             taken_end: self.added_end,
+            _ghost: PhantomData,
         }
     }
 
@@ -455,6 +466,50 @@ impl<S: std::borrow::Borrow<str>> Change<S> {
     }
 }
 
+impl Encode for Change<'static, String> {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        Encode::encode(&self.start, encoder)?;
+        Encode::encode(&self.added, encoder)?;
+        Encode::encode(&self.taken, encoder)?;
+        Encode::encode(&self.added_end, encoder)?;
+        Encode::encode(&self.taken_end, encoder)?;
+        Ok(())
+    }
+}
+
+impl<Context> Decode<Context> for Change<'static, String> {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            start: Decode::decode(decoder)?,
+            added: Decode::decode(decoder)?,
+            taken: Decode::decode(decoder)?,
+            added_end: Decode::decode(decoder)?,
+            taken_end: Decode::decode(decoder)?,
+            _ghost: PhantomData,
+        })
+    }
+}
+
+impl<'de, Context> BorrowDecode<'de, Context> for Change<'static, String> {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            start: Decode::decode(decoder)?,
+            added: Decode::decode(decoder)?,
+            taken: Decode::decode(decoder)?,
+            added_end: Decode::decode(decoder)?,
+            taken_end: Decode::decode(decoder)?,
+            _ghost: PhantomData,
+        })
+    }
+}
+
 /// If `lhs` contains the start of `rhs`
 fn has_start_of(lhs: Range<Point>, rhs: Range<Point>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
@@ -509,7 +564,7 @@ impl FetcherState {
     }
 
     /// Adds a [`Change`] to this [`FetcherState`]
-    fn add_change(&mut self, change: Change) {
+    fn add_change(&mut self, change: Change<'static, String>) {
         match self {
             FetcherState::Alive(moment) => {
                 moment.add_change(None, change);

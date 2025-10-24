@@ -16,7 +16,7 @@ use std::{
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, LogBook},
+    widgets::{FooterWidgets, LogBook, WordsCompletionParser},
 };
 use duat_core::{
     clipboard::Clipboard,
@@ -61,6 +61,8 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     mode::set_default(crate::regular::Regular);
     mode::set_default(Pager::<LogBook>::new());
 
+    // Layout hooks
+
     hook::add::<Buffer>(|pa, handle| {
         VertRule::builder().push_on(pa, handle);
         LINENUMBERS_OPTS.lock().unwrap().push_on(pa, handle);
@@ -90,17 +92,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     })
     .grouped("LogBook");
 
-    hook::add::<BufferWritten>(|_, (path, _, is_quitting)| {
-        let path = Path::new(path);
-        if !is_quitting
-            && let Ok(crate_dir) = crate::utils::crate_dir()
-            && path.starts_with(crate_dir)
-        {
-            crate::prelude::cmd::queue("reload");
-        }
-        Ok(())
-    })
-    .grouped("ReloadOnWrite");
+    // Cache hooks
 
     hook::add::<BufferReloaded>(|pa, (handle, cache)| {
         let buffer = handle.write(pa);
@@ -148,6 +140,22 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         handle.area().store_cache(pa, &path)
     })
     .grouped("CacheCursorPosition");
+
+    // Other hooks
+
+    hook::add::<BufferWritten>(|_, (path, _, is_quitting)| {
+        let path = Path::new(path);
+        if !is_quitting
+            && let Ok(crate_dir) = crate::utils::crate_dir()
+            && path.starts_with(crate_dir)
+        {
+            crate::prelude::cmd::queue("reload");
+        }
+        Ok(())
+    })
+    .grouped("ReloadOnWrite");
+
+    hook::add::<Buffer>(|pa, handle| WordsCompletionParser::add_to_buffer(handle.write(pa)));
 
     form::enable_mask("error");
     form::enable_mask("warn");
