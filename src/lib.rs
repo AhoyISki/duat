@@ -84,7 +84,15 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use duat_core::{Plugin, Plugins, buffer::{Buffer, Parser}, context::Handle, data::Pass, form, hook, text::{Point, Tagger}, ui::Widget};
+use duat_core::{
+    Plugin, Plugins,
+    buffer::{Buffer, Parser},
+    context::Handle,
+    data::Pass,
+    form, hook,
+    text::{Point, Tagger},
+    ui::Widget,
+};
 use duat_filetype::FileType;
 use duat_treesitter::TsParser;
 
@@ -183,7 +191,7 @@ impl Plugin for MatchPairs {
                 tracker.track_area();
                 MatchPairsParser(match_pairs)
             })
-        })
+        });
     }
 }
 
@@ -198,17 +206,17 @@ impl Parser for MatchPairsParser {
 
         file.text_mut().remove_tags(*PAREN_TAGGER, ..);
 
-        let selections: Vec<(Range<usize>, bool)> = on
+        let selections: Vec<(Range<Point>, bool)> = on
             .into_iter()
             .flat_map(|r| {
                 file.selections()
                     .iter_within(r)
-                    .map(|(_, sel, is_main)| (sel.byte_range(file.bytes()), is_main))
+                    .map(|(_, sel, is_main)| (sel.point_range(file.bytes()), is_main))
             })
             .collect();
 
-        'selections: for (range, is_main) in selections {
-            let str: Vec<u8> = file.bytes().slices(range.clone()).collect();
+        'selections: for (c_range, is_main) in selections {
+            let str: Vec<u8> = file.bytes().slices(c_range.clone()).collect();
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.0.ts_and_reg.iter().position(ends(&str)) {
@@ -219,11 +227,13 @@ impl Parser for MatchPairsParser {
                 continue;
             };
 
-            let (start_range, end_range) = if let Some(Some(ranges)) =
-                file.try_read_parser(|ts: &TsParser| {
+            let (start_range, end_range) = if let Some(Some((s_range, e_range))) = file
+                .try_read_parser(|ts: &TsParser| {
                     let node = ts
                         .root()
-                        .and_then(|root| root.descendant_for_byte_range(range.start, range.end))
+                        .and_then(|root| {
+                            root.descendant_for_byte_range(c_range.start.byte(), c_range.end.byte())
+                        })
                         .and_then(|node| {
                             delims
                                 .iter()
@@ -248,32 +258,37 @@ impl Parser for MatchPairsParser {
                         None
                     }
                 }) {
-                ranges
+                (
+                    file.text().point_at_byte(s_range.start)
+                        ..file.text().point_at_byte(s_range.end),
+                    file.text().point_at_byte(e_range.start)
+                        ..file.text().point_at_byte(e_range.end),
+                )
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
-                    let mut iter = file.bytes().search_fwd(escaped, range.start..).unwrap();
+                    let mut iter = file.bytes().search_fwd(escaped, c_range.start..).unwrap();
                     let mut bounds = 0;
 
                     loop {
-                        let Some((i, points)) = iter.next() else {
+                        let Some((i, m_range)) = iter.next() else {
                             continue 'selections;
                         };
                         bounds = (bounds + (i == 0) as usize) - (i == 1) as usize;
                         if bounds == 0 {
-                            break (range, points[0].byte()..points[1].byte());
+                            break (c_range, m_range);
                         }
                     }
                 } else {
-                    let mut iter = file.bytes().search_rev(escaped, ..range.end).unwrap();
+                    let mut iter = file.bytes().search_rev(escaped, ..c_range.end).unwrap();
                     let mut bounds = 0;
 
                     loop {
-                        let Some((i, points)) = iter.next() else {
+                        let Some((i, m_range)) = iter.next() else {
                             continue 'selections;
                         };
                         bounds = (bounds + (i == 1) as usize) - (i == 0) as usize;
                         if bounds == 0 {
-                            break (points[0].byte()..points[1].byte(), range);
+                            break (m_range, c_range);
                         }
                     }
                 }
