@@ -45,6 +45,9 @@ FOR NEXT UPDATE:
 [x] Perfect parts iterator.
 [x] PartialEq on Hookables.
 [x] HookBuilder struct.
+[x] Hook::add_for/add_grouped_for/add_once_for.
+[x] Make all Ui and Area methods use the address space of the Duat app.
+[x] Finalize the Windows API for more public use.
 
 KNOWN BUGS:
 [ ] Perfect print iterators.
@@ -66,14 +69,11 @@ FUTURE UPDATES:
 [ ] Named colors.
 [ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.
-[x] Hook::add_for/add_grouped_for/add_once_for.
 [ ] Get rid of Widget::needs_update?
-[ ] Make all Ui and Area methods use the address space of the Duat app.
 [ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.
-[ ] Finalize the Windows API for more public use.
 [ ] Coordinates based tagging.
 [ ] Use track_caller on TextBuilder.
-[ ] Anonymous Forms, which index based on hashing the Form itself.
+[ ] Anonymous Forms, which index based on hashing the Form itself.ap
 [ ] Add Form interpolation and Form::copy.
 [ ] Use Tags for masks.
 [ ] Keep information of PushSpecs and SpawnSpecs on the Handles.

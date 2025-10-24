@@ -924,12 +924,12 @@ mod cursor {
     impl VPoint {
         /// Returns a new [`VPoint`]
         fn new(p: Point, text: &Text, area: &Area, opts: PrintOpts) -> Self {
-            let [start, _] = text.points_of_line(p.line());
+            let range = text.line_range(p.line());
 
             let mut vcol = 0;
 
             let wcol = area
-                .print_iter(text, start.to_two_points_before(), opts)
+                .print_iter(text, range.start.to_two_points_before(), opts)
                 .find_map(|(caret, item)| {
                     if let Some((lhs, _)) = item.as_real_char()
                         && lhs == p
@@ -943,7 +943,7 @@ mod cursor {
 
             Self {
                 p,
-                ccol: (p.char() - start.char()) as u16,
+                ccol: (p.char() - range.start.char()) as u16,
                 vcol,
                 dvcol: vcol,
                 wcol,

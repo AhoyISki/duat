@@ -277,17 +277,17 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let [s, e] = self
+        let range = self
             .text()
-            .points_of_line(line.min(self.text().last_point().line()));
+            .line_range(line.min(self.text().last_point().line()));
         let (p, _) = self
             .text()
-            .chars_fwd(s..e)
+            .chars_fwd(range.clone())
             .unwrap()
             .take(col + 1)
             .last()
             .unzip();
-        self.move_to(p.unwrap_or(e));
+        self.move_to(p.unwrap_or(range.end));
     }
 
     /// Moves to a column on the current line

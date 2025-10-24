@@ -143,8 +143,8 @@ impl mode::Mode for Regular {
                 handle.edit_all(pa, |mut c| {
                     prev.push((c.range(), c.anchor_is_start()));
                     if c.anchor().is_none() {
-                        let [start, end] = c.text().points_of_line(c.caret().line());
-                        c.move_to(start..end);
+                        let range = c.text().line_range(c.caret().line());
+                        c.move_to(range);
                     }
                 });
                 crate::mode::copy_selections(pa, &handle);

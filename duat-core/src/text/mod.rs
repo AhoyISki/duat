@@ -271,9 +271,9 @@ impl Text {
 
     /// Gets the indentation level on the current line
     pub fn indent(&self, p: Point, area: &Area, opts: PrintOpts) -> usize {
-        let [start, _] = self.points_of_line(p.line());
+        let range = self.line_range(p.line());
 
-        area.print_iter(self, start.to_two_points_after(), opts)
+        area.print_iter(self, range.start.to_two_points_after(), opts)
             .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
             .find(|(_, char)| !char.is_whitespace() || *char == '\n')
             .map(|(caret, _)| caret.x as usize)

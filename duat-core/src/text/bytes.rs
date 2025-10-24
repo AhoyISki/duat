@@ -419,7 +419,7 @@ impl Bytes {
     /// lines on the text
     #[inline(always)]
     #[track_caller]
-    pub fn points_of_line(&self, l: usize) -> [Point; 2] {
+    pub fn line_range(&self, l: usize) -> Range<Point> {
         assert!(
             l <= self.len().line(),
             "line out of bounds: the len is {}, but the line is {l}",
@@ -432,7 +432,7 @@ impl Bytes {
             .unwrap()
             .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
             .unwrap_or(self.len());
-        [start, end]
+        start..end
     }
 
     /// The last [`Point`] associated with a `char`
@@ -488,8 +488,8 @@ impl Bytes {
 
     /// Gets the indentation level on the current line
     pub fn indent(&self, p: Point, opts: PrintOpts) -> usize {
-        let [start, _] = self.points_of_line(p.line());
-        self.chars_fwd(start..)
+        let range = self.line_range(p.line());
+        self.chars_fwd(range.start..)
             .unwrap()
             .map_while(|(_, c)| match c {
                 ' ' => Some(1),
