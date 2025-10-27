@@ -439,11 +439,7 @@ impl RawArea for Area {
             return;
         };
 
-        if coords.width() == 0 {
-            context::warn!("Can't scroll an Area with no width");
-            return;
-        } else if coords.width() == 0 {
-            context::warn!("Can't scroll an Area with no width");
+        if coords.width() == 0 || coords.height() == 0 {
             return;
         }
 
@@ -465,11 +461,7 @@ impl RawArea for Area {
             return;
         };
 
-        if coords.width() == 0 {
-            context::warn!("Can't scroll an Area with no width");
-            return;
-        } else if coords.width() == 0 {
-            context::warn!("Can't scroll an Area with no width");
+        if coords.width() == 0 || coords.height() == 0 {
             return;
         }
 
@@ -484,11 +476,7 @@ impl RawArea for Area {
             return;
         };
 
-        if coords.width() == 0 {
-            context::warn!("Can't scroll an Area with no width");
-            return;
-        } else if coords.width() == 0 {
-            context::warn!("Can't scroll an Area with no width");
+        if coords.width() == 0 || coords.height() == 0 {
             return;
         }
 
