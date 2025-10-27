@@ -138,8 +138,8 @@ impl mode::Mode for Regular {
             // Basic commands
             ctrl!('z') => handle.write(pa).text_mut().undo(),
             ctrl!('y' | 'Z') => handle.write(pa).text_mut().redo(),
-            ctrl!('x' | 'c') => {
-                if let Char('x') = key_event.code {
+            ctrl!(char @ ('x' | 'c')) => {
+                if char == 'x' {
                     handle.write(pa).text_mut().new_moment();
                 }
                 let mut prev = Vec::new();
@@ -153,7 +153,7 @@ impl mode::Mode for Regular {
                 crate::mode::copy_selections(pa, &handle);
                 let mut ranges = prev.into_iter();
                 handle.edit_all(pa, |mut c| {
-                    if key_event.code == Char('x') {
+                    if char == 'x' {
                         c.replace("");
                     } else {
                         let (range, anchor_is_start) = ranges.next().unwrap();
@@ -195,21 +195,21 @@ impl mode::Mode for Regular {
             }
 
             // Searching
-            key!(Char('f'), Mod::CONTROL) => mode::set(IncSearch::new(SearchFwd)),
+            ctrl!('f') => mode::set(IncSearch::new(SearchFwd)),
 
             // Control
-            key!(Char('P'), Mod::CONTROL) | key!(F(1)) => mode::set(RunCommands::new()),
-            key!(Char('p'), Mod::CONTROL) => {
+            ctrl!('P') | event!(F(1)) => mode::set(RunCommands::new()),
+            ctrl!('p') => {
                 mode::set(RunCommands::new());
                 mode::send_keys("edit ");
             }
-            key!(Char('n'), Mod::CONTROL) => {
+            ctrl!('n') => {
                 mode::set(RunCommands::new());
                 mode::send_keys("open ");
             }
-            key!(Char('s'), Mod::CONTROL) => cmd::queue_notify("write"),
-            key!(Char('w'), Mod::CONTROL) => cmd::queue_notify("write-quit"),
-            key!(Char(','), Mod::CONTROL) => cmd::queue_notify("open --cfg"),
+            event!('s') => cmd::queue_notify("write"),
+            event!('w') => cmd::queue_notify("write-quit"),
+            event!(',') => cmd::queue_notify("open --cfg"),
 
             _ => {}
         }

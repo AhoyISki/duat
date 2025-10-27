@@ -69,11 +69,26 @@ use crate::mode::KeyMod;
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 pub macro event {
-    ($($char:ident @)? $($chars:literal)|+) => {
+    ($($chars:literal)|+) => {
         $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($char @)? $($chars)|+),
+            code: $crate::mode::KeyCode::Char($($chars)|+),
             modifiers: $crate::mode::KeyMod::NONE,
-            ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    // Straight up useless tbh.
+    ($char:ident @ $chars:literal) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ $chars),
+            modifiers: $crate::mode::KeyMod::NONE,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    ($char:ident @ ($($chars:literal)|+)) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
+            modifiers: $crate::mode::KeyMod::NONE,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
     ($code:pat) => {
@@ -149,19 +164,34 @@ pub macro event {
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 pub macro alt {
+    ($($chars:literal)|+) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($($chars)|+),
+            modifiers: $crate::mode::KeyMod::ALT,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    // Straight up useless tbh.
+    ($char:ident @ $chars:literal) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ $chars),
+            modifiers: $crate::mode::KeyMod::ALT,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    ($char:ident @ ($($chars:literal)|+)) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
+            modifiers: $crate::mode::KeyMod::ALT,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
     // I use $excl here in order to make it look like part of the macro,
     // so rust analyzer properly highlights it.
     ($modif:ident$excl:tt($($tokens:tt)+)) => {
         $crate::mode::KeyEvent {
             code: $modif$excl(@code $($tokens)+),
             modifiers: $modif$excl(@modif [ALT] $($tokens)+),
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
-    },
-    ($($char:ident @)? $($chars:literal)|+) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($char @)? $($chars)|+),
-            modifiers: $crate::mode::KeyMod::ALT,
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
@@ -176,8 +206,14 @@ pub macro alt {
     (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@code $($tokens)+)
     },
-    (@code $($char:ident @)? $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($char @)? $($chars)|+)
+    (@code $($chars:literal)|+) => {
+        $crate::mode::KeyCode::Char($($chars)|+)
+    },
+    (@code $char:ident @ $chars:literal) => {
+        $crate::mode::KeyCode::Char($char @ $chars)
+    },
+    (@code $char:ident @ ($($chars:literal)|+)) => {
+        $crate::mode::KeyCode::Char($char @ ($($chars)|+))
     },
     (@code $code:pat) => {
         $code
@@ -186,10 +222,7 @@ pub macro alt {
     (@modif [$($list:ident),+] $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@modif [ALT, $($list),+] $($tokens)+)
     },
-    (@modif [$($list:ident),+] $char:literal) => {
-        $crate::mode::join_modifiers![ALT, $($list),+]
-    },
-    (@modif [$($list:ident),+] $code:pat) => {
+    (@modif [$($list:ident),+] $($other:tt)+) => {
         $crate::mode::join_modifiers![ALT, $($list),+]
     },
 }
@@ -258,19 +291,34 @@ pub macro alt {
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 pub macro ctrl {
+    ($($chars:literal)|+) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($($chars)|+),
+            modifiers: $crate::mode::KeyMod::CONTROL,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    // Straight up useless tbh.
+    ($char:ident @ $chars:literal) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ $chars),
+            modifiers: $crate::mode::KeyMod::CONTROL,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    ($char:ident @ ($($chars:literal)|+)) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
+            modifiers: $crate::mode::KeyMod::CONTROL,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
     // I use $excl here in order to make it look like part of the macro,
     // so rust analyzer properly highlights it.
     ($modif:ident$excl:tt($($tokens:tt)+)) => {
         $crate::mode::KeyEvent {
             code: $modif$excl(@code $($tokens)+),
             modifiers: $modif$excl(@modif [CONTROL] $($tokens)+),
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
-    },
-    ($($char:ident @)? $($chars:literal)|+) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($char @)? $($chars)|+),
-            modifiers: $crate::mode::KeyMod::CONTROL,
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
@@ -285,8 +333,14 @@ pub macro ctrl {
     (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@code $($tokens)+)
     },
-    (@code $($char:ident @)? $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($char @)? $($chars)|+)
+    (@code $($chars:literal)|+) => {
+        $crate::mode::KeyCode::Char($($chars)|+)
+    },
+    (@code $char:ident @ $chars:literal) => {
+        $crate::mode::KeyCode::Char($char @ $chars)
+    },
+    (@code $char:ident @ ($($chars:literal)|+)) => {
+        $crate::mode::KeyCode::Char($char @ ($($chars)|+))
     },
     (@code $code:pat) => {
         $code
@@ -295,10 +349,7 @@ pub macro ctrl {
     (@modif [$($list:ident),+] $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@modif [CONTROL, $($list),+] $($tokens)+)
     },
-    (@modif [$($list:ident),+] $char:literal) => {
-        $crate::mode::join_modifiers![CONTROL, $($list),+]
-    },
-    (@modif [$($list:ident),+] $code:pat) => {
+    (@modif [$($list:ident),+] $($other:tt)+) => {
         $crate::mode::join_modifiers![CONTROL, $($list),+]
     },
 }
@@ -382,19 +433,34 @@ pub macro ctrl {
 /// [`KeyCode::Char`]: super::KeyCode::Char
 /// [`Mode`]: super::Mode
 pub macro shift {
+    ($($chars:literal)|+) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($($chars)|+),
+            modifiers: $crate::mode::KeyMod::SHIFT,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    // Straight up useless tbh.
+    ($char:ident @ $chars:literal) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ $chars),
+            modifiers: $crate::mode::KeyMod::SHIFT,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
+    ($char:ident @ ($($chars:literal)|+)) => {
+        $crate::mode::KeyEvent {
+            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
+            modifiers: $crate::mode::KeyMod::SHIFT,
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
+        }
+    },
     // I use $excl here in order to make it look like part of the macro,
     // so rust analyzer properly highlights it.
     ($modif:ident$excl:tt($($tokens:tt)+)) => {
         $crate::mode::KeyEvent {
             code: $modif$excl(@code $($tokens)+),
             modifiers: $modif$excl(@modif [SHIFT] $($tokens)+),
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
-    },
-    ($($char:ident @)? $($chars:literal)|+) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($char:ident @)? $($chars)|+),
-            modifiers: $crate::mode::KeyMod::SHIFT,
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
@@ -409,8 +475,14 @@ pub macro shift {
     (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@code $($tokens)+)
     },
-    (@code $($char:ident @)? $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($char @)? $($chars)|+)
+    (@code $($chars:literal)|+) => {
+        $crate::mode::KeyCode::Char($($chars)|+)
+    },
+    (@code $char:ident @ $chars:literal) => {
+        $crate::mode::KeyCode::Char($char @ $chars)
+    },
+    (@code $char:ident @ ($($chars:literal)|+)) => {
+        $crate::mode::KeyCode::Char($char @ ($($chars)|+))
     },
     (@code $code:pat) => {
         $code
@@ -419,10 +491,7 @@ pub macro shift {
     (@modif [$($list:ident),+] $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@modif [SHIFT, $($list),+] $($tokens)+)
     },
-    (@modif [$($list:ident),+] $($char:ident @)? $($chars:literal)|+) => {
-        $crate::mode::join_modifiers![SHIFT, $($list),+]
-    },
-    (@modif [$($list:ident),+] $code:pat) => {
+    (@modif [$($list:ident),+] $($other:tt)+) => {
         $crate::mode::join_modifiers![SHIFT, $($list),+]
     },
 }
