@@ -281,6 +281,7 @@
 
 use std::{
     collections::HashMap,
+    ops::Range,
     sync::{LazyLock, Mutex, atomic::Ordering},
 };
 
@@ -501,19 +502,19 @@ impl<'a> Object<'a> {
         static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
 
         match event {
-            key!(Char('Q')) => Some(Self::Bound("\"")),
-            key!(Char('q')) => Some(Self::Bound("'")),
-            key!(Char('g')) => Some(Self::Bound("`")),
-            key!(Char('|')) => Some(Self::Bound(r"\|")),
-            key!(Char('$')) => Some(Self::Bound(r"\$")),
-            key!(Char('^')) => Some(Self::Bound(r"\^")),
-            key!(Char('s')) => Some(Self::Bound(r"[\.;!\?]")),
-            key!(Char('p')) => Some(Self::Bound("^\n")),
-            key!(Char('b' | '(' | ')')) => Some(Self::Bounds(r"\(", r"\)")),
-            key!(Char('B' | '{' | '}')) => Some(Self::Bounds(r"\{", r"\}")),
-            key!(Char('r' | '[' | ']')) => Some(Self::Bounds(r"\[", r"\]")),
-            key!(Char('a' | '<' | '>')) => Some(Self::Bounds("<", ">")),
-            key!(Char('m' | 'M'), KeyMod::NONE | KeyMod::ALT) | key!(Char('u')) => Some({
+            event!('Q') => Some(Self::Bound("\"")),
+            event!('q') => Some(Self::Bound("'")),
+            event!('g') => Some(Self::Bound("`")),
+            event!('|') => Some(Self::Bound(r"\|")),
+            event!('$') => Some(Self::Bound(r"\$")),
+            event!('^') => Some(Self::Bound(r"\^")),
+            event!('s') => Some(Self::Bound(r"[\.;!\?]")),
+            event!('p') => Some(Self::Bound("^\n")),
+            event!('b' | '(' | ')') => Some(Self::Bounds(r"\(", r"\)")),
+            event!('B' | '{' | '}') => Some(Self::Bounds(r"\{", r"\}")),
+            event!('r' | '[' | ']') => Some(Self::Bounds(r"\[", r"\]")),
+            event!('a' | '<' | '>') => Some(Self::Bounds("<", ">")),
+            event!('m' | 'M') | alt!('m' | 'M') | event!('u') => Some({
                 let [m_b, s_b, e_b] = BRACKET_PATS.get_or_insert_with(brackets, || {
                     let (s_pat, e_pat): (String, String) = brackets
                         .iter()
@@ -529,16 +530,16 @@ impl<'a> Object<'a> {
                     Self::Argument(m_b, s_b, e_b)
                 }
             }),
-            key!(Char('w')) => Some(Self::Anchored({
+            event!('w') => Some(Self::Anchored({
                 static WORD_PATS: Memoized<WordChars, &str> = Memoized::new();
                 WORD_PATS.get_or_insert_with(wc, || {
                     let cat = w_char_cat(wc);
                     format!("\\A([{cat}]+|[^{cat} \t\n]+)\\z").leak()
                 })
             })),
-            key!(Char('w'), KeyMod::ALT) => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
-            key!(Char(' ')) => Some(Self::Anchored(r"\A\s*\z")),
-            key!(Char(char)) if !char.is_alphanumeric() => Some(Self::Bound({
+            alt!('w') => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
+            event!(' ') => Some(Self::Anchored(r"\A\s*\z")),
+            event!(Char(char)) if !char.is_alphanumeric() => Some(Self::Bound({
                 static BOUNDS: Memoized<char, &str> = Memoized::new();
                 BOUNDS.get_or_insert_with(char, || char.to_string().leak())
             })),
@@ -551,7 +552,7 @@ impl<'a> Object<'a> {
         c: &mut Cursor,
         s_count: usize,
         until: Option<Point>,
-    ) -> Option<[Point; 2]> {
+    ) -> Option<Range<Point>> {
         let mut s_count = s_count as i32;
         match self {
             Object::Anchored(pat) => {
@@ -559,20 +560,20 @@ impl<'a> Object<'a> {
                 c.search_fwd(pat, until).next()
             }
             Object::Bounds(s_b, e_b) => {
-                let (_, [p0, p1]) = c.search_fwd([s_b, e_b], None).find(|&(id, _)| {
+                let (_, range) = c.search_fwd([s_b, e_b], None).find(|&(id, _)| {
                     s_count += (id == 0) as i32 - (id == 1) as i32;
                     s_count <= 0
                 })?;
-                Some([p0, p1])
+                Some(range)
             }
             Object::Bound(b) => c.search_fwd(b, until).next(),
             Object::Argument(m_b, s_b, e_b) => {
                 let caret = c.caret();
-                let (_, [p0, p1]) = c.search_fwd([m_b, s_b, e_b], None).find(|&(id, [p, _])| {
-                    s_count += (id == 1) as i32 - (id == 2 && p != caret) as i32;
-                    s_count == 0 || (s_count == 1 && id == 0)
+                let (_, range) = c.search_fwd([m_b, s_b, e_b], None).find(|(id, range)| {
+                    s_count += (*id == 1) as i32 - (*id == 2 && range.start != caret) as i32;
+                    s_count == 0 || (s_count == 1 && *id == 0)
                 })?;
-                Some([p0, p1])
+                Some(range)
             }
         }
     }
@@ -582,7 +583,7 @@ impl<'a> Object<'a> {
         c: &mut Cursor,
         c_count: usize,
         until: Option<Point>,
-    ) -> Option<[Point; 2]> {
+    ) -> Option<Range<Point>> {
         let mut c_count = c_count as i32;
         match self {
             Object::Anchored(pat) => {
@@ -590,19 +591,19 @@ impl<'a> Object<'a> {
                 c.search_rev(pat, until).next()
             }
             Object::Bounds(s_b, e_b) => {
-                let (_, [p0, p1]) = c.search_rev([s_b, e_b], None).find(|&(id, _)| {
+                let (_, range) = c.search_rev([s_b, e_b], None).find(|&(id, _)| {
                     c_count += (id == 1) as i32 - (id == 0) as i32;
                     c_count <= 0
                 })?;
-                Some([p0, p1])
+                Some(range)
             }
             Object::Bound(b) => c.search_rev(b, until).next(),
             Object::Argument(m_b, s_b, e_b) => {
-                let (_, [p0, p1]) = c.search_rev([m_b, s_b, e_b], None).find(|&(id, _)| {
+                let (_, range) = c.search_rev([m_b, s_b, e_b], None).find(|&(id, _)| {
                     c_count += (id == 2) as i32 - (id == 1) as i32;
                     c_count == 0 || (c_count == 1 && id == 0)
                 })?;
-                Some([p0, p1])
+                Some(range)
             }
         }
     }

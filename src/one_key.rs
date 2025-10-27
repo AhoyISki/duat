@@ -23,10 +23,12 @@ pub(crate) enum OneKey {
 impl Mode for OneKey {
     type Widget = Buffer;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         let sel_type = match *self {
-            OneKey::GoTo(st) => match_goto(pa, &handle, key, st),
-            OneKey::Find(st, ss) | OneKey::Until(st, ss) if let Some(char) = just_char(key) => {
+            OneKey::GoTo(st) => match_goto(pa, &handle, key_event, st),
+            OneKey::Find(st, ss) | OneKey::Until(st, ss)
+                if let Some(char) = just_char(key_event) =>
+            {
                 match_find_until(pa, handle, char, matches!(*self, OneKey::Until(..)), st);
                 if ss {
                     *SEARCH.lock().unwrap() = char.to_string();
@@ -35,10 +37,10 @@ impl Mode for OneKey {
             }
             OneKey::Inside(brackets) | OneKey::Around(brackets) => {
                 let is_inside = matches!(*self, OneKey::Inside(_));
-                match_inside_around(pa, handle, key, brackets, is_inside);
+                match_inside_around(pa, handle, key_event, brackets, is_inside);
                 SelType::Normal
             }
-            OneKey::Replace if let Some(char) = just_char(key) => {
+            OneKey::Replace if let Some(char) = just_char(key_event) => {
                 handle.edit_all(pa, |mut c| {
                     let anchor_didnt_exist = c.set_anchor_if_needed();
                     let len = c.selection().flat_map(str::chars).count();
@@ -60,45 +62,50 @@ impl Mode for OneKey {
     }
 }
 
-fn match_goto(pa: &mut Pass, handle: &Handle, key: KeyEvent, mut sel_type: SelType) -> SelType {
+fn match_goto(
+    pa: &mut Pass,
+    handle: &Handle,
+    key_event: KeyEvent,
+    mut sel_type: SelType,
+) -> SelType {
     static LAST_FILE: LazyLock<Mutex<Option<String>>> = LazyLock::new(Mutex::default);
 
     let cur_name = handle.read(pa).name();
     let last_file = LAST_FILE.lock().unwrap().clone();
 
-    match key {
-        key!(Char('h')) => handle.edit_all(pa, |mut c| {
+    match key_event {
+        event!('h') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let p1 = c.search_rev("\n", None).next().map(|[_, p1]| p1);
-            c.move_to(p1.unwrap_or_default());
+            let range = c.search_rev("\n", None).next();
+            c.move_to(range.unwrap_or_default().end);
         }),
-        key!(Char('j')) => handle.edit_all(pa, |mut c| {
+        event!('j') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
             c.move_ver(i32::MAX);
         }),
-        key!(Char('k')) => handle.edit_all(pa, |mut c| {
+        event!('k') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
             c.move_to_coords(0, 0)
         }),
-        key!(Char('l')) => handle.edit_all(pa, |c| {
+        event!('l') => handle.edit_all(pa, |c| {
             select_to_end_of_line(sel_type == SelType::Extend, c);
             sel_type = SelType::BeforeEndOfLine;
         }),
-        key!(Char('i')) => handle.edit_all(pa, |mut c| {
+        event!('i') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let p1 = c.search_rev("(^|\n)[ \t]*", None).next().map(|[_, p1]| p1);
-            if let Some(p1) = p1 {
-                c.move_to(p1);
+            let range = c.search_rev("(^|\n)[ \t]*", None).next();
+            if let Some(range) = range {
+                c.move_to(range);
 
                 let points = c.search_fwd("[^ \t]", None).next();
-                if let Some([p0, _]) = points {
-                    c.move_to(p0)
+                if let Some(range) = points {
+                    c.move_to(range.start)
                 }
             }
         }),
 
         ////////// File change keys
-        key!(Char('a')) => match last_file {
+        event!('a') => match last_file {
             Some(last_file) => cmd::queue_notify_and(format!("b {last_file}"), |res| {
                 if res.is_ok() {
                     *LAST_FILE.lock().unwrap() = Some(cur_name)
@@ -106,12 +113,12 @@ fn match_goto(pa: &mut Pass, handle: &Handle, key: KeyEvent, mut sel_type: SelTy
             }),
             None => context::error!("There is no previous file"),
         },
-        key!(Char('n')) => cmd::queue_notify_and("next-buffer --global", |res| {
+        event!('n') => cmd::queue_notify_and("next-buffer --global", |res| {
             if res.is_ok() {
                 *LAST_FILE.lock().unwrap() = Some(cur_name)
             }
         }),
-        key!(Char('N')) => cmd::queue_notify_and("prev-buffer --global", |res| {
+        event!('N') => cmd::queue_notify_and("prev-buffer --global", |res| {
             if res.is_ok() {
                 *LAST_FILE.lock().unwrap() = Some(cur_name)
             }
@@ -131,19 +138,22 @@ fn match_find_until(pa: &mut Pass, handle: Handle, char: char, is_t: bool, st: S
         let search = format!("\\x{{{:X}}}", char as u32);
         let cur = c.caret();
         let (points, back) = match st {
-            Reverse | ExtendRev => (c.search_rev(search, None).find(|[p1, _]| *p1 != cur), 1),
-            Normal | Extend => (c.search_fwd(search, None).find(|[p0, _]| *p0 != cur), -1),
+            Reverse | ExtendRev => (c.search_rev(search, None).find(|range| range.end != cur), 1),
+            Normal | Extend => (
+                c.search_fwd(search, None).find(|range| range.start != cur),
+                -1,
+            ),
             _ => unreachable!(),
         };
 
-        if let Some([p0, _]) = points
-            && p0 != c.caret()
+        if let Some(range) = points
+            && range.start != c.caret()
         {
             let is_extension = !matches!(st, Extend | ExtendRev);
             if is_extension || c.anchor().is_none() {
                 c.set_anchor();
             }
-            c.move_to(p0);
+            c.move_to(range.start);
             if is_t {
                 c.move_hor(back);
             }
@@ -174,33 +184,33 @@ fn match_inside_around(
         match char {
             'w' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let start = object.find_behind(c, 0, None);
-                let [_, p1] = object.find_ahead(c, 0, None)?;
+                let range = object.find_ahead(c, 0, None)?;
                 let p0 = {
-                    let p0 = start.map(|[p0, _]| p0).unwrap_or(c.caret());
+                    let p0 = start.map(|range| range.start).unwrap_or(c.caret());
                     let p0_cat = Category::of(c.char_at(p0).unwrap(), wc);
                     let p1_cat = Category::of(c.char(), wc);
                     let is_same_cat = event.modifiers == KeyMod::ALT || p0_cat == p1_cat;
                     if is_same_cat { p0 } else { c.caret() }
                 };
-                c.move_to(p0..p1);
+                c.move_to(p0..range.end);
                 Some(())
             }),
             's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let [_, p0] = object.find_behind(c, 0, None)?;
-                let [p1, _] = object.find_ahead(c, 0, None)?;
-                c.move_to(p0..p1);
-                if is_inside || char == ' ' && p0 < c.text().len() {
+                let end = object.find_behind(c, 0, None)?.end;
+                let start = object.find_ahead(c, 0, None)?.start;
+                c.move_to(start..end);
+                if is_inside || char == ' ' && start < c.text().len() {
                     c.move_hor(-1);
                 }
                 Some(())
             }),
             'p' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let end = object.find_ahead(c, 0, None);
-                let [p1, _] = end?;
-                c.move_to(p1);
+                let end = end?.start;
+                c.move_to(end);
                 c.set_anchor();
-                let [_, p0] = object.find_behind(c, 0, None).unwrap_or_default();
-                c.move_to(p0);
+                let range = object.find_behind(c, 0, None).unwrap_or_default();
+                c.move_to(range.start);
                 c.swap_ends();
                 if is_inside {
                     c.move_hor(-1);
@@ -208,14 +218,14 @@ fn match_inside_around(
                 Some(())
             }),
             'u' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let [p2, p3] = object.find_ahead(c, 1, None)?;
-                c.move_to(p2);
-                let [p0, p1] = object.find_behind(c, 1, None)?;
+                let e_range = object.find_ahead(c, 1, None)?;
+                c.move_to(e_range.start);
+                let s_range = object.find_behind(c, 1, None)?;
                 if is_inside {
-                    c.move_to(p1..p2);
+                    c.move_to(s_range.end..e_range.start);
                 } else {
-                    c.move_to(p0..p3);
-                    if matches!(c.char_at(p0), Some(';' | ',')) {
+                    c.move_to(s_range.start..e_range.end);
+                    if matches!(c.char_at(s_range.start), Some(';' | ',')) {
                         c.swap_ends();
                         c.move_hor(1);
                         c.swap_ends();
@@ -225,10 +235,13 @@ fn match_inside_around(
                 Some(())
             }),
             _char => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let [p2, p3] = object.find_ahead(c, 1, None)?;
-                let [p0, p1] = object.find_behind(c, 1, None)?;
-                let [p0, p1] = if is_inside { [p1, p2] } else { [p0, p3] };
-                c.move_to(p0..p1);
+                let e_range = object.find_ahead(c, 1, None)?;
+                let s_range = object.find_behind(c, 1, None)?;
+                c.move_to(if is_inside {
+                    s_range.end..e_range.start
+                } else {
+                    s_range.start..e_range.end
+                });
                 Some(())
             }),
         }
@@ -255,12 +268,12 @@ fn match_inside_around(
                     c.move_ver(-1);
 
                     if is_inside {
-                        let [_, p1] = c.text().points_of_line(c.caret().line());
-                        c.move_to(p1);
+                        let range = c.text().line_range(c.caret().line());
+                        c.move_to(range.end);
                         c.move_hor(-1);
                     } else {
-                        let p1 = c.search_fwd("\n+", None).next().map(|[_, p1]| p1).unwrap();
-                        c.move_to(p1);
+                        let end = c.search_fwd("\n+", None).next().unwrap().end;
+                        c.move_to(end);
                     }
                 }
             }),
@@ -274,8 +287,8 @@ fn match_inside_around(
     }
 }
 
-fn just_char(key: KeyEvent) -> Option<char> {
-    if let key!(Char(char)) = key {
+fn just_char(key_event: KeyEvent) -> Option<char> {
+    if let event!(Char(char)) = key_event {
         Some(char)
     } else {
         None

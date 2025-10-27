@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use duat::{
     mode::{
-        ExtendFwd, ExtendRev, IncSearch, KeyCode::*, KeyMod as Mod, PipeSelections, RunCommands,
+        ExtendFwd, ExtendRev, IncSearch, KeyCode::*, KeyMod, PipeSelections, RunCommands,
         SearchFwd, SearchRev, VPoint,
     },
     opts::WordChars,
@@ -102,34 +102,34 @@ impl Mode for Normal {
 
         match event {
             ////////// Basic movement keys
-            key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
+            event!(Char('h' | 'H') | Left) | shift!(Left) => {
                 handle.edit_all(pa, |mut c| {
-                    let set_anchor = event.code == Char('H') || event.modifiers == Mod::SHIFT;
+                    let set_anchor = event.code == Char('H') || event.modifiers == KeyMod::SHIFT;
                     set_anchor_if_needed(set_anchor, &mut c);
                     c.move_hor(-1);
                 });
                 self.sel_type = SelType::Normal;
             }
-            key!(Down) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.modifiers.contains(Mod::SHIFT), &mut c);
+            event!(Down) => handle.edit_all(pa, |mut c| {
+                set_anchor_if_needed(event.modifiers.contains(KeyMod::SHIFT), &mut c);
                 c.move_ver_wrapped(1);
             }),
-            key!(Up) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.modifiers.contains(Mod::SHIFT), &mut c);
+            event!(Up) => handle.edit_all(pa, |mut c| {
+                set_anchor_if_needed(event.modifiers.contains(KeyMod::SHIFT), &mut c);
                 c.move_ver_wrapped(-1);
             }),
-            key!(Down, Mod::ALT) => handle.scroll_ver(pa, 1),
-            key!(Up, Mod::ALT) => handle.scroll_ver(pa, -1),
-            key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
+            alt!(Down) => handle.scroll_ver(pa, 1),
+            alt!(Up) => handle.scroll_ver(pa, -1),
+            event!(Char('l' | 'L') | Right) | shift!(Right) => {
                 handle.edit_all(pa, |mut c| {
-                    let set_anchor = event.code == Char('L') || event.modifiers == Mod::SHIFT;
+                    let set_anchor = event.code == Char('L') || event.modifiers == KeyMod::SHIFT;
                     set_anchor_if_needed(set_anchor, &mut c);
                     c.move_hor(1);
                 });
                 self.sel_type = SelType::Normal;
             }
-            key!(Char('j' | 'J')) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.code == Char('J'), &mut c);
+            event!(char @ ('j' | 'J')) => handle.edit_all(pa, |mut c| {
+                set_anchor_if_needed(char == 'J', &mut c);
                 c.move_ver(1);
                 let v_caret = c.v_caret();
                 if c.char() == '\n'
@@ -144,8 +144,8 @@ impl Mode for Normal {
                     });
                 }
             }),
-            key!(Char('k' | 'K')) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.code == Char('K'), &mut c);
+            event!(char @ ('k' | 'K')) => handle.edit_all(pa, |mut c| {
+                set_anchor_if_needed(char == 'K', &mut c);
                 c.move_ver(-1);
                 let v_caret = c.v_caret();
                 if c.char() == '\n'
@@ -162,8 +162,8 @@ impl Mode for Normal {
             }),
 
             ////////// Object selection keys
-            key!(Char('w'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
-                let alt_word = event.modifiers.contains(Mod::ALT);
+            event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
+                let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
                     if Category::of(c0, wc) == Category::of(c1, wc) {
                         c.move_to(p0);
@@ -172,15 +172,15 @@ impl Mode for Normal {
                     }
 
                     let points = c.search_fwd(word_and_space(alt_word, wc), None).next();
-                    if let Some([_, p1]) = points {
+                    if let Some(range) = points {
                         c.set_anchor();
-                        c.move_to(p1);
+                        c.move_to(range.end);
                         c.move_hor(-1);
                     }
                 };
             }),
-            key!(Char('e'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
-                let alt_word = event.modifiers.contains(Mod::ALT);
+            event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
+                let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
                     if Category::of(c0, wc) == Category::of(c1, wc) {
                         c.move_to(p0);
@@ -189,15 +189,15 @@ impl Mode for Normal {
                     }
 
                     let points = c.search_fwd(space_and_word(alt_word, wc), None).next();
-                    if let Some([_, p1]) = points {
+                    if let Some(range) = points {
                         c.set_anchor();
-                        c.move_to(p1);
+                        c.move_to(range.end);
                         c.move_hor(-1);
                     }
                 };
             }),
-            key!(Char('b'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
-                let alt_word = event.modifiers.contains(Mod::ALT);
+            event!('b') | alt!('b') => handle.edit_all(pa, |mut c| {
+                let alt_word = event.modifiers.contains(KeyMod::ALT);
                 let init = {
                     let iter = [(c.caret(), c.char())].into_iter().chain(c.chars_rev());
                     no_nl_windows(iter).next()
@@ -208,142 +208,142 @@ impl Mode for Normal {
                         c.move_hor(1);
                     }
                     let points = c.search_rev(word_and_space(alt_word, wc), None).next();
-                    if let Some([p0, p1]) = points {
-                        c.move_to(p0);
+                    if let Some(range) = points {
+                        c.move_to(range.start);
                         c.set_anchor();
-                        c.move_to(p1);
+                        c.move_to(range.end);
                         c.move_hor(-1);
                         c.swap_ends();
                     };
                 };
             }),
 
-            key!(Char('W'), Mod::ALT | Mod::NONE) => handle.edit_all(pa, |mut c| {
-                let alt_word = event.modifiers.contains(Mod::ALT);
+            event!('W') | alt!('w') => handle.edit_all(pa, |mut c| {
+                let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some([_, p1]) = { c.search_fwd(word_and_space(alt_word, wc), None).next() } {
-                    c.move_to(p1);
+                if let Some(range) = { c.search_fwd(word_and_space(alt_word, wc), None).next() } {
+                    c.move_to(range.end);
                     c.move_hor(-1);
                 }
             }),
-            key!(Char('E'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
-                let alt_word = event.modifiers.contains(Mod::ALT);
+            event!('E') | alt!('E') => handle.edit_all(pa, |mut c| {
+                let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some([_, p1]) = { c.search_fwd(space_and_word(alt_word, wc), None).next() } {
-                    c.move_to(p1);
+                if let Some(range) = { c.search_fwd(space_and_word(alt_word, wc), None).next() } {
+                    c.move_to(range.end);
                     c.move_hor(-1);
                 }
             }),
-            key!(Char('B'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
-                let alt_word = event.modifiers.contains(Mod::ALT);
+            event!('B') | alt!('B') => handle.edit_all(pa, |mut c| {
+                let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
-                if let Some([p0, _]) = { c.search_rev(word_and_space(alt_word, wc), None).next() } {
-                    c.move_to(p0);
+                if let Some(range) = { c.search_rev(word_and_space(alt_word, wc), None).next() } {
+                    c.move_to(range.start);
                 }
             }),
 
-            key!(Char('x')) => handle.edit_all(pa, |mut c| {
+            event!('x') => handle.edit_all(pa, |mut c| {
                 self.sel_type = SelType::ToEndOfLine;
                 set_anchor_if_needed(true, &mut c);
                 c.set_caret_on_start();
-                let p0 = c.search_rev("\n", None).next().map(|[_, p0]| p0);
+                let p0 = c.search_rev("\n", None).next().map(|range| range.start);
                 c.move_to(p0.unwrap_or_default());
                 c.swap_ends();
 
-                let p1 = c.search_fwd("\n", None).next().map(|[p1, _]| p1);
+                let p1 = c.search_fwd("\n", None).next().map(|range| range.end);
                 c.move_to(p1.unwrap_or(c.last_point()));
                 c.set_desired_vcol(usize::MAX);
             }),
-            key!(Char('f' | 'F' | 't' | 'T'), Mod::NONE | Mod::ALT) => {
+            event!(char @ ('f' | 'F' | 't' | 'T')) | alt!(char @ ('f' | 'F' | 't' | 'T')) => {
                 let mf = event.modifiers;
-                let sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
+                let sel_type = match (mf.contains(KeyMod::SHIFT), mf.contains(KeyMod::ALT)) {
                     (true, true) => SelType::ExtendRev,
                     (true, false) => SelType::Extend,
                     (false, true) => SelType::Reverse,
                     (false, false) => SelType::Normal,
                 };
 
-                mode::set(if let Char('f' | 'F') = event.code {
+                mode::set(if let 'f' | 'F' = char {
                     OneKey::Find(sel_type, self.f_and_t_set_search)
                 } else {
                     OneKey::Until(sel_type, self.f_and_t_set_search)
                 });
             }
-            key!(Char('l' | 'L'), Mod::ALT) | key!(End) => handle.edit_all(pa, |mut c| {
+            alt!('l' | 'L') | event!(End) => handle.edit_all(pa, |mut c| {
                 if event.code == Char('l') {
                     c.unset_anchor();
                 }
                 select_to_end_of_line(true, c);
                 self.sel_type = SelType::BeforeEndOfLine;
             }),
-            key!(Char('h' | 'H'), Mod::ALT) | key!(Home) => handle.edit_all(pa, |mut c| {
+            alt!('h' | 'H') | event!(Home) => handle.edit_all(pa, |mut c| {
                 if event.code == Char('h') {
                     c.unset_anchor();
                 }
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(-(c.v_caret().char_col() as i32));
             }),
-            key!(Char('a'), Mod::ALT) => mode::set(OneKey::Around(self.brackets)),
-            key!(Char('i'), Mod::ALT) => mode::set(OneKey::Inside(self.brackets)),
-            key!(Char('%')) => handle.edit_main(pa, |mut c| {
+            alt!('a') => mode::set(OneKey::Around(self.brackets)),
+            alt!('i') => mode::set(OneKey::Inside(self.brackets)),
+            event!('%') => handle.edit_main(pa, |mut c| {
                 c.move_to_start();
                 c.set_anchor();
                 c.move_to(c.last_point())
             }),
-            key!(Char('m' | 'M')) => {
+            event!(char @ ('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(event, c.opts().word_chars, self.brackets).unwrap();
-                    let [p2, p3] = object.find_ahead(c, 0, None)?;
+                    let e_range = object.find_ahead(c, 0, None)?;
                     let prev_caret = c.caret();
-                    set_anchor_if_needed(event.code == Char('M'), c);
-                    c.move_to(p3);
+                    set_anchor_if_needed(char == 'M', c);
+                    c.move_to(e_range.end);
                     c.move_hor(-1);
 
-                    let bound = c.strs(p2..p3).unwrap().to_string();
+                    let bound = c.strs(e_range.clone()).unwrap().to_string();
                     let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
-                    let [p0, _] = Object::Bounds(s_b, e_b).find_behind(c, 1, None)?;
-                    if event.code == Char('m') {
+                    let s_range = Object::Bounds(s_b, e_b).find_behind(c, 1, None)?;
+                    if char == 'm' {
                         c.set_anchor();
                     }
-                    c.move_to(p0);
-                    if prev_caret.char() != p3.char() - 1 {
-                        if event.code == Char('m') {
+                    c.move_to(s_range.start);
+                    if prev_caret.char() != e_range.end.char() - 1 {
+                        if char == 'm' {
                             c.set_anchor();
                         }
-                        c.move_to(p3);
+                        c.move_to(e_range.end);
                         c.move_hor(-1);
                     }
 
                     Some(())
                 })
             }
-            key!(Char('m' | 'M'), Mod::ALT) => {
+            alt!(char @ ('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(event, c.opts().word_chars, self.brackets).unwrap();
-                    let [p0, p1] = object.find_behind(c, 0, None)?;
+                    let s_range = object.find_behind(c, 0, None)?;
                     let prev_caret = c.caret();
-                    set_anchor_if_needed(event.code == Char('M'), c);
-                    c.move_to(p0);
+                    set_anchor_if_needed(char == 'M', c);
+                    c.move_to(s_range.start);
 
-                    let bound = c.strs(p0..p1).unwrap().to_string();
+                    let bound = c.strs(s_range.clone()).unwrap().to_string();
                     let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
-                    let [_, p3] = Object::Bounds(s_b, e_b).find_ahead(c, 1, None)?;
-                    if event.code == Char('m') {
+                    let e_range = Object::Bounds(s_b, e_b).find_ahead(c, 1, None)?;
+                    if char == 'm' {
                         c.set_anchor();
                     }
-                    c.move_to(p3);
+                    c.move_to(e_range.end);
                     c.move_hor(-1);
-                    if prev_caret != p0 {
-                        if event.code == Char('m') {
+                    if prev_caret != s_range.start {
+                        if char == 'm' {
                             c.set_anchor();
                         }
-                        c.move_to(p0);
+                        c.move_to(s_range.start);
                     }
 
                     Some(())
@@ -351,13 +351,13 @@ impl Mode for Normal {
             }
 
             ////////// Insertion mode keys
-            key!(Char('i')) => {
+            event!('i') => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_start();
                 });
                 mode::set(Insert::new());
             }
-            key!(Char('I')) => {
+            event!('I') => {
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
                     if self.indent_on_capital_i {
@@ -368,14 +368,14 @@ impl Mode for Normal {
                 });
                 mode::set(Insert::new());
             }
-            key!(Char('a')) => {
+            event!('a') => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_end();
                     c.move_hor(1);
                 });
                 mode::set(Insert::new());
             }
-            key!(Char('A')) => {
+            event!('A') => {
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
                     let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
@@ -383,58 +383,58 @@ impl Mode for Normal {
                 });
                 mode::set(Insert::new());
             }
-            key!(Char('o'), Mod::NONE | Mod::ALT) => {
+            event!('o') | alt!('o') => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_end();
                     let caret = c.caret();
                     let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
                     c.move_to(p);
                     c.append("\n");
-                    if event.modifiers == Mod::NONE {
+                    if event.modifiers == KeyMod::NONE {
                         c.move_hor(1);
                         c.ts_reindent();
                     } else {
                         c.move_to(caret);
                     }
                 });
-                if event.modifiers == Mod::NONE {
+                if event.modifiers == KeyMod::NONE {
                     mode::set(Insert::new());
                 }
             }
-            key!(Char('O'), Mod::NONE | Mod::ALT) => {
+            event!('O') | alt!('O') => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_start();
                     let char_col = c.v_caret().char_col();
                     c.move_hor(-(char_col as i32));
                     c.insert("\n");
-                    if event.modifiers == Mod::NONE {
+                    if event.modifiers == KeyMod::NONE {
                         c.ts_reindent();
                     } else {
                         c.move_hor(char_col as i32 + 1);
                     }
                 });
-                if event.modifiers == Mod::NONE {
+                if event.modifiers == KeyMod::NONE {
                     mode::set(Insert::new());
                 }
             }
 
             ////////// Selection alteration keys
-            key!(Char('r')) => mode::set(OneKey::Replace),
-            key!(Char('`')) => handle.edit_all(pa, |mut c| {
+            event!('r') => mode::set(OneKey::Replace),
+            event!('`') => handle.edit_all(pa, |mut c| {
                 let lower = c
                     .selection()
                     .flat_map(str::chars)
                     .flat_map(char::to_lowercase);
                 c.replace(lower.collect::<String>());
             }),
-            key!(Char('~')) => handle.edit_all(pa, |mut c| {
+            event!('~') => handle.edit_all(pa, |mut c| {
                 let upper = c
                     .selection()
                     .flat_map(str::chars)
                     .flat_map(char::to_uppercase);
                 c.replace(upper.collect::<String>());
             }),
-            key!(Char('`'), Mod::ALT) => handle.edit_all(pa, |mut c| {
+            alt!('`') => handle.edit_all(pa, |mut c| {
                 let inverted = c.selection().flat_map(str::chars).map(|c| {
                     if c.is_uppercase() {
                         c.to_lowercase().collect::<String>()
@@ -446,16 +446,16 @@ impl Mode for Normal {
             }),
 
             ////////// Advanced selection manipulation
-            key!(Char(';'), Mod::ALT) => handle.edit_all(pa, |mut c| c.swap_ends()),
-            key!(Char(';')) => handle.edit_all(pa, |mut c| {
+            alt!(';') => handle.edit_all(pa, |mut c| c.swap_ends()),
+            event!(';') => handle.edit_all(pa, |mut c| {
                 c.unset_anchor();
             }),
-            key!(Char(':'), Mod::ALT) => handle.edit_all(pa, |mut c| {
+            alt!(':') => handle.edit_all(pa, |mut c| {
                 c.set_caret_on_end();
             }),
-            key!(Char(')')) => handle.selections_mut(pa).rotate_main(1),
-            key!(Char('(')) => handle.selections_mut(pa).rotate_main(-1),
-            key!(Char(')'), Mod::ALT) => {
+            event!(')') => handle.selections_mut(pa).rotate_main(1),
+            event!('(') => handle.selections_mut(pa).rotate_main(-1),
+            alt!(')') => {
                 let last_sel = handle.edit_iter(pa, |mut iter| {
                     let mut last_sel = iter.next().map(|c| c.selection().to_string());
 
@@ -470,7 +470,7 @@ impl Mode for Normal {
 
                 handle.edit_nth(pa, 0, |mut c| c.replace(last_sel.unwrap()));
             }
-            key!(Char('('), Mod::ALT) => {
+            alt!('(') => {
                 let mut selections = Vec::<String>::new();
                 handle.edit_all(pa, |c| selections.push(c.selection().collect()));
                 let mut s_iter = selections.into_iter().cycle();
@@ -482,7 +482,7 @@ impl Mode for Normal {
                     }
                 });
             }
-            key!(Char('_'), Mod::ALT) => {
+            alt!('_') => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_end();
                     c.move_hor(1);
@@ -493,26 +493,26 @@ impl Mode for Normal {
                     c.move_hor(-1);
                 });
             }
-            key!(Char('s'), Mod::ALT) => handle.edit_all(pa, |mut c| {
+            alt!('s') => handle.edit_all(pa, |mut c| {
                 c.set_caret_on_start();
                 let Some(end) = c.anchor() else {
                     return;
                 };
-                let lines: Vec<[Point; 2]> = c.search_fwd("[^\n]*\n", Some(end)).collect();
-                let mut last_p1 = c.caret();
-                for [p0, p1] in lines {
+                let lines: Vec<_> = c.search_fwd("[^\n]*\n", Some(end)).collect();
+                let mut last_end = c.caret();
+                for range in lines {
                     let mut e_copy = c.copy();
-                    e_copy.move_to(p0);
+                    e_copy.move_to(range.start);
                     e_copy.set_anchor();
-                    e_copy.move_to(p1);
+                    e_copy.move_to(range.end);
                     e_copy.move_hor(-1);
 
-                    last_p1 = p1;
+                    last_end = range.end;
                 }
-                c.move_to(last_p1);
+                c.move_to(last_end);
                 c.swap_ends();
             }),
-            key!(Char('S'), Mod::ALT) => handle.edit_all(pa, |mut c| {
+            alt!('S') => handle.edit_all(pa, |mut c| {
                 if c.anchor().is_some() {
                     let mut e_copy = c.copy();
                     e_copy.swap_ends();
@@ -522,7 +522,7 @@ impl Mode for Normal {
             }),
 
             ////////// Line alteration keys
-            key!(Char('>')) => {
+            event!('>') => {
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     let range = c.range_excl();
@@ -536,7 +536,7 @@ impl Mode for Normal {
                         " ".repeat(c.opts().tabstop_spaces_at(0) as usize)
                     };
 
-                    for line in range[0].line()..=range[1].line() {
+                    for line in range.start.line()..=range.end.line() {
                         if processed_lines.contains(&line) {
                             continue;
                         }
@@ -551,10 +551,10 @@ impl Mode for Normal {
                     }
                     c.move_to_coords(old_caret.line(), old_caret.char_col() + cols);
 
-                    processed_lines.extend(range[0].line()..=range[1].line());
+                    processed_lines.extend(range.start.line()..=range.end.line());
                 });
             }
-            key!(Char('<')) => {
+            event!('<') => {
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     let range = c.range_excl();
@@ -566,25 +566,29 @@ impl Mode for Normal {
 
                     let find = format!("^(\t| {{1,{}}})", c.opts().tabstop_spaces_at(0) as usize);
 
-                    for line in (range[0].line()..=range[1].line()).rev() {
+                    for line in (range.start.line()..=range.end.line()).rev() {
                         if processed_lines.contains(&line) {
                             continue;
                         }
-                        let [p0, p1] = c.text().points_of_line(line);
-                        c.move_to(p0);
-                        let Some([p0, p1]) = c.search_fwd(&find, Some(p1)).next() else {
+                        let s_range = c.text().line_range(line);
+                        c.move_to(s_range.start);
+                        let Some(s_range) = c.search_fwd(&find, Some(s_range.end)).next() else {
                             continue;
                         };
 
-                        c.move_to(p0..p1);
+                        c.move_to(s_range.clone());
                         c.replace("");
                         if line == caret.0 {
-                            caret.1 = caret.1.saturating_sub(p1.char() - p0.char());
+                            caret.1 = caret
+                                .1
+                                .saturating_sub(s_range.end.char() - s_range.start.char());
                         }
                         if let Some(anchor) = &mut anchor
                             && line == anchor.0
                         {
-                            anchor.1 = anchor.1.saturating_sub(p1.char() - p0.char());
+                            anchor.1 = anchor
+                                .1
+                                .saturating_sub(s_range.end.char() - s_range.start.char());
                         }
                     }
 
@@ -596,42 +600,44 @@ impl Mode for Normal {
                     }
                     c.move_to_coords(caret.0, caret.1);
 
-                    processed_lines.extend(range[0].line()..=range[1].line());
+                    processed_lines.extend(range.start.line()..=range.end.line());
                 });
             }
-            key!(Char('j'), Mod::ALT) => {
+            alt!('j') => {
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
-                    let [start, end] = c.range();
+                    let c_range = c.range();
 
-                    if start.line() == end.line() {
-                        if !processed_lines.contains(&start.line())
-                            && let Some([p0, p1]) = { c.search_fwd("\n", None).next() }
+                    if c_range.start.line() == c_range.end.line() {
+                        if !processed_lines.contains(&c_range.start.line())
+                            && let Some(range) = { c.search_fwd("\n", None).next() }
                         {
-                            c.move_to(p0..p1);
+                            c.move_to(range);
                             c.replace("");
                             c.reset();
-                            processed_lines.push(start.line());
+                            processed_lines.push(c_range.start.line());
                         }
                     } else {
                         let caret_was_on_end = c.set_caret_on_start();
-                        let nls: Vec<[Point; 2]> = c.search_fwd("\n", Some(end)).collect();
+                        let nls: Vec<_> = c.search_fwd("\n", Some(c_range.end)).collect();
 
                         let mut lines_joined = 0;
-                        for [p0, p1] in nls.into_iter().rev() {
-                            if processed_lines.contains(&p0.line()) {
+                        for range in nls.into_iter().rev() {
+                            if processed_lines.contains(&range.start.line()) {
                                 continue;
                             }
 
-                            c.move_to(p0..p1);
+                            c.move_to(range);
                             c.replace("");
                             lines_joined += 1;
                         }
 
                         c.unset_anchor();
-                        c.move_to(start);
+                        c.move_to(c_range.start);
                         c.set_anchor();
-                        c.move_hor((end.char() - (start.char() + lines_joined)) as i32);
+                        c.move_hor(
+                            (c_range.end.char() - (c_range.start.char() + lines_joined)) as i32,
+                        );
                         if !caret_was_on_end {
                             c.swap_ends();
                         }
@@ -640,14 +646,14 @@ impl Mode for Normal {
             }
 
             ////////// Clipboard keys
-            key!(Char('y')) => duat::mode::copy_selections(pa, &handle),
-            key!(Char('d' | 'c'), Mod::NONE | Mod::ALT) => {
-                if event.modifiers == Mod::NONE {
+            event!('y') => duat::mode::copy_selections(pa, &handle),
+            event!(char @ ('d' | 'c')) => {
+                if event.modifiers == KeyMod::NONE {
                     duat::mode::copy_selections(pa, &handle);
                 }
                 handle.edit_all(pa, |mut c| {
                     let prev_char = c.chars_rev().next();
-                    if c.range()[1] == c.len()
+                    if c.range().end == c.len()
                         && c.selection() == "\n"
                         && let Some((_, '\n')) = prev_char
                     {
@@ -659,11 +665,11 @@ impl Mode for Normal {
                     c.replace("");
                     c.unset_anchor();
                 });
-                if event.code == Char('c') {
+                if char == 'c' {
                     mode::set(Insert::new());
                 }
             }
-            key!(Char('p' | 'P')) => {
+            event!(char @ ('p' | 'P')) => {
                 let pastes = duat::mode::paste_strings();
                 if pastes.is_empty() {
                     return;
@@ -675,7 +681,7 @@ impl Mode for Normal {
                     let anchor_is_start = c.anchor_is_start();
 
                     // If it ends in a new line, we gotta move to the start of the line.
-                    let appended = if event.code == Char('p') {
+                    let appended = if char == 'p' {
                         c.set_caret_on_end();
                         if paste.ends_with('\n') {
                             let (p, _) =
@@ -708,7 +714,7 @@ impl Mode for Normal {
                     }
                 });
             }
-            key!(Char('R')) => {
+            event!('R') => {
                 let pastes = duat::mode::paste_strings();
                 if !pastes.is_empty() {
                     let mut p_iter = pastes.iter().cycle();
@@ -717,9 +723,9 @@ impl Mode for Normal {
             }
 
             ////////// Cursor creation and destruction
-            key!(Char(',')) => handle.selections_mut(pa).remove_extras(),
-            key!(Char('C'), Mod::NONE | Mod::ALT) => {
-                let (nth, mult) = if event.modifiers == Mod::NONE {
+            event!(',') => handle.selections_mut(pa).remove_extras(),
+            event!('C') | alt!('C') => {
+                let (nth, mult) = if event.modifiers == KeyMod::NONE {
                     (handle.read(pa).selections().len() - 1, 1)
                 } else {
                     (0, -1)
@@ -747,33 +753,33 @@ impl Mode for Normal {
             }
 
             ////////// Search keys
-            key!(Char('/')) => mode::set(IncSearch::new(SearchFwd)),
-            key!(Char('/'), Mod::ALT) => mode::set(IncSearch::new(SearchRev)),
-            key!(Char('?')) => mode::set(IncSearch::new(ExtendFwd)),
-            key!(Char('?'), Mod::ALT) => mode::set(IncSearch::new(ExtendRev)),
-            key!(Char('s')) => mode::set(IncSearch::new(Select)),
-            key!(Char('S')) => mode::set(IncSearch::new(Split)),
-            key!(Char('n' | 'N'), Mod::NONE | Mod::ALT) => {
+            event!('/') => mode::set(IncSearch::new(SearchFwd)),
+            alt!('/') => mode::set(IncSearch::new(SearchRev)),
+            event!('?') => mode::set(IncSearch::new(ExtendFwd)),
+            alt!('?') => mode::set(IncSearch::new(ExtendRev)),
+            event!('s') => mode::set(IncSearch::new(Select)),
+            event!('S') => mode::set(IncSearch::new(Split)),
+            event!(char @ ('n' | 'N')) | alt!(char @ ('n' | 'N')) => {
                 let search = SEARCH.lock().unwrap();
                 if search.is_empty() {
                     context::error!("No search pattern set");
                     return;
                 }
                 handle.edit_main(pa, |mut c| {
-                    if event.code == Char('N') {
+                    if char == 'N' {
                         c.copy();
                     }
                     let caret = c.caret();
-                    let next = if event.modifiers == Mod::ALT {
-                        c.search_rev(&*search, None).find(|[p, _]| *p != caret)
+                    let next = if event.modifiers == KeyMod::ALT {
+                        c.search_rev(&*search, None).find(|r| r.start != caret)
                     } else {
-                        c.search_fwd(&*search, None).find(|[p, _]| *p != caret)
+                        c.search_fwd(&*search, None).find(|r| r.start != caret)
                     };
-                    if let Some([p0, p1]) = next {
-                        c.move_to(p0);
-                        if p1 > p0 {
+                    if let Some(range) = next {
+                        c.move_to(range.start);
+                        if !range.is_empty() {
                             c.set_anchor();
-                            c.move_to(p1);
+                            c.move_to(range.end);
                             c.move_hor(-1);
                         }
                     }
@@ -781,8 +787,8 @@ impl Mode for Normal {
             }
 
             ////////// Jumping
-            key!(Char('u' | 'U'), Mod::ALT) => {
-                let jmp = if event.code == Char('u') { -rec } else { rec };
+            alt!(char @ ('u' | 'U')) => {
+                let jmp = if char == 'u' { -rec } else { rec };
                 if let Some(jump) = handle.write(pa).jump_selections_by(jmp) {
                     match jump {
                         jump_list::Jump::Single(selection) => {
@@ -816,15 +822,15 @@ impl Mode for Normal {
             }
 
             ////////// Other mode changing keys
-            key!(Char(':')) => mode::set(RunCommands::new()),
-            key!(Char('|')) => mode::set(PipeSelections::new()),
-            key!(Char('G')) => mode::set(OneKey::GoTo(SelType::Extend)),
-            key!(Char('g')) => mode::set(OneKey::GoTo(SelType::Normal)),
-            key!(Char(' ')) => mode::set(mode::User),
+            event!(':') => mode::set(RunCommands::new()),
+            event!('|') => mode::set(PipeSelections::new()),
+            event!('G') => mode::set(OneKey::GoTo(SelType::Extend)),
+            event!('g') => mode::set(OneKey::GoTo(SelType::Normal)),
+            event!(' ') => mode::set(mode::User),
 
             ////////// History manipulation
-            key!(Char('u')) => handle.text_mut(pa).undo(),
-            key!(Char('U')) => handle.text_mut(pa).redo(),
+            event!('u') => handle.text_mut(pa).undo(),
+            event!('U') => handle.text_mut(pa).redo(),
             _ => {}
         }
     }
