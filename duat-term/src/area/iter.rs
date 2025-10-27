@@ -15,6 +15,10 @@ pub fn print_iter(
     cap: u32,
     opts: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+    if cap == 0 {
+        panic!("You aren't supposed to use print iterators on hidden areas");
+    }
+    
     let start_points = text.visual_line_start(points, 0);
     let max_indent = if opts.indent_wraps { cap } else { 0 };
 
@@ -72,6 +76,10 @@ pub fn rev_print_iter(
     cap: u32,
     opts: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+    if cap == 0 {
+        panic!("You aren't supposed to use print iterators on hidden areas");
+    }
+    
     let mut iter = text.iter_rev(points);
 
     let mut returns = Vec::new();

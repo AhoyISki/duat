@@ -587,7 +587,7 @@ impl Layout {
             let (SpawnInfo { id, orientation, cons }, rect) = &self.spawned[i];
             let len = recurse_length(rect, cons, orientation.axis());
             self.printer.set_spawn_len(*id, len.map(|len| len as f64));
-            self.printer.update(false, false);
+            self.printer.update(false, true);
 
             true
         } else {

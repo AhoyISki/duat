@@ -45,7 +45,7 @@ use crate::{
     hook::{self, FocusedOn, UnfocusedFrom},
     opts::PrintOpts,
     text::Text,
-    ui::{RwArea, PrintInfo},
+    ui::{PrintInfo, RwArea},
 };
 
 /// An area where [`Text`] will be printed to the screen

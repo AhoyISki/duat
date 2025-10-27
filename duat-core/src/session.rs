@@ -95,6 +95,8 @@ impl SessionCfg {
             let ReloadedBuffer { mut buffer, is_active } = rel_files.next().unwrap();
             buffer.opts = *FILE_CFG.get().unwrap();
 
+            context::debug!("{is_active}");
+
             if let Some(layout) = layout.take() {
                 Windows::initialize(pa, buffer, layout, ui);
             } else {

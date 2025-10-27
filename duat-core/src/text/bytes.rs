@@ -445,7 +445,11 @@ impl Bytes {
     /// [`len`]: Self::len
     pub fn last_point(&self) -> Point {
         let strs = self.strs_inner(..).unwrap();
-        let char = strs.into_iter().flat_map(str::chars).next_back().unwrap();
+        let char = strs
+            .into_iter()
+            .flat_map(str::chars)
+            .next_back()
+            .unwrap_or_else(|| panic!("{self:#?}"));
         self.len().rev(char)
     }
 

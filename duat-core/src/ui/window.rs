@@ -80,10 +80,7 @@ impl Windows {
             pa,
             WidgetCreated(node.handle().try_downcast::<Buffer>().unwrap()),
         );
-        hook::trigger(
-            pa,
-            WindowCreated(context::windows().get(pa, win).unwrap().clone()),
-        );
+        hook::trigger(pa, WindowCreated(self.inner.read(pa).list[win].clone()));
 
         node
     }
@@ -505,11 +502,13 @@ impl Windows {
         let (win, _) = self.handle_entry(pa, node.handle())?;
         let inner = self.inner.write(pa);
 
-        if let Some(handle) = node.try_downcast() {
+        if let Some(handle) = node.try_downcast::<Buffer>() {
+            context::debug!("{}", handle.read(internal_pass).name());
             *inner.cur_buffer.write(internal_pass) = handle;
         }
         *inner.cur_widget.write(internal_pass) = node.clone();
         inner.cur_win = win;
+        self.ui.switch_window(win);
 
         Ok(())
     }

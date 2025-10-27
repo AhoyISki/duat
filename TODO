@@ -50,6 +50,9 @@ FOR NEXT UPDATE:
 [x] Finalize the Windows API for more public use.
 
 KNOWN BUGS:
+[ ] Print iteration sometimes loops forever.
+[x] Spawned Areas not resizing until moving up or down.
+[ ] Window not switching properly.
 [ ] Perfect print iterators.
   [ ] Perfect words iterator.
 [ ] track_area not actually tracking correctly.

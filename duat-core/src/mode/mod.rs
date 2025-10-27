@@ -29,12 +29,14 @@ pub type KeyMod = crossterm::event::KeyModifiers;
 
 pub use self::{
     cursor::{Cursor, Cursors, PointOrPoints, Selection, Selections, VPoint},
+    patterns::*,
     remap::*,
     switch::*,
 };
-use crate::{context::Handle, data::Pass, buffer::Buffer, session::DuatEvent, ui::Widget};
+use crate::{buffer::Buffer, context::Handle, data::Pass, session::DuatEvent, ui::Widget};
 
 mod cursor;
+mod patterns;
 mod remap;
 mod switch;
 

@@ -33,6 +33,7 @@ pub struct Completions {
     id: CompletionListId,
     text: Text,
     list: Vec<usize>,
+    entry_on_top: usize,
     selected_entry: usize,
 }
 
@@ -61,7 +62,7 @@ impl Completions {
                 .search_rev(r"\w*\z", ..main.caret())
                 .unwrap()
                 .next()
-                .unwrap();
+                .unwrap_or(main.caret()..main.caret());
             let target = text.strs(range.clone()).unwrap().to_string();
             (target, range)
         };
@@ -84,6 +85,7 @@ impl Completions {
             text: Text::new(),
             list,
             selected_entry: 0,
+            entry_on_top: 0,
         };
 
         let specs = SpawnSpecs {
@@ -112,8 +114,15 @@ impl Completions {
             return;
         };
 
+        let height = handle.area().height(pa) as usize;
         let comp = handle.write(pa);
         comp.selected_entry = (comp.selected_entry + 1) % comp.list.len();
+        if height > 0 {
+            comp.entry_on_top = comp.entry_on_top.clamp(
+                comp.selected_entry.saturating_sub(height - 1),
+                comp.selected_entry,
+            )
+        }
     }
 
     /// Goes to the next entry on the list.
@@ -126,12 +135,19 @@ impl Completions {
             return;
         };
 
+        let height = handle.area().height(pa) as usize;
         let comp = handle.write(pa);
         comp.selected_entry = if comp.selected_entry == 0 {
             comp.list.len() - 1
         } else {
             comp.selected_entry - 1
         };
+        if height > 0 {
+            comp.entry_on_top = comp.entry_on_top.clamp(
+                comp.selected_entry.saturating_sub(height - 1),
+                comp.selected_entry,
+            )
+        }
     }
 
     /// Clears all entries of a [`CompletionListId`]
@@ -169,15 +185,17 @@ impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let lists = COMPLETION_LISTS.lock().unwrap();
 
-        let comp = handle.write(pa);
+        let (comp, area) = handle.write_with_area(pa);
+        area.set_height(comp.list.len() as f32).unwrap();
+
         let mut builder = Text::builder();
-        for (i, index) in comp.list.iter().enumerate() {
+        for (i, index) in comp.list.iter().enumerate().skip(comp.entry_on_top) {
             let line = &lists[comp.id.0][*index];
 
             if i == comp.selected_entry {
                 builder.push(txt!("[selected.Completions]{line}{Spacer}\n"));
             } else {
-                builder.push(index);
+                builder.push(line);
                 builder.push('\n');
             }
         }
