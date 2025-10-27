@@ -392,7 +392,9 @@
 ///
 /// [`StatusLine`]: duat_base::widgets::StatusLine
 pub use duat_base::state;
-pub use duat_core::{self, buffer, clipboard, cmd, context, data, text, ui, utils};
+pub use duat_core::{
+    Lender, Plugin, Plugins, buffer, clipboard, cmd, context, data, text, ui, utils,
+};
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
@@ -627,13 +629,13 @@ pub macro setup_duat($setup:expr) {
 pub mod prelude {
     use std::{any::TypeId, process::Output};
 
-    pub use duat_core::{Lender, Plugin, Plugins};
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
-    pub use duat_term::{self, VertRule};
+    pub use duat_term::{self as term, VertRule};
 
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
+        Lender, Plugin, Plugins,
         buffer::{Buffer, BufferTracker, Parser},
         clipboard, cmd,
         context::{self, Handle},
@@ -646,7 +648,9 @@ pub mod prelude {
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
             WindowCreated,
         },
-        mode::{self, KeyCode, KeyEvent, KeyMod, Mode, Pager, Prompt, User, alias, key, map},
+        mode::{
+            self, KeyCode, KeyEvent, Mode, Pager, Prompt, User, alias, alt, ctrl, event, map, shift,
+        },
         opts::{self, ScrollOff, word_chars},
         setup_duat,
         state::*,

@@ -1,7 +1,10 @@
 use std::sync::Mutex;
 
 use duat_base::modes::{IncSearch, RunCommands, SearchFwd};
-use duat_core::Lender;
+use duat_core::{
+    Lender,
+    mode::{ctrl, shift},
+};
 #[cfg(feature = "treesitter")]
 use duat_treesitter::TsCursor;
 
@@ -12,7 +15,7 @@ use crate::{
         mode::{
             self,
             KeyCode::{self, *},
-            KeyEvent, KeyMod as Mod, key,
+            KeyEvent, event,
         },
         ui::Widget,
     },
@@ -30,13 +33,13 @@ pub struct Regular;
 impl mode::Mode for Regular {
     type Widget = Buffer;
 
-    fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle<Self::Widget>) {
         static LAST_CODE: Mutex<Option<KeyCode>> = Mutex::new(None);
         let mut last_code = LAST_CODE.lock().unwrap();
 
-        match event {
+        match key_event {
             // Characters
-            key!(Char(char)) => {
+            event!(Char(char)) => {
                 if !matches!(*last_code, Some(Char(_))) || char == ' ' {
                     handle.write(pa).text_mut().new_moment();
                 }
@@ -46,7 +49,7 @@ impl mode::Mode for Regular {
                     c.move_hor(1);
                 })
             }
-            key!(Enter) => {
+            event!(Enter) => {
                 handle.write(pa).text_mut().new_moment();
                 handle.edit_all(pa, |mut c| {
                     #[cfg(not(feature = "treesitter"))]
@@ -65,7 +68,7 @@ impl mode::Mode for Regular {
             }
 
             // Text Removal
-            key!(Backspace) => {
+            event!(Backspace) => {
                 let major_removal = handle.edit_iter(pa, |mut cursors| {
                     cursors.any(|mut c| {
                         c.anchor().is_some()
@@ -82,7 +85,7 @@ impl mode::Mode for Regular {
                     c.unset_anchor();
                 })
             }
-            key!(Delete) => {
+            event!(Delete) => {
                 let major_removal = handle.edit_iter(pa, |mut cursors| {
                     cursors.any(|mut c| {
                         c.set_anchor_if_needed();
@@ -99,44 +102,44 @@ impl mode::Mode for Regular {
             }
 
             // Movement
-            key!(Left) => handle.edit_all(pa, |mut c| {
+            event!(Left) => handle.edit_all(pa, |mut c| {
                 c.unset_anchor();
                 c.move_hor(-1);
             }),
-            key!(Right) => handle.edit_all(pa, |mut c| {
+            event!(Right) => handle.edit_all(pa, |mut c| {
                 c.unset_anchor();
                 c.move_hor(1);
             }),
-            key!(Up) => handle.edit_all(pa, |mut c| {
+            event!(Up) => handle.edit_all(pa, |mut c| {
                 c.unset_anchor();
                 c.move_ver(-1);
             }),
-            key!(Down) => handle.edit_all(pa, |mut c| {
+            event!(Down) => handle.edit_all(pa, |mut c| {
                 c.unset_anchor();
                 c.move_ver(1);
             }),
-            key!(Left, Mod::SHIFT) => handle.edit_all(pa, |mut c| {
+            shift!(Left) => handle.edit_all(pa, |mut c| {
                 c.set_anchor_if_needed();
                 c.move_hor(-1);
             }),
-            key!(Right, Mod::SHIFT) => handle.edit_all(pa, |mut c| {
+            shift!(Right) => handle.edit_all(pa, |mut c| {
                 c.set_anchor_if_needed();
                 c.move_hor(1);
             }),
-            key!(Up, Mod::SHIFT) => handle.edit_all(pa, |mut c| {
+            shift!(Up) => handle.edit_all(pa, |mut c| {
                 c.set_anchor_if_needed();
                 c.move_ver(-1);
             }),
-            key!(Down, Mod::SHIFT) => handle.edit_all(pa, |mut c| {
+            shift!(Down) => handle.edit_all(pa, |mut c| {
                 c.set_anchor_if_needed();
                 c.move_ver(1);
             }),
 
             // Basic commands
-            key!(Char('z'), Mod::CONTROL) => handle.write(pa).text_mut().undo(),
-            key!(Char('y' | 'Z'), Mod::CONTROL) => handle.write(pa).text_mut().redo(),
-            key!(Char('x' | 'c'), Mod::CONTROL) => {
-                if let Char('x') = event.code {
+            ctrl!('z') => handle.write(pa).text_mut().undo(),
+            ctrl!('y' | 'Z') => handle.write(pa).text_mut().redo(),
+            ctrl!('x' | 'c') => {
+                if let Char('x') = key_event.code {
                     handle.write(pa).text_mut().new_moment();
                 }
                 let mut prev = Vec::new();
@@ -150,7 +153,7 @@ impl mode::Mode for Regular {
                 crate::mode::copy_selections(pa, &handle);
                 let mut ranges = prev.into_iter();
                 handle.edit_all(pa, |mut c| {
-                    if event.code == Char('x') {
+                    if key_event.code == Char('x') {
                         c.replace("");
                     } else {
                         let (range, anchor_is_start) = ranges.next().unwrap();
@@ -161,7 +164,7 @@ impl mode::Mode for Regular {
                     }
                 });
             }
-            key!(Char('v'), Mod::CONTROL) => {
+            ctrl!('v') => {
                 let pastes = crate::mode::paste_strings();
                 if !pastes.is_empty() {
                     handle.write(pa).text_mut().new_moment();
@@ -211,6 +214,6 @@ impl mode::Mode for Regular {
             _ => {}
         }
 
-        *last_code = Some(event.code);
+        *last_code = Some(key_event.code);
     }
 }

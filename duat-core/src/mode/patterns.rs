@@ -32,11 +32,12 @@ use crate::mode::KeyMod;
 /// Into this:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, KeyEventKind};
+/// # use duat_core::mode::{KeyCode, KeyEvent, KeyEventKind, KeyMod};
 /// # let key_event: KeyEvent = KeyCode::Char('c').into();
 /// match key_event {
 ///     KeyEvent {
 ///         code: KeyCode::Char('c'),
+///         modifiers: KeyMod::NONE,
 ///         kind: KeyEventKind::Press | KeyEventKind::Repeat,
 ///         ..
 ///     } => {
@@ -44,6 +45,7 @@ use crate::mode::KeyMod;
 ///     }
 ///     KeyEvent {
 ///         code: KeyCode::Backspace | KeyCode::Tab,
+///         modifiers: KeyMod::NONE,
 ///         kind: KeyEventKind::Press | KeyEventKind::Repeat,
 ///         ..
 ///     } => {
@@ -67,15 +69,17 @@ use crate::mode::KeyMod;
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 pub macro event {
-    ($($chars:literal)|+) => {
+    ($($char:ident @)? $($chars:literal)|+) => {
         $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
+            code: $crate::mode::KeyCode::Char($($char @)? $($chars)|+),
+            modifiers: $crate::mode::KeyMod::NONE,
             ..
         }
     },
     ($code:pat) => {
         $crate::mode::KeyEvent {
             code: $code,
+            modifiers: $crate::mode::KeyMod::NONE,
             ..
         }
     }
@@ -154,9 +158,9 @@ pub macro alt {
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
-    ($($chars:literal)|+) => {
+    ($($char:ident @)? $($chars:literal)|+) => {
         $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
+            code: $crate::mode::KeyCode::Char($($char @)? $($chars)|+),
             modifiers: $crate::mode::KeyMod::ALT,
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
@@ -172,8 +176,8 @@ pub macro alt {
     (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@code $($tokens)+)
     },
-    (@code $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($chars)|+)
+    (@code $($char:ident @)? $($chars:literal)|+) => {
+        $crate::mode::KeyCode::Char($($char @)? $($chars)|+)
     },
     (@code $code:pat) => {
         $code
@@ -263,9 +267,9 @@ pub macro ctrl {
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
-    ($($chars:literal)|+) => {
+    ($($char:ident @)? $($chars:literal)|+) => {
         $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
+            code: $crate::mode::KeyCode::Char($($char @)? $($chars)|+),
             modifiers: $crate::mode::KeyMod::CONTROL,
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
@@ -281,8 +285,8 @@ pub macro ctrl {
     (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@code $($tokens)+)
     },
-    (@code $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($chars)|+)
+    (@code $($char:ident @)? $($chars:literal)|+) => {
+        $crate::mode::KeyCode::Char($($char @)? $($chars)|+)
     },
     (@code $code:pat) => {
         $code
@@ -387,9 +391,9 @@ pub macro shift {
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
-    ($($chars:literal)|+) => {
+    ($($char:ident @)? $($chars:literal)|+) => {
         $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
+            code: $crate::mode::KeyCode::Char($($char:ident @)? $($chars)|+),
             modifiers: $crate::mode::KeyMod::SHIFT,
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
@@ -405,8 +409,8 @@ pub macro shift {
     (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@code $($tokens)+)
     },
-    (@code $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($chars)|+)
+    (@code $($char:ident @)? $($chars:literal)|+) => {
+        $crate::mode::KeyCode::Char($($char @)? $($chars)|+)
     },
     (@code $code:pat) => {
         $code
@@ -415,7 +419,7 @@ pub macro shift {
     (@modif [$($list:ident),+] $modif:ident$excl:tt($($tokens:tt)+)) => {
         $modif$excl(@modif [SHIFT, $($list),+] $($tokens)+)
     },
-    (@modif [$($list:ident),+] $char:literal) => {
+    (@modif [$($list:ident),+] $($char:ident @)? $($chars:literal)|+) => {
         $crate::mode::join_modifiers![SHIFT, $($list),+]
     },
     (@modif [$($list:ident),+] $code:pat) => {

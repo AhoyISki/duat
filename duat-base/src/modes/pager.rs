@@ -8,7 +8,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form, hook,
-    mode::{self, KeyEvent, KeyMod, Mode, key},
+    mode::{self, KeyEvent, Mode, alt, event, shift},
     text::{Searcher, Tagger, Text, txt},
     ui::{PrintInfo, RwArea, Widget},
 };
@@ -37,15 +37,15 @@ impl<W: Widget> Mode for Pager<W> {
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
         use duat_core::mode::KeyCode::*;
         match (key, duat_core::mode::alt_is_reverse()) {
-            (key!(Char('j') | Down), _) => handle.scroll_ver(pa, 1),
-            (key!(Char('J')) | key!(Down, KeyMod::SHIFT), _) => handle.scroll_ver(pa, i32::MAX),
-            (key!(Char('k') | Up), _) => handle.scroll_ver(pa, -1),
-            (key!(Char('K')) | key!(Down, KeyMod::SHIFT), _) => handle.scroll_ver(pa, i32::MIN),
-            (key!(Char('/')), _) => mode::set(PagerSearch::new(pa, &handle, true)),
-            (key!(Char('/'), KeyMod::ALT), true) | (key!(Char('?')), false) => {
+            (event!(Char('j') | Down), _) => handle.scroll_ver(pa, 1),
+            (event!(Char('J')) | shift!(Down), _) => handle.scroll_ver(pa, i32::MAX),
+            (event!(Char('k') | Up), _) => handle.scroll_ver(pa, -1),
+            (event!('K') | shift!(Down), _) => handle.scroll_ver(pa, i32::MIN),
+            (event!('/'), _) => mode::set(PagerSearch::new(pa, &handle, true)),
+            (alt!('/'), true) | (event!('?'), false) => {
                 mode::set(PagerSearch::new(pa, &handle, false));
             }
-            (key!(Char('n')), _) => {
+            (event!('n'), _) => {
                 let se = SEARCH.lock().unwrap();
 
                 let point = handle.start_points(pa).real;
@@ -58,7 +58,7 @@ impl<W: Widget> Mode for Pager<W> {
 
                 handle.scroll_to_points(pa, r.start.to_two_points_after());
             }
-            (key!(Char('n'), KeyMod::ALT), true) | (key!(Char('N')), false) => {
+            (alt!('n'), true) | (event!('N'), false) => {
                 let se = SEARCH.lock().unwrap();
 
                 let point = handle.start_points(pa).real;
@@ -71,8 +71,8 @@ impl<W: Widget> Mode for Pager<W> {
 
                 handle.scroll_to_points(pa, r.start.to_two_points_after());
             }
-            (key!(Esc), _) => mode::reset::<Buffer>(),
-            (key!(Char(':')), _) => mode::set(RunCommands::new()),
+            (event!(Esc), _) => mode::reset::<Buffer>(),
+            (event!(':'), _) => mode::set(RunCommands::new()),
             _ => {}
         }
     }

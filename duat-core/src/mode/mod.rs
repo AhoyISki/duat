@@ -441,7 +441,7 @@ pub trait Mode: Sized + Clone + Send + 'static {
     type Widget: Widget;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>);
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle<Self::Widget>);
 
     /// A function to trigger after switching to this [`Mode`]
     ///
@@ -489,65 +489,6 @@ impl Mode for &'static str {
 
     fn just_keys(&self) -> Option<&str> {
         Some(self)
-    }
-}
-
-/// This is a macro for matching keys in patterns:
-///
-/// Use this for quickly matching a [`KeyEvent`], probably inside an
-/// [`Mode`]:
-///
-/// ```rust
-/// # use duat_core::mode::{KeyEvent, KeyCode, KeyMod, key};
-/// # fn test(key: KeyEvent) {
-/// if let key!(KeyCode::Char('o'), KeyMod::NONE) = key { /* Code */ }
-/// // as opposed to
-/// if let KeyEvent {
-///     code: KeyCode::Char('c'),
-///     modifiers: KeyMod::NONE,
-///     ..
-/// } = key
-/// { /* Code */ }
-/// # }
-/// ```
-///
-/// You can also assign while matching:
-///
-/// ```rust
-/// # use duat_core::mode::{KeyEvent, KeyCode, KeyMod, key};
-/// # fn test(key: KeyEvent) {
-/// if let key!(code, KeyMod::SHIFT | KeyMod::ALT) = key { /* Code */ }
-/// // as opposed to
-/// if let KeyEvent {
-///     code,
-///     modifiers: KeyMod::SHIFT | KeyMod::ALT,
-///     ..
-/// } = key
-/// { /* Code */ }
-/// # }
-/// ```
-pub macro key {
-    ($code:pat) => {
-        KeyEvent {
-            code: $code,
-            modifiers: KeyMod::NONE,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat,
-            ..
-        }
-    },
-    ($code:pat, $modifiers:pat) => {
-        KeyEvent {
-            code: $code,
-            modifiers: $modifiers,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat,
-            ..
-        }
-    },
-    ($code:pat, $modifiers:pat, $kind:pat) => {
-        KeyEvent { code: $code, modifiers: $modifiers, kind: $kind .. }
-    },
-    ($code:pat, $modifiers:pat, $kind:pat, $state:pat) => {
-        KeyEvent { code: $code, modifiers: $modifiers, kind: $kind, state: $state }
     }
 }
 

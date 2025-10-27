@@ -10,9 +10,9 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form, hook,
-    mode::{self, KeyCode, KeyEvent, key},
+    mode::{self, KeyEvent, event},
     text::{Ghost, Searcher, Tagger, Text, txt},
-    ui::{RwArea, PrintInfo, Widget},
+    ui::{PrintInfo, RwArea, Widget},
 };
 
 use super::IncSearcher;
@@ -94,6 +94,8 @@ impl mode::Mode for Prompt {
     type Widget = PromptLine;
 
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
+        use duat_core::mode::KeyCode::*;
+
         let mut update = |pa: &mut Pass| {
             let text = std::mem::take(handle.write(pa).text_mut());
             let text = self.mode.update(pa, text, handle.area());
@@ -109,7 +111,7 @@ impl mode::Mode for Prompt {
         };
 
         match key {
-            key!(KeyCode::Backspace) => {
+            event!(Backspace) => {
                 if handle.read(pa).text().is_empty() {
                     handle.write(pa).text_mut().selections_mut().clear();
 
@@ -130,28 +132,28 @@ impl mode::Mode for Prompt {
                     update(pa);
                 }
             }
-            key!(KeyCode::Delete) => {
+            event!(Delete) => {
                 handle.edit_main(pa, |mut e| e.replace(""));
                 update(pa);
             }
 
-            key!(KeyCode::Char(char)) => {
+            event!(Char(char)) => {
                 handle.edit_main(pa, |mut e| {
                     e.insert(char);
                     e.move_hor(1);
                 });
                 update(pa);
             }
-            key!(KeyCode::Left) => {
+            event!(Left) => {
                 handle.edit_main(pa, |mut e| e.move_hor(-1));
                 update(pa);
             }
-            key!(KeyCode::Right) => {
+            event!(Right) => {
                 handle.edit_main(pa, |mut e| e.move_hor(1));
                 update(pa);
             }
 
-            key!(KeyCode::Esc) => {
+            event!(Esc) => {
                 let p = handle.read(pa).text().len();
                 handle.edit_main(pa, |mut e| {
                     e.move_to_start();
@@ -163,7 +165,7 @@ impl mode::Mode for Prompt {
                 update(pa);
                 reset(self);
             }
-            key!(KeyCode::Enter) => {
+            event!(Enter) => {
                 handle.write(pa).text_mut().selections_mut().clear();
 
                 update(pa);
