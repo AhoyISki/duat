@@ -529,7 +529,10 @@ impl Node {
         for spawn in widgets_to_spawn {
             spawn(pa, win, self.handle.clone());
         }
-        (self.print)(pa);
+
+        if self.handle().area().width(pa) != 0.0 && self.handle().area().height(pa) != 0.0 {
+            (self.print)(pa);
+        }
 
         self.handle.text_mut(pa).remove_selections();
     }
