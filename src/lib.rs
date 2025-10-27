@@ -332,7 +332,7 @@ impl InnerTsParser {
             for inj in self.injections.iter_mut() {
                 inj.edit(&input_edit);
             }
-            let range = change.line_points(bytes);
+            let range = change.line_range(bytes);
             new_ranges.add(range.start.byte()..range.end.byte());
         }
 
@@ -363,13 +363,13 @@ impl InnerTsParser {
             // The rows seem kind of unpredictable, which is why I have to do this
             // nonsense
             let start = bytes.point_at_line(bytes.point_at_byte(range.start_byte).line());
-            let [_, end] = bytes.points_of_line(
+            let range = bytes.line_range(
                 bytes
                     .point_at_byte(range.end_byte.min(bytes.len().byte()))
                     .line(),
             );
 
-            new_ranges.add(start.byte()..end.byte())
+            new_ranges.add(start.byte()..range.end.byte())
         }
 
         // Finally, in order to properly catch injection changes, a final
@@ -491,13 +491,13 @@ impl InnerTsParser {
             };
             let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
 
-            let [prev_start, prev_end] = bytes.points_of_line(prev_l);
-            let mut node = descendant_in(root, prev_end.byte() - (trail + 1));
+            let prev_range = bytes.line_range(prev_l);
+            let mut node = descendant_in(root, prev_range.end.byte() - (trail + 1));
             if node.kind().contains("comment") {
                 // Unless the whole line is a comment, try to find the last node
                 // before the comment.
                 // This technically fails if there are multiple block comments.
-                let first_node = descendant_in(root, prev_start.byte());
+                let first_node = descendant_in(root, prev_range.start.byte());
                 if first_node.id() != node.id() {
                     node = descendant_in(root, node.start_byte() - 1)
                 }
@@ -574,8 +574,8 @@ impl InnerTsParser {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
-                    let [_, end] = bytes.points_of_line(child.start_position().row);
-                    let range = child.range().start_byte..end.byte();
+                    let range = bytes.line_range(child.start_position().row);
+                    let range = child.range().start_byte..range.end.byte();
 
                     let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
                         line.split_whitespace().any(|w| w != delim)
@@ -959,7 +959,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
     }
 
     fn ts_reindent(&mut self) {
-        fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<[Point; 2]> {
+        fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<Range<Point>> {
             let byte_col = c
                 .text()
                 .slices(..c.caret().byte())
@@ -969,7 +969,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
             let prev = lines.find_map(|(n, l): (usize, &str)| {
                 l.chars().any(|c| !c.is_whitespace()).then_some(n)
             });
-            prev.map(|n| c.text().points_of_line(n))
+            prev.map(|n| c.text().line_range(n))
         }
 
         let old_col = self.v_caret().char_col();
@@ -981,7 +981,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
         } else {
             let prev_non_empty = prev_non_empty_line_points(self);
             prev_non_empty
-                .map(|[p0, _]| self.indent_on(p0))
+                .map(|range| self.indent_on(range.start))
                 .unwrap_or(0)
         };
         let indent_diff = new_indent as i32 - old_indent as i32;
