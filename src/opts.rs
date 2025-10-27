@@ -66,7 +66,6 @@ use std::sync::{
 use duat_base::widgets::{LineNumbersOpts, StatusLineFmt};
 use duat_core::data::Pass;
 #[allow(unused_imports)]
-pub use duat_core::opts::word_chars as w_chars;
 pub use duat_core::opts::*;
 
 /// Options for the [`Buffer`]
@@ -122,8 +121,10 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 ///
 ///   The default is `false`
 ///
-/// - `opts.word_chars: WordChars` - Characters to be considered part
-///   of a word  The default is [`word_chars!("A-Za-z0-9_-_")`].
+/// - `opts.extra_word_chars: &[char]` - Extra characters to be
+///   considered part of a word
+///
+///   The default is `&[]`
 ///
 /// - `opts.show_ghosts: bool` Whether to show [ghoxt text]
 ///

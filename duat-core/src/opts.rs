@@ -24,9 +24,11 @@
 //! [`Area`]: crate::ui::Ui::Area
 //! [forced_scrolloff]: PrintOpts::set_forced_horizontal_scrolloff
 //! [show_ghosts]: PrintOpts::show_ghosts
-use std::{ops::RangeInclusive, sync::LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 
-use regex_cursor::regex_automata::meta::Regex;
+use parking_lot::Mutex;
+
+use crate::text::Matcheable;
 
 /// The distance to keep between the [`Cursor`] and the edges of the
 /// screen when scrolling
@@ -39,51 +41,6 @@ pub struct ScrollOff {
     /// The vertical scrolloff
     pub y: u8,
 }
-
-/// Which characters should count as "word" characters
-///
-/// This can be useful for many things, such as deciding when to wrap
-/// given [`WrapMethod::Word`], or how many characters should be
-/// included in certain Vim/Neovim/Kakoune/Helix movements.
-#[derive(Clone, Copy, Debug)]
-pub struct WordChars(pub &'static LazyLock<(Regex, &'static [RangeInclusive<char>])>);
-
-impl WordChars {
-    /// The default [`WordChars`]
-    ///
-    /// Is equivalent to the regex character class `[A-Za-z0-9_]`.
-    pub const fn default() -> Self {
-        word_chars!("A-Za-z0-9_-_")
-    }
-
-    /// Checks if a [`char`] is a word char
-    #[inline]
-    pub fn contains(&self, char: char) -> bool {
-        let mut bytes = [0; 4];
-        let str = char.encode_utf8(&mut bytes);
-
-        self.0.0.is_match(str as &str)
-    }
-
-    /// The ranges of [`char`]s that are included as "word" chars
-    pub fn ranges(&self) -> &'static [RangeInclusive<char>] {
-        self.0.1
-    }
-}
-
-impl std::hash::Hash for WordChars {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.1.hash(state);
-    }
-}
-
-impl std::cmp::PartialEq for WordChars {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.1 == other.0.1
-    }
-}
-
-impl std::cmp::Eq for WordChars {}
 
 /// Configuration options for printing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,19 +118,19 @@ pub struct PrintOpts {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub force_scrolloff: bool,
-    /// Characters that are considered to be part of a word
+    /// Extra characters to be considered part of a word
     ///
-    /// The default is [`word_chars!("A-Za-z0-9_-_")`].
+    /// The default is `&[]`.
     ///
-    /// Which characters should be considered "word characters". This
-    /// matters not only for [`WrapMethod::Word`], as you'd expect,
-    /// but also for certain control schemes, that make distinctions
-    /// between `word` (word characters) and `WORD` (non whitespace
-    /// characters).
+    /// Normally, word characters include all of those in the [`\w`]
+    /// character set, which most importantly includes `[0-9A-Za-z_]`.
     ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    /// [`word_chars!("A-Za-z0-9_-_")`]: word_chars
-    pub word_chars: WordChars,
+    /// You can use this setting to add more characters to that list,
+    /// usually something like `-`, `$` or `@`, which are useful to
+    /// consider as word characters in some circumstances.
+    ///
+    /// [`\w`]: https://www.unicode.org/reports/tr18/#word
+    pub extra_word_chars: &'static [char],
     /// Whether to show [ghoxt text]
     ///
     /// In [`Buffer`]s, the default is `true`
@@ -226,7 +183,7 @@ impl PrintOpts {
     ///     tab_stops: 4,
     ///     new_line: NewLine::AlwaysAs('\n'),
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
-    ///     word_chars: word_chars!("A-Za-z0-9_-_"),
+    ///     extra_word_chars: &[],
     ///     force_scrolloff: false,
     ///     show_ghosts: true,
     ///     allow_overscroll: false,
@@ -248,7 +205,7 @@ impl PrintOpts {
             tabstop: 4,
             print_new_line: false,
             scrolloff: ScrollOff { x: 3, y: 3 },
-            word_chars: WordChars::default(),
+            extra_word_chars: &[],
             force_scrolloff: false,
             show_ghosts: true,
             allow_overscroll: false,
@@ -274,7 +231,7 @@ impl PrintOpts {
     ///     tab_stops: 4,
     ///     print_new_line: true,
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
-    ///     word_chars: word_chars!("A-Za-z0-9_-_"),
+    ///     extra_word_chars: &[],
     ///     force_scrolloff: false,
     ///     show_ghosts: true,
     ///     allow_overscroll: false,
@@ -292,7 +249,7 @@ impl PrintOpts {
             tabstop: 4,
             print_new_line: true,
             scrolloff: ScrollOff { x: 3, y: 3 },
-            word_chars: WordChars::default(),
+            extra_word_chars: &[],
             force_scrolloff: false,
             show_ghosts: true,
             allow_overscroll: true,
@@ -319,6 +276,41 @@ impl PrintOpts {
     pub fn tabstop_spaces_at(&self, x: u32) -> u32 {
         self.tabstop as u32 - (x % self.tabstop as u32)
     }
+
+    /// Gets a `&str` that matches every character that should be part
+    /// of a word
+    ///
+    /// This will come in the form of the regex `[\w{other chars}]`.
+    pub fn word_chars_regex(&self) -> &'static str {
+        PATTERNS
+            .lock()
+            .entry(self.extra_word_chars)
+            .or_insert_with(|| {
+                format!(
+                    r"[\w{}]",
+                    escape_special(self.extra_word_chars.iter().collect()),
+                )
+                .leak()
+            })
+    }
+
+    /// Wether a given `char` is considered a word character
+    pub fn is_word_char(&self, char: char) -> bool {
+        let pat = *PATTERNS
+            .lock()
+            .entry(self.extra_word_chars)
+            .or_insert_with(|| {
+                format!(
+                    r"[\w{}]",
+                    escape_special(self.extra_word_chars.iter().collect()),
+                )
+                .leak()
+            });
+
+        let mut bytes = [b'\0'; 4];
+        let str = char.encode_utf8(&mut bytes);
+        str.reg_matches(pat, ..).unwrap()
+    }
 }
 
 impl Default for PrintOpts {
@@ -327,132 +319,19 @@ impl Default for PrintOpts {
     }
 }
 
-/// Returns a new [`WordChars`] composed of inclusive ranges of
-/// [`char`]s
-///
-/// The syntax is as follows:
-///
-/// ```rust
-/// # use duat_core::opts::word_chars;
-/// let word_chars = word_chars!("a-zA-Z0-9---_-_");
-/// ```
-///
-/// That is, it must be a list of inclusive ranges, denoted by
-/// `{char1}-{char2}`. Any character is valid, as long as a `' '`,
-/// `'\t'`, or `'\n'` is not part of the range, and `char2 >= char1`.
-///
-/// This is all evaluated at compile time, so you don't have to worry
-/// about it.
-pub macro word_chars($ranges:literal) {{
-    const { validate_ranges($ranges) };
-    static MATCHERS: LazyLock<(Regex, &'static [RangeInclusive<char>])> = LazyLock::new(|| {
-        let regex = $crate::opts::escaped_regex($ranges);
-        let regex = Regex::new(&format!("[{regex}]")).unwrap();
-        (regex, $crate::opts::vec_from_ranges($ranges).leak())
-    });
-    WordChars(&MATCHERS)
-}}
-
-/// Creates a vector from a ranges `&str`
-///
-/// Assumes that [`validate_ranges`] has verified its formatting.
-#[doc(hidden)]
-pub fn vec_from_ranges(ranges: &str) -> Vec<RangeInclusive<char>> {
-    ranges
-        .chars()
-        .array_chunks::<3>()
-        .map(|[char1, _dash, char2]| char1..=char2)
-        .collect()
-}
-
 /// Escapes regex characters
 #[doc(hidden)]
-pub fn escaped_regex(ranges: &str) -> String {
-    let mut escaped = String::new();
-    for char in ranges.chars() {
+pub fn escape_special(mut regex: String) -> String {
+    for (i, char) in regex.char_indices().collect::<Vec<_>>() {
         if let '(' | ')' | '{' | '}' | '[' | ']' | '$' | '^' | '.' | '*' | '+' | '?' | '|' = char {
-            escaped.push('\\');
-        }
-        escaped.push(char);
-    }
-    escaped
-}
-
-/// Validates the ranges of a `&str`
-#[doc(hidden)]
-pub const fn validate_ranges(mut ranges: &str) {
-    if ranges.is_empty() {
-        return;
-    }
-
-    while !ranges.is_empty() {
-        let mut split = 1;
-        // Move the split until it is between the first character and a '-'.
-        while !ranges.is_char_boundary(split) {
-            split += 1;
-        }
-
-        let (start, remainder) = ranges.split_at(split);
-        let (dash, remainder) = remainder.split_at(1);
-
-        assert!(
-            first_char(dash) == '-',
-            "ranges must be formatted like {{char1}}-{{char2}}"
-        );
-
-        let start = first_char(start);
-        let end = first_char(remainder);
-
-        assert!(
-            start <= end,
-            "the end of the range must be bigger than the start"
-        );
-        assert!(!(start <= ' ' && ' ' <= end), "range contains ' '");
-        assert!(!(start <= '\n' && '\n' <= end), "range contains '\\n'");
-        assert!(!(start <= '\t' && '\t' <= end), "range contains '\\t'");
-
-        let (_, remainder) = remainder.split_at(end.len_utf8());
-        ranges = remainder;
-    }
-}
-
-const fn first_char(str: &str) -> char {
-    let bytes = str.as_bytes();
-
-    let x = bytes[0];
-    if bytes[0] < 128 {
-        return unsafe { char::from_u32_unchecked(x as u32) };
-    }
-
-    let init = utf8_first_byte(x, 2);
-    let y = bytes[1];
-    let mut ch = utf8_acc_cont_byte(init, y);
-    if x >= 0xe0 {
-        let z = bytes[2];
-        let y_z = utf8_acc_cont_byte((y & CONT_MASK) as u32, z);
-        ch = init << 12 | y_z;
-        if x >= 0xf0 {
-            let w = bytes[3];
-            ch = (init & 7) << 18 | utf8_acc_cont_byte(y_z, w);
+            regex.insert(i, '\\');
         }
     }
-
-    unsafe { char::from_u32_unchecked(ch) }
+    regex
 }
 
-/// Returns the initial codepoint accumulator for the first byte.
-/// The first byte is special, only want bottom 5 bits for width 2, 4
-/// bits for width 3, and 3 bits for width 4.
-#[inline]
-const fn utf8_first_byte(byte: u8, width: u32) -> u32 {
-    (byte & (0x7f >> width)) as u32
-}
-
-/// Returns the value of `ch` updated with continuation byte `byte`.
-#[inline]
-const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
-    (ch << 6) | (byte & CONT_MASK) as u32
-}
-
-/// Mask of the value bits of a continuation byte.
-const CONT_MASK: u8 = 0b0011_1111;
+static PATTERNS: LazyLock<Mutex<HashMap<&[char], &'static str>>> = LazyLock::new(|| {
+    let mut map: HashMap<&[char], _> = HashMap::new();
+    map.insert(&[], r"[\w]");
+    Mutex::new(map)
+});

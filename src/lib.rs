@@ -651,7 +651,7 @@ pub mod prelude {
         mode::{
             self, KeyCode, KeyEvent, Mode, Pager, Prompt, User, alias, alt, ctrl, event, map, shift,
         },
-        opts::{self, ScrollOff, word_chars},
+        opts::{self, ScrollOff},
         setup_duat,
         state::*,
         text::{
