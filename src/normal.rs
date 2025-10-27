@@ -165,34 +165,30 @@ impl Mode for Normal {
             event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
-                    if Category::of(c0, wc) == Category::of(c1, wc) {
+                    if Category::of(c0, wc) == Category::of(c1, wc) || alt_word {
                         c.move_to(p0);
                     } else {
                         c.move_to(p1);
                     }
 
-                    let points = c.search_fwd(word_and_space(alt_word, wc), None).next();
-                    if let Some(range) = points {
-                        c.set_anchor();
-                        c.move_to(range.end);
-                        c.move_hor(-1);
+                    let range = c.search_fwd(word_and_space(alt_word, wc), None).next();
+                    if let Some(range) = range {
+                        c.move_to(range);
                     }
                 };
             }),
             event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
-                    if Category::of(c0, wc) == Category::of(c1, wc) {
+                    if Category::of(c0, wc) == Category::of(c1, wc) || alt_word {
                         c.move_to(p0);
                     } else {
                         c.move_to(p1);
                     }
 
-                    let points = c.search_fwd(space_and_word(alt_word, wc), None).next();
-                    if let Some(range) = points {
-                        c.set_anchor();
-                        c.move_to(range.end);
-                        c.move_hor(-1);
+                    let range = c.search_fwd(space_and_word(alt_word, wc), None).next();
+                    if let Some(range) = range {
+                        c.move_to(range);
                     }
                 };
             }),
@@ -203,22 +199,31 @@ impl Mode for Normal {
                     no_nl_windows(iter).next()
                 };
                 if let Some(((p1, c1), (_, c0))) = init {
+                    use Category::*;
+                    let moved_back = p1 != c.caret();
                     c.move_to(p1);
-                    if Category::of(c0, wc) == Category::of(c1, wc) {
+                    if let (Word, Word, ..)
+                    | (Special, Special, ..)
+                    | (Space, Space, ..)
+                    | (Word | Special, Word | Special, true, _)
+                    | (.., true) = (
+                        Category::of(c0, wc),
+                        Category::of(c1, wc),
+                        alt_word,
+                        moved_back,
+                    ) {
                         c.move_hor(1);
                     }
-                    let points = c.search_rev(word_and_space(alt_word, wc), None).next();
-                    if let Some(range) = points {
-                        c.move_to(range.start);
-                        c.set_anchor();
-                        c.move_to(range.end);
-                        c.move_hor(-1);
-                        c.swap_ends();
+
+                    let range = c.search_rev(word_and_space(alt_word, wc), None).next();
+                    if let Some(range) = range {
+                        c.move_to(range);
+                        c.set_caret_on_start();
                     };
                 };
             }),
 
-            event!('W') | alt!('w') => handle.edit_all(pa, |mut c| {
+            event!('W') | alt!('W') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
@@ -248,11 +253,11 @@ impl Mode for Normal {
                 self.sel_type = SelType::ToEndOfLine;
                 set_anchor_if_needed(true, &mut c);
                 c.set_caret_on_start();
-                let p0 = c.search_rev("\n", None).next().map(|range| range.start);
+                let p0 = c.search_rev("\n", None).next().map(|range| range.end);
                 c.move_to(p0.unwrap_or_default());
                 c.swap_ends();
 
-                let p1 = c.search_fwd("\n", None).next().map(|range| range.end);
+                let p1 = c.search_fwd("\n", None).next().map(|range| range.start);
                 c.move_to(p1.unwrap_or(c.last_point()));
                 c.set_desired_vcol(usize::MAX);
             }),
