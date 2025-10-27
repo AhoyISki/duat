@@ -136,21 +136,21 @@ pub macro alt {
         $crate::mode::KeyEvent {
             code: $modif$excl(@code $($tokens)+),
             modifiers: $modif$excl(@modif [ALT] $($tokens)+),
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
     ($($chars:literal)|+) => {
         $crate::mode::KeyEvent {
             code: $crate::mode::KeyCode::Char($($chars)|+),
             modifiers: $crate::mode::KeyMod::ALT,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
     ($code:pat) => {
         $crate::mode::KeyEvent {
             code: $code,
             modifiers: $crate::mode::KeyMod::ALT,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
 
@@ -242,21 +242,21 @@ pub macro ctrl {
         $crate::mode::KeyEvent {
             code: $modif$excl(@code $($tokens)+),
             modifiers: $modif$excl(@modif [CONTROL] $($tokens)+),
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
     ($($chars:literal)|+) => {
         $crate::mode::KeyEvent {
             code: $crate::mode::KeyCode::Char($($chars)|+),
             modifiers: $crate::mode::KeyMod::CONTROL,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
     ($code:pat) => {
         $crate::mode::KeyEvent {
             code: $code,
             modifiers: $crate::mode::KeyMod::CONTROL,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
 
@@ -286,7 +286,7 @@ pub macro ctrl {
 /// This macro essentially turns this:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, ctrl};
+/// # use duat_core::mode::{KeyCode, KeyEvent, shift};
 /// # let key_event: KeyEvent = KeyCode::Char('c').into();
 /// match key_event {
 ///     shift!(KeyCode::Enter) => {
@@ -325,10 +325,10 @@ pub macro ctrl {
 /// You can also use this with more complex patterns:
 ///
 /// ```rust
-/// # use duat_core::mode::{KeyCode, KeyEvent, alt, ctrl};
+/// # use duat_core::mode::{KeyCode, KeyEvent, ctrl, shift};
 /// # let key_event: KeyEvent = KeyCode::Char('c').into();
 /// match key_event {
-///     ctrl!(shift!(KeyCode::PageDown | KeyCode::PageUp) => {
+///     ctrl!(shift!(KeyCode::PageDown | KeyCode::PageUp)) => {
 ///         //...
 ///     }
 ///     _ => {
@@ -362,21 +362,21 @@ pub macro shift {
         $crate::mode::KeyEvent {
             code: $modif$excl(@code $($tokens)+),
             modifiers: $modif$excl(@modif [SHIFT] $($tokens)+),
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
     ($($chars:literal)|+) => {
         $crate::mode::KeyEvent {
             code: $crate::mode::KeyCode::Char($($chars)|+),
             modifiers: $crate::mode::KeyMod::SHIFT,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
     ($code:pat) => {
         $crate::mode::KeyEvent {
             code: $code,
             modifiers: $crate::mode::KeyMod::SHIFT,
-            kind: KeyEventKind::Press | KeyEventKind::Repeat, ..
+            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     },
 
