@@ -429,6 +429,11 @@ pub struct DataMap<I: ?Sized + 'static, O: 'static> {
 }
 
 impl<I: ?Sized, O> DataMap<I, O> {
+    /// Call this `DataMap`'s mapping function, returning the output
+    pub fn call(&self, pa: &Pass) -> O {
+        self.map.borrow_mut()(self.data.read(pa))
+    }
+
     /// Maps the value within, works just like [`RwData::map`]
     pub fn map<O2>(self, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
         self.data.map(move |input| f(self.map.borrow_mut()(input)))
@@ -476,28 +481,6 @@ impl<I: ?Sized, O> DataMap<I, O> {
 // acquired when there is a Pass, i.e., on the main thread.
 unsafe impl<I: ?Sized + 'static, O: 'static> Send for DataMap<I, O> {}
 unsafe impl<I: ?Sized + 'static, O: 'static> Sync for DataMap<I, O> {}
-
-impl<I: ?Sized + 'static, O: 'static> DataMap<I, O> {}
-
-impl<I: ?Sized + 'static, O: 'static> FnOnce<(&Pass,)> for DataMap<I, O> {
-    type Output = O;
-
-    extern "rust-call" fn call_once(self, (pa,): (&Pass,)) -> Self::Output {
-        self.map.borrow_mut()(self.data.read(pa))
-    }
-}
-
-impl<I: ?Sized + 'static, O: 'static> FnMut<(&Pass,)> for DataMap<I, O> {
-    extern "rust-call" fn call_mut(&mut self, (pa,): (&Pass,)) -> Self::Output {
-        self.map.borrow_mut()(self.data.read(pa))
-    }
-}
-
-impl<I: ?Sized + 'static, O: 'static> Fn<(&Pass,)> for DataMap<I, O> {
-    extern "rust-call" fn call(&self, (pa,): (&Pass,)) -> Self::Output {
-        self.map.borrow_mut()(self.data.read(pa))
-    }
-}
 
 /// A checking struct that periodically returns `true`
 pub struct PeriodicChecker(Arc<AtomicBool>);

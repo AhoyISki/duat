@@ -48,10 +48,11 @@ FOR NEXT UPDATE:
 [x] Hook::add_for/add_grouped_for/add_once_for.
 [x] Make all Ui and Area methods use the address space of the Duat app.
 [x] Finalize the Windows API for more public use.
-[ ] Easier pattern matching for Modes.
+[x] Easier pattern matching for Modes.
+[ ] extra_word_chars, rather than WordChars.
 
 KNOWN BUGS:
-[ ] Print iteration sometimes loops forever.
+[x] Print iteration sometimes loops forever.
 [x] Spawned Areas not resizing until moving up or down.
 [ ] Window not switching properly.
 [ ] Perfect print iterators.

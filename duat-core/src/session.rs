@@ -135,7 +135,7 @@ impl Session {
     ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
         fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
             context::windows()
-                .windows(pa)
+                .iter(pa)
                 .map(|window| window.nodes(pa).cloned().collect())
                 .collect()
         }

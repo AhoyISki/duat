@@ -529,7 +529,7 @@ impl Windows {
         let spawns_to_remove = std::mem::take(&mut *self.spawns_to_remove.lock().unwrap());
         for id in spawns_to_remove {
             if let Some((_, node)) = self
-                .windows(pa)
+                .iter(pa)
                 .flat_map(|window| &window.0.read(pa).spawned)
                 .find(|(other, _)| *other == id)
             {
@@ -708,6 +708,11 @@ impl Windows {
         self.inner.read(pa).list.get(win)
     }
 
+    /// Iterates through every [`Window`]
+    pub fn iter<'a>(&'a self, pa: &'a Pass) -> std::slice::Iter<'a, Window> {
+        self.inner.read(pa).list.iter()
+    }
+
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat
     pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = &'a Handle<dyn Widget>> {
         self.inner
@@ -722,6 +727,11 @@ impl Windows {
         self.inner.read(pa).list.iter().flat_map(|w| w.buffers(pa))
     }
 
+    /// The index of the currently active [`Window`]
+    pub fn current_window(&self, pa: &Pass) -> usize {
+        self.inner.read(pa).cur_win
+    }
+
     /// The [`RwData`] that points to the currently active [`Buffer`]
     pub(crate) fn current_buffer<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Handle> {
         &self.inner.read(pa).cur_buffer
@@ -730,16 +740,6 @@ impl Windows {
     /// The [`RwData`] that points to the currently active [`Widget`]
     pub(crate) fn current_widget<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Node> {
         &self.inner.read(pa).cur_widget
-    }
-
-    /// The index of the currently active [`Window`]
-    pub(crate) fn current_window(&self, pa: &Pass) -> usize {
-        self.inner.read(pa).cur_win
-    }
-
-    /// Iterates through every [`Window`]
-    pub(crate) fn windows<'a>(&'a self, pa: &'a Pass) -> std::slice::Iter<'a, Window> {
-        self.inner.read(pa).list.iter()
     }
 
     /// Gets the new additions to the [`Windows`]

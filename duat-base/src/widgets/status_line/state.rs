@@ -19,18 +19,18 @@ use std::{fmt::Display, marker::PhantomData};
 
 use duat_core::{
     buffer::Buffer,
-    context::Handle,
+    context::{self, Handle},
     data::{DataMap, Pass, RwData},
+    mode::{Selection, Selections},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
-    ui::{Area, Widget},
+    ui::{Area, Window},
 };
 
 use crate::widgets::status_line::CheckerFn;
 
 /// A struct that reads state in order to return [`Text`].
-enum Appender<_T: Clone = (), D: Display + Clone = String, W: Widget = Buffer> {
-    TextFnCheckerArg(TextFnCheckerFn),
-    FromWidget(WidgetAreaFn<W>),
+enum Appender<_T: Clone = (), D: Display + Clone = String> {
+    FromFn(BuilderFn),
     Part(BuilderPart<D, _T>),
 }
 
@@ -44,22 +44,20 @@ enum Appender<_T: Clone = (), D: Display + Clone = String, W: Widget = Buffer> {
 /// [`impl Display`]: std::fmt::Display
 /// [`Buffer`]: crate::buffer::Buffer
 #[doc(hidden)]
-pub struct State<_T = (), D = String, W = Buffer>
+pub struct State<_T = (), D = String>
 where
     _T: Clone + Send,
     D: Display + Clone + Send,
-    W: Widget,
 {
-    appender: Appender<_T, D, W>,
+    appender: Appender<_T, D>,
     checker: Option<CheckerFn>,
     ghost: PhantomData<_T>,
 }
 
-impl<_T, D, W> State<_T, D, W>
+impl<_T, D> State<_T, D>
 where
     _T: Clone + Send + 'static,
     D: Display + Clone + Send + 'static,
-    W: Widget,
 {
     /// Returns the two building block functions for the
     /// [`Statusline`]
@@ -68,12 +66,7 @@ where
     pub fn fns(self) -> StateFns {
         (
             match self.appender {
-                Appender::TextFnCheckerArg(f) => Box::new(move |pa, b, _| f(pa, b)),
-                Appender::FromWidget(f) => Box::new(move |pa, b, reader| {
-                    if let Some((widget, area, _)) = reader.read_related(pa).next() {
-                        f(b, pa, widget, area.read(pa));
-                    }
-                }),
+                Appender::FromFn(f) => f,
                 Appender::Part(builder_part) => {
                     Box::new(move |_, b, _| b.push(builder_part.clone()))
                 }
@@ -107,7 +100,7 @@ impl<D: Display + Clone + Send + 'static> From<RwData<D>> for State<DataArg<D>> 
     fn from(value: RwData<D>) -> Self {
         let checker = value.checker();
         Self {
-            appender: Appender::TextFnCheckerArg(Box::new(move |pa, b| b.push(value.read(pa)))),
+            appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.read(pa)))),
             checker: Some(Box::new(move |_| checker())),
             ghost: PhantomData,
         }
@@ -118,9 +111,7 @@ impl From<RwData<Text>> for State<DataArg<()>> {
     fn from(value: RwData<Text>) -> Self {
         let checker = value.checker();
         Self {
-            appender: Appender::TextFnCheckerArg(Box::new(move |pa, b| {
-                b.push(value.read(pa).clone())
-            })),
+            appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.read(pa).clone()))),
             checker: Some(Box::new(move |_| checker())),
             ghost: PhantomData,
         }
@@ -131,7 +122,7 @@ impl<I: ?Sized, O: Display> From<DataMap<I, O>> for State<DataArg<String>> {
     fn from(value: DataMap<I, O>) -> Self {
         let checker = value.checker();
         State {
-            appender: Appender::TextFnCheckerArg(Box::new(move |pa, b| b.push(value(pa)))),
+            appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.call(pa)))),
             checker: Some(Box::new(move |_| checker())),
             ghost: PhantomData,
         }
@@ -142,165 +133,8 @@ impl<I: ?Sized> From<DataMap<I, Text>> for State<DataArg<Text>> {
     fn from(value: DataMap<I, Text>) -> Self {
         let checker = value.checker();
         State {
-            appender: Appender::TextFnCheckerArg(Box::new(move |pa, b| b.push(value(pa)))),
+            appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.call(pa)))),
             checker: Some(Box::new(move |_| checker())),
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<D, TextFn, Checker> From<(TextFn, Checker)> for State<TextFnCheckerArg<String>>
-where
-    D: Display,
-    TextFn: Fn(&Pass) -> D + Send + 'static,
-    Checker: Fn(&Pass) -> bool + Send + 'static,
-{
-    fn from((value, checker): (TextFn, Checker)) -> Self {
-        State {
-            appender: Appender::TextFnCheckerArg(Box::new(move |pa, b| b.push(value(pa)))),
-            checker: Some(Box::new(checker)),
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<TextFn, Checker> From<(TextFn, Checker)> for State<TextFnCheckerArg<Text>>
-where
-    TextFn: Fn(&Pass) -> Text + Send + 'static,
-    Checker: Fn(&Pass) -> bool + Send + 'static,
-{
-    fn from((value, checker): (TextFn, Checker)) -> Self {
-        State {
-            appender: Appender::TextFnCheckerArg(Box::new(move |pa, b| b.push(value(pa)))),
-            checker: Some(Box::new(move |pa| checker(pa))),
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<D, W, ReadFn> From<ReadFn> for State<WidgetArg<String>, String, W>
-where
-    D: Display + 'static,
-    W: Widget + Sized,
-    ReadFn: Fn(&W) -> D + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, _, widget, _| b.push(value(widget)))),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<W, ReadFn> From<ReadFn> for State<WidgetArg<Text>, String, W>
-where
-    W: Widget + Sized,
-    ReadFn: Fn(&W) -> Text + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, _, widget, _| b.push(value(widget)))),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<D, W, ReadFn> From<ReadFn> for State<WidgetAreaArg<String>, String, W>
-where
-    D: Display + 'static,
-    W: Widget + Sized,
-    ReadFn: Fn(&W, &Area) -> D + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, _, widget, area| {
-                b.push(value(widget, area))
-            })),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<W, ReadFn> From<ReadFn> for State<WidgetAreaArg<Text>, String, W>
-where
-    W: Widget + Sized,
-    ReadFn: Fn(&W, &Area) -> Text + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, _, widget, area| {
-                b.push(value(widget, area))
-            })),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<D, W, ReadFn> From<ReadFn> for State<PassWidgetArg<String>, String, W>
-where
-    D: Display + 'static,
-    W: Widget + Sized,
-    ReadFn: Fn(&Pass, &W) -> D + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, pa, widget, _| {
-                b.push(value(pa, widget))
-            })),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<W, ReadFn> From<ReadFn> for State<PassWidgetArg<Text>, String, W>
-where
-    W: Widget + Sized,
-    ReadFn: Fn(&Pass, &W) -> Text + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, pa, widget, _| {
-                b.push(value(pa, widget))
-            })),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<D, W, ReadFn> From<ReadFn> for State<PassWidgetAreaArg<String>, String, W>
-where
-    D: Display + 'static,
-    W: Widget + Sized,
-    ReadFn: Fn(&Pass, &W, &Area) -> D + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, pa, widget, area| {
-                b.push(value(pa, widget, area))
-            })),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<W, ReadFn> From<ReadFn> for State<PassWidgetAreaArg<Text>, String, W>
-where
-    W: Widget + Sized,
-    ReadFn: Fn(&Pass, &W, &Area) -> Text + Send + 'static,
-{
-    fn from(value: ReadFn) -> Self {
-        State {
-            appender: Appender::FromWidget(Box::new(move |b, pa, widget, area| {
-                b.push(value(pa, widget, area))
-            })),
-            checker: None,
             ghost: PhantomData,
         }
     }
@@ -356,30 +190,130 @@ impl<T: Into<Text> + Clone> From<Ghost<T>> for State<()> {
     }
 }
 
+////////// From functions
+
+macro implFromFn($($arg:ident),*) {
+    #[allow(unused_parens, non_snake_case)]
+    impl<Fmt, D, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), String>>
+    where
+        Fmt: Fn($(&$arg),*) -> D + Send + 'static,
+        D: Display,
+        $($arg: StateArg),*
+    {
+        fn from(value: Fmt) -> Self {
+            Self {
+                appender: Appender::FromFn(Box::new(move |pa, b, handle| {
+                    $(
+                        let $arg = $arg::get(pa, handle);
+                    )*
+                    b.push(value($($arg),*));
+                })),
+                checker: None,
+                ghost: PhantomData,
+            }
+        }
+    }
+    
+    #[allow(unused_parens, non_snake_case)]
+    impl<Fmt, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), Text>>
+    where
+        Fmt: Fn($(&$arg),*) -> Text + Send + 'static,
+        $($arg: StateArg),*
+    {
+        fn from(value: Fmt) -> Self {
+            Self {
+                appender: Appender::FromFn(Box::new(move |pa, b, handle| {
+                    $(
+                        let $arg = $arg::get(pa, handle);
+                    )*
+                    b.push(value($($arg),*));
+                })),
+                checker: None,
+                ghost: PhantomData,
+            }
+        }
+    }
+}
+
+implFromFn!(Arg1);
+implFromFn!(Arg1, Arg2);
+implFromFn!(Arg1, Arg2, Arg3);
+implFromFn!(Arg1, Arg2, Arg3, Arg4);
+implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5);
+implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6);
+implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7);
+implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, Arg8);
+implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, Arg8, Arg9);
+
+trait StateArg {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self;
+}
+
+impl StateArg for Pass {
+    fn get<'a>(pa: &'a Pass, _: &'a Handle) -> &'a Self {
+        pa
+    }
+}
+
+impl StateArg for Handle {
+    fn get<'a>(_: &'a Pass, handle: &'a Handle) -> &'a Self {
+        handle
+    }
+}
+
+impl StateArg for Buffer {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+        handle.read(pa)
+    }
+}
+
+impl StateArg for Area {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+        handle.area().read(pa)
+    }
+}
+
+impl StateArg for Text {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+        handle.text(pa)
+    }
+}
+
+impl StateArg for Selections {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+        handle.text(pa).selections()
+    }
+}
+
+impl StateArg for Selection {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+        handle.text(pa).selections().get_main().unwrap()
+    }
+}
+
+impl StateArg for Window {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+        context::windows()
+            .iter(pa)
+            .find(|window| window.handles(pa).any(|h| h == handle))
+            .unwrap()
+    }
+}
+
 // Dummy structs to prevent implementation conflicts.
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct DataArg<T>(PhantomData<T>);
 #[doc(hidden)]
-#[derive(Clone)]
-pub struct TextFnArg<T>(PhantomData<T>);
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct TextFnCheckerArg<T>(PhantomData<T>);
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct WidgetArg<W>(PhantomData<W>);
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct WidgetAreaArg<W>(PhantomData<W>);
-#[derive(Clone)]
-pub struct PassWidgetArg<W>(PhantomData<W>);
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct PassWidgetAreaArg<W>(PhantomData<W>);
+pub struct FnArg<Args, T>(PhantomData<(Args, T)>);
 
-// The various types of function aliases
-type TextFnCheckerFn = Box<dyn Fn(&Pass, &mut Builder) + 'static + Send>;
-type WidgetAreaFn<W> = Box<dyn Fn(&mut Builder, &Pass, &W, &Area) + Send + 'static>;
+impl<Args, T> Clone for FnArg<Args, T> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}
+
+unsafe impl<Args, T> Send for FnArg<Args, T> {}
+
 type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle) + Send>;
 type StateFns = (BuilderFn, Box<dyn Fn(&Pass) -> bool + Send>);
