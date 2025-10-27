@@ -1,4 +1,13 @@
-use super::KeyMod;
+//! Macros for very easy [`Mode`] pattern matching
+//!
+//! This module adds the [`event!`], [`alt!`], [`ctrl!`] and
+//! [`shift!`] macros, which can be used to create very succinct
+//! patterns for matching, greatly improving on the signal to noise
+//! ratio, especially inside the [`Mode::send_key`] function.
+//!
+//! [`Mode`]: super::Mode
+//! [`Mode::send_key`]: super::Mode::send_key
+use crate::mode::KeyMod;
 
 /// Macro for shortening [`KeyEvent`]s in pattern matching
 ///
@@ -54,6 +63,9 @@ use super::KeyMod;
 /// which are like this macro, but also add their respective
 /// [`KeyMod`]s, and can be nested. This macro _cannot_ be nested with
 /// them however, for obvious reasons.
+///
+/// [`KeyEvent`]: super::KeyEvent
+/// [`Mode`]: super::Mode
 pub macro event {
     ($($chars:literal)|+) => {
         $crate::mode::KeyEvent {
@@ -129,6 +141,9 @@ pub macro event {
 /// and [`shift!`]. There is also [`event!`], which has no modifiers,
 /// and it _cannot_ be nested with the other ones, for obvious
 /// reasons.
+///
+/// [`KeyEvent`]: super::KeyEvent
+/// [`Mode`]: super::Mode
 pub macro alt {
     // I use $excl here in order to make it look like part of the macro,
     // so rust analyzer properly highlights it.
@@ -235,6 +250,9 @@ pub macro alt {
 /// and [`shift!`]. There is also [`event!`], which has no modifiers,
 /// and it _cannot_ be nested with the other ones, for obvious
 /// reasons.
+///
+/// [`KeyEvent`]: super::KeyEvent
+/// [`Mode`]: super::Mode
 pub macro ctrl {
     // I use $excl here in order to make it look like part of the macro,
     // so rust analyzer properly highlights it.
@@ -355,6 +373,10 @@ pub macro ctrl {
 /// key is "supposed" to be shifted, and then manually sending a
 /// modified [`KeyEvent`], which includes the shift modifier, so
 /// pattern matching can be more reliable.
+///
+/// [`KeyEvent`]: super::KeyEvent
+/// [`KeyCode::Char`]: super::KeyCode::Char
+/// [`Mode`]: super::Mode
 pub macro shift {
     // I use $excl here in order to make it look like part of the macro,
     // so rust analyzer properly highlights it.
