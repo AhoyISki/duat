@@ -55,19 +55,6 @@ struct InnerUi {
     tx: mpsc::Sender<Event>,
 }
 
-impl InnerUi {
-    fn cur_printer(&self) -> Arc<Printer> {
-        if let Some((_, printer)) = self.windows.get(self.win) {
-            // On switching, the window size could've changed, so take that into
-            // account
-            printer.update(true, true);
-            printer.clone()
-        } else {
-            unreachable!("Started printing before a window was created");
-        }
-    }
-}
-
 // SAFETY: The Area (the part that is not Send + Sync) is only ever
 // accessed from the main thread.
 unsafe impl Send for InnerUi {}
@@ -178,21 +165,22 @@ impl RawUi for Ui {
     fn close(&self) {
         self.0.lock().unwrap().tx.send(Event::Quit).unwrap();
 
-            terminal::disable_raw_mode().unwrap();
+        terminal::disable_raw_mode().unwrap();
+        
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags);
         }
 
-            execute!(
-                io::stdout(),
-                terminal::Clear(ClearType::All),
-                terminal::LeaveAlternateScreen,
-                cursor::MoveToColumn(0),
-                terminal::Clear(ClearType::FromCursorDown),
-                terminal::EnableLineWrap,
-                cursor::Show,
-            )
-            .unwrap();
+        execute!(
+            io::stdout(),
+            terminal::Clear(ClearType::All),
+            terminal::LeaveAlternateScreen,
+            cursor::MoveToColumn(0),
+            terminal::Clear(ClearType::FromCursorDown),
+            terminal::EnableLineWrap,
+            cursor::Show,
+        )
+        .unwrap();
     }
 
     fn new_root(
@@ -232,11 +220,16 @@ impl RawUi for Ui {
     fn switch_window(&self, win: usize) {
         let mut ui = self.0.lock().unwrap();
         ui.win = win;
-        ui.tx.send(Event::NewPrinter(ui.cur_printer())).unwrap()
+        let printer = ui.windows[win].1.clone();
+        printer.update(true, true);
+        ui.tx.send(Event::NewPrinter(printer)).unwrap()
     }
 
     fn flush_layout(&self) {
-        self.0.lock().unwrap().cur_printer().update(true, false);
+        let ui = self.0.lock().unwrap();
+        if let Some((_, printer)) = ui.windows.get(ui.win) {
+            printer.update(true, false);
+        }
     }
 
     fn print(&self) {

@@ -62,7 +62,7 @@ impl Buffer {
                         let selection = Cache::new().load(path).unwrap_or_default();
                         Selections::new(selection)
                     };
-                    let text = Text::from_bytes(Bytes::new(&buffer), selections, true);
+                    let text = Text::from_parts(Bytes::new(&buffer), selections, true);
                     (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()

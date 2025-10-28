@@ -276,7 +276,7 @@ impl Change<'static, String> {
         let added = {
             let edit = edit.to_string();
             // A '\n' must be kept at the end, no matter what.
-            if range.start == text.len() && !edit.ends_with('\n') {
+            if range.start == text.len() && !edit.ends_with('\n') || range.end == text.len() {
                 edit + "\n"
             } else {
                 edit

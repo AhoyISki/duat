@@ -149,12 +149,12 @@ impl Text {
 
     /// Returns a new empty [`Text`]
     pub fn new() -> Self {
-        Self::from_bytes(Bytes::default(), Selections::new_empty(), false)
+        Self::from_parts(Bytes::default(), Selections::new_empty(), false)
     }
 
     /// Returns a new empty [`Text`] with [`Selections`] enabled
     pub fn with_default_main_selection() -> Self {
-        Self::from_bytes(
+        Self::from_parts(
             Bytes::default(),
             Selections::new(Selection::default()),
             false,
@@ -163,7 +163,7 @@ impl Text {
 
     /// Returns a new empty [`Text`] with history enabled
     pub(crate) fn new_with_history() -> Self {
-        Self::from_bytes(
+        Self::from_parts(
             Bytes::default(),
             Selections::new(Selection::default()),
             true,
@@ -171,7 +171,7 @@ impl Text {
     }
 
     /// Creates a [`Text`] from [`Bytes`]
-    pub(crate) fn from_bytes(
+    pub(crate) fn from_parts(
         mut bytes: Bytes,
         mut selections: Selections,
         with_history: bool,
@@ -892,7 +892,7 @@ macro impl_from_to_string($t:ty) {
         fn from(value: $t) -> Self {
             let string = <$t as ToString>::to_string(&value);
             let bytes = Bytes::new(&string);
-            Self::from_bytes(bytes, Selections::new_empty(), false)
+            Self::from_parts(bytes, Selections::new_empty(), false)
         }
     }
 }

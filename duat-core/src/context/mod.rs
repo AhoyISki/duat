@@ -110,7 +110,7 @@ mod global {
     pub fn dynamic_buffer(pa: &Pass) -> DynBuffer {
         let dyn_buffer = windows().current_buffer(pa).clone();
         let cur_buffer = RwData::new(dyn_buffer.read(pa).clone());
-        DynBuffer { dyn_buffer, cur_buffer }
+        DynBuffer { cur_buffer: dyn_buffer, saved_buffer: cur_buffer }
     }
 
     /// Returns a [`Handle`] for a [`Buffer`] with the given name
@@ -216,18 +216,18 @@ mod global {
 /// `Buffer`. It can also detect when that `Buffer` has been changed
 /// or when another `Buffer` becomes the active `Buffer`.
 pub struct DynBuffer {
-    dyn_buffer: RwData<Handle>,
     cur_buffer: RwData<Handle>,
+    saved_buffer: RwData<Handle>,
 }
 
 impl DynBuffer {
     /// Wether the [`Buffer`] pointed to has changed or swapped with
     /// another
     pub fn has_changed(&self, pa: &Pass) -> bool {
-        if self.cur_buffer.has_changed() {
+        if self.saved_buffer.has_changed() {
             true
         } else {
-            self.dyn_buffer.read(pa).has_changed(pa)
+            self.cur_buffer.read(pa).has_changed(pa)
         }
     }
 
@@ -237,13 +237,13 @@ impl DynBuffer {
         // references to the RwData exist.
         let pa = unsafe { &mut Pass::new() };
         if self.cur_buffer.has_changed() {
-            *self.dyn_buffer.write(pa) = self.cur_buffer.read(pa).clone();
+            *self.saved_buffer.write(pa) = self.cur_buffer.read(pa).clone();
         }
     }
 
     /// Reads the presently active [`Buffer`]
     pub fn read<'a>(&'a mut self, pa: &'a Pass) -> &'a Buffer {
-        self.dyn_buffer.read(pa).read(pa)
+        self.saved_buffer.read(pa).read(pa)
     }
 
     /// The [`Handle<Buffer>`] currently being pointed to
@@ -251,7 +251,7 @@ impl DynBuffer {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
-        self.dyn_buffer.read(INTERNAL_PASS)
+        self.saved_buffer.read(INTERNAL_PASS)
     }
 
     /// Simulates a [`read`] without actually reading
@@ -269,8 +269,8 @@ impl DynBuffer {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
-        self.dyn_buffer.read(INTERNAL_PASS).declare_as_read();
         self.cur_buffer.declare_as_read();
+        self.saved_buffer.read(INTERNAL_PASS).declare_as_read();
     }
 
     ////////// Writing functions
@@ -281,7 +281,7 @@ impl DynBuffer {
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
-        self.dyn_buffer.read(INTERNAL_PASS).write(pa)
+        self.saved_buffer.read(INTERNAL_PASS).write(pa)
     }
 
     /// Writes to the [`Buffer`] and [`Area`], making use of a
@@ -293,7 +293,7 @@ impl DynBuffer {
         // accessed anyways.
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
-        self.dyn_buffer.read(INTERNAL_PASS).write_with_area(pa)
+        self.saved_buffer.read(INTERNAL_PASS).write_with_area(pa)
     }
 
     /// Simulates a [`write`] without actually writing
@@ -305,7 +305,7 @@ impl DynBuffer {
     /// [`write`]: Self::write
     /// [`has_changed`]: Self::has_changed
     pub fn declare_written(&self) {
-        self.dyn_buffer.declare_written();
+        self.cur_buffer.declare_written();
     }
 }
 
@@ -324,8 +324,8 @@ impl Clone for DynBuffer {
         static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
 
         Self {
-            dyn_buffer: RwData::new(self.dyn_buffer.read(INTERNAL_PASS).clone()),
-            cur_buffer: self.cur_buffer.clone(),
+            cur_buffer: RwData::new(self.cur_buffer.read(INTERNAL_PASS).clone()),
+            saved_buffer: self.saved_buffer.clone(),
         }
     }
 }

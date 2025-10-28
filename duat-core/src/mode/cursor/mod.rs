@@ -134,7 +134,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
         let (start, end) = (change.start(), change.added_end());
 
-        self.edit(change);
+        self.edit(change.clone());
 
         let anchor_was_on_start = self.anchor_is_start();
         self.move_to(start..end);

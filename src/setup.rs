@@ -209,7 +209,6 @@ pub fn run_duat(
 ) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         ui.close();
-        println!("{}", std::backtrace::Backtrace::force_capture());
         println!("Duat panicked: {panic_info}");
     }));
 

@@ -49,9 +49,11 @@ FOR NEXT UPDATE:
 [x] Make all Ui and Area methods use the address space of the Duat app.
 [x] Finalize the Windows API for more public use.
 [x] Easier pattern matching for Modes.
-[ ] extra_word_chars, rather than WordChars.
+[x] extra_word_chars, rather than WordChars.
+[ ] Buffer switch history.
 
 KNOWN BUGS:
+[ ] Paste not working.
 [ ] Sometimes empty Texts are being created somehow.
 [x] Print iteration sometimes loops forever.
 [x] Spawned Areas not resizing until moving up or down.

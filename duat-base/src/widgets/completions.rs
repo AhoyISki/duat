@@ -255,7 +255,7 @@ impl WordsCompletionParser {
             BUFFER_WORDS,
             buffer
                 .text()
-                .search_fwd(r"\w+", ..)
+                .search_fwd(r"\w{3,}", ..10000.min(buffer.text().len().byte()))
                 .unwrap()
                 .map(|range| buffer.text().strs(range).unwrap().to_string()),
         );

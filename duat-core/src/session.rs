@@ -95,8 +95,6 @@ impl SessionCfg {
             let ReloadedBuffer { mut buffer, is_active } = rel_files.next().unwrap();
             buffer.opts = *FILE_CFG.get().unwrap();
 
-            context::debug!("{is_active}");
-
             if let Some(layout) = layout.take() {
                 Windows::initialize(pa, buffer, layout, ui);
             } else {
@@ -159,15 +157,18 @@ impl Session {
 
         let mut print_screen = {
             let mut last_win = context::current_win_index(pa);
+            let mut last_win_len = context::windows().len(pa);
             let mut windows_nodes = get_windows_nodes(pa);
 
             move |pa: &mut Pass, force: bool| {
                 context::windows().cleanup_despawned(pa);
                 let cur_win = context::current_win_index(pa);
+                let cur_win_len = context::windows().len(pa);
 
                 let mut printed_at_least_one = false;
                 for node in windows_nodes.get(last_win).unwrap() {
-                    if force || cur_win != last_win || node.needs_update(pa) {
+                    let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
+                    if force || windows_changed || node.needs_update(pa) {
                         node.update_and_print(pa, last_win);
                         printed_at_least_one = true;
                     }
@@ -191,6 +192,7 @@ impl Session {
                 }
 
                 last_win = cur_win;
+                last_win_len = cur_win_len;
             }
         };
 
@@ -280,7 +282,7 @@ impl Session {
         let buffers =
             context::windows()
                 .entries(pa)
-                .fold(Vec::new(), |mut file_handles, (win, _, node)| {
+                .fold(Vec::new(), |mut file_handles, (win, node)| {
                     if win >= file_handles.len() {
                         file_handles.push(Vec::new());
                     }

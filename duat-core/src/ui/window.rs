@@ -30,6 +30,7 @@ struct InnerWindows {
     cur_buffer: RwData<Handle>,
     cur_widget: RwData<Node>,
     cur_win: usize,
+    buffer_history: BufferHistory,
 }
 
 impl Windows {
@@ -52,6 +53,7 @@ impl Windows {
                 cur_buffer: RwData::new(node.try_downcast().unwrap()),
                 cur_widget: RwData::new(node.clone()),
                 cur_win: 0,
+                buffer_history: BufferHistory::default(),
             }),
             spawns_to_remove: Mutex::new(Vec::new()),
             ui,
@@ -299,40 +301,7 @@ impl Windows {
         pa: &mut Pass,
         handle: &Handle<W, S>,
     ) -> Result<(), Text> {
-        let (win, wid) = self.handle_entry(pa, handle)?;
-
-        // If this is the active Handle, pick another one to make active.
-        let inner = self.inner.read(pa);
-        if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_buffer.read(pa) {
-            // SAFETY: This Pass is only used on known other types.
-            let internal_pass = &mut unsafe { Pass::new() };
-
-            if handle.widget().data_is::<Buffer>() {
-                let entry = self
-                    .iter_around_rev(pa, win, wid)
-                    .find(|(_, node)| node.data_is::<Buffer>());
-
-                if let Some((win, node)) = entry {
-                    *inner.cur_buffer.write(internal_pass) = node.try_downcast().unwrap();
-                    *inner.cur_widget.write(internal_pass) = node.clone();
-                    self.inner.write(pa).cur_win = win;
-                } else {
-                    // If there is no previous Buffer, just quit.
-                    context::sender()
-                        .send(crate::session::DuatEvent::Quit)
-                        .unwrap();
-                    return Ok(());
-                }
-            } else {
-                let (win, _) = self
-                    .handle_entry(pa, &inner.cur_buffer.read(pa).to_dyn())
-                    .unwrap();
-
-                let node = Node::from_handle(inner.cur_buffer.read(pa).clone());
-                *inner.cur_widget.write(internal_pass) = node;
-                self.inner.write(pa).cur_win = win;
-            }
-        }
+        let win = self.handle_window(pa, handle)?;
 
         // If it's a Buffer, swap all buffers ahead, so this one becomes the
         // last.
@@ -370,6 +339,39 @@ impl Windows {
         inner.list = list;
         inner.new_additions.lock().unwrap().get_or_insert_default();
 
+        // If this is the active Handle, pick another one to make active.
+        let inner = self.inner.read(pa);
+        if handle == inner.cur_widget.read(pa).handle() || handle == inner.cur_buffer.read(pa) {
+            if let Some(handle) = handle.try_downcast::<Buffer>() {
+                self.inner.write(pa).buffer_history.remove(&handle);
+
+                let entry = self
+                    .inner
+                    .write(pa)
+                    .buffer_history
+                    .prev()
+                    .cloned()
+                    .or_else(|| self.buffers(pa).next())
+                    .and_then(|handle| {
+                        self.entries(pa).find_map(|(win, node)| {
+                            (*node.handle() == handle).then(|| (win, node.clone()))
+                        })
+                    });
+
+                if let Some((_, node)) = entry {
+                    crate::mode::reset_to(node.handle().clone());
+                } else {
+                    // If there is no previous Buffer, just quit.
+                    context::sender()
+                        .send(crate::session::DuatEvent::Quit)
+                        .unwrap();
+                    return Ok(());
+                }
+            } else {
+                crate::mode::reset_to(inner.cur_buffer.read(pa).to_dyn());
+            }
+        }
+
         Ok(())
     }
 
@@ -380,8 +382,8 @@ impl Windows {
         lhs: &Handle<W1, S1>,
         rhs: &Handle<W2, S2>,
     ) -> Result<(), Text> {
-        let (lhs_win, _) = self.handle_entry(pa, lhs)?;
-        let (rhs_win, _) = self.handle_entry(pa, rhs)?;
+        let lhs_win = self.handle_window(pa, lhs)?;
+        let rhs_win = self.handle_window(pa, rhs)?;
 
         let [lhs_buffer, rhs_buffer] = [lhs.try_downcast::<Buffer>(), rhs.try_downcast()];
 
@@ -428,7 +430,7 @@ impl Windows {
         default_buffer_cfg: PrintOpts,
     ) -> Node {
         let node = match self.buffer_entry(pa, pk.clone()) {
-            Ok((win, _, handle)) if self.get(pa, win).unwrap().buffers(pa).len() > 1 => {
+            Ok((win, handle)) if self.get(pa, win).unwrap().buffers(pa).len() > 1 => {
                 // Take the nodes in the original Window
                 handle.write(pa).layout_order = 0;
 
@@ -499,11 +501,10 @@ impl Windows {
         // Pass, and it is known that it only writes to other types.
         let internal_pass = &mut unsafe { Pass::new() };
 
-        let (win, _) = self.handle_entry(pa, node.handle())?;
+        let win = self.handle_window(pa, node.handle())?;
         let inner = self.inner.write(pa);
 
         if let Some(handle) = node.try_downcast::<Buffer>() {
-            context::debug!("{}", handle.read(internal_pass).name());
             *inner.cur_buffer.write(internal_pass) = handle;
         }
         *inner.cur_widget.write(internal_pass) = node.clone();
@@ -541,26 +542,22 @@ impl Windows {
     ////////// Entry lookup
 
     /// An entry for a [`Handle`]
-    pub(crate) fn handle_entry<W: Widget + ?Sized, S>(
+    pub(crate) fn handle_window<W: Widget + ?Sized, S>(
         &self,
         pa: &Pass,
         handle: &Handle<W, S>,
-    ) -> Result<(usize, usize), Text> {
+    ) -> Result<usize, Text> {
         self.entries(pa)
-            .find_map(|(win, wid, node)| (node.handle() == handle).then_some((win, wid)))
+            .find_map(|(win, node)| (node.handle() == handle).then_some(win))
             .ok_or_else(|| txt!("The Handle was already closed").build())
     }
 
     /// An entry for a buffer with the given name
-    pub(crate) fn buffer_entry(
-        &self,
-        pa: &Pass,
-        pk: PathKind,
-    ) -> Result<(usize, usize, Handle), Text> {
+    pub(crate) fn buffer_entry(&self, pa: &Pass, pk: PathKind) -> Result<(usize, Handle), Text> {
         self.entries(pa)
-            .find_map(|(win, wid, node)| {
+            .find_map(|(win, node)| {
                 (node.read_as(pa).filter(|f: &&Buffer| f.path_kind() == pk))
-                    .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
+                    .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
             })
             .ok_or_else(|| txt!("Buffer {pk} not found").build())
     }
@@ -570,13 +567,13 @@ impl Windows {
         &self,
         pa: &Pass,
         name: &str,
-    ) -> Result<(usize, usize, Handle), Text> {
+    ) -> Result<(usize, Handle), Text> {
         self.entries(pa)
-            .find_map(|(win, wid, node)| {
+            .find_map(|(win, node)| {
                 (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
-                    .and_then(|_| node.try_downcast().map(|handle| (win, wid, handle)))
+                    .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
             })
-            .ok_or_else(|| txt!("Buffer {name} not found").build())
+            .ok_or_else(|| txt!("Buffer [buffer]{name}[] not found").build())
     }
 
     /// An entry for a widget of a specific type
@@ -603,12 +600,8 @@ impl Windows {
 
     ////////// Entry iterators
 
-    /// Iterates over all widget entries, with window and widget
-    /// indices, in that order
-    pub(crate) fn entries<'a>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl Iterator<Item = (usize, usize, &'a Node)> {
+    /// Iterates over all widget entries, with window indices
+    pub(crate) fn entries<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = (usize, &'a Node)> {
         self.inner
             .read(pa)
             .list
@@ -620,8 +613,7 @@ impl Windows {
                     .nodes
                     .iter()
                     .chain(inner.spawned.iter().map(|(_, node)| node))
-                    .enumerate()
-                    .map(move |(wid, node)| (win, wid, node))
+                    .map(move |node| (win, node))
             })
     }
 
@@ -959,6 +951,9 @@ impl Window {
 
         let (do_rm_window, rm_areas) = node.area().delete(pa);
         if do_rm_window {
+            for handle in self.handles(pa).cloned().collect::<Vec<_>>() {
+                handle.declare_closed(pa);
+            }
             return true;
         }
 
@@ -1008,7 +1003,14 @@ impl Window {
             self.0.write(pa).buffers_area = master_area;
         }
 
-        false
+        if self.buffers(pa).is_empty() {
+            for handle in self.handles(pa).cloned().collect::<Vec<_>>() {
+                handle.declare_closed(pa);
+            }
+            true
+        } else {
+            false
+        }
     }
 
     /// Takes all [`Node`]s related to a given [`Node`]
@@ -1121,6 +1123,80 @@ impl Window {
     pub(crate) fn len_widgets(&self, pa: &Pass) -> usize {
         let inner = self.0.read(pa);
         inner.nodes.len() + inner.spawned.len()
+    }
+}
+
+#[derive(Default)]
+struct BufferHistory {
+    current_i: usize,
+    list: Vec<Handle>,
+    last_was_fwd: bool,
+}
+
+impl BufferHistory {
+    /// Returns the previous [`Handle`], if there is one
+    fn prev(&mut self) -> Option<&Handle> {
+        self.current_i.checked_sub(1).and_then(|prev_i| {
+            self.last_was_fwd = true;
+            self.current_i = prev_i;
+            self.list.get(prev_i)
+        })
+    }
+
+    /// Returns the next [`Handle`], if there is one
+    fn next(&mut self) -> Option<&Handle> {
+        self.list.get(self.current_i + 1).map(|next| {
+            self.last_was_fwd = false;
+            self.current_i += 1;
+            next
+        })
+    }
+
+    /// Returns the last [`Handle`]
+    ///
+    /// Repeatedly calling this function will return the same two
+    /// [`Handle`]s.
+    fn last(&mut self) -> Option<&Handle> {
+        if self.last_was_fwd {
+            self.next()
+        } else {
+            self.prev()
+        }
+    }
+
+    /// Inserts a new entry, but only if it is different from both of
+    /// the surrounding entries
+    fn insert(&mut self, handle: Handle) {
+        if self
+            .current_i
+            .checked_sub(1)
+            .is_none_or(|prev_i| self.list[prev_i] != handle)
+            && self
+                .list
+                .get(self.current_i)
+                .is_none_or(|other| *other != handle)
+        {
+            self.list.insert(self.current_i, handle);
+            self.last_was_fwd = false;
+            self.current_i += 1;
+        }
+    }
+
+    /// Clears all instances of a given [`Handle`], signaling that it
+    /// has been closed
+    fn remove(&mut self, handle: &Handle) {
+        let mut i = 0;
+        self.list.retain(|other| {
+            if other == handle {
+                if i < self.current_i {
+                    self.current_i -= 1;
+                }
+                false
+            } else {
+                i += 1;
+                true
+            }
+        });
     }
 }
 

@@ -740,9 +740,7 @@ mod cursor {
         /// The ending [`Point`] of this [`Selection`]
         pub fn end(&self, bytes: &Bytes) -> Point {
             let raw = self.end_excl();
-            if raw == bytes.len() {
-                panic!("equals len: {raw:?}, {bytes:#?}");
-            }
+            assert_ne!(raw, bytes.len(), "Exclusive end is len");
             raw.fwd(bytes.char_at(raw).unwrap())
         }
 

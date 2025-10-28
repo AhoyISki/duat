@@ -15,10 +15,6 @@ pub fn print_iter(
     cap: u32,
     opts: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    if cap == 0 {
-        panic!("You aren't supposed to use print iterators on hidden areas");
-    }
-    
     let start_points = text.visual_line_start(points, 0);
     let max_indent = if opts.indent_wraps { cap } else { 0 };
 
@@ -76,10 +72,6 @@ pub fn rev_print_iter(
     cap: u32,
     opts: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
-    if cap == 0 {
-        panic!("You aren't supposed to use print iterators on hidden areas");
-    }
-    
     let mut iter = text.iter_rev(points);
 
     let mut returns = Vec::new();
@@ -189,8 +181,7 @@ fn inner_iter<'a>(
                     let leftover = total_len.saturating_sub(cap);
                     wrapped_indent = match char {
                         '\t' if leftover > 0 => {
-                            line.push((len - leftover, item));
-                            iter.next();
+                            line.push((len - leftover, iter.next().unwrap()));
                             if old_indent + leftover < max_indent && opts.indent_wraps {
                                 old_indent + leftover
                             } else {
@@ -209,7 +200,15 @@ fn inner_iter<'a>(
                             }
                             0
                         }
-                        _ => old_indent * (old_indent < max_indent && opts.indent_wraps) as u32,
+                        _ => {
+                            // This should only happen when `cap == 0 && !opts.dont_wrap`.
+                            // At that point, the only logical course of action is to wrap on
+                            // every character.
+                            if !line.iter().any(|(_, item)| item.part.is_char()) {
+                                line.push((len, iter.next().unwrap()));
+                            }
+                            old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
+                        }
                     };
 
                     total_len = wrapped_indent;
