@@ -54,7 +54,11 @@ use std::{
     sync::LazyLock,
 };
 
-use duat_core::{buffer::Buffer, context::Handle, data::{Pass, RwData}};
+use duat_core::{
+    buffer::Buffer,
+    context::Handle,
+    data::{Pass, RwData},
+};
 use regex::RegexSet;
 
 pub trait FileType {
