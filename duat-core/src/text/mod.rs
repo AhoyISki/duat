@@ -153,7 +153,7 @@ impl Text {
     }
 
     /// Returns a new empty [`Text`] with [`Selections`] enabled
-    pub fn new_with_selections() -> Self {
+    pub fn with_default_main_selection() -> Self {
         Self::from_bytes(
             Bytes::default(),
             Selections::new(Selection::default()),
@@ -171,7 +171,11 @@ impl Text {
     }
 
     /// Creates a [`Text`] from [`Bytes`]
-    pub(crate) fn from_bytes(mut bytes: Bytes, selections: Selections, with_history: bool) -> Self {
+    pub(crate) fn from_bytes(
+        mut bytes: Bytes,
+        mut selections: Selections,
+        with_history: bool,
+    ) -> Self {
         if bytes.slices(..).next_back().is_none_or(|b| b != b'\n') {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
@@ -186,6 +190,7 @@ impl Text {
         }) {
             Selections::new(Selection::default())
         } else {
+            selections.correct_all(&bytes);
             selections
         };
 

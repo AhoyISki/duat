@@ -517,7 +517,7 @@ pub(crate) fn add_session_commands() {
             .unwrap()
             .nodes(pa)
             .position(|node| handle.ptr_eq(node.widget()))
-            .unwrap();
+            .unwrap_or_else(|| panic!("{}, {win}", handle.read(pa).name()));
 
         let handle = if flags.word("global") {
             windows

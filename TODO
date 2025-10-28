@@ -52,6 +52,7 @@ FOR NEXT UPDATE:
 [ ] extra_word_chars, rather than WordChars.
 
 KNOWN BUGS:
+[ ] Sometimes empty Texts are being created somehow.
 [x] Print iteration sometimes loops forever.
 [x] Spawned Areas not resizing until moving up or down.
 [ ] Window not switching properly.

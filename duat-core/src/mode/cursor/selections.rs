@@ -4,7 +4,7 @@ use gapbuf::{GapBuffer, gap_buffer};
 
 pub use self::cursor::{Selection, VPoint};
 use crate::{
-    text::{Change, Point, TextRange},
+    text::{Bytes, Change, Point, TextRange},
     utils::{add_shifts, merging_range_by_guess_and_lazy_shift},
 };
 
@@ -95,6 +95,14 @@ impl Selections {
             self.buf = gap_buffer![cursor];
         }
         self.main_i = 0;
+    }
+
+    /// Corrects all [`Selection`]s, so that their char and byte
+    /// values reflect the correct position in the [`Bytes`]
+    pub(crate) fn correct_all(&mut self, bytes: &Bytes) {
+        for selection in &mut self.buf {
+            selection.correct(bytes)
+        }
     }
 
     ////////// Querying functions
@@ -634,6 +642,22 @@ mod cursor {
             }
         }
 
+        /// Corrects this [`Selection`], so that their char and byte
+        /// values reflect the correct position in the [`Bytes`]
+        pub(crate) fn correct(&mut self, bytes: &Bytes) {
+            self.caret.set(LazyVPoint::Unknown(
+                bytes.point_at_byte(self.caret.get().point().byte()),
+            ));
+
+            if let Some(anchor) = self.anchor.get() {
+                self.anchor.set(Some(LazyVPoint::Unknown(
+                    bytes.point_at_byte(anchor.point().byte()),
+                )))
+            }
+        }
+
+        ////////// Public movement functions
+
         /// Sets the position of the anchor to be the same as the
         /// current cursor position in the buffer
         ///
@@ -685,6 +709,8 @@ mod cursor {
             self.caret.get().point().line()
         }
 
+        ////////// Range functions
+
         /// Returns the range between `caret` and `anchor`.
         ///
         /// If `anchor` isn't set, returns an empty range on `caret`.
@@ -728,6 +754,21 @@ mod cursor {
             }
         }
 
+        /// Returns the range between `caret` and `anchor`.
+        ///
+        /// If `anchor` isn't set, returns a range that contains only
+        /// the `caret`'s current `char`.
+        pub fn point_range(&self, bytes: &Bytes) -> Range<Point> {
+            self.start()..self.end(bytes)
+        }
+
+        /// Returns an exclusive range between `caret` and `anchor`
+        ///
+        /// If `anchor` isn't set, both [`Point`]s will be the same.
+        pub fn point_range_excl(&self) -> Range<Point> {
+            self.start()..self.end_excl()
+        }
+
         pub(crate) fn tag_points(&self, bytes: &Bytes) -> (Point, Option<Range<Point>>) {
             let caret = self.caret();
             if let Some(anchor) = self.anchor() {
@@ -744,20 +785,7 @@ mod cursor {
             }
         }
 
-        /// Returns the range between `caret` and `anchor`.
-        ///
-        /// If `anchor` isn't set, returns a range that contains only
-        /// the `caret`'s current `char`.
-        pub fn point_range(&self, bytes: &Bytes) -> Range<Point> {
-            self.start()..self.end(bytes)
-        }
-
-        /// Returns an exclusive range between `caret` and `anchor`
-        ///
-        /// If `anchor` isn't set, both [`Point`]s will be the same.
-        pub fn point_range_excl(&self) -> Range<Point> {
-            self.start()..self.end_excl()
-        }
+        ////////// VPoint functions
 
         /// Sets both the desired visual column, as well as the
         /// desired wrapped column

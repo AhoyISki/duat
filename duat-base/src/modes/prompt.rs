@@ -178,7 +178,7 @@ impl mode::Mode for Prompt {
     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
         let text = {
             let pl = handle.write(pa);
-            *pl.text_mut() = Text::new_with_selections();
+            *pl.text_mut() = Text::with_default_main_selection();
             pl.text_mut().replace_range(0..0, &self.starting_text);
 
             let tag = Ghost(match pl.prompt_of_id(self.ty) {

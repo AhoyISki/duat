@@ -286,7 +286,7 @@ impl Bytes {
                 .take_while(|&(rhs, ..)| b <= rhs)
                 .last()
         };
-
+        
         found
             .map(|(b, c, l)| Point::from_raw(b, c, l))
             .unwrap_or(self.len())
@@ -539,6 +539,7 @@ impl Bytes {
     }
 
     /// Adds a record in the given position
+    #[track_caller]
     pub(super) fn add_record(&mut self, [b, c, l]: [usize; 3]) {
         self.records.insert([b, c, l]);
     }
