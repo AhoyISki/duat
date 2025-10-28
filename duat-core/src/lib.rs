@@ -626,16 +626,8 @@
 //! [`BufferTracker::update`]: crate::buffer::BufferTracker::update
 #![feature(
     decl_macro,
-    step_trait,
     type_alias_impl_trait,
-    debug_closure_helpers,
-    unboxed_closures,
-    associated_type_defaults,
     dropck_eyepatch,
-    fn_traits,
-    iter_array_chunks,
-    thread_spawn_hook,
-    box_as_ptr,
     default_field_values,
     const_trait_impl,
     const_cmp,

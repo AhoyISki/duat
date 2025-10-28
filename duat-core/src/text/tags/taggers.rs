@@ -312,24 +312,6 @@ impl Default for Tagger {
     }
 }
 
-impl std::iter::Step for Tagger {
-    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
-        if end.0 as usize >= start.0 as usize {
-            ((end.0 - start.0) as usize, Some((end.0 - start.0) as usize))
-        } else {
-            (0, None)
-        }
-    }
-
-    fn forward_checked(start: Self, count: usize) -> Option<Self> {
-        Some(Self(start.0 + count as u32))
-    }
-
-    fn backward_checked(start: Self, count: usize) -> Option<Self> {
-        start.0.checked_sub(count as u32).map(Self)
-    }
-}
-
 /// Trait used to distinguish [`Tag`]s
 ///
 /// This can be either one [`Tagger`] or multiple, in which case many

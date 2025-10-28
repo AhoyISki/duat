@@ -382,7 +382,8 @@ impl Parsers {
 
             parser.before_get();
 
-            let ret = read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap());
+            let ptr: *const dyn Parser = &*parser;
+            let ret = read(unsafe { (ptr as *const P).as_ref() }.unwrap());
 
             self.list.borrow_mut()[i].parser = Some(parser);
 
@@ -401,9 +402,11 @@ impl Parsers {
         let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
+
+            let ptr: *const dyn Parser = &*parser;
             let ret = parser
                 .before_try_get()
-                .then(|| read(unsafe { (Box::as_ptr(&parser) as *const P).as_ref() }.unwrap()));
+                .then(|| read(unsafe { (ptr as *const P).as_ref() }.unwrap()));
 
             self.list.borrow_mut()[i].parser = Some(parser);
 
@@ -424,7 +427,8 @@ impl Parsers {
 
             parser.before_get();
 
-            let ret = write(unsafe { (Box::as_mut_ptr(&mut parser) as *mut P).as_mut() }.unwrap());
+            let ptr: *const dyn Parser = &*parser;
+            let ret = write(unsafe { (ptr as *mut P).as_mut() }.unwrap());
 
             self.list.borrow_mut()[i].parser = Some(parser);
 
@@ -443,9 +447,11 @@ impl Parsers {
         let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
-            let ret = parser.before_try_get().then(|| {
-                write(unsafe { (Box::as_mut_ptr(&mut parser) as *mut P).as_mut() }.unwrap())
-            });
+            
+            let ptr: *const dyn Parser = &*parser;
+            let ret = parser
+                .before_try_get()
+                .then(|| write(unsafe { (ptr as *mut P).as_mut() }.unwrap()));
 
             self.list.borrow_mut()[i].parser = Some(parser);
 
