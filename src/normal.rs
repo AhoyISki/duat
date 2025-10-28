@@ -93,6 +93,21 @@ impl Mode for Normal {
     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
         let opts = handle.opts(pa);
 
+        let move_to_match = |[c0, c1]: [_; 2], alt_word, moved| {
+            use Category::*;
+            let (cat0, cat1) = (Category::of(c0, opts), Category::of(c1, opts));
+            if let (Word, Word, ..)
+            | (Special, Special, ..)
+            | (Space, Space, ..)
+            | (Word | Special, Word | Special, true, _)
+            | (.., true) = (cat0, cat1, alt_word, moved)
+            {
+                false
+            } else {
+                true
+            }
+        };
+
         handle.write(pa).text_mut().new_moment();
         let rec = if handle.write(pa).record_selections(false) {
             2
@@ -165,11 +180,8 @@ impl Mode for Normal {
             event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
-                    if Category::of(c0, opts) == Category::of(c1, opts) || alt_word {
-                        c.move_to(p0);
-                    } else {
-                        c.move_to(p1);
-                    }
+                    let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
+                    c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c.search_fwd(word_and_space(alt_word, opts), None).next();
                     if let Some(range) = range {
@@ -180,11 +192,8 @@ impl Mode for Normal {
             event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
-                    if Category::of(c0, opts) == Category::of(c1, opts) || alt_word {
-                        c.move_to(p0);
-                    } else {
-                        c.move_to(p1);
-                    }
+                    let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
+                    c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c.search_fwd(space_and_word(alt_word, opts), None).next();
                     if let Some(range) = range {
@@ -199,19 +208,9 @@ impl Mode for Normal {
                     no_nl_windows(iter).next()
                 };
                 if let Some(((p1, c1), (_, c0))) = init {
-                    use Category::*;
-                    let moved_back = p1 != c.caret();
+                    let moved = p1 != c.caret();
                     c.move_to(p1);
-                    if let (Word, Word, ..)
-                    | (Special, Special, ..)
-                    | (Space, Space, ..)
-                    | (Word | Special, Word | Special, true, _)
-                    | (.., true) = (
-                        Category::of(c0, opts),
-                        Category::of(c1, opts),
-                        alt_word,
-                        moved_back,
-                    ) {
+                    if !move_to_match([c1, c0], alt_word, moved) {
                         c.move_hor(1);
                     }
 
