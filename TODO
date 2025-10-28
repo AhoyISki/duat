@@ -53,21 +53,20 @@ FOR NEXT UPDATE:
 [ ] Buffer switch history.
 
 KNOWN BUGS:
-[ ] Paste not working.
-[ ] Sometimes empty Texts are being created somehow.
-[x] Print iteration sometimes loops forever.
-[x] Spawned Areas not resizing until moving up or down.
-[ ] Window not switching properly.
-[ ] Perfect print iterators.
-  [ ] Perfect words iterator.
-[ ] track_area not actually tracking correctly.
-[ ] tree-sitter-duat-text is not being used.
-[ ] Locking a Mutex on every Change is surely slow.
-[ ] std::mem::replace (grrrr...).
-[ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
-[ ] Aliases turn lines wrapped in the LineNumbers eyes.
-[ ] First Point not updating when there are changes before the start of the screen.
-[ ] Removing a bunch of injections at the same time seems to freak treesitter out.
+
+ HIGH PRIORITY:
+  [ ] Paste not working.
+  [ ] track_area not actually tracking correctly.
+  [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
+  [ ] First Point not updating when there are changes before the start of the screen.
+  
+ LOW PRIORITY:
+  [ ] Perfect print iterators.
+    [ ] Perfect words iterator.
+  [ ] tree-sitter-duat-text is not being used.
+  [ ] Locking a Mutex on every Change is surely slow.
+  [ ] std::mem::replace (grrrr...).
+  [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
 
 FUTURE UPDATES:
 [ ] Get started on a Vim mode.
