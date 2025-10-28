@@ -287,7 +287,7 @@ use std::{
 
 use duat::{
     mode::{self, Cursor, KeyCode::*},
-    opts::WordChars,
+    opts::PrintOpts,
     prelude::*,
     text::Point,
 };
@@ -478,8 +478,8 @@ enum Category {
 }
 
 impl Category {
-    fn of(char: char, wc: WordChars) -> Self {
-        if wc.contains(char) {
+    fn of(char: char, opts: PrintOpts) -> Self {
+        if opts.is_word_char(char) {
             Category::Word
         } else if [' ', '\t', '\n'].contains(&char) {
             Category::Space
@@ -498,7 +498,7 @@ enum Object<'a> {
 }
 
 impl<'a> Object<'a> {
-    fn new(event: KeyEvent, wc: WordChars, brackets: Brackets) -> Option<Self> {
+    fn new(event: KeyEvent, opts: PrintOpts, brackets: Brackets) -> Option<Self> {
         static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
 
         match event {
@@ -531,10 +531,10 @@ impl<'a> Object<'a> {
                 }
             }),
             event!('w') => Some(Self::Anchored({
-                static WORD_PATS: Memoized<WordChars, &str> = Memoized::new();
-                WORD_PATS.get_or_insert_with(wc, || {
-                    let cat = w_char_cat(wc);
-                    format!("\\A([{cat}]+|[^{cat} \t\n]+)\\z").leak()
+                static WORD_PATS: Memoized<&'static [char], &str> = Memoized::new();
+                WORD_PATS.get_or_insert_with(opts.extra_word_chars, || {
+                    let cat = opts.word_chars_regex();
+                    format!("\\A({cat}+|[^{cat} \t\n]+)\\z").leak()
                 })
             })),
             alt!('w') => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
@@ -625,19 +625,6 @@ fn escaped_regex(str: &str) -> &'static str {
         }
         escaped.leak()
     })
-}
-
-fn w_char_cat(wc: WordChars) -> String {
-    wc.ranges()
-        .iter()
-        .map(|r| {
-            if r.start() == r.end() {
-                format!("{}", r.start())
-            } else {
-                format!("{}-{}", r.start(), r.end())
-            }
-        })
-        .collect()
 }
 
 struct Memoized<K: std::hash::Hash + std::cmp::Eq, V>(LazyLock<Mutex<HashMap<K, V>>>);

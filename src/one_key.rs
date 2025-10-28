@@ -175,20 +175,20 @@ fn match_inside_around(
         return;
     };
 
-    let wc = handle.opts(pa).word_chars;
+    let opts = handle.opts(pa);
     let initial_cursors_len = handle.selections(pa).len();
 
     let mut failed = false;
 
-    if let Some(object) = Object::new(event, wc, brackets) {
+    if let Some(object) = Object::new(event, opts, brackets) {
         match char {
             'w' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let start = object.find_behind(c, 0, None);
                 let range = object.find_ahead(c, 0, None)?;
                 let p0 = {
                     let p0 = start.map(|range| range.start).unwrap_or(c.caret());
-                    let p0_cat = Category::of(c.char_at(p0).unwrap(), wc);
-                    let p1_cat = Category::of(c.char(), wc);
+                    let p0_cat = Category::of(c.char_at(p0).unwrap(), opts);
+                    let p1_cat = Category::of(c.char(), opts);
                     let is_same_cat = event.modifiers == KeyMod::ALT || p0_cat == p1_cat;
                     if is_same_cat { p0 } else { c.caret() }
                 };

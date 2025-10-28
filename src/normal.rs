@@ -5,7 +5,7 @@ use duat::{
         ExtendFwd, ExtendRev, IncSearch, KeyCode::*, KeyMod, PipeSelections, RunCommands,
         SearchFwd, SearchRev, VPoint,
     },
-    opts::WordChars,
+    opts::PrintOpts,
     prelude::*,
     text::Point,
 };
@@ -17,7 +17,7 @@ use crate::{
     inc_searchers::{Select, Split},
     insert::INSERT_TABS,
     one_key::OneKey,
-    select_to_end_of_line, set_anchor_if_needed, w_char_cat,
+    select_to_end_of_line, set_anchor_if_needed,
 };
 
 #[derive(Clone, Copy)]
@@ -91,7 +91,7 @@ impl Mode for Normal {
     type Widget = Buffer;
 
     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
-        let wc = handle.opts(pa).word_chars;
+        let opts = handle.opts(pa);
 
         handle.write(pa).text_mut().new_moment();
         let rec = if handle.write(pa).record_selections(false) {
@@ -165,13 +165,13 @@ impl Mode for Normal {
             event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
-                    if Category::of(c0, wc) == Category::of(c1, wc) || alt_word {
+                    if Category::of(c0, opts) == Category::of(c1, opts) || alt_word {
                         c.move_to(p0);
                     } else {
                         c.move_to(p1);
                     }
 
-                    let range = c.search_fwd(word_and_space(alt_word, wc), None).next();
+                    let range = c.search_fwd(word_and_space(alt_word, opts), None).next();
                     if let Some(range) = range {
                         c.move_to(range);
                     }
@@ -180,13 +180,13 @@ impl Mode for Normal {
             event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
-                    if Category::of(c0, wc) == Category::of(c1, wc) || alt_word {
+                    if Category::of(c0, opts) == Category::of(c1, opts) || alt_word {
                         c.move_to(p0);
                     } else {
                         c.move_to(p1);
                     }
 
-                    let range = c.search_fwd(space_and_word(alt_word, wc), None).next();
+                    let range = c.search_fwd(space_and_word(alt_word, opts), None).next();
                     if let Some(range) = range {
                         c.move_to(range);
                     }
@@ -207,15 +207,15 @@ impl Mode for Normal {
                     | (Space, Space, ..)
                     | (Word | Special, Word | Special, true, _)
                     | (.., true) = (
-                        Category::of(c0, wc),
-                        Category::of(c1, wc),
+                        Category::of(c0, opts),
+                        Category::of(c1, opts),
                         alt_word,
                         moved_back,
                     ) {
                         c.move_hor(1);
                     }
 
-                    let range = c.search_rev(word_and_space(alt_word, wc), None).next();
+                    let range = c.search_rev(word_and_space(alt_word, opts), None).next();
                     if let Some(range) = range {
                         c.move_to(range);
                         c.set_caret_on_start();
@@ -227,7 +227,7 @@ impl Mode for Normal {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some(range) = { c.search_fwd(word_and_space(alt_word, wc), None).next() } {
+                if let Some(range) = { c.search_fwd(word_and_space(alt_word, opts), None).next() } {
                     c.move_to(range.end);
                     c.move_hor(-1);
                 }
@@ -236,7 +236,7 @@ impl Mode for Normal {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some(range) = { c.search_fwd(space_and_word(alt_word, wc), None).next() } {
+                if let Some(range) = { c.search_fwd(space_and_word(alt_word, opts), None).next() } {
                     c.move_to(range.end);
                     c.move_hor(-1);
                 }
@@ -244,7 +244,7 @@ impl Mode for Normal {
             event!('B') | alt!('B') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
-                if let Some(range) = { c.search_rev(word_and_space(alt_word, wc), None).next() } {
+                if let Some(range) = { c.search_rev(word_and_space(alt_word, opts), None).next() } {
                     c.move_to(range.start);
                 }
             }),
@@ -301,7 +301,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(event, c.opts().word_chars, self.brackets).unwrap();
+                    let object = Object::new(event, opts, self.brackets).unwrap();
                     let e_range = object.find_ahead(c, 0, None)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
@@ -330,7 +330,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(event, c.opts().word_chars, self.brackets).unwrap();
+                    let object = Object::new(event, opts, self.brackets).unwrap();
                     let s_range = object.find_behind(c, 0, None)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
@@ -874,20 +874,20 @@ fn no_nl_windows<'a>(
         .skip_while(|((_, c0), (_, c1))| *c0 == '\n' || *c1 == '\n')
 }
 
-fn word_and_space(alt_word: bool, wc: WordChars) -> String {
+fn word_and_space(alt_word: bool, opts: PrintOpts) -> String {
     if alt_word {
         "[^ \t\n]*[ \t]*".to_string()
     } else {
-        let cat = w_char_cat(wc);
+        let cat = opts.word_chars_regex();
         format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+")
     }
 }
 
-fn space_and_word(alt_word: bool, wc: WordChars) -> String {
+fn space_and_word(alt_word: bool, opts: PrintOpts) -> String {
     if alt_word {
         "[ \t]*[^ \t\n]*".to_string()
     } else {
-        let cat = w_char_cat(wc);
+        let cat = opts.word_chars_regex();
         format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)|[ \t]+")
     }
 }
