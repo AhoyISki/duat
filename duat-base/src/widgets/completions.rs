@@ -1,36 +1,24 @@
-use std::sync::{LazyLock, Mutex, Once};
+use std::{
+    any::Any,
+    sync::{LazyLock, Mutex, Once},
+};
 
 use duat_core::{
     buffer::{Buffer, BufferTracker, Parser},
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged},
-    text::{Spacer, SpawnTag, Tagger, Text, txt},
+    opts::PrintOpts,
+    text::{Point, Spacer, SpawnTag, Tagger, Text, txt},
     ui::{Orientation, SpawnSpecs, Widget},
 };
 
-#[doc(hidden)]
-pub const BUFFER_WORDS: CompletionListId = CompletionListId(0);
-
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
-static COMPLETION_LISTS: LazyLock<Mutex<Vec<Vec<String>>>> =
-    LazyLock::new(|| Mutex::new(vec![Vec::new()]));
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CompletionListId(usize);
-
-impl CompletionListId {
-    /// Returns a new `CompletionListId`
-    fn new() -> Self {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static COUNT: AtomicUsize = AtomicUsize::new(1);
-        CompletionListId(COUNT.fetch_add(1, Ordering::Relaxed))
-    }
-}
+static PROVIDERS: LazyLock<Mutex<Vec<Box<dyn Any + Send>>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
 
 /// A list of completions, used to quickly fill in matches
 pub struct Completions {
-    id: CompletionListId,
     text: Text,
     list: Vec<usize>,
     entry_on_top: usize,
@@ -68,7 +56,7 @@ impl Completions {
         };
 
         let list = {
-            let lists = COMPLETION_LISTS.lock().unwrap();
+            let lists = PROVIDERS.lock().unwrap();
             let mut list: Vec<usize> = lists[BUFFER_WORDS.0]
                 .iter()
                 .enumerate()
@@ -150,40 +138,17 @@ impl Completions {
         }
     }
 
-    /// Clears all entries of a [`CompletionListId`]
-    pub fn clear_entries(id: CompletionListId) {
-        let mut lists = COMPLETION_LISTS.lock().unwrap();
-        lists[id.0].clear();
-    }
-
-    /// Adds entries to a [`CompletionListId`]
-    pub fn add_entries<S: AsRef<str>>(id: CompletionListId, entries: impl Iterator<Item = S>) {
-        let mut lists = COMPLETION_LISTS.lock().unwrap();
-        let list = &mut lists[id.0];
-
-        for entry in entries {
-            if let Err(i) = list.binary_search_by_key(&entry.as_ref(), |entry| entry.as_str()) {
-                list.insert(i, entry.as_ref().to_string());
-            }
-        }
-    }
-
-    /// Removes entries from a [`CompletionListId`]
-    pub fn remove_entries<'a>(id: CompletionListId, entries: impl Iterator<Item = &'a str>) {
-        let mut lists = COMPLETION_LISTS.lock().unwrap();
-        let list = &mut lists[id.0];
-
-        for entry in entries {
-            if let Ok(i) = list.binary_search_by_key(&entry, |entry| entry.as_str()) {
-                list.remove(i);
-            }
+    pub fn add_provider<P: CompletionsProvider>(provider: P) {
+        let mut providers = PROVIDERS.lock().unwrap();
+        if !providers.iter().any(|p| p.is::<P>()) {
+            providers.push(Box::new(provider))
         }
     }
 }
 
 impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let lists = COMPLETION_LISTS.lock().unwrap();
+        let lists = PROVIDERS.lock().unwrap();
 
         let (comp, area) = handle.write_with_area(pa);
         area.set_height(comp.list.len() as f32).unwrap();
@@ -214,6 +179,74 @@ impl Widget for Completions {
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
     }
+}
+
+struct ProviderFunctions {
+}
+
+/// A provider for word completions
+pub trait CompletionsProvider: Send + 'static {
+    /// Additional information about a given entry in the completion
+    /// list
+    ///
+    /// This information is supposed to be displayed alongside the
+    /// entry itself, usually on the right side.
+    type Info;
+
+    /// Get all completions at a given [`Point`] in the [`Text`]
+    ///
+    /// In conjunction with [`requires_filtering`] and
+    /// [`is_incomplete`], you should use this function to provide as
+    /// succint a list as possible, while still providing enough
+    /// completeness.
+    ///
+    /// [`requires_filtering`]: CompletionsProvider::requires_filtering
+    /// [`is_incomplete`]: CompletionsProvider::is_incomplete
+    fn get_completions_at(
+        &mut self,
+        text: &Text,
+        p: Point,
+    ) -> CompletionsList<impl Iterator<Item = (&str, Self::Info)>>;
+
+    /// Regex for which characters should be part of a word
+    ///
+    /// This should almost always be equal to
+    /// `opts.word_chars_regex()`, but for some specific providers,
+    /// like those that give file paths, this wouldn't be the case.
+    fn word_chars(&self, opts: PrintOpts) -> &str;
+}
+
+/// A list of entries for completion
+///
+/// This list is created by a [`CompletionsProvider`], and is used by
+/// the [`Completions`] [`Widget`] (or other similar `Widget`s) to
+/// provide tab completions to users.
+pub struct CompletionsList<I> {
+    /// The list of entries to be received by [`get_completions_at`]
+    ///
+    /// [`get_completions_at`]: CompletionsProvider::get_completions_at
+    pub list: I,
+    /// Wether the items from [`get_completions_at`] should be
+    /// filtered
+    ///
+    /// In the [`Completions`] [`Widget`], this will be done by
+    /// filtering out every entry that does not contain _all_ of the
+    /// characters on the [current word].
+    ///
+    /// [`get_completions_at`]: CompletionsProvider::get_completions_at
+    /// [current word]: CompletionsProvider::word_chars
+    pub requires_filtering: bool,
+    /// Wether the list sent by [`get_completions_at`] is complete
+    ///
+    /// If this is `true`, then the [`Completions`] [`Widget`] will
+    /// assume that there are no more entries to be sent, so even if
+    /// the user continues typing, as long as they are on the same
+    /// [word], then the first list that was sent can be used for
+    /// filtering.
+    ///
+    /// [`get_completions_at`]: CompletionsProvider::get_completions_at
+    /// [word]: CompletionsProvider::word_chars
+    pub is_complete: bool,
 }
 
 /// A simple [`String`] comparison function, which prioritizes matched
