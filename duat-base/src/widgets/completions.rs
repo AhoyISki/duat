@@ -1,3 +1,4 @@
+use core::arch;
 use std::{
     any::Any,
     sync::{LazyLock, Mutex, Once},
@@ -45,28 +46,6 @@ impl Completions {
         };
 
         let text = handle.text_mut(pa);
-        let (target, range) = {
-            let range = text
-                .search_rev(r"\w*\z", ..main.caret())
-                .unwrap()
-                .next()
-                .unwrap_or(main.caret()..main.caret());
-            let target = text.strs(range.clone()).unwrap().to_string();
-            (target, range)
-        };
-
-        let list = {
-            let lists = PROVIDERS.lock().unwrap();
-            let mut list: Vec<usize> = lists[BUFFER_WORDS.0]
-                .iter()
-                .enumerate()
-                .filter_map(|(i, entry)| string_cmp(&target, entry).is_some().then_some(i))
-                .collect();
-
-            list.sort_by_key(|i| string_cmp(&target, &lists[BUFFER_WORDS.0][*i]).unwrap());
-
-            list
-        };
 
         let completions = Self {
             id: BUFFER_WORDS,
@@ -181,9 +160,6 @@ impl Widget for Completions {
     }
 }
 
-struct ProviderFunctions {
-}
-
 /// A provider for word completions
 pub trait CompletionsProvider: Send + 'static {
     /// Additional information about a given entry in the completion
@@ -191,7 +167,14 @@ pub trait CompletionsProvider: Send + 'static {
     ///
     /// This information is supposed to be displayed alongside the
     /// entry itself, usually on the right side.
-    type Info;
+    type Info: Clone;
+
+    /// The default formatting for entries from this provider
+    ///
+    /// Each [`Text`] must only be one line long (Nothing bad happens
+    /// if they are multiple lines long, but don't expect the
+    /// [`Completions`] to show things correctly).
+    fn default_fmt(entry: &str, info: &Self::Info) -> Text;
 
     /// Get all completions at a given [`Point`] in the [`Text`]
     ///
@@ -206,7 +189,7 @@ pub trait CompletionsProvider: Send + 'static {
         &mut self,
         text: &Text,
         p: Point,
-    ) -> CompletionsList<impl Iterator<Item = (&str, Self::Info)>>;
+    ) -> Option<CompletionsList<impl Iterator<Item = (String, Self::Info)>>>;
 
     /// Regex for which characters should be part of a word
     ///
@@ -226,27 +209,182 @@ pub struct CompletionsList<I> {
     ///
     /// [`get_completions_at`]: CompletionsProvider::get_completions_at
     pub list: I,
-    /// Wether the items from [`get_completions_at`] should be
-    /// filtered
+    /// What kind of completion entries have been provided
+    pub kind: CompletionsKind,
+}
+
+/// What kind of completions was given by [`get_completions_at`]
+///
+/// [`get_completions_at`]: CompletionsProvider::get_completions_at
+#[derive(Clone, Copy)]
+pub enum CompletionsKind {
+    /// Indicates that the entries that were sent are _all_ entries
+    /// that exist
     ///
-    /// In the [`Completions`] [`Widget`], this will be done by
-    /// filtering out every entry that does not contain _all_ of the
-    /// characters on the [current word].
+    /// This means that, if the user types any new [word] characters
+    /// or deletes old ones, this list will remain unaltered.
     ///
-    /// [`get_completions_at`]: CompletionsProvider::get_completions_at
-    /// [current word]: CompletionsProvider::word_chars
-    pub requires_filtering: bool,
-    /// Wether the list sent by [`get_completions_at`] is complete
+    /// In this case, the [`Completions`] widget will take that
+    /// initial list and apply filtering to it in order to narrow down
+    /// possible choices.
     ///
-    /// If this is `true`, then the [`Completions`] [`Widget`] will
-    /// assume that there are no more entries to be sent, so even if
-    /// the user continues typing, as long as they are on the same
-    /// [word], then the first list that was sent can be used for
-    /// filtering.
-    ///
-    /// [`get_completions_at`]: CompletionsProvider::get_completions_at
     /// [word]: CompletionsProvider::word_chars
-    pub is_complete: bool,
+    Finished,
+    /// Indicates that the entries that were sent are not all entries,
+    /// but they're already filtered
+    ///
+    /// This means that, if the user types any new [word] characters
+    /// or deletes old ones, a new list will have to be acquired.
+    ///
+    /// Unlike in [`CompletionsKind::Finished`] and
+    /// [`CompletionsKind::UnfinishedUnfiltered`], the [`Completions`]
+    /// widget will not do any filtering of the entries sent.
+    ///
+    /// [word]: CompletionsProvider::word_chars
+    UnfinishedFiltered,
+    /// Indicates that the entries that were sent are not all entries,
+    /// and they're not filtered
+    ///
+    /// This means that, if the user types any new [word] characters
+    /// or deletes old ones, a new list will have to be acquired.
+    ///
+    /// In this case, the [`Completions`] widget will take this list
+    /// and apply filtering to it in order to narrow down possible
+    /// choices.
+    ///
+    /// [word]: CompletionsProvider::word_chars
+    UnfinishedUnfiltered,
+}
+
+struct InnerProvider<P: CompletionsProvider> {
+    provider: P,
+    dist_from_top: Option<usize>,
+    target: String,
+    filtered_entries: FilteredEntries<P>,
+    entries: Vec<(String, P::Info)>,
+    fmt: Box<dyn FnMut(&str, &P::Info) -> Text>,
+}
+
+impl<P: CompletionsProvider> InnerProvider<P> {
+    fn new(mut provider: P, text: &Text, height: usize, opts: PrintOpts) -> Option<(Self, Text)> {
+        let (target, caret) = target_word(text, provider.word_chars(opts));
+
+        let CompletionsList { list, kind } = provider.get_completions_at(text, caret)?;
+        let entries: Vec<_> = list.collect();
+
+        let mut inner = Self {
+            provider,
+            dist_from_top: None,
+            target: target.clone(),
+            filtered_entries: match kind {
+                CompletionsKind::Finished => FilteredEntries::CachedFinished({
+                    entries
+                        .iter()
+                        .filter(|(entry, _)| string_cmp(&target, entry).is_some())
+                        .map(|(entry, info)| (entry.clone(), info.clone()))
+                        .collect()
+                }),
+                CompletionsKind::UnfinishedFiltered => FilteredEntries::UncachedUnfinished,
+                CompletionsKind::UnfinishedUnfiltered => FilteredEntries::CachedUnfinished({
+                    entries
+                        .iter()
+                        .filter(|(entry, _)| string_cmp(&target, entry).is_some())
+                        .map(|(entry, info)| (entry.clone(), info.clone()))
+                        .collect()
+                }),
+            },
+            entries,
+            fmt: Box::new(P::default_fmt),
+        };
+
+        let text = inner.text(text, 0, height, opts);
+
+        Some((inner, text))
+    }
+
+}
+
+enum FilteredEntries<P: CompletionsProvider> {
+    CachedFinished(Vec<(String, P::Info)>),
+    CachedUnfinished(Vec<(String, P::Info)>),
+    UncachedUnfinished,
+}
+
+trait ErasedInnerProvider: Any {
+    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Text;
+}
+
+impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
+    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Text {
+        use FilteredEntries::*;
+        let (target, caret) = target_word(text, self.provider.word_chars(opts));
+
+        if let CachedUnfinished(_) | UncachedUnfinished = &self.filtered_entries
+            && target != self.target
+        {
+            self.entries = self
+                .provider
+                .get_completions_at(text, caret)
+                .unwrap()
+                .list
+                .collect();
+        }
+
+        let entries = match (&mut self.filtered_entries, target == self.target) {
+            (CachedFinished(entries) | CachedUnfinished(entries), true) => entries,
+            (CachedFinished(entries) | CachedUnfinished(entries), false) => {
+                *entries = self
+                    .entries
+                    .iter()
+                    .filter(|(entry, _)| string_cmp(&target, entry).is_some())
+                    .map(|(entry, info)| (entry.clone(), info.clone()))
+                    .collect();
+
+                entries
+            }
+            (UncachedUnfinished, _) => &self.entries,
+        };
+
+        self.target = target;
+
+        if height == 0 || entries.is_empty() {
+            self.dist_from_top = None;
+            return Text::default();
+        }
+
+        if scroll != 0 {
+            self.dist_from_top = Some(if let Some(dist) = self.dist_from_top {
+                dist.saturating_add_signed(dist as isize).min(height - 1)
+            } else if scroll > 0 {
+                (scroll.unsigned_abs() as usize).min(height - 1)
+            } else {
+                height.saturating_sub(scroll.unsigned_abs() as usize)
+            })
+        }
+
+        let mut builder = Text::builder();
+
+        if let Some(dist) = &mut self.dist_from_top
+            && let Some(target_i) = entries.iter().position(|(entry, _)| *entry == self.target)
+        {
+            *dist = (*dist).min(height - 1);
+
+            let top_i = target_i.saturating_sub(*dist);
+            for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
+                if i == target_i {
+                    builder.push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
+                } else {
+                    builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+                }
+            }
+        } else {
+            for (entry, info) in entries.iter().take(height) {
+                builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+            }
+        }
+
+        builder.build()
+    }
 }
 
 /// A simple [`String`] comparison function, which prioritizes matched
@@ -274,6 +412,17 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     }
 
     Some(diff)
+}
+
+fn target_word(text: &Text, word_chars: &str) -> (String, Point) {
+    let caret = text.selections().get_main().unwrap().caret();
+    let range = text
+        .search_rev(word_chars, ..caret)
+        .unwrap()
+        .next()
+        .unwrap_or(caret..caret);
+
+    (text.strs(range.clone()).unwrap().to_string(), caret)
 }
 
 /// A [`Parser`] to add words to [`Completions`]
