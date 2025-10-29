@@ -790,19 +790,20 @@ pub mod clipboard {
 
     /// A clipboard for Duat, can be platform based, or local
     #[doc(hidden)]
+    #[allow(private_interfaces)]
     pub enum Clipboard {
         #[cfg(target_os = "android")]
         Platform,
         #[cfg(not(target_os = "android"))]
-        Platform(clipboard::Clipboard),
+        Platform(arboard::Clipboard, &'static ClipboardFunctions),
         Local(String),
     }
 
     impl Default for Clipboard {
         fn default() -> Self {
             #[cfg(not(target_os = "android"))]
-            match clipboard::Clipboard::new() {
-                Ok(clipb) => Self::Platform(clipb),
+            match arboard::Clipboard::new() {
+                Ok(clipb) => Self::Platform(clipb, ClipboardFunctions::new()),
                 Err(_) => Self::Local(String::new()),
             }
 
@@ -818,7 +819,7 @@ pub mod clipboard {
     /// This can fail if the clipboard does not contain UTF-8 encoded
     /// text.
     ///
-    /// Or if there is no clipboard i guess
+    /// Or if there is no clipboard I guess
     pub fn get_text() -> Option<String> {
         let mut clipb = CLIPB.get().unwrap().lock().unwrap();
         match &mut *clipb {
@@ -827,7 +828,7 @@ pub mod clipboard {
                 .map_err(|err| crate::context::error!("{err}"))
                 .ok(),
             #[cfg(not(target_os = "android"))]
-            Clipboard::Platform(clipb) => clipb.get_text().ok(),
+            Clipboard::Platform(clipb, fns) => (fns.get_text)(clipb),
             Clipboard::Local(clipb) => Some(clipb.clone()).filter(String::is_empty),
         }
     }
@@ -843,8 +844,23 @@ pub mod clipboard {
                 }
             }
             #[cfg(not(target_os = "android"))]
-            Clipboard::Platform(clipb) => clipb.set_text(text.to_string()).unwrap(),
+            Clipboard::Platform(clipb, fns) => (fns.set_text)(clipb, text.to_string()),
             Clipboard::Local(clipb) => *clipb = text.to_string(),
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    struct ClipboardFunctions {
+        get_text: fn(&mut arboard::Clipboard) -> Option<String>,
+        set_text: fn(&mut arboard::Clipboard, String),
+    }
+
+    impl ClipboardFunctions {
+        fn new() -> &'static Self {
+            &Self {
+                get_text: |clipb| clipb.get_text().ok(),
+                set_text: |clipb, text| clipb.set_text(text).unwrap(),
+            }
         }
     }
 

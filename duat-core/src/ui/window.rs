@@ -1145,10 +1145,9 @@ impl BufferHistory {
 
     /// Returns the next [`Handle`], if there is one
     fn next(&mut self) -> Option<&Handle> {
-        self.list.get(self.current_i + 1).map(|next| {
+        self.list.get(self.current_i + 1).inspect(|next| {
             self.last_was_fwd = false;
             self.current_i += 1;
-            next
         })
     }
 

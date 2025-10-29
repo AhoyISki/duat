@@ -55,11 +55,11 @@ FOR NEXT UPDATE:
 KNOWN BUGS:
 
  HIGH PRIORITY:
-  [ ] Paste not working.
+  [x] Paste not working.
   [ ] track_area not actually tracking correctly.
   [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
   [ ] First Point not updating when there are changes before the start of the screen.
-  
+             
  LOW PRIORITY:
   [ ] Perfect print iterators.
     [ ] Perfect words iterator.

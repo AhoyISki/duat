@@ -48,7 +48,7 @@ mod switch;
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # mod plugin0{
+/// # mod plugin0 {
 /// #     use duat_core::prelude::*;
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct PluginMode0;

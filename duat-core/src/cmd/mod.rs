@@ -522,13 +522,13 @@ pub(crate) fn add_session_commands() {
         let handle = if flags.word("global") {
             windows
                 .iter_around(pa, win, wid)
-                .find_map(as_file_handle)
+                .find_map(as_buffer_handle)
                 .ok_or_else(|| txt!("There are no other open buffers"))?
         } else {
             windows
                 .iter_around(pa, win, wid)
                 .filter(|(lhs, ..)| *lhs == win)
-                .find_map(as_file_handle)
+                .find_map(as_buffer_handle)
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
@@ -553,13 +553,13 @@ pub(crate) fn add_session_commands() {
         let handle = if flags.word("global") {
             windows
                 .iter_around_rev(pa, win, wid)
-                .find_map(as_file_handle)
+                .find_map(as_buffer_handle)
                 .ok_or_else(|| txt!("There are no other open buffers"))?
         } else {
             windows
                 .iter_around(pa, win, wid)
                 .filter(|(lhs, ..)| *lhs == win)
-                .find_map(as_file_handle)
+                .find_map(as_buffer_handle)
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
@@ -749,10 +749,10 @@ mod global {
     ///
     /// This function will only look at buffers that are opened in the
     /// current window. If you want to include other windows in the
-    /// search, use [`next_global_file`].
+    /// search, use [`next_global_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn next_file(pa: &mut Pass) -> CmdResult {
+    pub fn next_buffer(pa: &mut Pass) -> CmdResult {
         call(pa, "next-buffer")
     }
 
@@ -760,10 +760,10 @@ mod global {
     ///
     /// This function will only look at buffers that are opened in the
     /// current window. If you want to include other windows in the
-    /// search, use [`prev_global_file`].
+    /// search, use [`prev_global_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn prev_file(pa: &mut Pass) -> CmdResult {
+    pub fn prev_buffer(pa: &mut Pass) -> CmdResult {
         call(pa, "prev-buffer")
     }
 
@@ -771,10 +771,10 @@ mod global {
     ///
     /// This function will look for buffers in all windows. If you
     /// want to limit the search to just the current window, use
-    /// [`next_file`].
+    /// [`next_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn next_global_file(pa: &mut Pass) -> CmdResult {
+    pub fn next_global_buffer(pa: &mut Pass) -> CmdResult {
         call(pa, "next-buffer --global")
     }
 
@@ -782,10 +782,10 @@ mod global {
     ///
     /// This function will look for buffers in all windows. If you
     /// want to limit the search to just the current window, use
-    /// [`prev_file`].
+    /// [`prev_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn prev_global_file(pa: &mut Pass) -> CmdResult {
+    pub fn prev_global_buffer(pa: &mut Pass) -> CmdResult {
         call(pa, "prev-buffer --global")
     }
 
@@ -1151,6 +1151,6 @@ pub type CheckerFn = fn(
     Option<(Range<usize>, Text)>,
 );
 
-pub(crate) fn as_file_handle((.., node): (usize, &Node)) -> Option<Handle> {
+pub(crate) fn as_buffer_handle((.., node): (usize, &Node)) -> Option<Handle> {
     node.try_downcast()
 }

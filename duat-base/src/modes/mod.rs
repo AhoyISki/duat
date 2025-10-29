@@ -53,6 +53,7 @@ mod pager;
 mod prompt;
 
 static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 /// Copy the text of the [`Selection`]s in the [`Handle`]
 ///
 /// This function does _not_ make use of the same clipboard as
