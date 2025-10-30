@@ -110,7 +110,10 @@ mod global {
     pub fn dynamic_buffer(pa: &Pass) -> DynBuffer {
         let dyn_buffer = windows().current_buffer(pa).clone();
         let cur_buffer = RwData::new(dyn_buffer.read(pa).clone());
-        DynBuffer { cur_buffer: dyn_buffer, saved_buffer: cur_buffer }
+        DynBuffer {
+            cur_buffer: dyn_buffer,
+            saved_buffer: cur_buffer,
+        }
     }
 
     /// Returns a [`Handle`] for a [`Buffer`] with the given name
@@ -224,10 +227,10 @@ impl DynBuffer {
     /// Wether the [`Buffer`] pointed to has changed or swapped with
     /// another
     pub fn has_changed(&self, pa: &Pass) -> bool {
-        if self.saved_buffer.has_changed() {
+        if self.cur_buffer.has_changed() {
             true
         } else {
-            self.cur_buffer.read(pa).has_changed(pa)
+            self.saved_buffer.read(pa).has_changed(pa)
         }
     }
 
@@ -305,7 +308,10 @@ impl DynBuffer {
     /// [`write`]: Self::write
     /// [`has_changed`]: Self::has_changed
     pub fn declare_written(&self) {
-        self.cur_buffer.declare_written();
+        // SAFETY: Since this struct uses deep Cloning, no other references to
+        // the RwData exist.
+        static INTERNAL_PASS: &Pass = unsafe { &Pass::new() };
+        self.cur_buffer.read(INTERNAL_PASS).declare_written();
     }
 }
 

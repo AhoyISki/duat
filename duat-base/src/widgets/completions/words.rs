@@ -6,7 +6,9 @@ use duat_core::{
     ui::Widget,
 };
 
-use crate::widgets::completions::{CompletionsKind, CompletionsList, CompletionsProvider};
+use crate::widgets::completions::{
+    CompletionsKind, CompletionsList, CompletionsProvider, string_cmp,
+};
 
 static BUFFER_WORDS: Mutex<BTreeMap<String, WordInfo>> = Mutex::new(BTreeMap::new());
 
@@ -23,20 +25,25 @@ impl CompletionsProvider for WordCompletions {
         .build()
     }
 
-    fn get_completions_at(&mut self, _: &Text, _: Point) -> CompletionsList<Self> {
-        CompletionsList {
-            entries: BUFFER_WORDS
-                .lock()
-                .unwrap()
-                .iter()
-                .map(|(word, info)| (word.clone(), info.clone()))
-                .collect(),
-            kind: CompletionsKind::Finished,
-        }
+    fn get_completions(&mut self, _: &Text, _: Point, word: &str) -> CompletionsList<Self> {
+        let mut entries: Vec<_> = BUFFER_WORDS
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(entry, info)| {
+                string_cmp(word, entry)
+                    .is_some()
+                    .then(|| (entry.clone(), info.clone()))
+            })
+            .collect();
+
+        entries.sort_by_key(|(entry, _)| string_cmp(word, entry));
+
+        CompletionsList { entries, kind: CompletionsKind::UnfinishedFiltered }
     }
 
-    fn word_chars(&self, _: duat_core::opts::PrintOpts) -> &str {
-        r"[\w]*"
+    fn word_regex(&self) -> String {
+        r"[\w]*".to_string()
     }
 
     fn has_changed(&self) -> bool {

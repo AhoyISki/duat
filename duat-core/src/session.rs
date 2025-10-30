@@ -166,7 +166,7 @@ impl Session {
                 let cur_win_len = context::windows().len(pa);
 
                 let mut printed_at_least_one = false;
-                for node in windows_nodes.get(last_win).unwrap() {
+                for node in windows_nodes.get(cur_win).unwrap() {
                     let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
                     if force || windows_changed || node.needs_update(pa) {
                         node.update_and_print(pa, last_win);

@@ -21,13 +21,8 @@ mod words;
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
 
 pub struct CompletionsBuilder {
-    providers: Box<
-        dyn FnOnce(
-            &Text,
-            usize,
-            PrintOpts,
-        ) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(Point, Text)>),
-    >,
+    providers:
+        Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(Point, Text)>)>,
 }
 
 impl CompletionsBuilder {
@@ -44,7 +39,7 @@ impl CompletionsBuilder {
         let handle = context::current_widget(pa).clone();
         handle.text_mut(pa).remove_tags(*TAGGER, ..);
 
-        let (providers, entries) = (self.providers)(handle.text(pa), 20, handle.opts(pa));
+        let (providers, entries) = (self.providers)(handle.text(pa), 20);
 
         let Some((spawn_point, text)) = entries else {
             return;
@@ -57,7 +52,12 @@ impl CompletionsBuilder {
             ..
         };
 
-        let completions = Completions { providers, text };
+        let completions = Completions {
+            master: handle.clone(),
+            providers,
+            text,
+            max_height: 20,
+        };
 
         let text = handle.text_mut(pa);
         text.insert_tag(*TAGGER, spawn_point, SpawnTag::new(completions, specs));
@@ -68,12 +68,12 @@ impl CompletionsBuilder {
     pub fn add_provider(&mut self, provider: impl CompletionsProvider) {
         let prev = std::mem::replace(
             &mut self.providers,
-            Box::new(|_, _, _| panic!("Not supposed to be called")),
+            Box::new(|_, _| panic!("Not supposed to be called")),
         );
 
-        self.providers = Box::new(move |text, height, opts| {
-            let (inner, entries) = InnerProvider::new(provider, text, height, opts);
-            let (mut providers, reserve_entries) = prev(text, height, opts);
+        self.providers = Box::new(move |text, height| {
+            let (inner, entries) = InnerProvider::new(provider, text, height);
+            let (mut providers, reserve_entries) = prev(text, height);
             providers.insert(0, Box::new(inner));
 
             (providers, entries.or(reserve_entries))
@@ -83,8 +83,10 @@ impl CompletionsBuilder {
 
 /// A list of completions, used to quickly fill in matches
 pub struct Completions {
+    master: Handle<dyn Widget>,
     providers: Vec<Box<dyn ErasedInnerProvider>>,
     text: Text,
+    max_height: usize,
 }
 
 impl Completions {
@@ -95,8 +97,8 @@ impl Completions {
     /// [`CompletionsBuilder::add_provider`].
     pub fn builder(provider: impl CompletionsProvider) -> CompletionsBuilder {
         CompletionsBuilder {
-            providers: Box::new(move |text, height, opts| {
-                let (inner, entries) = InnerProvider::new(provider, text, height, opts);
+            providers: Box::new(move |text, height| {
+                let (inner, entries) = InnerProvider::new(provider, text, height);
 
                 (vec![Box::new(inner)], entries)
             }),
@@ -128,12 +130,11 @@ impl Completions {
         let (master, comp) = pa
             .try_read_and_write(handle.master().unwrap().widget(), &handle.widget())
             .unwrap();
-        let opts = comp.get_print_opts();
 
-        if let Some(text) = comp
+        if let Some((text, _)) = comp
             .providers
             .iter_mut()
-            .find_map(|inner| inner.text(master.text(), by, height, opts))
+            .find_map(|inner| inner.text_and_entry(master.text(), by, height))
         {
             comp.text = text;
         }
@@ -142,23 +143,27 @@ impl Completions {
 
 impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let height = handle.area().height(pa) as usize;
         let (master, comp) = pa
             .try_read_and_write(handle.master().unwrap().widget(), &handle.widget())
             .unwrap();
-        let opts = comp.get_print_opts();
 
-        if let Some(text) = comp
+        comp.text = if let Some((text, _)) = comp
             .providers
             .iter_mut()
-            .find_map(|inner| inner.text(master.text(), 0, height, opts))
+            .find_map(|inner| inner.text_and_entry(master.text(), 0, comp.max_height))
         {
-            comp.text = text;
-        }
+            text
+        } else {
+            Text::default()
+        };
+
+        let height = (comp.text.len().line() - 1) as f32;
+        handle.area().set_height(pa, height).unwrap();
     }
 
-    fn needs_update(&self, _: &Pass) -> bool {
-        self.providers.iter().any(|inner| inner.has_changed())
+    fn needs_update(&self, pa: &Pass) -> bool {
+        let text = self.master.has_changed(pa).then_some(self.master.text(pa));
+        self.providers.iter().any(|inner| inner.has_changed(text))
     }
 
     fn text(&self) -> &Text {
@@ -194,8 +199,9 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// [`Completions`] widget how to handle certain aspects of the
     /// list.
     ///
-    /// The point `p` will be the position where the main cursor's
-    /// [caret] lies.
+    /// The `caret` is the position where the main cursor's [caret]
+    /// lies, while the `word` is the [`String`] that matched prior to
+    /// said caret, given [`Self::word_regex`].
     ///
     /// If the `Iterator` within is empty, then the next
     /// `CompletionsProvider` will be selected to provide the required
@@ -203,14 +209,15 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// completions will be shown.
     ///
     /// [caret]: duat_core::mode::Selection::caret
-    fn get_completions_at(&mut self, text: &Text, p: Point) -> CompletionsList<Self>;
+    /// [`Self::word_regex`]: CompletionsProvider::word_regex
+    fn get_completions(&mut self, text: &Text, caret: Point, word: &str) -> CompletionsList<Self>;
 
     /// Regex for which characters should be part of a word
     ///
-    /// This should almost always be equal to
-    /// `opts.word_chars_regex()`, but for some specific providers,
-    /// like those that give file paths, this wouldn't be the case.
-    fn word_chars(&self, opts: PrintOpts) -> &str;
+    /// It should be something like `[\w]*` for words, or `[^\0]*` for
+    /// file paths. You can also use minimum lengths, like `[\w]{3,}`
+    /// in order to filter for too short matches.
+    fn word_regex(&self) -> String;
 
     /// Wether the list of completion entries has been updated
     ///
@@ -225,17 +232,17 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 /// the [`Completions`] [`Widget`] (or other similar `Widget`s) to
 /// provide tab completions to users.
 pub struct CompletionsList<P: CompletionsProvider> {
-    /// The list of entries to be received by [`get_completions_at`]
+    /// The list of entries to be received by [`get_completions`]
     ///
-    /// [`get_completions_at`]: CompletionsProvider::get_completions_at
+    /// [`get_completions`]: CompletionsProvider::get_completions
     pub entries: Vec<(String, P::Info)>,
     /// What kind of completion entries have been provided
     pub kind: CompletionsKind,
 }
 
-/// What kind of completions was given by [`get_completions_at`]
+/// What kind of completions was given by [`get_completions`]
 ///
-/// [`get_completions_at`]: CompletionsProvider::get_completions_at
+/// [`get_completions`]: CompletionsProvider::get_completions
 #[derive(Clone, Copy)]
 pub enum CompletionsKind {
     /// Indicates that the entries that were sent are _all_ entries
@@ -278,28 +285,28 @@ pub enum CompletionsKind {
 
 struct InnerProvider<P: CompletionsProvider> {
     provider: P,
-    dist_from_top: Option<usize>,
+    word_regex: String,
+    fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
+
     target: String,
+    dist_from_top: Option<usize>,
+
     filtered_entries: FilteredEntries<P>,
     entries: Vec<(String, P::Info)>,
-    fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
-    fn new(
-        mut provider: P,
-        text: &Text,
-        height: usize,
-        opts: PrintOpts,
-    ) -> (Self, Option<(Point, Text)>) {
-        let (target, range) = target_word(text, provider.word_chars(opts));
+    fn new(mut provider: P, text: &Text, height: usize) -> (Self, Option<(Point, Text)>) {
+        let word_regex = format!(r"{}\z", provider.word_regex());
+        let (target, range) = target_word(text, &word_regex);
 
-        let CompletionsList { entries, kind } = provider.get_completions_at(text, range.end);
+        let CompletionsList { entries, kind } = provider.get_completions(text, range.end, &target);
 
         let mut inner = Self {
             provider,
-            dist_from_top: None,
+            word_regex,
             target: target.clone(),
+            dist_from_top: None,
             filtered_entries: match kind {
                 CompletionsKind::Finished => FilteredEntries::CachedFinished({
                     entries
@@ -321,7 +328,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let text = inner.text(text, 0, height, opts);
+        let (text, _) = inner.text_and_entry(text, 0, height).unzip();
         (inner, Some(range.start).zip(text))
     }
 }
@@ -333,20 +340,33 @@ enum FilteredEntries<P: CompletionsProvider> {
 }
 
 trait ErasedInnerProvider: Any + Send {
-    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Option<Text>;
+    fn text_and_entry(
+        &mut self,
+        text: &Text,
+        scroll: i32,
+        height: usize,
+    ) -> Option<(Text, Option<String>)>;
 
-    fn has_changed(&self) -> bool;
+    fn has_changed(&self, text: Option<&Text>) -> bool;
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
-    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Option<Text> {
+    fn text_and_entry(
+        &mut self,
+        text: &Text,
+        scroll: i32,
+        height: usize,
+    ) -> Option<(Text, Option<String>)> {
         use FilteredEntries::*;
-        let (target, range) = target_word(text, self.provider.word_chars(opts));
+        let (target, range) = target_word(text, &self.word_regex);
 
         if let CachedUnfinished(_) | UncachedUnfinished = &self.filtered_entries
             && target != self.target
         {
-            self.entries = self.provider.get_completions_at(text, range.end).entries;
+            self.entries = self
+                .provider
+                .get_completions(text, range.end, &target)
+                .entries;
         }
 
         let entries = match (&mut self.filtered_entries, target == self.target) {
@@ -388,6 +408,14 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         {
             *dist = (*dist).min(height - 1);
 
+            let target_i = if scroll != 0 {
+                let target_i = target_i.saturating_add_signed(scroll as isize);
+                self.target = entries[target_i].0.clone();
+                target_i
+            } else {
+                target_i
+            };
+
             let top_i = target_i.saturating_sub(*dist);
             for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
                 if i == target_i {
@@ -402,11 +430,16 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             }
         }
 
-        Some(builder.build())
+        Some((builder.build(), (scroll != 0).then(|| self.target.clone())))
     }
 
-    fn has_changed(&self) -> bool {
-        self.provider.has_changed()
+    fn has_changed(&self, text: Option<&Text>) -> bool {
+        let word_has_changed = text.is_some_and(|text| {
+            let (word, _) = target_word(text, &self.word_regex);
+            word != self.target
+        });
+
+        word_has_changed || self.provider.has_changed()
     }
 }
 
