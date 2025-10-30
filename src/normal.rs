@@ -96,16 +96,14 @@ impl Mode for Normal {
         let move_to_match = |[c0, c1]: [_; 2], alt_word, moved| {
             use Category::*;
             let (cat0, cat1) = (Category::of(c0, opts), Category::of(c1, opts));
-            if let (Word, Word, ..)
-            | (Special, Special, ..)
-            | (Space, Space, ..)
-            | (Word | Special, Word | Special, true, _)
-            | (.., true) = (cat0, cat1, alt_word, moved)
-            {
-                false
-            } else {
-                true
-            }
+            !matches!(
+                (cat0, cat1, alt_word, moved),
+                (Word, Word, ..)
+                    | (Special, Special, ..)
+                    | (Space, Space, ..)
+                    | (Word | Special, Word | Special, true, _)
+                    | (.., true)
+            )
         };
 
         handle.write(pa).text_mut().new_moment();

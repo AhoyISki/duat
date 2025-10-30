@@ -67,9 +67,9 @@ impl Mode for Insert {
 
         match event {
             shift!(BackTab) => duat::widgets::Completions::close(pa),
-            event!(Tab) => duat::widgets::Completions::open(pa),
-            alt!(Up) => duat::widgets::Completions::prev_entry(pa),
-            alt!(Down) => duat::widgets::Completions::next_entry(pa),
+            event!(Tab) => duat::widgets::Completions::open_default(pa),
+            alt!(Up) => duat::widgets::Completions::scroll(pa, -1),
+            alt!(Down) => duat::widgets::Completions::scroll(pa, 1),
             // key!(Tab) => handle.edit_all(pa, |mut c| {
             //     let char_col = c.v_caret().char_col();
             //     if self.indent_keys.contains(&'\t') && char_col == 0 {
