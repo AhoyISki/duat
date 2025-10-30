@@ -120,6 +120,9 @@ fn inner_iter<'a>(
     // Line return variables.
     let (mut line, mut leftover_nl): (Vec<(u32, Item)>, _) = (Vec::new(), None);
     let (mut x, mut i, mut first_char_was_printed) = (0, 0, false);
+    // Given the backtracked iteration, these should be replaced
+    // correctly.
+    let mut non_spacer_gaps = Gaps::OnRight;
 
     let mut iter = iter.peekable();
     let mut new_x = 0;
@@ -168,6 +171,7 @@ fn inner_iter<'a>(
                     _ => 0,
                 };
 
+                non_spacer_gaps = non_spacer_gaps.replace_by_part_no_spacers(item.part);
                 gaps = gaps.replace_by_part(item.part);
 
                 total_len += len;
@@ -177,6 +181,7 @@ fn inner_iter<'a>(
                     && (must_wrap || char == '\n')
                 {
                     new_x = first_x + wrapped_indent + gaps.space_line(&mut line, cap, total_len);
+                    gaps = non_spacer_gaps;
 
                     let leftover = total_len.saturating_sub(cap);
                     wrapped_indent = match char {
@@ -373,9 +378,7 @@ enum Gaps {
 }
 
 impl Gaps {
-    /// Adds a [`Spacer`] to this [`Gaps`]
-    ///
-    /// [`Spacer`]: duat_core::text::Tag::Spacer
+    /// Replaces the `Gaps`, given an appropriate [`Part`]
     fn replace_by_part(self, part: Part) -> Self {
         match (self, part) {
             (_, Part::AlignLeft) => Gaps::OnRight,
@@ -383,6 +386,16 @@ impl Gaps {
             (_, Part::AlignRight) => Gaps::OnLeft,
             (Gaps::Spacers(count), Part::Spacer) => Gaps::Spacers(count + 1),
             (_, Part::Spacer) => Gaps::Spacers(1),
+            _ => self,
+        }
+    }
+
+    /// Replaces the `Gaps`, but ignores [`Part::Spacer`]
+    fn replace_by_part_no_spacers(self, part: Part) -> Self {
+        match part {
+            Part::AlignLeft => Gaps::OnRight,
+            Part::AlignCenter => Gaps::OnSides,
+            Part::AlignRight => Gaps::OnLeft,
             _ => self,
         }
     }

@@ -13,6 +13,8 @@ use duat_core::{
     ui::{Orientation, SpawnSpecs, Widget},
 };
 
+pub use self::words::{WordCompletions, WordsCompletionParser};
+
 mod paths;
 mod words;
 
@@ -103,7 +105,7 @@ impl Completions {
 
     /// Spawn the `Completions` list
     pub fn open_default(pa: &mut Pass) {
-        todo!();
+        Self::builder(WordCompletions).open(pa);
     }
 
     /// Closes the `Completions` list

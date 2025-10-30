@@ -1,9 +1,7 @@
-use std::{collections::BTreeMap, ops::Range, path::PathBuf, sync::Mutex};
+use std::{collections::BTreeMap, sync::Mutex};
 
 use duat_core::{
     buffer::{Buffer, BufferTracker, Parser},
-    context::Handle,
-    data::Pass,
     text::{Point, Spacer, Text, txt},
     ui::Widget,
 };
@@ -83,10 +81,4 @@ impl WordsCompletionParser {
     }
 }
 
-impl Parser for WordsCompletionParser {
-    fn update(&mut self, pa: &mut Pass, buffer: &Handle, on: Vec<Range<Point>>) {
-        // self.tracker.update()
-        // let moment = 
-        // for change in self.tracker.
-    }
-}
+impl Parser for WordsCompletionParser {}
