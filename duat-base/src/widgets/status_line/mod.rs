@@ -14,8 +14,6 @@
 //! types, etc.
 //!
 //! [data]: crate::data
-mod state;
-
 use duat_core::{
     context::{self, DynBuffer, Handle},
     data::Pass,
@@ -25,6 +23,8 @@ use duat_core::{
 
 pub use self::{macros::status, state::State};
 use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
+
+mod state;
 
 /// A widget to show information, usually about a [`Buffer`]
 ///

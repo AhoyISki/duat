@@ -1,34 +1,36 @@
-use core::arch;
 use std::{
     any::Any,
-    sync::{LazyLock, Mutex, Once},
+    ops::Range,
+    sync::{LazyLock, Once},
 };
 
 use duat_core::{
-    buffer::{Buffer, BufferTracker, Parser},
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged},
     opts::PrintOpts,
-    text::{Point, Spacer, SpawnTag, Tagger, Text, txt},
+    text::{Point, SpawnTag, Tagger, Text, txt},
     ui::{Orientation, SpawnSpecs, Widget},
 };
 
-static TAGGER: LazyLock<Tagger> = Tagger::new_static();
-static PROVIDERS: LazyLock<Mutex<Vec<Box<dyn Any + Send>>>> =
-    LazyLock::new(|| Mutex::new(Vec::new()));
+mod paths;
+mod words;
 
-/// A list of completions, used to quickly fill in matches
-pub struct Completions {
-    text: Text,
-    list: Vec<usize>,
-    entry_on_top: usize,
-    selected_entry: usize,
+static TAGGER: LazyLock<Tagger> = Tagger::new_static();
+
+pub struct CompletionsBuilder {
+    providers: Box<
+        dyn FnOnce(
+            &Text,
+            usize,
+            PrintOpts,
+        ) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(Point, Text)>),
+    >,
 }
 
-impl Completions {
-    /// Spawn the `Completions` list
-    pub fn open(pa: &mut Pass) {
+impl CompletionsBuilder {
+    /// Opens the [`Completions`] [`Widget`]
+    pub fn open(self, pa: &mut Pass) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
             hook::add::<FocusChanged>(|pa, (prev, _)| {
@@ -40,29 +42,68 @@ impl Completions {
         let handle = context::current_widget(pa).clone();
         handle.text_mut(pa).remove_tags(*TAGGER, ..);
 
-        let Some(main) = handle.text(pa).selections().get_main().cloned() else {
-            context::warn!("No Selection to center completions on");
+        let (providers, entries) = (self.providers)(handle.text(pa), 20, handle.opts(pa));
+
+        let Some((spawn_point, text)) = entries else {
             return;
-        };
-
-        let text = handle.text_mut(pa);
-
-        let completions = Self {
-            id: BUFFER_WORDS,
-            text: Text::new(),
-            list,
-            selected_entry: 0,
-            entry_on_top: 0,
         };
 
         let specs = SpawnSpecs {
             orientation: Orientation::VerLeftBelow,
-            height: Some(20.0),
+            height: Some(text.len().line().min(20) as f32),
             width: Some(50.0),
             ..
         };
 
-        text.insert_tag(*TAGGER, range.start, SpawnTag::new(completions, specs));
+        let completions = Completions { providers, text };
+
+        let text = handle.text_mut(pa);
+        text.insert_tag(*TAGGER, spawn_point, SpawnTag::new(completions, specs));
+    }
+
+    /// Adds a new [`CompletionsProvider`] to be prioritized over
+    /// earlier ones
+    pub fn add_provider(&mut self, provider: impl CompletionsProvider) {
+        let prev = std::mem::replace(
+            &mut self.providers,
+            Box::new(|_, _, _| panic!("Not supposed to be called")),
+        );
+
+        self.providers = Box::new(move |text, height, opts| {
+            let (inner, entries) = InnerProvider::new(provider, text, height, opts);
+            let (mut providers, reserve_entries) = prev(text, height, opts);
+            providers.insert(0, Box::new(inner));
+
+            (providers, entries.or(reserve_entries))
+        });
+    }
+}
+
+/// A list of completions, used to quickly fill in matches
+pub struct Completions {
+    providers: Vec<Box<dyn ErasedInnerProvider>>,
+    text: Text,
+}
+
+impl Completions {
+    /// Returns a new `CompletionsBuilder` with the given
+    /// [`CompletionsProvider`]
+    ///
+    /// You can add more `CompletionsProvider`s by calling
+    /// [`CompletionsBuilder::add_provider`].
+    pub fn builder(provider: impl CompletionsProvider) -> CompletionsBuilder {
+        CompletionsBuilder {
+            providers: Box::new(move |text, height, opts| {
+                let (inner, entries) = InnerProvider::new(provider, text, height, opts);
+
+                (vec![Box::new(inner)], entries)
+            }),
+        }
+    }
+
+    /// Spawn the `Completions` list
+    pub fn open_default(pa: &mut Pass) {
+        todo!();
     }
 
     /// Closes the `Completions` list
@@ -72,7 +113,7 @@ impl Completions {
     }
 
     /// Goes to the next entry on the list.
-    pub fn next_entry(pa: &mut Pass) {
+    pub fn scroll(pa: &mut Pass, by: i32) {
         let Some(handle) = context::windows()
             .handles(pa)
             .find_map(Handle::try_downcast::<Completions>)
@@ -82,73 +123,40 @@ impl Completions {
         };
 
         let height = handle.area().height(pa) as usize;
-        let comp = handle.write(pa);
-        comp.selected_entry = (comp.selected_entry + 1) % comp.list.len();
-        if height > 0 {
-            comp.entry_on_top = comp.entry_on_top.clamp(
-                comp.selected_entry.saturating_sub(height - 1),
-                comp.selected_entry,
-            )
-        }
-    }
+        let (master, comp) = pa
+            .try_read_and_write(handle.master().unwrap().widget(), &handle.widget())
+            .unwrap();
+        let opts = comp.get_print_opts();
 
-    /// Goes to the next entry on the list.
-    pub fn prev_entry(pa: &mut Pass) {
-        let Some(handle) = context::windows()
-            .handles(pa)
-            .find_map(Handle::try_downcast::<Completions>)
-        else {
-            context::warn!("No Completions open to go to next entry");
-            return;
-        };
-
-        let height = handle.area().height(pa) as usize;
-        let comp = handle.write(pa);
-        comp.selected_entry = if comp.selected_entry == 0 {
-            comp.list.len() - 1
-        } else {
-            comp.selected_entry - 1
-        };
-        if height > 0 {
-            comp.entry_on_top = comp.entry_on_top.clamp(
-                comp.selected_entry.saturating_sub(height - 1),
-                comp.selected_entry,
-            )
-        }
-    }
-
-    pub fn add_provider<P: CompletionsProvider>(provider: P) {
-        let mut providers = PROVIDERS.lock().unwrap();
-        if !providers.iter().any(|p| p.is::<P>()) {
-            providers.push(Box::new(provider))
+        if let Some(text) = comp
+            .providers
+            .iter_mut()
+            .find_map(|inner| inner.text(master.text(), by, height, opts))
+        {
+            comp.text = text;
         }
     }
 }
 
 impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let lists = PROVIDERS.lock().unwrap();
+        let height = handle.area().height(pa) as usize;
+        let (master, comp) = pa
+            .try_read_and_write(handle.master().unwrap().widget(), &handle.widget())
+            .unwrap();
+        let opts = comp.get_print_opts();
 
-        let (comp, area) = handle.write_with_area(pa);
-        area.set_height(comp.list.len() as f32).unwrap();
-
-        let mut builder = Text::builder();
-        for (i, index) in comp.list.iter().enumerate().skip(comp.entry_on_top) {
-            let line = &lists[comp.id.0][*index];
-
-            if i == comp.selected_entry {
-                builder.push(txt!("[selected.Completions]{line}{Spacer}\n"));
-            } else {
-                builder.push(line);
-                builder.push('\n');
-            }
+        if let Some(text) = comp
+            .providers
+            .iter_mut()
+            .find_map(|inner| inner.text(master.text(), 0, height, opts))
+        {
+            comp.text = text;
         }
-
-        comp.text = builder.build();
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
-        false
+        self.providers.iter().any(|inner| inner.has_changed())
     }
 
     fn text(&self) -> &Text {
@@ -161,13 +169,13 @@ impl Widget for Completions {
 }
 
 /// A provider for word completions
-pub trait CompletionsProvider: Send + 'static {
+pub trait CompletionsProvider: Send + Sized + 'static {
     /// Additional information about a given entry in the completion
     /// list
     ///
     /// This information is supposed to be displayed alongside the
     /// entry itself, usually on the right side.
-    type Info: Clone;
+    type Info: Clone + Send;
 
     /// The default formatting for entries from this provider
     ///
@@ -178,18 +186,22 @@ pub trait CompletionsProvider: Send + 'static {
 
     /// Get all completions at a given [`Point`] in the [`Text`]
     ///
-    /// In conjunction with [`requires_filtering`] and
-    /// [`is_incomplete`], you should use this function to provide as
-    /// succint a list as possible, while still providing enough
-    /// completeness.
+    /// This will return a [`CompletionsList`], which is contains not
+    /// only an [`Iterator`] over the entries, but also a
+    /// [`CompletionsKind`], which is useful to tell the
+    /// [`Completions`] widget how to handle certain aspects of the
+    /// list.
     ///
-    /// [`requires_filtering`]: CompletionsProvider::requires_filtering
-    /// [`is_incomplete`]: CompletionsProvider::is_incomplete
-    fn get_completions_at(
-        &mut self,
-        text: &Text,
-        p: Point,
-    ) -> Option<CompletionsList<impl Iterator<Item = (String, Self::Info)>>>;
+    /// The point `p` will be the position where the main cursor's
+    /// [caret] lies.
+    ///
+    /// If the `Iterator` within is empty, then the next
+    /// `CompletionsProvider` will be selected to provide the required
+    /// completions. If all of them return empty `Iterator`s, then no
+    /// completions will be shown.
+    ///
+    /// [caret]: duat_core::mode::Selection::caret
+    fn get_completions_at(&mut self, text: &Text, p: Point) -> CompletionsList<Self>;
 
     /// Regex for which characters should be part of a word
     ///
@@ -197,6 +209,12 @@ pub trait CompletionsProvider: Send + 'static {
     /// `opts.word_chars_regex()`, but for some specific providers,
     /// like those that give file paths, this wouldn't be the case.
     fn word_chars(&self, opts: PrintOpts) -> &str;
+
+    /// Wether the list of completion entries has been updated
+    ///
+    /// This is particularly useful if the `CompletionsProvider` could
+    /// be slow, such as one from an LSP or things of the sort.
+    fn has_changed(&self) -> bool;
 }
 
 /// A list of entries for completion
@@ -204,11 +222,11 @@ pub trait CompletionsProvider: Send + 'static {
 /// This list is created by a [`CompletionsProvider`], and is used by
 /// the [`Completions`] [`Widget`] (or other similar `Widget`s) to
 /// provide tab completions to users.
-pub struct CompletionsList<I> {
+pub struct CompletionsList<P: CompletionsProvider> {
     /// The list of entries to be received by [`get_completions_at`]
     ///
     /// [`get_completions_at`]: CompletionsProvider::get_completions_at
-    pub list: I,
+    pub entries: Vec<(String, P::Info)>,
     /// What kind of completion entries have been provided
     pub kind: CompletionsKind,
 }
@@ -262,15 +280,19 @@ struct InnerProvider<P: CompletionsProvider> {
     target: String,
     filtered_entries: FilteredEntries<P>,
     entries: Vec<(String, P::Info)>,
-    fmt: Box<dyn FnMut(&str, &P::Info) -> Text>,
+    fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
-    fn new(mut provider: P, text: &Text, height: usize, opts: PrintOpts) -> Option<(Self, Text)> {
-        let (target, caret) = target_word(text, provider.word_chars(opts));
+    fn new(
+        mut provider: P,
+        text: &Text,
+        height: usize,
+        opts: PrintOpts,
+    ) -> (Self, Option<(Point, Text)>) {
+        let (target, range) = target_word(text, provider.word_chars(opts));
 
-        let CompletionsList { list, kind } = provider.get_completions_at(text, caret)?;
-        let entries: Vec<_> = list.collect();
+        let CompletionsList { entries, kind } = provider.get_completions_at(text, range.end);
 
         let mut inner = Self {
             provider,
@@ -298,10 +320,8 @@ impl<P: CompletionsProvider> InnerProvider<P> {
         };
 
         let text = inner.text(text, 0, height, opts);
-
-        Some((inner, text))
+        (inner, Some(range.start).zip(text))
     }
-
 }
 
 enum FilteredEntries<P: CompletionsProvider> {
@@ -310,24 +330,21 @@ enum FilteredEntries<P: CompletionsProvider> {
     UncachedUnfinished,
 }
 
-trait ErasedInnerProvider: Any {
-    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Text;
+trait ErasedInnerProvider: Any + Send {
+    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Option<Text>;
+
+    fn has_changed(&self) -> bool;
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
-    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Text {
+    fn text(&mut self, text: &Text, scroll: i32, height: usize, opts: PrintOpts) -> Option<Text> {
         use FilteredEntries::*;
-        let (target, caret) = target_word(text, self.provider.word_chars(opts));
+        let (target, range) = target_word(text, self.provider.word_chars(opts));
 
         if let CachedUnfinished(_) | UncachedUnfinished = &self.filtered_entries
             && target != self.target
         {
-            self.entries = self
-                .provider
-                .get_completions_at(text, caret)
-                .unwrap()
-                .list
-                .collect();
+            self.entries = self.provider.get_completions_at(text, range.end).entries;
         }
 
         let entries = match (&mut self.filtered_entries, target == self.target) {
@@ -349,7 +366,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         if height == 0 || entries.is_empty() {
             self.dist_from_top = None;
-            return Text::default();
+            return None;
         }
 
         if scroll != 0 {
@@ -383,7 +400,11 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             }
         }
 
-        builder.build()
+        Some(builder.build())
+    }
+
+    fn has_changed(&self) -> bool {
+        self.provider.has_changed()
     }
 }
 
@@ -414,7 +435,7 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     Some(diff)
 }
 
-fn target_word(text: &Text, word_chars: &str) -> (String, Point) {
+fn target_word(text: &Text, word_chars: &str) -> (String, Range<Point>) {
     let caret = text.selections().get_main().unwrap().caret();
     let range = text
         .search_rev(word_chars, ..caret)
@@ -422,28 +443,5 @@ fn target_word(text: &Text, word_chars: &str) -> (String, Point) {
         .next()
         .unwrap_or(caret..caret);
 
-    (text.strs(range.clone()).unwrap().to_string(), caret)
+    (text.strs(range.clone()).unwrap().to_string(), range)
 }
-
-/// A [`Parser`] to add words to [`Completions`]
-pub struct WordsCompletionParser {
-    tracker: BufferTracker,
-}
-
-impl WordsCompletionParser {
-    /// Adds the `WordParser` [`Parser`] to this [`Buffer`]
-    pub fn add_to_buffer(buffer: &mut Buffer) -> Result<(), Text> {
-        Completions::add_entries(
-            BUFFER_WORDS,
-            buffer
-                .text()
-                .search_fwd(r"\w{3,}", ..10000.min(buffer.text().len().byte()))
-                .unwrap()
-                .map(|range| buffer.text().strs(range).unwrap().to_string()),
-        );
-
-        buffer.add_parser(|tracker| WordsCompletionParser { tracker })
-    }
-}
-
-impl Parser for WordsCompletionParser {}

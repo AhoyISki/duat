@@ -631,9 +631,9 @@ impl BufferTracker {
     ///     tagger: Tagger,
     /// }
     ///
-    /// impl<U: Ui> Parser<U> for SelectionLen {
-    ///     fn update(&mut self, pa: &mut Pass, buffer: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
-    ///         let mut parts = buffer.write(pa).text_mut().parts();
+    /// impl Parser for SelectionLen {
+    ///     fn update(&mut self, pa: &mut Pass, buffer: &Handle, on: Vec<Range<Point>>) {
+    ///         let mut parts = buffer.text_mut(pa).parts();
     ///         // This is efficient even in very large `Text`s.
     ///         parts.tags.remove(self.tagger, ..);
     ///
