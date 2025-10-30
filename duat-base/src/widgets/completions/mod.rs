@@ -8,7 +8,6 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged},
-    opts::PrintOpts,
     text::{Point, SpawnTag, Tagger, Text, txt},
     ui::{Orientation, SpawnSpecs, Widget},
 };
@@ -21,8 +20,7 @@ mod words;
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
 
 pub struct CompletionsBuilder {
-    providers:
-        Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(Point, Text)>)>,
+    providers: ProvidersFn,
 }
 
 impl CompletionsBuilder {
@@ -128,7 +126,7 @@ impl Completions {
 
         let height = handle.area().height(pa) as usize;
         let (master, comp) = pa
-            .try_read_and_write(handle.master().unwrap().widget(), &handle.widget())
+            .try_read_and_write(handle.master().unwrap().widget(), handle.widget())
             .unwrap();
 
         if let Some((text, _)) = comp
@@ -144,7 +142,7 @@ impl Completions {
 impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let (master, comp) = pa
-            .try_read_and_write(handle.master().unwrap().widget(), &handle.widget())
+            .try_read_and_write(handle.master().unwrap().widget(), handle.widget())
             .unwrap();
 
         comp.text = if let Some((text, _)) = comp
@@ -296,11 +294,12 @@ struct InnerProvider<P: CompletionsProvider> {
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
-    fn new(mut provider: P, text: &Text, height: usize) -> (Self, Option<(Point, Text)>) {
+    fn new(mut provider: P, text: &Text, height: usize) -> (Self, Option<(usize, Text)>) {
         let word_regex = format!(r"{}\z", provider.word_regex());
         let (target, range) = target_word(text, &word_regex);
 
-        let CompletionsList { entries, kind } = provider.get_completions(text, range.end, &target);
+        let CompletionsList { entries, kind } =
+            provider.get_completions(text, text.point_at_byte(range.end), &target);
 
         let mut inner = Self {
             provider,
@@ -365,7 +364,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         {
             self.entries = self
                 .provider
-                .get_completions(text, range.end, &target)
+                .get_completions(text, text.point_at_byte(range.end), &target)
                 .entries;
         }
 
@@ -470,13 +469,16 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     Some(diff)
 }
 
-fn target_word(text: &Text, word_chars: &str) -> (String, Range<Point>) {
+fn target_word(text: &Text, word_chars: &str) -> (String, Range<usize>) {
     let caret = text.selections().get_main().unwrap().caret();
     let range = text
         .search_rev(word_chars, ..caret)
         .unwrap()
         .next()
-        .unwrap_or(caret..caret);
+        .unwrap_or(caret.byte()..caret.byte());
 
     (text.strs(range.clone()).unwrap().to_string(), range)
 }
+
+type ProvidersFn =
+    Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(usize, Text)>)>;

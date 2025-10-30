@@ -30,16 +30,16 @@ impl CompletionsProvider for WordCompletions {
             .lock()
             .unwrap()
             .iter()
-            .filter_map(|(entry, info)| {
-                string_cmp(word, entry)
-                    .is_some()
-                    .then(|| (entry.clone(), info.clone()))
-            })
+            .filter(|&(entry, _)| string_cmp(word, entry).is_some())
+            .map(|(entry, info)| (entry.clone(), info.clone()))
             .collect();
 
         entries.sort_by_key(|(entry, _)| string_cmp(word, entry));
 
-        CompletionsList { entries, kind: CompletionsKind::UnfinishedFiltered }
+        CompletionsList {
+            entries,
+            kind: CompletionsKind::UnfinishedFiltered,
+        }
     }
 
     fn word_regex(&self) -> String {

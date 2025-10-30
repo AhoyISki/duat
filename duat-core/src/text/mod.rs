@@ -87,16 +87,6 @@
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
-mod builder;
-mod bytes;
-mod history;
-mod iter;
-mod ops;
-mod records;
-mod search;
-mod shift_list;
-mod tags;
-
 use std::{rc::Rc, sync::Arc};
 
 pub(crate) use self::history::MomentFetcher;
@@ -106,7 +96,7 @@ pub use self::{
     bytes::{Bytes, Lines, Slices, Strs},
     history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
-    ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
+    ops::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
@@ -121,6 +111,16 @@ use crate::{
     opts::PrintOpts,
     ui::{Area, Widget},
 };
+
+mod builder;
+mod bytes;
+mod history;
+mod iter;
+mod ops;
+mod records;
+mod search;
+mod shift_list;
+mod tags;
 
 /// The text of a given [`Widget`]
 ///
@@ -583,7 +583,7 @@ impl Text {
     ///
     /// [key]: Taggers
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
+    pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(taggers, range)
     }

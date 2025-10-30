@@ -28,7 +28,7 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 pub type KeyMod = crossterm::event::KeyModifiers;
 
 pub use self::{
-    cursor::{Cursor, Cursors, PointOrPoints, Selection, Selections, VPoint},
+    cursor::{Cursor, Cursors, CaretOrRange, Selection, Selections, VPoint},
     patterns::*,
     remap::*,
     switch::*,

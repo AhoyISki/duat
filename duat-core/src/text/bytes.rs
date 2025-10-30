@@ -8,7 +8,7 @@ use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
 use super::{Point, RegexPattern, TextRange, records::Records};
-use crate::opts::PrintOpts;
+use crate::{opts::PrintOpts, text::TextIndex};
 
 /// The bytes of a [`Text`], encoded in UTF-8
 ///
@@ -64,16 +64,16 @@ impl Bytes {
     }
 
     /// The `char` at the [`Point`]'s position
-    pub fn char_at(&self, p: Point) -> Option<char> {
-        if p.byte() >= self.len().byte() {
+    pub fn char_at(&self, p: impl TextIndex) -> Option<char> {
+        if p.to_byte_index() >= self.len().byte() {
             return None;
         }
 
         let [s0, s1] = self.strs_inner(..).unwrap();
-        Some(if p.byte() < s0.len() {
-            s0[p.byte()..].chars().next().unwrap()
+        Some(if p.to_byte_index() < s0.len() {
+            s0[p.to_byte_index()..].chars().next().unwrap()
         } else {
-            s1[p.byte() - s0.len()..]
+            s1[p.to_byte_index() - s0.len()..]
                 .chars()
                 .next()
                 .unwrap_or_else(|| panic!("{self:#?}"))
@@ -286,7 +286,7 @@ impl Bytes {
                 .take_while(|&(rhs, ..)| b <= rhs)
                 .last()
         };
-        
+
         found
             .map(|(b, c, l)| Point::from_raw(b, c, l))
             .unwrap_or(self.len())

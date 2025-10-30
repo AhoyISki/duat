@@ -56,7 +56,8 @@ impl<W: Widget> Mode for Pager<W> {
                     return;
                 };
 
-                handle.scroll_to_points(pa, r.start.to_two_points_after());
+                let point = handle.text(pa).point_at_byte(r.start);
+                handle.scroll_to_points(pa, point.to_two_points_after());
             }
             (alt!('n'), true) | (event!('N'), false) => {
                 let se = SEARCH.lock().unwrap();
@@ -69,7 +70,8 @@ impl<W: Widget> Mode for Pager<W> {
                     return;
                 };
 
-                handle.scroll_to_points(pa, r.start.to_two_points_after());
+                let point = handle.text(pa).point_at_byte(r.start);
+                handle.scroll_to_points(pa, point.to_two_points_after());
             }
             (event!(Esc), _) => mode::reset::<Buffer>(),
             (event!(':'), _) => mode::set(RunCommands::new()),

@@ -15,21 +15,21 @@ use bincode::{Decode, Encode};
 /// [`Text`]: super::Text
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
 pub struct Point {
-    b: u32,
-    c: u32,
-    l: u32,
+    byte: u32,
+    char: u32,
+    line: u32,
 }
 
 impl Point {
     /// Returns a new [`Point`], at the first byte
     pub const fn new() -> Self {
-        Point { b: 0, c: 0, l: 0 }
+        Point { byte: 0, char: 0, line: 0 }
     }
 
     /// Internal function to create [`Point`]s
     pub(super) const fn from_raw(b: usize, c: usize, l: usize) -> Self {
         let (b, c, l) = (b as u32, c as u32, l as u32);
-        Self { b, c, l }
+        Self { byte: b, char: c, line: l }
     }
 
     /// Returns a new [`TwoPoints`] that includes the [`Ghost`]s in
@@ -61,9 +61,9 @@ impl Point {
     pub fn len_of(str: impl AsRef<str>) -> Self {
         let str = str.as_ref();
         Self {
-            b: str.len() as u32,
-            c: str.chars().count() as u32,
-            l: str.bytes().filter(|c| *c == b'\n').count() as u32,
+            byte: str.len() as u32,
+            char: str.chars().count() as u32,
+            line: str.bytes().filter(|c| *c == b'\n').count() as u32,
         }
     }
 
@@ -77,7 +77,7 @@ impl Point {
     /// [`Bytes`]: super::Bytes
     /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
     pub const fn byte(&self) -> usize {
-        self.b as usize
+        self.byte as usize
     }
 
     /// Returns the char index (relative to the beginning of the
@@ -94,7 +94,7 @@ impl Point {
     /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
     /// [`Bytes::strs`]: super::Bytes::strs
     pub const fn char(&self) -> usize {
-        self.c as usize
+        self.char as usize
     }
 
     /// Returns the line. Indexed at 0
@@ -106,15 +106,15 @@ impl Point {
     /// [`Bytes`]: super::Bytes
     /// [`Bytes::point_at_line`]: super::Bytes::point_at_line
     pub const fn line(&self) -> usize {
-        self.l as usize
+        self.line as usize
     }
 
     /// Checked [`Point`] subtraction
     pub fn checked_sub(self, rhs: Point) -> Option<Point> {
         Some(Self {
-            b: self.b.checked_sub(rhs.b)?,
-            c: self.c.checked_sub(rhs.c)?,
-            l: self.l.checked_sub(rhs.l)?,
+            byte: self.byte.checked_sub(rhs.byte)?,
+            char: self.char.checked_sub(rhs.char)?,
+            line: self.line.checked_sub(rhs.line)?,
         })
     }
 
@@ -124,9 +124,9 @@ impl Point {
     #[inline(always)]
     pub(crate) const fn fwd(self, char: char) -> Self {
         Self {
-            b: self.b + char.len_utf8() as u32,
-            c: self.c + 1,
-            l: self.l + (char == '\n') as u32,
+            byte: self.byte + char.len_utf8() as u32,
+            char: self.char + 1,
+            line: self.line + (char == '\n') as u32,
         }
     }
 
@@ -134,9 +134,9 @@ impl Point {
     #[inline(always)]
     pub(crate) const fn rev(self, char: char) -> Self {
         Self {
-            b: self.b - char.len_utf8() as u32,
-            c: self.c - 1,
-            l: self.l - (char == '\n') as u32,
+            byte: self.byte - char.len_utf8() as u32,
+            char: self.char - 1,
+            line: self.line - (char == '\n') as u32,
         }
     }
 
@@ -145,9 +145,9 @@ impl Point {
     /// This assumes that no overflow is going to happen
     pub(crate) const fn shift_by(self, [b, c, l]: [i32; 3]) -> Self {
         Self {
-            b: (self.b as i32 + b) as u32,
-            c: (self.c as i32 + c) as u32,
-            l: (self.l as i32 + l) as u32,
+            byte: (self.byte as i32 + b) as u32,
+            char: (self.char as i32 + c) as u32,
+            line: (self.line as i32 + l) as u32,
         }
     }
 
@@ -156,19 +156,23 @@ impl Point {
     /// In this representation, the indices 0, 1 and 2 are the byte,
     /// char and line, respectively.
     pub(crate) const fn as_signed(self) -> [i32; 3] {
-        [self.b as i32, self.c as i32, self.l as i32]
+        [self.byte as i32, self.char as i32, self.line as i32]
     }
 }
 
 impl std::fmt::Debug for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Point {{ b: {}, c: {}, l: {} }}", self.b, self.c, self.l)
+        write!(
+            f,
+            "Point {{ b: {}, c: {}, l: {} }}",
+            self.byte, self.char, self.line
+        )
     }
 }
 
 impl std::fmt::Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}, {}, {}", self.b, self.c, self.l)
+        write!(f, "{}, {}, {}", self.byte, self.char, self.line)
     }
 }
 
@@ -177,9 +181,9 @@ impl std::ops::Add for Point {
 
     fn add(self, rhs: Self) -> Self::Output {
         Self {
-            b: self.b + rhs.b,
-            c: self.c + rhs.c,
-            l: self.l + rhs.l,
+            byte: self.byte + rhs.byte,
+            char: self.char + rhs.char,
+            line: self.line + rhs.line,
         }
     }
 }
@@ -195,9 +199,9 @@ impl std::ops::Sub for Point {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self {
-            b: self.b - rhs.b,
-            c: self.c - rhs.c,
-            l: self.l - rhs.l,
+            byte: self.byte - rhs.byte,
+            char: self.char - rhs.char,
+            line: self.line - rhs.line,
         }
     }
 }
@@ -208,32 +212,33 @@ impl std::ops::SubAssign for Point {
     }
 }
 
-/// Given a first byte, determines how many bytes are in this
-/// UTF-8 character
-#[inline]
-pub const fn utf8_char_width(b: u8) -> u32 {
-    // https://tools.ietf.org/html/rfc3629
-    const UTF8_CHAR_WIDTH: &[u8; 256] = &[
-        // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
-        0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
-        4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
-    ];
+/// A [`Point`] or a `usize`, representing a byte index
+///
+/// In Duat, [`Point`]s are _usually_ just "thin wrappers" around a
+/// byte index, useful for getting other information about a place in
+/// the [`Text`], but that extra information is normally ignored when
+/// doing internal calculations.
+///
+/// For that reason, Duat allows users to use either [`Point`]s _or_
+/// byte indices in order to index the [`Text`], for convenience's
+/// sake.
+///
+/// [`Text`]: super::Text
+pub trait TextIndex: Clone + Copy + std::fmt::Debug {
+    /// Converts this type into a byte index.
+    fn to_byte_index(self) -> usize;
+}
 
-    UTF8_CHAR_WIDTH[b as usize] as u32
+impl TextIndex for Point {
+    fn to_byte_index(self) -> usize {
+        self.byte()
+    }
+}
+
+impl TextIndex for usize {
+    fn to_byte_index(self) -> usize {
+        self
+    }
 }
 
 /// Ranges that can be used to index the [`Text`]
@@ -241,7 +246,7 @@ pub const fn utf8_char_width(b: u8) -> u32 {
 /// All of the [ranges] in [`std`] that implement either
 /// [`RangeBounds<usize>`] or [`RangeBounds<Point>`] should work as an
 /// argument. If it implements [`RangeBounds<usize>`], then the
-/// `usize` represents the a char index in the [`Text`].
+/// `usize` represents the a byte index in the [`Text`].
 ///
 /// [`Text`]: super::Text
 /// [ranges]: std::range
@@ -275,6 +280,9 @@ impl TextRange for RangeFull {
 
 /// Either a [`TextRange`], a [`usize`] or a [`Point`]
 ///
+/// In all cases, they represent a byte index from the start of the
+/// [`Text`]
+///
 /// This trait's purpose is to be used for [`Tag`] removal in the
 /// [`Tags::remove`] and [`Text::remove_tags`] functions. This is
 /// useful in order to reduce the number of functions exposed to API
@@ -283,34 +291,35 @@ impl TextRange for RangeFull {
 /// [`Tag`]: super::Tag
 /// [`Tags::remove`]: super::Tags::remove
 /// [`Text::remove_tags`]: super::Text::remove_tags
-pub trait TextRangeOrPoint {
+/// [`Text`]: super::Text
+pub trait TextRangeOrIndex {
     /// Transforms `self` into a [`Range<usize>`]
     fn to_range(self, max: usize) -> Range<usize>;
 }
 
-impl TextRangeOrPoint for usize {
+impl TextRangeOrIndex for usize {
     fn to_range(self, max: usize) -> Range<usize> {
         max.min(self)..max.min(self + 1)
     }
 }
 
-impl TextRangeOrPoint for Point {
+impl TextRangeOrIndex for Point {
     fn to_range(self, max: usize) -> Range<usize> {
         max.min(self.byte())..max.min(self.byte() + 1)
     }
 }
 
-impl TextRangeOrPoint for RangeFull {
+impl TextRangeOrIndex for RangeFull {
     fn to_range(self, max: usize) -> Range<usize> {
         TextRange::to_range(self, max)
     }
 }
 
-implTextRangeOrPoint!(Range);
-implTextRangeOrPoint!(RangeInclusive);
-implTextRangeOrPoint!(RangeTo);
-implTextRangeOrPoint!(RangeToInclusive);
-implTextRangeOrPoint!(RangeFrom);
+implTextRangeOrIndex!(Range);
+implTextRangeOrIndex!(RangeInclusive);
+implTextRangeOrIndex!(RangeTo);
+implTextRangeOrIndex!(RangeToInclusive);
+implTextRangeOrIndex!(RangeFrom);
 
 /// A struct used to exactly pinpoint a position in [`Text`], used
 /// when printing
@@ -409,16 +418,44 @@ macro implTextRange($range:ident, $r:ident, $sb:expr, $eb:expr, $sp:expr, $ep:ex
     }
 }
 
-macro implTextRangeOrPoint($range:ident) {
-    impl TextRangeOrPoint for $range<usize> {
+macro implTextRangeOrIndex($range:ident) {
+    impl TextRangeOrIndex for $range<usize> {
         fn to_range(self, max: usize) -> Range<usize> {
             TextRange::to_range(self, max)
         }
     }
 
-    impl TextRangeOrPoint for $range<Point> {
+    impl TextRangeOrIndex for $range<Point> {
         fn to_range(self, max: usize) -> Range<usize> {
             TextRange::to_range(self, max)
         }
     }
+}
+
+/// Given a first byte, determines how many bytes are in this
+/// UTF-8 character
+#[inline]
+pub const fn utf8_char_width(b: u8) -> u32 {
+    // https://tools.ietf.org/html/rfc3629
+    const UTF8_CHAR_WIDTH: &[u8; 256] = &[
+        // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
+        0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
+        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
+        4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
+    ];
+
+    UTF8_CHAR_WIDTH[b as usize] as u32
 }

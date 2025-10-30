@@ -25,7 +25,7 @@ pub use self::{
     },
 };
 use super::{
-    Point, Text, TextRangeOrPoint,
+    Point, Text, TextRangeOrIndex,
     shift_list::{Shift, ShiftList, Shiftable},
 };
 use crate::{context::Handle, data::Pass, ui::Widget, utils::get_ends};
@@ -97,7 +97,7 @@ impl Tags<'_> {
     /// [range]: RangeBounds
     /// [`Parser`]: crate::buffer::Parser
     /// [when changes happen]: crate::buffer::Parser::parse
-    pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
+    pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(taggers, range)
     }
@@ -113,7 +113,7 @@ impl Tags<'_> {
     /// instead.
     ///
     /// [`remove`]: Self::remove
-    pub fn remove_excl(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
+    pub fn remove_excl(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from_excl(taggers, range);
     }

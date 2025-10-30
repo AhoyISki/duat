@@ -430,6 +430,7 @@ mod cursor {
         }
 
         /// Moves to specific, pre calculated [`Point`].
+        #[track_caller]
         pub fn move_to(&mut self, p: Point, text: &Text) {
             if p == self.caret() {
                 return;

@@ -17,7 +17,7 @@ pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
     buffer::{Buffer, Parser},
     opts::PrintOpts,
-    text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
+    text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextIndex, TextRange},
     ui::{Area, Widget},
 };
 
@@ -262,7 +262,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// [range]: std::ops::RangeBounds
     /// [`swap_ends`]: Self::swap_ends
-    pub fn move_to(&mut self, point_or_points: impl PointOrPoints) {
+    pub fn move_to(&mut self, point_or_points: impl CaretOrRange) {
         point_or_points.move_to(self);
     }
 
@@ -442,9 +442,10 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Searches the [`Text`] for a regex
     ///
-    /// The search will begin on the `caret`, and returns the bounding
-    /// [`Point`]s, alongside the match. If an `end` is provided,
-    /// the search will stop at the given [`Point`].
+    /// The search will begin on the `caret` and returns the
+    /// [`Range<usize>`] for the match, where the bounding `usize`s
+    /// represents a byte index, and can be directly used in, for
+    /// example, [`Cursor::move_to`].
     ///
     /// # Panics
     ///
@@ -452,35 +453,62 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// fn search_nth_paren<U: Ui, S>(pa: &mut Pass, handle: &mut Handle<Buffer<U>, U, S>, n: usize) {
+    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
     ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_fwd('(', None).nth(n);
-    ///         if let Some([p0, p1]) = nth {
-    ///             e.move_to(p0);
-    ///             e.set_anchor();
-    ///             e.move_to(p1);
+    ///         let mut nth = e.search_fwd('(').nth(n);
+    ///         if let Some(range) = nth {
+    ///             e.move_to(range);
     ///         }
     ///     })
     /// }
     /// ```
-    pub fn search_fwd<R: RegexPattern>(
+    #[track_caller]
+    pub fn search_fwd<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
+        let start = self.selection.caret();
+        let text = self.widget.text();
+        text.search_fwd(pat, start..text.len()).unwrap()
+    }
+
+    /// Searches the [`Text`] for a regex, with an upper limit
+    ///
+    /// The search will begin on the `caret` and returns the
+    /// [`Range<usize>`] for the match, where the bounding `usize`s
+    /// represents a byte index, and can be directly used in, for
+    /// example, [`Cursor::move_to`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::prelude::*;
+    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
+    ///     handle.edit_all(pa, |mut e| {
+    ///         let mut nth = e.search_fwd('(', None).nth(n);
+    ///         if let Some(range) = nth {
+    ///             e.move_to(range);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[track_caller]
+    pub fn search_fwd_until<R: RegexPattern>(
         &self,
         pat: R,
-        end: Option<Point>,
+        until: impl TextIndex,
     ) -> impl Iterator<Item = R::Match> + '_ {
         let start = self.selection.caret();
         let text = self.widget.text();
-        match end {
-            Some(end) => text.search_fwd(pat, start..end).unwrap(),
-            None => text.search_fwd(pat, start..text.len()).unwrap(),
-        }
+        text.search_fwd(pat, start.byte()..until.to_byte_index())
+            .unwrap()
     }
 
     /// Searches the [`Text`] for a regex, in reverse
     ///
-    /// The search will begin on the `caret`, and returns the bounding
-    /// [`Point`]s, alongside the match. If a `start` is provided,
-    /// the search will stop at the given [`Point`].
+    /// The search will begin on the `caret` and returns the
+    /// [`Range<usize>`] for the match, where the bounding `usize`s
+    /// represents a byte index, and can be directly used in, for
+    /// example, [`Cursor::move_to`].
     ///
     /// # Panics
     ///
@@ -488,34 +516,58 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// fn search_nth_paren<U: Ui, S>(
-    ///     pa: &mut Pass,
-    ///     handle: &mut Handle<Buffer<U>, U, S>,
-    ///     s: &str,
-    ///     n: usize,
-    /// ) {
+    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
     ///     handle.edit_all(pa, |mut e| {
     ///         let mut nth = e.search_rev(s, None).nth(n);
-    ///         if let Some([p0, p1]) = nth {
-    ///             e.move_to(p0);
-    ///             e.set_anchor();
-    ///             e.move_to(p1);
+    ///         if let Some(range) = nth {
+    ///             s.move_to(range)
     ///         }
     ///     })
     /// }
     /// ```
-    pub fn search_rev<R: RegexPattern>(
+    #[track_caller]
+    pub fn search_rev<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
+        let end = self.selection.caret();
+        let text = self.widget.text();
+        text.search_rev(pat, Point::default()..end).unwrap()
+    }
+
+    /// Searches the [`Text`] for a regex, in reverse
+    ///
+    /// The search will begin on the `caret` and returns the
+    /// [`Range<usize>`] for the match, where the bounding `usize`s
+    /// represents a byte index, and can be directly used in, for
+    /// example, [`Cursor::move_to`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::prelude::*;
+    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
+    ///     handle.edit_all(pa, |mut e| {
+    ///         let mut nth = e.search_rev(s, None).nth(n);
+    ///         if let Some(range) = nth {
+    ///             s.move_to(range)
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[track_caller]
+    pub fn search_rev_until<R: RegexPattern>(
         &self,
         pat: R,
-        start: Option<Point>,
+        until: impl TextIndex,
     ) -> impl Iterator<Item = R::Match> + '_ {
         let end = self.selection.caret();
-        let start = start.unwrap_or_default();
+        let start = until.to_byte_index();
         let text = self.widget.text();
-        text.search_rev(pat, start..end).unwrap()
+        text.search_rev(pat, start..end.byte()).unwrap()
     }
 
     /// Wether the current selection matches a regex pattern
+    #[track_caller]
     pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
         let range = self.selection.byte_range(self.widget.text());
         self.widget.text().matches(pat, range).unwrap()
@@ -531,8 +583,8 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 
     /// Returns the [`char`] at a given [`Point`]
-    pub fn char_at(&self, p: Point) -> Option<char> {
-        self.text().char_at(p)
+    pub fn char_at(&self, i: impl TextIndex) -> Option<char> {
+        self.text().char_at(i)
     }
 
     /// Returns the [`Selection`]'s selection
@@ -789,20 +841,35 @@ impl<'a, W: Widget + ?Sized, S> Lender for Cursors<'a, W, S> {
     }
 }
 
-/// One or two [`Point`]s
-pub trait PointOrPoints {
+/// A position that a [`Cursor`] can move to
+///
+/// This will come either in the form of [`Point`]s or byte indices
+/// (in the form of `usize`). It can be a single value, like
+/// `Point::default()` or `3`, in which case only the [caret] will
+/// move, not affecting the [anchor].
+///
+/// Or it could be a [range], like `p1..p2` or `..=1000`, in which
+/// case the caret will be placed at the end, while the anchor will be
+/// placed at the start.
+///
+/// [caret]: Cursor::caret
+/// [anchor]: Cursor::anchor
+/// [range]: std::ops::RangeBounds
+pub trait CaretOrRange {
     /// Internal movement function for monomorphization
     #[doc(hidden)]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>);
 }
 
-impl PointOrPoints for Point {
+impl CaretOrRange for Point {
+    #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.selection.move_to(self, cursor.widget.text());
     }
 }
 
-impl PointOrPoints for Range<Point> {
+impl CaretOrRange for Range<Point> {
+    #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         assert!(
             self.start <= self.end,
@@ -820,7 +887,8 @@ impl PointOrPoints for Range<Point> {
     }
 }
 
-impl PointOrPoints for RangeInclusive<Point> {
+impl CaretOrRange for RangeInclusive<Point> {
+    #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         assert!(
             self.start() <= self.end(),
@@ -835,7 +903,8 @@ impl PointOrPoints for RangeInclusive<Point> {
     }
 }
 
-impl PointOrPoints for RangeFrom<Point> {
+impl CaretOrRange for RangeFrom<Point> {
+    #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.selection.move_to(self.start, cursor.widget.text());
         if self.start < cursor.text().len() {
@@ -848,7 +917,8 @@ impl PointOrPoints for RangeFrom<Point> {
     }
 }
 
-impl PointOrPoints for RangeTo<Point> {
+impl CaretOrRange for RangeTo<Point> {
+    #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         if Point::default() < self.end {
@@ -859,7 +929,8 @@ impl PointOrPoints for RangeTo<Point> {
     }
 }
 
-impl PointOrPoints for RangeToInclusive<Point> {
+impl CaretOrRange for RangeToInclusive<Point> {
+    #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
@@ -867,7 +938,107 @@ impl PointOrPoints for RangeToInclusive<Point> {
     }
 }
 
-impl PointOrPoints for RangeFull {
+impl CaretOrRange for usize {
+    #[track_caller]
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        cursor.selection.move_to(
+            cursor.widget.text().point_at_byte(self),
+            cursor.widget.text(),
+        )
+    }
+}
+
+impl CaretOrRange for Range<usize> {
+    #[track_caller]
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        assert!(
+            self.start <= self.end,
+            "slice index start is larger than end"
+        );
+
+        cursor.selection.move_to(
+            cursor.widget.text().point_at_byte(self.start),
+            cursor.widget.text(),
+        );
+        if self.start < self.end {
+            cursor.set_anchor();
+            cursor.selection.move_to(
+                cursor.widget.text().point_at_byte(self.end),
+                cursor.widget.text(),
+            );
+            if self.end < cursor.widget.text().len().byte() {
+                cursor.move_hor(-1);
+            }
+        }
+    }
+}
+
+impl CaretOrRange for RangeInclusive<usize> {
+    #[track_caller]
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        assert!(
+            self.start() <= self.end(),
+            "slice index start is larger than end"
+        );
+
+        cursor.selection.move_to(
+            cursor.widget.text().point_at_byte(*self.start()),
+            cursor.widget.text(),
+        );
+        cursor.set_anchor();
+        cursor.selection.move_to(
+            cursor.widget.text().point_at_byte(*self.end()),
+            cursor.widget.text(),
+        );
+    }
+}
+
+impl CaretOrRange for RangeFrom<usize> {
+    #[track_caller]
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        cursor.selection.move_to(
+            cursor.widget.text().point_at_byte(self.start),
+            cursor.widget.text(),
+        );
+        if self.start < cursor.text().len().byte() {
+            cursor.set_anchor();
+            cursor
+                .selection
+                .move_to(cursor.widget.text().len(), cursor.widget.text());
+            cursor.move_hor(-1);
+        }
+    }
+}
+
+impl CaretOrRange for RangeTo<usize> {
+    #[track_caller]
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        cursor.move_to_start();
+        if self.end > 0 {
+            cursor.set_anchor();
+            cursor.selection.move_to(
+                cursor.widget.text().point_at_byte(self.end),
+                cursor.widget.text(),
+            );
+            cursor.move_hor(-1);
+        }
+    }
+}
+
+impl CaretOrRange for RangeToInclusive<usize> {
+    #[track_caller]
+    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        cursor.move_to_start();
+        cursor.set_anchor();
+        cursor.selection.move_to(
+            cursor.widget.text().point_at_byte(self.end),
+            cursor.widget.text(),
+        );
+    }
+}
+
+impl CaretOrRange for RangeFull {
+    #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
