@@ -237,14 +237,14 @@ pub trait Matcheable: Sized {
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>>;
+    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>>;
 
     /// Returns a backwards [`Iterator`] over matches of a given regex
     fn search_rev(
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>>;
+    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>>;
 
     /// Checks if a type matches a [`RegexPattern`]
     fn reg_matches(
@@ -259,7 +259,7 @@ impl<S: AsRef<str>> Matcheable for S {
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>> {
+    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>> {
         let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
         let str = &self.as_ref()[start..end];
         let dfas = dfas_from_pat(pat)?;
@@ -295,7 +295,7 @@ impl<S: AsRef<str>> Matcheable for S {
             };
             let h_start = hm.offset();
 
-            Some(([start + h_start, start + h_end], &str[h_start..h_end]))
+            Some((start + h_start..start + h_end, &str[h_start..h_end]))
         }))
     }
 
@@ -303,7 +303,7 @@ impl<S: AsRef<str>> Matcheable for S {
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>> {
+    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>> {
         let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
         let str = &self.as_ref()[start..end];
         let dfas = dfas_from_pat(pat)?;
@@ -339,7 +339,7 @@ impl<S: AsRef<str>> Matcheable for S {
             };
             let h_end = hm.offset();
 
-            Some(([start + h_start, start + h_end], &str[h_start..h_end]))
+            Some((start + h_start..start + h_end, &str[h_start..h_end]))
         }))
     }
 

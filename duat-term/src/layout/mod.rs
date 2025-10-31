@@ -272,9 +272,9 @@ impl Layouts {
     /// Sends lines to be printed on screen
     pub fn send_lines(
         &self,
-        id: AreaId,
+        area_id: AreaId,
+        spawn_id: Option<SpawnId>,
         lines: Lines,
-        is_floating: bool,
         spawns: impl Iterator<Item = SpawnId>,
         observed_spawns: &[SpawnId],
     ) {
@@ -282,7 +282,7 @@ impl Layouts {
         let layout = layouts
             .list
             .iter_mut()
-            .find(|layout| layout.get(id).is_some())
+            .find(|layout| layout.get(area_id).is_some())
             .unwrap();
 
         let mut revealed_at_least_one = false;
@@ -293,13 +293,13 @@ impl Layouts {
                 revealed_at_least_one = !hidden;
             }
         }
-        
+
         if revealed_at_least_one {
             layout.printer.update(false, false);
         }
 
-        if is_floating {
-            layout.printer.send_spawned_lines(id, lines);
+        if let Some(spawn_id) = spawn_id {
+            layout.printer.send_spawned_lines(area_id, spawn_id, lines);
         } else {
             layout.printer.send_lines(lines);
         }
@@ -584,6 +584,10 @@ impl Layout {
                 *main.get_constraints_mut(id).unwrap() = get_new_cons(main, cons);
             }
 
+            if is_hidden == Some(true) || [width, height].contains(&Some(0.0)) {
+                self.printer.clear_spawn(id);
+            }
+
             let (SpawnInfo { id, orientation, cons }, rect) = &self.spawned[i];
             let len = recurse_length(rect, cons, orientation.axis());
             self.printer.set_spawn_len(*id, len.map(|len| len as f64));
@@ -741,8 +745,9 @@ impl Constraints {
     ) -> Self {
         let width = width.zip(Some(false));
         let height = height.zip(Some(false));
-        let [ver_con, hor_con] =
-            get_cons([width, height], rect, is_hidden, rect.is_spawned(), parent);
+        let is_spawned = rect.spawn_id().is_some();
+        let [ver_con, hor_con] = get_cons([width, height], rect, is_hidden, is_spawned, parent);
+
         p.add_eqs(ver_con.clone().into_iter().chain(hor_con.clone()));
 
         Self {
@@ -775,8 +780,8 @@ impl Constraints {
     /// Reuses [`self`] in order to constrain a new child
     pub fn apply(&mut self, rect: &Rect, parent: Option<&Rect>) -> Vec<Constraint> {
         let constraints = [self.width, self.height];
-        let [ver_con, hor_con] =
-            get_cons(constraints, rect, self.is_hidden, rect.is_spawned(), parent);
+        let is_spawned = rect.spawn_id().is_some();
+        let [ver_con, hor_con] = get_cons(constraints, rect, self.is_hidden, is_spawned, parent);
         let new_eqs = ver_con.clone().into_iter().chain(hor_con.clone());
 
         self.ver_con = ver_con;

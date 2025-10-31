@@ -110,7 +110,8 @@
     closure_lifetime_binder,
     default_field_values,
     associated_type_defaults,
-    try_blocks
+    try_blocks,
+    vec_try_remove
 )]
 
 use duat_core::{

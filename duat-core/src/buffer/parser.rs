@@ -447,7 +447,7 @@ impl Parsers {
         let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
             let mut parser = self.list.borrow_mut()[i].parser.take()?;
-            
+
             let ptr: *const dyn Parser = &*parser;
             let ret = parser
                 .before_try_get()

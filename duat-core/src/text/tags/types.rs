@@ -531,8 +531,9 @@ impl RawTag {
             | Self::EndAlignRight(..)
             | Self::Spacer(..)
             | Self::EndConceal(..)
-            | Self::EndToggle(..) => 1,
-            Self::SpawnedWidget(..) | Self::Ghost(..) => 2,
+            | Self::EndToggle(..)
+            | Self::SpawnedWidget(..) => 1,
+            Self::Ghost(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }

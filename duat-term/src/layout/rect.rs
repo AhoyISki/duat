@@ -42,7 +42,7 @@ pub struct Rect {
     tl: VarPoint,
     br: VarPoint,
     eqs: Vec<Equality>,
-    is_spawned: bool,
+    spawn_id: Option<SpawnId>,
     kind: Kind,
     on_files: bool,
     edge: Option<Variable>,
@@ -52,7 +52,7 @@ pub struct Rect {
 impl Rect {
     /// Returns a new main `Rect`, which represents a full window
     pub fn new_main(p: &Printer, frame: Frame, cache: PrintInfo) -> Self {
-        let mut main = Rect::new(p, true, Kind::Leaf(Cell::new(cache)), false, frame);
+        let mut main = Rect::new(p, true, Kind::Leaf(Cell::new(cache)), None, frame);
 
         main.eqs.extend([
             main.tl.x() | EQ(EDGE_PRIO) | 0.0,
@@ -76,7 +76,7 @@ impl Rect {
         cache: PrintInfo,
         mut specs: SpawnSpecs,
     ) -> (Self, Constraints) {
-        let mut rect = Rect::new(p, false, Kind::Leaf(Cell::new(cache)), true, frame);
+        let mut rect = Rect::new(p, false, Kind::Leaf(Cell::new(cache)), Some(id), frame);
 
         // Wether the Rect is shown or not is dependent on the SpawnTag being
         // printed or not, it's not a choice of the user.
@@ -119,7 +119,7 @@ impl Rect {
         info: PrintInfo,
     ) -> Option<(Rect, Constraints)> {
         let target = self.get(target)?;
-        let mut rect = Rect::new(p, false, Kind::end(info), true, self.frame);
+        let mut rect = Rect::new(p, false, Kind::end(info), Some(id), self.frame);
 
         // Left/bottom, center, right/top, above/left, below/right strengths
         let len = match specs.orientation.axis() {
@@ -165,12 +165,12 @@ impl Rect {
         spawn_info: &mut Option<&mut SpawnInfo>,
     ) -> bool {
         let frame = self.frame;
-        let do_cluster = do_cluster || self.is_spawned;
+        let do_cluster = do_cluster || self.spawn_id.is_some();
 
-        let is_spawned = self.is_spawned;
+        let spawn_id = self.spawn_id;
         let (mut child, cons, parent_id) = if let Some((i, orig)) = self.get_parent_mut(id) {
             let kind = Kind::middle(axis, do_cluster);
-            let mut parent = Rect::new(p, on_files, kind, is_spawned, frame);
+            let mut parent = Rect::new(p, on_files, kind, spawn_id, frame);
 
             let axis = orig.kind.axis().unwrap();
             let (rect, cons) = orig.children_mut().unwrap().remove(i);
@@ -193,7 +193,7 @@ impl Rect {
             (rect, Some(cons), parent_id)
         } else if id == self.id {
             let kind = Kind::middle(axis, do_cluster);
-            let mut parent = Rect::new(p, on_files, kind, is_spawned, frame);
+            let mut parent = Rect::new(p, on_files, kind, spawn_id, frame);
             let parent_id = parent.id;
 
             if let Some(info) = spawn_info {
@@ -245,14 +245,20 @@ impl Rect {
     }
 
     /// Returns a new [`Rect`] with no default [`Constraints`]
-    fn new(p: &Printer, on_files: bool, kind: Kind, is_spawned: bool, frame: Frame) -> Self {
+    fn new(
+        p: &Printer,
+        on_files: bool,
+        kind: Kind,
+        spawn_id: Option<SpawnId>,
+        frame: Frame,
+    ) -> Self {
         let (tl, br) = (p.new_point(), p.new_point());
         Rect {
             id: AreaId::new(),
             tl,
             br,
             eqs: Vec::new(),
-            is_spawned,
+            spawn_id,
             kind,
             on_files,
             edge: None,
@@ -330,7 +336,7 @@ impl Rect {
 
         let (i, mut rect, parent, cons, axis) = {
             let (i, parent) = self.get_parent(id)?;
-            let rect = Rect::new(p, on_files, Kind::end(info), parent.is_spawned, self.frame);
+            let rect = Rect::new(p, on_files, Kind::end(info), parent.spawn_id, self.frame);
 
             let dims = [specs.width, specs.height];
             let cons = Constraints::new(p, dims, specs.hidden, &rect, Some(parent));
@@ -944,10 +950,12 @@ impl Rect {
         }
     }
 
-    pub fn is_spawned(&self) -> bool {
-        self.is_spawned
+    /// The [`SpawnId`], if this `Rect` was spawned
+    pub fn spawn_id(&self) -> Option<SpawnId> {
+        self.spawn_id
     }
 
+    /// The [`Frame`] surrounding this `Rect`
     pub fn frame(&self) -> Frame {
         self.frame
     }

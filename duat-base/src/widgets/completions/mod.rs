@@ -147,6 +147,9 @@ impl Completions {
                     }
                 })
             }
+        } else {
+            comp.text = Text::default();
+            handle.area().set_height(pa, 0.0).unwrap();
         }
     }
 }
@@ -320,15 +323,15 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             orig: target.clone(),
             current: None,
             filtered_entries: match kind {
-                CompletionsKind::Finished => FilteredEntries::CachedFinished({
+                CompletionsKind::Finished => FilteredEntries::UnfilteredFinished({
                     entries
                         .iter()
                         .filter(|(entry, _)| string_cmp(&target, entry).is_some())
                         .map(|(entry, info)| (entry.clone(), info.clone()))
                         .collect()
                 }),
-                CompletionsKind::UnfinishedFiltered => FilteredEntries::UncachedUnfinished,
-                CompletionsKind::UnfinishedUnfiltered => FilteredEntries::CachedUnfinished({
+                CompletionsKind::UnfinishedFiltered => FilteredEntries::FilteredUnfinished,
+                CompletionsKind::UnfinishedUnfiltered => FilteredEntries::UnfilteredUnfinished({
                     entries
                         .iter()
                         .filter(|(entry, _)| string_cmp(&target, entry).is_some())
@@ -346,9 +349,9 @@ impl<P: CompletionsProvider> InnerProvider<P> {
 }
 
 enum FilteredEntries<P: CompletionsProvider> {
-    CachedFinished(Vec<(String, P::Info)>),
-    CachedUnfinished(Vec<(String, P::Info)>),
-    UncachedUnfinished,
+    UnfilteredFinished(Vec<(String, P::Info)>),
+    UnfilteredUnfinished(Vec<(String, P::Info)>),
+    FilteredUnfinished,
 }
 
 trait ErasedInnerProvider: Any + Send {
@@ -377,12 +380,9 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let target_changed = self.current.as_ref().is_some_and(|(c, _)| *c != target)
             || (self.current.is_none() && self.orig != target);
 
-        context::debug!("{target_changed}");
-
-        if let CachedUnfinished(_) | UncachedUnfinished = &self.filtered_entries
+        if let UnfilteredUnfinished(_) | FilteredUnfinished = &self.filtered_entries
             && target_changed
         {
-            context::debug!("changed entries");
             self.entries = self
                 .provider
                 .get_completions(text, text.point_at_byte(range.end), &target)
@@ -390,8 +390,8 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         }
 
         let entries = match (&mut self.filtered_entries, target_changed) {
-            (CachedFinished(entries) | CachedUnfinished(entries), false) => entries,
-            (CachedFinished(entries) | CachedUnfinished(entries), true) => {
+            (UnfilteredFinished(entries) | UnfilteredUnfinished(entries), false) => entries,
+            (UnfilteredFinished(entries) | UnfilteredUnfinished(entries), true) => {
                 *entries = self
                     .entries
                     .iter()
@@ -401,11 +401,11 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
                 entries
             }
-            (UncachedUnfinished, _) => &self.entries,
+            (FilteredUnfinished, _) => &self.entries,
         };
 
         // If the word was edited, we need to reset the completions.
-        if target_changed {
+        if target_changed || entries.is_empty() {
             self.current = None;
             self.orig = target;
         }

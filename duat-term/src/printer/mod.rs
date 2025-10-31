@@ -24,7 +24,7 @@ pub struct Printer {
     vars: Mutex<Variables>,
     old_lines: Mutex<Vec<Lines>>,
     new_lines: Mutex<Vec<Lines>>,
-    spawned_lines: Mutex<Vec<(AreaId, Lines)>>,
+    spawned_lines: Mutex<Vec<(AreaId, SpawnId, Lines)>>,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
 }
@@ -122,6 +122,12 @@ impl Printer {
     /// Sets the new desired length for a [`SpawnId`]
     pub fn set_spawn_len(&self, id: SpawnId, len: Option<f64>) {
         self.sync_solver.lock().unwrap().set_spawn_len(id, len);
+        if len == Some(0.0) {
+            self.spawned_lines
+                .lock()
+                .unwrap()
+                .retain(|(_, other, _)| *other != id);
+        }
     }
 
     /// Creates a new edge from the two [`VarPoint`]s
@@ -173,7 +179,7 @@ impl Printer {
         self.spawned_lines
             .lock()
             .unwrap()
-            .retain(|(id, _)| *id != rect.id());
+            .retain(|(id, ..)| *id != rect.id());
 
         [tl.x(), tl.y(), br.x(), br.y()]
     }
@@ -235,7 +241,7 @@ impl Printer {
         self.spawned_lines
             .lock()
             .unwrap()
-            .retain(|(id, _)| *id != target);
+            .retain(|(id, ..)| *id != target);
     }
 
     /// Replace a set of [`Equality`]s with another
@@ -324,7 +330,7 @@ impl Printer {
             CURSOR_IS_REAL.load(Ordering::Relaxed)
         };
 
-        for (_, lines) in spawned_lines.iter() {
+        for (.., lines) in spawned_lines.iter() {
             for y in lines.coords.tl.y..lines.coords.br.y {
                 queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
                 let (bytes, ..) = lines.on(y).unwrap();
@@ -369,15 +375,15 @@ impl Printer {
 
     /// Sends the finished [`Lines`] of a floating `Widget` to be
     /// printed
-    pub fn send_spawned_lines(&self, id: AreaId, lines: Lines) {
+    pub fn send_spawned_lines(&self, area_id: AreaId, spawn_id: SpawnId, lines: Lines) {
         let mut spawned_lines = self.spawned_lines.lock().unwrap();
 
         // This is done in order to preserve the order in which the floating
         // Widgets were sent.
-        if let Some((_, old_lines)) = spawned_lines.iter_mut().find(|(other, _)| *other == id) {
+        if let Some((.., old_lines)) = spawned_lines.iter_mut().find(|(id, ..)| *id == area_id) {
             *old_lines = lines;
         } else {
-            spawned_lines.push((id, lines));
+            spawned_lines.push((area_id, spawn_id, lines));
         }
     }
 
