@@ -126,7 +126,6 @@ impl Completions {
     }
 
     fn set_text(pa: &mut Pass, handle: &Handle<Self>, scroll: i32) {
-        let height = handle.area().height(pa) as usize;
         let master_handle = handle.master().unwrap();
         let (master, comp) = pa
             .try_read_and_write(master_handle.widget(), handle.widget())
@@ -135,7 +134,7 @@ impl Completions {
         let mut lists: Vec<_> = comp
             .providers
             .iter_mut()
-            .map(|inner| inner.text_and_replacement(master.text(), scroll, height))
+            .map(|inner| inner.text_and_replacement(master.text(), scroll, comp.max_height))
             .collect();
 
         lists.sort_by_key(|(start, _)| *start);
@@ -520,7 +519,7 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
         eq_i = i + 1;
     }
 
-    Some(diff + cmp_chars.count())
+    Some(diff)
 }
 
 fn target_word(text: &Text, word_chars: &str) -> (Range<usize>, String) {

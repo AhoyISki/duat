@@ -34,7 +34,7 @@ impl CompletionsProvider for WordCompletions {
             .iter()
             .filter(|&(entry, info)| {
                 if let Some(difference) = string_cmp(word, entry) {
-                    !(difference == 0 && info.count == 1)
+                    !(difference == 0 && word.len() == entry.len() && info.count == 1)
                 } else {
                     false
                 }
@@ -106,8 +106,8 @@ impl Parser for WordsCompletionParser {
             return;
         }
 
-        let surrounded = |range: Range<usize>, word: &str, change: &Change| {
-            let prefix = if range.start == 0
+        let surrounded = |match_r: Range<usize>, word: &str, change_str: &str, change: &Change| {
+            let prefix = if match_r.start == 0
                 && let Some(text_range) = buffer
                     .bytes()
                     .search_fwd(r"[\w]+\z", ..change.start())
@@ -119,7 +119,7 @@ impl Parser for WordsCompletionParser {
                 Strs::empty()
             };
 
-            if range.end == change.added_str().len()
+            if match_r.end == change_str.len()
                 && let Some(text_range) = buffer
                     .bytes()
                     .search_fwd(r"\A[\w]+", change.added_end()..)
@@ -159,41 +159,42 @@ impl Parser for WordsCompletionParser {
             let taken_str = change.taken_str();
             let taken_words: Vec<_> = taken_str.search_fwd(r"[\w]+", ..).unwrap().collect();
 
-            for (is_taken, mut words, str) in [
+            for (is_taken, mut words, change_str) in [
                 (false, added_words, added_str),
                 (true, taken_words, taken_str),
             ] {
-                let suffix_range = str.len()..str.len();
+                let suffix_range = change_str.len()..change_str.len();
 
                 match (words.pop(), words.try_remove(0)) {
                     (None, None) => {
-                        let prefix = surrounded(0..0, "", &change);
-                        let suffix =
-                            (!str.is_empty()).then(|| surrounded(suffix_range, "", &change));
+                        let prefix = surrounded(0..0, "", change_str, &change);
+                        let suffix = (!change_str.is_empty())
+                            .then(|| surrounded(suffix_range, "", change_str, &change));
 
                         for word in [Some(prefix), suffix].into_iter().flatten() {
                             process_word(&word, is_taken);
                         }
                     }
                     (Some((last_range, last_word)), None) => {
-                        let prefix = (last_range.start != 0).then(|| surrounded(0..0, "", &change));
-                        let suffix = (last_range.end != str.len())
-                            .then(|| surrounded(suffix_range, "", &change));
+                        let prefix = (last_range.start != 0)
+                            .then(|| surrounded(0..0, "", change_str, &change));
+                        let suffix = (last_range.end != change_str.len())
+                            .then(|| surrounded(suffix_range, "", change_str, &change));
 
-                        let last_word = surrounded(last_range, last_word, &change);
+                        let last_word = surrounded(last_range, last_word, change_str, &change);
 
                         for word in [prefix, Some(last_word), suffix].into_iter().flatten() {
                             process_word(&word, is_taken);
                         }
                     }
                     (Some((last_range, last_word)), Some((first_range, first_word))) => {
-                        let prefix =
-                            (first_range.start != 0).then(|| surrounded(0..0, "", &change));
-                        let first_word = surrounded(first_range, first_word, &change);
+                        let prefix = (first_range.start != 0)
+                            .then(|| surrounded(0..0, "", change_str, &change));
+                        let first_word = surrounded(first_range, first_word, change_str, &change);
 
-                        let suffix = (last_range.end != str.len())
-                            .then(|| surrounded(suffix_range, "", &change));
-                        let last_word = surrounded(last_range, last_word, &change);
+                        let suffix = (last_range.end != change_str.len())
+                            .then(|| surrounded(suffix_range, "", change_str, &change));
+                        let last_word = surrounded(last_range, last_word, change_str, &change);
 
                         let on_sides = [
                             prefix.as_ref(),
