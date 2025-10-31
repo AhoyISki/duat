@@ -449,9 +449,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             let top_i = word_i.saturating_sub(*dist);
             for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
                 if i == word_i {
-                    context::debug!("printing selected");
                     let text = txt!("[selected.Completions]{}\n", (self.fmt)(entry, info));
-                    context::debug!("{text:#?}");
                     builder.push(text);
                 } else {
                     builder.push(txt!("{}\n", (self.fmt)(entry, info)));
