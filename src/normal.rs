@@ -181,7 +181,7 @@ impl Mode for Normal {
                     let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
-                    let range = c.search_fwd(word_and_space(alt_word, opts), None).next();
+                    let range = c.search_fwd(word_and_space(alt_word, opts)).next();
                     if let Some(range) = range {
                         c.move_to(range);
                     }
@@ -193,7 +193,7 @@ impl Mode for Normal {
                     let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
-                    let range = c.search_fwd(space_and_word(alt_word, opts), None).next();
+                    let range = c.search_fwd(space_and_word(alt_word, opts)).next();
                     if let Some(range) = range {
                         c.move_to(range);
                     }
@@ -212,7 +212,7 @@ impl Mode for Normal {
                         c.move_hor(1);
                     }
 
-                    let range = c.search_rev(word_and_space(alt_word, opts), None).next();
+                    let range = c.search_rev(word_and_space(alt_word, opts)).next();
                     if let Some(range) = range {
                         c.move_to(range);
                         c.set_caret_on_start();
@@ -224,7 +224,7 @@ impl Mode for Normal {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some(range) = { c.search_fwd(word_and_space(alt_word, opts), None).next() } {
+                if let Some(range) = { c.search_fwd(word_and_space(alt_word, opts)).next() } {
                     c.move_to(range.end);
                     c.move_hor(-1);
                 }
@@ -233,7 +233,7 @@ impl Mode for Normal {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some(range) = { c.search_fwd(space_and_word(alt_word, opts), None).next() } {
+                if let Some(range) = { c.search_fwd(space_and_word(alt_word, opts)).next() } {
                     c.move_to(range.end);
                     c.move_hor(-1);
                 }
@@ -241,7 +241,7 @@ impl Mode for Normal {
             event!('B') | alt!('B') => handle.edit_all(pa, |mut c| {
                 let alt_word = event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
-                if let Some(range) = { c.search_rev(word_and_space(alt_word, opts), None).next() } {
+                if let Some(range) = { c.search_rev(word_and_space(alt_word, opts)).next() } {
                     c.move_to(range.start);
                 }
             }),
@@ -250,12 +250,12 @@ impl Mode for Normal {
                 self.sel_type = SelType::ToEndOfLine;
                 set_anchor_if_needed(true, &mut c);
                 c.set_caret_on_start();
-                let p0 = c.search_rev("\n", None).next().map(|range| range.end);
+                let p0 = c.search_rev("\n").next().map(|range| range.end);
                 c.move_to(p0.unwrap_or_default());
                 c.swap_ends();
 
-                let p1 = c.search_fwd("\n", None).next().map(|range| range.start);
-                c.move_to(p1.unwrap_or(c.last_point()));
+                let b1 = c.search_fwd("\n").next().map(|range| range.start);
+                c.move_to(b1.unwrap_or(c.last_point().byte()));
                 c.set_desired_vcol(usize::MAX);
             }),
             event!(char @ ('f' | 'F' | 't' | 'T')) | alt!(char @ ('f' | 'F' | 't' | 'T')) => {
@@ -299,7 +299,7 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(event, opts, self.brackets).unwrap();
-                    let e_range = object.find_ahead(c, 0, None)?;
+                    let e_range = object.find_ahead(c, 0)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
                     c.move_to(e_range.end);
@@ -307,12 +307,12 @@ impl Mode for Normal {
 
                     let bound = c.strs(e_range.clone()).unwrap().to_string();
                     let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
-                    let s_range = Object::Bounds(s_b, e_b).find_behind(c, 1, None)?;
+                    let s_range = Object::Bounds(s_b, e_b).find_behind(c, 1)?;
                     if char == 'm' {
                         c.set_anchor();
                     }
                     c.move_to(s_range.start);
-                    if prev_caret.char() != e_range.end.char() - 1 {
+                    if prev_caret.byte() != e_range.end - 1 {
                         if char == 'm' {
                             c.set_anchor();
                         }
@@ -328,20 +328,27 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(event, opts, self.brackets).unwrap();
-                    let s_range = object.find_behind(c, 0, None)?;
+                    let s_range = object.find_behind(c, 0)?;
+                    context::debug!("found behind at {s_range:?}");
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
                     c.move_to(s_range.start);
 
+                    context::debug!("moved to start");
+
                     let bound = c.strs(s_range.clone()).unwrap().to_string();
                     let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
-                    let e_range = Object::Bounds(s_b, e_b).find_ahead(c, 1, None)?;
+                    
+                    context::debug!("got matching bounds");
+                    
+                    let e_range = Object::Bounds(s_b, e_b).find_ahead(c, 1)?;
+                    context::debug!("found ahead");
                     if char == 'm' {
                         c.set_anchor();
                     }
                     c.move_to(e_range.end);
                     c.move_hor(-1);
-                    if prev_caret != s_range.start {
+                    if prev_caret.byte() != s_range.start {
                         if char == 'm' {
                             c.set_anchor();
                         }
@@ -500,8 +507,8 @@ impl Mode for Normal {
                 let Some(end) = c.anchor() else {
                     return;
                 };
-                let lines: Vec<_> = c.search_fwd("[^\n]*\n", Some(end)).collect();
-                let mut last_end = c.caret();
+                let lines: Vec<_> = c.search_fwd_until("[^\n]*\n", end).collect();
+                let mut last_end = c.caret().byte();
                 for range in lines {
                     let mut e_copy = c.copy();
                     e_copy.move_to(range.start);
@@ -574,23 +581,19 @@ impl Mode for Normal {
                         }
                         let s_range = c.text().line_range(line);
                         c.move_to(s_range.start);
-                        let Some(s_range) = c.search_fwd(&find, Some(s_range.end)).next() else {
+                        let Some(s_range) = c.search_fwd_until(&find, s_range.end).next() else {
                             continue;
                         };
 
                         c.move_to(s_range.clone());
                         c.replace("");
                         if line == caret.0 {
-                            caret.1 = caret
-                                .1
-                                .saturating_sub(s_range.end.char() - s_range.start.char());
+                            caret.1 = caret.1.saturating_sub(s_range.end - s_range.start);
                         }
                         if let Some(anchor) = &mut anchor
                             && line == anchor.0
                         {
-                            anchor.1 = anchor
-                                .1
-                                .saturating_sub(s_range.end.char() - s_range.start.char());
+                            anchor.1 = anchor.1.saturating_sub(s_range.end - s_range.start);
                         }
                     }
 
@@ -612,7 +615,7 @@ impl Mode for Normal {
 
                     if c_range.start.line() == c_range.end.line() {
                         if !processed_lines.contains(&c_range.start.line())
-                            && let Some(range) = { c.search_fwd("\n", None).next() }
+                            && let Some(range) = { c.search_fwd("\n").next() }
                         {
                             c.move_to(range);
                             c.replace("");
@@ -621,17 +624,18 @@ impl Mode for Normal {
                         }
                     } else {
                         let caret_was_on_end = c.set_caret_on_start();
-                        let nls: Vec<_> = c.search_fwd("\n", Some(c_range.end)).collect();
+                        let nls: Vec<_> = c.search_fwd_until("\n", c_range.end).collect();
 
                         let mut lines_joined = 0;
-                        for range in nls.into_iter().rev() {
-                            if processed_lines.contains(&range.start.line()) {
+                        for (line, range) in nls.into_iter().rev().enumerate() {
+                            if processed_lines.contains(&(line + c_range.start.line())) {
                                 continue;
                             }
 
                             c.move_to(range);
                             c.replace("");
                             lines_joined += 1;
+                            processed_lines.push(c_range.start.line());
                         }
 
                         c.unset_anchor();
@@ -773,9 +777,9 @@ impl Mode for Normal {
                     }
                     let caret = c.caret();
                     let next = if event.modifiers == KeyMod::ALT {
-                        c.search_rev(&*search, None).find(|r| r.start != caret)
+                        c.search_rev(&*search).find(|r| r.start != caret.byte())
                     } else {
-                        c.search_fwd(&*search, None).find(|r| r.start != caret)
+                        c.search_fwd(&*search).find(|r| r.start != caret.byte())
                     };
                     if let Some(range) = next {
                         c.move_to(range.start);

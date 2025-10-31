@@ -289,7 +289,6 @@ use duat::{
     mode::{self, Cursor, KeyCode::*},
     opts::PrintOpts,
     prelude::*,
-    text::Point,
 };
 
 use crate::normal::Brackets;
@@ -547,30 +546,25 @@ impl<'a> Object<'a> {
         }
     }
 
-    fn find_ahead(
-        self,
-        c: &mut Cursor,
-        s_count: usize,
-        until: Option<Point>,
-    ) -> Option<Range<Point>> {
+    fn find_ahead(self, c: &mut Cursor, s_count: usize) -> Option<Range<usize>> {
         let mut s_count = s_count as i32;
         match self {
             Object::Anchored(pat) => {
                 let pat = pat.strip_suffix(r"\z").unwrap();
-                c.search_fwd(pat, until).next()
+                c.search_fwd(pat).next()
             }
             Object::Bounds(s_b, e_b) => {
-                let (_, range) = c.search_fwd([s_b, e_b], None).find(|&(id, _)| {
+                let (_, range) = c.search_fwd_excl([s_b, e_b]).find(|&(id, _)| {
                     s_count += (id == 0) as i32 - (id == 1) as i32;
                     s_count <= 0
                 })?;
                 Some(range)
             }
-            Object::Bound(b) => c.search_fwd(b, until).next(),
+            Object::Bound(b) => c.search_fwd(b).next(),
             Object::Argument(m_b, s_b, e_b) => {
                 let caret = c.caret();
-                let (_, range) = c.search_fwd([m_b, s_b, e_b], None).find(|(id, range)| {
-                    s_count += (*id == 1) as i32 - (*id == 2 && range.start != caret) as i32;
+                let (_, range) = c.search_fwd_excl([m_b, s_b, e_b]).find(|(id, range)| {
+                    s_count += (*id == 1) as i32 - (*id == 2 && range.start != caret.byte()) as i32;
                     s_count == 0 || (s_count == 1 && *id == 0)
                 })?;
                 Some(range)
@@ -578,30 +572,25 @@ impl<'a> Object<'a> {
         }
     }
 
-    fn find_behind(
-        self,
-        c: &mut Cursor,
-        c_count: usize,
-        until: Option<Point>,
-    ) -> Option<Range<Point>> {
-        let mut c_count = c_count as i32;
+    fn find_behind(self, c: &mut Cursor, e_count: usize) -> Option<Range<usize>> {
+        let mut e_count = e_count as i32;
         match self {
             Object::Anchored(pat) => {
                 let pat = pat.strip_prefix(r"\A").unwrap();
-                c.search_rev(pat, until).next()
+                c.search_rev(pat).next()
             }
             Object::Bounds(s_b, e_b) => {
-                let (_, range) = c.search_rev([s_b, e_b], None).find(|&(id, _)| {
-                    c_count += (id == 1) as i32 - (id == 0) as i32;
-                    c_count <= 0
+                let (_, range) = c.search_rev([s_b, e_b]).find(|&(id, _)| {
+                    e_count += (id == 1) as i32 - (id == 0) as i32;
+                    e_count <= 0
                 })?;
                 Some(range)
             }
-            Object::Bound(b) => c.search_rev(b, until).next(),
+            Object::Bound(b) => c.search_rev(b).next(),
             Object::Argument(m_b, s_b, e_b) => {
-                let (_, range) = c.search_rev([m_b, s_b, e_b], None).find(|&(id, _)| {
-                    c_count += (id == 2) as i32 - (id == 1) as i32;
-                    c_count == 0 || (c_count == 1 && id == 0)
+                let (_, range) = c.search_rev([m_b, s_b, e_b]).find(|&(id, _)| {
+                    e_count += (id == 2) as i32 - (id == 1) as i32;
+                    e_count == 0 || (e_count == 1 && id == 0)
                 })?;
                 Some(range)
             }

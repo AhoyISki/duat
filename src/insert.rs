@@ -66,28 +66,9 @@ impl Mode for Insert {
         }
 
         match event {
-            shift!(BackTab) => duat::widgets::Completions::close(pa),
-            event!(Tab) => duat::widgets::Completions::open_default(pa),
-            alt!(Up) => duat::widgets::Completions::scroll(pa, -1),
-            alt!(Down) => duat::widgets::Completions::scroll(pa, 1),
-            // key!(Tab) => handle.edit_all(pa, |mut c| {
-            //     let char_col = c.v_caret().char_col();
-            //     if self.indent_keys.contains(&'\t') && char_col == 0 {
-            //         c.ts_reindent();
-            //         if c.indent() > 0 {
-            //             return;
-            //         }
-            //     }
-
-            //     if self.insert_tabs {
-            //         c.insert('\t');
-            //         c.move_hor(1);
-            //     } else {
-            //         let tab_len = c.opts().tabstop_spaces_at(c.v_caret().visual_col() as u32);
-            //         c.insert(" ".repeat(tab_len as usize));
-            //         c.move_hor(tab_len as i32);
-            //     }
-            // }),
+            // Autocompletion commands
+            ctrl!('n') => Completions::scroll(pa, 1),
+            ctrl!('p') => Completions::scroll(pa, -1),
             event!(Tab) => handle.edit_all(pa, |mut c| {
                 let char_col = c.v_caret().char_col();
                 if self.indent_keys.contains(&'\t') && char_col == 0 {
@@ -106,6 +87,9 @@ impl Mode for Insert {
                     c.move_hor(tab_len as i32);
                 }
             }),
+            shift!(BackTab) => duat::widgets::Completions::scroll(pa, -1),
+            
+            // Regular commands
             event!(Char(char)) => handle.edit_all(pa, |mut c| {
                 c.insert(char);
                 c.move_hor(1);
@@ -113,6 +97,7 @@ impl Mode for Insert {
                     c.ts_reindent();
                 }
             }),
+
             event!(Enter) => handle.edit_all(pa, |mut c| {
                 c.insert('\n');
                 c.move_hor(1);
@@ -187,8 +172,13 @@ impl Mode for Insert {
         }
     }
 
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle) {
+    fn on_switch(&mut self, pa: &mut Pass, handle: Handle) {
+        Completions::open_default(pa);
         handle.set_mask("Insert");
+    }
+    
+    fn before_exit(&mut self, pa: &mut Pass, _: Handle<Self::Widget>) {
+        Completions::close(pa)
     }
 }
 

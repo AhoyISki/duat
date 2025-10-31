@@ -76,14 +76,14 @@ fn match_goto(
     match key_event {
         event!('h') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let range = c.search_rev("\n", None).next();
+            let range = c.search_rev("\n").next();
             c.move_to(range.unwrap_or_default().end);
         }),
         event!('j') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
             c.move_ver(i32::MAX);
         }),
-        event!('k') => handle.edit_all(pa, |mut c| {
+        event!('k' | 'g') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
             c.move_to_coords(0, 0)
         }),
@@ -93,11 +93,11 @@ fn match_goto(
         }),
         event!('i') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let range = c.search_rev("(^|\n)[ \t]*", None).next();
+            let range = c.search_rev("(^|\n)[ \t]*").next();
             if let Some(range) = range {
-                c.move_to(range);
+                c.move_to(range.end);
 
-                let points = c.search_fwd("[^ \t]", None).next();
+                let points = c.search_fwd("[^ \t]").next();
                 if let Some(range) = points {
                     c.move_to(range.start)
                 }
@@ -136,18 +136,15 @@ fn match_find_until(pa: &mut Pass, handle: Handle, char: char, is_t: bool, st: S
     use SelType::*;
     handle.edit_all(pa, |mut c| {
         let search = format!("\\x{{{:X}}}", char as u32);
-        let cur = c.caret();
+        let b = c.caret().byte();
         let (points, back) = match st {
-            Reverse | ExtendRev => (c.search_rev(search, None).find(|range| range.end != cur), 1),
-            Normal | Extend => (
-                c.search_fwd(search, None).find(|range| range.start != cur),
-                -1,
-            ),
+            Reverse | ExtendRev => (c.search_rev(search).find(|range| range.end != b), 1),
+            Normal | Extend => (c.search_fwd(search).find(|range| range.start != b), -1),
             _ => unreachable!(),
         };
 
         if let Some(range) = points
-            && range.start != c.caret()
+            && range.start != c.caret().byte()
         {
             let is_extension = !matches!(st, Extend | ExtendRev);
             if is_extension || c.anchor().is_none() {
@@ -183,33 +180,33 @@ fn match_inside_around(
     if let Some(object) = Object::new(event, opts, brackets) {
         match char {
             'w' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let start = object.find_behind(c, 0, None);
-                let range = object.find_ahead(c, 0, None)?;
-                let p0 = {
-                    let p0 = start.map(|range| range.start).unwrap_or(c.caret());
-                    let p0_cat = Category::of(c.char_at(p0).unwrap(), opts);
-                    let p1_cat = Category::of(c.char(), opts);
-                    let is_same_cat = event.modifiers == KeyMod::ALT || p0_cat == p1_cat;
-                    if is_same_cat { p0 } else { c.caret() }
+                let start = object.find_behind(c, 0);
+                let range = object.find_ahead(c, 0)?;
+                let b0 = {
+                    let b0 = start.map(|range| range.start).unwrap_or(c.caret().byte());
+                    let b0_cat = Category::of(c.char_at(b0).unwrap(), opts);
+                    let b1_cat = Category::of(c.char(), opts);
+                    let is_same_cat = event.modifiers == KeyMod::ALT || b0_cat == b1_cat;
+                    if is_same_cat { b0 } else { c.caret().byte() }
                 };
-                c.move_to(p0..range.end);
+                c.move_to(b0..range.end);
                 Some(())
             }),
             's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let end = object.find_behind(c, 0, None)?.end;
-                let start = object.find_ahead(c, 0, None)?.start;
+                let end = object.find_behind(c, 0)?.end;
+                let start = object.find_ahead(c, 0)?.start;
                 c.move_to(start..end);
-                if is_inside || char == ' ' && start < c.text().len() {
+                if is_inside || char == ' ' && start < c.text().len().byte() {
                     c.move_hor(-1);
                 }
                 Some(())
             }),
             'p' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let end = object.find_ahead(c, 0, None);
+                let end = object.find_ahead(c, 0);
                 let end = end?.start;
                 c.move_to(end);
                 c.set_anchor();
-                let range = object.find_behind(c, 0, None).unwrap_or_default();
+                let range = object.find_behind(c, 0).unwrap_or_default();
                 c.move_to(range.start);
                 c.swap_ends();
                 if is_inside {
@@ -218,9 +215,9 @@ fn match_inside_around(
                 Some(())
             }),
             'u' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let e_range = object.find_ahead(c, 1, None)?;
+                let e_range = object.find_ahead(c, 1)?;
                 c.move_to(e_range.start);
-                let s_range = object.find_behind(c, 1, None)?;
+                let s_range = object.find_behind(c, 1)?;
                 if is_inside {
                     c.move_to(s_range.end..e_range.start);
                 } else {
@@ -235,8 +232,8 @@ fn match_inside_around(
                 Some(())
             }),
             _char => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let e_range = object.find_ahead(c, 1, None)?;
-                let s_range = object.find_behind(c, 1, None)?;
+                let e_range = object.find_ahead(c, 1)?;
+                let s_range = object.find_behind(c, 1)?;
                 c.move_to(if is_inside {
                     s_range.end..e_range.start
                 } else {
@@ -272,7 +269,7 @@ fn match_inside_around(
                         c.move_to(range.end);
                         c.move_hor(-1);
                     } else {
-                        let end = c.search_fwd("\n+", None).next().unwrap().end;
+                        let end = c.search_fwd("\n+").next().unwrap().end;
                         c.move_to(end);
                     }
                 }
