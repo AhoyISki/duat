@@ -32,7 +32,13 @@ impl CompletionsProvider for WordCompletions {
             .lock()
             .unwrap()
             .iter()
-            .filter(|&(entry, _)| string_cmp(word, entry).is_some())
+            .filter(|&(entry, info)| {
+                if let Some(difference) = string_cmp(word, entry) {
+                    !(difference == 0 && info.count == 1)
+                } else {
+                    false
+                }
+            })
             .map(|(entry, info)| (entry.clone(), info.clone()))
             .collect();
 

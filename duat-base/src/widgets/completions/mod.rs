@@ -507,7 +507,7 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
         eq_i = i + 1;
     }
 
-    Some(diff)
+    Some(diff + cmp_chars.count())
 }
 
 fn target_word(text: &Text, word_chars: &str) -> (Range<usize>, String) {
