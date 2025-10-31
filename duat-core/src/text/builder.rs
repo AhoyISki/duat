@@ -225,13 +225,7 @@ impl Builder {
     /// Pushes [`Text`] directly
     fn push_text(&mut self, text: Text) {
         self.last_was_empty = text.is_empty();
-
-        if let Some((b, id)) = self.last_form.take() {
-            self.text.insert_tag(Tagger::basic(), b.., id);
-        }
-
-        self.text.0.bytes.extend(text.0.bytes);
-        self.text.0.tags.extend(text.0.tags);
+        self.text.insert_text(self.text.len(), text);
     }
 }
 

@@ -21,7 +21,7 @@ impl CompletionsProvider for WordCompletions {
 
     fn default_fmt(entry: &str, info: &Self::Info) -> Text {
         txt!(
-            "[word.Completions]{entry}{Spacer}[buffer.source.Completions]{}",
+            "[word.Completions]{entry}[]{Spacer}[buffer.source.Completions]{}",
             &info.source
         )
         .build()

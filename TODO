@@ -53,9 +53,7 @@ FOR NEXT UPDATE:
 [ ] Buffer switch history.
 
 KNOWN BUGS:
-
  HIGH PRIORITY:
-  [x] Paste not working.
   [ ] track_area not actually tracking correctly.
   [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
   [ ] First Point not updating when there are changes before the start of the screen.
@@ -69,6 +67,7 @@ KNOWN BUGS:
   [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
 
 FUTURE UPDATES:
+[ ] Lazily evaluate height and width, including when pushing and spawning.
 [ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.
 [ ] Named StatusParts.

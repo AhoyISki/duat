@@ -227,7 +227,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 
     /// Regex for which characters should be part of a word
     ///
-    /// It should be something like `[\w]*` for words, or `[^\0]*` for
+    /// It should be something like `[\w]*` for words or `[^\0]*` for
     /// file paths. You can also use minimum lengths, like `[\w]{3,}`
     /// in order to filter for too short matches.
     fn word_regex(&self) -> String;
@@ -449,7 +449,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             let top_i = word_i.saturating_sub(*dist);
             for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
                 if i == word_i {
-                    builder.push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
+                    context::debug!("printing selected");
+                    let text = txt!("[selected.Completions]{}\n", (self.fmt)(entry, info));
+                    context::debug!("{text:#?}");
+                    builder.push(text);
                 } else {
                     builder.push(txt!("{}\n", (self.fmt)(entry, info)));
                 }
