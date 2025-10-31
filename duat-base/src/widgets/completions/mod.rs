@@ -19,12 +19,44 @@ mod words;
 
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
 
+/// A builder for [`Completions`], a [`Widget`] to show word
+/// completions
+///
+/// The `Completions` widget is supposed to give the ability to
+/// automatically fill in words, usually by pressing the `Tab`
+/// character in order to scroll through a list of options.
+///
+/// The [`Completions`] will show words that match the word behind the
+/// main [`Selection`]'s [caret], and they will automatically follow
+/// the [`Selection`] if it moves to other words.
+///
+/// Initially, even if there is no word before the [caret],
+/// completions will be shown, unless you set [`show_without_prefix`]
+/// to `false`. However, as the list moves around, completions will
+/// only show up if there is a word behind the [caret], as to not be
+/// bothersome.
+///
+/// [`Selection`]: duat_core::mode::Selection
+/// [caret]: duat_core::mode::Selection::caret
+/// [`show_without_prefix`]: Self::show_without_prefix
 pub struct CompletionsBuilder {
     providers: ProvidersFn,
+    pub show_without_prefix: bool,
 }
 
 impl CompletionsBuilder {
     /// Opens the [`Completions`] [`Widget`]
+    ///
+    /// This `Widget` works in an autonomous way, that is, it will
+    /// follow the main [`Selection`] around, always positioned at the
+    /// beginning of the current word.
+    ///
+    ///
+    ///
+    /// If you wish to close the `Widget`, you can call
+    /// [`Completions::close`].
+    ///
+    /// [`Selection`]: duat_core::mode::Selection
     pub fn open(self, pa: &mut Pass) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
@@ -54,7 +86,7 @@ impl CompletionsBuilder {
             text,
             max_height: 20,
             start_byte,
-            show_without_prefix: true,
+            show_without_prefix: self.show_without_prefix,
             last_caret: main.caret(),
         };
 
@@ -104,6 +136,7 @@ impl Completions {
 
                 (vec![Box::new(inner)], entries)
             }),
+            show_without_prefix: true,
         }
     }
 
