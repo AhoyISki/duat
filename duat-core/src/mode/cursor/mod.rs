@@ -220,6 +220,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Moves the selection horizontally. May cause vertical movement
     ///
     /// Returns the distance moved in chars.
+    #[track_caller]
     pub fn move_hor(&mut self, count: i32) -> i32 {
         self.selection.move_hor(count, self.widget.text())
     }
@@ -227,6 +228,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Moves the selection vertically. May cause horizontal movement
     ///
     /// Returns the distance moved in lines.
+    #[track_caller]
     pub fn move_ver(&mut self, count: i32) -> i32 {
         self.selection.move_ver(
             count,
@@ -240,6 +242,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// cause horizontal movement
     ///
     /// Returns the distance moved in wrapped lines.
+    #[track_caller]
     pub fn move_ver_wrapped(&mut self, count: i32) {
         self.selection.move_ver_wrapped(
             count,
@@ -262,12 +265,14 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// [range]: std::ops::RangeBounds
     /// [`swap_ends`]: Self::swap_ends
+    #[track_caller]
     pub fn move_to(&mut self, point_or_points: impl CaretOrRange) {
         point_or_points.move_to(self);
     }
 
     /// Moves the selection to [`Point::default`], i.e., the start of
     /// the [`Text`]
+    #[track_caller]
     pub fn move_to_start(&mut self) {
         self.selection.move_to(Point::default(), self.widget.text());
     }
@@ -276,6 +281,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
+    #[track_caller]
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let range = self
             .text()
@@ -291,6 +297,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 
     /// Moves to a column on the current line
+    #[track_caller]
     pub fn move_to_col(&mut self, col: usize) {
         let line = self.text().point_at_line(self.caret().line()).line();
         self.move_to_coords(line, col);
@@ -682,7 +689,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Returns `true` if the `anchor` exists before the `caret`
     pub fn anchor_is_start(&self) -> bool {
-        self.anchor().is_none_or(|anchor| anchor < self.caret())
+        self.anchor().is_none_or(|anchor| anchor <= self.caret())
     }
 
     /// Whether or not this is the main [`Selection`]

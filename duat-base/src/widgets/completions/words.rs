@@ -71,7 +71,7 @@ impl WordsCompletionParser {
         let mut words = BUFFER_WORDS.lock().unwrap();
         for word in buffer
             .text()
-            .search_fwd(r"\w{3,}", ..10000.min(buffer.text().len().byte()))
+            .search_fwd(r"\w{3,}", ..)
             .unwrap()
             .map(|range| buffer.text().strs(range).unwrap().to_string())
         {

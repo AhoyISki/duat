@@ -94,7 +94,7 @@ impl Records {
             Ok(i) => self.0.get(i).unwrap().map(|x| x as usize),
             Err(i) => {
                 let prev = i.checked_sub(1).and_then(|prev_i| self.0.get(prev_i));
-                let next = self.0.get(i + 1);
+                let next = self.0.get(i);
 
                 let (prev, next) = match (prev, next) {
                     (None, None) => ([0; 3], self.0.max().map(|x| x as u32)),

@@ -258,6 +258,7 @@ impl Bytes {
 
         let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(b, |[b, ..]| b);
 
+		let mut iterations = 0;
         let found = if b >= c_b {
             let [s0, s1] = self.strs_inner(c_b..).unwrap();
 
@@ -265,6 +266,7 @@ impl Bytes {
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
                 .map(|(i, (this_b, char))| {
+                    iterations += 1;
                     c_l += (char == '\n') as usize;
                     (c_b + this_b, c_c + i, c_l - (char == '\n') as usize)
                 })
@@ -279,6 +281,7 @@ impl Bytes {
                 .rev()
                 .enumerate()
                 .map(|(i, char)| {
+                    iterations += 1;
                     c_l -= (char == '\n') as usize;
                     c_len += char.len_utf8();
                     (c_b - c_len, c_c - (i + 1), c_l)
@@ -286,6 +289,9 @@ impl Bytes {
                 .take_while(|&(rhs, ..)| b <= rhs)
                 .last()
         };
+
+		crate::context::debug!("From {}", std::panic::Location::caller());
+        crate::context::debug!("Iterated over {iterations}");
 
         found
             .map(|(b, c, l)| Point::from_raw(b, c, l))

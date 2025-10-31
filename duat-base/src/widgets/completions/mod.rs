@@ -125,16 +125,28 @@ impl Completions {
         };
 
         let height = handle.area().height(pa) as usize;
+        let master_handle = handle.master().unwrap();
         let (master, comp) = pa
-            .try_read_and_write(handle.master().unwrap().widget(), handle.widget())
+            .try_read_and_write(master_handle.widget(), handle.widget())
             .unwrap();
 
-        if let Some((text, _)) = comp
+        if let Some((text, replacement)) = comp
             .providers
             .iter_mut()
-            .find_map(|inner| inner.text_and_entry(master.text(), by, height))
+            .find_map(|inner| inner.text_and_replacement(master.text(), by, height))
         {
             comp.text = text;
+
+            if let Some((range, word)) = replacement {
+                master_handle.edit_main(pa, |mut c| {
+                    c.move_to(range.clone());
+                    c.replace(word);
+                    c.unset_anchor();
+                    if c.caret().byte() != range.start {
+                        c.move_hor(1);
+                    }
+                })
+            }
         }
     }
 }
@@ -148,7 +160,7 @@ impl Widget for Completions {
         comp.text = if let Some((text, _)) = comp
             .providers
             .iter_mut()
-            .find_map(|inner| inner.text_and_entry(master.text(), 0, comp.max_height))
+            .find_map(|inner| inner.text_and_replacement(master.text(), 0, comp.max_height))
         {
             text
         } else {
@@ -281,13 +293,14 @@ pub enum CompletionsKind {
     UnfinishedUnfiltered,
 }
 
+#[allow(clippy::type_complexity)]
 struct InnerProvider<P: CompletionsProvider> {
     provider: P,
     word_regex: String,
     fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
 
-    target: String,
-    dist_from_top: Option<usize>,
+    orig: String,
+    current: Option<(String, usize)>,
 
     filtered_entries: FilteredEntries<P>,
     entries: Vec<(String, P::Info)>,
@@ -296,7 +309,7 @@ struct InnerProvider<P: CompletionsProvider> {
 impl<P: CompletionsProvider> InnerProvider<P> {
     fn new(mut provider: P, text: &Text, height: usize) -> (Self, Option<(usize, Text)>) {
         let word_regex = format!(r"{}\z", provider.word_regex());
-        let (target, range) = target_word(text, &word_regex);
+        let (range, target) = target_word(text, &word_regex);
 
         let CompletionsList { entries, kind } =
             provider.get_completions(text, text.point_at_byte(range.end), &target);
@@ -304,8 +317,8 @@ impl<P: CompletionsProvider> InnerProvider<P> {
         let mut inner = Self {
             provider,
             word_regex,
-            target: target.clone(),
-            dist_from_top: None,
+            orig: target.clone(),
+            current: None,
             filtered_entries: match kind {
                 CompletionsKind::Finished => FilteredEntries::CachedFinished({
                     entries
@@ -327,7 +340,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let (text, _) = inner.text_and_entry(text, 0, height).unzip();
+        let (text, _) = inner.text_and_replacement(text, 0, height).unzip();
         (inner, Some(range.start).zip(text))
     }
 }
@@ -339,38 +352,46 @@ enum FilteredEntries<P: CompletionsProvider> {
 }
 
 trait ErasedInnerProvider: Any + Send {
-    fn text_and_entry(
+    fn text_and_replacement(
         &mut self,
         text: &Text,
         scroll: i32,
         height: usize,
-    ) -> Option<(Text, Option<String>)>;
+    ) -> Option<(Text, Replacement)>;
 
     fn has_changed(&self, text: Option<&Text>) -> bool;
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
-    fn text_and_entry(
+    fn text_and_replacement(
         &mut self,
         text: &Text,
         scroll: i32,
         height: usize,
-    ) -> Option<(Text, Option<String>)> {
+    ) -> Option<(Text, Replacement)> {
         use FilteredEntries::*;
-        let (target, range) = target_word(text, &self.word_regex);
+        let (range, target) = target_word(text, &self.word_regex);
+
+        // This should only be true if edits other than the one applied by
+        // Completions take place.
+        let target_changed = self.current.as_ref().is_some_and(|(c, _)| *c != target)
+            || (self.current.is_none() && self.orig != target);
+
+        context::debug!("{target_changed}");
 
         if let CachedUnfinished(_) | UncachedUnfinished = &self.filtered_entries
-            && target != self.target
+            && target_changed
         {
+            context::debug!("changed entries");
             self.entries = self
                 .provider
                 .get_completions(text, text.point_at_byte(range.end), &target)
                 .entries;
         }
 
-        let entries = match (&mut self.filtered_entries, target == self.target) {
-            (CachedFinished(entries) | CachedUnfinished(entries), true) => entries,
-            (CachedFinished(entries) | CachedUnfinished(entries), false) => {
+        let entries = match (&mut self.filtered_entries, target_changed) {
+            (CachedFinished(entries) | CachedUnfinished(entries), false) => entries,
+            (CachedFinished(entries) | CachedUnfinished(entries), true) => {
                 *entries = self
                     .entries
                     .iter()
@@ -383,41 +404,51 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             (UncachedUnfinished, _) => &self.entries,
         };
 
-        self.target = target;
+        // If the word was edited, we need to reset the completions.
+        if target_changed {
+            self.current = None;
+            self.orig = target;
+        }
 
         if height == 0 || entries.is_empty() {
-            self.dist_from_top = None;
+            self.current = None;
             return None;
         }
 
         if scroll != 0 {
-            self.dist_from_top = Some(if let Some(dist) = self.dist_from_top {
-                dist.saturating_add_signed(dist as isize).min(height - 1)
-            } else if scroll > 0 {
-                (scroll.unsigned_abs() as usize).min(height - 1)
-            } else {
-                height.saturating_sub(scroll.unsigned_abs() as usize)
-            })
+            self.current = try {
+                if let Some((prev, dist)) = &self.current {
+                    let dist = dist.saturating_add_signed(scroll as isize).min(height - 1);
+                    let prev_i = entries.iter().position(|(w, _)| w == prev)?;
+                    let (word, _) = entries.get(prev_i.checked_add_signed(scroll as isize)?)?;
+
+                    (word.clone(), dist)
+                } else if scroll > 0 {
+                    let scroll = scroll.unsigned_abs() as usize - 1;
+                    let dist = (scroll).min(height - 1);
+                    let (word, _) = entries.get(scroll)?;
+
+                    (word.clone(), dist)
+                } else {
+                    let scroll = scroll.unsigned_abs() as usize;
+                    let dist = height.saturating_sub(scroll);
+                    let (word, _) = entries.get(entries.len().checked_sub(scroll)?)?;
+
+                    (word.clone(), dist)
+                }
+            };
         }
 
         let mut builder = Text::builder();
 
-        if let Some(dist) = &mut self.dist_from_top
-            && let Some(target_i) = entries.iter().position(|(entry, _)| *entry == self.target)
+        if let Some((word, dist)) = &mut self.current
+            && let Some(word_i) = entries.iter().position(|(w, _)| w == word)
         {
             *dist = (*dist).min(height - 1);
 
-            let target_i = if scroll != 0 {
-                let target_i = target_i.saturating_add_signed(scroll as isize);
-                self.target = entries[target_i].0.clone();
-                target_i
-            } else {
-                target_i
-            };
-
-            let top_i = target_i.saturating_sub(*dist);
+            let top_i = word_i.saturating_sub(*dist);
             for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
-                if i == target_i {
+                if i == word_i {
                     builder.push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
                 } else {
                     builder.push(txt!("{}\n", (self.fmt)(entry, info)));
@@ -429,13 +460,22 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             }
         }
 
-        Some((builder.build(), (scroll != 0).then(|| self.target.clone())))
+        let replacement = if scroll != 0 {
+            self.current
+                .as_ref()
+                .map(|(w, _)| (range.clone(), w.clone()))
+                .or_else(|| Some((range, self.orig.clone())))
+        } else {
+            None
+        };
+
+        Some((builder.build(), replacement))
     }
 
     fn has_changed(&self, text: Option<&Text>) -> bool {
         let word_has_changed = text.is_some_and(|text| {
-            let (word, _) = target_word(text, &self.word_regex);
-            word != self.target
+            let (_, word) = target_word(text, &self.word_regex);
+            word != self.orig
         });
 
         word_has_changed || self.provider.has_changed()
@@ -469,7 +509,7 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     Some(diff)
 }
 
-fn target_word(text: &Text, word_chars: &str) -> (String, Range<usize>) {
+fn target_word(text: &Text, word_chars: &str) -> (Range<usize>, String) {
     let caret = text.selections().get_main().unwrap().caret();
     let range = text
         .search_rev(word_chars, ..caret)
@@ -477,8 +517,9 @@ fn target_word(text: &Text, word_chars: &str) -> (String, Range<usize>) {
         .next()
         .unwrap_or(caret.byte()..caret.byte());
 
-    (text.strs(range.clone()).unwrap().to_string(), range)
+    (range.clone(), text.strs(range).unwrap().to_string())
 }
 
 type ProvidersFn =
     Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(usize, Text)>)>;
+type Replacement = Option<(Range<usize>, String)>;
