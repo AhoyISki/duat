@@ -534,13 +534,6 @@ impl Bytes {
         self.records.insert(start_rec);
     }
 
-    /// Extends this [`Bytes`] with another
-    pub(super) fn extend(&mut self, other: Self) {
-        self.buf.extend(other.buf);
-        self.records
-            .transform(self.records.max(), [0, 0, 0], other.records.max())
-    }
-
     /// Adds a record in the given position
     #[track_caller]
     pub(super) fn add_record(&mut self, [b, c, l]: [usize; 3]) {

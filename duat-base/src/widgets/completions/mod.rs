@@ -39,15 +39,8 @@ impl CompletionsBuilder {
 
         let (providers, entries) = (self.providers)(handle.text(pa), 20);
 
-        let Some((spawn_point, text)) = entries else {
+        let Some((start_byte, text)) = entries else {
             return;
-        };
-
-        let specs = SpawnSpecs {
-            orientation: Orientation::VerLeftBelow,
-            height: Some(text.len().line().min(20) as f32),
-            width: Some(50.0),
-            ..
         };
 
         let completions = Completions {
@@ -55,10 +48,15 @@ impl CompletionsBuilder {
             providers,
             text,
             max_height: 20,
+            start_byte,
         };
 
         let text = handle.text_mut(pa);
-        text.insert_tag(*TAGGER, spawn_point, SpawnTag::new(completions, specs));
+        text.insert_tag(
+            *TAGGER,
+            start_byte,
+            SpawnTag::new(completions, SPAWN_SPECS),
+        );
     }
 
     /// Adds a new [`CompletionsProvider`] to be prioritized over
@@ -85,6 +83,7 @@ pub struct Completions {
     providers: Vec<Box<dyn ErasedInnerProvider>>,
     text: Text,
     max_height: usize,
+    start_byte: usize,
 }
 
 impl Completions {
@@ -115,7 +114,7 @@ impl Completions {
     }
 
     /// Goes to the next entry on the list.
-    pub fn scroll(pa: &mut Pass, by: i32) {
+    pub fn scroll(pa: &mut Pass, scroll: i32) {
         let Some(handle) = context::windows()
             .handles(pa)
             .find_map(Handle::try_downcast::<Completions>)
@@ -123,55 +122,69 @@ impl Completions {
             context::warn!("No Completions open to go to next entry");
             return;
         };
+        Completions::set_text(pa, &handle, scroll);
+    }
 
+    fn set_text(pa: &mut Pass, handle: &Handle<Self>, scroll: i32) {
         let height = handle.area().height(pa) as usize;
         let master_handle = handle.master().unwrap();
         let (master, comp) = pa
             .try_read_and_write(master_handle.widget(), handle.widget())
             .unwrap();
 
-        if let Some((text, replacement)) = comp
+        let mut lists: Vec<_> = comp
             .providers
             .iter_mut()
-            .find_map(|inner| inner.text_and_replacement(master.text(), by, height))
+            .map(|inner| inner.text_and_replacement(master.text(), scroll, height))
+            .collect();
+
+        lists.sort_by_key(|(start, _)| *start);
+
+        if let Some((start_byte, (text, replacement))) = lists
+            .into_iter()
+            .find_map(|(start, list)| Some(start).zip(list))
         {
             comp.text = text;
 
-            if let Some((range, word)) = replacement {
+            if let Some(replacement) = replacement {
                 master_handle.edit_main(pa, |mut c| {
-                    c.move_to(range.clone());
-                    c.replace(word);
+                    c.move_to(start_byte..c.caret().byte());
+                    c.replace(replacement);
                     c.unset_anchor();
-                    if c.caret().byte() != range.start {
+                    if c.caret().byte() != start_byte {
                         c.move_hor(1);
                     }
                 })
             }
+
+            let comp = handle.write(pa);
+            // In this case, move the Completions to a new location
+            if start_byte != comp.start_byte {
+                let new_comp = Self {
+                    master: handle.master().unwrap().clone(),
+                    providers: std::mem::take(&mut comp.providers),
+                    text: std::mem::take(&mut comp.text),
+                    max_height: comp.max_height,
+                    start_byte,
+                };
+
+                let text = master_handle.text_mut(pa);
+                text.remove_tags(*TAGGER, ..);
+                text.insert_tag(*TAGGER, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
+            }
         } else {
             comp.text = Text::default();
-            handle.area().set_height(pa, 0.0).unwrap();
         }
+
+        let (comp, area) = handle.write_with_area(pa);
+        let height = (comp.text.len().line() - 1) as f32;
+        area.set_height(height).unwrap();
     }
 }
 
 impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let (master, comp) = pa
-            .try_read_and_write(handle.master().unwrap().widget(), handle.widget())
-            .unwrap();
-
-        comp.text = if let Some((text, _)) = comp
-            .providers
-            .iter_mut()
-            .find_map(|inner| inner.text_and_replacement(master.text(), 0, comp.max_height))
-        {
-            text
-        } else {
-            Text::default()
-        };
-
-        let height = (comp.text.len().line() - 1) as f32;
-        handle.area().set_height(pa, height).unwrap();
+        Self::set_text(pa, handle, 0);
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
@@ -296,6 +309,17 @@ pub enum CompletionsKind {
     UnfinishedUnfiltered,
 }
 
+trait ErasedInnerProvider: Any + Send {
+    fn text_and_replacement(
+        &mut self,
+        text: &Text,
+        scroll: i32,
+        height: usize,
+    ) -> (usize, Option<(Text, Option<String>)>);
+
+    fn has_changed(&self, text: Option<&Text>) -> bool;
+}
+
 #[allow(clippy::type_complexity)]
 struct InnerProvider<P: CompletionsProvider> {
     provider: P,
@@ -343,26 +367,9 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let (text, _) = inner.text_and_replacement(text, 0, height).unzip();
-        (inner, Some(range.start).zip(text))
+        let (start, text) = inner.text_and_replacement(text, 0, height);
+        (inner, Some(start).zip(text.unzip().0))
     }
-}
-
-enum FilteredEntries<P: CompletionsProvider> {
-    UnfilteredFinished(Vec<(String, P::Info)>),
-    UnfilteredUnfinished(Vec<(String, P::Info)>),
-    FilteredUnfinished,
-}
-
-trait ErasedInnerProvider: Any + Send {
-    fn text_and_replacement(
-        &mut self,
-        text: &Text,
-        scroll: i32,
-        height: usize,
-    ) -> Option<(Text, Replacement)>;
-
-    fn has_changed(&self, text: Option<&Text>) -> bool;
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
@@ -371,7 +378,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         text: &Text,
         scroll: i32,
         height: usize,
-    ) -> Option<(Text, Replacement)> {
+    ) -> (usize, Option<(Text, Option<String>)>) {
         use FilteredEntries::*;
         let (range, target) = target_word(text, &self.word_regex);
 
@@ -412,7 +419,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         if height == 0 || entries.is_empty() {
             self.current = None;
-            return None;
+            return (range.start, None);
         }
 
         if scroll != 0 {
@@ -463,14 +470,14 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         let replacement = if scroll != 0 {
             self.current
-                .as_ref()
-                .map(|(w, _)| (range.clone(), w.clone()))
-                .or_else(|| Some((range, self.orig.clone())))
+                .clone()
+                .map(|(w, _)| w)
+                .or_else(|| Some(self.orig.clone()))
         } else {
             None
         };
 
-        Some((builder.build(), replacement))
+        (range.start, Some((builder.build(), replacement)))
     }
 
     fn has_changed(&self, text: Option<&Text>) -> bool {
@@ -481,6 +488,12 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         word_has_changed || self.provider.has_changed()
     }
+}
+
+enum FilteredEntries<P: CompletionsProvider> {
+    UnfilteredFinished(Vec<(String, P::Info)>),
+    UnfilteredUnfinished(Vec<(String, P::Info)>),
+    FilteredUnfinished,
 }
 
 /// A simple [`String`] comparison function, which prioritizes matched
@@ -521,6 +534,12 @@ fn target_word(text: &Text, word_chars: &str) -> (Range<usize>, String) {
     (range.clone(), text.strs(range).unwrap().to_string())
 }
 
+const SPAWN_SPECS: SpawnSpecs = SpawnSpecs {
+    orientation: Orientation::VerLeftBelow,
+    height: Some(20.0),
+    width: Some(50.0),
+    ..
+};
+
 type ProvidersFn =
     Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(usize, Text)>)>;
-type Replacement = Option<(Range<usize>, String)>;
