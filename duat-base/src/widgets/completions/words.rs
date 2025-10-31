@@ -27,14 +27,20 @@ impl CompletionsProvider for WordCompletions {
         .build()
     }
 
-    fn get_completions(&mut self, _: &Text, _: Point, word: &str) -> CompletionsList<Self> {
+    fn get_completions(
+        &mut self,
+        _: &Text,
+        _: Point,
+        prefix: &str,
+        suffix: &str,
+    ) -> CompletionsList<Self> {
         let mut entries: Vec<_> = BUFFER_WORDS
             .lock()
             .unwrap()
             .iter()
-            .filter(|&(entry, info)| {
-                if let Some(difference) = string_cmp(word, entry) {
-                    !(difference == 0 && word.len() == entry.len() && info.count == 1)
+            .filter(|&(word, info)| {
+                if let Some(difference) = string_cmp(prefix, word) {
+                    !(difference == 0 && info.count == 1 && &word[prefix.len()..] == suffix)
                 } else {
                     false
                 }
@@ -42,7 +48,7 @@ impl CompletionsProvider for WordCompletions {
             .map(|(entry, info)| (entry.clone(), info.clone()))
             .collect();
 
-        entries.sort_by_key(|(entry, _)| string_cmp(word, entry));
+        entries.sort_by_key(|(entry, _)| string_cmp(prefix, entry));
 
         CompletionsList {
             entries,

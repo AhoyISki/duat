@@ -37,6 +37,11 @@ impl CompletionsBuilder {
         let handle = context::current_widget(pa).clone();
         handle.text_mut(pa).remove_tags(*TAGGER, ..);
 
+        let Some(main) = handle.selections(pa).get_main() else {
+            context::warn!("Tried spawning [a]Completions[] on a Widget with no [a]Selection[]s");
+            return;
+        };
+
         let (providers, entries) = (self.providers)(handle.text(pa), 20);
 
         let Some((start_byte, text)) = entries else {
@@ -49,14 +54,12 @@ impl CompletionsBuilder {
             text,
             max_height: 20,
             start_byte,
+            show_without_prefix: true,
+            last_caret: main.caret(),
         };
 
         let text = handle.text_mut(pa);
-        text.insert_tag(
-            *TAGGER,
-            start_byte,
-            SpawnTag::new(completions, SPAWN_SPECS),
-        );
+        text.insert_tag(*TAGGER, start_byte, SpawnTag::new(completions, SPAWN_SPECS));
     }
 
     /// Adds a new [`CompletionsProvider`] to be prioritized over
@@ -84,6 +87,8 @@ pub struct Completions {
     text: Text,
     max_height: usize,
     start_byte: usize,
+    show_without_prefix: bool,
+    last_caret: Point,
 }
 
 impl Completions {
@@ -115,6 +120,11 @@ impl Completions {
 
     /// Goes to the next entry on the list.
     pub fn scroll(pa: &mut Pass, scroll: i32) {
+        if scroll == 0 {
+            context::warn!("Scrolling [a]Completions[] by 0");
+            return;
+        }
+
         let Some(handle) = context::windows()
             .handles(pa)
             .find_map(Handle::try_downcast::<Completions>)
@@ -122,10 +132,12 @@ impl Completions {
             context::warn!("No Completions open to go to next entry");
             return;
         };
-        Completions::set_text(pa, &handle, scroll);
+
+        Completions::update_text_and_position(pa, &handle, scroll);
+        handle.write(pa).show_without_prefix = true;
     }
 
-    fn set_text(pa: &mut Pass, handle: &Handle<Self>, scroll: i32) {
+    fn update_text_and_position(pa: &mut Pass, handle: &Handle<Self>, scroll: i32) {
         let master_handle = handle.master().unwrap();
         let (master, comp) = pa
             .try_read_and_write(master_handle.widget(), handle.widget())
@@ -134,7 +146,14 @@ impl Completions {
         let mut lists: Vec<_> = comp
             .providers
             .iter_mut()
-            .map(|inner| inner.text_and_replacement(master.text(), scroll, comp.max_height))
+            .map(|inner| {
+                inner.text_and_replacement(
+                    master.text(),
+                    scroll,
+                    comp.max_height,
+                    comp.show_without_prefix,
+                )
+            })
             .collect();
 
         lists.sort_by_key(|(start, _)| *start);
@@ -148,12 +167,12 @@ impl Completions {
             if let Some(replacement) = replacement {
                 master_handle.edit_main(pa, |mut c| {
                     c.move_to(start_byte..c.caret().byte());
-                    c.replace(replacement);
+                    c.replace(&replacement);
                     c.unset_anchor();
-                    if c.caret().byte() != start_byte {
+                    if !replacement.is_empty() {
                         c.move_hor(1);
                     }
-                })
+                });
             }
 
             let comp = handle.write(pa);
@@ -165,6 +184,8 @@ impl Completions {
                     text: std::mem::take(&mut comp.text),
                     max_height: comp.max_height,
                     start_byte,
+                    show_without_prefix: false,
+                    last_caret: comp.last_caret,
                 };
 
                 let text = master_handle.text_mut(pa);
@@ -183,12 +204,18 @@ impl Completions {
 
 impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        Self::set_text(pa, handle, 0);
+        Self::update_text_and_position(pa, handle, 0);
+        let master_handle = handle.master().unwrap();
+        handle.write(pa).last_caret = master_handle.selections(pa).get_main().unwrap().caret()
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
         let text = self.master.has_changed(pa).then_some(self.master.text(pa));
-        self.providers.iter().any(|inner| inner.has_changed(text))
+        let main_moved = text
+            .as_ref()
+            .is_some_and(|text| text.selections().get_main().unwrap().caret() != self.last_caret);
+
+        main_moved || self.providers.iter().any(|inner| inner.has_changed(text))
     }
 
     fn text(&self) -> &Text {
@@ -218,15 +245,12 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 
     /// Get all completions at a given [`Point`] in the [`Text`]
     ///
-    /// This will return a [`CompletionsList`], which is contains not
-    /// only an [`Iterator`] over the entries, but also a
-    /// [`CompletionsKind`], which is useful to tell the
-    /// [`Completions`] widget how to handle certain aspects of the
-    /// list.
+    /// This returns a [`CompletionsList`], which contains a list of
+    /// all words that should be listed as well as information
+    /// regarding the ["completeness"] of the list.
     ///
     /// The `caret` is the position where the main cursor's [caret]
-    /// lies, while the `word` is the [`String`] that matched prior to
-    /// said caret, given [`Self::word_regex`].
+    /// lies, And the `prefix` and `suffix` are .
     ///
     /// If the `Iterator` within is empty, then the next
     /// `CompletionsProvider` will be selected to provide the required
@@ -235,7 +259,14 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// [caret]: duat_core::mode::Selection::caret
     /// [`Self::word_regex`]: CompletionsProvider::word_regex
-    fn get_completions(&mut self, text: &Text, caret: Point, word: &str) -> CompletionsList<Self>;
+    /// ["completeness"]: CompletionsKind
+    fn get_completions(
+        &mut self,
+        text: &Text,
+        caret: Point,
+        prefix: &str,
+        suffix: &str,
+    ) -> CompletionsList<Self>;
 
     /// Regex for which characters should be part of a word
     ///
@@ -314,6 +345,7 @@ trait ErasedInnerProvider: Any + Send {
         text: &Text,
         scroll: i32,
         height: usize,
+        show_without_prefix: bool,
     ) -> (usize, Option<(Text, Option<String>)>);
 
     fn has_changed(&self, text: Option<&Text>) -> bool;
@@ -322,10 +354,10 @@ trait ErasedInnerProvider: Any + Send {
 #[allow(clippy::type_complexity)]
 struct InnerProvider<P: CompletionsProvider> {
     provider: P,
-    word_regex: String,
+    regexes: [String; 2],
     fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
 
-    orig: String,
+    orig_prefix: String,
     current: Option<(String, usize)>,
 
     filtered_entries: FilteredEntries<P>,
@@ -334,22 +366,23 @@ struct InnerProvider<P: CompletionsProvider> {
 
 impl<P: CompletionsProvider> InnerProvider<P> {
     fn new(mut provider: P, text: &Text, height: usize) -> (Self, Option<(usize, Text)>) {
-        let word_regex = format!(r"{}\z", provider.word_regex());
-        let (range, target) = target_word(text, &word_regex);
+        let prefix_regex = format!(r"{}\z", provider.word_regex());
+        let suffix_regex = format!(r"\A{}", provider.word_regex());
+        let (range, [prefix, suffix]) = preffix_and_suffix(text, [&prefix_regex, &suffix_regex]);
 
         let CompletionsList { entries, kind } =
-            provider.get_completions(text, text.point_at_byte(range.end), &target);
+            provider.get_completions(text, text.point_at_byte(range.end), &prefix, &suffix);
 
         let mut inner = Self {
             provider,
-            word_regex,
-            orig: target.clone(),
+            regexes: [prefix_regex, suffix_regex],
+            orig_prefix: prefix.clone(),
             current: None,
             filtered_entries: match kind {
                 CompletionsKind::Finished => FilteredEntries::UnfilteredFinished({
                     entries
                         .iter()
-                        .filter(|(entry, _)| string_cmp(&target, entry).is_some())
+                        .filter(|(entry, _)| string_cmp(&prefix, entry).is_some())
                         .map(|(entry, info)| (entry.clone(), info.clone()))
                         .collect()
                 }),
@@ -357,7 +390,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
                 CompletionsKind::UnfinishedUnfiltered => FilteredEntries::UnfilteredUnfinished({
                     entries
                         .iter()
-                        .filter(|(entry, _)| string_cmp(&target, entry).is_some())
+                        .filter(|(entry, _)| string_cmp(&prefix, entry).is_some())
                         .map(|(entry, info)| (entry.clone(), info.clone()))
                         .collect()
                 }),
@@ -366,7 +399,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let (start, text) = inner.text_and_replacement(text, 0, height);
+        let (start, text) = inner.text_and_replacement(text, 0, height, true);
         (inner, Some(start).zip(text.unzip().0))
     }
 }
@@ -377,21 +410,23 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         text: &Text,
         scroll: i32,
         height: usize,
+        show_without_prefix: bool,
     ) -> (usize, Option<(Text, Option<String>)>) {
         use FilteredEntries::*;
-        let (range, target) = target_word(text, &self.word_regex);
+        let (range, [prefix, suffix]) =
+            preffix_and_suffix(text, self.regexes.each_ref().map(|s| s.as_str()));
 
         // This should only be true if edits other than the one applied by
         // Completions take place.
-        let target_changed = self.current.as_ref().is_some_and(|(c, _)| *c != target)
-            || (self.current.is_none() && self.orig != target);
+        let target_changed = self.current.as_ref().is_some_and(|(c, _)| *c != prefix)
+            || (self.current.is_none() && self.orig_prefix != prefix);
 
         if let UnfilteredUnfinished(_) | FilteredUnfinished = &self.filtered_entries
             && target_changed
         {
             self.entries = self
                 .provider
-                .get_completions(text, text.point_at_byte(range.end), &target)
+                .get_completions(text, text.point_at_byte(range.end), &prefix, &suffix)
                 .entries;
         }
 
@@ -401,7 +436,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 *entries = self
                     .entries
                     .iter()
-                    .filter(|(entry, _)| string_cmp(&target, entry).is_some())
+                    .filter(|(entry, _)| string_cmp(&prefix, entry).is_some())
                     .map(|(entry, info)| (entry.clone(), info.clone()))
                     .collect();
 
@@ -413,10 +448,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         // If the word was edited, we need to reset the completions.
         if target_changed || entries.is_empty() {
             self.current = None;
-            self.orig = target;
+            self.orig_prefix = prefix;
         }
 
-        if height == 0 || entries.is_empty() {
+        if height == 0 || entries.is_empty() || (range.is_empty() && !show_without_prefix) {
             self.current = None;
             return (range.start, None);
         }
@@ -455,8 +490,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             let top_i = word_i.saturating_sub(*dist);
             for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
                 if i == word_i {
-                    let text = txt!("[selected.Completions]{}\n", (self.fmt)(entry, info));
-                    builder.push(text);
+                    builder.push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
                 } else {
                     builder.push(txt!("{}\n", (self.fmt)(entry, info)));
                 }
@@ -471,7 +505,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.current
                 .clone()
                 .map(|(w, _)| w)
-                .or_else(|| Some(self.orig.clone()))
+                .or_else(|| Some(self.orig_prefix.clone()))
         } else {
             None
         };
@@ -481,8 +515,9 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
     fn has_changed(&self, text: Option<&Text>) -> bool {
         let word_has_changed = text.is_some_and(|text| {
-            let (_, word) = target_word(text, &self.word_regex);
-            word != self.orig
+            let (_, [prefix, _]) =
+                preffix_and_suffix(text, self.regexes.each_ref().map(|s| s.as_str()));
+            prefix != self.orig_prefix
         });
 
         word_has_changed || self.provider.has_changed()
@@ -522,21 +557,33 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     Some(diff)
 }
 
-fn target_word(text: &Text, word_chars: &str) -> (Range<usize>, String) {
+fn preffix_and_suffix(
+    text: &Text,
+    [prefix_regex, suffix_regex]: [&str; 2],
+) -> (Range<usize>, [String; 2]) {
     let caret = text.selections().get_main().unwrap().caret();
-    let range = text
-        .search_rev(word_chars, ..caret)
+    let prefix_range = text
+        .search_rev(prefix_regex, ..caret)
+        .unwrap()
+        .next()
+        .unwrap_or(caret.byte()..caret.byte());
+    let suffix_range = text
+        .search_fwd(suffix_regex, caret..)
         .unwrap()
         .next()
         .unwrap_or(caret.byte()..caret.byte());
 
-    (range.clone(), text.strs(range).unwrap().to_string())
+    (
+        prefix_range.clone(),
+        [prefix_range, suffix_range].map(|range| text.strs(range).unwrap().to_string()),
+    )
 }
 
 const SPAWN_SPECS: SpawnSpecs = SpawnSpecs {
     orientation: Orientation::VerLeftBelow,
     height: Some(20.0),
     width: Some(50.0),
+    hidden: true,
     ..
 };
 
