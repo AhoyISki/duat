@@ -277,7 +277,13 @@
 //! [`IncSearcher`]: duat_utils::modes::IncSearcher
 //! [`PipeSelections`]: duat_utils::modes::PipeSelections
 //! [mapping]: duat_core::mode::map
-#![feature(iter_map_windows, if_let_guard, iter_array_chunks, iter_intersperse)]
+#![feature(
+    iter_map_windows,
+    if_let_guard,
+    iter_array_chunks,
+    iter_intersperse,
+    try_blocks
+)]
 
 use std::{
     collections::HashMap,
@@ -298,6 +304,50 @@ mod inc_searchers;
 mod insert;
 mod normal;
 mod one_key;
+
+pub use parameter::{param_map as param, param_txt};
+
+mod parameter {
+    use std::sync::LazyLock;
+
+    use duat::{
+        context,
+        data::{DataMap, Pass, RwData},
+        text::{Text, txt},
+    };
+
+    static VALUE: LazyLock<RwData<u32>> = LazyLock::new(RwData::default);
+
+    /// Adds a number to the global value
+    pub fn add(pa: &mut Pass, num: u32) {
+        let value = VALUE.read(pa);
+        match try { value.checked_mul(10)?.checked_add(num)? } {
+            Some(new_value) => *VALUE.write(pa) = new_value,
+            None => context::warn!("Reached maximum parameter value"),
+        };
+    }
+
+    /// Takes the current value, leaving it empty
+    pub fn take(pa: &mut Pass) -> u32 {
+        std::mem::take(VALUE.write(pa)).max(1)
+    }
+
+    /// A [`DataMap`] of the current parameter value
+    pub fn param_map() -> DataMap<u32, u32> {
+        VALUE.map(|value| *value)
+    }
+
+    /// A [`Text`] [`DataMap`] for the current parameter
+    pub fn param_txt() -> DataMap<u32, Text> {
+        VALUE.map(|value| {
+            if *value > 0 {
+                txt!("[kak.param]param={value}[]").build()
+            } else {
+                Text::default()
+            }
+        })
+    }
+}
 
 /// The [`Plugin`] for the kakoune [`Mode`]s
 ///
@@ -524,7 +574,7 @@ impl<'a> Object<'a> {
             event!('$') => Some(Self::Bound(r"\$")),
             event!('^') => Some(Self::Bound(r"\^")),
             event!('s') => Some(Self::Bound(r"[\.;!\?]\s*")),
-            event!('p') => Some(Self::Bound("^\n")),
+            event!('p') => Some(Self::Bound("^\n+")),
             event!('b' | '(' | ')') => Some(Self::Bounds(r"\(", r"\)")),
             event!('B' | '{' | '}') => Some(Self::Bounds(r"\{", r"\}")),
             event!('r' | '[' | ']') => Some(Self::Bounds(r"\[", r"\]")),

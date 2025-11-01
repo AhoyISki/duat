@@ -13,10 +13,10 @@ use crate::{
 #[derive(Clone)]
 pub(crate) enum OneKey {
     GoTo(SelType),
-    Find(SelType, bool),
-    Until(SelType, bool),
-    Inside(Brackets),
-    Around(Brackets),
+    Find(usize, SelType, bool),
+    Until(usize, SelType, bool),
+    Inside(usize, Brackets),
+    Around(usize, Brackets),
     Replace,
 }
 
@@ -26,18 +26,19 @@ impl Mode for OneKey {
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         let sel_type = match *self {
             OneKey::GoTo(st) => match_goto(pa, &handle, key_event, st),
-            OneKey::Find(st, ss) | OneKey::Until(st, ss)
+            OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss)
                 if let Some(char) = just_char(key_event) =>
             {
-                match_find_until(pa, handle, char, matches!(*self, OneKey::Until(..)), st);
+                let is_t = matches!(*self, OneKey::Until(..));
+                match_find_until(pa, handle, char, nth, is_t, st);
                 if ss {
                     *SEARCH.lock().unwrap() = char.to_string();
                 }
                 SelType::Normal
             }
-            OneKey::Inside(brackets) | OneKey::Around(brackets) => {
-                let is_inside = matches!(*self, OneKey::Inside(_));
-                match_inside_around(pa, handle, key_event, brackets, is_inside);
+            OneKey::Inside(nth, brackets) | OneKey::Around(nth, brackets) => {
+                let is_inside = matches!(*self, OneKey::Inside(..));
+                match_inside_around(pa, handle, key_event, nth, brackets, is_inside);
                 SelType::Normal
             }
             OneKey::Replace if let Some(char) = just_char(key_event) => {
@@ -132,14 +133,29 @@ fn match_goto(
     sel_type
 }
 
-fn match_find_until(pa: &mut Pass, handle: Handle, char: char, is_t: bool, st: SelType) {
+fn match_find_until(
+    pa: &mut Pass,
+    handle: Handle,
+    char: char,
+    nth: usize,
+    is_t: bool,
+    st: SelType,
+) {
     use SelType::*;
     handle.edit_all(pa, |mut c| {
         let search = format!("\\x{{{:X}}}", char as u32);
         let b = c.caret().byte();
         let (points, back) = match st {
-            Reverse | ExtendRev => (c.search_rev(search).find(|range| range.end != b), 1),
-            Normal | Extend => (c.search_fwd(search).find(|range| range.start != b), -1),
+            Reverse | ExtendRev => (
+                c.search_rev(search).filter(|range| range.end != b).nth(nth),
+                1,
+            ),
+            Normal | Extend => (
+                c.search_fwd(search)
+                    .filter(|range| range.start != b)
+                    .nth(nth),
+                -1,
+            ),
             _ => unreachable!(),
         };
 
@@ -154,8 +170,17 @@ fn match_find_until(pa: &mut Pass, handle: Handle, char: char, is_t: bool, st: S
             if is_t {
                 c.move_hor(back);
             }
-        } else {
+        } else if nth == 0 {
             context::warn!("Char [a]{char}[] not found")
+        } else {
+            let suffix = match (nth + 1) % 10 {
+                1 => "st",
+                2 => "nd",
+                3 => "rd",
+                _ => "th",
+            };
+
+            context::warn!("{}{suffix} char [a]{char}[] not found", nth + 1)
         }
     });
 }
@@ -164,6 +189,7 @@ fn match_inside_around(
     pa: &mut Pass,
     handle: Handle,
     event: KeyEvent,
+    nth: usize,
     brackets: Brackets,
     is_inside: bool,
 ) {
@@ -200,25 +226,28 @@ fn match_inside_around(
                 } else {
                     c.move_to(start..end_range.end)
                 }
-                
+
                 Some(())
             }),
             'p' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let end = object.find_ahead(c, 0)?.start;
-                c.move_to(end);
-                c.set_anchor();
-                let range = object.find_behind(c, 0).unwrap_or_default();
-                c.move_to(range.start);
-                c.swap_ends();
+                let end_range = object.find_ahead(c, 0)?;
+                let start_range = c
+                    .text()
+                    .search_rev(r"^\n+", ..end_range.start)
+                    .unwrap()
+                    .next()?;
+
                 if is_inside {
-                    c.move_hor(-1);
+                    c.move_to(start_range.end..end_range.start);
+                } else {
+                    c.move_to(start_range.end..end_range.end);
                 }
                 Some(())
             }),
             'u' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let e_range = object.find_ahead(c, 1)?;
+                let e_range = object.find_ahead(c, nth + 1)?;
                 c.move_to(e_range.start);
-                let s_range = object.find_behind(c, 1)?;
+                let s_range = object.find_behind(c, nth + 1)?;
                 if is_inside {
                     c.move_to(s_range.end..e_range.start);
                 } else {
@@ -242,8 +271,8 @@ fn match_inside_around(
                 Some(())
             }),
             _char => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let e_range = object.find_ahead(c, 1)?;
-                let s_range = object.find_behind(c, 1)?;
+                let e_range = object.find_ahead(c, nth + 1)?;
+                let s_range = object.find_behind(c, nth + 1)?;
                 c.move_to(if is_inside {
                     s_range.end..e_range.start
                 } else {
