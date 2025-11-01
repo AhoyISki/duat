@@ -259,7 +259,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
 
     // SAFETY: There is a Pass argument.
     unsafe {
-        crate::mode::set_send_key::<M>();
+        crate::mode::set_send_key::<M>(pa);
     }
 
     let new_name = duat_name::<M>();

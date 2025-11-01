@@ -170,6 +170,13 @@ impl Completions {
         handle.write(pa).show_without_prefix = true;
     }
 
+    /// Wether there is an open `Completions` [`Widget`]
+    pub fn is_open(pa: &Pass) -> bool {
+        context::current_window(pa)
+            .handles(pa)
+            .any(|handle| handle.widget().is::<Completions>())
+    }
+
     fn update_text_and_position(pa: &mut Pass, handle: &Handle<Self>, scroll: i32) {
         let master_handle = handle.master().unwrap();
         let (master, comp) = pa

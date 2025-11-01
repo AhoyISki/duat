@@ -26,70 +26,7 @@ use regex_cursor::{
     },
 };
 
-use super::{Bytes, Point, Text, TextRange};
-
-impl Text {
-    /// Searches forward for a [`RegexPattern`] in a [range]
-    ///
-    /// A [`RegexPattern`] can either be a single regex string, an
-    /// array of strings, or a slice of strings. When there are more
-    /// than one pattern, The return value will include which pattern
-    /// matched.
-    ///
-    /// The patterns will also automatically be cached, so you don't
-    /// need to do that.
-    ///
-    /// [range]: TextRange
-    pub fn search_fwd<R: RegexPattern>(
-        &self,
-        pat: R,
-        range: impl TextRange,
-    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        self.0.bytes.search_fwd(pat, range)
-    }
-
-    /// Searches in reverse for a [`RegexPattern`] in a [range]
-    ///
-    /// A [`RegexPattern`] can either be a single regex string, an
-    /// array of strings, or a slice of strings. When there are more
-    /// than one pattern, The return value will include which pattern
-    /// matched.
-    ///
-    /// The patterns will also automatically be cached, so you don't
-    /// need to do that.
-    ///
-    /// [range]: TextRange
-    pub fn search_rev<R: RegexPattern>(
-        &self,
-        pat: R,
-        range: impl TextRange,
-    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        self.0.bytes.search_rev(pat, range)
-    }
-
-    /// Returns true if the pattern is found in the given range
-    ///
-    /// This is unanchored by default, if you want an anchored search,
-    /// use the `"^$"` characters.
-    pub fn matches(
-        &self,
-        pat: impl RegexPattern,
-        range: impl TextRange,
-    ) -> Result<bool, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().byte());
-        let dfas = dfas_from_pat(pat)?;
-
-        let (mut fwd_input, _) = get_inputs(self, range.clone());
-        fwd_input.anchored(Anchored::Yes);
-
-        let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(hm.offset() + range.start == range.end)
-        } else {
-            Ok(false)
-        }
-    }
-}
+use super::{Bytes, Point, TextRange};
 
 impl Bytes {
     /// Searches forward for a [`RegexPattern`] in a [range]

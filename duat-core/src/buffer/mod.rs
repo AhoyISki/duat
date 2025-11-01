@@ -1,4 +1,4 @@
-//! The primary widget of Duat, used to display buffers.
+//! The primary [`Widget`] of Duat, used to display buffers.
 //!
 //! Most extensible features of Duat have the primary purpose of
 //! serving the [`Buffer`], such as multiple [`Cursor`]s, a
@@ -51,6 +51,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
+    /// Returns a new [`Buffer`], private for now
     pub(crate) fn new(path: Option<PathBuf>, opts: PrintOpts) -> Self {
         let (text, path) = match path {
             Some(path) => {
@@ -290,12 +291,14 @@ impl Buffer {
 
     /// Adds a [`Parser`] to this `Buffer`
     ///
-    /// The [`Parser`] will be able to keep track of every single
+    /// The `Parser` will be able to keep track of every single
     /// [`Change`] that takes place in the `Buffer`'s [`Text`], and
     /// can act on the `Buffer` accordingly.
     ///
     /// This function will fail if a [`Parser`] of the same type was
     /// already added to this [`Buffer`]
+    ///
+    /// [`Change`]: crate::text::Change
     pub fn add_parser<P: Parser>(
         &mut self,
         f: impl FnOnce(BufferTracker) -> P,
@@ -305,11 +308,11 @@ impl Buffer {
 
     /// Reads from a specific [`Parser`], if it was [added]
     ///
-    /// This function will block until the [`Parser`] is ready to be
-    /// read. This usually implies that the [`Parser`] is done
+    /// This function will block until the `Parser` is ready to be
+    /// read. This usually implies that the `Parser` is done
     /// processing all the [`Change`]s up to this point. But it could
-    /// also be the case that the [`Parser`] doesn't really care about
-    /// [`Change`]s.
+    /// also be the case that the `Parser` doesn't really care about
+    /// `Change`s.
     ///
     /// While this function is being called, trying to read or write
     /// to the same [`Parser`] will always return [`None`].
@@ -326,7 +329,7 @@ impl Buffer {
     /// Tries tor read from a specific [`Parser`], if it was [added]
     ///
     /// Unlike [`Buffer::read_parser`], this function will only be
-    /// called when the [`Parser`] is ready to be read. This may not
+    /// called when the `Parser` is ready to be read. This may not
     /// be the case if, for example, it is still processing
     /// [`Change`]s to the [`Text`]. In that case, the function will
     /// not be called and [`try_read_parser`] will return [`None`].
@@ -343,14 +346,14 @@ impl Buffer {
 
     /// Writes to a specific [`Parser`], if it was [added]
     ///
-    /// This function will block until the [`Parser`] is ready to be
-    /// written to. This usually implies that the [`Parser`] is done
+    /// This function will block until the `Parser` is ready to be
+    /// written to. This usually implies that the `Parser` is done
     /// processing all the [`Change`]s up to this point. But it could
-    /// also be the case that the [`Parser`] doesn't really care
-    /// about [`Change`]s.
+    /// also be the case that the `Parser` doesn't really care
+    /// about `Change`s.
     ///
     /// While this function is being called, trying to read or write
-    /// to the same [`Parser`] will always return [`None`].
+    /// to the same `Parser` will always return `None`.
     ///
     /// If you want to write in a non blocking way, see
     /// [`Buffer::try_write_parser`].
@@ -364,13 +367,13 @@ impl Buffer {
     /// Tries tor read a specific [`Parser`], if it was [added]
     ///
     /// Unlike [`Buffer::write_parser`], this function will only be
-    /// called when the [`Parser`] is ready to be written to. This may
+    /// called when the `Parser` is ready to be written to. This may
     /// not be the case if, for example, it is still processing
     /// [`Change`]s to the [`Text`]. In that case, the function will
     /// not be called and [`try_write_parser`] will return [`None`].
     ///
     /// While this function is being called, trying to read or write
-    /// to the same [`Parser`] will always return [`None`].
+    /// to the same `Parser` will always return `None`.
     ///
     /// [added]: Handle::add_parser
     /// [`Change`]: crate::text::Change
@@ -517,6 +520,9 @@ impl PathKind {
 
     /// Returns a [`PathBuf`] if `self` is [`SetExists`] or
     /// [`SetAbsent`]
+    ///
+    /// [`SetExists`]: PathKind::SetExists
+    /// [`SetAbsent`]: PathKind::SetAbsent
     pub fn as_path(&self) -> Option<PathBuf> {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => Some(path.clone()),
@@ -614,7 +620,7 @@ impl PathKind {
         }
     }
 
-    /// A [`Text`] from the name of this [`PathKind`]
+    /// A [`Text`] from the name of this `PathKind`
     ///
     /// The name of a [`Buffer`] widget is the same as the path, but
     /// it strips away the current directory. If it can't, it will

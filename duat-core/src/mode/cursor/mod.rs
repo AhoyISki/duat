@@ -447,6 +447,13 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         self.widget.text().chars_rev(..self.caret()).unwrap()
     }
 
+    /// Wether the current selection matches a regex pattern
+    #[track_caller]
+    pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
+        let range = self.selection.byte_range(self.widget.text());
+        self.widget.text().matches(pat, range).unwrap()
+    }
+
     /// Searches the [`Text`] for a regex
     ///
     /// The search will begin on the `caret` and returns the
@@ -510,6 +517,78 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             .unwrap()
     }
 
+    /// Searches the [`Text`] for a regex, skipping the caret's
+    /// character
+    ///
+    /// The search will begin one character afer the `caret` and
+    /// returns the [`Range<usize>`] for the match, where the
+    /// bounding `usize`s represents a byte index, and can be
+    /// directly used in, for example, [`Cursor::move_to`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::prelude::*;
+    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
+    ///     handle.edit_all(pa, |mut e| {
+    ///         let mut nth = e.search_fwd('(').nth(n);
+    ///         if let Some(range) = nth {
+    ///             e.move_to(range);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[track_caller]
+    pub fn search_fwd_excl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
+        let start = self.selection.caret();
+        let text = self.widget.text();
+        text.search_fwd(
+            pat,
+            start.byte() + self.char().len_utf8()..text.len().byte(),
+        )
+        .unwrap()
+    }
+
+    /// Searches the [`Text`] for a regex, with an upper limit and
+    /// skipping the caret's character
+    ///
+    /// The search will begin one character afer the `caret` and
+    /// returns the [`Range<usize>`] for the match, where the
+    /// bounding `usize`s represents a byte index, and can be
+    /// directly used in, for example, [`Cursor::move_to`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::prelude::*;
+    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
+    ///     handle.edit_all(pa, |mut e| {
+    ///         let mut nth = e.search_fwd('(', None).nth(n);
+    ///         if let Some(range) = nth {
+    ///             e.move_to(range);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[track_caller]
+    pub fn search_fwd_excl_until<R: RegexPattern>(
+        &self,
+        pat: R,
+        until: impl TextIndex,
+    ) -> impl Iterator<Item = R::Match> + '_ {
+        let start = self.selection.caret();
+        let text = self.widget.text();
+        text.search_fwd(
+            pat,
+            start.byte() + self.char().len_utf8()..until.to_byte_index(),
+        )
+        .unwrap()
+    }
+
     /// Searches the [`Text`] for a regex, in reverse
     ///
     /// The search will begin on the `caret` and returns the
@@ -539,7 +618,8 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         text.search_rev(pat, Point::default()..end).unwrap()
     }
 
-    /// Searches the [`Text`] for a regex, in reverse
+    /// Searches the [`Text`] for a regex, in reverse, until a given
+    /// point
     ///
     /// The search will begin on the `caret` and returns the
     /// [`Range<usize>`] for the match, where the bounding `usize`s
@@ -573,11 +653,71 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         text.search_rev(pat, start..end.byte()).unwrap()
     }
 
-    /// Wether the current selection matches a regex pattern
+    /// Searches the [`Text`] for a regex, in reverse, including the
+    /// caret's character
+    ///
+    /// The search will begin on the character right after the `caret`
+    /// and returns the [`Range<usize>`] for the match, where the
+    /// bounding `usize`s represents a byte index, and can be
+    /// directly used in, for example, [`Cursor::move_to`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::prelude::*;
+    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
+    ///     handle.edit_all(pa, |mut e| {
+    ///         let mut nth = e.search_rev(s, None).nth(n);
+    ///         if let Some(range) = nth {
+    ///             s.move_to(range)
+    ///         }
+    ///     })
+    /// }
+    /// ```
     #[track_caller]
-    pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
-        let range = self.selection.byte_range(self.widget.text());
-        self.widget.text().matches(pat, range).unwrap()
+    pub fn search_rev_incl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
+        let end = self.selection.caret();
+        let text = self.widget.text();
+        text.search_rev(pat, ..end.byte() + self.char().len_utf8())
+            .unwrap()
+    }
+
+    /// Searches the [`Text`] for a regex, in reverse, including the
+    /// caret's character, until a given point
+    ///
+    /// The search will begin on the character right after the `caret`
+    /// and returns the [`Range<usize>`] for the match, where the
+    /// bounding `usize`s represents a byte index, and can be
+    /// directly used in, for example, [`Cursor::move_to`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::prelude::*;
+    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
+    ///     handle.edit_all(pa, |mut e| {
+    ///         let mut nth = e.search_rev(s, None).nth(n);
+    ///         if let Some(range) = nth {
+    ///             s.move_to(range)
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[track_caller]
+    pub fn search_rev_incl_until<R: RegexPattern>(
+        &self,
+        pat: R,
+        until: impl TextIndex,
+    ) -> impl Iterator<Item = R::Match> + '_ {
+        let end = self.selection.caret();
+        let start = until.to_byte_index();
+        let text = self.widget.text();
+        text.search_rev(pat, start..end.byte() + self.char().len_utf8())
+            .unwrap()
     }
 
     ////////// Text queries

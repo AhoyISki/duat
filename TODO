@@ -21,7 +21,7 @@ FOR NEXT UPDATE:
     [/] Create a setup_no_default_plugins in order to circumvent them.
 [/] Set title for better performance apparently (???).
 [x] Get rid of AreaId.
-[ ] Add completion lists.
+[x] Add completion lists.
 [x] Remembering at which Moment the Text was saved.
 [x] Create a jumplist.
 [x] Rework Parsers (again).
@@ -54,11 +54,15 @@ FOR NEXT UPDATE:
 
 KNOWN BUGS:
  HIGH PRIORITY:
+  [ ] Various duat-kak bugs.
+  [ ] Wrapped movement is borked.
   [ ] track_area not actually tracking correctly.
   [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
   [ ] First Point not updating when there are changes before the start of the screen.
+  [ ] Apparently treesitter still ain't working.
              
  LOW PRIORITY:
+  [ ] Completions aren't properly sized.
   [ ] Perfect print iterators.
     [ ] Perfect words iterator.
   [ ] tree-sitter-duat-text is not being used.
@@ -67,6 +71,7 @@ KNOWN BUGS:
   [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
 
 FUTURE UPDATES:
+[ ] Stop eagerly merging Selections.
 [ ] Lazily evaluate height and width, including when pushing and spawning.
 [ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.

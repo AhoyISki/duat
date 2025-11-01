@@ -336,7 +336,7 @@ impl<T: ?Sized> RwData<T> {
     }
 
     /// Wether the concrete [`TypeId`] matches that of `U`
-    pub fn data_is<U: 'static>(&self) -> bool {
+    pub fn is<U: 'static>(&self) -> bool {
         self.ty == TypeId::of::<U>()
     }
 

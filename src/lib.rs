@@ -803,3 +803,9 @@ mod book;
 #[doc = include_str!("../templates/config/lib.rs")]
 /// ```
 mod config {}
+
+#[cfg(doctest)]
+/// ```rust
+#[doc = include_str!("../../templates/plugin/lib.rs")]
+/// ```
+mod plugin {}

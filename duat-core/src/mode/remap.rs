@@ -16,21 +16,20 @@ use crate::{
 };
 
 mod global {
-    use std::{cell::RefCell, str::Chars, sync::LazyLock};
+    use std::{str::Chars, sync::LazyLock};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
     use super::{Gives, Remapper};
     use crate::{
-        data::{DataMap, Pass},
-        main_thread_only::MainThreadOnly,
+        data::{DataMap, Pass, RwData},
         mode::Mode,
         text::{Builder, Text, txt},
     };
 
     static REMAPPER: Remapper = Remapper::new();
-    static SEND_KEY: LazyLock<MainThreadOnly<RefCell<fn(&mut Pass, KeyEvent)>>> =
-        LazyLock::new(|| MainThreadOnly::new(RefCell::new(|_, _| {})));
+    static SEND_KEY: LazyLock<RwData<fn(&mut Pass, KeyEvent)>> =
+        LazyLock::new(|| RwData::new(|_, _| {}));
 
     /// Maps a sequence of keys to another
     ///
@@ -368,13 +367,12 @@ mod global {
         }
 
         // SAFETY: This function takes a Pass.
-        let send_key = *unsafe { SEND_KEY.get() }.borrow();
-        send_key(pa, key)
+        SEND_KEY.read(pa)(pa, key);
     }
 
     /// Sets the key sending function
-    pub(in crate::mode) unsafe fn set_send_key<M: Mode>() {
-        *unsafe { SEND_KEY.get() }.borrow_mut() = |pa, key| send_key_fn::<M>(pa, key)
+    pub(in crate::mode) unsafe fn set_send_key<M: Mode>(pa: &mut Pass) {
+        *SEND_KEY.write(pa) = |pa, key| send_key_fn::<M>(pa, key)
     }
 
     /// The key sending function, to be used as a pointer

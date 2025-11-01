@@ -1,9 +1,9 @@
 //! Struct that can react to change in the [`Text`]
 //!
 //! These structs will be informed of every [`Change`] that happens in
-//! the [`Text`], and are allowed to act accordingly. This action will
-//! be done by telling the [`Text`] what parts need to be updated.
-//! They will then be updated when deemed relevant by the [`Ui`] in
+//! the `Text`, and are allowed to act accordingly. This action will
+//! be done by telling the `Text` what parts need to be updated.
+//! They will then be updated when deemed relevant by the `Ui` in
 //! use (usually when these become visible).
 //!
 //! [`Ui`]: crate::ui::Ui
@@ -81,7 +81,8 @@ use crate::{
 /// for a _synchronous_ version of this function:
 ///
 /// ```rust
-/// use duat_core::prelude::*;
+/// # mod duat { pub mod prelude { pub use duat_core::buffer::*; } }
+/// use duat::prelude::*;
 ///
 /// struct CharCounter {
 ///     count: usize,
@@ -89,7 +90,7 @@ use crate::{
 ///     tracker: BufferTracker,
 /// }
 ///
-/// impl<U: Ui> Parser<U> for CharCounter {
+/// impl Parser for CharCounter {
 ///     fn parse(&mut self) -> bool {
 ///         // Fetches the latest Changes and Bytes of the Buffer
 ///         self.tracker.update();
@@ -130,39 +131,43 @@ use crate::{
 /// it is called:
 ///
 /// ```rust
+/// # mod duat { pub mod prelude { pub use duat_core::{
+/// #     buffer::*, context::Handle, data::Pass, form, text::{Point, Tagger}
+/// # };}}
 /// use std::ops::Range;
 ///
-/// use duat_core::prelude::*;
+/// use duat::prelude::*;
 ///
 /// struct HighlightMatch {
-///     _tracker: BufferTracker,
 ///     tagger: Tagger,
 /// }
 ///
-/// impl<U: Ui> Parser<U> for HighlightMatch {
-///     fn update(&mut self, pa: &mut Pass, handle: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
-///         // Remove all Tags previously added with self.tagger
+/// impl Parser for HighlightMatch {
+///     fn update(&mut self, pa: &mut Pass, handle: &Handle, on: Vec<Range<Point>>) {
+///         // Remove all tags previously added by this Parser.
 ///         handle.text_mut(pa).remove_tags(self.tagger, ..);
 ///
-///         // Get the range of the main cursor's word.
-///         let Some([s, e]) = handle.edit_main(pa, |c| c.search_fwd(r"\A\w+", None).next()) else {
+///         // The suffix of the main cursor's current word.
+///         let Some(range) = handle.edit_main(pa, |c| c.search_fwd(r"\A\w+").next()) else {
 ///             return;
 ///         };
-///         let s = handle
-///             .edit_main(pa, |c| c.search_rev(r"\w*\z", None).next().map(|[s, _]| s))
-///             .unwrap_or(s);
-///         // Get a regex pattern for said range.
-///         let pat = handle.text(pa).strs(s..e).unwrap().to_string();
-///         let pat = format!(r"\b{pat}\b");
+///         // The prefix of said cursor's word.
+///         let start = handle
+///             .edit_main(pa, |c| c.search_rev(r"\w*\z").next())
+///             .map(|range| range.start)
+///             .unwrap_or(range.start);
 ///
-///         // Add the "same_word" Form to every range that matches the pattern.
-///         let form_id = form::id_of!("same_word");
+///         // The TextParts struct lets you read from the Bytes while writing to the Tags.
 ///         let mut parts = handle.text_parts(pa);
-///         // The `on` list of ranges represents a the printed area,
-///         // So no unnecessary Tags are added.
+///         let pat = parts.bytes.strs(start..range.end);
+///         let form_id = form::id_of!("same_word");
+///
+///         // Highlight every identical word.
 ///         for range in on {
-///             for [s, e] in parts.bytes.search_fwd(&pat, range.clone()).unwrap() {
-///                 parts.tags.insert(self.tagger, s..e, form_id.to_tag(50));
+///             for range in parts.bytes.search_fwd(r"\w+", range.clone()).unwrap() {
+///                 if parts.bytes.strs(range.clone()) == pat {
+///                     parts.tags.insert(self.tagger, range, form_id.to_tag(50));
+///                 }
 ///             }
 ///         }
 ///     }
@@ -621,9 +626,12 @@ impl BufferTracker {
     /// like this:
     ///
     /// ```rust
+    /// # mod duat { pub mod prelude { pub use duat_core::{
+    /// #     buffer::*, context::Handle, data::Pass, form, text::*
+    /// # };}}
     /// use std::ops::Range;
     ///
-    /// use duat_core::prelude::*;
+    /// use duat::prelude::*;
     ///
     /// // When construction the SelectionLen, I turned on area tracking
     /// struct SelectionLen {
@@ -664,12 +672,12 @@ impl BufferTracker {
     /// [`Selection`], its length in bytes will be displayed within
     /// that selection with the `"sel_len"` [`Form`].
     ///
-    /// > [!NOTE]
-    /// >
-    /// > This function is actually incorrect. It doesn't take into
-    /// > account the possibility of intercepting newlines or the
-    /// > number being outside the printed area. The corrected version
-    /// > would be much too long for a simple example.
+    /// # Note
+    /// 
+    /// This function is actually incorrect. It doesn't take into
+    /// account the possibility of intercepting newlines or the
+    /// number being outside the printed area. The corrected version
+    /// would be much too long for a simple example.
     ///
     /// [`Selection`]: crate::mode::Selection
     /// [`Selections`]: crate::mode::Selections

@@ -2,7 +2,7 @@
 //!
 //! Commands on Duat are bits of code that can be executed on the
 //! [`PromptLine`] widget. They can also be invoked from other parts
-//! of the code, but their use is mostly intended for runtime calls.
+//! of the code, but their use is mostly intended for user calls.
 //!
 //! # Running commands
 //!
@@ -11,13 +11,14 @@
 //!
 //! ## When you have a [`Pass`]
 //!
-//! If you have a [`Pass`] available, it means you are in the main
+//! If you have a `Pass` available, it means you are in the main
 //! thread of execution, and can safely execute commands. The
-//! advantage of using a [`Pass`] is that you can retrieve the value
+//! advantage of using a `Pass` is that you can retrieve the value
 //! returned by the command:
 //!
 //! ```rust
-//! use duat_core::prelude::*;
+//! # mod duat { pub mod prelude { pub use duat_core::{cmd, context, data::Pass}; } }
+//! use duat::prelude::*;
 //! fn main_thread_function(pa: &mut Pass) {
 //!     let result = cmd::call(pa, "colorscheme solarized");
 //!     if result.is_ok() {
@@ -33,14 +34,15 @@
 //!
 //! ## When you don't have a [`Pass`]
 //!
-//! you may not have a [`Pass`] if for example, you are not on the
+//! you may not have a `Pass` if, for example, you are not on the
 //! main thread of execution. In this case, there is [`cmd::queue`],
-//! which, as the name implies, queues up a call to be executed later.
+//! which queues up a call to be executed later.
 //! This means that you can't retrieve the return value, since it will
 //! be executed asynchronously:
 //!
 //! ```rust
-//! use duat_core::prelude::*;
+//! # mod duat { pub mod prelude { pub use duat_core::cmd; } }
+//! use duat::prelude::*;
 //! fn on_a_thread_far_far_away() {
 //!     cmd::queue("set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1");
 //! }
@@ -58,8 +60,9 @@
 //! function that takes [`CmdResult`] as parameter:
 //!
 //! ```rust
+//! # mod duat { pub mod prelude { pub use duat_core::cmd; } }
 //! # use std::sync::atomic::{AtomicUsize, Ordering};
-//! use duat_core::prelude::*;
+//! use duat::prelude::*;
 //!
 //! static FAILURE_COUNT: AtomicUsize = AtomicUsize::new(0);
 //!
@@ -88,35 +91,30 @@
 //! variable number of [`Parameter`]s as arguments, alongside a
 //! [`Pass`]. Inside of this "closure", you will have access to the
 //! ful breatdh of duat's shareable state (just like any other time
-//! you have a [`Pass`]).
+//! you have a `Pass`).
 //!
 //! Most Rust [`std`] types (that would make sense) are implemented as
 //! [`Parameter`]s, so you can place [`String`]s, [`f32`]s, [`bool`]s,
-//! and all sorts of other types as [`Parameter`]s for your command.
+//! and all sorts of other types as `Parameter`s for your command.
 //!
 //! Types like [`Vec`] and [`Option`] are also implemented as
-//! [`Parameter`]s, so you can have a list of [`Parameter`]s or an
-//! optional [`Parameter`].
+//! [`Parameter`]s, so you can have a list of `Parameter`s or an
+//! optional `Parameter`.
 //!
 //! ```rust
-//! # duat_core::doc_duat!(duat);
-//! setup_duat!(setup);
-//! use duat::prelude::*;
-//!
-//! fn setup() {
-//!     let callers = ["unset-form", "uf"];
-//!     // A `Vec<T>` parameter will try to collect all
-//!     // remaining arguments as `T` in a list.
-//!     let result = cmd::add!(callers, |pa: &mut Pass, forms: Vec<cmd::FormName>| {
-//!         for form in forms.iter() {
-//!             form::set("form", Form::new());
-//!         }
-//!         // You can return a success message, but must
-//!         // return an error message.
-//!         // For those, you should use the `txt!` macro.
-//!         Ok(Some(txt!("Unset [a]{}[] forms", forms.len()).build()))
-//!     });
-//! }
+//! # mod duat { pub mod prelude { pub use duat_core::{cmd, form::{self, Form}, text::txt}; } }
+//! let callers = ["unset-form", "uf"];
+//! // A `Vec<T>` parameter will try to collect all
+//! // remaining arguments as `T` in a list.
+//! let result = cmd::add!(callers, |pa: &mut Pass, forms: Vec<cmd::FormName>| {
+//!     for form in forms.iter() {
+//!         form::set("form", Form::new());
+//!     }
+//!     // You can return a success message, but must
+//!     // return an error message.
+//!     // For those, you should use the `txt!` macro.
+//!     Ok(Some(txt!("Unset [a]{}[] forms", forms.len()).build()))
+//! });
 //! ```
 //!
 //! In the command above, you'll notice that [`Ok`] values return
@@ -126,100 +124,24 @@
 //! what went wrong in the command. Most of the time, this happens
 //! because of something out of your control, like a buffer not
 //! existing. In these cases, the `?` is enough to return an
-//! appropriate [`Text`].
+//! appropriate `Text`.
 //!
-//! Duat commands also offer flags in the form of the [`Flags`]
-//! [`Parameter`]. These can make use of word flags (`--full-words`)
-//! and blob flags (`-singlechar`):
-//!
-//! ```rust
-//! # duat_core::doc_duat!(duat);
-//! setup_duat!(setup);
-//! use std::sync::atomic::{AtomicU32, Ordering};
-//!
-//! use duat::prelude::*;
-//!
-//! static EXPRESSION: AtomicU32 = AtomicU32::new('a' as u32);
-//!
-//! // Imagine this is the config crate `setup` function
-//! fn setup() {
-//!     cmd::add!("mood", |_pa, flags: cmd::Flags| {
-//!         // `Flags::long` checks for `--` flags
-//!         if flags.word("happy") {
-//!             EXPRESSION.store('😁' as u32, Ordering::Relaxed)
-//!         // `Flags::short` checks for `-` flags
-//!         // They can check for any valid unicode character.
-//!         } else if flags.blob("🤯") {
-//!             EXPRESSION.store('🤯' as u32, Ordering::Relaxed)
-//!         } else if flags.word("sad") {
-//!             EXPRESSION.store('😢' as u32, Ordering::Relaxed)
-//!         } else {
-//!             EXPRESSION.store('😶' as u32, Ordering::Relaxed)
-//!         }
-//!         Ok(None)
-//!     });
-//! }
-//!
-//! fn main_thread_function(pa: &mut Pass) {
-//!     let _ = cmd::call(pa, "mood --sad -🤯");
-//!     // Passing more arguments than needed results in
-//!     // an error, so the command is never executed.
-//!     let _ = cmd::call_notify(pa, "mood --happy extra args not allowed");
-//!
-//!     let num = EXPRESSION.load(Ordering::Relaxed);
-//!     assert_eq!(char::from_u32(num), Some('🤯'))
-//! }
-//! ```
-//!
-//! There are other builtin types of [`Parameter`]s in [`cmd`] that
+//! There are other builtin types of [`Parameter`]s in `cmd` that
 //! can be used on a variety of things. For example, the [`Remainder`]
-//! [`Parameter`] is one that just takes the remaining arguments and
+//! `Parameter` is one that just takes the remaining arguments and
 //! collects them into a single [`String`].
 //!
 //! ```rust
-//! # duat_core::doc_duat!(duat);
-//! setup_duat!(setup);
+//! # mod duat { pub mod prelude { pub use duat_core::{cmd, form::{self, Form}, text::txt}; } }
 //! use duat::prelude::*;
 //!
-//! fn setup() {
-//!     cmd::add!("pip", |_pa, args: cmd::Remainder| {
-//!         let child = std::process::Command::new("pip").spawn()?;
-//!         let res = child.wait_with_output()?;
+//! cmd::add!("pip", |_pa, args: cmd::Remainder| {
+//!     let child = std::process::Command::new("pip").spawn()?;
+//!     let res = child.wait_with_output()?;
 //!
-//!         Ok(Some(txt!("{res:?}").build()))
-//!     });
-//! }
+//!     Ok(Some(txt!("{res:?}").build()))
+//! });
 //! ```
-//!
-//! You can also act on [`Widget`]s, with the [`Handles`]
-//! [`Parameter`]:
-//!
-//! ```rust
-//! # duat_core::doc_duat!(duat);
-//! setup_duat!(setup);
-//! use duat::prelude::{buffer::Buffer, *};
-//!
-//! fn setup() {
-//!     cmd::add!(
-//!         "set-mask",
-//!         |pa, mask: String, handles: cmd::Handles<Buffer<Ui>>| {
-//!             handles.on_flags(pa, |pa, handle| {
-//!                 handle.set_mask(mask.clone().leak());
-//!             });
-//!
-//!             Ok(None)
-//!         }
-//!     );
-//! }
-//! ```
-//!
-//! In this case, [`Handles<Buffer<Ui>>`] will grab every single
-//! [`Handle<Buffer<Ui>>`] open at the moment, and lets you act on
-//! them. The function [`Handles::on_flags`] will act based on the
-//! [`Flags`] that were passed, i.e. if `"--global"` was passed,
-//! [`on_flags`] will act on every [`Handle`] of a a [`Buffer`]. You
-//! can also ignore the [`Flags`] by calling something like
-//! [`Handles::on_window`], or [`Handles::on_current`].
 //!
 //! [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
 //! [`cmd::call_notify`]: call_notify
@@ -227,10 +149,6 @@
 //! [`cmd::queue_and`]: queue_and
 //! [`Send + 'static`]: Send
 //! [`Color`]: crate::form::Color
-//! [`Widget`]: crate::ui::Widget
-//! [`Buffer`]: crate::buffer::Buffer
-//! [`&str`]: str
-//! [`cmd`]: self
 //! [`txt!`]: crate::prelude::txt
 //! [`Ok(Some({Text}))`]: Ok
 //! [`Form`]: crate::form::Form
@@ -261,16 +179,10 @@ use crate::{
 
 mod parameters;
 
+/// Adds all the usual session commands
 pub(crate) fn add_session_commands() {
-    add!("alias", |pa,
-                   flags: Flags,
-                   alias: &str,
-                   command: Remainder| {
-        if !flags.is_empty() {
-            Err(txt!("An alias cannot take any flags").build())
-        } else {
-            crate::cmd::alias(pa, alias, command)
-        }
+    add!("alias", |pa, alias: &str, command: Remainder| {
+        crate::cmd::alias(pa, alias, command)
     });
 
     add!(["quit", "q"], |pa, handle: Option<Buffer>| {

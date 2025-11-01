@@ -493,7 +493,7 @@ impl Node {
 
     /// Wether the value within is `W`
     pub(crate) fn data_is<W: 'static>(&self) -> bool {
-        self.handle.widget().data_is::<W>()
+        self.handle.widget().is::<W>()
     }
 
     /// Wether this and [`RwData`] point to the same value

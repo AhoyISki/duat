@@ -63,7 +63,7 @@ impl Bytes {
     /// [`Text::is_empty_empty`]: super::Text::is_empty_empty
     pub fn is_empty(&self) -> bool {
         let (s0, s1) = self.buf.as_slices();
-        (s0 == b"\n" && s1 == b"") || (s0 == b"" && s1 == b"\n")
+        (s0 == b"\n" && s1 == b"") || (s0 == b"" && s1 == b"\n") || (s0 == b"" && s1 == b"")
     }
 
     /// The `char` at the [`Point`]'s position

@@ -405,13 +405,13 @@ mod macros {
         #[allow(unused_imports)]
         use $crate::{
             private_exports::{
-                duat_core::{context::Handle, data::Pass, buffer::Buffer, ui::PushSpecs, text::Builder},
+                duat_core::{context::Handle, data::Pass, ui::PushSpecs, text::Builder},
                 format_like, parse_form, parse_status_part, parse_str
             },
             widgets::StatusLineFmt,
         };
 
-        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle<Buffer>| {};
+        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle| {};
         let checker = |_: &Pass| false;
 
         let (text_fn, checker) = format_like!(
@@ -423,7 +423,8 @@ mod macros {
 
         StatusLineFmt::new_with(
             (
-                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<Buffer>| {
+                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle| {
+                    builder.no_space_after_empty = true;
                     text_fn(pa, &mut builder, &handle);
                     builder.build()
                 }),

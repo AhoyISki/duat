@@ -61,6 +61,8 @@ pub struct Builder {
     last_align: Option<(usize, Alignment)>,
     buffer: String,
     last_was_empty: bool,
+    /// Wether to no_space_after_empty "`s after an empty element is pushed
+    pub no_space_after_empty: bool,
 }
 
 impl Builder {
@@ -208,11 +210,21 @@ impl Builder {
 
     /// Pushes an [`impl Display`] to the [`Text`]
     ///
+    /// If `builder.no_space_after_empty is set to `true` and
+    /// the argument is equal to `" "`, then it won't be added if
+    /// the previous argument was empty. This is useful especially
+    /// in situations where you expect to be constructing a `Text`
+    /// with spaces in between the elements (like in a status line),
+    /// but you don't want an empty element to just leave to space
+    /// wide gap in between two non empty elements.
+    ///
     /// [`impl Display`]: std::fmt::Display
     pub fn push_str<D: Display>(&mut self, d: D) {
         self.buffer.clear();
         write!(self.buffer, "{d}").unwrap();
-        if self.buffer.is_empty() {
+        if self.buffer.is_empty()
+            || (self.no_space_after_empty && self.buffer == " " && self.last_was_empty)
+        {
             self.last_was_empty = true;
         } else {
             self.last_was_empty = false;
@@ -237,6 +249,7 @@ impl Default for Builder {
             last_align: None,
             buffer: String::with_capacity(50),
             last_was_empty: false,
+            no_space_after_empty: false
         }
     }
 }
