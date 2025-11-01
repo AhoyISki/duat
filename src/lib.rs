@@ -523,7 +523,7 @@ impl<'a> Object<'a> {
             event!('|') => Some(Self::Bound(r"\|")),
             event!('$') => Some(Self::Bound(r"\$")),
             event!('^') => Some(Self::Bound(r"\^")),
-            event!('s') => Some(Self::Bound(r"[\.;!\?]")),
+            event!('s') => Some(Self::Bound(r"[\.;!\?]\s*")),
             event!('p') => Some(Self::Bound("^\n")),
             event!('b' | '(' | ')') => Some(Self::Bounds(r"\(", r"\)")),
             event!('B' | '{' | '}') => Some(Self::Bounds(r"\{", r"\}")),

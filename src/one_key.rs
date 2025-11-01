@@ -193,12 +193,14 @@ fn match_inside_around(
                 Some(())
             }),
             's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let end = object.find_behind(c, 0)?.end;
-                let start = object.find_ahead(c, 0)?.start;
-                c.move_to(start..end);
-                if is_inside || char == ' ' && start < c.text().len().byte() {
-                    c.move_hor(-1);
+                let start = object.find_behind(c, 0)?.end;
+                let end_range = object.find_ahead(c, 0)?;
+                if is_inside {
+                    c.move_to(start..=end_range.start)
+                } else {
+                    c.move_to(start..end_range.end)
                 }
+                
                 Some(())
             }),
             'p' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
