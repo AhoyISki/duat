@@ -848,8 +848,22 @@ impl Mode for Normal {
             ////////// Other mode changing keys
             event!(':') => mode::set(RunCommands::new()),
             event!('|') => mode::set(PipeSelections::new()),
-            event!('G') => mode::set(OneKey::GoTo(SelType::Extend)),
+            event!('g') if param > 1 => {
+                handle.selections_mut(pa).remove_extras();
+                handle.edit_main(pa, |mut c| {
+                    c.unset_anchor();
+                    c.move_to_coords(param - 1, 0);
+                })
+            }
             event!('g') => mode::set(OneKey::GoTo(SelType::Normal)),
+            event!('G') if param > 1 => {
+                handle.selections_mut(pa).remove_extras();
+                handle.edit_main(pa, |mut c| {
+                    c.set_anchor_if_needed();
+                    c.move_to_coords(param - 1, 0)
+                })
+            }
+            event!('G') => mode::set(OneKey::GoTo(SelType::Extend)),
             event!(' ') => mode::set(mode::User),
 
             ////////// History manipulation
