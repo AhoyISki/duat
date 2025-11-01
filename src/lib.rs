@@ -574,7 +574,7 @@ impl<'a> Object<'a> {
             event!('$') => Some(Self::Bound(r"\$")),
             event!('^') => Some(Self::Bound(r"\^")),
             event!('s') => Some(Self::Bound(r"[\.;!\?]\s*")),
-            event!('p') => Some(Self::Bound("^\n+")),
+            event!('p') => Some(Self::Bound("^\n+|\n{2,}|\n$")),
             event!('b' | '(' | ')') => Some(Self::Bounds(r"\(", r"\)")),
             event!('B' | '{' | '}') => Some(Self::Bounds(r"\{", r"\}")),
             event!('r' | '[' | ']') => Some(Self::Bounds(r"\[", r"\]")),
