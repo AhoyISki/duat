@@ -134,6 +134,7 @@ mod tags;
 /// [`Widget`]: crate::ui::Widget
 pub struct Text(Box<InnerText>);
 
+#[derive(Clone)]
 struct InnerText {
     bytes: Bytes,
     tags: InnerTags,
@@ -242,7 +243,7 @@ impl Text {
     ///
     /// [`is_empty`]: Bytes::is_empty
     pub fn is_empty_empty(&self) -> bool {
-        self.0.bytes == "\n" && self.0.tags.is_empty()
+        self.0.bytes.is_empty() && self.0.tags.is_empty()
     }
 
     /// The inner bytes of the [`Text`]
@@ -809,14 +810,13 @@ impl std::fmt::Debug for Text {
 
 impl Clone for Text {
     fn clone(&self) -> Self {
-        Self(Box::new(InnerText {
-            bytes: self.0.bytes.clone(),
-            tags: self.0.tags.clone(),
-            selections: self.0.selections.clone(),
-            history: self.0.history.clone(),
-            has_changed: self.0.has_changed,
-            has_unsaved_changes: false,
-        }))
+        let mut text = Self(self.0.clone());
+        if text.slices(..).next_back().is_none_or(|b| b != b'\n') {
+            let end = text.len();
+            text.apply_change(None, Change::str_insert("\n", end).to_string_change());
+        }
+
+        text
     }
 }
 
