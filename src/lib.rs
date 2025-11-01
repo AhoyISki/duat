@@ -498,7 +498,23 @@ enum Object<'a> {
 
 impl<'a> Object<'a> {
     fn new(event: KeyEvent, opts: PrintOpts, brackets: Brackets) -> Option<Self> {
-        static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
+        static BRACKET_PATS: Memoized<Brackets, ([&str; 2], [&str; 3])> = Memoized::new();
+        let m_and_u_patterns = |brackets: Brackets| {
+            BRACKET_PATS.get_or_insert_with(brackets, || {
+                let (s_pat, e_pat): (String, String) = brackets
+                    .iter()
+                    .map(|[s_b, e_b]| (*s_b, *e_b))
+                    .intersperse(("|", "|"))
+                    .collect();
+                let (s_arg, e_arg) = (format!(r"({s_pat})\s*"), format!(r"\s*({e_pat})"));
+
+                ([s_pat.leak(), e_pat.leak()], [
+                    r"(;|,)\s*",
+                    s_arg.leak(),
+                    e_arg.leak(),
+                ])
+            })
+        };
 
         match event {
             event!('Q') => Some(Self::Bound("\"")),
@@ -513,21 +529,13 @@ impl<'a> Object<'a> {
             event!('B' | '{' | '}') => Some(Self::Bounds(r"\{", r"\}")),
             event!('r' | '[' | ']') => Some(Self::Bounds(r"\[", r"\]")),
             event!('a' | '<' | '>') => Some(Self::Bounds("<", ">")),
-            event!('m' | 'M') | alt!('m' | 'M') | event!('u') => Some({
-                let [m_b, s_b, e_b] = BRACKET_PATS.get_or_insert_with(brackets, || {
-                    let (s_pat, e_pat): (String, String) = brackets
-                        .iter()
-                        .map(|[s_b, e_b]| (*s_b, *e_b))
-                        .intersperse(("|", "|"))
-                        .collect();
-                    [r"(;|,)\s*", s_pat.leak(), e_pat.leak()]
-                });
-
-                if let Char('m' | 'M') = event.code {
-                    Self::Bounds(s_b, e_b)
-                } else {
-                    Self::Argument(m_b, s_b, e_b)
-                }
+            event!('m' | 'M') | alt!('m' | 'M') => Some({
+                let ([s_b, e_b], _) = m_and_u_patterns(brackets);
+                Self::Bounds(s_b, e_b)
+            }),
+            event!('u') => Some({
+                let (_, [m_b, s_arg, e_arg]) = m_and_u_patterns(brackets);
+                Self::Argument(m_b, s_arg, e_arg)
             }),
             event!('w') => Some(Self::Anchored({
                 static WORD_PATS: Memoized<&'static [char], &str> = Memoized::new();
@@ -562,8 +570,9 @@ impl<'a> Object<'a> {
             }
             Object::Bound(b) => c.search_fwd(b).next(),
             Object::Argument(m_b, s_b, e_b) => {
+                context::debug!("{m_b:?}, {s_b:?}, {e_b:?}");
                 let caret = c.caret();
-                let (_, range) = c.search_fwd_excl([m_b, s_b, e_b]).find(|(id, range)| {
+                let (_, range) = c.search_fwd([m_b, s_b, e_b]).find(|(id, range)| {
                     s_count += (*id == 1) as i32 - (*id == 2 && range.start != caret.byte()) as i32;
                     s_count == 0 || (s_count == 1 && *id == 0)
                 })?;

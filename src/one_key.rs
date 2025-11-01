@@ -180,16 +180,16 @@ fn match_inside_around(
     if let Some(object) = Object::new(event, opts, brackets) {
         match char {
             'w' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let start = object.find_behind(c, 0);
-                let range = object.find_ahead(c, 0)?;
+                let prefix = object.find_behind(c, 0);
+                let suffix = object.find_ahead(c, 0)?;
                 let b0 = {
-                    let b0 = start.map(|range| range.start).unwrap_or(c.caret().byte());
+                    let b0 = prefix.map(|range| range.start).unwrap_or(c.caret().byte());
                     let b0_cat = Category::of(c.char_at(b0).unwrap(), opts);
                     let b1_cat = Category::of(c.char(), opts);
                     let is_same_cat = event.modifiers == KeyMod::ALT || b0_cat == b1_cat;
                     if is_same_cat { b0 } else { c.caret().byte() }
                 };
-                c.move_to(b0..range.end);
+                c.move_to(b0..suffix.end);
                 Some(())
             }),
             's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
@@ -202,8 +202,7 @@ fn match_inside_around(
                 Some(())
             }),
             'p' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let end = object.find_ahead(c, 0);
-                let end = end?.start;
+                let end = object.find_ahead(c, 0)?.start;
                 c.move_to(end);
                 c.set_anchor();
                 let range = object.find_behind(c, 0).unwrap_or_default();
@@ -221,12 +220,21 @@ fn match_inside_around(
                 if is_inside {
                     c.move_to(s_range.end..e_range.start);
                 } else {
-                    c.move_to(s_range.start..e_range.end);
-                    if matches!(c.char_at(s_range.start), Some(';' | ',')) {
-                        c.swap_ends();
-                        c.move_hor(1);
-                        c.swap_ends();
-                    }
+                    let space_start = c.text().search_fwd(r"\A\s+", e_range.start..);
+                    let end = if let Some(range) = space_start.unwrap().next() {
+                        range.end
+                    } else {
+                        e_range.end
+                    };
+
+                    let space_start = c.text().search_fwd(r"\s+\z", ..s_range.end);
+                    let start = if let Some(range) = space_start.unwrap().next() {
+                        range.start
+                    } else {
+                        s_range.start
+                    };
+
+                    c.move_to(start..end);
                 }
 
                 Some(())

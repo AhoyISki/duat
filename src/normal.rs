@@ -329,20 +329,15 @@ impl Mode for Normal {
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(event, opts, self.brackets).unwrap();
                     let s_range = object.find_behind(c, 0)?;
-                    context::debug!("found behind at {s_range:?}");
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
                     c.move_to(s_range.start);
 
-                    context::debug!("moved to start");
 
                     let bound = c.strs(s_range.clone()).unwrap().to_string();
                     let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
                     
-                    context::debug!("got matching bounds");
-                    
                     let e_range = Object::Bounds(s_b, e_b).find_ahead(c, 1)?;
-                    context::debug!("found ahead");
                     if char == 'm' {
                         c.set_anchor();
                     }
