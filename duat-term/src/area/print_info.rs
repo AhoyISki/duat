@@ -27,7 +27,7 @@ impl PrintInfo {
         &mut self,
         coords: Coords,
         text: &Text,
-        cfg: PrintOpts,
+        opts: PrintOpts,
     ) -> TwoPoints {
         self.prev_main = self.prev_main.min(text.last_point());
 
@@ -37,7 +37,7 @@ impl PrintInfo {
         {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {
-            self.set_first_start(coords, text, cfg)
+            self.set_first_start(coords, text, opts)
         } else {
             Default::default()
         };
@@ -48,7 +48,7 @@ impl PrintInfo {
     }
 
     /// The ending [`TwoPoints`] of the [`PrintInfo`]
-    pub(super) fn end_points(&mut self, coords: Coords, text: &Text, cfg: PrintOpts) -> TwoPoints {
+    pub(super) fn end_points(&mut self, coords: Coords, text: &Text, opts: PrintOpts) -> TwoPoints {
         self.prev_main = self.prev_main.min(text.last_point());
 
         let s_points = if let Some(s_points) = self.s_points
@@ -57,7 +57,7 @@ impl PrintInfo {
         {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {
-            self.set_first_start(coords, text, cfg)
+            self.set_first_start(coords, text, opts)
         } else {
             return Default::default();
         };
@@ -70,12 +70,7 @@ impl PrintInfo {
             (s_points, 0)
         };
 
-        let mut iter = print_iter(
-            text,
-            points,
-            cfg.wrap_width(coords.width()).unwrap_or(coords.width()),
-            cfg,
-        );
+        let mut iter = print_iter(text, points, coords.width(), opts);
 
         self.prev_coords = coords;
 
@@ -92,7 +87,7 @@ impl PrintInfo {
     }
 
     /// Scrolls around a given [`Point`]
-    pub(super) fn scroll_around(&mut self, p: Point, coords: Coords, text: &Text, cfg: PrintOpts) {
+    pub(super) fn scroll_around(&mut self, p: Point, coords: Coords, text: &Text, opts: PrintOpts) {
         self.prev_main = self.prev_main.min(text.last_point());
 
         if coords.width() > 0 && coords.height() > 0 {
@@ -100,12 +95,12 @@ impl PrintInfo {
                 && coords.width() == self.prev_coords.width()
                 && coords.height() == self.prev_coords.height()
             {
-                self.scroll_ver_around(p, coords, text, cfg, s_points);
+                self.scroll_ver_around(p, coords, text, opts, s_points);
             } else {
                 self.prev_main = p;
-                self.set_first_start(coords, text, cfg);
+                self.set_first_start(coords, text, opts);
             }
-            self.scroll_hor_around(p, coords.width(), text, cfg);
+            self.scroll_hor_around(p, coords.width(), text, opts);
         }
 
         self.prev_coords = coords;
@@ -113,7 +108,7 @@ impl PrintInfo {
     }
 
     /// Scrolls vertically
-    pub(super) fn scroll_ver(&mut self, by: i32, coords: Coords, text: &Text, cfg: PrintOpts) {
+    pub(super) fn scroll_ver(&mut self, by: i32, coords: Coords, text: &Text, opts: PrintOpts) {
         self.prev_main = self.prev_main.min(text.last_point());
 
         let s_points = if let Some(s_points) = self.s_points
@@ -122,21 +117,20 @@ impl PrintInfo {
         {
             s_points
         } else {
-            let s_points = self.set_first_start(coords, text, cfg);
+            let s_points = self.set_first_start(coords, text, opts);
             self.s_points = Some(s_points);
             s_points
         };
 
-        let cap = cfg.wrap_width(coords.width()).unwrap_or(coords.width());
-
         if by > 0 {
-            let line_start = print_iter(text, s_points, cap, cfg)
+            let line_start = print_iter(text, s_points, coords.width(), opts)
                 .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
                 .take(by as usize + 1)
                 .last()
                 .unwrap_or_default();
 
-            let max_s_points = max_s_points(text, cfg, coords.height(), cap);
+            let cap = opts.wrap_width(coords.width()).unwrap_or(coords.width());
+            let max_s_points = max_s_points(text, opts, coords.height(), cap);
 
             if line_start < max_s_points {
                 self.s_points = Some(line_start);
@@ -145,7 +139,7 @@ impl PrintInfo {
             }
         } else {
             self.s_points = Some(
-                rev_print_iter(text, s_points, cap, cfg)
+                rev_print_iter(text, s_points, coords.width(), opts)
                     .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
                     .nth(by.unsigned_abs() as usize - 1)
                     .unwrap_or_default(),
@@ -160,18 +154,18 @@ impl PrintInfo {
         points: TwoPoints,
         coords: Coords,
         text: &Text,
-        cfg: PrintOpts,
+        opts: PrintOpts,
     ) {
         self.prev_main = self.prev_main.min(text.last_point());
 
-        let cap = cfg.wrap_width(coords.width()).unwrap_or(coords.width());
+        let cap = opts.wrap_width(coords.width()).unwrap_or(coords.width());
 
-        let line_start = rev_print_iter(text, points, cap, cfg)
+        let line_start = rev_print_iter(text, points, cap, opts)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
             .next()
             .unwrap_or_default();
 
-        let max_line_start = max_s_points(text, cfg, coords.height(), cap);
+        let max_line_start = max_s_points(text, opts, coords.height(), cap);
 
         if line_start < max_line_start {
             self.s_points = Some(line_start);
@@ -187,7 +181,7 @@ impl PrintInfo {
         p: Point,
         coords: Coords,
         text: &Text,
-        cfg: PrintOpts,
+        opts: PrintOpts,
         s_points: TwoPoints,
     ) {
         if self.prev_main == p {
@@ -199,12 +193,12 @@ impl PrintInfo {
             .points_after(points)
             .unwrap_or_else(|| text.len_points());
 
-        let cap = cfg.wrap_width(coords.width()).unwrap_or(coords.width());
+        let cap = opts.wrap_width(coords.width()).unwrap_or(coords.width());
 
         let mut below_dist = 0;
         let mut total_dist = 0;
         let mut wrapped_char = false;
-        let mut iter = rev_print_iter(text, after, cap, cfg)
+        let mut iter = rev_print_iter(text, after, cap, opts)
             .filter_map(|(caret, item)| {
                 wrapped_char |= caret.wrap;
                 (item.part.is_char() && wrapped_char).then(|| {
@@ -218,9 +212,9 @@ impl PrintInfo {
             });
 
         let target = if self.prev_main > p {
-            cfg.scrolloff.y as usize
+            opts.scrolloff.y as usize
         } else {
-            coords.height().saturating_sub(cfg.scrolloff.y as u32 + 1) as usize
+            coords.height().saturating_sub(opts.scrolloff.y as u32 + 1) as usize
         };
         let first = iter.nth(target).unwrap_or_default();
 
@@ -238,9 +232,8 @@ impl PrintInfo {
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
     fn scroll_hor_around(&mut self, p: Point, width: u32, text: &Text, opts: PrintOpts) {
-        let cap = opts.wrap_width(width).unwrap_or(u32::MAX);
         // Quick shortcut to avoid iteration.
-        if cap <= width {
+        if opts.wrap_width(width).is_some_and(|cap| cap <= width) {
             self.x_shift = 0;
             return;
         }
@@ -251,7 +244,7 @@ impl PrintInfo {
                 .points_after(points)
                 .unwrap_or_else(|| text.len_points());
 
-            let mut iter = rev_print_iter(text, after, cap, opts);
+            let mut iter = rev_print_iter(text, after, width, opts);
 
             let (points, start, end) = iter
                 .find_map(|(Caret { x, len, .. }, item)| {
@@ -260,7 +253,7 @@ impl PrintInfo {
                 })
                 .unwrap_or((TwoPoints::default(), 0, 0));
 
-            let line_len = print_iter(text, points, cap, opts)
+            let line_len = print_iter(text, points, width, opts)
                 .take_while(|(caret, item)| !caret.wrap || item.points() == points)
                 .last()
                 .map(|(Caret { x, len, .. }, _)| x + len)
@@ -282,8 +275,8 @@ impl PrintInfo {
     }
 
     /// Sets and returns the first [`TwoPoints`]
-    fn set_first_start(&mut self, coords: Coords, text: &Text, cfg: PrintOpts) -> TwoPoints {
-        let cap = cfg.wrap_width(coords.width());
+    fn set_first_start(&mut self, coords: Coords, text: &Text, opts: PrintOpts) -> TwoPoints {
+        let cap = opts.wrap_width(coords.width());
 
         let points = text.ghost_max_points_at(self.prev_main.min(text.len()).byte());
         let after = text
@@ -291,13 +284,13 @@ impl PrintInfo {
             .unwrap_or_else(|| text.len_points());
 
         let mut lines_traversed: u32 = 0;
-        let points = rev_print_iter(text, after, cap.unwrap_or(coords.width()), cfg)
+        let points = rev_print_iter(text, after, cap.unwrap_or(coords.width()), opts)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
             .inspect(|_| lines_traversed += 1)
             .nth(
                 self.vert_dist
-                    .max(cfg.scrolloff.y as u32)
-                    .min(coords.height().saturating_sub(cfg.scrolloff.y as u32 + 1))
+                    .max(opts.scrolloff.y as u32)
+                    .min(coords.height().saturating_sub(opts.scrolloff.y as u32 + 1))
                     as usize,
             )
             .unwrap_or_default();
@@ -305,7 +298,7 @@ impl PrintInfo {
         // We don't want to count the the main cursor's line's wrap.
         self.vert_dist = lines_traversed.saturating_sub(1);
         self.s_points = Some(points);
-        
+
         points
     }
 
@@ -314,11 +307,11 @@ impl PrintInfo {
     }
 }
 
-fn max_s_points(text: &Text, cfg: PrintOpts, height: u32, cap: u32) -> TwoPoints {
-    rev_print_iter(text, text.len_points(), cap, cfg)
+fn max_s_points(text: &Text, opts: PrintOpts, height: u32, cap: u32) -> TwoPoints {
+    rev_print_iter(text, text.len_points(), cap, opts)
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-        .nth(if cfg.allow_overscroll {
-            cfg.scrolloff.y.saturating_sub(1) as usize
+        .nth(if opts.allow_overscroll {
+            opts.scrolloff.y.saturating_sub(1) as usize
         } else {
             height.saturating_sub(1) as usize
         })

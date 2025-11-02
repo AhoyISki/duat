@@ -17,6 +17,7 @@ pub fn print_iter(
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let start_points = text.visual_line_start(points, 0);
     let max_indent = if opts.indent_wraps { cap } else { 0 };
+    let cap = opts.wrap_width(cap).unwrap_or(cap);
 
     // Line construction variables.
     let (mut total_len, mut gaps) = (0, Gaps::OnRight);

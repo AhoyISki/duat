@@ -418,12 +418,7 @@ impl RawArea for Area {
             .inspect(self.id, |_, layout| layout.max_value())
             .ok_or_else(|| txt!("This Area was already deleted"))?;
 
-        let iter = iter::print_iter(
-            text,
-            TwoPoints::default(),
-            opts.wrap_width(max.x).unwrap_or(max.x),
-            opts,
-        );
+        let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts);
 
         // It can be None if there is total concalment.
         Ok(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
@@ -516,7 +511,7 @@ impl RawArea for Area {
         opts: PrintOpts,
     ) -> impl Iterator<Item = (Caret, Item)> + 'a {
         let width = self.width() as u32;
-        print_iter(text, points, opts.wrap_width(width).unwrap_or(width), opts)
+        print_iter(text, points, width, opts)
     }
 
     fn rev_print_iter<'a>(
