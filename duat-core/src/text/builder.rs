@@ -86,21 +86,20 @@ impl Builder {
     /// [`Widget`]: crate::ui::Widget
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
-        let end = self.text.last_point().byte();
         if let Some((b, id)) = self.last_form
             && b < self.text.last_point().byte()
         {
-            self.text.insert_tag(Tagger::basic(), b..end, id);
+            self.text.insert_tag(Tagger::basic(), b.., id);
         }
         if let Some((b, align)) = self.last_align
             && b < self.text.last_point().byte()
         {
             match align {
                 Alignment::Center => {
-                    self.text.insert_tag(Tagger::basic(), b..end, AlignCenter);
+                    self.text.insert_tag(Tagger::basic(), b.., AlignCenter);
                 }
                 Alignment::Right => {
-                    self.text.insert_tag(Tagger::basic(), b..end, AlignRight);
+                    self.text.insert_tag(Tagger::basic(), b.., AlignRight);
                 }
                 _ => {}
             }
