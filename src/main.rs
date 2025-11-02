@@ -221,7 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(profile) = reloading_profile {
             let time = match RELOAD_INSTANT.lock().unwrap().take() {
                 Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
-                None => Text::builder(),
+                None => Text::default(),
             };
             context::info!("[a]{profile}[] profile reloaded{time}");
         }

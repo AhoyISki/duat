@@ -609,7 +609,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         self.master
             .as_ref()
             .map(|handle| handle.as_ref())
-            .ok_or_else(|| txt!("Widget was not pushed to another").build())
+            .ok_or_else(|| txt!("Widget was not pushed to another"))
     }
 
     /// Returns the [`Handle<Buffer>`] this one was pushed to, if it
@@ -625,7 +625,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         self.master
             .as_ref()
             .and_then(|handle| handle.try_downcast())
-            .ok_or_else(|| txt!("Widget was not pushed to a [a]Buffer").build())
+            .ok_or_else(|| txt!("Widget was not pushed to a [a]Buffer"))
     }
 
     /// Reads related [`Widget`]s of type `W2`, as well as its
@@ -829,7 +829,8 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         context::windows().spawn_on_widget(pa, (&self.area, specs), widget)
     }
 
-    /// Closes this `Handle`, removing the [`Widget`] from the [`Window`]
+    /// Closes this `Handle`, removing the [`Widget`] from the
+    /// [`Window`]
     ///
     /// [`Window`]: crate::ui::Window
     pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {

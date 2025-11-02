@@ -62,7 +62,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use duat_base::widgets::{LineNumbersOpts, Notifications, StatusLineFmt};
+use duat_base::widgets::{LineNumbersOpts, StatusLineFmt};
 use duat_core::data::Pass;
 #[allow(unused_imports)]
 pub use duat_core::opts::*;

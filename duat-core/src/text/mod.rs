@@ -826,13 +826,13 @@ impl Clone for Text {
 
 impl From<std::io::Error> for Text {
     fn from(value: std::io::Error) -> Self {
-        txt!("{}", value.kind().to_string()).build()
+        txt!("{}", value.kind().to_string())
     }
 }
 
 impl From<Box<dyn std::error::Error>> for Text {
     fn from(value: Box<dyn std::error::Error>) -> Self {
-        txt!("{}", value.to_string()).build()
+        txt!("{}", value.to_string())
     }
 }
 

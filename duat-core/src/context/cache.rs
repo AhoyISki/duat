@@ -71,7 +71,7 @@ impl Cache {
         }
 
         let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
-        bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}").build())
+        bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}"))
     }
 
     /// Stores the cache for the given type for that buffer
@@ -87,13 +87,13 @@ impl Cache {
         let mut cache_file = cache_file::<C>(path.as_ref(), true)?;
 
         let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
-        encode_into_std_write(cache, &mut cache_file, config).map_err(|err| txt!("{err}").build())
+        encode_into_std_write(cache, &mut cache_file, config).map_err(|err| txt!("{err}"))
     }
 
     /// Deletes the cache for all types for `path`
     ///
-    /// This is done if the buffer no longer exists, in order to prevent
-    /// incorrect storage.
+    /// This is done if the buffer no longer exists, in order to
+    /// prevent incorrect storage.
     pub fn delete(&self, path: impl Into<PathBuf>) {
         fn delete_cache_inner(path: PathBuf) {
             let (Some(cache_dir), Some(file_name)) = (dirs_next::cache_dir(), path.file_name())

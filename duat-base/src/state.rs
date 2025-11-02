@@ -54,16 +54,16 @@ use duat_core::{
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn name_txt(buffer: &Buffer) -> Text {
-    let mut b = Text::builder();
+    let mut builder = Text::builder();
 
-    b.push(buffer.name_txt());
+    builder.push(buffer.name_txt());
     if !buffer.exists() {
-        b.push(txt!("[buffer.new][[new buffer]]"));
+        builder.push(txt!("[buffer.new][[new buffer]]"));
     } else if buffer.text().has_unsaved_changes() {
-        b.push(txt!("[buffer.unsaved][[+]]"));
+        builder.push(txt!("[buffer.unsaved][[+]]"));
     }
 
-    b.build()
+    builder.build()
 }
 
 /// [`StatusLine`] part: The [`Buffer`]'s path, formatted
@@ -91,16 +91,16 @@ pub fn name_txt(buffer: &Buffer) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn path_txt(buffer: &Buffer) -> Text {
-    let mut b = Text::builder();
+    let mut builder = Text::builder();
 
-    b.push(buffer.name_txt());
+    builder.push(buffer.name_txt());
     if !buffer.exists() {
-        b.push(txt!("[buffer.new][[new buffer]]"));
+        builder.push(txt!("[buffer.new][[new buffer]]"));
     } else if buffer.text().has_unsaved_changes() {
-        b.push(txt!("[buffer.unsaved][[+]]"));
+        builder.push(txt!("[buffer.unsaved][[+]]"));
     }
 
-    b.build()
+    builder.build()
 }
 
 /// [`StatusLine`] part: The currently active [mode] of Duat
@@ -128,7 +128,7 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 ///                 Some((mode, _)) => mode,
 ///                 None => mode,
 ///             };
-///             txt!("[mode]{}", mode.to_uppercase()).build()
+///             txt!("[mode]{}", mode.to_uppercase())
 ///         });
 ///
 ///         handle.write(pa).fmt(status!(
@@ -168,7 +168,7 @@ pub fn mode_name() -> DataMap<&'static str, String> {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn mode_txt() -> DataMap<&'static str, Text> {
-    mode_name().map(|mode| txt!("[mode]{mode}").build())
+    mode_name().map(|mode| txt!("[mode]{mode}"))
 }
 
 /// [`StatusLine`] part: Byte of the main selection
@@ -217,7 +217,6 @@ pub fn main_txt(buffer: &Buffer, area: &Area) -> Text {
         main_line(buffer),
         buffer.len_lines()
     )
-    .build()
 }
 
 /// [`StatusLine`] part: The number of selections
@@ -247,9 +246,9 @@ pub fn selections(buffer: &Buffer) -> usize {
 /// [`Cursor`]: duat_core::mode::Cursor
 pub fn sels_txt(buffer: &Buffer) -> Text {
     if buffer.selections().len() == 1 {
-        txt!("[selections]1 sel").build()
+        txt!("[selections]1 sel")
     } else {
-        txt!("[selections]{} sels", buffer.selections().len()).build()
+        txt!("[selections]{} sels", buffer.selections().len())
     }
 }
 
@@ -276,7 +275,7 @@ pub fn cur_map_txt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
         if is_alias {
             Text::default()
         } else {
-            mode::keys_to_text(&keys).build()
+            mode::keys_to_text(&keys)
         }
     })
 }

@@ -214,7 +214,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]pager search").build()
+        txt!("[prompt]pager search")
     }
 
     fn return_handle(&self) -> Option<Handle<dyn Widget>> {

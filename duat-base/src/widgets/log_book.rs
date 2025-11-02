@@ -154,11 +154,13 @@ impl Default for LogBookOpts {
     fn default() -> Self {
         fn default_fmt(rec: Record) -> Option<Text> {
             use duat_core::context::Level::*;
-            let mut builder = match rec.level() {
-                Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
-                Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]:"),
-                Info => txt!("[log_book.info][[INFO]][log_book.colon]:   "),
-                Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]:  "),
+            let mut builder = Text::builder();
+
+            match rec.level() {
+                Error => builder.push(txt!("[log_book.error][[ERROR]][log_book.colon]:  ")),
+                Warn => builder.push(txt!("[log_book.warn][[WARNING]][log_book.colon]:")),
+                Info => builder.push(txt!("[log_book.info][[INFO]][log_book.colon]:   ")),
+                Debug => builder.push(txt!("[log_book.debug][[DEBUG]][log_book.colon]:  ")),
                 Trace => unreachable!("Trace is not meant to be useable"),
             };
 

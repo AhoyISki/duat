@@ -402,5 +402,5 @@ pub macro txt($($parts:tt)+) {{
         $($parts)*
     );
 
-    builder
+    builder.build()
 }}

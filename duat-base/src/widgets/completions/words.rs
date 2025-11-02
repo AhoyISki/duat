@@ -24,7 +24,6 @@ impl CompletionsProvider for WordCompletions {
             "[word.Completions]{entry}[]{Spacer}[buffer.source.Completions]{}",
             &info.source
         )
-        .build()
     }
 
     fn get_completions(

@@ -146,8 +146,7 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
             Err(txt!(
                 "List needed at least [a]{MIN}[] elements, got only [a]{}",
                 returns.len()
-            )
-            .build())
+            ))
         }
     }
 }
@@ -181,7 +180,7 @@ impl Parameter<'_> for Remainder {
             .collect::<Vec<&str>>()
             .join(" ");
         if remainder.is_empty() {
-            Err(txt!("There are no more arguments").build())
+            Err(txt!("There are no more arguments"))
         } else {
             Ok((remainder, None))
         }
@@ -201,7 +200,7 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
         if crate::form::colorscheme_exists(scheme) {
             Ok((scheme, None))
         } else {
-            Err(txt!("The colorscheme [a]{scheme}[] was not found").build())
+            Err(txt!("The colorscheme [a]{scheme}[] was not found"))
         }
     }
 }
@@ -217,7 +216,7 @@ impl<'a> Parameter<'a> for Buffer {
         {
             Ok((handle, Some(form::id_of!("param.buffer.open"))))
         } else {
-            Err(txt!("No buffer called [a]{buffer_name}[] open").build())
+            Err(txt!("No buffer called [a]{buffer_name}[] open"))
         }
     }
 }
@@ -235,7 +234,7 @@ impl<'a> Parameter<'a> for OtherBuffer {
         let handle = args.next_as::<Buffer>(pa)?;
         let cur_handle = crate::context::current_buffer(pa);
         if *cur_handle == handle {
-            Err(txt!("Argument can't be the current buffer").build())
+            Err(txt!("Argument can't be the current buffer"))
         } else {
             Ok((handle, Some(form::id_of!("param.buffer.open"))))
         }
@@ -256,7 +255,7 @@ impl Parameter<'_> for ValidBuffer {
         let canon_path = path.canonicalize();
         let path = if let Ok(path) = &canon_path {
             if !path.is_file() {
-                return Err(txt!("Path is not a buffer").build());
+                return Err(txt!("Path is not a buffer"));
             }
             path.clone()
         } else if canon_path.is_err()
@@ -267,13 +266,13 @@ impl Parameter<'_> for ValidBuffer {
                     .ok_or_else(|| txt!("Path has no buffer name"))?,
             )
         } else {
-            return Err(txt!("Path was not found").build());
+            return Err(txt!("Path was not found"));
         };
 
         if let Some(parent) = path.parent()
             && let Ok(false) | Err(_) = parent.try_exists()
         {
-            return Err(txt!("Path's parent doesn't exist").build());
+            return Err(txt!("Path's parent doesn't exist"));
         }
 
         let form = if crate::context::windows()
@@ -331,11 +330,11 @@ impl Parameter<'_> for F32PercentOfU8 {
         if let Some(percentage) = arg.strip_suffix("%") {
             let percentage: u8 = percentage
                 .parse()
-                .map_err(|_| txt!("[a]{arg}[] is not a valid percentage").build())?;
+                .map_err(|_| txt!("[a]{arg}[] is not a valid percentage"))?;
             if percentage <= 100 {
                 Ok((percentage as f32 / 100.0, None))
             } else {
-                Err(txt!("[a]{arg}[] is more than [a]100%").build())
+                Err(txt!("[a]{arg}[] is more than [a]100%"))
             }
         } else {
             let byte: u8 = arg
@@ -369,7 +368,7 @@ impl<'a> Parameter<'a> for Color {
         if let Some(hex) = arg.strip_prefix("#") {
             let total = match u32::from_str_radix(hex, 16) {
                 Ok(total) if hex.len() == 6 => total,
-                _ => return Err(txt!("Hexcode does not contain 6 hex values").build()),
+                _ => return Err(txt!("Hexcode does not contain 6 hex values")),
             };
             let r = (total >> 16) as u8;
             let g = (total >> 8) as u8;
@@ -402,7 +401,7 @@ impl<'a> Parameter<'a> for Color {
             };
             Ok((Color::Rgb { r, g, b }, None))
         } else {
-            Err(txt!("Color format was not recognized").build())
+            Err(txt!("Color format was not recognized"))
         }
     }
 }
@@ -419,12 +418,12 @@ impl<'a> Parameter<'a> for FormName {
     fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let arg = args.next()?;
         if !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '.') {
-            return Err(txt!("Expected identifiers separated by '.'s, found [a]{arg}").build());
+            return Err(txt!("Expected identifiers separated by '.'s, found [a]{arg}"));
         }
         if crate::form::exists(arg) {
             Ok((arg, Some(form::id_of_non_static(arg))))
         } else {
-            Err(txt!("The form [a]{arg}[] has not been set").build())
+            Err(txt!("The form [a]{arg}[] has not been set"))
         }
     }
 }
@@ -471,7 +470,7 @@ impl<'a> Args<'a> {
                 }
                 Ok(arg)
             }
-            None => Err(txt!("Wrong argument count").build()),
+            None => Err(txt!("Wrong argument count")),
         }
     }
 
@@ -688,7 +687,7 @@ macro parse_impl($t:ty) {
         fn new(_: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
             let arg = args.next()?;
             let arg = arg.parse().map_err(|_| {
-                txt!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t)).build()
+                txt!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t))
             });
             arg.map(|arg| (arg, None))
         }

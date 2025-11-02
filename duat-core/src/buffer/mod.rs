@@ -115,7 +115,7 @@ impl Buffer {
                 Ok(None)
             }
         } else {
-            Err(txt!("No buffer was set").build())
+            Err(txt!("No buffer was set"))
         }
     }
 
@@ -616,8 +616,8 @@ impl PathKind {
     /// ```
     pub fn path_txt(&self) -> Text {
         match self {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => txt!("[buffer]{path}").build(),
-            PathKind::NotSet(id) => txt!("[buffer.new.scratch]*scratch buffer #{id}*").build(),
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => txt!("[buffer]{path}"),
+            PathKind::NotSet(id) => txt!("[buffer.new.scratch]*scratch buffer #{id}*"),
         }
     }
 
@@ -647,16 +647,16 @@ impl PathKind {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 let cur_dir = context::current_dir();
                 if let Ok(path) = path.strip_prefix(cur_dir) {
-                    txt!("[buffer]{path}").build()
+                    txt!("[buffer]{path}")
                 } else if let Some(home_dir) = dirs_next::home_dir()
                     && let Ok(path) = path.strip_prefix(home_dir)
                 {
-                    txt!("[buffer]{}", Path::new("~").join(path)).build()
+                    txt!("[buffer]{}", Path::new("~").join(path))
                 } else {
-                    txt!("[buffer]{path}").build()
+                    txt!("[buffer]{path}")
                 }
             }
-            PathKind::NotSet(id) => txt!("[buffer.new.scratch]*scratch buffer #{id}*").build(),
+            PathKind::NotSet(id) => txt!("[buffer.new.scratch]*scratch buffer #{id}*"),
         }
     }
 }

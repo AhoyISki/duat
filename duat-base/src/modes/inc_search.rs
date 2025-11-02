@@ -54,7 +54,7 @@ use duat_core::{
 ///     }
 ///
 ///     fn prompt(&self) -> Text {
-///         txt!("[prompt]search around").build()
+///         txt!("[prompt]search around")
 ///     }
 /// }
 /// ```
@@ -95,7 +95,7 @@ impl IncSearcher for SearchFwd {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]search").build()
+        txt!("[prompt]search")
     }
 }
 
@@ -122,7 +122,7 @@ impl IncSearcher for SearchRev {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]rev search").build()
+        txt!("[prompt]rev search")
     }
 }
 
@@ -147,7 +147,7 @@ impl IncSearcher for ExtendFwd {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]search (extend)").build()
+        txt!("[prompt]search (extend)")
     }
 }
 
@@ -172,6 +172,6 @@ impl IncSearcher for ExtendRev {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]rev search (extend)").build()
+        txt!("[prompt]rev search (extend)")
     }
 }

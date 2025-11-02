@@ -2,7 +2,8 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use cassowary::{Constraint, WeightedRelation::*};
 use duat_core::{
-    context::debug, text::SpawnId, ui::{Axis, Orientation, PushSpecs, SpawnSpecs}
+    text::SpawnId,
+    ui::{Axis, Orientation, PushSpecs, SpawnSpecs},
 };
 
 pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};

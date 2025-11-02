@@ -24,7 +24,7 @@ mod global {
     use crate::{
         data::{DataMap, Pass, RwData},
         mode::Mode,
-        text::{Builder, Text, txt},
+        text::{Text, txt},
     };
 
     static REMAPPER: Remapper = Remapper::new();
@@ -110,7 +110,7 @@ mod global {
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
-    pub fn keys_to_text(keys: &[KeyEvent]) -> Builder {
+    pub fn keys_to_text(keys: &[KeyEvent]) -> Text {
         use crossterm::event::KeyCode::*;
         let mut seq = Text::builder();
 
@@ -146,7 +146,7 @@ mod global {
             }
         }
 
-        seq
+        seq.build()
     }
 
     /// Turns a string of [`KeyEvent`]s into a [`String`]

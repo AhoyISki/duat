@@ -77,7 +77,7 @@ impl Widget for VertRule {
             txt!("{full_line}")
         };
 
-        handle.write(pa).text = text.build();
+        handle.write(pa).text = text;
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {

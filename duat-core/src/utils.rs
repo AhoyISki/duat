@@ -143,7 +143,7 @@ pub fn crate_dir() -> Result<&'static Path, Text> {
     CRATE_DIR
         .get()
         .expect("Config not set yet")
-        .ok_or_else(|| txt!("Config directory is [a]undefined").build())
+        .ok_or_else(|| txt!("Config directory is [a]undefined"))
 }
 
 /// The Profile that is currently loaded

@@ -119,7 +119,7 @@
 //!     // You can return a success message, but must
 //!     // return an error message if there is a problem.
 //!     // For those, you should use the `txt!` macro.
-//!     Ok(Some(txt!("Unset [a]{}[] forms", forms.len()).build()))
+//!     Ok(Some(txt!("Unset [a]{}[] forms", forms.len())))
 //! });
 //! ```
 //!
@@ -146,7 +146,7 @@
 //!     let child = std::process::Command::new("pip").spawn()?;
 //!     let res = child.wait_with_output()?;
 //!
-//!     Ok(Some(txt!("{res:?}").build()))
+//!     Ok(Some(txt!("{res:?}")))
 //! });
 //! ```
 //!
@@ -197,14 +197,12 @@ pub(crate) fn add_session_commands() {
 
         let buffer = handle.read(pa);
         if buffer.text().has_unsaved_changes() && buffer.exists() {
-            return Err(txt!("{} has unsaved changes", buffer.name()).build());
+            return Err(txt!("{} has unsaved changes", buffer.name()));
         }
 
         context::windows().close(pa, &handle)?;
 
-        Ok(Some(
-            txt!("Closed [buffer]{}", handle.read(pa).name()).build(),
-        ))
+        Ok(Some(txt!("Closed [buffer]{}", handle.read(pa).name())))
     });
 
     add!(["quit!", "q!"], |pa, handle: Option<Buffer>| {
@@ -215,9 +213,7 @@ pub(crate) fn add_session_commands() {
 
         context::windows().close(pa, &handle)?;
 
-        Ok(Some(
-            txt!("Forcefully closed {}", handle.read(pa).name()).build(),
-        ))
+        Ok(Some(txt!("Forcefully closed {}", handle.read(pa).name())))
     });
 
     add!(["quit-all", "qa"], |pa| {
@@ -234,9 +230,9 @@ pub(crate) fn add_session_commands() {
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
-            Err(txt!("There is [a]1[] unsaved buffer").build())
+            Err(txt!("There is [a]1[] unsaved buffer"))
         } else {
-            Err(txt!("There are [a]{unwritten}[] unsaved buffers").build())
+            Err(txt!("There are [a]{unwritten}[] unsaved buffers"))
         }
     });
 
@@ -254,14 +250,12 @@ pub(crate) fn add_session_commands() {
         } else if let Some(name) = buffer.name_set() {
             (buffer.save()?, std::path::PathBuf::from(name))
         } else {
-            return Err(txt!("Buffer has no name path to write to").build());
+            return Err(txt!("Buffer has no name path to write to"));
         };
 
         match bytes {
-            Some(bytes) => Ok(Some(
-                txt!("Wrote [a]{bytes}[] bytes to [buffer]{name}").build(),
-            )),
-            None => Ok(Some(txt!("Nothing to be written").build())),
+            Some(bytes) => Ok(Some(txt!("Wrote [a]{bytes}[] bytes to [buffer]{name}"))),
+            None => Ok(Some(txt!("Nothing to be written"))),
         }
     });
 
@@ -281,10 +275,10 @@ pub(crate) fn add_session_commands() {
         context::windows().close(pa, &handle)?;
 
         match bytes {
-            Some(bytes) => Ok(Some(
-                txt!("Closed [buffer]{name}[], writing [a]{bytes}[] bytes").build(),
-            )),
-            None => Ok(Some(txt!("Closed [buffer]{name}[]").build())),
+            Some(bytes) => Ok(Some(txt!(
+                "Closed [buffer]{name}[], writing [a]{bytes}[] bytes"
+            ))),
+            None => Ok(Some(txt!("Closed [buffer]{name}[]"))),
         }
     });
 
@@ -302,11 +296,11 @@ pub(crate) fn add_session_commands() {
         }
 
         if written == handles.len() {
-            Ok(Some(txt!("Wrote to [a]{written}[] buffers").build()))
+            Ok(Some(txt!("Wrote to [a]{written}[] buffers")))
         } else {
             let unwritten = handles.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}").build())
+            Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
     });
 
@@ -328,7 +322,7 @@ pub(crate) fn add_session_commands() {
         } else {
             let unwritten = handles.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}").build())
+            Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
     });
 
@@ -375,7 +369,7 @@ pub(crate) fn add_session_commands() {
             PathOrBufferOrCfg::Path(path) => PathKind::from(path),
             PathOrBufferOrCfg::Buffer(handle) => {
                 mode::reset_to(handle.to_dyn());
-                return Ok(Some(txt!("Switched to {}", handle.read(pa).name()).build()));
+                return Ok(Some(txt!("Switched to {}", handle.read(pa).name())));
             }
         };
 
@@ -383,7 +377,7 @@ pub(crate) fn add_session_commands() {
         let handle = windows.new_buffer(pa, buffer);
         context::set_current_node(pa, handle);
 
-        return Ok(Some(txt!("Opened {pk}").build()));
+        return Ok(Some(txt!("Opened {pk}")));
     });
 
     add!(["open", "o"], |pa, arg: PathOrBufferOrCfg| {
@@ -403,9 +397,9 @@ pub(crate) fn add_session_commands() {
                 let pk = handle.read(pa).path_kind();
                 let (win, ..) = windows.buffer_entry(pa, pk.clone()).unwrap();
                 if windows.get(pa, win).unwrap().buffers(pa).len() == 1 {
-                    (pk.clone(), Some(txt!("Switched to {pk}").build()))
+                    (pk.clone(), Some(txt!("Switched to {pk}")))
                 } else {
-                    (pk.clone(), Some(txt!("Moved {pk} to a new window").build()))
+                    (pk.clone(), Some(txt!("Moved {pk} to a new window")))
                 }
             }
         };
@@ -413,14 +407,12 @@ pub(crate) fn add_session_commands() {
         let file_cfg = *crate::session::FILE_CFG.get().unwrap();
         let node = windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
 
-        return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window").build())));
+        return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))));
     });
 
     add!(["buffer", "b"], |pa, handle: OtherBuffer| {
         mode::reset_to(handle.to_dyn());
-        Ok(Some(
-            txt!("Switched to [buffer]{}", handle.read(pa).name()).build(),
-        ))
+        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
     add!("next-buffer", |pa, flags: Flags| {
@@ -449,9 +441,7 @@ pub(crate) fn add_session_commands() {
         };
 
         mode::reset_to(handle.to_dyn());
-        Ok(Some(
-            txt!("Switched to [buffer]{}", handle.read(pa).name()).build(),
-        ))
+        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
     add!("prev-buffer", |pa, flags: Flags| {
@@ -480,9 +470,7 @@ pub(crate) fn add_session_commands() {
         };
 
         mode::reset_to(handle.to_dyn());
-        Ok(Some(
-            txt!("Switched to [buffer]{}", handle.read(pa).name()).build(),
-        ))
+        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
     add!("swap", |pa, lhs: Buffer, rhs: Option<Buffer>| {
@@ -490,19 +478,16 @@ pub(crate) fn add_session_commands() {
 
         context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
 
-        Ok(Some(
-            txt!(
-                "Swapped {} and {}",
-                lhs.read(pa).name(),
-                rhs.read(pa).name()
-            )
-            .build(),
-        ))
+        Ok(Some(txt!(
+            "Swapped {} and {}",
+            lhs.read(pa).name(),
+            rhs.read(pa).name()
+        )))
     });
 
     add!("colorscheme", |_pa, scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(scheme);
-        Ok(Some(txt!("Set colorscheme to [a]{scheme}[]").build()))
+        Ok(Some(txt!("Set colorscheme to [a]{scheme}[]")))
     });
 
     add!(
@@ -514,7 +499,7 @@ pub(crate) fn add_session_commands() {
             form.style.underline_color = colors.get(2).cloned();
             crate::form::set(name, form);
 
-            Ok(Some(txt!("Set [a]{name}[] to a new Form").build()))
+            Ok(Some(txt!("Set [a]{name}[] to a new Form")))
         }
     );
 }
@@ -588,7 +573,7 @@ mod global {
             )*
 
             if let Ok(arg) = args.next() {
-                return Err($crate::text::txt!("Too many arguments").build());
+                return Err($crate::text::txt!("Too many arguments"));
             }
 
             let mut $pa = pa;
@@ -615,7 +600,7 @@ mod global {
 
             let start = args.next_start();
             if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
-                let err = $crate::text::txt!("Too many arguments").build();
+                let err = $crate::text::txt!("Too many arguments");
                 return (ok_ranges, Some((start..args.param_range().end, err)))
             }
 
@@ -1009,7 +994,7 @@ impl InnerCommands {
     /// arguments) to an alias.
     fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>, Text> {
         if alias.split_whitespace().count() != 1 {
-            return Err(txt!("Alias [a]{alias}[] is not a single word").build());
+            return Err(txt!("Alias [a]{alias}[] is not a single word"));
         }
 
         let caller = call
@@ -1024,12 +1009,12 @@ impl InnerCommands {
             let entry = (command.clone(), call.clone());
             Ok(Some(match self.aliases.insert(alias.clone(), entry) {
                 Some((_, prev_call)) => {
-                    txt!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}").build()
+                    txt!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}")
                 }
-                None => txt!("Aliased [a]{alias}[] to [a]{call}").build(),
+                None => txt!("Aliased [a]{alias}[] to [a]{call}"),
             }))
         } else {
-            Err(txt!("The caller [a]{caller}[] was not found").build())
+            Err(txt!("The caller [a]{caller}[] was not found"))
         }
     }
 }

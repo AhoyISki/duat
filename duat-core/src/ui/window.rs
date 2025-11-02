@@ -555,7 +555,7 @@ impl Windows {
     ) -> Result<usize, Text> {
         self.entries(pa)
             .find_map(|(win, node)| (node.handle() == handle).then_some(win))
-            .ok_or_else(|| txt!("The Handle was already closed").build())
+            .ok_or_else(|| txt!("The Handle was already closed"))
     }
 
     /// An entry for a buffer with the given name
@@ -565,7 +565,7 @@ impl Windows {
                 (node.read_as(pa).filter(|f: &&Buffer| f.path_kind() == pk))
                     .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
             })
-            .ok_or_else(|| txt!("Buffer {pk} not found").build())
+            .ok_or_else(|| txt!("Buffer {pk} not found"))
     }
 
     /// An entry for a buffer with the given name
@@ -579,7 +579,7 @@ impl Windows {
                 (node.read_as(pa).filter(|f: &&Buffer| f.name() == name))
                     .and_then(|_| node.try_downcast().map(|handle| (win, handle)))
             })
-            .ok_or_else(|| txt!("Buffer [buffer]{name}[] not found").build())
+            .ok_or_else(|| txt!("Buffer [buffer]{name}[] not found"))
     }
 
     /// An entry for a widget of a specific type
@@ -601,7 +601,7 @@ impl Windows {
                 .chain(list[..cur_win].iter().flat_map(|win| win.nodes(pa)))
                 .find(|node| node.data_is::<W>())
         }
-        .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()).build())
+        .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()))
     }
 
     ////////// Entry iterators
@@ -1150,8 +1150,8 @@ impl BufferHistory {
     }
 
     /// Returns the next [`Handle`], if there is one
-    fn next(&mut self) -> Option<&Handle> {
-        self.list.get(self.current_i + 1).inspect(|next| {
+    fn _next(&mut self) -> Option<&Handle> {
+        self.list.get(self.current_i + 1).inspect(|_| {
             self.last_was_fwd = false;
             self.current_i += 1;
         })
@@ -1161,9 +1161,9 @@ impl BufferHistory {
     ///
     /// Repeatedly calling this function will return the same two
     /// [`Handle`]s.
-    fn last(&mut self) -> Option<&Handle> {
+    fn _last(&mut self) -> Option<&Handle> {
         if self.last_was_fwd {
-            self.next()
+            self._next()
         } else {
             self.prev()
         }
@@ -1171,7 +1171,7 @@ impl BufferHistory {
 
     /// Inserts a new entry, but only if it is different from both of
     /// the surrounding entries
-    fn insert(&mut self, handle: Handle) {
+    fn _insert(&mut self, handle: Handle) {
         if self
             .current_i
             .checked_sub(1)

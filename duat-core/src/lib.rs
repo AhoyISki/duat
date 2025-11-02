@@ -248,7 +248,7 @@ mod private_exports {
 
     pub macro log($lvl:expr, $($arg:tt)*) {{
         #[allow(unused_must_use)]
-        let text = $crate::text::txt!($($arg)*).build();
+        let text = $crate::text::txt!($($arg)*);
 
 		$crate::context::logs().push_record($crate::context::Record::new(
     		text,

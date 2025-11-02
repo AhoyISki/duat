@@ -208,7 +208,6 @@ impl Default for NotificationsOpts {
                 rec.target(),
                 rec.text().clone()
             )
-            .build()
         }
         fn default_get_mask(rec: Record) -> &'static str {
             match rec.level() {

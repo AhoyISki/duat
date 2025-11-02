@@ -182,8 +182,8 @@ impl mode::Mode for Prompt {
             pl.text_mut().replace_range(0..0, &self.starting_text);
 
             let tag = Ghost(match pl.prompt_of_id(self.ty) {
-                Some(text) => txt!("{text}[prompt.colon]:").build(),
-                None => txt!("{}[prompt.colon]:", self.mode.prompt()).build(),
+                Some(text) => txt!("{text}[prompt.colon]:"),
+                None => txt!("{}[prompt.colon]:", self.mode.prompt()),
             });
             pl.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
 
@@ -262,7 +262,7 @@ impl Clone for Prompt {
 ///     }
 ///
 ///     fn prompt(&self) -> Text {
-///         txt!("[prompt]switch to").build()
+///         txt!("[prompt]switch to")
 ///     }
 /// }
 /// ```
@@ -522,7 +522,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
     }
 
     fn prompt(&self) -> Text {
-        txt!("{}", self.inc.prompt()).build()
+        txt!("{}", self.inc.prompt())
     }
 }
 
@@ -620,7 +620,7 @@ impl PromptMode for PipeSelections {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]pipe").build()
+        txt!("[prompt]pipe")
     }
 }
 

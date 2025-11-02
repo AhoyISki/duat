@@ -375,7 +375,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't set the width to [a]{width}").build())
+            Err(txt!("Couldn't set the width to [a]{width}"))
         }
     }
 
@@ -386,7 +386,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't set the height to [a]{height}").build())
+            Err(txt!("Couldn't set the height to [a]{height}"))
         }
     }
 
@@ -397,7 +397,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't hide the Area").build())
+            Err(txt!("Couldn't hide the Area"))
         }
     }
 
@@ -408,7 +408,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't reveal the Area").build())
+            Err(txt!("Couldn't reveal the Area"))
         }
     }
 
