@@ -25,31 +25,20 @@ fn setup() {
     // Disables the cursor's shape.
     cursor::unset();
 
-    // The print module configures file printing.
-    print::wrap_on_edge();
-
-    //// Hooks
-    // Changes every LineNumbers Widget.
-    hook::add::<LineNumbers>(|pa, handle| {
-        handle.write(pa).align = std::fmt::Alignment::Right;
-        Ok(())
+    opts::set(|opts| {
+        opts.wrap_lines = true;
+        opts.scrolloff.y = 5;
     });
 
-    hook::add::<StatusLine>(|pa, handle| {
-        // This function takes the mode and uppercases it.
-        // The splitting is done to remove generic arguments.
-        let mode_upper = mode_name(pa).map(pa, |mode| match mode.split_once('<') {
-            Some((mode, _)) => txt!("[mode]{}", mode.to_uppercase()).build(),
-            None => txt!("[mode]{}", mode.to_uppercase()).build(),
-        });
-
-        handle.write(pa).fmt(status!(
-            "[mode]{mode_upper}{Spacer}{custom_name_txt} {sels_txt} {main_txt}"
-        ));
-        Ok(())
+    opts::set_lines(|opts| {
+        opts.align = std::fmt::Alignment::Right;
     });
-    // // See what happens when you uncomment this hook removal:
-    // hook::remove("HidePromptLine");
+
+    opts::set_status(|pa| {
+        let upper_mode = mode_name().map(|m| m.to_uppercase());
+
+        status!("[mode]{upper_mode}{Spacer}{custom_name_txt} {sels_txt} {main_txt}")
+    });
 
     //// Remapping
 
@@ -65,7 +54,7 @@ fn setup() {
 }
 
 /// A custom function to show the name differently.
-fn custom_name_txt(file: &File) -> Text {
+fn custom_name_txt(file: &Buffer) -> Text {
     if let Some(name) = file.name_set() {
         // A TextBuilder lets you build Text incrementally.
         let mut builder = Text::builder();
@@ -79,9 +68,13 @@ fn custom_name_txt(file: &File) -> Text {
             builder.push(txt!("[file.unsaved][[+]]"))
         }
 
-        if let Some("rust") = file.filetype() {
-            builder.push('🦀');
-        }
+        match file.filetype() {
+            Some("rust") => builder.push('🦀'),
+            Some("python") => builder.push('🐍'),
+            Some("perl") => builder.push('🐫'),
+            Some("swift") => builder.push('🐦'),
+            _ => {}
+        };
 
         builder.build()
     } else {
