@@ -24,8 +24,7 @@ impl LogBook {
         self.fmt = Box::new(fmt)
     }
 
-    /// Returns a [`LogBookBuilder`], so you can push `LogBook`s
-    /// around
+    /// Returns a [`LogBookOpts`], so you can push `LogBook`s around
     pub fn builder() -> LogBookOpts {
         LogBookOpts::default()
     }

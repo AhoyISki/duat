@@ -22,11 +22,10 @@ use duat_core::{
 
 /// A [`Widget`] to show notifications
 ///
-/// With the [`FooterWidgets`] (a [`WidgetAlias`]), this [`Widget`]
-/// can be conveniently placed alongside a [`PromptLine`] and a
-/// [`StatusLine`], in a combination that hides the [`PromptLine`]
-/// when it is not in use, covering it with the [`Notifications`], and
-/// vice-versa. This is the default behaviour of Duat.
+/// With the [`FooterWidgets`] group, this [`Widget`] can be conveniently 
+/// placed alongside a [`PromptLine`] and a [`StatusLine`],in a combination
+/// that hides the [`PromptLine`]when it is not in use, covering it with the 
+/// [`Notifications`], andvice-versa. This is the default behaviour of Duat.
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -50,7 +49,6 @@ use duat_core::{
 /// ```
 ///
 /// [`FooterWidgets`]: super::FooterWidgets
-/// [`WidgetAlias`]: duat_core::ui::WidgetAlias
 /// [`PromptLine`]: super::PromptLine
 /// [`StatusLine`]: super::StatusLine
 /// [hook]: duat_core::hook

@@ -26,7 +26,6 @@
 //!     is most commonly scrolled by the [`Pager`] [`Mode`].
 //!
 //! - 3 [`modes`]:
-//!   - [`Regular`] is essentially the standard [`Mode`] that text
 //!     editors use. Sort of like VSCode.
 //!   - [`Prompt`] is a multitool that can serve many purposes,
 //!     through the [`PromptMode`] trait, which allows one to act on
@@ -85,7 +84,6 @@
 //! [`error!`]: duat_core::context::error
 //! [`warn!`]: duat_core::context::warn
 //! [`info!`]: duat_core::context::info
-//! [`Regular`]: modes::Regular
 //! [`Mode`]: duat_core::mode::Mode
 //! [`Prompt`]: modes::Prompt
 //! [`PromptMode`]: modes::PromptMode

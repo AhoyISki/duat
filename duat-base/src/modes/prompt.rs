@@ -46,6 +46,7 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///
 /// [`Parameter`]: cmd::Parameter
 /// [`Selection`]: mode::Selection
+/// [`Mode`]: duat_core::mode::Mode
 pub struct Prompt {
     mode: Box<dyn PromptMode>,
     starting_text: String,
@@ -213,8 +214,7 @@ impl Clone for Prompt {
     }
 }
 
-/// A mode to control the [`Prompt`], by acting on its [`Text`] and
-/// [`Area`]
+/// A mode to control the [`Prompt`]
 ///
 /// Through the [`Pass`], one can act on the entirety of Duat's shared
 /// state:
@@ -270,8 +270,6 @@ impl Clone for Prompt {
 /// The [`PromptMode`] above will switch to the buffer with the same
 /// name as the one in the [`PromptLine`], returning to the initial
 /// buffer if the match failed.
-///
-/// [`Area`]: Ui::Area
 #[allow(unused_variables)]
 pub trait PromptMode: Send + 'static {
     /// What [`Widget`] to exit to, upon pressing enter, esc, or

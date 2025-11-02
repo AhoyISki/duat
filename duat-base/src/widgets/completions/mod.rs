@@ -41,6 +41,10 @@ static TAGGER: LazyLock<Tagger> = Tagger::new_static();
 /// [`show_without_prefix`]: Self::show_without_prefix
 pub struct CompletionsBuilder {
     providers: ProvidersFn,
+    /// Show the [`Widget`] even if there is no word behind the cursor
+    /// This is set to `true` by default when first opening the
+    /// `Widget`, but is disabled if the cursor moves around, which
+    /// creates a smooth typing experience.
     pub show_without_prefix: bool,
 }
 
@@ -50,8 +54,6 @@ impl CompletionsBuilder {
     /// This `Widget` works in an autonomous way, that is, it will
     /// follow the main [`Selection`] around, always positioned at the
     /// beginning of the current word.
-    ///
-    ///
     ///
     /// If you wish to close the `Widget`, you can call
     /// [`Completions::close`].
@@ -351,7 +353,7 @@ pub enum CompletionsKind {
     /// initial list and apply filtering to it in order to narrow down
     /// possible choices.
     ///
-    /// [word]: CompletionsProvider::word_chars
+    /// [word]: CompletionsProvider::word_regex
     Finished,
     /// Indicates that the entries that were sent are not all entries,
     /// but they're already filtered
@@ -363,7 +365,7 @@ pub enum CompletionsKind {
     /// [`CompletionsKind::UnfinishedUnfiltered`], the [`Completions`]
     /// widget will not do any filtering of the entries sent.
     ///
-    /// [word]: CompletionsProvider::word_chars
+    /// [word]: CompletionsProvider::word_regex
     UnfinishedFiltered,
     /// Indicates that the entries that were sent are not all entries,
     /// and they're not filtered
@@ -375,7 +377,7 @@ pub enum CompletionsKind {
     /// and apply filtering to it in order to narrow down possible
     /// choices.
     ///
-    /// [word]: CompletionsProvider::word_chars
+    /// [word]: CompletionsProvider::word_regex
     UnfinishedUnfiltered,
 }
 

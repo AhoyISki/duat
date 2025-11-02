@@ -8,7 +8,6 @@
 //! [`Text`]: duat_core::text::Text
 //! [`Buffer`]: duat_core::buffer::Buffer
 //! [`WindowCreated`]: duat_core::hook::WindowCreated
-//! [`Constraint`]: duat_core::ui::Constraint
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
@@ -18,7 +17,7 @@ use duat_core::{
 };
 
 pub use self::{
-    completions::{Completions, WordsCompletionParser},
+    completions::{Completions, CompletionsBuilder, CompletionsKind, CompletionsProvider, CompletionsList, WordsCompletionParser},
     line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},

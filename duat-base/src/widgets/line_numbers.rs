@@ -21,17 +21,24 @@ use duat_core::{
 };
 
 /// Shows a column of line numbers beside the [`Buffer`]
+/// 
+/// There are various fields that you can use to configure how the
+/// `LineNumbers` will be displayed. They control things like the
+/// line numbers and the relativeness of the number displayed.
+/// 
+/// This is a default struct of Duat, that is, it is automatically
+/// placed around every `Buffer`, but you can disable that behavior
+/// by [removing] the `"BufferWidgets"` hook.
 ///
-/// This can be configured through [`LineNumbers::opts`], in order to
-/// get, for example: relative numbering, different alignment,
-/// hidden/shown wrapped lines, etc.
+/// [`Buffer`]: duat_core::buffer::Buffer
+/// [removing]: duat_core::hook::remove
 pub struct LineNumbers {
     buffer: Handle,
     text: Text,
     /// Wether to show relative numbering
     ///
     /// The default is `false`
-    pub relative: bool,
+    pub relative: bool = false,
     /// Where to align the numbers
     ///
     /// The default is [`Alignment::Left`]
@@ -47,7 +54,7 @@ pub struct LineNumbers {
 }
 
 impl LineNumbers {
-    /// Returns a [`LineNumbersBuilder`], used to create a new
+    /// Returns a [`LineNumbersOpts`], used to create a new
     /// `LineNumbers`
     pub fn builder() -> LineNumbersOpts {
         LineNumbersOpts::default()
@@ -119,11 +126,16 @@ impl Widget for LineNumbers {
     }
 }
 
-/// [`WidgetCfg`] for the [`LineNumbers`] widget
+/// Options for cosntructing a [`LineNumbers`] [`Widget`]
 ///
-/// Contains a [`LineNumbersCfg`], which, unlike
-/// [`LineNumbersCfg`], is modified by the `&mut` version of the
-/// builder pattern.
+/// For most options, you can just set them in the `Widget`
+/// directly (through a [hook] or something). Right now, the
+/// only option exclusive to this struct is the [`on_the_right`]
+/// option, which places the `LineNumbers` on the right, as
+/// opposed to on the left.
+///
+/// [`on_the_right`]: Self::on_the_right
+/// [hook]: duat_core::hook
 #[derive(Default, Clone, Copy, Debug)]
 pub struct LineNumbersOpts {
     /// Wether to show relative numbering

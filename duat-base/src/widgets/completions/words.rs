@@ -74,6 +74,8 @@ pub struct WordInfo {
 }
 
 /// A [`Parser`] to add words to [`Completions`]
+///
+/// [`Completions`]: super::Completions
 pub struct WordsCompletionParser {
     tracker: BufferTracker,
 }
