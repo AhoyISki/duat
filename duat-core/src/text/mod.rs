@@ -6,19 +6,20 @@
 //! The [`Text`] is a very versatile holder for characters, below is a
 //! list of some of its capabilities:
 //!
-//! - Be cheaply* edited at any point, due to its two [gap buffers];
-//! - Be [colored] in any way, at any point;
+//! - Be cheaply* edited at any point, due to its two [gap buffers].
+//! - Be [colored] in any way, at any point.
 //! - Have any arbitrary range concealed, that is, hidden from view,
-//!   but still in there;
+//!   but still in there.
 //! - Arbitrary [ghost text], that is, [`Text`] that shows up, but is
-//!   not actually part of the [`Text`], i.e., it can be easily
-//!   ignored by external modifiers (like an LSP or tree-sitter) of
-//!   the buffer, without any special checks;
+//!   not actually part of the `Text`, i.e., it can be easily ignored
+//!   by external modifiers (like an LSP or tree-sitter) of the
+//!   buffer, without any special checks.
 //! - [Left]/[right]/[center] alignment of output (although that is
-//!   implemented by the [`Ui`]);
-//! - [Spacers] for even more advanced alignment
-//! - The ability to [undo]/[redo] changes in the history;
-//! - In the future, button ranges that can interact with the mouse;
+//!   implemented by the [Ui]).
+//! - [Spacers] for even more advanced alignment (also implemented by
+//!   the [Ui]).
+//! - The ability to [undo]/[redo] changes in the history.
+//! - In the future, button ranges that can interact with the mouse.
 //!
 //! The [`Text`] struct is created in two different ways:
 //!
@@ -28,14 +29,16 @@
 //! The first method is recommended if you want a [`Text`] that will
 //! be modified by input. This is often the case if your [`Widget`] is
 //! some sort of text box, chief of which is the [`Buffer`], which is
-//! the central [`Widget`] of every text editor.
+//! the central `Widget` of every text editor.
 //!
 //! The second method is what should be used most of the time, as it
 //! lets you quickly create formatted [`Widget`]s/[`StatusLine`] parts
 //! in a very modular way:
 //!
 //! ```rust
-//! # use duat_core::prelude::*;
+//! # duat_core::doc_duat!(duat);
+//! use duat::prelude::*;
+//!
 //! fn number_of_horses(count: usize) -> Text {
 //!     if count == 1 {
 //!         txt!("[horses.count]1[horses] horse").build()
@@ -62,7 +65,9 @@
 //!
 //! ```rust
 //! # duat_core::form::set_initial(duat_core::form::get_initial());
-//! # use duat_core::prelude::*;
+//! # duat_core::doc_duat!(duat);
+//! use duat::prelude::*;
+//!
 //! let mut prompted = txt!("[prompt]type a key: ").build();
 //! let end = prompted.len();
 //! prompted.replace_range(end..end, "a")
@@ -82,7 +87,7 @@
 //! [gap buffers]: gapbuf::GapBuffer
 //! [colored]: crate::form::Form
 //! [ghost text]: Ghost
-//! [`Ui`]: crate::ui::Ui
+//! [Ui]: crate::ui::traits::RawUi
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
@@ -224,7 +229,8 @@ impl Text {
     /// they want to construct the [`Text`] in [`Tag`]/content pairs.
     ///
     /// ```rust
-    /// use duat_core::prelude::*;
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
     /// let mut builder = Text::builder();
     /// ```
     pub fn builder() -> Builder {

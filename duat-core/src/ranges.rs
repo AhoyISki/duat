@@ -1,3 +1,12 @@
+//! The [`Ranges`] struct
+//!
+//! This struct uses the same principle as the `ShiftList` in the
+//! [`crate::text`] module. That is, it has an internal `shift` value
+//! to displace all [`Range`]s ahead of the `from` index within. This
+//! enables efficient localized insertion, like we have with
+//! [`GapBuffer`]s, while maintaining the ability to binary search
+//! over the list, getting both efficient insertion as well as
+//! traversal.
 use std::ops::Range;
 
 use gapbuf::{GapBuffer, gap_buffer};

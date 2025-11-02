@@ -216,7 +216,8 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 ///
 /// ```rust
 /// # duat_core::form::set_initial(duat_core::form::get_initial());
-/// # use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
 /// let mut text = txt!("This is text with no tags in it").build();
 /// // This key will be used to modify text.
 /// let key1 = Tagger::new();

@@ -43,16 +43,13 @@ pub mod utils;
 
 /// A plugin for Duat
 ///
-/// Plugins must follow the builder pattern, and can be specific to
-/// certain [`Ui`]s. Generally, plugins should do all the setup
-/// necessary for their function when [`Plugin::plug`] is called.
-///
-/// [`Plugin`] will usually be [plugged] by a `macro` in the Duat
-/// config crate. This macro requires that the [`Plugin`] be
-/// compatible with the [`Ui`]:
+/// Plugins should mostly follow the builder pattern, but you can use
+/// fields if you wish to. When calling [`Plugin::plug`], the plugin's
+/// settings should be taken into account, and all of its setup should
+/// be done:
 ///
 /// ```rust
-/// # use duat_core::{Plugin, Plugins, ui::Ui};
+/// # use duat_core::{Plugin, Plugins};
 /// // It's not a supertrait of Plugin, but you must implement
 /// // Default in order to use the plugin.
 /// #[derive(Default)]
@@ -79,9 +76,6 @@ pub mod utils;
 ///     }
 /// }
 /// ```
-///
-/// In this case, this [`Plugin`] is compatible with every possible
-/// [`Ui`].
 ///
 /// [plugged]: Plugin::plug
 /// [`PhantomData`]: std::marker::PhantomData

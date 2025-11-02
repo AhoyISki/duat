@@ -40,8 +40,9 @@ mod selections;
 /// struct.
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
-/// # fn test<U: Ui, S>(mut pa: Pass, handle: &mut Handle<Buffer<U>, U, S>) {
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
+/// # fn test(mut pa: Pass, handle: &mut Handle) {
 /// let sel: String = handle.edit_main(&mut pa, |mut c| {
 ///     c.set_anchor();
 ///     c.set_caret_on_end();
@@ -270,7 +271,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         point_or_points.move_to(self);
     }
 
-    /// Moves the selection to [`Point::default`], i.e., the start of
+    /// Moves the selection to [`Point::default`], i.c., the start of
     /// the [`Text`]
     #[track_caller]
     pub fn move_to_start(&mut self) {
@@ -451,7 +452,10 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     #[track_caller]
     pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
         let range = self.selection.byte_range(self.widget.text());
-        self.widget.text().matches(pat, range).unwrap()
+        match self.widget.text().matches(pat, range) {
+            Ok(result) => result,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex
@@ -461,26 +465,30 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// represents a byte index, and can be directly used in, for
     /// example, [`Cursor::move_to`].
     ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_fwd('(').nth(n);
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn search_nth(pa: &mut Pass, handle: &Handle, n: usize, pat: &str) {
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let mut nth = c.search_fwd(pat).nth(n);
     ///         if let Some(range) = nth {
-    ///             e.move_to(range);
+    ///             c.move_to(range);
     ///         }
     ///     })
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_fwd<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
         let start = self.selection.caret();
         let text = self.widget.text();
-        text.search_fwd(pat, start..text.len()).unwrap()
+        match text.search_fwd(pat, start..text.len()) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex, with an upper limit
@@ -490,21 +498,23 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// represents a byte index, and can be directly used in, for
     /// example, [`Cursor::move_to`].
     ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_fwd('(', None).nth(n);
-    ///         if let Some(range) = nth {
-    ///             e.move_to(range);
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn find_within(pa: &mut Pass, handle: &Handle, pat: &str) {
+    ///     handle.edit_all(pa, |mut c| {
+    ///         c.set_caret_on_start();
+    ///         let mut range = c.search_fwd_until(pat, c.range().end).next();
+    ///         if let Some(range) = range {
+    ///             c.move_to(range);
     ///         }
     ///     })
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_fwd_until<R: RegexPattern>(
         &self,
@@ -513,8 +523,10 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ) -> impl Iterator<Item = R::Match> + '_ {
         let start = self.selection.caret();
         let text = self.widget.text();
-        text.search_fwd(pat, start.byte()..until.to_byte_index())
-            .unwrap()
+        match text.search_fwd(pat, start.byte()..until.to_byte_index()) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex, skipping the caret's
@@ -525,30 +537,40 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// bounding `usize`s represents a byte index, and can be
     /// directly used in, for example, [`Cursor::move_to`].
     ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_fwd('(').nth(n);
-    ///         if let Some(range) = nth {
-    ///             e.move_to(range);
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn next_paren_match(pa: &mut Pass, handle: &Handle) {
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let mut start_count = 0;
+    ///         let mut start_bound = None;
+    ///         let end_bound = c.search_fwd_excl([r"\(", r"\)"]).find(|(id, range)| {
+    ///             start_count += ((*id == 0) as u32).saturating_sub((*id == 1) as u32);
+    ///             start_bound = (*id == 0 && start_count == 0).then_some(range.clone());
+    ///             start_count == 0 && *id == 1
+    ///         });
+    ///
+    ///         if let (Some(start), Some((_, end))) = (start_bound, end_bound) {
+    ///             c.move_to(start.start..end.end);
     ///         }
     ///     })
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_fwd_excl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
         let start = self.selection.caret();
         let text = self.widget.text();
-        text.search_fwd(
+        match text.search_fwd(
             pat,
             start.byte() + self.char().len_utf8()..text.len().byte(),
-        )
-        .unwrap()
+        ) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex, with an upper limit and
@@ -559,21 +581,55 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// bounding `usize`s represents a byte index, and can be
     /// directly used in, for example, [`Cursor::move_to`].
     ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// # #[derive(Clone, Copy)]
+    /// # struct Insert;
+    /// # impl Mode for Insert {
+    /// #     type Widget = Buffer;
+    /// #     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
+    /// # }
+    /// #[derive(Clone, Copy)]
+    /// enum Action {
+    ///     Move,
+    ///     Select,
+    ///     Delete,
+    ///     Change,
+    /// }
+    ///
+    /// fn f_key_from_vim(pa: &mut Pass, handle: &Handle, char: char, n: usize, action: Action) {
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let line_end = c.search_fwd('\n').next().unwrap();
+    ///         let mut nth = c.search_fwd_excl_until(char, line_end.start).nth(n);
+    ///
+    ///         match (nth, action) {
+    ///             (Some(range), Action::Move) => {
+    ///                 c.unset_anchor();
+    ///                 c.move_to(range.start);
+    ///             }
+    ///             (Some(range), Action::Select) => {
+    ///                 c.set_anchor_if_needed();
+    ///                 c.move_to(range.start);
+    ///             }
+    ///             (Some(range), Action::Delete | Action::Change) => {
+    ///                 c.set_anchor_if_needed();
+    ///                 c.move_to(range.start);
+    ///                 c.replace("");
+    ///             }
+    ///             _ => {}
+    ///         }
+    ///     });
+    ///
+    ///     if let Action::Change = action {
+    ///         mode::set(Insert);
+    ///     }
+    /// }
+    /// ```
+    ///
     /// # Panics
     ///
     /// If the regex is not valid, this method will panic.
-    ///
-    /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth_paren(pa: &mut Pass, handle: &Handle, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_fwd('(', None).nth(n);
-    ///         if let Some(range) = nth {
-    ///             e.move_to(range);
-    ///         }
-    ///     })
-    /// }
-    /// ```
     #[track_caller]
     pub fn search_fwd_excl_until<R: RegexPattern>(
         &self,
@@ -582,11 +638,13 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ) -> impl Iterator<Item = R::Match> + '_ {
         let start = self.selection.caret();
         let text = self.widget.text();
-        text.search_fwd(
+        match text.search_fwd(
             pat,
             start.byte() + self.char().len_utf8()..until.to_byte_index(),
-        )
-        .unwrap()
+        ) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex, in reverse
@@ -596,26 +654,32 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// represents a byte index, and can be directly used in, for
     /// example, [`Cursor::move_to`].
     ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_rev(s, None).nth(n);
-    ///         if let Some(range) = nth {
-    ///             s.move_to(range)
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn remove_prefix(pa: &mut Pass, handle: &Handle) {
+    ///     let prefix_pat = format!(r"{}*\z", handle.opts(pa).word_chars_regex());
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let prefix_range = c.search_rev(&prefix_pat).next();
+    ///         if let Some(range) = prefix_range {
+    ///             c.move_to(range);
+    ///             c.replace("");
     ///         }
     ///     })
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_rev<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
         let end = self.selection.caret();
         let text = self.widget.text();
-        text.search_rev(pat, Point::default()..end).unwrap()
+        match text.search_rev(pat, Point::default()..end) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex, in reverse, until a given
@@ -626,21 +690,24 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// represents a byte index, and can be directly used in, for
     /// example, [`Cursor::move_to`].
     ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_rev(s, None).nth(n);
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn search_before_but_after_prev(pa: &mut Pass, handle: &Handle, pat: &str) {
+    ///     let mut last_end = 0;
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let mut nth = c.search_rev_until(pat, last_end).next();
     ///         if let Some(range) = nth {
-    ///             s.move_to(range)
+    ///             c.move_to(range)
     ///         }
+    ///         last_end = c.range().end.byte();
     ///     })
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_rev_until<R: RegexPattern>(
         &self,
@@ -650,7 +717,10 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         let end = self.selection.caret();
         let start = until.to_byte_index();
         let text = self.widget.text();
-        text.search_rev(pat, start..end.byte()).unwrap()
+        match text.search_rev(pat, start..end.byte()) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex, in reverse, including the
@@ -661,27 +731,34 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// bounding `usize`s represents a byte index, and can be
     /// directly used in, for example, [`Cursor::move_to`].
     ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_rev(s, None).nth(n);
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn last_word_in_selection(pa: &mut Pass, handle: &Handle) {
+    ///     let word_pat = format!(r"{}+", handle.opts(pa).word_chars_regex());
+    ///     handle.edit_all(pa, |mut c| {
+    ///         c.set_caret_on_end();
+    ///         let mut nth = c.search_rev_incl(&word_pat).next();
     ///         if let Some(range) = nth {
-    ///             s.move_to(range)
+    ///             c.move_to(range)
+    ///         } else {
+    ///             c.reset()
     ///         }
     ///     })
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_rev_incl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
         let end = self.selection.caret();
         let text = self.widget.text();
-        text.search_rev(pat, ..end.byte() + self.char().len_utf8())
-            .unwrap()
+        match text.search_rev(pat, ..end.byte() + self.char().len_utf8()) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     /// Searches the [`Text`] for a regex, in reverse, including the
@@ -692,21 +769,27 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// bounding `usize`s represents a byte index, and can be
     /// directly used in, for example, [`Cursor::move_to`].
     ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// fn search_nth(pa: &mut Pass, handle: &Handle, s: &str, n: usize) {
-    ///     handle.edit_all(pa, |mut e| {
-    ///         let mut nth = e.search_rev(s, None).nth(n);
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn last_word_limited_to_selection(pa: &mut Pass, handle: &Handle) {
+    ///     let word_pat = format!(r"{}+", handle.opts(pa).word_chars_regex());
+    ///     handle.edit_all(pa, |mut c| {
+    ///         c.set_caret_on_end();
+    ///         let start = c.range().start;
+    ///         let mut nth = c.search_rev_incl_until(&word_pat, start).next();
     ///         if let Some(range) = nth {
-    ///             s.move_to(range)
+    ///             c.move_to(range)
+    ///         } else {
+    ///             c.reset()
     ///         }
     ///     })
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_rev_incl_until<R: RegexPattern>(
         &self,
@@ -716,8 +799,10 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         let end = self.selection.caret();
         let start = until.to_byte_index();
         let text = self.widget.text();
-        text.search_rev(pat, start..end.byte() + self.char().len_utf8())
-            .unwrap()
+        match text.search_rev(pat, start..end.byte() + self.char().len_utf8()) {
+            Ok(iter) => iter,
+            Err(err) => panic!("{err}"),
+        }
     }
 
     ////////// Text queries

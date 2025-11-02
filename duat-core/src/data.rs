@@ -23,15 +23,14 @@
 //!
 //! The reason why these structs should only be valid in the main
 //! thread is because, internally, they use non [`Send`]/[`Sync`]
-//! structs, specifically [`Arc`] and [`RefCell`]. These are often
-//! considered "crutches" by a lot of the Rust community, but in an
-//! environment where most of the code is supposed to be able to
-//! access most of the state, it is impossible to go without using
-//! them.
+//! structs, specifically [`RefCell`] and [`UnsafeCell`].
+//! These are often considered "crutches" by a lot of the Rust
+//! community, but in an environment where most of the code is
+//! supposed to be able to access most of the state, it is impossible
+//! to go without using them.
 //!
-//! As well as not having the problem of deadlocks that [`Mutex`]es
-//! would have, [`Arc<RefCell>`] is way faster to clone and lock than
-//! its [`Sync`] equivalents [`Arc<Mutex>`] or [`Arc<RwLock>`].
+//! The use of [`UnsafeCell`] internally also makes the [`read`] and
+//! [`write`] operations _basically_ 0 cost,
 //!
 //! [read]: RwData::read
 //! [written to]: RwData::write
@@ -44,6 +43,8 @@
 //! [`Mutex`]: std::sync::Mutex
 //! [`Arc<Mutex>`]: std::sync::Arc
 //! [`Arc<RwLock>`]: std::sync::Arc
+//! [`read`]: RwData::read
+//! [`write`]: RwData::write
 use std::{
     self,
     any::TypeId,
@@ -142,9 +143,10 @@ impl<T: ?Sized> RwData<T> {
     /// do this:
     ///
     /// ```rust
+    /// # duat_core::doc_duat!(duat);
     /// use std::{cell::UnsafeCell, fmt::Display, sync::Arc};
     ///
-    /// use duat_core::{data::RwData, prelude::*};
+    /// use duat::{data::RwData, prelude::*};
     /// let rw_data: RwData<dyn Display> =
     ///     unsafe { RwData::new_unsized::<String>(Arc::new(UnsafeCell::new("test".to_string()))) };
     /// ```
@@ -178,7 +180,8 @@ impl<T: ?Sized> RwData<T> {
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
     pub fn read<'a>(&'a self, _: &'a Pass) -> &'a T {
-        update_read_state(&self.read_state, &self.cur_state);
+        self.read_state
+            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
         // SAFETY: If one were to try and write to this value, this reference
         // would instantly become invalid, and trying to read from it again
         // would cause a compile error due to a Pass borrowing conflict.
@@ -236,7 +239,8 @@ impl<T: ?Sized> RwData<T> {
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
     pub fn write<'a>(&'a self, _: &'a mut Pass) -> &'a mut T {
-        update_cur_state(&self.read_state, &self.cur_state);
+        let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
+        self.read_state.store(prev + 1, Ordering::Relaxed);
         // SAFETY: Again, the mutable reference to the Pass ensures that this
         // is the only _valid_ mutable reference, if another reference,
         // created prior to this one, were to be reused, that would be a
@@ -278,7 +282,8 @@ impl<T: ?Sized> RwData<T> {
     /// [`write`]: Self::write
     /// [`has_changed`]: Self::has_changed
     pub fn declare_written(&self) {
-        update_cur_state(&self.read_state, &self.cur_state);
+        let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
+        self.read_state.store(prev + 1, Ordering::Relaxed);
     }
 
     ////////// Mapping of the inner value
@@ -302,8 +307,8 @@ impl<T: ?Sized> RwData<T> {
 
     /// Attempts to downcast an [`RwData`] to a concrete type
     ///
-    /// Returns [`Some(RwData<U>)`] if the value within was of type
-    /// `U`, i.e., for unsized types, `U` was the type parameter
+    /// Returns [`Some(RwData<U>)`] if the value within is of type
+    /// `U`. For unsized types, `U` is the type parameter
     /// passed when calling [`RwData::new_unsized`].
     ///
     /// [`Some(RwData<U>)`]: Some
@@ -341,7 +346,7 @@ impl<T: ?Sized> RwData<T> {
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the
-    /// last [`read`] or [`write`]
+    /// last [`read`] or `write`
     ///
     /// Do note that this *DOES NOT* mean that the value inside has
     /// actually been changed, it just means a mutable reference was
@@ -481,32 +486,6 @@ impl<I: ?Sized, O> DataMap<I, O> {
 // acquired when there is a Pass, i.e., on the main thread.
 unsafe impl<I: ?Sized + 'static, O: 'static> Send for DataMap<I, O> {}
 unsafe impl<I: ?Sized + 'static, O: 'static> Sync for DataMap<I, O> {}
-
-/// A checking struct that periodically returns `true`
-pub struct PeriodicChecker(Arc<AtomicBool>);
-
-impl PeriodicChecker {
-    /// Returns a new [`PeriodicChecker`]
-    pub fn new(duration: Duration) -> Self {
-        let has_elapsed = Arc::new(AtomicBool::new(false));
-        std::thread::spawn({
-            let has_elapsed = has_elapsed.clone();
-            move || {
-                while !crate::context::will_reload_or_quit() {
-                    std::thread::sleep(duration);
-                    has_elapsed.store(true, Ordering::Relaxed);
-                }
-            }
-        });
-
-        Self(has_elapsed)
-    }
-
-    /// Checks if the requested [`Duration`] has elapsed
-    pub fn check(&self) -> bool {
-        self.0.fetch_and(false, Ordering::Relaxed)
-    }
-}
 
 /// A key for reading/writing to [`RwData`]
 ///
@@ -668,11 +647,34 @@ impl Pass {
     }
 }
 
-fn update_read_state(read_state: &Arc<AtomicUsize>, cur_state: &Arc<AtomicUsize>) {
-    read_state.store(cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
+/// A checking struct that periodically returns `true`
+pub struct PeriodicChecker(Arc<AtomicBool>);
+
+impl PeriodicChecker {
+    /// Returns a new [`PeriodicChecker`]
+    pub fn new(duration: Duration) -> Self {
+        let has_elapsed = Arc::new(AtomicBool::new(false));
+        std::thread::spawn({
+            let has_elapsed = has_elapsed.clone();
+            move || {
+                while !crate::context::will_reload_or_quit() {
+                    std::thread::sleep(duration);
+                    has_elapsed.store(true, Ordering::Relaxed);
+                }
+            }
+        });
+
+        Self(has_elapsed)
+    }
+
+    /// Checks if the requested [`Duration`] has elapsed
+    pub fn check(&self) -> bool {
+        self.0.fetch_and(false, Ordering::Relaxed)
+    }
 }
 
-fn update_cur_state(read_state: &Arc<AtomicUsize>, cur_state: &Arc<AtomicUsize>) {
-    let prev = cur_state.fetch_add(1, Ordering::Relaxed);
-    read_state.store(prev + 1, Ordering::Relaxed);
+impl Default for PeriodicChecker {
+    fn default() -> Self {
+        Self::new(Duration::from_secs(1))
+    }
 }

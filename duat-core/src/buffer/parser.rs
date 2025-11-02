@@ -3,10 +3,10 @@
 //! These structs will be informed of every [`Change`] that happens in
 //! the `Text`, and are allowed to act accordingly. This action will
 //! be done by telling the `Text` what parts need to be updated.
-//! They will then be updated when deemed relevant by the `Ui` in
+//! They will then be updated when deemed relevant by the [Ui] in
 //! use (usually when these become visible).
 //!
-//! [`Ui`]: crate::ui::Ui
+//! [Ui]: crate::ui::traits::RawUi
 //! [`Change`]: crate::text::Change
 use std::{
     any::TypeId,
@@ -81,9 +81,9 @@ use crate::{
 /// for a _synchronous_ version of this function:
 ///
 /// ```rust
-/// # mod duat { pub mod prelude { pub use duat_core::buffer::*; } }
+/// # duat_core::doc_duat!(duat);
 /// use duat::prelude::*;
-///
+/// 
 /// struct CharCounter {
 ///     count: usize,
 ///     ch: char,
@@ -131,11 +131,7 @@ use crate::{
 /// it is called:
 ///
 /// ```rust
-/// # mod duat { pub mod prelude { pub use duat_core::{
-/// #     buffer::*, context::Handle, data::Pass, form, text::{Point, Tagger}
-/// # };}}
-/// use std::ops::Range;
-///
+/// # duat_core::doc_duat!(duat);
 /// use duat::prelude::*;
 ///
 /// struct HighlightMatch {
@@ -626,11 +622,7 @@ impl BufferTracker {
     /// like this:
     ///
     /// ```rust
-    /// # mod duat { pub mod prelude { pub use duat_core::{
-    /// #     buffer::*, context::Handle, data::Pass, form, text::*
-    /// # };}}
-    /// use std::ops::Range;
-    ///
+    /// # duat_core::doc_duat!(duat);
     /// use duat::prelude::*;
     ///
     /// // When construction the SelectionLen, I turned on area tracking
@@ -673,7 +665,7 @@ impl BufferTracker {
     /// that selection with the `"sel_len"` [`Form`].
     ///
     /// # Note
-    /// 
+    ///
     /// This function is actually incorrect. It doesn't take into
     /// account the possibility of intercepting newlines or the
     /// number being outside the printed area. The corrected version

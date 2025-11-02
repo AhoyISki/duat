@@ -322,9 +322,10 @@ mod global {
     /// how it works:
     ///
     /// ```rust
-    /// # duat_core::form::set_initial(duat_core::form::get_initial());
-    /// use duat_core::prelude::*;
-    /// fn test<W: Widget<U>, U: Ui>(pa: &mut Pass, handle: Handle<W, U>) {
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// fn test<W: Widget>(pa: &mut Pass, handle: Handle<W>) {
     ///     // Assume that a Form with the given name exists
     ///     form::set("my_form", Form::red().on_blue());
     ///
@@ -1261,8 +1262,10 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 /// [`Form`]s based on suffix, like in the following example:
 ///
 /// ```rust
-/// use duat_core::prelude::*;
-/// fn test<W: Widget<U>, U: Ui>(pa: &mut Pass, handle: Handle<W, U>) {
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+///
+/// fn test<W: Widget>(pa: &mut Pass, handle: Handle<W>) {
 ///     // Assume that a Form with the given name exists
 ///     form::set("my_form", Form::red().on_blue());
 ///
@@ -1833,9 +1836,12 @@ macro mimic_method_new {
         #[$attr]
         /// underlining
         ///
-        /// Do note that this feature may not be supported in all [`Ui`]s.
+        /// Do note that this feature may not be supported in all `Ui`s,
+        /// for example, various terminals don't support this feature,
+        /// since it is a part of the kitty protocol, and hasn't been
+        /// universally accepted yet.
         ///
-        /// [`Ui`]: crate::ui::Ui
+        /// `Ui`: crate::ui::traits::RawUi
         pub const fn $ul() -> BuiltForm {
             let mut built = Form::new();
             built.0.style.underline_color = Some($color);

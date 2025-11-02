@@ -11,6 +11,11 @@ publish = false
 [lib]
 crate-type = ["dylib"]
 
+[lints.clippy]
+# This is useful to shorten hook declarations, so you can wrap everything in Ok.
+# You can get rid of this if you wish to.
+unit_arg = "allow"
+
 [profile.release]
 split-debuginfo = "unpacked"
 incremental = true

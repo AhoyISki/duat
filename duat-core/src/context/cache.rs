@@ -4,7 +4,7 @@
 //! a previous Duat instance, or when reloading Duat's configuration
 //! crate.
 //!
-//! One example for where this is used is the [`Ui`], which has
+//! One example for where this is used is the [Ui], which has
 //! information about how much a given buffer should be scrolled when
 //! opening it in Duat. Another example is [`Cursors`], which stores a
 //! list of open [`Cursor`]s, to start the buffer on.
@@ -23,7 +23,7 @@
 //! }
 //! ```
 //!
-//! [`Ui`]: crate::ui::Ui
+//! [Ui]: crate::ui::traits::RawUi
 //! [`Cursors`]: crate::mode::Cursors
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Point`]: crate::text::Point

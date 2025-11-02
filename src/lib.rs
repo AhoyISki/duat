@@ -627,6 +627,7 @@ pub macro setup_duat($setup:expr) {
 
 /// The prelude of Duat
 pub mod prelude {
+    pub use std::ops::Range;
     use std::{any::TypeId, process::Output};
 
     pub use duat_filetype::*;
@@ -644,9 +645,9 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferWritten, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat,
-            FocusChanged, FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched,
-            SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
-            WindowCreated,
+            FocusChanged, FocusedOnDuat, FormSet, Hookable, KeysSent, KeysSentTo, ModeCreated,
+            ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat,
+            WidgetCreated, WindowCreated,
         },
         mode::{
             self, KeyCode, KeyEvent, Mode, Pager, Prompt, User, alias, alt, ctrl, event, map, shift,
@@ -655,8 +656,8 @@ pub mod prelude {
         setup_duat,
         state::*,
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, SpawnTag,
-            Tagger, Text, txt,
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Point, Spacer,
+            SpawnTag, Tagger, Text, txt,
         },
         ui::{self, Widget},
         widgets::*,

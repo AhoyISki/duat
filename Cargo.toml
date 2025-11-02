@@ -14,6 +14,9 @@ include = ["src/", "templates/*", "build.rs"]
 [lints.rust]
 missing_docs = "warn"
 
+[lints.clippy]
+unit_arg = "allow"
+
 [workspace]
 members = ["duat-core", "duat-term", "duat-base"]
 exclude = ["templates/config"]

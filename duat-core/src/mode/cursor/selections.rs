@@ -1,3 +1,17 @@
+//! The [`Selections`] and [`Selection`] structs
+//!
+//! This module just defines the underlying [`Selections`] struct, as
+//! well as all of its components. This struct is used by [`Handle`]s
+//! in order to modify [`Text`]s by manipulating [`Cursor`]s, which
+//! are ultimately backed by the [`Selection`] struct.
+//!
+//! This module also defines [`VPoint`], which is essentially a
+//! [`Point`] with more information inbued into it, most notably
+//! various column distances, as well as their "desired values".
+//!
+//! [`Handle`]: crate::context::Handle
+//! [`Text`]: crate::text::Text
+//! [`Cursor`]: super::Cursor
 use std::cell::Cell;
 
 use gapbuf::{GapBuffer, gap_buffer};
@@ -22,7 +36,7 @@ use crate::{
 ///
 /// A [`Text`] will keep itself in check with regards to its
 /// [`Selections`], that is, it will automatically remove and add the
-/// [`MainCaret`] and [`ExtraCaret`] [tags] when the [`Selections`]
+/// [`MainCaret`] and [`ExtraCaret`] [tags] when the `Selections`
 /// are altered. If it fails to do that, report it as a bug.
 ///
 /// [`Handle`]: crate::context::Handle
@@ -39,7 +53,7 @@ pub struct Selections {
 }
 
 impl Selections {
-    /// A new [`Selections`] with a set main [`Selection`]
+    /// A new `Selections` with a set main [`Selection`]
     pub(crate) fn new(main: Selection) -> Self {
         Self {
             buf: gap_buffer![main],
@@ -48,7 +62,7 @@ impl Selections {
         }
     }
 
-    /// Returns a new empty [`Selections`]
+    /// Returns a new empty `Selections`
     pub(crate) fn new_empty() -> Self {
         Self {
             buf: GapBuffer::new(),

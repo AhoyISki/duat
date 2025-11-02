@@ -1,8 +1,7 @@
 //! Widget handles for Duat
 //!
 //! These are used pretty much everywhere, and are essentially just an
-//! [`RwData<W>`] conjoined to an [`Ui::Area`].
-
+//! [`RwData<W>`] conjoined with an [`Area`].
 use std::{
     cell::RefCell,
     sync::{Arc, Mutex},
@@ -30,7 +29,9 @@ use crate::{
 /// [`Widget`]. Below is a very straightforward [`Mode`]:
 ///
 /// ```rust
-/// use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+///
 /// /// A very basic example Mode.
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
@@ -38,7 +39,7 @@ use crate::{
 /// impl Mode for PlacesCharactersAndMoves {
 ///     type Widget = Buffer;
 ///
-///     // ...
+///     // ..
 ///     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {
 ///         todo!();
 ///     }
@@ -54,16 +55,18 @@ use crate::{
 /// - The [`Handle`] for a [`Mode::Widget`].
 ///
 /// ```rust
-/// use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+///
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
 /// impl Mode for PlacesCharactersAndMoves {
 ///     type Widget = Buffer;
 ///
-///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
-///         match key {
+///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+///         match key_event {
 ///             // actions based on the key pressed
-///             key!(KeyCode::Char('c')) => {
+///             event!(KeyCode::Char(char)) => {
 ///                 // Do something when the character 'c' is typed.
 ///             }
 ///             _ => todo!("The remaining keys"),
@@ -72,7 +75,24 @@ use crate::{
 /// }
 /// ```
 ///
-/// (You can use the [`key!`] macro in order to match [`KeyEvent`]s).
+/// Note the [`event!`] macro. It (alongside [`alt!`], [`ctrl!`] and
+/// [`shift!`]) can be used to easily create [`KeyEvent`]s for
+/// matching purposes. They are very useful for succinctly describing
+/// an exact match in just a short pattern:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// use KeyCode::*;
+/// use duat::prelude::*;
+///
+/// let key_event = KeyEvent::from(Char('a'));
+/// match key_event {
+///     event!('a' | 'b') => { /* .. */ }
+///     shift!(Right | Left) => { /* .. */ }
+///     ctrl!(alt!('d')) => { /* .. */ }
+///     _ => { /* .. */ }
+/// }
+/// ```
 ///
 /// With the [`Handle`], you can modify [`Text`] in a simplified
 /// way. This is done by two actions, [editing] and [moving]. You
@@ -80,26 +100,28 @@ use crate::{
 /// time.
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl Mode for PlacesCharactersAndMoves {
 ///     type Widget = Buffer;
 ///
-///     // ...
-///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle) {
-///         match key {
-///             key!(KeyCode::Char(c)) => handle.edit_all(pa, |mut c| {
+///     // ..
+///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+///         use KeyCode::*;
+///         match key_event {
+///             event!(Char(char)) => handle.edit_all(pa, |mut c| {
 ///                 c.insert('c');
 ///                 c.move_hor(1);
 ///             }),
-///             key!(KeyCode::Right, KeyMod::SHIFT) => handle.edit_all(pa, |mut c| {
+///             shift!(Right) => handle.edit_all(pa, |mut c| {
 ///                 if c.anchor().is_none() {
 ///                     c.set_anchor();
 ///                 }
 ///                 c.move_hor(1);
 ///             }),
-///             key!(KeyCode::Right) => handle.edit_all(pa, |mut c| {
+///             event!(KeyCode::Right) => handle.edit_all(pa, |mut c| {
 ///                 c.unset_anchor();
 ///                 c.move_hor(1);
 ///             }),
@@ -129,6 +151,10 @@ use crate::{
 /// [moving]: Cursor
 /// [`Mode`]: crate::mode::Mode
 /// [`U::Area`]: Ui::Area
+/// [`event!`]: crate::mode::event
+/// [`alt!`]: crate::mode::alt
+/// [`ctrl!`]: crate::mode::ctrl
+/// [`shift!`]: crate::mode::shift
 pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
     widget: RwData<W>,
     pub(crate) area: RwArea,
@@ -436,8 +462,9 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// This is the equivalent of calling:
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// # fn test<U: Ui>(pa: &mut Pass, handle: Handle<Buffer<U>, U, ()>) {
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// # fn test(pa: &mut Pass, handle: Handle) {
     /// handle.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
     /// # }
     /// ```

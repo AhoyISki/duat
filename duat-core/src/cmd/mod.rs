@@ -17,7 +17,8 @@
 //! returned by the command:
 //!
 //! ```rust
-//! # mod duat { pub mod prelude { pub use duat_core::{cmd, context, data::Pass}; } }
+//! # duat_core::doc_duat!(duat);
+//! setup_duat!(setup);
 //! use duat::prelude::*;
 //! fn main_thread_function(pa: &mut Pass) {
 //!     let result = cmd::call(pa, "colorscheme solarized");
@@ -41,7 +42,8 @@
 //! be executed asynchronously:
 //!
 //! ```rust
-//! # mod duat { pub mod prelude { pub use duat_core::cmd; } }
+//! # duat_core::doc_duat!(duat);
+//! setup_duat!(setup);
 //! use duat::prelude::*;
 //! fn on_a_thread_far_far_away() {
 //!     cmd::queue("set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1");
@@ -102,7 +104,11 @@
 //! optional `Parameter`.
 //!
 //! ```rust
-//! # mod duat { pub mod prelude { pub use duat_core::{cmd, form::{self, Form}, text::txt}; } }
+//! # mod duat { pub mod prelude { pub use duat_core::{
+//! #     cmd, data::Pass, form::{self, Form}, text::txt
+//! # };}}
+//! use duat::prelude::*;
+//!
 //! let callers = ["unset-form", "uf"];
 //! // A `Vec<T>` parameter will try to collect all
 //! // remaining arguments as `T` in a list.
@@ -111,7 +117,7 @@
 //!         form::set("form", Form::new());
 //!     }
 //!     // You can return a success message, but must
-//!     // return an error message.
+//!     // return an error message if there is a problem.
 //!     // For those, you should use the `txt!` macro.
 //!     Ok(Some(txt!("Unset [a]{}[] forms", forms.len()).build()))
 //! });
@@ -132,7 +138,8 @@
 //! collects them into a single [`String`].
 //!
 //! ```rust
-//! # mod duat { pub mod prelude { pub use duat_core::{cmd, form::{self, Form}, text::txt}; } }
+//! # duat_core::doc_duat!(duat);
+//! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
 //! cmd::add!("pip", |_pa, args: cmd::Remainder| {
@@ -152,8 +159,6 @@
 //! [`txt!`]: crate::prelude::txt
 //! [`Ok(Some({Text}))`]: Ok
 //! [`Form`]: crate::form::Form
-//! [`Area`]: crate::ui::Ui::Area
-//! [`Handle<Buffer<Ui>>`]: crate::context::Handle
 //! [`on_flags`]: Handles::on_flags
 //! [`Handle`]: crate::context::Handle
 use std::{
@@ -552,9 +557,12 @@ mod global {
     ///         Ok(None)
     ///     });
     ///
-    ///     hook::add::<WindowCreated>(move |mut pa, builder| {
+    ///     hook::add::<WindowCreated>(move |mut pa, window| {
     ///         // status! macro is from duat.
-    ///         builder.push(status!("The value is currently {var}").above());
+    ///         status!("The value is currently {var}")
+    ///             .above()
+    ///             .push_on(pa, window);
+    ///         Ok(())
     ///     });
     /// }
     /// ```
@@ -626,9 +634,9 @@ mod global {
     ///
     /// By calling the quit command, all threads will finish their
     /// tasks, and then Duat will execute a program closing
-    /// function, as defined by the [`Ui`].
+    /// function, as defined by the [Ui].
     ///
-    /// [`Ui`]: crate::ui::Ui
+    /// [Ui]: crate::ui::traits::RawUi
     pub fn quit() {
         queue("quit");
     }
@@ -726,7 +734,9 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// use duat_core::prelude::*;
+    /// # duat_core::doc_duat!(duat);
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
     ///
     /// fn main_thread_function(pa: &mut Pass) {
     ///     cmd::call(pa, "set-prompt new-prompt");

@@ -1,3 +1,14 @@
+//! The [`Window`]s of Duat
+//!
+//! In Duat, there is a [`Windows`] struct (accessible via
+//! [`context::windows`]), which holds [`Window`]s. Each `Window`
+//! represents a set of [`Widget`]s that should be displayed at the
+//! same time, like a browser tab.
+//!
+//! These [`Widget`]s will be contained in [`Node`]s, which are an
+//! anonymized version of [`Handle`]s, which the end user interacts
+//! with through the [`Pass`] struct, allowing for massively
+//! desynchronized global state accessibility.
 use std::{
     any::type_name,
     sync::{Arc, Mutex},
@@ -201,14 +212,8 @@ impl Windows {
     /// [`Buffer`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
     pub(crate) fn new_buffer(&self, pa: &mut Pass, buffer: Buffer) -> Node {
-        let win = context::current_win_index(pa);
         let inner = self.inner.read(pa);
-        let (handle, specs) =
-            inner
-                .layout
-                .lock()
-                .unwrap()
-                .new_buffer(pa, win, &buffer, &inner.list);
+        let (handle, specs) = inner.layout.lock().unwrap().new_buffer(pa, &inner.list);
 
         let specs = PushSpecs { cluster: false, ..specs };
 
@@ -853,10 +858,10 @@ impl Window {
     ///
     /// fn setup() {
     ///     hook::remove("BufferWidgets");
-    ///     hook::add::<Buffer>(|_, (opts, builder)| {
-    ///         builder.push(LineNumbers::opts().rel_abs());
-    ///         builder.push(status!("{name_txt} {selections_txt} {main_txt}"));
-    ///         opts
+    ///     hook::add::<Buffer>(|pa, handle| {
+    ///         LineNumbers::builder().push_on(pa, handle);
+    ///         status!("{name_txt} {selections_txt} {main_txt}").push_on(pa, handle);
+    ///         Ok(())
     ///     });
     /// }
     /// ```

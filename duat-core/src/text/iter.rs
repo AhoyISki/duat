@@ -564,7 +564,7 @@ use crate::form::FormId;
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
 ///
-/// This type is used in iteration by [`Ui`]s in order to
+/// This type is used in iteration by [Ui]s in order to
 /// correctly print Duat's content. Additionally, you may be
 /// able to tell that there is no ghost text or concealment
 /// tags, and there is a [`ResetState`].
@@ -577,7 +577,7 @@ use crate::form::FormId;
 ///
 /// [`Text`]: super::Text
 /// [`Tag`]: super::Tag
-/// [`Ui`]: crate::ui::Ui
+/// [Ui]: crate::ui::traits::RawUi
 /// [`ResetState`]: Part::ResetState
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {

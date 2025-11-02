@@ -12,26 +12,21 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     hook::add::<Buffer>(|pa: &mut Pass, (opts, builder)| {
-//!         // `LineNumbers` comes from duat
-//!         builder.push(LineNumbers::opts());
-//!
-//!         if let Some("lisp") = opts.filetype() {
-//!             opts.dont_wrap()
-//!         } else {
-//!             opts
+//!     hook::add::<Buffer>(|pa: &mut Pass, handle: &Handle| {
+//!         let buffer = handle.write(pa);
+//!         if let Some("lisp") = buffer.filetype() {
+//!             buffer.opts.dont_wrap = true;
 //!         }
+//!         Ok(())
 //!     });
 //! }
 //! ```
 //!
 //! The hook above is triggered whenever a [`Buffer`] widget is
 //! opened. Like every other hook, it gives you access to the global
-//! state via the [`Pass`], and this one also gets you a [`UiBuilder`]
-//! and a [`Widget::Cfg`] argument. The [`UiBuilder`] lets you push
-//! new [`Widget`]s around the [`Buffer`], while the [`Widget::Cfg`]
-//! argument lets you modify a [`Widget`] before it gets added in. You
-//! can call this hook with any [`Widget`], not just the [`Buffer`].
+//! state via the [`Pass`]. Additionally, like most hooks, it gives
+//! you a relevant argument, in this case, a [`Handle<Buffer>`], which
+//! you can modify to your liking.
 //!
 //! This is just one of many built-in [`Hookable`]s. Currently, these
 //! are the existing hooks in `duat-core`, but you can also make your
@@ -66,9 +61,10 @@
 //!
 //! When a hook is added, it can take arguments
 //!
-//!
 //! ```rust
-//! use duat_core::{hook::Hookable, prelude::*};
+//! # duat_core::doc_duat!(duat);
+//! use duat::prelude::*;
+//!
 //! struct CustomHook(usize);
 //! impl Hookable for CustomHook {
 //!     type Input<'h> = usize;
@@ -90,55 +86,83 @@
 //! argument makes it so you can have more convenient parameters for
 //! hooks, like `(usize, &'h str)`, for example.
 //!
-//! [`Hookable`]s also have the [`Output`] type, which is set to `()`
-//! by default, because it is mostly unnecessary. But it can be used
-//! to, for example, make the builder pattern work through hooks:
+//! Additionally, you may also trigger hooks "remotely". That is, if
+//! you don't have acces to a [`Pass`] (due to not being on the main
+//! thread or for some other reason), you may call [`hook::queue`]
+//! rathe than [`hook::trigger`], in order to queue the hook to be
+//! executed on the main thread:
 //!
 //! ```rust
-//! use duat_core::{hook::Hookable, prelude::*};
-//! pub struct MyBuilder(bool, usize);
-//!
-//! impl MyBuilder {
-//!     pub fn set_true(mut self) -> Self {
-//!         self.0 = true;
-//!         self
-//!     }
-//!
-//!     pub fn set_num(mut self, num: usize) -> Self {
-//!         self.1 = num;
-//!         self
-//!     }
-//!
-//!     pub fn consume(self) {
-//!         todo!();
-//!     }
-//! }
-//!
-//! struct MyBuilderCreated(Option<MyBuilder>);
-//! impl Hookable for MyBuilderCreated {
-//!     type Input<'h> = MyBuilder;
-//!     type Output = MyBuilder;
-//!
-//!     fn get_input(&mut self) -> Self::Input<'_> {
-//!         self.0.take().unwrap()
-//!     }
-//!
-//!     fn take_output_back(&mut self, output: Self::Output) {
-//!         self.0 = Some(output)
-//!     }
-//! }
-//!
-//! fn runtime_function_that_triggers_hook(pa: &mut Pass) {
-//!     let builder = MyBuilder(false, 0);
-//!
-//!     let mut hookable = hook::trigger(pa, MyBuilderCreated(Some(builder)));
-//!
-//!     let builder = hookable.0.take().unwrap();
-//!     builder.consume();
+//! # duat_core::doc_duat!(duat);
+//! # use duat::prelude::*;
+//! # struct CustomHook(usize);
+//! # impl Hookable for CustomHook {
+//! #     type Input<'h> = usize;
+//! #     fn get_input(&mut self) -> Self::Input<'_> { self.0 }
+//! # }
+//! fn on_a_thread_far_far_away() {
+//!     let arg = 42;
+//!     hook::queue(CustomHook(arg));
 //! }
 //! ```
 //!
-//! This is, for example, the pattern that [`ModeCreated`] follows.
+//! The main difference (apart from the asynchronous execution) is
+//! that [`hook::trigger`] _returns_ the hook to you, so you can
+//! retrieve its internal values. This can be useful if, for example,
+//! you wish to create a hook for configuring things:
+//!
+//! ```rust
+//! # duat_core::doc_duat!(duat);
+//! use duat::prelude::*;
+//!
+//! #[derive(Default)]
+//! struct MyConfig {
+//!     pub value_1: usize,
+//!     pub value_2: Option<f32>,
+//! }
+//!
+//! struct MyConfigCreated(MyConfig);
+//!
+//! impl Hookable for MyConfigCreated {
+//!     type Input<'h> = &'h mut MyConfig;
+//!
+//!     fn get_input(&mut self) -> Self::Input<'_> {
+//!         &mut self.0
+//!     }
+//! }
+//!
+//! fn create_my_config(pa: &mut Pass) -> MyConfig {
+//!     let my_config = MyConfig::default();
+//!     let MyConfigCreated(my_config) = hook::trigger(pa, MyConfigCreated(my_config));
+//!     my_config
+//! }
+//! ```
+//!
+//! This way, the user can configure `MyConfig` by calling
+//! [`hook::add`]:
+//!
+//! ```rust
+//! # duat_core::doc_duat!(duat);
+//! # #[derive(Default)]
+//! # struct MyConfig {
+//! #     pub value_1: usize,
+//! #     pub value_2: Option<f32>,
+//! # }
+//! # struct MyConfigCreated(MyConfig);
+//! # impl Hookable for MyConfigCreated {
+//! #     type Input<'h> = &'h mut MyConfig;
+//! #     fn get_input(&mut self) -> Self::Input<'_> { &mut self.0 }
+//! # }
+//! use duat::prelude::*;
+//! setup_duat!(setup);
+//!
+//! fn setup() {
+//!     hook::add::<MyConfigCreated>(|pa, my_config| {
+//!         my_config.value_1 = 3;
+//!         Ok(())
+//!     });
+//! }
+//! ```
 //!
 //! [`Buffer`]: crate::buffer::Buffer
 //! [alias]: HookAlias
@@ -152,6 +176,9 @@
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
 //! [`Output`]: Hookable::Output
+//! [`hook::queue`]: queue
+//! [`hook::trigger`]: trigger
+//! [`hook::add`]: add
 //! [`SearchPerformed`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchPerformed.html
 //! [`SearchUpdated`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchUpdated.html
 use std::{any::TypeId, cell::RefCell, collections::HashMap, sync::Mutex};
@@ -173,7 +200,7 @@ mod global {
         atomic::{AtomicUsize, Ordering},
     };
 
-    use super::{HookAlias, HookDummy, Hookable, InnerGroupId, InnerHooks};
+    use super::{HookAlias, Hookable, InnerGroupId, InnerHooks};
     use crate::{data::Pass, session::DuatEvent, text::Text};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
@@ -303,7 +330,7 @@ mod global {
     ///
     /// [`hook::add`]: add
     #[inline(never)]
-    pub fn add<H: HookAlias<impl HookDummy>>(
+    pub fn add<H: HookAlias<impl std::any::Any>>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
     ) -> HookBuilder<H::Hookable> {
         HookBuilder {
@@ -477,7 +504,7 @@ impl Hookable for UnfocusedFromDuat {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, _)| ln.rel_abs());
+///     hook::add::<WidgetCreated<LineNumbers>>(|pa, ln| Ok(ln.write(pa).relative = true));
 /// }
 /// ```
 ///
@@ -489,7 +516,7 @@ impl Hookable for UnfocusedFromDuat {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<LineNumbers<Ui>>(|_, (ln, _)| ln.rel_abs());
+///     hook::add::<LineNumbers>(|pa, ln| Ok(ln.write(pa).relative = true));
 /// }
 /// ```
 ///
@@ -499,35 +526,14 @@ impl Hookable for UnfocusedFromDuat {
 /// [`LineNumbers`] comes with a [`VertRule`] on the right, like this:
 ///
 /// ```rust
-/// # use duat_core::prelude::{BuildInfo, PushSpecs};
-/// # pub struct VertRule(Text);
-/// # impl Widget<Ui> for VertRule {
-/// #     type Cfg = VertRuleCfg;
-/// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
-/// #     fn needs_update(&self, _: &Pass) -> bool { false }
-/// #     fn opts() -> Self::Cfg { VertRuleCfg }
-/// #     fn text(&self) -> &Text { &self.0 }
-/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
-/// #     fn once() -> Result<(), Text> { Ok(()) }
-/// # }
-/// # pub struct VertRuleCfg;
-/// # impl VertRuleCfg {
-/// #     pub fn on_the_right(self) -> Self { self }
-/// # }
-/// # impl WidgetCfg<Ui> for VertRuleCfg {
-/// #     type Widget = VertRule;
-/// #     fn build(self, _: &mut Pass, _: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
-/// #         (VertRule(Text::new()), PushSpecs::left())
-/// #     }
-/// # }
 /// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<LineNumbers<Ui>>(|_, (ln, builder)| {
-///         builder.push(VertRule::opts().on_the_right());
-///         ln
+///     hook::add::<LineNumbers>(|pa, handle| {
+///         VertRule::builder().on_the_right().push_on(pa, handle);
+///         Ok(())
 ///     });
 /// }
 /// ```
@@ -768,61 +774,6 @@ impl Hookable for FocusChanged {
 ///
 /// - The previous mode.
 /// - The current mode.
-///
-/// # Aliases
-///
-/// Since every `Mode` implements the `HookAlias` trait, given a
-/// `duat_kak` plugin imported as `kak`, instead of writing this:
-///
-/// ```rust
-/// # mod duat_kak {
-/// #     use duat_core::prelude::*;
-/// #     #[derive(Clone)]
-/// #     pub struct Normal;
-/// #     impl Mode for Normal {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
-/// #     }
-/// # }
-/// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-/// use duat_kak::Normal;
-///
-/// fn setup() {
-///     hook::add::<ModeCreated<Normal>>(|pa, (normal, handle)| normal);
-/// }
-/// ```
-///
-/// You can just write this:
-///
-/// ```rust
-/// # mod duat_kak {
-/// #     use duat_core::prelude::*;
-/// #     #[derive(Clone)]
-/// #     pub struct Normal;
-/// #     impl Mode for Normal {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
-/// #     }
-/// # }
-/// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-/// use duat_kak::Normal;
-///
-/// fn setup() {
-///     hook::add::<Normal>(|pa, (normal, handle)| normal);
-/// }
-/// ```
-///
-/// # Note
-///
-/// You should try to avoid more than one [`Mode`] with the same name.
-/// This can happen if you're using two structs with the same name,
-/// but from different crates.
-///
-/// [`Mode`]: crate::mode::Mode
 pub struct ModeSwitched(pub(crate) (&'static str, &'static str));
 
 impl Hookable for ModeSwitched {
@@ -844,6 +795,68 @@ impl Hookable for ModeSwitched {
 /// different options upon switching to modes, depending on things
 /// like the language of a [`Buffer`].
 ///
+/// # Aliases
+///
+/// Since every `Mode` implements the `HookAlias` trait, given a
+/// `duat_kak` plugin imported as `kak`, instead of writing this:
+///
+/// ```rust
+/// # mod duat_kak {
+/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
+/// #     #[derive(Clone)]
+/// #     pub struct Normal {
+/// #         pub indent_on_capital_i: bool
+/// #     }
+/// #     impl Mode for Normal {
+/// #         type Widget = Buffer;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
+/// #     }
+/// # }
+/// # duat_core::doc_duat!(duat);
+/// setup_duat!(setup);
+/// use duat::prelude::*;
+/// use duat_kak::Normal;
+///
+/// fn setup() {
+///     hook::add::<ModeCreated<Normal>>(|pa, (normal, handle)|
+///         Ok(normal.indent_on_capital_i = true)
+///     );
+/// }
+/// ```
+///
+/// You can just write this:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// # mod duat_kak {
+/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
+/// #     #[derive(Clone)]
+/// #     pub struct Normal {
+/// #         pub indent_on_capital_i: bool
+/// #     }
+/// #     impl Mode for Normal {
+/// #         type Widget = Buffer;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
+/// #     }
+/// # }
+/// setup_duat!(setup);
+/// use duat::prelude::*;
+/// use duat_kak::Normal;
+///
+/// fn setup() {
+///     hook::add::<Normal>(|pa, (normal, handle)|
+///         Ok(normal.indent_on_capital_i = true)
+///     );
+/// }
+/// ```
+///
+/// # Note
+///
+/// You should try to avoid more than one [`Mode`] with the same name.
+/// This can happen if you're using two structs with the same name,
+/// but from different crates.
+///
+/// [`Mode`]: crate::mode::Mode
 /// [`Buffer`]: crate::buffer::Buffer
 pub struct ModeCreated<M: Mode>(pub(crate) (M, Handle<M::Widget>));
 
@@ -964,7 +977,7 @@ impl Hookable for BufferWritten {
 /// Duat in the configuration crate.
 ///
 /// [`hook::trigger`]: trigger
-pub trait Hookable<_H: HookDummy = NormalHook>: Sized + 'static {
+pub trait Hookable: Sized + 'static {
     /// The arguments that are passed to each hook.
     type Input<'h>;
     /// How to get the arguments from the [`Hookable`]
@@ -1126,37 +1139,31 @@ struct Hook<H: Hookable> {
 /// of where this is used is with [`Widget`]s and [`Mode`]s:
 ///
 /// ```rust
-/// use duat_core::{
-///     hook::{HookAlias, HookDummy, Hookable},
-///     prelude::*,
-/// };
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
 ///
-/// pub struct CreatedStruct<T: 'static>(Option<T>);
+/// pub struct CreatedStruct<T: 'static>(T);
 ///
 /// impl<T: 'static> Hookable for CreatedStruct<T> {
-///     type Input<'h> = T;
-///     type Output = T;
+///     type Input<'h> = &'h mut T;
 ///
 ///     fn get_input(&mut self) -> Self::Input<'_> {
-///         self.0.take().unwrap()
-///     }
-///
-///     fn take_output_back(&mut self, output: Self::Output) {
-///         self.0 = Some(output);
+///         &mut self.0
 ///     }
 /// }
 ///
-/// struct MyStructWithAVeryLongName;
+/// struct MyStructWithAVeryLongName {
+///     pub option_1: bool,
+/// };
 ///
 /// // In the user's config crate:
 /// # {
-/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
 ///     // This is way too long
-///     hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|pa, arg| arg);
+///     hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|_, arg| Ok(arg.option_1 = true));
 /// }
 /// # }
 /// ```
@@ -1164,52 +1171,43 @@ struct Hook<H: Hookable> {
 /// In this case, you can do this instead:
 ///
 /// ```rust
-/// use duat_core::{
-///     hook::{HookAlias, HookDummy, Hookable},
-///     prelude::*,
-/// };
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+/// use hook::HookAlias;
 ///
-/// pub struct CreatedStruct<T: 'static>(Option<T>);
+/// pub struct CreatedStruct<T: 'static>(T);
 ///
 /// impl<T: 'static> Hookable for CreatedStruct<T> {
-///     type Input<'h> = T;
-///     type Output = T;
+///     type Input<'h> = &'h mut T;
 ///
 ///     fn get_input(&mut self) -> Self::Input<'_> {
-///         self.0.take().unwrap()
-///     }
-///
-///     fn take_output_back(&mut self, output: Self::Output) {
-///         self.0 = Some(output);
+///         &mut self.0
 ///     }
 /// }
 ///
-/// struct MyStructWithAVeryLongName;
+/// struct MyStructWithAVeryLongName {
+///     pub option_1: bool,
+/// };
 ///
 /// struct MyDummy;
-///
-/// #[doc(hidden)]
-/// impl HookDummy for MyDummy {}
 ///
 /// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {
 ///     type Hookable = CreatedStruct<MyStructWithAVeryLongName>;
 ///     type Input<'h> = <Self::Hookable as Hookable>::Input<'h>;
-///     type Output = <Self::Hookable as Hookable>::Output;
 /// }
 ///
 /// // In the user's config crate:
 /// # {
-/// # duat_core::doc_duat!(duat);
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
 ///     // Much better
-///     hook::add::<MyStructWithAVeryLongName>(|pa, arg| arg);
+///     hook::add::<MyStructWithAVeryLongName>(|_, arg| Ok(arg.option_1 = true));
 /// }
 /// # }
 /// ```
-pub trait HookAlias<D: HookDummy = NormalHook> {
+pub trait HookAlias<D: std::any::Any = NormalHook> {
     /// Just a shorthand for less boilerplate in the function
     /// definition
     type Input<'h>;
@@ -1233,113 +1231,14 @@ impl<M: Mode> HookAlias<ModeCreatedDummy> for M {
     type Input<'h> = <ModeCreated<M> as Hookable>::Input<'h>;
 }
 
-/// Use this trait if you want to make specialized hooks
-///
-/// This trait in particular doesn't really serve any purposes other
-/// than allowing for specialization resolution. It is recommended
-/// that you use `#[doc(hidden)]` for any type implementing this
-/// trait.
-///
-/// ```rust
-/// use duat_core::{
-///     hook::{HookAlias, HookDummy, Hookable},
-///     prelude::*,
-/// };
-///
-/// pub struct CreatedStruct<T: 'static>(Option<T>);
-///
-/// impl<T: 'static> Hookable for CreatedStruct<T> {
-///     type Input<'h> = T;
-///     type Output = T;
-///
-///     fn get_input(&mut self) -> Self::Input<'_> {
-///         self.0.take().unwrap()
-///     }
-///
-///     fn take_output_back(&mut self, output: Self::Output) {
-///         self.0 = Some(output);
-///     }
-/// }
-///
-/// struct MyStructWithAVeryLongName;
-///
-/// // In the user's config crate:
-/// # {
-/// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     // This is way too long
-///     hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|pa, arg| arg);
-/// }
-/// # }
-/// ```
-///
-/// In this case, you can do this instead:
-///
-/// ```rust
-/// use duat_core::{
-///     hook::{HookAlias, HookDummy, Hookable},
-///     prelude::*,
-/// };
-///
-/// pub struct CreatedStruct<T: 'static>(Option<T>);
-///
-/// impl<T: 'static> Hookable for CreatedStruct<T> {
-///     type Input<'h> = T;
-///     type Output = T;
-///
-///     fn get_input(&mut self) -> Self::Input<'_> {
-///         self.0.take().unwrap()
-///     }
-///
-///     fn take_output_back(&mut self, output: Self::Output) {
-///         self.0 = Some(output);
-///     }
-/// }
-///
-/// struct MyStructWithAVeryLongName;
-///
-/// struct MyDummy;
-///
-/// #[doc(hidden)]
-/// impl HookDummy for MyDummy {}
-///
-/// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {
-///     type Hookable = CreatedStruct<MyStructWithAVeryLongName>;
-///     type Input<'h> = <Self::Hookable as Hookable>::Input<'h>;
-///     type Output = <Self::Hookable as Hookable>::Output;
-/// }
-///
-/// // In the user's config crate:
-/// # {
-/// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     // Much better
-///     hook::add::<MyStructWithAVeryLongName>(|pa, arg| arg);
-/// }
-/// # }
-/// ```
-pub trait HookDummy {}
-
 /// For specialization purposes
 #[doc(hidden)]
 pub struct NormalHook;
-
-impl HookDummy for NormalHook {}
 
 /// For specialization purposes
 #[doc(hidden)]
 pub struct WidgetCreatedDummy;
 
-impl HookDummy for WidgetCreatedDummy {}
-
 /// For specialization purposes
 #[doc(hidden)]
 pub struct ModeCreatedDummy;
-
-impl HookDummy for ModeCreatedDummy {}

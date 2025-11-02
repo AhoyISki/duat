@@ -110,9 +110,9 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 
 /// [`Tag`]: Places an extra Caret on the [`Text`]
 ///
-/// How the extra cursor gets inserted is [`Ui`] dependant, for
+/// How the extra cursor gets inserted is [Ui] dependant, for
 /// example, a terminal can't show more than one cursor, so in
-/// [`duat-term`], it defaults to showing the `"ExtraCaret"`
+/// [`duat-term`], it defaults to showing the `"caret.extra"`
 /// [`Form`], but in other platforms, it could show an actual cursor.
 ///
 /// You shouldn't have to use this most of the time, since the
@@ -120,7 +120,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 /// automatically for you.
 ///
 /// [`Selections`]: crate::mode::Selections
-/// [`Ui`]: crate::ui::Ui
+/// [Ui]: crate::ui::traits::RawUi
 /// [`duat-term`]: https://crates.io/crates/duat-term
 /// [`Form`]: crate::form::Form
 #[derive(Debug, Clone, Copy)]
@@ -175,14 +175,16 @@ pub struct AlignLeft;
 /// Let's say that this is the line being printed:
 ///
 /// ```
-/// # use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
 /// txt!("This is my line,please,pretend it has tags");
 /// ```
 ///
 /// If we were to print it with `{Spacer}` like this:
 ///
 /// ```
-/// # use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
 /// txt!("This is my line,{Spacer}please,{Spacer}pretend it has tags");
 /// ```
 ///

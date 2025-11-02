@@ -69,22 +69,21 @@ impl Tags<'_> {
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are
-    /// implementing a [`Parser`] that applies [`Tag`]s to the
+    /// implementing a [`Parser`] that applies `Tag`s to the
     /// [`Text`] [when changes happen]/[on updates], you can "refresh"
-    /// those [`Tag`]s in a very efficient way -- even in very large
+    /// those `Tag`s in a very efficient way -- even in very large
     /// buffers -- just by doing this:
     ///
     /// ```rust
-    /// use std::ops::Range;
-    ///
-    /// use duat_core::{prelude::*, text::Point};
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
     ///
     /// struct MyParser {
     ///     tagger: Tagger,
     /// }
     ///
-    /// impl<U: Ui> Parser<U> for MyParser {
-    ///     fn update(&mut self, pa: &mut Pass, buffer: &Handle<Buffer<U>, U>, on: Vec<Range<Point>>) {
+    /// impl Parser for MyParser {
+    ///     fn update(&mut self, pa: &mut Pass, buffer: &Handle, on: Vec<Range<Point>>) {
     ///         let buffer = buffer.write(pa);
     ///         // Removing on the whole Buffer
     ///         buffer.text_mut().remove_tags(self.tagger, ..);
@@ -97,6 +96,7 @@ impl Tags<'_> {
     /// [range]: RangeBounds
     /// [`Parser`]: crate::buffer::Parser
     /// [when changes happen]: crate::buffer::Parser::parse
+    /// [on updates]: crate::buffer::Parser::update
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(taggers, range)

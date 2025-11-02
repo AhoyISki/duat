@@ -1,41 +1,41 @@
-//! APIs for the construction of widgets, and a few common ones.
+//! APIs for the construction of [`Widget`]s
 //!
 //! This module has the [`Widget`] trait, which is a region on the
 //! window containing a [`Text`], and may be modified by user mode
 //! (but not necessarily).
 //!
-//! These widgets will be used in two circumstances:
+//! These widgets will be used in a few circumstances:
 //!
-//! - Being pushed to [`Widget`]s via the [`WidgetCreated`] [`hook`];
-//! - Being pushed to the outer edges of a window via
-//!   [`WindowCreated`];
+//! - Pushed to [`Handle`]s via [`Handle::push_outer_widget`] or
+//!   [`Handle::push_inner_widget`].
+//! - Pushed to the [`Window`]'s edges of a window via
+//!   [`Window::push_inner`] and [`Window::push_outer`].
+//! - Spawned on [`Handle`]s via [`Handle::spawn_widget`].
+//! - Spawned on [`Text`] via the [`SpawnTag`] [tag].
 //!
 //! They can be pushed to all 4 sides of other widgets through the
-//! use of [`PushSpecs`]. When pushing widgets, you can also include
-//! [`Constraint`]s in order to get a specific size on the screen for
-//! the widget.
+//! use of [`PushSpecs`]. Or they can be spawned with [`SpawnSpecs`].
+//! Each of these structs determine the specifics of where the
+//! [`Widget`] will be spawned, as well as how its [`Area`] should
+//! adapt to changes in the layout.
 //!
-//! ```rust
-//! # use duat_core::ui::PushSpecs;
-//! let specs = PushSpecs::left().hor_min(10.0).ver_len(2.0);
-//! ```
+//! For example, if you spawn a [`Widget`] on [`Text`] via the
+//! [`SpawnTag`], then any movements and modifications on said `Text`
+//! will also move the `Widget` around.
 //!
-//! When pushing a widget with these `specs` to another widget, Duat
-//! will put it on the left, and _try_ to give it a minimum width of
-//! `10.0`, and a height of `2.0`.
-//!
-//! This module also describes a [`WidgetCfg`], which is used in
-//! widget construction.
+//! The only [`Widget`] that is defined in `duat-core` is the
+//! [`Buffer`]. It is the quitessential `Widget` for a text editor,
+//! being the part that is modified by user input.
 //!
 //! [`Buffer`]: crate::buffer::Buffer
-//! [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
-//! [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
-//! [`StatusLine`]: docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
-//! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
-//! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
-//! [`WidgetCreated`]: crate::hook::WidgetCreated
-//! [`WindowCreated`]: crate::hook::WindowCreated
-//! [`Constraint`]: crate::ui::Constraint
+//! [`Window`]: super::Window
+//! [`Window::push_inner`]: super::Window::push_inner
+//! [`Window::push_outer`]: super::Window::push_outer
+//! [`SpawnTag`]: crate::text::SpawnTag
+//! [tag]: crate::text::Tag
+//! [`PushSpecs`]: super::PushSpecs
+//! [`SpawnSpecs`]: super::SpawnSpecs
+//! [`Area`]: super::Area
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -60,182 +60,53 @@ use crate::{
 /// widget that shows the uptime, in seconds, for Duat.
 ///
 /// ```rust
-/// # use duat_core::{data::PeriodicChecker, text::Text};
+/// # duat_core::doc_duat!(duat);
+/// use std::time::Duration;
+///
+/// use duat::{data::PeriodicChecker, prelude::*};
+///
 /// struct UpTime(Text, PeriodicChecker);
+///
+/// impl UpTime {
+///     fn new() -> Self {
+///         Self(
+///             Text::default(),
+///             PeriodicChecker::new(Duration::from_secs(1)),
+///         )
+///     }
+/// }
 /// ```
 ///
 /// In order to be a proper widget, it must have a [`Text`] to
 /// display. The [`PeriodicChecker`] will be explained later. Next, I
-/// implement [`Widget`] on `UpTime`:
-///
-/// ```rust
-/// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{data::PeriodicChecker, prelude::*};
-/// # struct UpTime(Text, PeriodicChecker);
-/// # struct UpTimeCfg;
-/// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg {
-/// #     type Widget = UpTime;
-/// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) { todo!() }
-/// # }
-/// impl<U: Ui> Widget<U> for UpTime {
-///     type Cfg = UpTimeCfg;
-///
-///     fn opts() -> Self::Cfg {
-///         UpTimeCfg
-///     }
-///     // more methods remain below
-/// #     fn text(&self) -> &Text { &self.0 }
-/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
-/// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: &mut Pass, handle: &Handle<Self, U>) {}
-/// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
-/// }
-/// ```
-///
-/// Notice the `UpTimeCfg` defined as the `Widget::Cfg` for `UpTime`.
-/// [`WidgetCfg`]s  exist to let users push [`Widget`]s to [`Buffer`]s
-/// and the window through the [`WidgetCreated`] and [`WindowCreated`]
-/// [hooks]. It lets users configure widgets through methods defined
-/// by the widget author.
-///
-/// ```rust
-/// # use std::{sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{data::PeriodicChecker, prelude::*};
-/// # struct UpTime(Text, PeriodicChecker);
-/// struct UpTimeCfg;
-///
-/// impl<U: Ui> WidgetCfg<U> for UpTimeCfg {
-///     type Widget = UpTime;
-///
-///     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-///         let checker = PeriodicChecker::new(std::time::Duration::from_secs(1));
-///         let widget = UpTime(Text::new(), checker);
-///         let specs = PushSpecs::below().ver_len(1.0);
-///
-///         (widget, specs)
-///     }
-/// }
-/// # impl<U: Ui> Widget<U> for UpTime {
-/// #     type Cfg = UpTimeCfg;
-/// #     fn opts() -> Self::Cfg { UpTimeCfg }
-/// #     fn text(&self) -> &Text { &self.0 }
-/// #     fn text_mut(&mut self) -> &mut Text{ &mut self.0 }
-/// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: &mut Pass, handle: &Handle<Self, U>) {}
-/// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
-/// # }
-/// ```
-///
-/// The [`build`] method should return 2 objects:
-///
-/// * The widget itself.
-/// * [How] to push the widget around. This happens in an inside-out
-///   fashion.
-///
-/// Now, there are some other methods from [`Widget`] that need
-/// to be implemented for this to work. First of all, there needs to
-/// be a starting [`Instant`] to compare with the current moment in
-/// time.
-///
-/// The best time to do something like this is after Duat is done with
-/// initial setup. This happens when the [`ConfigLoaded`] hook is
-/// triggered.
+/// implement `Widget` on `UpTime`:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use std::{sync::OnceLock, time::Instant};
+/// use std::time::Duration;
 ///
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     static START_TIME: OnceLock<Instant> = OnceLock::new();
-///     hook::add::<ConfigLoaded>(|_, _| START_TIME.set(Instant::now()).unwrap());
-/// }
-/// ```
-///
-/// This should be added to the `setup` function in the `config`
-/// crate. Obviously, requiring that the end user adds a [hook] for
-/// your [`Widget`] to work is poor UX design, so this should be
-/// placed inside of a [`Plugin`] instead.
-///
-/// Next I'm going to implement two other [`Widget`] functions:
-/// [`once`] and [`update`]. The [`once`] function will do things that
-/// should only happen once, even if multiple of a given [`Widget`]
-/// are spawned. The [`update`] function is where the [`Text`] should
-/// be updated:
-///
-/// ```rust
-/// # use std::{sync::OnceLock, time::Instant};
-/// # use duat_core::{prelude::*, data::PeriodicChecker};
-/// # struct UpTime(Text, PeriodicChecker);
-/// # struct UpTimeCfg;
-/// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg {
-/// #     type Widget = UpTime;
-/// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (UpTime, PushSpecs) { todo!() }
-/// # }
-/// // This was set during the `setup` function
-/// static START_TIME: OnceLock<Instant> = OnceLock::new();
-/// impl<U: Ui> Widget<U> for UpTime {
-/// #     type Cfg = UpTimeCfg;
-/// #     fn opts() -> Self::Cfg { UpTimeCfg }
-/// #     fn text(&self) -> &Text { &self.0 }
-/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
-/// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
-///     // ...
-///     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
-///         let start = START_TIME.get().unwrap();
-///         let elapsed = start.elapsed();
-///         let mins = elapsed.as_secs() / 60;
-///         let secs = elapsed.as_secs() % 60;
-///
-///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s").build();
-///     }
-///
-///     fn once() -> Result<(), Text> {
-///         form::set_weak("uptime.mins", Form::new().green());
-///         form::set_weak("uptime.secs", Form::new().green());
-///         Ok(())
-///     }
-/// }
-/// ```
-///
-/// In the [`once`] function, I am setting the `"UpTime"` [`Form`],
-/// which is going to be used on the `UpTime`'s [`Text`]. Finally, the
-/// only thing that remains to be done is a function to check for
-/// updates: [`Widget::needs_update`]. That's where the
-/// [`PeriodicChecker`] comes in:
-///
-/// ```rust
-/// # use std::{sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{data::PeriodicChecker, prelude::*};
-/// // This was set during the `setup` function
-/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+/// use duat::{data::PeriodicChecker, prelude::*};
 ///
 /// struct UpTime(Text, PeriodicChecker);
 ///
-/// impl<U: Ui> Widget<U> for UpTime {
-///     type Cfg = UpTimeCfg;
+/// impl UpTime {
+///     fn new() -> Self {
+///         Self(
+///             Text::default(),
+///             PeriodicChecker::new(Duration::from_secs(1)),
+///         )
+///     }
+/// }
+///
+/// impl Widget for UpTime {
+///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
+///         todo!()
+///     }
 ///
 ///     fn needs_update(&self, pa: &Pass) -> bool {
-///         // Returns `true` once per second
-///         self.1.check()
+///         todo!();
 ///     }
 ///
-///     fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
-///         let start = START_TIME.get().unwrap();
-///         let elapsed = start.elapsed();
-///         let mins = elapsed.as_secs() / 60;
-///         let secs = elapsed.as_secs() % 60;
-///
-///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s").build();
-///     }
-///
-///     fn opts() -> Self::Cfg {
-///         UpTimeCfg
-///     }
-///
-///     // Some methods used in Duat
 ///     fn text(&self) -> &Text {
 ///         &self.0
 ///     }
@@ -243,30 +114,227 @@ use crate::{
 ///     fn text_mut(&mut self) -> &mut Text {
 ///         &mut self.0
 ///     }
-///
-///     fn once() -> Result<(), Text> {
-///         form::set_weak("uptime.mins", Form::new().green());
-///         form::set_weak("uptime.secs", Form::new().green());
-///         Ok(())
-///     }
 /// }
+/// ```
 ///
-/// struct UpTimeCfg;
+/// The [`Widget::update`] funcion is responsible for updating the
+/// [`Text`] of the `Widget` on every frame. However, it is only
+/// called if [`Widget::needs_update`] returns `true`. Note that this
+/// isn't the only way to update `Widget`s, since in any place where
+/// you have global access throught the [`Pass`] (like [hooks],
+/// [commands], etc.), you can update any [`Handle`] for any `Widget`.
 ///
-/// impl<U: Ui> WidgetCfg<U> for UpTimeCfg {
-///     type Widget = UpTime;
+/// There are two other `Widget` functions:
+/// [`Widget::on_focus`] and [`Widget::on_unfocus`], which are called
+/// when a [`Mode`] is set, and the `Widget` is focused or unfocused.
+/// For this example, since there are no `Mode`s, these will not be
+/// used.
 ///
-///     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (UpTime, PushSpecs) {
-///         // You could imagine how a method on `UpTimeCfg` could
-///         // change the periodicity
-///         let checker = PeriodicChecker::new(Duration::from_secs(1));
-///         let widget = UpTime(Text::new(), checker);
-///         let specs = PushSpecs::below().ver_len(1.0);
+/// Next, I will finish implementing the `Widget` trait.
 ///
-///         (widget, specs)
+/// First of all, there needs to be a starting [`Instant`] to compare
+/// with the current moment in time. The correct moment to do that
+/// would be right as the `setup` function is called. This can be done
+/// safely with a [`OnceLock`]:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// setup_duat!(setup);
+/// use std::{sync::OnceLock, time::Instant};
+///
+/// use duat::prelude::*;
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// fn setup() {
+///     START_TIME.set(Instant::now()).unwrap();
+/// }
+/// ```
+///
+/// However, exposing that to end users is rather poor UX, so you
+/// should make use of [`Plugin`]s instead:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// use std::{sync::OnceLock, time::Instant};
+///
+/// use duat::prelude::*;
+/// struct UpTimePlugin;
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// impl Plugin for UpTimePlugin {
+///     fn plug(self, plugins: &Plugins) {
+///         START_TIME.set(Instant::now()).unwrap();
 ///     }
 /// }
 /// ```
+///
+/// Next, I'm going to implement the [`update`] function:
+///
+/// ```rust
+/// # use std::{sync::OnceLock, time::Instant};
+/// # duat_core::doc_duat!(duat);
+/// use duat::{data::PeriodicChecker, prelude::*};
+/// # struct UpTime(Text, PeriodicChecker);
+///
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// impl Widget for UpTime {
+/// #     fn text(&self) -> &Text { &self.0 }
+/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
+/// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
+///     // ...
+///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
+///         let start = START_TIME.get().unwrap();
+///         let elapsed = start.elapsed();
+///         let mins = elapsed.as_secs() / 60;
+///         let secs = elapsed.as_secs() % 60;
+///
+///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s").build();
+///     }
+/// }
+/// ```
+///
+/// This should format the [`Text`] via [`txt!`] to show how many
+/// minutes and seconds have passed. However, I'm using the
+/// `uptime.mins` and `updime.secs` [`Form`]s, which aren't set to
+/// anything, so they'll just display normally colored text.
+///
+/// To solve that, just add more statements to the plugin:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// # use std::{sync::OnceLock, time::Instant};
+/// use duat::prelude::*;
+///
+/// struct UpTimePlugin;
+///
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// impl Plugin for UpTimePlugin {
+///     fn plug(self, plugins: &Plugins) {
+///         START_TIME.set(Instant::now()).unwrap();
+///         form::set_weak("uptime", Form::green());
+///     }
+/// }
+/// ```
+///
+/// Note the [`form::set_weak`]. This function "weakly" sets the
+/// [`Form`], that is, it sets it _only_ if it wasn't set before via
+/// [`form::set`]. This is useful since the order in which the plugin
+/// is added and the `Form` is set by the end user doesn't end up
+/// mattering.
+///
+/// Note also that I set `uptime`, rather than `uptime.mins` or
+/// `uptime.secs`. Due to `Form` inheritance, any form with a `.` in
+/// it will inherit from the parent, unless explicitly set to
+/// something else. this inheritance follows even when the parent
+/// changes. That is, if the user sets the `uptime` form to something
+/// else, `uptime.mins` and `uptime.secs` will also be set to that.
+///
+/// Now, I'm going to implement the [`needs_update`] function, that's
+/// where the [`PeriodicChecker`] comes in to play:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// # use std::{sync::OnceLock, time::Instant};
+/// use duat::{data::PeriodicChecker, prelude::*};
+///
+/// // This was set during the `setup` function
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// struct UpTime(Text, PeriodicChecker);
+///
+/// impl Widget for UpTime {
+/// #     fn text(&self) -> &Text { &self.0 }
+/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
+/// #     fn update(pa: &mut Pass, handle: &Handle<Self>) { }
+///     fn needs_update(&self, pa: &Pass) -> bool {
+///         // Returns `true` once per second
+///         self.1.check()
+///     }
+/// }
+/// ```
+///
+/// The [`needs_update`] function is executed on every frame, however,
+/// it should only return `true` every second, which is when the
+/// [`update`] function will be called, updating the `Widget`.
+///
+/// Now, all that is left to do is placing the `Widget` on screen. To
+/// do that, I will make use of a [hook] to place them on the bottom
+/// of the [`Window`], right below the [`Buffer`]s:
+///
+/// ```rust
+/// #![feature(default_field_values)]
+/// # duat_core::doc_duat!(duat);
+/// use std::{
+///     sync::OnceLock,
+///     time::{Duration, Instant},
+/// };
+///
+/// use duat::{data::PeriodicChecker, prelude::*};
+///
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// struct UpTimePlugin;
+///
+/// impl Plugin for UpTimePlugin {
+///     fn plug(self, plugins: &Plugins) {
+///         START_TIME.set(Instant::now()).unwrap();
+///         form::set_weak("uptime", Form::green());
+///
+///         hook::add::<WindowCreated>(|pa, window| {
+///             let specs = ui::PushSpecs {
+///                 side: ui::Side::Below,
+///                 height: Some(1.0),
+///                 ..
+///             };
+///             window.push_inner(pa, UpTime::new(), specs);
+///             Ok(())
+///         });
+///     }
+/// }
+///
+/// struct UpTime(Text, PeriodicChecker);
+///
+/// impl UpTime {
+///     fn new() -> Self {
+///         Self(
+///             Text::default(),
+///             PeriodicChecker::new(Duration::from_secs(1)),
+///         )
+///     }
+/// }
+///
+/// impl Widget for UpTime {
+///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
+///         let start = START_TIME.get().unwrap();
+///         let elapsed = start.elapsed();
+///         let mins = elapsed.as_secs() / 60;
+///         let secs = elapsed.as_secs() % 60;
+///
+///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s").build();
+///     }
+///
+///     fn needs_update(&self, pa: &Pass) -> bool {
+///         self.1.check()
+///     }
+///
+///     fn text(&self) -> &Text {
+///         &self.0
+///     }
+///
+///     fn text_mut(&mut self) -> &mut Text {
+///         &mut self.0
+///     }
+/// }
+/// ```
+///
+/// Here, I'm adding a [hook] to push this widget to the bottom of the
+/// [`Window`], right as said [`Window`] is opened. By using
+/// [`Window::push_inner`], the `Widget` will be placed below the
+/// central [`Buffer`]s region, but above other `Widget`s that were
+/// pushed to the bottom. If I wanted the `Widget` on the edges of the
+/// screen, I could use [`Window::push_outer` instead.
 ///
 /// [`Mode`]: crate::mode::Mode
 /// [`opts`]: Widget::opts
@@ -276,16 +344,21 @@ use crate::{
 /// [`WidgetCreated`]: crate::hook::WidgetCreated
 /// [`WindowCreated`]: crate::hook::WindowCreated
 /// [hooks]: crate::hook
+/// [commands]: crate::cmd
 /// [`PhantomData<U>`]: std::marker::PhantomData
 /// [`Instant`]: std::time::Instant
 /// [`ConfigLoaded`]: crate::hook::ConfigLoaded
 /// [`once`]: Widget::once
 /// [`update`]: Widget::update
+/// [`needs_update`]: Widget::needs_update
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`txt!`]: crate::text::txt
 /// [`Plugin`]: crate::Plugin
 /// [`Buffer`]: crate::buffer::Buffer
+/// [`PushSpecs`]: super::PushSpecs
+/// [`Window`]: super::Window
+/// [`OnceLock`]: std::sync::OnceLock
 pub trait Widget: Send + 'static {
     ////////// Stateful functions
 
@@ -343,26 +416,18 @@ pub trait Widget: Send + 'static {
     /// chunk of them, will require some code like this:
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
-    /// # struct Cfg;
-    /// # impl<U: Ui> WidgetCfg<U> for Cfg {
-    /// #     type Widget = MyWidget<U>;
-    /// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
-    /// #         todo!();
-    /// #     }
-    /// # }
-    /// struct MyWidget<U: Ui>(Handle<Buffer<U>, U>);
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
     ///
-    /// impl<U: Ui> Widget<U> for MyWidget<U> {
-    /// #   type Cfg = Cfg;
-    /// #   fn opts() -> Self::Cfg { todo!() }
-    /// #   fn update(_: &mut Pass, handle: &Handle<Self, U>) { todo!() }
+    /// struct MyWidget(Handle<Buffer>);
+    ///
+    /// impl Widget for MyWidget {
+    /// #   fn update(_: &mut Pass, handle: &Handle<Self>) { todo!() }
     /// #   fn text(&self) -> &Text { todo!() }
     /// #   fn text_mut(&mut self) -> &mut Text { todo!() }
-    /// #   fn once() -> Result<(), Text> { todo!() }
     ///     // ...
     ///     fn needs_update(&self, pa: &Pass) -> bool {
-    ///         self.0.has_changed()
+    ///         self.0.has_changed(pa)
     ///     }
     /// }
     /// ```
@@ -371,12 +436,14 @@ pub trait Widget: Send + 'static {
     /// updated whenever the buffer in the [`Handle<Buffer>`] gets
     /// changed.
     ///
-    /// One exception to this is the [`StatusLine`], which can be
-    /// altered if any of its parts get changed, some of them depend
-    /// on a [`Handle<Buffer>`], but a lot of others depend on
-    /// checking functions which might need to be triggered.
+    /// One interesting use case of this function is the
+    /// [`StatusLine`], which can be altered if any of its parts
+    /// get changed, some of them depend on a [`Handle<Buffer>`],
+    /// but a lot of others depend on checking other [`data`] types in
+    /// order to figure out if an update is needed.
     ///
     /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat/widgets/struct.StatusLine.html
+    /// [`data`]: crate::data
     fn needs_update(&self, pa: &Pass) -> bool;
 
     /// The text that this widget prints out

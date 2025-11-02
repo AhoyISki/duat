@@ -1,17 +1,17 @@
 //! [`Mode`]s that handle user input
 //!
-//! Each [`Mode`] controls a specifig type of [`Widget`], and
-//! switching [`Mode`]s is how one sets the current [`Widget`]. For
-//! example, the [`Standard`] (like most [`Mode`]s), controls the
-//! [`Buffer`] [`Widget`]. So when you switch to that [`Mode`], you
-//! return to the active [`Buffer`] if you were focused on another
-//! [`Widget`].
+//! Each `Mode` controls a specifig type of [`Widget`], and
+//! switching `Mode`s is how one sets the current `Widget`. For
+//! example, the [`Standard`] (like most `Mode`s), controls the
+//! [`Buffer`] `Widget`. So when you switch to that `Mode`, you
+//! return to the active `Buffer` if you were focused on another
+//! `Widget`.
 //!
 //! Other than the [`Buffer`] the main [`Widget`] that is controled by
-//! [`Mode`]s is the [`PromptLine`]. It is an example of a [`Widget`]
-//! that has many [`Mode`]s implemented for it. Chief of which is
+//! [`Mode`]s is the [`PromptLine`]. It is an example of a `Widget`
+//! that has many `Mode`s implemented for it. Chief of which is
 //! [`RunCommands`], but there is also [`IncSearch`] and
-//! [`PipeSelections`], and the creation of more [`Mode`]s for the
+//! [`PipeSelections`], and the creation of more `Mode`s for the
 //! [`PromptLine`] is very much encouraged.
 //!
 //! [`Standard`]: docs.rs/duat/latest/duat/modes/struct.Standard.html
@@ -28,7 +28,7 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 pub type KeyMod = crossterm::event::KeyModifiers;
 
 pub use self::{
-    cursor::{Cursor, Cursors, CaretOrRange, Selection, Selections, VPoint},
+    cursor::{CaretOrRange, Cursor, Cursors, Selection, Selections, VPoint},
     patterns::*,
     remap::*,
     switch::*,
@@ -42,37 +42,37 @@ mod switch;
 
 /// A blank [`Mode`], intended for plugin authors to use
 ///
-/// This [`Mode`] just resets to the default [`Buffer`] [`Mode`], no
+/// This [`Mode`] just resets to the default [`Buffer`] `Mode`, no
 /// matter what key is pressed. It is instead used for mapping keys to
-/// other [`Mode`]s in a common place:
+/// other `Mode`s in a common place:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
 /// # mod plugin0 {
-/// #     use duat_core::prelude::*;
+/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct PluginMode0;
-/// #     impl<U: Ui> Mode<U> for PluginMode0 {
-/// #         type Widget = Buffer<U>;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
+/// #     impl Mode for PluginMode0 {
+/// #         type Widget = Buffer;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
 /// #     }
 /// # }
 /// # mod plugin1 {
-/// #     use duat_core::prelude::*;
+/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct PluginMode1;
-/// #     impl<U: Ui> Mode<U> for PluginMode1 {
-/// #         type Widget = Buffer<U>;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
+/// #     impl Mode for PluginMode1 {
+/// #         type Widget = Buffer;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
 /// #     }
 /// # }
 /// # mod duat_kak {
-/// #     use duat_core::prelude::*;
+/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct Normal;
-/// #     impl<U: Ui> Mode<U> for Normal {
-/// #         type Widget = Buffer<U>;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
+/// #     impl Mode for Normal {
+/// #         type Widget = Buffer;
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
 /// #     }
 /// # }
 /// setup_duat!(setup);
@@ -188,12 +188,14 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// doesn't make use of the [`Cursor`] methods from the [`Handle`].
 /// Those are methods that modify [`Selection`]s, and can use them to
 /// modify the [`Text`] in a declarative fashion. For an example with
-/// [`Cursor`]s, see the documentation for [`Handle`]s.
+/// [`Cursor`]s, see the documentation for `Handle`s.
 ///
 /// First, the [`Widget`] itself:
 ///
 /// ```rust
-/// # use duat_core::text::Text;
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+///
 /// #[derive(Default)]
 /// struct Menu {
 ///     text: Text,
@@ -206,8 +208,8 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// entries, and one of them can be active at a time:
 ///
 /// ```rust
-/// # #![feature(let_chains)]
-/// # use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
 /// # struct Menu {
 /// #     text: Text,
 /// #     selected_entry: usize,
@@ -237,19 +239,21 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///         builder.push(AlignCenter);
 ///
 ///         for i in 0..5 {
-///             if let Some(active) = self.active_entry
+///             let text = if let Some(active) = self.active_entry
 ///                 && active == i
 ///             {
 ///                 if self.selected_entry == i {
-///                     builder.push(form::id_of!("MenuSelActive"))
+///                     txt!("[menu.active]{Spacer}Entry {i}{Spacer}\n")
 ///                 } else {
-///                     builder.push(form::id_of!("MenuActive"))
+///                     txt!("[menu.selected.active]{Spacer}Entry {i}{Spacer}\n")
 ///                 }
 ///             } else if self.selected_entry == i {
-///                 builder.push(form::id_of!("MenuSelected"))
-///             }
+///                 txt!("[menu.selected]{Spacer}Entry {i}{Spacer}\n")
+///             } else {
+///                 txt!("[menu]{Spacer}Entry {i}{Spacer}\n")
+///             };
 ///
-///             builder.push(txt!("Entry {i}"));
+///             builder.push(text);
 ///         }
 ///
 ///         self.text = builder.build();
@@ -260,9 +264,11 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// By making `shift_selection` and `toggle` `pub`, I can allow an end
 /// user to create their own [`Mode`] for this widget.
 ///
-/// Now I'll implement [`Widget`]:
+/// Now I'll implement [`Widget`] on the `Menu`, so it can show up on
+/// screen:
 ///
 /// ```rust
+/// # duat_core::doc_duat!(duat);
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -272,27 +278,10 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # impl Menu {
 /// #     fn build_text(&mut self) { todo!(); }
 /// # }
-/// use duat_core::prelude::*;
+/// use duat::prelude::*;
 ///
-/// struct MenuCfg;
-///
-/// impl<U: Ui> WidgetCfg<U> for MenuCfg {
-///     type Widget = Menu;
-///
-///     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Menu, PushSpecs) {
-///         let mut widget = Menu::default();
-///         widget.build_text();
-///
-///         let specs = PushSpecs::left().hor_len(10.0).ver_len(5.0);
-///
-///         (widget, specs)
-///     }
-/// }
-///
-/// impl<U: Ui> Widget<U> for Menu {
-///     type Cfg = MenuCfg;
-///
-///     fn update(_: &mut Pass, handle: &Handle<Self, U>) {}
+/// impl Widget for Menu {
+///     fn update(_: &mut Pass, handle: &Handle<Self>) {}
 ///
 ///     fn needs_update(&self, _: &Pass) -> bool {
 ///         false
@@ -304,17 +293,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///
 ///     fn text_mut(&mut self) -> &mut Text {
 ///         &mut self.text
-///     }
-///
-///     fn opts() -> Self::Cfg {
-///         MenuCfg
-///     }
-///
-///     fn once() -> Result<(), Text> {
-///         form::set_weak("menu.active", Form::blue());
-///         form::set_weak("menu.selected", "accent");
-///         form::set_weak("menu.selected.active", "menu.selected");
-///         Ok(())
 ///     }
 /// }
 /// ```
@@ -329,32 +307,25 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// are the [`on_focus`] and [`on_unfocus`] methods:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
 /// #     selected_entry: usize,
 /// #     active_entry: Option<usize>,
 /// # }
-/// # struct MenuCfg;
-/// # impl<U: Ui> WidgetCfg<U> for MenuCfg {
-/// #     type Widget = Menu;
-/// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Menu, PushSpecs) { todo!() }
-/// # }
-/// impl<U: Ui> Widget<U> for Menu {
-/// #     type Cfg = MenuCfg;
-/// #     fn opts() -> Self::Cfg { todo!() }
+/// impl Widget for Menu {
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
-/// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
+/// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
 /// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
 ///     // ...
-///     fn on_focus(_: &mut Pass, handle: &Handle<Self, U>) {
+///     fn on_focus(_: &mut Pass, handle: &Handle<Self>) {
 ///         handle.set_mask("inactive");
 ///     }
 ///
-///     fn on_unfocus(_: &mut Pass, handle: &Handle<Self, U>) {
+///     fn on_unfocus(_: &mut Pass, handle: &Handle<Self>) {
 ///         handle.set_mask("inactive");
 ///     }
 /// }
@@ -363,19 +334,19 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// These methods can do work when the wiget is focused or unfocused.
 ///
 /// In this case, I chose to replace the [`Form`]s with "inactive"
-/// variants, to visually show when the widget is not active. Also,
-/// the usage of [`form::set_weak`] means that if an end user used
-/// [`form::set`] on one of these [`Form`]s, that will be prioritized.
+/// variants, by applying the `inactive` [mask]. This makes it so, for
+/// example, the form `"menu"` gets mapped to `"menu.inactive"`, if
+/// that form exists.
 ///
 /// Do also note that [`on_focus`] and [`on_unfocus`] are optional
 /// methods, since a [`Widget`] doesn't necessarily need to change on
 /// focus/unfocus.
 ///
-/// Now, all that is left to do is  the `MenuInput` [`Mode`]. We just
+/// Now, all that is left to do is the `MenuMode` [`Mode`]. We just
 /// need to create an empty struct and call the methods of the `Menu`:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # duat_core::doc_duat!(duat);
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -387,41 +358,39 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// #     pub fn toggle(&mut self) {}
 /// #     fn build_text(&mut self) {}
 /// # }
-/// # struct MenuCfg;
-/// # impl<U: Ui> WidgetCfg<U> for MenuCfg {
-/// #     type Widget = Menu;
-/// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Menu, PushSpecs) { todo!() }
-/// # }
-/// # impl<U: Ui> Widget<U> for Menu {
-/// #     type Cfg = MenuCfg;
-/// #     fn opts() -> Self::Cfg { todo!() }
+/// # impl Widget for Menu {
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
-/// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: &mut Pass, _: &Handle<Self, U>) {}
+/// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
 /// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
 /// # }
-/// #[derive(Clone)]
-/// struct MenuInput;
+/// use duat::prelude::*;
 ///
-/// impl<U: Ui> Mode<U> for MenuInput {
+/// #[derive(Clone)]
+/// struct MenuMode;
+///
+/// impl Mode for MenuMode {
 ///     type Widget = Menu;
 ///
-///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
+///     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle<Self::Widget>) {
 ///         use KeyCode::*;
 ///
 ///         let menu = handle.write(pa);
-///         match key {
-///             key!(Down) => menu.shift_selection(1),
-///             key!(Up) => menu.shift_selection(-1),
-///             key!(Enter | Tab | Char(' ')) => menu.toggle(),
+///         match key_event {
+///             event!(Down) => menu.shift_selection(1),
+///             event!(Up) => menu.shift_selection(-1),
+///             event!(Enter | Tab | Char(' ')) => menu.toggle(),
+///             event!(Esc) => mode::reset::<Buffer>(),
 ///             _ => {}
 ///         }
 ///     }
 /// }
 /// ```
-/// Notice the [`key!`] macro. This macro is useful for pattern
-/// matching [`KeyEvent`]s on [`Mode`]s.
+/// 
+/// Notice the [`event!`] macro. This macro is useful for pattern
+/// matching [`KeyEvent`]s on [`Mode`]s. It (alongside [`alt!`],
+/// [`ctrl!`] and [`shift!`]) gets mapped to a [`KeyEvent`] that can
+/// be used for succinctly matching patterns.
 ///
 /// [`Cursor`]: crate::mode::Cursor
 /// [`print`]: Widget::print
@@ -435,6 +404,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::text::Text
 /// [`&mut Selections`]: Selections
+/// [mask]: Handle::set_mask
 #[allow(unused_variables)]
 pub trait Mode: Sized + Clone + Send + 'static {
     /// The [`Widget`] that this [`Mode`] controls

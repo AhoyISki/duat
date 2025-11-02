@@ -1,6 +1,6 @@
 //! Ways to organize opened [`Buffer`]s
 //!
-//! By default, when calling `:e some_file<Enter>`, Duat will follow
+//! By default, when calling `:e some_buffer<Enter>`, Duat will follow
 //! [`MasterOnLeft`], a type of [`Layout`] for opening [`Buffer`]s.
 //! That is, the first opened [`Buffer`] will be on the left of the
 //! screeng, and all subsequent [`Buffer`]s will be stacked vertically
@@ -10,26 +10,24 @@
 //! here's a spiraled layout:
 //!
 //! ```rust
-//! use duat_core::{
-//!     data::RwData,
-//!     prelude::*,
-//!     ui::{PushSpecs, layout::*},
-//! };
+//! #![feature(default_field_values)]
+//! # duat_core::doc_duat!(duat);
+//! use duat::prelude::*;
+//! use ui::{PushSpecs, Side, Window, layout::Layout};
+//!
 //! pub struct Spiraled;
 //!
-//! impl<U: Ui> Layout<U> for Spiraled {
-//!     fn new_file(
-//!         &mut self,
-//!         buffer: &Buffer<U>,
-//!         prev: Vec<Handle<Buffer<U>, U>>,
-//!     ) -> Result<(Handle<Buffer<U>, U>, PushSpecs), Text> {
-//!         // One Buffer is always open.
-//!         let last = prev.last().unwrap().clone();
-//!         match prev.len() % 4 {
-//!             1 => Ok((last, PushSpecs::right())),
-//!             2 => Ok((last, PushSpecs::below())),
-//!             3 => Ok((last, PushSpecs::left())),
-//!             4 => Ok((last, PushSpecs::above())),
+//! impl Layout for Spiraled {
+//!     fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle, PushSpecs) {
+//!         let cur_win = context::current_win_index(pa);
+//!         let buffers = windows[cur_win].buffers(pa);
+//!         let last = buffers.iter().last().unwrap().clone();
+//!
+//!         match buffers.len() % 4 {
+//!             0 => (last, PushSpecs { side: Side::Right, .. }),
+//!             1 => (last, PushSpecs { side: Side::Below, .. }),
+//!             2 => (last, PushSpecs { side: Side::Left, .. }),
+//!             3 => (last, PushSpecs { side: Side::Above, .. }),
 //!             _ => unreachable!("That's not how math works, man!"),
 //!         }
 //!     }
@@ -40,8 +38,7 @@
 //! limit to how many [`Buffer`]s should can open in a single window.
 use super::PushSpecs;
 use crate::{
-    buffer::Buffer,
-    context::Handle,
+    context::{self, Handle},
     data::Pass,
     ui::{Side, Window},
 };
@@ -62,13 +59,7 @@ pub trait Layout: Send + Sync {
     /// first opened [`Buffer`] doesn't follow layouts.
     ///
     /// [`Ok(Handle<Buffer>, PushSpecs)`]: Handle
-    fn new_buffer(
-        &mut self,
-        pa: &Pass,
-        cur_win: usize,
-        buffer: &Buffer,
-        windows: &[Window],
-    ) -> (Handle, PushSpecs);
+    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle, PushSpecs);
 }
 
 /// [`Layout`]: One [`Buffer`] on the left, others on the right
@@ -79,13 +70,8 @@ pub trait Layout: Send + Sync {
 pub struct MasterOnLeft;
 
 impl Layout for MasterOnLeft {
-    fn new_buffer(
-        &mut self,
-        pa: &Pass,
-        cur_win: usize,
-        _file: &Buffer,
-        windows: &[Window],
-    ) -> (Handle, PushSpecs) {
+    fn new_buffer(&mut self, pa: &Pass, windows: &[Window]) -> (Handle, PushSpecs) {
+        let cur_win = context::current_win_index(pa);
         let last = windows[cur_win].buffers(pa).last().unwrap().clone();
         if windows[cur_win].buffers(pa).len() == 1 {
             (last, PushSpecs { side: Side::Right, .. })

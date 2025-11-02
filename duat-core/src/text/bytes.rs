@@ -118,13 +118,13 @@ impl Bytes {
     /// If you want to iterate over them, you can do the following:
     ///
     /// ```rust
-    /// # use duat_core::{text::Point, prelude::*};
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
     /// # let (p0, p1) = (Point::default(), Point::default());
     /// # let text = Text::new();
     /// let bytes = text.bytes();
-    /// let chars = bytes.strs(p0..p1).unwrap().chars();
-    ///
-    /// for char in chars {
+    /// 
+    /// for char in bytes.strs(p0..p1).unwrap().chars() {
     ///     todo!();
     /// }
     /// ```

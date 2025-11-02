@@ -31,7 +31,7 @@ use duat_core::{
 pub struct VertRule {
     handle: Option<Handle>,
     text: Text,
-    sep_char: SepChar,
+    pub sep_char: SepChar,
 }
 
 impl VertRule {

@@ -157,8 +157,9 @@ pub fn profile() -> &'static str {
 /// The path for a plugin's auxiliary buffers
 ///
 /// If you want to store something in a more permanent basis, and also
-/// possibly allow for the user to modify some buffers (e.g. a TOML buffer
-/// with definitions for various LSPs), you should place it in here.
+/// possibly allow for the user to modify some buffers (e.g. a TOML
+/// buffer with definitions for various LSPs), you should place it in
+/// here.
 ///
 /// This function will also create said directory, if it doesn't
 /// already exist, only returning [`Some`], if it managed to verify
@@ -310,4 +311,184 @@ where
     }
 
     Err(left)
+}
+
+/// Macro used internally for doc tests in duat-core
+#[doc(hidden)]
+#[rustfmt::skip]
+#[macro_export]
+macro_rules! doc_duat {
+    ($duat:ident) => {
+        #[allow(unused, missing_docs)]
+        mod $duat {
+            pub mod cursor {
+                pub use duat_core::form::{
+                    extra_cursor as get_extra, id_of, main_cursor as get_main,
+                    set_extra_cursor as set_extra, set_main_cursor as set_main,
+                    unset_cursors as unset, unset_extra_cursor as unset_extra,
+                    unset_main_cursor as unset_main,
+                };
+            }
+
+            pub mod data {
+                pub use duat_core::data::*;
+            }
+
+            pub mod state {
+                use super::prelude::*;
+                pub fn name_txt(buffer: &Buffer) -> Text { Text::default() }
+                pub fn path_txt(buffer: &Buffer) -> Text { Text::default() }
+                pub fn mode_name() -> data::DataMap<&'static str, &'static str> { unimplemented!() }
+                pub fn mode_txt() -> data::DataMap<&'static str, Text> { unimplemented!() }
+                pub fn main_byte(buffer: &Buffer) -> usize { 0 }
+                pub fn main_char(buffer: &Buffer) -> usize { 0 }
+                pub fn main_line(buffer: &Buffer) -> usize { 0 }
+                pub fn main_col(buffer: &Buffer, area: &ui::Area) -> usize { 0 }
+                pub fn main_txt(buffer: &Buffer, area: &ui::Area) -> Text { Text::default() }
+                pub fn selections(buffer: &Buffer) -> usize { 0 }
+                pub fn sels_txt(buffer: &Buffer) -> Text { Text::default() }
+                pub fn cur_map_txt() -> data::DataMap<(Vec<KeyEvent>, bool), Text> { unimplemented!() }
+                pub fn last_key() -> data::RwData<String> { unimplemented!() }
+            }
+                
+            pub mod prelude {
+                pub use std::ops::Range;
+                
+                pub use duat_core::{
+                    Lender, Plugin, Plugins,
+                    buffer::{Buffer, BufferTracker, Parser},
+                    clipboard, cmd,
+                    context::{self, Handle},
+                    data::{self, Pass},
+                    form::{self, CursorShape, Form},
+                    hook::{
+                        self, BufferWritten, ColorSchemeSet, ConfigLoaded, ConfigUnloaded,
+                        ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeysSent,
+                        KeysSentTo, ModeCreated, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
+                        WidgetCreated, WindowCreated,
+                    },
+                    mode::{
+                        self, KeyCode, KeyEvent, Mode, User, alias, alt, ctrl, event,
+                        map, shift,
+                    },
+                    opts::{self, ScrollOff},
+                    text::{
+                        self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer,
+                        SpawnTag, Tagger, Text, txt, Point,
+                    },
+                    ui::{self, Widget},
+                };
+                
+                pub use super::{
+                    cursor::*, state::*, modes::*, widgets::*, PassFileType, FileType
+                };
+
+                #[macro_export]
+                macro_rules! setup_duat{ ($setup:ident) => {} }
+            }
+
+            pub mod widgets {
+                use std::fmt::Alignment;
+                
+                pub struct LineNumbers {
+                    buffer: Handle,
+                    text: Text,
+                    pub relative: bool,
+                    pub align: Alignment,
+                    pub main_align: Alignment,
+                    pub show_wraps: bool,
+                }
+                impl LineNumbers {
+                    pub fn builder() -> LineNumbersOpts { LineNumbersOpts {
+                        relative: false,
+                        align: Alignment::Right,
+                        main_align: Alignment::Right,
+                        show_wraps: false,
+                        on_the_right: false
+                    }}
+                }
+                impl Widget for LineNumbers {
+                    fn update(pa: &mut Pass, handle: &Handle<Self>) {}
+                    fn needs_update(&self, pa: &Pass) -> bool { false }
+                    fn text(&self) -> &Text { &self.text }
+                    fn text_mut(&mut self) -> &mut Text { &mut self.text }
+                }
+                #[derive(Clone, Copy, Debug)]
+                pub struct LineNumbersOpts {
+                    pub relative: bool,
+                    pub align: Alignment,
+                    pub main_align: Alignment,
+                    pub show_wraps: bool,
+                    pub on_the_right: bool,
+                }
+                impl LineNumbersOpts {
+                    pub fn push_on(self, _: &mut Pass, _: &Handle) {}
+                }
+                
+                #[macro_export]
+                macro_rules! status{ ($str: literal) => { $duat::widgets::StatusLine } }
+                pub struct StatusLine;
+                impl StatusLine {
+                    pub fn above(self) -> Self { Self }
+                    pub fn push_on(self, _: &mut Pass, _: &impl duat_core::ui::PushTarget) {}
+                }
+                
+                use super::prelude::*;
+                pub struct VertRule;
+                impl VertRule {
+                    pub fn builder() -> VertRuleBuilder { VertRuleBuilder }
+                }
+                pub struct VertRuleBuilder;
+                impl VertRuleBuilder {
+                    pub fn push_on(self, _: &mut Pass, _: &impl duat_core::ui::PushTarget) {}
+                    pub fn on_the_right(self) -> Self { self }
+                }
+            }
+
+            pub mod modes {
+                use super::prelude::*;
+                #[derive(Clone)]
+                pub struct Pager;
+                impl duat_core::mode::Mode for Pager {
+                    type Widget = duat_core::buffer::Buffer;
+                    fn send_key(
+                        &mut self,
+                        _: &mut Pass,
+                        _: crossterm::event::KeyEvent,
+                        _: Handle<Self::Widget>,
+                    ) {
+                    }
+                }
+                
+                #[derive(Clone)]
+                pub struct Prompt;
+                impl duat_core::mode::Mode for Prompt {
+                    type Widget = duat_core::buffer::Buffer;
+                    fn send_key(
+                        &mut self,
+                        _: &mut Pass,
+                        _: crossterm::event::KeyEvent,
+                        _: Handle<Self::Widget>,
+                    ) {
+                    }
+                }
+            }
+
+            pub trait FileType {
+                fn filetype(&self) -> Option<&'static str> { None }
+            }
+
+            impl FileType for prelude::Buffer {}
+            impl FileType for String {}
+            impl FileType for &'_ str {}
+            impl FileType for std::path::PathBuf {}
+            impl FileType for &'_ std::path::Path {}
+
+            pub trait PassFileType {
+                fn filetype(&self, _: &prelude::Pass) -> Option<&'static str> { None }
+            }
+            impl PassFileType for prelude::data::RwData<prelude::Buffer> {}
+            impl PassFileType for prelude::Handle {}
+        }
+    }
 }

@@ -11,6 +11,7 @@
 //!
 //! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
+//! [`Area::PrintInfo`]: 
 use std::{
     fs,
     path::{Path, PathBuf},

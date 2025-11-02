@@ -104,7 +104,7 @@ mod global {
     /// This `Handle` will change to point to the current `Buffer`,
     /// whenever the user swicthes which `Buffer` is active. If you
     /// want a `Handle` that will stay on the current `Buffer`, see
-    /// [`cur_buffer`].
+    /// [`current_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn dynamic_buffer(pa: &Pass) -> DynBuffer {
@@ -161,7 +161,7 @@ mod global {
     /// [`Window::handles`] respectively.
     ///
     /// If you wish to access other [`Window`]s, you can use
-    /// `context::windows().get(pa, n)` to get the `n`th [`Window`].
+    /// `context::windows().get(pa, n)` to get the `n`th `Window`.
     /// The current window number can be found with
     /// [`context::current_win_index`]
     ///
@@ -290,7 +290,7 @@ impl DynBuffer {
     /// Writes to the [`Buffer`] and [`Area`], making use of a
     /// [`Pass`]
     ///
-    /// [`Area`]: crate::ui::traits::Ui::Area
+    /// [`Area`]: crate::ui::Area
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut Buffer, &'a mut Area) {
         // SAFETY: Because I already got a &mut Pass, the RwData can't be
         // accessed anyways.
@@ -303,7 +303,7 @@ impl DynBuffer {
     ///
     /// This is useful if you want to tell Duat that you want
     /// [`has_changed`] to return `true`, but you don't have a
-    /// [`Pass`] available to [`write`] the value with.
+    /// [`Pass`] available to `write` the value with.
     ///
     /// [`write`]: Self::write
     /// [`has_changed`]: Self::has_changed
@@ -358,13 +358,13 @@ impl CurWidgetNode {
         Some(f(node.read_as(pa)?, node.area().read(pa)))
     }
 
-    /// Mutates the [`RwData<dyn Widget<U>>`], its
+    /// Mutates the [`RwData<dyn Widget>`], its
     /// [`Area`], and related [`Widget`]s
     pub(crate) fn mutate_data<R>(&self, pa: &Pass, f: impl FnOnce(&Handle<dyn Widget>) -> R) -> R {
         f(self.0.read(pa).handle())
     }
 
-    /// Mutates the [`RwData<dyn Widget<U>>`] as `W`, its
+    /// Mutates the [`RwData<dyn Widget>`] as `W`, its
     /// [`Area`], and related [`Widget`]s
     pub(crate) fn mutate_data_as<W: Widget, R>(
         &self,

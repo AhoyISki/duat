@@ -17,6 +17,7 @@ missing_docs = "warn"
 [lints.clippy]
 type_complexity = "allow"
 while_let_on_iterator = "allow"
+unit_arg = "allow"
 
 [dependencies]
 gapbuf = "0.1.4"

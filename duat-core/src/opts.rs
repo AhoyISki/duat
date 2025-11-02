@@ -4,26 +4,42 @@
 //! text editor such as Neovim or Kakoune. They are contained in a
 //! [`PrintOpts`] struct, which is very light and cheap to copy
 //! around, and is used not only by the [`Buffer`], but by every other
-//! [`Widget`] as well. Right now, these options are:
+//! [`Widget`] as well. Right now, these options, alongside their
+//! default value for `Buffer`s are:
 //!
-//! - [`WrapMethod`]: How to wrap lines;
-//! - [`TabStops`]: How many spaces a tab should occupy;
-//! - [`NewLine`]: What to put in place of a `'\n'`, potentially only
-//!   after trailing whitespace;
-//! - [`ScrollOff`]: How many cells to keep between the main cursor
-//!   and the edges of [`Area`]s;
-//! - [`WordChars`]: Which [`char`]s are considered part of a word;
-//! - [forced_scrolloff]: Keeps the scrolloff distance, preventing the
-//!   main cursor from reaching the right edge;
+//! - [`dont_wrap: bool = false`][]: Disable wrapping.
+//! - [`wrap_on_word: bool = false`][]: Wrap on words.
+//! - [`wrapping_cap: Option<u32> = None`][]: Where to start wrapping.
+//! - [`indent_wraps: bool = true`][]: Indent wrapped lines.
+//! - [`tabstop: u8 = 4`][]: Size of the `Tab` character in spaces.
+//! - [`print_new_line: bool = true`][]: Print `\n` as a space.
+//! - [`scrolloff: ScrollOff: ScrollOff { x: 3, y: 3 }`][]: Space
+//!   between cursor and edges.
+//! - [`force_scrolloff: bool = false`][]: Limit scrolloff on line ends.
+//! - [`extra_word_chars: &'static [char] =  &[]`][]: Extra word
+//!   characters
+//! - [`show_ghosts: bool = true`][]: Show [ghost text].
+//! - [`allow_overscroll: bool = true`][]: Allow scrolling until
+//!   [`scrolloff.y`] lines are on screen.
 //!
 //! If you have any other recomendations of printing options that are
 //! common, feel free to recomend them!
 //!
+//! [ghoxt text]: crate::text::Ghost
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
-//! [`Area`]: crate::ui::Ui::Area
-//! [forced_scrolloff]: PrintOpts::set_forced_horizontal_scrolloff
-//! [show_ghosts]: PrintOpts::show_ghosts
+//! [`dont_wrap: bool = false`]: PrintOpts::dont_wrap
+//! [`wrap_on_word: bool = false`]: PrintOpts::wrap_on_word
+//! [`wrapping_cap: Option<u32> = None`]: PrintOpts::wrapping_cap
+//! [`indent_wraps: bool = true`]: PrintOpts::indent_wraps
+//! [`tabstop: u8 = 4`]: PrintOpts::tabstop
+//! [`print_new_line: bool = true`]: PrintOpts::print_new_line
+//! [`scrolloff: ScrollOff: ScrollOff { x: 3, y: 3 }`]: PrintOpts::scrolloff
+//! [`force_scrolloff: bool = false`]: PrintOpts::force_scrolloff
+//! [`extra_word_chars: &'static [char] =  &[]`]: PrintOpts::extra_word_chars
+//! [`show_ghosts: bool = true`]: PrintOpts::show_ghosts
+//! [`allow_overscroll: bool = true`]: PrintOpts::allow_overscroll
+//! [`scrolloff.y`]: PrintOpts::scrolloff
 use std::{collections::HashMap, sync::LazyLock};
 
 use parking_lot::Mutex;
@@ -179,9 +195,9 @@ impl PrintOpts {
     ///     dont_wrap: true,
     ///     wrap_on_word: false,
     ///     wrapping_cap: None,
-    ///     indent_wrapped: true,
-    ///     tab_stops: 4,
-    ///     new_line: NewLine::AlwaysAs('\n'),
+    ///     indent_wraps: true,
+    ///     tabstop: 4,
+    ///     print_new_line: false,
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
     ///     extra_word_chars: &[],
     ///     force_scrolloff: false,
@@ -227,8 +243,8 @@ impl PrintOpts {
     ///     dont_wrap: true,
     ///     wrap_on_word: false,
     ///     wrapping_cap: None,
-    ///     indent_wrapped: true,
-    ///     tab_stops: 4,
+    ///     indent_wraps: true,
+    ///     tabstop: 4,
     ///     print_new_line: true,
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
     ///     extra_word_chars: &[],

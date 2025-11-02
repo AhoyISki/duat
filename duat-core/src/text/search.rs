@@ -9,6 +9,7 @@
 //! [incremental search]: https://docs.rs/duat/latest/duat/modes/struct.IncSearcher.html
 //! [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
 //! [`IncSearcher`]: https://docs.rs/duat/latest/duat/modes/trait.IncSearcher.html
+//! [`Text`]: super::Text
 use std::{
     collections::HashMap,
     ops::{Range, RangeBounds},

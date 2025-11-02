@@ -1,38 +1,47 @@
-//! [`Ui`] structs and functions
+//! [Ui] structs and functions
 //!
-//! Although there is only a terminal [`Ui`] implemented at the
+//! Although there is only a terminal [Ui] implemented at the
 //! moment, Duat is supposed to be Ui agnostic, and I plan to create a
-//! GUI app (probably in `iced` or something), and a web app as well,
+//! GUI app (probably in `gpui` or something), and a web app as well,
 //! which is honestly more of an excuse for me to become more well
 //! versed on javascript.
 //!
-//! Each [`Ui`] is essentially a screen separated by a bunch of
-//! [`Ui::Area`]s. This happens by splitting a main [`Ui::Area`]
-//! continuously, by pushing [`Widget`]s on other [`Widget`]s. When a
-//! [`Widget`] is pushed to another, the area of the prior [`Widget`]
-//! is split in half, with [`Constraint`]s set by the [`PushSpecs`],
-//! letting the user define the exact space that each [`Widget`] will
-//! take up on the screen.
+//! Each [Ui] is essentially a screen separated by a bunch of
+//! [`Ui::Area`]s. This happens by splitting a main `Ui::Area`
+//! continuously, by pushing [`Widget`]s on other `Widget`s. When a
+//! `Widget` is pushed to another, the area of the prior `Widget`
+//! is split in half, with [`PushSpecs`] defining information about
+//! the new area.
 //!
-//! Duat also supports multiple tabs, each of which is defined by a
-//! main [`Ui::Area`] that was split many times over.
+//! Additionally, [`Widget`]s may be spawned via various methods, such
+//! as [on `Handle`]s, [on `Text`], or even [around the `Window`]
 //!
-//! The [`Ui`] also supports the concept of "clustering", that is,
-//! when you push a [`Widget`] to a [`Buffer`] via the
-//! [`WidgetCreated`] [`hook`], it gets "clustered" to that
-//! [`Buffer`]. This means a few things. For one, if you close a
-//! [`Buffer`], all of its clustered [`Widget`]s will also close. If
-//! you swap two [`Buffer`]s, what you will actually swap is the
-//! [`Ui::Area`] that contains the [`Buffer`] and all of its clustered
-//! [`Widget`].
+//! Duat also supports multiple [`Window`]s in a [`Windows`] struct,
+//! each of which is defined by a main [`Ui::Area`] that was split
+//! many times over. This `Windows` struct is accessible in
+//! [`context::windows`], and you are free to inspect and mutate
+//! whatever state is in there.
 //!
-//! Additionally, on the terminal [`Ui`], clustering is used to
+//! The [Ui] also supports the concept of "clustering", that is,
+//! when you push a [`Widget`] to a [`Buffer`], it gets "clustered" to
+//! that `Buffer`. This means a few things. For one, if you close that
+//! `Buffer`, all of its clustered `Widget`s will also close. If
+//! you swap two `Buffer`s, what you will actually swap is the
+//! [`Ui::Area`] that contains the `Buffer` and all of its clustered
+//! `Widget`.
+//!
+//! Additionally, on the terminal [Ui], clustering is used to
 //! determine where to draw borders between [`Ui::Area`]s, and it
-//! should be used like that in other [`Ui`] implementations as well.
+//! should be used like that in other [Ui] implementations as well.
 //!
 //! [`hook`]: crate::hook
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`WidgetCreated`]: crate::hook::WidgetCreated
+//! [Ui]: traits::RawUi
+//! [`Ui::Area`]: traits::RawUi::Area
+//! [on `Handle`]: Handle::spawn_widget
+//! [on `Text`]: crate::text::SpawnTag
+//! [`context::windows`]: crate::context::windows
 use std::fmt::Debug;
 
 pub(crate) use self::widget::Node;
@@ -95,11 +104,13 @@ impl From<PushSpecs> for Axis {
 
 /// Information on how a [`Widget`] should be pushed onto another
 ///
-/// This information is composed of three parts:
+/// This information is composed of four parts:
 ///
 /// * A side to push;
-/// * A horizontal [`Constraint`];
-/// * A vertical [`Constraint`];
+/// * An optional width;
+/// * An optional height;
+/// * Wether to hide it by default;
+/// * wether to cluster the [`Widget`]
 ///
 /// Constraints are demands that must be met by the widget's
 /// [`Area`], on a best effort basis.
@@ -107,23 +118,34 @@ impl From<PushSpecs> for Axis {
 /// So, for example, if the [`PushSpecs`] are:
 ///
 /// ```rust
-/// use duat_core::ui::PushSpecs;
-/// let specs = PushSpecs {
-///     side: Side::Left,
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+/// let specs = ui::PushSpecs {
+///     side: ui::Side::Left,
 ///     width: Some(3.0),
 ///     height: None,
 ///     hidden: false,
+///     cluster: true,
 /// };
 /// ```
 ///
 /// Then the widget should be pushed to the left, with a width of 3,
-/// an unspecified height, and _not_ hidden by default. Note that,
-/// with `#[feature(default_field_values)]`, the same can be
-/// accomplished by the following:
+/// an unspecified height, _not_ hidden by default and clustered if
+/// possible. Note that, with `#[feature(default_field_values)]`, the
+/// same can be accomplished by the following:
 ///
 /// ```rust
-/// let specs = PushSpecs { side: Side::left, width: Some(3.0), .. };
+/// #![feature(default_field_values)]
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+/// let specs = ui::PushSpecs {
+///     side: ui::Side::Left,
+///     width: Some(3.0),
+///     ..
+/// };
 /// ```
+///
+/// Since the remaining values are the default.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PushSpecs {
     /// Which [`Side`] to push the [`Widget`] to
