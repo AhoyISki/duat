@@ -21,8 +21,10 @@ use crate::{
     widgets::PromptLine,
 };
 
+static HISTORY: Mutex<Vec<(TypeId, Vec<String>)>> = Mutex::new(Vec::new());
 static PROMPT_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+static PREVIEW_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 
 /// A [`Mode`] for the [`PromptLine`]
 ///
@@ -41,7 +43,7 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///   selection with the returned value.
 /// - [`IncSearch`] has a further inner abstraction, [`IncSearcher`],
 ///   which lets you abstract over what the incremental search will
-///   actually do. I.e. will it search for the next ocurrence, split
+///   actually do. I.c. will it search for the next ocurrence, split
 ///   selections by matches, things of the sort.
 ///
 /// [`Parameter`]: cmd::Parameter
@@ -53,6 +55,7 @@ pub struct Prompt {
     ty: TypeId,
     clone_fn: Arc<Mutex<ModeCloneFn>>,
     reset_fn: fn(),
+    history_index: Option<usize>,
 }
 
 impl Prompt {
@@ -66,16 +69,23 @@ impl Prompt {
             let mode = mode.clone();
             move || -> Box<dyn PromptMode> { Box::new(mode.clone()) }
         }));
+
         Self {
             mode: Box::new(mode),
             starting_text: String::new(),
             ty: TypeId::of::<M>(),
             clone_fn,
             reset_fn: mode::reset::<M::ExitWidget>,
+            history_index: None,
         }
     }
 
     /// Returns a new [`Prompt`] with some initial text
+    ///
+    /// This is useful if you wish to open this [`Mode`] with some
+    /// text already in it.
+    ///
+    /// [`Mode`]: mode::Mode
     pub fn new_with<M: PromptMode + Clone>(mode: M, initial: impl ToString) -> Self {
         let clone_fn = Arc::new(Mutex::new({
             let mode = mode.clone();
@@ -87,6 +97,21 @@ impl Prompt {
             ty: TypeId::of::<M>(),
             clone_fn,
             reset_fn: mode::reset::<M::ExitWidget>,
+            history_index: None,
+        }
+    }
+
+    /// Shows the preview [`Ghost`]
+    fn show_preview(&mut self, pa: &mut Pass, handle: Handle<PromptLine>) {
+        let history = HISTORY.lock().unwrap();
+        if handle.text(pa).is_empty()
+            && let Some((_, ty_history)) = history.iter().find(|(ty, _)| *ty == self.ty)
+        {
+            handle.text_mut(pa).insert_tag_after(
+                *PREVIEW_TAGGER,
+                0,
+                Ghost(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
+            );
         }
     }
 }
@@ -96,6 +121,8 @@ impl mode::Mode for Prompt {
 
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
         use duat_core::mode::KeyCode::*;
+
+        let ty_eq = |&&(ty, _): &&(TypeId, _)| ty == self.ty;
 
         let mut update = |pa: &mut Pass| {
             let text = std::mem::take(handle.write(pa).text_mut());
@@ -111,6 +138,8 @@ impl mode::Mode for Prompt {
             }
         };
 
+        handle.text_mut(pa).remove_tags(*PREVIEW_TAGGER, ..);
+
         match key {
             event!(Backspace) => {
                 if handle.read(pa).text().is_empty() {
@@ -124,43 +153,85 @@ impl mode::Mode for Prompt {
                         (self.reset_fn)();
                     }
                 } else {
-                    handle.edit_main(pa, |mut e| {
-                        e.move_hor(-1);
-                        e.set_anchor_if_needed();
-                        e.replace("");
-                        e.unset_anchor();
+                    handle.edit_main(pa, |mut c| {
+                        c.move_hor(-1);
+                        c.set_anchor_if_needed();
+                        c.replace("");
+                        c.unset_anchor();
                     });
                     update(pa);
                 }
             }
             event!(Delete) => {
-                handle.edit_main(pa, |mut e| e.replace(""));
+                handle.edit_main(pa, |mut c| c.replace(""));
                 update(pa);
             }
 
             event!(Char(char)) => {
-                handle.edit_main(pa, |mut e| {
-                    e.insert(char);
-                    e.move_hor(1);
+                handle.edit_main(pa, |mut c| {
+                    c.insert(char);
+                    c.move_hor(1);
                 });
                 update(pa);
             }
             event!(Left) => {
-                handle.edit_main(pa, |mut e| e.move_hor(-1));
+                handle.edit_main(pa, |mut c| c.move_hor(-1));
                 update(pa);
             }
             event!(Right) => {
-                handle.edit_main(pa, |mut e| e.move_hor(1));
+                handle.edit_main(pa, |mut c| c.move_hor(1));
                 update(pa);
+            }
+            event!(Up) => {
+                let history = HISTORY.lock().unwrap();
+                let Some((_, ty_history)) = history.iter().find(ty_eq) else {
+                    return;
+                };
+
+                let index = if let Some(index) = &mut self.history_index {
+                    *index = index.saturating_sub(1);
+                    *index
+                } else {
+                    self.history_index = Some(ty_history.len() - 1);
+                    ty_history.len() - 1
+                };
+
+                handle.edit_main(pa, |mut c| {
+                    c.move_to(..);
+                    c.replace(ty_history[index].clone());
+                    c.unset_anchor();
+                })
+            }
+            event!(Down) => {
+                let history = HISTORY.lock().unwrap();
+                let Some((_, ty_history)) = history.iter().find(ty_eq) else {
+                    return;
+                };
+
+                if let Some(index) = &mut self.history_index {
+                    if *index + 1 < ty_history.len() {
+                        *index = (*index + 1).min(ty_history.len() - 1);
+
+                        handle.edit_main(pa, |mut c| {
+                            c.move_to(..);
+                            c.replace(ty_history[*index].clone());
+                            c.unset_anchor();
+                        })
+                    } else {
+                        self.history_index = None;
+                        handle.edit_main(pa, |mut c| {
+                            c.move_to(..);
+                            c.replace("");
+                            c.unset_anchor();
+                        })
+                    }
+                };
             }
 
             event!(Esc) => {
-                let p = handle.read(pa).text().len();
-                handle.edit_main(pa, |mut e| {
-                    e.move_to_start();
-                    e.set_anchor();
-                    e.move_to(p);
-                    e.replace("");
+                handle.edit_main(pa, |mut c| {
+                    c.move_to(..);
+                    c.replace("");
                 });
                 handle.write(pa).text_mut().selections_mut().clear();
                 update(pa);
@@ -169,11 +240,23 @@ impl mode::Mode for Prompt {
             event!(Enter) => {
                 handle.write(pa).text_mut().selections_mut().clear();
 
+                if handle.text(pa).is_empty() {
+                    let history = HISTORY.lock().unwrap();
+                    if let Some((_, ty_history)) = history.iter().find(ty_eq) {
+                        handle.edit_main(pa, |mut c| {
+                            c.move_to(..);
+                            c.replace(ty_history.last().unwrap());
+                        });
+                    }
+                }
+
                 update(pa);
                 reset(self);
             }
             _ => {}
         }
+
+        self.show_preview(pa, handle);
     }
 
     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
@@ -194,10 +277,23 @@ impl mode::Mode for Prompt {
         let text = self.mode.on_switch(pa, text, handle.area());
 
         *handle.write(pa).text_mut() = text;
+
+        self.show_preview(pa, handle);
     }
 
     fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
         let text = std::mem::take(handle.write(pa).text_mut());
+        if !text.is_empty() {
+            let mut history = HISTORY.lock().unwrap();
+            if let Some((_, ty_history)) = history.iter_mut().find(|(ty, _)| *ty == self.ty) {
+                if ty_history.last().is_none_or(|last| last != text.bytes()) {
+                    ty_history.push(text.to_string());
+                }
+            } else {
+                history.push((self.ty, vec![text.to_string()]));
+            }
+        }
+
         self.mode.before_exit(pa, text, handle.area());
     }
 }
@@ -210,6 +306,7 @@ impl Clone for Prompt {
             ty: self.ty,
             clone_fn: self.clone_fn.clone(),
             reset_fn: self.reset_fn,
+            history_index: None,
         }
     }
 }

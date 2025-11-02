@@ -26,7 +26,6 @@
 //!     is most commonly scrolled by the [`Pager`] [`Mode`].
 //!
 //! - 3 [`modes`]:
-//!     editors use. Sort of like VSCode.
 //!   - [`Prompt`] is a multitool that can serve many purposes,
 //!     through the [`PromptMode`] trait, which allows one to act on
 //!     the [`PromptLine`] while abstracting over less important

@@ -171,27 +171,29 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     form::enable_mask("inactive");
 
     // Setup for the LineNumbers
-    duat_core::form::set_weak("linenum.main", Form::yellow());
-    duat_core::form::set_weak("linenum.wrapped", Form::cyan().italic());
-    duat_core::form::set_weak("linenum.wrapped.main", "linenum.wrapped");
+    form::set_weak("linenum.main", Form::yellow());
+    form::set_weak("linenum.wrapped", Form::cyan().italic());
 
     // Setup for the StatusLine
-    duat_core::form::set_weak("buffer", Form::yellow().italic());
-    duat_core::form::set_weak("selections", Form::dark_blue());
-    duat_core::form::set_weak("coord", Form::dark_yellow());
-    duat_core::form::set_weak("separator", Form::cyan());
-    duat_core::form::set_weak("mode", Form::green());
-    duat_core::form::set_weak("default.StatusLine", Form::on_dark_grey());
+    form::set_weak("buffer", Form::yellow().italic());
+    form::set_weak("selections", Form::dark_blue());
+    form::set_weak("coord", Form::dark_yellow());
+    form::set_weak("separator", Form::cyan());
+    form::set_weak("mode", Form::green());
+    form::set_weak("default.StatusLine", Form::on_dark_grey());
 
     // Setup for the LogBook
-    duat_core::form::set_weak("default.LogBook", Form::on_dark_grey());
-    duat_core::form::set_weak("log_book.error", "default.error");
-    duat_core::form::set_weak("log_book.warn", "default.warn");
-    duat_core::form::set_weak("log_book.info", "default.info");
-    duat_core::form::set_weak("log_book.debug", "default.debug");
-    duat_core::form::set_weak("log_book.colon", "prompt.colon");
-    duat_core::form::set_weak("log_book.bracket", "punctuation.bracket");
-    duat_core::form::set_weak("log_book.target", "module");
+    form::set_weak("default.LogBook", Form::on_dark_grey());
+    form::set_weak("log_book.error", "default.error");
+    form::set_weak("log_book.warn", "default.warn");
+    form::set_weak("log_book.info", "default.info");
+    form::set_weak("log_book.debug", "default.debug");
+    form::set_weak("log_book.colon", "prompt.colon");
+    form::set_weak("log_book.bracket", "punctuation.bracket");
+    form::set_weak("log_book.target", "module");
+
+    // Setup for the PromptLine
+    form::set_weak("prompt.preview", "comment");
 
     crate::cmd::add!("logs", |pa| {
         mode::set(Pager::<LogBook>::new());
