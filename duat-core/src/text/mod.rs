@@ -210,18 +210,6 @@ impl Text {
         }))
     }
 
-    /// Returns an empty [`Text`], only for [`Builder`]s
-    fn empty() -> Self {
-        Self(Box::new(InnerText {
-            bytes: Bytes::default(),
-            tags: InnerTags::new(0),
-            selections: Selections::new_empty(),
-            history: None,
-            has_changed: false,
-            has_unsaved_changes: false,
-        }))
-    }
-
     /// Returns a [`Builder`] for [`Text`]
     ///
     /// This builder can be used to iteratively create text, by
@@ -567,7 +555,18 @@ impl Text {
     where
         R: Copy,
     {
-        self.0.tags.insert(tagger, r, tag)
+        self.0.tags.insert(tagger, r, tag, false)
+    }
+
+    /// Like [`insert_tag`], but does it after other [`Tag`]s with the
+    /// same priority
+    ///
+    /// [`insert_tag`]: Self::insert_tag
+    pub fn insert_tag_after<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        self.0.tags.insert(tagger, r, tag, true)
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -627,17 +626,17 @@ impl Text {
 
             let key = Tagger::for_selections();
             let form = if is_main {
-                self.0.tags.insert(key, caret.byte(), MainCaret);
+                self.0.tags.insert(key, caret.byte(), MainCaret, false);
                 form::M_SEL_ID
             } else {
-                self.0.tags.insert(key, caret.byte(), ExtraCaret);
+                self.0.tags.insert(key, caret.byte(), ExtraCaret, false);
                 form::E_SEL_ID
             };
 
             bytes.add_record([caret.byte(), caret.char(), caret.line()]);
 
             if let Some(range) = selection {
-                self.0.tags.insert(key, range, form.to_tag(95));
+                self.0.tags.insert(key, range, form.to_tag(95), false);
             }
         };
 
@@ -863,6 +862,18 @@ impl PartialEq<&str> for Text {
 impl PartialEq<String> for Text {
     fn eq(&self, other: &String) -> bool {
         self.0.bytes == *other
+    }
+}
+
+impl PartialEq<Text> for &str {
+    fn eq(&self, other: &Text) -> bool {
+        other.0.bytes == *self
+    }
+}
+
+impl PartialEq<Text> for String {
+    fn eq(&self, other: &Text) -> bool {
+        other.0.bytes == *self
     }
 }
 

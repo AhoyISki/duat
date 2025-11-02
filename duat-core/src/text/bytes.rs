@@ -853,6 +853,29 @@ impl PartialEq<String> for Strs<'_> {
     }
 }
 
+impl PartialEq<Bytes> for &str {
+    fn eq(&self, other: &Bytes) -> bool {
+        other == self
+    }
+}
+
+impl PartialEq<Bytes> for String {
+    fn eq(&self, other: &Bytes) -> bool {
+        other == self
+    }
+}
+
+impl PartialEq<Strs<'_>> for &str {
+    fn eq(&self, other: &Strs) -> bool {
+        other == self
+    }
+}
+
+impl PartialEq<Strs<'_>> for String {
+    fn eq(&self, other: &Strs) -> bool {
+        other == self
+    }
+}
 /// Given a first byte, determines how many bytes are in this UTF-8
 /// character.
 #[must_use]

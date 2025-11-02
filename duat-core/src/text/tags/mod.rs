@@ -62,7 +62,16 @@ impl Tags<'_> {
     where
         R: Copy,
     {
-        self.0.insert(tagger, r, tag)
+        self.0.insert(tagger, r, tag, false)
+    }
+
+    /// Same as [`insert`], but does it after other [`Tags`] of the
+    /// same priority
+    pub fn insert_after<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        self.0.insert(tagger, r, tag, true)
     }
 
     /// Removes the [`Tag`]s of a [tagger] from a region
@@ -188,12 +197,18 @@ impl InnerTags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert<I, R>(&mut self, tagger: Tagger, i: I, tag: impl Tag<I, R>) -> Option<R>
+    pub fn insert<I, R>(
+        &mut self,
+        tagger: Tagger,
+        i: I,
+        tag: impl Tag<I, R>,
+        after: bool,
+    ) -> Option<R>
     where
         R: Copy,
     {
         let (start, end, ret) = tag.get_raw(i, self.len_bytes(), tagger);
-        let inserted = self.insert_raw(start, end);
+        let inserted = self.insert_raw(start, end, after);
 
         if inserted {
             tag.on_insertion(ret, self);
@@ -203,16 +218,38 @@ impl InnerTags {
         }
     }
 
-    fn insert_raw(&mut self, (s_b, s_tag): (usize, RawTag), end: Option<(usize, RawTag)>) -> bool {
+    fn insert_raw(
+        &mut self,
+        (s_b, s_tag): (usize, RawTag),
+        end: Option<(usize, RawTag)>,
+        after: bool,
+    ) -> bool {
+        let same_prio = |byte: usize| {
+            move |(_, (b, tag)): &(_, (i32, RawTag))| {
+                byte as i32 == *b && tag.priority() == s_tag.priority()
+            }
+        };
+
         if let Some((e_b, e_tag)) = end
             && s_b < e_b
         {
-            let (s_i, e_i) = match (
-                self.list.find_by_key((s_b as i32, s_tag), |t| t),
-                self.list.find_by_key((e_b as i32, e_tag), |t| t),
-            ) {
-                (Ok(_), Ok(_)) => return false,
-                (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => (s_i, e_i + 1),
+            let (s_i, e_i) = {
+                let (mut s_i, mut e_i) = match (
+                    self.list.find_by_key((s_b as i32, s_tag), |t| t),
+                    self.list.find_by_key((e_b as i32, e_tag), |t| t),
+                ) {
+                    (Ok(_), Ok(_)) => return false,
+                    (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => {
+                        (s_i, e_i + 1)
+                    }
+                };
+
+                if after {
+                    s_i += self.list.iter_fwd(s_i..).take_while(same_prio(s_b)).count();
+                    e_i += self.list.iter_fwd(s_i..).take_while(same_prio(e_b)).count();
+                }
+
+                (s_i, e_i)
             };
 
             self.list.insert(s_i, (s_b as i32, s_tag));
@@ -226,7 +263,16 @@ impl InnerTags {
 
             true
         } else if end.is_none() {
-            let (Ok(i) | Err(i)) = self.list.find_by_key((s_b as i32, s_tag), |s| s);
+            let i = {
+                let (Ok(mut i) | Err(mut i)) = self.list.find_by_key((s_b as i32, s_tag), |s| s);
+
+                if after {
+                    i += self.list.iter_fwd(i..).take_while(same_prio(s_b)).count();
+                }
+
+                i
+            };
+
             self.list.insert(i, (s_b as i32, s_tag));
 
             self.bounds.shift_by(i, [1, 0]);
@@ -251,20 +297,20 @@ impl InnerTags {
                 PopForm(..) | EndAlignCenter(_) | EndAlignRight(_) | EndConceal(_) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, stag) = starts.remove(i);
-                    self.insert_raw((sb, stag), Some((b, tag)));
+                    self.insert_raw((sb, stag), Some((b, tag)), false);
                 }
                 ConcealUntil(_) => unreachable!(),
                 RawTag::Ghost(_, id) => {
                     self.ghosts
                         .extend(other.ghosts.extract_if(.., |(l, _)| l == &id).next());
-                    self.insert_raw((b, tag), None);
+                    self.insert_raw((b, tag), None, false);
                 }
                 StartToggle(..) | EndToggle(..) => todo!(),
                 RawTag::MainCaret(_)
                 | RawTag::ExtraCaret(_)
                 | RawTag::Spacer(_)
                 | SpawnedWidget(..) => {
-                    self.insert_raw((b, tag), None);
+                    self.insert_raw((b, tag), None, false);
                 }
             };
         }
