@@ -4,42 +4,10 @@
 //! text editor such as Neovim or Kakoune. They are contained in a
 //! [`PrintOpts`] struct, which is very light and cheap to copy
 //! around, and is used not only by the [`Buffer`], but by every other
-//! [`Widget`] as well. Right now, these options, alongside their
-//! default value for `Buffer`s are:
+//! [`Widget`] as well.
 //!
-//! - [`dont_wrap: bool = false`][]: Disable wrapping.
-//! - [`wrap_on_word: bool = false`][]: Wrap on words.
-//! - [`wrapping_cap: Option<u32> = None`][]: Where to start wrapping.
-//! - [`indent_wraps: bool = true`][]: Indent wrapped lines.
-//! - [`tabstop: u8 = 4`][]: Size of the `Tab` character in spaces.
-//! - [`print_new_line: bool = true`][]: Print `\n` as a space.
-//! - [`scrolloff: ScrollOff: ScrollOff { x: 3, y: 3 }`][]: Space
-//!   between cursor and edges.
-//! - [`force_scrolloff: bool = false`][]: Limit scrolloff on line ends.
-//! - [`extra_word_chars: &'static [char] =  &[]`][]: Extra word
-//!   characters
-//! - [`show_ghosts: bool = true`][]: Show [ghost text].
-//! - [`allow_overscroll: bool = true`][]: Allow scrolling until
-//!   [`scrolloff.y`] lines are on screen.
-//!
-//! If you have any other recomendations of printing options that are
-//! common, feel free to recomend them!
-//!
-//! [ghoxt text]: crate::text::Ghost
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
-//! [`dont_wrap: bool = false`]: PrintOpts::dont_wrap
-//! [`wrap_on_word: bool = false`]: PrintOpts::wrap_on_word
-//! [`wrapping_cap: Option<u32> = None`]: PrintOpts::wrapping_cap
-//! [`indent_wraps: bool = true`]: PrintOpts::indent_wraps
-//! [`tabstop: u8 = 4`]: PrintOpts::tabstop
-//! [`print_new_line: bool = true`]: PrintOpts::print_new_line
-//! [`scrolloff: ScrollOff: ScrollOff { x: 3, y: 3 }`]: PrintOpts::scrolloff
-//! [`force_scrolloff: bool = false`]: PrintOpts::force_scrolloff
-//! [`extra_word_chars: &'static [char] =  &[]`]: PrintOpts::extra_word_chars
-//! [`show_ghosts: bool = true`]: PrintOpts::show_ghosts
-//! [`allow_overscroll: bool = true`]: PrintOpts::allow_overscroll
-//! [`scrolloff.y`]: PrintOpts::scrolloff
 use std::{collections::HashMap, sync::LazyLock};
 
 use parking_lot::Mutex;
@@ -177,15 +145,15 @@ impl PrintOpts {
     /// There is, essentially, almost no reason to deviate from this
     /// in any [`Widget`] other than a [`Buffer`], since those most
     /// likely will only be printed with the [default `PrintInfo`]
-    /// from a [`Area`], i.e., no scrolling is involved, and you
+    /// from a [`RawArea`], i.e., no scrolling is involved, and you
     /// should usually strive to control the other elements of
     /// [`Text`]s that the options of a [`PrintOpts`] will want to
     /// change.
     ///
     /// The lack of need to customize this is reflected in
-    /// [`Widget::print_opts`], which calls this function by default.
-    /// However, in a [`Buffer`], you'll probably want to look at the
-    /// options below.
+    /// [`Widget::get_print_opts`], which calls this function by
+    /// default. However, in a [`Buffer`], you'll probably want to
+    /// look at the options below.
     ///
     /// The default value is:
     ///
@@ -208,10 +176,10 @@ impl PrintOpts {
     ///
     /// [`Widget`]: crate::ui::Widget
     /// [`Buffer`]: crate::buffer::Buffer
-    /// [default `PrintInfo`]: crate::ui::Area::PrintInfo
-    /// [`Area`]: crate::ui::Area
+    /// [default `PrintInfo`]: crate::ui::traits::RawArea::PrintInfo
+    /// [`RawArea`]: crate::ui::traits::RawArea
     /// [`Text`]: crate::text::Text
-    /// [`Widget::print_opts`]: crate::ui::Widget::print_opts
+    /// [`Widget::get_print_opts`]: crate::ui::Widget::get_print_opts
     pub const fn new() -> Self {
         Self {
             dont_wrap: true,

@@ -140,17 +140,14 @@ use crate::{
 /// [mapped]: crate::mode::map
 /// [`read`]: RwData::read
 /// [`write`]: RwData::write
-/// [`U::Area`]: Ui::Area
 /// [`Self::Widget`]: crate::mode::Mode::Widget
 /// [`Some(selections)`]: Some
-/// [`Ui::Area`]: crate::ui::Ui::Area
+/// [`Area`]: crate::ui::Area
 /// [commands]: crate::cmd
-/// [`key!`]: crate::mode::key
 /// [`KeyEvent`]: crate::mode::KeyEvent
 /// [editing]: Cursor
 /// [moving]: Cursor
 /// [`Mode`]: crate::mode::Mode
-/// [`U::Area`]: Ui::Area
 /// [`event!`]: crate::mode::event
 /// [`alt!`]: crate::mode::alt
 /// [`ctrl!`]: crate::mode::ctrl
@@ -532,9 +529,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         &self.widget
     }
 
-    /// This [`Handle`]'s [`U::Area`]
-    ///
-    /// [`U::Area`]: crate::ui::Ui::Area
+    /// This [`Handle`]'s [`RwArea`]
     pub fn area(&self) -> &RwArea {
         &self.area
     }
@@ -633,8 +628,8 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             .ok_or_else(|| txt!("Widget was not pushed to a [a]Buffer").build())
     }
 
-    /// Reads related [`Widget`]s of type `W2`, as well as it s
-    /// [`Ui::Area`]
+    /// Reads related [`Widget`]s of type `W2`, as well as its
+    /// [`Area`]
     ///
     /// This can also be done by calling [`Handle::get_related`], and
     /// [`Handle::read`], but this function should generally be
@@ -642,21 +637,21 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     pub fn read_related<'a, W2: Widget>(
         &'a self,
         pa: &'a Pass,
-    ) -> impl Iterator<Item = (&'a W2, &'a RwArea, WidgetRelation)> {
+    ) -> impl Iterator<Item = (&'a W2, &'a Area, WidgetRelation)> {
         self.read_as(pa)
-            .map(|w| (w, self.area(), WidgetRelation::Main))
+            .map(|w| (w, self.area().read(pa), WidgetRelation::Main))
             .into_iter()
-            .chain(
-                self.related.0.read(pa).iter().filter_map(|(handle, rel)| {
-                    handle.read_as(pa).map(|w| (w, handle.area(), *rel))
-                }),
-            )
+            .chain(self.related.0.read(pa).iter().filter_map(|(handle, rel)| {
+                handle
+                    .read_as(pa)
+                    .map(|w| (w, handle.area().read(pa), *rel))
+            }))
     }
 
     /// Gets related [`Handle`]s of type [`Widget`]
     ///
     /// If you are doing this just to read the [`Widget`] and
-    /// [`Ui::Area`], consider using [`Handle::read_related`].
+    /// [`Area`], consider using [`Handle::read_related`].
     pub fn get_related<'a, W2: Widget>(
         &'a self,
         pa: &'a Pass,
@@ -715,7 +710,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// Pushes a [`Widget`] around this one
     ///
     /// This `Widget` will be placed internally, i.e., around the
-    /// [`Ui::Area`] of `self`. This is in contrast to
+    /// [`Area`] of `self`. This is in contrast to
     /// [`Handle::push_outer_widget`], which will push around the
     /// "cluster master" of `self`.
     ///
@@ -834,7 +829,9 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         context::windows().spawn_on_widget(pa, (&self.area, specs), widget)
     }
 
-    /// Closes this `Handle`, removing the [`Widget`] from the [`Ui`]
+    /// Closes this `Handle`, removing the [`Widget`] from the [`Window`]
+    ///
+    /// [`Window`]: crate::ui::Window
     pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
         context::windows().close(pa, self)
     }

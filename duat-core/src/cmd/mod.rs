@@ -156,10 +156,9 @@
 //! [`cmd::queue_and`]: queue_and
 //! [`Send + 'static`]: Send
 //! [`Color`]: crate::form::Color
-//! [`txt!`]: crate::prelude::txt
+//! [`txt!`]: crate::text::txt
 //! [`Ok(Some({Text}))`]: Ok
 //! [`Form`]: crate::form::Form
-//! [`on_flags`]: Handles::on_flags
 //! [`Handle`]: crate::context::Handle
 use std::{
     collections::HashMap,

@@ -83,7 +83,7 @@ use crate::{
 /// ```rust
 /// # duat_core::doc_duat!(duat);
 /// use duat::prelude::*;
-/// 
+///
 /// struct CharCounter {
 ///     count: usize,
 ///     ch: char,
@@ -177,15 +177,16 @@ use crate::{
 /// default implementation of `Parser::parse` is to just return
 /// `true`.
 ///
-/// > [!IMPORTANT]
-/// >
-/// > In the example above, the [`BufferTracker`] is acting _slightly_
-/// > differently. When setting up this `Parser` with a [`ParserCfg`],
-/// > I called [`BufferTracker::track_area`]. This function makes it
-/// > so,
-/// > instead of tracking changed [`Range<Point>`]s,
-/// > [`Parser::update`] will always return a list of ranges
-/// > equivalent to the printed region of the [`Text`].
+/// # Note
+///
+/// In the example above, the [`BufferTracker`] is acting _slightly_
+/// differently. When setting up this `Parser`, I called
+/// [`BufferTracker::track_area`].
+///
+/// This function makes it so, instead of tracking changed
+/// [`Range<Point>`]s, [`Parser::update`] will always return a list of
+/// ranges equivalent to the printed region of the [`Text`]. This way,
+/// I can update only the stuff on screen.
 ///
 /// In general, given the [`Parser::parse`] and `Parser::update`
 /// functions, you can roughly divide which ones you'll implement
@@ -223,20 +224,21 @@ use crate::{
 /// [`Buffer`], so it doesn't need to update itself _every time_ there
 /// are new changes to the [`Buffer`], but only when it is requested.
 ///
-/// > [!TIP]
-/// >
-/// > You can keep a `Parser` private in your plugin in order to
-/// > prevent the end user from reading or writing to it. You can
-/// > then create standalone functions or implement traits on the
-/// > [`Buffer`] widget in order to give controled access to the
-/// > parser. For an example of this, you can see the
-/// > [`duat-jump-list`] crate, which defines traits for saving and
-/// > retrieving jumps, but doesn't grant direct access to the parser.
+/// # Note
+///
+/// You can keep a `Parser` private in your plugin in order to
+/// prevent the end user from reading or writing to it. You can
+/// then create standalone functions or implement traits on the
+/// [`Buffer`] widget in order to give controled access to the
+/// parser. For an example of this, you can see the
+/// [`duat-jump-list`] crate, which defines traits for saving and
+/// retrieving jumps, but doesn't grant direct access to the parser.
 ///
 /// [`Change`]: crate::text::Change
 /// [`Selection`]: crate::mode::Selection
 /// [try equivalents]: Buffer::try_read_parser
 /// [`duat-jump-list`]: https://github.com/AhoyISki/duat-jump-list
+/// [`Selections`]: crate::mode::Selections
 #[allow(unused_variables)]
 pub trait Parser: Send + 'static {
     /// Parses the [`Bytes`] of the [`Buffer`]
@@ -724,11 +726,10 @@ impl BufferTracker {
     /// This value only takes ascii spaces and tabs into account,
     /// which may differ from the value from [`Text::indent`],
     /// since that one calculates the indent through the [`Area`],
-    /// while this one only makes use of the [`PrintOpts`]'s
-    /// [`TabStops`].
+    /// while this one only makes use of the [`Buffer`]'s
+    /// [`PrintOpts`].
     ///
     /// [`Area`]: crate::ui::Area
-    /// [`TabStops`]: crate::opts::TabStops
     pub fn indent(&self, p: Point) -> usize {
         self.bytes.indent(p, *self.opts.lock())
     }

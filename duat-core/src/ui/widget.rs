@@ -337,9 +337,6 @@ use crate::{
 /// screen, I could use [`Window::push_outer` instead.
 ///
 /// [`Mode`]: crate::mode::Mode
-/// [`opts`]: Widget::opts
-/// [`build`]: WidgetCfg::build
-/// [How]: PushSpecs
 /// [`PeriodicChecker`]: crate::data::PeriodicChecker
 /// [`WidgetCreated`]: crate::hook::WidgetCreated
 /// [`WindowCreated`]: crate::hook::WindowCreated
@@ -348,7 +345,6 @@ use crate::{
 /// [`PhantomData<U>`]: std::marker::PhantomData
 /// [`Instant`]: std::time::Instant
 /// [`ConfigLoaded`]: crate::hook::ConfigLoaded
-/// [`once`]: Widget::once
 /// [`update`]: Widget::update
 /// [`needs_update`]: Widget::needs_update
 /// [`Form`]: crate::form::Form
@@ -358,16 +354,20 @@ use crate::{
 /// [`Buffer`]: crate::buffer::Buffer
 /// [`PushSpecs`]: super::PushSpecs
 /// [`Window`]: super::Window
+/// [`Window::push_inner`]: super::Window::push_inner
+/// [`Window::push_outer`]: super::Window::push_outer
 /// [`OnceLock`]: std::sync::OnceLock
 pub trait Widget: Send + 'static {
     ////////// Stateful functions
 
-    /// Updates the widget, allowing the modification of its
-    /// [`Area`]
+    /// Updates the widget alongside its [`RwArea`] in the [`Handle`]
     ///
     /// This function will be triggered when Duat deems that a change
     /// has happened to this [`Widget`], which is when
-    /// [`RwData<Self>::has_changed`] returns `true`. This can happen
+    /// [`Widget::needs_update`] returns `true`.
+    ///
+    /// It can also happen if [`RwData<Self>::has_changed`] or
+    /// [`RwData::has_changed`] return `true`. This can happen
     /// from many places, like [hooks], [commands], editing by
     /// [`Mode`]s, etc.
     ///
@@ -466,7 +466,7 @@ pub trait Widget: Send + 'static {
     ///
     /// Very rarely shouuld you actually implement this method, one
     /// example of where this is actually implemented is in
-    /// [`Buffer::print`], where [`Area::print_with`] is called in
+    /// [`Buffer::print`], where [`RwArea::print_with`] is called in
     /// order to simultaneously update the list of lines numbers,
     /// for widgets like [`LineNumbers`] to read.
     ///

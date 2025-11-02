@@ -2,7 +2,7 @@
 //!
 //! Most extensible features of Duat have the primary purpose of
 //! serving the [`Buffer`], such as multiple [`Cursor`]s, a
-//! `History` system, [`Area::PrintInfo`], etc.
+//! `History` system, [`RawArea::PrintInfo`], etc.
 //!
 //! The [`Buffer`] also provides a list of printed lines through the
 //! [`Buffer::printed_lines`] method. This method is notably used by
@@ -11,7 +11,7 @@
 //!
 //! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
-//! [`Area::PrintInfo`]: 
+//! [`RawArea::PrintInfo`]: crate::ui::traits::RawArea::PrintInfo
 use std::{
     fs,
     path::{Path, PathBuf},

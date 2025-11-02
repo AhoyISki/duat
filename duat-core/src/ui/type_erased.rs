@@ -3,15 +3,15 @@
 //! This module serves the purpose of keeping Duat code less verbose,
 //! by making it so end users and plugin writers alike don't have to
 //! worry about implementing their code for specific
-//! [`Ui`](super::traits::Ui) versions.
+//! [`RawUi`] versions.
 //!
-//! This works by type erasing the `Ui` and [`Area`] traits, as well
-//! as [`Area::PrintInfo`], so that they become `dyn` traits, even
+//! This works by type erasing the `Ui` and [`RawArea`] traits, as
+//! well as [`RawArea::PrintInfo`], so that they become [`Any`], even
 //! though they have many elements that should not be `dyn`
 //! compatible.
 //!
 //! Of course, you can still go into specifics about certain `Area`
-//! implementations with the [`Area::read_as`] method.
+//! implementations with the [`RwArea::read_as`] method.
 //!
 //! [`ui`]: super
 //! [`Area`]: super::traits::Area
@@ -42,7 +42,7 @@ pub struct Ui {
 impl Ui {
     /// Returns a new type erased [`Ui`]
     ///
-    /// Given the [`Ui::get_once`] function, this should only be
+    /// Given the [`RawUi::get_once`] function, this should only be
     /// callable _once_.
     pub fn new<U: RawUi>() -> Self
     where
@@ -84,8 +84,8 @@ impl Ui {
     /// Initiates and returns a new "floating" [`Area`]
     ///
     /// This is one of two ways of spawning floating [`Widget`]s. The
-    /// other way is with [`Area::spawn`], in which a [`Widget`] will
-    /// be bolted on the edges of another.
+    /// other way is with [`RawArea::spawn`], in which a [`Widget`]
+    /// will be bolted on the edges of another.
     ///
     /// TODO: There will probably be some way of defining floating
     /// [`Widget`]s with coordinates in the not too distant future as
@@ -138,7 +138,7 @@ impl Ui {
         (self.fns.load)(self.ui)
     }
 
-    /// Unloads the [`Ui`]
+    /// Unloads the [`RawUi`]
     ///
     /// Unlike [`RawUi::close`], this will happen both when Duat
     /// reloads the configuratio and when it closes the app.
@@ -149,7 +149,7 @@ impl Ui {
         (self.fns.unload)(self.ui)
     }
 
-    /// Removes a window from the [`Ui`]
+    /// Removes a window from the [`RawUi`]
     ///
     /// This should keep the current active window consistent. That
     /// is, if the current window was ahead of the deleted one, it
@@ -227,7 +227,7 @@ impl UiFunctions {
     }
 }
 
-/// A type erased [`Area`]
+/// A type erased [`RawArea`]
 ///
 /// This type houses the inner `Area`, and provides type erased access
 /// to its functions.
@@ -235,13 +235,10 @@ impl UiFunctions {
 pub struct RwArea(pub(crate) RwData<Area>);
 
 impl RwArea {
-    /// Returns a new type erased [`Area`]
+    /// Returns a new type erased [`RawArea`]
     ///
-    /// This is the only moment where the [`Ui`] and `Area` will be
+    /// This is the only moment where the [`RawUi`] and `Area` will be
     /// statically known.
-    ///
-    /// [`Ui`]: super::traits::Ui
-    /// [`Area`]: super::traits::Area
     fn new<U: RawUi>(area: U::Area) -> Self {
         Self(RwData::new(Area {
             inner: Box::new(area),
@@ -252,12 +249,8 @@ impl RwArea {
     /// Shared access to an [`Area`]
     ///
     /// You should use this if you want "prolonged" access to the
-    /// [`Area`]'s methods, without necessarily bringing a [`Pass`]
+    /// `Area`'s methods, without necessarily bringing a [`Pass`]
     /// with you.
-    ///
-    /// [`Area::set_width`]: super::traits::Area::set_width
-    /// [`Area::set_height`]: super::traits::Area::set_height
-    /// [`Area::reveal`]: super::traits::Area::reveal
     pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a Area {
         self.0.read(pa)
     }
@@ -265,12 +258,8 @@ impl RwArea {
     /// Mutable access to an [`Area`]
     ///
     /// You should use this if you want "prolonged" access to the
-    /// [`Area`]'s methods, without necessarily bringing a [`Pass`]
+    /// `Area`'s methods, without necessarily bringing a [`Pass`]
     /// with you.
-    ///
-    /// [`Area::set_width`]: super::traits::Area::set_width
-    /// [`Area::set_height`]: super::traits::Area::set_height
-    /// [`Area::reveal`]: super::traits::Area::reveal
     pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Area {
         self.0.write(pa)
     }
@@ -293,7 +282,7 @@ impl RwArea {
     /// Attempt to write this as a specific implementation of
     /// [`RawArea`]
     ///
-    /// You can use this to deal with individual [`RawArea`]s, so you
+    /// You can use this to deal with individual `RawArea`s, so you
     /// can do a "per Ui" configuration for your
     /// [`Plugin`]/configuration. This could be used to, for example,
     /// place frames around an [`Area`] when making use of a terminal
@@ -310,6 +299,8 @@ impl RwArea {
     ////////// Area Modification functions
 
     /// Pushes a [`Widget`] to this [`Area`]
+    ///
+    /// [`Widget`]: super::Widget
     pub(super) fn push(
         &self,
         pa: &mut Pass,
@@ -321,6 +312,8 @@ impl RwArea {
     }
 
     /// Spawns a [`Widget`] on this [`Area`]
+    ///
+    /// [`Widget`]: super::Widget
     pub(super) fn spawn(
         &self,
         pa: &mut Pass,
@@ -344,32 +337,31 @@ impl RwArea {
 
     ////////// Constraint changing functions
 
-    /// Changes the horizontal constraint of the area
+    /// Sets the width of  the [`RawArea`]
     pub fn set_width(&self, pa: &mut Pass, width: f32) -> Result<(), Text> {
         self.0.write(pa).set_width(width)
     }
 
-    /// Changes the vertical constraint of the area
+    /// Sets the height of  the [`RawArea`]
     pub fn set_height(&self, pa: &mut Pass, height: f32) -> Result<(), Text> {
         self.0.write(pa).set_height(height)
     }
 
-    /// Changes [`Constraint`]s such that the [`Area`] becomes
-    /// hidden
+    /// Hides the [`RawArea`]
     pub fn hide(&self, pa: &mut Pass) -> Result<(), Text> {
         self.0.write(pa).hide()
     }
 
-    /// Changes [`Constraint`]s such that the [`Area`] is revealed
+    /// Reveals the [`RawArea`]
     pub fn reveal(&self, pa: &mut Pass) -> Result<(), Text> {
         self.0.write(pa).reveal()
     }
 
-    /// Tells the [`Ui`] that this [`Area`] is the one that is
+    /// Tells the [`RawUi`] that this [`RawArea`] is the one that is
     /// currently focused.
     ///
-    /// Should make [`self`] the active [`Area`] while deactivating
-    /// any other active [`Area`].
+    /// Should make `self` the active `RawArea` while deactivating
+    /// any other active `RawArea`.
     pub fn set_as_active(&self, pa: &mut Pass) {
         self.0.write(pa).set_as_active()
     }
@@ -381,7 +373,7 @@ impl RwArea {
 
     ////////// Printing functions
 
-    /// Prints the [`Text`] via an [`Iterator`]
+    /// Prints the [`Text`]
     pub fn print(&self, pa: &Pass, text: &Text, opts: PrintOpts, painter: Painter) {
         self.0.read(pa).print(text, opts, painter)
     }
@@ -404,8 +396,6 @@ impl RwArea {
     }
 
     /// Sets a previously acquired [`PrintInfo`] to the area
-    ///
-    /// [`PrintInfo`]: Area::PrintInfo
     pub fn set_print_info(&self, pa: &mut Pass, info: PrintInfo) {
         self.0.write(pa).set_print_info(info)
     }
@@ -463,12 +453,12 @@ impl RwArea {
     }
 
     /// Scrolls the [`Text`] on all four directions until the given
-    /// [`Point`] is within the [`ScrollOff`] range
+    /// [`TwoPoints`] is within the [`ScrollOff`] range
     ///
     /// There are two other scrolling methods for [`Area`]:
     /// [`scroll_ver`] and [`scroll_to_points`]. The difference
     /// between this and [`scroll_to_points`] is that this method
-    /// doesn't do anything if the [`Point`] is already on screen.
+    /// doesn't do anything if the [`TwoPoints`] is already on screen.
     ///
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
@@ -493,7 +483,7 @@ impl RwArea {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::opts::WrapMethod
+    /// [line wrapping]: crate::opts::PrintOpts::dont_wrap
     pub fn scroll_to_points(&self, pa: &mut Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
         self.0.write(pa).scroll_to_points(text, points, opts)
     }
@@ -543,7 +533,7 @@ impl RwArea {
 
     /// Returns `true` if this is the currently active [`Area`]
     ///
-    /// Only one [`Area`] should be active at any given moment.
+    /// Only one `Area` should be active at any given moment.
     pub fn is_active(&self, pa: &Pass) -> bool {
         self.0.read(pa).is_active()
     }
@@ -564,32 +554,31 @@ pub struct Area {
 }
 
 impl Area {
-    /// Changes the horizontal constraint of the area
+    /// Sets the width of  the [`RawArea`]
     pub fn set_width(&mut self, width: f32) -> Result<(), Text> {
         (self.fns.set_width)(self, width)
     }
 
-    /// Changes the vertical constraint of the area
+    /// Sets the height of  the [`RawArea`]
     pub fn set_height(&mut self, height: f32) -> Result<(), Text> {
         (self.fns.set_height)(self, height)
     }
 
-    /// Changes [`Constraint`]s such that the [`Area`] becomes
-    /// hidden
+    /// Hides the [`RawArea`]
     pub fn hide(&mut self) -> Result<(), Text> {
         (self.fns.hide)(self)
     }
 
-    /// Changes [`Constraint`]s such that the [`Area`] is revealed
+    /// Reveals the [`RawArea`]
     pub fn reveal(&mut self) -> Result<(), Text> {
         (self.fns.reveal)(self)
     }
 
-    /// Tells the [`Ui`] that this [`Area`] is the one that is
+    /// Tells the [`RawUi`] that this [`RawArea`] is the one that is
     /// currently focused.
     ///
-    /// Should make [`self`] the active [`Area`] while deactivating
-    /// any other active [`Area`].
+    /// Should make `self` the active [`RawArea`] while deactivating
+    /// any other active [`RawArea`].
     pub fn set_as_active(&mut self) {
         (self.fns.set_as_active)(self)
     }
@@ -623,8 +612,6 @@ impl Area {
     }
 
     /// Sets a previously acquired [`PrintInfo`] to the area
-    ///
-    /// [`PrintInfo`]: Area::PrintInfo
     pub fn set_print_info(&mut self, info: PrintInfo) {
         (self.fns.set_print_info)(self, info)
     }
@@ -680,12 +667,12 @@ impl Area {
     }
 
     /// Scrolls the [`Text`] on all four directions until the given
-    /// [`Point`] is within the [`ScrollOff`] range
+    /// [`TwoPoints`] is within the [`ScrollOff`] range
     ///
-    /// There are two other scrolling methods for [`Area`]:
+    /// There are two other scrolling methods for `Area`:
     /// [`scroll_ver`] and [`scroll_to_points`]. The difference
     /// between this and [`scroll_to_points`] is that this method
-    /// doesn't do anything if the [`Point`] is already on screen.
+    /// doesn't do anything if the [`TwoPoints`] is already on screen.
     ///
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: Area::scroll_ver
@@ -704,34 +691,34 @@ impl Area {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::opts::WrapMethod
+    /// [line wrapping]: crate::opts::PrintOpts::dont_wrap
     pub fn scroll_to_points(&mut self, text: &Text, points: TwoPoints, opts: PrintOpts) {
         (self.fns.scroll_to_points)(self, text, points, opts);
     }
 
-    /// Scrolls the [`Area`] to the given [`TwoPoints`]
+    /// Scrolls the `Area` to the given [`TwoPoints`]
     pub fn start_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints {
         (self.fns.start_points)(self, text, opts)
     }
 
-    /// Scrolls the [`Area`] to the given [`TwoPoints`]
+    /// Scrolls the `Area` to the given [`TwoPoints`]
     pub fn end_points(&self, text: &Text, opts: PrintOpts) -> TwoPoints {
         (self.fns.end_points)(self, text, opts)
     }
 
     /////////// Querying functions
 
-    /// Wether this [`Area`] has changed since last being printed
+    /// Wether this `Area` has changed since last being printed
     pub fn has_changed(&self) -> bool {
         (self.fns.has_changed)(self)
     }
 
-    /// Whether or not this [`Area`] is the "master" of another
+    /// Whether or not this `Area` is the "master" of another
     pub fn is_master_of(&self, other: &Self) -> bool {
         (self.fns.is_master_of)(self, other)
     }
 
-    /// Stores the cache of the [`Area`], given a path to associate
+    /// Stores the cache of the `Area`, given a path to associate
     /// with this cache
     pub fn store_cache(&mut self, path: &str) -> Result<(), Text> {
         (self.fns.store_cache)(self, path)
@@ -747,14 +734,14 @@ impl Area {
         (self.fns.height)(self)
     }
 
-    /// Returns `true` if this is the currently active [`Area`]
+    /// Returns `true` if this is the currently active `Area`
     ///
-    /// Only one [`Area`] should be active at any given moment.
+    /// Only one `Area` should be active at any given moment.
     pub fn is_active(&self) -> bool {
         (self.fns.is_active)(self)
     }
 
-    /// Wether this [`Area`] is the same as another
+    /// Wether this `Area` is the same as another
     pub fn area_is_eq(&self, other: &Area) -> bool {
         (self.fns.eq)(self, other)
     }
@@ -963,37 +950,18 @@ impl AreaFunctions {
     }
 }
 
-/// Type erased [`Area::PrintInfo`]
+/// Type erased [`RawArea::PrintInfo`]
 ///
-/// [`Area::PrintInfo`]: traits::Area::PrintInfo
+/// This is information mostly about _from where_ to print a [`Text`]
+/// from.
 pub struct PrintInfo {
     info: Box<dyn Any + Send>,
     fns: &'static PrintInfoFunctions,
 }
 
 impl PrintInfo {
-    /// Creates a new [`U::Area::PrintInfo`]
-    ///
-    /// This should be used by [`Ui`] implementations, in order to
-    /// type erase their own [`PrintInfo`]s.
-    ///
-    /// > [!NOTE]
-    /// >
-    /// > The reason why this should be the responsibility of [`Ui`]
-    /// > implementations, and not of Duat itself, is because, in
-    /// > order to do that in Duat, I would need to type erase the
-    /// > [`ui::traits`] functions before the initial startup of the
-    /// > configuration, i.e., in the address space of the Duat
-    /// > executable, _not_ in the configuration crate address space.
-    /// >
-    /// > This would make implementing a [`Ui`] incredibly confusing,
-    /// > since there are already 3 functions that are called from
-    /// > that address space, and bringin
-    ///
-    /// [`U::Area::PrintInfo`]: traits::Area::PrintInfo
-    /// [`Ui`]: traits::Ui
-    /// [`ui::traits`]: super::traits
-    pub fn new<U: RawUi>(info: <U::Area as RawArea>::PrintInfo) -> Self {
+    /// Creates a new `PrintInfo`
+    fn new<U: RawUi>(info: <U::Area as RawArea>::PrintInfo) -> Self {
         Self {
             info: Box::new(info),
             fns: PrintInfoFunctions::new::<U>(),

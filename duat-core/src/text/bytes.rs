@@ -677,7 +677,7 @@ impl<'a> Slices<'a> {
     ///
     /// # Safety
     ///
-    /// You must ensure that the [`Buffers`] were acquired from valid
+    /// You must ensure that the `Slices` were acquired from valid
     /// byte ranges which coincide with character terminations. If you
     /// are unsure of that, you should use [`Strs::chars`] instead.
     ///

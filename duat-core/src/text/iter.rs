@@ -626,6 +626,8 @@ pub enum Part {
     /// Not yet implemented
     ToggleEnd(ToggleId),
     /// A spawned [`Widget`]
+    ///
+    /// [`Widget`]: crate::ui::Widget
     SpawnedWidget(SpawnId),
 
     /// Resets all [`FormId`]s, [`ToggleId`]s and alignments

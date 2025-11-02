@@ -1879,9 +1879,12 @@ macro mimic_method_mod {
         /// Turns the underlining of this [`Form`]
         #[$attr]
         ///
-        /// Do note that this feature may not be supported in all [`Ui`]s.
+        /// Do note that this feature may not be supported in all `Ui`s,
+        /// for example, various terminals don't support this feature,
+        /// since it is a part of the kitty protocol, and hasn't been
+        /// universally accepted yet.
         ///
-        /// [`Ui`]: crate::ui::Ui
+        /// `Ui`: crate::ui::traits::RawUi
         pub const fn $ul(mut self) -> Self {
             self.0.style.underline_color = Some($color);
             self

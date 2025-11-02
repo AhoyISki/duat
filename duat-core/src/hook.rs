@@ -37,11 +37,10 @@
 //! - [`ExitedDuat`] triggers after Duat has exited.
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
-//! - [`WidgetCreated`] triggers when a [`Widget`]'s [opts] is
-//!   created, letting you change it, [`Widget`] can be used as its
-//!   [alias]
-//! - [`WindowCreated`], which lets you push widgets around the
-//!   window.
+//! - [`WidgetCreated`] triggers when a [`Widget`] is created, letting
+//!   you change it, [`Widget`] can be used as its [alias]
+//! - [`WindowCreated`], triggers when a [`Window`] is created,
+//!   letting you change it.
 //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
 //! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
@@ -166,7 +165,6 @@
 //!
 //! [`Buffer`]: crate::buffer::Buffer
 //! [alias]: HookAlias
-//! [opts]: crate::ui::Widget::Cfg
 //! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 //! [widget]: Widget
 //! [dyn `Widget`]: Widget
@@ -175,7 +173,6 @@
 //! [commands]: crate::cmd
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
-//! [`Output`]: Hookable::Output
 //! [`hook::queue`]: queue
 //! [`hook::trigger`]: trigger
 //! [`hook::add`]: add
@@ -211,7 +208,7 @@ mod global {
     /// [`GroupId`]. You should use strings for publicly removable
     /// hooks, and [`GroupId`]s for privately removable hooks:
     ///
-    /// [adding grouped hooks]: add_grouped
+    /// [adding grouped hooks]: HookBuilder::grouped
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct GroupId(usize);
 
@@ -345,24 +342,12 @@ mod global {
     ///
     /// The hook can either be a string type, or a [`GroupId`].
     ///
-    /// By removing the group, this function will remove all hooks
-    /// added via [`hook::add_grouped`] with the same group.
-    ///
     /// [hook]: Hookable
-    /// [`hook::add_grouped`]: add_grouped
     pub fn remove(group: impl Into<InnerGroupId>) {
         HOOKS.remove(group.into());
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
-    ///
-    /// When you trigger a hook, all hooks added via [`hook::add`] or
-    /// [`hook::add_grouped`] for said [`Hookable`] struct will
-    /// be called.
-    ///
-    /// [hook]: Hookable
-    /// [`hook::add`]: add
-    /// [`hook::add_grouped`]: add_grouped
     pub fn trigger<H: Hookable>(pa: &mut Pass, hookable: H) -> H {
         HOOKS.trigger(pa, hookable)
     }
@@ -393,10 +378,9 @@ mod global {
     /// The hook can either be a string type, or a [`GroupId`].
     ///
     /// Returns `true` if said group was added via
-    /// [`hook::add_grouped`], and no [`hook::remove`]
+    /// [`HookBuilder::grouped`], and no [`hook::remove`]
     /// followed these additions
     ///
-    /// [`hook::add_grouped`]: add_grouped
     /// [`hook::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
         HOOKS.group_exists(group)
@@ -486,12 +470,11 @@ impl Hookable for UnfocusedFromDuat {
     fn get_input(&mut self) -> Self::Input<'_> {}
 }
 
-/// [`Hookable`]: Triggers when a [`Widget`]'s [opts] is created
+/// [`Hookable`]: Triggers when a [`Widget`] is created
 ///
 /// # Arguments
 ///
-/// - The [`WidgetCfg`] in question.
-/// - A [`UiBuilder`], which lets you push `Widget`s around this one.
+/// - The [`Handle<W>`] of said `Widget`.
 ///
 /// # Aliases
 ///
@@ -543,8 +526,6 @@ impl Hookable for UnfocusedFromDuat {
 /// further add a [hook] on `VertRule`, that would push further
 /// `Widget`s if you wanted to.
 ///
-/// [opts]: crate::ui::Widget::Cfg
-/// [`WidgetCfg`]: crate::ui::WidgetCfg
 /// [hook]: self
 /// [direction]: crate::ui::PushSpecs
 /// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html

@@ -5,10 +5,6 @@
 //! [`InnerTags`] struct also makes use of [`Records`] to keep track
 //! of positions, as well as [`TagRange`]s to keep track of tags
 //! occupying very long ranges of [`Text`].
-mod bounds;
-mod taggers;
-mod types;
-
 use std::{
     self,
     ops::{Range, RangeBounds},
@@ -29,6 +25,10 @@ use super::{
     shift_list::{Shift, ShiftList, Shiftable},
 };
 use crate::{context::Handle, data::Pass, ui::Widget, utils::get_ends};
+
+mod bounds;
+mod taggers;
+mod types;
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
 ///

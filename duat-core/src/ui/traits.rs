@@ -8,14 +8,12 @@
 //! GUI.
 //!
 //! Normally, in user code, they will encounter the
-//! [`Area`](super::type_erased::Area) and (sometimes) the
-//! [`Ui`](super::type_erased::Ui) from the [`type_erased`]
-//! module. These are dynamic containers for the traits in this
-//! module, and are used in order to improve ergonomics and compile
-//! times.
+//! [`Area`] and (sometimes) the [`Ui`] from the `type_erased` module.
+//! These are dynamic containers for the traits in this module, and
+//! are used in order to improve ergonomics and compile times.
 //!
-//! [`type_erased`]: super::type_erased
-
+//! [`Area`]: super::Area
+//! [`Ui`]: super::Ui
 use bincode::{Decode, Encode};
 
 use crate::{
@@ -32,13 +30,13 @@ use crate::{
 /// This includes the following functionalities:
 ///
 /// - Creating new windows, which start out with one [`RawArea`].
-/// - Spawning floating [`RawArea`]s around other [`RawArea`]s.
-/// - Spawning floating [`RawArea`]s in text [`Point`]s, which should
-///   be able to move as the [`Text`] itself does.
-/// - Pushing [`RawArea`]s around other [`RawArea`]s, which include
+/// - Spawning floating `RawArea`s around other `RawArea`s.
+/// - Spawning floating `RawArea`s in [`Text`]s, which should be able
+///   to move as the `Text` itself does.
+/// - Pushing `RawArea`s around other `RawArea`s, which include
 ///   floating ones.
-/// - Closing [`RawArea`]s at will, which should cascading all pushed
-///   or spawned [`RawArea`]s
+/// - Closing `RawArea`s at will, which should cascading all pushed or
+///   spawned `RawArea`s
 ///
 /// # Two address spaces
 ///
@@ -50,11 +48,11 @@ use crate::{
 ///
 /// There are two main consequences to this:
 ///
-/// - `&'static' references will not match (!).
+/// - `&'static'` references will not match (!).
 /// - [`TypeId`]s will not match.
 ///
 /// Which address space is in use is easy to tell however. If calling
-/// a function from the [`RawUi`] or [`RawArea`] traits, then the
+/// a function from the `RawUi` or [`RawArea`] traits, then the
 /// address space of Duat will be used. If calling any other function,
 /// _not inherent_ to these traits, then the address space of the
 /// configuration crate will be used.
@@ -85,14 +83,15 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// Initiates and returns a new "floating" [`RawArea`]
     ///
     /// This is one of two ways of spawning floating [`Widget`]s. The
-    /// other way is with [`RawArea::spawn`], in which a [`Widget`]
+    /// other way is with [`RawArea::spawn`], in which a `Widget`
     /// will be bolted on the edges of another.
     ///
     /// TODO: There will probably be some way of defining floating
-    /// [`Widget`]s with coordinates in the not too distant future as
+    /// `Widget`s with coordinates in the not too distant future as
     /// well.
     ///
     /// [`RawArea`]: RawUi::Area
+    /// [`Widget`]: super::Widget
     fn new_spawned(
         &'static self,
         id: SpawnId,
@@ -146,14 +145,14 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     fn remove_window(&'static self, win: usize);
 }
 
-/// An [`RawArea`] that supports printing [`Text`]
+/// A region on screen where you can print [`Text`]
 ///
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
 ///
 /// # Two address spaces
 ///
-/// With the `RawUi` and [`RawArea`] traits, there is a dystinction
+/// With the `RawUi` and `RawArea` traits, there is a dystinction
 /// that can be made between two address spaces. Since the `RawUi` is
 /// the only thing that gets initialized in the Duat runner, rather
 /// than the configuration crate, it uses the address space of Duat,
@@ -161,11 +160,11 @@ pub trait RawUi: Sized + Send + Sync + 'static {
 ///
 /// There are two main consequences to this:
 ///
-/// - `&'static' references will not match (!).
+/// - `&'static'` references will not match (!).
 /// - [`TypeId`]s will not match.
 ///
 /// Which address space is in use is easy to tell however. If calling
-/// a function from the [`RawUi`] or [`RawArea`] traits, then the
+/// a function from the [`RawUi`] or `RawArea` traits, then the
 /// address space of Duat will be used. If calling any other function,
 /// _not inherent_ to these traits, then the address space of the
 /// configuration crate will be used.
@@ -182,9 +181,9 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// Information about what parts of a [`Text`] should be printed
     ///
     /// For the [`term-ui`], for example, this is quite simple, it
-    /// only needs to include the real and ghost [`Point`]s on the
-    /// top left corner in order to print correctly, but your own
-    /// [`RawUi`] could differ in what it needs to keep, if it makes
+    /// only needs to include the [`TwoPoints`]s on the top left
+    /// corner in order to print correctly, but your own [`RawUi`]
+    /// could differ in what it needs to keep, if it makes
     /// use of smooth scrolling, for example.
     ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
@@ -201,7 +200,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`None`].
     ///
     /// As an example, assuming that [`self`] has an index of `0`,
-    /// pushing an area to [`self`] on [`Side::Left`] would create
+    /// pushing an area to `self` on [`Side::Left`] would create
     /// 2 new areas:
     ///
     /// ```text
@@ -229,9 +228,11 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     ///
-    /// And so [`RawArea::bisect`] should return `(3, None)`.
+    /// And so this function should return `(3, None)`.
     ///
     /// [deleted]: RawArea::delete
+    /// [`Side::Left`]: super::Side::Left
+    /// [`Side::Right`]: super::Side::Right
     fn push(
         self: CoreAccess<Self>,
         specs: PushSpecs,
@@ -247,6 +248,8 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// If this `RawArea` was previously [deleted], will return
     /// [`None`].
+    ///
+    /// [deleted]: RawArea::delete
     fn spawn(
         self: CoreAccess<Self>,
         id: SpawnId,
@@ -260,7 +263,9 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// The first return value shall be `true` if the window housing
     /// this `RawArea` should be removed.
     ///
-    /// If the [`RawArea`]'s parent was also deleted, return it.
+    /// If the `RawArea`'s parent was also deleted, return it.
+    ///
+    /// [`Widget`]: super::Widget
     fn delete(self: CoreAccess<Self>) -> (bool, Vec<Self>);
 
     /// Swaps this `RawArea` with another one
@@ -273,39 +278,38 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// `RawArea`s is a decendant of the other, so the [`RawUi`]
     /// implementor doesn't need to worry about that possibility.
     ///
-    /// It can fail if either of the [`RawArea`]s was already deleted,
+    /// It can fail if either of the `RawArea`s was already deleted,
     /// or if no swap happened because they belonged to the same
     /// cluster master.
     fn swap(self: CoreAccess<Self>, rhs: &Self) -> bool;
 
     ////////// Constraint changing functions
 
-    /// Changes the horizontal constraint of the area
+    /// Sets a width for the `RawArea`
     fn set_width(self: CoreAccess<Self>, width: f32) -> Result<(), Text>;
 
-    /// Changes the vertical constraint of the area
+    /// Sets a height for the `RawArea`
     fn set_height(self: CoreAccess<Self>, height: f32) -> Result<(), Text>;
 
-    /// Changes [`Constraint`]s such that the [`RawArea`] becomes
-    /// hidden
+    /// Hides the `RawArea`
     fn hide(self: CoreAccess<Self>) -> Result<(), Text>;
 
-    /// Changes [`Constraint`]s such that the [`RawArea`] is revealed
+    /// Reveals the `RawArea`
     fn reveal(self: CoreAccess<Self>) -> Result<(), Text>;
 
     /// What width the given [`Text`] would occupy, if unwrapped
     fn width_of_text(self: CoreAccess<Self>, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
 
-    /// Tells the [`RawUi`] that this [`RawArea`] is the one that is
+    /// Tells the [`RawUi`] that this `RawArea` is the one that is
     /// currently focused.
     ///
-    /// Should make [`self`] the active [`RawArea`] while deactivating
-    /// any other active [`RawArea`].
+    /// Should make `self` the active `RawArea` while deactivating
+    /// any other active `RawArea`.
     fn set_as_active(self: CoreAccess<Self>);
 
     ////////// Printing functions
 
-    /// Prints the [`Text`] via an [`Iterator`]
+    /// Prints the [`Text`]
     fn print(self: CoreAccess<Self>, text: &Text, opts: PrintOpts, painter: Painter);
 
     /// Prints the [`Text`] with a callback function
@@ -370,12 +374,12 @@ pub trait RawArea: Sized + PartialEq + 'static {
     fn scroll_ver(self: CoreAccess<Self>, text: &Text, dist: i32, opts: PrintOpts);
 
     /// Scrolls the [`Text`] on all four directions until the given
-    /// [`Point`] is within the [`ScrollOff`] range
+    /// [`TwoPoints`] is within the [`ScrollOff`] range
     ///
-    /// There are two other scrolling methods for [`RawArea`]:
+    /// There are two other scrolling methods for `RawArea`:
     /// [`scroll_ver`] and [`scroll_to_points`]. The difference
     /// between this and [`scroll_to_points`] is that this method
-    /// doesn't do anything if the [`Point`] is already on screen.
+    /// doesn't do anything if the [`TwoPoints`] is already on screen.
     ///
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: RawArea::scroll_ver
@@ -397,13 +401,13 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::opts::WrapMethod
+    /// [line wrapping]: crate::opts::PrintOpts::dont_wrap
     fn scroll_to_points(self: CoreAccess<Self>, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// The start points that should be printed
     fn start_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints;
 
-    /// The points immediately after the last printed [`Point`]
+    /// The [`TwoPoints`] immediately after the last printed one
     fn end_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints;
 
     ////////// Queries
@@ -439,17 +443,17 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// Gets the height of the area
     fn height(self: CoreAccess<Self>) -> f32;
 
-    /// Returns `true` if this is the currently active [`RawArea`]
+    /// Returns `true` if this is the currently active `RawArea`
     ///
-    /// Only one [`RawArea`] should be active at any given moment.
+    /// Only one `RawArea` should be active at any given moment.
     fn is_active(self: CoreAccess<Self>) -> bool;
 }
 
 /// A smart pointer, meant to prevent direct calling of [`RawArea`]
 /// methods
 ///
-/// The methods of [`RawArea`] are all meant to be accessed only
-/// through the type erased [`RwArea`]
+/// The methods of `RawArea` are all meant to be accessed only
+/// through the type erased `RwArea`
 #[non_exhaustive]
 pub struct CoreAccess<'a, A>(&'a A);
 

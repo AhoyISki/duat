@@ -170,6 +170,9 @@ pub struct PushSpecs {
     /// This makes it so, if the main `Widget` is moved or deleted,
     /// then this one will follow. Useful for things like
     /// [`LineNumbers`], since they should follow their [`Buffer`] around.
+    ///
+    /// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
+    /// [`Buffer`]: crate::buffer::Buffer
     pub cluster: bool = true,
 }
 
@@ -230,7 +233,9 @@ impl Side {
 /// Much like [`PushSpecs`], but for floating [`Widget`]s
 #[derive(Default, Debug, Clone, Copy)]
 pub struct SpawnSpecs {
-    /// Potential spawning [`Corner`]s to connect to and from
+    /// The orientation to place this [`Widget`] in
+    ///
+    /// May receive some reworks in the future.
     pub orientation: Orientation = Orientation::VerLeftBelow,
     /// A width (in character cells) for this `Widget`
     ///
@@ -415,11 +420,11 @@ impl Caret {
 /// A target for pushing [`Widget`]s to
 ///
 /// This can either be a [`Handle`], which will push around a `Widget`
-/// or a [`UiBuilder`], which will push around the window.
+/// or a [`Window`], which will push around the window.
 ///
 /// This trait is useful if you wish to let your [`Widget`] both be
 /// pushed around other `Widget`s and also around the window with the
-/// [`UiBuilder`]. One example of this is the [`StatusLine`] widget,
+/// [`Window`]. One example of this is the [`StatusLine`] widget,
 /// which behaves differently depending on if it was pushed to a
 /// [`Handle<Buffer>`].
 ///
@@ -428,12 +433,12 @@ pub trait PushTarget {
     /// Pushes a [`Widget`] around `self`
     ///
     /// If `self` is a [`Handle`], this will push around the
-    /// [`Handle`]'s own [`Ui::Area`]. If this is a [`UiBuilder`],
-    /// this will push around the master [`Ui::Area`] of the central
+    /// `Handle`'s own [`Area`]. If this is a [`Window`],
+    /// this will push around the master `Area` of the central
     /// region of buffers.
     ///
     /// This `Widget` will be placed internally, i.e., around the
-    /// [`Ui::Area`] of `self`. This is in contrast to
+    /// [`Area`] of `self`. This is in contrast to
     /// [`Handle::push_outer_widget`], which will push around the
     /// "cluster master" of `self`.
     ///
@@ -444,7 +449,7 @@ pub trait PushTarget {
     /// Both of these functions behave identically in the situation
     /// where no other [`Widget`]s were pushed around `self`.
     ///
-    /// However, if, for example, a [`Widget`] was previously pushed
+    /// However, if, for example, a `Widget` was previously pushed
     /// below `self`, when pushing to the left, the following would
     /// happen:
     ///
@@ -477,7 +482,7 @@ pub trait PushTarget {
     /// Pushes a [`Widget`] around the "master region" of `self`
     ///
     /// If `self` is a [`Handle`], this will push its "cluster
-    /// master". If this is a [`UiBuilder`], this will push the
+    /// master". If this is a [`Window`], this will push the
     /// `Widget` to the edges of the window.
     ///
     /// A cluster master is the collection of every `Widget` that was

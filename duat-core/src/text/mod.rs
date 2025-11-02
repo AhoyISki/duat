@@ -553,13 +553,13 @@ impl Text {
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
-    /// Wether or not the content has changed since the last [write]
+    /// Wether or not the content has changed since the last [save]
     ///
     /// Returns `true` only if the actual bytes of the [`Text`] have
     /// been changed, ignoring [`Tag`]s and all the other things,
     /// since those are not written to the filesystem.
     ///
-    /// [write]: Text::write_to
+    /// [save]: Text::save_on
     pub fn has_unsaved_changes(&self) -> bool {
         self.0.has_unsaved_changes
     }

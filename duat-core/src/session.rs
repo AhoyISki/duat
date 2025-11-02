@@ -398,7 +398,7 @@ pub struct ReloadedBuffer {
 }
 
 impl ReloadedBuffer {
-    /// Creates a new [`BufferParts`] from parts gathered from
+    /// Creates a new `ReloadedBuffer` from parts gathered from
     /// arguments
     ///
     /// **MEANT TO BE USED BY THE DUAT EXECUTABLE ONLY**

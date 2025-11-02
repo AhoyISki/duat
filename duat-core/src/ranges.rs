@@ -21,7 +21,7 @@ use crate::utils::merging_range_by_guess_and_lazy_shift;
 /// the [`Text`] when it changes in a [`Buffer`].
 ///
 /// [`Text`]: crate::text::Text
-/// [`Buffer`]: crate::prelude::Buffer
+/// [`Buffer`]: crate::buffer::Buffer
 /// [`Parser`]: crate::buffer::Parser
 #[derive(Clone, Default, Debug)]
 pub struct Ranges {

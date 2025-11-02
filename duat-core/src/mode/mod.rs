@@ -119,6 +119,9 @@ pub(crate) fn keys_were_sent(_: &mut Pass) -> bool {
 ///
 /// Unlike with [`mode::map`] or [`mode::alias`], the sent keys are
 /// allowed to be remapped to something else.
+///
+/// [`mode::map`]: map
+/// [`mode::alias`]: alias
 pub fn send_keys(keys: impl AsRef<str>) {
     let keys = str_to_keys(keys.as_ref());
     if !keys.is_empty() {
@@ -133,7 +136,7 @@ pub fn send_keys(keys: impl AsRef<str>) {
 ///
 /// [shift]: KeyMod::SHIFT
 /// [alt]: KeyMod::ALT
-static ALT_IS_REFERSE: AtomicBool = AtomicBool::new(false);
+static ALT_IS_REVERSE: AtomicBool = AtomicBool::new(false);
 
 /// Wether [alt] should be the reverse [modifier], instead of [shift]
 ///
@@ -154,7 +157,7 @@ static ALT_IS_REFERSE: AtomicBool = AtomicBool::new(false);
 /// [`duat-core`]: docs.rs/duat-core/latest/duat_core
 /// [`duat`]: docs.rs/duat/latest/duat
 pub fn alt_is_reverse() -> bool {
-    ALT_IS_REFERSE.load(Ordering::Relaxed)
+    ALT_IS_REVERSE.load(Ordering::Relaxed)
 }
 
 /// Sets wether [alt] should be the reverse [modifier], instead of
@@ -176,7 +179,7 @@ pub fn alt_is_reverse() -> bool {
 /// [`duat-core`]: docs.rs/duat-core/latest/duat_core
 /// [`duat`]: docs.rs/duat/latest/duat
 pub fn set_alt_is_reverse(value: bool) -> bool {
-    ALT_IS_REFERSE.swap(value, Ordering::Relaxed)
+    ALT_IS_REVERSE.swap(value, Ordering::Relaxed)
 }
 
 /// A mode for a [`Widget`]
@@ -396,7 +399,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`print`]: Widget::print
 /// [`on_focus`]: Widget::on_focus
 /// [`on_unfocus`]: Widget::on_unfocus
-/// [resizing]: crate::ui::Area::constrain_ver
+/// [resizing]: crate::ui::Area::set_height
 /// [`Form`]: crate::form::Form
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [`form::set_weak`]: crate::form::set_weak
