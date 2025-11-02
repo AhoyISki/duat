@@ -655,18 +655,18 @@ impl<'a> Object<'a> {
 
 fn escaped_regex(str: &str) -> &'static str {
     static ESCAPED: Memoized<String, &str> = Memoized::new();
-    ESCAPED.get_or_insert_with(str.to_string(), || {
-        let mut escaped = String::new();
-        for char in str.chars() {
-            if let '(' | ')' | '{' | '}' | '[' | ']' | '$' | '^' | '.' | '*' | '+' | '?' | '|' =
-                char
-            {
-                escaped.push('\\');
-            }
-            escaped.push(char);
+    ESCAPED.get_or_insert_with(str.to_string(), || escaped_str(str).leak())
+}
+
+fn escaped_str(str: &str) -> String {
+    let mut escaped = String::new();
+    for char in str.chars() {
+        if let '(' | ')' | '{' | '}' | '[' | ']' | '$' | '^' | '.' | '*' | '+' | '?' | '|' = char {
+            escaped.push('\\');
         }
-        escaped.leak()
-    })
+        escaped.push(char);
+    }
+    escaped
 }
 
 struct Memoized<K: std::hash::Hash + std::cmp::Eq, V>(LazyLock<Mutex<HashMap<K, V>>>);

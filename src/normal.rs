@@ -14,6 +14,7 @@ use treesitter::TsCursor;
 
 use crate::{
     Category, Insert, Memoized, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex,
+    escaped_str,
     inc_searchers::{Select, Split},
     insert::INSERT_TABS,
     one_key::OneKey,
@@ -804,6 +805,11 @@ impl Mode for Normal {
                     }
                 });
             }
+            event!('*') => handle.edit_main(pa, |c| {
+                let pat = c.selection().to_string();
+                *SEARCH.lock().unwrap() = escaped_str(&pat);
+                context::info!("Set search pattern to [a]{pat}");
+            }),
 
             ////////// Jumping
             alt!(char @ ('u' | 'U')) => {
