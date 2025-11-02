@@ -341,7 +341,7 @@ mod parameter {
     pub fn param_txt() -> DataMap<u32, Text> {
         VALUE.map(|value| {
             if *value > 0 {
-                txt!("[kak.param]param={value}[]").build()
+                txt!("[kak.param]param={value}[]")
             } else {
                 Text::default()
             }
@@ -405,11 +405,9 @@ impl Kak {
     /// More specifically, this will change the behavior of keys like
     /// `'m'` and the `'u'` object, which will now consider more
     /// patterns when selecting.
-    pub fn with_brackets<'a>(self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
-        Self {
-            normal: self.normal.with_brackets(brackets),
-            ..self
-        }
+    pub fn with_brackets<'a>(mut self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
+        self.normal.set_brackets(brackets);
+        self
     }
 
     /// Makes it so the `'I'` key no longer indents the line
@@ -419,11 +417,9 @@ impl Kak {
     /// to the first non whitespace character.
     ///
     /// This function disables that behavior.
-    pub fn with_no_indent_on_capital_i(self) -> Self {
-        Self {
-            normal: self.normal.with_no_indent_on_capital_i(),
-            ..self
-        }
+    pub fn with_no_indent_on_capital_i(mut self) -> Self {
+        self.normal.indent_on_capital_i = false;
+        self
     }
 
     /// Makes the `'f'` and `'t'` keys set the search pattern
@@ -431,11 +427,9 @@ impl Kak {
     /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
     /// will search for the next instance of an `'m'` in the
     /// [`Buffer`]
-    pub fn f_and_t_set_search(self) -> Self {
-        Self {
-            normal: self.normal.f_and_t_set_search(),
-            ..self
-        }
+    pub fn f_and_t_set_search(mut self) -> Self {
+        self.normal.indent_on_capital_i = true;
+        self
     }
 }
 

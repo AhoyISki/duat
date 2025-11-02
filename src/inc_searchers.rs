@@ -29,7 +29,7 @@ impl IncSearcher for Select {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]select").build()
+        txt!("[prompt]select")
     }
 }
 
@@ -69,6 +69,6 @@ impl IncSearcher for Split {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt]split").build()
+        txt!("[prompt]split")
     }
 }

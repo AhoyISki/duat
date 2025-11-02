@@ -24,8 +24,20 @@ use crate::{
 pub struct Normal {
     sel_type: SelType,
     brackets: Brackets,
-    indent_on_capital_i: bool,
-    f_and_t_set_search: bool,
+    /// Wheter to indent the line when pressing the `I` key
+    ///
+    /// The default is `true`.
+    ///
+    /// Normally, when you press `'I'`, the line will be reindented,
+    /// in order to send you to the "proper" insertion spot, not just
+    /// to the first non whitespace character.
+    pub indent_on_capital_i: bool,
+    /// Makes the `'f'` and `'t'` keys set the search pattern
+    ///
+    /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
+    /// will search for the next instance of an `'m'` in the
+    /// [`Buffer`]
+    pub f_and_t_set_search: bool,
 }
 
 impl Normal {
@@ -53,7 +65,7 @@ impl Normal {
     /// More specifically, this will change the behavior of keys like
     /// `'m'` and the `'u'` object, which will now consider more
     /// patterns when selecting.
-    pub fn with_brackets<'a>(self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
+    pub fn set_brackets<'a>(&mut self, brackets: impl Iterator<Item = [&'a str; 2]>) {
         static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
 
         let brackets: Vec<[&str; 2]> = brackets.map(|bs| bs.map(escaped_regex)).collect();
@@ -62,28 +74,11 @@ impl Normal {
             "Brackets are not allowed to look the same"
         );
 
-        let brackets = BRACKETS.get_or_insert_with(brackets.clone(), || Brackets(brackets.leak()));
-        Self { brackets, ..self }
+        self.brackets = BRACKETS.get_or_insert_with(brackets.clone(), || Brackets(brackets.leak()));
     }
 
-    /// Makes it so the `'I'` key no longer indents the line
-    ///
-    /// By default, when you press `'I'`, the line will be reindented,
-    /// in order to send you to the "proper" insertion spot, not just
-    /// to the first non whitespace character.
-    ///
-    /// This function disables that behavior.
     pub fn with_no_indent_on_capital_i(self) -> Self {
         Self { indent_on_capital_i: false, ..self }
-    }
-
-    /// Makes the `'f'` and `'t'` keys set the search pattern
-    ///
-    /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
-    /// will search for the next instance of an `'m'` in the
-    /// [`Buffer`]
-    pub fn f_and_t_set_search(self) -> Self {
-        Self { f_and_t_set_search: true, ..self }
     }
 }
 
