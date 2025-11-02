@@ -165,13 +165,13 @@ impl Widget for StatusLine {
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
-        let file_changed = match &self.buffer_handle {
+        let buffer_changed = match &self.buffer_handle {
             BufferHandle::Fixed(handle) => handle.has_changed(pa),
-            BufferHandle::Dynamic(dyn_file) => dyn_file.has_changed(pa),
+            BufferHandle::Dynamic(dyn_buf) => dyn_buf.has_changed(pa),
         };
         let checkered = (self.checker)(pa);
 
-        file_changed || checkered
+        buffer_changed || checkered
     }
 
     fn text(&self) -> &Text {
@@ -256,18 +256,17 @@ mod macros {
     ///
     /// The macro will mostly read from the [`Buffer`] widget and its
     /// related structs. In order to do that, it will accept functions
-    /// as arguments. These functions take the following parameters:
+    /// as arguments. These functions can take any of the following
+    /// parameters, with up to 8 arguments each:
     ///
-    /// * The [`&Buffer`] widget;
-    /// * A specific [`&impl Widget`], which is glued to the
-    ///   [`Buffer`];
-    ///
-    /// Both of these can also have a second argument of type
-    /// [`&Area`]. This will include the [`Widget`]'s [`Area`] when
-    /// creating the status part. Additionally, you may include a
-    /// first argument of type [`&Pass`] (e.g. `fn(&Pass, &Buffer)`,
-    /// `fn(&Pass, &Widget, &Area), etc.), giving you _non mutating_
-    /// access to global state.
+    /// - [`&Buffer`]: The `Buffer` in question.
+    /// - [`&Handle`]: The `Handle` of said `Buffer`.
+    /// - [`&Area`]: The `Area` of said `Buffer`.
+    /// - [`&Pass`]: For global reading access.
+    /// - [`&Text`]: The `Text` of the `Buffer`.
+    /// - [`&Selections`]: The `Selections` of the `Buffer`.
+    /// - [`&Selection`]: The main `Selection` of the `Buffer`.
+    /// - [`&Window`]: The `Window` the `Buffer` is situated in.
     ///
     /// Here's some examples:
     ///
@@ -277,9 +276,8 @@ mod macros {
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
-    /// fn name_but_funky(buffer: &Buffer) -> String {
-    ///     buffer
-    ///         .name()
+    /// fn name_but_funky(buf: &Buffer) -> String {
+    ///     buf.name()
     ///         .chars()
     ///         .enumerate()
     ///         .map(|(i, char)| {
@@ -310,29 +308,26 @@ mod macros {
     /// }
     ///
     /// fn setup() {
-    ///     hook::add::<WindowCreated>(|_, builder| {
-    ///         builder.push(status!("[buffer]{name_but_funky}[] {powerline_main_txt}"));
+    ///     hook::add::<WindowCreated>(|pa, window| {
+    ///         status!("[buffer]{name_but_funky}{Spacer}{powerline_main_txt}")
+    ///             .above()
+    ///             .push_on(pa, window);
     ///     });
     /// }
     /// ```
     ///
-    /// Now, there are other types of arguments that you can also
-    /// pass. They update differently from the previous ones. The
-    /// previous arguments update when the [`Buffer`] updates. The
-    /// following types of arguments update independently or not
-    /// at all:
+    /// There are other types of arguments you can push, not
+    /// necessarily tied to a `Buffer`:
     ///
-    /// - A [`Text`] argument, which can be formatted in a similar way
-    ///   throught the [`txt!`] macro;
-    /// - Any [`impl Display`], such as numbers, strings, chars, etc.
-    ///   [`impl Debug`] types also work, when including the usual
-    ///   `":?"` and derived suffixes;
-    /// - [`RwData`] or [`DataMap`]s of the previous two types. These
-    ///   will update whenever the data inside is changed;
-    /// - An [`(Fn(&Pass) -> Text/Display/Debug, Fn(&Pass) -> bool)`]
-    ///   tuple. The first function returns what will be shown, while
-    ///   the second function checks for updates, which will call the
-    ///   first function again;
+    /// - Static arguments:
+    ///   - A [`Text`] argument, which can be formatted in a similar
+    ///     way throught the [`txt!`] macro;
+    ///   - Any [`impl Display`], such as numbers, strings, chars,
+    ///     etc. [`impl Debug`] types also work, when including the
+    ///     usual `":?"` and derived suffixes;
+    /// - Dynamic arguments:
+    ///   - An [`RwData`] or [`DataMap`]s of the previous two types. These
+    ///     will update whenever the data inside is changed;
     ///
     /// Here's an examples:
     ///
@@ -384,10 +379,14 @@ mod macros {
     ///
     /// [`StatusLine`]: super::StatusLine
     /// [`txt!`]: duat_core::text::txt
-    /// [`Buffer`]: duat_core::buffer::Buffer
     /// [`&Buffer`]: duat_core::buffer::Buffer
+    /// [`&Handle`]: duat_core::context::Handle
+    /// [`&Area`]: duat_core::ui::Area
+    /// [`&Pass`]: duat_core::data::Pass
+    /// [`&Text`]: duat_core::text::Text
     /// [`&Selections`]: duat_core::mode::Selections
-    /// [`&impl Widget`]: duat_core::ui::Widget
+    /// [`&Selection`]: duat_core::mode::Selection
+    /// [`&Window`]: duat_core::ui::Window
     /// [`impl Display`]: std::fmt::Display
     /// [`impl Debug`]: std::fmt::Debug
     /// [`Text`]: duat_core::text::Text
@@ -400,7 +399,6 @@ mod macros {
     /// [`&Area`]: duat_core::ui::Area
     /// [`Area`]: duat_core::ui::Area
     /// [`Widget`]: duat_core::ui::Widget
-    /// [`&Pass`]: duat_core::data::Pass
     pub macro status($($parts:tt)*) {{
         #[allow(unused_imports)]
         use $crate::{

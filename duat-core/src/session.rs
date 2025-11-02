@@ -247,6 +247,7 @@ impl Session {
                     DuatEvent::ReloadSucceeded => {
                         hook::trigger(pa, ConfigUnloaded(()));
                         context::order_reload_or_quit();
+                        context::logs().clear();
                         wait_for_threads_to_end(spawn_count);
 
                         let handles: Vec<_> = context::windows().buffers(pa).collect();

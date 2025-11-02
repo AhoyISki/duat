@@ -10,7 +10,6 @@
 //! - [`Buffer`], through [`opts::set`].
 //! - [`LineNumbers`], through [`opts::set_lines`].
 //! - [`StatusLine`], through [`opts::set_status`].
-//! - [`PromptLine`], through [`opts::set_prompt`].
 //! - [`Notifications`], through [`opts::set_notifs`].
 //! - [`LogBook`], through [`opts::set_logs`].
 //!
@@ -21,25 +20,25 @@
 //! - [`opts::footer_on_top`]: Places them on top of the screen.
 //! - [`opts::one_line_footer`]: Makes the footer a one line group.
 //!
-//! If you want to, you can also add:
+//! If you want to remove the default `Buffer` widgets (`LineNumbers`
+//! and `VertRule`), you can add:
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! hook::remove_group("BufferWidgets");
+//! hook::remove("BufferWidgets");
 //! ```
 //!
-//! To completely remove the `Buffer` `Widget`s (`LineNumbers` and
-//! `VertRule`). And you can also add:
+//! If you want to remove the [`FooterWidgets`] (`StatusLine`,
+//! `PromptLine` and `Notifications`), you can add:
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! hook::remove_group("FooterWidgets");
+//! hook::remove("FooterWidgets");
 //! ```
 //!
-//! To remove the [`FooterWidgets`]. **WARNING: If you do this, you'll
-//! lose access to a [`PromptLine`], so you'll be unable to run
-//! commands. Remember, you can recompile your config with `duat
-//! --reload`.
+//! **WARNING**: If you do this, you'll lose access to a
+//! [`PromptLine`], so you'll be unable to run commands. Remember, you
+//! can recompile your config with `duat --reload`.
 //!
 //! [widgets]: crate::widgets
 //! [hooks]: crate::hook
@@ -50,10 +49,10 @@
 //! [`PromptLine`]: crate::widgets::PromptLine
 //! [`Notifications`]: crate::widgets::Notifications
 //! [`LogBook`]: crate::widgets::LogBook
+//! [`FooterWidgets`]: crate::widgets::FooterWidgets
 //! [`opts::set`]: set
 //! [`opts::set_lines`]: set_lines
 //! [`opts::set_status`]: set_status
-//! [`opts::set_prompt`]: set_prompt
 //! [`opts::set_notifs`]: set_notifs
 //! [`opts::set_logs`]: set_logs
 //! [`opts::footer_on_top`]: footer_on_top
@@ -63,10 +62,12 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use duat_base::widgets::{LineNumbersOpts, StatusLineFmt};
+use duat_base::widgets::{LineNumbersOpts, Notifications, StatusLineFmt};
 use duat_core::data::Pass;
 #[allow(unused_imports)]
 pub use duat_core::opts::*;
+
+use crate::widgets::NotificationsOpts;
 
 /// Options for the [`Buffer`]
 ///
@@ -75,6 +76,8 @@ pub(crate) static BUFFER_OPTS: Mutex<PrintOpts> = Mutex::new(PrintOpts::default_
 pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts { .. });
 pub(crate) static STATUSLINE_FMT: LazyLock<StatusLineFn> =
     LazyLock::new(|| Mutex::new(Box::new(|_| StatusLineFmt::default())));
+pub(crate) static NOTIFICATIONS_FN: LazyLock<NotificationsFn> =
+    LazyLock::new(|| Mutex::new(Box::new(|_| {})));
 pub(crate) static FOOTER_ON_TOP: AtomicBool = AtomicBool::new(false);
 pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 
@@ -83,9 +86,9 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 /// In this function, you can modify the members of `PrintOpts`, which
 /// are the following:
 ///
-/// - `opts.dont_wrap: bool` - Don't wrap at all
+/// - `opts.wrap_lines: bool` - Enable wrapping of lines
 ///
-///   The default is `true`
+///   The default is `false`
 ///
 /// - `opts.wrap_on_word: bool` - Try to wrap at word boundaries
 ///
@@ -160,8 +163,8 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 ///             buffer.opts.tabstop = 2;
 ///         }
 ///         Some("markdown") => {
-///             buffer.opts.word_chars = word_chars!("A-Za-z0-9_-_---");
-///             buffer.opts.wrap_method = WrapMethod::Word;
+///             buffer.opts.extra_word_chars = &['-'];
+///             buffer.opts.wrap_on_word = true;
 ///         }
 ///         _ => {}
 ///     }
@@ -172,11 +175,9 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 /// More options will come in the future!
 ///
 /// [`Buffer`]: crate::widgets::Buffer
-/// [`WrapMethod::NoWrap`]: WrapMethod
-/// [`NewLine::AlwaysAs(' ')`]: NewLine
 /// [`ScrollOff { x: 3, y: 3 }`]: ScrollOff
-/// [`word_chars!("A-Za-z0-9_-_")`]: word_chars
 /// [hooks]: crate::hook
+/// [`Text`]: crate::text::Text
 pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
     set_fn(&mut BUFFER_OPTS.lock().unwrap())
 }
@@ -239,6 +240,7 @@ pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
 /// [`Buffer`]: crate::widgets::Buffer
 /// [`LineNumber`]: crate::widgets::LineNumbers
 /// [hooks]: crate::hook
+/// [`Widget`]: crate::widgets::Widget
 pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
     set_fn(&mut LINENUMBERS_OPTS.lock().unwrap())
 }
@@ -306,7 +308,7 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 ///
 /// ```rust
 /// # use duat::prelude::*;
-/// fn zero_main_txt(buffer: &Buffer, area: &dyn Area) -> Text {
+/// fn zero_main_txt(buffer: &Buffer, area: &Area) -> Text {
 ///     txt!(
 ///         "[coord]{}[separator]|[coord]{}[separator]/[coord]{}",
 ///         main_col(buffer, area) - 1,
@@ -333,14 +335,14 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// let mode = mode_txt();
 /// status!(
 ///     "{mode}{Spacer}{name_txt} {sels_txt} [coord]{}[separator]|[coord]{}[separator]/[coord]{}",
-///     |buf: &Buffer, area: &dyn Area| main_col(buf, area) - 1,
+///     |buf: &Buffer, area: &Area| main_col(buf, area) - 1,
 ///     |buf: &Buffer| main_line(buf) - 1,
 ///     |buf: &Buffer| buf.text().len().line()
 /// );
 /// # }
 /// ```
 ///
-/// A full list of which types can be used as `StatusLine` parts can
+/// . A full list of which types can be used as `StatusLine` parts can
 /// be found in the documentation for the [`status!`] macro.
 ///
 /// # Where to place
@@ -382,16 +384,17 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
-/// fn buf_percent(buf: &Buffer) -> Text {
+/// fn buf_percent(text: &Text, main: &Selection) -> Text {
 ///     // The caret is the part of the cursor that moves, as opposed to the anchor.
-///     let caret = buf.selections().get_main().unwrap().caret();
-///     txt!("[coord]{}%", (100 * caret.line()) / buf.text().len().line()).build()
+///     let caret = main.caret();
+///     txt!("[coord]{}%", (100 * caret.line()) / text.len().line()).build()
 /// }
 ///
 /// fn setup() {
 ///     hook::add::<Buffer>(|pa, handle| {
-///         let status = status!("{name_txt}{Spacer}{buf_percent}");
-///         status.above().push_on(pa, handle);
+///         status!("{name_txt}{Spacer}{buf_percent}")
+///             .above()
+///             .push_on(pa, handle);
 ///         Ok(())
 ///     });
 /// }
@@ -428,7 +431,7 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// [`form::set`]: crate::form::set
 /// [`DataMap<&str, Text>`]: crate::data::DataMap
 /// [pushed onto a `Buffer`]: crate::context::Handle::push_outer_widget
-/// [pushed around the window]: crate::ui::UiBuilder::push_outer
+/// [pushed around the window]: crate::ui::Window::push_outer
 /// [active `Buffer`]: crate::context::dynamic_buffer
 /// [`Widget`]: crate::ui::Widget
 /// [`PromptLine`]: crate::widgets::PromptLine
@@ -438,6 +441,24 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// [`opts::footer_on_top`]: footer_on_top
 pub fn set_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
     *STATUSLINE_FMT.lock().unwrap() = Box::new(set_fn);
+}
+
+/// Changes the default [`Notifications`]
+///
+/// The main purpose of calling this function is to modify how
+/// messages get displayed in the `Widget`, here's how you can do
+/// that:
+///
+/// ```rust
+/// setup_duat!(setup);
+/// use duat::prelude::*;
+///
+/// fn setup() {
+///     opts::set_notifs(|opts| opts.fmt(|rec| rec));
+/// }
+/// ```
+pub fn set_notifs(set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
+    *NOTIFICATIONS_FN.lock().unwrap() = Box::new(set_fn);
 }
 
 /// Makes the [`FooterWidgets`] take up one line instead of two
@@ -485,3 +506,4 @@ pub fn footer_on_top(on_top: bool) {
 }
 
 type StatusLineFn = Mutex<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>;
+type NotificationsFn = Mutex<Box<dyn FnMut(&mut NotificationsOpts) + Send>>;

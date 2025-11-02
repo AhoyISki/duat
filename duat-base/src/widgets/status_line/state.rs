@@ -243,15 +243,14 @@ implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5);
 implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6);
 implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7);
 implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, Arg8);
-implFromFn!(Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, Arg8, Arg9);
 
 trait StateArg {
     fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self;
 }
 
-impl StateArg for Pass {
-    fn get<'a>(pa: &'a Pass, _: &'a Handle) -> &'a Self {
-        pa
+impl StateArg for Buffer {
+    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
+        handle.read(pa)
     }
 }
 
@@ -261,15 +260,15 @@ impl StateArg for Handle {
     }
 }
 
-impl StateArg for Buffer {
-    fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
-        handle.read(pa)
-    }
-}
-
 impl StateArg for Area {
     fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
         handle.area().read(pa)
+    }
+}
+
+impl StateArg for Pass {
+    fn get<'a>(pa: &'a Pass, _: &'a Handle) -> &'a Self {
+        pa
     }
 }
 

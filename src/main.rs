@@ -377,7 +377,7 @@ fn spawn_reloader(
                 match result {
                     Err(err) => {
                         *RELOAD_INSTANT.lock().unwrap() = None;
-                        context::error!(target: "reload", "{err}");
+                        context::error!("{err}");
                         duat_tx.send(DuatEvent::ReloadFailed).unwrap();
                     }
                     Ok(status) => {

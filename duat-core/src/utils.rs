@@ -364,7 +364,7 @@ macro_rules! doc_duat {
                     hook::{
                         self, BufferWritten, ColorSchemeSet, ConfigLoaded, ConfigUnloaded,
                         ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeysSent,
-                        KeysSentTo, ModeCreated, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
+                        KeysSentTo, ModeSet, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
                         WidgetCreated, WindowCreated,
                     },
                     mode::{

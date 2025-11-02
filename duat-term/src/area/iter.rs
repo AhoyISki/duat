@@ -41,7 +41,7 @@ pub fn print_iter(
             gaps = gaps.replace_by_part(item.part);
 
             total_len += len;
-            if total_len > cap && !opts.dont_wrap {
+            if total_len > cap && opts.wrap_lines {
                 if let Part::Char('\t') = item.part {
                     let desired = old_indent + total_len - cap;
                     wrapped_indent = if desired < max_indent {
@@ -176,7 +176,7 @@ fn inner_iter<'a>(
 
                 total_len += len;
 
-                let must_wrap = total_len > cap && !opts.dont_wrap;
+                let must_wrap = total_len > cap && opts.wrap_lines;
                 if let Part::Char(char) = item.part
                     && (must_wrap || char == '\n')
                 {
@@ -292,7 +292,7 @@ fn _words<'a>(
                 total_len += len;
 
                 if let Part::Char(char) = item.part
-                    && ((total_len > cap && !opts.dont_wrap) || char == '\n')
+                    && ((total_len > cap && opts.wrap_lines) || char == '\n')
                 {
                     new_x = first_x + wrapped_indent + gaps.space_line(&mut line, cap, total_len);
 

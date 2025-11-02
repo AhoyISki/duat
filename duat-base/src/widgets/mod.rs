@@ -87,7 +87,7 @@ pub struct FooterWidgets {
 
 impl FooterWidgets {
     /// Adds footer [`Widget`]s
-    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) {
+    pub fn push_on(mut self, pa: &mut Pass, push_target: &impl PushTarget) {
         let prompt_line = if self.one_line {
             self.prompt.request_width()
         } else {
@@ -106,7 +106,8 @@ impl FooterWidgets {
         };
 
         let notifications = if self.one_line {
-            self.notifs.request_width().push_on(pa, &prompt_line)
+            self.notifs.request_width();
+            self.notifs.push_on(pa, &prompt_line)
         } else {
             self.notifs.push_on(pa, &prompt_line)
         };

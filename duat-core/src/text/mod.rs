@@ -428,8 +428,10 @@ impl Text {
     }
 
     fn without_last_nl(mut self) -> Self {
-        let change = Change::remove_last_nl(self.len());
-        self.apply_change_inner(0, change);
+        if let Some((_, '\n')) = { self.chars_rev(..).unwrap().next() } {
+            let change = Change::remove_last_nl(self.len());
+            self.apply_change_inner(0, change);
+        }
         self
     }
 
@@ -447,19 +449,15 @@ impl Text {
     }
 
     /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
-    pub fn insert_text(&mut self, p: Point, text: Text) {
-        if p.char() == 1 && self.0.bytes == "\n" {
-            let change = Change::new(
-                text.0.bytes.strs(..).unwrap().to_string(),
-                Point::default()..p,
-                self,
-            );
-            self.apply_change_inner(0, change.as_ref());
-        } else {
-            let added_str = text.0.bytes.strs(..).unwrap().to_string();
-            let change = Change::str_insert(&added_str, p);
-            self.apply_change_inner(0, change);
-        };
+    pub fn insert_text(&mut self, mut p: Point, mut text: Text) {
+        text = text.without_last_nl();
+        if let Some((_, '\n')) = { self.chars_rev(..).unwrap().next() } {
+            p = p.min(self.last_point())
+        }
+
+        let added_str = text.0.bytes.strs(..).unwrap().to_string();
+        let change = Change::str_insert(&added_str, p);
+        self.apply_change_inner(0, change);
 
         self.0.tags.insert_tags(p, text.0.tags);
     }

@@ -175,32 +175,28 @@ impl NotificationsOpts {
     /// see [`filter_levels`]
     ///
     /// [`filter_levels`]: Self::filter_levels
-    pub fn fmt<T: Into<Text>>(self, mut fmt: impl FnMut(Record) -> T + Send + 'static) -> Self {
-        Self {
-            fmt: Box::new(move |rec| fmt(rec).into()),
-            ..self
-        }
+    pub fn fmt<T: Into<Text>>(&mut self, mut fmt: impl FnMut(Record) -> T + Send + 'static) {
+        self.fmt = Box::new(move |rec| fmt(rec).into());
     }
 
     /// Filters which [`Level`]s willl show notifications
     ///
     /// Is [`Level::Info`], [`Level::Warn`] and [`Level::Error`] by
     /// default.
-    pub fn filter_levels(mut self, levels: impl IntoIterator<Item = Level>) -> Self {
+    pub fn filter_levels(&mut self, levels: impl IntoIterator<Item = Level>) {
         self.allowed_levels = levels.into_iter().collect();
-        self
     }
 
     /// Changes how [`Notifications`] decides which [mask] to use
     ///
     /// [mask]: duat_core::context::Handle::set_mask
-    pub fn with_mask(self, get_mask: impl FnMut(Record) -> &'static str + Send + 'static) -> Self {
-        Self { get_mask: Box::new(get_mask), ..self }
+    pub fn set_mask(&mut self, get_mask: impl FnMut(Record) -> &'static str + Send + 'static) {
+        self.get_mask = Box::new(get_mask);
     }
 
     /// Requests the width when printing to the screen
-    pub(crate) fn request_width(self) -> Self {
-        Self { request_width: true, ..self }
+    pub(crate) fn request_width(&mut self) {
+        self.request_width = true;
     }
 }
 

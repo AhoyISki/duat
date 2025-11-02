@@ -87,19 +87,7 @@ impl Builder {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
         self.push_str("\n");
-        self.build_no_nl()
-    }
-
-    /// Builds the [`Text`] without adding a `'\n'` at the end
-    ///
-    /// This should only be used when adding [`Text`] to another
-    /// [`Builder`], as a `'\n'` should only be added at the end of
-    /// [`Text`]s, or when creating a [ghosts], which don't end in a
-    /// `'\n'`, since they are placed in the middle of another
-    /// [`Text`], much like [`Text`]s added to a [`Builder`]
-    ///
-    /// [ghosts]: super::Ghost
-    fn build_no_nl(mut self) -> Text {
+        
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()
         {
@@ -141,8 +129,8 @@ impl Builder {
 
             let end = builder.text.len().byte();
             match part {
-                BP::Text(text) => builder.push_text(text.without_last_nl()),
-                BP::Builder(new) => builder.push_text(new.build_no_nl()),
+                BP::Text(text) => builder.push_text(text),
+                BP::Builder(new) => builder.push_text(new.build()),
                 BP::Form(tag) => {
                     let last_form = if tag == crate::form::DEFAULT_ID.to_tag(0) {
                         builder.last_form.take()

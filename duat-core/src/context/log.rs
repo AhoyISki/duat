@@ -1,6 +1,9 @@
-use std::sync::{
-    Mutex, OnceLock,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    panic::Location,
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 pub use log::{Level, Metadata};
@@ -35,20 +38,10 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro error {
-        (target: $target:expr, $($arg:tt)+) => ({
-            $crate::private_exports::log!(
-                $target.to_string().leak(),
-                $crate::context::Level::Error,
-                $($arg)+
-            )
-        }),
-        ($($arg:tt)+) => (
-            $crate::private_exports::log!(
-                module_path!().to_string().leak(),
-                $crate::context::Level::Error,
-                $($arg)+
-            )
+    pub macro error($($arg:tt)+) {
+        $crate::private_exports::log!(
+            $crate::context::Level::Error,
+            $($arg)+
         )
     }
 
@@ -78,20 +71,10 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro warn {
-        (target: $target:expr, $($arg:tt)+) => ({
-            $crate::private_exports::log!(
-                $target.to_string().leak(),
-                $crate::context::Level::Warn,
-                $($arg)+
-            )
-        }),
-        ($($arg:tt)+) => (
-            $crate::private_exports::log!(
-                module_path!().to_string().leak(),
-                $crate::context::Level::Warn,
-                $($arg)+
-            )
+    pub macro warn($($arg:tt)+) {
+        $crate::private_exports::log!(
+            $crate::context::Level::Warn,
+            $($arg)+
         )
     }
 
@@ -121,20 +104,10 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro info {
-        (target: $target:expr, $($arg:tt)+) => ({
-            $crate::private_exports::log!(
-                $target.to_string(),
-                $crate::context::Level::Info,
-                $($arg)+
-            )
-        }),
-        ($($arg:tt)+) => (
-            $crate::private_exports::log!(
-                module_path!().to_string().leak(),
-                $crate::context::Level::Info,
-                $($arg)+
-            )
+    pub macro info($($arg:tt)+) {
+        $crate::private_exports::log!(
+            $crate::context::Level::Info,
+            $($arg)+
         )
     }
 
@@ -165,20 +138,10 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro debug {
-        (target: $target:expr, $($arg:tt)+) => ({
-            $crate::private_exports::log!(
-                $target.to_string().leak(),
-                $crate::context::Level::Debug,
-                $($arg)+
-            )
-        }),
-        ($($arg:tt)+) => (
-            $crate::private_exports::log!(
-                module_path!().to_string().leak(),
-                $crate::context::Level::Debug,
-                $($arg)+
-            )
+    pub macro debug($($arg:tt)+) {
+        $crate::private_exports::log!(
+            $crate::context::Level::Debug,
+            $($arg)+
         )
     }
 }
@@ -207,7 +170,6 @@ pub fn logs() -> Logs {
 #[derive(Debug)]
 pub struct Logs {
     list: &'static Mutex<Vec<Record>>,
-    cutoffs: &'static Mutex<Vec<usize>>,
     cur_state: &'static AtomicUsize,
     read_state: AtomicUsize,
 }
@@ -216,7 +178,6 @@ impl Clone for Logs {
     fn clone(&self) -> Self {
         Self {
             list: self.list,
-            cutoffs: self.cutoffs,
             cur_state: self.cur_state,
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
         }
@@ -229,10 +190,16 @@ impl Logs {
     pub fn new() -> Self {
         Self {
             list: Box::leak(Box::default()),
-            cutoffs: Box::leak(Box::default()),
             cur_state: Box::leak(Box::new(AtomicUsize::new(1))),
             read_state: AtomicUsize::new(0),
         }
+    }
+
+    /// Clear the [`Logs`], to be used when reloading Duat.
+    pub(crate) fn clear(&self) {
+        self.list.lock().unwrap().clear();
+        self.cur_state.store(1, Ordering::Relaxed);
+        self.read_state.store(0, Ordering::Relaxed);
     }
 
     /// Returns an owned valued of a [`SliceIndex`]
@@ -280,6 +247,7 @@ impl Logs {
     /// Pushes a [`CmdResult`]
     ///
     /// [`CmdResult`]: crate::cmd::CmdResult
+    #[track_caller]
     pub(crate) fn push_cmd_result(&self, cmd: String, result: Result<Option<Text>, Text>) {
         let is_ok = result.is_ok();
         let (Ok(Some(res)) | Err(res)) = result else {
@@ -293,10 +261,8 @@ impl Logs {
                 .level(if is_ok { Level::Info } else { Level::Error })
                 .target(cmd.leak())
                 .build(),
-            module_path: None,
-            buffer: None,
-            line: None,
             text: Box::leak(Box::new(res.no_selections())),
+            location: Location::caller(),
         };
 
         self.list.lock().unwrap().push(rec)
@@ -328,6 +294,7 @@ impl log::Log for Logs {
         metadata.level() > log::Level::Debug
     }
 
+    #[track_caller]
     fn log(&self, rec: &log::Record) {
         let rec = Record {
             text: Box::leak(Box::new(
@@ -337,17 +304,7 @@ impl log::Log for Logs {
                 .level(rec.level())
                 .target(rec.target().to_string().leak())
                 .build(),
-            module_path: match rec.module_path_static() {
-                Some(module_path) => Some(module_path),
-                None => rec
-                    .module_path()
-                    .map(|mp| -> &str { mp.to_string().leak() }),
-            },
-            buffer: match rec.file_static() {
-                Some(buffer) => Some(buffer),
-                None => rec.file().map(|mp| -> &str { mp.to_string().leak() }),
-            },
-            line: rec.line(),
+            location: Location::caller(),
         };
 
         self.cur_state.fetch_add(1, Ordering::Relaxed);
@@ -365,31 +322,18 @@ impl log::Log for Logs {
 pub struct Record {
     text: &'static Selectionless,
     metadata: log::Metadata<'static>,
-    module_path: Option<&'static str>,
-    buffer: Option<&'static str>,
-    line: Option<u32>,
+    location: &'static Location<'static>,
 }
 
 impl Record {
     /// Creates a new [`Record`]
     #[doc(hidden)]
-    pub fn new(
-        text: Text,
-        level: Level,
-        target: &'static str,
-        module_path: Option<&'static str>,
-        buffer: Option<&'static str>,
-        line: Option<u32>,
-    ) -> Self {
+    #[track_caller]
+    pub fn new(text: Text, level: Level) -> Self {
         Self {
             text: Box::leak(Box::new(text.no_selections())),
-            metadata: log::MetadataBuilder::new()
-                .level(level)
-                .target(target)
-                .build(),
-            module_path,
-            buffer,
-            line,
+            metadata: log::MetadataBuilder::new().level(level).build(),
+            location: Location::caller(),
         }
     }
 
@@ -417,22 +361,10 @@ impl Record {
         self.metadata.target()
     }
 
-    /// The module path of the message
+    /// The [`Location`] where the message was sent from
     #[inline]
-    pub fn module_path(&self) -> Option<&'static str> {
-        self.module_path
-    }
-
-    /// The source buffer containing the message
-    #[inline]
-    pub fn buffer(&self) -> Option<&'static str> {
-        self.buffer
-    }
-
-    /// The line containing the message
-    #[inline]
-    pub fn line(&self) -> Option<u32> {
-        self.line
+    pub fn location(&self) -> &'static Location<'static> {
+        self.location
     }
 }
 

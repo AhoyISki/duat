@@ -12,7 +12,7 @@ use crate::{
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    hook::{self, FocusChanged, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
+    hook::{self, FocusChanged, KeysSent, KeysSentTo, ModeSet, ModeSwitched},
     main_thread_only::MainThreadOnly,
     ui::{Node, Widget},
     utils::duat_name,
@@ -252,7 +252,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
         .mutate_data_as(pa, |handle: &Handle<M::Widget>| handle.clone())
         .unwrap();
 
-    let mc = ModeCreated((mode, handle.clone()));
+    let mc = ModeSet((mode, handle.clone()));
     let mut mode = hook::trigger(pa, mc).0.0;
 
     mode.on_switch(pa, handle.clone());

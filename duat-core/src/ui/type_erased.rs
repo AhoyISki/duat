@@ -483,7 +483,7 @@ impl RwArea {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::opts::PrintOpts::dont_wrap
+    /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
     pub fn scroll_to_points(&self, pa: &mut Pass, text: &Text, points: TwoPoints, opts: PrintOpts) {
         self.0.write(pa).scroll_to_points(text, points, opts)
     }
@@ -691,7 +691,7 @@ impl Area {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::opts::PrintOpts::dont_wrap
+    /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
     pub fn scroll_to_points(&mut self, text: &Text, points: TwoPoints, opts: PrintOpts) {
         (self.fns.scroll_to_points)(self, text, points, opts);
     }

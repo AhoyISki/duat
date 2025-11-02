@@ -123,7 +123,7 @@ impl Bytes {
     /// # let (p0, p1) = (Point::default(), Point::default());
     /// # let text = Text::new();
     /// let bytes = text.bytes();
-    /// 
+    ///
     /// for char in bytes.strs(p0..p1).unwrap().chars() {
     ///     todo!();
     /// }
@@ -448,11 +448,7 @@ impl Bytes {
     /// [`len`]: Self::len
     pub fn last_point(&self) -> Point {
         let strs = self.strs_inner(..).unwrap();
-        let char = strs
-            .into_iter()
-            .flat_map(str::chars)
-            .next_back()
-            .unwrap_or_else(|| panic!("{self:#?}"));
+        let char = strs.into_iter().flat_map(str::chars).next_back().unwrap();
         self.len().rev(char)
     }
 

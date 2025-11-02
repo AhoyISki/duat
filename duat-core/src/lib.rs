@@ -246,17 +246,13 @@ pub mod clipboard {
 mod private_exports {
     pub use format_like::format_like;
 
-    pub macro log($target:expr, $lvl:expr, $($arg:tt)*) {{
+    pub macro log($lvl:expr, $($arg:tt)*) {{
         #[allow(unused_must_use)]
         let text = $crate::text::txt!($($arg)*).build();
 
 		$crate::context::logs().push_record($crate::context::Record::new(
     		text,
     		$lvl,
-    		$target,
-    		Some(module_path!()),
-    		Some(file!()),
-    		Some(line!())
 		));
     }}
 

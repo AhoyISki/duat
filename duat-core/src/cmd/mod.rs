@@ -904,7 +904,7 @@ impl Commands {
                     .list
                     .iter()
                     .find(|cmd| cmd.callers().contains(&caller))
-                    .ok_or(txt!("No such command"))?;
+                    .ok_or(txt!("[a]{caller}[]: No such command"))?;
 
                 (command.clone(), call.clone())
             }

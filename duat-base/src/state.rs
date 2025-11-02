@@ -117,13 +117,13 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # use duat_utils::{state, widgets::{StatusLine, status}};
+/// # use duat_base::{state, widgets::{StatusLine, status}};
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<StatusLine<Ui>>(|pa, (opts, _)| {
-///         let mode_upper = state::mode_name(pa).map(pa, |mode| {
+///     hook::add::<StatusLine>(|pa, handle| {
+///         let mode_upper = state::mode_name().map(|mode| {
 ///             let mode = match mode.split_once('<') {
 ///                 Some((mode, _)) => mode,
 ///                 None => mode,
@@ -131,9 +131,9 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 ///             txt!("[mode]{}", mode.to_uppercase()).build()
 ///         });
 ///
-///         opts.fmt(status!(
+///         handle.write(pa).fmt(status!(
 ///             "{name_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
-///         ))
+///         ));
 ///     });
 /// }
 /// ```
@@ -141,8 +141,21 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [mode]: duat_core::mode::Mode
 /// [`IncSearch`]: crate::modes::IncSearch
-pub fn mode_name() -> DataMap<&'static str, &'static str> {
+pub fn raw_mode() -> DataMap<&'static str, &'static str> {
     context::mode_name()
+}
+
+/// [`StatusLine`] part: The name of the active mode
+///
+/// [`StatusLine`]: crate::widgets::StatusLine
+pub fn mode_name() -> DataMap<&'static str, String> {
+    context::mode_name().map(|mode| {
+        let mode = mode.to_lowercase();
+        match mode.split_once('<') {
+            Some((mode, _)) => mode.to_string(),
+            None => mode,
+        }
+    })
 }
 
 /// [`StatusLine`] part: The active mode of Duat, formatted
@@ -155,14 +168,7 @@ pub fn mode_name() -> DataMap<&'static str, &'static str> {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn mode_txt() -> DataMap<&'static str, Text> {
-    context::mode_name().map(|mode| {
-        let mode = mode.to_lowercase();
-        let mode = match mode.split_once('<') {
-            Some((mode, _)) => mode,
-            None => &mode,
-        };
-        txt!("[mode]{mode}").build()
-    })
+    mode_name().map(|mode| txt!("[mode]{mode}").build())
 }
 
 /// [`StatusLine`] part: Byte of the main selection

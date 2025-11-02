@@ -15,7 +15,7 @@
 //!     hook::add::<Buffer>(|pa: &mut Pass, handle: &Handle| {
 //!         let buffer = handle.write(pa);
 //!         if let Some("lisp") = buffer.filetype() {
-//!             buffer.opts.dont_wrap = true;
+//!             buffer.opts.wrap_lines = true;
 //!         }
 //!         Ok(())
 //!     });
@@ -51,7 +51,7 @@
 //! - [`KeysSentTo`] lets you act on a given [widget], given a [key].
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
-//! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
+//! - [`ModeSet`] lets you act on a [`Mode`] after switching.
 //! - [`SearchPerformed`] (from `duat`) triggers after a search is
 //!   performed.
 //! - [`SearchUpdated`] (from `duat`) triggers after a search updates.
@@ -799,7 +799,7 @@ impl Hookable for ModeSwitched {
 /// use duat_kak::Normal;
 ///
 /// fn setup() {
-///     hook::add::<ModeCreated<Normal>>(|pa, (normal, handle)|
+///     hook::add::<ModeSet<Normal>>(|pa, (normal, handle)|
 ///         Ok(normal.indent_on_capital_i = true)
 ///     );
 /// }
@@ -839,9 +839,9 @@ impl Hookable for ModeSwitched {
 ///
 /// [`Mode`]: crate::mode::Mode
 /// [`Buffer`]: crate::buffer::Buffer
-pub struct ModeCreated<M: Mode>(pub(crate) (M, Handle<M::Widget>));
+pub struct ModeSet<M: Mode>(pub(crate) (M, Handle<M::Widget>));
 
-impl<M: Mode> Hookable for ModeCreated<M> {
+impl<M: Mode> Hookable for ModeSet<M> {
     type Input<'h> = (&'h mut M, &'h Handle<M::Widget>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
@@ -1047,11 +1047,7 @@ impl InnerHooks {
 
             let input = hookable.get_input();
             if let Err(err) = hook.callback.borrow_mut()(pa, input) {
-                if let Some(InnerGroupId::Named(group)) = hook.group.as_ref() {
-                    crate::context::error!(target: group, "{err}");
-                } else {
-                    crate::context::error!(target: crate::utils::duat_name::<H>(), "{err}");
-                }
+                crate::context::error!("{err}");
             }
 
             !hook.once
@@ -1207,9 +1203,9 @@ impl<W: Widget> HookAlias<WidgetCreatedDummy> for W {
     type Input<'h> = <WidgetCreated<W> as Hookable>::Input<'h>;
 }
 
-impl<M: Mode> HookAlias<ModeCreatedDummy> for M {
-    type Hookable = ModeCreated<M>;
-    type Input<'h> = <ModeCreated<M> as Hookable>::Input<'h>;
+impl<M: Mode> HookAlias<ModeSetDummy> for M {
+    type Hookable = ModeSet<M>;
+    type Input<'h> = <ModeSet<M> as Hookable>::Input<'h>;
 }
 
 /// For specialization purposes
@@ -1222,4 +1218,4 @@ pub struct WidgetCreatedDummy;
 
 /// For specialization purposes
 #[doc(hidden)]
-pub struct ModeCreatedDummy;
+pub struct ModeSetDummy;

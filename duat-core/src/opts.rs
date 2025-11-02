@@ -29,10 +29,10 @@ pub struct ScrollOff {
 /// Configuration options for printing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PrintOpts {
-    /// Disable wrapping entirely
+    /// Enables wrapping of lines
     ///
     /// The default is `true`
-    pub dont_wrap: bool = true,
+    pub wrap_lines: bool = true,
     /// Wrap on word boundaries, rather than on any character
     ///
     /// The default is `false`.
@@ -41,7 +41,7 @@ pub struct PrintOpts {
     ///
     /// The default is `None`
     ///
-    /// If this value is `None` and `opts.dont_wrap == false`, then
+    /// If this value is `None` and `opts.wrap_lines == false`, then
     /// wrapping will take place at the right edge of the screen.
     ///
     /// Otherwise, if it is `Some({cap})`, then wrapping will take
@@ -160,7 +160,7 @@ impl PrintOpts {
     /// ```rust
     /// use duat_core::opts::*;
     /// PrintOpts {
-    ///     dont_wrap: true,
+    ///     wrap_lines: false,
     ///     wrap_on_word: false,
     ///     wrapping_cap: None,
     ///     indent_wraps: true,
@@ -182,7 +182,7 @@ impl PrintOpts {
     /// [`Widget::get_print_opts`]: crate::ui::Widget::get_print_opts
     pub const fn new() -> Self {
         Self {
-            dont_wrap: true,
+            wrap_lines: false,
             wrap_on_word: false,
             wrapping_cap: None,
             indent_wraps: true,
@@ -208,7 +208,7 @@ impl PrintOpts {
     /// ```rust
     /// use duat_core::opts::*;
     /// PrintOpts {
-    ///     dont_wrap: true,
+    ///     wrap_lines: false,
     ///     wrap_on_word: false,
     ///     wrapping_cap: None,
     ///     indent_wraps: true,
@@ -226,7 +226,7 @@ impl PrintOpts {
     /// [`Selection`]: crate::mode::Selection
     pub const fn default_for_input() -> Self {
         Self {
-            dont_wrap: true,
+            wrap_lines: false,
             wrap_on_word: false,
             wrapping_cap: None,
             indent_wraps: true,
@@ -246,7 +246,7 @@ impl PrintOpts {
     /// width
     #[inline]
     pub const fn wrap_width(&self, width: u32) -> Option<u32> {
-        if self.dont_wrap {
+        if !self.wrap_lines {
             None
         } else if let Some(cap) = self.wrapping_cap {
             Some(cap)

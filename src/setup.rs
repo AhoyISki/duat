@@ -16,7 +16,7 @@ use std::{
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, LogBook, WordsCompletionParser},
+    widgets::{FooterWidgets, LogBook, Notifications, WordsCompletionParser},
 };
 use duat_core::{
     clipboard::Clipboard,
@@ -33,7 +33,10 @@ use crate::{
     form,
     hook::{self, BufferClosed, BufferReloaded, WindowCreated},
     mode,
-    opts::{BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, ONE_LINE_FOOTER, STATUSLINE_FMT},
+    opts::{
+        BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, NOTIFICATIONS_FN, ONE_LINE_FOOTER,
+        STATUSLINE_FMT,
+    },
     prelude::BufferWritten,
     widgets::Buffer,
 };
@@ -72,7 +75,12 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
     hook::add::<WindowCreated>(|pa, builder| {
         let status = STATUSLINE_FMT.lock().unwrap()(pa);
-        let mut footer = FooterWidgets::new(status);
+        let mut footer = FooterWidgets::new(status).notifs({
+            let mut notifs = Notifications::builder();
+            NOTIFICATIONS_FN.lock().unwrap()(&mut notifs);
+            notifs
+        });
+
         if FOOTER_ON_TOP.load(Ordering::Relaxed) {
             footer = footer.above();
         }
@@ -103,7 +111,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         if let Some(main) = buffer.selections().get_main()
             && let Err(err) = cache.store(&path, main.clone())
         {
-            context::error!(target: "BufferReloaded", "{err}");
+            context::error!("{err}");
         }
 
         handle.area().store_cache(pa, &path)
@@ -134,7 +142,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         if let Some(main) = buffer.selections().get_main()
             && let Err(err) = cache.store(&path, main.clone())
         {
-            context::error!(target: "BufferClosed", "{err}");
+            context::error!("{err}");
         }
 
         handle.area().store_cache(pa, &path)

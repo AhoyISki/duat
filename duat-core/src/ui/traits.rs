@@ -401,7 +401,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     ///
-    /// [line wrapping]: crate::opts::PrintOpts::dont_wrap
+    /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
     fn scroll_to_points(self: CoreAccess<Self>, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// The start points that should be printed

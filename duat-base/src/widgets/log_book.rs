@@ -2,7 +2,7 @@ use duat_core::{
     context::{self, Handle, Logs, Record},
     data::Pass,
     opts::PrintOpts,
-    text::{Text, txt},
+    text::{Spacer, Text, txt},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -68,7 +68,7 @@ impl Widget for LogBook {
 
     fn get_print_opts(&self) -> PrintOpts {
         let mut opts = PrintOpts::new();
-        opts.dont_wrap = false;
+        opts.wrap_lines = true;
         opts.wrap_on_word = true;
         opts
     }
@@ -92,7 +92,7 @@ pub struct LogBookOpts {
     /// Wether to hide the `LogBook` by default
     pub hidden: bool = true,
     /// To which side to push the [`LogBook`] to
-    pub side: Side = Side::Right,
+    pub side: Side = Side::Below,
     /// Requested height for the [`LogBook`], ignored if pushing horizontally
     pub height: f32 = 8.0,
     /// Requested width for the [`LogBook`], ignored if pushing vertically
@@ -156,15 +156,16 @@ impl Default for LogBookOpts {
             use duat_core::context::Level::*;
             let mut builder = match rec.level() {
                 Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
-                Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]: "),
+                Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]:"),
                 Info => txt!("[log_book.info][[INFO]][log_book.colon]:   "),
                 Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]:  "),
                 Trace => unreachable!("Trace is not meant to be useable"),
             };
 
             builder.push(txt!(
-                "[log_book.bracket]([log_book.target][log_book.bracket])[] {}",
-                rec.text().clone()
+                "[log_book.bracket][] {}{Spacer}([log_book.target]{}[log_book.bracket])\n",
+                rec.text().clone(),
+                rec.location(),
             ));
 
             Some(builder.build())

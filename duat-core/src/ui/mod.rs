@@ -490,14 +490,14 @@ pub trait PushTarget {
     /// `true`.
     ///
     /// This [`Widget`] will be placed externally, i.e., around every
-    /// other [`Widget`] that was pushed around `self`. This is in
+    /// other `Widget` that was pushed around `self`. This is in
     /// contrast to [`Handle::push_inner_widget`], which will push
     /// only around `self`.
     ///
     /// Both of these functions behave identically in the situation
     /// where no other [`Widget`]s were pushed around `self`.
     ///
-    /// However, if, for example, a [`Widget`] was previously pushed
+    /// However, if, for example, a `Widget` was previously pushed
     /// to the left of `self`, when pushing to the left again, the
     /// following would happen:
     ///

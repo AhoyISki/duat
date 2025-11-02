@@ -208,7 +208,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                     err.kind()
                 );
 
-                context::error!(target: "pager search", "{err}")
+                context::error!("{err}")
             }
         }
     }

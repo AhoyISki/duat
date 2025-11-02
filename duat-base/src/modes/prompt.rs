@@ -514,7 +514,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                     err.kind()
                 );
 
-                context::error!(target: self.inc.prompt().to_string(), "{err}")
+                context::error!("{err}")
             } else {
                 hook::queue(SearchPerformed(text.to_string()));
             }

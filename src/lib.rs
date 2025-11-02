@@ -84,8 +84,8 @@
 //!
 //! ## Configuration
 //!
-//! In the configuration buffer, there should be a `setup_duat!`
-//! macro, which takes in a function with no parameters.
+//! In the configuration's `src/lib.rs`, there should be a
+//! `setup_duat!` macro, which takes in a function with no parameters.
 //!
 //! This function is the setup for duat, and it can be empty, which is
 //! the equivalent of the default configuration for Duat.
@@ -120,25 +120,22 @@
 //!
 //! fn setup() {
 //!     plug(kak::Kak::new());
+//!
 //!     map::<kak::Insert>("jk", "<Esc>");
 //!
-//!     opts::wrap_on_edge();
-//!
-//!     hook::add::<LineNumbers>(|pa, handle| {
-//!         handle.write(pa).align = std::fmt::Alignment::Right;
-//!         Ok(())
+//!     opts::set(|opts| {
+//!         opts.wrap_lines = true;
+//!         opts.scrolloff.y = 5;
 //!     });
 //!
-//!     hook::add::<StatusLine>(|pa, handle| {
-//!         let upper_mode = mode_name(pa).map(pa, |m| match m.split_once('<') {
-//!             Some((no_generics, _)) => no_generics.to_uppercase(),
-//!             None => m.to_uppercase(),
-//!         });
+//!     opts::set_lines(|opts| {
+//!         opts.align = std::fmt::Alignment::Right;
+//!     });
 //!
-//!         handle.write(pa).fmt(status!(
-//!             "[Mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}"
-//!         ));
-//!         Ok(())
+//!     opts::set_status(|pa| {
+//!         let upper_mode = mode_name().map(|m| m.to_uppercase());
+//!
+//!         status!("[mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}")
 //!     });
 //!
 //!     hook::add::<ModeSwitched>(|_, (_, new)| {
@@ -149,18 +146,15 @@
 //!         Ok(())
 //!     });
 //!
-//!     form::set("Mode", Form::dark_magenta());
+//!     form::set("mode", Form::dark_magenta());
 //! }
 //! ```
 //!
 //! This configuration does the following things:
 //!
-//! - [plugs] the `Kak` plugin, which changes the [default mode];
+//! - plugs the `Kak` plugin, which changes the [default mode];
 //! - [Maps] jk to esc in the `Insert` mode;
-//! - [Changes] the wrapping;
-//! - Changes the alignment of the [`LineNumbers`] [`Widget`];
-//! - Changes the [status line] (with a [Spacer] for 2 separate sides,
-//!   and a reformatted [`mode_name`]);
+//! - Sets [options] for the `Buffer`, `LineNumbers` and `StatusLine`
 //! - [Adds] hooks for [mode changes] in Duat, which change the shape
 //!   of the cursor;
 //! - [Changes](form::set) the [style] of the mode printed on the
@@ -168,12 +162,11 @@
 //!
 //! These are only some of the options available to configure Duat,
 //! you can also add [custom commands], place widgets around other
-//! [`Widget`](crate::hook::WidgetCreated)s and [windows], create
-//! [`Parser`]s that can track every change on a [`Buffer`], and many
-//! other things.
+//! [`Widget`]s and [windows], create [`Parser`]s that can track every
+//! change on a [`Buffer`], and many other things.
 //!
 //! Duat also comes with a fully fledged [text creation system], which
-//! significantly eases the creation of widgets and inline hints:
+//! significantly eases the creation of highly formatted text:
 //!
 //! ```rust
 //! # use duat::prelude::*;
@@ -215,15 +208,11 @@
 //! In this case, you should open an issue with the error message that
 //! `cargo build --release` sent you.
 //!
-//! ## It's still segfaulting as I reopen!
+//! ## It's segfaulting as I reopen!
 //!
 //! This is an indication that your installed version of duat became
 //! incompatible with that of your config. Rerun the installation
-//! process, no need to remove `~/.config/duat`.
-//!
-//! ## It's still segfaulting!
-//!
-//! In that case open an issue
+//! process and call `duat --reload`.
 //!
 //! # Default plugins
 //!
@@ -248,8 +237,8 @@
 //!   better feedback when editing buffers.
 //! - [`duat-match-pairs`] adds matched parentheses highlighting to
 //!   duat. Has some ntegration with `duat-treesitter`.
-//! - [`duat-utils`] adds all of the default plugins that you see,
-//!   like the line numbers, status line, prompt line, etc.
+//! - [`duat-base`] adds all of the default plugins that you see, like
+//!   the line numbers, status line, prompt line, etc.
 //!
 //! ## Features
 //!
@@ -362,6 +351,7 @@
 //! [notifications widget]: prelude::Notifications
 //! [widget combo]: prelude::FooterWidgets
 //! [Adds]: prelude::hook::add
+//! [options]: opts
 //! [mode changes]: prelude::hook::ModeSwitched
 //! [style]: prelude::form::Form
 //! [text creation system]: prelude::text::txt
@@ -377,7 +367,7 @@
 //! [`Form`]: prelude::Form
 //! [`duat-treesitter`]: https://github.com/AhoyISki/duat-treesitter
 //! [`duat-match-pairs`]: https://github.com/AhoyISki/duat-match-pairs
-//! [`duat-utils`]: https://github.com/AhoyISki/duat/tree/master/duat-utils
+//! [`duat-base`]: https://github.com/AhoyISki/duat/tree/master/duat-base
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 //! [`plug!`]: prelude::plug
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
@@ -435,65 +425,79 @@ pub mod hook {
     //!
     //! ```rust
     //! setup_duat!(setup);
+    //! use std::fmt::Alignment;
+    //!
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<LineNumbers>(|pa, (line_nums, _)| {
-    //!         line_nums.align_right().align_main_left().rel_abs()
+    //!     hook::add::<LineNumbers>(|pa, handle| {
+    //!         if let Some("markdown") = handle.buffer()?.filetype(pa) {
+    //!             let ln = handle.write(pa);
+    //!             ln.align = Alignment::Left;
+    //!             ln.relative = false;
+    //!         }
+    //!         Ok(())
     //!     });
     //! }
     //! ```
     //!
-    //! The [hook above] makes it so that, whenever [`LineNumbers`]
-    //! are created, they main number is absolute and shifts left,
-    //! while other numbers are relative and shift right. This
-    //! hook gives you the power to configure any [`Widget`] that
-    //! gets created, but what if you want to add more widgets?
+    //! The hook above changes the [`LineNumbers`] only when the
+    //! buffer is of type `markdown`, so the numbering becomes
+    //! absolute and the line numbers are printed on the left.
     //!
     //! ```rust
     //! setup_duat!(setup);
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<Buffer>(|_, (opts, builder)| {
-    //!         builder.push(status!("{name_txt} {main_txt}").above());
-    //!         opts
+    //!     hook::add::<Buffer>(|pa, handle| {
+    //!         status!("{name_txt}{Spacer}{main_txt}")
+    //!             .above()
+    //!             .push_on(pa, handle);
+    //!         Ok(())
     //!     });
     //! }
     //! ```
     //!
-    //! [That hook] lets you push more [`Widget`]s to a [`Buffer`],
-    //! whenever one is opened. In this case, I'm pushing a
-    //! [`StatusLine`] on top of the [`Buffer`], which displays the
-    //! [buffer's name], as well as its [main `Selection`].
+    //! On the snippet above, I'm pushing a [`StatusLine`] above each
+    //! [`Buffer`] as they are opened. This `StatusLine` will print
+    //! the name of the `Buffer` on the left, and the main cursor on
+    //! the right.
     //!
     //! Do note that this won't be the only [`Widget`] that will be
-    //! pushed around the [`Buffer`], since there are some predefined
-    //! [hook groups] in Duat.
+    //! pushed around the [`Buffer`], since by default, a
+    //! [`LineNumbers`] and [`VertRule`] are pushed to the left.
     //!
-    //! From the `opts` argument, you can also change settings on that
-    //! [`Buffer`], in a similar vein to the [`print`](crate::print)
-    //! module:
+    //! # Available hooks
     //!
-    //! ```rust
-    //! setup_duat!(setup);
-    //! use duat::prelude::*;
+    //! Currently, these are the existing hooks in `duat-core` and
+    //! `duat-base`:
     //!
-    //! fn setup() {
-    //!     hook::add::<Buffer>(|_, (mut opts, _)| {
-    //!         if let Some("yaml" | "json") = opts.filetype() {
-    //!             opts.tabstop(2)
-    //!         } else {
-    //!             opts
-    //!         }
-    //!     });
-    //! }
-    //! ```
+    //! - [`ConfigLoaded`] triggers after loading the config.
+    //! - [`ConfigUnloaded`] triggers after unloading the config.
+    //! - [`ExitedDuat`] triggers after Duat has exited.
+    //! - [`FocusedOnDuat`] triggers when Duat gains focus.
+    //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
+    //! - [`WidgetCreated`] triggers when a [`Widget`] is created.
+    //! - [`WindowCreated`], triggers when a [`Window`] is created.
+    //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
+    //! - [`BufferClosed`] triggers when closing `Buffer`s.
+    //! - [`BufferReloaded`] triggers when reloading Duat.
+    //! - [`FocusedOn`] triggers when a widget is focused.
+    //! - [`UnfocusedFrom`] triggers when a widget is unfocused.
+    //! - [`FocusChanged`] is a generic version of [`FocusedOn`].
+    //! - [`KeysSent`] triggers on every [key press].
+    //! - [`KeysSentTo`] triggers on keys sent to a given [`Mode`].
+    //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
+    //! - [`ModeSwitched`] triggers when you change `Mode`.
+    //! - [`ModeSet`] triggers when switching `Mode`s.
+    //! - [`SearchPerformed`] triggers after a search is performed.
+    //! - [`SearchUpdated`] triggers after a search updates.
     //!
-    //! The hook above will change the [tabstop] value to `2` on
-    //! `"yaml"` and `"json"` buffers.
+    //! These are just the built-in ones, you can [create your own] as
+    //! well.
     //!
-    //! # Default hook groups
+    //! # Hook groups
     //!
     //! Hook groups are essentially "removable hooks", that are
     //! predefined in order to give a more complete, yet customizable
@@ -503,58 +507,39 @@ pub mod hook {
     //! setup_duat!(setup);
     //! use std::sync::atomic::{AtomicUsize, Ordering};
     //!
-    //! use duat::prelude::*;
+    //! use duat::{data::RwData, prelude::*};
     //!
     //! fn setup() {
-    //!     static KEY_COUNT: AtomicUsize = AtomicUsize::new(0);
+    //!     let key_count = RwData::new(0);
     //!
-    //!     hook::add_grouped::<KeysSent>("CountKeys", |pa, keys| {
-    //!         KEY_COUNT.fetch_add(keys.len(), Ordering::Relaxed);
+    //!     hook::add::<KeysSent>({
+    //!         let key_count = key_count.clone();
+    //!         move |pa, keys| Ok(*key_count.write(pa) += 1)
+    //!     })
+    //!     .grouped("CountKeys");
+    //!
+    //!     // Shows the key count on the StatusLine
+    //!     opts::set_status(move |pa| {
+    //!         let mode_txt = mode_txt();
+    //!         let key_count = key_count.clone();
+    //!         status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt} keys={key_count}")
     //!     });
+    //!
+    //!     // Stops counting keys 🙁.
+    //!     hook::remove("CountKeys");
     //! }
     //! ```
     //!
-    //! These are the default [hook groups]:
+    //! These are the default hook groups:
     //!
     //! - `"BufferWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
     //!   to new [`Buffer`]s, via [`WidgetCreated`], (using [`Buffer`]
     //!   as an alias for [`WidgetCreated<Buffer>`]).
+    //! - `"LogBook"`: Pushes a [`LogBook`] to the bottom.
     //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
     //!   and [`Notifications`] to new windows, via [`WindowCreated`].
-    //! - `"HidePromptLine"`: Is responsible for [hiding] the
-    //!   [`PromptLine`] when it is not in use, giving way to the
-    //!   [`Notifications`], via [`FocusedOn`] and [`UnfocusedFrom`].
     //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
     //!   buffer in it is written to, via [`BufferWritten`].
-    //!
-    //! # Available hooks
-    //!
-    //! Currently, these are the existing hooks in `duat-core` and
-    //! `duat-utils`:
-    //!
-    //! - [`ConfigLoaded`] triggers after loading the config crate.
-    //! - [`ConfigUnloaded`] triggers after unloading the config
-    //!   crate.
-    //! - [`ExitedDuat`] triggers after Duat has exited.
-    //! - [`WidgetCreated`] triggers when a [`Widget`]'s [opts] is
-    //!   created, letting you change it, the [`Widget`] can be used
-    //!   as its [alias]
-    //! - [`WindowCreated`], which lets you push widgets around the
-    //!   window.
-    //! - [`FocusedOn`] lets you act on a [`Widget`] when focused.
-    //! - [`UnfocusedFrom`] lets you act on a [`Widget`] when
-    //!   unfocused.
-    //! - [`KeysSent`] lets you act on a [`dyn Widget`], given a[key].
-    //! - [`KeysSentTo`] lets you act on a given [`Widget`], given a
-    //!   [key].
-    //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
-    //! - [`ModeSwitched`] triggers when you change [`Mode`].
-    //! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
-    //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
-    //! - [`SearchPerformed`] (from duat-utils) triggers after a
-    //!   search is performed.
-    //! - [`SearchUpdated`] (from duat-utils) triggers after a search
-    //!   updates.
     //!
     //! [alias]: duat_core::hook::HookAlias
     //! [hook above]: WidgetCreated
@@ -562,24 +547,21 @@ pub mod hook {
     //! [`StatusLine`]: crate::prelude::StatusLine
     //! [buffer's name]: crate::prelude::name_txt
     //! [main `Selection`]: crate::prelude::main_txt
-    //! [hook groups]: crate::hook::add_grouped
     //! [`VertRule`]: crate::prelude::VertRule
     //! [`PromptLine`]: crate::prelude::PromptLine
     //! [`Notifications`]: crate::prelude::Notifications
     //! [`WindowCreated`]: crate::prelude::WindowCreated
-    //! [hiding]: duat_core::ui::Area::constrain_ver
-    //! [opts]: crate::prelude::Widget::Cfg
+    //! [`LogBook`]: crate::prelude::LogBook
     //! [`Buffer`]: crate::prelude::Buffer
     //! [`LineNumbers`]: crate::prelude::LineNumbers
     //! [`dyn Widget`]: crate::prelude::Widget
     //! [`Widget`]: crate::prelude::Widget
     //! [`Form`]: crate::prelude::Form
-    //! [key]: crate::mode::KeyEvent
+    //! [key press]: crate::mode::KeyEvent
     //! [deadlocks]: https://en.wikipedia.org/wiki/Deadlock_(computer_science)
     //! [`Mode`]: crate::mode::Mode
     //! [`&mut Widget`]: crate::prelude::Widget
-    //! [`Output`]: Hookable::Output
-    //! [tabstop]: duat_core::opts::PrintOpts::set_tabstop
+    //! [create your own]: Hookable
     pub use duat_base::hooks::*;
     pub use duat_core::hook::*;
 }
@@ -645,12 +627,13 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferWritten, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat,
-            FocusChanged, FocusedOnDuat, FormSet, Hookable, KeysSent, KeysSentTo, ModeCreated,
+            FocusChanged, FocusedOnDuat, FormSet, Hookable, KeysSent, KeysSentTo, ModeSet,
             ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat,
             WidgetCreated, WindowCreated,
         },
         mode::{
-            self, KeyCode, KeyEvent, Mode, Pager, Prompt, User, alias, alt, ctrl, event, map, shift,
+            self, KeyCode, KeyEvent, Mode, Pager, Prompt, Selection, Selections, User, alias, alt,
+            ctrl, event, map, shift,
         },
         opts::{self, ScrollOff},
         setup_duat,
@@ -659,7 +642,7 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Point, Spacer,
             SpawnTag, Tagger, Text, txt,
         },
-        ui::{self, Widget},
+        ui::{self, Area, Widget},
         widgets::*,
     };
 
@@ -770,25 +753,25 @@ mod book;
 /// #     impl Catppuccin {
 /// #         pub fn new() -> Self { Self }
 /// #     }
-/// #     impl duat_core::Plugin<duat::Ui> for Catppuccin {
-/// #         fn plug(self, _: &duat_core::Plugins<duat::Ui>) {}
+/// #     impl Plugin for Catppuccin {
+/// #         fn plug(self, _: &duat_core::Plugins) {}
 /// #     }
 /// # }
 /// # mod duat_kak {
 /// #     use duat::{prelude::{*, mode::KeyEvent}};
 /// #     #[derive(Clone)]
 /// #     pub struct Normal;
-/// #     impl Mode<Ui> for Normal {
+/// #     impl Mode for Normal {
 /// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Buffer>) {
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {
 /// #             todo!();
 /// #         }
 /// #     }
 /// #     #[derive(Clone)]
 /// #     pub struct Insert;
-/// #     impl Mode<Ui> for Insert {
+/// #     impl Mode for Insert {
 /// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Buffer>) {
+/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {
 /// #             todo!();
 /// #         }
 /// #     }
@@ -797,8 +780,8 @@ mod book;
 /// #     impl Kak {
 /// #         pub fn new() -> Self { Self }
 /// #     }
-/// #     impl duat_core::Plugin<Ui> for Kak {
-/// #         fn plug(self, _: &duat_core::Plugins<Ui>) {}
+/// #     impl Plugin for Kak {
+/// #         fn plug(self, _: &duat_core::Plugins) {}
 /// #     }
 /// # }
 #[doc = include_str!("../templates/config/lib.rs")]
@@ -807,6 +790,6 @@ mod config {}
 
 #[cfg(doctest)]
 /// ```rust
-#[doc = include_str!("../../templates/plugin/lib.rs")]
+#[doc = include_str!("../templates/plugin/lib.rs")]
 /// ```
 mod plugin {}
