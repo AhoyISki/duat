@@ -12,12 +12,12 @@ use unicode_width::UnicodeWidthChar;
 pub fn print_iter(
     text: &Text,
     points: TwoPoints,
-    cap: u32,
+    width: u32,
     opts: PrintOpts,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let start_points = text.visual_line_start(points, 0);
-    let max_indent = if opts.indent_wraps { cap } else { 0 };
-    let cap = opts.wrap_width(cap).unwrap_or(cap);
+    let max_indent = if opts.indent_wraps { width } else { 0 };
+    let cap = opts.wrap_width(width).unwrap_or(width);
 
     // Line construction variables.
     let (mut total_len, mut gaps) = (0, Gaps::OnRight);
@@ -414,7 +414,7 @@ impl Gaps {
                 while !enough_space.is_multiple_of(count) {
                     enough_space += 1;
                 }
-                let diff = enough_space - cap.saturating_sub(total_len) as usize;
+                let diff = enough_space - space;
 
                 // Do it in reverse, so skipped Spacers won't change.
                 for (i, (len, _)) in line

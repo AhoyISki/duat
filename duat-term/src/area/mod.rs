@@ -292,11 +292,15 @@ impl Area {
                     style_was_set = true;
                 }
                 Part::Spacer => {
-                    let truncated_start = x_shift.saturating_sub(x);
-                    let truncated_end = (x + len).saturating_sub(lines.coords().width() + x_shift);
+                    let truncated_start = x_shift.saturating_sub(x).min(len);
+                    let truncated_end = (x + len)
+                        .saturating_sub(lines.coords().width().saturating_sub(x_shift))
+                        .min(len);
                     let spacer_len = len - (truncated_start + truncated_end);
                     lines.write_all(&SPACES[0..spacer_len as usize]).unwrap();
-                    last_len = x + len - x_shift;
+                    last_len = (x + len)
+                        .saturating_sub(x_shift)
+                        .min(lines.coords().width());
                 }
                 Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
                 Part::SpawnedWidget(id) => spawns_for_next.push(id),
