@@ -451,9 +451,7 @@ impl Text {
     /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
     pub fn insert_text(&mut self, mut p: Point, mut text: Text) {
         text = text.without_last_nl();
-        if let Some((_, '\n')) = { self.chars_rev(..).unwrap().next() } {
-            p = p.min(self.last_point())
-        }
+        p = p.min(self.last_point());
 
         let added_str = text.0.bytes.strs(..).unwrap().to_string();
         let change = Change::str_insert(&added_str, p);

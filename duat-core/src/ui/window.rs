@@ -106,7 +106,6 @@ impl Windows {
         widget: W,
         master: Option<&RwArea>,
     ) -> Option<Handle<W>> {
-        context::debug!("Pushing [a]{}", crate::utils::duat_name::<W>());
         self.push(pa, (target, on_buffers, specs), widget, master)?
             .handle()
             .try_downcast()

@@ -86,22 +86,21 @@ impl Builder {
     /// [`Widget`]: crate::ui::Widget
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
-        self.push_str("\n");
-        
+        let end = self.text.last_point().byte();
         if let Some((b, id)) = self.last_form
-            && b < self.text.len().byte()
+            && b < self.text.last_point().byte()
         {
-            self.text.insert_tag(Tagger::basic(), b.., id);
+            self.text.insert_tag(Tagger::basic(), b..end, id);
         }
         if let Some((b, align)) = self.last_align
-            && b < self.text.len().byte()
+            && b < self.text.last_point().byte()
         {
             match align {
                 Alignment::Center => {
-                    self.text.insert_tag(Tagger::basic(), b.., AlignCenter);
+                    self.text.insert_tag(Tagger::basic(), b..end, AlignCenter);
                 }
                 Alignment::Right => {
-                    self.text.insert_tag(Tagger::basic(), b.., AlignRight);
+                    self.text.insert_tag(Tagger::basic(), b..end, AlignRight);
                 }
                 _ => {}
             }
@@ -127,7 +126,9 @@ impl Builder {
             use Alignment::*;
             use BuilderPart as BP;
 
-            let end = builder.text.len().byte();
+            let end = builder.text.last_point().byte();
+            let tagger = Tagger::basic();
+
             match part {
                 BP::Text(text) => builder.push_text(text),
                 BP::Builder(new) => builder.push_text(new.build()),
@@ -141,22 +142,22 @@ impl Builder {
                     if let Some((b, tag)) = last_form
                         && b < end
                     {
-                        builder.text.insert_tag(Tagger::basic(), b.., tag);
+                        builder.text.insert_tag(tagger, b..end, tag);
                     }
                 }
                 BP::AlignLeft => match builder.last_align.take() {
                     Some((b, Center)) if b < end => {
-                        builder.text.insert_tag(Tagger::basic(), b.., AlignCenter);
+                        builder.text.insert_tag(tagger, b..end, AlignCenter);
                     }
                     Some((b, Right)) if b < end => {
-                        builder.text.insert_tag(Tagger::basic(), b.., AlignRight);
+                        builder.text.insert_tag(tagger, b..end, AlignRight);
                     }
                     _ => {}
                 },
                 BP::AlignCenter => match builder.last_align.take() {
                     Some((b, Center)) => builder.last_align = Some((b, Center)),
                     Some((b, Right)) if b < end => {
-                        builder.text.insert_tag(Tagger::basic(), b.., AlignRight);
+                        builder.text.insert_tag(tagger, b..end, AlignRight);
                         builder.last_align = Some((end, Center));
                     }
                     None => builder.last_align = Some((end, Center)),
@@ -165,17 +166,17 @@ impl Builder {
                 BP::AlignRight => match builder.last_align.take() {
                     Some((b, Right)) => builder.last_align = Some((b, Right)),
                     Some((b, Center)) if b < end => {
-                        builder.text.insert_tag(Tagger::basic(), b.., AlignCenter);
+                        builder.text.insert_tag(tagger, b..end, AlignCenter);
                         builder.last_align = Some((end, Right));
                     }
                     None => builder.last_align = Some((end, Right)),
                     Some(_) => {}
                 },
                 BP::Spacer(_) => {
-                    builder.text.insert_tag(Tagger::basic(), end, Spacer);
+                    builder.text.insert_tag(tagger, end, Spacer);
                 }
                 BP::Ghost(text) => {
-                    builder.text.insert_tag(Tagger::basic(), end, Ghost(text));
+                    builder.text.insert_tag(tagger, end, Ghost(text));
                 }
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
@@ -216,23 +217,53 @@ impl Builder {
             self.last_was_empty = true;
         } else {
             self.last_was_empty = false;
-            let end = self.text.len();
+            let end = self.text.last_point();
             self.text
                 .apply_change_inner(0, Change::str_insert(&self.buffer, end));
+        }
+    }
+
+    /// Resets the [`Form`]
+    ///
+    /// This is equivalent to pushing the `default` `Form`.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub fn reset_form(&mut self) {
+        let end = self.text.last_point().byte();
+        if let Some((b, last_form)) = self.last_form.take() {
+            self.text.insert_tag(Tagger::basic(), b..end, last_form);
+        }
+    }
+
+    /// Resets the [`Form`]
+    ///
+    /// This is equivalent to pushing the `default` `Form`.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub fn reset_alignment(&mut self) {
+        let end = self.text.last_point().byte();
+        match self.last_align.take() {
+            Some((b, Alignment::Center)) if b < end => {
+                self.text.insert_tag(Tagger::basic(), b..end, AlignCenter);
+            }
+            Some((b, Alignment::Right)) if b < end => {
+                self.text.insert_tag(Tagger::basic(), b..end, AlignRight);
+            }
+            _ => {}
         }
     }
 
     /// Pushes [`Text`] directly
     fn push_text(&mut self, text: Text) {
         self.last_was_empty = text.is_empty();
-        self.text.insert_text(self.text.len(), text);
+        self.text.insert_text(self.text.last_point(), text);
     }
 }
 
 impl Default for Builder {
     fn default() -> Self {
         Builder {
-            text: Text::empty(),
+            text: Text::new(),
             last_form: None,
             last_align: None,
             buffer: String::with_capacity(50),
@@ -326,61 +357,61 @@ impl From<FormTag> for BuilderPart {
 
 impl From<AlignLeft> for BuilderPart {
     fn from(_: AlignLeft) -> Self {
-        BuilderPart::AlignLeft
+        Self::AlignLeft
     }
 }
 
 impl From<AlignCenter> for BuilderPart {
     fn from(_: AlignCenter) -> Self {
-        BuilderPart::AlignCenter
+        Self::AlignCenter
     }
 }
 
 impl From<AlignRight> for BuilderPart {
     fn from(_: AlignRight) -> Self {
-        BuilderPart::AlignRight
+        Self::AlignRight
     }
 }
 
 impl From<Spacer> for BuilderPart {
     fn from(_: Spacer) -> Self {
-        BuilderPart::Spacer(PhantomData)
+        Self::Spacer(PhantomData)
     }
 }
 
 impl<T: Into<Text>> From<Ghost<T>> for BuilderPart {
     fn from(value: Ghost<T>) -> Self {
-        BuilderPart::Ghost(value.0.into())
+        Self::Ghost(value.0.into())
     }
 }
 
 impl From<Text> for BuilderPart {
     fn from(value: Text) -> Self {
-        BuilderPart::Text(value)
+        Self::Text(value)
     }
 }
 
 impl<D: Display> From<D> for BuilderPart<D, D> {
     fn from(value: D) -> Self {
-        BuilderPart::ToString(value)
+        Self::ToString(value)
     }
 }
 
 impl From<PathBuf> for BuilderPart {
     fn from(value: PathBuf) -> Self {
-        BuilderPart::ToString(value.to_string_lossy().to_string())
+        Self::ToString(value.to_string_lossy().to_string())
     }
 }
 
 impl<'a> From<&'a PathBuf> for BuilderPart<std::borrow::Cow<'a, str>> {
     fn from(value: &'a PathBuf) -> Self {
-        BuilderPart::ToString(value.to_string_lossy())
+        Self::ToString(value.to_string_lossy())
     }
 }
 
 impl<'a> From<&'a std::path::Path> for BuilderPart<std::borrow::Cow<'a, str>> {
     fn from(value: &'a std::path::Path) -> Self {
-        BuilderPart::ToString(value.to_string_lossy())
+        Self::ToString(value.to_string_lossy())
     }
 }
 

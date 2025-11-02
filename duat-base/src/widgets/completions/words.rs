@@ -47,7 +47,7 @@ impl CompletionsProvider for WordCompletions {
             .map(|(entry, info)| (entry.clone(), info.clone()))
             .collect();
 
-        entries.sort_by_key(|(entry, _)| string_cmp(prefix, entry));
+        entries.sort_by_key(|(entry, _)| (string_cmp(prefix, entry), entry.len()));
 
         CompletionsList {
             entries,

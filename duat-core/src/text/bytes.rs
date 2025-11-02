@@ -447,9 +447,7 @@ impl Bytes {
     ///
     /// [`len`]: Self::len
     pub fn last_point(&self) -> Point {
-        let strs = self.strs_inner(..).unwrap();
-        let char = strs.into_iter().flat_map(str::chars).next_back().unwrap();
-        self.len().rev(char)
+        self.len().rev('\n')
     }
 
     /// A forward iterator of the [`char`]s of [`Bytes`]

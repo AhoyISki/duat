@@ -81,10 +81,7 @@ impl LineNumbers {
 
             match (*line == main_line, is_wrapped) {
                 (false, false) => {}
-                (true, false) => {
-                    let id = form::id_of!("linenum.main");
-                    builder.push(id)
-                }
+                (true, false) => builder.push(form::id_of!("linenum.main")),
                 (false, true) => builder.push(form::id_of!("linenum.wrapped")),
                 (true, true) => builder.push(form::id_of!("linenum.wrapped.main")),
             }
