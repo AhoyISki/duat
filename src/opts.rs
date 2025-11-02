@@ -457,6 +457,8 @@ pub fn set_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'stati
 ///     opts::set_notifs(|opts| opts.fmt(|rec| rec));
 /// }
 /// ```
+/// 
+/// [`Notifications`]: crate::widgets::Notifications
 pub fn set_notifs(set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
     *NOTIFICATIONS_FN.lock().unwrap() = Box::new(set_fn);
 }

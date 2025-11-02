@@ -33,7 +33,7 @@ mod notifications;
 mod prompt_line;
 mod status_line;
 
-/// A footer [`WidgetAlias`] consisting of a [`StatusLine`],
+/// A group of [`Widget`]s consisting of a [`StatusLine`],
 /// [`PromptLine`] and [`Notifications`] combo
 ///
 /// These are the default [`Widget`]s placed in the footer position of
@@ -77,6 +77,7 @@ mod status_line;
 /// [`prompt`]: FooterWidgets::prompt
 /// [`notifs`]: FooterWidgets::notifs
 /// [`above`]: FooterWidgets::above
+/// [`Widget`]: duat_core::ui::Widget
 pub struct FooterWidgets {
     status: StatusLineFmt,
     prompt: PromptLineBuilder,
@@ -87,6 +88,8 @@ pub struct FooterWidgets {
 
 impl FooterWidgets {
     /// Adds footer [`Widget`]s
+    /// 
+    /// [`Widget`]: duat_core::ui::Widget
     pub fn push_on(mut self, pa: &mut Pass, push_target: &impl PushTarget) {
         let prompt_line = if self.one_line {
             self.prompt.request_width()

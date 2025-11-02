@@ -6,28 +6,19 @@ use duat_core::{
 };
 
 /// A vertical line on screen, useful, for example, for the separation
-/// of a [`File`] and [`LineNumbers`].
+/// of a [`Buffer`] and [`LineNumbers`].
 ///
 /// By default, this [`VertRule`] will show the `'│'` character on the
-/// whole line, using the `"default"` form. However, with the
-/// following options:
-///
-/// - [`VertRuleCfg::with_main_char`]
-/// - [`VertRuleCfg::with_char_above`]
-/// - [`VertRuleCfg::with_char_below`]
-/// - [`VertRuleCfg::with_char`]
+/// whole line, using the `"default.VertRule"` form. However, you can change that with the [`VertRule::sep_char`] field.
+/// 
+/// This field, of type [`SepChar`], can have up to 3 distinct characters, in order to differentiate between the main line's separator and even the separators above and below the main line.
 ///
 /// If the main character is not the same as the other two characters,
 /// then the line will be printed with the `"rule.upper"` and
 /// `"rule.lower"` forms for the characters above and below.
 ///
-/// If you want them to have the same characer, but printing with
-/// these different forms, you can just call [`with_main_char`] and
-/// set it to the same character.
-///
-/// [`File`]: duat_core::file::File
+/// [`Buffer`]: duat_core::buffer::Buffer
 /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-/// [`with_main_char`]: VertRuleCfg::with_main_char
 pub struct VertRule {
     handle: Option<Handle>,
     text: Text,

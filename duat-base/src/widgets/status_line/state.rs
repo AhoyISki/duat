@@ -42,7 +42,7 @@ enum Appender<_T: Clone = (), D: Display + Clone = String> {
 ///
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
-/// [`Buffer`]: crate::buffer::Buffer
+/// [`Buffer`]: duat_core::buffer::Buffer
 #[doc(hidden)]
 pub struct State<_T = (), D = String>
 where

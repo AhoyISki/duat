@@ -337,28 +337,24 @@
 //!
 //! [install it]: https://www.rust-lang.org/tools/install
 //! [plugs]: prelude::plug
-//! [default mode]: prelude::mode::set_default
-//! [Maps]: prelude::map
-//! [Changes]: prelude::print::wrap_on_edge
-//! [Removes]: prelude::hook::remove
-//! [group]: prelude::hook::add_grouped
-//! [vertical rule]: prelude::VertRule
-//! [line numbers]: prelude::LineNumbers
-//! [status line]: prelude::status
-//! [Spacer]: prelude::Spacer
-//! [`mode_name`]: prelude::mode_name
-//! [command line]: prelude::PromptLine
-//! [notifications widget]: prelude::Notifications
-//! [widget combo]: prelude::FooterWidgets
-//! [Adds]: prelude::hook::add
+//! [default mode]: mode::set_default
+//! [Maps]: mode::map
+//! [Removes]: hook::remove
+//! [line numbers]: widgets::LineNumbers
+//! [status line]: widgets::status
+//! [Spacer]: text::Spacer
+//! [`mode_name`]: state::mode_name
+//! [command line]: widgets::PromptLine
+//! [notifications widget]: widgets::Notifications
+//! [widget combo]: widgets::FooterWidgets
+//! [Adds]: hook::add
 //! [options]: opts
-//! [mode changes]: prelude::hook::ModeSwitched
-//! [style]: prelude::form::Form
-//! [text creation system]: prelude::text::txt
-//! [`status!`]: prelude::status
-//! [numbering]: duat_base::widgets::LineNumbersCfg::rel_abs
-//! [`LineNumbers`]: prelude::LineNumbers
-//! [`Widget`]: prelude::Widget
+//! [mode changes]: hook::ModeSwitched
+//! [style]: form::Form
+//! [text creation system]: text::txt
+//! [`status!`]: widgets::status
+//! [`LineNumbers`]: widgets::LineNumbers
+//! [`Widget`]: widgets::Widget
 //! [tags]: duat_core::text::Tag
 //! [`duat-kak`]: https://github.com/AhoyISki/duat-kak
 //! [Kakoune]: https://github.com/mawww/kakoune
@@ -562,6 +558,7 @@ pub mod hook {
     //! [`Mode`]: crate::mode::Mode
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [create your own]: Hookable
+    //! [`Window`]: crate::ui::Window
     pub use duat_base::hooks::*;
     pub use duat_core::hook::*;
 }

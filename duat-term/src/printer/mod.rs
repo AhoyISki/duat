@@ -25,6 +25,7 @@ pub struct Printer {
     old_lines: Mutex<Vec<Lines>>,
     new_lines: Mutex<Vec<Lines>>,
     spawned_lines: Mutex<Vec<(AreaId, SpawnId, Lines)>>,
+    cleared_spawned: AtomicBool,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
 }
@@ -49,6 +50,7 @@ impl Printer {
             old_lines: Mutex::new(Vec::new()),
             new_lines: Mutex::new(Vec::new()),
             spawned_lines: Mutex::new(Vec::new()),
+            cleared_spawned: AtomicBool::new(false),
             max,
             has_to_print_edges: AtomicBool::new(false),
         }
@@ -238,10 +240,12 @@ impl Printer {
 
     /// Clears a spawned Widget from screen, not actually deleting it
     pub fn clear_spawn(&self, target: AreaId) {
-        self.spawned_lines
-            .lock()
-            .unwrap()
-            .retain(|(id, ..)| *id != target);
+        let mut spawned_lines = self.spawned_lines.lock().unwrap();
+        let was_empty = spawned_lines.is_empty();
+        spawned_lines.retain(|(id, ..)| *id != target);
+        if spawned_lines.is_empty() && !was_empty {
+            self.cleared_spawned.store(true, Ordering::Relaxed);
+        }
     }
 
     /// Replace a set of [`Equality`]s with another
@@ -291,6 +295,11 @@ impl Printer {
         queue!(stdout, cursor::Hide, ResetColor);
         write!(stdout, "\x1b[?2026h").unwrap();
 
+        // If there are no more spawns, print everything at least one more
+        // time, to clear the spawned areas.
+        let clear_spawned = self.cleared_spawned.load(Ordering::Relaxed);
+        self.cleared_spawned.store(false, Ordering::Relaxed);
+
         for y in 0..max.y {
             write!(stdout, "\x1b[{}H", y + 1).unwrap();
 
@@ -302,7 +311,7 @@ impl Printer {
             while let Some((bytes, [start, end])) = new_iter
                 .next_if(|(_, [start, _])| spawned_lines.is_empty() || *start == x)
                 .or_else(|| {
-                    if !spawned_lines.is_empty() {
+                    if clear_spawned || !spawned_lines.is_empty() {
                         old_iter.find(|(_, [start, _])| *start >= x)
                     } else {
                         None

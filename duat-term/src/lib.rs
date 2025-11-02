@@ -35,7 +35,7 @@ use duat_core::{
 use self::{printer::Printer};
 pub use self::{
     printer::{Brush, Frame},
-    rules::{VertRule, VertRuleBuilder},
+    rules::{SepChar, VertRule, VertRuleBuilder},
 };
 use crate::layout::Layouts;
 

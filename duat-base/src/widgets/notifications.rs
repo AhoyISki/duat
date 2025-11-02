@@ -67,7 +67,7 @@ pub struct Notifications {
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
 
 impl Notifications {
-    /// Returns a [`NotificationsBuilder`], which can be used to push
+    /// Returns a [`NotificationsOpts`], which can be used to push
     /// `Notifications` around
     pub fn builder() -> NotificationsOpts {
         static ONCE: Once = Once::new();
@@ -132,17 +132,17 @@ impl Widget for Notifications {
     }
 }
 
-/// A [`Widget`] to show notifications
-///
-/// By default, it is expected to be placed "under" a [`PromptLine`],
-/// and with the `"HidePromptLine"` [hook] group, take its place when
-/// the [`PromptLine`] is not in focus.
-///
-/// If you don't want this behaviour, see [`left_with_ratio`]
-///
+/// A builder for the [`Notifications`] [`Widget`]
+/// 
+/// Normally, this `Widget` is placed alongside others in the 
+/// [`FooterWidgets`] `Widget` group.
+/// 
+/// You can create it separately with [`Notifications::builder`],
+/// which will return this struct.
+/// 
 /// [`PromptLine`]: super::PromptLine
-/// [hook]: hooks
-/// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
+/// [hook]: hook
+/// [`FooterWidgets`]: super::FooterWidgets
 #[doc(hidden)]
 pub struct NotificationsOpts {
     fmt: Box<dyn FnMut(Record) -> Text + Send>,

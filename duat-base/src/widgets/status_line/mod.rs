@@ -183,7 +183,13 @@ impl Widget for StatusLine {
     }
 }
 
-/// The [`WidgetCfg`] for a [`StatusLine`]
+/// A builder for [`StatusLine`]s
+/// 
+/// This struct is created by the [`status!`] macro, and its purpose is
+/// mainly to allow formatting of the `StatusLine`.
+/// 
+/// There is also the [`StatusLineFmt::above`] method, which places the
+/// `StatusLine` above, rather than below.
 #[derive(Default)]
 pub struct StatusLineFmt {
     fns: Option<(BuilderFn, CheckerFn)>,
@@ -374,6 +380,7 @@ mod macros {
     ///
     /// [`StatusLine`]: super::StatusLine
     /// [`txt!`]: duat_core::text::txt
+    /// [`Buffer`]: duat_core::buffer::Buffer
     /// [`&Buffer`]: duat_core::buffer::Buffer
     /// [`&Handle`]: duat_core::context::Handle
     /// [`&Area`]: duat_core::ui::Area

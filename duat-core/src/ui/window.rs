@@ -493,10 +493,6 @@ impl Windows {
             mode::reset_to(node.handle().clone());
         }
 
-        let new_win = self.len(pa) - 1;
-        self.inner.write(pa).cur_win = new_win;
-        self.ui.switch_window(new_win);
-
         node
     }
 
