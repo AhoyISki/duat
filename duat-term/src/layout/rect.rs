@@ -158,7 +158,7 @@ impl Rect {
     pub(super) fn new_parent_for(
         &mut self,
         p: &Printer,
-        id: AreaId,
+        target_id: AreaId,
         axis: Axis,
         do_cluster: bool,
         on_files: bool,
@@ -168,36 +168,40 @@ impl Rect {
         let do_cluster = do_cluster || self.spawn_id.is_some();
 
         let spawn_id = self.spawn_id;
-        let (mut child, cons, parent_id) = if let Some((i, orig)) = self.get_parent_mut(id) {
+        if let Some((i, orig_parent)) = self.get_parent_mut(target_id) {
             let kind = Kind::middle(axis, do_cluster);
             let mut parent = Rect::new(p, on_files, kind, spawn_id, frame);
 
-            let axis = orig.kind.axis().unwrap();
-            let (rect, cons) = orig.children_mut().unwrap().remove(i);
+            let axis = orig_parent.kind.axis().unwrap();
+            let (mut target, mut cons) = orig_parent.children_mut().unwrap().remove(i);
 
-            let is_resizable = rect.is_resizable_on(axis, &cons);
-            parent.set_pushed_eqs(i, orig, p, frame, is_resizable, None);
+            let is_resizable = target.is_resizable_on(axis, &cons);
+            parent.set_pushed_eqs(i, orig_parent, p, frame, is_resizable, None);
 
-            let parent_id = parent.id;
-            let entry = (parent, Constraints::default());
-            orig.children_mut().unwrap().insert(i, entry);
+            let (parent, _) = orig_parent
+                .children_mut()
+                .unwrap()
+                .insert_mut(i, (parent, Constraints::default()));
+
+            p.remove_eqs(cons.drain());
+            p.add_eqs(cons.apply(&target, Some(parent)));
+            let is_resizable = target.is_resizable_on(axis, &cons);
+            target.set_pushed_eqs(0, parent, p, frame, is_resizable, None);
+            parent.children_mut().unwrap().push((target, cons));
 
             if i > 0 {
-                let (mut rect, cons) = orig.children_mut().unwrap().remove(i - 1);
+                let (mut rect, cons) = orig_parent.children_mut().unwrap().remove(i - 1);
                 let is_resizable = rect.is_resizable_on(axis, &cons);
-                rect.set_pushed_eqs(i - 1, orig, p, frame, is_resizable, None);
+                rect.set_pushed_eqs(i - 1, orig_parent, p, frame, is_resizable, None);
                 let entry = (rect, cons);
-                orig.children_mut().unwrap().insert(i - 1, entry);
+                orig_parent.children_mut().unwrap().insert(i - 1, entry);
             }
-
-            (rect, Some(cons), parent_id)
-        } else if id == self.id {
+        } else if target_id == self.id {
             let kind = Kind::middle(axis, do_cluster);
             let mut parent = Rect::new(p, on_files, kind, spawn_id, frame);
-            let parent_id = parent.id;
 
-            if let Some(info) = spawn_info {
-                let cons = std::mem::take(&mut info.cons);
+            let (mut target, cons) = if let Some(info) = spawn_info {
+                let mut cons = std::mem::take(&mut info.cons);
                 let specs = SpawnSpecs { orientation: info.orientation, .. };
 
                 p.add_eqs(info.cons.apply(&parent, None));
@@ -206,7 +210,11 @@ impl Rect {
 
                 parent.set_spawned_eqs(p, specs, deps, tl, br);
 
-                (std::mem::replace(self, parent), Some(cons), parent_id)
+                let target = std::mem::replace(self, parent);
+                p.remove_eqs(cons.drain());
+                p.add_eqs(cons.apply(&target, Some(self)));
+
+                (target, cons)
             } else {
                 parent.eqs.extend([
                     parent.tl.x() | EQ(EDGE_PRIO) | 0.0,
@@ -216,30 +224,16 @@ impl Rect {
                 ]);
                 p.add_eqs(parent.eqs.clone());
 
-                (std::mem::replace(self, parent), None, parent_id)
-            }
+                let target = std::mem::replace(self, parent);
+                (target, Constraints::default())
+            };
+
+            let is_resizable = target.is_resizable_on(axis, &cons);
+            target.set_pushed_eqs(0, self, p, frame, is_resizable, None);
+            self.children_mut().unwrap().push((target, cons));
         } else {
             return false;
         };
-
-        let parent = self.get(parent_id).unwrap();
-        let cons = match cons.map(|mut cons| {
-            p.remove_eqs(cons.drain());
-            let removed = cons.apply(&child, Some(parent));
-            (cons, removed)
-        }) {
-            Some((cons, removed)) => {
-                p.add_eqs(removed);
-                cons
-            }
-            None => Constraints::default(),
-        };
-
-        let parent = self.get_mut(parent_id).unwrap();
-        let is_resizable = child.is_resizable_on(axis, &cons);
-        child.set_pushed_eqs(0, parent, p, frame, is_resizable, None);
-
-        parent.children_mut().unwrap().push((child, cons));
 
         true
     }
@@ -940,8 +934,9 @@ impl Rect {
             && !children.is_empty()
         {
             let mut children = children.iter();
+
             if *child_axis == axis {
-                children.any(|(child, cons)| child.is_resizable_on(axis, cons))
+                children.any(|(child, cons)| child.is_resizable_on(axis, cons) && !cons.is_hidden)
             } else {
                 children.all(|(child, cons)| child.is_resizable_on(axis, cons))
             }

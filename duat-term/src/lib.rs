@@ -3,7 +3,8 @@
     debug_closure_helpers,
     thread_spawn_hook,
     default_field_values,
-    arbitrary_self_types
+    arbitrary_self_types,
+    push_mut
 )]
 use std::{
     fmt::Debug,

@@ -204,7 +204,10 @@ impl<'a> FwdIter<'a> {
                 *self = FwdIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
-            RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::SpawnedWidget(..)
+            RawTag::MainCaret(_)
+            | RawTag::ExtraCaret(_)
+            | RawTag::Spacer(_)
+            | RawTag::SpawnedWidget(..)
                 if b < self.init_point.byte() => {}
             _ => return false,
         }
@@ -401,7 +404,10 @@ impl<'a> RevIter<'a> {
                 *self = RevIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
-            RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::SpawnedWidget(..)
+            RawTag::MainCaret(_)
+            | RawTag::ExtraCaret(_)
+            | RawTag::Spacer(_)
+            | RawTag::SpawnedWidget(..)
                 if b > self.init_point.byte() => {}
             _ => return false,
         }

@@ -239,11 +239,6 @@ impl StatusLineFmt {
             ..self
         }
     }
-
-    /// The [`PushSpecs`] in use
-    pub fn specs(&self) -> PushSpecs {
-        self.specs
-    }
 }
 
 mod macros {
