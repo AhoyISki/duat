@@ -3,9 +3,10 @@ use duat_core::{
     buffer::Buffer,
     context::Handle,
     data::Pass,
-    text::{Point, Searcher, Text, txt},
+    text::{Searcher, Text, txt},
 };
 
+/// Selects matches from within every cursor
 #[derive(Clone, Copy)]
 pub(crate) struct Select;
 
@@ -14,17 +15,10 @@ impl IncSearcher for Select {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             if let Some(anchor) = c.anchor() {
-                let ranges: Vec<[Point; 2]> = c.search_inc_fwd(Some(anchor)).collect();
+                let ranges: Vec<_> = c.search_inc_fwd(Some(anchor)).collect();
 
-                for (i, &[p0, p1]) in ranges.iter().enumerate() {
-                    c.move_to(p0);
-                    if p1.char() > p0.char() + 1 {
-                        c.set_anchor();
-                        c.move_to(p1);
-                        c.move_hor(-1);
-                    } else {
-                        c.unset_anchor();
-                    }
+                for (i, range) in ranges.iter().enumerate() {
+                    c.move_to(range.clone());
                     if i < ranges.len() - 1 {
                         c.copy();
                     }
@@ -38,6 +32,7 @@ impl IncSearcher for Select {
     }
 }
 
+/// Splits selections on every cursor
 #[derive(Clone, Copy)]
 pub(crate) struct Split;
 
@@ -46,25 +41,20 @@ impl IncSearcher for Split {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             if let Some(anchor) = c.anchor() {
-                let ranges: Vec<Point> = c.search_inc_fwd(Some(anchor)).flatten().collect();
+                let ranges: Vec<usize> = c
+                    .search_inc_fwd(Some(anchor))
+                    .flat_map(|r| [r.start, r.end])
+                    .collect();
+
                 let cursors_to_add = ranges.len() / 2 + 1;
-                let iter = [c.caret()]
+                let iter = [c.caret().byte()]
                     .into_iter()
                     .chain(ranges)
-                    .chain([anchor])
+                    .chain([anchor.byte()])
                     .array_chunks();
 
                 for (i, [p0, p1]) in iter.enumerate() {
-                    c.move_to(p0);
-                    if p1.char() > p0.char() + 1 {
-                        c.set_anchor();
-                        c.move_to(p1);
-                        c.move_hor(-1);
-                    } else if p1 > p0 {
-                        c.unset_anchor();
-                    } else {
-                        continue;
-                    }
+                    c.move_to(p0..p1);
                     if i < cursors_to_add {
                         c.copy();
                     }
@@ -75,5 +65,29 @@ impl IncSearcher for Split {
 
     fn prompt(&self) -> Text {
         txt!("[prompt]split")
+    }
+}
+
+/// Keeps/removes only the cursors that match the predicate
+#[derive(Clone, Copy)]
+pub(crate) struct KeepMatching(pub bool);
+
+impl IncSearcher for KeepMatching {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+        let keep = self.0;
+
+        handle.edit_all(pa, |mut c| {
+            c.set_caret_on_start();
+            if c.search_inc_fwd(Some(c.range().end)).next().is_some() != keep {
+                c.destroy();
+            }
+        });
+    }
+
+    fn prompt(&self) -> Text {
+        match self.0 {
+            true => txt!("[prompt]keep matching"),
+            false => txt!("[prompt]keep not matching"),
+        }
     }
 }

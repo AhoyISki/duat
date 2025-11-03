@@ -17,7 +17,7 @@ use treesitter::TsCursor;
 
 use crate::{
     Category, Memoized, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
-    inc_searchers::{Select, Split},
+    inc_searchers::{KeepMatching, Select, Split},
     insert::INSERT_TABS,
     one_key::OneKey,
     select_to_end_of_line, set_anchor_if_needed,
@@ -369,9 +369,7 @@ impl Mode for Normal {
 
             ////////// Insertion mode keys
             event!('i') => {
-                handle.edit_all(pa, |mut c| {
-                    c.set_caret_on_start();
-                });
+                handle.edit_all(pa, |mut c| _ = c.set_caret_on_start());
                 mode::set(crate::Insert::new());
             }
             event!('I') => {
@@ -466,12 +464,8 @@ impl Mode for Normal {
 
             ////////// Advanced selection manipulation
             alt!(';') => handle.edit_all(pa, |mut c| c.swap_ends()),
-            event!(';') => handle.edit_all(pa, |mut c| {
-                c.unset_anchor();
-            }),
-            alt!(':') => handle.edit_all(pa, |mut c| {
-                c.set_caret_on_end();
-            }),
+            event!(';') => handle.edit_all(pa, |mut c| _ = c.unset_anchor()),
+            alt!(':') => handle.edit_all(pa, |mut c| _ = c.set_caret_on_end()),
             event!(')') => handle.selections_mut(pa).rotate_main(1),
             event!('(') => handle.selections_mut(pa).rotate_main(-1),
             // TODO: Implement parameter
@@ -781,6 +775,9 @@ impl Mode for Normal {
             alt!('?') => mode::set(IncSearch::new(ExtendRev)),
             event!('s') => mode::set(IncSearch::new(Select)),
             event!('S') => mode::set(IncSearch::new(Split)),
+            alt!('k') => mode::set(IncSearch::new(KeepMatching(true))),
+            alt!('K') => mode::set(IncSearch::new(KeepMatching(false))),
+
             event!(char @ ('n' | 'N')) | alt!(char @ ('n' | 'N')) => {
                 let search = SEARCH.lock().unwrap();
                 if search.is_empty() {

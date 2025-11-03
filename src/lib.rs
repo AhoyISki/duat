@@ -82,7 +82,12 @@
 //!
 //! </details>
 //!
-//! ### Changing text
+//! <details>
+//! <summary>
+//! 
+//! ### Text modification
+//!
+//! </summary>
 //!
 //! `i`\
 //! Enter `insert` mode before selections, keys inserted (except for
@@ -161,6 +166,8 @@
 //! `|`\
 //! Changes mode to [`PipeSelections`], letting you pipe each
 //! selection to an external program.
+//!
+//! </details>
 //!
 //! ### Incremental Search
 //!
