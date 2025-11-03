@@ -21,5 +21,5 @@ package = "duat-treesitter"
 
 [dependencies.jump-list]
 git = "https://github.com/AhoyISki/duat-jump-list"
-version = "0.1.0"
+version = "0.2.0"
 package = "duat-jump-list"
