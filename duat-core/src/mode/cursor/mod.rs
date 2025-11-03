@@ -890,11 +890,22 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 
     /// The [`Point`] range of the [`Selection`]
+    ///
+    /// This is an _inclusive_ range (not Rust's [`RangeInclusive`]
+    /// however), this means that, even if there is no anchor, the
+    /// lenght of this range will always be at least 1.
+    ///
+    /// If you want an exclusive range, see [`Cursor::range_excl`]
+    ///
+    /// [`RangeInclusive`]: std::ops::RangeInclusive
     pub fn range(&self) -> Range<Point> {
         self.selection.point_range(self.text())
     }
 
     /// An exclusive [`Point`] range of the [`Selection`]
+    ///
+    /// If you wish for an inclusive range, whose length is always
+    /// greater than or equal to 1, see [`RangeInclusive`].
     pub fn range_excl(&self) -> Range<Point> {
         self.selection.point_range_excl()
     }
