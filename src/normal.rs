@@ -18,8 +18,8 @@ use treesitter::TsCursor;
 use crate::{
     Category, Memoized, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
     inc_searchers::{KeepMatching, Select, Split},
-    insert::INSERT_TABS,
     one_key::OneKey,
+    opts::INSERT_TABS,
     select_to_end_of_line, set_anchor_if_needed,
 };
 
@@ -113,13 +113,14 @@ impl Mode for Normal {
             1
         };
 
-        let param = if let event!(Char(char)) = key_event
+        let (param, param_was_set) = if let event!(Char(char)) = key_event
             && let Some(digit) = char.to_digit(10)
         {
             crate::parameter::add_to_param(pa, digit);
             return;
         } else {
-            crate::parameter::take_param(pa) as usize
+            let (param, param_was_set) = crate::parameter::take_param(pa);
+            (param as usize, param_was_set)
         };
 
         match key_event {
@@ -852,7 +853,7 @@ impl Mode for Normal {
             ////////// Other mode changing keys
             event!(':') => mode::set(RunCommands::new()),
             event!('|') => mode::set(PipeSelections::new()),
-            event!('g') if param > 1 => {
+            event!('g') if param_was_set => {
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
                     c.unset_anchor();
@@ -860,7 +861,7 @@ impl Mode for Normal {
                 })
             }
             event!('g') => mode::set(OneKey::GoTo(SelType::Normal)),
-            event!('G') if param > 1 => {
+            event!('G') if param_was_set => {
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
                     c.set_anchor_if_needed();

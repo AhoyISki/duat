@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use duat_base::widgets::Completions;
 use duat_core::{
@@ -10,11 +10,10 @@ use duat_core::{
 };
 use treesitter::TsCursor;
 
-use crate::{Normal, set_anchor_if_needed};
+use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
 #[derive(Clone)]
 pub struct Insert {
-    insert_tabs: bool,
     indent_keys: Vec<char>,
 }
 
@@ -22,19 +21,8 @@ impl Insert {
     /// Returns a new instance of Kakoune's [`Insert`]
     pub fn new() -> Self {
         Self {
-            insert_tabs: INSERT_TABS.load(Ordering::Relaxed),
             indent_keys: vec!['\n', '\t', '(', ')', '{', '}', '[', ']'],
         }
-    }
-
-    /// Returns Kakoune's [`Insert`] mode, inserting tabs
-    pub fn with_tabs(self) -> Self {
-        Self { insert_tabs: true, ..self }
-    }
-
-    /// Returns Kakoune's [`Insert`] mode, not inserting tabs
-    pub fn without_tabs(self) -> Self {
-        Self { insert_tabs: false, ..self }
     }
 
     /// Which [`char`]s, when sent, should reindent the line
@@ -84,7 +72,7 @@ impl Mode for Insert {
                         c.ts_reindent();
                     }
 
-                    if self.insert_tabs {
+                    if INSERT_TABS.load(Ordering::Relaxed) {
                         c.insert('\t');
                         c.move_hor(1);
                     } else {
@@ -101,7 +89,7 @@ impl Mode for Insert {
                         return;
                     }
 
-                    if self.insert_tabs {
+                    if INSERT_TABS.load(Ordering::Relaxed) {
                         c.insert('\t');
                         c.move_hor(1);
                     } else {
@@ -241,5 +229,3 @@ fn remove_empty_line(c: &mut Cursor) {
     c.unset_anchor();
     c.set_desired_vcol(dvcol);
 }
-
-pub(crate) static INSERT_TABS: AtomicBool = AtomicBool::new(false);

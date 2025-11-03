@@ -9,7 +9,23 @@
 //! # Keymaps
 //!
 //! On every key, if the action involves selections, unless stated
-//! otherwise, the action will take place in all selections.
+//! otherwise, it will take place in all selections.
+//!
+//! ## `Insert` mode
+//!
+//! Insert mode is the text editing mode of Duat, much like Vim's. It
+//! is also entered via various keys in `Normal` mode.
+//!
+//! On insert mode, keys are sent normally, with the exception of the
+//! following:
+//!
+//! `<Tab>` and `<S-Tab>` will do different things depending on your
+//! [tab mode].
+//!
+//! `<C-n>` and `<C-p>` go to the next and previous completion
+//! entries.
+//!
+//! `<Esc>` exits insert mode, returning to `Normal` mode`.
 //!
 //! ## `Normal` mode
 //!
@@ -19,12 +35,58 @@
 //!   used to define where lines wrap.
 //! - `WORD` characters are just any non-whitespace character.
 //!
+//! In normal mode, another factor is the `param` value, which is
+//! incremented by typing digits.  For example, if you type
+//! `10<Right>`, the selections will move 10 times to the right.
+//!
 //! <details>
 //! <summary>
 //!
 //! ### Object selection
 //!
 //! </summary>
+//!
+//! In Duat, there are various types of "objects" for selection. These
+//! get used on `Normal` mode key sequences, most notably on `<A-i>`
+//! and `<A-a>`. Each of them defines something to be selected:
+//!
+//! `b`, `(`, `)`\
+//! Inside/around parenthesis.
+//!
+//! `B`, `{`, `}`\
+//! Inside/around curly braces.
+//!
+//! `r`, `[`, `]`\
+//! Inside/around brackets.
+//!
+//! `a`, `<`, `>`\
+//! Inside/around angle brackets.
+//!
+//! `q`, `'`\
+//! Inside/around single quotes.
+//!
+//! `Q`, `"`\
+//! Inside/around double quotes.
+//!
+//! `g`, `` ` ``\
+//! Inside/around graves.
+//!
+//! `w`, `<A-w>`
+//! Inside/around `word`s and `WORD`s.
+//!
+//! `s`\
+//! Inside/around sentences.
+//!
+//! `p`\
+//! Inside/around paragraphs.
+//!
+//! `i`\
+//! Inside/around lines of equal or greater indentation.
+//!
+//! ` `\
+//! Inside/around whitespace.
+//! 
+//! </details>
 //!
 //! `h`, `<Left>`\
 //! Move left. Wraps around lines.
@@ -80,6 +142,14 @@
 //! `<A-(F|T)>{char}`\
 //! Same as `<A-(f|t)>`, but in extends the selection.
 //!
+//! `{param}g`\
+//! Goes to the `{param}`th line. If param was not set, enters `go to`
+//! mode.
+//!
+//! `{param}G`\
+//! Extends to the `{param}`th line. If param was not set, enters `go
+//! to` mode, and actions will extend.
+//!
 //! `x`\
 //! Extends selection to encompass full lines.
 //!
@@ -95,11 +165,35 @@
 //! `<A-H>`, `<S-Home>`, `<A-L>`, `<S-End>`\
 //! Same as the previous two, but extends the selection.
 //!
+//! `m`\
+//! Selects to the next pair of matching brackets.
+//!
+//! `<A-m>`\
+//! Selects the previous pair of matching brackets.
+//!
+//! `M`, <A-M>\
+//! Same as the previous two, but extends the selection.
+//!
+//! `<A-u>`\
+//! Returns to the previous state for the selections.
+//!
+//! `<A-U>`\
+//! Goes to the next state for the selections.
+//!
 //! `;`\
 //! Reduces selections to just the [caret].
 //!
 //! `<A-;>`\
 //! Flips the [caret] and [anchor] of selectionss around.
+//!
+//! `,`\
+//! Removes extra selections.
+//!
+//! `C`\
+//! Creates a selection on the column below the last one.
+//!
+//! `<A-C>`\
+//! Creates a selection on the column above the first one.
 //!
 //! `<A-:>`\
 //! Places the [caret] ahead of the [anchor] in all selections.
@@ -109,6 +203,9 @@
 //!
 //! `<A-S>`\
 //! Splits into two selections, one at each end of the selection.
+//!
+//! `<A-_>`\
+//! Merges all adjacent selections.
 //!
 //! </details>
 //!
@@ -177,6 +274,15 @@
 //!
 //! `U`\
 //! [Redoes] the next `moment`
+//!
+//! `>`\
+//! Adds indentation to the selected lines.
+//!
+//! `<`\
+//! Removes indentation to the selected lines.
+//!
+//! `<A-j>`\
+//! Merges selected lines.
 //!
 //! `` ` ``\
 //! Changes selection to lowercase.
@@ -255,6 +361,15 @@
 //! <details>
 //! <summary>
 //!
+//! ## Some motions take additional
+//!
+//! </summary>
+//!
+//! Text objects define
+//!
+//! <details>
+//! <summary>
+//!
 //! ## `goto` mode
 //!
 //! </summary>
@@ -290,6 +405,26 @@
 //!
 //! </details>
 //!
+//! <details>
+//! <summary>
+//!
+//! ## User mode
+//!
+//! </summary>
+//!
+//! In Duat, [`User`] mode is a "generalized mode", which should be
+//! used by [`Plugin`]s for key maps. For example, you could map `l`
+//! on `User` mode to do LSP related actions.
+//!
+//! Other "monolithic modes" (Vim, Helix, Emacs, etc) should make use
+//! of this [`User`] mode for the same purpose. Think of it like the
+//! leader key in (neo)vim.
+//!
+//! To enter `User` mode, you type `<Space>` in `Normal` mode.
+//!
+//! </details>
+//!
+//! [`User`]: duat_core::mode::User
 //! [kakoune]: https://github.com/mawww/kakoune
 //! [caret]: duat_core::mode::Cursor::caret
 //! [anchor]: duat_core::mode::Cursor::anchor
@@ -306,6 +441,7 @@
 //! [`duatmode::opts`]: opts
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
 //! [word chars]: duat_core::opts::Opts::extra_word_chars
+//! [tab mode]: opts::set_very_smart_tabs
 #![feature(
     iter_map_windows,
     if_let_guard,
@@ -317,7 +453,7 @@
 use std::{
     collections::HashMap,
     ops::Range,
-    sync::{LazyLock, Mutex, atomic::Ordering},
+    sync::{LazyLock, Mutex},
 };
 
 use crate::normal::Brackets;
@@ -369,8 +505,12 @@ mod parameter {
     }
 
     /// Takes the current value, leaving it empty
-    pub fn take_param(pa: &mut Pass) -> u32 {
-        std::mem::take(VALUE.write(pa)).max(1)
+    ///
+    /// The first argument is the parameter, the second one is `true`
+    /// if a parameter was set in the first place.
+    pub fn take_param(pa: &mut Pass) -> (u32, bool) {
+        let param = std::mem::take(VALUE.write(pa));
+        (param.max(1), param != 0)
     }
 
     /// [`StatusLine`] part: The parameter for Duat's modes
@@ -509,7 +649,6 @@ pub mod opts {
 ///
 /// [`Form`]: duat_core::form::Form
 pub struct DuatMode {
-    insert_tabs: bool,
     normal: Normal,
 }
 
@@ -517,33 +656,25 @@ impl DuatMode {
     /// Returns a new instance of [`DuatMode`], the plugin for
     /// kakoune-like editing
     pub fn new() -> Self {
-        Self {
-            insert_tabs: false,
-            normal: Normal::new(),
-        }
+        Self { normal: Normal::new() }
     }
 }
 
 impl DuatMode {
-    /// Makes the tab key insert `\t` instead of spaces
-    pub fn insert_tabs(self) -> Self {
-        Self { insert_tabs: true, ..self }
-    }
-
     /// Changes what is considered a "bracket" in [`Normal`] mode
     ///
     /// More specifically, this will change the behavior of keys like
-    /// `'m'` and the `'u'` object, which will now consider more
+    /// `m` and the `u` object, which will now consider more
     /// patterns when selecting.
     pub fn with_brackets<'a>(mut self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
         self.normal.set_brackets(brackets);
         self
     }
 
-    /// Makes it so the `'I'` key no longer indents the line in
+    /// Makes it so the `I` key no longer indents the line in
     /// [`Normal`] mode
     ///
-    /// By default, when you press `'I'`, the line will be reindented,
+    /// By default, when you press `I`, the line will be reindented,
     /// in order to send you to the "proper" insertion spot, not just
     /// to the first non whitespace character.
     ///
@@ -561,7 +692,7 @@ impl DuatMode {
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn f_and_t_set_search(mut self) -> Self {
-        self.normal.indent_on_capital_i = true;
+        self.normal.f_and_t_set_search = true;
         self
     }
 }
@@ -573,7 +704,6 @@ impl Plugin for DuatMode {
 
         mode::set_alt_is_reverse(true);
         mode::set_default::<Normal>(Normal::new());
-        insert::INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
 
         hook::add::<SearchPerformed>(|_, search| {
             *SEARCH.lock().unwrap() = search.to_string();
