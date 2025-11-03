@@ -61,7 +61,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         duat_core::context::set_sender(duat_tx);
     }
 
-    mode::set_default(crate::mode::Normal::new());
+    mode::set_default(crate::mode::Regular);
     mode::set_default(Pager::<LogBook>::new());
 
     // Layout hooks
@@ -229,6 +229,8 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
         Plugins::_new().require::<duat_match_pairs::MatchPairs>();
     }
+
+    duat_core::Plugins::_new().require::<duatmode::DuatMode>();
 }
 
 #[doc(hidden)]
