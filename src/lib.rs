@@ -378,7 +378,9 @@
 ///
 /// [`StatusLine`]: duat_base::widgets::StatusLine
 pub use duat_core::{
-    Lender, Plugin, Plugins, buffer, clipboard, cmd, context, data, text, ui, utils,
+    Plugin, Plugins, buffer, clipboard, cmd, context, data,
+    lender::{self, DoubleEndedLender, ExactSizeLender, Lender},
+    text, ui, utils,
 };
 
 pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
@@ -568,7 +570,7 @@ pub mod hook {
 pub mod mode {
     pub use duat_base::modes::*;
     pub use duat_core::mode::*;
-    pub use duatmode::{Insert, Normal, take_param, add_to_param};
+    pub use duatmode::{Insert, Normal, add_to_param, take_param};
 
     pub use crate::regular::Regular;
 }
@@ -589,7 +591,6 @@ pub mod state {
     //! [`status!`]: crate::widgets::status
     //! [`Cursor`]: crate::mode::Cursor
     //! [`Mode`]: crate::mode::Mode
-    //! 
     pub use duat_base::state::*;
     pub use duatmode::{duat_param, duat_param_txt};
 }

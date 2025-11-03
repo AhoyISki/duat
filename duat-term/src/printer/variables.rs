@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cassowary::Variable;
+use kasuari::Variable;
 use crossterm::{
     cursor,
     style::{Print, ResetColor, SetStyle},

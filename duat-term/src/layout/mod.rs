@@ -1,16 +1,14 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use cassowary::{Constraint, WeightedRelation::*};
 use duat_core::{
     text::SpawnId,
     ui::{Axis, Orientation, PushSpecs, SpawnSpecs},
 };
+use kasuari::{Constraint, WeightedRelation::*};
 
 pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
 use crate::{
-    AreaId, Coords, Frame,
-    area::{Coord, PrintInfo},
-    printer::{Lines, Printer},
+    AreaId, Coords, Frame, HIDDEN_PRIO, LEN_PRIO, MANUAL_LEN_PRIO, SPAWN_LEN_PRIO, area::{Coord, PrintInfo}, printer::{Lines, Printer}
 };
 
 mod rect;
@@ -935,22 +933,3 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
     }
     layout.set_constraints(id, None, None, Some(hidden));
 }
-
-/// The priority for edges for areas that must not overlap
-const EDGE_PRIO: f64 = cassowary::strength::REQUIRED;
-/// The priority for manually defined lengths
-const MANUAL_LEN_PRIO: f64 = cassowary::strength::STRONG + 2.0;
-/// The priority for lengths defined when creating Areas
-const LEN_PRIO: f64 = cassowary::strength::STRONG + 1.0;
-/// The priority for frames
-const FRAME_PRIO: f64 = cassowary::strength::STRONG;
-/// The priority for hiding things
-const HIDDEN_PRIO: f64 = cassowary::strength::STRONG - 1.0;
-/// The priority for positioning of spawned Areas
-const SPAWN_POS_PRIO: f64 = cassowary::strength::STRONG - 2.0;
-/// The priority for the length of spawned Areas
-const SPAWN_LEN_PRIO: f64 = cassowary::strength::STRONG - 3.0;
-/// The priority for the alignment of spawned Areas
-const SPAWN_ALIGN_PRIO: f64 = cassowary::strength::STRONG - 4.0;
-/// The priority for lengths that should try to be equal (a.k.a Files)
-const EQ_LEN_PRIO: f64 = cassowary::strength::STRONG - 5.0;

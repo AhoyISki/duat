@@ -3,7 +3,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use cassowary::{Expression, Variable};
+use kasuari::{Expression, Variable};
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn},
     style::ResetColor,
@@ -501,7 +501,7 @@ impl std::io::Write for Lines {
     }
 }
 
-/// A point on the screen, which can be calculated by [`cassowary`]
+/// A point on the screen, which can be calculated by [`kasuari`]
 /// and interpreted by `duat_term`.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct VarPoint {

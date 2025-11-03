@@ -76,16 +76,12 @@ impl CompletionsBuilder {
             return;
         };
 
-        let (providers, entries) = (self.providers)(handle.text(pa), 20);
-
-        let Some((start_byte, text)) = entries else {
-            return;
-        };
+        let (providers, start_byte, entries) = (self.providers)(handle.text(pa), 20);
 
         let completions = Completions {
             master: handle.clone(),
             providers,
-            text,
+            text: entries.unwrap_or_default(),
             max_height: 20,
             start_byte,
             show_without_prefix: self.show_without_prefix,
@@ -105,11 +101,16 @@ impl CompletionsBuilder {
         );
 
         self.providers = Box::new(move |text, height| {
-            let (inner, entries) = InnerProvider::new(provider, text, height);
-            let (mut providers, reserve_entries) = prev(text, height);
+            let (inner, start_byte, entries) = InnerProvider::new(provider, text, height);
+            let (mut providers, reserve_start_byte, reserve_entries) = prev(text, height);
             providers.insert(0, Box::new(inner));
 
-            (providers, entries.or(reserve_entries))
+            let start_byte = entries
+                .as_ref()
+                .and(Some(start_byte))
+                .unwrap_or(reserve_start_byte);
+
+            (providers, start_byte, entries.or(reserve_entries))
         });
     }
 }
@@ -134,9 +135,9 @@ impl Completions {
     pub fn builder(provider: impl CompletionsProvider) -> CompletionsBuilder {
         CompletionsBuilder {
             providers: Box::new(move |text, height| {
-                let (inner, entries) = InnerProvider::new(provider, text, height);
+                let (inner, start_byte, entries) = InnerProvider::new(provider, text, height);
 
-                (vec![Box::new(inner)], entries)
+                (vec![Box::new(inner)], start_byte, entries)
             }),
             show_without_prefix: true,
         }
@@ -407,7 +408,7 @@ struct InnerProvider<P: CompletionsProvider> {
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
-    fn new(mut provider: P, text: &Text, height: usize) -> (Self, Option<(usize, Text)>) {
+    fn new(mut provider: P, text: &Text, height: usize) -> (Self, usize, Option<Text>) {
         let prefix_regex = format!(r"{}\z", provider.word_regex());
         let suffix_regex = format!(r"\A{}", provider.word_regex());
         let (range, [prefix, suffix]) = preffix_and_suffix(text, [&prefix_regex, &suffix_regex]);
@@ -442,7 +443,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
         };
 
         let (start, text) = inner.text_and_replacement(text, 0, height, true);
-        (inner, Some(start).zip(text.unzip().0))
+        (inner, start, text.unzip().0)
     }
 }
 
@@ -630,4 +631,4 @@ const SPAWN_SPECS: SpawnSpecs = SpawnSpecs {
 };
 
 type ProvidersFn =
-    Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, Option<(usize, Text)>)>;
+    Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, usize, Option<Text>)>;

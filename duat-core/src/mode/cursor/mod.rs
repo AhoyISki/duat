@@ -853,6 +853,11 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         self.text().last_point()
     }
 
+    /// An [`Iterator`] over the lines the `Cursor`'s range
+    pub fn lines(&self) -> Lines<'_> {
+        self.widget.text().lines(self.range())
+    }
+
     /// An [`Iterator`] over the lines in a given [range]
     ///
     /// [range]: TextRange

@@ -1,12 +1,10 @@
-use cassowary::{
-    AddConstraintError, Expression, RemoveConstraintError, Solver, Variable, strength::STRONG,
-};
 use duat_core::{text::SpawnId, ui::Axis};
+use kasuari::{AddConstraintError, Expression, RemoveConstraintError, Solver, Variable};
 
 use super::VarPoint;
-use crate::{Equality, area::Coord};
+use crate::{Equality, SPAWN_DIMS_PRIO, SPAWN_POS_PRIO, area::Coord};
 
-/// A synchronization wrapper around the cassowary constraint
+/// A synchronization wrapper around the kasuari constraint
 /// [`Solver`]
 pub struct SyncSolver {
     solver: Solver,
@@ -19,15 +17,15 @@ impl SyncSolver {
     /// Returns a new `SyncSolver`
     ///
     /// The `SyncSolver` is responsible for efficiently adding and
-    /// removing equalities from the internal cassowayr constraint
+    /// removing equalities from the internal kasuari constraint
     /// [`Solver`], updating only once requested.
     pub fn new(max: &VarPoint, width: f64, height: f64) -> Self {
         let mut solver = Solver::new();
-        let strong = STRONG + 3.0;
-        solver.add_edit_variable(max.x(), strong).unwrap();
+        let strength = kasuari::Strength::STRONG;
+        solver.add_edit_variable(max.x(), strength).unwrap();
         solver.suggest_value(max.x(), width).unwrap();
 
-        solver.add_edit_variable(max.y(), strong).unwrap();
+        solver.add_edit_variable(max.y(), strength).unwrap();
         solver.suggest_value(max.y(), height).unwrap();
 
         SyncSolver {
@@ -55,8 +53,7 @@ impl SyncSolver {
                 Err(err) => panic!("{err:?}"),
             }
         }
-        self.solver.add_constraints(&self.eqs_to_add)?;
-        self.eqs_to_add.clear();
+        self.solver.add_constraints(self.eqs_to_add.drain(..))?;
 
         if change_max {
             let (width, height) = crossterm::terminal::size().unwrap();
@@ -163,10 +160,10 @@ impl SyncSolver {
         let len_var = variables.new_var();
 
         self.solver
-            .add_edit_variable(center_var, STRONG - 1.5)
+            .add_edit_variable(center_var, SPAWN_POS_PRIO)
             .unwrap();
         self.solver
-            .add_edit_variable(len_var, STRONG - 1.5)
+            .add_edit_variable(len_var, SPAWN_POS_PRIO)
             .unwrap();
 
         self.spawns.push(SpawnedCenter {
@@ -200,15 +197,15 @@ impl SyncSolver {
         let len_var = variables.new_var();
 
         self.solver
-            .add_edit_variable(center_var, STRONG - 2.0)
+            .add_edit_variable(center_var, SPAWN_DIMS_PRIO)
             .unwrap();
         self.solver
-            .add_edit_variable(len_var, STRONG - 2.0)
+            .add_edit_variable(len_var, SPAWN_DIMS_PRIO)
             .unwrap();
 
         let tl = VarPoint::new(variables.new_var(), variables.new_var());
-        self.solver.add_edit_variable(tl.x, STRONG - 1.0).unwrap();
-        self.solver.add_edit_variable(tl.y, STRONG - 1.0).unwrap();
+        self.solver.add_edit_variable(tl.x, SPAWN_POS_PRIO).unwrap();
+        self.solver.add_edit_variable(tl.y, SPAWN_POS_PRIO).unwrap();
 
         self.spawns.push(SpawnedCenter {
             spawn_id,

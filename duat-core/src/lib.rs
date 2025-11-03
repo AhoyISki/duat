@@ -21,7 +21,7 @@ use std::any::TypeId;
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
-pub use lender::Lender;
+pub use lender;
 use parking_lot::Mutex;
 
 pub use self::{main_thread_only::MainThreadOnly, ranges::Ranges};

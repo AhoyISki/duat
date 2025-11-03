@@ -309,7 +309,7 @@ impl std::fmt::Debug for AreaId {
     }
 }
 
-type Equality = cassowary::Constraint;
+type Equality = kasuari::Constraint;
 
 fn print_style(
     w: &mut impl Write,
@@ -518,3 +518,24 @@ impl std::hash::Hash for CStyle {
         attr.hash(state);
     }
 }
+
+/// The priority for edges for areas that must not overlap
+const EDGE_PRIO: kasuari::Strength = kasuari::Strength::REQUIRED;
+/// The priority for manually defined lengths
+const MANUAL_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(8.0);
+/// The priority for lengths defined when creating Areas
+const LEN_PRIO: kasuari::Strength = kasuari::Strength::new(7.0);
+/// The priority for frames
+const FRAME_PRIO: kasuari::Strength = kasuari::Strength::new(6.0);
+/// The priority for hiding things
+const HIDDEN_PRIO: kasuari::Strength = kasuari::Strength::new(5.0);
+/// The priority for positioning of spawned Areas
+const SPAWN_POS_PRIO: kasuari::Strength = kasuari::Strength::new(4.0);
+/// The priority for the center and len variables of spawned Areas
+const SPAWN_DIMS_PRIO: kasuari::Strength = kasuari::Strength::new(3.0);
+/// The priority for the length of spawned Areas
+const SPAWN_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(3.0);
+/// The priority for the alignment of spawned Areas
+const SPAWN_ALIGN_PRIO: kasuari::Strength = kasuari::Strength::new(2.0);
+/// The priority for lengths that should try to be equal (a.k.a Files)
+const EQ_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(1.0);

@@ -1,9 +1,5 @@
 use std::cell::Cell;
 
-use cassowary::{
-    Expression, Variable,
-    WeightedRelation::{EQ, GE, LE},
-};
 use duat_core::{
     text::SpawnId,
     ui::{
@@ -11,14 +7,15 @@ use duat_core::{
         PushSpecs, SpawnSpecs,
     },
 };
-
-use super::{
-    Constraints, EDGE_PRIO, FRAME_PRIO, Layout, SPAWN_ALIGN_PRIO, SPAWN_POS_PRIO, SpawnInfo,
+use kasuari::{
+    Expression, Variable,
+    WeightedRelation::{EQ, GE, LE},
 };
+
 use crate::{
-    AreaId, Equality, Frame,
+    AreaId, EDGE_PRIO, EQ_LEN_PRIO, Equality, FRAME_PRIO, Frame, SPAWN_ALIGN_PRIO, SPAWN_LEN_PRIO,
     area::PrintInfo,
-    layout::EQ_LEN_PRIO,
+    layout::{Constraints, Layout, SpawnInfo},
     printer::{Printer, VarPoint},
 };
 
@@ -723,8 +720,8 @@ impl Rect {
 
         self.eqs.extend([
             align_eq,
-            ends[0] | EQ(SPAWN_POS_PRIO) | (center - len / 2.0),
-            ends[1] | EQ(SPAWN_POS_PRIO) | (center + len / 2.0),
+            ends[0] | EQ(SPAWN_LEN_PRIO) | (center - len / 2.0),
+            ends[1] | EQ(SPAWN_LEN_PRIO) | (center + len / 2.0),
         ]);
 
         p.add_eqs(self.eqs.clone());
