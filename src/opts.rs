@@ -66,6 +66,7 @@ use duat_base::widgets::{LineNumbersOpts, LogBookOpts, StatusLineFmt};
 use duat_core::data::Pass;
 #[allow(unused_imports)]
 pub use duat_core::opts::*;
+pub use duatmode::opts::*;
 
 use crate::widgets::NotificationsOpts;
 
