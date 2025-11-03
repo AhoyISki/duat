@@ -271,13 +271,12 @@ impl Buffer {
         self.text.len().line()
     }
 
-    /// The [`Selections`] that are used on the [`Text`], if they
-    /// exist
+    /// The [`Selections`] that are used on the [`Text`]
     pub fn selections(&self) -> &Selections {
         self.text.selections()
     }
 
-    /// A mutable reference to the [`Selections`], if they exist
+    /// A mutable reference to the [`Selections`]
     pub fn selections_mut(&mut self) -> &mut Selections {
         self.text.selections_mut()
     }

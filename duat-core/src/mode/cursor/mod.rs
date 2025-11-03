@@ -1134,6 +1134,8 @@ impl CaretOrRange for Range<Point> {
             if self.end < cursor.widget.text().len() {
                 cursor.move_hor(-1);
             }
+        } else {
+            cursor.unset_anchor();
         }
     }
 }
@@ -1164,6 +1166,8 @@ impl CaretOrRange for RangeFrom<Point> {
                 .selection
                 .move_to(cursor.widget.text().len(), cursor.widget.text());
             cursor.move_hor(-1);
+        } else {
+            cursor.unset_anchor();
         }
     }
 }
@@ -1176,6 +1180,8 @@ impl CaretOrRange for RangeTo<Point> {
             cursor.set_anchor();
             cursor.selection.move_to(self.end, cursor.widget.text());
             cursor.move_hor(-1);
+        } else {
+            cursor.unset_anchor();
         }
     }
 }
@@ -1220,6 +1226,8 @@ impl CaretOrRange for Range<usize> {
             if self.end < cursor.widget.text().len().byte() {
                 cursor.move_hor(-1);
             }
+        } else {
+            cursor.unset_anchor();
         }
     }
 }
@@ -1257,6 +1265,8 @@ impl CaretOrRange for RangeFrom<usize> {
                 .selection
                 .move_to(cursor.widget.text().len(), cursor.widget.text());
             cursor.move_hor(-1);
+        } else {
+            cursor.unset_anchor();
         }
     }
 }
@@ -1272,6 +1282,8 @@ impl CaretOrRange for RangeTo<usize> {
                 cursor.widget.text(),
             );
             cursor.move_hor(-1);
+        } else {
+            cursor.unset_anchor();
         }
     }
 }
@@ -1292,9 +1304,11 @@ impl CaretOrRange for RangeFull {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
-        cursor.set_anchor();
-        cursor
-            .selection
-            .move_to(cursor.widget.text().len(), cursor.widget.text());
+        if cursor.text().len() > Point::default() {
+            cursor.set_anchor();
+            cursor
+                .selection
+                .move_to(cursor.widget.text().len(), cursor.widget.text());
+        }
     }
 }

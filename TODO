@@ -64,11 +64,12 @@ KNOWN BUGS:
   [ ] Perfect print iterators.
     [ ] Perfect words iterator.
   [ ] tree-sitter-duat-text is not being used.
-  [ ] Locking a Mutex on every Change is surely slow.
   [ ] std::mem::replace (grrrr...).
   [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
 
 FUTURE UPDATES:
+[ ] Get rid of Text::selections_mut
+[ ] Locking a Mutex on every Change is surely slow.
 [ ] Stop eagerly merging Selections.
 [ ] Lazily evaluate height and width, including when pushing and spawning.
 [ ] Get started on a Vim mode.
