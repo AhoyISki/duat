@@ -8,32 +8,21 @@
 //! and `caret.extra` forms to mode specific variants, c.g.
 //! `caret.main.Insert`.
 //!
-//! # Installation
-//!
-//! Just like other Duat plugins, this one can be installed by calling
-//! `cargo add` in the config directory:
-//!
-//! ```bash
-//! cargo add duat-kak@"*" --rename kak
-//! ```
-//!
-//! Or, if you are using a `--git-deps` version of duat, do this:
-//!
-//! ```bash
-//! cargo add --git https://github.com/AhoyISki/duat-kak --rename kak
-//! ```
+//! This plugin is included in Duat by default, as it is considered
+//! part of it's identity, it's exports can be found in the
+//! [`duat::mode`] module.
 //!
 //! # Keymaps
 //!
-//! This is a list of _currently_ mapped keys, not the ones that
-//! appear in Kakoune.
+//! This is a list of _currently_ mapped keys, largely inspired by
+//! those from Kakoune.
 //!
 //! When reading keys, they follow Duat's [mapping] rules, that is:
 //!
 //! - `<A-{key}>` is a chord of `Alt + {key}`, same with `<C-{key}>`
 //!   and `Control` and `<S-{key}>` with `Shift` (although that one is
 //!   not usually needed).
-//! - Special keys are enclosed in `<` `>` pairs (c.g. `<Home>`).
+//! - Special keys are enclosed in `<` `>` pairs (e.g. `<Home>`).
 //! - Multiple keys in a row represent a sequence.
 //!
 //! In any mode, the `<Esc>` key will take you back to `normal` mode.
@@ -271,10 +260,11 @@
 //! [Redoes]: duat_core::text::Text::redo
 //! [`Buffer`]: duat_core::buffer::Buffer
 //! [`Cargo.toml`'s `dependencies` section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
-//! [`IncSearch`]: duat_utils::modes::IncSearch
-//! [`IncSearcher`]: duat_utils::modes::IncSearcher
-//! [`PipeSelections`]: duat_utils::modes::PipeSelections
+//! [`IncSearch`]: duat_base::modes::IncSearch
+//! [`IncSearcher`]: duat_base::modes::IncSearcher
+//! [`PipeSelections`]: duat_base::modes::PipeSelections
 //! [mapping]: duat_core::mode::map
+//! [`duat::mode`]: https://docs.rs/duat/latest/duat/mode
 #![feature(
     iter_map_windows,
     if_let_guard,
@@ -342,7 +332,7 @@ mod parameter {
     pub fn param_txt() -> DataMap<u32, Text> {
         VALUE.map(|value| {
             if *value > 0 {
-                txt!("[kak.param]param={value}[]")
+                txt!("[duat.param]param={value}[]")
             } else {
                 Text::default()
             }
@@ -350,10 +340,10 @@ mod parameter {
     }
 }
 
-/// The [`Plugin`] for the kakoune [`Mode`]s
+/// The [`Plugin`] for `duatmode`
 ///
-/// This [`Plugin`] will change the default mode to one based on
-/// Kakoune's [`Normal`].
+/// This [`Plugin`] will change the default mode to `duatmode`'s
+/// [`Normal`].
 ///
 /// It also adds a hook to automatically change the forms of the
 /// cursors when the mode changes. This is the pattern that the forms
@@ -370,15 +360,15 @@ mod parameter {
 /// [`Kak::dont_set_cursor_forms`].
 ///
 /// [`Form`]: duat_core::form::Form
-pub struct Kak {
+pub struct DuatMode {
     set_cursor_forms: bool,
     insert_tabs: bool,
     normal: Normal,
 }
 
-impl Kak {
-    /// Returns a new instance of [`Kak`], the plugin for kakoune-like
-    /// editing
+impl DuatMode {
+    /// Returns a new instance of [`DuatMode`], the plugin for
+    /// kakoune-like editing
     pub fn new() -> Self {
         Self {
             set_cursor_forms: true,
@@ -388,7 +378,7 @@ impl Kak {
     }
 }
 
-impl Kak {
+impl DuatMode {
     /// Stop the automatic setting of cursor [`Form`]s
     ///
     /// [`Form`]: duat_core::form::Form
@@ -434,7 +424,7 @@ impl Kak {
     }
 }
 
-impl Plugin for Kak {
+impl Plugin for DuatMode {
     fn plug(self, plugins: &Plugins) {
         plugins.require::<jump_list::JumpList>();
         plugins.require::<treesitter::TreeSitter>();
@@ -456,7 +446,7 @@ impl Plugin for Kak {
     }
 }
 
-impl Default for Kak {
+impl Default for DuatMode {
     fn default() -> Self {
         Self::new()
     }

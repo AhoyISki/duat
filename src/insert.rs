@@ -25,7 +25,7 @@ impl Insert {
         Self {
             insert_tabs: INSERT_TABS.load(Ordering::Relaxed),
             indent_keys: vec!['\n', '\t', '(', ')', '{', '}', '[', ']'],
-            tab_mode: TabMode::Smart,
+            tab_mode: TabMode::VerySmart,
         }
     }
 

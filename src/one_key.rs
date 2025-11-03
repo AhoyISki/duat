@@ -1,7 +1,11 @@
 use std::sync::{LazyLock, Mutex};
 
 use duat_core::{
-    buffer::Buffer, cmd, context::{self, Handle}, data::Pass, mode::{self, KeyEvent, KeyMod, Mode, event}
+    buffer::Buffer,
+    cmd,
+    context::{self, Handle},
+    data::Pass,
+    mode::{self, KeyEvent, KeyMod, Mode, event},
 };
 
 use crate::{
@@ -123,10 +127,10 @@ fn match_goto(
                 *LAST_FILE.lock().unwrap() = Some(cur_name)
             }
         }),
-        KeyEvent { code, .. } => {
-            let code = format!("{code:?}");
-            context::warn!("Key [a]{code}[] not mapped on [a]go to")
-        }
+        key_event => context::warn!(
+            "[a]{}[] not mapped on [a]go to",
+            duat_core::mode::keys_to_string(&[key_event])
+        ),
     }
 
     sel_type
