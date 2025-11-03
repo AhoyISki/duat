@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use duat_base::modes::{IncSearch, RunCommands, SearchFwd};
 use duat_core::{
-    Lender,
+    lender::Lender,
     mode::{ctrl, shift},
 };
 #[cfg(feature = "treesitter")]
