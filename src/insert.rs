@@ -16,7 +16,6 @@ use crate::{Normal, set_anchor_if_needed};
 pub struct Insert {
     insert_tabs: bool,
     indent_keys: Vec<char>,
-    tab_mode: TabMode,
 }
 
 impl Insert {
@@ -25,7 +24,6 @@ impl Insert {
         Self {
             insert_tabs: INSERT_TABS.load(Ordering::Relaxed),
             indent_keys: vec!['\n', '\t', '(', ')', '{', '}', '[', ']'],
-            tab_mode: TabMode::VerySmart,
         }
     }
 
@@ -77,7 +75,7 @@ impl Mode for Insert {
             // Autocompletion commands
             ctrl!('n') => Completions::scroll(pa, 1),
             ctrl!('p') | shift!(BackTab) => Completions::scroll(pa, -1),
-            event!(Tab) => match (self.tab_mode, handle.selections(pa).len() > 1) {
+            event!(Tab) => match (crate::opts::get_tab_mode(), handle.selections(pa).len() > 1) {
                 (TabMode::Normal, _) => handle.edit_all(pa, |mut c| {
                     if self.indent_keys.contains(&'\t') {
                         c.ts_reindent();
@@ -94,11 +92,10 @@ impl Mode for Insert {
                 }),
                 (TabMode::Smart, _) | (TabMode::VerySmart, true) => handle.edit_all(pa, |mut c| {
                     let char_col = c.v_caret().char_col();
-                    if self.indent_keys.contains(&'\t') || char_col <= c.indent() {
-                        c.ts_reindent();
-                        if c.indent() > 0 {
-                            return;
-                        }
+                    if (self.indent_keys.contains(&'\t') || char_col <= c.indent())
+                        && c.ts_reindent()
+                    {
+                        return;
                     }
 
                     if self.insert_tabs {
@@ -121,7 +118,6 @@ impl Mode for Insert {
                         Completions::scroll(pa, 1);
                     }
                 }
-                _ => todo!(),
             },
 
             // Regular commands
@@ -218,11 +214,10 @@ impl Mode for Insert {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum TabMode {
+pub(crate) enum TabMode {
     Normal,
     Smart,
     VerySmart,
-    HyperSmart,
 }
 
 /// removes an empty line

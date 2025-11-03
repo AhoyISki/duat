@@ -369,6 +369,87 @@ mod parameter {
     }
 }
 
+pub mod opts {
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use crate::insert::TabMode;
+
+    pub(crate) static INSERT_TABS: AtomicBool = AtomicBool::new(false);
+    pub(crate) static TABMODE: Mutex<TabMode> = Mutex::new(TabMode::VerySmart);
+
+    /// Makes the `Tab` key insert tabs as opposed to spaces
+    ///
+    /// Do note that this option interacts with the options for
+    /// [normal], [smart], and [very smart] tabs, the default being
+    /// very smart tabs.
+    ///
+    /// [normal]: set_normal_tabs
+    /// [smart]: set_smart_tabs
+    /// [very smart]: set_very_smart_tabs
+    pub fn insert_tabs(insert_tabs: bool) {
+        INSERT_TABS.store(insert_tabs, Ordering::Relaxed);
+    }
+
+    /// Sets the `Tab` mode to normal
+    ///
+    /// With this setting, the `Tab` key is just a regular tab key,
+    /// and will insert [spaces or a tab], no matter where the caret
+    /// is.
+    ///
+    /// The default is the [very smart mode].
+    ///
+    /// [very smart mode]: set_very_smart_tabs
+    /// [spaces or a tab]: insert_tabs
+    pub fn set_normal_tabs() {
+        *TABMODE.lock().unwrap() = TabMode::Normal
+    }
+
+    /// Sets the `Tab` mode to smart
+    ///
+    /// With this setting, if you press the `Tab` key at the leading
+    /// spaces of a line, then the line will be reindented to the
+    /// appropriate indentation, given the treesitter indentation
+    /// query.
+    ///
+    /// If you press it and the indentation is not changed by that,
+    /// then [spaces or a tab] will be inserted at the current
+    /// position.
+    ///
+    /// The default is the [very smart mode].
+    ///
+    /// [very smart mode]: set_very_smart_tabs
+    /// [spaces or a tab]: insert_tabs
+    pub fn set_smart_tabs() {
+        *TABMODE.lock().unwrap() = TabMode::Smart
+    }
+
+    /// Sets the `Tab` mode to very smart
+    ///
+    /// With this setting, if there are multiple selections, this mode
+    /// will act exactly like [smart tabs].
+    ///
+    /// However, if there is just one selection, then it will try to
+    /// reindent the line if the caret is on leading whitespace. If
+    /// that fails, or the indentation doesn't change, then it will
+    /// [scroll to the next completion entry].
+    ///
+    /// This is the default tab mode.
+    ///
+    /// [smart tabs]: set_smart_tabs
+    /// [scroll to the next completion entry]: duat_base::widgets::Completions::scroll
+    pub fn set_very_smart_tabs() {
+        *TABMODE.lock().unwrap() = TabMode::VerySmart
+    }
+
+    /// The current [`TabMode`]
+    pub(crate) fn get_tab_mode() -> TabMode {
+        *TABMODE.lock().unwrap()
+    }
+}
+
 /// The [`Plugin`] for `duatmode`
 ///
 /// This [`Plugin`] will change the default mode to `duatmode`'s
@@ -430,7 +511,8 @@ impl DuatMode {
         self
     }
 
-    /// Makes it so the `'I'` key no longer indents the line
+    /// Makes it so the `'I'` key no longer indents the line in
+    /// [`Normal`] mode
     ///
     /// By default, when you press `'I'`, the line will be reindented,
     /// in order to send you to the "proper" insertion spot, not just
