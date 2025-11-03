@@ -4,7 +4,8 @@
     iterator_try_collect,
     try_blocks,
     cfg_select,
-    trim_prefix_suffix
+    trim_prefix_suffix,
+    iter_intersperse
 )]
 
 use std::{
@@ -416,8 +417,8 @@ fn decide_on_new_config(
     };
 
     if init_config || config_is_empty {
-        const CONFIG_LIB: &str = include_str!("../templates/config/lib.rs");
-        const CONFIG_TOML: &str = include_str!("../templates/config/Cargo_.toml");
+        const SRC_LIB_RS: &str = include_str!("../templates/config/lib.rs");
+        const MANIFEST: &str = include_str!("../templates/config/Cargo_.toml");
 
         if config_is_empty ^ init_config {
             if config_is_empty {
@@ -442,8 +443,18 @@ fn decide_on_new_config(
 
         clear_path(crate_dir);
         std::fs::create_dir_all(crate_dir.join("src"))?;
-        std::fs::write(crate_dir.join("Cargo.toml"), CONFIG_TOML)?;
-        std::fs::write(crate_dir.join("src").join("lib.rs"), CONFIG_LIB)?;
+        std::fs::write(crate_dir.join("src").join("lib.rs"), SRC_LIB_RS)?;
+
+        if cfg!(feature = "git-deps") {
+            let manifest: String = MANIFEST
+                .lines()
+                .filter(|line| !line.starts_with("git = \""))
+                .intersperse("\n")
+                .collect();
+            std::fs::write(crate_dir.join("Cargo.toml"), manifest)?;
+        } else {
+            std::fs::write(crate_dir.join("Cargo.toml"), MANIFEST)?;
+        }
     }
 
     Ok(false)
@@ -580,25 +591,30 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
              might cause some confusion"
         );
     }
+
     let snake_name = name.to_case(Case::Snake);
-    let pascal_name = snake_name.trim_prefix("duat_").to_case(Case::Pascal);
+    let pascal_name = snake_name.to_case(Case::Pascal);
     let plugin_dir = PathBuf::from(&kebab_name);
     std::fs::create_dir(&plugin_dir)?;
     std::fs::create_dir(plugin_dir.join("src"))?;
     let repo = args.repository.unwrap_or("{repository_url}".to_string());
     let author = args.author.unwrap_or("{author_name}".to_string());
+
     let toml = PLUGIN_TOML
         .replace("plugin-name", &kebab_name)
         .replace("{repository_url}", &repo)
         .replace("{author_name}", &author);
+
     let readme = PLUGIN_README
         .replace("plugin-name", &kebab_name)
         .replace("plugin_name", &snake_name)
         .replace("PluginName", &pascal_name)
         .replace("{repository_url}", &repo);
+
     let lib = PLUGIN_LIB
         .replace("plugin_name", &snake_name)
         .replace("PluginName", &pascal_name);
+
     std::fs::write(plugin_dir.join("Cargo.toml"), toml)?;
     std::fs::write(plugin_dir.join("README.md"), readme)?;
     std::fs::write(plugin_dir.join("src").join("lib.rs"), lib)?;

@@ -377,7 +377,6 @@
 /// Common [`StatusLine`] fields
 ///
 /// [`StatusLine`]: duat_base::widgets::StatusLine
-pub use duat_base::state;
 pub use duat_core::{
     Lender, Plugin, Plugins, buffer, clipboard, cmd, context, data, text, ui, utils,
 };
@@ -569,8 +568,30 @@ pub mod hook {
 pub mod mode {
     pub use duat_base::modes::*;
     pub use duat_core::mode::*;
+    pub use duatmode::{Insert, Normal, take_param, add_to_param};
 
     pub use crate::regular::Regular;
+}
+
+pub mod state {
+    //! Common items in a [`StatusLine`]
+    //!
+    //! These functions are meant to be simple to use, you can just
+    //! put them inside a [`status!`] macro, and they will be
+    //! understood with no other meddling.
+    //!
+    //! Examples of functions in here are [`main_txt`], which will
+    //! show a formatted version of the main [`Cursor`], and
+    //! [`mode_txt`] which will show a formatted version of the
+    //! current [`Mode`] of Duat.
+    //!
+    //! [`StatusLine`]: crate::widgets::StatusLine
+    //! [`status!`]: crate::widgets::status
+    //! [`Cursor`]: crate::mode::Cursor
+    //! [`Mode`]: crate::mode::Mode
+    //! 
+    pub use duat_base::state::*;
+    pub use duatmode::{duat_param, duat_param_txt};
 }
 
 /// Duat's builtin widgets
@@ -629,8 +650,8 @@ pub mod prelude {
             WidgetCreated, WindowCreated,
         },
         mode::{
-            self, KeyCode, KeyEvent, Mode, Pager, Prompt, Selection, Selections, User, alias, alt,
-            ctrl, event, map, shift,
+            self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
+            User, alias, alt, ctrl, event, map, shift,
         },
         opts::{self, ScrollOff},
         setup_duat,
@@ -751,33 +772,6 @@ mod book;
 /// #         pub fn new() -> Self { Self }
 /// #     }
 /// #     impl Plugin for Catppuccin {
-/// #         fn plug(self, _: &duat_core::Plugins) {}
-/// #     }
-/// # }
-/// # mod duat_kak {
-/// #     use duat::{prelude::{*, mode::KeyEvent}};
-/// #     #[derive(Clone)]
-/// #     pub struct Normal;
-/// #     impl Mode for Normal {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {
-/// #             todo!();
-/// #         }
-/// #     }
-/// #     #[derive(Clone)]
-/// #     pub struct Insert;
-/// #     impl Mode for Insert {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {
-/// #             todo!();
-/// #         }
-/// #     }
-/// #     #[derive(Default)]
-/// #     pub struct Kak;
-/// #     impl Kak {
-/// #         pub fn new() -> Self { Self }
-/// #     }
-/// #     impl Plugin for Kak {
 /// #         fn plug(self, _: &duat_core::Plugins) {}
 /// #     }
 /// # }

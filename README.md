@@ -37,12 +37,11 @@ welcome 🥰.
 
 ### Getting started
 
- > 
- > [!NOTE]
- > 
- > On this section, I will be referring to duat’s configuration by
- > `~/.config/duat/`, but you should replace it with your operating
- > system’s config path.
+## Note
+
+On this section, I will be referring to duat’s configuration by
+`~/.config/duat/`, but you should replace it with your operating
+system’s config path.
 
 To install Duat, I am assuming that you have `cargo` installed on
 your system, if you don’t, [install it][__link0].
@@ -95,13 +94,13 @@ cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
 
 ### Configuration
 
-In the configuration file, there should be a `setup_duat!` macro,
-which takes in a function with no parameters.
+In the configuration’s `src/lib.rs`, there should be a
+`setup_duat!` macro, which takes in a function with no parameters.
 
 This function is the setup for duat, and it can be empty, which is
 the equivalent of the default configuration for Duat.
 
-Here’s an example configuration file, which makes use of the
+Here’s an example configuration buffer, which makes use of the
 `duat-kak` crate, which is a plugin for Duat. This plugin, like
 all others, is included without the `duat_` prefix, so in the
 config it is just `kak`.
@@ -112,25 +111,22 @@ use duat::prelude::*;
 
 fn setup() {
     plug(kak::Kak::new());
+
     map::<kak::Insert>("jk", "<Esc>");
 
-    print::wrap_on_edge();
-
-    hook::add::<LineNumbers>(|pa, handle| {
-        handle.write(pa).align = std::fmt::Alignment::Right;
-        Ok(())
+    opts::set(|opts| {
+        opts.wrap_lines = true;
+        opts.scrolloff.y = 5;
     });
 
-    hook::add::<StatusLine>(|pa, handle| {
-        let upper_mode = mode_name(pa).map(pa, |m| match m.split_once('<') {
-            Some((no_generics, _)) => no_generics.to_uppercase(),
-            None => m.to_uppercase(),
-        });
+    opts::set_lines(|opts| {
+        opts.align = std::fmt::Alignment::Right;
+    });
 
-        handle.write(pa).fmt(status!(
-            "[Mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}"
-        ));
-        Ok(())
+    opts::set_status(|pa| {
+        let upper_mode = mode_name().map(|m| m.to_uppercase());
+
+        status!("[mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}")
     });
 
     hook::add::<ModeSwitched>(|_, (_, new)| {
@@ -141,44 +137,40 @@ fn setup() {
         Ok(())
     });
 
-    form::set("Mode", Form::dark_magenta());
+    form::set("mode", Form::dark_magenta());
 }
 ```
 
 This configuration does the following things:
 
-* [plugs][__link2] the `Kak` plugin, which changes the [default mode][__link3];
-* [Maps][__link4] jk to esc in the `Insert` mode;
-* [Changes][__link5] the wrapping;
-* Changes the alignment of the [`LineNumbers`][__link6] [`Widget`][__link7];
-* Changes the [status line][__link8] (with a [Spacer][__link9] for 2 separate sides,
-  and a reformatted [`mode_name`][__link10]);
-* [Adds][__link11] hooks for [mode changes][__link12] in Duat, which change the shape
+* plugs the `Kak` plugin, which changes the [default mode][__link2];
+* [Maps][__link3] jk to esc in the `Insert` mode;
+* Sets [options][__link4] for the `Buffer`, `LineNumbers` and `StatusLine`
+* [Adds][__link5] hooks for [mode changes][__link6] in Duat, which change the shape
   of the cursor;
-* [Changes][__link13] the [style][__link14] of the mode printed on the
+* [Changes][__link7] the [style][__link8] of the mode printed on the
   status line;
 
 These are only some of the options available to configure Duat,
-you can also add [custom commands][__link15], place widgets around other
-[`Widget`][__link16]s and [windows][__link17], create
-[`Parser`][__link18]s that can track every change on a [`File`][__link19], and many
-other things.
+you can also add [custom commands][__link9], place widgets around other
+[`Widget`][__link10]s and [windows][__link11], create [`Parser`][__link12]s that can track every
+change on a [`Buffer`][__link13], and many other things.
 
-Duat also comes with a fully fledged [text creation system][__link20], which
-significantly eases the creation of widgets and inline hints:
+Duat also comes with a fully fledged [text creation system][__link14], which
+significantly eases the creation of highly formatted text:
 
 ```rust
 let infix = "text";
 
-let text = txt!("This {infix} is [form1]colored and {Spacer} distant").build();
+let text = txt!("This {infix} is [form1]colored and {Spacer} distant");
 ```
 
 In the example above, `[form1]` will change the style of the text
-to the `"form1"` [`Form`][__link21], while `{Spacer}` will place a [spacer][__link22] in
-between the two parts of the text (See the status line in the GIF,
-it uses spacers).
+to the `"form1"` [`Form`][__link15], while `{Spacer}` will place a [spacer][__link16]
+in between the two parts of the text (See the status line in the
+GIF, it uses spacers).
 
-This macro works very similarly to the [`format!`][__link23] family of
+This macro works very similarly to the [`format!`][__link17] family of
 macros, so you also have inlining, as you can see with the
 `{infix}` part. All of this is, of course, checked at compile
 time.
@@ -204,41 +196,37 @@ change without the plugins being aware of those changes.
 In this case, you should open an issue with the error message that
 `cargo build --release` sent you.
 
-### It’s still segfaulting as I reopen!
+### It’s segfaulting as I reopen!
 
 This is an indication that your installed version of duat became
 incompatible with that of your config. Rerun the installation
-process, no need to remove `~/.config/duat`.
-
-### It’s still segfaulting!
-
-In that case open an issue
+process and call `duat --reload`.
 
 ## Default plugins
 
 When you install duat, the default config crate will come with
 the following plugins:
 
-* [`duat-kak`][__link24] is a plugin that changes the default mode of Duat
-  to one inspired by [Kakoune][__link25]’s “Normal”, also bringing with it
+* [`duat-kak`][__link18] is a plugin that changes the default mode of Duat
+  to one inspired by [Kakoune][__link19]’s “Normal”, also bringing with it
   various other modes from Kakoune.
-* [`duat-catppuccin`][__link26] is a just a simple colorscheme plugin, it
-  adds the four flavors from the [catppuccin][__link27] colorscheme. You can
+* [`duat-catppuccin`][__link20] is a just a simple colorscheme plugin, it
+  adds the four flavors from the [catppuccin][__link21] colorscheme. You can
   pick between the four of them, you can apply its colors to other
-  [`Form`][__link28]s and you can allow or disallow the colorscheme to set
+  [`Form`][__link22]s and you can allow or disallow the colorscheme to set
   the background color.
 
 It also comes with the following built-in plugins, which I will
 later on add the ability to disable:
 
-* [`duat-treesitter`][__link29] brings [tree-sitter][__link30] to Duat in the form of
+* [`duat-treesitter`][__link23] brings [tree-sitter][__link24] to Duat in the form of
   syntax highlighting and indentation calculation, which can be
   used by Modes (such as those from `duat-kak`) in order to give
-  better feedback when editing files.
-* [`duat-match-pairs`][__link31] adds matched parentheses highlighting to
+  better feedback when editing buffers.
+* [`duat-match-pairs`][__link25] adds matched parentheses highlighting to
   duat. Has some ntegration with `duat-treesitter`.
-* [`duat-utils`][__link32] adds all of the default plugins that you see,
-  like the line numbers, status line, prompt line, etc.
+* [`duat-base`][__link26] adds all of the default plugins that you see, like
+  the line numbers, status line, prompt line, etc.
 
 ### Features
 
@@ -280,7 +268,7 @@ way:
 * [x] Make all of these things easy to use on a public interface;
 * [x] Create a number line and a separator line;
 * [x] Create a status line;
-* [x] File switching;
+* [x] Buffer switching;
 * [x] Create a command creation interface and a command line;
 * [x] Add the ability to frame areas;
 * [x] Implement concealment;
@@ -300,7 +288,7 @@ way:
 * [ ] Create an Iced frontend;
 
 An internal (and more detailed) TODO list, which might hard to
-understand, can be found in [TODO][__link33]. This list will is
+understand, can be found in [TODO][__link27]. This list will is
 *not* a comprehensive roadmap, as I will ocasionally remove
 entries from it, particularly those in the `FOR NEXT UPDATE`
 section, when said update comes out.
@@ -312,7 +300,7 @@ order.
 
 I don’t know what your personal reasoning would be, but in my
 case, I really like Kakoune’s editing model, but was frustrated
-with the lack of some features, like folding, multiple file
+with the lack of some features, like folding, multiple buffer
 editing, the general barebonesness of the configuration, etc.
 
 I know that Neovim has all of these features, and Helix supposedly
@@ -336,38 +324,32 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG60V0Tu5CbAYGz44HWmx87__G2NIq58yfzSHGw29UB1uSc7cYWSCgmRkdWF0ZTAuNy4wgmlkdWF0X2NvcmVlMC43LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG0UGepU1hReNGx6_NlxfB4_nG0eK0rZO5fLvG3QnQnVa7C91YWSCgmRkdWF0ZTAuNy4wgmlkdWF0X2NvcmVlMC43LjA
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://code.visualstudio.com/docs/cpp/config-mingw
- [__link10]: https://docs.rs/duat/0.7.0/duat/?search=prelude::mode_name
- [__link11]: https://docs.rs/duat/0.7.0/duat/?search=prelude::hook::add
- [__link12]: https://docs.rs/duat/0.7.0/duat/?search=prelude::hook::ModeSwitched
- [__link13]: https://docs.rs/duat/0.7.0/duat/?search=form::set
- [__link14]: https://docs.rs/duat/0.7.0/duat/?search=prelude::form::Form
- [__link15]: https://docs.rs/duat/0.7.0/duat/?search=prelude::cmd
- [__link16]: https://docs.rs/duat/0.7.0/duat/?search=hook::WidgetCreated
- [__link17]: https://docs.rs/duat/0.7.0/duat/?search=hook::WindowCreated
- [__link18]: https://docs.rs/duat_core/0.7.0/duat_core/?search=file::Parser
- [__link19]: https://docs.rs/duat/0.7.0/duat/?search=prelude::File
- [__link2]: https://docs.rs/duat/0.7.0/duat/?search=prelude::plug
- [__link20]: https://docs.rs/duat/0.7.0/duat/?search=prelude::text::txt
- [__link21]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
- [__link22]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Spacer
- [__link23]: https://doc.rust-lang.org/stable/std/macro.format.html
- [__link24]: https://github.com/AhoyISki/duat-kak
- [__link25]: https://github.com/mawww/kakoune
- [__link26]: https://github.com/AhoyISki/duat-catppuccin
- [__link27]: https://catppuccin.com
- [__link28]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
- [__link29]: https://github.com/AhoyISki/duat-treesitter
- [__link3]: https://docs.rs/duat/0.7.0/duat/?search=prelude::mode::set_default
- [__link30]: https://tree-sitter.github.io/tree-sitter
- [__link31]: https://github.com/AhoyISki/duat-match-pairs
- [__link32]: https://github.com/AhoyISki/duat/tree/master/duat-utils
- [__link33]: ./TODO
- [__link4]: https://docs.rs/duat/0.7.0/duat/?search=prelude::map
- [__link5]: https://docs.rs/duat/0.7.0/duat/?search=prelude::print::wrap_on_edge
- [__link6]: https://docs.rs/duat/0.7.0/duat/?search=prelude::LineNumbers
- [__link7]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Widget
- [__link8]: https://docs.rs/duat/0.7.0/duat/?search=prelude::status
- [__link9]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Spacer
+ [__link10]: https://docs.rs/duat/0.7.0/duat/?search=widgets::Widget
+ [__link11]: https://docs.rs/duat/0.7.0/duat/?search=hook::WindowCreated
+ [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Parser
+ [__link13]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Buffer
+ [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::txt
+ [__link15]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
+ [__link16]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Spacer
+ [__link17]: https://doc.rust-lang.org/stable/std/macro.format.html
+ [__link18]: https://github.com/AhoyISki/duat-kak
+ [__link19]: https://github.com/mawww/kakoune
+ [__link2]: https://docs.rs/duat/0.7.0/duat/?search=mode::set_default
+ [__link20]: https://github.com/AhoyISki/duat-catppuccin
+ [__link21]: https://catppuccin.com
+ [__link22]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
+ [__link23]: https://github.com/AhoyISki/duat-treesitter
+ [__link24]: https://tree-sitter.github.io/tree-sitter
+ [__link25]: https://github.com/AhoyISki/duat-match-pairs
+ [__link26]: https://github.com/AhoyISki/duat/tree/master/duat-base
+ [__link27]: ./TODO
+ [__link3]: https://docs.rs/duat/0.7.0/duat/?search=mode::map
+ [__link4]: https://docs.rs/duat/0.7.0/duat/opts/index.html
+ [__link5]: https://docs.rs/duat/0.7.0/duat/?search=hook::add
+ [__link6]: https://docs.rs/duat/0.7.0/duat/?search=hook::ModeSwitched
+ [__link7]: https://docs.rs/duat/0.7.0/duat/?search=form::set
+ [__link8]: https://docs.rs/duat/0.7.0/duat/?search=form::Form
+ [__link9]: https://docs.rs/duat/0.7.0/duat/?search=prelude::cmd

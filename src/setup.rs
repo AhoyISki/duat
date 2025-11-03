@@ -16,7 +16,7 @@ use std::{
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, LogBook, Notifications, WordsCompletionParser},
+    widgets::{FooterWidgets, LogBook, Notifications, WordsCompletionParser, status},
 };
 use duat_core::{
     clipboard::Clipboard,
@@ -61,7 +61,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         duat_core::context::set_sender(duat_tx);
     }
 
-    mode::set_default(crate::regular::Regular);
+    mode::set_default(crate::mode::Normal::new());
     mode::set_default(Pager::<LogBook>::new());
 
     // Layout hooks
@@ -74,7 +74,26 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     .grouped("BufferWidgets");
 
     hook::add::<WindowCreated>(|pa, handle| {
-        let status = STATUSLINE_FMT.lock().unwrap()(pa);
+        use crate::{
+            state::*,
+            text::{AlignRight, Spacer},
+        };
+
+        let one_line_footer = ONE_LINE_FOOTER.load(Ordering::Relaxed);
+        let status = match &mut *STATUSLINE_FMT.lock().unwrap() {
+            Some(status_fn) => status_fn(pa),
+            None if one_line_footer => {
+                let mode_txt = mode_txt();
+                let duat_param_txt = duat_param_txt();
+                status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}")
+            }
+            None => {
+                let mode_txt = mode_txt();
+                let duat_param_txt = duat_param_txt();
+                status!("{mode_txt} {name_txt}{Spacer}{sels_txt} {duat_param_txt} {main_txt}")
+            }
+        };
+
         let mut footer = FooterWidgets::new(status).notifs({
             let mut notifs = Notifications::builder();
             NOTIFICATIONS_FN.lock().unwrap()(&mut notifs);
@@ -85,7 +104,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
             footer = footer.above();
         }
 
-        if ONE_LINE_FOOTER.load(Ordering::Relaxed) {
+        if one_line_footer {
             footer = footer.one_line();
         }
 

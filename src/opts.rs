@@ -74,8 +74,7 @@ use crate::widgets::NotificationsOpts;
 /// [`Buffer`]: crate::widgets::Buffer
 pub(crate) static BUFFER_OPTS: Mutex<PrintOpts> = Mutex::new(PrintOpts::default_for_input());
 pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts { .. });
-pub(crate) static STATUSLINE_FMT: LazyLock<StatusLineFn> =
-    LazyLock::new(|| Mutex::new(Box::new(|_| StatusLineFmt::default())));
+pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
 pub(crate) static NOTIFICATIONS_FN: LazyLock<NotificationsFn> =
     LazyLock::new(|| Mutex::new(Box::new(|_| {})));
 pub(crate) static LOGBOOK_FN: LazyLock<LogBookFn> = LazyLock::new(|| Mutex::new(Box::new(|_| {})));
@@ -440,7 +439,7 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// [`opts::one_line_footer`]: one_line_footer
 /// [`opts::footer_on_top`]: footer_on_top
 pub fn set_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
-    *STATUSLINE_FMT.lock().unwrap() = Box::new(set_fn);
+    *STATUSLINE_FMT.lock().unwrap() = Some(Box::new(set_fn));
 }
 
 /// Changes the default [`Notifications`]
@@ -589,6 +588,6 @@ pub fn footer_on_top(on_top: bool) {
     FOOTER_ON_TOP.store(on_top, Ordering::Relaxed);
 }
 
-type StatusLineFn = Mutex<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>;
+type StatusLineFn = Mutex<Option<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>>;
 type NotificationsFn = Mutex<Box<dyn FnMut(&mut NotificationsOpts) + Send>>;
 type LogBookFn = Mutex<Box<dyn FnMut(&mut LogBookOpts) + Send>>;

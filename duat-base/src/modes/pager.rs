@@ -16,13 +16,14 @@ use duat_core::{
 use crate::{
     hooks::{SearchPerformed, SearchUpdated},
     modes::{Prompt, PromptMode, RunCommands},
+    widgets::LogBook,
 };
 
 static SEARCH: Mutex<String> = Mutex::new(String::new());
 static PAGER_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 
 /// A simple mode, meant for scrolling and searching through [`Text`]
-pub struct Pager<W: Widget>(PhantomData<W>);
+pub struct Pager<W: Widget = LogBook>(PhantomData<W>);
 
 impl<W: Widget> Pager<W> {
     /// Returns a new [`Pager`]

@@ -8,14 +8,8 @@
 // is a valid configuration.
 setup_duat!(setup);
 use duat::prelude::*;
-// Since duat_kak is a plugin, it must be used explicitly.
-// Plugins are usually imported with their "duat_" prefix removed.
-use duat_kak::{Insert, Normal};
 
 fn setup() {
-    // This plugin sets the mode to Kakoune's Normal.
-    // If you want a regular editing mode, you can remove this line.
-    plug(duat_kak::Kak::new());
     // This one adds the Catppuccin colorschemes.
     plug(duat_catppuccin::Catppuccin::new());
 
@@ -24,6 +18,8 @@ fn setup() {
     form::set("caret.extra.OneKey", "caret.extra.Normal");
     // Disables the cursor's shape.
     cursor::unset();
+
+    //// Setting some options.
 
     opts::set(|opts| {
         opts.wrap_lines = true;
@@ -42,13 +38,11 @@ fn setup() {
 
     //// Remapping
 
-    // A command from Vim, derived from one from Kakoune.
+    // A command from Vim, derived from one from duatmode.
     map::<Normal>("gg", "gk");
     map::<Normal>("G", "gj");
     // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
-    // // You may highlight them by uncommenting this line:
-    // form::set("alias", Form::red());
 
     form::set_colorscheme("catppuccin-mocha");
 }
@@ -69,10 +63,10 @@ fn custom_name_txt(file: &Buffer) -> Text {
         }
 
         match file.filetype() {
-            Some("rust") => builder.push('🦀'),
-            Some("python") => builder.push('🐍'),
-            Some("perl") => builder.push('🐫'),
-            Some("swift") => builder.push('🐦'),
+            Some("rust") => builder.push(" 🦀"),
+            Some("python") => builder.push(" 🐍"),
+            Some("perl") => builder.push(" 🐫"),
+            Some("swift") => builder.push(" 🐦"),
             _ => {}
         };
 
@@ -80,6 +74,6 @@ fn custom_name_txt(file: &Buffer) -> Text {
     } else {
         // But you can also create Text directly
         // The second thing is a non identifier expression.
-        txt!("[file.new.scratch]{}", file.name())
+        txt!("[file.new.scratch]{} ✍", file.name())
     }
 }
