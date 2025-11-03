@@ -3,10 +3,10 @@
 //! This [`Plugin`] is included by default, as it is considered a core
 //! utility of duat. It adds the two following traits:
 //!
-//! - [`FileType`](FileType): This trait grants the [`filetype`]
-//!   method, which lets you access the filetype directly. Its
-//!   implementors are the [`Buffer`] widget, [`String`] and [`&str`]
-//!   and [`PathBuf`] and [`Path`].
+//! - [`FileType`]: This trait grants the [`filetype`] method, which
+//!   lets you access the filetype directly. Its implementors are the
+//!   [`Buffer`] widget, [`String`] and [`&str`] and [`PathBuf`] and
+//!   [`Path`].
 //! - [`PassFileType`]: This trait also has a
 //!   [`filetype`](PassFileType::filetype) method, but it requires a
 //!   [`Pass`], bypassing the need to, for example, [`read`] a
@@ -37,14 +37,14 @@
 //! }
 //! ```
 //!
-//! [`Plugin`]: duat_core::prelude::Plugin
+//! [`Plugin`]: duat_core::Plugin
 //! [`filetype`]: FileType::filetype
-//! [`Buffer`]: duat_core::prelude::File
+//! [`Buffer`]: duat_core::buffer::Buffer
 //! [`&str`]: str
-//! [`Pass`]: duat_core::prelude::Pass
-//! [`read`]: duat_core::prelude::Handle::read
-//! [`Handle<Buffer>`]: duat_core::prelude::Handle
-//! [`RwData<Buffer>`]: duat_core::prelude::RwData
+//! [`Pass`]: duat_core::data::Pass
+//! [`read`]: duat_core::context::Handle::read
+//! [`Handle<Buffer>`]: duat_core::context::Handle
+//! [`RwData<Buffer>`]: duat_core::data::RwData
 //! [hook]: duat_core::hook
 //! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
 #![feature(decl_macro)]
