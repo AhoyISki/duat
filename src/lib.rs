@@ -203,7 +203,7 @@ impl TsParser {
     /// Will be [`None`] if the [`filetype`] hasn't been set yet or if
     /// there is no indentation query for this language.
     ///
-    /// [`filetype`]: BufferType::filetype
+    /// [`filetype`]: FileType::filetype
     pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
         let Some(ParserState::Present(parser)) = &self.0 else {
             context::warn!("Called function that shouldn't be possible without present parser");
@@ -869,7 +869,7 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
         };
 
         let Some(first_line) = query.lines().map(String::from).next() else {
-            context::warn!(target: path.to_str().unwrap(), "Query is empty");
+            context::warn!("Query is empty");
             let query = Box::leak(Box::new(Query::new(language, "").unwrap()));
             queries.insert(path, query);
             return Ok(query);
@@ -881,8 +881,7 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
                 match fs::read_to_string(&path) {
                     Ok(inherited_query) => {
                         if inherited_query.is_empty() {
-                            let target = path.to_str().unwrap();
-                            context::warn!(target: target, "Inherited query is empty");
+                            context::warn!("Inherited query is empty");
                         }
 
                         query = format!("{inherited_query}\n{query}");
@@ -894,7 +893,7 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
 
         let query = Box::leak(Box::new(match Query::new(language, &query) {
             Ok(query) => query,
-            Err(err) => return Err(txt!("{err}").build()),
+            Err(err) => return Err(txt!("{err}")),
         }));
 
         queries.insert(path, query);
@@ -940,10 +939,12 @@ pub trait TsCursor {
 
     /// Reindents the [`Cursor`]'s line
     ///
+    /// Returns `true` if the
+    ///
     /// This is determined by a query, currently, it is the query
     /// located in
     /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
-    fn ts_reindent(&mut self);
+    fn ts_reindent(&mut self) -> bool;
 }
 
 impl<S> TsCursor for Cursor<'_, Buffer, S> {
@@ -958,7 +959,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
             .flatten()
     }
 
-    fn ts_reindent(&mut self) {
+    fn ts_reindent(&mut self) -> bool {
         fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<Range<Point>> {
             let byte_col = c
                 .text()
@@ -1014,6 +1015,8 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
         } else {
             self.move_hor(old_col as i32 + indent_diff);
         }
+
+        indent_diff != 0
     }
 }
 
