@@ -1,9 +1,9 @@
 [package]
-name = "duat-kak"
+name = "duatmode"
 version = "0.6.1"
 authors = ["AhoyISki"]
-description = "A Kakoune inspired editing mode for Parsec"
-repository = "https://github.com/AhoyISki/duat/tree/master/duat-kak"
+description = "The default mode for the Duat text editor"
+repository = "https://github.com/AhoyISki/duat/tree/master/duatmode"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "editing-mode", "text", "duat"]
@@ -11,7 +11,8 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
+duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
+duat-base = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
 
 [dependencies.treesitter]
 git = "https://github.com/AhoyISki/duat-treesitter"

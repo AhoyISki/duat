@@ -1,7 +1,5 @@
-//! `duat-kak` is the implementation of the [kakoune] editing model
-//! for Duat. It's still a work in progress, but it already implements
-//! most of the common commands from Kakoune, with some modifications
-//! that I thought made sense.
+//! `duatmode` is the default mode for the Duat text editor. It is
+//! based on [kakoune]'s keybindings, with some alterations of my own.
 //!
 //! The plugin currently has 2 options: `insert_tabs` and
 //! `set_cursor_forms`. `insert_tabs` will make the `Tab` key insert a
@@ -291,12 +289,6 @@ use std::{
     sync::{LazyLock, Mutex, atomic::Ordering},
 };
 
-use duat::{
-    mode::{self, Cursor, KeyCode::*},
-    opts::PrintOpts,
-    prelude::*,
-};
-
 use crate::normal::Brackets;
 pub use crate::{insert::Insert, normal::Normal};
 
@@ -305,12 +297,21 @@ mod insert;
 mod normal;
 mod one_key;
 
+use duat_base::hooks::SearchPerformed;
+use duat_core::{
+    Plugin, Plugins,
+    context::{self, Handle},
+    data::Pass,
+    form, hook,
+    mode::{self, Cursor, KeyEvent, alt, event},
+    opts::PrintOpts,
+};
 pub use parameter::{param_map as param, param_txt};
 
 mod parameter {
     use std::sync::LazyLock;
 
-    use duat::{
+    use duat_core::{
         context,
         data::{DataMap, Pass, RwData},
         text::{Text, txt},
@@ -541,7 +542,7 @@ enum Object<'a> {
 }
 
 impl<'a> Object<'a> {
-    fn new(event: KeyEvent, opts: PrintOpts, brackets: Brackets) -> Option<Self> {
+    fn new(key_event: KeyEvent, opts: PrintOpts, brackets: Brackets) -> Option<Self> {
         static BRACKET_PATS: Memoized<Brackets, ([&str; 2], [&str; 3])> = Memoized::new();
         let m_and_u_patterns = |brackets: Brackets| {
             BRACKET_PATS.get_or_insert_with(brackets, || {
@@ -560,7 +561,7 @@ impl<'a> Object<'a> {
             })
         };
 
-        match event {
+        match key_event {
             event!('Q') => Some(Self::Bound("\"")),
             event!('q') => Some(Self::Bound("'")),
             event!('g') => Some(Self::Bound("`")),
@@ -590,7 +591,7 @@ impl<'a> Object<'a> {
             })),
             alt!('w') => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
             event!(' ') => Some(Self::Anchored(r"\A\s*\z")),
-            event!(Char(char)) if !char.is_alphanumeric() => Some(Self::Bound({
+            event!(mode::KeyCode::Char(char)) if !char.is_alphanumeric() => Some(Self::Bound({
                 static BOUNDS: Memoized<char, &str> = Memoized::new();
                 BOUNDS.get_or_insert_with(char, || char.to_string().leak())
             })),

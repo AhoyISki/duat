@@ -1,8 +1,7 @@
 use std::sync::{LazyLock, Mutex};
 
-use duat::{
-    mode::{KeyCode::*, KeyMod},
-    prelude::*,
+use duat_core::{
+    buffer::Buffer, cmd, context::{self, Handle}, data::Pass, mode::{self, KeyEvent, KeyMod, Mode, event}
 };
 
 use crate::{
@@ -193,7 +192,7 @@ fn match_inside_around(
     brackets: Brackets,
     is_inside: bool,
 ) {
-    let Char(char) = event.code else {
+    let mode::KeyCode::Char(char) = event.code else {
         context::warn!("Key [a]{event.code}[] not mapped on this mode");
         return;
     };
@@ -324,7 +323,7 @@ fn match_inside_around(
 }
 
 fn just_char(key_event: KeyEvent) -> Option<char> {
-    if let event!(Char(char)) = key_event {
+    if let event!(mode::KeyCode::Char(char)) = key_event {
         Some(char)
     } else {
         None

@@ -1,8 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use duat::{
-    mode::{Cursor, KeyCode::*, KeyMod},
-    prelude::*,
+use duat_base::widgets::Completions;
+use duat_core::{
+    Lender,
+    buffer::Buffer,
+    context::Handle,
+    data::Pass,
+    mode::{self, Cursor, KeyEvent, KeyMod, Mode, ctrl, event, shift},
 };
 use treesitter::TsCursor;
 
@@ -12,6 +16,7 @@ use crate::{Normal, set_anchor_if_needed};
 pub struct Insert {
     insert_tabs: bool,
     indent_keys: Vec<char>,
+    tab_mode: TabMode,
 }
 
 impl Insert {
@@ -20,6 +25,7 @@ impl Insert {
         Self {
             insert_tabs: INSERT_TABS.load(Ordering::Relaxed),
             indent_keys: vec!['\n', '\t', '(', ')', '{', '}', '[', ']'],
+            tab_mode: TabMode::Smart,
         }
     }
 
@@ -56,8 +62,10 @@ impl Default for Insert {
 impl Mode for Insert {
     type Widget = Buffer;
 
-    fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
-        if let shift!(Left | Down | Up | Right) = event {
+    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+        use mode::KeyCode::*;
+
+        if let shift!(Left | Down | Up | Right) = key_event {
             handle.edit_all(pa, |mut c| {
                 if c.anchor().is_none() {
                     c.set_anchor()
@@ -65,30 +73,57 @@ impl Mode for Insert {
             });
         }
 
-        match event {
+        match key_event {
             // Autocompletion commands
             ctrl!('n') => Completions::scroll(pa, 1),
-            ctrl!('p') => Completions::scroll(pa, -1),
-            event!(Tab) => handle.edit_all(pa, |mut c| {
-                let char_col = c.v_caret().char_col();
-                if self.indent_keys.contains(&'\t') && char_col == 0 {
-                    c.ts_reindent();
-                    if c.indent() > 0 {
-                        return;
+            ctrl!('p') | shift!(BackTab) => Completions::scroll(pa, -1),
+            event!(Tab) => match (self.tab_mode, handle.selections(pa).len() > 1) {
+                (TabMode::Normal, _) => handle.edit_all(pa, |mut c| {
+                    if self.indent_keys.contains(&'\t') {
+                        c.ts_reindent();
+                    }
+
+                    if self.insert_tabs {
+                        c.insert('\t');
+                        c.move_hor(1);
+                    } else {
+                        let tab_len = c.opts().tabstop_spaces_at(c.v_caret().visual_col() as u32);
+                        c.insert(" ".repeat(tab_len as usize));
+                        c.move_hor(tab_len as i32);
+                    }
+                }),
+                (TabMode::Smart, _) | (TabMode::VerySmart, true) => handle.edit_all(pa, |mut c| {
+                    let char_col = c.v_caret().char_col();
+                    if self.indent_keys.contains(&'\t') || char_col <= c.indent() {
+                        c.ts_reindent();
+                        if c.indent() > 0 {
+                            return;
+                        }
+                    }
+
+                    if self.insert_tabs {
+                        c.insert('\t');
+                        c.move_hor(1);
+                    } else {
+                        let tab_len = c.opts().tabstop_spaces_at(c.v_caret().visual_col() as u32);
+                        c.insert(" ".repeat(tab_len as usize));
+                        c.move_hor(tab_len as i32);
+                    }
+                }),
+                (TabMode::VerySmart, false) => {
+                    let do_scroll = handle.edit_main(pa, |mut c| {
+                        let char_col = c.v_caret().char_col();
+                        !((self.indent_keys.contains(&'\t') || char_col <= c.indent())
+                            && c.ts_reindent())
+                    });
+
+                    if do_scroll {
+                        Completions::scroll(pa, 1);
                     }
                 }
+                _ => todo!(),
+            },
 
-                if self.insert_tabs {
-                    c.insert('\t');
-                    c.move_hor(1);
-                } else {
-                    let tab_len = c.opts().tabstop_spaces_at(c.v_caret().visual_col() as u32);
-                    c.insert(" ".repeat(tab_len as usize));
-                    c.move_hor(tab_len as i32);
-                }
-            }),
-            shift!(BackTab) => duat::widgets::Completions::scroll(pa, -1),
-            
             // Regular commands
             event!(Char(char)) => handle.edit_all(pa, |mut c| {
                 c.insert(char);
@@ -140,27 +175,27 @@ impl Mode for Insert {
                 }
             }),
             event!(Left) | shift!(Left) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.modifiers == KeyMod::SHIFT, &mut c);
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
                 c.move_hor(-1);
             }),
             event!(Down) | shift!(Down) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.modifiers == KeyMod::SHIFT, &mut c);
-                if event.modifiers == KeyMod::NONE {
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
+                if key_event.modifiers == KeyMod::NONE {
                     c.unset_anchor();
                     remove_empty_line(&mut c);
                 }
                 c.move_ver_wrapped(1);
             }),
             event!(Up) | shift!(Up) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.modifiers == KeyMod::SHIFT, &mut c);
-                if event.modifiers == KeyMod::NONE {
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
+                if key_event.modifiers == KeyMod::NONE {
                     c.unset_anchor();
                     remove_empty_line(&mut c);
                 }
                 c.move_ver_wrapped(-1)
             }),
             event!(Right) | shift!(Right) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(event.modifiers == KeyMod::SHIFT, &mut c);
+                set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
                 c.move_hor(1);
             }),
 
@@ -176,10 +211,18 @@ impl Mode for Insert {
         Completions::open_default(pa);
         handle.set_mask("Insert");
     }
-    
+
     fn before_exit(&mut self, pa: &mut Pass, _: Handle<Self::Widget>) {
         Completions::close(pa)
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TabMode {
+    Normal,
+    Smart,
+    VerySmart,
+    HyperSmart,
 }
 
 /// removes an empty line
