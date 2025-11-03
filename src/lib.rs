@@ -12,7 +12,6 @@
 
 use std::ops::Range;
 
-use duat::prelude::*;
 use gapbuf::GapBuffer;
 
 /// [`Plugin`]: Adds a [`Jumps`] parser to every [`Buffer`]
