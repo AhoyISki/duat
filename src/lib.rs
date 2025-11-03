@@ -332,28 +332,36 @@ mod parameter {
         std::mem::take(VALUE.write(pa)).max(1)
     }
 
-    /// A [`DataMap`] of the current parameter value for the Duat mode
+    /// [`StatusLine`] part: The parameter for Duat's modes
     ///
     /// This parameter is a numerical modifier for actions in Duat's
     /// [`Normal`] mode, and is added to by typing digits in `Normal`
     /// mode.
     ///
     /// [`Normal`]: crate::Normal
+    /// [`StatusLine`]: duat_base::widgets::StatusLine
     pub fn duat_param() -> DataMap<u32, u32> {
         VALUE.map(|value| *value)
     }
 
-    /// A [`Text`] [`DataMap`] for the current parameter
+    /// [`StatusLine`] part: Formatted version of [`duat_param`]
     ///
     /// This parameter is a numerical modifier for actions in Duat's
     /// [`Normal`] mode, and is added to by typing digits in `Normal`
     /// mode.
     ///
+    /// # Formatting
+    ///
+    /// ```text
+    /// [parameter]param={value}
+    /// ```
+    ///
     /// [`Normal`]: crate::Normal
+    /// [`StatusLine`]: duat_base::widgets::StatusLine
     pub fn duat_param_txt() -> DataMap<u32, Text> {
         VALUE.map(|value| {
             if *value > 0 {
-                txt!("[duat.param]param={value}[]")
+                txt!("[parameter]param={value}")
             } else {
                 Text::default()
             }
