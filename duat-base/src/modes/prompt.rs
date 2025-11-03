@@ -566,9 +566,9 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
                 crate::tag_from_ast(*TAGGER, &mut text, &ast);
 
-                // if !text.is_empty() {
+                if !text.is_empty() {
                     self.inc.search(pa, handle.attach_searcher(searcher));
-                // }
+                }
             }
             Err(err) => {
                 let regex_syntax::Error::Parse(err) = *err else {
