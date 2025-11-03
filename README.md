@@ -184,7 +184,7 @@ Changes selection to lowercase.
 `~`  
 Changes selection to uppercase.
 
-`<A-\`\>\`  
+``<A-`>``  
 Swaps the case of each character.
 
 `<A-)>`  
@@ -284,7 +284,7 @@ Go to the next [`Buffer`][__link21] (includes other windows).
 Go to the previous [`Buffer`][__link22] (includes other windows).
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG5hjVatpo847G-zj6MlNwjkrG58g8qhNLDr6GyPQrmxUb8vPYWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG6wKNnn6V6fvG6blNuRTSsixG4B4NIMaf2nnGzgXpO7tuTc2YWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
  [__link0]: https://github.com/mawww/kakoune
  [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
  [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::undo

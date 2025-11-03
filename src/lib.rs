@@ -182,7 +182,7 @@
 //! `~`\
 //! Changes selection to uppercase.
 //!
-//! `<A-\`>`\
+//! ``<A-`>``\
 //! Swaps the case of each character.
 //!
 //! `<A-)>`\
