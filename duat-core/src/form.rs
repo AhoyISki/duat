@@ -333,7 +333,7 @@ mod global {
     ///     form::set("my_form.suffix", Form::undercurled());
     ///
     ///     *handle.text_mut(pa) =
-    ///         txt!("[my_form]This is red on blue[], [my_form.suffix]undercurled").build();
+    ///         txt!("[my_form]This is red on blue[], [my_form.suffix]undercurled");
     ///
     ///     // But if I enable the "suffix" mask that's at the end of the second Form
     ///     form::enable_mask("suffix");
@@ -343,7 +343,7 @@ mod global {
     ///
     ///     // So when the widget is printed, it'd be equivalent to this:
     ///     *handle.text_mut(pa) =
-    ///         txt!("[my_form.suffix]This is red on blue[], [my_form.suffix]undercurled").build();
+    ///         txt!("[my_form.suffix]This is red on blue[], [my_form.suffix]undercurled");
     /// }
     /// ```
     ///
@@ -1273,7 +1273,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 ///     form::set("my_form.suffix", Form::undercurled());
 ///
 ///     *handle.text_mut(pa) =
-///         txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled").build();
+///         txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
 ///
 ///     // But if I enable the "suffix" mask that's at the end of the second Form
 ///     form::enable_mask("suffix");
@@ -1283,7 +1283,7 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 ///
 ///     // So when the widget is printed, it'd be equivalent to this:
 ///     *handle.text_mut(pa) =
-///         txt!("[my_form.suffix]This text is red on blue[], [my_form.suffix]undercurled").build();
+///         txt!("[my_form.suffix]This text is red on blue[], [my_form.suffix]undercurled");
 /// }
 /// ```
 ///

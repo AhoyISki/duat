@@ -189,7 +189,7 @@ use crate::{
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s").build();
+///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s");
 ///     }
 /// }
 /// ```
@@ -312,7 +312,7 @@ use crate::{
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s").build();
+///         handle.write(pa).0 = txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s");
 ///     }
 ///
 ///     fn needs_update(&self, pa: &Pass) -> bool {

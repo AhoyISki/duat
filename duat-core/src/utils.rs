@@ -355,7 +355,7 @@ macro_rules! doc_duat {
                 pub use std::ops::Range;
                 
                 pub use duat_core::{
-                    Lender, Plugin, Plugins,
+                    Plugin, Plugins,
                     buffer::{Buffer, BufferTracker, Parser},
                     clipboard, cmd,
                     context::{self, Handle},
@@ -367,6 +367,7 @@ macro_rules! doc_duat {
                         KeysSentTo, ModeSet, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
                         WidgetCreated, WindowCreated,
                     },
+                    lender::{Lender, DoubleEndedLender, ExactSizeLender},
                     mode::{
                         self, KeyCode, KeyEvent, Mode, User, alias, alt, ctrl, event,
                         map, shift,

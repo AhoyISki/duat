@@ -41,9 +41,9 @@
 //!
 //! fn number_of_horses(count: usize) -> Text {
 //!     if count == 1 {
-//!         txt!("[horses.count]1[horses] horse").build()
+//!         txt!("[horses.count]1[horses] horse")
 //!     } else {
-//!         txt!("[horses.count]{}[horses] horses", count).build()
+//!         txt!("[horses.count]{}[horses] horses", count)
 //!     }
 //! }
 //!
@@ -52,7 +52,6 @@
 //!         "[horses.count]{count} [horses]{}",
 //!         if count == 1 { "horse" } else { "horses" }
 //!     )
-//!     .build()
 //! }
 //! ```
 //!
@@ -68,7 +67,7 @@
 //! # duat_core::doc_duat!(duat);
 //! use duat::prelude::*;
 //!
-//! let mut prompted = txt!("[prompt]type a key: ").build();
+//! let mut prompted = txt!("[prompt]type a key: ");
 //! let end = prompted.len();
 //! prompted.replace_range(end..end, "a")
 //! ```

@@ -218,7 +218,7 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 /// # duat_core::form::set_initial(duat_core::form::get_initial());
 /// # duat_core::doc_duat!(duat);
 /// # use duat::prelude::*;
-/// let mut text = txt!("This is text with no tags in it").build();
+/// let mut text = txt!("This is text with no tags in it");
 /// // This key will be used to modify text.
 /// let key1 = Tagger::new();
 ///
@@ -229,7 +229,7 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 ///
 /// assert_eq!(
 ///     text,
-///     txt!("This is text with [invisible]no[] tags in it").build()
+///     txt!("This is text with [invisible]no[] tags in it")
 /// );
 ///
 /// // key2 != key1, so it shouldn't be able to change what was done with key1.
@@ -238,7 +238,7 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 ///
 /// assert_eq!(
 ///     text,
-///     txt!("This is text with [invisible]no[] tags in it").build()
+///     txt!("This is text with [invisible]no[] tags in it")
 /// );
 /// ```
 ///
