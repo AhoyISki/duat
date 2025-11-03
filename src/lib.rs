@@ -8,11 +8,13 @@
 //!
 //! # Keymaps
 //!
+//! On every key, if the action involves selections, unless stated
+//! otherwise, the action will take place in all selections.
+//!
 //! ## `Normal` mode
 //!
 //! The keys in `normal` mode follow the following patterns:
 //!
-//! - All actions will be done to all selections.
 //! - `word` characters follow Duat's [word chars], which are normally
 //!   used to define where lines wrap.
 //! - `WORD` characters are just any non-whitespace character.
@@ -74,7 +76,7 @@
 //!
 //! `<A-(f|t)>{char}`\
 //! Same as `(f|t)`, but in the opposite direction.
-//! 
+//!
 //! `<A-(F|T)>{char}`\
 //! Same as `<A-(f|t)>`, but in extends the selection.
 //!
@@ -89,7 +91,7 @@
 //!
 //! `<A-l>`, `<End>`\
 //! Selects until the end of the line.
-//! 
+//!
 //! `<A-H>`, `<S-Home>`, `<A-L>`, `<S-End>`\
 //! Same as the previous two, but extends the selection.
 //!
@@ -189,7 +191,7 @@
 //! Rotates each selection's content forwards.
 //!
 //! `<A-(>`\
-//! Rptates each selection's content backwards.
+//! Rotates each selection's content backwards.
 //!
 //! `|`\
 //! Changes mode to [`PipeSelections`], letting you pipe each
@@ -210,16 +212,16 @@
 //! Regex pattern.
 //!
 //! `/`\
-//! Searches forward for the next pattern, on each [`Cursor`].
+//! Searches forward for the next pattern.
 //!
 //! `<A-/>`\
-//! Searches backwards for the previous pattern, on each [`Cursor`].
+//! Searches backwards for the previous pattern.
 //!
 //! `?`\
-//! Extends forward for the next pattern, on each [`Cursor`].
+//! Extends forward for the next pattern.
 //!
 //! `<A-?>`\
-//! Extends backwards for the previous pattern, on each [`Cursor`].
+//! Extends backwards for the previous pattern.
 //!
 //! `s`\
 //! Selects the pattern from within current selections.
@@ -250,15 +252,20 @@
 //!
 //! </details>
 //!
-//! ### Selection manipulation
+//! <details>
+//! <summary>
 //!
 //! ## `goto` mode
 //!
+//! </summary>
+//!
 //! `goto` mode is entered with the `g` or `G` keys in `normal` mode.
-//! The `G` follows the same `Shift` pattern described above.
+//!
+//! On every key that selects, `G` will have the same behavior, but
+//! extending the selection instead.
 //!
 //! `h`\
-//! Go to the beginning of the line (before indents, column 0).
+//! Move to the beginning of the line (before indents, column 0).
 //!
 //! `l`\
 //! Go to the end of the line.
@@ -273,13 +280,15 @@
 //! Go to the last line.
 //!
 //! `a`\
-//! Go to the previous [`Buffer`].
+//! Go to the last buffer. Repeating will return to this buffer
 //!
 //! `n`\
-//! Go to the next [`Buffer`] (includes other windows).
+//! Go to the next buffer (includes other windows).
 //!
 //! `N`\
-//! Go to the previous [`Buffer`] (includes other windows).
+//! Go to the previous buffer (includes other windows).
+//!
+//! </details>
 //!
 //! [kakoune]: https://github.com/mawww/kakoune
 //! [caret]: duat_core::mode::Cursor::caret
@@ -287,7 +296,6 @@
 //! [`Cursor`]: duat_core::mode::Cursor
 //! [Undoes]: duat_core::text::Text::undo
 //! [Redoes]: duat_core::text::Text::redo
-//! [`Buffer`]: duat_core::buffer::Buffer
 //! [`Cargo.toml`'s `dependencies` section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [`IncSearch`]: duat_base::modes::IncSearch
 //! [`IncSearcher`]: duat_base::modes::IncSearcher

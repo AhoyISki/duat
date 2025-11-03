@@ -10,11 +10,13 @@ in duat’s [`opts`][__link3] module by default
 
 ## Keymaps
 
+On every key, if the action involves selections, unless stated
+otherwise, the action will take place in all selections.
+
 ### `Normal` mode
 
 The keys in `normal` mode follow the following patterns:
 
-* All actions will be done to all selections.
 * `word` characters follow Duat’s [word chars][__link4], which are normally
   used to define where lines wrap.
 * `WORD` characters are just any non-whitespace character.
@@ -191,7 +193,7 @@ Swaps the case of each character.
 Rotates each selection’s content forwards.
 
 `<A-(>`  
-Rptates each selection’s content backwards.
+Rotates each selection’s content backwards.
 
 `|`  
 Changes mode to [`PipeSelections`][__link12], letting you pipe each
@@ -212,16 +214,16 @@ crate. This means that search will be done incrementally over a
 Regex pattern.
 
 `/`  
-Searches forward for the next pattern, on each [`Cursor`][__link16].
+Searches forward for the next pattern.
 
 `<A-/>`  
-Searches backwards for the previous pattern, on each [`Cursor`][__link17].
+Searches backwards for the previous pattern.
 
 `?`  
-Extends forward for the next pattern, on each [`Cursor`][__link18].
+Extends forward for the next pattern.
 
 `<A-?>`  
-Extends backwards for the previous pattern, on each [`Cursor`][__link19].
+Extends backwards for the previous pattern.
 
 `s`  
 Selects the pattern from within current selections.
@@ -252,15 +254,20 @@ Makes the main selection the searching pattern.
 
 </details>
 
-#### Selection manipulation
+<details>
+<summary>
 
 ### `goto` mode
 
+</summary>
+
 `goto` mode is entered with the `g` or `G` keys in `normal` mode.
-The `G` follows the same `Shift` pattern described above.
+
+On every key that selects, `G` will have the same behavior, but
+extending the selection instead.
 
 `h`  
-Go to the beginning of the line (before indents, column 0).
+Move to the beginning of the line (before indents, column 0).
 
 `l`  
 Go to the end of the line.
@@ -275,16 +282,18 @@ Go to the first line.
 Go to the last line.
 
 `a`  
-Go to the previous [`Buffer`][__link20].
+Go to the last buffer. Repeating will return to this buffer
 
 `n`  
-Go to the next [`Buffer`][__link21] (includes other windows).
+Go to the next buffer (includes other windows).
 
 `N`  
-Go to the previous [`Buffer`][__link22] (includes other windows).
+Go to the previous buffer (includes other windows).
+
+</details>
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG6wKNnn6V6fvG6blNuRTSsixG4B4NIMaf2nnGzgXpO7tuTc2YWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG87WniIsC2u5G7al6lr2ftONG9CZDLwM_bHzG2b3TIqM5CIuYWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
  [__link0]: https://github.com/mawww/kakoune
  [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
  [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::undo
@@ -293,14 +302,7 @@ Go to the previous [`Buffer`][__link22] (includes other windows).
  [__link13]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearch
  [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Mode
  [__link15]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearcher
- [__link16]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link17]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link18]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link19]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
  [__link2]: https://docs.rs/duatmode/0.7.0/duatmode/opts/index.html
- [__link20]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
- [__link21]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
- [__link22]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
  [__link3]: https://docs.rs/duat/latest/duat/opts
  [__link4]: https://docs.rs/duat_core/0.7.0/duat_core/?search=opts::Opts::extra_word_chars
  [__link5]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
