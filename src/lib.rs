@@ -296,7 +296,7 @@ use duat_core::{
     mode::{self, Cursor, KeyEvent, alt, event},
     opts::PrintOpts,
 };
-pub use parameter::{param_map as param, param_txt};
+pub use parameter::{add_to_param, duat_param, duat_param_txt, take_param};
 
 mod parameter {
     use std::sync::LazyLock;
@@ -309,27 +309,48 @@ mod parameter {
 
     static VALUE: LazyLock<RwData<u32>> = LazyLock::new(RwData::default);
 
-    /// Adds a number to the global value
-    pub fn add(pa: &mut Pass, num: u32) {
+    /// Adds a number to Duat's parameter value
+    ///
+    /// This should multiply the current value by 10 and add this as
+    /// the last digit.
+    ///
+    /// This parameter is a numerical modifier for actions in Duat's
+    /// [`Normal`] mode, and is added to by typing digits in `Normal`
+    /// mode.
+    ///
+    /// [`Normal`]: crate::Normal
+    pub fn add_to_param(pa: &mut Pass, num: u32) {
         let value = VALUE.read(pa);
         match try { value.checked_mul(10)?.checked_add(num)? } {
             Some(new_value) => *VALUE.write(pa) = new_value,
-            None => context::warn!("Reached maximum parameter value"),
+            None => context::warn!("Duat's parameter overflowed"),
         };
     }
 
     /// Takes the current value, leaving it empty
-    pub fn take(pa: &mut Pass) -> u32 {
+    pub fn take_param(pa: &mut Pass) -> u32 {
         std::mem::take(VALUE.write(pa)).max(1)
     }
 
-    /// A [`DataMap`] of the current parameter value
-    pub fn param_map() -> DataMap<u32, u32> {
+    /// A [`DataMap`] of the current parameter value for the Duat mode
+    ///
+    /// This parameter is a numerical modifier for actions in Duat's
+    /// [`Normal`] mode, and is added to by typing digits in `Normal`
+    /// mode.
+    ///
+    /// [`Normal`]: crate::Normal
+    pub fn duat_param() -> DataMap<u32, u32> {
         VALUE.map(|value| *value)
     }
 
     /// A [`Text`] [`DataMap`] for the current parameter
-    pub fn param_txt() -> DataMap<u32, Text> {
+    ///
+    /// This parameter is a numerical modifier for actions in Duat's
+    /// [`Normal`] mode, and is added to by typing digits in `Normal`
+    /// mode.
+    ///
+    /// [`Normal`]: crate::Normal
+    pub fn duat_param_txt() -> DataMap<u32, Text> {
         VALUE.map(|value| {
             if *value > 0 {
                 txt!("[duat.param]param={value}[]")

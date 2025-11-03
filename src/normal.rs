@@ -116,10 +116,10 @@ impl Mode for Normal {
         let param = if let event!(Char(char)) = key_event
             && let Some(digit) = char.to_digit(10)
         {
-            crate::parameter::add(pa, digit);
+            crate::parameter::add_to_param(pa, digit);
             return;
         } else {
-            crate::parameter::take(pa) as usize
+            crate::parameter::take_param(pa) as usize
         };
 
         match key_event {
