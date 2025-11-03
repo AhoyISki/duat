@@ -16,13 +16,14 @@
 //! - `word` characters follow Duat's [word chars], which are normally
 //!   used to define where lines wrap.
 //! - `WORD` characters are just any non-whitespace character.
-//! - All keys that say "select", when typed with `<Shift>` will
-//!   extend the selection instead (not necessarily growing it).
-//! - Yanked selections are always pasted in the order they were
-//!   yanked, looping around if there are less yanks than [`Cursor`]s.
 //!
+//! <details>
+//! <summary>
+//! 
 //! ### Object selection
 //!
+//! </summary>
+//! 
 //! `h`, `<Left>`\
 //! Selects the character to the left. Wraps around lines.
 //!
@@ -78,6 +79,8 @@
 //!
 //! `<A-l>`, `<End>`\
 //! Selects until the end of the line.
+//!
+//! </details>
 //!
 //! ### Changing text
 //!
@@ -244,6 +247,7 @@
 //! [`Mode`]: duat_core::mode::Mode
 //! [`duatmode::opts`]: opts
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
+//! [word chars]: duat_core::opts::Opts::extra_word_chars
 #![feature(
     iter_map_windows,
     if_let_guard,

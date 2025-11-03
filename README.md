@@ -3,61 +3,28 @@
 `duatmode` is the default mode for the Duat text editor. It is
 based on [kakoune][__link0]’s keybindings, with some alterations of my own.
 
-The plugin currently has 2 options: `insert_tabs` and
-`set_cursor_forms`. `insert_tabs` will make the `Tab` key insert a
-`\t` character, instead of an appropriate amount of spaces.
-`set_cursor_forms` will create a hook to set the `caret.main.`
-and `caret.extra` forms to mode specific variants, c.g.
-`caret.main.Insert`.
-
-## Installation
-
-Just like other Duat plugins, this one can be installed by calling
-`cargo add` in the config directory:
-
-```bash
-cargo add duat-kak@"*" --rename kak
-```
-
-Or, if you are using a `--git-deps` version of duat, do this:
-
-```bash
-cargo add --git https://github.com/AhoyISki/duat-kak --rename kak
-```
+This plugin is included in Duat by default, as it is considered
+part of it’s identity. Given that, the options aren’t set by this
+plugin’s [`Plugin`][__link1], but by [`duatmode::opts`][__link2], which is exported
+in duat’s [`opts`][__link3] module by default
 
 ## Keymaps
-
-This is a list of *currently* mapped keys, not the ones that
-appear in Kakoune.
-
-When reading keys, they follow Duat’s [mapping][__link1] rules, that is:
-
-* `<A-{key}>` is a chord of `Alt + {key}`, same with `<C-{key}>`
-  and `Control` and `<S-{key}>` with `Shift` (although that one is
-  not usually needed).
-* Special keys are enclosed in `<` `>` pairs (c.g. `<Home>`).
-* Multiple keys in a row represent a sequence.
-
-In any mode, the `<Esc>` key will take you back to `normal` mode.
-
-In this plugin, a `moment` contains all of the changes performed
-by each [`Cursor`][__link2], so if you press `u`, multiple changes may be
-undone.
 
 ### `Normal` mode
 
 The keys in `normal` mode follow the following patterns:
 
 * All actions will be done to all selections.
-* `word` characters follow Duat’s [word chars][__link3], which are normally
+* `word` characters follow Duat’s [word chars][__link4], which are normally
   used to define where lines wrap.
 * `WORD` characters are just any non-whitespace character.
-* All keys that say “select”, when typed with `<Shift>` will
-  extend the selection instead (not necessarily growing it).
-* Yanked selections are always pasted in the order they were
-  yanked, looping around if there are less yanks than [`Cursor`][__link4]s.
+
+<details>
+<summary>
 
 #### Object selection
+
+</summary>
 
 `h`, `<Left>`  
 Selects the character to the left. Wraps around lines.
@@ -114,6 +81,8 @@ Selects to the start of the line.
 
 `<A-l>`, `<End>`  
 Selects until the end of the line.
+
+</details>
 
 #### Changing text
 
@@ -265,10 +234,10 @@ Go to the next [`Buffer`][__link21] (includes other windows).
 Go to the previous [`Buffer`][__link22] (includes other windows).
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG73rPVCtvGXnGxm5eIaMGDb_GyLPjRCf6qZiG7-hH1JDD0afYWSDgmRNb2Rl9oJpZHVhdF9jb3JlZTAuNy4wgmpkdWF0X3V0aWxz9g
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4HkR_S35wtPGzSs_Zi9eKNsGw9ohVFwwLJOGxwXpGKKolS7YWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
  [__link0]: https://github.com/mawww/kakoune
- [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::map
- [__link10]: https://docs.rs/duat_utils/latest/duat_utils/?search=modes::IncSearcher
+ [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
+ [__link10]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearcher
  [__link11]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
  [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
  [__link13]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
@@ -278,14 +247,14 @@ Go to the previous [`Buffer`][__link22] (includes other windows).
  [__link17]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
  [__link18]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::anchor
  [__link19]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link2]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
+ [__link2]: https://docs.rs/duatmode/0.7.0/duatmode/opts/index.html
  [__link20]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
  [__link21]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
  [__link22]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
- [__link3]: https://docs.rs/duat_core/0.7.0/duat_core/?search=opts::word_chars
- [__link4]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
+ [__link3]: https://docs.rs/duat/latest/duat/opts
+ [__link4]: https://docs.rs/duat_core/0.7.0/duat_core/?search=opts::Opts::extra_word_chars
  [__link5]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::undo
  [__link6]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::redo
- [__link7]: https://docs.rs/duat_utils/latest/duat_utils/?search=modes::PipeSelections
- [__link8]: https://docs.rs/duat_utils/latest/duat_utils/?search=modes::IncSearch
- [__link9]: https://crates.io/crates/Mode
+ [__link7]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::PipeSelections
+ [__link8]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearch
+ [__link9]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Mode
