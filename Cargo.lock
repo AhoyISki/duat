@@ -391,7 +391,6 @@ dependencies = [
 [[package]]
 name = "duat-jump-list"
 version = "0.2.0"
-source = "git+https://github.com/AhoyISki/duat-jump-list#8b419da762ce9beab1a1788067ee7d196f38374d"
 dependencies = [
  "duat-core",
  "gapbuf",

@@ -144,8 +144,8 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                 let mut parts = self.handle.write(pa).text_mut().parts();
                 let id = form::id_of!("pager.search");
 
-                for [start, end] in searcher.search_fwd(parts.bytes, ..) {
-                    parts.tags.insert(*PAGER_TAGGER, start..end, id.to_tag(0));
+                for range in searcher.search_fwd(parts.bytes, ..) {
+                    parts.tags.insert(*PAGER_TAGGER, range, id.to_tag(0));
                 }
             }
             Err(err) => {
@@ -172,25 +172,25 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
             Ok(mut se) => {
                 let point = self.handle.start_points(pa).real;
                 if self.is_fwd {
-                    let Some([point, _]) =
-                        se.search_fwd(self.handle.read(pa).text(), point..).next()
+                    let Some(range) = se.search_fwd(self.handle.read(pa).text(), point..).next()
                     else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;
                     };
 
+                    let start = self.handle.text(pa).point_at_byte(range.start);
                     self.handle
-                        .scroll_to_points(pa, point.to_two_points_after());
+                        .scroll_to_points(pa, start.to_two_points_after());
                 } else {
-                    let Some([point, _]) =
-                        se.search_rev(self.handle.read(pa).text(), ..point).next()
+                    let Some(range) = se.search_rev(self.handle.read(pa).text(), ..point).next()
                     else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;
                     };
 
+                    let start = self.handle.text(pa).point_at_byte(range.start);
                     self.handle
-                        .scroll_to_points(pa, point.to_two_points_after());
+                        .scroll_to_points(pa, start.to_two_points_after());
                 }
 
                 *SEARCH.lock().unwrap() = text.to_string();

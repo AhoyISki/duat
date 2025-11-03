@@ -36,20 +36,20 @@ use duat_core::{
 ///
 /// impl IncSearcher for SearchAround {
 ///     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, U, Searcher>) {
-///         handle.edit_all(pa, |mut e| {
-///             e.set_caret_on_end();
-///             let Some([_, p1]) = e.search_inc_fwd(None).next() else {
+///         handle.edit_all(pa, |mut c| {
+///             c.set_caret_on_end();
+///             let Some([_, p1]) = c.search_inc_fwd(None).next() else {
 ///                 return;
 ///             };
 ///
-///             e.set_caret_on_start();
-///             let Some([p0, _]) = e.search_inc_rev(None).next() else {
+///             c.set_caret_on_start();
+///             let Some([p0, _]) = c.search_inc_rev(None).next() else {
 ///                 return;
 ///             };
 ///
-///             e.move_to(p0);
-///             e.set_anchor();
-///             e.move_to(p1);
+///             c.move_to(p0);
+///             c.set_anchor();
+///             c.move_to(p1);
 ///         });
 ///     }
 ///
@@ -80,16 +80,10 @@ pub struct SearchFwd;
 
 impl IncSearcher for SearchFwd {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
-        handle.edit_all(pa, |mut e| {
-            let caret = e.caret();
-            let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
-            if let Some([p0, p1]) = next {
-                e.move_to(p0);
-                if p1 > p0 {
-                    e.set_anchor();
-                    e.move_to(p1);
-                    e.move_hor(-1);
-                }
+        handle.edit_all(pa, |mut c| {
+            let caret = c.caret();
+            if let Some(range) = { c.search_inc_fwd(None).find(|r| r.start != caret.byte()) } {
+                c.move_to(range)
             }
         });
     }
@@ -107,16 +101,10 @@ pub struct SearchRev;
 
 impl IncSearcher for SearchRev {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
-        handle.edit_all(pa, |mut e| {
-            let caret = e.caret();
-            let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
-            if let Some([p0, p1]) = next {
-                e.move_to(p0);
-                if p1 > p0 {
-                    e.set_anchor();
-                    e.move_to(p1);
-                    e.move_hor(-1);
-                }
+        handle.edit_all(pa, |mut c| {
+            let caret = c.caret();
+            if let Some(range) = { c.search_inc_rev(None).find(|r| r.end != caret.byte()) } {
+                c.move_to(range)
             }
         });
     }
@@ -134,14 +122,11 @@ pub struct ExtendFwd;
 
 impl IncSearcher for ExtendFwd {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
-        handle.edit_all(pa, |mut e| {
-            let caret = e.caret();
-            let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
-            if let Some([_, p1]) = next {
-                if e.anchor().is_none() {
-                    e.set_anchor();
-                }
-                e.move_to(p1);
+        handle.edit_all(pa, |mut c| {
+            let caret = c.caret();
+            if let Some(range) = { c.search_inc_fwd(None).find(|r| r.start != caret.byte()) } {
+                c.set_anchor_if_needed();
+                c.move_to(range.end);
             }
         });
     }
@@ -159,14 +144,11 @@ pub struct ExtendRev;
 
 impl IncSearcher for ExtendRev {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
-        handle.edit_all(pa, |mut e| {
-            let caret = e.caret();
-            let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
-            if let Some([p0, _]) = next {
-                if e.anchor().is_none() {
-                    e.set_anchor();
-                }
-                e.move_to(p0);
+        handle.edit_all(pa, |mut c| {
+            let caret = c.caret();
+            if let Some(range) = { c.search_inc_rev(None).find(|r| r.end != caret.byte()) } {
+                c.set_anchor_if_needed();
+                c.move_to(range.start);
             }
         });
     }

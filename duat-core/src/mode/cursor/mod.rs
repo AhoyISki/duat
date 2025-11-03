@@ -958,7 +958,10 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     /// requested [`Point`].
     ///
     /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
-    pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
+    pub fn search_inc_fwd(
+        &mut self,
+        end: Option<Point>,
+    ) -> impl Iterator<Item = Range<usize>> + '_ {
         let range = if let Some(end) = end {
             (self.selection.caret()..end).to_range(self.text().len().byte())
         } else {
@@ -977,7 +980,7 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     pub fn search_inc_rev(
         &mut self,
         start: Option<Point>,
-    ) -> impl Iterator<Item = [Point; 2]> + '_ {
+    ) -> impl Iterator<Item = Range<usize>> + '_ {
         let range = if let Some(start) = start {
             (start..self.selection.caret()).to_range(self.text().len().byte())
         } else {

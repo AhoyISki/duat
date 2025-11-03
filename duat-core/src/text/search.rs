@@ -27,7 +27,7 @@ use regex_cursor::{
     },
 };
 
-use super::{Bytes, Point, TextRange};
+use super::{Bytes, TextRange};
 
 impl Bytes {
     /// Searches forward for a [`RegexPattern`] in a [range]
@@ -333,10 +333,9 @@ impl Searcher {
         &'b mut self,
         ref_bytes: &'b impl AsRef<Bytes>,
         range: impl TextRange,
-    ) -> impl Iterator<Item = [Point; 2]> + 'b {
+    ) -> impl Iterator<Item = Range<usize>> + 'b {
         let bytes = ref_bytes.as_ref();
         let range = range.to_range(bytes.len().byte());
-        let mut last_point = bytes.point_at_byte(range.start);
 
         let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
         rev_input.set_anchored(Anchored::Yes);
@@ -371,25 +370,7 @@ impl Searcher {
                     .offset()
             };
 
-            // SAFETY: If a match occurred, since the pattern _must_ be utf8,
-            // every match should also be utf8, so at the very least, this
-            // sequence will be utf8.
-            let start = unsafe {
-                bytes
-                    .slices(last_point.byte()..range.start + h_start)
-                    .chars_unchecked()
-                    .fold(last_point, |p, b| p.fwd(b))
-            };
-            let end = unsafe {
-                bytes
-                    .slices(start.byte()..range.start + h_end)
-                    .chars_unchecked()
-                    .fold(start, |p, b| p.fwd(b))
-            };
-
-            last_point = end;
-
-            Some([start, end])
+            Some(range.start + h_start..range.start + h_end)
         })
     }
 
@@ -400,10 +381,9 @@ impl Searcher {
         &'b mut self,
         ref_bytes: &'b impl AsRef<Bytes>,
         range: impl TextRange,
-    ) -> impl Iterator<Item = [Point; 2]> + 'b {
+    ) -> impl Iterator<Item = Range<usize>> + 'b {
         let bytes = ref_bytes.as_ref();
         let range = range.to_range(bytes.len().byte());
-        let mut last_point = bytes.point_at_byte(range.end);
 
         let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
         fwd_input.anchored(Anchored::Yes);
@@ -437,25 +417,7 @@ impl Searcher {
                     .offset()
             };
 
-            // SAFETY: If a match occurred, since the pattern _must_ be utf8,
-            // every match should also be utf8, so at the very least, this
-            // sequence will be utf8.
-            let end = unsafe {
-                bytes
-                    .slices(range.start + h_end..last_point.byte())
-                    .chars_unchecked()
-                    .fold(last_point, |p, b| p.rev(b))
-            };
-            let start = unsafe {
-                bytes
-                    .slices(range.start + h_start..end.byte())
-                    .chars_unchecked()
-                    .fold(end, |p, b| p.rev(b))
-            };
-
-            last_point = start;
-
-            Some([start, end])
+            Some(range.start + h_start..range.start + h_end)
         })
     }
 

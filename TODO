@@ -50,12 +50,10 @@ FOR NEXT UPDATE:
 [x] Finalize the Windows API for more public use.
 [x] Easier pattern matching for Modes.
 [x] extra_word_chars, rather than WordChars.
-[ ] Buffer switch history.
+[x] Buffer switch history.
 
 KNOWN BUGS:
  HIGH PRIORITY:
-  [ ] Various duat-kak bugs.
-  [ ] Wrapped movement is borked.
   [ ] track_area not actually tracking correctly.
   [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
   [ ] First Point not updating when there are changes before the start of the screen.

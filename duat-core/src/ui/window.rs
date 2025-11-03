@@ -354,8 +354,7 @@ impl Windows {
                     .inner
                     .write(pa)
                     .buffer_history
-                    .prev()
-                    .cloned()
+                    .jump_by(handle.clone(), -1)
                     .or_else(|| self.buffers(pa).next())
                     .and_then(|handle| {
                         self.entries(pa).find_map(|(win, node)| {
@@ -506,7 +505,8 @@ impl Windows {
         let inner = self.inner.write(pa);
 
         if let Some(handle) = node.try_downcast::<Buffer>() {
-            *inner.cur_buffer.write(internal_pass) = handle;
+            let current = std::mem::replace(inner.cur_buffer.write(internal_pass), handle.clone());
+            inner.buffer_history.insert(current, handle);
         }
         *inner.cur_widget.write(internal_pass) = node.clone();
         inner.cur_win = win;
@@ -685,6 +685,34 @@ impl Windows {
                     .flat_map(move |(i, win)| entries((i, win)).rev())
                     .take(next_len - (wid + 1)),
             )
+    }
+
+    ////////// Buffer switching
+
+    /// Jumps around in the buffer history
+    ///
+    /// This will jump forwards if `number` is positive, backwards
+    /// otherwise.
+    pub fn jump_buffers_by(&self, pa: &mut Pass, jumps: i32) {
+        let current = self.inner.read(pa).cur_buffer.read(pa).clone();
+        if let Some(handle) = self.inner.write(pa).buffer_history.jump_by(current, jumps) {
+            mode::reset_to(handle.to_dyn());
+        } else {
+            context::warn!("No buffer [a]{jumps}[] jumps away from the current one");
+        }
+    }
+
+    /// Jumps to the last buffer
+    ///
+    /// Calling this repeatedly
+    pub fn last_buffer(&self, pa: &mut Pass) -> Result<Handle, Text> {
+        let current = self.inner.read(pa).cur_buffer.read(pa).clone();
+        if let Some(handle) = self.inner.write(pa).buffer_history.last(current) {
+            mode::reset_to(handle.to_dyn());
+            Ok(handle)
+        } else {
+            Err(txt!("No last buffer"))
+        }
     }
 
     ////////// Querying functions
@@ -1131,42 +1159,41 @@ impl Window {
 struct BufferHistory {
     current_i: usize,
     list: Vec<Handle>,
-    last_was_fwd: bool,
+    last: Option<Handle>,
 }
 
 impl BufferHistory {
     /// Returns the previous [`Handle`], if there is one
-    fn prev(&mut self) -> Option<&Handle> {
-        self.current_i.checked_sub(1).and_then(|prev_i| {
-            self.last_was_fwd = true;
-            self.current_i = prev_i;
-            self.list.get(prev_i)
-        })
-    }
+    fn jump_by(&mut self, current: Handle, by: i32) -> Option<Handle> {
+        let new_i = self
+            .current_i
+            .saturating_add_signed(by as isize)
+            .min(self.list.len());
+        let new_handle = self.list.get(new_i)?.clone();
 
-    /// Returns the next [`Handle`], if there is one
-    fn _next(&mut self) -> Option<&Handle> {
-        self.list.get(self.current_i + 1).inspect(|_| {
-            self.last_was_fwd = false;
-            self.current_i += 1;
-        })
+        self.last = Some(current);
+        self.current_i = new_i;
+        Some(new_handle)
     }
 
     /// Returns the last [`Handle`]
     ///
     /// Repeatedly calling this function will return the same two
     /// [`Handle`]s.
-    fn _last(&mut self) -> Option<&Handle> {
-        if self.last_was_fwd {
-            self._next()
+    fn last(&mut self, current: Handle) -> Option<Handle> {
+        if let Some(last) = self.last.as_mut() {
+            Some(std::mem::replace(last, current))
+        } else if let Some(last) = self.list.get(self.current_i.checked_sub(1)?) {
+            self.last = Some(current);
+            Some(last.clone())
         } else {
-            self.prev()
+            None
         }
     }
 
     /// Inserts a new entry, but only if it is different from both of
     /// the surrounding entries
-    fn _insert(&mut self, handle: Handle) {
+    fn insert(&mut self, current: Handle, handle: Handle) {
         if self
             .current_i
             .checked_sub(1)
@@ -1177,7 +1204,7 @@ impl BufferHistory {
                 .is_none_or(|other| *other != handle)
         {
             self.list.insert(self.current_i, handle);
-            self.last_was_fwd = false;
+            self.last = Some(current);
             self.current_i += 1;
         }
     }

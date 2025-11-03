@@ -185,14 +185,12 @@ impl Bytes {
         let (fwd_i, rev_i) = (start.line(), end.line());
         if let Some(str) = self.get_contiguous(start..end) {
             let lines = [str.lines(), "".lines()];
-            crate::context::debug!("contiguous {lines:#?}");
             Lines::new(lines, None, fwd_i, rev_i)
         // If the gap is within the range, but on a line split, we
         // can just iterate through two sets of lines.
         } else if end.byte() > start.byte() && self.buf[self.buf.gap() - 1] == b'\n' {
             let [s0, s1] = self.strs_inner(start.byte()..end.byte()).unwrap();
             let lines = [s0.lines(), s1.lines()];
-            crate::context::debug!("perfect split {lines:#?}");
             Lines::new(lines, None, fwd_i, rev_i)
             // Otherwise, the line that was split will need to be
             // allocated and returned separately.
@@ -210,7 +208,6 @@ impl Bytes {
 
             let lines = [before.lines(), after.lines()];
             let split_line = Some(split0.to_string() + split1);
-            crate::context::debug!("merged {split_line:?} in {lines:#?}");
             Lines::new(lines, split_line, fwd_i, rev_i)
         }
     }

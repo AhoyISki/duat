@@ -473,6 +473,11 @@ pub(crate) fn add_session_commands() {
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
+    add!("last-buffer", |pa| {
+        let handle = context::windows().last_buffer(pa)?;
+        Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
+    });
+
     add!("swap", |pa, lhs: Buffer, rhs: Option<Buffer>| {
         let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa).clone());
 
@@ -742,6 +747,7 @@ mod global {
     }
 
     /// Like [`call`], but notifies the result
+    #[allow(unused_must_use)]
     pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
         // SAFETY: Function has a Pass argument.
         let result = unsafe { COMMANDS.get() }.run(pa, call.to_string());
