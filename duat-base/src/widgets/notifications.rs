@@ -22,10 +22,11 @@ use duat_core::{
 
 /// A [`Widget`] to show notifications
 ///
-/// With the [`FooterWidgets`] group, this [`Widget`] can be conveniently 
-/// placed alongside a [`PromptLine`] and a [`StatusLine`],in a combination
-/// that hides the [`PromptLine`]when it is not in use, covering it with the 
-/// [`Notifications`], andvice-versa. This is the default behaviour of Duat.
+/// With the [`FooterWidgets`] group, this [`Widget`] can be
+/// conveniently placed alongside a [`PromptLine`] and a
+/// [`StatusLine`],in a combination that hides the [`PromptLine`]when
+/// it is not in use, covering it with the [`Notifications`],
+/// andvice-versa. This is the default behaviour of Duat.
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -131,13 +132,13 @@ impl Widget for Notifications {
 }
 
 /// A builder for the [`Notifications`] [`Widget`]
-/// 
-/// Normally, this `Widget` is placed alongside others in the 
+///
+/// Normally, this `Widget` is placed alongside others in the
 /// [`FooterWidgets`] `Widget` group.
-/// 
+///
 /// You can create it separately with [`Notifications::builder`],
 /// which will return this struct.
-/// 
+///
 /// [`PromptLine`]: super::PromptLine
 /// [hook]: hook
 /// [`FooterWidgets`]: super::FooterWidgets
@@ -170,9 +171,9 @@ impl NotificationsOpts {
     ///
     /// This will be applied to every single [`Level`] of a
     /// [`Record`]. If you wish to limit which levels will get shown,
-    /// see [`filter_levels`]
+    /// see [`set_allowed_levels`]
     ///
-    /// [`filter_levels`]: Self::filter_levels
+    /// [`set_allowed_levels`]: Self::set_allowed_levels
     pub fn fmt<T: Into<Text>>(&mut self, mut fmt: impl FnMut(Record) -> T + Send + 'static) {
         self.fmt = Box::new(move |rec| fmt(rec).into());
     }
@@ -181,7 +182,7 @@ impl NotificationsOpts {
     ///
     /// Is [`Level::Info`], [`Level::Warn`] and [`Level::Error`] by
     /// default.
-    pub fn filter_levels(&mut self, levels: impl IntoIterator<Item = Level>) {
+    pub fn set_allowed_levels(&mut self, levels: impl IntoIterator<Item = Level>) {
         self.allowed_levels = levels.into_iter().collect();
     }
 

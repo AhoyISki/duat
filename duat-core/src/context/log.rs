@@ -248,7 +248,7 @@ impl Logs {
     ///
     /// [`CmdResult`]: crate::cmd::CmdResult
     #[track_caller]
-    pub(crate) fn push_cmd_result(&self, cmd: String, result: Result<Option<Text>, Text>) {
+    pub(crate) fn push_cmd_result(&self, result: Result<Option<Text>, Text>) {
         let is_ok = result.is_ok();
         let (Ok(Some(res)) | Err(res)) = result else {
             return;
@@ -259,7 +259,6 @@ impl Logs {
         let rec = Record {
             metadata: log::MetadataBuilder::new()
                 .level(if is_ok { Level::Info } else { Level::Error })
-                .target(cmd.leak())
                 .build(),
             text: Box::leak(Box::new(res.no_selections())),
             location: Location::caller(),

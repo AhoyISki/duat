@@ -34,8 +34,8 @@ use crate::{
     hook::{self, BufferClosed, BufferReloaded, WindowCreated},
     mode,
     opts::{
-        BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, NOTIFICATIONS_FN, ONE_LINE_FOOTER,
-        STATUSLINE_FMT,
+        BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, LOGBOOK_FN, NOTIFICATIONS_FN,
+        ONE_LINE_FOOTER, STATUSLINE_FMT,
     },
     prelude::BufferWritten,
     widgets::Buffer,
@@ -73,7 +73,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     })
     .grouped("BufferWidgets");
 
-    hook::add::<WindowCreated>(|pa, builder| {
+    hook::add::<WindowCreated>(|pa, handle| {
         let status = STATUSLINE_FMT.lock().unwrap()(pa);
         let mut footer = FooterWidgets::new(status).notifs({
             let mut notifs = Notifications::builder();
@@ -89,13 +89,15 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
             footer = footer.one_line();
         }
 
-        footer.push_on(pa, builder);
+        footer.push_on(pa, handle);
         Ok(())
     })
     .grouped("FooterWidgets");
 
-    hook::add::<WindowCreated>(|pa, builder| {
-        LogBook::builder().push_on(pa, builder);
+    hook::add::<WindowCreated>(|pa, window| {
+        let mut builder = LogBook::builder();
+        LOGBOOK_FN.lock().unwrap()(&mut builder);
+        builder.push_on(pa, window);
         Ok(())
     })
     .grouped("LogBook");

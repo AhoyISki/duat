@@ -80,6 +80,6 @@ fn custom_name_txt(file: &Buffer) -> Text {
     } else {
         // But you can also create Text directly
         // The second thing is a non identifier expression.
-        txt!("[file.new.scratch]{}", file.name()).build()
+        txt!("[file.new.scratch]{}", file.name())
     }
 }

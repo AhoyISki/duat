@@ -144,8 +144,8 @@ impl LogBookOpts {
     /// [`Record`]s (those with level [`Debug`] or higher.
     ///
     /// [`Debug`]: context::Level::Debug
-    pub fn fmt(self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) -> Self {
-        Self { fmt: Box::new(fmt), ..self }
+    pub fn fmt(&mut self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) {
+        self.fmt = Box::new(fmt);
     }
 }
 

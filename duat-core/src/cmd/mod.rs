@@ -745,9 +745,7 @@ mod global {
     pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
         // SAFETY: Function has a Pass argument.
         let result = unsafe { COMMANDS.get() }.run(pa, call.to_string());
-        let call = call.to_string();
-        let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
-        context::logs().push_cmd_result(cmd.to_string(), result.clone());
+        context::logs().push_cmd_result(result.clone());
 
         result
     }
@@ -778,10 +776,8 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                let result = unsafe { COMMANDS.get() }.run(pa, call.clone());
-                let call = call;
-                let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
-                context::logs().push_cmd_result(cmd.to_string(), result.clone());
+                context::logs()
+                    .push_cmd_result(unsafe { COMMANDS.get() }.run(pa, call.clone()).clone());
             })))
             .unwrap()
     }
@@ -807,9 +803,7 @@ mod global {
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
                 // SAFETY: Function has a Pass argument.
                 let result = unsafe { COMMANDS.get() }.run(pa, call.clone());
-                let call = call;
-                let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
-                context::logs().push_cmd_result(cmd.to_string(), result.clone());
+                context::logs().push_cmd_result(result.clone());
 
                 map(result)
             })))

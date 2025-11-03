@@ -62,7 +62,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use duat_base::widgets::{LineNumbersOpts, StatusLineFmt};
+use duat_base::widgets::{LineNumbersOpts, LogBookOpts, StatusLineFmt};
 use duat_core::data::Pass;
 #[allow(unused_imports)]
 pub use duat_core::opts::*;
@@ -78,6 +78,7 @@ pub(crate) static STATUSLINE_FMT: LazyLock<StatusLineFn> =
     LazyLock::new(|| Mutex::new(Box::new(|_| StatusLineFmt::default())));
 pub(crate) static NOTIFICATIONS_FN: LazyLock<NotificationsFn> =
     LazyLock::new(|| Mutex::new(Box::new(|_| {})));
+pub(crate) static LOGBOOK_FN: LazyLock<LogBookFn> = LazyLock::new(|| Mutex::new(Box::new(|_| {})));
 pub(crate) static FOOTER_ON_TOP: AtomicBool = AtomicBool::new(false);
 pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 
@@ -315,7 +316,6 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 ///         main_line(buffer) - 1,
 ///         buffer.text().len().line()
 ///     )
-///     .build()
 /// }
 ///
 /// let mode = mode_txt();
@@ -387,7 +387,7 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// fn buf_percent(text: &Text, main: &Selection) -> Text {
 ///     // The caret is the part of the cursor that moves, as opposed to the anchor.
 ///     let caret = main.caret();
-///     txt!("[coord]{}%", (100 * caret.line()) / text.len().line()).build()
+///     txt!("[coord]{}%", (100 * caret.line()) / text.len().line())
 /// }
 ///
 /// fn setup() {
@@ -454,13 +454,95 @@ pub fn set_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'stati
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     opts::set_notifs(|opts| opts.fmt(|rec| rec));
+///     opts::set_notifs(|opts| {
+///         use context::Level::*;
+///
+///         opts.fmt(|rec| {
+///             let mut builder = Text::builder();
+///
+///             match rec.level() {
+///                 Error => builder.push(txt!("[log_book.error]  ")),
+///                 Warn => builder.push(txt!("[log_book.warn]  ")),
+///                 Info => builder.push(txt!("[log_book.info]  ")),
+///                 Debug => builder.push(txt!("[log_book.debug]  ")),
+///                 Trace => unreachable!(""),
+///             };
+///
+///             builder.push(rec.text().clone());
+///
+///             builder.build()
+///         });
+///
+///         opts.set_allowed_levels([Error, Warn, Info, Debug]);
+///     });
 /// }
 /// ```
-/// 
+///
+/// In the snippet above, I'm reformatting the notifications, so they
+/// show a symbol for identification. I'm also making use of the
+/// `log_book.{}` forms, since those are already set by the
+/// [`LogBook`].
+///
+/// Note that I'm also setting which [`Level`]s should be shown, since
+/// by default, [`Level::Debug`] is not included in that list, as it
+/// is mostly meant for the [`LogBook`]. But if you want to be
+/// notified of it, the option's there.
+///
 /// [`Notifications`]: crate::widgets::Notifications
+/// [`LogBook`]: crate::widgets::LogBook
+/// [`Level`]: crate::context::Level
+/// [`Level::Debug`]: crate::context::Level::Debug
 pub fn set_notifs(set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
     *NOTIFICATIONS_FN.lock().unwrap() = Box::new(set_fn);
+}
+
+/// Changes the default [`LogBook`]
+///
+/// You can open the `LogBook` by calling the `"logs"` command, which
+/// will also focus on the `Widget`.
+///
+/// By default, the `LogBook` will be shown at the bottom of the
+/// screen, and it shows the full log of notifications sent do Duat,
+/// unlike the [`Notifications`] `Widget`, which shows only the last
+/// one.
+///
+/// You can change how the logs are displayed, here's how:
+///
+/// ```rust
+/// setup_duat!(setup);
+/// use duat::prelude::*;
+///
+/// fn setup() {
+///     opts::set_logs(|opts| {
+///         opts.fmt(|rec| match rec.level() {
+///             context::Level::Error => Some(txt!("[log_book.error]  {}", rec.text().clone())),
+///             _ => None,
+///         });
+///
+///         opts.hidden = false;
+///         opts.close_on_unfocus = false;
+///         opts.side = ui::Side::Right;
+///         opts.width = 75.0;
+///     });
+/// }
+/// ```
+///
+/// Here, I'm reformatting the notifications. Note that the closure
+/// return [`Some`] only when the notification is of type
+/// [`Level::Error`]. This filters out other types of notifications,
+/// which could be useful for heavy debugging sessions.
+///
+/// Also helpful for debugging are the other options set. For example,
+/// if you're debugging a Duat [`Plugin`], it would be useful to show
+/// the [`LogBook`] right as Duat is reloaded, so you can see
+/// diagnostics immediately.
+///
+/// [`LogBook`]: crate::widgets::LogBook
+/// [`Notifications`]: crate::widgets::Notifications
+/// [`Level::Error`]: crate::context::Level::Error
+/// [`Plugin`]: crate::Plugin
+pub fn set_logs(set_fn: impl FnMut(&mut LogBookOpts) + Send + 'static) {
+    *LOGBOOK_FN.lock().unwrap() = Box::new(set_fn);
 }
 
 /// Makes the [`FooterWidgets`] take up one line instead of two
@@ -486,7 +568,7 @@ pub fn set_notifs(set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`PromptLine`]: crate::widgets::PromptLine
 /// [`Notifications`]: crate::widgets::Notifications
-/// [`Widget`]: crate::ui::Widget
+/// [`Widget`]: crate::widgets::Widget
 /// [`opts::set_status`]: set_status
 pub fn one_line_footer(one_line: bool) {
     ONE_LINE_FOOTER.store(one_line, Ordering::Relaxed);
@@ -509,3 +591,4 @@ pub fn footer_on_top(on_top: bool) {
 
 type StatusLineFn = Mutex<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>;
 type NotificationsFn = Mutex<Box<dyn FnMut(&mut NotificationsOpts) + Send>>;
+type LogBookFn = Mutex<Box<dyn FnMut(&mut LogBookOpts) + Send>>;

@@ -67,6 +67,8 @@ impl Tags<'_> {
 
     /// Same as [`insert`], but does it after other [`Tags`] of the
     /// same priority
+    ///
+    /// [`insert`]: Self::insert
     pub fn insert_after<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
     where
         R: Copy,

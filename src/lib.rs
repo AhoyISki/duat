@@ -27,11 +27,11 @@
 //!
 //! ## Getting started
 //!
-//! > [!NOTE]
-//! >
-//! > On this section, I will be referring to duat's configuration by
-//! > `~/.config/duat/`, but you should replace it with your operating
-//! > system's config path.
+//! # Note
+//!
+//! On this section, I will be referring to duat's configuration by
+//! `~/.config/duat/`, but you should replace it with your operating
+//! system's config path.
 //!
 //! To install Duat, I am assuming that you have `cargo` installed on
 //! your system, if you don't, [install it].
@@ -173,7 +173,7 @@
 //! # fn test() {
 //! let infix = "text";
 //!
-//! let text = txt!("This {infix} is [form1]colored and {Spacer} distant").build();
+//! let text = txt!("This {infix} is [form1]colored and {Spacer} distant");
 //! # }
 //! ```
 //!
