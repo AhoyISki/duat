@@ -4,10 +4,10 @@ use duat_base::modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
 };
 use duat_core::{
-    Lender,
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
+    lender::Lender,
     mode::{self, KeyEvent, KeyMod, Mode, VPoint, alt, event, shift},
     opts::PrintOpts,
     text::Point,

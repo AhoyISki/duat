@@ -2,10 +2,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use duat_base::widgets::Completions;
 use duat_core::{
-    Lender,
     buffer::Buffer,
     context::Handle,
     data::Pass,
+    lender::Lender,
     mode::{self, Cursor, KeyEvent, KeyMod, Mode, ctrl, event, shift},
 };
 use treesitter::TsCursor;
