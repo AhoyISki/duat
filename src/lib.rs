@@ -19,54 +19,64 @@
 //!
 //! <details>
 //! <summary>
-//! 
+//!
 //! ### Object selection
 //!
 //! </summary>
-//! 
+//!
 //! `h`, `<Left>`\
-//! Selects the character to the left. Wraps around lines.
+//! Move left. Wraps around lines.
 //!
 //! `j`\
-//! Selects the character below on the next line.
+//! Move down
 //!
 //! `<Down>`\
-//! Selects the character below on the next wrapped line (i.c vim's
-//! `gj`).
+//! Move down to the next wrapped line (i.c vim's `gj`).
 //!
 //! `k`\
-//! Selects the character above on the previous line.
+//! Move up.
 //!
 //! `<Up>`\
-//! Selects the character above on the previous wrapped line (i.c.
-//! vim's `gk`).
+//! Move up to the previous wrapped line (i.e. vim's `gk`).
 //!
 //! `l`, `<Right>`\
-//! Selects the character to the right. Wraps around lines.
+//! Move right. Wraps around lines.
+//!
+//! `H`, `<S-Left>`, `J`, `<S-Down>`, `K`, `<S-Up>`, `L`, `<S-Right>`\
+//! Same as the previous characters, but extends the selection
 //!
 //! `w`\
-//! Selects the `word` and following space to the right of the
-//! selection.
+//! Selects the `word` and following space ahead of the selection.
 //!
 //! `b`\
-//! Selects the `word` followed by spaces to the left of the
-//! selection.
+//! Selects the `word` followed by spaces behind the selection.
 //!
-//! `c`\
-//! Selects to the end of the next `word` to the right of the
-//! selection.
+//! `e`\
+//! Selects to the end of the next `word` ahead of the selection.
 //!
-//! `<A-(w|b|c)>`\
-//! The same as `(w|b|c)`, but over a `WORD`.
+//! `<(W|B|E)>`\
+//! The same as `(w|b|e)`, but extends the selection.
 //!
-//! `f{key}`\
-//! Selects to the next occurrence of the `{key}` character.
+//! `<A-(w|b|e)>`\
+//! The same as `(w|b|e)`, but over a `WORD`.
 //!
-//! `t{key}`\
-//! Selects until the next occurrence of the `{key}` character.
+//! `<A-(W|B|E)>`\
+//! The same as `<A-(w|b|e)>`, but extends the selection.
 //!
-//! `<A-(f|t)>{key}`\
+//! `f{char}`\
+//! Selects to the next occurrence of the `{char}`.
+//!
+//! `t{char}`\
+//! Selects until the next occurrence of the `{char}`.
+//!
+//! `<(F|T)>{char}`\
+//! Same as `(f|t)`, but extends the selection.
+//!
+//! `<A-(f|t)>{char}`\
 //! Same as `(f|t)`, but in the opposite direction.
+//! 
+//! `<A-(F|T)>{char}`\
+//! Same as `<A-(f|t)>`, but in extends the selection.
 //!
 //! `x`\
 //! Extends selection to encompass full lines.
@@ -79,12 +89,30 @@
 //!
 //! `<A-l>`, `<End>`\
 //! Selects until the end of the line.
+//! 
+//! `<A-H>`, `<S-Home>`, `<A-L>`, `<S-End>`\
+//! Same as the previous two, but extends the selection.
+//!
+//! `;`\
+//! Reduces selections to just the [caret].
+//!
+//! `<A-;>`\
+//! Flips the [caret] and [anchor] of selectionss around.
+//!
+//! `<A-:>`\
+//! Places the [caret] ahead of the [anchor] in all selections.
+//!
+//! `<A-s>`\
+//! Divides selection into multiple selections, one per line.
+//!
+//! `<A-S>`\
+//! Splits into two selections, one at each end of the selection.
 //!
 //! </details>
 //!
 //! <details>
 //! <summary>
-//! 
+//!
 //! ### Text modification
 //!
 //! </summary>
@@ -137,7 +165,7 @@
 //! Creates a new line above and enters `insert` mode in it.
 //!
 //! `<A-(o|O)>`\
-//! Same as `(o|O)`, but just adds the new line.
+//! Same as `(o|O)`, but just adds the new line without moving.
 //!
 //! `r{key}`\
 //! Replaces each character with `{key}`
@@ -149,12 +177,12 @@
 //! [Redoes] the next `moment`
 //!
 //! `` ` ``\
-//! Changes to lowercase.
+//! Changes selection to lowercase.
 //!
 //! `~`\
-//! Changes to uppercase.
+//! Changes selection to uppercase.
 //!
-//! `<A->`\
+//! `<A-\`>`\
 //! Swaps the case of each character.
 //!
 //! `<A-)>`\
@@ -169,7 +197,12 @@
 //!
 //! </details>
 //!
-//! ### Incremental Search
+//! <details>
+//! <summary>
+//!
+//! ### Search
+//!
+//! </summary>
 //!
 //! The searching in this plugin is done through the [`IncSearch`]
 //! [`Mode`] from Duat, with some [`IncSearcher`]s defined in this
@@ -182,9 +215,11 @@
 //! `<A-/>`\
 //! Searches backwards for the previous pattern, on each [`Cursor`].
 //!
-//! `(?|<A-?>)`\
-//! Follows the `Shift` pattern described above, so its the same as
-//! `(/|<A-/>)`, but extending the selection instead.
+//! `?`\
+//! Extends forward for the next pattern, on each [`Cursor`].
+//!
+//! `<A-?>`\
+//! Extends backwards for the previous pattern, on each [`Cursor`].
 //!
 //! `s`\
 //! Selects the pattern from within current selections.
@@ -192,22 +227,30 @@
 //! `S`\
 //! Splits current selections by the pattern.
 //!
+//! `<A-k>`\
+//! Keeps only the selections that match the pattern.
+//!
+//! `<A-K>`\
+//! Keeps only the selections that _don't_ match the pattern.
+//!
+//! `n`\
+//! Go to next match for pattern.
+//!
+//! `N`\
+//! Create a new cursor on the next match for pattern.
+//!
+//! `<A-n>`\
+//! Go to previous match for pattern.
+//!
+//! `<A-N>`\
+//! Create a new cursor on the previous match for pattern.
+//!
+//! `*`\
+//! Makes the main selection the searching pattern.
+//!
+//! </details>
+//!
 //! ### Selection manipulation
-//!
-//! `;`\
-//! Reduces selections to just the [caret].
-//!
-//! `<A-;>`\
-//! Flips the [caret] and [anchor] of [`Cursor`]s around.
-//!
-//! `<A-:>`\
-//! Places the [caret] ahead of the [anchor] in all selections.
-//!
-//! `<A-s>`\
-//! Divides selection into multiple selections, one per line.
-//!
-//! `<A-S>`\
-//! Splits into two [`Cursor`]s, one at each end of the selection.
 //!
 //! ## `goto` mode
 //!

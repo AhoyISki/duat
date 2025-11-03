@@ -14,14 +14,14 @@ impl IncSearcher for Select {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
-            if let Some(anchor) = c.anchor() {
-                let ranges: Vec<_> = c.search_inc_fwd(Some(anchor)).collect();
+            let Some(anchor) = c.anchor() else { return };
 
-                for (i, range) in ranges.iter().enumerate() {
-                    c.move_to(range.clone());
-                    if i < ranges.len() - 1 {
-                        c.copy();
-                    }
+            let ranges: Vec<_> = c.search_inc_fwd(Some(anchor)).collect();
+
+            for (i, range) in ranges.iter().enumerate() {
+                c.move_to(range.clone());
+                if i < ranges.len() - 1 {
+                    c.copy();
                 }
             }
         });
@@ -40,24 +40,24 @@ impl IncSearcher for Split {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
-            if let Some(anchor) = c.anchor() {
-                let ranges: Vec<usize> = c
-                    .search_inc_fwd(Some(anchor))
-                    .flat_map(|r| [r.start, r.end])
-                    .collect();
+            let Some(anchor) = c.anchor() else { return };
+            
+            let ranges: Vec<usize> = c
+                .search_inc_fwd(Some(anchor))
+                .flat_map(|r| [r.start, r.end])
+                .collect();
 
-                let cursors_to_add = ranges.len() / 2 + 1;
-                let iter = [c.caret().byte()]
-                    .into_iter()
-                    .chain(ranges)
-                    .chain([anchor.byte()])
-                    .array_chunks();
+            let cursors_to_add = ranges.len() / 2 + 1;
+            let iter = [c.caret().byte()]
+                .into_iter()
+                .chain(ranges)
+                .chain([anchor.byte()])
+                .array_chunks();
 
-                for (i, [p0, p1]) in iter.enumerate() {
-                    c.move_to(p0..p1);
-                    if i < cursors_to_add {
-                        c.copy();
-                    }
+            for (i, [p0, p1]) in iter.enumerate() {
+                c.move_to(p0..p1);
+                if i < cursors_to_add {
+                    c.copy();
                 }
             }
         })

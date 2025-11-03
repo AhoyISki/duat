@@ -27,48 +27,58 @@ The keys in `normal` mode follow the following patterns:
 </summary>
 
 `h`, `<Left>`  
-Selects the character to the left. Wraps around lines.
+Move left. Wraps around lines.
 
 `j`  
-Selects the character below on the next line.
+Move down
 
 `<Down>`  
-Selects the character below on the next wrapped line (i.c vim’s
-`gj`).
+Move down to the next wrapped line (i.c vim’s `gj`).
 
 `k`  
-Selects the character above on the previous line.
+Move up.
 
 `<Up>`  
-Selects the character above on the previous wrapped line (i.c.
-vim’s `gk`).
+Move up to the previous wrapped line (i.e. vim’s `gk`).
 
 `l`, `<Right>`  
-Selects the character to the right. Wraps around lines.
+Move right. Wraps around lines.
+
+`H`, `<S-Left>`, `J`, `<S-Down>`, `K`, `<S-Up>`, `L`, `<S-Right>`  
+Same as the previous characters, but extends the selection
 
 `w`  
-Selects the `word` and following space to the right of the
-selection.
+Selects the `word` and following space ahead of the selection.
 
 `b`  
-Selects the `word` followed by spaces to the left of the
-selection.
+Selects the `word` followed by spaces behind the selection.
 
-`c`  
-Selects to the end of the next `word` to the right of the
-selection.
+`e`  
+Selects to the end of the next `word` ahead of the selection.
 
-`<A-(w|b|c)>`  
-The same as `(w|b|c)`, but over a `WORD`.
+`<(W|B|E)>`  
+The same as `(w|b|e)`, but extends the selection.
 
-`f{key}`  
-Selects to the next occurrence of the `{key}` character.
+`<A-(w|b|e)>`  
+The same as `(w|b|e)`, but over a `WORD`.
 
-`t{key}`  
-Selects until the next occurrence of the `{key}` character.
+`<A-(W|B|E)>`  
+The same as `<A-(w|b|e)>`, but extends the selection.
 
-`<A-(f|t)>{key}`  
+`f{char}`  
+Selects to the next occurrence of the `{char}`.
+
+`t{char}`  
+Selects until the next occurrence of the `{char}`.
+
+`<(F|T)>{char}`  
+Same as `(f|t)`, but extends the selection.
+
+`<A-(f|t)>{char}`  
 Same as `(f|t)`, but in the opposite direction.
+
+`<A-(F|T)>{char}`  
+Same as `<A-(f|t)>`, but in extends the selection.
 
 `x`  
 Extends selection to encompass full lines.
@@ -82,9 +92,32 @@ Selects to the start of the line.
 `<A-l>`, `<End>`  
 Selects until the end of the line.
 
+`<A-H>`, `<S-Home>`, `<A-L>`, `<S-End>`  
+Same as the previous two, but extends the selection.
+
+`;`  
+Reduces selections to just the [caret][__link5].
+
+`<A-;>`  
+Flips the [caret][__link6] and [anchor][__link7] of selectionss around.
+
+`<A-:>`  
+Places the [caret][__link8] ahead of the [anchor][__link9] in all selections.
+
+`<A-s>`  
+Divides selection into multiple selections, one per line.
+
+`<A-S>`  
+Splits into two selections, one at each end of the selection.
+
 </details>
 
-#### Changing text
+<details>
+<summary>
+
+#### Text modification
+
+</summary>
 
 `i`  
 Enter `insert` mode before selections, keys inserted (except for
@@ -134,24 +167,24 @@ Creates a new line below and enters `insert` mode in it.
 Creates a new line above and enters `insert` mode in it.
 
 `<A-(o|O)>`  
-Same as `(o|O)`, but just adds the new line.
+Same as `(o|O)`, but just adds the new line without moving.
 
 `r{key}`  
 Replaces each character with `{key}`
 
 `u`  
-[Undoes][__link5] the last `moment`
+[Undoes][__link10] the last `moment`
 
 `U`  
-[Redoes][__link6] the next `moment`
+[Redoes][__link11] the next `moment`
 
 `` ` ``  
-Changes to lowercase.
+Changes selection to lowercase.
 
 `~`  
-Changes to uppercase.
+Changes selection to uppercase.
 
-`<A->`  
+`<A-\`\>\`  
 Swaps the case of each character.
 
 `<A-)>`  
@@ -161,25 +194,34 @@ Rotates each selection’s content forwards.
 Rptates each selection’s content backwards.
 
 `|`  
-Changes mode to [`PipeSelections`][__link7], letting you pipe each
+Changes mode to [`PipeSelections`][__link12], letting you pipe each
 selection to an external program.
 
-#### Incremental Search
+</details>
 
-The searching in this plugin is done through the [`IncSearch`][__link8]
-[`Mode`][__link9] from Duat, with some [`IncSearcher`][__link10]s defined in this
+<details>
+<summary>
+
+#### Search
+
+</summary>
+
+The searching in this plugin is done through the [`IncSearch`][__link13]
+[`Mode`][__link14] from Duat, with some [`IncSearcher`][__link15]s defined in this
 crate. This means that search will be done incrementally over a
 Regex pattern.
 
 `/`  
-Searches forward for the next pattern, on each [`Cursor`][__link11].
+Searches forward for the next pattern, on each [`Cursor`][__link16].
 
 `<A-/>`  
-Searches backwards for the previous pattern, on each [`Cursor`][__link12].
+Searches backwards for the previous pattern, on each [`Cursor`][__link17].
 
-`(?|<A-?>)`  
-Follows the `Shift` pattern described above, so its the same as
-`(/|<A-/>)`, but extending the selection instead.
+`?`  
+Extends forward for the next pattern, on each [`Cursor`][__link18].
+
+`<A-?>`  
+Extends backwards for the previous pattern, on each [`Cursor`][__link19].
 
 `s`  
 Selects the pattern from within current selections.
@@ -187,22 +229,30 @@ Selects the pattern from within current selections.
 `S`  
 Splits current selections by the pattern.
 
+`<A-k>`  
+Keeps only the selections that match the pattern.
+
+`<A-K>`  
+Keeps only the selections that *don’t* match the pattern.
+
+`n`  
+Go to next match for pattern.
+
+`N`  
+Create a new cursor on the next match for pattern.
+
+`<A-n>`  
+Go to previous match for pattern.
+
+`<A-N>`  
+Create a new cursor on the previous match for pattern.
+
+`*`  
+Makes the main selection the searching pattern.
+
+</details>
+
 #### Selection manipulation
-
-`;`  
-Reduces selections to just the [caret][__link13].
-
-`<A-;>`  
-Flips the [caret][__link14] and [anchor][__link15] of [`Cursor`][__link16]s around.
-
-`<A-:>`  
-Places the [caret][__link17] ahead of the [anchor][__link18] in all selections.
-
-`<A-s>`  
-Divides selection into multiple selections, one per line.
-
-`<A-S>`  
-Splits into two [`Cursor`][__link19]s, one at each end of the selection.
 
 ### `goto` mode
 
@@ -234,18 +284,18 @@ Go to the next [`Buffer`][__link21] (includes other windows).
 Go to the previous [`Buffer`][__link22] (includes other windows).
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4HkR_S35wtPGzSs_Zi9eKNsGw9ohVFwwLJOGxwXpGKKolS7YWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG5hjVatpo847G-zj6MlNwjkrG58g8qhNLDr6GyPQrmxUb8vPYWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
  [__link0]: https://github.com/mawww/kakoune
  [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
- [__link10]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearcher
- [__link11]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link13]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
- [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
- [__link15]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::anchor
+ [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::undo
+ [__link11]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::redo
+ [__link12]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::PipeSelections
+ [__link13]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearch
+ [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Mode
+ [__link15]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearcher
  [__link16]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
- [__link17]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
- [__link18]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::anchor
+ [__link17]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
+ [__link18]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
  [__link19]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor
  [__link2]: https://docs.rs/duatmode/0.7.0/duatmode/opts/index.html
  [__link20]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
@@ -253,8 +303,8 @@ Go to the previous [`Buffer`][__link22] (includes other windows).
  [__link22]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Buffer
  [__link3]: https://docs.rs/duat/latest/duat/opts
  [__link4]: https://docs.rs/duat_core/0.7.0/duat_core/?search=opts::Opts::extra_word_chars
- [__link5]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::undo
- [__link6]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Text::redo
- [__link7]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::PipeSelections
- [__link8]: https://docs.rs/duat_base/0.7.0/duat_base/?search=modes::IncSearch
- [__link9]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Mode
+ [__link5]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
+ [__link6]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
+ [__link7]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::anchor
+ [__link8]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
+ [__link9]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::anchor
