@@ -14,7 +14,7 @@ FOR NEXT UPDATE:
     [x] Make Ui and Area dyn compatible.
     [~] Move some of the more intensive calculations (like Text vertical movement) to the Area trait.
     [ ] Possibly get rid of printed iterators?
-    [ ] Add the ability to query the Area if it is a specific implementation.
+    [x] Add the ability to query the Area if it is a specific implementation.
   [/] Don't have duat(lib) depend on a specific Ui, have duat(bin) send a type erased Ui to it.
   [/] No plugins on duat(lib)
     [/] Make all default plugins into default config crate dependencies.

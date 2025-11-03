@@ -202,11 +202,17 @@ impl NotificationsOpts {
 impl Default for NotificationsOpts {
     fn default() -> Self {
         fn default_fmt(rec: Record) -> Text {
-            txt!(
-                "[notifs.target]{}[notifs.colon]: {}",
-                rec.target(),
-                rec.text().clone()
-            )
+            match rec.level() {
+                Level::Error | Level::Warn | Level::Debug => {
+                    txt!(
+                        "[buffer]{}[notifs.colon]:[] {}",
+                        rec.location(),
+                        rec.text().clone()
+                    )
+                }
+                Level::Info => rec.text().clone(),
+                Level::Trace => unreachable!(),
+            }
         }
         fn default_get_mask(rec: Record) -> &'static str {
             match rec.level() {

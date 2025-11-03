@@ -164,7 +164,7 @@ impl Completions {
             .handles(pa)
             .find_map(Handle::try_downcast::<Completions>)
         else {
-            context::warn!("No Completions open to go to next entry");
+            context::warn!("No Completions open");
             return;
         };
 
