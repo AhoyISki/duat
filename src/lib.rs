@@ -12,6 +12,11 @@
 
 use std::ops::Range;
 
+use duat_core::{
+    Plugin, Plugins,
+    buffer::{Buffer, BufferTracker, Parser},
+    hook,
+};
 use gapbuf::GapBuffer;
 
 /// [`Plugin`]: Adds a [`Jumps`] parser to every [`Buffer`]
@@ -330,7 +335,7 @@ struct Changes {
 
 impl Changes {
     fn add_change(&mut self, (start, taken_end, added_end): (i32, i32, i32)) {
-        let m_range = duat::utils::merging_range_by_guess_and_lazy_shift(
+        let m_range = duat_core::utils::merging_range_by_guess_and_lazy_shift(
             (&self.list, self.list.len()),
             (0, [start, taken_end]),
             (self.from, self.by, 0, std::ops::Add::add),
