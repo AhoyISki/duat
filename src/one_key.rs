@@ -1,5 +1,3 @@
-use std::sync::{LazyLock, Mutex};
-
 use duat_core::{
     buffer::Buffer,
     cmd,
@@ -72,11 +70,6 @@ fn match_goto(
     key_event: KeyEvent,
     mut sel_type: SelType,
 ) -> SelType {
-    static LAST_FILE: LazyLock<Mutex<Option<String>>> = LazyLock::new(Mutex::default);
-
-    let cur_name = handle.read(pa).name();
-    let last_file = LAST_FILE.lock().unwrap().clone();
-
     match key_event {
         event!('h') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
@@ -109,24 +102,9 @@ fn match_goto(
         }),
 
         ////////// File change keys
-        event!('a') => match last_file {
-            Some(last_file) => cmd::queue_notify_and(format!("b {last_file}"), |res| {
-                if res.is_ok() {
-                    *LAST_FILE.lock().unwrap() = Some(cur_name)
-                }
-            }),
-            None => context::error!("There is no previous file"),
-        },
-        event!('n') => cmd::queue_notify_and("next-buffer --global", |res| {
-            if res.is_ok() {
-                *LAST_FILE.lock().unwrap() = Some(cur_name)
-            }
-        }),
-        event!('N') => cmd::queue_notify_and("prev-buffer --global", |res| {
-            if res.is_ok() {
-                *LAST_FILE.lock().unwrap() = Some(cur_name)
-            }
-        }),
+        event!('a') => _ = cmd::call_notify(pa, "last-buffer"),
+        event!('n') => _ = cmd::call_notify(pa, "next-buffer --global"),
+        event!('N') => _ = cmd::call_notify(pa, "prev-buffer --global"),
         key_event => context::warn!(
             "[a]{}[] not mapped on [a]go to",
             duat_core::mode::keys_to_string(&[key_event])

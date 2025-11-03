@@ -1,35 +1,12 @@
 //! `duatmode` is the default mode for the Duat text editor. It is
 //! based on [kakoune]'s keybindings, with some alterations of my own.
 //!
-//! The plugin currently has 2 options: `insert_tabs` and
-//! `set_cursor_forms`. `insert_tabs` will make the `Tab` key insert a
-//! `\t` character, instead of an appropriate amount of spaces.
-//! `set_cursor_forms` will create a hook to set the `caret.main.`
-//! and `caret.extra` forms to mode specific variants, c.g.
-//! `caret.main.Insert`.
-//!
 //! This plugin is included in Duat by default, as it is considered
-//! part of it's identity, it's exports can be found in the
-//! [`duat::mode`] module.
+//! part of it's identity. Given that, the options aren't set by this
+//! plugin's [`Plugin`], but by [`duatmode::opts`], which is exported
+//! in duat's [`opts`] module by default
 //!
 //! # Keymaps
-//!
-//! This is a list of _currently_ mapped keys, largely inspired by
-//! those from Kakoune.
-//!
-//! When reading keys, they follow Duat's [mapping] rules, that is:
-//!
-//! - `<A-{key}>` is a chord of `Alt + {key}`, same with `<C-{key}>`
-//!   and `Control` and `<S-{key}>` with `Shift` (although that one is
-//!   not usually needed).
-//! - Special keys are enclosed in `<` `>` pairs (e.g. `<Home>`).
-//! - Multiple keys in a row represent a sequence.
-//!
-//! In any mode, the `<Esc>` key will take you back to `normal` mode.
-//!
-//! In this plugin, a `moment` contains all of the changes performed
-//! by each [`Cursor`], so if you press `u`, multiple changes may be
-//! undone.
 //!
 //! ## `Normal` mode
 //!
@@ -252,7 +229,6 @@
 //! Go to the previous [`Buffer`] (includes other windows).
 //!
 //! [kakoune]: https://github.com/mawww/kakoune
-//! [word chars]: duat_core::opts::word_chars
 //! [caret]: duat_core::mode::Cursor::caret
 //! [anchor]: duat_core::mode::Cursor::anchor
 //! [`Cursor`]: duat_core::mode::Cursor
@@ -265,6 +241,9 @@
 //! [`PipeSelections`]: duat_base::modes::PipeSelections
 //! [mapping]: duat_core::mode::map
 //! [`duat::mode`]: https://docs.rs/duat/latest/duat/mode
+//! [`Mode`]: duat_core::mode::Mode
+//! [`duatmode::opts`]: opts
+//! [`opts`]: https://docs.rs/duat/latest/duat/opts
 #![feature(
     iter_map_windows,
     if_let_guard,
@@ -466,12 +445,8 @@ pub mod opts {
 ///
 /// And so on and so forth.
 ///
-/// If you don't want the [`Form`]s to change, see
-/// [`Kak::dont_set_cursor_forms`].
-///
 /// [`Form`]: duat_core::form::Form
 pub struct DuatMode {
-    set_cursor_forms: bool,
     insert_tabs: bool,
     normal: Normal,
 }
@@ -481,7 +456,6 @@ impl DuatMode {
     /// kakoune-like editing
     pub fn new() -> Self {
         Self {
-            set_cursor_forms: true,
             insert_tabs: false,
             normal: Normal::new(),
         }
@@ -489,13 +463,6 @@ impl DuatMode {
 }
 
 impl DuatMode {
-    /// Stop the automatic setting of cursor [`Form`]s
-    ///
-    /// [`Form`]: duat_core::form::Form
-    pub fn dont_set_cursor_forms(self) -> Self {
-        Self { set_cursor_forms: false, ..self }
-    }
-
     /// Makes the tab key insert `\t` instead of spaces
     pub fn insert_tabs(self) -> Self {
         Self { insert_tabs: true, ..self }
@@ -529,6 +496,8 @@ impl DuatMode {
     /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
     /// will search for the next instance of an `'m'` in the
     /// [`Buffer`]
+    ///
+    /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn f_and_t_set_search(mut self) -> Self {
         self.normal.indent_on_capital_i = true;
         self
@@ -549,11 +518,9 @@ impl Plugin for DuatMode {
             Ok(())
         });
 
-        if self.set_cursor_forms {
-            form::enable_mask("Insert");
-            form::enable_mask("Normal");
-            form::enable_mask("OneKey");
-        }
+        form::enable_mask("Insert");
+        form::enable_mask("Normal");
+        form::enable_mask("OneKey");
     }
 }
 

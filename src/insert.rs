@@ -46,6 +46,9 @@ impl Insert {
     /// Additionally, if you add '\t' to the list of indent keys, upon
     /// pressint [`Tab`] on the first character of the line, it will
     /// automatically be indented by the right amount.
+    ///
+    /// [`Tab`]: mode::KeyCode::Tab
+    /// [`Enter`]: mode::KeyCode::Enter
     pub fn with_indent_keys(self, chars: impl Iterator<Item = char>) -> Self {
         Self { indent_keys: chars.collect(), ..self }
     }
