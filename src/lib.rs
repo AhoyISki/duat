@@ -34,13 +34,13 @@ use std::{
 };
 
 use duat_core::{
-    lender::Lender,
     Plugins, Ranges,
     buffer::{self, Buffer, BufferTracker, PathKind},
     context::{self, Handle},
     data::Pass,
     form::{self, Form, FormId},
     hook,
+    lender::Lender,
     mode::Cursor,
     opts::PrintOpts,
     text::{Builder, Bytes, Change, Matcheable, Point, Tagger, Tags, Text, txt},
@@ -81,7 +81,48 @@ pub struct TreeSitter;
 
 impl duat_core::Plugin for TreeSitter {
     fn plug(self, _: &Plugins) {
+        use std::path::Path;
+
+        fn copy_dir_all(src: &include_dir::Dir, dst: impl AsRef<Path>) -> std::io::Result<()> {
+            fs::create_dir_all(&dst)?;
+            for entry in src.entries() {
+                if let Some(dir) = entry.as_dir() {
+                    copy_dir_all(dir, dst.as_ref().join(entry.path().file_name().unwrap()))?;
+                } else {
+                    fs::write(
+                        dst.as_ref().join(entry.path().file_name().unwrap()),
+                        entry.as_file().unwrap().contents(),
+                    )?
+                }
+            }
+            Ok(())
+        }
+
         const MAX_LEN_FOR_LOCAL: usize = 100_000;
+        static QUERIES: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/queries");
+
+        let Ok(plugin_dir) = duat_core::utils::plugin_dir("duat-treesitter") else {
+            context::error!("No local directory, queries aren't installed");
+            return;
+        };
+
+        let dest = plugin_dir.join("queries");
+        match dest.try_exists() {
+            Ok(false) => match copy_dir_all(&QUERIES, &dest) {
+                Ok(_) => {
+                    context::info!("Installed tree-sitter queries at [buffer]{dest}");
+                }
+                Err(err) => {
+                    context::info!(
+                        "Failed to install tree-sitter queries at [buffer]{dest}: {err}"
+                    );
+                }
+            },
+            Ok(true) => {}
+            Err(err) => {
+                context::warn!("Coudn't confirm existance of [buffer]{dest}: {err}")
+            }
+        }
 
         form::set_many_weak!(
             ("variable", Form::white()),

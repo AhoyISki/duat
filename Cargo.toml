@@ -1,6 +1,6 @@
 [package]
 name = "duat-treesitter"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "Plugin for tree-sitter bindings for Duat"
@@ -20,6 +20,7 @@ tree-sitter = "0.25.10"
 tree-sitter-language = "0.1.5"
 indoc = "2.0.6"
 libloading = "0.8.9"
+include_dir = "0.7.4"
 
 [build-dependencies]
 dirs-next = "2.0.0"
