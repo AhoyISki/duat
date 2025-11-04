@@ -34,7 +34,8 @@ use std::{
 };
 
 use duat_core::{
-    Lender, Plugins, Ranges,
+    lender::Lender,
+    Plugins, Ranges,
     buffer::{self, Buffer, BufferTracker, PathKind},
     context::{self, Handle},
     data::Pass,
@@ -939,7 +940,7 @@ pub trait TsCursor {
 
     /// Reindents the [`Cursor`]'s line
     ///
-    /// Returns `true` if the
+    /// Returns `true` if the line was reindented.
     ///
     /// This is determined by a query, currently, it is the query
     /// located in
