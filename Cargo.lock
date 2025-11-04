@@ -344,7 +344,7 @@ dependencies = [
  "duat-core",
  "duat-filetype",
  "duat-match-pairs",
- "duat-term 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-term 0.7.0",
  "duat-treesitter",
  "duatmode",
  "libloading",
@@ -408,6 +408,8 @@ dependencies = [
 [[package]]
 name = "duat-term"
 version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20dad7eb5d7dfac06165bc0286ae5d74c7c2017717811ebd768ed8d698ee1714"
 dependencies = [
  "crossterm",
  "duat-core",
@@ -419,9 +421,7 @@ dependencies = [
 
 [[package]]
 name = "duat-term"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20dad7eb5d7dfac06165bc0286ae5d74c7c2017717811ebd768ed8d698ee1714"
+version = "0.7.1"
 dependencies = [
  "crossterm",
  "duat-core",
