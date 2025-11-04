@@ -11,31 +11,7 @@
 //!   [`filetype`](PassFileType::filetype) method, but it requires a
 //!   [`Pass`], bypassing the need to, for example, [`read`] a
 //!   [`Handle<Buffer>`]. Its implementors are [`RwData<Buffer>`],
-//!   [`Handle<Buffer>`],
-//!
-//! Both of these traits are included by default in Duat's
-//! [`prelude`], but if you want to use them in a plugin, first, add
-//! `duat-filetype` to the dependencies:
-//!
-//! ```bash
-//! cargo add duat-filetype
-//! ```
-//!
-//! Or, for latest git version:
-//!
-//! ```bash
-//! cargo add --git https://github.com/AhoyISki/duat-filetype
-//! ```
-//!
-//! Then, just `use` it in the file:
-//!
-//! ```rust
-//! use duat_filetype::FileType;
-//!
-//! fn is_toml(file_name: &str) -> bool {
-//!     file_name.filetype() == Some("toml")
-//! }
-//! ```
+//!   [`Handle<Buffer>`].
 //!
 //! [`Plugin`]: duat_core::Plugin
 //! [`filetype`]: FileType::filetype
