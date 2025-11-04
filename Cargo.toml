@@ -1,6 +1,6 @@
 [package]
 name = "duatmode"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["AhoyISki"]
 description = "The default mode for the Duat text editor"
 repository = "https://github.com/AhoyISki/duat/tree/master/duatmode"

@@ -21,7 +21,7 @@ impl Insert {
     /// Returns a new instance of Kakoune's [`Insert`]
     pub fn new() -> Self {
         Self {
-            indent_keys: vec!['\n', '\t', '(', ')', '{', '}', '[', ']'],
+            indent_keys: vec!['\n', '(', ')', '{', '}', '[', ']'],
         }
     }
 
@@ -38,7 +38,7 @@ impl Insert {
     /// [`Tab`]: mode::KeyCode::Tab
     /// [`Enter`]: mode::KeyCode::Enter
     pub fn with_indent_keys(self, chars: impl Iterator<Item = char>) -> Self {
-        Self { indent_keys: chars.collect(), ..self }
+        Self { indent_keys: chars.collect() }
     }
 }
 
