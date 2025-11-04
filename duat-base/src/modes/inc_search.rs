@@ -30,7 +30,6 @@ use duat_core::{
 /// ```rust
 /// # duat_core::doc_duat!(duat);
 /// # use duat_base::modes::IncSearcher;
-/// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// #[derive(Clone, Copy)]

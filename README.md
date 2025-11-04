@@ -23,17 +23,12 @@ for.
 
 Rust is also known for long compile times, but for Duat, I’ve
 managed to reduce the vast majority of reloads to under ~1.3
-seconds, with a large chunk taking less than 800 ms.
+seconds, with a large chunk taking less than 800 ms (on my
+relatively old mid range laptop).
 
-For now, the default configuration (and the only usable one
-really) is the `duat-kak`  based one, which is based on the
-Kakoune text editor. In the near future, I will continue work on a
-“regular” mode, as well as a multi-cursor Vim inspired one.
-
-Note that this is an alpha project, so there may be some quirks
-and bugs. So if you have a problem, or something seems confusing,
-feel free to ask questions or raise an issue, that would be very
-welcome 🥰.
+Do keep in mind that this is a work in progress, so there might be
+bugs. Any feedback on features, bugs or requests is highly
+appreciated 🥰.
 
 ### Getting started
 
@@ -41,10 +36,13 @@ welcome 🥰.
 
 On this section, I will be referring to duat’s configuration by
 `~/.config/duat/`, but you should replace it with your operating
-system’s config path.
+system’s config path. The same also applies to `~/.local/duat/`.
 
 To install Duat, I am assuming that you have `cargo` installed on
-your system, if you don’t, [install it][__link0].
+your system, if you don’t, [install it][__link0]. If you are installing it
+on Windows, you should additionlly follow the instructions that
+they give you for installing C/C++ libraries through Visual
+Studio.
 
 After installing `cargo`, you will also need to install the
 `nightly` toolchain:
@@ -61,13 +59,6 @@ rustup install nightly
 rustup install nightly-x86_64-pc-windows-gnu
 ```
 
-To install Duat, another dependency that you will need is a c
-compiler. On unix-like operating systems, that should already
-be installed. But on Windows, you need to manually install it,
-probably through the most convenient way, which is Visual Studio.
-You can follow the instructions on [this guide][__link1] in order to do
-that. You can skip the prerequesits section, it’s vscode specific.
-
 Next, in order to run duat, you should add `~/.cargo/bin/` to your
 `$PATH` variable. Alternatively, you can just add
 `~/.cargo/bin/duat`, if you want to add just `duat` to the
@@ -77,22 +68,18 @@ Next, in order to run duat, you should add `~/.cargo/bin/` to your
 cargo install duat
 ```
 
-Although, since this is an alpha, I would recommend the git
-version, since that is kept much more up to date:
+That is the recommended version, however, if you wish to install
+the *bleeding edge* version, you can call this instead:
 
 ```bash
-cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
-```
-
-And if you want to nuke your config in order to get the newest
-default config crate, you can do the following:
-
-```bash
-rm -rf ~/.config/duat
-cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
+cargo install --git https://github.com/AhoyISki/duat --features git-deps
 ```
 
 ### Configuration
+
+When you first run `duat`, you will be prompted for the creation
+of a new configuration crate in `~/.config/duat/` (unless it
+already exists).
 
 In the configuration’s `src/lib.rs`, there should be a
 `setup_duat!` macro, which takes in a function with no parameters.
@@ -110,8 +97,6 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug(kak::Kak::new());
-
     map::<kak::Insert>("jk", "<Esc>");
 
     opts::set(|opts| {
@@ -143,20 +128,19 @@ fn setup() {
 
 This configuration does the following things:
 
-* plugs the `Kak` plugin, which changes the [default mode][__link2];
-* [Maps][__link3] jk to esc in the `Insert` mode;
-* Sets [options][__link4] for the `Buffer`, `LineNumbers` and `StatusLine`
-* [Adds][__link5] hooks for [mode changes][__link6] in Duat, which change the shape
+* [Maps][__link1] jk to esc in the `Insert` mode;
+* Sets [options][__link2] for the `Buffer`, `LineNumbers` and `StatusLine`
+* [Adds][__link3] hooks for [mode changes][__link4] in Duat, which change the shape
   of the cursor;
-* [Changes][__link7] the [style][__link8] of the mode printed on the
+* [Changes][__link5] the [style][__link6] of the mode printed on the
   status line;
 
 These are only some of the options available to configure Duat,
-you can also add [custom commands][__link9], place widgets around other
-[`Widget`][__link10]s and [windows][__link11], create [`Parser`][__link12]s that can track every
-change on a [`Buffer`][__link13], and many other things.
+you can also add [custom commands][__link7], place widgets around other
+[`Widget`][__link8]s and [windows][__link9], create [`Parser`][__link10]s that can track every
+change on a [`Buffer`][__link11], and many other things.
 
-Duat also comes with a fully fledged [text creation system][__link14], which
+Duat also comes with a fully fledged [text creation system][__link12], which
 significantly eases the creation of highly formatted text:
 
 ```rust
@@ -166,11 +150,11 @@ let text = txt!("This {infix} is [form1]colored and {Spacer} distant");
 ```
 
 In the example above, `[form1]` will change the style of the text
-to the `"form1"` [`Form`][__link15], while `{Spacer}` will place a [spacer][__link16]
+to the `"form1"` [`Form`][__link13], while `{Spacer}` will place a [spacer][__link14]
 in between the two parts of the text (See the status line in the
 GIF, it uses spacers).
 
-This macro works very similarly to the [`format!`][__link17] family of
+This macro works very similarly to the [`format!`][__link15] family of
 macros, so you also have inlining, as you can see with the
 `{infix}` part. All of this is, of course, checked at compile
 time.
@@ -182,19 +166,15 @@ version of `duat`
 
 ### The configuration fails to compile/recompile
 
-Try running this in `~/.config/duat`:
+Try running the following:
 
 ```bash
-cargo clean && cargo update && cargo build --release
+duat --reload --clean
 ```
 
-This could solve inconsistencies in the API, given that it could
-change without the plugins being aware of those changes.
-
-### It still fails to compile!
-
-In this case, you should open an issue with the error message that
-`cargo build --release` sent you.
+This will update all dependencies of the config, potentially
+solving compatibility issues. The problem may also be with some
+plugin you installed.
 
 ### It’s segfaulting as I reopen!
 
@@ -207,25 +187,25 @@ process and call `duat --reload`.
 When you install duat, the default config crate will come with
 the following plugins:
 
-* [`duat-kak`][__link18] is a plugin that changes the default mode of Duat
-  to one inspired by [Kakoune][__link19]’s “Normal”, also bringing with it
-  various other modes from Kakoune.
-* [`duat-catppuccin`][__link20] is a just a simple colorscheme plugin, it
-  adds the four flavors from the [catppuccin][__link21] colorscheme. You can
+* [`duat-catppuccin`][__link16] is a just a simple colorscheme plugin, it
+  adds the four flavors from the [catppuccin][__link17] colorscheme. You can
   pick between the four of them, you can apply its colors to other
-  [`Form`][__link22]s and you can allow or disallow the colorscheme to set
+  [`Form`][__link18]s and you can allow or disallow the colorscheme to set
   the background color.
 
 It also comes with the following built-in plugins, which I will
 later on add the ability to disable:
 
-* [`duat-treesitter`][__link23] brings [tree-sitter][__link24] to Duat in the form of
+* [`duatmode`][__link19] is the default mode for editing in Duat. It is
+  heavily inspired by the Kakoune text editor in its design, with
+  some light differences.
+* [`duat-treesitter`][__link20] brings [tree-sitter][__link21] to Duat in the form of
   syntax highlighting and indentation calculation, which can be
   used by Modes (such as those from `duat-kak`) in order to give
   better feedback when editing buffers.
-* [`duat-match-pairs`][__link25] adds matched parentheses highlighting to
+* [`duat-match-pairs`][__link22] adds matched parentheses highlighting to
   duat. Has some ntegration with `duat-treesitter`.
-* [`duat-base`][__link26] adds all of the default plugins that you see, like
+* [`duat-base`][__link23] adds all of the default plugins that you see, like
   the line numbers, status line, prompt line, etc.
 
 ### Features
@@ -279,16 +259,16 @@ way:
 * [x] Implement incremental Regex searching;
 * [x] Implement tree-sitter;
 * [x] Add floating widgets, not tied to the session layout;
-* [ ] Implement autocompletion lists;
+* [x] Implement autocompletion lists;
 * [ ] Create an LSP plugin;
 * [ ] Create a vim mode;
 
 ︙
 
-* [ ] Create an Iced frontend;
+* [ ] Create an gui frontend;
 
 An internal (and more detailed) TODO list, which might hard to
-understand, can be found in [TODO][__link27]. This list will is
+understand, can be found in [TODO][__link24]. This list will is
 *not* a comprehensive roadmap, as I will ocasionally remove
 entries from it, particularly those in the `FOR NEXT UPDATE`
 section, when said update comes out.
@@ -320,36 +300,30 @@ That’s why I decided to create Duat.
 
 idk, cool sounding word that I got from Spelunky 2.
 
-Also, just wanted to say that no AI was used in this project, cuz
-I don’t like it.
 
-
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG0UGepU1hReNGx6_NlxfB4_nG0eK0rZO5fLvG3QnQnVa7C91YWSCgmRkdWF0ZTAuNy4wgmlkdWF0X2NvcmVlMC43LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG0_py152LHQoG6LbBigTG0VkG9G_NcUZijFmG_I118Zjx7kQYWSGgmRkdWF0ZTAuNy4wgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJwZHVhdF9tYXRjaF9wYWlyc2UwLjIuMYJvZHVhdF90cmVlc2l0dGVyZTAuMy4xgmhkdWF0bW9kZWUwLjcuMA
  [__link0]: https://www.rust-lang.org/tools/install
- [__link1]: https://code.visualstudio.com/docs/cpp/config-mingw
- [__link10]: https://docs.rs/duat/0.7.0/duat/?search=widgets::Widget
- [__link11]: https://docs.rs/duat/0.7.0/duat/?search=hook::WindowCreated
- [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Parser
- [__link13]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Buffer
- [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::txt
- [__link15]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
- [__link16]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Spacer
- [__link17]: https://doc.rust-lang.org/stable/std/macro.format.html
- [__link18]: https://github.com/AhoyISki/duat-kak
- [__link19]: https://github.com/mawww/kakoune
- [__link2]: https://docs.rs/duat/0.7.0/duat/?search=mode::set_default
- [__link20]: https://github.com/AhoyISki/duat-catppuccin
- [__link21]: https://catppuccin.com
- [__link22]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
- [__link23]: https://github.com/AhoyISki/duat-treesitter
- [__link24]: https://tree-sitter.github.io/tree-sitter
- [__link25]: https://github.com/AhoyISki/duat-match-pairs
- [__link26]: https://github.com/AhoyISki/duat/tree/master/duat-base
- [__link27]: ./TODO
- [__link3]: https://docs.rs/duat/0.7.0/duat/?search=mode::map
- [__link4]: https://docs.rs/duat/0.7.0/duat/opts/index.html
- [__link5]: https://docs.rs/duat/0.7.0/duat/?search=hook::add
- [__link6]: https://docs.rs/duat/0.7.0/duat/?search=hook::ModeSwitched
- [__link7]: https://docs.rs/duat/0.7.0/duat/?search=form::set
- [__link8]: https://docs.rs/duat/0.7.0/duat/?search=form::Form
- [__link9]: https://docs.rs/duat/0.7.0/duat/?search=prelude::cmd
+ [__link1]: https://docs.rs/duat/0.7.0/duat/?search=mode::map
+ [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Parser
+ [__link11]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Buffer
+ [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::txt
+ [__link13]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
+ [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Spacer
+ [__link15]: https://doc.rust-lang.org/stable/std/macro.format.html
+ [__link16]: https://github.com/AhoyISki/duat-catppuccin
+ [__link17]: https://catppuccin.com
+ [__link18]: https://docs.rs/duat/0.7.0/duat/?search=prelude::Form
+ [__link19]: https://crates.io/crates/duatmode/0.7.0
+ [__link2]: https://docs.rs/duat/0.7.0/duat/opts/index.html
+ [__link20]: https://crates.io/crates/duat_treesitter/0.3.1
+ [__link21]: https://tree-sitter.github.io/tree-sitter
+ [__link22]: https://crates.io/crates/duat_match_pairs/0.2.1
+ [__link23]: https://crates.io/crates/duat_base/0.7.0
+ [__link24]: ./TODO
+ [__link3]: https://docs.rs/duat/0.7.0/duat/?search=hook::add
+ [__link4]: https://docs.rs/duat/0.7.0/duat/?search=hook::ModeSwitched
+ [__link5]: https://docs.rs/duat/0.7.0/duat/?search=form::set
+ [__link6]: https://docs.rs/duat/0.7.0/duat/?search=form::Form
+ [__link7]: https://docs.rs/duat/0.7.0/duat/?search=prelude::cmd
+ [__link8]: https://docs.rs/duat/0.7.0/duat/?search=widgets::Widget
+ [__link9]: https://docs.rs/duat/0.7.0/duat/?search=hook::WindowCreated

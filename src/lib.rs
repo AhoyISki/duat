@@ -13,17 +13,12 @@
 //!
 //! Rust is also known for long compile times, but for Duat, I've
 //! managed to reduce the vast majority of reloads to under ~1.3
-//! seconds, with a large chunk taking less than 800 ms.
+//! seconds, with a large chunk taking less than 800 ms (on my
+//! relatively old mid range laptop).
 //!
-//! For now, the default configuration (and the only usable one
-//! really) is the `duat-kak`  based one, which is based on the
-//! Kakoune text editor. In the near future, I will continue work on a
-//! "regular" mode, as well as a multi-cursor Vim inspired one.
-//!
-//! Note that this is an alpha project, so there may be some quirks
-//! and bugs. So if you have a problem, or something seems confusing,
-//! feel free to ask questions or raise an issue, that would be very
-//! welcome 🥰.
+//! Do keep in mind that this is a work in progress, so there might be
+//! bugs. Any feedback on features, bugs or requests is highly
+//! appreciated 🥰.
 //!
 //! ## Getting started
 //!
@@ -31,10 +26,13 @@
 //!
 //! On this section, I will be referring to duat's configuration by
 //! `~/.config/duat/`, but you should replace it with your operating
-//! system's config path.
+//! system's config path. The same also applies to `~/.local/duat/`.
 //!
 //! To install Duat, I am assuming that you have `cargo` installed on
-//! your system, if you don't, [install it].
+//! your system, if you don't, [install it]. If you are installing it
+//! on Windows, you should additionlly follow the instructions that
+//! they give you for installing C/C++ libraries through Visual
+//! Studio.
 //!
 //! After installing `cargo`, you will also need to install the
 //! `nightly` toolchain:
@@ -51,13 +49,6 @@
 //! rustup install nightly-x86_64-pc-windows-gnu
 //! ```
 //!
-//! To install Duat, another dependency that you will need is a c
-//! compiler. On unix-like operating systems, that should already
-//! be installed. But on Windows, you need to manually install it,
-//! probably through the most convenient way, which is Visual Studio.
-//! You can follow the instructions on [this guide] in order to do
-//! that. You can skip the prerequesits section, it's vscode specific.
-//!
 //! Next, in order to run duat, you should add `~/.cargo/bin/` to your
 //! `$PATH` variable. Alternatively, you can just add
 //! `~/.cargo/bin/duat`, if you want to add just `duat` to the
@@ -67,22 +58,18 @@
 //! cargo install duat
 //! ```
 //!
-//! Although, since this is an alpha, I would recommend the git
-//! version, since that is kept much more up to date:
+//! That is the recommended version, however, if you wish to install
+//! the _bleeding edge_ version, you can call this instead:
 //!
 //! ```bash
-//! cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
-//! ```
-//!
-//! And if you want to nuke your config in order to get the newest
-//! default config crate, you can do the following:
-//!
-//! ```bash
-//! rm -rf ~/.config/duat
-//! cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
+//! cargo install --git https://github.com/AhoyISki/duat --features git-deps
 //! ```
 //!
 //! ## Configuration
+//!
+//! When you first run `duat`, you will be prompted for the creation
+//! of a new configuration crate in `~/.config/duat/` (unless it
+//! already exists).
 //!
 //! In the configuration's `src/lib.rs`, there should be a
 //! `setup_duat!` macro, which takes in a function with no parameters.
@@ -96,31 +83,10 @@
 //! config it is just `kak`.
 //!
 //! ```rust
-//! # mod kak {
-//! #     use duat::prelude::*;
-//! #     #[derive(Clone)]
-//! #     pub struct Insert;
-//! #     impl Mode for Insert {
-//! #         type Widget = Buffer;
-//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Buffer>) {
-//! #             todo!();
-//! #         }
-//! #     }
-//! #     #[derive(Default)]
-//! #     pub struct Kak;
-//! #     impl Kak {
-//! #         pub fn new() -> Self { Self }
-//! #     }
-//! #     impl duat_core::Plugin for Kak {
-//! #         fn plug(self, _: &duat_core::Plugins) {}
-//! #     }
-//! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     plug(kak::Kak::new());
-//!
 //!     map::<kak::Insert>("jk", "<Esc>");
 //!
 //!     opts::set(|opts| {
@@ -152,7 +118,6 @@
 //!
 //! This configuration does the following things:
 //!
-//! - plugs the `Kak` plugin, which changes the [default mode];
 //! - [Maps] jk to esc in the `Insert` mode;
 //! - Sets [options] for the `Buffer`, `LineNumbers` and `StatusLine`
 //! - [Adds] hooks for [mode changes] in Duat, which change the shape
@@ -194,19 +159,15 @@
 //!
 //! ## The configuration fails to compile/recompile
 //!
-//! Try running this in `~/.config/duat`:
+//! Try running the following:
 //!
 //! ```bash
-//! cargo clean && cargo update && cargo build --release
+//! duat --reload --clean
 //! ```
 //!
-//! This could solve inconsistencies in the API, given that it could
-//! change without the plugins being aware of those changes.
-//!
-//! ## It still fails to compile!
-//!
-//! In this case, you should open an issue with the error message that
-//! `cargo build --release` sent you.
+//! This will update all dependencies of the config, potentially
+//! solving compatibility issues. The problem may also be with some
+//! plugin you installed.
 //!
 //! ## It's segfaulting as I reopen!
 //!
@@ -219,9 +180,6 @@
 //! When you install duat, the default config crate will come with
 //! the following plugins:
 //!
-//! - [`duat-kak`] is a plugin that changes the default mode of Duat
-//!   to one inspired by [Kakoune]'s "Normal", also bringing with it
-//!   various other modes from Kakoune.
 //! - [`duat-catppuccin`] is a just a simple colorscheme plugin, it
 //!   adds the four flavors from the [catppuccin] colorscheme. You can
 //!   pick between the four of them, you can apply its colors to other
@@ -231,6 +189,9 @@
 //! It also comes with the following built-in plugins, which I will
 //! later on add the ability to disable:
 //!
+//! - [`duatmode`] is the default mode for editing in Duat. It is
+//!   heavily inspired by the Kakoune text editor in its design, with
+//!   some light differences.
 //! - [`duat-treesitter`] brings [tree-sitter] to Duat in the form of
 //!   syntax highlighting and indentation calculation, which can be
 //!   used by Modes (such as those from `duat-kak`) in order to give
@@ -291,13 +252,13 @@
 //! - [x] Implement incremental Regex searching;
 //! - [x] Implement tree-sitter;
 //! - [x] Add floating widgets, not tied to the session layout;
-//! - [ ] Implement autocompletion lists;
+//! - [x] Implement autocompletion lists;
 //! - [ ] Create an LSP plugin;
 //! - [ ] Create a vim mode;
 //!
 //! ︙
 //!
-//! - [ ] Create an Iced frontend;
+//! - [ ] Create an gui frontend;
 //!
 //! An internal (and more detailed) TODO list, which might hard to
 //! understand, can be found in [TODO](./TODO). This list will is
@@ -332,12 +293,8 @@
 //!
 //! idk, cool sounding word that I got from Spelunky 2.
 //!
-//! Also, just wanted to say that no AI was used in this project, cuz
-//! I don't like it.
-//!
 //! [install it]: https://www.rust-lang.org/tools/install
 //! [plugs]: prelude::plug
-//! [default mode]: mode::set_default
 //! [Maps]: mode::map
 //! [Removes]: hook::remove
 //! [line numbers]: widgets::LineNumbers
@@ -361,9 +318,9 @@
 //! [`duat-catppuccin`]: https://github.com/AhoyISki/duat-catppuccin
 //! [catppuccin]: https://catppuccin.com
 //! [`Form`]: prelude::Form
-//! [`duat-treesitter`]: https://github.com/AhoyISki/duat-treesitter
-//! [`duat-match-pairs`]: https://github.com/AhoyISki/duat-match-pairs
-//! [`duat-base`]: https://github.com/AhoyISki/duat/tree/master/duat-base
+//! [`duat-treesitter`]: duat_treesitter
+//! [`duat-match-pairs`]: duat_match_pairs
+//! [`duat-base`]: duat_base
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 //! [`plug!`]: prelude::plug
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
