@@ -12,8 +12,8 @@ categories = ["command-line-utilities", "text-editors", "config"]
 include = ["src/*", "queries/*", "build.rs"]
 
 [dependencies]
-duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
-duat-filetype = { version = "0.3.0", git = "https://github.com/AhoyISki/duat-filetype" }
+duat-core = "0.7.0"
+duat-filetype = "0.3.1"
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.10"
