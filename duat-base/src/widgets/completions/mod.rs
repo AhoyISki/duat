@@ -18,11 +18,7 @@ use std::{
 };
 
 use duat_core::{
-    context::{self, Handle},
-    data::Pass,
-    hook::{self, FocusChanged},
-    text::{Point, SpawnTag, Tagger, Text, txt},
-    ui::{Orientation, SpawnSpecs, Widget},
+    context::{self, Handle}, data::Pass, form::{self, Form}, hook::{self, FocusChanged}, text::{Point, SpawnTag, Tagger, Text, txt}, ui::{Orientation, SpawnSpecs, Widget}
 };
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
@@ -75,6 +71,8 @@ impl CompletionsBuilder {
     pub fn open(self, pa: &mut Pass) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
+            form::set_weak("default.Completions", Form::on_dark_grey());
+            form::set_weak("selected.Completions", Form::black().on_grey());
             hook::add::<FocusChanged>(|pa, (prev, _)| {
                 prev.text_mut(pa).remove_tags(*TAGGER, ..);
                 Ok(())

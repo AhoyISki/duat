@@ -244,6 +244,7 @@ impl Printer {
         let was_empty = spawned_lines.is_empty();
         spawned_lines.retain(|(id, ..)| *id != target);
         if spawned_lines.is_empty() && !was_empty {
+            self.has_to_print_edges.store(true, Ordering::Relaxed);
             self.cleared_spawned.store(true, Ordering::Relaxed);
         }
     }

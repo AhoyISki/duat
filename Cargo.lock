@@ -340,8 +340,8 @@ dependencies = [
  "clap",
  "convert_case 0.8.0",
  "dirs-next",
- "duat-base 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-base",
+ "duat-core",
  "duat-filetype",
  "duat-match-pairs",
  "duat-term 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -356,18 +356,7 @@ dependencies = [
 name = "duat-base"
 version = "0.7.0"
 dependencies = [
- "duat-core 0.7.0",
- "format-like",
- "regex-syntax",
-]
-
-[[package]]
-name = "duat-base"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89195fa731de9c59130c661688ffc25ae2c7245658b12737b43a05e2d0abcb16"
-dependencies = [
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-core",
  "format-like",
  "regex-syntax",
 ]
@@ -375,26 +364,6 @@ dependencies = [
 [[package]]
 name = "duat-core"
 version = "0.7.0"
-dependencies = [
- "android_clipboard",
- "arboard",
- "bincode",
- "crossterm",
- "dirs-next",
- "format-like",
- "gapbuf",
- "lender",
- "log",
- "parking_lot",
- "regex-cursor",
- "regex-syntax",
-]
-
-[[package]]
-name = "duat-core"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46bb8d9f2f9fece5131f2a7215e4c274dccc71918d257de0e4e1827169a1f036"
 dependencies = [
  "android_clipboard",
  "arboard",
@@ -413,31 +382,25 @@ dependencies = [
 [[package]]
 name = "duat-filetype"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a44854830d9cd208c163dce7a1ebfdc88f684544e6abd77e7dec24159866be68"
 dependencies = [
  "dirs-next",
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-core",
  "regex",
 ]
 
 [[package]]
 name = "duat-jump-list"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb0566102dcf3081c3a471fad9d0cb4c2515044a2b380158892ad34b81effab9"
 dependencies = [
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-core",
  "gapbuf",
 ]
 
 [[package]]
 name = "duat-match-pairs"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e3a71ae65489847569ae9c85b00858f72a5eafb04371d3f74c0ce933437f817"
 dependencies = [
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-core",
  "duat-filetype",
  "duat-treesitter",
 ]
@@ -447,7 +410,7 @@ name = "duat-term"
 version = "0.7.0"
 dependencies = [
  "crossterm",
- "duat-core 0.7.0",
+ "duat-core",
  "kasuari",
  "micromap",
  "smallvec",
@@ -461,7 +424,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20dad7eb5d7dfac06165bc0286ae5d74c7c2017717811ebd768ed8d698ee1714"
 dependencies = [
  "crossterm",
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-core",
  "kasuari",
  "micromap",
  "smallvec",
@@ -470,13 +433,12 @@ dependencies = [
 
 [[package]]
 name = "duat-treesitter"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56893bd6f1692fa80706579c192bf9e3ac7cae7a0715b460daf8076dcc0ee99f"
+version = "0.3.2"
 dependencies = [
  "dirs-next",
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-core",
  "duat-filetype",
+ "include_dir",
  "indoc",
  "libloading",
  "streaming-iterator",
@@ -487,11 +449,9 @@ dependencies = [
 [[package]]
 name = "duatmode"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b1f566626d7727f8b7946d00a186653af197a6c807087fa0249ce5d0a4cb364"
 dependencies = [
- "duat-base 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "duat-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duat-base",
+ "duat-core",
  "duat-jump-list",
  "duat-treesitter",
 ]
@@ -623,6 +583,25 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "include_dir"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "923d117408f1e49d914f1a379a309cffe4f18c05cf4e3d12e613a15fc81bd0dd"
+dependencies = [
+ "include_dir_macros",
+]
+
+[[package]]
+name = "include_dir_macros"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cab85a7ed0bd5f0e76d93846e0147172bed2e2d3f859bcc33a8d9699cad1a75"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
 
 [[package]]
 name = "indexmap"
@@ -1874,23 +1853,3 @@ name = "x11rb-protocol"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
-
-[[patch.unused]]
-name = "duat-treesitter"
-version = "0.3.1"
-
-[[patch.unused]]
-name = "duatmode"
-version = "0.7.0"
-
-[[patch.unused]]
-name = "duat-jump-list"
-version = "0.2.0"
-
-[[patch.unused]]
-name = "duat-filetype"
-version = "0.3.1"
-
-[[patch.unused]]
-name = "duat-match-pairs"
-version = "0.2.1"
