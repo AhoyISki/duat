@@ -1,3 +1,11 @@
+//! A simple mode for scrolling through widgets
+//!
+//! This mode takes in a `W` argument, meaning it can act on any
+//! [`Widget`]. In Duat, it is normally used with the [`LogBook`], in
+//! order to allow scrolling through the logs.
+//!
+//! It is also capable of searching through the [`Text`], via a
+//! companion [`PagerSearch`] mode.
 use std::{
     marker::PhantomData,
     sync::{LazyLock, Mutex},

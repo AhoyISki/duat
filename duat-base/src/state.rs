@@ -134,6 +134,7 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 ///         handle.write(pa).fmt(status!(
 ///             "{name_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
 ///         ));
+///         Ok(())
 ///     });
 /// }
 /// ```

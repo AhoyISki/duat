@@ -1,3 +1,27 @@
+//! Multi modal for controlling the [`Prompt`] widget
+//!
+//! This mode's purpose is to do actions based on a [`PromptMode`]
+//! implementor. `PromptMode` implementors take in the [`Text`] of the
+//! [`Prompt`], and output some transformation to said `Text` (e.g.
+//! formatting), while also doing actions given the global access
+//! through the [`Pass`].
+//!
+//! Examples of [`PromptMode`]s are [`RunCommands`] and [`IncSearch`].
+//! The former is used to run Duat's commands, while the latter
+//! searches based on an input regex.
+//!
+//! `IncSearch` itself is _also_ multimodal, in an even more niche
+//! sense. It takes in an [`IncSearcher`] implementor, and searches
+//! through the [`Buffer`] according to its rules. Examples of this
+//! are [`SearchFwd`] and [`SearchRev`], which take in the regex and
+//! search in their respective directions. There are also more
+//! "advanced" `IncSearcher`s, like the ones in the `duatmode` crate,
+//! which can split a [`Selection`] by a regex, or keeps `Selections`s
+//! that match, that sort of thing.
+//!
+//! [`SearchFwd`]: super::SearchFwd
+//! [`SearchRev`]: super::SearchRev
+//! [`Selection`]: duat_core::mode::Selection
 use std::{
     any::TypeId,
     io::Write,

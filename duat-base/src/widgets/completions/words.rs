@@ -1,3 +1,14 @@
+//! A words [`CompletionsProvider`]
+//!
+//! This provider will record every word in any open [`Buffer`],
+//! recording also the origin of said word. It is also responsible for
+//! removing words that have been removed from all [`Buffer`]s.
+//!
+//! It does this via a [`Parser`], which just figures out when a word
+//! is added/removed, given a [`Change`].
+//!
+//! The words will be automatically filtered and sorted by size, using
+//! fuzzy search in order to improve matching.
 use std::{collections::BTreeMap, ops::Range, sync::Mutex};
 
 use duat_core::{
@@ -76,6 +87,7 @@ pub struct WordInfo {
 /// A [`Parser`] to add words to [`Completions`]
 ///
 /// [`Completions`]: super::Completions
+#[doc(hidden)]
 pub struct WordsCompletionParser {
     tracker: BufferTracker,
 }

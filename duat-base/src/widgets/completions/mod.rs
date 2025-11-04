@@ -1,3 +1,16 @@
+//! Duat's completion widget
+//!
+//! This widget is heavily inspired by Kakoune's completions in terms
+//! of functionality. By default, on duatmode, completions will show
+//! up automatically whenever the user is in `insert` mode, and given
+//! the tab settings of that mode, the user should be able to just
+//! press `<Tab>` to complete everything, making for a very smooth
+//! experience for those who don't really use tabs.
+//!
+//! This widget is very extensible, as you can add your own
+//! [`CompletionsProvider`], which are selected by priority. This lets
+//! you, for example, have the default completions be provided by an
+//! LSP, with fallbacks for path and words completions.
 use std::{
     any::Any,
     ops::Range,

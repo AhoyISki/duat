@@ -1,3 +1,12 @@
+//! Widget to display the history of notifications sent to Duat
+//!
+//! This widget is kind of an extended version of the
+//! [`Notifications`] widget. It is normally placed at the bottom of
+//! the screen, but you can also place it somewhere else. The messages
+//! can be formatted differently, and you can also filter the things
+//! that you don't care about.
+//!
+//! [`Notifications`]: super::Notifications
 use duat_core::{
     context::{self, Handle, Logs, Record},
     data::Pass,
