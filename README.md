@@ -90,6 +90,13 @@ Inside/around whitespace.
 
 </details>
 
+<details>
+<summary>
+
+### Selection keys
+
+</summary>
+
 `h`, `<Left>`  
 Move left. Wraps around lines.
 
@@ -172,7 +179,7 @@ Selects to the next pair of matching brackets.
 `<A-m>`  
 Selects the previous pair of matching brackets.
 
-`M`, <A-M>  
+`M`, `<A-M>`  
 Same as the previous two, but extends the selection.
 
 `<A-u>`  
@@ -362,15 +369,6 @@ Makes the main selection the searching pattern.
 <details>
 <summary>
 
-### Some motions take additional
-
-</summary>
-
-Text objects define
-
-<details>
-<summary>
-
 ### `goto` mode
 
 </summary>
@@ -426,7 +424,7 @@ To enter `User` mode, you type `<Space>` in `Normal` mode.
 </details>
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4xXnYKtc6KmG4tN_VaqK9htG9PurzqR4YnRG8v3HRbXkiVDYWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGwIrYj1Ful5nG1C1NpfpLFdIG5YIOCO-aVQSG3QjvRZfl9YdYWSDgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJoZHVhdG1vZGVlMC43LjA
  [__link0]: https://github.com/mawww/kakoune
  [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
  [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::anchor
@@ -442,7 +440,7 @@ To enter `User` mode, you type `<Space>` in `Normal` mode.
  [__link2]: https://docs.rs/duatmode/0.7.0/duatmode/opts/index.html
  [__link3]: https://docs.rs/duat/latest/duat/opts
  [__link4]: https://docs.rs/duatmode/0.7.0/duatmode/?search=opts::set_very_smart_tabs
- [__link5]: https://docs.rs/duat_core/0.7.0/duat_core/?search=opts::Opts::extra_word_chars
+ [__link5]: https://docs.rs/duat_core/0.7.0/duat_core/?search=opts::PrintOpts::extra_word_chars
  [__link6]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
  [__link7]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::caret
  [__link8]: https://docs.rs/duat_core/0.7.0/duat_core/?search=mode::Cursor::anchor

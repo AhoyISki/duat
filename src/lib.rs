@@ -88,6 +88,13 @@
 //! 
 //! </details>
 //!
+//! <details>
+//! <summary>
+//! 
+//! ## Selection keys
+//!
+//! </summary>
+//!
 //! `h`, `<Left>`\
 //! Move left. Wraps around lines.
 //!
@@ -171,7 +178,7 @@
 //! `<A-m>`\
 //! Selects the previous pair of matching brackets.
 //!
-//! `M`, <A-M>\
+//! `M`, `<A-M>`\
 //! Same as the previous two, but extends the selection.
 //!
 //! `<A-u>`\
@@ -361,15 +368,6 @@
 //! <details>
 //! <summary>
 //!
-//! ## Some motions take additional
-//!
-//! </summary>
-//!
-//! Text objects define
-//!
-//! <details>
-//! <summary>
-//!
 //! ## `goto` mode
 //!
 //! </summary>
@@ -440,7 +438,7 @@
 //! [`Mode`]: duat_core::mode::Mode
 //! [`duatmode::opts`]: opts
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
-//! [word chars]: duat_core::opts::Opts::extra_word_chars
+//! [word chars]: duat_core::opts::PrintOpts::extra_word_chars
 //! [tab mode]: opts::set_very_smart_tabs
 #![feature(
     iter_map_windows,
