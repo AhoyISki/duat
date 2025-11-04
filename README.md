@@ -1,4 +1,4 @@
-# duat-match-pairs ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat-match-pairs on crates.io](https://img.shields.io/crates/v/duat-match-pairs)](https://crates.io/crates/duat-match-pairs) [![duat-match-pairs on docs.rs](https://docs.rs/duat-match-pairs/badge.svg)](https://docs.rs/duat-match-pairs) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat-match-pairs)
+# duat-match-pairs ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue) [![duat-match-pairs on crates.io](https://img.shields.io/crates/v/duat-match-pairs)](https://crates.io/crates/duat-match-pairs) [![duat-match-pairs on docs.rs](https://docs.rs/duat-match-pairs/badge.svg)](https://docs.rs/duat-match-pairs) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat-match-pairs)
 
 A simple [`Plugin`][__link0] to match pairs of parentheses
 
@@ -76,6 +76,6 @@ Two things to note here:
   strings.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG455e5ZdiAjrG3UY4XQ7zxWeG0j8baWvHaIvG7ElFWfOt_YnYWSBgmZQbHVnaW72
- [__link0]: https://crates.io/crates/Plugin
- [__link1]: https://crates.io/crates/Plugin
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG5IFD9Dp0aybG0CIypfJDuTrGy6VSX0sNlwoG5XT_8M01LcjYWSBgmlkdWF0X2NvcmVlMC43LjA
+ [__link0]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
+ [__link1]: https://docs.rs/duat_core/0.7.0/duat_core/?search=Plugin
