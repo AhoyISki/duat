@@ -20,19 +20,19 @@
 //! bugs. Any feedback on features, bugs or requests is highly
 //! appreciated 🥰.
 //!
-//! ## Getting started
-//!
-//! # Note
-//!
-//! On this section, I will be referring to duat's configuration by
-//! `~/.config/duat/`, but you should replace it with your operating
-//! system's config path. The same also applies to `~/.local/duat/`.
+//! ## Installation
 //!
 //! To install Duat, I am assuming that you have `cargo` installed on
 //! your system, if you don't, [install it]. If you are installing it
 //! on Windows, you should additionlly follow the instructions that
 //! they give you for installing C/C++ libraries through Visual
 //! Studio.
+//!
+//! # Note
+//!
+//! On this section, I will be referring to duat's configuration by
+//! `~/.config/duat/`, but you should replace it with your operating
+//! system's config path. The same also applies to `~/.local/duat/`.
 //!
 //! After installing `cargo`, you will also need to install the
 //! `nightly` toolchain:
@@ -87,7 +87,7 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     map::<kak::Insert>("jk", "<Esc>");
+//!     map::<Insert>("jk", "<Esc>");
 //!
 //!     opts::set(|opts| {
 //!         opts.wrap_lines = true;
