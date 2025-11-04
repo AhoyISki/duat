@@ -200,6 +200,7 @@ macro implFromFn($($arg:ident),*) {
         D: Display,
         $($arg: StateArg),*
     {
+        #[allow(unused_variables)]
         fn from(value: Fmt) -> Self {
             Self {
                 appender: Appender::FromFn(Box::new(move |pa, b, handle| {
@@ -220,6 +221,7 @@ macro implFromFn($($arg:ident),*) {
         Fmt: Fn($(&$arg),*) -> Text + Send + 'static,
         $($arg: StateArg),*
     {
+        #[allow(unused_variables)]
         fn from(value: Fmt) -> Self {
             Self {
                 appender: Appender::FromFn(Box::new(move |pa, b, handle| {
@@ -235,6 +237,7 @@ macro implFromFn($($arg:ident),*) {
     }
 }
 
+implFromFn!();
 implFromFn!(Arg1);
 implFromFn!(Arg1, Arg2);
 implFromFn!(Arg1, Arg2, Arg3);

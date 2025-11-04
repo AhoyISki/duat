@@ -22,29 +22,27 @@ use duat_core::{
 
 /// A [`Widget`] to show notifications
 ///
-/// With the [`FooterWidgets`] group, this [`Widget`] can be
-/// conveniently placed alongside a [`PromptLine`] and a
-/// [`StatusLine`],in a combination that hides the [`PromptLine`]when
-/// it is not in use, covering it with the [`Notifications`],
-/// andvice-versa. This is the default behaviour of Duat.
+/// You can style modify it using the [`opts::set_notifs`] function in
+/// Duat:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # use duat_utils::widgets::{Notifications, FooterWidgets};
+/// # use duat_base::widgets::{Notifications, FooterWidgets};
+/// # mod opts {
+/// #     pub fn set_notifs(set_fn: impl FnMut(&mut duat_base::widgets::NotificationsOpts)) {}
+/// # }
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::remove("WindowWidgets");
-///     hook::add::<WindowCreated>(|_, builder| {
-///         let footer = FooterWidgets::default().notifs(Notifications::opts().formatted(|rec| {
+///     opts::set_notifs(|opts| {
+///         opts.fmt(|rec| {
 ///             txt!(
-///                 "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
-///                 rec.target(),
+///                 "[notifs.bracket]([log_book.location]{}[notifs.bracket]) {}",
+///                 rec.location(),
 ///                 rec.text().clone()
 ///             )
-///         }));
-///         builder.push(footer);
+///         })
 ///     });
 /// }
 /// ```
@@ -53,6 +51,7 @@ use duat_core::{
 /// [`PromptLine`]: super::PromptLine
 /// [`StatusLine`]: super::StatusLine
 /// [hook]: duat_core::hook
+/// [`opts::set_notifs`]: https://docs.rs/duat/latest/duat/opts/fn.set_notifs.html
 pub struct Notifications {
     logs: context::Logs,
     text: Text,

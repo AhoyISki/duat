@@ -322,7 +322,7 @@ macro_rules! doc_duat {
         #[allow(unused, missing_docs)]
         mod $duat {
             pub mod cursor {
-                pub use duat_core::form::{
+                pub use ::duat_core::form::{
                     extra_cursor as get_extra, id_of, main_cursor as get_main,
                     set_extra_cursor as set_extra, set_main_cursor as set_main,
                     unset_cursors as unset, unset_extra_cursor as unset_extra,
@@ -330,16 +330,27 @@ macro_rules! doc_duat {
                 };
             }
 
+            pub mod opts {
+                use super::prelude::*;
+                pub use ::duat_core::opts::{self, PrintOpts};
+                pub fn set(set: impl FnOnce(PrintOpts) -> PrintOpts) {}
+                pub fn set_lines<T>(set: T) {}
+                pub fn set_status<T>(set: impl FnMut(&mut Pass) -> T) {}
+                pub fn set_notifs<T>(set: T) {}
+                pub fn set_logs<T>(set: T) {}
+                pub fn one_line_footer() {}
+            }
+
             pub mod data {
-                pub use duat_core::data::*;
+                pub use ::duat_core::data::*;
             }
 
             pub mod state {
                 use super::prelude::*;
                 pub fn name_txt(buffer: &Buffer) -> Text { Text::default() }
                 pub fn path_txt(buffer: &Buffer) -> Text { Text::default() }
-                pub fn mode_name() -> data::DataMap<&'static str, &'static str> { unimplemented!() }
-                pub fn mode_txt() -> data::DataMap<&'static str, Text> { unimplemented!() }
+                pub fn mode_name() -> data::DataMap<&'static str, &'static str> { todo!() }
+                pub fn mode_txt() -> data::DataMap<&'static str, Text> { todo!() }
                 pub fn main_byte(buffer: &Buffer) -> usize { 0 }
                 pub fn main_char(buffer: &Buffer) -> usize { 0 }
                 pub fn main_line(buffer: &Buffer) -> usize { 0 }
@@ -347,14 +358,14 @@ macro_rules! doc_duat {
                 pub fn main_txt(buffer: &Buffer, area: &ui::Area) -> Text { Text::default() }
                 pub fn selections(buffer: &Buffer) -> usize { 0 }
                 pub fn sels_txt(buffer: &Buffer) -> Text { Text::default() }
-                pub fn cur_map_txt() -> data::DataMap<(Vec<KeyEvent>, bool), Text> { unimplemented!() }
-                pub fn last_key() -> data::RwData<String> { unimplemented!() }
+                pub fn cur_map_txt() -> data::DataMap<(Vec<KeyEvent>, bool), Text> { todo!() }
+                pub fn last_key() -> data::RwData<String> { todo!() }
             }
                 
             pub mod prelude {
                 pub use std::ops::Range;
                 
-                pub use duat_core::{
+                pub use ::duat_core::{
                     Plugin, Plugins,
                     buffer::{Buffer, BufferTracker, Parser},
                     clipboard, cmd,
@@ -372,16 +383,15 @@ macro_rules! doc_duat {
                         self, KeyCode, KeyEvent, Mode, User, alias, alt, ctrl, event,
                         map, shift,
                     },
-                    opts::{self, ScrollOff},
                     text::{
                         self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer,
-                        SpawnTag, Tagger, Text, txt, Point,
+                        SpawnTag, Tagger, Text, txt, Point, Searcher
                     },
-                    ui::{self, Widget},
+                    ui::{self, Area, Widget},
                 };
                 
                 pub use super::{
-                    cursor::*, state::*, modes::*, widgets::*, PassFileType, FileType
+                    cursor::*, state::*, modes::*, widgets::*, PassFileType, FileType, opts
                 };
 
                 #[macro_export]
@@ -431,7 +441,7 @@ macro_rules! doc_duat {
                 pub struct StatusLine;
                 impl StatusLine {
                     pub fn above(self) -> Self { Self }
-                    pub fn push_on(self, _: &mut Pass, _: &impl duat_core::ui::PushTarget) {}
+                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
                 }
                 
                 use super::prelude::*;
@@ -441,7 +451,7 @@ macro_rules! doc_duat {
                 }
                 pub struct VertRuleBuilder;
                 impl VertRuleBuilder {
-                    pub fn push_on(self, _: &mut Pass, _: &impl duat_core::ui::PushTarget) {}
+                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
                     pub fn on_the_right(self) -> Self { self }
                 }
             }
@@ -450,12 +460,12 @@ macro_rules! doc_duat {
                 use super::prelude::*;
                 #[derive(Clone)]
                 pub struct Pager;
-                impl duat_core::mode::Mode for Pager {
-                    type Widget = duat_core::buffer::Buffer;
+                impl ::duat_core::mode::Mode for Pager {
+                    type Widget = ::duat_core::buffer::Buffer;
                     fn send_key(
                         &mut self,
                         _: &mut Pass,
-                        _: crossterm::event::KeyEvent,
+                        _: ::duat_core::mode::KeyEvent,
                         _: Handle<Self::Widget>,
                     ) {
                     }
@@ -463,12 +473,12 @@ macro_rules! doc_duat {
                 
                 #[derive(Clone)]
                 pub struct Prompt;
-                impl duat_core::mode::Mode for Prompt {
-                    type Widget = duat_core::buffer::Buffer;
+                impl ::duat_core::mode::Mode for Prompt {
+                    type Widget = ::duat_core::buffer::Buffer;
                     fn send_key(
                         &mut self,
                         _: &mut Pass,
-                        _: crossterm::event::KeyEvent,
+                        _: ::duat_core::mode::KeyEvent,
                         _: Handle<Self::Widget>,
                     ) {
                     }

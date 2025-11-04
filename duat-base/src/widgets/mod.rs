@@ -17,7 +17,10 @@ use duat_core::{
 };
 
 pub use self::{
-    completions::{Completions, CompletionsBuilder, CompletionsKind, CompletionsProvider, CompletionsList, WordsCompletionParser},
+    completions::{
+        Completions, CompletionsBuilder, CompletionsKind, CompletionsList, CompletionsProvider,
+        WordsCompletionParser,
+    },
     line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
@@ -41,17 +44,18 @@ mod status_line;
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
+/// # use duat_base::widgets::{FooterWidgets, status};
 /// setup_duat!(setup);
 /// use duat::prelude::*;
-/// use duat_utils::widgets::{FooterWidgets, status};
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|pa, (opts, builder)| {
-///         builder.push(FooterWidgets::new(status!(
+///     hook::add::<Buffer>(|pa, handle| {
+///         FooterWidgets::new(status!(
 ///             "{name_txt}{Spacer}{} {sels_txt} {main_txt}",
-///             mode_txt(pa)
-///         )));
-///         opts
+///             mode_txt()
+///         ))
+///         .push_on(pa, handle);
+///         Ok(())
 ///     });
 /// }
 /// ```
@@ -87,7 +91,7 @@ pub struct FooterWidgets {
 
 impl FooterWidgets {
     /// Adds footer [`Widget`]s
-    /// 
+    ///
     /// [`Widget`]: duat_core::ui::Widget
     pub fn push_on(mut self, pa: &mut Pass, push_target: &impl PushTarget) {
         let prompt_line = if self.one_line {

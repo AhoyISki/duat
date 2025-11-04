@@ -173,7 +173,7 @@ impl Default for LogBookOpts {
             };
 
             builder.push(txt!(
-                "[log_book.bracket][] {}{Spacer}([log_book.target]{}[log_book.bracket])\n",
+                "[log_book.bracket][] {}{Spacer}([log_book.location]{}[log_book.bracket])\n",
                 rec.text().clone(),
                 rec.location(),
             ));

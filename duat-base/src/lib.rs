@@ -129,7 +129,7 @@ pub mod state;
 pub mod widgets;
 
 pub mod hooks {
-    //! Additional hooks for `duat-utils` specific things
+    //! Additional hooks for `duat-base` specific things
     //!
     //! Right now, these are the two [`hook`]s available for use:
     //!

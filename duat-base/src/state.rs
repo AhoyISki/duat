@@ -126,7 +126,7 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 ///         let mode_upper = state::mode_name().map(|mode| {
 ///             let mode = match mode.split_once('<') {
 ///                 Some((mode, _)) => mode,
-///                 None => mode,
+///                 None => &mode,
 ///             };
 ///             txt!("[mode]{}", mode.to_uppercase())
 ///         });

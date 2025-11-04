@@ -1,16 +1,17 @@
 //! Additional [`Mode`]s for Duat
 //!
-//! This module adds some very important [`Mode`]s, not only for base
+//! This module adds some very important `Mode`s, not only for base
 //! Duat configuration, but also in extending it with a lot of
 //! functionality.
 //!
 //! Chief among the extensible modes in here is the [`Prompt`] and
-//! [`IncSearch`] [`Mode`]s, which can leverage traits to do a wide
+//! [`IncSearch`] `Mode`s, which can leverage traits to do a wide
 //! variety of things:
 //!
 //! ```rust
-//! use duat_core::{prelude::*, text::Searcher};
-//! use duat_utils::modes::IncSearcher;
+//! # duat_core::doc_duat!(duat);
+//! # use duat_base::modes::IncSearcher;
+//! use duat::prelude::*;
 //!
 //! #[derive(Clone, Copy)]
 //! struct KeepMatching;
@@ -19,15 +20,14 @@
 //!     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
 //!         handle.edit_all(pa, |mut c| {
 //!             c.set_caret_on_start();
-//!             let [_, end] = c.range();
-//!             if c.search_inc_fwd(Some(end)).next().is_none() {
+//!             if c.search_inc_fwd(Some(c.range().end)).next().is_none() {
 //!                 c.destroy();
 //!             }
 //!         });
 //!     }
 //!
 //!     fn prompt(&self) -> Text {
-//!         txt!("[Prompt]keep matching[Prompt.colon]:").build()
+//!         txt!("[Prompt]keep matching")
 //!     }
 //! }
 //! ```

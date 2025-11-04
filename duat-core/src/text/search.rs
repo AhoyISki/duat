@@ -528,7 +528,7 @@ impl Patterns<'_> {
 /// It can either be a single `&str`, or a list of `&str`s, in which
 /// case the matched pattern will be specified.
 pub trait RegexPattern: InnerRegexPattern {
-    /// Either two [`Point`]s, or two [`Point`]s and a match index
+    /// Eiter a [`Range<usize>`] or `(usize, Range<usize>)`
     type Match: 'static;
 
     /// transforms a matched pattern into [`RegexPattern::Match`]

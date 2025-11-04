@@ -341,8 +341,9 @@ impl Clone for Prompt {
 /// state:
 ///
 /// ```rust
-/// use duat_core::prelude::*;
-/// use duat_utils::modes::PromptMode;
+/// # duat_core::doc_duat!(duat);
+/// # use duat_base::modes::PromptMode;
+/// use duat::prelude::*;
 ///
 /// #[derive(Default, Clone)]
 /// struct RealTimeSwitch {
@@ -352,7 +353,7 @@ impl Clone for Prompt {
 /// };
 ///
 /// impl PromptMode for RealTimeSwitch {
-///     fn update(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text {
+///     fn update(&mut self, pa: &mut Pass, text: Text, area: &ui::RwArea) -> Text {
 ///         let name = text.to_string();
 ///
 ///         self.name_was_correct = if name != *self.current.as_ref().unwrap() {
@@ -369,14 +370,14 @@ impl Clone for Prompt {
 ///         text
 ///     }
 ///
-///     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &Area) -> Text {
-///         self.initial = Some(context::fixed_file(pa).unwrap().read(pa).name());
+///     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &ui::RwArea) -> Text {
+///         self.initial = Some(context::current_buffer(pa).read(pa).name());
 ///         self.current = self.initial.clone();
 ///
 ///         text
 ///     }
 ///
-///     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &Area) {
+///     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &ui::RwArea) {
 ///         if !self.name_was_correct {
 ///             cmd::buffer(pa, self.initial.take().unwrap());
 ///         }
@@ -513,8 +514,9 @@ impl PromptMode for RunCommands {
 /// like this:
 ///
 /// ```rust
-/// use duat_core::prelude::{KeyCode::*, *};
-/// use duat_utils::modes::{IncSearch, SearchFwd};
+/// # duat_core::doc_duat!(duat);
+/// # use duat_base::modes::{IncSearch, SearchFwd};
+/// use duat::prelude::*;
 ///
 /// #[derive(Clone)]
 /// struct Emacs;
@@ -522,9 +524,9 @@ impl PromptMode for RunCommands {
 /// impl Mode for Emacs {
 ///     type Widget = Buffer;
 ///
-///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle<Self::Widget>) {
+///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
 ///         match event {
-///             key!(Char('s'), KeyMod::CONTROL) => mode::set(IncSearch::new(SearchFwd)),
+///             ctrl!('s') => mode::set(IncSearch::new(SearchFwd)),
 ///             other_keys_oh_god => todo!(),
 ///         }
 ///     }

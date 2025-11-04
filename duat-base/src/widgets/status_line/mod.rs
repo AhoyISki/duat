@@ -14,6 +14,7 @@
 //! types, etc.
 //!
 //! [data]: crate::data
+//! [`Buffer`]: duat_core::buffer::Buffer
 use duat_core::{
     context::{self, DynBuffer, Handle},
     data::Pass,
@@ -38,48 +39,47 @@ mod state;
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # use duat_utils::widgets::{FooterWidgets, status};
+/// # use duat_base::widgets::status;
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|_, (opts, builder)| {
-///         builder.push(status!("{name_txt}").above());
-///         opts
-///     });
+///     opts::one_line_footer();
+///     opts::set_status(|pa| status!("{AlignRight}{} {sels_txt} {main_txt}", mode_txt()));
 ///
-///     hook::remove("WindowWidgets");
-///     hook::add::<WindowCreated>(|pa, builder| {
-///         builder.push(FooterWidgets::new(status!(
-///             "{} {sels_txt} {main_txt}",
-///             mode_txt(pa)
-///         )));
+///     hook::add::<Buffer>(|pa, handle| {
+///         status!("{AlignCenter}{name_txt}")
+///             .above()
+///             .push_on(pa, handle);
+///         Ok(())
 ///     });
 /// }
 /// ```
 ///
-/// In the above example, each buffer would have a status line with
-/// the name of the buffer, and by pushing [`FooterWidgets`], you will
-/// push a [`StatusLine`], [`PromptLine`] and [`Notifications`] combo
-/// to each window. This [`StatusLine`] will point to the currently
-/// active [`Buffer`], instead of a specific one.
+/// In the code above, I'm modifying the "global" `StatusLine` through
+/// [`opts::set_status`] (this can be done with [hooks] as well, but
+/// this method is added for convenience's sake). This is in
+/// conjunction with [`opts::one_line_footer`], which will place
+/// the [`PromptLine`] and `StatusLine` on the same line.
 ///
-/// You will usually want to create [`StatusLine`]s via the
+/// After that, I'm _also_ pushing a new `StatusLine` above every
+/// opened [`Buffer`], showing that `Buffer`]'s name, centered.
+///
+/// You will usually want to create `StatusLine`s via the
 /// [`status!`] macro, since that is how you can customize it.
-/// Although, if you want the regular status line, you can just:
+/// Although, if you want the regular status line, you can call
+/// [`StatusLine::builder`]:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # use duat_utils::widgets::{LineNumbers, StatusLine};
+/// # use duat_base::widgets::StatusLine;
 /// setup_duat!(setup);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::remove("BufferWidgets");
-///     hook::add::<Buffer>(|_, (opts, builder)| {
-///         builder.push(LineNumbers::opts());
-///         builder.push(StatusLine::opts().above());
-///         opts
+///     hook::add::<Buffer>(|pa, handle| {
+///         StatusLine::builder().above().push_on(pa, handle);
+///         Ok(())
 ///     });
 /// }
 /// ```
@@ -89,6 +89,9 @@ mod state;
 /// [`PromptLine`]: super::PromptLine
 /// [`Notifications`]: super::Notifications
 /// [`FooterWidgets`]: super::FooterWidgets
+/// [`opts::set_status`]: https://docs.rs/duat/latest/duat/opts/fn.set_status.html
+/// [`opts::one_line_footer`]: https://docs.rs/duat/latest/duat/opts/fn.one_line_footer.html
+/// [hooks]: duat_core::hook
 pub struct StatusLine {
     buffer_handle: BufferHandle,
     text_fn: TextFn,
@@ -184,12 +187,12 @@ impl Widget for StatusLine {
 }
 
 /// A builder for [`StatusLine`]s
-/// 
-/// This struct is created by the [`status!`] macro, and its purpose is
-/// mainly to allow formatting of the `StatusLine`.
-/// 
-/// There is also the [`StatusLineFmt::above`] method, which places the
-/// `StatusLine` above, rather than below.
+///
+/// This struct is created by the [`status!`] macro, and its purpose
+/// is mainly to allow formatting of the `StatusLine`.
+///
+/// There is also the [`StatusLineFmt::above`] method, which places
+/// the `StatusLine` above, rather than below.
 #[derive(Default)]
 pub struct StatusLineFmt {
     fns: Option<(BuilderFn, CheckerFn)>,
@@ -273,7 +276,7 @@ mod macros {
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
-    /// # use duat_utils::widgets::status;
+    /// # use duat_base::widgets::status;
     /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
@@ -293,7 +296,7 @@ mod macros {
     ///
     /// fn powerline_main_txt(buffer: &Buffer, area: &Area) -> Text {
     ///     let selections = buffer.selections();
-    ///     let opts = buffer.print_opts();
+    ///     let opts = buffer.get_print_opts();
     ///     let v_caret = selections
     ///         .get_main()
     ///         .unwrap()
@@ -305,15 +308,10 @@ mod macros {
     ///         v_caret.line(),
     ///         buffer.len_lines()
     ///     )
-    ///     .build()
     /// }
     ///
     /// fn setup() {
-    ///     hook::add::<WindowCreated>(|pa, window| {
-    ///         status!("[buffer]{name_but_funky}{Spacer}{powerline_main_txt}")
-    ///             .above()
-    ///             .push_on(pa, window);
-    ///     });
+    ///     opts::set_status(|pa| status!("[buffer]{name_but_funky}{Spacer}{powerline_main_txt}"));
     /// }
     /// ```
     ///
@@ -327,21 +325,21 @@ mod macros {
     ///     etc. [`impl Debug`] types also work, when including the
     ///     usual `":?"` and derived suffixes;
     /// - Dynamic arguments:
-    ///   - An [`RwData`] or [`DataMap`]s of the previous two types. These
-    ///     will update whenever the data inside is changed;
+    ///   - An [`RwData`] or [`DataMap`]s of the previous two types.
+    ///     These will update whenever the data inside is changed;
     ///
     /// Here's an examples:
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
-    /// # use duat_utils::widgets::status;
+    /// # use duat_base::widgets::status;
     /// setup_duat!(setup);
     /// use std::sync::atomic::{AtomicUsize, Ordering};
     ///
     /// use duat::prelude::*;
     ///
     /// fn setup() {
-    ///     let changing_str = RwData::new("Initial text".to_string());
+    ///     let changing_str = data::RwData::new("Initial text".to_string());
     ///
     ///     fn counter(update: bool) -> usize {
     ///         static COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -354,19 +352,21 @@ mod macros {
     ///
     ///     hook::add::<WindowCreated>({
     ///         let changing_str = changing_str.clone();
-    ///         move |_, builder| {
+    ///         move |pa, window| {
     ///             let changing_str = changing_str.clone();
     ///             let checker = changing_str.checker();
     ///
-    ///             let text = txt!("Static text").build();
+    ///             let text = txt!("Static text");
+    ///             let counter = move || counter(checker());
     ///
-    ///             let counter = move |_: &Buffer| counter(checker());
-    ///
-    ///             builder.push(status!("{changing_str} [counter]{counter}[] {text}",));
+    ///             status!("{changing_str} [counter]{counter}[] {text}")
+    ///                 .above()
+    ///                 .push_on(pa, window);
+    ///             Ok(())
     ///         }
     ///     });
     ///
-    ///     cmd::add!("set-text", |pa, new: &str| {
+    ///     cmd::add!("set-str", |pa, new: &str| {
     ///         *changing_str.write(pa) = new.to_string();
     ///         Ok(None)
     ///     })

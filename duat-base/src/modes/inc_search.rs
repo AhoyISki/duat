@@ -28,28 +28,28 @@ use duat_core::{
 /// Here is how you can implement this trait yourself:
 ///
 /// ```rust
-/// use duat_core::{prelude::*, text::Searcher};
-/// use duat_utils::modes::IncSearcher;
+/// # duat_core::doc_duat!(duat);
+/// # use duat_base::modes::IncSearcher;
+/// setup_duat!(setup);
+/// use duat::prelude::*;
 ///
 /// #[derive(Clone, Copy)]
 /// struct SearchAround;
 ///
 /// impl IncSearcher for SearchAround {
-///     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, U, Searcher>) {
+///     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
 ///         handle.edit_all(pa, |mut c| {
 ///             c.set_caret_on_end();
-///             let Some([_, p1]) = c.search_inc_fwd(None).next() else {
+///             let Some(e_range) = c.search_inc_fwd(None).next() else {
 ///                 return;
 ///             };
 ///
 ///             c.set_caret_on_start();
-///             let Some([p0, _]) = c.search_inc_rev(None).next() else {
+///             let Some(s_range) = c.search_inc_rev(None).next() else {
 ///                 return;
 ///             };
 ///
-///             c.move_to(p0);
-///             c.set_anchor();
-///             c.move_to(p1);
+///             c.move_to(s_range.start..e_range.end)
 ///         });
 ///     }
 ///
