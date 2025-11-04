@@ -11,15 +11,13 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat-core = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
-duat-base = { version = "0.7.0", git = "https://github.com/AhoyISki/duat" }
+duat-core = "0.7.0"
+duat-base = "0.7.0"
 
 [dependencies.treesitter]
-git = "https://github.com/AhoyISki/duat-treesitter"
 version = "0.3.1"
 package = "duat-treesitter"
 
 [dependencies.jump-list]
-git = "https://github.com/AhoyISki/duat-jump-list"
 version = "0.2.0"
 package = "duat-jump-list"
