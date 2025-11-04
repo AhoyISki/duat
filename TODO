@@ -66,6 +66,7 @@ KNOWN BUGS:
   [ ] tree-sitter-duat-text is not being used.
   [ ] std::mem::replace (grrrr...).
   [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
+  [ ] For now, on Windows, duat can only reload if there is only one instance open.
 
 FUTURE UPDATES:
 [ ] Get rid of Text::selections_mut
