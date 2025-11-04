@@ -3,7 +3,7 @@
 //! `duat-vim`.
 //!
 //! It works by recording the [`Selections`] and can retrieve previous
-//! [`Selections`] values, taking [`Change`]s that took place into
+//! `Selections` values, taking [`Change`]s that took place into
 //! account.
 //!
 //! [`Selections`]: duat_core::mode::Selections
@@ -19,10 +19,12 @@ use duat_core::{
 };
 use gapbuf::GapBuffer;
 
-/// [`Plugin`]: Adds a [`Jumps`] parser to every [`Buffer`]
+/// [`Plugin`]: Adds a `Jumps` parser to every [`Buffer`]
 ///
-/// This [`Jumps`] parser can be used to retrieve previous
+/// This `Jumps` parser can be used to retrieve previous
 /// [`Selections`] values, "jumping" around in the history.
+///
+/// [`Selections`]: duat_core::mode::Selections
 #[derive(Default)]
 pub struct JumpList;
 
@@ -36,7 +38,7 @@ impl Plugin for JumpList {
 ///
 /// It can either be a single selection, represented by an exclusive
 /// [`Range<usize>`] of bytes, or a list of selections, also
-/// represented by [`Range<usize>`], alongside the index for the main
+/// represented by `Range<usize>`, alongside the index for the main
 /// selection.
 ///
 /// [`Selections`]: duat_core::mode::Selections
@@ -152,9 +154,9 @@ pub trait BufferJumps {
 
     /// Jumps forwards or backwards through the [`Jump`]s on the list
     ///
-    /// The [`Jump`] can either be a single selection, represented by
+    /// The `Jump` can either be a single selection, represented by
     /// an exclusive [`Range<usize>`], or it can be multiple
-    /// selections, also represented by a [`Range<usize>`], with the
+    /// selections, also represented by a `Range<usize>`, with the
     /// main selection's index included.
     ///
     /// This will return [`None`] if the [`JumpList`] plugin was not
@@ -164,9 +166,9 @@ pub trait BufferJumps {
 
     /// Jumps to the `n`th [`Jump`]
     ///
-    /// The [`Jump`] can either be a single selection, represented by
+    /// The `Jump` can either be a single selection, represented by
     /// an exclusive [`Range<usize>`], or it can be multiple
-    /// selections, also represented by a [`Range<usize>`], with the
+    /// selections, also represented by a `Range<usize>`, with the
     /// main selection's index included.
     ///
     /// This will return [`None`] if the [`JumpList`] plugin was not
