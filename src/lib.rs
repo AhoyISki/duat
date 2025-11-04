@@ -206,12 +206,12 @@ impl Parser for MatchPairsParser {
 
         file.text_mut().remove_tags(*PAREN_TAGGER, ..);
 
-        let selections: Vec<(Range<Point>, bool)> = on
+        let selections: Vec<(Range<usize>, bool)> = on
             .into_iter()
             .flat_map(|r| {
                 file.selections()
                     .iter_within(r)
-                    .map(|(_, sel, is_main)| (sel.point_range(file.bytes()), is_main))
+                    .map(|(_, sel, is_main)| (sel.byte_range(file.bytes()), is_main))
             })
             .collect();
 
@@ -231,9 +231,7 @@ impl Parser for MatchPairsParser {
                 .try_read_parser(|ts: &TsParser| {
                     let node = ts
                         .root()
-                        .and_then(|root| {
-                            root.descendant_for_byte_range(c_range.start.byte(), c_range.end.byte())
-                        })
+                        .and_then(|root| root.descendant_for_byte_range(c_range.start, c_range.end))
                         .and_then(|node| {
                             delims
                                 .iter()
@@ -258,12 +256,7 @@ impl Parser for MatchPairsParser {
                         None
                     }
                 }) {
-                (
-                    file.text().point_at_byte(s_range.start)
-                        ..file.text().point_at_byte(s_range.end),
-                    file.text().point_at_byte(e_range.start)
-                        ..file.text().point_at_byte(e_range.end),
-                )
+                (s_range, e_range)
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
                     let mut iter = file.bytes().search_fwd(escaped, c_range.start..).unwrap();
