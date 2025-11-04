@@ -1876,8 +1876,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 
 [[patch.unused]]
+name = "duat-treesitter"
+version = "0.3.1"
+
+[[patch.unused]]
 name = "duatmode"
 version = "0.7.0"
+
+[[patch.unused]]
+name = "duat-jump-list"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "duat-filetype"
@@ -1886,11 +1894,3 @@ version = "0.3.1"
 [[patch.unused]]
 name = "duat-match-pairs"
 version = "0.2.1"
-
-[[patch.unused]]
-name = "duat-jump-list"
-version = "0.2.0"
-
-[[patch.unused]]
-name = "duat-treesitter"
-version = "0.3.1"
