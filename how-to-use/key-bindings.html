@@ -182,6 +182,276 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="key-bindings"><a class="header" href="#key-bindings">Key bindings</a></h1>
+<p>Duat's default mode is one heavily inspired by Kakoune. This means that it is
+modal, and follows "object action" semantics, unlike (neo)vim, which follows
+"action object" semantics.</p>
+<p>Duat is extremely capable in the multi-cursor department, so Duat's default
+mode makes heavy use of multiple cursors. Every action will be done on every
+cursor, unless specified otherwise.</p>
+<p>Given that, here are the bindings for <code>duatmode</code>:</p>
+<h1 id="keymaps"><a class="header" href="#keymaps">Keymaps</a></h1>
+<p>On every key, if the action involves selections, unless stated
+otherwise, it will take place in all selections.</p>
+<h2 id="insert-mode"><a class="header" href="#insert-mode"><code>Insert</code> mode</a></h2>
+<p>Insert mode is the text editing mode of Duat, much like Vim's. It
+is also entered via various keys in <code>Normal</code> mode.</p>
+<p>On insert mode, keys are sent normally, with the exception of the
+following:</p>
+<p><code>&lt;Tab&gt;</code> and <code>&lt;S-Tab&gt;</code> will do different things depending on your
+[tab mode].</p>
+<p><code>&lt;C-n&gt;</code> and <code>&lt;C-p&gt;</code> go to the next and previous completion
+entries.</p>
+<p><code>&lt;Esc&gt;</code> exits insert mode, returning to <code>Normal</code> mode`.</p>
+<h2 id="normal-mode"><a class="header" href="#normal-mode">Normal mode</a></h2>
+<p>The keys in <code>normal</code> mode follow the following patterns:</p>
+<ul>
+<li><code>word</code> characters follow Duat's [word chars], which are normally
+used to define where lines wrap.</li>
+<li><code>WORD</code> characters are just any non-whitespace character.</li>
+</ul>
+<p>In normal mode, another factor is the <code>param</code> value, which is
+incremented by typing digits.  For example, if you type
+<code>10&lt;Right&gt;</code>, the selections will move 10 times to the right.</p>
+<details>
+<summary><b>Object selection</b></summary>
+<p>In Duat, there are various types of "objects" for selection. These
+get used on <code>Normal</code> mode key sequences, most notably on <code>&lt;A-i&gt;</code>
+and <code>&lt;A-a&gt;</code>. Each of them defines something to be selected:</p>
+<p><code>b</code>, <code>(</code>, <code>)</code><br />
+Inside/around parenthesis.</p>
+<p><code>B</code>, <code>{</code>, <code>}</code><br />
+Inside/around curly braces.</p>
+<p><code>r</code>, <code>[</code>, <code>]</code><br />
+Inside/around brackets.</p>
+<p><code>a</code>, <code>&lt;</code>, <code>&gt;</code><br />
+Inside/around angle brackets.</p>
+<p><code>q</code>, <code>'</code><br />
+Inside/around single quotes.</p>
+<p><code>Q</code>, <code>"</code><br />
+Inside/around double quotes.</p>
+<p><code>g</code>, <code>`</code><br />
+Inside/around graves.</p>
+<p><code>w</code>, <code>&lt;A-w&gt;</code>
+Inside/around <code>word</code>s and <code>WORD</code>s.</p>
+<p><code>s</code><br />
+Inside/around sentences.</p>
+<p><code>p</code><br />
+Inside/around paragraphs.</p>
+<p><code>i</code><br />
+Inside/around lines of equal or greater indentation.</p>
+<p><code> </code><br />
+Inside/around whitespace.</p>
+</details>
+<details>
+<summary><b>Selection keys</b></summary>
+<p><code>h</code>, <code>&lt;Left&gt;</code><br />
+Move left. Wraps around lines.</p>
+<p><code>j</code><br />
+Move down</p>
+<p><code>&lt;Down&gt;</code><br />
+Move down to the next wrapped line (i.c vim's <code>gj</code>).</p>
+<p><code>k</code><br />
+Move up.</p>
+<p><code>&lt;Up&gt;</code><br />
+Move up to the previous wrapped line (i.e. vim's <code>gk</code>).</p>
+<p><code>l</code>, <code>&lt;Right&gt;</code><br />
+Move right. Wraps around lines.</p>
+<p><code>H</code>, <code>&lt;S-Left&gt;</code>, <code>J</code>, <code>&lt;S-Down&gt;</code>, <code>K</code>, <code>&lt;S-Up&gt;</code>, <code>L</code>, <code>&lt;S-Right&gt;</code><br />
+Same as the previous characters, but extends the selection</p>
+<p><code>w</code><br />
+Selects the <code>word</code> and following space ahead of the selection.</p>
+<p><code>b</code><br />
+Selects the <code>word</code> followed by spaces behind the selection.</p>
+<p><code>e</code><br />
+Selects to the end of the next <code>word</code> ahead of the selection.</p>
+<p><code>&lt;(W|B|E)&gt;</code><br />
+The same as <code>(w|b|e)</code>, but extends the selection.</p>
+<p><code>&lt;A-(w|b|e)&gt;</code><br />
+The same as <code>(w|b|e)</code>, but over a <code>WORD</code>.</p>
+<p><code>&lt;A-(W|B|E)&gt;</code><br />
+The same as <code>&lt;A-(w|b|e)&gt;</code>, but extends the selection.</p>
+<p><code>f{char}</code><br />
+Selects to the next occurrence of the <code>{char}</code>.</p>
+<p><code>t{char}</code><br />
+Selects until the next occurrence of the <code>{char}</code>.</p>
+<p><code>&lt;(F|T)&gt;{char}</code><br />
+Same as <code>(f|t)</code>, but extends the selection.</p>
+<p><code>&lt;A-(f|t)&gt;{char}</code><br />
+Same as <code>(f|t)</code>, but in the opposite direction.</p>
+<p><code>&lt;A-(F|T)&gt;{char}</code><br />
+Same as <code>&lt;A-(f|t)&gt;</code>, but in extends the selection.</p>
+<p><code>{param}g</code><br />
+Goes to the <code>{param}</code>th line. If param was not set, enters <code>go to</code>
+mode.</p>
+<p><code>{param}G</code><br />
+Extends to the <code>{param}</code>th line. If param was not set, enters <code>go to</code> mode, and actions will extend.</p>
+<p><code>x</code><br />
+Extends selection to encompass full lines.</p>
+<p><code>%</code><br />
+Selects the whole buffer.</p>
+<p><code>&lt;A-h&gt;</code>, <code>&lt;Home&gt;</code><br />
+Selects to the start of the line.</p>
+<p><code>&lt;A-l&gt;</code>, <code>&lt;End&gt;</code><br />
+Selects until the end of the line.</p>
+<p><code>&lt;A-H&gt;</code>, <code>&lt;S-Home&gt;</code>, <code>&lt;A-L&gt;</code>, <code>&lt;S-End&gt;</code><br />
+Same as the previous two, but extends the selection.</p>
+<p><code>m</code><br />
+Selects to the next pair of matching brackets.</p>
+<p><code>&lt;A-m&gt;</code><br />
+Selects the previous pair of matching brackets.</p>
+<p><code>M</code>, <code>&lt;A-M&gt;</code><br />
+Same as the previous two, but extends the selection.</p>
+<p><code>&lt;A-u&gt;</code><br />
+Returns to the previous state for the selections.</p>
+<p><code>&lt;A-U&gt;</code><br />
+Goes to the next state for the selections.</p>
+<p><code>;</code><br />
+Reduces selections to just the [caret].</p>
+<p><code>&lt;A-;&gt;</code><br />
+Flips the [caret] and [anchor] of selectionss around.</p>
+<p><code>,</code><br />
+Removes extra selections.</p>
+<p><code>C</code><br />
+Creates a selection on the column below the last one.</p>
+<p><code>&lt;A-C&gt;</code><br />
+Creates a selection on the column above the first one.</p>
+<p><code>&lt;A-:&gt;</code><br />
+Places the [caret] ahead of the [anchor] in all selections.</p>
+<p><code>&lt;A-s&gt;</code><br />
+Divides selection into multiple selections, one per line.</p>
+<p><code>&lt;A-S&gt;</code><br />
+Splits into two selections, one at each end of the selection.</p>
+<p><code>&lt;A-_&gt;</code><br />
+Merges all adjacent selections.</p>
+</details>
+<details>
+<summary><b>Text modification</b></summary>
+<p><code>i</code><br />
+Enter <code>insert</code> mode before selections.</p>
+<p><code>a</code><br />
+Enter <code>insert</code> mode after selection.</p>
+<p><code>I</code><br />
+Moves to the beginning of the line (after indent) and enters
+<code>insert</code> mode.</p>
+<p><code>A</code><br />
+Moves to the end of the line and enters <code>insert</code> mode.</p>
+<p><code>y</code><br />
+Yanks selections.</p>
+<p><code>d</code><br />
+Deletes and yanks the selections.</p>
+<p><code>c</code><br />
+Deletes, yanks, and enter <code>insert</code> mode.</p>
+<p><code>p</code><br />
+Pastes after end of each selection (multi line selections are
+placed on the next line).</p>
+<p><code>P</code><br />
+Pastes at the start of each selection (multi line pastes are
+placed on the previous line).</p>
+<p><code>R</code><br />
+Replaces with the pasted text, without yanking.</p>
+<p><code>&lt;A-d&gt;</code><br />
+Deletes selections without yanking.</p>
+<p><code>&lt;A-c&gt;</code><br />
+Deletes selections without yanking, then enters <code>insert</code> mode.</p>
+<p><code>o</code><br />
+Creates a new line below and enters <code>insert</code> mode in it.</p>
+<p><code>O</code><br />
+Creates a new line above and enters <code>insert</code> mode in it.</p>
+<p><code>&lt;A-(o|O)&gt;</code><br />
+Same as <code>(o|O)</code>, but just adds the new line without moving.</p>
+<p><code>r{key}</code><br />
+Replaces each character with <code>{key}</code></p>
+<p><code>u</code><br />
+[Undoes] the last <code>moment</code></p>
+<p><code>U</code><br />
+[Redoes] the next <code>moment</code></p>
+<p><code>&gt;</code><br />
+Adds indentation to the selected lines.</p>
+<p><code>&lt;</code><br />
+Removes indentation to the selected lines.</p>
+<p><code>&lt;A-j&gt;</code><br />
+Merges selected lines.</p>
+<p><code>`</code><br />
+Changes selection to lowercase.</p>
+<p><code>~</code><br />
+Changes selection to uppercase.</p>
+<p><code>&lt;A-`&gt;</code><br />
+Swaps the case of each character.</p>
+<p><code>&lt;A-)&gt;</code><br />
+Rotates each selection's content forwards.</p>
+<p><code>&lt;A-(&gt;</code><br />
+Rotates each selection's content backwards.</p>
+<p><code>|</code><br />
+Changes mode to [<code>PipeSelections</code>], letting you pipe each
+selection to an external program.</p>
+</details>
+<details>
+<summary><b>Search</b></summary>
+<p>The searching in this plugin is done through the [<code>IncSearch</code>]
+[<code>Mode</code>] from Duat, with some [<code>IncSearcher</code>]s defined in this
+crate. This means that search will be done incrementally over a
+Regex pattern.</p>
+<p><code>/</code><br />
+Searches forward for the next pattern.</p>
+<p><code>&lt;A-/&gt;</code><br />
+Searches backwards for the previous pattern.</p>
+<p><code>?</code><br />
+Extends forward for the next pattern.</p>
+<p><code>&lt;A-?&gt;</code><br />
+Extends backwards for the previous pattern.</p>
+<p><code>s</code><br />
+Selects the pattern from within current selections.</p>
+<p><code>S</code><br />
+Splits current selections by the pattern.</p>
+<p><code>&lt;A-k&gt;</code><br />
+Keeps only the selections that match the pattern.</p>
+<p><code>&lt;A-K&gt;</code><br />
+Keeps only the selections that <em>don't</em> match the pattern.</p>
+<p><code>n</code><br />
+Go to next match for pattern.</p>
+<p><code>N</code><br />
+Create a new cursor on the next match for pattern.</p>
+<p><code>&lt;A-n&gt;</code><br />
+Go to previous match for pattern.</p>
+<p><code>&lt;A-N&gt;</code><br />
+Create a new cursor on the previous match for pattern.</p>
+<p><code>*</code><br />
+Makes the main selection the searching pattern.</p>
+</details>
+<h2 id="goto-mode"><a class="header" href="#goto-mode">goto mode</a></h2>
+<p>Goto mode is accessed by the <code>g</code> and <code>G</code> keys in <code>normal</code> mode.
+It serves a s a way to quickly move places, be it on selections or to other
+<code>Buffer</code>s and such.</p>
+<details>
+<summary><b>Key bindings</b></summary>
+<p><code>goto</code> mode is entered with the <code>g</code> or <code>G</code> keys in <code>normal</code> mode.</p>
+<p>On every key that selects, <code>G</code> will have the same behavior, but
+extending the selection instead.</p>
+<p><code>h</code><br />
+Move to the beginning of the line (before indents, column 0).</p>
+<p><code>l</code><br />
+Go to the end of the line.</p>
+<p><code>i</code><br />
+Go to the beginning of the line, after indents.</p>
+<p><code>g</code>,<code>k</code><br />
+Go to the first line.</p>
+<p><code>j</code><br />
+Go to the last line.</p>
+<p><code>a</code><br />
+Go to the last buffer. Repeating will return to this buffer</p>
+<p><code>n</code><br />
+Go to the next buffer (includes other windows).</p>
+<p><code>N</code><br />
+Go to the previous buffer (includes other windows).</p>
+</details>
+<h2 id="user-mode"><a class="header" href="#user-mode">User mode</a></h2>
+<p>In Duat, <code>User</code> mode is a "generalized mode", which should be
+used by <code>Plugin</code>s for key maps. For example, you could map <code>l</code>
+on <code>User</code> mode to do LSP related actions.</p>
+<p>Other "monolithic modes" (Vim, Helix, Emacs, etc) should make use
+of this <code>User</code> mode for the same purpose. Think of it like the
+leader key in (neo)vim.</p>
+<p>To enter <code>User</code> mode, you type <code>&lt;Space&gt;</code> in <code>Normal</code> mode.</p>
 
                     </main>
 
@@ -191,7 +461,7 @@
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../how-to-use/builtin-commands.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../how-to-use/commands.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -205,7 +475,7 @@
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../how-to-use/builtin-commands.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../how-to-use/commands.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

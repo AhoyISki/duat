@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Builtin commands - The Duat text editor</title>
+        <title>Commands - The Duat text editor</title>
 
 
         <!-- Custom HTML head -->
@@ -147,7 +147,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/how-to-use/builtin-commands.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/how-to-use/commands.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -182,6 +182,46 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="builtin-commands"><a class="header" href="#builtin-commands">Builtin commands</a></h1>
+<p>In Duat, you can run commands by pressing the <code>:</code> key. This will focus on the
+<code>PromptLine</code> <code>Widget</code>, where you can run commands.</p>
+<p>You can press <code>&lt;Up&gt;</code> and <code>&lt;Down&gt;</code> to navigate the history of commands, and you
+can also press <code>&lt;Tab&gt;</code> and <code>&lt;S-Tab&gt;</code> to scroll through the commands.</p>
+<p>Here's the list of commands:</p>
+<p>Writing/quitting:</p>
+<ul>
+<li><code>write</code>, <code>w</code> writes the current <code>Buffer</code>. If there's an path argument, saves
+to that path.</li>
+<li><code>quit</code>, <code>q</code> quits the current <code>Buffer</code>, fails if it isn't written. If there's
+an argument, quits that <code>Buffer</code> instead.</li>
+<li><code>quit!</code>, <code>q!</code> quits the current <code>Buffer</code>, even if it isn't written. If
+there's an argument, quits that <code>Buffer</code> instead.</li>
+<li><code>write-quit</code>, <code>wq</code> writes and quits the current <code>Buffer</code>. If there's an
+argument, quits that <code>Buffer</code> instead.</li>
+<li><code>write-all</code>, <code>wa</code> writes all <code>Buffer</code>s.</li>
+<li><code>quit-all</code>, <code>qa</code> tries to quit all <code>Buffer</code>s, failing if some aren't written.</li>
+<li><code>quit-all!</code>, <code>qa!</code> quits all <code>Buffer</code>s, even if they aren't written.</li>
+<li><code>write-all-quit</code>, <code>waq</code> writes to all <code>Buffer</code>s and quits.</li>
+<li><code>write-all-quit!</code>, <code>waq!</code> writes to all <code>Buffer</code>s and quits, even if writing
+fails for some reason.</li>
+</ul>
+<p>Switching <code>Buffer</code>s</p>
+<ul>
+<li><code>edit</code>, <code>e</code> opens a new <code>Buffer</code> on the current window.</li>
+<li><code>open</code>, <code>o</code> opens a new <code>Buffer</code> on another window.</li>
+<li><code>buffer</code>, <code>b</code> switches to another <code>Buffer</code>.</li>
+<li><code>next-buffer</code> switches to the next <code>Buffer</code> opened.</li>
+<li><code>prev-buffer</code> switches to the previous <code>Buffer</code> opened.</li>
+<li><code>last-buffer</code> switches to the previously focused <code>Buffer</code>.</li>
+<li><code>swap</code> Swaps the positions of the current <code>Buffer</code> and another. If there are
+two arguments, swaps those two buffers instead.</li>
+</ul>
+<p>Other</p>
+<ul>
+<li><code>set-form</code> takes in a name and 0 to 3 colors (<code>##rrggbb</code>, <code>rgb r g b</code> or <code>hsl  h s l</code>) and sets that name's <code>fg</code>, <code>bg</code> and <code>ul</code> colors. More settings coming
+in the future.</li>
+<li><code>colorscheme</code> sets the colorscheme.</li>
+<li><code>alias</code> Aliases a word to a command call.</li>
+</ul>
 
                     </main>
 

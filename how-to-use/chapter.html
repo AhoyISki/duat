@@ -182,6 +182,31 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="how-to-use"><a class="header" href="#how-to-use">How to use</a></h1>
+<p>When calling <code>duat</code>, with no arguments, you will open a scratch buffer. If you
+pass files as arguments, then <code>duat</code> will open one window for each file.</p>
+<p><code>duat</code> also comes with various flags that you can pass:</p>
+<ul>
+<li><code>--cfg</code> will open the <code>~/.config/duat/src/lib.rs</code>.</li>
+<li><code>--cfg-manifest</code> will open <code>~/.config/duat/Cargo.toml</code>. You can also
+pass <code>--cfg</code> to open both.</li>
+<li><code>--no-load</code> will not load any config, running the default one.</li>
+<li><code>--load</code> will pick a path to look for a config on. This lets you have.</li>
+<li><code>--profile</code> will pick a profile to load.</li>
+<li><code>--open</code> will open <code>N</code> windows to place the files passed as arguments.
+multiple configurations, if you wish.</li>
+<li><code>--reload</code> will recompile the config crate.</li>
+<li><code>--clean</code> calls <a href="https://doc.rust-lang.org/cargo/commands/cargo-clean.html"><code>cargo clean</code></a> on the config crate.</li>
+<li><code>--update</code> will update dependencies to their latest compatible version.</li>
+<li><code>--init-config</code> will clear the replace the config crate with the default
+version. If <code>--load</code> was passed, clears that path instead.</li>
+<li><code>--init-plugin</code> will initialize a crate for plugin development at the given
+path.</li>
+<li><code>--repository</code> will pick a repository for the plugin.</li>
+<li><code>--author</code> will pick an author for the plugin.</li>
+<li><code>--help</code> displays these flags.</li>
+<li><code>--version</code> displays Duat's version.</li>
+</ul>
+<p>Got to the next chapter to figure out how to control Duat once you're in it.</p>
 
                     </main>
 
