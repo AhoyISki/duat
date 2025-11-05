@@ -1,4 +1,4 @@
-# Builtin commands
+# Commands
 
 In Duat, you can run commands by pressing the `:` key. This will focus on the 
 `PromptLine` `Widget`, where you can run commands.
@@ -43,5 +43,3 @@ h s l`) and sets that name's `fg`, `bg` and `ul` colors. More settings coming
 in the future.
 - `colorscheme` sets the colorscheme.
 - `alias` Aliases a word to a command call.
-
-
