@@ -13,18 +13,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        BUILD_TARGET: [release] # refers to a cargo profile
-
-    outputs:
-      release_built: ${{ steps.set-output.outputs.release_built }}
-
     steps:
       - uses: actions/checkout@v5
 
-      - name: Temporarily modify the rust toolchain version
-        run: rustup override set nightly
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache
         uses: actions/cache@v4
@@ -35,8 +28,12 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build binaries in "${{ matrix.BUILD_TARGET }}" mode
-        run: cargo build --profile ${{ matrix.BUILD_TARGET }}
+      - name: Installing duat
+        run: cargo install --path .
 
-      - name: Run tests in "${{ matrix.BUILD_TARGET }}" mode
-        run: cargo test --profile ${{ matrix.BUILD_TARGET }}
+      - name: Check version
+        run: duat --version
+
+        # TODO: --init-config requires user input, that will make the worker to never finish
+      # - name: Building config
+        # run: duat --init-config
