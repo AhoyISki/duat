@@ -189,58 +189,6 @@ pub(crate) fn add_session_commands() {
         crate::cmd::alias(pa, alias, command)
     });
 
-    add!(["quit", "q"], |pa, handle: Option<Buffer>| {
-        let handle = match handle {
-            Some(handle) => handle,
-            None => context::current_buffer(pa).clone(),
-        };
-
-        let buffer = handle.read(pa);
-        if buffer.text().has_unsaved_changes() && buffer.exists() {
-            return Err(txt!("{} has unsaved changes", buffer.name()));
-        }
-
-        context::windows().close(pa, &handle)?;
-
-        Ok(Some(txt!("Closed [buffer]{}", handle.read(pa).name())))
-    });
-
-    add!(["quit!", "q!"], |pa, handle: Option<Buffer>| {
-        let handle = match handle {
-            Some(handle) => handle,
-            None => context::current_buffer(pa).clone(),
-        };
-
-        context::windows().close(pa, &handle)?;
-
-        Ok(Some(txt!("Forcefully closed {}", handle.read(pa).name())))
-    });
-
-    add!(["quit-all", "qa"], |pa| {
-        let windows = context::windows();
-        let unwritten = windows
-            .buffers(pa)
-            .filter(|handle| {
-                let buffer = handle.read(pa);
-                buffer.text().has_unsaved_changes() && buffer.exists()
-            })
-            .count();
-
-        if unwritten == 0 {
-            sender().send(DuatEvent::Quit).unwrap();
-            Ok(None)
-        } else if unwritten == 1 {
-            Err(txt!("There is [a]1[] unsaved buffer"))
-        } else {
-            Err(txt!("There are [a]{unwritten}[] unsaved buffers"))
-        }
-    });
-
-    add!(["quit-all!", "qa!"], |_pa| {
-        sender().send(DuatEvent::Quit).unwrap();
-        Ok(None)
-    });
-
     add!(["write", "w"], |pa, path: Option<ValidBuffer>| {
         let handle = context::current_buffer(pa).clone();
         let buffer = handle.write(pa);
@@ -333,6 +281,58 @@ pub(crate) fn add_session_commands() {
             let _ = handle.write(pa).save_quit(true);
         }
 
+        sender().send(DuatEvent::Quit).unwrap();
+        Ok(None)
+    });
+
+    add!(["quit", "q"], |pa, handle: Option<Buffer>| {
+        let handle = match handle {
+            Some(handle) => handle,
+            None => context::current_buffer(pa).clone(),
+        };
+
+        let buffer = handle.read(pa);
+        if buffer.text().has_unsaved_changes() && buffer.exists() {
+            return Err(txt!("{} has unsaved changes", buffer.name()));
+        }
+
+        context::windows().close(pa, &handle)?;
+
+        Ok(Some(txt!("Closed [buffer]{}", handle.read(pa).name())))
+    });
+
+    add!(["quit!", "q!"], |pa, handle: Option<Buffer>| {
+        let handle = match handle {
+            Some(handle) => handle,
+            None => context::current_buffer(pa).clone(),
+        };
+
+        context::windows().close(pa, &handle)?;
+
+        Ok(Some(txt!("Forcefully closed {}", handle.read(pa).name())))
+    });
+
+    add!(["quit-all", "qa"], |pa| {
+        let windows = context::windows();
+        let unwritten = windows
+            .buffers(pa)
+            .filter(|handle| {
+                let buffer = handle.read(pa);
+                buffer.text().has_unsaved_changes() && buffer.exists()
+            })
+            .count();
+
+        if unwritten == 0 {
+            sender().send(DuatEvent::Quit).unwrap();
+            Ok(None)
+        } else if unwritten == 1 {
+            Err(txt!("There is [a]1[] unsaved buffer"))
+        } else {
+            Err(txt!("There are [a]{unwritten}[] unsaved buffers"))
+        }
+    });
+
+    add!(["quit-all!", "qa!"], |_pa| {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     });

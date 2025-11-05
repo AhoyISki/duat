@@ -7,7 +7,7 @@
 - [Installation](installation.md)
 - [How to use](how-to-use/chapter.md)
   - [Key bindings](how-to-use/key-bindings.md)
-  - [Builtin commands](how-to-use/builtin-commands.md)
+  - [Commands](how-to-use/commands.md)
 - [Quick settings](quick-settings/chapter.md)
   - [The setup function and setup_duat!](quick-settings/setup-and-setup-duat.md)
   - [The prelude module](quick-settings/prelude/chapter.md)
