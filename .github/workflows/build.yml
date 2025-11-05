@@ -29,13 +29,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Installing duat
-        run: cargo install --path . --frozen
+        run: cargo install --path . --locked
 
       - name: Check version
         run: duat --version
 
       - name: Test
-        run: cargo test --release --frozen
+        run: cargo test --release --locked
 
         # TODO: --init-config requires user input, that will make the worker to never finish
       # - name: Building config
