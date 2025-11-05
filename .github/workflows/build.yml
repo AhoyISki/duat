@@ -35,7 +35,7 @@ jobs:
         run: duat --version
 
       - name: Test
-        run: cargo test --release --locked
+        run: cargo test --release --offline
 
         # TODO: --init-config requires user input, that will make the worker to never finish
       # - name: Building config
