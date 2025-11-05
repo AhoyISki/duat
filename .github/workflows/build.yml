@@ -1,0 +1,42 @@
+name: Build
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Installing duat
+        run: cargo install --path . --frozen
+
+      - name: Check version
+        run: duat --version
+
+      - name: Test
+        run: cargo test --release --frozen
+
+        # TODO: --init-config requires user input, that will make the worker to never finish
+      # - name: Building config
+        # run: duat --init-config
