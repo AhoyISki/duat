@@ -29,11 +29,6 @@ version = "0.7.0"
 default-features = false
 features = ["term-ui", "treesitter"]
 
-# You can get rid of this one, if you don't want the duat-kak editor.
-[dependencies.duat-kak]
-git = "https://github.com/AhoyISki/duat-kak"
-version = "0.6.1"
-
 # Same with this one, it just adds more colorschemes.
 [dependencies.duat-catppuccin]
 git = "https://github.com/AhoyISki/duat-catppuccin"
