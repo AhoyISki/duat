@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "A modern, very customizable text editor, configured in rust."
