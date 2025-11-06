@@ -11,7 +11,9 @@ If you want to nerd-fontify your `StatusLine`, you can just redefine some of
 the status line parts:
 
 ```rust
-fn name_txt(buffer: &Builder) -> Text {
+use duat::prelude::*;
+
+fn name_txt(buffer: &Buffer) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = buffer.name_set() {
