@@ -32,6 +32,7 @@ impl PrintInfo {
         self.prev_main = self.prev_main.min(text.last_point());
 
         let points = if let Some(s_points) = self.s_points
+            && s_points <= text.len_points()
             && coords.width() == self.prev_coords.width()
             && coords.height() == self.prev_coords.height()
         {
