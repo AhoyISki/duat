@@ -36,7 +36,6 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../../toc.js"></script>
@@ -93,13 +92,10 @@
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
-                sidebar_toggle.checked = false;
             }
-            if (sidebar === 'visible') {
-                sidebar_toggle.checked = true;
-            } else {
-                html.classList.remove('sidebar-visible');
-            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
@@ -147,7 +143,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/frequent-snippets/prompt-status-line.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/frequent-snippets/prompt-status-line.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -156,12 +152,7 @@
 
                 <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <div class="search-wrapper">
-                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                            <div class="spinner-wrapper">
-                                <i class="fa fa-spinner fa-spin"></i>
-                            </div>
-                        </div>
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -187,41 +178,35 @@ command line and notifications. If you want this behavior in Duat, the
 following snippet is enough:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::remove("FooterWidgets");
-hook::add::&lt;WindowCreated&gt;(|pa, builder| {
-    builder.push(FooterWidgets::default().one_line());
-});
+</span>use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup() {
+    opts::one_line_footer(true);
+}
 <span class="boring">}</span></code></pre></pre>
+<p>This will call [<code>FooterWidgets::one_line</code>] on the window's <code>FooterWidgets</code>.</p>
 <p>If you want one of these on each file, you can do this instead:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::remove("FooterWidgets");
-hook::add::&lt;File&gt;(|pa, (cfg, builder)| {
-    builder.push(FooterWidgets::default().one_line());
-    cfg
-});
-<span class="boring">}</span></code></pre></pre>
-<p>With both of these, you can still modify the <code>StatusLine</code> with the usual
-<code>hook</code>s:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    let mode_upper = mode_txt(pa).map(pa, |mode| 
-        txt!("[mode]{}", mode.to_string().to_uppercase()).build()
-    );
+</span>use duat::prelude::*;
+setup_duat!(setup);
 
-    cfg.fmt(status!("{Spacer}{name_txt} {mode_upper} {sels_txt} {main_txt}"))
-});
+fn setup() {
+    hook::remove("FooterWidgets");
+
+    hook::add::&lt;Buffer&gt;(|pa, handle| {
+        FooterWidgets::default().one_line().push_on(pa, handle);
+        Ok(())
+    });
+}
 <span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../../quick-settings/frequent-snippets/status-per-file.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../quick-settings/frequent-snippets/status-per-buffer.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -235,7 +220,7 @@ hook::add::&lt;File&gt;(|pa, (cfg, builder)| {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../../quick-settings/frequent-snippets/status-per-file.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../quick-settings/frequent-snippets/status-per-buffer.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
@@ -263,7 +248,6 @@ hook::add::&lt;File&gt;(|pa, (cfg, builder)| {
         <script src="../../book.js"></script>
 
         <!-- Custom JS scripts -->
-
 
 
     </div>

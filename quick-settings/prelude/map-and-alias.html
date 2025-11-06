@@ -36,7 +36,6 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../../toc.js"></script>
@@ -93,13 +92,10 @@
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
-                sidebar_toggle.checked = false;
             }
-            if (sidebar === 'visible') {
-                sidebar_toggle.checked = true;
-            } else {
-                html.classList.remove('sidebar-visible');
-            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
@@ -147,7 +143,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/prelude/map-and-alias.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/prelude/map-and-alias.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -156,12 +152,7 @@
 
                 <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <div class="search-wrapper">
-                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                            <div class="spinner-wrapper">
-                                <i class="fa fa-spinner fa-spin"></i>
-                            </div>
-                        </div>
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -186,103 +177,50 @@
 works:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod duat_kak {
-</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
-</span><span class="boring">    #[derive(Clone)]
-</span><span class="boring">    pub struct Insert;
-</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
-</span><span class="boring">        type Widget = File;
-</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
-</span><span class="boring">            todo!();
-</span><span class="boring">        }
-</span><span class="boring">    }
-</span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
-</span><span class="boring">    }
-</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    // Adds kakoune-like editing modes, like Insert, Normal and OneKey
-    plug(duat_kak::Kak::default());
-  
-    map::&lt;User&gt;("f", "&lt;Esc&gt;|fold -s&lt;Enter&gt;");
-    alias::&lt;duat_kak::Insert&gt;("jk", "&lt;Esc&gt;");
-    alias::&lt;Prompt&lt;Ui&gt;&gt;("jk", "&lt;Esc&gt;");
+    map::&lt;User&gt;("f", "&lt;Esc&gt;&lt;A-j&gt;|fold -s -w 80&lt;Enter&gt;");
+    alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
 }
 <span class="boring">}</span></code></pre></pre>
 <p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take
 the keys as is, and if the sequence matches, outputs the remapping, otherwise,
 outputs the keys that were sent. <code>alias</code> does the same thing, but it also
 ""prints"" the sequence that was sent, making it <em>look</em> like you are typing
-real text.</p>
-<p>In the functions, you can see a type argument. This type argument is the <code>Mode</code>
-where this mapping will take place. So here, in <code>duat-kak</code>'s <code>Insert</code> mode, if
-you type <code>jk</code>, the <code>j</code> will show up as ""text"", but when you press <code>k</code>, you
-will immediately exit to <code>Normal</code> <code>Mode</code>.</p>
+real text. Here's a showcase of the difference:</p>
+<p align="center"><img src="../../../../assets/map-alias.gif"/></p>
+<p>Both of these functions also take a <em>required</em> type argument. This type
+argument is the <code>Mode</code> where this mapping will take place. So in the first
+example, in <code>Insert</code> and <code>Prompt</code> mode, if you type <code>jk</code>, the <code>j</code> will show up
+as ""text"", but when you press <code>k</code>, you will immediately exit to <code>Normal</code>
+<code>Mode</code>.</p>
 <p><code>User</code> is a standard <code>Mode</code> in Duat. It is meant to be a "hub" for Plugin
 writers to put default mappings on. Sort of like the leader key in Vim/Neovim.
-On <code>duat-kak</code>, by default, this mode is entered by pressing the space bar.
+On <code>Normal</code> mode, by default, this mode is entered by pressing the space bar.
 While you <em>can</em> change that like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod duat_kak {
-</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
-</span><span class="boring">    #[derive(Clone)]
-</span><span class="boring">    pub struct Normal;
-</span><span class="boring">    impl Mode&lt;Ui&gt; for Normal {
-</span><span class="boring">        type Widget = File;
-</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
-</span><span class="boring">            todo!();
-</span><span class="boring">        }
-</span><span class="boring">    }
-</span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
-</span><span class="boring">    }
-</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug(duat_kak::Kak::default());
-  
-    map::&lt;duat_kak::Normal&gt;(" ", "");
+    map::&lt;Normal&gt;(" ", "");
     // In rust, you have to escap a backslash
-    map::&lt;duat_kak::Normal&gt;("\\", " ");
+    map::&lt;Normal&gt;(r"\", " ");
 }
 <span class="boring">}</span></code></pre></pre>
 <p>You <em>should</em> prefer doing this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod duat_kak {
-</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
-</span><span class="boring">    #[derive(Clone)]
-</span><span class="boring">    pub struct Normal;
-</span><span class="boring">    impl Mode&lt;Ui&gt; for Normal {
-</span><span class="boring">        type Widget = File;
-</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
-</span><span class="boring">            todo!();
-</span><span class="boring">        }
-</span><span class="boring">    }
-</span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) {}
-</span><span class="boring">    }
-</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug(duat_kak::Kak::default());
-  
-    map::&lt;duat_kak::Normal&gt;(" ", "");
-    map::&lt;duat_kak::Normal&gt;("\\", User);
+    map::&lt;Normal&gt;(" ", "");
+    map::&lt;Normal&gt;("\\", User);
 }
 <span class="boring">}</span></code></pre></pre>
 <p>In this case, instead of putting a sequence of keys to replace the mapped ones,
@@ -381,7 +319,6 @@ composed together:</p>
         <script src="../../book.js"></script>
 
         <!-- Custom JS scripts -->
-
 
 
     </div>

@@ -36,7 +36,6 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc.js"></script>
@@ -93,13 +92,10 @@
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
-                sidebar_toggle.checked = false;
             }
-            if (sidebar === 'visible') {
-                sidebar_toggle.checked = true;
-            } else {
-                html.classList.remove('sidebar-visible');
-            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
@@ -147,7 +143,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/introduction.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/introduction.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -156,12 +152,7 @@
 
                 <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <div class="search-wrapper">
-                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                            <div class="spinner-wrapper">
-                                <i class="fa fa-spinner fa-spin"></i>
-                            </div>
-                        </div>
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -185,6 +176,76 @@
 <p>Duat is a text editor that is built and <em>configured</em> in the Rust programming
 language. It is meant to be very modular in its design, while still having
 great defaults for anyone used to TUI and modal text editors.</p>
+<p>Despite having a rather complex language as its configuration language of choice,
+one of the goals of Duat is to have relatively straightforward configuration,
+and easy pluginability.</p>
+<p>As a motivating example, here's a small plugin, which shows matches to the word under
+the cursor:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+pub struct HighlightMatch;
+
+impl Plugin for HighlightMatch {
+    fn plug(self, plugins: &amp;Plugins) {
+        hook::add::&lt;Buffer&gt;(|pa, handle| {
+            form::set_weak("same_word", Form::underlined());
+            handle.write(pa).add_parser(|mut tracker| {
+                tracker.track_area();
+                HighlightMatchParser {
+                    tagger: Tagger::new(),
+                }
+            })
+        });
+    }
+}
+
+struct HighlightMatchParser {
+    tagger: Tagger,
+}
+
+impl Parser for HighlightMatchParser {
+    fn update(&amp;mut self, pa: &amp;mut Pass, handle: &amp;Handle, on: Vec&lt;Range&lt;Point&gt;&gt;) {
+        handle.text_mut(pa).remove_tags(self.tagger, ..);
+        let Some(range) = handle.edit_main(pa, |c| c.search_fwd(r"\A\w+").next()) else {
+            return;
+        };
+        let start = handle
+            .edit_main(pa, |c| c.search_rev(r"\w*\z").next())
+            .map(|range| range.start)
+            .unwrap_or(range.start);
+
+        let mut parts = handle.text_parts(pa);
+        let pat = parts.bytes.strs(start..range.end);
+        let form_id = form::id_of!("same_word");
+
+        let mut first_range: Option&lt;Range&lt;usize&gt;&gt; = None;
+        for range in on {
+            for (i, range) in parts
+                .bytes
+                .search_fwd(r"\w+", range.clone())
+                .unwrap()
+                .filter(|r| parts.bytes.strs(r.clone()) == pat)
+                .enumerate()
+            {
+                if let Some(first_range) = first_range.clone() {
+                    if i == 1 {
+                        parts
+                            .tags
+                            .insert(self.tagger, first_range, form_id.to_tag(50));
+                    }
+                    parts.tags.insert(self.tagger, range, form_id.to_tag(50));
+                } else {
+                    first_range = Some(range);
+                }
+            }
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The goal of this book is to help you understand not only how to operate Duat, but
+hopefully how to do something like this as well.</p>
 
                     </main>
 
@@ -226,7 +287,6 @@ great defaults for anyone used to TUI and modal text editors.</p>
         <script src="book.js"></script>
 
         <!-- Custom JS scripts -->
-
 
 
     </div>

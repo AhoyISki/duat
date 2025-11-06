@@ -36,7 +36,6 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../../toc.js"></script>
@@ -93,13 +92,10 @@
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
-                sidebar_toggle.checked = false;
             }
-            if (sidebar === 'visible') {
-                sidebar_toggle.checked = true;
-            } else {
-                html.classList.remove('sidebar-visible');
-            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
@@ -147,7 +143,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/frequent-snippets/common-status.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/frequent-snippets/common-status.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -156,12 +152,7 @@
 
                 <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <div class="search-wrapper">
-                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                            <div class="spinner-wrapper">
-                                <i class="fa fa-spinner fa-spin"></i>
-                            </div>
-                        </div>
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -185,8 +176,8 @@
 <p>The most relevant parts for pretty much every <code>StatusLine</code> are the following.</p>
 <p>Formatted status parts:</p>
 <ul>
-<li><code>name_txt</code>: Prints the <code>File</code>'s name and some info about it's newness.</li>
-<li>Uses the forms <code>file</code>, <code>file.new</code>, <code>file.new.scratch</code> and <code>file.unsaved</code>.</li>
+<li><code>name_txt</code>: Prints the <code>Buffer</code>'s name and some info about it's newness.</li>
+<li>Uses the forms <code>buffer</code>, <code>buffer.new</code>, <code>buffer.new.scratch</code> and <code>buffer.unsaved</code>.</li>
 <li><code>mode_txt</code>: The lowercased name of the <code>Mode</code>, e.g. "insert", "normal".
 <ul>
 <li>Uses the form <code>mode</code>.</li>
@@ -212,8 +203,9 @@ lines. 1 indexed.
 <p>Unformatted status parts:</p>
 <ul>
 <li><code>main_byte</code>, <code>main_char</code>, <code>main_line</code>, <code>main_col</code>: Parts of the main cursor.</li>
-<li><code>mode_name</code>: The raw type name of the mode. Could look something like
-<code>Prompt&lt;IncSearcher&lt;SearchFwd&gt;, Ui&gt;, Ui&gt;</code>.</li>
+<li><code>mode_name</code>: The non <code>Text</code> version of <code>mode_txt</code>, just a string.</li>
+<li><code>raw_mode</code>: The raw type name of the mode. Could look something like
+<code>Prompt&lt;IncSearcher&lt;SearchFwd&gt;&gt;&gt;</code>.</li>
 <li><code>selections</code>: The number of selections, no formatting.</li>
 <li><code>last_key</code>: The last key that was typed. Useful for asciinema demonstrations.</li>
 </ul>
@@ -225,66 +217,80 @@ lines. 1 indexed.
 also be used in the <code>StatusLine</code>. However, do note that they are applied
 <em>line wise</em>. Using any of them will shift the <em>whole line</em>'s alignment. For
 that reason, a <code>Spacer</code> should generally be preferred.</li>
-<li>Forms like <code>[file]</code>. Any form can be placed within those braces, and they are
-all evaluated at compile time.</li>
+<li>Forms like <code>[buffer]</code>. Any form can be placed within those braces, and they are
+all evaluated at compile time. For more information about them, see the
+<a href="../prelude/form-module.html">forms</a> chapter</li>
 </ul>
 <h2 id="some-examples"><a class="header" href="#some-examples">Some examples</a></h2>
 <p>This is the default:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
-});
-<span class="boring">}</span></code></pre></pre>
-<p>If you want a one sided <code>StatusLine</code>, you can do this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{Spacer}{name_txt} {} {sels_txt} {main_txt}", mode_txt(pa)))
-});
+</span>use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup() {
+    // Default options for the StatusLine widget
+    opts::set_status(|pa| {
+        // If on one line footer mode:
+        let mode = mode_txt();
+        let param = duat_param_txt();
+        status!("{AlignRight}{name_txt} {mode} {sels_txt} {param} {main_txt}");
+        // If on regular mode (default):
+        let mode = mode_txt();
+        let param = duat_param_txt();
+        status!("{mode} {name_txt}{Spacer}{sels_txt} {param} {main_txt}")
+    });
+}
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>main_txt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!(
-        "{name_txt}{Spacer}{} {sels_txt} [coord]c{main_col} l{main_line}[separator]|[coord]{}",
-        mode_txt(pa),
-        |file: &amp;File| file.text().len().line()
-    ))
-});
+</span>use duat::prelude::*;
+setup_duat!(setup);
+
+fn setup() {
+    opts::set_status(|_| {
+        status!(
+            "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
+            mode_txt(),
+            main_col,
+            main_line,
+            Buffer::len_lines 
+        )
+    });
+}
 <span class="boring">}</span></code></pre></pre>
 <p>Customized <code>name_txt</code>:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
-</span>
-fn name_txt(file: &amp;File) -&gt; Text {
+</span>setup_duat!(setup);
+
+fn setup() {
+    opts::set_status(|_| {
+        status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt()) 
+    });
+}
+
+fn name_txt(buffer: &amp;Buffer) -&gt; Text {
     let mut b = Text::builder();
 
-    if let Some(name) = file.name_set() {
-        b.push(txt!("[file]{name}"));
-        if !file.exists() {
-            b.push(txt!("[file.new][[new file]]"));
-        } else if file.text().has_unsaved_changes() {
-            b.push(txt!("[file.unsaved][[has changes]]"));
+    if let Some(name) = buffer.name_set() {
+        b.push(txt!("[buffer]{name}"));
+        if !buffer.exists() {
+            b.push(txt!("[buffer.new][[new buffer]]"));
+        } else if buffer.text().has_unsaved_changes() {
+            b.push(txt!("[buffer.unsaved][[has changes]]"));
         }
-        if let Some("rust") = file.filetype() {
+        if let Some("rust") = buffer.filetype() {
             b.push(txt!("[[🦀]]"));
         }
     } else {
-        b.push(txt!("[file.new.scratch]?!?!?!"));
+        b.push(txt!("[buffer.new.scratch]?!?!?!"));
     }
 
     b.build()
 }
-
-hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
-    cfg.fmt(status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt(pa)))
-});
 <span class="boring">}</span></code></pre></pre>
 
                     </main>
@@ -333,7 +339,6 @@ hook::add::&lt;StatusLine&lt;Ui&gt;&gt;(|pa, (cfg, _)| {
         <script src="../../book.js"></script>
 
         <!-- Custom JS scripts -->
-
 
 
     </div>

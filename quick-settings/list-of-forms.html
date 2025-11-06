@@ -36,7 +36,6 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc.js"></script>
@@ -93,13 +92,10 @@
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
-                sidebar_toggle.checked = false;
             }
-            if (sidebar === 'visible') {
-                sidebar_toggle.checked = true;
-            } else {
-                html.classList.remove('sidebar-visible');
-            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
@@ -147,7 +143,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/list-of-forms.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/list-of-forms.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -156,12 +152,7 @@
 
                 <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <div class="search-wrapper">
-                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                            <div class="spinner-wrapper">
-                                <i class="fa fa-spinner fa-spin"></i>
-                            </div>
-                        </div>
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -203,7 +194,8 @@ chapter for more information.</li>
 <li><code>matched_pair</code>: Isn't technically part of duat, but it's part of a default
 plugin.</li>
 </ul>
-<p>Some other forms are used by specific <code>Widgets</code></p>
+<p>Some other forms are used by specific <code>Widgets</code>. Remember, the default form for
+every <code>Widget</code> will always be <code>default.{WidgetName}</code>:</p>
 <ul>
 <li>
 <p><code>LineNumbers</code>:</p>
@@ -215,7 +207,7 @@ plugin.</li>
 </ul>
 <p>Do note that you can set the form of the remaining lines by setting
 <code>default.LineNumbers</code>. And due to <a href="form-module.html#form-inheritance">form inheritance</a>, setting <code>linenum</code> will
-set all three forms.</p>
+set <code>linenum.wrapped</code>, <code>linenum.main</code> and <code>linenum.wrapped.main</code>.</p>
 </li>
 <li>
 <p><code>StatusLine</code>:</p>
@@ -226,6 +218,12 @@ set all three forms.</p>
 <li><code>coord</code> and <code>separator</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.main_txt.html"><code>main_txt</code></a>.</li>
 <li><code>selections</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.selections_txt.html"><code>selections_txt</code></a>.</li>
 <li><code>key</code> and <code>key.special</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.cur_map_txt.html"><code>cur_map_txt</code></a>.</li>
+</ul>
+</li>
+<li>
+<p><code>Completions</code>:</p>
+<ul>
+<li><code>selected.Completions</code> changes the selected entry's form.</li>
 </ul>
 </li>
 <li>
@@ -269,7 +267,11 @@ line.</li>
 </ul>
 </li>
 </ul>
-<p>And finally, there are also all the forms used by <code>duat-treesitter</code>. Since the queries were taken from nvim-treesitter, the form names follow the same patters as those from neovim:</p>
+<p>And finally, there are also all the forms used by <code>duat-treesitter</code>. Since the
+queries were taken from nvim-treesitter, the form names follow the same patters
+as those from neovim. Remember, setting <code>form</code> will automatically set
+<code>form.child</code> and <code>form.child.grandchild</code>, and so forth , <em>unless</em> that form is
+already set to something:</p>
 <div class="table-wrapper"><table><thead><tr><th>Form name</th><th>Purpose</th></tr></thead><tbody>
 <tr><td><code>variable</code></td><td>various variable names</td></tr>
 <tr><td><code>variable.builtin</code></td><td>built-in variable names (e.g. this, self)</td></tr>
@@ -409,7 +411,6 @@ line.</li>
         <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
-
 
 
     </div>

@@ -36,7 +36,6 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc.js"></script>
@@ -93,13 +92,10 @@
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
-                sidebar_toggle.checked = false;
             }
-            if (sidebar === 'visible') {
-                sidebar_toggle.checked = true;
-            } else {
-                html.classList.remove('sidebar-visible');
-            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
@@ -147,7 +143,7 @@
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/setup-and-setup-duat.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/setup-and-setup-duat.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -156,12 +152,7 @@
 
                 <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <div class="search-wrapper">
-                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                            <div class="spinner-wrapper">
-                                <i class="fa fa-spinner fa-spin"></i>
-                            </div>
-                        </div>
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -200,20 +191,12 @@ example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span><span class="boring">mod duat_kak {
-</span><span class="boring">    use duat::prelude::*;
-</span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
-</span><span class="boring">    }
-</span><span class="boring">}
 </span><span class="boring">mod duat_catppuccin {
 </span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Catppuccin;
-</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Catppuccin {
-</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
+</span><span class="boring">    impl Plugin for Catppuccin {
+</span><span class="boring">        fn plug(self, _: &amp;Plugins) { todo!() }
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>setup_duat!(setup);
@@ -224,49 +207,13 @@ fn setup() {
 }
 
 fn add_plugins() {
-    plug(duat_kak::Kak::default());
     plug(duat_catppuccin::Catppuccin::default());
 }
 <span class="boring">}</span></code></pre></pre>
-<h3 id="using-plugins"><a class="header" href="#using-plugins">Using <code>Plugin</code>s</a></h3>
 <p>You can add <code>Plugin</code>s to duat by calling the <code>plug</code> function. By default, the
-<code>Treesitter</code> and <code>MatchPairs</code> plugins are added, providing syntax highlighting,
-automatic indentation, and matching parenthesis highlighting.</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">mod duat_kak {
-</span><span class="boring">    use duat::prelude::*;
-</span><span class="boring">    #[derive(Default)]
-</span><span class="boring">    pub struct Kak;
-</span><span class="boring">    impl Kak {
-</span><span class="boring">        pub fn new() -&gt; Self { Self }
-</span><span class="boring">        pub fn f_and_t_set_search(self) -&gt; Self { Self }
-</span><span class="boring">        pub fn with_no_indent_on_capital_i(self) -&gt; Self { Self }
-</span><span class="boring">    }
-</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
-</span><span class="boring">        fn plug(self, _: &amp;duat_core::Plugins&lt;Ui&gt;) { todo!() }
-</span><span class="boring">    }
-</span><span class="boring">}
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    plug(
-        duat_kak::Kak::new()
-            .f_and_t_set_search()
-            .with_no_indent_on_capital_i(),
-    );
-}
-<span class="boring">}</span></code></pre></pre>
-<p>In this case, the <code>Kak</code> plugin (from <a href="https://github.com/AhoyISki/duat-kak"><code>duat-kak</code></a>) is being modified via the
-builder pattern in order to have the following settings:</p>
-<ul>
-<li>The <code>f</code> and <code>t</code> keys will set the search pattern, so <code>n</code> will match them.</li>
-<li>When pressing <code>I</code>, don't reindent.</li>
-</ul>
-<p>Then, it is being added to Duat. The <code>f_and_t_set_search</code> and
-<code>with_no_indent_on_capital_i</code> modify the <code>Kak</code> plugin and then return it back
-to be plugged. This is the <a href="https://rust-unofficial.github.io/patterns/patterns/creational/builder.html">builder pattern</a>, and is how all plugins are added.</p>
+<code>Treesitter</code> <code>MatchPairs</code>  plugins are added, providing syntax highlighting,
+automatic indentation, and matching parenthesis highlighting. There is also the
+<code>DuatMode</code> plugin, which provides the default control scheme for duat, heavily inspired by Kakoune.</p>
 
                     </main>
 
@@ -314,7 +261,6 @@ to be plugged. This is the <a href="https://rust-unofficial.github.io/patterns/p
         <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
-
 
 
     </div>
