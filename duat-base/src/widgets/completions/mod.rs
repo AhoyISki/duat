@@ -18,7 +18,7 @@ use std::{
 };
 
 use duat_core::{
-    context::{self, Handle}, data::Pass, form::{self, Form}, hook::{self, FocusChanged}, text::{Point, SpawnTag, Tagger, Text, txt}, ui::{Orientation, SpawnSpecs, Widget}
+    context::{self, Handle}, data::Pass, form::{self, Form}, hook::{self, FocusChanged}, text::{Point, SpawnTag, Tagger, Text, txt}, ui::{Orientation, DynSpawnSpecs, Widget}
 };
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
@@ -633,7 +633,7 @@ fn preffix_and_suffix(
     )
 }
 
-const SPAWN_SPECS: SpawnSpecs = SpawnSpecs {
+const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     orientation: Orientation::VerLeftBelow,
     height: Some(20.0),
     width: Some(50.0),

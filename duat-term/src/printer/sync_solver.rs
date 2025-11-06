@@ -160,10 +160,10 @@ impl SyncSolver {
         let len_var = variables.new_var();
 
         self.solver
-            .add_edit_variable(center_var, SPAWN_POS_PRIO)
+            .add_edit_variable(center_var, SPAWN_DIMS_PRIO)
             .unwrap();
         self.solver
-            .add_edit_variable(len_var, SPAWN_POS_PRIO)
+            .add_edit_variable(len_var, SPAWN_DIMS_PRIO)
             .unwrap();
 
         self.spawns.push(SpawnedCenter {

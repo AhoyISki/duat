@@ -14,7 +14,7 @@
 //! - Spawned on [`Text`] via the [`SpawnTag`] [tag].
 //!
 //! They can be pushed to all 4 sides of other widgets through the
-//! use of [`PushSpecs`]. Or they can be spawned with [`SpawnSpecs`].
+//! use of [`PushSpecs`]. Or they can be spawned with [`DynSpawnSpecs`].
 //! Each of these structs determine the specifics of where the
 //! [`Widget`] will be spawned, as well as how its [`Area`] should
 //! adapt to changes in the layout.
@@ -34,7 +34,7 @@
 //! [`SpawnTag`]: crate::text::SpawnTag
 //! [tag]: crate::text::Tag
 //! [`PushSpecs`]: super::PushSpecs
-//! [`SpawnSpecs`]: super::SpawnSpecs
+//! [`DynSpawnSpecs`]: super::DynSpawnSpecs
 //! [`Area`]: super::Area
 use std::sync::{Arc, Mutex};
 

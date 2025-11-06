@@ -21,7 +21,7 @@ use crate::{
     opts::PrintOpts,
     session::DuatSender,
     text::{Item, SpawnId, Text, TwoPoints},
-    ui::{Caret, PushSpecs, SpawnSpecs},
+    ui::{Caret, Coord, DynSpawnSpecs, PushSpecs},
 };
 
 /// All the methods that a working gui/tui will need to implement in
@@ -95,7 +95,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     fn new_spawned(
         &'static self,
         id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         cache: <Self::Area as RawArea>::Cache,
         win: usize,
     ) -> Self::Area;
@@ -143,6 +143,12 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// should be shifted back, so that the same window is still
     /// displayed.
     fn remove_window(&'static self, win: usize);
+
+    /// The bottom right [`Coord`] on the screen
+    ///
+    /// Since the top left coord is `Coord { x: 0.0, y: 0.0 }`, this
+    /// is also the size of the window.
+    fn size(&'static self) -> Coord;
 }
 
 /// A region on screen where you can print [`Text`]
@@ -242,9 +248,9 @@ pub trait RawArea: Sized + PartialEq + 'static {
 
     /// Spawns a floating area on this `RawArea`
     ///
-    /// This function will take a list of [`SpawnSpecs`], taking the
-    /// first one that fits, and readapting as the constraints are
-    /// altered
+    /// This function will take a list of [`DynSpawnSpecs`], taking
+    /// the first one that fits, and readapting as the constraints
+    /// are altered
     ///
     /// If this `RawArea` was previously [deleted], will return
     /// [`None`].
@@ -253,7 +259,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     fn spawn(
         self: CoreAccess<Self>,
         id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         cache: Self::Cache,
     ) -> Option<Self>;
 
@@ -437,11 +443,11 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// Returns the statics from `self`
     fn cache(self: CoreAccess<Self>) -> Option<Self::Cache>;
 
-    /// Gets the width of the area
-    fn width(self: CoreAccess<Self>) -> f32;
+    /// The top left [`Coord`] of this `Area`
+    fn top_left(self: CoreAccess<Self>) -> Coord;
 
-    /// Gets the height of the area
-    fn height(self: CoreAccess<Self>) -> f32;
+    /// The bottom right [`Coord`] of this `Area`
+    fn bottom_right(self: CoreAccess<Self>) -> Coord;
 
     /// Returns `true` if this is the currently active `RawArea`
     ///
@@ -455,6 +461,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
 /// The methods of `RawArea` are all meant to be accessed only
 /// through the type erased `RwArea`
 #[non_exhaustive]
+#[derive(Debug)]
 pub struct CoreAccess<'a, A>(&'a A);
 
 impl<'a, A> CoreAccess<'a, A> {
@@ -472,3 +479,11 @@ impl<A> std::ops::Deref for CoreAccess<'_, A> {
         self.0
     }
 }
+
+impl<'a, A> Clone for CoreAccess<'a, A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, A> Copy for CoreAccess<'a, A> {}

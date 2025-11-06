@@ -208,7 +208,7 @@ impl RawUi for Ui {
     fn new_spawned(
         &self,
         id: duat_core::text::SpawnId,
-        specs: ui::SpawnSpecs,
+        specs: ui::DynSpawnSpecs,
         cache: <Self::Area as RawArea>::Cache,
         win: usize,
     ) -> Self::Area {
@@ -249,7 +249,7 @@ impl RawUi for Ui {
     fn unload(&self) {
         let mut ui = self.0.lock().unwrap();
         ui.windows = Vec::new();
-        // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
+        // SAFETY: Ui is not Send + Sync, so this can't be called
         // from another thread
         unsafe { ui.layouts.get() }.reset();
         ui.win = 0;
@@ -258,11 +258,20 @@ impl RawUi for Ui {
     fn remove_window(&self, win: usize) {
         let mut ui = self.0.lock().unwrap();
         ui.windows.remove(win);
-        // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
+        // SAFETY: Ui is not Send + Sync, so this can't be called
         // from another thread
         unsafe { ui.layouts.get() }.remove_window(win);
         if ui.win > win {
             ui.win -= 1;
+        }
+    }
+
+    fn size(&'static self) -> ui::Coord {
+        let ui = self.0.lock().unwrap();
+        let coord = ui.windows[0].1.max_value();
+        ui::Coord {
+            x: coord.x as f32,
+            y: coord.y as f32,
         }
     }
 }
@@ -522,19 +531,21 @@ impl std::hash::Hash for CStyle {
 /// The priority for edges for areas that must not overlap
 const EDGE_PRIO: kasuari::Strength = kasuari::Strength::REQUIRED;
 /// The priority for manually defined lengths
-const MANUAL_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(8.0);
+const MANUAL_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(10.0);
 /// The priority for lengths defined when creating Areas
-const LEN_PRIO: kasuari::Strength = kasuari::Strength::new(7.0);
+const LEN_PRIO: kasuari::Strength = kasuari::Strength::new(9.0);
 /// The priority for frames
-const FRAME_PRIO: kasuari::Strength = kasuari::Strength::new(6.0);
+const FRAME_PRIO: kasuari::Strength = kasuari::Strength::new(8.0);
 /// The priority for hiding things
-const HIDDEN_PRIO: kasuari::Strength = kasuari::Strength::new(5.0);
+const HIDDEN_PRIO: kasuari::Strength = kasuari::Strength::new(7.0);
 /// The priority for positioning of spawned Areas
-const SPAWN_POS_PRIO: kasuari::Strength = kasuari::Strength::new(4.0);
+const SPAWN_POS_PRIO: kasuari::Strength = kasuari::Strength::new(6.0);
 /// The priority for the center and len variables of spawned Areas
-const SPAWN_DIMS_PRIO: kasuari::Strength = kasuari::Strength::new(3.0);
+const SPAWN_DIMS_PRIO: kasuari::Strength = kasuari::Strength::new(5.0);
 /// The priority for the length of spawned Areas
-const SPAWN_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(3.0);
+const SPAWN_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(4.0);
+/// The priority for the length of spawned Areas
+const CONS_SPAWN_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(3.0);
 /// The priority for the alignment of spawned Areas
 const SPAWN_ALIGN_PRIO: kasuari::Strength = kasuari::Strength::new(2.0);
 /// The priority for lengths that should try to be equal (a.k.a Files)

@@ -1,56 +1,18 @@
 FOR NEXT UPDATE:
-[x] Add floating widgets.
-  [x] Get rid of min, max, and ratio constraints,they don't really make any sense in conjunction with the length constraint.
-  [x] Use forward propagation in order to figure out where to spawn the widget.
-  [x] Add Widget defined floating Widgets.
-  [x] Add Tag defined floating Widgets.
-  [x] Extend regular Widget functions to floating Widgets.
-[x] Rename File to Buffer.
-[/] Make Handles not a Parameter.
-[x] No more U arguments, plugins will now use duat instead of duat-core.
-  [/] Gut duat-core, so that it only defines the Ui/Area traits and the text and form modules.
-  [/] Move everything else to duat.
-  [x] Make use of a generic Area for Handles.
-    [x] Make Ui and Area dyn compatible.
-    [~] Move some of the more intensive calculations (like Text vertical movement) to the Area trait.
-    [ ] Possibly get rid of printed iterators?
-    [x] Add the ability to query the Area if it is a specific implementation.
-  [/] Don't have duat(lib) depend on a specific Ui, have duat(bin) send a type erased Ui to it.
-  [/] No plugins on duat(lib)
-    [/] Make all default plugins into default config crate dependencies.
-    [/] Create a setup_no_default_plugins in order to circumvent them.
-[/] Set title for better performance apparently (???).
-[x] Get rid of AreaId.
-[x] Add completion lists.
-[x] Remembering at which Moment the Text was saved.
-[x] Create a jumplist.
-[x] Rework Parsers (again).
-[x] Make the Regular mode more usable.
-[x] New Parser API.
-[x] Make TreeSitter and MatchPairs default plugins.
-[x] More sophisticated Plugin API.
-[x] Fix the Windows version.
-[x] Superior thread counting method.
-[x] Start using clap.
-[x] Handle non printable code points.
-[x] Finish new parser documentation.
-[x] Simplify Widget API.
-[/] Get rid of WidgetCreated (that's right).
-[x] Get rid of the various Cfgs.
-[x] Add convenience methods for the duat-utils Widgets.
-[x] Rename duat-utils to duat-base.
-[x] Get rid of NewLine, WrapMethod.
-[x] Make Windows public.
-[x] RwArea, ErasedArea.
-[x] Perfect parts iterator.
-[x] PartialEq on Hookables.
-[x] HookBuilder struct.
-[x] Hook::add_for/add_grouped_for/add_once_for.
-[x] Make all Ui and Area methods use the address space of the Duat app.
-[x] Finalize the Windows API for more public use.
-[x] Easier pattern matching for Modes.
-[x] extra_word_chars, rather than WordChars.
-[x] Buffer switch history.
+[ ] Ui coordinates:
+  [ ] Implementation.
+  [ ] Floating widgets.
+  [ ] Mouse support.
+    [ ] Widget integration.
+    [ ] Mode integration.
+[ ] Command line completion.
+[ ] File path completion.
+[ ] Get rid of Text::selections_mut.
+[ ] Lazily evaluate height and width, including when pushing and spawning.
+[ ] Named StatusParts.
+[ ] File tracking.
+[ ] Actually fix injected indentation.
+[ ] Mode keybindings info.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -69,13 +31,10 @@ KNOWN BUGS:
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
 
 FUTURE UPDATES:
-[ ] Get rid of Text::selections_mut
 [ ] Locking a Mutex on every Change is surely slow.
 [ ] Stop eagerly merging Selections.
-[ ] Lazily evaluate height and width, including when pushing and spawning.
 [ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.
-[ ] Named StatusParts.
 [ ] OptsParser for the Buffer.
 [ ] Named colors.
 [ ] Turn the History into a tree.
@@ -104,9 +63,7 @@ FUTURE UPDATES:
 [ ] A MapForm Tag!
 [ ] macro_mode! or something like that.
 [ ] Fuzzy path detection should be rule based, not on what buffers are open.
-[ ] A cache for visual lines (🤮).
 [ ] rustc_on_unimplemented for State.
-[ ] External file tracking.
 [ ] Crumple zone tags (?).
 [ ] Document print.rs (jesus christ man)
 [ ] Custom error messages for unimplemented on status!.

@@ -4,7 +4,7 @@ use duat_core::{
     text::SpawnId,
     ui::{
         Axis::{self, *},
-        PushSpecs, SpawnSpecs,
+        PushSpecs, DynSpawnSpecs,
     },
 };
 use kasuari::{
@@ -71,7 +71,7 @@ impl Rect {
         id: SpawnId,
         frame: Frame,
         cache: PrintInfo,
-        mut specs: SpawnSpecs,
+        mut specs: DynSpawnSpecs,
     ) -> (Self, Constraints) {
         let mut rect = Rect::new(p, false, Kind::Leaf(Cell::new(cache)), Some(id), frame);
 
@@ -110,7 +110,7 @@ impl Rect {
     pub fn new_spawned_on_widget(
         &mut self,
         id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         target: AreaId,
         p: &Printer,
         info: PrintInfo,
@@ -199,7 +199,7 @@ impl Rect {
 
             let (mut target, cons) = if let Some(info) = spawn_info {
                 let mut cons = std::mem::take(&mut info.cons);
-                let specs = SpawnSpecs { orientation: info.orientation, .. };
+                let specs = DynSpawnSpecs { orientation: info.orientation, .. };
 
                 p.add_eqs(info.cons.apply(&parent, None));
 
@@ -684,7 +684,7 @@ impl Rect {
     pub fn set_spawned_eqs(
         &mut self,
         p: &Printer,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         [center, len]: [Variable; 2],
         [tl_x, tl_y]: [Expression; 2],
         [br_x, br_y]: [Expression; 2],

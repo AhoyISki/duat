@@ -391,7 +391,7 @@ macro_rules! doc_duat {
                 };
                 
                 pub use super::{
-                    cursor::*, state::*, modes::*, widgets::*, PassFileType, FileType, opts
+                    cursor::*, state::*, modes::*, widgets::*, PassFileType, FileType, opts, plug
                 };
 
                 #[macro_export]
@@ -500,6 +500,8 @@ macro_rules! doc_duat {
             }
             impl PassFileType for prelude::data::RwData<prelude::Buffer> {}
             impl PassFileType for prelude::Handle {}
+
+            pub fn plug<P: $crate::Plugin>(plugin: P) {}
         }
     }
 }

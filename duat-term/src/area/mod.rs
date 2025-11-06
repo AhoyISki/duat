@@ -13,7 +13,7 @@ use duat_core::{
     opts::PrintOpts,
     text::{Item, Part, SpawnId, Text, TwoPoints, txt},
     ui::{
-        Caret, PushSpecs, SpawnSpecs,
+        Caret, DynSpawnSpecs, PushSpecs,
         traits::{CoreAccess, RawArea},
     },
 };
@@ -362,7 +362,7 @@ impl RawArea for Area {
     fn spawn(
         self: CoreAccess<Self>,
         spawn_id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         cache: Self::Cache,
     ) -> Option<Self> {
         Some(Self::new(
@@ -514,7 +514,7 @@ impl RawArea for Area {
         points: TwoPoints,
         opts: PrintOpts,
     ) -> impl Iterator<Item = (Caret, Item)> + 'a {
-        let width = self.width() as u32;
+        let width = (self.bottom_right().x - self.top_left().x) as u32;
         print_iter(text, points, width, opts)
     }
 
@@ -524,7 +524,7 @@ impl RawArea for Area {
         points: TwoPoints,
         opts: PrintOpts,
     ) -> impl Iterator<Item = (Caret, Item)> + 'a {
-        let width = self.width() as u32;
+        let width = (self.bottom_right().x - self.top_left().x) as u32;
         rev_print_iter(text, points, opts.wrap_width(width).unwrap_or(width), opts)
     }
 
@@ -570,18 +570,24 @@ impl RawArea for Area {
         Some(info)
     }
 
-    fn width(self: CoreAccess<Self>) -> f32 {
+    fn top_left(self: CoreAccess<Self>) -> duat_core::ui::Coord {
         self.layouts
             .coords_of(self.id, false)
-            .map(|coords| coords.width() as f32)
-            .unwrap_or(0.0)
+            .map(|coords| duat_core::ui::Coord {
+                x: coords.tl.x as f32,
+                y: coords.tl.y as f32,
+            })
+            .unwrap_or(duat_core::ui::Coord::default())
     }
 
-    fn height(self: CoreAccess<Self>) -> f32 {
+    fn bottom_right(self: CoreAccess<Self>) -> duat_core::ui::Coord {
         self.layouts
             .coords_of(self.id, false)
-            .map(|coords| coords.height() as f32)
-            .unwrap_or(0.0)
+            .map(|coords| duat_core::ui::Coord {
+                x: coords.br.x as f32,
+                y: coords.br.y as f32,
+            })
+            .unwrap_or(duat_core::ui::Coord::default())
     }
 
     fn start_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints {

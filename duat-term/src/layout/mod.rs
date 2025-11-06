@@ -2,13 +2,15 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use duat_core::{
     text::SpawnId,
-    ui::{Axis, Orientation, PushSpecs, SpawnSpecs},
+    ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs},
 };
 use kasuari::{Constraint, WeightedRelation::*};
 
 pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
 use crate::{
-    AreaId, Coords, Frame, HIDDEN_PRIO, LEN_PRIO, MANUAL_LEN_PRIO, SPAWN_LEN_PRIO, area::{Coord, PrintInfo}, printer::{Lines, Printer}
+    AreaId, CONS_SPAWN_LEN_PRIO, Coords, Frame, HIDDEN_PRIO, LEN_PRIO, MANUAL_LEN_PRIO,
+    area::{Coord, PrintInfo},
+    printer::{Lines, Printer},
 };
 
 mod rect;
@@ -73,7 +75,7 @@ impl Layouts {
         &self,
         target: AreaId,
         spawn_id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         cache: PrintInfo,
     ) -> Option<AreaId> {
         let mut layouts = self.0.borrow_mut();
@@ -90,7 +92,7 @@ impl Layouts {
     pub fn spawn_on_text(
         &self,
         id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         cache: PrintInfo,
         win: usize,
     ) -> AreaId {
@@ -493,7 +495,7 @@ impl Layout {
         &mut self,
         target: AreaId,
         id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         cache: PrintInfo,
     ) -> Option<AreaId> {
         let (rect, cons) = [&mut self.main]
@@ -510,7 +512,7 @@ impl Layout {
         Some(area_id)
     }
 
-    fn spawn_on_text(&mut self, id: SpawnId, specs: SpawnSpecs, cache: PrintInfo) -> AreaId {
+    fn spawn_on_text(&mut self, id: SpawnId, specs: DynSpawnSpecs, cache: PrintInfo) -> AreaId {
         let (rect, cons) =
             Rect::new_spawned_on_text(&self.printer, id, self.main.frame(), cache, specs);
         let rect_id = rect.id();
@@ -835,7 +837,7 @@ fn get_cons(
         [(width, Axis::Horizontal), (height, Axis::Vertical)].map(|(constraint, axis)| {
             let (len, is_manual) = constraint?;
             let strength = match (is_spawned, is_manual) {
-                (true, _) => SPAWN_LEN_PRIO,
+                (true, _) => CONS_SPAWN_LEN_PRIO,
                 (false, true) => MANUAL_LEN_PRIO,
                 (false, false) => LEN_PRIO,
             };

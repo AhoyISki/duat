@@ -18,7 +18,7 @@ use crate::{
     data::Pass,
     form::FormId,
     text::{Point, Text, TextRange},
-    ui::{SpawnSpecs, Widget},
+    ui::{DynSpawnSpecs, Widget},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`]
@@ -261,7 +261,7 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 
 /// [`Tag`]: Spawns a [`Widget`] in the [`Text`]
 ///
-/// The [`Widget`] will be placed according to the [`SpawnSpecs`], and
+/// The [`Widget`] will be placed according to the [`DynSpawnSpecs`], and
 /// should move automatically as the `SpawnTag` moves around the
 /// screen.
 pub struct SpawnTag(
@@ -274,7 +274,7 @@ impl SpawnTag {
     ///
     /// You can then place this [`Tag`] inside of the [`Text`] via
     /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
-    /// should be placed according to the [`SpawnSpecs`], and should
+    /// should be placed according to the [`DynSpawnSpecs`], and should
     /// move around automatically reflecting where the `Tag` is at.
     ///
     /// Do note that this [`Widget`] will only be added to Duat and be
@@ -291,7 +291,7 @@ impl SpawnTag {
     /// > be removed.
     ///
     /// [`Tags::insert`]: super::Tags::insert
-    pub fn new(widget: impl Widget, specs: SpawnSpecs) -> Self {
+    pub fn new(widget: impl Widget, specs: DynSpawnSpecs) -> Self {
         let id = SpawnId::new();
         Self(
             id,

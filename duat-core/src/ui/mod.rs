@@ -58,6 +58,25 @@ mod type_erased;
 mod widget;
 mod window;
 
+/// A coordinate on screen
+///
+/// An integer value should represent the size of a monospaced font
+/// cell. So, for example, in a terminal, x should represent the top
+/// left corner of a column, and y represents the top left corner of a
+/// row.
+///
+/// For non terminal GUIs, an integer should have the same
+/// representation, but fractional values should be permitted as well.
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
+pub struct Coord {
+    /// The x value of this coordinate. In a terminal cell, it would
+    /// be the top left corner.
+    pub x: f32,
+    /// The y value of this coordinate. In a terminal cell, it would
+    /// be the top left corner.
+    pub y: f32,
+}
+
 /// A dimension on screen, can either be horizontal or vertical
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
@@ -206,33 +225,21 @@ impl PushSpecs {
     }
 }
 
-/// A direction, where a [`Widget`] will be placed in relation to
-/// another.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
-    /// Put the [`Widget`] above another
-    Above,
-    /// Put the [`Widget`] on the right
-    Right,
-    /// Put the [`Widget`] on the left
-    Below,
-    /// Put the [`Widget`] below another
-    Left,
-}
-
-impl Side {
-    /// Which [`Axis`] this [`Side`] belongs to
-    pub fn axis(&self) -> Axis {
-        match self {
-            Side::Above | Side::Below => Axis::Vertical,
-            Side::Right | Side::Left => Axis::Horizontal,
-        }
-    }
-}
-
-/// Much like [`PushSpecs`], but for floating [`Widget`]s
+/// Information about how a [`Widget`] should be spawned dynamically
+///
+/// Dynamically spawned `Widget`s are those that are spawned on
+/// [`Handle`]s or [`Text`]. They are called dynamic because their
+/// spawning location can change automatically, either by the widget
+/// they are spawned on resizing, or the `Text` changing, etc.
+///
+/// This is in contrast with [`StaticSpawnSpecs`], which are not
+/// spawned on a `Handle` or `Text`, and are instead placed in a
+/// [`Coord`] on screen.
+///
+/// [`Handle`]: Handle::push_outer_widget
+/// [`Text`]: crate::text::SpawnTag
 #[derive(Default, Debug, Clone, Copy)]
-pub struct SpawnSpecs {
+pub struct DynSpawnSpecs {
     /// The orientation to place this [`Widget`] in
     ///
     /// May receive some reworks in the future.
@@ -254,12 +261,71 @@ pub struct SpawnSpecs {
     pub hidden: bool = false,
 }
 
-impl SpawnSpecs {
+impl DynSpawnSpecs {
     /// The constraints on a given [`Axis`]
     pub fn len_on(&self, axis: Axis) -> Option<f32> {
         match axis {
             Axis::Horizontal => self.width,
             Axis::Vertical => self.height,
+        }
+    }
+}
+
+/// Information about how a [`Widget`] should be spawned statically
+///
+/// Statically spawned `Widget`s are those that are placed in a
+/// [`Coord`] on screen via [`Window::spawn`] and don't change location.
+///
+/// This is in contrast with [`DynSpawnSpecs`], which are allowed to
+/// be moved automatically, due to being spawned on [`Handle`]s or
+/// [`Text`], which are allowed to change.
+///
+/// [`Text`]: crate::text::Text
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StaticSpawnSpecs {
+    /// The top left corner where the [`Widget`] will be spawned
+    pub top_left: Coord,
+    /// The desired width for the [`Widget`]
+    pub width: f32,
+    /// The desired height for the [`Widget`]
+    pub height: f32,
+    /// Hide this [`Widget`] by default
+    ///
+    /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
+    /// this property.
+    pub hidden: bool,
+}
+
+impl StaticSpawnSpecs {
+    /// The constraints on a given [`Axis`]
+    pub fn len_on(&self, axis: Axis) -> f32 {
+        match axis {
+            Axis::Horizontal => self.width,
+            Axis::Vertical => self.height,
+        }
+    }
+}
+
+/// A direction, where a [`Widget`] will be placed in relation to
+/// another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    /// Put the [`Widget`] above another
+    Above,
+    /// Put the [`Widget`] on the right
+    Right,
+    /// Put the [`Widget`] on the left
+    Below,
+    /// Put the [`Widget`] below another
+    Left,
+}
+
+impl Side {
+    /// Which [`Axis`] this [`Side`] belongs to
+    pub fn axis(&self) -> Axis {
+        match self {
+            Side::Above | Side::Below => Axis::Vertical,
+            Side::Right | Side::Left => Axis::Horizontal,
         }
     }
 }

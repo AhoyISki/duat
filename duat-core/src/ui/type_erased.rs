@@ -26,7 +26,7 @@ use crate::{
     session::DuatSender,
     text::{Item, SpawnId, Text, TwoPoints},
     ui::{
-        Caret, PushSpecs, SpawnSpecs,
+        Caret, DynSpawnSpecs, PushSpecs,
         traits::{CoreAccess, RawArea, RawUi},
     },
 };
@@ -97,7 +97,7 @@ impl Ui {
         &self,
         file_path: Option<&Path>,
         spawn_id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
         win: usize,
     ) -> RwArea {
         (self.fns.new_spawned)(self.ui, file_path, spawn_id, specs, win)
@@ -171,7 +171,7 @@ struct UiFunctions {
     open: fn(&'static dyn Any, DuatSender),
     close: fn(&'static dyn Any),
     new_root: fn(&'static dyn Any, Option<&Path>) -> RwArea,
-    new_spawned: fn(&'static dyn Any, Option<&Path>, SpawnId, SpawnSpecs, usize) -> RwArea,
+    new_spawned: fn(&'static dyn Any, Option<&Path>, SpawnId, DynSpawnSpecs, usize) -> RwArea,
     switch_window: fn(&'static dyn Any, win: usize),
     flush_layout: fn(&'static dyn Any),
     print: fn(&'static dyn Any),
@@ -319,7 +319,7 @@ impl RwArea {
         pa: &mut Pass,
         file_path: Option<&Path>,
         spawn_id: SpawnId,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
     ) -> Option<Self> {
         (self.0.read(pa).fns.spawn)(self.0.read(pa), file_path, spawn_id, specs)
     }
@@ -750,7 +750,7 @@ impl Area {
 #[derive(Clone, Copy)]
 struct AreaFunctions {
     push: fn(&Area, Option<&Path>, PushSpecs, bool) -> Option<(RwArea, Option<RwArea>)>,
-    spawn: fn(&Area, Option<&Path>, SpawnId, SpawnSpecs) -> Option<RwArea>,
+    spawn: fn(&Area, Option<&Path>, SpawnId, DynSpawnSpecs) -> Option<RwArea>,
     delete: fn(&Area) -> (bool, Vec<RwArea>),
     swap: fn(&Area, &Area) -> bool,
     set_width: fn(&Area, width: f32) -> Result<(), Text>,
@@ -936,11 +936,11 @@ impl AreaFunctions {
             },
             width: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).width()
+                CoreAccess::new(area).bottom_right().x - CoreAccess::new(area).top_left().x
             },
             height: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).height()
+                CoreAccess::new(area).bottom_right().y - CoreAccess::new(area).top_left().y
             },
             is_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();

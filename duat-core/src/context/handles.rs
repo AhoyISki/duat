@@ -15,7 +15,7 @@ use crate::{
     mode::{Cursor, Cursors, Selection, Selections},
     opts::PrintOpts,
     text::{Searcher, Text, TextParts, TwoPoints, txt},
-    ui::{Area, PushSpecs, RwArea, SpawnSpecs, Widget},
+    ui::{Area, PushSpecs, RwArea, DynSpawnSpecs, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -824,7 +824,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         &self,
         pa: &mut Pass,
         widget: SW,
-        specs: SpawnSpecs,
+        specs: DynSpawnSpecs,
     ) -> Option<Handle<SW>> {
         context::windows().spawn_on_widget(pa, (&self.area, specs), widget)
     }

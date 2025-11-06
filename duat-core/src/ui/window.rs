@@ -23,7 +23,7 @@ use crate::{
     mode,
     opts::PrintOpts,
     text::{SpawnId, Text, txt},
-    ui::{PushSpecs, RwArea, SpawnSpecs, Ui},
+    ui::{PushSpecs, RwArea, DynSpawnSpecs, Ui},
 };
 
 /// A list of all [`Window`]s in Duat
@@ -117,7 +117,7 @@ impl Windows {
     pub(crate) fn spawn_on_widget<W: Widget>(
         &self,
         pa: &mut Pass,
-        (target, specs): (&RwArea, SpawnSpecs),
+        (target, specs): (&RwArea, DynSpawnSpecs),
         widget: W,
     ) -> Option<Handle<W>> {
         let (win, cluster_master, master) =
@@ -178,7 +178,7 @@ impl Windows {
     pub(crate) fn spawn_on_text<W: Widget>(
         &self,
         pa: &mut Pass,
-        (id, specs): (SpawnId, SpawnSpecs),
+        (id, specs): (SpawnId, DynSpawnSpecs),
         widget: W,
         win: usize,
         master: Handle<dyn Widget>,
