@@ -35,13 +35,13 @@ jobs:
         run: duat --version
 
       - name: Testing duat-core
-        run: cargo test --offline --manifest-path "duat-term"
+        run: cargo test --offline --manifest-path "duat-term/Cargo.toml"
           
       - name: Testing duat-base
-        run: cargo test --offline --manifest-path "duat-base"
+        run: cargo test --offline --manifest-path "duat-base/Cargo.toml"
           
       - name: Testing duat-term
-        run: cargo test --offline --manifest-path "duat-term"
+        run: cargo test --offline --manifest-path "duat-term/Cargo.toml"
           
       - name: Testing duat
         run: cargo test --offline
