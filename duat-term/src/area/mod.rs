@@ -577,7 +577,7 @@ impl RawArea for Area {
                 x: coords.tl.x as f32,
                 y: coords.tl.y as f32,
             })
-            .unwrap_or(duat_core::ui::Coord::default())
+            .unwrap_or_default()
     }
 
     fn bottom_right(self: CoreAccess<Self>) -> duat_core::ui::Coord {
@@ -587,7 +587,7 @@ impl RawArea for Area {
                 x: coords.br.x as f32,
                 y: coords.br.y as f32,
             })
-            .unwrap_or(duat_core::ui::Coord::default())
+            .unwrap_or_default()
     }
 
     fn start_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints {

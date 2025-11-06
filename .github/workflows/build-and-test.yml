@@ -1,4 +1,4 @@
-name: Build
+name: Build and Test
 
 on:
   push:
@@ -34,9 +34,14 @@ jobs:
       - name: Check version
         run: duat --version
 
-      - name: Test
-        run: cargo test --release --offline
-
-        # TODO: --init-config requires user input, that will make the worker to never finish
-      # - name: Building config
-        # run: duat --init-config
+      - name: Testing duat-core
+        run: cargo test --offline --manifest-path "duat-term"
+          
+      - name: Testing duat-base
+        run: cargo test --offline --manifest-path "duat-base"
+          
+      - name: Testing duat-term
+        run: cargo test --offline --manifest-path "duat-term"
+          
+      - name: Testing duat
+        run: cargo test --offline
