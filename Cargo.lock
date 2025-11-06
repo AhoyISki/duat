@@ -335,7 +335,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "duat"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "clap",
  "convert_case 0.8.0",
@@ -344,7 +344,7 @@ dependencies = [
  "duat-core",
  "duat-filetype",
  "duat-match-pairs",
- "duat-term 0.7.0",
+ "duat-term",
  "duat-treesitter",
  "duatmode",
  "libloading",
@@ -403,20 +403,6 @@ dependencies = [
  "duat-core",
  "duat-filetype",
  "duat-treesitter",
-]
-
-[[package]]
-name = "duat-term"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20dad7eb5d7dfac06165bc0286ae5d74c7c2017717811ebd768ed8d698ee1714"
-dependencies = [
- "crossterm",
- "duat-core",
- "kasuari",
- "micromap",
- "smallvec",
- "unicode-width",
 ]
 
 [[package]]

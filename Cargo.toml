@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "A modern, very customizable text editor, configured in rust."
@@ -9,17 +9,13 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["src/", "templates/*", "build.rs"]
+include = ["src/", "templates/*"]
 
 [lints.rust]
 missing_docs = "warn"
 
 [lints.clippy]
 unit_arg = "allow"
-
-[workspace]
-members = ["duat-core", "duat-term", "duat-base"]
-exclude = ["templates/config"]
 
 [dependencies]
 duat-core = "0.7.0"
