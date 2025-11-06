@@ -712,7 +712,8 @@ fn setup() {
     
     cmd::add!("set-rel-lines", |pa| {
         let handles: Vec&lt;_&gt; = context::windows()
-            .handles_of::&lt;LineNumbers&gt;(pa)
+            .handles(pa)
+            .filter_map(|handle| handle.try_downcast::&lt;LineNumbers&gt;())
             .collect();
 
         for handle in handles {
