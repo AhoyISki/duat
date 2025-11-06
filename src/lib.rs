@@ -2,9 +2,8 @@
 //!
 //! # Installation
 //!
-//! This [`Plugin`] is added on the config crate by default, there is
-//! no need to install it. However, if you have uninstalled it and
-//! need to reinstall, you can do the following:
+//! This is a default plugin, but you can add it manually in order to
+//! configure it:
 //!
 //! ```bash
 //! cargo add duat-match-pairs@"*" --rename match-pairs
@@ -22,13 +21,14 @@
 //! function:
 //!
 //! ```rust
-//! # use duat_core::doc_duat as duat;
-//! # use duat_match_pairs as match_pairs;
+//! # #[macro_use]
+//! # macro_rules! setup_duat { ($duat:ident) => {} }
+//! # mod duat { pub mod prelude { pub fn plug<P>(plugin: P) {} }}
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     plug!(match_pairs::MatchPairs::new());
+//!     plug(duat_match_pairs::MatchPairs::new());
 //! }
 //! ```
 //!
@@ -57,16 +57,17 @@
 //! function:
 //!
 //! ```rust
-//! # use duat_core::doc_duat as duat;
-//! # use duat_match_pairs as match_pairs;
+//! # #[macro_use]
+//! # macro_rules! setup_duat { ($duat:ident) => {} }
+//! # mod duat { pub mod prelude { pub fn plug<P>(plugin: P) {} }}
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     plug!(
-//!         match_pairs::MatchPairs::new()
+//!     plug(
+//!         duat_match_pairs::MatchPairs::new()
 //!             .match_pairs([["\\(", "\\)"], ["\\{", "\\}"], ["\\[", "\\]"]])
-//!             .match_ts_pairs([["<", ">"], ["|", "|"]])
+//!             .match_ts_pairs([["<", ">"], ["|", "|"]]),
 //!     );
 //! }
 //! ```
@@ -109,7 +110,7 @@ pub struct MatchPairs {
 
 impl MatchPairs {
     /// Returns a new [`MatchPairs`]
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             ts_and_reg: vec![[b"(", b")"], [b"{", b"}"], [b"[", b"]"]],
             // TODO: Add more filetypes
