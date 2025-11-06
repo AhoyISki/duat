@@ -475,7 +475,7 @@ mod cargo {
 
         let mut cargo = Command::new("cargo");
         cargo
-            .args(["build", "--profile", profile, "--manifest-path"])
+            .args(["+nightly", "build", "--profile", profile, "--manifest-path"])
             .arg(manifest_path);
 
         #[cfg(feature = "deadlocks")]
