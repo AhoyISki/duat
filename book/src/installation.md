@@ -12,14 +12,14 @@ Now, you can go ahead and install duat using `cargo`. Duat will be installed
 for the current user, in the `~/.cargo/bin/` directory:
 
 ```bash
-cargo install duat
+cargo +nightly install duat
 ```
 
 Or, if you want the `master` version of duat, from the latest commit, you can 
 do this:
 
 ```bash
-cargo install --git https://github.com/AhoyISki/duat --features git-deps
+cargo +nightly install --git https://github.com/AhoyISki/duat --features git-deps
 ```
 
 If you don't have `~/.cargo/bin/` in your `$PATH` variable, you should add that 

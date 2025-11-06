@@ -11,19 +11,18 @@ If you want to nerd-fontify your `StatusLine`, you can just redefine some of
 the status line parts:
 
 ```rust
-# use duat::prelude::*;
-fn name_txt(file: &File) -> Text {
+fn name_txt(buffer: &Builder) -> Text {
     let mut b = Text::builder();
 
-    if let Some(name) = file.name_set() {
-        b.push(txt!("[file]{name}"));
-        if !file.exists() {
-            b.push(txt!(" [file.new]󰎔 "));
-        } else if file.text().has_unsaved_changes() {
-            b.push(txt!(" [file.unsaved] "));
+    if let Some(name) = buffer.name_set() {
+        b.push(txt!("[buffer]{name}"));
+        if !buffer.exists() {
+            b.push(txt!(" [buffer.new]󰎔 "));
+        } else if buffer.text().has_unsaved_changes() {
+            b.push(txt!(" [buffer.unsaved] "));
         }
     } else {
-        b.push(txt!(" [file.new.scratch]{}󰏫 ", file.name()));
+        b.push(txt!(" [buffer.new.scratch]{}󰏫 ", buffer.name()));
     }
 
     b.build()

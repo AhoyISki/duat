@@ -20,15 +20,15 @@ of modules, like this:
 
 ```rust
 # use duat::prelude::*;
-use duat::print;
+use duat::opts;
 ```
 
-This is importing the `print` module, as opposed to importing its items 
+This is importing the `opts` module, as opposed to importing its items 
 directly, like this:
 
 ```rust
 # use duat::prelude::*;
-use duat::print::*;
+use duat::opts::*;
 ```
 
 This means that, for most options, their path is made up of a 
@@ -36,46 +36,34 @@ This means that, for most options, their path is made up of a
 something like this:
 
 ```rust
-# mod duat_kak {
-#     use duat::{prelude::{*, mode::KeyEvent}};
-#     #[derive(Clone)]
-#     pub struct Insert;
-#     impl Mode<Ui> for Insert {
-#         type Widget = File;
-#         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
-#             todo!();
-#         }
-#     }
-#     #[derive(Default)]
-#     pub struct Kak;
-#     impl duat_core::Plugin<Ui> for Kak {
-#         fn plug(self, _: &duat_core::Plugins<Ui>) {}
-#     }
-# }
 setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug(duat_kak::Kak::default());
-
-    print::wrap_at(150);
-    print::trailing_new_line('󱁐');
+    opts::set(|opts| {
+        opts.wrap_lines = true;
+        opts.wrapping_cap = Some(80);
+    });
     
     form::set("caret.main", Form::yellow());
     
-    cmd::add!("set-rel-lines", |pa, ln: cmd::Handles<LineNumbers<Ui>>| {
-        ln.on_flags(pa, |pa, handle| {
-            handle.write(pa).rel_abs();
-        });
+    cmd::add!("set-rel-lines", |pa| {
+        let handles: Vec<_> = context::windows()
+            .handles_of::<LineNumbers>(pa)
+            .collect();
+
+        for handle in handles {
+            handle.write(pa).relative = true;
+        }
         
-        Ok(Some(txt!("Lines were set to [a]relative absolute").build()))
+        Ok(Some(txt!("Lines were set to [a]relative")))
     });
     
-    map::<duat_kak::Insert>("jk", "<Esc>:w<Enter>");
+    map::<Insert>("jk", "<Esc>:w<Enter>");
 }
 ```
 
-The exceptions to this are the `map`, `alias` and `plug` functions, the 
+The exceptions to this are the `map`, `alias` and `plug` functions and the 
 `setup_duat!` macro. These items are imported directly.
 
 The following chapters should give a quick overview of these items imported 

@@ -21,7 +21,8 @@ Currently, in `duat`, these are the forms in use:
 - `matched_pair`: Isn't technically part of duat, but it's part of a default 
   plugin.
 
-Some other forms are used by specific `Widgets`
+Some other forms are used by specific `Widgets`. Remember, the default form for
+every `Widget` will always be `default.{WidgetName}`:
 
 - `LineNumbers`:
   - `linenum.main`: The form to be used on the main line's number.
@@ -31,7 +32,7 @@ Some other forms are used by specific `Widgets`
 
   Do note that you can set the form of the remaining lines by setting 
   `default.LineNumbers`. And due to [form inheritance], setting `linenum` will 
-  set all three forms.
+  set `linenum.wrapped`, `linenum.main` and `linenum.wrapped.main`.
 
 - `StatusLine`:
   - `file`, `file.new`, `file.unsaved`, `file.new.scratch`: Are all used by 
@@ -40,6 +41,9 @@ Some other forms are used by specific `Widgets`
   - `coord` and `separator`: Are used by [`main_txt`].
   - `selections`: Is used by [`selections_txt`].
   - `key` and `key.special`: Are used by [`cur_map_txt`].
+
+- `Completions`:
+  - `selected.Completions` changes the selected entry's form. 
 
 - `Notifications`:
   - `notifs.target`: The form for the "target" of the notification.
@@ -70,7 +74,11 @@ Some other forms are used by specific `Widgets`
   - `rule.upper` and `rule.lower`: The forms to use above and below the main 
     line.
 
-And finally, there are also all the forms used by `duat-treesitter`. Since the queries were taken from nvim-treesitter, the form names follow the same patters as those from neovim:
+And finally, there are also all the forms used by `duat-treesitter`. Since the 
+queries were taken from nvim-treesitter, the form names follow the same patters 
+as those from neovim. Remember, setting `form` will automatically set 
+`form.child` and `form.child.grandchild`, and so forth , _unless_ that form is 
+already set to something:
 
 | Form name                     | Purpose                                   
 |-------------------------------|---------

@@ -33,7 +33,7 @@ Every form in duat should be named like this: `[a-z0-9]+(\.[a-z0-9]+)*`. That
 way, inheritance of forms becomes very predictable, and it's much easier for 
 plugin writers to depend on that feature.
 
-There is one exception to this rule however, that being the `defaut` form. The 
+There is one exception to this rule however, that being the `default` form. The 
 `default` form, unlike other forms, can have `Widget` specific implementations, 
 like `default.StatusLine`, which will change the `default` form _only_ on 
 `StatusLine`s, and is set by default.
@@ -49,8 +49,8 @@ a previously named one:
 #     use duat::prelude::*;
 #     #[derive(Default)]
 #     pub struct Catppuccin;
-#     impl duat_core::Plugin<duat::Ui> for Catppuccin {
-#         fn plug(self, _: &duat_core::Plugins<Ui>) { todo!() }
+#     impl Plugin for Catppuccin {
+#         fn plug(self, _: &Plugins) { todo!() }
 #     }
 # }
 setup_duat!(setup);

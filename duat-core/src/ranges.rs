@@ -76,6 +76,7 @@ impl Ranges {
     /// so it may bridge gaps between ranges or for longer
     /// ranges within, without allowing for the existance
     /// of intersecting ranges.
+    #[track_caller]
     pub fn add(&mut self, new: Range<usize>) {
         assert_range(&new);
         if new.len() < self.min_len {
@@ -122,6 +123,7 @@ impl Ranges {
 
     /// Removes a [`Range`] from the list, returning an
     /// [`Iterator`] over the [`Range`]s that were taken
+    #[track_caller]
     pub fn remove(
         &mut self,
         within: Range<usize>,
@@ -182,6 +184,7 @@ impl Ranges {
     /// Applies the [`add`] function to another [`Ranges`]s
     ///
     /// [`add`]: Self::add
+    #[track_caller]
     pub fn merge(&mut self, other: Self) {
         for range in other.list {
             self.add(range.start as usize..range.end as usize)
@@ -273,6 +276,7 @@ impl Ranges {
 
     /// The same as [`Ranges::remove`], but without removing, just
     /// iterating over the relevant ranges
+    #[track_caller]
     pub fn iter_over(&self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
         assert_range(&within);
         let within = within.start as i32..within.end as i32;
@@ -322,6 +326,7 @@ impl IntoIterator for Ranges {
 
 pub type IntoIter = impl ExactSizeIterator<Item = Range<usize>>;
 
+#[track_caller]
 fn assert_range(range: &Range<usize>) {
     assert!(
         range.start <= range.end,

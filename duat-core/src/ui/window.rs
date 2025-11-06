@@ -743,6 +743,18 @@ impl Windows {
             .flat_map(|w| w.nodes(pa).map(|n| n.handle()))
     }
 
+    /// Returns an [`Iterator`] over the [`Handle`]s of Duat
+    pub fn handles_of<'a, W: Widget>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = Handle<W>> + 'a {
+        self.inner
+            .read(pa)
+            .list
+            .iter()
+            .flat_map(|w| w.nodes(pa).filter_map(|n| n.handle().try_downcast()))
+    }
+
     /// Iterates over all [`Handle<Buffer>`]s in Duat
     pub fn buffers<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle> + 'a {
         self.inner.read(pa).list.iter().flat_map(|w| w.buffers(pa))

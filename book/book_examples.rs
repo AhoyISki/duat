@@ -20,7 +20,7 @@ test!("quick-settings/chapter", quick_settings {
 
     test!("quick-settings/prelude/chapter", prelude {
         use crate::book::test;
-        test!("quick-settings/prelude/print-module", print_module {});
+        test!("quick-settings/prelude/opts-module", opts_module {});
         test!("quick-settings/prelude/form-module", form_module {});
         test!("quick-settings/prelude/map-and-alias", map_and_alias {});
         test!("quick-settings/prelude/cursor-module", cursor_module {});
@@ -29,13 +29,13 @@ test!("quick-settings/chapter", quick_settings {
     test!("quick-settings/frequent-snippets/chapter", frequent_snippets {
         use crate::book::test;
         test!("quick-settings/frequent-snippets/map-jk", map_jk {});
-        test!("quick-settings/frequent-snippets/status-per-file", status_per_file {});
+        test!("quick-settings/frequent-snippets/status-per-buffer", status_per_buffer {});
         test!("quick-settings/frequent-snippets/prompt-status-line", prompt_status_line {});
         test!("quick-settings/frequent-snippets/common-status", common_status {});
         test!("quick-settings/frequent-snippets/rel-align-linenums", rel_align_linenums {});
-        test!("quick-settings/frequent-snippets/file-tabstops", file_tabstops {});
+        test!("quick-settings/frequent-snippets/buffer-tabstops", buffer_tabstops {});
         test!("quick-settings/frequent-snippets/nerd-status", nerd_status {});
-        test!("quick-settings/frequent-snippets/file-window-status", file_window_status {});
+        test!("quick-settings/frequent-snippets/buffer-window-status", buffer_window_status {});
     });
 
     test!("quick-settings/list-of-forms", list_of_forms {});

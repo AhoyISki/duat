@@ -755,6 +755,7 @@ enum RangesTracker {
 
 impl RangesTracker {
     /// Manually adds a [`Range`] to be tracked
+    #[track_caller]
     fn add_range(&mut self, range: Range<usize>) {
         match self {
             RangesTracker::Manual(ranges)
@@ -796,6 +797,7 @@ impl RangesTracker {
     }
 
     /// Gets the list of [`Range`]s that need to be updated
+    #[track_caller]
     fn remove(&mut self, range: Range<usize>, bytes: &Bytes) -> Vec<Range<Point>> {
         match self {
             RangesTracker::Manual(ranges)
