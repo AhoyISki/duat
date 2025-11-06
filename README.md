@@ -65,14 +65,14 @@ Next, in order to run duat, you should add `~/.cargo/bin/` to your
 `$PATH`. Now, you can install duat:
 
 ```bash
-cargo install duat
+cargo +nightly install duat
 ```
 
 That is the recommended version, however, if you wish to install
 the *bleeding edge* version, you can call this instead:
 
 ```bash
-cargo install --git https://github.com/AhoyISki/duat --features git-deps
+cargo +nightly install --git https://github.com/AhoyISki/duat --features git-deps
 ```
 
 ### Configuration
@@ -97,7 +97,7 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    map::<kak::Insert>("jk", "<Esc>");
+    map::<Insert>("jk", "<Esc>");
 
     opts::set(|opts| {
         opts.wrap_lines = true;
@@ -301,29 +301,29 @@ That’s why I decided to create Duat.
 idk, cool sounding word that I got from Spelunky 2.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG3Pc6bLSyQGtGwqDXK28Wq_zGwM8txzqOm0YG0OFYhg9S4IaYWSGgmRkdWF0ZTAuNy4xgmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJwZHVhdF9tYXRjaF9wYWlyc2UwLjIuMYJvZHVhdF90cmVlc2l0dGVyZTAuMy4xgmhkdWF0bW9kZWUwLjcuMA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEGxzI4bGO9zGrGwqas2vX4-OeG3sAmkcuV6LZG8mdG3s_w2EDYWSGgmRkdWF0ZTAuNy4ygmlkdWF0X2Jhc2VlMC43LjCCaWR1YXRfY29yZWUwLjcuMIJwZHVhdF9tYXRjaF9wYWlyc2UwLjIuMYJvZHVhdF90cmVlc2l0dGVyZTAuMy4ygmhkdWF0bW9kZWUwLjcuMQ
  [__link0]: https://www.rust-lang.org/tools/install
- [__link1]: https://docs.rs/duat/0.7.1/duat/?search=mode::map
+ [__link1]: https://docs.rs/duat/0.7.2/duat/?search=mode::map
  [__link10]: https://docs.rs/duat_core/0.7.0/duat_core/?search=buffer::Parser
- [__link11]: https://docs.rs/duat/0.7.1/duat/?search=prelude::Buffer
+ [__link11]: https://docs.rs/duat/0.7.2/duat/?search=prelude::Buffer
  [__link12]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::txt
- [__link13]: https://docs.rs/duat/0.7.1/duat/?search=prelude::Form
+ [__link13]: https://docs.rs/duat/0.7.2/duat/?search=prelude::Form
  [__link14]: https://docs.rs/duat_core/0.7.0/duat_core/?search=text::Spacer
  [__link15]: https://doc.rust-lang.org/stable/std/macro.format.html
  [__link16]: https://github.com/AhoyISki/duat-catppuccin
  [__link17]: https://catppuccin.com
- [__link18]: https://docs.rs/duat/0.7.1/duat/?search=prelude::Form
- [__link19]: https://crates.io/crates/duatmode/0.7.0
- [__link2]: https://docs.rs/duat/0.7.1/duat/opts/index.html
- [__link20]: https://crates.io/crates/duat_treesitter/0.3.1
+ [__link18]: https://docs.rs/duat/0.7.2/duat/?search=prelude::Form
+ [__link19]: https://crates.io/crates/duatmode/0.7.1
+ [__link2]: https://docs.rs/duat/0.7.2/duat/opts/index.html
+ [__link20]: https://crates.io/crates/duat_treesitter/0.3.2
  [__link21]: https://tree-sitter.github.io/tree-sitter
  [__link22]: https://crates.io/crates/duat_match_pairs/0.2.1
  [__link23]: https://crates.io/crates/duat_base/0.7.0
  [__link24]: ./TODO
- [__link3]: https://docs.rs/duat/0.7.1/duat/?search=hook::add
- [__link4]: https://docs.rs/duat/0.7.1/duat/?search=hook::ModeSwitched
- [__link5]: https://docs.rs/duat/0.7.1/duat/?search=form::set
- [__link6]: https://docs.rs/duat/0.7.1/duat/?search=form::Form
- [__link7]: https://docs.rs/duat/0.7.1/duat/?search=prelude::cmd
- [__link8]: https://docs.rs/duat/0.7.1/duat/?search=widgets::Widget
- [__link9]: https://docs.rs/duat/0.7.1/duat/?search=hook::WindowCreated
+ [__link3]: https://docs.rs/duat/0.7.2/duat/?search=hook::add
+ [__link4]: https://docs.rs/duat/0.7.2/duat/?search=hook::ModeSwitched
+ [__link5]: https://docs.rs/duat/0.7.2/duat/?search=form::set
+ [__link6]: https://docs.rs/duat/0.7.2/duat/?search=form::Form
+ [__link7]: https://docs.rs/duat/0.7.2/duat/?search=prelude::cmd
+ [__link8]: https://docs.rs/duat/0.7.2/duat/?search=widgets::Widget
+ [__link9]: https://docs.rs/duat/0.7.2/duat/?search=hook::WindowCreated

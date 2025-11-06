@@ -55,14 +55,14 @@
 //! `$PATH`. Now, you can install duat:
 //!
 //! ```bash
-//! cargo install duat
+//! cargo +nightly install duat
 //! ```
 //!
 //! That is the recommended version, however, if you wish to install
 //! the _bleeding edge_ version, you can call this instead:
 //!
 //! ```bash
-//! cargo install --git https://github.com/AhoyISki/duat --features git-deps
+//! cargo +nightly install --git https://github.com/AhoyISki/duat --features git-deps
 //! ```
 //!
 //! ## Configuration
