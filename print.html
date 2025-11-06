@@ -1474,7 +1474,9 @@ characters being displayed.</p>
 the status line parts:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn name_txt(buffer: &amp;Builder) -&gt; Text {
+</span>use duat::prelude::*;
+
+fn name_txt(buffer: &amp;Buffer) -&gt; Text {
     let mut b = Text::builder();
 
     if let Some(name) = buffer.name_set() {
