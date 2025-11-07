@@ -257,12 +257,12 @@ impl Layouts {
     /// Returns `false` if the `Rect` was deleted or if it is not a
     /// leaf node
     pub fn set_info_of(&self, id: AreaId, new: PrintInfo) -> bool {
-        let layouts = self.0.borrow();
-        layouts.list.iter().any(|layout| {
+        let mut layouts = self.0.borrow_mut();
+        layouts.list.iter_mut().any(|layout| {
             layout
-                .get(id)
-                .and_then(|rect| rect.print_info())
-                .map(|info| info.set(new))
+                .get_mut(id)
+                .and_then(|rect| rect.print_info_mut())
+                .map(|info| *info == new)
                 .is_some()
         })
     }
@@ -358,7 +358,7 @@ impl Layouts {
             .iter()
             .find_map(|layout| layout.get(id))
             .and_then(|rect| rect.print_info())
-            .map(|info| info.get())
+            .cloned()
     }
 }
 

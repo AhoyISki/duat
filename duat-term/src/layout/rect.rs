@@ -1,10 +1,8 @@
-use std::cell::Cell;
-
 use duat_core::{
     text::SpawnId,
     ui::{
         Axis::{self, *},
-        PushSpecs, DynSpawnSpecs,
+        DynSpawnSpecs, PushSpecs,
     },
 };
 use kasuari::{
@@ -49,7 +47,7 @@ pub struct Rect {
 impl Rect {
     /// Returns a new main `Rect`, which represents a full window
     pub fn new_main(p: &Printer, frame: Frame, cache: PrintInfo) -> Self {
-        let mut main = Rect::new(p, true, Kind::Leaf(Cell::new(cache)), None, frame);
+        let mut main = Rect::new(p, true, Kind::Leaf(cache), None, frame);
 
         main.eqs.extend([
             main.tl.x() | EQ(EDGE_PRIO) | 0.0,
@@ -73,7 +71,7 @@ impl Rect {
         cache: PrintInfo,
         mut specs: DynSpawnSpecs,
     ) -> (Self, Constraints) {
-        let mut rect = Rect::new(p, false, Kind::Leaf(Cell::new(cache)), Some(id), frame);
+        let mut rect = Rect::new(p, false, Kind::Leaf(cache), Some(id), frame);
 
         // Wether the Rect is shown or not is dependent on the SpawnTag being
         // printed or not, it's not a choice of the user.
@@ -912,8 +910,20 @@ impl Rect {
     /// It is only [`Some`] if the [`Rect`] is a [child]
     ///
     /// [child]: Kind::End
-    pub fn print_info(&self) -> Option<&Cell<PrintInfo>> {
+    pub fn print_info(&self) -> Option<&PrintInfo> {
         match &self.kind {
+            Kind::Leaf(info) => Some(info),
+            Kind::Branch { .. } => None,
+        }
+    }
+
+    /// The [`PrintInfo`] of this [`Rect`]
+    ///
+    /// It is only [`Some`] if the [`Rect`] is a [child]
+    ///
+    /// [child]: Kind::End
+    pub fn print_info_mut(&mut self) -> Option<&mut PrintInfo> {
+        match &mut self.kind {
             Kind::Leaf(info) => Some(info),
             Kind::Branch { .. } => None,
         }
@@ -960,7 +970,7 @@ impl PartialEq for Rect {
 }
 
 enum Kind {
-    Leaf(Cell<PrintInfo>),
+    Leaf(PrintInfo),
     Branch {
         children: Vec<(Rect, Constraints)>,
         axis: Axis,
@@ -969,8 +979,8 @@ enum Kind {
 }
 
 impl Kind {
-    fn end(info: PrintInfo) -> Self {
-        Self::Leaf(Cell::new(info))
+    fn end(cache: PrintInfo) -> Self {
+        Self::Leaf(cache)
     }
 
     fn middle(axis: Axis, clustered: bool) -> Self {

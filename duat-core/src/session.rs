@@ -17,7 +17,7 @@ use std::{
     time::Duration,
 };
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, MouseEvent};
 
 use crate::{
     Plugins,
@@ -34,7 +34,7 @@ use crate::{
     mode,
     opts::PrintOpts,
     ui::{
-        Ui, Windows,
+        RwArea, Ui, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
@@ -209,13 +209,14 @@ impl Session {
 
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
                 match event {
-                    DuatEvent::KeySent(key) => {
+                    DuatEvent::KeyEventSent(key) => {
                         mode::send_key(pa, key);
                         if mode::keys_were_sent(pa) {
                             continue;
                         }
                     }
-                    DuatEvent::KeysSent(keys) => {
+                    DuatEvent::MouseEventSent(..) => todo!(),
+                    DuatEvent::KeyEventsSent(keys) => {
                         for key in keys {
                             mode::send_key(pa, key)
                         }
@@ -321,9 +322,11 @@ impl Session {
 #[doc(hidden)]
 pub enum DuatEvent {
     /// A [`KeyEvent`] was typed
-    KeySent(KeyEvent),
+    KeyEventSent(KeyEvent),
+    /// A [`MouseEvent`] was sent
+    MouseEventSent(RwArea, MouseEvent),
     /// Multiple [`KeyEvent`]s were sent
-    KeysSent(Vec<KeyEvent>),
+    KeyEventsSent(Vec<KeyEvent>),
     /// A function was queued
     QueuedFunction(Box<dyn FnOnce(&mut Pass) + Send>),
     /// The Screen has resized
@@ -357,7 +360,7 @@ impl DuatSender {
 
     /// Sends a [`KeyEvent`]
     pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::KeySent(key))
+        self.0.send(DuatEvent::KeyEventSent(key))
     }
 
     /// Sends a notice that the app has resized

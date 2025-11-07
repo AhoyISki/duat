@@ -1,6 +1,6 @@
 FOR NEXT UPDATE:
 [ ] Ui coordinates:
-  [ ] Implementation.
+  [x] Implementation.
   [ ] Floating widgets.
   [ ] Mouse support.
     [ ] Widget integration.

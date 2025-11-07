@@ -127,7 +127,7 @@ pub fn send_keys(keys: impl AsRef<str>) {
     if !keys.is_empty() {
         KEYS_WERE_SENT.fetch_add(1, Ordering::Relaxed);
         crate::context::sender()
-            .send(DuatEvent::KeysSent(keys))
+            .send(DuatEvent::KeyEventsSent(keys))
             .unwrap();
     }
 }
