@@ -24,9 +24,6 @@ use notify::{Event, EventKind, RecursiveMode::*, Watcher};
 static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
 static CLIPBOARD: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
-#[cfg(not(feature = "cli"))]
-compile_error!("The Duat app needs the \"cli\" feature to work.");
-
 #[derive(Clone, Debug, clap::Parser)]
 #[command(version, about)]
 struct Args {
@@ -482,7 +479,7 @@ mod cargo {
 
         let mut cargo = Command::new("cargo");
         cargo
-            .args(["+nightly", "build", "--profile", profile, "--manifest-path"])
+            .args(["build", "--profile", profile, "--manifest-path"])
             .arg(manifest_path);
 
         #[cfg(feature = "deadlocks")]

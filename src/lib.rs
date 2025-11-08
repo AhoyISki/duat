@@ -34,35 +34,20 @@
 //! `~/.config/duat/`, but you should replace it with your operating
 //! system's config path. The same also applies to `~/.local/duat/`.
 //!
-//! After installing `cargo`, you will also need to install the
-//! `nightly` toolchain:
-//!
-//! ### On unix-like operating systems
-//!
-//! ```bash
-//! rustup install nightly
-//! ```
-//!
-//! ### On Windows
-//!
-//! ```bash
-//! rustup install nightly-x86_64-pc-windows-gnu
-//! ```
-//!
 //! Next, in order to run duat, you should add `~/.cargo/bin/` to your
 //! `$PATH` variable. Alternatively, you can just add
 //! `~/.cargo/bin/duat`, if you want to add just `duat` to the
 //! `$PATH`. Now, you can install duat:
 //!
 //! ```bash
-//! cargo +nightly install duat
+//! cargo install duat
 //! ```
 //!
 //! That is the recommended version, however, if you wish to install
 //! the _bleeding edge_ version, you can call this instead:
 //!
 //! ```bash
-//! cargo +nightly install --git https://github.com/AhoyISki/duat --features git-deps
+//! cargo install --git https://github.com/AhoyISki/duat --features git-deps
 //! ```
 //!
 //! ## Configuration
