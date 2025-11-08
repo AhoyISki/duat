@@ -24,7 +24,6 @@
 //! that.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-#![feature(closure_lifetime_binder)]
 use std::{
     collections::HashMap,
     fs,
@@ -446,7 +445,7 @@ impl InnerTsParser {
     ////////// Querying functions
 
     /// The expected level of indentation on a given [`Point`]
-    fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
+    fn indent_on<'a>(&'a self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
         let start = bytes.point_at_line(p.line());
 
         let (root, indents, range) = self
@@ -612,7 +611,7 @@ impl InnerTsParser {
                 }
             }
 
-            let fd = for<'a, 'b> |node: Node<'a>, delim: &'b str| -> (Option<Node<'a>>, bool) {
+            let fd = |node: Node<'a>, delim: &str| -> (Option<Node<'a>>, bool) {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
