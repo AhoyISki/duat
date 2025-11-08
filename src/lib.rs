@@ -23,7 +23,6 @@
 //! [`RwData<Buffer>`]: duat_core::data::RwData
 //! [hook]: duat_core::hook
 //! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
-#![feature(decl_macro)]
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -95,6 +94,13 @@ impl PassFileType for Handle<Buffer> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa).filetype()
     }
+}
+
+macro_rules! fmt{
+    ($($tt:tt)*) => {{
+        let str: &'static str = format!($($tt)*).leak();
+        str
+    }}
 }
 
 static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
@@ -2519,8 +2525,3 @@ static PATTERNS: LazyLock<(RegexSet, Vec<&str>)> = LazyLock::new(|| {
 fn var(str: &str) -> String {
     std::env::var(str).unwrap_or_default()
 }
-
-macro fmt($($tt:tt)*) {{
-    let str: &'static str = format!($($tt)*).leak();
-    str
-}}
