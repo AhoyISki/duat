@@ -588,7 +588,7 @@ pub fn get_args(command: &str) -> super::Args<'_> {
     let mut blob = String::new();
     let mut word = Vec::new();
 
-    let args = args_iter(command);
+    let args = ArgsIter::new(command);
     let mut args = args.peekable();
     let mut byte = 0;
 
@@ -625,45 +625,65 @@ pub fn get_args(command: &str) -> super::Args<'_> {
     }
 }
 
-/// The [`Iterator`] over the [`Parameter`]s of the command
-#[define_opaque(ArgsIter)]
-pub fn args_iter(command: &str) -> ArgsIter<'_> {
-    let mut chars = command.char_indices();
-    let mut start = None;
-    let mut end = None;
-    let mut is_quoting = false;
-    // Initial value doesn't matter, as long as it's not '\'
-    let mut last_char = 'a';
-    let mut args: ArgsIter = std::iter::from_fn(move || {
-        while let Some((b, char)) = chars.next() {
-            let lc = last_char;
-            last_char = char;
-            if start.is_some() && char.is_whitespace() && !is_quoting {
-                end = Some(b);
+/// A iterator over arguments in a `&str`, useful for the [`cmd`]
+/// module
+///
+/// [`cmd`]: super
+#[derive(Clone)]
+pub struct ArgsIter<'a> {
+    command: &'a str,
+    chars: std::str::CharIndices<'a>,
+    start: Option<usize>,
+    end: Option<usize>,
+    is_quoting: bool,
+    last_char: char,
+}
+
+impl<'a> ArgsIter<'a> {
+    /// Returns a new iterator over arguments in a `&str`
+    pub fn new(command: &'a str) -> Self {
+        let mut args_iter = Self {
+            command,
+            chars: command.char_indices(),
+            start: None,
+            end: None,
+            is_quoting: false,
+            // Initial value doesn't matter, as long as it's not '\'
+            last_char: 'a',
+        };
+
+        args_iter.next();
+        args_iter
+    }
+}
+
+impl<'a> Iterator for ArgsIter<'a> {
+    type Item = (&'a str, Range<usize>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((b, char)) = self.chars.next() {
+            let lc = self.last_char;
+            self.last_char = char;
+            if self.start.is_some() && char.is_whitespace() && !self.is_quoting {
+                self.end = Some(b);
                 break;
             } else if char == '"' && lc != '\\' {
-                is_quoting = !is_quoting;
-                if !is_quoting {
-                    end = Some(b + 1);
+                self.is_quoting = !self.is_quoting;
+                if !self.is_quoting {
+                    self.end = Some(b + 1);
                     break;
                 } else {
-                    start = Some(b);
+                    self.start = Some(b);
                 }
-            } else if !char.is_whitespace() && start.is_none() {
-                start = Some(b);
+            } else if !char.is_whitespace() && self.start.is_none() {
+                self.start = Some(b);
             }
         }
 
-        let e = end.take().unwrap_or(command.len());
-        start.take().map(|s| (&command[s..e], s..e))
-    });
-    args.next();
-    args
+        let e = self.end.take().unwrap_or(self.command.len());
+        self.start.take().map(|s| (&self.command[s..e], s..e))
+    }
 }
-
-/// An [`Iterator`] over the arguments in a command call
-#[doc(hidden)]
-pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;
 
 macro_rules! parse_impl {
     ($t:ty) => {

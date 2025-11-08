@@ -7,6 +7,7 @@
 //! occupying very long ranges of [`Text`].
 use std::{
     self,
+    iter::Chain,
     ops::{Range, RangeBounds},
 };
 
@@ -477,7 +478,6 @@ impl InnerTags {
                         to_remove.insert(rm_i, i)
                     }
                 }
-                drop(iter);
 
                 for i in to_remove.into_iter().rev() {
                     self.list.remove(i);
@@ -516,46 +516,32 @@ impl InnerTags {
     ////////// Iterator functions
 
     /// Returns a forward iterator at a given byte
-    #[define_opaque(FwdTags)]
     pub fn fwd_at(&self, b: usize) -> FwdTags<'_> {
-        let s_i = {
+        let start = {
             let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
             s_i.saturating_sub(self.bounds.min_len())
         };
 
-        let is_before = move |([n, b], tag): ([usize; 2], _)| (n < s_i).then_some((b, tag));
-        let bounds = self.bounds.iter_fwd().map_while(is_before);
-
-        let tags = self.list.iter_fwd(s_i..).map(|(n, (b, tag))| match tag {
-            StartConceal(tagger) => match self.bounds.match_of(n) {
-                Some(([_, e_b], _)) => (b as usize, ConcealUntil(e_b as u32)),
-                _ => (b as usize, StartConceal(tagger)),
-            },
-            tag => (b as usize, tag),
-        });
-
+        let bounds = FwdBoundsBefore { iter: self.bounds.iter_fwd(), start };
+        let tags = FwdTagsMapper {
+            iter: self.list.iter_fwd(start..),
+            bounds: &self.bounds,
+        };
         bounds.into_iter().chain(tags).peekable()
     }
 
     /// Returns a reverse iterator at a given byte
-    #[define_opaque(RevTags)]
     pub fn rev_at(&self, b: usize) -> RevTags<'_> {
-        let e_i = {
+        let end = {
             let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
             (e_i + self.bounds.min_len()).min(self.list.len())
         };
 
-        let is_after = move |([n, b], tag): ([usize; 2], _)| (n > e_i).then_some((b, tag));
-        let bounds = self.bounds.iter_rev().map_while(is_after);
-
-        let tags = self.list.iter_rev(..e_i).map(|(n, (b, tag))| match tag {
-            EndConceal(tagger) => match self.bounds.match_of(n) {
-                Some(([_, s_b], _)) => (b as usize, ConcealUntil(s_b as u32)),
-                _ => (b as usize, EndConceal(tagger)),
-            },
-            tag => (b as usize, tag),
-        });
-
+        let bounds = RevBoundsAfter { iter: self.bounds.iter_rev(), end };
+        let tags = RevTagsMapper {
+            iter: self.list.iter_rev(..end),
+            bounds: &self.bounds,
+        };
         bounds.chain(tags).peekable()
     }
 
@@ -715,12 +701,89 @@ impl Eq for InnerTags {}
 ///
 /// This iterator automatically takes into account [`TagRange`]s and
 /// iterates their bounds as if they were regular [`RawTag`]s
-pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
+pub type FwdTags<'a> = std::iter::Peekable<Chain<FwdBoundsBefore<'a>, FwdTagsMapper<'a>>>;
+
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct FwdTagsMapper<'a> {
+    iter: crate::text::shift_list::IterFwd<'a, (i32, RawTag)>,
+    bounds: &'a Bounds,
+}
+
+impl Iterator for FwdTagsMapper<'_> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(n, (b, tag))| match tag {
+            StartConceal(tagger) => match self.bounds.match_of(n) {
+                Some(([_, e_b], _)) => (b as usize, ConcealUntil(e_b as u32)),
+                _ => (b as usize, StartConceal(tagger)),
+            },
+            tag => (b as usize, tag),
+        })
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct FwdBoundsBefore<'a> {
+    iter: self::bounds::IterFwd<'a>,
+    start: usize,
+}
+
+impl Iterator for FwdBoundsBefore<'_> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let start = self.start;
+        let is_before = move |([n, b], tag): ([usize; 2], _)| (n < start).then_some((b, tag));
+        self.iter.next().and_then(is_before)
+    }
+}
+
 /// A reverse [`Iterator`] of [`RawTag`]s
 ///
 /// This iterator automatically takes into account [`TagRange`]s and
 /// iterates their bounds as if they were regular [`RawTag`]s
-pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
+pub type RevTags<'a> = std::iter::Peekable<Chain<RevBoundsAfter<'a>, RevTagsMapper<'a>>>;
+
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct RevTagsMapper<'a> {
+    iter: crate::text::shift_list::IterRev<'a, (i32, RawTag)>,
+    bounds: &'a Bounds,
+}
+
+impl Iterator for RevTagsMapper<'_> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(n, (b, tag))| match tag {
+            EndConceal(tagger) => match self.bounds.match_of(n) {
+                Some(([_, s_b], _)) => (b as usize, ConcealUntil(s_b as u32)),
+                _ => (b as usize, EndConceal(tagger)),
+            },
+            tag => (b as usize, tag),
+        })
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct RevBoundsAfter<'a> {
+    iter: self::bounds::IterRev<'a>,
+    end: usize,
+}
+
+impl Iterator for RevBoundsAfter<'_> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let end = self.end;
+        let is_after = move |([n, b], tag): ([usize; 2], _)| (n > end).then_some((b, tag));
+        self.iter.next().and_then(is_after)
+    }
+}
 
 mod ids {
     use std::sync::atomic::{AtomicU16, Ordering};

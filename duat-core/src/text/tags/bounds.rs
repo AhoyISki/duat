@@ -199,17 +199,13 @@ impl Bounds {
     }
 
     /// Iterates over the bounds
-    pub fn iter_fwd(&self) -> impl Iterator<Item = ([usize; 2], RawTag)> + Clone {
-        self.list
-            .iter_fwd(..)
-            .map(|(_, (bound, tag, _))| (bound.map(|x| x as usize), tag))
+    pub fn iter_fwd(&self) -> IterFwd<'_> {
+        IterFwd { iter: self.list.iter_fwd(..) }
     }
 
     /// Iterates over the bounds
-    pub fn iter_rev(&self) -> impl Iterator<Item = ([usize; 2], RawTag)> + Clone {
-        self.list
-            .iter_rev(..)
-            .map(|(_, (bound, tag, _))| (bound.map(|x| x as usize), tag))
+    pub fn iter_rev(&self) -> IterRev<'_> {
+        IterRev { iter: self.list.iter_rev(..) }
     }
 
     /// Takes the ranges of ranges_to_update
@@ -235,6 +231,38 @@ impl Bounds {
         } else {
             self.list.iter_rev(..i).find_map(is_matching).unwrap()
         })
+    }
+}
+
+/// A forward iterator for the [`Bounds`]
+#[derive(Debug, Clone)]
+pub struct IterFwd<'a> {
+    iter: crate::text::shift_list::IterFwd<'a, ([i32; 2], RawTag, RangeId)>,
+}
+
+impl Iterator for IterFwd<'_> {
+    type Item = ([usize; 2], RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter
+            .next()
+            .map(|(_, (bound, tag, _))| (bound.map(|x| x as usize), tag))
+    }
+}
+
+/// A forward iterator for the [`Bounds`]
+#[derive(Debug, Clone)]
+pub struct IterRev<'a> {
+    iter: crate::text::shift_list::IterRev<'a, ([i32; 2], RawTag, RangeId)>,
+}
+
+impl Iterator for IterRev<'_> {
+    type Item = ([usize; 2], RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter
+            .next()
+            .map(|(_, (bound, tag, _))| (bound.map(|x| x as usize), tag))
     }
 }
 

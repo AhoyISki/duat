@@ -11,6 +11,7 @@
 //! desynchronized global state accessibility.
 use std::{
     any::type_name,
+    iter::Chain,
     sync::{Arc, Mutex},
 };
 
@@ -23,7 +24,7 @@ use crate::{
     mode,
     opts::PrintOpts,
     text::{SpawnId, Text, txt},
-    ui::{PushSpecs, RwArea, DynSpawnSpecs, Ui},
+    ui::{DynSpawnSpecs, PushSpecs, RwArea, Ui},
 };
 
 /// A list of all [`Window`]s in Duat
@@ -1080,41 +1081,16 @@ impl Window {
     ////////// Querying functions
 
     /// An [`Iterator`] over the [`Node`]s in a [`Window`]
-    #[define_opaque(InnerIter)]
-    pub(crate) fn nodes<'a>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl ExactSizeIterator<Item = &'a Node> + DoubleEndedIterator {
-        struct InnerChain<'a>(InnerIter<'a>, usize);
-
-        impl<'a> Iterator for InnerChain<'a> {
-            type Item = &'a Node;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                self.0.next()
-            }
-        }
-
-        impl<'a> DoubleEndedIterator for InnerChain<'a> {
-            fn next_back(&mut self) -> Option<Self::Item> {
-                self.0.next_back()
-            }
-        }
-
-        impl<'a> ExactSizeIterator for InnerChain<'a> {
-            fn len(&self) -> usize {
-                self.1
-            }
-        }
-
+    pub(crate) fn nodes<'a>(&'a self, pa: &'a Pass) -> Nodes<'a> {
         let inner = self.0.read(pa);
-        InnerChain(
-            inner
-                .nodes
-                .iter()
-                .chain(inner.spawned.iter().map(|(_, node)| node)),
-            inner.nodes.len() + inner.spawned.len(),
-        )
+
+        let spawned = SpawnedNodes { iter: inner.spawned.iter() };
+
+        Nodes {
+            iter: inner.nodes.iter().chain(spawned),
+            len: inner.nodes.len() + inner.spawned.len(),
+            taken: 0,
+        }
     }
 
     /// An [`Iterator`] over all [`Handle`]s in a `Window`
@@ -1254,4 +1230,52 @@ enum Location {
     Spawned(SpawnId),
 }
 
-type InnerIter<'a> = impl DoubleEndedIterator<Item = &'a Node>;
+#[derive(Debug, Clone)]
+pub(crate) struct Nodes<'a> {
+    iter: Chain<std::slice::Iter<'a, Node>, SpawnedNodes<'a>>,
+    len: usize,
+    taken: usize,
+}
+
+impl<'a> Iterator for Nodes<'a> {
+    type Item = &'a Node;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.iter.next();
+        self.taken += next.is_some() as usize;
+        next
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len - self.taken, Some(self.len - self.taken))
+    }
+}
+
+impl<'a> DoubleEndedIterator for Nodes<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let next = self.iter.next_back();
+        self.taken += next.is_some() as usize;
+        next
+    }
+}
+
+impl ExactSizeIterator for Nodes<'_> {}
+
+#[derive(Debug, Clone)]
+struct SpawnedNodes<'a> {
+    iter: std::slice::Iter<'a, (SpawnId, Node)>,
+}
+
+impl<'a> Iterator for SpawnedNodes<'a> {
+    type Item = &'a Node;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, node)| node)
+    }
+}
+
+impl DoubleEndedIterator for SpawnedNodes<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back().map(|(_, node)| node)
+    }
+}

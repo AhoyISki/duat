@@ -312,9 +312,26 @@ impl IntoIterator for Ranges {
     type IntoIter = IntoIter;
     type Item = Range<usize>;
 
-    #[define_opaque(IntoIter)]
     fn into_iter(self) -> Self::IntoIter {
-        self.list.into_iter().enumerate().map(move |(i, range)| {
+        IntoIter {
+            iter: self.list.into_iter().enumerate(),
+            from: self.from,
+            shift: self.shift,
+        }
+    }
+}
+
+pub struct IntoIter {
+    iter: std::iter::Enumerate<gapbuf::IntoIter<Range<i32>>>,
+    from: usize,
+    shift: i32,
+}
+
+impl Iterator for IntoIter {
+    type Item = Range<usize>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(i, range)| {
             if i >= self.from {
                 (range.start + self.shift) as usize..(range.end + self.shift) as usize
             } else {
@@ -324,7 +341,7 @@ impl IntoIterator for Ranges {
     }
 }
 
-pub type IntoIter = impl ExactSizeIterator<Item = Range<usize>>;
+impl ExactSizeIterator for IntoIter {}
 
 #[track_caller]
 fn assert_range(range: &Range<usize>) {
