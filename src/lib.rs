@@ -8,8 +8,6 @@
 //!
 //! [`Selections`]: duat_core::mode::Selections
 //! [`Change`]: duat_core::text::Change
-#![feature(decl_macro, iter_order_by)]
-
 use std::ops::Range;
 
 use duat_core::{
@@ -201,9 +199,11 @@ impl BufferJumps for Buffer {
                         }
                         Jump::Multiple(sels, main) => {
                             if *main == selections.main_index()
-                                && sels.iter().eq_by(selections.iter(), |lhs, (rhs, _)| {
-                                    *lhs == rhs.byte_range(self.bytes())
-                                })
+                                && sels.len() == selections.len()
+                                && sels
+                                    .iter()
+                                    .zip(selections.iter())
+                                    .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(self.bytes()))
                             {
                                 return false;
                             }
