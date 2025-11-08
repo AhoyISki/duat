@@ -41,25 +41,25 @@ impl IncSearcher for Split {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             let Some(anchor) = c.anchor() else { return };
-            
+
             let ranges: Vec<usize> = c
                 .search_inc_fwd(Some(anchor))
                 .flat_map(|r| [r.start, r.end])
                 .collect();
 
-            let cursors_to_add = ranges.len() / 2 + 1;
-            let iter = [c.caret().byte()]
+            let mut iter = [c.caret().byte()]
                 .into_iter()
                 .chain(ranges)
-                .chain([anchor.byte()])
-                .array_chunks();
+                .chain([anchor.byte()]);
 
-            for (i, [p0, p1]) in iter.enumerate() {
+            while let Some(p0) = iter.next()
+                && let Some(p1) = iter.next()
+            {
                 c.move_to(p0..p1);
-                if i < cursors_to_add {
-                    c.copy();
-                }
+                c.copy();
             }
+
+            c.destroy();
         })
     }
 

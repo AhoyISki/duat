@@ -85,12 +85,12 @@
 //!
 //! ` `\
 //! Inside/around whitespace.
-//! 
+//!
 //! </details>
 //!
 //! <details>
 //! <summary>
-//! 
+//!
 //! ## Selection keys
 //!
 //! </summary>
@@ -440,14 +440,6 @@
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
 //! [word chars]: duat_core::opts::PrintOpts::extra_word_chars
 //! [tab mode]: opts::set_very_smart_tabs
-#![feature(
-    iter_map_windows,
-    if_let_guard,
-    iter_array_chunks,
-    iter_intersperse,
-    try_blocks
-)]
-
 use std::{
     collections::HashMap,
     ops::Range,
@@ -496,7 +488,7 @@ mod parameter {
     /// [`Normal`]: crate::Normal
     pub fn add_to_param(pa: &mut Pass, num: u32) {
         let value = VALUE.read(pa);
-        match try { value.checked_mul(10)?.checked_add(num)? } {
+        match value.checked_mul(10).and_then(|v| v.checked_add(num)) {
             Some(new_value) => *VALUE.write(pa) = new_value,
             None => context::warn!("Duat's parameter overflowed"),
         };
@@ -806,8 +798,14 @@ impl<'a> Object<'a> {
             BRACKET_PATS.get_or_insert_with(brackets, || {
                 let (s_pat, e_pat): (String, String) = brackets
                     .iter()
-                    .map(|[s_b, e_b]| (*s_b, *e_b))
-                    .intersperse(("|", "|"))
+                    .enumerate()
+                    .map(|(i, [s_b, e_b])| {
+                        if i > 0 {
+                            (format!("|{}", *s_b), format!("|{}", *e_b))
+                        } else {
+                            (s_b.to_string(), e_b.to_string())
+                        }
+                    })
                     .collect();
                 let (s_arg, e_arg) = (format!(r"({s_pat})\s*"), format!(r"\s*({e_pat})"));
 

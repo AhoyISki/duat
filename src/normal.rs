@@ -189,7 +189,7 @@ impl Mode for Normal {
             ////////// Object selection keys
             event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
-                if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
+                if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
                     let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
@@ -201,7 +201,7 @@ impl Mode for Normal {
             }),
             event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
-                if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
+                if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
                     let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
@@ -215,9 +215,9 @@ impl Mode for Normal {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 let init = {
                     let iter = [(c.caret(), c.char())].into_iter().chain(c.chars_rev());
-                    no_nl_windows(iter).next()
+                    no_nl_pair(iter)
                 };
-                if let Some(((p1, c1), (_, c0))) = init {
+                if let Some([(p1, c1), (_, c0)]) = init {
                     let moved = p1 != c.caret();
                     c.move_to(p1);
                     if !move_to_match([c1, c0], alt_word, moved) {
@@ -905,11 +905,20 @@ impl Brackets {
     }
 }
 
-fn no_nl_windows<'a>(
-    iter: impl Iterator<Item = (Point, char)> + 'a,
-) -> impl Iterator<Item = ((Point, char), (Point, char))> + 'a {
-    iter.map_windows(|[first, second]| (*first, *second))
-        .skip_while(|((_, c0), (_, c1))| *c0 == '\n' || *c1 == '\n')
+fn no_nl_pair(iter: impl Iterator<Item = (Point, char)>) -> Option<[(Point, char); 2]> {
+    let mut entry0 = None;
+
+    for (point, char) in iter {
+        if char == '\n' {
+            entry0 = None;
+        } else if let Some(entry0) = entry0 {
+            return Some([entry0, (point, char)]);
+        } else {
+            entry0 = Some((point, char));
+        }
+    }
+
+    None
 }
 
 fn word_and_space(alt_word: bool, opts: PrintOpts) -> String {

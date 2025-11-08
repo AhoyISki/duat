@@ -11,7 +11,7 @@ use crate::{
     select_to_end_of_line, set_anchor_if_needed,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) enum OneKey {
     GoTo(SelType),
     Find(usize, SelType, bool),
@@ -25,11 +25,10 @@ impl Mode for OneKey {
     type Widget = Buffer;
 
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
-        let sel_type = match *self {
-            OneKey::GoTo(st) => match_goto(pa, &handle, key_event, st),
-            OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss)
-                if let Some(char) = just_char(key_event) =>
-            {
+        let just_char = just_char(key_event);
+        let sel_type = match (*self, just_char) {
+            (OneKey::GoTo(st), _) => match_goto(pa, &handle, key_event, st),
+            (OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss), Some(char)) => {
                 let is_t = matches!(*self, OneKey::Until(..));
                 match_find_until(pa, handle, char, nth, is_t, st);
                 if ss {
@@ -37,12 +36,12 @@ impl Mode for OneKey {
                 }
                 SelType::Normal
             }
-            OneKey::Inside(nth, brackets) | OneKey::Around(nth, brackets) => {
+            (OneKey::Inside(nth, brackets) | OneKey::Around(nth, brackets), _) => {
                 let is_inside = matches!(*self, OneKey::Inside(..));
                 match_inside_around(pa, handle, key_event, nth, brackets, is_inside);
                 SelType::Normal
             }
-            OneKey::Replace if let Some(char) = just_char(key_event) => {
+            (OneKey::Replace, Some(char)) => {
                 handle.edit_all(pa, |mut c| {
                     let anchor_didnt_exist = c.set_anchor_if_needed();
                     let len = c.selection().flat_map(str::chars).count();
