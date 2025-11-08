@@ -353,6 +353,8 @@ impl Clone for Prompt {
 /// };
 ///
 /// impl PromptMode for RealTimeSwitch {
+///     type ExitWidget = Buffer;
+///     
 ///     fn update(&mut self, pa: &mut Pass, text: Text, area: &ui::RwArea) -> Text {
 ///         let name = text.to_string();
 ///

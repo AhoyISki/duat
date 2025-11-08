@@ -1,6 +1,6 @@
 [package]
 name = "duat-base"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "Basic components common in Duat, included by default on duat"
@@ -14,6 +14,6 @@ categories = ["command-line-utilities", "text-editors", "config"]
 missing_docs = "warn"
 
 [dependencies]
-format-like = "0.3.0"
-duat-core = { version = "0.7.0", path = "../duat-core/" }
+format-like = "0.4.0"
+duat-core = "0.7.2"
 regex-syntax = "0.8.8"

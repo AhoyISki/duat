@@ -266,7 +266,6 @@ use crate::{
 /// of the [`Window`], right below the [`Buffer`]s:
 ///
 /// ```rust
-/// #![feature(default_field_values)]
 /// # duat_core::doc_duat!(duat);
 /// use std::{
 ///     sync::OnceLock,
@@ -288,7 +287,7 @@ use crate::{
 ///             let specs = ui::PushSpecs {
 ///                 side: ui::Side::Below,
 ///                 height: Some(1.0),
-///                 ..
+///                 ..Default::default()
 ///             };
 ///             window.push_inner(pa, UpTime::new(), specs);
 ///             Ok(())

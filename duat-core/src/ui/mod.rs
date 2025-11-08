@@ -150,17 +150,15 @@ impl From<PushSpecs> for Axis {
 ///
 /// Then the widget should be pushed to the left, with a width of 3,
 /// an unspecified height, _not_ hidden by default and clustered if
-/// possible. Note that, with `#[feature(default_field_values)]`, the
-/// same can be accomplished by the following:
+/// possible. Note that you can shorten the definition above:
 ///
 /// ```rust
-/// #![feature(default_field_values)]
 /// # duat_core::doc_duat!(duat);
 /// use duat::prelude::*;
 /// let specs = ui::PushSpecs {
 ///     side: ui::Side::Left,
 ///     width: Some(3.0),
-///     ..
+///     ..Default::default()
 /// };
 /// ```
 ///

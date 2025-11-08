@@ -10,7 +10,6 @@
 //! here's a spiraled layout:
 //!
 //! ```rust
-//! #![feature(default_field_values)]
 //! # duat_core::doc_duat!(duat);
 //! use duat::prelude::*;
 //! use ui::{PushSpecs, Side, Window, layout::Layout};
@@ -24,10 +23,10 @@
 //!         let last = buffers.iter().last().unwrap().clone();
 //!
 //!         match buffers.len() % 4 {
-//!             0 => (last, PushSpecs { side: Side::Right, .. }),
-//!             1 => (last, PushSpecs { side: Side::Below, .. }),
-//!             2 => (last, PushSpecs { side: Side::Left, .. }),
-//!             3 => (last, PushSpecs { side: Side::Above, .. }),
+//!             0 => (last, PushSpecs { side: Side::Right, ..Default::default() }),
+//!             1 => (last, PushSpecs { side: Side::Below, ..Default::default() }),
+//!             2 => (last, PushSpecs { side: Side::Left, ..Default::default() }),
+//!             3 => (last, PushSpecs { side: Side::Above, ..Default::default() }),
 //!             _ => unreachable!("That's not how math works, man!"),
 //!         }
 //!     }

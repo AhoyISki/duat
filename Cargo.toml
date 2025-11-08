@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "A modern, very customizable text editor, configured in rust."
@@ -18,44 +18,41 @@ missing_docs = "warn"
 unit_arg = "allow"
 
 [dependencies]
-duat-core = "0.7.0"
+duat-core = "0.7.2"
 dirs-next = "2.0.0"
 log = "0.4.28"
 
 # List of UIs.
-duat-term = { version = "0.7.0", optional = true }
+duat-term = { version = "0.7.2", optional = true }
 
 # Default plugins
-duat-base = "0.7.0"
-duat-filetype = "0.3.0"
-duatmode =  "0.7.0"
-duat-treesitter = { version = "0.3.2", optional = true }
-duat-match-pairs = { version = "0.2.0", optional = true }
+duat-base = "0.7.2"
+duat-filetype = "0.3.2"
+duatmode =  "0.7.2"
+duat-treesitter = { version = "0.3.3", optional = true }
+duat-match-pairs = { version = "0.2.1", optional = true }
 
+# Will become optional if Rust ever gets binary only dependencies.
+# Or once downloading is predominantly through package managers.
 # Cli dependencies
 [dependencies.clap]
 version = "4.5.50"
 features = ["derive"]
-optional = true
 
 [dependencies.libloading]
 version = "0.8.9"
-optional = true
 
 [dependencies.notify]
 version = "8.2.0"
-optional = true
 
 [dependencies.convert_case]
 version = "0.8.0"
-optional = true
 
 [features]
-default = ["term-ui", "treesitter", "cli"]
+default = ["term-ui", "treesitter"]
 term-ui = ["dep:duat-term"]
 deadlocks = ["duat-core/deadlocks"]
 git-deps = []
-cli = ["dep:clap", "dep:libloading", "dep:notify", "dep:convert_case"]
 treesitter = ["dep:duat-treesitter", "dep:duat-match-pairs"]
 
 [[bin]]

@@ -22,12 +22,8 @@ incremental = true
 lto = "off"
 
 [dependencies]
-
-[dependencies.duat]
+duat = "0.7.4"
 git = "https://github.com/AhoyISki/duat"
-version = "0.7.0"
-default-features = false
-features = ["term-ui", "treesitter"]
 
 # Same with this one, it just adds more colorschemes.
 [dependencies.duat-catppuccin]
