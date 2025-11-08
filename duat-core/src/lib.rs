@@ -5,15 +5,7 @@
 //! should make use of the [duat] crate.
 //!
 //! [duat]: https://crates.io/duat
-#![feature(
-    decl_macro,
-    type_alias_impl_trait,
-    dropck_eyepatch,
-    default_field_values,
-    const_trait_impl,
-    const_cmp,
-    arbitrary_self_types
-)]
+#![feature(type_alias_impl_trait, dropck_eyepatch)]
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -243,60 +235,65 @@ pub mod clipboard {
 }
 
 ////////// Text Builder macros (for pub/private bending)
-mod private_exports {
+#[doc(hidden)]
+pub mod private_exports {
     pub use format_like::format_like;
 
-    pub macro log($lvl:expr, $($arg:tt)*) {{
-        #[allow(unused_must_use)]
-        let text = $crate::text::txt!($($arg)*);
+    macro_rules! __log__ {
+        ($lvl:expr, $($arg:tt)*) => {{
+            #[allow(unused_must_use)]
+            let text = $crate::text::txt!($($arg)*);
 
-		$crate::context::logs().push_record($crate::context::Record::new(
-    		text,
-    		$lvl,
-		));
-    }}
+    		$crate::context::logs().push_record($crate::context::Record::new(
+        		text,
+        		$lvl,
+    		));
+        }}
+    }
 
-    pub macro parse_str($builder:expr, $str:literal) {{
-        let builder = $builder;
-        builder.push_str($str);
-        builder
-    }}
+    macro_rules! __parse_str__ {
+        ($builder:expr, $str:literal) => {{
+            let builder = $builder;
+            builder.push_str($str);
+            builder
+        }};
+    }
 
-    pub macro parse_arg {
-        ($builder:expr, "", $arg:expr) => {{
+    macro_rules! __parse_arg__ {
+        ($builder:expr,"", $arg:expr) => {{
             let builder = $builder;
             builder.push_builder_part($arg.into());
             builder
-        }},
+        }};
         ($builder:expr, $modif:literal, $arg:expr) => {{
             let builder = $builder;
             builder.push_str(format!(concat!("{:", $modif, "}"), &$arg));
             builder
-        }},
+        }};
     }
 
-    pub macro parse_form {
+    macro_rules! __parse_form__ {
         ($builder:expr, $priority:literal,) => {{
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
             let id = $crate::form::DEFAULT_ID;
             builder.push_builder_part(id.to_tag(PRIORITY).into());
             builder
-        }},
+        }};
         ($builder:expr, $priority:literal, a) => {{
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
             let id = $crate::form::ACCENT_ID;
             builder.push_builder_part(id.to_tag(PRIORITY).into());
             builder
-        }},
+        }};
         ($builder:expr, $priority:literal, $($form:tt)*) => {{
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
             let id = $crate::form::id_of!(concat!($(stringify!($form)),*));
             builder.push_builder_part(id.to_tag(PRIORITY).into());
             builder
-        }},
+        }};
     }
 }
 

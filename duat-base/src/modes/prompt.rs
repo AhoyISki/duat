@@ -396,8 +396,9 @@ impl Clone for Prompt {
 pub trait PromptMode: Send + 'static {
     /// What [`Widget`] to exit to, upon pressing enter, esc, or
     /// backspace in an empty [`PromptLine`]
+    ///
+    /// Usually, this would be [`Buffer`]
     type ExitWidget: Widget
-        = Buffer
     where
         Self: Sized;
 
@@ -469,6 +470,8 @@ impl RunCommands {
 }
 
 impl PromptMode for RunCommands {
+    type ExitWidget = Buffer;
+
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         text.remove_tags(*TAGGER, ..);
 
@@ -567,6 +570,8 @@ impl<I: IncSearcher> IncSearch<I> {
 }
 
 impl<I: IncSearcher> PromptMode for IncSearch<I> {
+    type ExitWidget = Buffer;
+
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*TAGGER, ..);
@@ -668,6 +673,8 @@ impl PipeSelections {
 }
 
 impl PromptMode for PipeSelections {
+    type ExitWidget = Buffer;
+
     fn update(&mut self, _: &mut Pass, mut text: Text, _: &RwArea) -> Text {
         fn is_in_path(program: &str) -> bool {
             if let Ok(path) = std::env::var("PATH") {

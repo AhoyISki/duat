@@ -96,15 +96,17 @@ impl Widget for LogBook {
 pub struct LogBookOpts {
     fmt: Box<dyn FnMut(Record) -> Option<Text> + Send>,
     /// Wether to close the `LogBook` when unfocusing
-    pub close_on_unfocus: bool = true,
+    pub close_on_unfocus: bool,
     /// Wether to hide the `LogBook` by default
-    pub hidden: bool = true,
+    pub hidden: bool,
     /// To which side to push the [`LogBook`] to
-    pub side: Side = Side::Below,
-    /// Requested height for the [`LogBook`], ignored if pushing horizontally
-    pub height: f32 = 8.0,
-    /// Requested width for the [`LogBook`], ignored if pushing vertically
-    pub width: f32 = 50.0,
+    pub side: Side,
+    /// Requested height for the [`LogBook`], ignored if pushing
+    /// horizontally
+    pub height: f32,
+    /// Requested width for the [`LogBook`], ignored if pushing
+    /// vertically
+    pub width: f32,
 }
 
 impl LogBookOpts {
@@ -133,13 +135,13 @@ impl LogBookOpts {
                 side: self.side,
                 width: Some(self.width),
                 hidden: self.hidden,
-                ..
+                ..Default::default()
             },
             Side::Above | Side::Below => PushSpecs {
                 side: self.side,
                 height: Some(self.height),
                 hidden: self.hidden,
-                ..
+                ..Default::default()
             },
         };
 
@@ -181,6 +183,13 @@ impl Default for LogBookOpts {
             Some(builder.build())
         }
 
-        Self { fmt: Box::new(default_fmt), .. }
+        Self {
+            fmt: Box::new(default_fmt),
+            close_on_unfocus: true,
+            hidden: true,
+            side: Side::Below,
+            height: 8.0,
+            width: 50.0,
+        }
     }
 }

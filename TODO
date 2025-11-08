@@ -13,6 +13,7 @@ FOR NEXT UPDATE:
 [ ] File tracking.
 [ ] Actually fix injected indentation.
 [ ] Mode keybindings info.
+[ ] Move to Rust stable (sigh...).
 
 KNOWN BUGS:
  HIGH PRIORITY:

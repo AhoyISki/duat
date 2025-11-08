@@ -82,9 +82,9 @@ impl Layout for MasterOnLeft {
         let cur_win = context::current_win_index(pa);
         let last = windows[cur_win].buffers(pa).last().unwrap().clone();
         if windows[cur_win].buffers(pa).len() == 1 {
-            (last, PushSpecs { side: Side::Right, .. })
+            (last, PushSpecs { side: Side::Right, ..Default::default() })
         } else {
-            (last, PushSpecs { side: Side::Below, .. })
+            (last, PushSpecs { side: Side::Below, ..Default::default() })
         }
     }
 }

@@ -356,7 +356,7 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) fn send_key(pa: &mut Pass, mut key: KeyEvent) {
+    pub(crate) fn send_key_event(pa: &mut Pass, mut key: KeyEvent) {
         // No need to send shift to, for example, Char('L').
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);

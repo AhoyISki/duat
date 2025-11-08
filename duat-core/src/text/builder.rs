@@ -419,18 +419,87 @@ impl<'a> From<&'a std::path::Path> for BuilderPart<std::borrow::Cow<'a, str>> {
 /// TODO: Docs
 ///
 /// [`Text`]: super::Text
-pub macro txt($($parts:tt)+) {{
-    #[allow(unused_imports)]
-    use $crate::private_exports::{format_like, parse_arg, parse_form, parse_str};
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __txt__ {
+    ($($parts:tt)+) => {{
+        #[allow(unused_imports)]
+        use $crate::{__parse_arg__, __parse_form__, __parse_str__, private_exports::format_like};
 
-    let mut builder = $crate::text::Builder::new();
+        let mut builder = $crate::text::Builder::new();
 
-    format_like!(
-        parse_str,
-        [('{', parse_arg, false), ('[', parse_form, true)],
-        &mut builder,
-        $($parts)*
-    );
+        format_like!(
+            __parse_str__,
+            [('{', __parse_arg__, false), ('[', __parse_form__, true)],
+            &mut builder,
+            $($parts)*
+        );
 
-    builder.build()
-}}
+        builder.build()
+    }};
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __log__ {
+    ($lvl:expr, $($arg:tt)*) => {{
+        #[allow(unused_must_use)]
+        let text = $crate::text::txt!($($arg)*);
+
+        $crate::context::logs().push_record($crate::context::Record::new(
+            text,
+            $lvl,
+        ));
+    }}
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __parse_str__ {
+    ($builder:expr, $str:literal) => {{
+        let builder = $builder;
+        builder.push_str($str);
+        builder
+    }};
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __parse_arg__ {
+    ($builder:expr,"", $arg:expr) => {{
+        let builder = $builder;
+        builder.push_builder_part($arg.into());
+        builder
+    }};
+    ($builder:expr, $modif:literal, $arg:expr) => {{
+        let builder = $builder;
+        builder.push_str(format!(concat!("{:", $modif, "}"), &$arg));
+        builder
+    }};
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __parse_form__ {
+    ($builder:expr, $priority:literal,) => {{
+        const PRIORITY: u8 = $crate::priority($priority);
+        let builder = $builder;
+        let id = $crate::form::DEFAULT_ID;
+        builder.push_builder_part(id.to_tag(PRIORITY).into());
+        builder
+    }};
+    ($builder:expr, $priority:literal, a) => {{
+        const PRIORITY: u8 = $crate::priority($priority);
+        let builder = $builder;
+        let id = $crate::form::ACCENT_ID;
+        builder.push_builder_part(id.to_tag(PRIORITY).into());
+        builder
+    }};
+    ($builder:expr, $priority:literal, $($form:tt)*) => {{
+        const PRIORITY: u8 = $crate::priority($priority);
+        let builder = $builder;
+        let id = $crate::form::id_of!(concat!($(stringify!($form)),*));
+        builder.push_builder_part(id.to_tag(PRIORITY).into());
+        builder
+    }};
+}

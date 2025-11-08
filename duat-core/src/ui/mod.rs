@@ -67,7 +67,7 @@ mod window;
 ///
 /// For non terminal GUIs, an integer should have the same
 /// representation, but fractional values should be permitted as well.
-#[derive(Default, Debug, Clone, Copy, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Coord {
     /// The x value of this coordinate. In a terminal cell, it would
     /// be the top left corner.
@@ -165,34 +165,47 @@ impl From<PushSpecs> for Axis {
 /// ```
 ///
 /// Since the remaining values are the default.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct PushSpecs {
     /// Which [`Side`] to push the [`Widget`] to
-    pub side: Side = Side::Below,
+    pub side: Side,
     /// A width (in character cells) for this `Widget`
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
-    pub width: Option<f32> = None,
+    pub width: Option<f32>,
     /// A height (in lines) for this `Widget`
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
-    pub height: Option<f32> = None,
+    pub height: Option<f32>,
     /// Hide this `Widget` by default
     ///
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
-    pub hidden: bool = false,
+    pub hidden: bool,
     /// Cluster this `Widget` when pushing
     ///
     /// This makes it so, if the main `Widget` is moved or deleted,
     /// then this one will follow. Useful for things like
-    /// [`LineNumbers`], since they should follow their [`Buffer`] around.
+    /// [`LineNumbers`], since they should follow their [`Buffer`]
+    /// around.
     ///
     /// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
     /// [`Buffer`]: crate::buffer::Buffer
-    pub cluster: bool = true,
+    pub cluster: bool,
+}
+
+impl Default for PushSpecs {
+    fn default() -> Self {
+        Self {
+            side: Side::Right,
+            width: None,
+            height: None,
+            hidden: false,
+            cluster: true,
+        }
+    }
 }
 
 impl PushSpecs {
@@ -243,22 +256,22 @@ pub struct DynSpawnSpecs {
     /// The orientation to place this [`Widget`] in
     ///
     /// May receive some reworks in the future.
-    pub orientation: Orientation = Orientation::VerLeftBelow,
+    pub orientation: Orientation,
     /// A width (in character cells) for this `Widget`
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
-    pub width: Option<f32> = None,
+    pub width: Option<f32>,
     /// A height (in lines) for this `Widget`
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
-    pub height: Option<f32> = None,
+    pub height: Option<f32>,
     /// Hide this `Widget` by default
     ///
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
-    pub hidden: bool = false,
+    pub hidden: bool,
 }
 
 impl DynSpawnSpecs {
@@ -274,7 +287,8 @@ impl DynSpawnSpecs {
 /// Information about how a [`Widget`] should be spawned statically
 ///
 /// Statically spawned `Widget`s are those that are placed in a
-/// [`Coord`] on screen via [`Window::spawn`] and don't change location.
+/// [`Coord`] on screen via [`Window::spawn`] and don't change
+/// location.
 ///
 /// This is in contrast with [`DynSpawnSpecs`], which are allowed to
 /// be moved automatically, due to being spawned on [`Handle`]s or
@@ -308,11 +322,12 @@ impl StaticSpawnSpecs {
 
 /// A direction, where a [`Widget`] will be placed in relation to
 /// another.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     /// Put the [`Widget`] above another
     Above,
     /// Put the [`Widget`] on the right
+    #[default]
     Right,
     /// Put the [`Widget`] on the left
     Below,
@@ -379,7 +394,7 @@ impl Side {
 ///
 /// [`HorCenterRight`]: Orientation::HorCenterRight
 /// [`HorBottomRight`]: Orientation::HorBottomRight
-#[derive(Clone, Copy, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum Orientation {
     /// Place the [`Widget`] vertically, prioritizing the left edge
     /// above
@@ -391,6 +406,7 @@ pub enum Orientation {
     VerRightAbove,
     /// Place the [`Widget`] vertically, prioritizing the left edge
     /// below
+    #[default]
     VerLeftBelow,
     /// Place the [`Widget`] vertically, prioritizing centering below
     VerCenterBelow,

@@ -4,7 +4,7 @@ mod print_info;
 use std::{io::Write, sync::Arc};
 
 use crossterm::{
-    cursor,
+    cursor, queue,
     style::{Attribute, Attributes},
 };
 use duat_core::{
@@ -20,7 +20,7 @@ use duat_core::{
 use iter::{print_iter, rev_print_iter};
 
 pub use self::print_info::PrintInfo;
-use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::Lines, queue};
+use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::Lines};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
 #[bincode(crate = "duat_core::context::bincode")]
@@ -278,7 +278,7 @@ impl Area {
                         && is_active
                     {
                         lines.show_real_cursor();
-                        queue!(lines, shape, cursor::SavePosition);
+                        queue!(lines, shape, cursor::SavePosition).unwrap();
                     } else {
                         cursor = Some(Cursor::Main);
                         lines.hide_real_cursor();
@@ -331,7 +331,8 @@ impl RawArea for Area {
     /////////// Modification
 
     fn push(
-        self: CoreAccess<Self>,
+        &self,
+        _: CoreAccess,
         specs: PushSpecs,
         on_files: bool,
         cache: PrintInfo,
@@ -344,7 +345,7 @@ impl RawArea for Area {
         ))
     }
 
-    fn delete(self: CoreAccess<Self>) -> (bool, Vec<Self>) {
+    fn delete(&self, _: CoreAccess) -> (bool, Vec<Self>) {
         let (do_rm_window, rm_areas) = self.layouts.delete(self.id);
         (
             do_rm_window,
@@ -355,12 +356,13 @@ impl RawArea for Area {
         )
     }
 
-    fn swap(self: CoreAccess<Self>, rhs: &Self) -> bool {
+    fn swap(&self, _: CoreAccess, rhs: &Self) -> bool {
         self.layouts.swap(self.id, rhs.id)
     }
 
     fn spawn(
-        self: CoreAccess<Self>,
+        &self,
+        _: CoreAccess,
         spawn_id: SpawnId,
         specs: DynSpawnSpecs,
         cache: Self::Cache,
@@ -372,7 +374,7 @@ impl RawArea for Area {
         ))
     }
 
-    fn set_width(self: CoreAccess<Self>, width: f32) -> Result<(), Text> {
+    fn set_width(&self, _: CoreAccess, width: f32) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, Some(width), None, None)
@@ -383,7 +385,7 @@ impl RawArea for Area {
         }
     }
 
-    fn set_height(self: CoreAccess<Self>, height: f32) -> Result<(), Text> {
+    fn set_height(&self, _: CoreAccess, height: f32) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, None, Some(height), None)
@@ -394,7 +396,7 @@ impl RawArea for Area {
         }
     }
 
-    fn hide(self: CoreAccess<Self>) -> Result<(), Text> {
+    fn hide(&self, _: CoreAccess) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, None, None, Some(true))
@@ -405,7 +407,7 @@ impl RawArea for Area {
         }
     }
 
-    fn reveal(self: CoreAccess<Self>) -> Result<(), Text> {
+    fn reveal(&self, _: CoreAccess) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, None, None, Some(false))
@@ -416,7 +418,7 @@ impl RawArea for Area {
         }
     }
 
-    fn width_of_text(self: CoreAccess<Self>, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
+    fn width_of_text(&self, _: CoreAccess, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
         let max = self
             .layouts
             .inspect(self.id, |_, layout| layout.max_value())
@@ -428,7 +430,7 @@ impl RawArea for Area {
         Ok(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
     }
 
-    fn scroll_ver(self: CoreAccess<Self>, text: &Text, by: i32, opts: PrintOpts) {
+    fn scroll_ver(&self, _: CoreAccess, text: &Text, by: i32, opts: PrintOpts) {
         if by == 0 {
             return;
         }
@@ -449,12 +451,7 @@ impl RawArea for Area {
 
     ////////// Printing
 
-    fn scroll_around_points(
-        self: CoreAccess<Self>,
-        text: &Text,
-        points: TwoPoints,
-        opts: PrintOpts,
-    ) {
+    fn scroll_around_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -469,7 +466,7 @@ impl RawArea for Area {
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn scroll_to_points(self: CoreAccess<Self>, text: &Text, points: TwoPoints, opts: PrintOpts) {
+    fn scroll_to_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -484,57 +481,60 @@ impl RawArea for Area {
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn set_as_active(self: CoreAccess<Self>) {
+    fn set_as_active(&self, _: CoreAccess) {
         self.layouts.set_active_id(self.id);
     }
 
-    fn print(self: CoreAccess<Self>, text: &Text, opts: PrintOpts, painter: Painter) {
-        Area::print(&self, text, opts, painter, |_, _| {})
+    fn print(&self, _: CoreAccess, text: &Text, opts: PrintOpts, painter: Painter) {
+        self.print(text, opts, painter, |_, _| {})
     }
 
     fn print_with<'a>(
-        self: CoreAccess<Self>,
+        &self,
+        _: CoreAccess,
         text: &Text,
         opts: PrintOpts,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        Area::print(&self, text, opts, painter, f)
+        self.print(text, opts, painter, f)
     }
 
     ////////// Queries
 
-    fn set_print_info(self: CoreAccess<Self>, info: Self::PrintInfo) {
+    fn set_print_info(&self, _: CoreAccess, info: Self::PrintInfo) {
         self.layouts.set_info_of(self.id, info);
     }
 
     fn print_iter<'a>(
-        self: CoreAccess<Self>,
+        &self,
+        ca: CoreAccess,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
     ) -> impl Iterator<Item = (Caret, Item)> + 'a {
-        let width = (self.bottom_right().x - self.top_left().x) as u32;
+        let width = (self.bottom_right(ca).x - self.top_left(ca).x) as u32;
         print_iter(text, points, width, opts)
     }
 
     fn rev_print_iter<'a>(
-        self: CoreAccess<Self>,
+        &self,
+        ca: CoreAccess,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
     ) -> impl Iterator<Item = (Caret, Item)> + 'a {
-        let width = (self.bottom_right().x - self.top_left().x) as u32;
+        let width = (self.bottom_right(ca).x - self.top_left(ca).x) as u32;
         rev_print_iter(text, points, opts.wrap_width(width).unwrap_or(width), opts)
     }
 
-    fn has_changed(self: CoreAccess<Self>) -> bool {
+    fn has_changed(&self, _: CoreAccess) -> bool {
         self.layouts
             .inspect(self.id, |rect, layout| rect.has_changed(layout))
             .unwrap_or(false)
     }
 
-    fn is_master_of(self: CoreAccess<Self>, other: &Self) -> bool {
+    fn is_master_of(&self, _: CoreAccess, other: &Self) -> bool {
         if other.id == self.id {
             return true;
         }
@@ -553,7 +553,7 @@ impl RawArea for Area {
         parent_id == self.id
     }
 
-    fn get_cluster_master(self: CoreAccess<Self>) -> Option<Self> {
+    fn get_cluster_master(&self, _: CoreAccess) -> Option<Self> {
         let id = self
             .layouts
             .inspect(self.id, |_, layout| layout.get_cluster_master(self.id))??;
@@ -565,12 +565,12 @@ impl RawArea for Area {
         })
     }
 
-    fn cache(self: CoreAccess<Self>) -> Option<Self::Cache> {
+    fn cache(&self, _: CoreAccess) -> Option<Self::Cache> {
         let info = self.layouts.get_info_of(self.id)?.for_caching();
         Some(info)
     }
 
-    fn top_left(self: CoreAccess<Self>) -> duat_core::ui::Coord {
+    fn top_left(&self, _: CoreAccess) -> duat_core::ui::Coord {
         self.layouts
             .coords_of(self.id, false)
             .map(|coords| duat_core::ui::Coord {
@@ -580,7 +580,7 @@ impl RawArea for Area {
             .unwrap_or_default()
     }
 
-    fn bottom_right(self: CoreAccess<Self>) -> duat_core::ui::Coord {
+    fn bottom_right(&self, _: CoreAccess) -> duat_core::ui::Coord {
         self.layouts
             .coords_of(self.id, false)
             .map(|coords| duat_core::ui::Coord {
@@ -590,7 +590,7 @@ impl RawArea for Area {
             .unwrap_or_default()
     }
 
-    fn start_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints {
+    fn start_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
@@ -603,7 +603,7 @@ impl RawArea for Area {
         start_points
     }
 
-    fn end_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints {
+    fn end_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
@@ -616,11 +616,11 @@ impl RawArea for Area {
         end_points
     }
 
-    fn get_print_info(self: CoreAccess<Self>) -> Self::PrintInfo {
+    fn get_print_info(&self, _: CoreAccess) -> Self::PrintInfo {
         self.layouts.get_info_of(self.id).unwrap_or_default()
     }
 
-    fn is_active(self: CoreAccess<Self>) -> bool {
+    fn is_active(&self, _: CoreAccess) -> bool {
         self.layouts.get_active_id() == self.id
     }
 }

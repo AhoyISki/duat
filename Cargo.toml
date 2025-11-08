@@ -66,9 +66,6 @@ path = "src/main.rs"
 name = "duat"
 path = "src/lib.rs"
 
-[build-dependencies]
-dirs-next = "2.0.0"
-
 [profile.lto-optimized]
 codegen-units = 1
 lto = true

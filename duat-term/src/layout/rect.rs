@@ -173,10 +173,11 @@ impl Rect {
             let is_resizable = target.is_resizable_on(axis, &cons);
             parent.set_pushed_eqs(i, orig_parent, p, frame, is_resizable, None);
 
-            let (parent, _) = orig_parent
+            orig_parent
                 .children_mut()
                 .unwrap()
-                .insert_mut(i, (parent, Constraints::default()));
+                .insert(i, (parent, Constraints::default()));
+            let (parent, _) = orig_parent.children_mut().unwrap().get_mut(i).unwrap();
 
             p.remove_eqs(cons.drain());
             p.add_eqs(cons.apply(&target, Some(parent)));
@@ -197,7 +198,10 @@ impl Rect {
 
             let (mut target, cons) = if let Some(info) = spawn_info {
                 let mut cons = std::mem::take(&mut info.cons);
-                let specs = DynSpawnSpecs { orientation: info.orientation, .. };
+                let specs = DynSpawnSpecs {
+                    orientation: info.orientation,
+                    ..Default::default()
+                };
 
                 p.add_eqs(info.cons.apply(&parent, None));
 

@@ -262,7 +262,7 @@ impl Layouts {
             layout
                 .get_mut(id)
                 .and_then(|rect| rect.print_info_mut())
-                .map(|info| *info == new)
+                .map(|info| *info = new)
                 .is_some()
         })
     }

@@ -418,7 +418,9 @@ impl<'a> Parameter<'a> for FormName {
     fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let arg = args.next()?;
         if !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '.') {
-            return Err(txt!("Expected identifiers separated by '.'s, found [a]{arg}"));
+            return Err(txt!(
+                "Expected identifiers separated by '.'s, found [a]{arg}"
+            ));
         }
         if crate::form::exists(arg) {
             Ok((arg, Some(form::id_of_non_static(arg))))
@@ -663,6 +665,22 @@ pub fn args_iter(command: &str) -> ArgsIter<'_> {
 #[doc(hidden)]
 pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;
 
+macro_rules! parse_impl {
+    ($t:ty) => {
+        impl Parameter<'_> for $t {
+            type Returns = Self;
+
+            fn new(_: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
+                let arg = args.next()?;
+                let arg = arg
+                    .parse()
+                    .map_err(|_| txt!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t)));
+                arg.map(|arg| (arg, None))
+            }
+        }
+    };
+}
+
 parse_impl!(bool);
 parse_impl!(u8);
 parse_impl!(u16);
@@ -679,17 +697,3 @@ parse_impl!(isize);
 parse_impl!(f32);
 parse_impl!(f64);
 parse_impl!(std::path::PathBuf);
-
-macro parse_impl($t:ty) {
-    impl Parameter<'_> for $t {
-        type Returns = Self;
-
-        fn new(_: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
-            let arg = args.next()?;
-            let arg = arg.parse().map_err(|_| {
-                txt!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t))
-            });
-            arg.map(|arg| (arg, None))
-        }
-    }
-}

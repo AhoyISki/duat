@@ -329,18 +329,12 @@
 //! [`Parser`]: duat_core::buffer::Parser
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
-#![feature(decl_macro, thread_spawn_hook, abort_unwind, default_field_values)]
 
-/// Common [`StatusLine`] fields
-///
-/// [`StatusLine`]: duat_base::widgets::StatusLine
 pub use duat_core::{
     Plugin, Plugins, buffer, clipboard, cmd, context, data,
     lender::{self, DoubleEndedLender, ExactSizeLender, Lender},
     text, ui, utils,
 };
-
-pub use self::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 
 pub mod opts;
 mod regular;
@@ -558,29 +552,40 @@ pub mod widgets {
     pub use duat_core::{buffer::Buffer, ui::Widget};
 }
 
-#[allow(unused_imports)]
-use duat_core::session::{DuatEvent, ReloadedBuffer};
+#[doc(hidden)]
+pub mod private_exports {
+    //! Exports from duat, not meant for direct use.
+    pub use duat_core::session::{DuatEvent, ReloadedBuffer};
+
+    pub use crate::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
+}
 
 /// Pre and post setup for Duat
 ///
 /// This macro *MUST* be used in order for the program to run,
 /// it will generate the function that actually runs Duat.
-pub macro setup_duat($setup:expr) {
-    use std::sync::{Mutex, mpsc};
+#[macro_export]
+macro_rules! setup_duat {
+    ($setup:expr) => {
+        use std::sync::{Mutex, mpsc};
 
-    use $crate::prelude::{Buffer, Text, context::Logs, form::Palette};
+        use $crate::{
+            prelude::{Buffer, Text, context::Logs, form::Palette},
+            private_exports::*,
+        };
 
-    #[unsafe(no_mangle)]
-    fn run(
-        initials: Initials,
-        ms: MetaStatics,
-        buffers: Vec<Vec<ReloadedBuffer>>,
-        (duat_tx, duat_rx, reload_tx): Channels,
-    ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
-        pre_setup(Some(initials), Some(duat_tx));
-        $setup();
-        run_duat(ms, buffers, duat_rx, Some(reload_tx))
-    }
+        #[unsafe(no_mangle)]
+        fn run(
+            initials: Initials,
+            ms: MetaStatics,
+            buffers: Vec<Vec<ReloadedBuffer>>,
+            (duat_tx, duat_rx, reload_tx): Channels,
+        ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
+            pre_setup(Some(initials), Some(duat_tx));
+            $setup();
+            run_duat(ms, buffers, duat_rx, Some(reload_tx))
+        }
+    };
 }
 
 /// The prelude of Duat

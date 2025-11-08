@@ -74,7 +74,7 @@ use crate::widgets::NotificationsOpts;
 ///
 /// [`Buffer`]: crate::widgets::Buffer
 pub(crate) static BUFFER_OPTS: Mutex<PrintOpts> = Mutex::new(PrintOpts::default_for_input());
-pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts { .. });
+pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts::new());
 pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
 pub(crate) static NOTIFICATIONS_FN: LazyLock<NotificationsFn> =
     LazyLock::new(|| Mutex::new(Box::new(|_| {})));

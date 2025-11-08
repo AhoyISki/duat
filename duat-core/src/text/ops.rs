@@ -10,6 +10,40 @@ use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToIncl
 
 use bincode::{Decode, Encode};
 
+macro_rules! implTextRange {
+    ($range:ident, $r:ident, $sb:expr, $eb:expr, $sp:expr, $ep:expr) => {
+        impl TextRange for $range<usize> {
+            fn to_range(self, max: usize) -> Range<usize> {
+                let $r = self;
+                max.min($sb)..max.min($eb)
+            }
+        }
+
+        impl TextRange for $range<Point> {
+            fn to_range(self, max: usize) -> Range<usize> {
+                let $r = self;
+                max.min($sp)..max.min($ep)
+            }
+        }
+    };
+}
+
+macro_rules! implTextRangeOrIndex {
+    ($range:ident) => {
+        impl TextRangeOrIndex for $range<usize> {
+            fn to_range(self, max: usize) -> Range<usize> {
+                TextRange::to_range(self, max)
+            }
+        }
+
+        impl TextRangeOrIndex for $range<Point> {
+            fn to_range(self, max: usize) -> Range<usize> {
+                TextRange::to_range(self, max)
+            }
+        }
+    };
+}
+
 /// A position in [`Text`]
 ///
 /// [`Text`]: super::Text
@@ -342,11 +376,26 @@ pub struct TwoPoints {
     /// The real `Point` in the [`Text`]
     ///
     /// [`Text`]: super::Text
-    pub real: Point = Point::new(),
+    pub real: Point,
     /// A possible point in a [`Ghost`]
     ///
+    /// A value of [`None`] means that this is either at the end of
+    /// the ghosts at a byte (i.e. this `TwoPoints` represents a real
+    /// character), or this byte index doesn't have any ghosts at all.
+    ///
+    /// A value of [`Some`] means that this `TwoPoints` does _not_
+    /// represent a real character, so it points to a character
+    /// belonging to a [`Ghost`]
+    ///
+    /// If you don't know how to set this value, you should try to use
+    /// the [`new`], [`new_before_ghost`] or [`new_after_ghost`]
+    /// functions.
+    ///
+    /// [`new`]: Self::new
+    /// [`new_before_ghost`]: Self::new_before_ghost
+    /// [`new_after_ghost`]: Self::new_after_ghost
     /// [`Ghost`]: super::Ghost
-    pub ghost: Option<Point> = Some(Point::new()),
+    pub ghost: Option<Point>,
 }
 
 impl TwoPoints {
@@ -401,36 +450,6 @@ impl Ord for TwoPoints {
 }
 
 const MAX: usize = usize::MAX;
-
-macro implTextRange($range:ident, $r:ident, $sb:expr, $eb:expr, $sp:expr, $ep:expr) {
-    impl TextRange for $range<usize> {
-        fn to_range(self, max: usize) -> Range<usize> {
-            let $r = self;
-            max.min($sb)..max.min($eb)
-        }
-    }
-
-    impl TextRange for $range<Point> {
-        fn to_range(self, max: usize) -> Range<usize> {
-            let $r = self;
-            max.min($sp)..max.min($ep)
-        }
-    }
-}
-
-macro implTextRangeOrIndex($range:ident) {
-    impl TextRangeOrIndex for $range<usize> {
-        fn to_range(self, max: usize) -> Range<usize> {
-            TextRange::to_range(self, max)
-        }
-    }
-
-    impl TextRangeOrIndex for $range<Point> {
-        fn to_range(self, max: usize) -> Range<usize> {
-            TextRange::to_range(self, max)
-        }
-    }
-}
 
 /// Given a first byte, determines how many bytes are in this
 /// UTF-8 character

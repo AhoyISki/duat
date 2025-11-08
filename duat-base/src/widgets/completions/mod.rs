@@ -18,7 +18,12 @@ use std::{
 };
 
 use duat_core::{
-    context::{self, Handle}, data::Pass, form::{self, Form}, hook::{self, FocusChanged}, text::{Point, SpawnTag, Tagger, Text, txt}, ui::{Orientation, DynSpawnSpecs, Widget}
+    context::{self, Handle},
+    data::Pass,
+    form::{self, Form},
+    hook::{self, FocusChanged},
+    text::{Point, SpawnTag, Tagger, Text, txt},
+    ui::{DynSpawnSpecs, Orientation, Widget},
 };
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
@@ -511,27 +516,28 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         }
 
         if scroll != 0 {
-            self.current = try {
+            // No try blocks on stable Rust 🤮.
+            self.current = (|| -> Option<(String, usize)> {
                 if let Some((prev, dist)) = &self.current {
                     let dist = dist.saturating_add_signed(scroll as isize).min(height - 1);
                     let prev_i = entries.iter().position(|(w, _)| w == prev)?;
                     let (word, _) = entries.get(prev_i.checked_add_signed(scroll as isize)?)?;
 
-                    (word.clone(), dist)
+                    Some((word.clone(), dist))
                 } else if scroll > 0 {
                     let scroll = scroll.unsigned_abs() as usize - 1;
                     let dist = (scroll).min(height - 1);
                     let (word, _) = entries.get(scroll)?;
 
-                    (word.clone(), dist)
+                    Some((word.clone(), dist))
                 } else {
                     let scroll = scroll.unsigned_abs() as usize;
                     let dist = height.saturating_sub(scroll);
                     let (word, _) = entries.get(entries.len().checked_sub(scroll)?)?;
 
-                    (word.clone(), dist)
+                    Some((word.clone(), dist))
                 }
-            };
+            })();
         }
 
         let mut builder = Text::builder();
@@ -638,7 +644,6 @@ const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     height: Some(20.0),
     width: Some(50.0),
     hidden: true,
-    ..
 };
 
 type ProvidersFn =

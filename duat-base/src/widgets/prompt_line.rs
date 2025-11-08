@@ -80,13 +80,13 @@ impl PromptLine {
 impl Widget for PromptLine {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let (pl, area) = handle.write_with_area(pa);
-        
+
         if pl.request_width {
             let width = area.width_of_text(pl.get_print_opts(), &pl.text).unwrap();
             area.set_width(width + pl.get_print_opts().scrolloff.x as f32)
                 .unwrap();
         }
-        
+
         if let Some(main) = pl.text.selections().get_main() {
             area.scroll_around_points(
                 &pl.text,
@@ -116,11 +116,24 @@ impl Widget for PromptLine {
 }
 
 #[doc(hidden)]
-#[derive(Default)]
 pub struct PromptLineBuilder {
-    prompts: Option<HashMap<TypeId, Text>> = None,
-    specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
-    request_width: bool = false
+    prompts: Option<HashMap<TypeId, Text>>,
+    specs: PushSpecs,
+    request_width: bool,
+}
+
+impl Default for PromptLineBuilder {
+    fn default() -> Self {
+        Self {
+            prompts: None,
+            specs: PushSpecs {
+                side: Side::Below,
+                height: Some(1.0),
+                ..Default::default()
+            },
+            request_width: false,
+        }
+    }
 }
 
 impl PromptLineBuilder {

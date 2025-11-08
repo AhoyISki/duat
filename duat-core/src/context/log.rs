@@ -12,6 +12,9 @@ pub use self::macros::*;
 use crate::text::{Selectionless, Text};
 
 mod macros {
+    #[doc(inline)]
+    pub use crate::{__debug__ as debug, __error__ as error, __info__ as info, __warn__ as warn};
+
     /// Logs an error to Duat
     ///
     /// Use this, as opposed to [`warn!`], [`info!`] or [`debug!`],
@@ -38,11 +41,15 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro error($($arg:tt)+) {
-        $crate::private_exports::log!(
-            $crate::context::Level::Error,
-            $($arg)+
-        )
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __error__ {
+        ($($arg:tt)+) => {
+            $crate::__log__!(
+                $crate::context::Level::Error,
+                $($arg)+
+            )
+        }
     }
 
     /// Logs an warning to Duat
@@ -71,11 +78,15 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro warn($($arg:tt)+) {
-        $crate::private_exports::log!(
-            $crate::context::Level::Warn,
-            $($arg)+
-        )
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __warn__ {
+        ($($arg:tt)+) => {
+            $crate::__log__!(
+                $crate::context::Level::Warn,
+                $($arg)+
+            )
+        }
     }
 
     /// Logs an info to Duat
@@ -104,11 +115,15 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro info($($arg:tt)+) {
-        $crate::private_exports::log!(
-            $crate::context::Level::Info,
-            $($arg)+
-        )
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __info__ {
+        ($($arg:tt)+) => {
+            $crate::__log__!(
+                $crate::context::Level::Info,
+                $($arg)+
+            )
+        }
     }
 
     /// Logs an debug information to Duat
@@ -138,11 +153,15 @@ mod macros {
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
-    pub macro debug($($arg:tt)+) {
-        $crate::private_exports::log!(
-            $crate::context::Level::Debug,
-            $($arg)+
-        )
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __debug__ {
+        ($($arg:tt)+) => {
+            $crate::__log__!(
+                $crate::context::Level::Debug,
+                $($arg)+
+            )
+        }
     }
 }
 

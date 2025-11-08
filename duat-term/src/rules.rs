@@ -1,3 +1,11 @@
+//! A vertical ruler, usually to separate the [`Buffer`] from other
+//! widgets
+//!
+//! This is just a simple widget, which should only really make sense
+//! in a terminal context, since, in GUIs, you'd use styling of the
+//! widget areas in order to accomplish the same thing.
+//!
+//! [`Buffer`]: duat_core::buffer::Buffer
 use duat_core::{
     context::Handle,
     data::Pass,
@@ -9,9 +17,12 @@ use duat_core::{
 /// of a [`Buffer`] and [`LineNumbers`].
 ///
 /// By default, this [`VertRule`] will show the `'│'` character on the
-/// whole line, using the `"default.VertRule"` form. However, you can change that with the [`VertRule::sep_char`] field.
-/// 
-/// This field, of type [`SepChar`], can have up to 3 distinct characters, in order to differentiate between the main line's separator and even the separators above and below the main line.
+/// whole line, using the `"default.VertRule"` form. However, you can
+/// change that with the [`VertRule::sep_char`] field.
+///
+/// This field, of type [`SepChar`], can have up to 3 distinct
+/// characters, in order to differentiate between the main line's
+/// separator and even the separators above and below the main line.
 ///
 /// If the main character is not the same as the other two characters,
 /// then the line will be printed with the `"rule.upper"` and
@@ -85,6 +96,36 @@ impl Widget for VertRule {
     }
 }
 
+/// The configurations for the [`VertRule`] widget.
+#[derive(Default, Clone)]
+pub struct VertRuleBuilder {
+    pub sep_char: SepChar,
+    pub on_the_right: bool,
+}
+
+impl VertRuleBuilder {
+    /// Pushes a [`VertRule`] to a [`PushTarget`]
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<VertRule> {
+        let vert_rule = VertRule {
+            handle: push_target.try_downcast(),
+            text: Text::default(),
+            sep_char: self.sep_char,
+        };
+
+        let specs = PushSpecs {
+            side: if self.on_the_right {
+                Side::Right
+            } else {
+                Side::Left
+            },
+            width: Some(1.0),
+            ..Default::default()
+        };
+
+        push_target.push_outer(pa, vert_rule, specs)
+    }
+}
+
 /// The [`char`]s that should be printed above, equal to, and below
 /// the main line.
 #[derive(Clone)]
@@ -108,33 +149,9 @@ impl SepChar {
     }
 }
 
-/// The configurations for the [`VertRule`] widget.
-#[derive(Default, Clone)]
-pub struct VertRuleBuilder {
-    pub sep_char: SepChar = SepChar::Uniform('│'),
-    pub on_the_right: bool = false
-}
-
-impl VertRuleBuilder {
-    /// Pushes a [`VertRule`] to a [`PushTarget`]
-    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<VertRule> {
-        let vert_rule = VertRule {
-            handle: push_target.try_downcast(),
-            text: Text::default(),
-            sep_char: self.sep_char,
-        };
-
-        let specs = PushSpecs {
-            side: if self.on_the_right {
-                Side::Right
-            } else {
-                Side::Left
-            },
-            width: Some(1.0),
-            ..
-        };
-
-        push_target.push_outer(pa, vert_rule, specs)
+impl Default for SepChar {
+    fn default() -> Self {
+        Self::Uniform('│')
     }
 }
 

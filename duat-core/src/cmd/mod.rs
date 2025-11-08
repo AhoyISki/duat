@@ -513,6 +513,8 @@ mod global {
     use std::ops::Range;
 
     use super::{CheckerFn, CmdFn, CmdResult, Commands};
+    #[doc(inline)]
+    pub use crate::__add__ as add;
     use crate::{
         context, data::Pass, form::FormId, main_thread_only::MainThreadOnly, session::DuatEvent,
         text::Text,
@@ -562,62 +564,66 @@ mod global {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RwData`]: crate::data::RwData
     /// [`Parameter`]: super::Parameter
-    pub macro add($callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block) {{
-        use std::{sync::Arc, cell::UnsafeCell};
-        #[allow(unused_imports)]
-        use $crate::{
-            data::{Pass, RwData},
-            cmd::{Args, Caller, CmdFn, CmdResult, Parameter, Remainder, add_inner}
-        };
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __add__ {
+        ($callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block) => {{
+            use std::{sync::Arc, cell::UnsafeCell};
+            #[allow(unused_imports)]
+            use $crate::{
+                data::{Pass, RwData},
+                cmd::{Args, Caller, CmdFn, CmdResult, Parameter, Remainder, add_inner}
+            };
 
-        #[allow(unused_variables, unused_mut)]
-        let cmd = move |pa: &mut Pass, mut args: Args| -> CmdResult {
-            $(
-                let ($arg, form): (<$t as Parameter>::Returns, _) =
-                    <$t as Parameter>::new(pa, &mut args)?;
-            )*
+            #[allow(unused_variables, unused_mut)]
+            let cmd = move |pa: &mut Pass, mut args: Args| -> CmdResult {
+                $(
+                    let ($arg, form): (<$t as Parameter>::Returns, _) =
+                        <$t as Parameter>::new(pa, &mut args)?;
+                )*
 
-            if let Ok(arg) = args.next() {
-                return Err($crate::text::txt!("Too many arguments"));
-            }
-
-            let mut $pa = pa;
-
-            $f
-        };
-
-        #[allow(unused_variables, unused_mut)]
-        let check_args = |pa: &Pass, mut args: Args| {
-            let mut ok_ranges = Vec::new();
-
-            $(
-                let start = args.next_start();
-                let result = <$t as Parameter>::new(pa, &mut args);
-                match result {
-                    Ok((_, form)) => if let Some(start) = start
-                        .filter(|s| args.param_range().end > *s)
-                    {
-                        ok_ranges.push((start..args.param_range().end, form));
-                    }
-                    Err(err) => return (ok_ranges, Some((args.param_range(), err)))
+                if let Ok(arg) = args.next() {
+                    return Err($crate::text::txt!("Too many arguments"));
                 }
-            )*
 
-            let start = args.next_start();
-            if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
-                let err = $crate::text::txt!("Too many arguments");
-                return (ok_ranges, Some((start..args.param_range().end, err)))
-            }
+                let mut $pa = pa;
 
-            (ok_ranges, None)
-        };
+                $f
+            };
 
-        let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
-        // SAFETY: This type will never actually be queried
-        let cmd: CmdFn = unsafe { RwData::new_unsized::<()>(Arc::new(UnsafeCell::new(cmd))) };
+            #[allow(unused_variables, unused_mut)]
+            let check_args = |pa: &Pass, mut args: Args| {
+                let mut ok_ranges = Vec::new();
 
-        add_inner(callers, cmd, check_args)
-    }}
+                $(
+                    let start = args.next_start();
+                    let result = <$t as Parameter>::new(pa, &mut args);
+                    match result {
+                        Ok((_, form)) => if let Some(start) = start
+                            .filter(|s| args.param_range().end > *s)
+                        {
+                            ok_ranges.push((start..args.param_range().end, form));
+                        }
+                        Err(err) => return (ok_ranges, Some((args.param_range(), err)))
+                    }
+                )*
+
+                let start = args.next_start();
+                if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
+                    let err = $crate::text::txt!("Too many arguments");
+                    return (ok_ranges, Some((start..args.param_range().end, err)))
+                }
+
+                (ok_ranges, None)
+            };
+
+            let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
+            // SAFETY: This type will never actually be queried
+            let cmd: CmdFn = unsafe { RwData::new_unsized::<()>(Arc::new(UnsafeCell::new(cmd))) };
+
+            add_inner(callers, cmd, check_args)
+        }}
+    }
 
     /// Canonical way to quit Duat.
     ///

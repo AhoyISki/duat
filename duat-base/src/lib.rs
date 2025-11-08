@@ -109,15 +109,6 @@
 //! [`LogBook`]: widgets::LogBook
 //! [`Completions`]: widgets::Completions
 //! [`CompletionsProvider`]: widgets::CompletionsProvider
-#![feature(
-    decl_macro,
-    closure_lifetime_binder,
-    default_field_values,
-    associated_type_defaults,
-    try_blocks,
-    vec_try_remove
-)]
-
 use duat_core::{
     form,
     text::{Tagger, Text},
@@ -269,103 +260,8 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
     }
 }
 
-mod private_exports {
-    pub use duat_core;
+#[doc(hidden)]
+pub mod private_exports {
+    pub use duat_core::{context::Handle, data::Pass, form, text::Builder, ui::PushSpecs};
     pub use format_like::format_like;
-
-    impl crate::widgets::StatusLineFmt {}
-
-    pub macro parse_str($status_line:expr, $str:literal) {{
-        use $crate::{
-            private_exports::duat_core::{context::Handle, data::Pass, text::Builder},
-            widgets::State,
-        };
-
-        let (mut appender, checker) = $status_line;
-        let (mut ap, _) = State::from($str).fns();
-
-        let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
-            appender(pa, builder, handle);
-            ap(pa, builder, handle);
-        };
-
-        (appender, checker)
-    }}
-
-    pub macro parse_status_part {
-        ($status_line:expr, "", $part:expr) => {{
-            use $crate::{
-                private_exports::duat_core::{context::Handle, data::Pass, text::Builder},
-                widgets::State,
-            };
-
-			#[allow(unused_mut)]
-            let (mut appender, checker) = $status_line;
-            let (ap, ch) = State::from($part).fns();
-
-            let checker = move |pa: &Pass| checker(pa) || ch(pa);
-
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
-                appender(pa, builder, handle);
-                ap(pa, builder, handle);
-            };
-
-            (appender, checker)
-        }},
-        ($status_line:expr, $modif:literal, $part:expr) => {{
-            use $crate::{
-                private_exports::duat_core::{context::Handle, data::Pass, text::Builder},
-                widgets::State,
-            };
-
-            let (mut appender, checker) = $status_line;
-            let (ap, ch) = State::from(format!(concat!("{:", $modif, "}"), $part)).fns();
-
-            let checker = move |pa: &Pass| checker(pa) || ch(pa);
-
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
-                appender(pa, builder, handle);
-                ap(pa, builder, handle);
-            };
-
-            (appender, checker)
-        }}
-    }
-
-    pub macro parse_form {
-        ($status_line:expr, "",) => {{
-            use $crate::private_exports::duat_core::{
-                context::Handle, data::Pass, form, text::Builder
-            };
-
-            let (appender, checker) = $status_line;
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
-                appender(pa, builder, handle);
-                builder.push(form::DEFAULT_ID);
-            };
-
-            (appender, checker)
-        }},
-        ($status_line:expr, "", $($form:tt)*) => {{
-            use $crate::private_exports::duat_core::{
-                context::Handle, data::Pass, form, text::Builder
-            };
-
-            let (appender, checker) = $status_line;
-            let id = form::id_of!(concat!($(stringify!($form)),*));
-
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
-                appender(pa, builder, handle);
-                builder.push(id);
-            };
-
-            (appender, checker)
-        }},
-        ($pre_fn_and_checker:expr, $modif:literal, $($form:ident).*) => {{
-            compile_error!(concat!(
-                "at the moment, Forms in StatusLines don't support modifiers like ",
-                $modif
-            ))
-        }}
-    }
 }

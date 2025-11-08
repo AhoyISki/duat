@@ -22,10 +22,14 @@ use duat_core::{
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
-pub use self::{macros::status, state::State};
+pub use self::state::State;
 use crate::state::{main_txt, mode_txt, name_txt, sels_txt};
 
 mod state;
+#[macro_use]
+mod macros;
+#[doc(inline)]
+pub use crate::__status__ as status;
 
 /// A widget to show information, usually about a [`Buffer`]
 ///
@@ -108,10 +112,10 @@ impl StatusLine {
 
             let opts = match builder.specs.side {
                 Side::Above | Side::Below => {
-                    macros::status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
+                    status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
                 }
                 Side::Right => {
-                    macros::status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
+                    status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
                 }
                 Side::Left => unreachable!(),
             };
@@ -143,7 +147,7 @@ impl StatusLine {
     /// macro, which is imported by default in the configuration
     /// crate.
     pub fn builder() -> StatusLineFmt {
-        StatusLineFmt { fns: None, .. }
+        StatusLineFmt { fns: None, ..Default::default() }
     }
 }
 
@@ -193,10 +197,9 @@ impl Widget for StatusLine {
 ///
 /// There is also the [`StatusLineFmt::above`] method, which places
 /// the `StatusLine` above, rather than below.
-#[derive(Default)]
 pub struct StatusLineFmt {
     fns: Option<(BuilderFn, CheckerFn)>,
-    specs: PushSpecs = PushSpecs { side: Side::Below, height: Some(1.0), .. },
+    specs: PushSpecs,
 }
 
 impl StatusLineFmt {
@@ -222,7 +225,7 @@ impl StatusLineFmt {
     /// [`status!`] macro
     #[doc(hidden)]
     pub fn new_with(fns: (BuilderFn, CheckerFn)) -> Self {
-        Self { fns: Some(fns), .. }
+        Self { fns: Some(fns), ..Default::default() }
     }
 
     /// Puts the [`StatusLine`] above, as opposed to below
@@ -250,188 +253,17 @@ impl StatusLineFmt {
     }
 }
 
-mod macros {
-    /// The macro that creates a [`StatusLine`]
-    ///
-    /// This macro works like the [`txt!`] macro, in  that [`Form`]s
-    /// are pushed with `[{FormName}]`. However, [`txt!`]  is
-    /// evaluated immediately, while [`status!`] is evaluated when
-    /// updates occur.
-    ///
-    /// The macro will mostly read from the [`Buffer`] widget and its
-    /// related structs. In order to do that, it will accept functions
-    /// as arguments. These functions can take any of the following
-    /// parameters, with up to 8 arguments each:
-    ///
-    /// - [`&Buffer`]: The `Buffer` in question.
-    /// - [`&Handle`]: The `Handle` of said `Buffer`.
-    /// - [`&Area`]: The `Area` of said `Buffer`.
-    /// - [`&Pass`]: For global reading access.
-    /// - [`&Text`]: The `Text` of the `Buffer`.
-    /// - [`&Selections`]: The `Selections` of the `Buffer`.
-    /// - [`&Selection`]: The main `Selection` of the `Buffer`.
-    /// - [`&Window`]: The `Window` the `Buffer` is situated in.
-    ///
-    /// Here's some examples:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat_base::widgets::status;
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn name_but_funky(buf: &Buffer) -> String {
-    ///     buf.name()
-    ///         .chars()
-    ///         .enumerate()
-    ///         .map(|(i, char)| {
-    ///             if i % 2 == 1 {
-    ///                 char.to_uppercase().to_string()
-    ///             } else {
-    ///                 char.to_lowercase().to_string()
-    ///             }
-    ///         })
-    ///         .collect()
-    /// }
-    ///
-    /// fn powerline_main_txt(buffer: &Buffer, area: &Area) -> Text {
-    ///     let selections = buffer.selections();
-    ///     let opts = buffer.get_print_opts();
-    ///     let v_caret = selections
-    ///         .get_main()
-    ///         .unwrap()
-    ///         .v_caret(buffer.text(), area, opts);
-    ///
-    ///     txt!(
-    ///         "[separator][coord]{}[separator][coord]{}[separator][coord]{}",
-    ///         v_caret.visual_col(),
-    ///         v_caret.line(),
-    ///         buffer.len_lines()
-    ///     )
-    /// }
-    ///
-    /// fn setup() {
-    ///     opts::set_status(|pa| status!("[buffer]{name_but_funky}{Spacer}{powerline_main_txt}"));
-    /// }
-    /// ```
-    ///
-    /// There are other types of arguments you can push, not
-    /// necessarily tied to a `Buffer`:
-    ///
-    /// - Static arguments:
-    ///   - A [`Text`] argument, which can be formatted in a similar
-    ///     way throught the [`txt!`] macro;
-    ///   - Any [`impl Display`], such as numbers, strings, chars,
-    ///     etc. [`impl Debug`] types also work, when including the
-    ///     usual `":?"` and derived suffixes;
-    /// - Dynamic arguments:
-    ///   - An [`RwData`] or [`DataMap`]s of the previous two types.
-    ///     These will update whenever the data inside is changed;
-    ///
-    /// Here's an examples:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat_base::widgets::status;
-    /// setup_duat!(setup);
-    /// use std::sync::atomic::{AtomicUsize, Ordering};
-    ///
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     let changing_str = data::RwData::new("Initial text".to_string());
-    ///
-    ///     fn counter(update: bool) -> usize {
-    ///         static COUNT: AtomicUsize = AtomicUsize::new(0);
-    ///         if update {
-    ///             COUNT.fetch_add(1, Ordering::Relaxed) + 1
-    ///         } else {
-    ///             COUNT.load(Ordering::Relaxed)
-    ///         }
-    ///     }
-    ///
-    ///     hook::add::<WindowCreated>({
-    ///         let changing_str = changing_str.clone();
-    ///         move |pa, window| {
-    ///             let changing_str = changing_str.clone();
-    ///             let checker = changing_str.checker();
-    ///
-    ///             let text = txt!("Static text");
-    ///             let counter = move || counter(checker());
-    ///
-    ///             status!("{changing_str} [counter]{counter}[] {text}")
-    ///                 .above()
-    ///                 .push_on(pa, window);
-    ///             Ok(())
-    ///         }
-    ///     });
-    ///
-    ///     cmd::add!("set-str", |pa, new: &str| {
-    ///         *changing_str.write(pa) = new.to_string();
-    ///         Ok(None)
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// In the above example, I added some dynamic [`Text`], through
-    /// the usage of an [`RwData<Text>`], I added some static
-    /// [`Text`], some [`Form`]s (`"counter"` and `"default"`) and
-    /// even a counter,.
-    ///
-    /// [`StatusLine`]: super::StatusLine
-    /// [`txt!`]: duat_core::text::txt
-    /// [`Buffer`]: duat_core::buffer::Buffer
-    /// [`&Buffer`]: duat_core::buffer::Buffer
-    /// [`&Handle`]: duat_core::context::Handle
-    /// [`&Area`]: duat_core::ui::Area
-    /// [`&Pass`]: duat_core::data::Pass
-    /// [`&Text`]: duat_core::text::Text
-    /// [`&Selections`]: duat_core::mode::Selections
-    /// [`&Selection`]: duat_core::mode::Selection
-    /// [`&Window`]: duat_core::ui::Window
-    /// [`impl Display`]: std::fmt::Display
-    /// [`impl Debug`]: std::fmt::Debug
-    /// [`Text`]: duat_core::text::Text
-    /// [`RwData`]: duat_core::data::RwData
-    /// [`DataMap`]: duat_core::data::DataMap
-    /// [`FnOnce(&Pass) -> RwData/DataMap`]: FnOnce
-    /// [`(Fn(&Pass) -> Text/Display/Debug, Fn(&Pass) -> bool)`]: Fn
-    /// [`RwData<Text>`]: duat_core::data::RwData
-    /// [`Form`]: duat_core::form::Form
-    /// [`&Area`]: duat_core::ui::Area
-    /// [`Area`]: duat_core::ui::Area
-    /// [`Widget`]: duat_core::ui::Widget
-    pub macro status($($parts:tt)*) {{
-        #[allow(unused_imports)]
-        use $crate::{
-            private_exports::{
-                duat_core::{context::Handle, data::Pass, ui::PushSpecs, text::Builder},
-                format_like, parse_form, parse_status_part, parse_str
+impl Default for StatusLineFmt {
+    fn default() -> Self {
+        Self {
+            fns: None,
+            specs: PushSpecs {
+                side: Side::Below,
+                height: Some(1.0),
+                ..Default::default()
             },
-            widgets::StatusLineFmt,
-        };
-
-        let text_fn = |_: &Pass, _: &mut Builder, _: &Handle| {};
-        let checker = |_: &Pass| false;
-
-        let (text_fn, checker) = format_like!(
-            parse_str,
-            [('{', parse_status_part, false), ('[', parse_form, true)],
-            (text_fn, checker),
-            $($parts)*
-        );
-
-        StatusLineFmt::new_with(
-            (
-                Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle| {
-                    builder.no_space_after_empty = true;
-                    text_fn(pa, &mut builder, &handle);
-                    builder.build()
-                }),
-                Box::new(checker)
-            ),
-        )
-    }}
+        }
+    }
 }
 
 type TextFn = Box<dyn Fn(&Pass, &Handle) -> Text + Send>;

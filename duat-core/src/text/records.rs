@@ -72,16 +72,6 @@ impl Records {
         ]);
     }
 
-    /// Transforms the end of the [`Records`]
-    pub fn append(&mut self, rec: [usize; 3]) {
-        self.transform(self.max(), [0; 3], rec)
-    }
-
-    /// Extends this [`Records`] with another
-    pub fn extend(&mut self, other: Records) {
-        self.0.extend(other.0);
-    }
-
     /// The maximum [`Record`]
     pub fn max(&self) -> [usize; 3] {
         self.0.max().map(|x| x as usize)

@@ -3,15 +3,16 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use kasuari::{Expression, Variable};
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn},
+    queue,
     style::ResetColor,
 };
 use duat_core::{form, text::SpawnId, ui::Axis};
+use kasuari::{Expression, Variable};
 
 use self::{sync_solver::SyncSolver, variables::Variables};
-use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect, queue};
+use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect};
 
 mod edges;
 mod sync_solver;
@@ -293,7 +294,7 @@ impl Printer {
         let mut stdout = stdout.unwrap_or_else(stdout::get);
         let max = self.max_value();
 
-        queue!(stdout, cursor::Hide, ResetColor);
+        queue!(stdout, cursor::Hide, ResetColor).unwrap();
         write!(stdout, "\x1b[?2026h").unwrap();
 
         // If there are no more spawns, print everything at least one more
@@ -320,7 +321,7 @@ impl Printer {
                 })
             {
                 if x != start {
-                    queue!(stdout, MoveToColumn(start as u16));
+                    queue!(stdout, MoveToColumn(start as u16)).unwrap();
                 }
 
                 stdout.write_all(bytes).unwrap();
@@ -342,14 +343,14 @@ impl Printer {
 
         for (.., lines) in spawned_lines.iter() {
             for y in lines.coords.tl.y..lines.coords.br.y {
-                queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16));
+                queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16)).unwrap();
                 let (bytes, ..) = lines.on(y).unwrap();
                 stdout.write_all(bytes).unwrap();
             }
         }
 
         if cursor_was_real {
-            queue!(stdout, cursor::RestorePosition, cursor::Show);
+            queue!(stdout, cursor::RestorePosition, cursor::Show).unwrap();
         }
 
         write!(stdout, "\x1b[?2026l").unwrap();

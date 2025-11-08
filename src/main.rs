@@ -1,13 +1,4 @@
 //! The runner for Duat
-#![feature(
-    decl_macro,
-    iterator_try_collect,
-    try_blocks,
-    cfg_select,
-    trim_prefix_suffix,
-    iter_intersperse
-)]
-
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -17,7 +8,11 @@ use std::{
     time::Instant,
 };
 
-use duat::{Channels, Initials, MetaStatics, pre_setup, prelude::*, run_duat, utils::crate_dir};
+use duat::{
+    prelude::*,
+    private_exports::{Channels, Initials, MetaStatics, pre_setup, run_duat},
+    utils::crate_dir,
+};
 use duat_core::{
     clipboard::Clipboard,
     context,
@@ -43,16 +38,21 @@ struct Args {
     /// Open the config's Cargo.toml
     #[arg(long)]
     cfg_manifest: bool,
-    #[doc = concat!("Config crate path [default: ", cfg_select! {
-        target_os = "macos" => "~/Library/Application Support/duat]",
-        target_os = "windows" => r"~\AppData\Roaming\duat",
-        _ => "~/.config/duat]"
-	})]
     /// Load the default config
     #[arg(long, conflicts_with_all = ["load", "profile", "init-config"])]
     no_load: bool,
-    /// Which config path to use (path to directory containing
-    /// Cargo.toml)
+    #[cfg_attr(
+        target_os = "macos",
+        doc = "Config crate path [default: ~/Library/Application Support/duat]"
+    )]
+    #[cfg_attr(
+        target_os = "windows",
+        doc = r"Config crate path [default: ~\AppData\Roaming\duat]"
+    )]
+    #[cfg_attr(
+        not(any(target_os = "macos", target_os = "windows")),
+        doc = r"Config crate path [default: ~/.config/duat]"
+    )]
     #[arg(short, long)]
     load: Option<PathBuf>,
     /// Profile to load
@@ -271,15 +271,23 @@ fn get_files(
     crate_dir: &'static Path,
     profile: &'static str,
 ) -> Result<Vec<Vec<ReloadedBuffer>>, Box<dyn std::error::Error>> {
-    let buffers: Vec<ReloadedBuffer> = args
-        .cfg
-        .then(|| crate_dir.join("src").join("lib.rs"))
-        .into_iter()
-        .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
-        .chain(args.buffers)
-        .enumerate()
-        .map(|(i, path)| ReloadedBuffer::by_args(Some(path), i == 0))
-        .try_collect()?;
+    let buffers = (move || -> Result<Vec<ReloadedBuffer>, std::io::Error> {
+        let mut buffers = Vec::new();
+
+        for buffer in args
+            .cfg
+            .then(|| crate_dir.join("src").join("lib.rs"))
+            .into_iter()
+            .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
+            .chain(args.buffers)
+            .enumerate()
+            .map(|(i, path)| ReloadedBuffer::by_args(Some(path), i == 0))
+        {
+            buffers.push(buffer?);
+        }
+
+        Ok(buffers)
+    })()?;
 
     Ok(if buffers.is_empty() {
         if args.reload {
@@ -365,15 +373,15 @@ fn spawn_reloader(
                     clear_path(&cache_dir.join("duat").join("cache"));
                 }
 
-                let result: Result<std::process::ExitStatus, std::io::Error> = try {
+                let result: Result<std::process::ExitStatus, std::io::Error> = (|| {
                     if reload.clean {
                         cargo::clean(crate_dir, false)?;
                     }
                     if reload.update {
                         cargo::update(crate_dir, false)?;
                     }
-                    cargo::build(crate_dir, &reload.profile, false)?
-                };
+                    cargo::build(crate_dir, &reload.profile, false)
+                })();
 
                 match result {
                     Err(err) => {
@@ -447,9 +455,8 @@ fn decide_on_new_config(
 
         if cfg!(feature = "git-deps") {
             let manifest: String = MANIFEST
-                .lines()
+                .split_inclusive("\n")
                 .filter(|line| !line.starts_with("git = \""))
-                .intersperse("\n")
                 .collect();
             std::fs::write(crate_dir.join("Cargo.toml"), manifest)?;
         } else {

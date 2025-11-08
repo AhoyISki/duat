@@ -192,46 +192,48 @@ impl<T: Into<Text> + Clone> From<Ghost<T>> for State<()> {
 
 ////////// From functions
 
-macro implFromFn($($arg:ident),*) {
-    #[allow(unused_parens, non_snake_case)]
-    impl<Fmt, D, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), String>>
-    where
-        Fmt: Fn($(&$arg),*) -> D + Send + 'static,
-        D: Display,
-        $($arg: StateArg),*
-    {
-        #[allow(unused_variables)]
-        fn from(value: Fmt) -> Self {
-            Self {
-                appender: Appender::FromFn(Box::new(move |pa, b, handle| {
-                    $(
-                        let $arg = $arg::get(pa, handle);
-                    )*
-                    b.push(value($($arg),*));
-                })),
-                checker: None,
-                ghost: PhantomData,
+macro_rules! implFromFn {
+    ($($arg:ident),*) => {
+        #[allow(unused_parens, non_snake_case)]
+        impl<Fmt, D, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), String>>
+        where
+            Fmt: Fn($(&$arg),*) -> D + Send + 'static,
+            D: Display,
+            $($arg: StateArg),*
+        {
+            #[allow(unused_variables)]
+            fn from(value: Fmt) -> Self {
+                Self {
+                    appender: Appender::FromFn(Box::new(move |pa, b, handle| {
+                        $(
+                            let $arg = $arg::get(pa, handle);
+                        )*
+                        b.push(value($($arg),*));
+                    })),
+                    checker: None,
+                    ghost: PhantomData,
+                }
             }
         }
-    }
-    
-    #[allow(unused_parens, non_snake_case)]
-    impl<Fmt, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), Text>>
-    where
-        Fmt: Fn($(&$arg),*) -> Text + Send + 'static,
-        $($arg: StateArg),*
-    {
-        #[allow(unused_variables)]
-        fn from(value: Fmt) -> Self {
-            Self {
-                appender: Appender::FromFn(Box::new(move |pa, b, handle| {
-                    $(
-                        let $arg = $arg::get(pa, handle);
-                    )*
-                    b.push(value($($arg),*));
-                })),
-                checker: None,
-                ghost: PhantomData,
+
+        #[allow(unused_parens, non_snake_case)]
+        impl<Fmt, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), Text>>
+        where
+            Fmt: Fn($(&$arg),*) -> Text + Send + 'static,
+            $($arg: StateArg),*
+        {
+            #[allow(unused_variables)]
+            fn from(value: Fmt) -> Self {
+                Self {
+                    appender: Appender::FromFn(Box::new(move |pa, b, handle| {
+                        $(
+                            let $arg = $arg::get(pa, handle);
+                        )*
+                        b.push(value($($arg),*));
+                    })),
+                    checker: None,
+                    ghost: PhantomData,
+                }
             }
         }
     }

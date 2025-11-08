@@ -26,7 +26,7 @@ use crate::{
     session::DuatSender,
     text::{Item, SpawnId, Text, TwoPoints},
     ui::{
-        Caret, DynSpawnSpecs, PushSpecs,
+        Caret, Coord, DynSpawnSpecs, PushSpecs,
         traits::{CoreAccess, RawArea, RawUi},
     },
 };
@@ -521,6 +521,16 @@ impl RwArea {
         (self.0.read(pa).fns.store_cache)(self.0.read(pa), path)
     }
 
+    /// The top left [`Coord`] of this `Area`
+    pub fn top_left(&self, pa: &Pass) -> Coord {
+        self.0.read(pa).top_left()
+    }
+
+    /// The bottom right [`Coord`] of this `Area`
+    pub fn bottom_right(&self, pa: &Pass) -> Coord {
+        self.0.read(pa).bottom_right()
+    }
+
     /// Gets the width of the area
     pub fn width(&self, pa: &Pass) -> f32 {
         self.0.read(pa).width()
@@ -724,14 +734,24 @@ impl Area {
         (self.fns.store_cache)(self, path)
     }
 
+    /// The top left [`Coord`] of this `Area`
+    pub fn top_left(&self) -> Coord {
+        (self.fns.top_left)(self)
+    }
+
+    /// The bottom right [`Coord`] of this `Area`
+    pub fn bottom_right(&self) -> Coord {
+        (self.fns.bottom_right)(self)
+    }
+
     /// Gets the width of the area
     pub fn width(&self) -> f32 {
-        (self.fns.width)(self)
+        (self.fns.bottom_right)(self).x - (self.fns.top_left)(self).x
     }
 
     /// Gets the height of the area
     pub fn height(&self) -> f32 {
-        (self.fns.height)(self)
+        (self.fns.bottom_right)(self).y - (self.fns.top_left)(self).y
     }
 
     /// Returns `true` if this is the currently active `Area`
@@ -785,8 +805,8 @@ struct AreaFunctions {
     get_cluster_master: fn(&Area) -> Option<RwArea>,
     store_cache: fn(&Area, &str) -> Result<(), Text>,
     eq: fn(&Area, &Area) -> bool,
-    width: fn(&Area) -> f32,
-    height: fn(&Area) -> f32,
+    top_left: fn(&Area) -> Coord,
+    bottom_right: fn(&Area) -> Coord,
     is_active: fn(&Area) -> bool,
 }
 
@@ -796,20 +816,20 @@ impl AreaFunctions {
             push: |area, file_path, specs, on_files| {
                 let cache = get_cache::<U>(file_path);
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                let (child, parent) = CoreAccess::new(area).push(specs, on_files, cache)?;
+                let (child, parent) = area.push(CoreAccess::new(), specs, on_files, cache)?;
 
                 Some((RwArea::new::<U>(child), parent.map(RwArea::new::<U>)))
             },
             spawn: |area, file_path, spawn_id, specs| {
                 let cache = get_cache::<U>(file_path);
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                let spawned = CoreAccess::new(area).spawn(spawn_id, specs, cache)?;
+                let spawned = area.spawn(CoreAccess::new(), spawn_id, specs, cache)?;
 
                 Some(RwArea::new::<U>(spawned))
             },
             delete: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                let (do_rm_window, removed) = CoreAccess::new(area).delete();
+                let (do_rm_window, removed) = area.delete(CoreAccess::new());
 
                 (
                     do_rm_window,
@@ -825,43 +845,43 @@ impl AreaFunctions {
                     return false;
                 }
 
-                CoreAccess::new(lhs).swap(rhs)
+                lhs.swap(CoreAccess::new(), rhs)
             },
             set_width: |area, width| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).set_width(width)
+                area.set_width(CoreAccess::new(), width)
             },
             set_height: |area, height| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).set_height(height)
+                area.set_height(CoreAccess::new(), height)
             },
             hide: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).hide()
+                area.hide(CoreAccess::new())
             },
             reveal: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).reveal()
+                area.reveal(CoreAccess::new())
             },
             width_of_text: |area, opts, text| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).width_of_text(opts, text)
+                area.width_of_text(CoreAccess::new(), opts, text)
             },
             set_as_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).set_as_active()
+                area.set_as_active(CoreAccess::new())
             },
             print: |area, text, opts, painter| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).print(text, opts, painter)
+                area.print(CoreAccess::new(), text, opts, painter)
             },
             print_with: |area, text, print_opts, painter, f| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).print_with(text, print_opts, painter, f);
+                area.print_with(CoreAccess::new(), text, print_opts, painter, f);
             },
             get_print_info: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                PrintInfo::new::<U>(CoreAccess::new(area).get_print_info())
+                PrintInfo::new::<U>(area.get_print_info(CoreAccess::new()))
             },
             set_print_info: |area, info| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
@@ -873,39 +893,39 @@ impl AreaFunctions {
                     panic!("Attempted to get PrintInfo of wrong type");
                 };
 
-                CoreAccess::new(area).set_print_info(info.clone());
+                area.set_print_info(CoreAccess::new(), info.clone());
             },
             print_iter: |area, text, points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                Box::new(CoreAccess::new(area).print_iter(text, points, opts))
+                Box::new(area.print_iter(CoreAccess::new(), text, points, opts))
             },
             rev_print_iter: |area, text, points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                Box::new(CoreAccess::new(area).rev_print_iter(text, points, opts))
+                Box::new(area.rev_print_iter(CoreAccess::new(), text, points, opts))
             },
             scroll_ver: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).scroll_ver(text, dist, opts)
+                area.scroll_ver(CoreAccess::new(), text, dist, opts)
             },
             scroll_around_points: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).scroll_around_points(text, dist, opts)
+                area.scroll_around_points(CoreAccess::new(), text, dist, opts)
             },
             scroll_to_points: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).scroll_to_points(text, dist, opts)
+                area.scroll_to_points(CoreAccess::new(), text, dist, opts)
             },
             start_points: |area, text, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).start_points(text, opts)
+                area.start_points(CoreAccess::new(), text, opts)
             },
             end_points: |area, text, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).end_points(text, opts)
+                area.end_points(CoreAccess::new(), text, opts)
             },
             has_changed: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).has_changed()
+                area.has_changed(CoreAccess::new())
             },
             eq: |lhs, rhs| {
                 let lhs = lhs.inner.downcast_ref::<U::Area>().unwrap();
@@ -917,34 +937,33 @@ impl AreaFunctions {
                 let lhs = lhs.inner.downcast_ref::<U::Area>().unwrap();
                 let rhs = rhs.inner.downcast_ref::<U::Area>().unwrap();
 
-                CoreAccess::new(lhs).is_master_of(rhs)
+                lhs.is_master_of(CoreAccess::new(), rhs)
             },
             get_cluster_master: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area)
-                    .get_cluster_master()
+                area.get_cluster_master(CoreAccess::new())
                     .map(RwArea::new::<U>)
             },
             store_cache: |area, path| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
 
-                if let Some(area_cache) = CoreAccess::new(area).cache() {
+                if let Some(area_cache) = area.cache(CoreAccess::new()) {
                     Cache::new().store(path, area_cache)?;
                 }
 
                 Ok(())
             },
-            width: |area| {
+            top_left: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).bottom_right().x - CoreAccess::new(area).top_left().x
+                area.top_left(CoreAccess::new())
             },
-            height: |area| {
+            bottom_right: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).bottom_right().y - CoreAccess::new(area).top_left().y
+                area.bottom_right(CoreAccess::new())
             },
             is_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                CoreAccess::new(area).is_active()
+                area.is_active(CoreAccess::new())
             },
         }
     }

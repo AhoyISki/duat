@@ -8,8 +8,8 @@ use std::{
     any::TypeId,
     path::Path,
     sync::{
-        LazyLock, Mutex, RwLock,
-        atomic::{AtomicUsize, Ordering},
+        Mutex,
+        atomic::Ordering,
         mpsc::{Receiver, Sender},
     },
 };
@@ -42,14 +42,10 @@ use crate::{
 };
 
 // Setup statics.
-pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
-    LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
 pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>) {
-    start_counting_spawned_threads();
-
     if let Some((logs, forms_init, (crate_dir, profile))) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
@@ -256,15 +252,13 @@ pub fn run_duat(
         let unwind_safe = unwind_safe;
         let std::panic::AssertUnwindSafe((ui, buffers)) = unwind_safe;
         opts.build(ui, buffers, already_plugged)
-            .start(duat_rx, &SPAWN_COUNT, reload_tx)
+            .start(duat_rx, reload_tx)
     }) else {
         std::process::exit(-1);
     };
 
     ret
 }
-
-type PluginFn = dyn FnOnce(&mut SessionCfg) + Send + Sync + 'static;
 
 ////////// Types used for startup and reloading
 
@@ -281,29 +275,3 @@ pub type Initials = (
     (&'static Mutex<Vec<&'static str>>, &'static Palette),
     (&'static Path, &'static str),
 );
-
-/// Starts counting how many threads are running
-fn start_counting_spawned_threads() {
-    thread_local! {
-        static SPAWN_COUNTER: SpawnCounter = SpawnCounter::new();
-    }
-
-    std::thread::add_spawn_hook(|_| || SPAWN_COUNTER.with(|_| {}));
-
-    struct SpawnCounter;
-
-    impl SpawnCounter {
-        fn new() -> Self {
-            SPAWN_COUNT.fetch_add(1, Ordering::Relaxed);
-            Self
-        }
-    }
-
-    impl Drop for SpawnCounter {
-        fn drop(&mut self) {
-            SPAWN_COUNT.fetch_sub(1, Ordering::Relaxed);
-        }
-    }
-}
-
-static SPAWN_COUNT: AtomicUsize = AtomicUsize::new(0);

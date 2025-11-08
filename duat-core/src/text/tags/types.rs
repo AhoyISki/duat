@@ -21,6 +21,57 @@ use crate::{
     ui::{DynSpawnSpecs, Widget},
 };
 
+macro_rules! simple_impl_Tag {
+    ($tag:ty, $raw_tag:expr) => {
+        impl Tag<usize> for $tag {
+            fn get_raw(
+                &self,
+                byte: usize,
+                max: usize,
+                tagger: Tagger,
+            ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+                assert!(
+                    byte <= max,
+                    "byte out of bounds: the len is {max}, but the byte is {byte}",
+                );
+                ((byte, $raw_tag(tagger)), None, ())
+            }
+        }
+
+        impl Tag<Point> for $tag {
+            fn get_raw(
+                &self,
+                point: Point,
+                max: usize,
+                tagger: Tagger,
+            ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+                let byte = point.byte();
+                self.get_raw(byte, max, tagger)
+            }
+        }
+    };
+}
+
+macro_rules! ranged_impl_tag {
+    ($tag:ty, $start:expr, $end:expr) => {
+        impl<I: TextRange> Tag<I> for $tag {
+            fn get_raw(
+                &self,
+                index: I,
+                max: usize,
+                tagger: Tagger,
+            ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+                let range = index.to_range(max);
+                (
+                    (range.start, $start(tagger)),
+                    Some((range.end, $end(tagger))),
+                    (),
+                )
+            }
+        }
+    };
+}
+
 /// [`Tag`]s are used for every visual modification to [`Text`]
 ///
 /// [`Tag`]s allow for all sorts of configuration on the [`Text`],
@@ -261,8 +312,8 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 
 /// [`Tag`]: Spawns a [`Widget`] in the [`Text`]
 ///
-/// The [`Widget`] will be placed according to the [`DynSpawnSpecs`], and
-/// should move automatically as the `SpawnTag` moves around the
+/// The [`Widget`] will be placed according to the [`DynSpawnSpecs`],
+/// and should move automatically as the `SpawnTag` moves around the
 /// screen.
 pub struct SpawnTag(
     SpawnId,
@@ -274,8 +325,9 @@ impl SpawnTag {
     ///
     /// You can then place this [`Tag`] inside of the [`Text`] via
     /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
-    /// should be placed according to the [`DynSpawnSpecs`], and should
-    /// move around automatically reflecting where the `Tag` is at.
+    /// should be placed according to the [`DynSpawnSpecs`], and
+    /// should move around automatically reflecting where the
+    /// `Tag` is at.
     ///
     /// Do note that this [`Widget`] will only be added to Duat and be
     /// able to be printed to the screen once the [`Text`] itself
@@ -657,51 +709,4 @@ fn ranged<Return>(
     ret: Return,
 ) -> ((usize, RawTag), Option<(usize, RawTag)>, Return) {
     ((r.start, s_tag), Some((r.end, e_tag)), ret)
-}
-
-macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
-    impl Tag<usize> for $tag {
-        fn get_raw(
-            &self,
-            byte: usize,
-            max: usize,
-            tagger: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
-            assert!(
-                byte <= max,
-                "byte out of bounds: the len is {max}, but the byte is {byte}",
-            );
-            ((byte, $raw_tag(tagger)), None, ())
-        }
-    }
-
-    impl Tag<Point> for $tag {
-        fn get_raw(
-            &self,
-            point: Point,
-            max: usize,
-            tagger: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
-            let byte = point.byte();
-            self.get_raw(byte, max, tagger)
-        }
-    }
-}
-
-macro ranged_impl_tag($tag:ty, $start:expr, $end:expr) {
-    impl<I: TextRange> Tag<I> for $tag {
-        fn get_raw(
-            &self,
-            index: I,
-            max: usize,
-            tagger: Tagger,
-        ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
-            let range = index.to_range(max);
-            (
-                (range.start, $start(tagger)),
-                Some((range.end, $end(tagger))),
-                (),
-            )
-        }
-    }
 }

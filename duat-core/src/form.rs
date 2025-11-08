@@ -53,6 +53,10 @@ mod global {
     };
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
+    #[doc(inline)]
+    pub use crate::{
+        __id_of__ as id_of, __set_many__ as set_many, __set_many_weak__ as set_many_weak,
+    };
     use crate::{
         context,
         hook::{self, ColorSchemeSet},
@@ -332,8 +336,7 @@ mod global {
     ///     // If I create a second Form like this one, they are separate
     ///     form::set("my_form.suffix", Form::undercurled());
     ///
-    ///     *handle.text_mut(pa) =
-    ///         txt!("[my_form]This is red on blue[], [my_form.suffix]undercurled");
+    ///     *handle.text_mut(pa) = txt!("[my_form]This is red on blue[], [my_form.suffix]undercurled");
     ///
     ///     // But if I enable the "suffix" mask that's at the end of the second Form
     ///     form::enable_mask("suffix");
@@ -427,23 +430,27 @@ mod global {
     // DEFAULT_ID will be returned instead of the correct id (if the two
     // unsafe setting statements are in the wrong order for some reason),
     // but this should pretty much never happen.
-    pub macro id_of($form:expr) {{
-        use $crate::form::{_set_many, DEFAULT_ID, FormId};
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __id_of__ {
+        ($form:expr) => {{
+            use $crate::form::{_set_many, DEFAULT_ID, FormId};
 
-        static mut WAS_SET: bool = false;
-        static mut ID: FormId = DEFAULT_ID;
-        if unsafe { WAS_SET } {
-            unsafe { ID }
-        } else {
-            let name = $form.to_string();
-            let id = _set_many(true, vec![(name, None)])[0];
-            unsafe {
-                ID = id;
-                WAS_SET = true;
+            static mut WAS_SET: bool = false;
+            static mut ID: FormId = DEFAULT_ID;
+            if unsafe { WAS_SET } {
+                unsafe { ID }
+            } else {
+                let name = $form.to_string();
+                let id = _set_many(true, vec![(name, None)])[0];
+                unsafe {
+                    ID = id;
+                    WAS_SET = true;
+                }
+                id
             }
-            id
-        }
-    }}
+        }};
+    }
 
     /// Non static version of [`id_of!`]
     ///
@@ -530,10 +537,14 @@ mod global {
     ///
     /// [`Plugin`]: crate::Plugin
     /// [`form::set`]: set
-    pub macro set_many($(($name:literal, $form:expr)),+ $(,)?) {{
-        use $crate::form::FormFmt;
-        $crate::form::_set_many(false, vec![$( ($name, Some($form.kind())) ),+]);
-    }}
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __set_many__ {
+        ($(($name:literal, $form:expr)),+ $(,)?) => {{
+            use $crate::form::FormFmt;
+            $crate::form::_set_many(false, vec![$( ($name, Some($form.kind())) ),+]);
+        }}
+    }
 
     /// Calls [`form::set_weak`] on each tuple in the list
     ///
@@ -548,10 +559,14 @@ mod global {
     /// [`form::set_weak`]: set_weak
     /// [`form::set`]: set
     /// [`form::set_colorscheme`]: set_colorscheme
-    pub macro set_many_weak($(($name:literal, $form:expr)),+ $(,)?) {{
-        use $crate::form::FormFmt;
-        $crate::form::_set_many(true, vec![$( ($name, Some($form.kind())) ),+]);
-    }}
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __set_many_weak__ {
+        ($(($name:literal, $form:expr)),+ $(,)?) => {{
+            use $crate::form::FormFmt;
+            $crate::form::_set_many(true, vec![$( ($name, Some($form.kind())) ),+]);
+        }}
+    }
 
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
@@ -709,6 +724,94 @@ impl std::fmt::Debug for FormId {
     }
 }
 
+/// Mimics [`ContentStyle`] methods for the [`Form`] type
+macro_rules! mimic_method_new {
+    (#[$attr:meta] $method:ident $attrib:expr) => {
+        /// New [`Form`] with the
+        #[$attr]
+        /// attribute
+        pub const fn $method() -> BuiltForm {
+            let mut built = Form::new();
+            built.0.style.attributes = built.0.style.attributes.with($attrib);
+            built
+        }
+    };
+    (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
+        /// New [`Form`] with a
+        #[$attr]
+        /// foreground
+        pub const fn $fg() -> BuiltForm {
+            let mut built = Form::new();
+            built.0.style.foreground_color = Some($color);
+            built
+        }
+
+        /// New [`Form`] with a
+        #[$attr]
+        /// background
+        pub const fn $bg() -> BuiltForm {
+            let mut built = Form::new();
+            built.0.style.background_color = Some($color);
+            built
+        }
+
+        /// New [`Form`] with a
+        #[$attr]
+        /// underlining
+        ///
+        /// Do note that this feature may not be supported in all `Ui`s,
+        /// for example, various terminals don't support this feature,
+        /// since it is a part of the kitty protocol, and hasn't been
+        /// universally accepted yet.
+        ///
+        /// `Ui`: crate::ui::traits::RawUi
+        pub const fn $ul() -> BuiltForm {
+            let mut built = Form::new();
+            built.0.style.underline_color = Some($color);
+            built
+        }
+    };
+}
+
+macro_rules! mimic_method_mod {
+    (#[$attr:meta] $method:ident $attrib:expr) => {
+        /// Applies the
+        #[$attr]
+        /// attribute to this [`Form`]
+        pub const fn $method(mut self) -> Self {
+            self.0.style.attributes = self.0.style.attributes.with($attrib);
+            self
+        }
+    };
+    (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
+        /// Turns the foreground of this [`Form`]
+        #[$attr]
+        pub const fn $fg(mut self) -> Self {
+            self.0.style.foreground_color = Some($color);
+            self
+        }
+
+        /// Turns the background of this [`Form`]
+        #[$attr]
+        pub const fn $bg(mut self) -> Self {
+            self.0.style.background_color = Some($color);
+            self
+        }
+
+        /// Turns the underlining of this [`Form`]
+        #[$attr]
+        /// Do note that this feature may not be supported in all `Ui`s,
+        /// for example, various terminals don't support this feature,
+        /// since it is a part of the kitty protocol, and hasn't been
+        /// universally accepted yet.
+        ///
+        /// `Ui`: crate::ui::traits::RawUi
+        pub const fn $ul(mut self) -> Self {
+            self.0.style.underline_color = Some($color);
+            self
+        }
+    };
+}
 /// A style for text.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Form {
@@ -1796,98 +1899,6 @@ impl std::fmt::Debug for FormType {
             Self::Ref(refed) => write!(f, "Ref({refed})"),
             Self::Weakest => write!(f, "Weakest"),
             Self::WeakestRef(refed) => write!(f, "WeakestRef({refed})"),
-        }
-    }
-}
-
-/// Mimics [`ContentStyle`] methods for the [`Form`] type
-macro mimic_method_new {
-    (#[$attr:meta] $method:ident $attrib:expr) => {
-        /// New [`Form`] with the
-        #[$attr]
-        /// attribute
-        pub const fn $method() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.attributes = built.0.style.attributes.with($attrib);
-            built
-        }
-    },
-
-    (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
-        /// New [`Form`] with a
-        #[$attr]
-        /// foreground
-        pub const fn $fg() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.foreground_color = Some($color);
-            built
-        }
-
-        /// New [`Form`] with a
-        #[$attr]
-        /// background
-        pub const fn $bg() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.background_color = Some($color);
-            built
-        }
-
-        /// New [`Form`] with a
-        #[$attr]
-        /// underlining
-        ///
-        /// Do note that this feature may not be supported in all `Ui`s,
-        /// for example, various terminals don't support this feature,
-        /// since it is a part of the kitty protocol, and hasn't been
-        /// universally accepted yet.
-        ///
-        /// `Ui`: crate::ui::traits::RawUi
-        pub const fn $ul() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.underline_color = Some($color);
-            built
-        }
-    }
-}
-
-macro mimic_method_mod {
-    (#[$attr:meta] $method:ident $attrib:expr) => {
-        /// Applies the
-        #[$attr]
-        /// attribute to this [`Form`]
-        pub const fn $method(mut self) -> Self {
-            self.0.style.attributes = self.0.style.attributes.with($attrib);
-            self
-        }
-    },
-
-    (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
-        /// Turns the foreground of this [`Form`]
-        #[$attr]
-        pub const fn $fg(mut self) -> Self {
-            self.0.style.foreground_color = Some($color);
-            self
-        }
-
-        /// Turns the background of this [`Form`]
-        #[$attr]
-        pub const fn $bg(mut self) -> Self {
-            self.0.style.background_color = Some($color);
-            self
-        }
-
-        /// Turns the underlining of this [`Form`]
-        #[$attr]
-        ///
-        /// Do note that this feature may not be supported in all `Ui`s,
-        /// for example, various terminals don't support this feature,
-        /// since it is a part of the kitty protocol, and hasn't been
-        /// universally accepted yet.
-        ///
-        /// `Ui`: crate::ui::traits::RawUi
-        pub const fn $ul(mut self) -> Self {
-            self.0.style.underline_color = Some($color);
-            self
         }
     }
 }

@@ -32,11 +32,11 @@ pub struct PrintOpts {
     /// Enables wrapping of lines
     ///
     /// The default is `true`
-    pub wrap_lines: bool = true,
+    pub wrap_lines: bool,
     /// Wrap on word boundaries, rather than on any character
     ///
     /// The default is `false`.
-    pub wrap_on_word: bool = false,
+    pub wrap_on_word: bool,
     /// Where to start wrapping
     ///
     /// The default is `None`
@@ -49,7 +49,7 @@ pub struct PrintOpts {
     /// not be greater than the width of the area. If it is greater
     /// than it, then wrapping will take place slightly outside the
     /// screen as a concequence.
-    pub wrapping_cap: Option<u32> = None,
+    pub wrapping_cap: Option<u32>,
     /// Whether to indent wrapped lines or not
     ///
     /// In [`Buffer`]s, the default is `true`.
@@ -69,7 +69,7 @@ pub struct PrintOpts {
     /// ```
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub indent_wraps: bool = true,
+    pub indent_wraps: bool,
     /// How long tabs should be on screen
     ///
     /// In [`Buffer`]s, the default is `4`
@@ -79,7 +79,7 @@ pub struct PrintOpts {
     /// added.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    pub tabstop: u8 = 4,
+    pub tabstop: u8,
     /// Wether to print the `'\n'` character as an empty space (`' '`)
     ///
     /// In [`Buffer`]s, the default is `true`

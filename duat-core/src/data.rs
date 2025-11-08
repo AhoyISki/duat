@@ -526,14 +526,20 @@ impl Pass {
     /// [`Buffer`] as some [`RwData<dyn Widget>`], even if `dyn
     /// Widget` and `Buffer` are "different types.
     ///
-    /// > [!IMPORTANT]
-    /// >
-    /// > For now, this type inequality check is only done when
-    /// > compiling the code with `cargo build`. This means thay you
-    /// > may not get diagnostics while just writing the code.
-    /// >
-    /// > Nevertheless, this is a compile-time check, so no need to
-    /// > worry about this failing at runtime.
+    /// # Panics
+    ///
+    /// For now, due to the inability to compary two [`TypeId`]s at
+    /// compile time in stable Rust, calling this function on two
+    /// [`RwData`]s of the same type will simply panic at runtime.
+    ///
+    /// However, in the future, once [`PartialEq`] is allowed in const
+    /// contexts, this function will refuse to compile if the
+    /// `RwData`s are of the same type.
+    ///
+    /// In practice, the outcome ends up being the same, since
+    /// breaking that invariant results in the rejection of your conde
+    /// regardless, it will just happen in a more convenient place in
+    /// the future.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn write_two<'a, L: 'static, R: 'static>(
@@ -543,12 +549,10 @@ impl Pass {
     ) -> (&'a mut L, &'a mut R) {
         static mut INTERNAL_PASS: Pass = unsafe { Pass::new() };
 
-        const {
-            assert!(
-                TypeId::of::<L>() != TypeId::of::<R>(),
-                "Can't write to two RwData of the same type, since they may point to the same data"
-            );
-        }
+        assert!(
+            TypeId::of::<L>() != TypeId::of::<R>(),
+            "Can't write to two RwData of the same type, since they may point to the same data"
+        );
 
         #[allow(static_mut_refs)]
         (lhs.write(self), rhs.write(unsafe { &mut INTERNAL_PASS }))
@@ -566,14 +570,20 @@ impl Pass {
     /// [`Buffer`] as some [`RwData<dyn Widget>`], even if `dyn
     /// Widget` and `Buffer` are "different types.
     ///
-    /// > [!IMPORTANT]
-    /// >
-    /// > For now, this type inequality check is only done when
-    /// > compiling the code with `cargo build`. This means thay you
-    /// > may not get diagnostics while just writing the code.
-    /// >
-    /// > Nevertheless, this is a compile-time check, so no need to
-    /// > worry about this failing at runtime.
+    /// # Panics
+    ///
+    /// For now, due to the inability to compary two [`TypeId`]s at
+    /// compile time in stable Rust, calling this function on two
+    /// [`RwData`]s of the same type will simply panic at runtime.
+    ///
+    /// However, in the future, once [`PartialEq`] is allowed in const
+    /// contexts, this function will refuse to compile if the
+    /// `RwData`s are of the same type.
+    ///
+    /// In practice, the outcome ends up being the same, since
+    /// breaking that invariant results in the rejection of your conde
+    /// regardless, it will just happen in a more convenient place in
+    /// the future.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn read_and_write<'a, L: 'static, R: 'static>(
@@ -583,13 +593,11 @@ impl Pass {
     ) -> (&'a L, &'a mut R) {
         static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
 
-        const {
-            assert!(
-                TypeId::of::<L>() != TypeId::of::<R>(),
-                "Can't read and write to RwDatas of the same type, since they may point to the \
-                 same data"
-            );
-        }
+        assert!(
+            TypeId::of::<L>() != TypeId::of::<R>(),
+            "Can't read and write to RwDatas of the same type, since they may point to the same \
+             data"
+        );
 
         (lhs.read(INTERNAL_PASS), rhs.write(self))
     }

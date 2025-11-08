@@ -96,7 +96,7 @@ use std::{rc::Rc, sync::Arc};
 pub(crate) use self::history::MomentFetcher;
 use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
-    builder::{Builder, BuilderPart, txt},
+    builder::{Builder, BuilderPart},
     bytes::{Bytes, Lines, Slices, Strs},
     history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
@@ -107,6 +107,8 @@ pub use self::{
         MainCaret, RawTag, Spacer, SpawnId, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,
     },
 };
+#[doc(inline)]
+pub use crate::__txt__ as txt;
 use crate::{
     context::Handle,
     data::Pass,
@@ -876,6 +878,19 @@ impl PartialEq<Text> for String {
     }
 }
 
+/// Implements [`From<$t>`] for [`Text`]
+macro_rules! impl_from_to_string {
+    ($t:ty) => {
+        impl From<$t> for Text {
+            fn from(value: $t) -> Self {
+                let string = <$t as ToString>::to_string(&value);
+                let bytes = Bytes::new(&string);
+                Self::from_parts(bytes, Selections::new_empty(), false)
+            }
+        }
+    };
+}
+
 impl_from_to_string!(u8);
 impl_from_to_string!(u16);
 impl_from_to_string!(u32);
@@ -897,17 +912,6 @@ impl_from_to_string!(Box<str>);
 impl_from_to_string!(Rc<str>);
 impl_from_to_string!(Arc<str>);
 impl_from_to_string!(std::borrow::Cow<'_, str>);
-
-/// Implements [`From<$t>`] for [`Text`]
-macro impl_from_to_string($t:ty) {
-    impl From<$t> for Text {
-        fn from(value: $t) -> Self {
-            let string = <$t as ToString>::to_string(&value);
-            let bytes = Bytes::new(&string);
-            Self::from_parts(bytes, Selections::new_empty(), false)
-        }
-    }
-}
 
 /// A [`Text`] that is guaranteed not to have [`Selections`] in it
 ///

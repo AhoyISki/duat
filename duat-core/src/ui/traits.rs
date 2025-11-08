@@ -240,7 +240,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`Side::Left`]: super::Side::Left
     /// [`Side::Right`]: super::Side::Right
     fn push(
-        self: CoreAccess<Self>,
+        &self, _: CoreAccess,
         specs: PushSpecs,
         on_files: bool,
         cache: Self::Cache,
@@ -257,7 +257,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// [deleted]: RawArea::delete
     fn spawn(
-        self: CoreAccess<Self>,
+        &self, _: CoreAccess,
         id: SpawnId,
         specs: DynSpawnSpecs,
         cache: Self::Cache,
@@ -272,7 +272,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// If the `RawArea`'s parent was also deleted, return it.
     ///
     /// [`Widget`]: super::Widget
-    fn delete(self: CoreAccess<Self>) -> (bool, Vec<Self>);
+    fn delete(&self, _: CoreAccess) -> (bool, Vec<Self>);
 
     /// Swaps this `RawArea` with another one
     ///
@@ -287,40 +287,40 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// It can fail if either of the `RawArea`s was already deleted,
     /// or if no swap happened because they belonged to the same
     /// cluster master.
-    fn swap(self: CoreAccess<Self>, rhs: &Self) -> bool;
+    fn swap(&self, _: CoreAccess, rhs: &Self) -> bool;
 
     ////////// Constraint changing functions
 
     /// Sets a width for the `RawArea`
-    fn set_width(self: CoreAccess<Self>, width: f32) -> Result<(), Text>;
+    fn set_width(&self, _: CoreAccess, width: f32) -> Result<(), Text>;
 
     /// Sets a height for the `RawArea`
-    fn set_height(self: CoreAccess<Self>, height: f32) -> Result<(), Text>;
+    fn set_height(&self, _: CoreAccess, height: f32) -> Result<(), Text>;
 
     /// Hides the `RawArea`
-    fn hide(self: CoreAccess<Self>) -> Result<(), Text>;
+    fn hide(&self, _: CoreAccess) -> Result<(), Text>;
 
     /// Reveals the `RawArea`
-    fn reveal(self: CoreAccess<Self>) -> Result<(), Text>;
+    fn reveal(&self, _: CoreAccess) -> Result<(), Text>;
 
     /// What width the given [`Text`] would occupy, if unwrapped
-    fn width_of_text(self: CoreAccess<Self>, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
+    fn width_of_text(&self, _: CoreAccess, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
 
     /// Tells the [`RawUi`] that this `RawArea` is the one that is
     /// currently focused.
     ///
     /// Should make `self` the active `RawArea` while deactivating
     /// any other active `RawArea`.
-    fn set_as_active(self: CoreAccess<Self>);
+    fn set_as_active(&self, _: CoreAccess);
 
     ////////// Printing functions
 
     /// Prints the [`Text`]
-    fn print(self: CoreAccess<Self>, text: &Text, opts: PrintOpts, painter: Painter);
+    fn print(&self, _: CoreAccess, text: &Text, opts: PrintOpts, painter: Painter);
 
     /// Prints the [`Text`] with a callback function
     fn print_with<'a>(
-        self: CoreAccess<Self>,
+        &self, _: CoreAccess,
         text: &Text,
         opts: PrintOpts,
         painter: Painter,
@@ -328,12 +328,12 @@ pub trait RawArea: Sized + PartialEq + 'static {
     );
 
     /// The current printing information of the area
-    fn get_print_info(self: CoreAccess<Self>) -> Self::PrintInfo;
+    fn get_print_info(&self, _: CoreAccess) -> Self::PrintInfo;
 
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
     /// [`PrintInfo`]: RawArea::PrintInfo
-    fn set_print_info(self: CoreAccess<Self>, info: Self::PrintInfo);
+    fn set_print_info(&self, _: CoreAccess, info: Self::PrintInfo);
 
     /// Returns a printing iterator
     ///
@@ -347,7 +347,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// [`text::Item`]: Item
     fn print_iter<'a>(
-        self: CoreAccess<Self>,
+        &self, _: CoreAccess,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -364,7 +364,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// [`text::Item`]: Item
     fn rev_print_iter<'a>(
-        self: CoreAccess<Self>,
+        &self, _: CoreAccess,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -377,7 +377,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    fn scroll_ver(self: CoreAccess<Self>, text: &Text, dist: i32, opts: PrintOpts);
+    fn scroll_ver(&self, _: CoreAccess, text: &Text, dist: i32, opts: PrintOpts);
 
     /// Scrolls the [`Text`] on all four directions until the given
     /// [`TwoPoints`] is within the [`ScrollOff`] range
@@ -391,7 +391,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`scroll_ver`]: RawArea::scroll_ver
     /// [`scroll_to_points`]: RawArea::scroll_to_points
     fn scroll_around_points(
-        self: CoreAccess<Self>,
+        &self, _: CoreAccess,
         text: &Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -408,13 +408,13 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
-    fn scroll_to_points(self: CoreAccess<Self>, text: &Text, points: TwoPoints, opts: PrintOpts);
+    fn scroll_to_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// The start points that should be printed
-    fn start_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints;
+    fn start_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints;
 
     /// The [`TwoPoints`] immediately after the last printed one
-    fn end_points(self: CoreAccess<Self>, text: &Text, opts: PrintOpts) -> TwoPoints;
+    fn end_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints;
 
     ////////// Queries
 
@@ -425,34 +425,34 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// box, but it may be something else.
     ///
     /// [`PrintInfo`]: RawArea::PrintInfo
-    fn has_changed(self: CoreAccess<Self>) -> bool;
+    fn has_changed(&self, _: CoreAccess) -> bool;
 
     /// Whether or not [`self`] is the "master" of `other`
     ///
     /// This can only happen if, by following [`self`]'s children, you
     /// would eventually reach `other`.
-    fn is_master_of(self: CoreAccess<Self>, other: &Self) -> bool;
+    fn is_master_of(&self, _: CoreAccess, other: &Self) -> bool;
 
     /// Returns the clustered master of [`self`], if there is one
     ///
     /// If [`self`] belongs to a clustered group, return the most
     /// senior member of said cluster, which must hold all other
     /// members of the cluster.
-    fn get_cluster_master(self: CoreAccess<Self>) -> Option<Self>;
+    fn get_cluster_master(&self, _: CoreAccess) -> Option<Self>;
 
     /// Returns the statics from `self`
-    fn cache(self: CoreAccess<Self>) -> Option<Self::Cache>;
+    fn cache(&self, _: CoreAccess) -> Option<Self::Cache>;
 
     /// The top left [`Coord`] of this `Area`
-    fn top_left(self: CoreAccess<Self>) -> Coord;
+    fn top_left(&self, _: CoreAccess) -> Coord;
 
     /// The bottom right [`Coord`] of this `Area`
-    fn bottom_right(self: CoreAccess<Self>) -> Coord;
+    fn bottom_right(&self, _: CoreAccess) -> Coord;
 
     /// Returns `true` if this is the currently active `RawArea`
     ///
     /// Only one `RawArea` should be active at any given moment.
-    fn is_active(self: CoreAccess<Self>) -> bool;
+    fn is_active(&self, _: CoreAccess) -> bool;
 }
 
 /// A smart pointer, meant to prevent direct calling of [`RawArea`]
@@ -461,29 +461,11 @@ pub trait RawArea: Sized + PartialEq + 'static {
 /// The methods of `RawArea` are all meant to be accessed only
 /// through the type erased `RwArea`
 #[non_exhaustive]
-#[derive(Debug)]
-pub struct CoreAccess<'a, A>(&'a A);
+#[derive(Clone, Copy)]
+pub struct CoreAccess {}
 
-impl<'a, A> CoreAccess<'a, A> {
-    /// Returns a new instance of `CoreAccess`, to prevent direct
-    /// calls to [`RawArea`] methods
-    pub(super) fn new(area: &'a A) -> Self {
-        CoreAccess(area)
+impl CoreAccess {
+    pub(super) fn new() -> Self {
+        CoreAccess {}
     }
 }
-
-impl<A> std::ops::Deref for CoreAccess<'_, A> {
-    type Target = A;
-
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
-
-impl<'a, A> Clone for CoreAccess<'a, A> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<'a, A> Copy for CoreAccess<'a, A> {}

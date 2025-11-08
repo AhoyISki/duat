@@ -14,10 +14,10 @@
 //! - Spawned on [`Text`] via the [`SpawnTag`] [tag].
 //!
 //! They can be pushed to all 4 sides of other widgets through the
-//! use of [`PushSpecs`]. Or they can be spawned with [`DynSpawnSpecs`].
-//! Each of these structs determine the specifics of where the
-//! [`Widget`] will be spawned, as well as how its [`Area`] should
-//! adapt to changes in the layout.
+//! use of [`PushSpecs`]. Or they can be spawned with
+//! [`DynSpawnSpecs`]. Each of these structs determine the specifics
+//! of where the [`Widget`] will be spawned, as well as how its
+//! [`Area`] should adapt to changes in the layout.
 //!
 //! For example, if you spawn a [`Widget`] on [`Text`] via the
 //! [`SpawnTag`], then any movements and modifications on said `Text`
@@ -38,6 +38,8 @@
 //! [`Area`]: super::Area
 use std::sync::{Arc, Mutex};
 
+use crossterm::event::MouseEvent;
+
 use crate::{
     context::Handle,
     data::{Pass, RwData},
@@ -45,7 +47,7 @@ use crate::{
     hook::{self, FocusedOn, UnfocusedFrom},
     opts::PrintOpts,
     text::Text,
-    ui::{PrintInfo, RwArea},
+    ui::{Coord, PrintInfo, RwArea},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -486,6 +488,7 @@ pub(crate) struct Node {
     print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
     on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
+    on_mouse_event: Arc<dyn Fn(&mut Pass, Coord, MouseEvent) -> Option<MouseEvent> + Send + Sync>,
 }
 
 impl Node {
@@ -525,6 +528,11 @@ impl Node {
                 move |pa, new| {
                     hook::trigger(pa, UnfocusedFrom((handle.clone(), new)));
                     W::on_unfocus(pa, &handle);
+                }
+            }),
+            on_mouse_event: Arc::new({
+                move |_pa, _coord, _mouse_event| {
+                    todo!();
                 }
             }),
         }
@@ -611,6 +619,10 @@ impl Node {
     /// What to do when unfocusing
     pub(crate) fn on_unfocus(&self, pa: &mut Pass, new: Handle<dyn Widget>) {
         (self.on_unfocus)(pa, new)
+    }
+
+    pub(crate) fn on_mouse_event(&self, pa: &mut Pass, coord: Coord, mouse_event: MouseEvent) {
+        (self.on_mouse_event)(pa, coord, mouse_event);
     }
 }
 

@@ -21,11 +21,11 @@ use duat_core::{
 };
 
 /// Shows a column of line numbers beside the [`Buffer`]
-/// 
+///
 /// There are various fields that you can use to configure how the
 /// `LineNumbers` will be displayed. They control things like the
 /// line numbers and the relativeness of the number displayed.
-/// 
+///
 /// This is a default struct of Duat, that is, it is automatically
 /// placed around every `Buffer`, but you can disable that behavior
 /// by [removing] the `"BufferWidgets"` hook.
@@ -38,19 +38,19 @@ pub struct LineNumbers {
     /// Wether to show relative numbering
     ///
     /// The default is `false`
-    pub relative: bool = false,
+    pub relative: bool,
     /// Where to align the numbers
     ///
     /// The default is [`Alignment::Left`]
-    pub align: Alignment = Alignment::Left,
+    pub align: Alignment,
     /// Where to align the main line number
     ///
     /// The default is [`Alignment::Right`]
-    pub main_align: Alignment = Alignment::Right,
+    pub main_align: Alignment,
     /// Wether to show wrapped line's numbers
     ///
     /// The default is `false`
-    pub show_wraps: bool = false,
+    pub show_wraps: bool,
 }
 
 impl LineNumbers {
@@ -136,31 +136,42 @@ impl Widget for LineNumbers {
 ///
 /// [`on_the_right`]: Self::on_the_right
 /// [hook]: duat_core::hook
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LineNumbersOpts {
     /// Wether to show relative numbering
     ///
     /// The default is `false`
-    pub relative: bool = false,
+    pub relative: bool,
     /// Where to align the numbers
     ///
     /// The default is [`Alignment::Left`]
-    pub align: Alignment = Alignment::Left,
+    pub align: Alignment,
     /// Where to align the main line number
     ///
     /// The default is [`Alignment::Right`]
-    pub main_align: Alignment = Alignment::Right,
+    pub main_align: Alignment,
     /// Wether to show wrapped line's numbers
     ///
     /// The default is `false`
-    pub show_wraps: bool = false,
+    pub show_wraps: bool,
     /// Place this [`Widget`] on the right, as opposed to on the left
     ///
     /// The default is `false`
-    pub on_the_right: bool = false,
+    pub on_the_right: bool,
 }
 
 impl LineNumbersOpts {
+    /// Retunrs a new `LineNumbersOpts`
+    pub const fn new() -> Self {
+        Self {
+            relative: false,
+            align: Alignment::Left,
+            main_align: Alignment::Right,
+            show_wraps: false,
+            on_the_right: false,
+        }
+    }
+
     /// Push the [`LineNumbers`] to a [`Handle`]
     pub fn push_on(self, pa: &mut Pass, handle: &Handle) -> Handle<LineNumbers> {
         let mut line_numbers = LineNumbers {
@@ -179,10 +190,16 @@ impl LineNumbersOpts {
             } else {
                 Side::Left
             },
-            ..
+            ..Default::default()
         };
 
         handle.push_outer_widget(pa, line_numbers, specs)
+    }
+}
+
+impl Default for LineNumbersOpts {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

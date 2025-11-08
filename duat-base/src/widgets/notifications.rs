@@ -161,7 +161,11 @@ impl NotificationsOpts {
             last_rec: None,
             request_width: self.request_width,
         };
-        let specs = PushSpecs { side: Side::Below, height: Some(1.0), .. };
+        let specs = PushSpecs {
+            side: Side::Below,
+            height: Some(1.0),
+            ..Default::default()
+        };
 
         push_target.push_inner(pa, notifications, specs)
     }

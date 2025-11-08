@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 
-use kasuari::Variable;
 use crossterm::{
-    cursor,
+    cursor, queue,
     style::{Print, ResetColor, SetStyle},
 };
 use duat_core::{form::Form, ui::Axis};
+use kasuari::Variable;
 
 use super::{
     Frame, VarPoint,
     edges::{Edge, EdgeCoords},
     stdout::Stdout,
 };
-use crate::{Brush, area::Coord, queue};
+use crate::{Brush, area::Coord};
 
 pub struct Variables {
     list: HashMap<Variable, (u32, usize)>,
@@ -112,6 +112,7 @@ impl Variables {
                     SetStyle(edge_form.style),
                     Print(line)
                 )
+                .unwrap()
             } else {
                 let char = match coords.line {
                     Some(line) => super::edges::vertical(line, line),
@@ -126,6 +127,7 @@ impl Variables {
                         SetStyle(edge_form.style),
                         Print(char)
                     )
+                    .unwrap()
                 }
             }
 
@@ -151,6 +153,7 @@ impl Variables {
                 SetStyle(edge_form.style),
                 Print(super::edges::crossing(right, up, left, down, true))
             )
+            .unwrap()
         }
     }
 

@@ -9,11 +9,7 @@
 use std::{
     any::TypeId,
     path::PathBuf,
-    sync::{
-        Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
-        mpsc,
-    },
+    sync::{Mutex, OnceLock, mpsc},
     time::Duration,
 };
 
@@ -34,7 +30,7 @@ use crate::{
     mode,
     opts::PrintOpts,
     ui::{
-        RwArea, Ui, Windows,
+        Coord, Ui, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
@@ -128,7 +124,6 @@ impl Session {
     pub fn start(
         self,
         duat_rx: mpsc::Receiver<DuatEvent>,
-        spawn_count: &'static AtomicUsize,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
     ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
         fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
@@ -209,16 +204,27 @@ impl Session {
 
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
                 match event {
-                    DuatEvent::KeyEventSent(key) => {
-                        mode::send_key(pa, key);
+                    DuatEvent::KeyEventSent(key_event) => {
+                        mode::send_key_event(pa, key_event);
                         if mode::keys_were_sent(pa) {
                             continue;
                         }
                     }
-                    DuatEvent::MouseEventSent(..) => todo!(),
+                    DuatEvent::MouseEventSent(coord, mouse_event) => {
+                        let node = context::current_window(pa)
+                            .nodes(pa)
+                            .find(|node| {
+                                node.handle().area().top_left(pa) <= coord
+                                    && coord <= node.handle().area.bottom_right(pa)
+                            })
+                            .cloned();
+                        if let Some(node) = node {
+                            node.on_mouse_event(pa, coord, mouse_event);
+                        }
+                    }
                     DuatEvent::KeyEventsSent(keys) => {
                         for key in keys {
-                            mode::send_key(pa, key)
+                            mode::send_key_event(pa, key)
                         }
                         if mode::keys_were_sent(pa) {
                             continue;
@@ -249,7 +255,7 @@ impl Session {
                         hook::trigger(pa, ConfigUnloaded(()));
                         context::order_reload_or_quit();
                         context::logs().clear();
-                        wait_for_threads_to_end(spawn_count);
+                        wait_for_threads_to_end();
 
                         let handles: Vec<_> = context::windows().buffers(pa).collect();
                         for handle in handles {
@@ -266,7 +272,7 @@ impl Session {
                         hook::trigger(pa, ConfigUnloaded(()));
                         hook::trigger(pa, ExitedDuat(()));
                         context::order_reload_or_quit();
-                        wait_for_threads_to_end(spawn_count);
+                        wait_for_threads_to_end();
 
                         let handles: Vec<_> = context::windows().buffers(pa).collect();
                         for handle in handles {
@@ -324,7 +330,7 @@ pub enum DuatEvent {
     /// A [`KeyEvent`] was typed
     KeyEventSent(KeyEvent),
     /// A [`MouseEvent`] was sent
-    MouseEventSent(RwArea, MouseEvent),
+    MouseEventSent(Coord, MouseEvent),
     /// Multiple [`KeyEvent`]s were sent
     KeyEventsSent(Vec<KeyEvent>),
     /// A function was queued
@@ -425,10 +431,10 @@ pub struct ReloadEvent {
     pub profile: String,
 }
 
-fn wait_for_threads_to_end(spawn_count: &'static AtomicUsize) {
-    let mut count = spawn_count.load(Ordering::Relaxed);
-    while count > 0 {
+fn wait_for_threads_to_end() {
+    let mut count = thread_count::thread_count().unwrap();
+    while count.get() > 7 {
         std::thread::sleep(std::time::Duration::from_millis(10));
-        count = spawn_count.load(Ordering::Relaxed);
+        count = thread_count::thread_count().unwrap();
     }
 }

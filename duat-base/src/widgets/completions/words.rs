@@ -184,7 +184,9 @@ impl Parser for WordsCompletionParser {
             ] {
                 let suffix_range = change_str.len()..change_str.len();
 
-                match (words.pop(), words.try_remove(0)) {
+                let first = (words.len() > 1).then(|| words.remove(0));
+
+                match (words.pop(), first) {
                     (None, None) => {
                         let prefix = surrounded(0..0, "", change_str, &change);
                         let suffix = (!change_str.is_empty())
