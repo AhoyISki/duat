@@ -27,6 +27,7 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;
 
+pub(crate) use self::cursor::reinsert_selections;
 pub use self::{
     cursor::{CaretOrRange, Cursor, Cursors, Selection, Selections, VPoint},
     patterns::*,
@@ -389,7 +390,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///     }
 /// }
 /// ```
-/// 
+///
 /// Notice the [`event!`] macro. This macro is useful for pattern
 /// matching [`KeyEvent`]s on [`Mode`]s. It (alongside [`alt!`],
 /// [`ctrl!`] and [`shift!`]) gets mapped to a [`KeyEvent`] that can

@@ -15,7 +15,7 @@ use crate::{
     mode::{Cursor, Cursors, Selection, Selections},
     opts::PrintOpts,
     text::{Searcher, Text, TextParts, TwoPoints, txt},
-    ui::{Area, PushSpecs, RwArea, DynSpawnSpecs, Widget},
+    ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
 };
 
 /// A handle to a [`Widget`] in Duat
@@ -368,13 +368,19 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         // This is safe because of the &mut Pass argument
         let mut searcher = self.searcher.borrow_mut();
 
-        edit(Cursor::new(
-            (selection, n, was_main),
+        let mut selections = vec![Some((selection, n, was_main))];
+
+        let ret = edit(Cursor::new(
+            &mut selections,
+            n,
             (widget, area),
             None,
             &mut searcher,
-            false,
-        ))
+        ));
+
+        crate::mode::reinsert_selections(selections.into_iter().flatten(), widget, None);
+
+        ret
     }
 
     /// Edits the main [`Selection`] in the [`Text`]

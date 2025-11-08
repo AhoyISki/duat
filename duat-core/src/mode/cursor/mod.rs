@@ -24,6 +24,18 @@ use crate::{
 /// The [`Selection`] and [`Selections`] structs
 mod selections;
 
+macro_rules! sel {
+    ($cursor:expr) => {
+        $cursor.selections[$cursor.sels_i].as_ref().unwrap().0
+    };
+}
+
+macro_rules! sel_mut {
+    ($cursor:expr) => {
+        $cursor.selections[$cursor.sels_i].as_mut().unwrap().0
+    };
+}
+
 /// A selection that can edit [`Text`], but can't alter selections
 ///
 /// This struct will be used only inside functions passed to the
@@ -69,36 +81,33 @@ mod selections;
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
 pub struct Cursor<'a, W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
+    selections: &'a mut Vec<Option<(Selection, usize, bool)>>,
+    sels_i: usize,
     initial: Selection,
-    selection: Selection,
-    n: usize,
-    was_main: bool,
     widget: &'a mut W,
     area: &'a Area,
     next_i: Option<Rc<Cell<usize>>>,
     inc_searcher: &'a mut S,
-    is_copy: bool,
 }
 
 impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
-        (selection, n, was_main): (Selection, usize, bool),
+        selections: &'a mut Vec<Option<(Selection, usize, bool)>>,
+        sels_i: usize,
         (widget, area): (&'a mut W, &'a Area),
         next_i: Option<Rc<Cell<usize>>>,
         searcher: &'a mut S,
-        is_copy: bool,
     ) -> Self {
+        let initial = selections[sels_i].as_ref().unwrap().0.clone();
         Self {
-            initial: selection.clone(),
-            selection,
-            n,
-            was_main,
+            selections,
+            sels_i,
+            initial,
             widget,
             area,
             next_i,
             inc_searcher: searcher,
-            is_copy,
         }
     }
 
@@ -122,7 +131,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     pub fn replace(&mut self, edit: impl ToString) {
         let change = {
             let edit = edit.to_string();
-            let range = self.selection.point_range(self.widget.text());
+            let range = sel!(self).point_range(self.widget.text());
             let (p0, p1) = (range.start, range.end);
             let p1 = if self.anchor().is_some() { p1 } else { p0 };
             Change::new(edit, p0..p1, self.widget.text())
@@ -155,19 +164,19 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [`replace`]: Self::replace
     /// [`append`]: Self::append
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = self.selection.caret()..self.selection.caret();
+        let range = sel!(self).caret()..sel!(self).caret();
         let change = Change::new(edit.to_string(), range, self.widget.text());
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
 
-        if let Some(anchor) = self.selection.anchor()
-            && anchor > self.selection.caret()
+        if let Some(anchor) = sel!(self).anchor()
+            && anchor > sel!(self).caret()
         {
             let new_anchor = anchor + added - taken;
-            self.selection.swap_ends();
-            self.selection.move_to(new_anchor, self.widget.text());
-            self.selection.swap_ends();
+            sel_mut!(self).swap_ends();
+            sel_mut!(self).move_to(new_anchor, self.widget.text());
+            sel_mut!(self).swap_ends();
         }
     }
 
@@ -182,20 +191,20 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [`replace`]: Self::replace
     /// [`insert`]: Self::insert
     pub fn append(&mut self, edit: impl ToString) {
-        let caret = self.selection.caret();
+        let caret = sel!(self).caret();
         let p = caret.fwd(self.widget.text().char_at(caret).unwrap());
         let change = Change::new(edit.to_string(), p..p, self.widget.text());
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
 
-        if let Some(anchor) = self.selection.anchor()
+        if let Some(anchor) = sel!(self).anchor()
             && anchor > p
         {
             let new_anchor = anchor + added - taken;
-            self.selection.swap_ends();
-            self.selection.move_to(new_anchor, self.widget.text());
-            self.selection.swap_ends();
+            sel_mut!(self).swap_ends();
+            sel_mut!(self).move_to(new_anchor, self.widget.text());
+            sel_mut!(self).swap_ends();
         }
     }
 
@@ -203,8 +212,8 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     fn edit(&mut self, change: Change<'static, String>) {
         let text = self.widget.text_mut();
         let (change_i, selections_taken) =
-            text.apply_change(self.selection.change_i.map(|i| i as usize), change);
-        self.selection.change_i = change_i.map(|i| i as u32);
+            text.apply_change(sel!(self).change_i.map(|i| i as usize), change);
+        sel_mut!(self).change_i = change_i.map(|i| i as u32);
 
         // The Change may have happened before the index of the next curossr,
         // so we need to account for that.
@@ -223,7 +232,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns the distance moved in chars.
     #[track_caller]
     pub fn move_hor(&mut self, count: i32) -> i32 {
-        self.selection.move_hor(count, self.widget.text())
+        sel_mut!(self).move_hor(count, self.widget.text())
     }
 
     /// Moves the selection vertically. May cause horizontal movement
@@ -231,7 +240,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns the distance moved in lines.
     #[track_caller]
     pub fn move_ver(&mut self, count: i32) -> i32 {
-        self.selection.move_ver(
+        sel_mut!(self).move_ver(
             count,
             self.widget.text(),
             self.area,
@@ -245,7 +254,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns the distance moved in wrapped lines.
     #[track_caller]
     pub fn move_ver_wrapped(&mut self, count: i32) {
-        self.selection.move_ver_wrapped(
+        sel_mut!(self).move_ver_wrapped(
             count,
             self.widget.text(),
             self.area,
@@ -275,7 +284,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// the [`Text`]
     #[track_caller]
     pub fn move_to_start(&mut self) {
-        self.selection.move_to(Point::default(), self.widget.text());
+        sel_mut!(self).move_to(Point::default(), self.widget.text());
     }
 
     /// Moves the selection to a `line` and a `column`
@@ -306,12 +315,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Returns and takes the anchor of the [`Selection`].
     pub fn unset_anchor(&mut self) -> Option<Point> {
-        self.selection.unset_anchor()
+        sel_mut!(self).unset_anchor()
     }
 
     /// Sets the `anchor` to the current `caret`
     pub fn set_anchor(&mut self) {
-        self.selection.set_anchor()
+        sel_mut!(self).set_anchor()
     }
 
     /// Sets the `anchor` if it was not already set
@@ -319,7 +328,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns `true` if the anchor was set by this command.
     pub fn set_anchor_if_needed(&mut self) -> bool {
         if self.anchor().is_none() {
-            self.selection.set_anchor();
+            sel_mut!(self).set_anchor();
             true
         } else {
             false
@@ -328,7 +337,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Swaps the position of the `caret` and `anchor`
     pub fn swap_ends(&mut self) {
-        self.selection.swap_ends();
+        sel_mut!(self).swap_ends();
     }
 
     /// Sets the caret of the [`Selection`] on the start of the
@@ -365,7 +374,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Resets the [`Selection`] to how it was before being modified
     pub fn reset(&mut self) {
-        self.selection = self.initial.clone();
+        sel_mut!(self) = self.initial.clone();
     }
 
     /// Copies the current [`Selection`] in place
@@ -381,12 +390,15 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// [destroy]: Self::destroy
     pub fn copy(&mut self) -> Cursor<'_, W, S> {
+        self.selections
+            .extend_from_within(self.sels_i..=self.sels_i);
+        let sels_i = self.selections.len() - 1;
         Cursor::new(
-            (self.selection.clone(), self.n, false),
+            self.selections,
+            sels_i,
             (self.widget, self.area),
             self.next_i.clone(),
             self.inc_searcher,
-            true,
         )
     }
 
@@ -396,22 +408,20 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// If this was the main selection, the main selection will now be
     /// the selection immediately behind it.
-    pub fn destroy(mut self) {
-        // If it is 1, it is actually 2, because this Selection is also part
-        // of that list.
-        if !self.widget.text().selections().is_empty() || self.is_copy {
-            // Rc<Cell> needs to be manually dropped to reduce its counter.
-            self.next_i.take();
-            if self.was_main {
-                self.widget.text_mut().selections_mut().rotate_main(-1);
-            }
-            // The destructor is what inserts the Selection back into the list, so
-            // don't run it.
-            std::mem::forget(self);
-        } else {
-            // Just to be explicit.
-            drop(self);
+    pub fn destroy(self) {
+        // If there are other Selections in the list, or other copies still
+        // lying around, the Cursor Selection can be destroyed.
+        if self.widget.text().selections().is_empty()
+            && self.selections.iter().flatten().count() <= 1
+        {
+            return;
         }
+
+        if self.selections[self.sels_i].as_ref().unwrap().2 {
+            self.widget.text_mut().selections_mut().rotate_main(-1);
+        }
+
+        self.selections[self.sels_i] = None;
     }
 
     /// Sets the "desired visual column"
@@ -427,7 +437,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [up and down]: Cursor::move_ver
     /// [wrapped]: Cursor::move_ver_wrapped
     pub fn set_desired_vcol(&mut self, x: usize) {
-        self.selection.set_desired_cols(x, x);
+        sel_mut!(self).set_desired_cols(x, x);
     }
 
     ////////// Iteration functions
@@ -451,7 +461,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Wether the current selection matches a regex pattern
     #[track_caller]
     pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
-        let range = self.selection.byte_range(self.widget.text());
+        let range = sel!(self).byte_range(self.widget.text());
         match self.widget.text().matches(pat, range) {
             Ok(result) => result,
             Err(err) => panic!("{err}"),
@@ -483,7 +493,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_fwd<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let start = self.selection.caret();
+        let start = sel!(self).caret();
         let text = self.widget.text();
         match text.search_fwd(pat, start..text.len()) {
             Ok(iter) => iter,
@@ -521,7 +531,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         pat: R,
         until: impl TextIndex,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let start = self.selection.caret();
+        let start = sel!(self).caret();
         let text = self.widget.text();
         match text.search_fwd(pat, start.byte()..until.to_byte_index()) {
             Ok(iter) => iter,
@@ -562,7 +572,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_fwd_excl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let start = self.selection.caret();
+        let start = sel!(self).caret();
         let text = self.widget.text();
         match text.search_fwd(
             pat,
@@ -636,7 +646,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         pat: R,
         until: impl TextIndex,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let start = self.selection.caret();
+        let start = sel!(self).caret();
         let text = self.widget.text();
         match text.search_fwd(
             pat,
@@ -674,7 +684,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_rev<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let end = self.selection.caret();
+        let end = sel!(self).caret();
         let text = self.widget.text();
         match text.search_rev(pat, Point::default()..end) {
             Ok(iter) => iter,
@@ -714,7 +724,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         pat: R,
         until: impl TextIndex,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let end = self.selection.caret();
+        let end = sel!(self).caret();
         let start = until.to_byte_index();
         let text = self.widget.text();
         match text.search_rev(pat, start..end.byte()) {
@@ -753,7 +763,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// If the regex is not valid, this method will panic.
     #[track_caller]
     pub fn search_rev_incl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let end = self.selection.caret();
+        let end = sel!(self).caret();
         let text = self.widget.text();
         match text.search_rev(pat, ..end.byte() + self.char().len_utf8()) {
             Ok(iter) => iter,
@@ -796,7 +806,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         pat: R,
         until: impl TextIndex,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let end = self.selection.caret();
+        let end = sel!(self).caret();
         let start = until.to_byte_index();
         let text = self.widget.text();
         match text.search_rev(pat, start..end.byte() + self.char().len_utf8()) {
@@ -810,8 +820,8 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns the [`char`] in the `caret`
     pub fn char(&self) -> char {
         self.text()
-            .char_at(self.selection.caret())
-            .unwrap_or_else(|| panic!("{:#?}\n{:#?}", self.selection.caret(), self.text()))
+            .char_at(sel!(self).caret())
+            .unwrap_or_else(|| panic!("{:#?}\n{:#?}", sel!(self).caret(), self.text()))
     }
 
     /// Returns the [`char`] at a given [`Point`]
@@ -832,7 +842,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs<'_> {
-        let range = self.selection.byte_range(self.text());
+        let range = sel!(self).byte_range(self.text());
         self.text().strs(range).unwrap()
     }
 
@@ -881,12 +891,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Returns the `caret`
     pub fn caret(&self) -> Point {
-        self.selection.caret()
+        sel!(self).caret()
     }
 
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
-        self.selection.anchor()
+        sel!(self).anchor()
     }
 
     /// The [`Point`] range of the [`Selection`]
@@ -899,7 +909,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// [`RangeInclusive`]: std::ops::RangeInclusive
     pub fn range(&self) -> Range<Point> {
-        self.selection.point_range(self.text())
+        sel!(self).point_range(self.text())
     }
 
     /// An exclusive [`Point`] range of the [`Selection`]
@@ -907,7 +917,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// If you wish for an inclusive range, whose length is always
     /// greater than or equal to 1, see [`RangeInclusive`].
     pub fn range_excl(&self) -> Range<Point> {
-        self.selection.point_range_excl()
+        sel!(self).point_range_excl()
     }
 
     /// The [`VPoint`] range of the [`Selection`]
@@ -915,8 +925,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Use only if you need the things that the [`VPoint`] provides,
     /// in order to preven extraneous calculations
     pub fn v_caret(&self) -> VPoint {
-        self.selection
-            .v_caret(self.widget.text(), self.area, self.widget.get_print_opts())
+        sel!(self).v_caret(self.widget.text(), self.area, self.widget.get_print_opts())
     }
 
     /// The [`VPoint`] of the anchor, if it exists
@@ -924,8 +933,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Use only if you need the things that the [`VPoint`] provides,
     /// in order to preven extraneous calculations
     pub fn v_anchor(&self) -> Option<VPoint> {
-        self.selection
-            .v_anchor(self.widget.text(), self.area, self.widget.get_print_opts())
+        sel!(self).v_anchor(self.widget.text(), self.area, self.widget.get_print_opts())
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`
@@ -935,7 +943,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Whether or not this is the main [`Selection`]
     pub fn is_main(&self) -> bool {
-        self.was_main
+        self.selections[self.sels_i].as_ref().unwrap().2
     }
 
     /// The [`Text`] of the [`Widget`]
@@ -974,9 +982,9 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
         end: Option<Point>,
     ) -> impl Iterator<Item = Range<usize>> + '_ {
         let range = if let Some(end) = end {
-            (self.selection.caret()..end).to_range(self.text().len().byte())
+            (sel!(self).caret()..end).to_range(self.text().len().byte())
         } else {
-            (self.selection.caret()..).to_range(self.text().len().byte())
+            (sel!(self).caret()..).to_range(self.text().len().byte())
         };
         self.inc_searcher.search_fwd(self.widget.text(), range)
     }
@@ -993,9 +1001,9 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
         start: Option<Point>,
     ) -> impl Iterator<Item = Range<usize>> + '_ {
         let range = if let Some(start) = start {
-            (start..self.selection.caret()).to_range(self.text().len().byte())
+            (start..sel!(self).caret()).to_range(self.text().len().byte())
         } else {
-            (..self.selection.caret()).to_range(self.text().len().byte())
+            (..sel!(self).caret()).to_range(self.text().len().byte())
         };
         self.inc_searcher.search_rev(self.widget.text(), range)
     }
@@ -1005,51 +1013,23 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     ///
     /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
     pub fn matches_inc(&mut self) -> bool {
-        let range = self.selection.byte_range(self.widget.text());
+        let range = sel!(self).byte_range(self.widget.text());
         self.inc_searcher
             .matches(self.widget.text().strs(range).unwrap().to_string().as_str())
-    }
-}
-
-// SAFETY: In theory, it should be impossible to maintain a reference
-// to W after it has dropped, since the Handle would be mutably
-// borrowing from said W, and you can only get a Cursor from Handles.
-// Thus, the only thing which may have been dropped is the Selections
-// within, which are accounted for.
-unsafe impl<#[may_dangle] 'a, W: Widget + ?Sized + 'a, S: 'a> Drop for Cursor<'a, W, S> {
-    fn drop(&mut self) {
-        let selection = std::mem::take(&mut self.selection);
-        let ([inserted_i, selections_taken], last_selection_overhangs) = self
-            .widget
-            .text_mut()
-            .selections_mut()
-            .insert(self.n, selection, self.was_main);
-
-        if let Some(next_i) = self.next_i.as_ref()
-            && inserted_i <= next_i.get()
-        {
-            let go_to_next = !last_selection_overhangs as usize;
-            next_i.set(
-                next_i
-                    .get()
-                    .saturating_sub(selections_taken)
-                    .max(inserted_i)
-                    + go_to_next,
-            )
-        }
     }
 }
 
 impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Cursor")
-            .field("selection", &self.selection)
+            .field("selection", &sel!(self))
             .finish_non_exhaustive()
     }
 }
 
 /// An [`Iterator`] overf all [`Cursor`]s
 pub struct Cursors<'a, W: Widget + ?Sized, S> {
+    current: Vec<Option<(Selection, usize, bool)>>,
     next_i: Rc<Cell<usize>>,
     widget: &'a mut W,
     area: &'a Area,
@@ -1065,6 +1045,7 @@ impl<'a, W: Widget + ?Sized, S> Cursors<'a, W, S> {
         inc_searcher: RefMut<'a, S>,
     ) -> Self {
         Self {
+            current: Vec::new(),
             next_i: Rc::new(Cell::new(next_i)),
             widget,
             area,
@@ -1082,13 +1063,59 @@ impl<'a, W: Widget + ?Sized, S> Lender for Cursors<'a, W, S> {
         let current_i = self.next_i.get();
         let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
 
+        reinsert_selections(
+            self.current
+                .splice(.., [Some((selection, current_i, was_main))])
+                .flatten(),
+            self.widget,
+            Some(&self.next_i),
+        );
+
         Some(Cursor::new(
-            (selection, current_i, was_main),
+            &mut self.current,
+            0,
             (self.widget, self.area),
             Some(self.next_i.clone()),
             &mut self.inc_searcher,
-            false,
         ))
+    }
+}
+
+impl<'a, W: Widget + ?Sized, S> Drop for Cursors<'a, W, S> {
+    fn drop(&mut self) {
+        reinsert_selections(
+            self.current.drain(..).flatten(),
+            self.widget,
+            Some(&self.next_i),
+        );
+    }
+}
+
+/// Reinsert edited [`Selections`]
+#[inline]
+pub(crate) fn reinsert_selections(
+    selections: impl Iterator<Item = (Selection, usize, bool)>,
+    widget: &mut (impl Widget + ?Sized),
+    next_i: Option<&Cell<usize>>,
+) {
+    for (selection, n, was_main) in selections {
+        let ([inserted_i, selections_taken], last_selection_overhangs) = widget
+            .text_mut()
+            .selections_mut()
+            .insert(n, selection, was_main);
+
+        if let Some(next_i) = next_i
+            && inserted_i <= next_i.get()
+        {
+            let go_to_next = !last_selection_overhangs as usize;
+            next_i.set(
+                next_i
+                    .get()
+                    .saturating_sub(selections_taken)
+                    .max(inserted_i)
+                    + go_to_next,
+            )
+        }
     }
 }
 
@@ -1115,7 +1142,7 @@ pub trait CaretOrRange {
 impl CaretOrRange for Point {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        cursor.selection.move_to(self, cursor.widget.text());
+        sel_mut!(cursor).move_to(self, cursor.widget.text());
     }
 }
 
@@ -1127,10 +1154,10 @@ impl CaretOrRange for Range<Point> {
             "slice index start is larger than end"
         );
 
-        cursor.selection.move_to(self.start, cursor.widget.text());
+        sel_mut!(cursor).move_to(self.start, cursor.widget.text());
         if self.start < self.end {
             cursor.set_anchor();
-            cursor.selection.move_to(self.end, cursor.widget.text());
+            sel_mut!(cursor).move_to(self.end, cursor.widget.text());
             if self.end < cursor.widget.text().len() {
                 cursor.move_hor(-1);
             }
@@ -1148,23 +1175,19 @@ impl CaretOrRange for RangeInclusive<Point> {
             "slice index start is larger than end"
         );
 
-        cursor
-            .selection
-            .move_to(*self.start(), cursor.widget.text());
+        sel_mut!(cursor).move_to(*self.start(), cursor.widget.text());
         cursor.set_anchor();
-        cursor.selection.move_to(*self.end(), cursor.widget.text());
+        sel_mut!(cursor).move_to(*self.end(), cursor.widget.text());
     }
 }
 
 impl CaretOrRange for RangeFrom<Point> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        cursor.selection.move_to(self.start, cursor.widget.text());
+        sel_mut!(cursor).move_to(self.start, cursor.widget.text());
         if self.start < cursor.text().len() {
             cursor.set_anchor();
-            cursor
-                .selection
-                .move_to(cursor.widget.text().len(), cursor.widget.text());
+            sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
             cursor.move_hor(-1);
         } else {
             cursor.unset_anchor();
@@ -1178,7 +1201,7 @@ impl CaretOrRange for RangeTo<Point> {
         cursor.move_to_start();
         if Point::default() < self.end {
             cursor.set_anchor();
-            cursor.selection.move_to(self.end, cursor.widget.text());
+            sel_mut!(cursor).move_to(self.end, cursor.widget.text());
             cursor.move_hor(-1);
         } else {
             cursor.unset_anchor();
@@ -1191,14 +1214,14 @@ impl CaretOrRange for RangeToInclusive<Point> {
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
-        cursor.selection.move_to(self.end, cursor.widget.text());
+        sel_mut!(cursor).move_to(self.end, cursor.widget.text());
     }
 }
 
 impl CaretOrRange for usize {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        cursor.selection.move_to(
+        sel_mut!(cursor).move_to(
             cursor.widget.text().point_at_byte(self),
             cursor.widget.text(),
         )
@@ -1213,13 +1236,13 @@ impl CaretOrRange for Range<usize> {
             "slice index start is larger than end"
         );
 
-        cursor.selection.move_to(
+        sel_mut!(cursor).move_to(
             cursor.widget.text().point_at_byte(self.start),
             cursor.widget.text(),
         );
         if self.start < self.end {
             cursor.set_anchor();
-            cursor.selection.move_to(
+            sel_mut!(cursor).move_to(
                 cursor.widget.text().point_at_byte(self.end),
                 cursor.widget.text(),
             );
@@ -1240,12 +1263,12 @@ impl CaretOrRange for RangeInclusive<usize> {
             "slice index start is larger than end"
         );
 
-        cursor.selection.move_to(
+        sel_mut!(cursor).move_to(
             cursor.widget.text().point_at_byte(*self.start()),
             cursor.widget.text(),
         );
         cursor.set_anchor();
-        cursor.selection.move_to(
+        sel_mut!(cursor).move_to(
             cursor.widget.text().point_at_byte(*self.end()),
             cursor.widget.text(),
         );
@@ -1255,15 +1278,13 @@ impl CaretOrRange for RangeInclusive<usize> {
 impl CaretOrRange for RangeFrom<usize> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        cursor.selection.move_to(
+        sel_mut!(cursor).move_to(
             cursor.widget.text().point_at_byte(self.start),
             cursor.widget.text(),
         );
         if self.start < cursor.text().len().byte() {
             cursor.set_anchor();
-            cursor
-                .selection
-                .move_to(cursor.widget.text().len(), cursor.widget.text());
+            sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
             cursor.move_hor(-1);
         } else {
             cursor.unset_anchor();
@@ -1277,7 +1298,7 @@ impl CaretOrRange for RangeTo<usize> {
         cursor.move_to_start();
         if self.end > 0 {
             cursor.set_anchor();
-            cursor.selection.move_to(
+            sel_mut!(cursor).move_to(
                 cursor.widget.text().point_at_byte(self.end),
                 cursor.widget.text(),
             );
@@ -1293,7 +1314,7 @@ impl CaretOrRange for RangeToInclusive<usize> {
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
-        cursor.selection.move_to(
+        sel_mut!(cursor).move_to(
             cursor.widget.text().point_at_byte(self.end),
             cursor.widget.text(),
         );
@@ -1306,9 +1327,7 @@ impl CaretOrRange for RangeFull {
         cursor.move_to_start();
         if cursor.text().len() > Point::default() {
             cursor.set_anchor();
-            cursor
-                .selection
-                .move_to(cursor.widget.text().len(), cursor.widget.text());
+            sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
         }
     }
 }

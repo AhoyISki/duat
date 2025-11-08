@@ -5,7 +5,6 @@
 //! should make use of the [duat] crate.
 //!
 //! [duat]: https://crates.io/duat
-#![feature(dropck_eyepatch)]
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
 
