@@ -450,7 +450,7 @@ fn decide_on_new_config(
         std::fs::create_dir_all(crate_dir.join("src"))?;
         std::fs::write(crate_dir.join("src").join("lib.rs"), SRC_LIB_RS)?;
 
-        if cfg!(feature = "git-deps") {
+        if !cfg!(feature = "git-deps") {
             let manifest: String = MANIFEST
                 .split_inclusive("\n")
                 .filter(|line| !line.starts_with("git = \""))
