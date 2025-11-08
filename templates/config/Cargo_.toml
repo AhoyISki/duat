@@ -21,9 +21,9 @@ split-debuginfo = "unpacked"
 incremental = true
 lto = "off"
 
-[dependencies]
-duat = "0.7.4"
+[dependencies.duat]
 git = "https://github.com/AhoyISki/duat"
+version = "0.7.4"
 
 # Same with this one, it just adds more colorschemes.
 [dependencies.duat-catppuccin]

@@ -13,7 +13,8 @@ FOR NEXT UPDATE:
 [ ] File tracking.
 [ ] Actually fix injected indentation.
 [ ] Mode keybindings info.
-[ ] Move to Rust stable (sigh...).
+[x] Move to Rust stable (sigh...).
+[ ] Flags parameter macro.
 
 KNOWN BUGS:
  HIGH PRIORITY:
