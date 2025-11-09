@@ -24,7 +24,6 @@ impl CompletionsProvider for PathCompletions {
         _: &str,
     ) -> CompletionsList<Self> {
         let Some((entries, file_name)) = get_entries(prefix) else {
-            duat_core::context::debug!("failed to get entries");
             return CompletionsList {
                 entries: Vec::new(),
                 kind: CompletionsKind::UnfinishedFiltered,
@@ -61,7 +60,6 @@ impl CompletionsProvider for PathCompletions {
 
 fn get_entries(prefix: &str) -> Option<(std::fs::ReadDir, &OsStr)> {
     let path = Path::new(prefix);
-    duat_core::context::debug!("Path is {path:?}");
     if path.is_dir() {
         path.read_dir().ok().zip(Some(OsStr::new("")))
     } else {

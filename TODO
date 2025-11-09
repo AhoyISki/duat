@@ -6,7 +6,7 @@ FOR NEXT UPDATE:
     [x] Widget integration.
     [?] Mode integration.
 [ ] Command line completion.
-[ ] File path completion.
+[x] File path completion.
 [ ] Get rid of Text::selections_mut.
 [ ] Lazily evaluate height and width, including when pushing and spawning.
 [ ] Named StatusParts.
