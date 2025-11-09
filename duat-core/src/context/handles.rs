@@ -372,7 +372,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
 
         let ret = edit(Cursor::new(
             &mut selections,
-            n,
+            0,
             (widget, area),
             None,
             &mut searcher,
