@@ -13,9 +13,11 @@
 use std::fmt::Alignment;
 
 use duat_core::{
+    buffer::Buffer,
     context::Handle,
     data::Pass,
     form,
+    mode::{MouseButton, MouseEvent, MouseEventKind},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, Text},
     ui::{PushSpecs, Side, Widget},
 };
@@ -123,6 +125,54 @@ impl Widget for LineNumbers {
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
+    }
+
+    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
+        let line = |buffer: &Buffer| {
+            let lines = buffer.printed_lines();
+            event
+                .points
+                .and_then(|tpp| lines.get(tpp.points().real.line()))
+                .map(|(line, _)| *line)
+                .unwrap_or(buffer.text().len().line())
+        };
+        match event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                let handle = handle.read(pa).buffer.clone();
+                let line = line(handle.read(pa));
+
+                handle.selections_mut(pa).remove_extras();
+                handle.edit_main(pa, |mut c| {
+                    c.unset_anchor();
+                    c.move_to_coords(line, 0)
+                })
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                let handle = handle.read(pa).buffer.clone();
+                let line = line(handle.read(pa));
+
+                handle.selections_mut(pa).remove_extras();
+                handle.edit_main(pa, |mut c| {
+                    c.set_anchor_if_needed();
+                    c.move_to_coords(line, 0)
+                })
+            }
+            MouseEventKind::ScrollDown => {
+                let handle = handle.read(pa).buffer.clone();
+                let opts = handle.opts(pa);
+                let (buffer, area) = handle.write_with_area(pa);
+
+                area.scroll_ver(buffer.text(), 3, opts);
+            }
+            MouseEventKind::ScrollUp => {
+                let handle = handle.read(pa).buffer.clone();
+                let opts = handle.opts(pa);
+                let (buffer, area) = handle.write_with_area(pa);
+
+                area.scroll_ver(buffer.text(), -3, opts);
+            }
+            _ => {}
+        }
     }
 }
 

@@ -23,6 +23,7 @@ use crate::{
     hook::{self, BufferClosed, WidgetCreated, WindowCreated},
     mode,
     opts::PrintOpts,
+    session::UiMouseEvent,
     text::{SpawnId, Text, txt},
     ui::{DynSpawnSpecs, PushSpecs, RwArea, Ui},
 };
@@ -1134,6 +1135,27 @@ impl Window {
         );
 
         buffers
+    }
+
+    pub(crate) fn send_mouse_event(&self, pa: &mut Pass, mouse_event: UiMouseEvent) {
+        let inner = self.0.read(pa);
+        let node = inner
+            .spawned
+            .iter()
+            .rev()
+            .map(|(_, node)| node)
+            .chain(&inner.nodes)
+            .find(|node| {
+                let tl = node.handle().area().top_left(pa);
+                let br = node.handle().area().bottom_right(pa);
+                (tl.x <= mouse_event.coord.x && tl.y <= mouse_event.coord.y)
+                    && (mouse_event.coord.x < br.x && mouse_event.coord.y < br.y)
+            })
+            .cloned();
+
+        if let Some(node) = node {
+            node.on_mouse_event(pa, mouse_event);
+        }
     }
 
     /// How many [`Widget`]s are in this [`Window`]

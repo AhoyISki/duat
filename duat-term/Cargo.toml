@@ -1,6 +1,6 @@
 [package]
 name = "duat-term"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "A frontend for Duat for the terminal"

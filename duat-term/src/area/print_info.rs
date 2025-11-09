@@ -66,7 +66,8 @@ impl PrintInfo {
         let (points, mut y) = if let Some(main) = text.selections().get_main()
             && main.caret() == self.prev_main
         {
-            (TwoPoints::new_after_ghost(self.prev_main), self.vert_dist)
+            (s_points, 0)
+            //(TwoPoints::new_after_ghost(self.prev_main), self.vert_dist)
         } else {
             (s_points, 0)
         };

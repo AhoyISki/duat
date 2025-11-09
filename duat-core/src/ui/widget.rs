@@ -43,8 +43,9 @@ use crate::{
     data::{Pass, RwData},
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
+    mode::MouseEvent,
     opts::PrintOpts,
-    session::{MouseEvent, UiMouseEvent},
+    session::UiMouseEvent,
     text::Text,
     ui::{PrintInfo, RwArea},
 };
@@ -410,8 +411,8 @@ pub trait Widget: Send + 'static {
 
     /// How to handle a [`MouseEvent`]
     ///
-    /// Normally, nothing will be done, with the exception of button [`Tag`]s
-    /// which are triggered normally.
+    /// Normally, nothing will be done, with the exception of button
+    /// [`Tag`]s which are triggered normally.
     ///
     /// [`Tag`]: crate::text::Tag
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent)

@@ -212,18 +212,9 @@ impl Session {
                         }
                     }
                     DuatEvent::MouseEventSent(mouse_event) => {
-                        let node = context::current_window(pa)
-                            .nodes(pa)
-                            .find(|node| {
-                                let tl = node.handle().area().top_left(pa);
-                                let br = node.handle().area().bottom_right(pa);
-                                (tl.x <= mouse_event.coord.x && tl.y <= mouse_event.coord.y)
-                                    && (mouse_event.coord.x < br.x && mouse_event.coord.y < br.y)
-                            })
-                            .cloned();
-                        if let Some(node) = node {
-                            node.on_mouse_event(pa, mouse_event);
-                        }
+                        context::current_window(pa)
+                            .clone()
+                            .send_mouse_event(pa, mouse_event);
                     }
                     DuatEvent::KeyEventsSent(keys) => {
                         for key in keys {
@@ -327,21 +318,6 @@ impl Session {
     }
 }
 
-/// A mouse event, representing a click, drag, hover, etc
-#[derive(Debug, Clone, Copy)]
-pub struct MouseEvent {
-    /// The position on the [`Text`] where the mouse was.
-    ///
-    /// [`Text`]: crate::text::Text
-    pub points: Option<TwoPointsPlace>,
-    /// Thee coordinate on screen where the mouse was.
-    pub coord: Coord,
-    /// What the mouse did.
-    pub kind: MouseEventKind,
-    /// Modifiers that were pressed during this mouse event.
-    pub modifiers: KeyModifiers,
-}
-
 /// Where exactly did the [`TwoPoints`] for a given [`Coord`] match
 ///
 /// It can be either an exact match, that is, the mouse was in the
@@ -353,6 +329,15 @@ pub enum TwoPointsPlace {
     Within(TwoPoints),
     /// The mouse was on the same line as the character.
     AheadOf(TwoPoints),
+}
+
+impl TwoPointsPlace {
+    /// The [`TwoPoints`] that were interacted with
+    pub fn points(&self) -> TwoPoints {
+        match self {
+            TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points) => *points,
+        }
+    }
 }
 
 /// A mouse event sent by the [`Ui`], doesn't include [`Text`]

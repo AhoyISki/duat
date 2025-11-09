@@ -22,7 +22,8 @@ use duat_core::{
     data::Pass,
     form::{self, Form},
     hook::{self, FocusChanged},
-    text::{Point, SpawnTag, Tagger, Text, txt},
+    mode::{MouseEvent, MouseEventKind},
+    text::{txt, Point, SpawnTag, Tagger, Text},
     ui::{DynSpawnSpecs, Orientation, Widget},
 };
 
@@ -283,6 +284,14 @@ impl Widget for Completions {
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
+    }
+
+    fn on_mouse_event(pa: &mut Pass, _: &Handle<Self>, event: MouseEvent) {
+        match event.kind {
+            MouseEventKind::ScrollDown => Self::scroll(pa, 1),
+            MouseEventKind::ScrollUp => Self::scroll(pa, -1),
+            _ => {}
+        }
     }
 }
 

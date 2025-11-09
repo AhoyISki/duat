@@ -28,7 +28,7 @@ use crate::{
     data::Pass,
     form::Painter,
     hook::{self, BufferWritten},
-    mode::Selections,
+    mode::{MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
     text::{BuilderPart, Bytes, Text, txt},
@@ -453,7 +453,7 @@ impl Widget for Buffer {
         self.opts
     }
 
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: crate::session::MouseEvent) {
+    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 let point = match event.points {
@@ -478,7 +478,7 @@ impl Widget for Buffer {
                     }
                     _ => handle.text(pa).last_point(),
                 };
-                
+
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
                     c.set_anchor_if_needed();
@@ -487,8 +487,16 @@ impl Widget for Buffer {
             }
             MouseEventKind::Drag(_) => {}
             MouseEventKind::Moved => {}
-            MouseEventKind::ScrollDown => {}
-            MouseEventKind::ScrollUp => {}
+            MouseEventKind::ScrollDown => {
+                let opts = handle.opts(pa);
+                let (widget, area) = handle.write_with_area(pa);
+                area.scroll_ver(widget.text(), 3, opts);
+            }
+            MouseEventKind::ScrollUp => {
+                let opts = handle.opts(pa);
+                let (widget, area) = handle.write_with_area(pa);
+                area.scroll_ver(widget.text(), -3, opts);
+            }
             MouseEventKind::ScrollLeft => {}
             MouseEventKind::ScrollRight => {}
         }

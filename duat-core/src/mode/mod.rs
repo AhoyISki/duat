@@ -22,7 +22,7 @@
 use core::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEventKind, MouseButton};
 
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;
@@ -34,7 +34,13 @@ pub use self::{
     remap::*,
     switch::*,
 };
-use crate::{buffer::Buffer, context::Handle, data::Pass, session::DuatEvent, ui::Widget};
+use crate::{
+    buffer::Buffer,
+    context::Handle,
+    data::Pass,
+    session::{DuatEvent, TwoPointsPlace},
+    ui::{Coord, Widget},
+};
 
 mod cursor;
 mod patterns;
@@ -464,6 +470,21 @@ impl Mode for &'static str {
     fn just_keys(&self) -> Option<&str> {
         Some(self)
     }
+}
+
+/// A mouse event, representing a click, drag, hover, etc
+#[derive(Debug, Clone, Copy)]
+pub struct MouseEvent {
+    /// The position on the [`Text`] where the mouse was.
+    ///
+    /// [`Text`]: crate::text::Text
+    pub points: Option<TwoPointsPlace>,
+    /// Thee coordinate on screen where the mouse was.
+    pub coord: Coord,
+    /// What the mouse did.
+    pub kind: MouseEventKind,
+    /// Modifiers that were pressed during this mouse event.
+    pub modifiers: KeyMod,
 }
 
 /// Return the length of a strin in chars
