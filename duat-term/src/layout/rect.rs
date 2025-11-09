@@ -89,10 +89,13 @@ impl Rect {
             specs.orientation.prefers_before(),
         );
 
-        rect.set_spawned_eqs(p, specs, [center, len], [tl.x().into(), tl.y().into()], [
-            tl.x() + 1.0,
-            tl.y() + 1.0,
-        ]);
+        rect.set_spawned_eqs(
+            p,
+            specs,
+            [center, len],
+            [tl.x().into(), tl.y().into()],
+            [tl.x() + 1.0, tl.y() + 1.0],
+        );
 
         let dims = [specs.width, specs.height];
         let cons = Constraints::new(p, dims, specs.hidden, &rect, None);

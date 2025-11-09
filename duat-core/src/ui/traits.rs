@@ -240,7 +240,8 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`Side::Left`]: super::Side::Left
     /// [`Side::Right`]: super::Side::Right
     fn push(
-        &self, _: CoreAccess,
+        &self,
+        _: CoreAccess,
         specs: PushSpecs,
         on_files: bool,
         cache: Self::Cache,
@@ -257,7 +258,8 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// [deleted]: RawArea::delete
     fn spawn(
-        &self, _: CoreAccess,
+        &self,
+        _: CoreAccess,
         id: SpawnId,
         specs: DynSpawnSpecs,
         cache: Self::Cache,
@@ -320,7 +322,8 @@ pub trait RawArea: Sized + PartialEq + 'static {
 
     /// Prints the [`Text`] with a callback function
     fn print_with<'a>(
-        &self, _: CoreAccess,
+        &self,
+        _: CoreAccess,
         text: &Text,
         opts: PrintOpts,
         painter: Painter,
@@ -347,7 +350,8 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// [`text::Item`]: Item
     fn print_iter<'a>(
-        &self, _: CoreAccess,
+        &self,
+        _: CoreAccess,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -364,7 +368,8 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// [`text::Item`]: Item
     fn rev_print_iter<'a>(
-        &self, _: CoreAccess,
+        &self,
+        _: CoreAccess,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -390,12 +395,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: RawArea::scroll_ver
     /// [`scroll_to_points`]: RawArea::scroll_to_points
-    fn scroll_around_points(
-        &self, _: CoreAccess,
-        text: &Text,
-        points: TwoPoints,
-        opts: PrintOpts,
-    );
+    fn scroll_around_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
     ///
@@ -449,17 +449,43 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// The bottom right [`Coord`] of this `Area`
     fn bottom_right(&self, _: CoreAccess) -> Coord;
 
+    /// The [`Coord`] where the given [`TwoPoints`] would be printed
+    ///
+    /// Returns [`None`] if the `TwoPoints` are not part of the [`Text`]
+    fn coord_at_points(
+        &self,
+        _: CoreAccess,
+        text: &Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Option<Coord>;
+
+    /// The [`TwoPoints`] where a [`Coord`] is found
+    ///
+    /// Returns [`None`] if either the `RawArea` does not contain
+    /// the given `Coord`, or if the `Coord` is in a position where
+    /// [`Text`] is not printed.
+    fn points_at_coord(
+        &self,
+        _: CoreAccess,
+        text: &Text,
+        coord: Coord,
+        opts: PrintOpts,
+    ) -> Option<TwoPoints>;
+
     /// Returns `true` if this is the currently active `RawArea`
     ///
     /// Only one `RawArea` should be active at any given moment.
     fn is_active(&self, _: CoreAccess) -> bool;
 }
 
-/// A smart pointer, meant to prevent direct calling of [`RawArea`]
-/// methods
+/// Prevents direct use of the [`RawArea`] functions
 ///
 /// The methods of `RawArea` are all meant to be accessed only
-/// through the type erased `RwArea`
+/// through the type erased [`RwArea`] and [`Area`]
+///
+/// [`RwArea`]: super::RwArea
+/// [`Area`]: super::Area
 #[non_exhaustive]
 #[derive(Clone, Copy)]
 pub struct CoreAccess {}

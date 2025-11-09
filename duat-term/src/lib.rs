@@ -14,16 +14,23 @@ use std::{
 
 pub use area::{Area, Coords};
 use crossterm::{
-    cursor, event::{self, Event as CtEvent, poll as ct_poll, read as ct_read}, execute, queue, style::ContentStyle, terminal::{self, ClearType}
+    cursor,
+    event::{self, Event as CtEvent, poll as ct_poll, read as ct_read},
+    execute, queue,
+    style::ContentStyle,
+    terminal::{self, ClearType},
 };
 use duat_core::{
     MainThreadOnly,
     form::{self, Color},
-    session::DuatSender,
-    ui::{self, traits::{RawArea, RawUi}},
+    session::{DuatSender, UiMouseEvent},
+    ui::{
+        self,
+        traits::{RawArea, RawUi},
+    },
 };
 
-use self::{printer::Printer};
+use self::printer::Printer;
 pub use self::{
     printer::{Brush, Frame},
     rules::{SepChar, VertRule, VertRuleBuilder},
@@ -55,33 +62,32 @@ impl RawUi for Ui {
     type Area = Area;
 
     fn get_once() -> Option<&'static Self> {
-            static GOT: AtomicBool = AtomicBool::new(false);
-            let (tx, rx) = mpsc::channel();
-            
-            (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
-                Box::leak(Box::new(Self(Mutex::new(InnerUi {
-                    windows: Vec::new(),
-                    layouts: MainThreadOnly::default(),
-                    win: 0,
-                    frame: Frame::default(),
-                    printer_fn: || Arc::new(Printer::new()),
-                    rx: Some(rx),
-                    tx,
-                })))) as &'static Self
-            })
-        }
+        static GOT: AtomicBool = AtomicBool::new(false);
+        let (tx, rx) = mpsc::channel();
+
+        (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
+            Box::leak(Box::new(Self(Mutex::new(InnerUi {
+                windows: Vec::new(),
+                layouts: MainThreadOnly::default(),
+                win: 0,
+                frame: Frame::default(),
+                printer_fn: || Arc::new(Printer::new()),
+                rx: Some(rx),
+                tx,
+            })))) as &'static Self
+        })
+    }
 
     fn open(&self, duat_tx: DuatSender) {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
-        
+
         form::set_weak("rule.upper", "default.VertRule");
         form::set_weak("rule.lower", "default.VertRule");
 
         let term_rx = self.0.lock().unwrap().rx.take().unwrap();
         let term_tx = self.0.lock().unwrap().tx.clone();
 
-        let print_thread = std::thread::Builder::new()
-            .name("print loop".to_string());
+        let print_thread = std::thread::Builder::new().name("print loop".to_string());
         let _ = print_thread.spawn(move || {
             // Wait for everything to be setup before doing anything to the
             // terminal, for a less jarring effect.
@@ -146,7 +152,15 @@ impl RawUi for Ui {
                         }
                         Ok(CtEvent::FocusGained) => duat_tx.send_focused().unwrap(),
                         Ok(CtEvent::FocusLost) => duat_tx.send_unfocused().unwrap(),
-                        Ok(CtEvent::Mouse(_) | CtEvent::Paste(_)) => {}
+                        Ok(CtEvent::Mouse(event)) => duat_tx.send_mouse(UiMouseEvent {
+                            coord: ui::Coord {
+                                x: event.column as f32,
+                                y: event.row as f32,
+                            },
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        }).unwrap(),
+                        Ok(CtEvent::Paste(_)) => {}
                         Err(_) => {}
                     }
                 }
@@ -157,7 +171,7 @@ impl RawUi for Ui {
         self.0.lock().unwrap().tx.send(Event::Quit).unwrap();
 
         terminal::disable_raw_mode().unwrap();
-        
+
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags).unwrap();
         }
@@ -174,10 +188,7 @@ impl RawUi for Ui {
         .unwrap();
     }
 
-    fn new_root(
-        &self,
-        cache: <Self::Area as RawArea>::Cache,
-    ) -> Self::Area {
+    fn new_root(&self, cache: <Self::Area as RawArea>::Cache) -> Self::Area {
         let mut ui = self.0.lock().unwrap();
         let printer = (ui.printer_fn)();
 
@@ -259,10 +270,7 @@ impl RawUi for Ui {
     fn size(&'static self) -> ui::Coord {
         let ui = self.0.lock().unwrap();
         let coord = ui.windows[0].1.max_value();
-        ui::Coord {
-            x: coord.x as f32,
-            y: coord.y as f32,
-        }
+        ui::Coord { x: coord.x as f32, y: coord.y as f32 }
     }
 }
 

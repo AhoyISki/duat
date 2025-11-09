@@ -38,16 +38,15 @@
 //! [`Area`]: super::Area
 use std::sync::{Arc, Mutex};
 
-use crossterm::event::MouseEvent;
-
 use crate::{
     context::Handle,
     data::{Pass, RwData},
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     opts::PrintOpts,
+    session::{MouseEvent, UiMouseEvent},
     text::Text,
-    ui::{Coord, PrintInfo, RwArea},
+    ui::{PrintInfo, RwArea},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -358,6 +357,7 @@ use crate::{
 /// [`Window::push_inner`]: super::Window::push_inner
 /// [`Window::push_outer`]: super::Window::push_outer
 /// [`OnceLock`]: std::sync::OnceLock
+#[allow(unused)]
 pub trait Widget: Send + 'static {
     ////////// Stateful functions
 
@@ -384,7 +384,6 @@ pub trait Widget: Send + 'static {
     /// [commands]: crate::cmd
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
-    #[allow(unused)]
     fn update(pa: &mut Pass, handle: &Handle<Self>)
     where
         Self: Sized;
@@ -393,7 +392,6 @@ pub trait Widget: Send + 'static {
     ///
     /// When implementing this, you are free to remove the `where`
     /// clause.
-    #[allow(unused)]
     fn on_focus(pa: &mut Pass, handle: &Handle<Self>)
     where
         Self: Sized,
@@ -404,8 +402,19 @@ pub trait Widget: Send + 'static {
     ///
     /// When implementing this, you are free to remove the `where`
     /// clause.
-    #[allow(unused)]
     fn on_unfocus(pa: &mut Pass, handle: &Handle<Self>)
+    where
+        Self: Sized,
+    {
+    }
+
+    /// How to handle a [`MouseEvent`]
+    ///
+    /// Normally, nothing will be done, with the exception of button [`Tag`]s
+    /// which are triggered normally.
+    ///
+    /// [`Tag`]: crate::text::Tag
+    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent)
     where
         Self: Sized,
     {
@@ -487,7 +496,7 @@ pub(crate) struct Node {
     print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
     on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
-    on_mouse_event: Arc<dyn Fn(&mut Pass, Coord, MouseEvent) -> Option<MouseEvent> + Send + Sync>,
+    on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
 }
 
 impl Node {
@@ -530,8 +539,18 @@ impl Node {
                 }
             }),
             on_mouse_event: Arc::new({
-                move |_pa, _coord, _mouse_event| {
-                    todo!();
+                let handle = handle.clone();
+                move |pa, event| {
+                    let opts = handle.opts(pa);
+                    let text = handle.text(pa);
+                    let event = MouseEvent {
+                        points: handle.area().points_at_coord(pa, text, event.coord, opts),
+                        coord: event.coord,
+                        kind: event.kind,
+                        modifiers: event.modifiers,
+                    };
+
+                    W::on_mouse_event(pa, &handle, event);
                 }
             }),
         }
@@ -620,8 +639,8 @@ impl Node {
         (self.on_unfocus)(pa, new)
     }
 
-    pub(crate) fn on_mouse_event(&self, pa: &mut Pass, coord: Coord, mouse_event: MouseEvent) {
-        (self.on_mouse_event)(pa, coord, mouse_event);
+    pub(crate) fn on_mouse_event(&self, pa: &mut Pass, mouse_event: UiMouseEvent) {
+        (self.on_mouse_event)(pa, mouse_event);
     }
 }
 

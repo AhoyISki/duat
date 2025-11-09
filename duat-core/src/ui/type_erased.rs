@@ -541,6 +541,34 @@ impl RwArea {
         self.0.read(pa).height()
     }
 
+    /// The [`Coord`] where the given [`TwoPoints`] would be printed
+    ///
+    /// Returns [`None`] if the `TwoPoints` are not part of the [`Text`]
+    pub fn coord_at_points(
+        &self,
+        pa: &Pass,
+        text: &Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Option<Coord> {
+        self.0.read(pa).coord_at_points(text, points, opts)
+    }
+
+    /// The [`TwoPoints`] where a [`Coord`] is found
+    ///
+    /// Returns [`None`] if either the `RawArea` does not contain
+    /// the given `Coord`, or if the `Coord` is in a position where
+    /// [`Text`] is not printed.
+    pub fn points_at_coord(
+        &self,
+        pa: &Pass,
+        text: &Text,
+        coord: Coord,
+        opts: PrintOpts,
+    ) -> Option<TwoPoints> {
+        self.0.read(pa).points_at_coord(text, coord, opts)
+    }
+
     /// Returns `true` if this is the currently active [`Area`]
     ///
     /// Only one `Area` should be active at any given moment.
@@ -754,6 +782,27 @@ impl Area {
         (self.fns.bottom_right)(self).y - (self.fns.top_left)(self).y
     }
 
+    /// The [`Coord`] where the given [`TwoPoints`] would be printed
+    ///
+    /// Returns [`None`] if the `TwoPoints` are not part of the [`Text`]
+    pub fn coord_at_points(
+        &self,
+        text: &Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Option<Coord> {
+        (self.fns.coord_at_points)(self, text, points, opts)
+    }
+
+    /// The [`TwoPoints`] where a [`Coord`] is found
+    ///
+    /// Returns [`None`] if either the `RawArea` does not contain
+    /// the given `Coord`, or if the `Coord` is in a position where
+    /// [`Text`] is not printed.
+    pub fn points_at_coord(&self, text: &Text, coord: Coord, opts: PrintOpts) -> Option<TwoPoints> {
+        (self.fns.points_at_coord)(self, text, coord, opts)
+    }
+
     /// Returns `true` if this is the currently active `Area`
     ///
     /// Only one `Area` should be active at any given moment.
@@ -807,6 +856,8 @@ struct AreaFunctions {
     eq: fn(&Area, &Area) -> bool,
     top_left: fn(&Area) -> Coord,
     bottom_right: fn(&Area) -> Coord,
+    coord_at_points: fn(&Area, &Text, TwoPoints, PrintOpts) -> Option<Coord>,
+    points_at_coord: fn(&Area, &Text, Coord, PrintOpts) -> Option<TwoPoints>,
     is_active: fn(&Area) -> bool,
 }
 
@@ -960,6 +1011,14 @@ impl AreaFunctions {
             bottom_right: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 area.bottom_right(CoreAccess::new())
+            },
+            coord_at_points: |area, text, two_points, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                area.coord_at_points(CoreAccess::new(), text, two_points, opts)
+            },
+            points_at_coord: |area, text, coord, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                area.points_at_coord(CoreAccess::new(), text, coord, opts)
             },
             is_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();

@@ -1,6 +1,7 @@
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
+    collections::HashMap,
     sync::{LazyLock, Mutex},
     vec::IntoIter,
 };
@@ -19,8 +20,8 @@ use crate::{
 };
 
 static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> = MainThreadOnly::new(RefCell::new(None));
-static RESET_MODES: Mutex<Vec<(TypeId, Box<dyn FnMut(&mut Pass) -> bool + Send>)>> =
-    Mutex::new(Vec::new());
+static RESET_MODES: LazyLock<Mutex<HashMap<TypeId, Box<dyn FnMut(&mut Pass) -> bool + Send>>>> =
+    LazyLock::new(Mutex::default);
 static SET_MODE: Mutex<Option<ModeFn>> = Mutex::new(None);
 static MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Any>>>> =
     LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new("no mode") as Box<dyn Any>)));
@@ -47,25 +48,21 @@ pub(crate) fn take_set_mode_fn(_: &mut Pass) -> Option<ModeFn> {
 /// [`mode::reset`]: reset
 pub fn set_default<M: Mode>(mode: M) {
     let mut reset_modes = RESET_MODES.lock().unwrap();
+    let type_id = TypeId::of::<M::Widget>();
 
-    let i = if let Some(i) = reset_modes
-        .iter()
-        .position(|(ty, _)| *ty == TypeId::of::<M::Widget>())
-    {
-        reset_modes[i].1 = Box::new(move |pa| {
+    if let Some(reset_fn) = reset_modes.get_mut(&type_id) {
+        *reset_fn = Box::new(move |pa| {
             let mode = mode.clone();
             set_mode_fn::<M>(pa, mode)
         });
-        i
     } else {
-        reset_modes.push((
+        reset_modes.insert(
             TypeId::of::<M::Widget>(),
             Box::new(move |pa| {
                 let mode = mode.clone();
                 set_mode_fn::<M>(pa, mode)
             }),
-        ));
-        reset_modes.len() - 1
+        );
     };
 
     if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
@@ -75,7 +72,7 @@ pub fn set_default<M: Mode>(mode: M) {
             if let Some(f) = prev {
                 f(pa);
             }
-            RESET_MODES.lock().unwrap()[i].1(pa)
+            RESET_MODES.lock().unwrap().get_mut(&type_id).unwrap()(pa)
         }));
     }
 }
@@ -94,6 +91,15 @@ pub fn set(mode: impl Mode) {
     }));
 }
 
+/// Returns `true` if the [`Widget`] has a default [`Mode`]
+pub fn has_default<W: Widget>() -> bool {
+    RESET_MODES
+        .lock()
+        .unwrap()
+        .get(&TypeId::of::<W>())
+        .is_some()
+}
+
 /// Resets the mode to the [default] of a given [`Widget`]
 ///
 /// Does nothing if no default was set for the given [`Widget`].
@@ -101,11 +107,12 @@ pub fn set(mode: impl Mode) {
 /// [default]: set_default
 pub fn reset<W: Widget>() {
     let reset_modes = RESET_MODES.lock().unwrap();
-    if let Some(i) = reset_modes
-        .iter()
-        .position(|(ty, _)| *ty == TypeId::of::<W>())
-    {
-        *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| RESET_MODES.lock().unwrap()[i].1(pa)));
+    let type_id = TypeId::of::<W>();
+
+    if reset_modes.get(&type_id).is_some() {
+        *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
+            RESET_MODES.lock().unwrap().get_mut(&type_id).unwrap()(pa)
+        }));
     } else if TypeId::of::<W>() == TypeId::of::<Buffer>() {
         panic!("Something went terribly wrong, somehow");
     } else {
@@ -120,12 +127,9 @@ pub fn reset<W: Widget>() {
 /// given [`Handle`]
 pub fn reset_to(handle: Handle<dyn Widget>) {
     let reset_modes = RESET_MODES.lock().unwrap();
+    let type_id = handle.widget().type_id();
 
-    let i = reset_modes
-        .iter()
-        .position(|(ty, _)| *ty == handle.widget().type_id());
-
-    if let Some(i) = i {
+    if reset_modes.get(&type_id).is_some() {
         *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
             let node = context::windows()
                 .entries(pa)
@@ -135,7 +139,7 @@ pub fn reset_to(handle: Handle<dyn Widget>) {
             if let Some(node) = node {
                 let node = node.clone();
                 switch_widget(pa, node);
-                (RESET_MODES.lock().unwrap()[i].1)(pa)
+                RESET_MODES.lock().unwrap().get_mut(&type_id).unwrap()(pa)
             } else {
                 context::error!("The Handle was already closed");
                 false

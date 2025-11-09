@@ -213,10 +213,13 @@ impl StatusLineFmt {
     /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<StatusLine> {
         let specs = self.specs;
-        let status_line = StatusLine::new(self, match push_target.try_downcast() {
-            Some(handle) => BufferHandle::Fixed(handle),
-            None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
-        });
+        let status_line = StatusLine::new(
+            self,
+            match push_target.try_downcast() {
+                Some(handle) => BufferHandle::Fixed(handle),
+                None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
+            },
+        );
 
         push_target.push_outer(pa, status_line, specs)
     }

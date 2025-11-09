@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
 use crate::{
     Plugins,
@@ -27,8 +27,9 @@ use crate::{
         self, BufferClosed, BufferReloaded, ConfigLoaded, ConfigUnloaded, ExitedDuat,
         FocusedOnDuat, UnfocusedFromDuat,
     },
-    mode,
+    mode::{self},
     opts::PrintOpts,
+    text::TwoPoints,
     ui::{
         Coord, Ui, Windows,
         layout::{Layout, MasterOnLeft},
@@ -210,16 +211,16 @@ impl Session {
                             continue;
                         }
                     }
-                    DuatEvent::MouseEventSent(coord, mouse_event) => {
+                    DuatEvent::MouseEventSent(mouse_event) => {
                         let node = context::current_window(pa)
                             .nodes(pa)
                             .find(|node| {
-                                node.handle().area().top_left(pa) <= coord
-                                    && coord <= node.handle().area.bottom_right(pa)
+                                node.handle().area().top_left(pa) <= mouse_event.coord
+                                    && mouse_event.coord <= node.handle().area.bottom_right(pa)
                             })
                             .cloned();
                         if let Some(node) = node {
-                            node.on_mouse_event(pa, coord, mouse_event);
+                            node.on_mouse_event(pa, mouse_event);
                         }
                     }
                     DuatEvent::KeyEventsSent(keys) => {
@@ -324,13 +325,41 @@ impl Session {
     }
 }
 
+/// A mouse event, representing a click, drag, hover, etc
+#[derive(Debug, Clone, Copy)]
+pub struct MouseEvent {
+    /// The position on the [`Text`] where the mouse was.
+    ///
+    /// [`Text`]: crate::text::Text
+    pub points: Option<TwoPoints>,
+    /// Thee coordinate on screen where the mouse was.
+    pub coord: Coord,
+    /// What the mouse did.
+    pub kind: MouseEventKind,
+    /// Modifiers that were pressed during this mouse event.
+    pub modifiers: KeyModifiers,
+}
+
+/// A mouse event sent by the [`Ui`], doesn't include [`Text`] positioning
+///
+/// [`Text`]: crate::text::Text
+#[derive(Debug, Clone, Copy)]
+pub struct UiMouseEvent {
+    /// Thee coordinate on screen where the mouse was.
+    pub coord: Coord,
+    /// What the mouse did.
+    pub kind: MouseEventKind,
+    /// Modifiers that were pressed during this mouse event.
+    pub modifiers: KeyModifiers,
+}
+
 /// An event that Duat must handle
 #[doc(hidden)]
 pub enum DuatEvent {
     /// A [`KeyEvent`] was typed
     KeyEventSent(KeyEvent),
     /// A [`MouseEvent`] was sent
-    MouseEventSent(Coord, MouseEvent),
+    MouseEventSent(UiMouseEvent),
     /// Multiple [`KeyEvent`]s were sent
     KeyEventsSent(Vec<KeyEvent>),
     /// A function was queued
@@ -367,6 +396,11 @@ impl DuatSender {
     /// Sends a [`KeyEvent`]
     pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::KeyEventSent(key))
+    }
+
+    /// Sends a [`MouseEvent`]
+    pub fn send_mouse(&self, mouse: UiMouseEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::MouseEventSent(mouse))
     }
 
     /// Sends a notice that the app has resized

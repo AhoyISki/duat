@@ -13,7 +13,7 @@ use duat_core::{
     opts::PrintOpts,
     text::{Item, Part, SpawnId, Text, TwoPoints, txt},
     ui::{
-        Caret, DynSpawnSpecs, PushSpecs,
+        self, Caret, DynSpawnSpecs, PushSpecs,
         traits::{CoreAccess, RawArea},
     },
 };
@@ -570,24 +570,121 @@ impl RawArea for Area {
         Some(info)
     }
 
-    fn top_left(&self, _: CoreAccess) -> duat_core::ui::Coord {
+    fn top_left(&self, _: CoreAccess) -> ui::Coord {
         self.layouts
             .coords_of(self.id, false)
-            .map(|coords| duat_core::ui::Coord {
+            .map(|coords| ui::Coord {
                 x: coords.tl.x as f32,
                 y: coords.tl.y as f32,
             })
             .unwrap_or_default()
     }
 
-    fn bottom_right(&self, _: CoreAccess) -> duat_core::ui::Coord {
+    fn bottom_right(&self, _: CoreAccess) -> ui::Coord {
         self.layouts
             .coords_of(self.id, false)
-            .map(|coords| duat_core::ui::Coord {
+            .map(|coords| ui::Coord {
                 x: coords.br.x as f32,
                 y: coords.br.y as f32,
             })
             .unwrap_or_default()
+    }
+
+    fn coord_at_points(
+        &self,
+        _: CoreAccess,
+        text: &Text,
+        points: TwoPoints,
+        opts: PrintOpts,
+    ) -> Option<ui::Coord> {
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return None;
+        };
+
+        if coords.width() == 0 || coords.height() == 0 {
+            return None;
+        }
+
+        let (s_points, x_shift) = {
+            let mut info = self.layouts.get_info_of(self.id).unwrap();
+            let s_points = info.start_points(coords, text, opts);
+            self.layouts.set_info_of(self.id, info);
+            (s_points, info.x_shift())
+        };
+
+        let mut row = coords.tl.y;
+        for (caret, item) in print_iter(text, s_points, coords.width(), opts) {
+            row += caret.wrap as u32;
+
+            if row > coords.br.y {
+                break;
+            }
+
+            if item.points() == points && item.part.is_char() {
+                if caret.x >= x_shift && caret.x <= x_shift + coords.width() {
+                    return Some(ui::Coord {
+                        x: (coords.tl.x + caret.x - x_shift) as f32,
+                        y: (row - 1) as f32,
+                    });
+                } else {
+                    break;
+                }
+            }
+        }
+
+        None
+    }
+
+    fn points_at_coord(
+        &self,
+        _: CoreAccess,
+        text: &Text,
+        coord: ui::Coord,
+        opts: PrintOpts,
+    ) -> Option<TwoPoints> {
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
+            context::warn!("This Area was already deleted");
+            return None;
+        };
+
+        if coords.width() == 0 || coords.height() == 0 {
+            return None;
+        } else if !(coords.tl.x..coords.br.x).contains(&(coord.x as u32))
+            || !(coords.tl.y..coords.br.y).contains(&(coord.y as u32))
+        {
+            context::warn!("Coordinate not contained in area");
+            return None;
+        }
+
+        let (s_points, x_shift) = {
+            let mut info = self.layouts.get_info_of(self.id).unwrap();
+            let s_points = info.start_points(coords, text, opts);
+            self.layouts.set_info_of(self.id, info);
+            (s_points, info.x_shift())
+        };
+
+        let mut row = coords.tl.y;
+        for (caret, item) in print_iter(text, s_points, coords.width(), opts) {
+            row += caret.wrap as u32;
+
+            if row > coord.y as u32 + 1 {
+                break;
+            } else if row == coord.y as u32 + 1 {
+                if caret.x <= x_shift + coords.width() {
+                    if let Some(col) = caret.x.checked_sub(x_shift)
+                        && (coords.tl.x + col..coords.tl.x + col + caret.len)
+                            .contains(&(coord.x as u32))
+                    {
+                        return Some(item.points());
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        None
     }
 
     fn start_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints {

@@ -65,11 +65,14 @@ impl Records {
             .extract_if_while(s_i..e_i, |_, _| Some(true))
             .for_each(|_| {});
 
-        self.0.shift_by(s_i, [
-            new_len[0] as i32 - old_len[0] as i32,
-            new_len[1] as i32 - old_len[1] as i32,
-            new_len[2] as i32 - old_len[2] as i32,
-        ]);
+        self.0.shift_by(
+            s_i,
+            [
+                new_len[0] as i32 - old_len[0] as i32,
+                new_len[1] as i32 - old_len[1] as i32,
+                new_len[2] as i32 - old_len[2] as i32,
+            ],
+        );
     }
 
     /// The maximum [`Record`]
