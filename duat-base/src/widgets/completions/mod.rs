@@ -23,11 +23,12 @@ use duat_core::{
     form::{self, Form},
     hook::{self, FocusChanged},
     mode::{MouseEvent, MouseEventKind},
-    text::{txt, Point, SpawnTag, Tagger, Text},
+    text::{Point, SpawnTag, Tagger, Text, txt},
     ui::{DynSpawnSpecs, Orientation, Widget},
 };
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
+use crate::widgets::completions::paths::PathCompletions;
 
 mod paths;
 mod words;
@@ -150,14 +151,18 @@ impl Completions {
     /// You can add more `CompletionsProvider`s by calling
     /// [`CompletionsBuilder::add_provider`].
     pub fn builder(provider: impl CompletionsProvider) -> CompletionsBuilder {
-        CompletionsBuilder {
+        let mut builder = CompletionsBuilder {
             providers: Box::new(move |text, height| {
                 let (inner, start_byte, entries) = InnerProvider::new(provider, text, height);
 
                 (vec![Box::new(inner)], start_byte, entries)
             }),
             show_without_prefix: true,
-        }
+        };
+
+        builder.add_provider(PathCompletions);
+
+        builder
     }
 
     /// Spawn the `Completions` list

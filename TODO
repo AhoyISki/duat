@@ -2,9 +2,9 @@ FOR NEXT UPDATE:
 [ ] Ui coordinates:
   [x] Implementation.
   [ ] Floating widgets.
-  [ ] Mouse support.
-    [ ] Widget integration.
-    [ ] Mode integration.
+  [x] Mouse support.
+    [x] Widget integration.
+    [?] Mode integration.
 [ ] Command line completion.
 [ ] File path completion.
 [ ] Get rid of Text::selections_mut.
@@ -15,6 +15,7 @@ FOR NEXT UPDATE:
 [ ] Mode keybindings info.
 [x] Move to Rust stable (sigh...).
 [ ] Flags parameter macro.
+[ ] Abuse the shit out of catch_unwind.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -55,7 +56,6 @@ FUTURE UPDATES:
 [ ] Allow Modes to detect when a key is mapped.
 [ ] Add a failure mode for remapping.
 [/] Bring back multithreading?
-[ ] Abuse the shit out of catch_unwind.
 [ ] Additive Forms.
 [ ] Remapping on `Mode` creation.
 [x] Use the FileCfg insted of OnFileOpen.
