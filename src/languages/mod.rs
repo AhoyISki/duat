@@ -38,6 +38,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
         .ok_or_else(|| txt!("There is no tree-sitter grammar for [a]{filetype}"))?;
 
     let lib_dir = parsers_dir.join("lib");
+    fs::create_dir_all(&lib_dir)?;
     let crate_dir = parsers_dir.join(format!("ts-{}", options.crate_name));
     let manifest_path = crate_dir.join("Cargo.toml");
 
@@ -141,10 +142,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
 fn get_parsers_dir() -> Result<PathBuf, Text> {
     let workspace_dir = duat_core::utils::plugin_dir("duat-treesitter")?;
     let parsers_dir = workspace_dir.join("parsers");
-
-    if let Ok(false) | Err(_) = fs::exists(&parsers_dir) {
-        fs::create_dir_all(workspace_dir.join("parsers"))?;
-    }
+    fs::create_dir_all(&parsers_dir)?;
 
     Ok(parsers_dir)
 }
