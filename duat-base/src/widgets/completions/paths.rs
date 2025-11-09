@@ -1,5 +1,9 @@
 //! A file path [`CompletionsProvider`]
-
+//!
+//! Paths have a higher priority for completion then [words],
+//! but they only show up if the word contains a path separator
+//! character. In practice, this means that path completions
+//! only ever show up if you want them to.
 use std::{ffi::OsStr, path::Path};
 
 use duat_core::text::{Point, Spacer, Text, txt};
@@ -49,8 +53,14 @@ impl CompletionsProvider for PathCompletions {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn word_regex(&self) -> String {
         "[^ /\n\t]*/.*".to_string()
+    }
+
+    #[cfg(target_os = "windows")]
+    fn word_regex(&self) -> String {
+        "[^ /\n\t]*(/|\\).*".to_string()
     }
 
     fn has_changed(&self) -> bool {
