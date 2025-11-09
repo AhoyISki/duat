@@ -11,6 +11,7 @@ use duat_core::{
     context::{self, Decode, Encode},
     form::{CONTROL_CHAR_ID, Painter},
     opts::PrintOpts,
+    session::TwoPointsPlace,
     text::{Item, Part, SpawnId, Text, TwoPoints, txt},
     ui::{
         self, Caret, DynSpawnSpecs, PushSpecs,
@@ -642,7 +643,7 @@ impl RawArea for Area {
         text: &Text,
         coord: ui::Coord,
         opts: PrintOpts,
-    ) -> Option<TwoPoints> {
+    ) -> Option<TwoPointsPlace> {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return None;
@@ -665,22 +666,24 @@ impl RawArea for Area {
         };
 
         let mut row = coords.tl.y;
+        let mut backup = None;
         for (caret, item) in print_iter(text, s_points, coords.width(), opts) {
             row += caret.wrap as u32;
 
             if row > coord.y as u32 + 1 {
-                break;
-            } else if row == coord.y as u32 + 1 {
-                if caret.x <= x_shift + coords.width() {
-                    if let Some(col) = caret.x.checked_sub(x_shift)
-                        && (coords.tl.x + col..coords.tl.x + col + caret.len)
-                            .contains(&(coord.x as u32))
-                    {
-                        return Some(item.points());
-                    }
-                } else {
-                    break;
+                return backup;
+            } else if row == coord.y as u32 + 1
+                && let Some(col) = caret.x.checked_sub(x_shift)
+            {
+                if (coords.tl.x + col..coords.tl.x + col + caret.len).contains(&(coord.x as u32)) {
+                    return Some(TwoPointsPlace::Within(item.points()));
+                } else if coords.tl.x + col >= coord.x as u32 {
+                    return backup;
                 }
+            }
+
+            if item.part.is_char() {
+                backup = Some(TwoPointsPlace::AheadOf(item.points()));
             }
         }
 

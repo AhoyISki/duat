@@ -18,6 +18,7 @@ use std::{
     sync::Arc,
 };
 
+use crossterm::event::{MouseButton, MouseEventKind};
 use parking_lot::{Mutex, MutexGuard};
 
 use self::parser::Parsers;
@@ -29,6 +30,7 @@ use crate::{
     hook::{self, BufferWritten},
     mode::Selections,
     opts::PrintOpts,
+    session::TwoPointsPlace,
     text::{BuilderPart, Bytes, Text, txt},
     ui::{RwArea, Widget},
 };
@@ -449,6 +451,47 @@ impl Widget for Buffer {
 
     fn get_print_opts(&self) -> PrintOpts {
         self.opts
+    }
+
+    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: crate::session::MouseEvent) {
+        match event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                let point = match event.points {
+                    Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
+                        points.real
+                    }
+                    _ => handle.text(pa).last_point(),
+                };
+
+                handle.selections_mut(pa).remove_extras();
+                handle.edit_main(pa, |mut c| {
+                    c.unset_anchor();
+                    c.move_to(point)
+                })
+            }
+            MouseEventKind::Down(_) => {}
+            MouseEventKind::Up(_) => {}
+            MouseEventKind::Drag(MouseButton::Left) => {
+                let point = match event.points {
+                    Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
+                        points.real
+                    }
+                    _ => handle.text(pa).last_point(),
+                };
+                
+                handle.selections_mut(pa).remove_extras();
+                handle.edit_main(pa, |mut c| {
+                    c.set_anchor_if_needed();
+                    c.move_to(point);
+                })
+            }
+            MouseEventKind::Drag(_) => {}
+            MouseEventKind::Moved => {}
+            MouseEventKind::ScrollDown => {}
+            MouseEventKind::ScrollUp => {}
+            MouseEventKind::ScrollLeft => {}
+            MouseEventKind::ScrollRight => {}
+        }
     }
 
     fn print(&self, pa: &Pass, painter: Painter, area: &RwArea) {

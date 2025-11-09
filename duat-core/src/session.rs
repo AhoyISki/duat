@@ -215,8 +215,10 @@ impl Session {
                         let node = context::current_window(pa)
                             .nodes(pa)
                             .find(|node| {
-                                node.handle().area().top_left(pa) <= mouse_event.coord
-                                    && mouse_event.coord <= node.handle().area.bottom_right(pa)
+                                let tl = node.handle().area().top_left(pa);
+                                let br = node.handle().area().bottom_right(pa);
+                                (tl.x <= mouse_event.coord.x && tl.y <= mouse_event.coord.y)
+                                    && (mouse_event.coord.x < br.x && mouse_event.coord.y < br.y)
                             })
                             .cloned();
                         if let Some(node) = node {
@@ -331,7 +333,7 @@ pub struct MouseEvent {
     /// The position on the [`Text`] where the mouse was.
     ///
     /// [`Text`]: crate::text::Text
-    pub points: Option<TwoPoints>,
+    pub points: Option<TwoPointsPlace>,
     /// Thee coordinate on screen where the mouse was.
     pub coord: Coord,
     /// What the mouse did.
@@ -340,7 +342,21 @@ pub struct MouseEvent {
     pub modifiers: KeyModifiers,
 }
 
-/// A mouse event sent by the [`Ui`], doesn't include [`Text`] positioning
+/// Where exactly did the [`TwoPoints`] for a given [`Coord`] match
+///
+/// It can be either an exact match, that is, the mouse was in the
+/// position of the `TwoPoints`, or it can be on the same line as the
+/// `TwoPoints` at the end of the line.
+#[derive(Debug, Clone, Copy)]
+pub enum TwoPointsPlace {
+    /// The mouse was on top of the character that matched.
+    Within(TwoPoints),
+    /// The mouse was on the same line as the character.
+    AheadOf(TwoPoints),
+}
+
+/// A mouse event sent by the [`Ui`], doesn't include [`Text`]
+/// positioning
 ///
 /// [`Text`]: crate::text::Text
 #[derive(Debug, Clone, Copy)]

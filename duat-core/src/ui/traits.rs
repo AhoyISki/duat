@@ -19,7 +19,7 @@ use bincode::{Decode, Encode};
 use crate::{
     form::Painter,
     opts::PrintOpts,
-    session::DuatSender,
+    session::{DuatSender, TwoPointsPlace},
     text::{Item, SpawnId, Text, TwoPoints},
     ui::{Caret, Coord, DynSpawnSpecs, PushSpecs},
 };
@@ -451,7 +451,8 @@ pub trait RawArea: Sized + PartialEq + 'static {
 
     /// The [`Coord`] where the given [`TwoPoints`] would be printed
     ///
-    /// Returns [`None`] if the `TwoPoints` are not part of the [`Text`]
+    /// Returns [`None`] if the `TwoPoints` are not part of the
+    /// [`Text`]
     fn coord_at_points(
         &self,
         _: CoreAccess,
@@ -471,7 +472,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
         text: &Text,
         coord: Coord,
         opts: PrintOpts,
-    ) -> Option<TwoPoints>;
+    ) -> Option<TwoPointsPlace>;
 
     /// Returns `true` if this is the currently active `RawArea`
     ///

@@ -23,7 +23,7 @@ use crate::{
     data::{Pass, RwData},
     form::Painter,
     opts::PrintOpts,
-    session::DuatSender,
+    session::{DuatSender, TwoPointsPlace},
     text::{Item, SpawnId, Text, TwoPoints},
     ui::{
         Caret, Coord, DynSpawnSpecs, PushSpecs,
@@ -543,7 +543,8 @@ impl RwArea {
 
     /// The [`Coord`] where the given [`TwoPoints`] would be printed
     ///
-    /// Returns [`None`] if the `TwoPoints` are not part of the [`Text`]
+    /// Returns [`None`] if the `TwoPoints` are not part of the
+    /// [`Text`]
     pub fn coord_at_points(
         &self,
         pa: &Pass,
@@ -565,7 +566,7 @@ impl RwArea {
         text: &Text,
         coord: Coord,
         opts: PrintOpts,
-    ) -> Option<TwoPoints> {
+    ) -> Option<TwoPointsPlace> {
         self.0.read(pa).points_at_coord(text, coord, opts)
     }
 
@@ -784,7 +785,8 @@ impl Area {
 
     /// The [`Coord`] where the given [`TwoPoints`] would be printed
     ///
-    /// Returns [`None`] if the `TwoPoints` are not part of the [`Text`]
+    /// Returns [`None`] if the `TwoPoints` are not part of the
+    /// [`Text`]
     pub fn coord_at_points(
         &self,
         text: &Text,
@@ -799,7 +801,12 @@ impl Area {
     /// Returns [`None`] if either the `RawArea` does not contain
     /// the given `Coord`, or if the `Coord` is in a position where
     /// [`Text`] is not printed.
-    pub fn points_at_coord(&self, text: &Text, coord: Coord, opts: PrintOpts) -> Option<TwoPoints> {
+    pub fn points_at_coord(
+        &self,
+        text: &Text,
+        coord: Coord,
+        opts: PrintOpts,
+    ) -> Option<TwoPointsPlace> {
         (self.fns.points_at_coord)(self, text, coord, opts)
     }
 
@@ -857,7 +864,7 @@ struct AreaFunctions {
     top_left: fn(&Area) -> Coord,
     bottom_right: fn(&Area) -> Coord,
     coord_at_points: fn(&Area, &Text, TwoPoints, PrintOpts) -> Option<Coord>,
-    points_at_coord: fn(&Area, &Text, Coord, PrintOpts) -> Option<TwoPoints>,
+    points_at_coord: fn(&Area, &Text, Coord, PrintOpts) -> Option<TwoPointsPlace>,
     is_active: fn(&Area) -> bool,
 }
 
