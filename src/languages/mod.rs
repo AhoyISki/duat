@@ -41,10 +41,10 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
     let crate_dir = parsers_dir.join(format!("ts-{}", options.crate_name));
     let manifest_path = crate_dir.join("Cargo.toml");
 
-    let lib = options.crate_name.replace("-", "_");
-    let parser_path = lib_dir.join(resolve_lib_file(&lib));
+    let lang = options.crate_name.replace("-", "_");
+    let parser_path = lib_dir.join(resolve_lib_file(&lang));
 
-    if let Ok(lib) = unsafe { Library::new(parser_path) } {
+    if let Ok(lib) = unsafe { Library::new(&parser_path) } {
         context::debug!("Loading tree-sitter parser for [a]{filetype}");
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
@@ -64,12 +64,17 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
 
         cargo
             .args(["build", "--release", "--manifest-path"])
-            .arg(&manifest_path)
-            .args(["-Z", "unstable-options", "--artifact-dir"])
-            .arg(lib_dir.to_str().unwrap());
+            .arg(&manifest_path);
 
         let out = cargo.output()?;
         if out.status.success() {
+            fs::copy(
+                crate_dir
+                    .join("target")
+                    .join("release")
+                    .join(resolve_lib_file(&lang)),
+                parser_path,
+            )?;
             let mut cargo = Command::new("cargo");
             cargo
                 .args(["clean", "--manifest-path"])
@@ -113,7 +118,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
             description = "Dynamic wrapper for tree-sitter-{crate_name}"
 
             [lib]
-            name = "{lib}"
+            name = "{lang}"
             crate-type = ["dylib"]
 
             [dependencies]
