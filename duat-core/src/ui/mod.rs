@@ -80,6 +80,54 @@ pub struct Coord {
     pub y: f32,
 }
 
+impl Coord {
+    /// Returns a new `Coord` from an `x` and a `y` values,
+    /// respectively
+    pub const fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+}
+
+impl std::ops::Add for Coord {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self { x: self.x + rhs.x, y: self.y + rhs.y }
+    }
+}
+
+impl std::ops::Sub for Coord {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self { x: self.x - rhs.x, y: self.y - rhs.y }
+    }
+}
+
+impl std::ops::Mul<f32> for Coord {
+    type Output = Self;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        Self { x: rhs * self.x, y: rhs * self.y }
+    }
+}
+
+impl std::ops::Mul<Coord> for f32 {
+    type Output = Coord;
+
+    fn mul(self, rhs: Coord) -> Self::Output {
+        Coord { x: self * rhs.x, y: self * rhs.y }
+    }
+}
+
+impl std::ops::Div<f32> for Coord {
+    type Output = Self;
+
+    fn div(self, rhs: f32) -> Self::Output {
+        Self { x: self.x / rhs, y: self.y / rhs }
+    }
+}
+
 /// A dimension on screen, can either be horizontal or vertical
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
@@ -277,7 +325,7 @@ pub struct DynSpawnSpecs {
 
 impl DynSpawnSpecs {
     /// The constraints on a given [`Axis`]
-    pub fn len_on(&self, axis: Axis) -> Option<f32> {
+    pub const fn len_on(&self, axis: Axis) -> Option<f32> {
         match axis {
             Axis::Horizontal => self.width,
             Axis::Vertical => self.height,
@@ -300,23 +348,50 @@ impl DynSpawnSpecs {
 pub struct StaticSpawnSpecs {
     /// The top left corner where the [`Widget`] will be spawned
     pub top_left: Coord,
-    /// The desired width for the [`Widget`]
-    pub width: f32,
-    /// The desired height for the [`Widget`]
-    pub height: f32,
+    /// The size of the [`Widget`], represented by a [`Coord`]
+    pub size: Coord,
     /// Hide this [`Widget`] by default
     ///
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
     pub hidden: bool,
+    /// Reposition the [`Widget`] in case the [`Window`] resizes
+    ///
+    /// Normally, this is [`None`], which means no repositioning is
+    /// done unless the `Widget` would be clipped by the `Window`, in
+    /// which case it will be "dragged up and to the left" until it no
+    /// longer clips the window (or not, depending on the Ui you're
+    /// using :P)
+    ///
+    /// However, if this is [`Some`], then the `Widget` will be
+    /// repositioned. If it is `Some(false)`, then it will keep an
+    /// absolute distance from the bottom right corner. This is useful
+    /// for, for example, notifications which you'd want to be located
+    /// "near the bottom right".
+    ///
+    /// If it is `Some(true)`, then the repositioning will be
+    /// _fractional_. What this means is that, if it was placed
+    /// centrally, it will remain centered.
+    pub fractional_repositioning: Option<bool>,
 }
 
 impl StaticSpawnSpecs {
     /// The constraints on a given [`Axis`]
-    pub fn len_on(&self, axis: Axis) -> f32 {
+    pub const fn len_on(&self, axis: Axis) -> f32 {
         match axis {
-            Axis::Horizontal => self.width,
-            Axis::Vertical => self.height,
+            Axis::Horizontal => self.size.x,
+            Axis::Vertical => self.size.y,
+        }
+    }
+}
+
+impl Default for StaticSpawnSpecs {
+    fn default() -> Self {
+        Self {
+            top_left: Coord { x: 0.0, y: 0.0 },
+            size: Coord { x: 50.0, y: 5.0 },
+            hidden: false,
+            fractional_repositioning: None,
         }
     }
 }

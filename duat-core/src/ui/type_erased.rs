@@ -27,7 +27,7 @@ use crate::{
     text::{Item, Text, TwoPoints},
     ui::{
         Caret, Coord, DynSpawnSpecs, PushSpecs, SpawnId, StaticSpawnSpecs,
-        traits::{UiPass, RawArea, RawUi},
+        traits::{RawArea, RawUi, UiPass},
     },
 };
 
@@ -173,6 +173,14 @@ impl Ui {
         (self.fns.remove_window)(self.ui, win)
     }
 
+    /// The bottom right [`Coord`] on the screen
+    ///
+    /// Since the top left coord is `Coord { x: 0.0, y: 0.0 }`, this
+    /// is also the size of the window.
+    pub fn size(&self) -> Coord {
+        (self.fns.size)(self.ui)
+    }
+
     /// Sets the default [`PrintInfo`]
     pub(crate) fn setup_default_print_info(&self) {
         DEFAULT_PRINT_INFO
@@ -194,6 +202,7 @@ struct UiFunctions {
     load: fn(&'static dyn Any),
     unload: fn(&'static dyn Any),
     remove_window: fn(&'static dyn Any, win: usize),
+    size: fn(&'static dyn Any) -> Coord,
 }
 
 impl UiFunctions {
@@ -245,6 +254,7 @@ impl UiFunctions {
                 let ui = ui.downcast_ref::<U>().unwrap();
                 ui.remove_window(win);
             },
+            size: |ui| ui.downcast_ref::<U>().unwrap().size(),
         }
     }
 }
@@ -1021,8 +1031,7 @@ impl AreaFunctions {
             },
             get_cluster_master: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.get_cluster_master(UiPass::new())
-                    .map(RwArea::new::<U>)
+                area.get_cluster_master(UiPass::new()).map(RwArea::new::<U>)
             },
             store_cache: |area, path| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();

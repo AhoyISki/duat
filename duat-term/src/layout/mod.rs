@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use duat_core::ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, SpawnId};
+use duat_core::ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, SpawnId, StaticSpawnSpecs};
 use kasuari::{Constraint, WeightedRelation::*};
 
 pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
@@ -95,6 +95,18 @@ impl Layouts {
     ) -> AreaId {
         let mut layouts = self.0.borrow_mut();
         layouts.list[win].spawn_on_text(id, specs, cache)
+    }
+
+    /// Spawns a new statically positioned [`Rect`] from a [`SpawnId`]
+    pub fn spawn_static(
+        &self,
+        id: SpawnId,
+        specs: StaticSpawnSpecs,
+        cache: PrintInfo,
+        win: usize,
+    ) -> AreaId {
+        let mut layouts = self.0.borrow_mut();
+        layouts.list[win].spawn_static(id, specs, cache)
     }
 
     /// Deletes the [`Area`] of a given id
@@ -405,6 +417,8 @@ impl Layout {
     ///
     /// Will return [`None`] if the targeted [`AreaId`] is not part of
     /// this
+    ///
+    /// [`Area`]: super::Area
     fn push(
         &mut self,
         target: AreaId,
@@ -503,21 +517,56 @@ impl Layout {
         let area_id = rect.id();
         let orientation = specs.orientation;
 
-        self.spawned
-            .push((SpawnInfo { id, orientation, cons }, rect));
+        self.spawned.push((
+            SpawnInfo {
+                id,
+                spec: SpawnSpec::Dynamic(orientation),
+                cons,
+            },
+            rect,
+        ));
 
         Some(area_id)
     }
 
+    /// Spawns a new [`Rect`] from a [`SpawnId`], which is supposed to
+    /// go on [`Text`]
+    ///
+    /// [`Text`]: duat_core::text::Text
     fn spawn_on_text(&mut self, id: SpawnId, specs: DynSpawnSpecs, cache: PrintInfo) -> AreaId {
         let (rect, cons) =
             Rect::new_spawned_on_text(&self.printer, id, self.main.frame(), cache, specs);
         let rect_id = rect.id();
 
-        let orientation = specs.orientation;
+        self.spawned.push((
+            SpawnInfo {
+                id,
+                spec: SpawnSpec::Dynamic(specs.orientation),
+                cons,
+            },
+            rect,
+        ));
 
-        self.spawned
-            .push((SpawnInfo { id, orientation, cons }, rect));
+        rect_id
+    }
+
+    fn spawn_static(&mut self, id: SpawnId, specs: StaticSpawnSpecs, cache: PrintInfo) -> AreaId {
+        let (rect, cons, orig_max) =
+            Rect::new_static_spawned(&self.printer, id, self.main.frame(), cache, specs);
+        let rect_id = rect.id();
+
+        self.spawned.push((
+            SpawnInfo {
+                id,
+                spec: SpawnSpec::Static {
+                    top_left: specs.top_left,
+                    fractional_repositioning: specs.fractional_repositioning,
+                    orig_max,
+                },
+                cons,
+            },
+            rect,
+        ));
 
         rect_id
     }
@@ -585,9 +634,11 @@ impl Layout {
                 self.printer.clear_spawn(id);
             }
 
-            let (SpawnInfo { id, orientation, cons }, rect) = &self.spawned[i];
-            let len = recurse_length(rect, cons, orientation.axis());
-            self.printer.set_spawn_len(*id, len.map(|len| len as f64));
+            let (SpawnInfo { id, spec: orientation, cons }, rect) = &self.spawned[i];
+            if let SpawnSpec::Dynamic(orientation) = orientation {
+                let len = recurse_length(rect, cons, orientation.axis());
+                self.printer.set_spawn_len(*id, len.map(|len| len as f64));
+            }
             self.printer.update(false, true);
 
             true
@@ -694,10 +745,22 @@ impl Layout {
 }
 
 /// A listed main spawned [`Rect`]
+#[derive(Debug, Clone)]
 struct SpawnInfo {
     id: SpawnId,
-    orientation: Orientation,
+    spec: SpawnSpec,
     cons: Constraints,
+}
+
+/// The specifics of a spawned [`Rect`]
+#[derive(Debug, Clone, Copy)]
+enum SpawnSpec {
+    Static {
+        top_left: duat_core::ui::Coord,
+        fractional_repositioning: Option<bool>,
+        orig_max: Coord,
+    },
+    Dynamic(Orientation),
 }
 
 /// A list of [`Constraint`] for [`Rect`]s to follow.
@@ -865,7 +928,9 @@ fn remove_dependents(
 
     let rm_spawned: Vec<(SpawnInfo, Rect)> = spawned
         .extract_if(.., |(info, _)| {
-            let (_, tl, br) = p.get_spawn_info(info.id).unwrap();
+            let Some((_, tl, br)) = p.get_spawn_info(info.id) else {
+                return false;
+            };
 
             if tl
                 .iter()
@@ -909,8 +974,9 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
         for i in 0..layout.spawned.len() {
             let (info, rect) = &layout.spawned[i];
 
-            let (_, [tl_x, _], _) = layout.printer.get_spawn_info(info.id).unwrap();
-            if tl_x.terms.iter().any(|term| term.variable == tl.x()) {
+            if let Some((_, [tl_x, _], _)) = layout.printer.get_spawn_info(info.id)
+                && tl_x.terms.iter().any(|term| term.variable == tl.x())
+            {
                 recurse_set_hidden(layout, rect.id(), hidden);
             }
         }

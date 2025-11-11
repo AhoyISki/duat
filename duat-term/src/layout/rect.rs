@@ -1,6 +1,6 @@
 use duat_core::ui::{
     Axis::{self, *},
-    DynSpawnSpecs, PushSpecs, SpawnId,
+    DynSpawnSpecs, PushSpecs, SpawnId, StaticSpawnSpecs,
 };
 use kasuari::{
     Expression, Variable,
@@ -9,8 +9,9 @@ use kasuari::{
 
 use crate::{
     AreaId, EDGE_PRIO, EQ_LEN_PRIO, Equality, FRAME_PRIO, Frame, SPAWN_ALIGN_PRIO, SPAWN_LEN_PRIO,
-    area::PrintInfo,
-    layout::{Constraints, Layout, SpawnInfo},
+    STATIC_SPAWN_POS_PRIO,
+    area::{Coord, PrintInfo},
+    layout::{Constraints, Layout, SpawnInfo, SpawnSpec},
     printer::{Printer, VarPoint},
 };
 
@@ -86,7 +87,7 @@ impl Rect {
             specs.orientation.prefers_before(),
         );
 
-        rect.set_spawned_eqs(p, specs, [center, len], [tl.x().into(), tl.y().into()], [
+        rect.set_dyn_spawned_eqs(p, specs, [center, len], [tl.x().into(), tl.y().into()], [
             tl.x() + 1.0,
             tl.y() + 1.0,
         ]);
@@ -127,7 +128,7 @@ impl Rect {
             specs.orientation.prefers_before(),
         );
 
-        rect.set_spawned_eqs(
+        rect.set_dyn_spawned_eqs(
             p,
             specs,
             [center, len],
@@ -140,6 +141,30 @@ impl Rect {
         p.update(false, true);
 
         Some((rect, cons))
+    }
+
+    /// Returns a new spawned `Rect`, placed statically
+    pub fn new_static_spawned(
+        p: &Printer,
+        id: SpawnId,
+        frame: Frame,
+        info: PrintInfo,
+        specs: StaticSpawnSpecs,
+    ) -> (Rect, Constraints, Coord) {
+        let mut rect = Rect::new(p, false, Kind::end(info), Some(id), frame);
+
+        // Since this spawn depends on the max_value, we need to have it
+        // calculated first.
+        p.update(false, true);
+        let max_value = p.max_value();
+
+        rect.set_static_spawned_eqs(p, max_value, specs);
+
+        let dims = [Some(specs.size.x), Some(specs.size.y)];
+        let cons = Constraints::new(p, dims, specs.hidden, &rect, None);
+        p.update(false, true);
+
+        (rect, cons, max_value)
     }
 
     /// Creates a new parent for a given [`Rect`]
@@ -195,16 +220,13 @@ impl Rect {
 
             let (mut target, cons) = if let Some(info) = spawn_info {
                 let mut cons = std::mem::take(&mut info.cons);
-                let specs = DynSpawnSpecs {
-                    orientation: info.orientation,
-                    ..Default::default()
-                };
-
                 p.add_eqs(info.cons.apply(&parent, None));
 
-                let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
-
-                parent.set_spawned_eqs(p, specs, deps, tl, br);
+                if let SpawnSpec::Dynamic(orientation) = info.spec {
+                    let specs = DynSpawnSpecs { orientation, ..Default::default() };
+                    let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
+                    parent.set_dyn_spawned_eqs(p, specs, deps, tl, br);
+                }
 
                 let target = std::mem::replace(self, parent);
                 p.remove_eqs(cons.drain());
@@ -357,8 +379,29 @@ impl Rect {
 
         // Spawned Rects are dynamically sized.
         if let Some(info) = spawn_info {
-            let new_len = recurse_length(self, &info.cons, info.orientation.axis());
-            p.set_spawn_len(info.id, new_len.map(|len| len as f64));
+            // In this case, the Rect was spawned dynamically.
+            match info.spec {
+                SpawnSpec::Dynamic(orientation) => {
+                    let new_len = recurse_length(self, &info.cons, orientation.axis());
+                    p.set_spawn_len(info.id, new_len.map(|len| len as f64));
+                    // In this case, it was spawned statically.
+                }
+
+                SpawnSpec::Static {
+                    top_left,
+                    fractional_repositioning,
+                    orig_max,
+                } => {
+                    let width = recurse_length(self, &info.cons, Axis::Horizontal).unwrap() as f32;
+                    let height = recurse_length(self, &info.cons, Axis::Vertical).unwrap() as f32;
+                    self.set_static_spawned_eqs(p, orig_max, StaticSpawnSpecs {
+                        top_left,
+                        size: duat_core::ui::Coord::new(width, height),
+                        hidden: false,
+                        fractional_repositioning,
+                    });
+                }
+            }
         }
 
         Some((new_id, new_parent_id))
@@ -674,13 +717,13 @@ impl Rect {
         to_constrain
     }
 
-    /// Sets base equalities for spawned [`Rect`]s
+    /// Sets base equalities for spawned dynamically [`Rect`]s
     ///
     /// These equalities ensure that the [`Rect`]s stay within the
     /// borders of the terminal, but unlike with pushed [`Rect`]s,
     /// there are no requirement for no collisions with other
     /// [`Rect`]s
-    pub fn set_spawned_eqs(
+    fn set_dyn_spawned_eqs(
         &mut self,
         p: &Printer,
         specs: DynSpawnSpecs,
@@ -722,6 +765,50 @@ impl Rect {
             ends[0] | EQ(SPAWN_LEN_PRIO) | (center - len / 2.0),
             ends[1] | EQ(SPAWN_LEN_PRIO) | (center + len / 2.0),
         ]);
+
+        p.add_eqs(self.eqs.clone());
+    }
+
+    /// Sets base equalities for statically spawned [`Rect`]s
+    ///
+    /// These equalities ensure that the [`Rect`]s stay within the
+    /// borders of the terminal, but unlike with pushed [`Rect`]s,
+    /// there are no requirement for no collisions with other
+    /// [`Rect`]s
+    fn set_static_spawned_eqs(&mut self, p: &Printer, max_value: Coord, specs: StaticSpawnSpecs) {
+        let max = p.max();
+
+        self.eqs.extend([
+            self.tl.x() | GE(EDGE_PRIO) | 0.0,
+            self.tl.y() | GE(EDGE_PRIO) | 0.0,
+            self.br.x() | LE(EDGE_PRIO) | p.max().x(),
+            self.br.y() | LE(EDGE_PRIO) | p.max().y(),
+            self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
+            self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
+        ]);
+
+        self.eqs.extend(match specs.fractional_repositioning {
+            None => [
+                self.tl.x() | EQ(STATIC_SPAWN_POS_PRIO) | specs.top_left.x,
+                self.tl.y() | EQ(STATIC_SPAWN_POS_PRIO) | specs.top_left.y,
+            ],
+            Some(false) => [
+                self.br.x()
+                    | EQ(STATIC_SPAWN_POS_PRIO)
+                    | (specs.top_left.x + specs.size.x + (max.x() - max_value.x as f32)),
+                self.br.y()
+                    | EQ(STATIC_SPAWN_POS_PRIO)
+                    | (specs.top_left.y + specs.size.y + (max.y() - max_value.y as f32)),
+            ],
+            Some(true) => [
+                self.mean(Axis::Horizontal)
+                    | EQ(STATIC_SPAWN_POS_PRIO)
+                    | (max.x() * (specs.top_left.x + specs.size.x / 2.0) / max_value.x as f32),
+                self.mean(Axis::Vertical)
+                    | EQ(STATIC_SPAWN_POS_PRIO)
+                    | (max.y() * (specs.top_left.y + specs.size.y / 2.0) / max_value.y as f32),
+            ],
+        });
 
         p.add_eqs(self.eqs.clone());
     }

@@ -2,7 +2,7 @@ use duat_core::ui::{Axis, SpawnId};
 use kasuari::{AddConstraintError, Expression, RemoveConstraintError, Solver, Variable};
 
 use super::VarPoint;
-use crate::{Equality, SPAWN_DIMS_PRIO, SPAWN_POS_PRIO, area::Coord};
+use crate::{DYN_SPAWN_POS_PRIO, Equality, SPAWN_DIMS_PRIO, area::Coord};
 
 /// A synchronization wrapper around the kasuari constraint
 /// [`Solver`]
@@ -204,8 +204,12 @@ impl SyncSolver {
             .unwrap();
 
         let tl = VarPoint::new(variables.new_var(), variables.new_var());
-        self.solver.add_edit_variable(tl.x, SPAWN_POS_PRIO).unwrap();
-        self.solver.add_edit_variable(tl.y, SPAWN_POS_PRIO).unwrap();
+        self.solver
+            .add_edit_variable(tl.x, DYN_SPAWN_POS_PRIO)
+            .unwrap();
+        self.solver
+            .add_edit_variable(tl.y, DYN_SPAWN_POS_PRIO)
+            .unwrap();
 
         self.spawns.push(SpawnedCenter {
             spawn_id,

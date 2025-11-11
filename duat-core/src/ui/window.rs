@@ -25,7 +25,7 @@ use crate::{
     opts::PrintOpts,
     session::UiMouseEvent,
     text::{Text, txt},
-    ui::{DynSpawnSpecs, PushSpecs, RwArea, SpawnId, StaticSpawnSpecs, Ui},
+    ui::{Coord, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, StaticSpawnSpecs, Ui},
 };
 
 /// A list of all [`Window`]s in Duat
@@ -747,6 +747,14 @@ impl Windows {
     }
 
     ////////// Querying functions
+
+    /// The bottom right [`Coord`] on the screen
+    ///
+    /// Since the top left coord is `Coord { x: 0.0, y: 0.0 }`, this
+    /// is also the size of the window.
+    pub fn size(&self) -> Coord {
+        self.ui.size()
+    }
 
     /// The number of open [`Window`]s
     ///

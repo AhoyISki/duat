@@ -233,10 +233,6 @@ impl Printer {
             ss.update(change_max, self.max, assign_floating).unwrap()
         };
 
-        if change_max {
-            self.old_lines.lock().unwrap().clear();
-        }
-
         let mut vars = self.vars.lock().unwrap();
         vars.update_variables(changes);
         self.has_to_print_edges.store(true, Ordering::Relaxed);
