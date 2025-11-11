@@ -24,10 +24,10 @@ use crate::{
     form::Painter,
     opts::PrintOpts,
     session::{DuatSender, TwoPointsPlace},
-    text::{Item, SpawnId, Text, TwoPoints},
+    text::{Item, Text, TwoPoints},
     ui::{
-        Caret, Coord, DynSpawnSpecs, PushSpecs,
-        traits::{CoreAccess, RawArea, RawUi},
+        Caret, Coord, DynSpawnSpecs, PushSpecs, SpawnId, StaticSpawnSpecs,
+        traits::{UiPass, RawArea, RawUi},
     },
 };
 
@@ -81,26 +81,40 @@ impl Ui {
         (self.fns.new_root)(self.ui, file_path)
     }
 
-    /// Initiates and returns a new "floating" [`Area`]
+    /// Initiates and returns a new "dynamic spawned" [`RwArea`]
     ///
-    /// This is one of two ways of spawning floating [`Widget`]s. The
-    /// other way is with [`RawArea::spawn`], in which a [`Widget`]
-    /// will be bolted on the edges of another.
+    /// This is one of three ways of spawning floating [`Widget`]s.
+    /// Another is with [`RawArea::spawn`], in which a `Widget` will
+    /// be bolted on the edges of another. Another one is through
+    /// [`RawUi::new_static_spawned`].
     ///
-    /// TODO: There will probably be some way of defining floating
-    /// [`Widget`]s with coordinates in the not too distant future as
-    /// well.
-    ///
-    /// [`Area`]: RawUi::Area
     /// [`Widget`]: super::Widget
-    pub fn new_spawned(
+    pub fn new_dyn_spawned(
         &self,
         file_path: Option<&Path>,
         spawn_id: SpawnId,
         specs: DynSpawnSpecs,
         win: usize,
     ) -> RwArea {
-        (self.fns.new_spawned)(self.ui, file_path, spawn_id, specs, win)
+        (self.fns.new_dyn_spawned)(self.ui, file_path, spawn_id, specs, win)
+    }
+
+    /// Initiates and returns a new "static spawned" [`RawArea`]
+    ///
+    /// This is one of three ways of spawning floating [`Widget`]s.
+    /// Another is with [`RawArea::spawn`], in which a `Widget` will
+    /// be bolted on the edges of another. Another one is through
+    /// [`RawUi::new_dyn_spawned`].
+    ///
+    /// [`Widget`]: super::Widget
+    pub fn new_static_spawned(
+        &self,
+        file_path: Option<&Path>,
+        spawn_id: SpawnId,
+        specs: StaticSpawnSpecs,
+        win: usize,
+    ) -> RwArea {
+        (self.fns.new_static_spawned)(self.ui, file_path, spawn_id, specs, win)
     }
 
     /// Switches the currently active window
@@ -171,7 +185,9 @@ struct UiFunctions {
     open: fn(&'static dyn Any, DuatSender),
     close: fn(&'static dyn Any),
     new_root: fn(&'static dyn Any, Option<&Path>) -> RwArea,
-    new_spawned: fn(&'static dyn Any, Option<&Path>, SpawnId, DynSpawnSpecs, usize) -> RwArea,
+    new_dyn_spawned: fn(&'static dyn Any, Option<&Path>, SpawnId, DynSpawnSpecs, usize) -> RwArea,
+    new_static_spawned:
+        fn(&'static dyn Any, Option<&Path>, SpawnId, StaticSpawnSpecs, usize) -> RwArea,
     switch_window: fn(&'static dyn Any, win: usize),
     flush_layout: fn(&'static dyn Any),
     print: fn(&'static dyn Any),
@@ -195,9 +211,15 @@ impl UiFunctions {
                 let ui = ui.downcast_ref::<U>().unwrap();
                 RwArea::new::<U>(ui.new_root(get_cache::<U>(file_path)))
             },
-            new_spawned: |ui, file_path, spawn_id, specs, win| {
+            new_dyn_spawned: |ui, file_path, spawn_id, specs, win| {
                 let ui = ui.downcast_ref::<U>().unwrap();
-                RwArea::new::<U>(ui.new_spawned(spawn_id, specs, get_cache::<U>(file_path), win))
+                let cache = get_cache::<U>(file_path);
+                RwArea::new::<U>(ui.new_dyn_spawned(spawn_id, specs, cache, win))
+            },
+            new_static_spawned: |ui, file_path, spawn_id, specs, win| {
+                let ui = ui.downcast_ref::<U>().unwrap();
+                let cache = get_cache::<U>(file_path);
+                RwArea::new::<U>(ui.new_static_spawned(spawn_id, specs, cache, win))
             },
             switch_window: |ui, win| {
                 let ui = ui.downcast_ref::<U>().unwrap();
@@ -874,20 +896,20 @@ impl AreaFunctions {
             push: |area, file_path, specs, on_files| {
                 let cache = get_cache::<U>(file_path);
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                let (child, parent) = area.push(CoreAccess::new(), specs, on_files, cache)?;
+                let (child, parent) = area.push(UiPass::new(), specs, on_files, cache)?;
 
                 Some((RwArea::new::<U>(child), parent.map(RwArea::new::<U>)))
             },
             spawn: |area, file_path, spawn_id, specs| {
                 let cache = get_cache::<U>(file_path);
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                let spawned = area.spawn(CoreAccess::new(), spawn_id, specs, cache)?;
+                let spawned = area.spawn(UiPass::new(), spawn_id, specs, cache)?;
 
                 Some(RwArea::new::<U>(spawned))
             },
             delete: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                let (do_rm_window, removed) = area.delete(CoreAccess::new());
+                let (do_rm_window, removed) = area.delete(UiPass::new());
 
                 (
                     do_rm_window,
@@ -903,43 +925,43 @@ impl AreaFunctions {
                     return false;
                 }
 
-                lhs.swap(CoreAccess::new(), rhs)
+                lhs.swap(UiPass::new(), rhs)
             },
             set_width: |area, width| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.set_width(CoreAccess::new(), width)
+                area.set_width(UiPass::new(), width)
             },
             set_height: |area, height| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.set_height(CoreAccess::new(), height)
+                area.set_height(UiPass::new(), height)
             },
             hide: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.hide(CoreAccess::new())
+                area.hide(UiPass::new())
             },
             reveal: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.reveal(CoreAccess::new())
+                area.reveal(UiPass::new())
             },
             width_of_text: |area, opts, text| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.width_of_text(CoreAccess::new(), opts, text)
+                area.width_of_text(UiPass::new(), opts, text)
             },
             set_as_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.set_as_active(CoreAccess::new())
+                area.set_as_active(UiPass::new())
             },
             print: |area, text, opts, painter| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.print(CoreAccess::new(), text, opts, painter)
+                area.print(UiPass::new(), text, opts, painter)
             },
             print_with: |area, text, print_opts, painter, f| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.print_with(CoreAccess::new(), text, print_opts, painter, f);
+                area.print_with(UiPass::new(), text, print_opts, painter, f);
             },
             get_print_info: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                PrintInfo::new::<U>(area.get_print_info(CoreAccess::new()))
+                PrintInfo::new::<U>(area.get_print_info(UiPass::new()))
             },
             set_print_info: |area, info| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
@@ -951,39 +973,39 @@ impl AreaFunctions {
                     panic!("Attempted to get PrintInfo of wrong type");
                 };
 
-                area.set_print_info(CoreAccess::new(), info.clone());
+                area.set_print_info(UiPass::new(), info.clone());
             },
             print_iter: |area, text, points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                Box::new(area.print_iter(CoreAccess::new(), text, points, opts))
+                Box::new(area.print_iter(UiPass::new(), text, points, opts))
             },
             rev_print_iter: |area, text, points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                Box::new(area.rev_print_iter(CoreAccess::new(), text, points, opts))
+                Box::new(area.rev_print_iter(UiPass::new(), text, points, opts))
             },
             scroll_ver: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.scroll_ver(CoreAccess::new(), text, dist, opts)
+                area.scroll_ver(UiPass::new(), text, dist, opts)
             },
             scroll_around_points: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.scroll_around_points(CoreAccess::new(), text, dist, opts)
+                area.scroll_around_points(UiPass::new(), text, dist, opts)
             },
             scroll_to_points: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.scroll_to_points(CoreAccess::new(), text, dist, opts)
+                area.scroll_to_points(UiPass::new(), text, dist, opts)
             },
             start_points: |area, text, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.start_points(CoreAccess::new(), text, opts)
+                area.start_points(UiPass::new(), text, opts)
             },
             end_points: |area, text, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.end_points(CoreAccess::new(), text, opts)
+                area.end_points(UiPass::new(), text, opts)
             },
             has_changed: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.has_changed(CoreAccess::new())
+                area.has_changed(UiPass::new())
             },
             eq: |lhs, rhs| {
                 let lhs = lhs.inner.downcast_ref::<U::Area>().unwrap();
@@ -995,17 +1017,17 @@ impl AreaFunctions {
                 let lhs = lhs.inner.downcast_ref::<U::Area>().unwrap();
                 let rhs = rhs.inner.downcast_ref::<U::Area>().unwrap();
 
-                lhs.is_master_of(CoreAccess::new(), rhs)
+                lhs.is_master_of(UiPass::new(), rhs)
             },
             get_cluster_master: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.get_cluster_master(CoreAccess::new())
+                area.get_cluster_master(UiPass::new())
                     .map(RwArea::new::<U>)
             },
             store_cache: |area, path| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
 
-                if let Some(area_cache) = area.cache(CoreAccess::new()) {
+                if let Some(area_cache) = area.cache(UiPass::new()) {
                     Cache::new().store(path, area_cache)?;
                 }
 
@@ -1013,23 +1035,23 @@ impl AreaFunctions {
             },
             top_left: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.top_left(CoreAccess::new())
+                area.top_left(UiPass::new())
             },
             bottom_right: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.bottom_right(CoreAccess::new())
+                area.bottom_right(UiPass::new())
             },
             coord_at_points: |area, text, two_points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.coord_at_points(CoreAccess::new(), text, two_points, opts)
+                area.coord_at_points(UiPass::new(), text, two_points, opts)
             },
             points_at_coord: |area, text, coord, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.points_at_coord(CoreAccess::new(), text, coord, opts)
+                area.points_at_coord(UiPass::new(), text, coord, opts)
             },
             is_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.is_active(CoreAccess::new())
+                area.is_active(UiPass::new())
             },
         }
     }

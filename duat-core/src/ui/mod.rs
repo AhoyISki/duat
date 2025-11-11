@@ -42,7 +42,10 @@
 //! [on `Handle`]: Handle::spawn_widget
 //! [on `Text`]: crate::text::SpawnTag
 //! [`context::windows`]: crate::context::windows
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    sync::atomic::{AtomicU16, Ordering},
+};
 
 pub(crate) use self::widget::Node;
 pub use self::{
@@ -640,5 +643,26 @@ impl PushTarget for Window {
 
     fn try_downcast<W: Widget>(&self) -> Option<Handle<W>> {
         None
+    }
+}
+
+/// The id of a spawned [`Widget`]
+///
+/// [`Widget`]: crate::ui::Widget
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SpawnId(u16);
+
+impl SpawnId {
+    /// Creates a new [`SpawnId`]
+    #[allow(clippy::new_without_default)]
+    pub(crate) fn new() -> Self {
+        static SPAWN_COUNT: AtomicU16 = AtomicU16::new(0);
+        Self(SPAWN_COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl std::fmt::Debug for SpawnId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SpawnId({})", self.0)
     }
 }

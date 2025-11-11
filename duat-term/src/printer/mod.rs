@@ -8,7 +8,10 @@ use crossterm::{
     queue,
     style::ResetColor,
 };
-use duat_core::{form, text::SpawnId, ui::Axis};
+use duat_core::{
+    form,
+    ui::{Axis, SpawnId},
+};
 use kasuari::{Expression, Variable};
 
 use self::{sync_solver::SyncSolver, variables::Variables};

@@ -12,10 +12,10 @@ use duat_core::{
     form::{CONTROL_CHAR_ID, Painter},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Item, Part, SpawnId, Text, TwoPoints, txt},
+    text::{Item, Part, Text, TwoPoints, txt},
     ui::{
-        self, Caret, DynSpawnSpecs, PushSpecs,
-        traits::{CoreAccess, RawArea},
+        self, Caret, DynSpawnSpecs, PushSpecs, SpawnId,
+        traits::{UiPass, RawArea},
     },
 };
 use iter::{print_iter, rev_print_iter};
@@ -333,7 +333,7 @@ impl RawArea for Area {
 
     fn push(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         specs: PushSpecs,
         on_files: bool,
         cache: PrintInfo,
@@ -346,7 +346,7 @@ impl RawArea for Area {
         ))
     }
 
-    fn delete(&self, _: CoreAccess) -> (bool, Vec<Self>) {
+    fn delete(&self, _: UiPass) -> (bool, Vec<Self>) {
         let (do_rm_window, rm_areas) = self.layouts.delete(self.id);
         (
             do_rm_window,
@@ -357,13 +357,13 @@ impl RawArea for Area {
         )
     }
 
-    fn swap(&self, _: CoreAccess, rhs: &Self) -> bool {
+    fn swap(&self, _: UiPass, rhs: &Self) -> bool {
         self.layouts.swap(self.id, rhs.id)
     }
 
     fn spawn(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         spawn_id: SpawnId,
         specs: DynSpawnSpecs,
         cache: Self::Cache,
@@ -375,7 +375,7 @@ impl RawArea for Area {
         ))
     }
 
-    fn set_width(&self, _: CoreAccess, width: f32) -> Result<(), Text> {
+    fn set_width(&self, _: UiPass, width: f32) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, Some(width), None, None)
@@ -386,7 +386,7 @@ impl RawArea for Area {
         }
     }
 
-    fn set_height(&self, _: CoreAccess, height: f32) -> Result<(), Text> {
+    fn set_height(&self, _: UiPass, height: f32) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, None, Some(height), None)
@@ -397,7 +397,7 @@ impl RawArea for Area {
         }
     }
 
-    fn hide(&self, _: CoreAccess) -> Result<(), Text> {
+    fn hide(&self, _: UiPass) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, None, None, Some(true))
@@ -408,7 +408,7 @@ impl RawArea for Area {
         }
     }
 
-    fn reveal(&self, _: CoreAccess) -> Result<(), Text> {
+    fn reveal(&self, _: UiPass) -> Result<(), Text> {
         if self
             .layouts
             .set_constraints(self.id, None, None, Some(false))
@@ -419,7 +419,7 @@ impl RawArea for Area {
         }
     }
 
-    fn width_of_text(&self, _: CoreAccess, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
+    fn width_of_text(&self, _: UiPass, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
         let max = self
             .layouts
             .inspect(self.id, |_, layout| layout.max_value())
@@ -431,7 +431,7 @@ impl RawArea for Area {
         Ok(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
     }
 
-    fn scroll_ver(&self, _: CoreAccess, text: &Text, by: i32, opts: PrintOpts) {
+    fn scroll_ver(&self, _: UiPass, text: &Text, by: i32, opts: PrintOpts) {
         if by == 0 {
             return;
         }
@@ -452,7 +452,7 @@ impl RawArea for Area {
 
     ////////// Printing
 
-    fn scroll_around_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts) {
+    fn scroll_around_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -467,7 +467,7 @@ impl RawArea for Area {
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn scroll_to_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts) {
+    fn scroll_to_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts) {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return;
@@ -482,17 +482,17 @@ impl RawArea for Area {
         self.layouts.set_info_of(self.id, info);
     }
 
-    fn set_as_active(&self, _: CoreAccess) {
+    fn set_as_active(&self, _: UiPass) {
         self.layouts.set_active_id(self.id);
     }
 
-    fn print(&self, _: CoreAccess, text: &Text, opts: PrintOpts, painter: Painter) {
+    fn print(&self, _: UiPass, text: &Text, opts: PrintOpts, painter: Painter) {
         self.print(text, opts, painter, |_, _| {})
     }
 
     fn print_with<'a>(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &Text,
         opts: PrintOpts,
         painter: Painter,
@@ -503,13 +503,13 @@ impl RawArea for Area {
 
     ////////// Queries
 
-    fn set_print_info(&self, _: CoreAccess, info: Self::PrintInfo) {
+    fn set_print_info(&self, _: UiPass, info: Self::PrintInfo) {
         self.layouts.set_info_of(self.id, info);
     }
 
     fn print_iter<'a>(
         &self,
-        ca: CoreAccess,
+        ca: UiPass,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -520,7 +520,7 @@ impl RawArea for Area {
 
     fn rev_print_iter<'a>(
         &self,
-        ca: CoreAccess,
+        ca: UiPass,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -529,13 +529,13 @@ impl RawArea for Area {
         rev_print_iter(text, points, opts.wrap_width(width).unwrap_or(width), opts)
     }
 
-    fn has_changed(&self, _: CoreAccess) -> bool {
+    fn has_changed(&self, _: UiPass) -> bool {
         self.layouts
             .inspect(self.id, |rect, layout| rect.has_changed(layout))
             .unwrap_or(false)
     }
 
-    fn is_master_of(&self, _: CoreAccess, other: &Self) -> bool {
+    fn is_master_of(&self, _: UiPass, other: &Self) -> bool {
         if other.id == self.id {
             return true;
         }
@@ -554,7 +554,7 @@ impl RawArea for Area {
         parent_id == self.id
     }
 
-    fn get_cluster_master(&self, _: CoreAccess) -> Option<Self> {
+    fn get_cluster_master(&self, _: UiPass) -> Option<Self> {
         let id = self
             .layouts
             .inspect(self.id, |_, layout| layout.get_cluster_master(self.id))??;
@@ -566,12 +566,12 @@ impl RawArea for Area {
         })
     }
 
-    fn cache(&self, _: CoreAccess) -> Option<Self::Cache> {
+    fn cache(&self, _: UiPass) -> Option<Self::Cache> {
         let info = self.layouts.get_info_of(self.id)?.for_caching();
         Some(info)
     }
 
-    fn top_left(&self, _: CoreAccess) -> ui::Coord {
+    fn top_left(&self, _: UiPass) -> ui::Coord {
         self.layouts
             .coords_of(self.id, false)
             .map(|coords| ui::Coord {
@@ -581,7 +581,7 @@ impl RawArea for Area {
             .unwrap_or_default()
     }
 
-    fn bottom_right(&self, _: CoreAccess) -> ui::Coord {
+    fn bottom_right(&self, _: UiPass) -> ui::Coord {
         self.layouts
             .coords_of(self.id, false)
             .map(|coords| ui::Coord {
@@ -593,7 +593,7 @@ impl RawArea for Area {
 
     fn coord_at_points(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -639,7 +639,7 @@ impl RawArea for Area {
 
     fn points_at_coord(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &Text,
         coord: ui::Coord,
         opts: PrintOpts,
@@ -690,7 +690,7 @@ impl RawArea for Area {
         None
     }
 
-    fn start_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints {
+    fn start_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
@@ -703,7 +703,7 @@ impl RawArea for Area {
         start_points
     }
 
-    fn end_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints {
+    fn end_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints {
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
@@ -716,11 +716,11 @@ impl RawArea for Area {
         end_points
     }
 
-    fn get_print_info(&self, _: CoreAccess) -> Self::PrintInfo {
+    fn get_print_info(&self, _: UiPass) -> Self::PrintInfo {
         self.layouts.get_info_of(self.id).unwrap_or_default()
     }
 
-    fn is_active(&self, _: CoreAccess) -> bool {
+    fn is_active(&self, _: UiPass) -> bool {
         self.layouts.get_active_id() == self.id
     }
 }

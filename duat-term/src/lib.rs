@@ -206,15 +206,28 @@ impl RawUi for Ui {
         root
     }
 
-    fn new_spawned(
+    fn new_dyn_spawned(
         &self,
-        id: duat_core::text::SpawnId,
+        id: ui::SpawnId,
         specs: ui::DynSpawnSpecs,
         cache: <Self::Area as RawArea>::Cache,
         win: usize,
     ) -> Self::Area {
         let ui = self.0.lock().unwrap();
         let id = unsafe { ui.layouts.get() }.spawn_on_text(id, specs, cache, win);
+
+        Area::new(id, unsafe { ui.layouts.get() }.clone())
+    }
+
+    fn new_static_spawned(
+        &self,
+        id: ui::SpawnId,
+        specs: ui::StaticSpawnSpecs,
+        cache: <Self::Area as RawArea>::Cache,
+        win: usize,
+    ) -> Self::Area {
+        let ui = self.0.lock().unwrap();
+        let id = unsafe { ui.layouts.get() }.spawn_static(id, specs, cache, win);
 
         Area::new(id, unsafe { ui.layouts.get() }.clone())
     }

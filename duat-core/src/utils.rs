@@ -443,6 +443,23 @@ macro_rules! doc_duat {
                     pub fn above(self) -> Self { Self }
                     pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
                 }
+
+                pub struct LogBook;
+                impl LogBook {
+                    pub fn builder() -> LogBookOpts { LogBookOpts::default() }
+                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
+                }
+                #[derive(Default, Clone, Copy, Debug)]
+                pub struct LogBookOpts {
+                    pub close_on_unfocus: bool,
+                    pub hidden: bool,
+                    pub side: $crate::ui::Side,
+                    pub height: f32,
+                    pub width: f32,
+                }
+                impl LogBookOpts {
+                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
+                }
                 
                 use super::prelude::*;
                 pub struct VertRule;

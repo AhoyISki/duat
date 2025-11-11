@@ -4,7 +4,7 @@
 //! but they only show up if the word contains a path separator
 //! character. In practice, this means that path completions
 //! only ever show up if you want them to.
-use std::{ffi::OsStr, path::Path};
+use std::path::Path;
 
 use duat_core::text::{Point, Spacer, Text, txt};
 
@@ -27,25 +27,24 @@ impl CompletionsProvider for PathCompletions {
         prefix: &str,
         _: &str,
     ) -> CompletionsList<Self> {
-        let Some((entries, file_name)) = get_entries(prefix) else {
+        let Some(entries) = get_entries(prefix) else {
             return CompletionsList {
                 entries: Vec::new(),
                 kind: CompletionsKind::UnfinishedFiltered,
             };
         };
 
-        let file = file_name.to_string_lossy();
-
         let mut entries: Vec<_> = entries
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| {
                 let path = entry.path();
                 let path = path.to_string_lossy();
-                super::string_cmp(&file, &path).map(move |_| (path.to_string(), ()))
+                super::string_cmp(prefix, &path).map(|_| (path.to_string(), ()))
             })
             .collect();
 
-        entries.sort_by_key(|(path, _)| super::string_cmp(&file, path));
+        entries.sort();
+        entries.sort_by_key(|(path, _)| super::string_cmp(prefix, path).unwrap());
 
         CompletionsList {
             entries,
@@ -68,12 +67,22 @@ impl CompletionsProvider for PathCompletions {
     }
 }
 
-fn get_entries(prefix: &str) -> Option<(std::fs::ReadDir, &OsStr)> {
+fn get_entries(prefix: &str) -> Option<std::fs::ReadDir> {
     let path = Path::new(prefix);
-    if path.is_dir() {
-        path.read_dir().ok().zip(Some(OsStr::new("")))
+    if path.is_dir() && prefix.ends_with(separator()) {
+        path.read_dir().ok()
     } else {
         let parent = path.parent()?;
-        parent.read_dir().ok().zip(path.file_name())
+        parent.read_dir().ok()
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn separator() -> char {
+    '/'
+}
+
+#[cfg(target_os = "windows")]
+fn separator() -> &[char] {
+    &['/', '\\']
 }

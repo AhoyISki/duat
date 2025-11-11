@@ -25,7 +25,12 @@ use super::{
     Point, Text, TextRangeOrIndex,
     shift_list::{Shift, ShiftList, Shiftable},
 };
-use crate::{context::Handle, data::Pass, ui::Widget, utils::get_ends};
+use crate::{
+    context::Handle,
+    data::Pass,
+    ui::{SpawnId, Widget},
+    utils::get_ends,
+};
 
 mod bounds;
 mod taggers;
@@ -823,27 +828,6 @@ mod ids {
     impl std::fmt::Debug for ToggleId {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "ToggleId({})", self.0)
-        }
-    }
-
-    /// The id of a spawned [`Widget`]
-    ///
-    /// [`Widget`]: crate::ui::Widget
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct SpawnId(u16);
-
-    impl SpawnId {
-        /// Creates a new [`SpawnId`]
-        #[allow(clippy::new_without_default)]
-        pub(crate) fn new() -> Self {
-            static SPAWN_COUNT: AtomicU16 = AtomicU16::new(0);
-            Self(SPAWN_COUNT.fetch_add(1, Ordering::Relaxed))
-        }
-    }
-
-    impl std::fmt::Debug for SpawnId {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "SpawnId({})", self.0)
         }
     }
 }

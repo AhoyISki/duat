@@ -104,7 +104,7 @@ pub use self::{
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
-        MainCaret, RawTag, Spacer, SpawnId, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,
+        MainCaret, RawTag, Spacer, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,
     },
 };
 #[doc(inline)]
@@ -115,7 +115,7 @@ use crate::{
     form,
     mode::{Selection, Selections},
     opts::PrintOpts,
-    ui::{Area, Widget},
+    ui::{Area, SpawnId, Widget},
 };
 
 mod builder;

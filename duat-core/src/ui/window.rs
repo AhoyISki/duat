@@ -24,8 +24,8 @@ use crate::{
     mode,
     opts::PrintOpts,
     session::UiMouseEvent,
-    text::{SpawnId, Text, txt},
-    ui::{DynSpawnSpecs, PushSpecs, RwArea, Ui},
+    text::{Text, txt},
+    ui::{DynSpawnSpecs, PushSpecs, RwArea, SpawnId, StaticSpawnSpecs, Ui},
 };
 
 /// A list of all [`Window`]s in Duat
@@ -176,7 +176,7 @@ impl Windows {
         node.handle().try_downcast()
     }
 
-    /// Spawns a [`Widget`]
+    /// Spawns a [`Widget`] on [`Text`]
     pub(crate) fn spawn_on_text<W: Widget>(
         &self,
         pa: &mut Pass,
@@ -191,7 +191,7 @@ impl Windows {
             .and_then(|buffer| buffer.path_set());
         let spawned = self
             .ui
-            .new_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
+            .new_dyn_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
 
         let node = Node::new(widget, spawned, Some(master));
 
@@ -205,6 +205,35 @@ impl Windows {
         );
 
         node.handle().try_downcast().unwrap()
+    }
+
+    fn spawn_static<W: Widget>(
+        &self,
+        pa: &mut Pass,
+        (specs, win): (StaticSpawnSpecs, usize),
+        widget: W,
+    ) -> Option<Handle<W>> {
+        let id = SpawnId::new();
+        let widget = RwData::new(widget);
+        let path = widget
+            .read_as::<Buffer>(pa)
+            .and_then(|buffer| buffer.path_set());
+        let spawned = self
+            .ui
+            .new_static_spawned(path.as_ref().map(|p| p.as_ref()), id, specs, win);
+
+        let node = Node::new(widget, spawned, None);
+
+        let window = self.inner.write(pa).list.remove(win);
+        window.add(pa, node.clone(), None, Location::Spawned(id));
+        self.inner.write(pa).list.insert(win, window);
+
+        hook::trigger(
+            pa,
+            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+        );
+
+        node.handle().try_downcast()
     }
 
     /// Pushes a [`Buffer`] to the buffer's parent
@@ -861,58 +890,41 @@ impl Window {
 
     ////////// Widget addition/removal
 
-    /// Pushes a widget to the "buffer area" of a `Window`
-    ///
-    /// If this [`Widget`] is being pushed to a [`Buffer`]'s group,
-    /// then this `Widget` will be included in that `Buffer`'s
-    /// group. This means that, if that `Buffer` is moved around
-    /// or deleted, this `Widget` (and all others in its group)
-    /// will follow suit.
+    /// Pushes a [`Widget`] around the "buffer area" of a `Window`
     ///
     /// When you push a `Widget`, it is placed on an edge of the
     /// area, and a new parent area may be created to hold both
     /// widgets. If created, that new area will be used for pushing
     /// widgets in the future.
     ///
-    /// This means that, if you push widget *A* to the left, then you
-    /// push widget *B* to the bottom, you will get this layout:
+    /// This means that, if you push widget *B* to the bottom, then
+    /// you push widget *A* to the left, you will get this layout:
     ///
     /// ```text
-    /// ╭───┬──────────╮
-    /// │   │          │
-    /// │ A │  Buffer  │
-    /// │   │          │
-    /// ├───┴──────────┤
-    /// │      B       │
-    /// ╰──────────────╯
+    /// ╭───┬───────────╮
+    /// │   │           │
+    /// │ A │  Buffers  │
+    /// │   │           │
+    /// ├───┴───────────┤
+    /// │       B       │
+    /// ╰───────────────╯
     /// ```
     ///
-    /// Here's an example of such a layout:
+    /// The `Buffers` region here represents a central area that all
+    /// `Window`s contain, where all the [`Buffer`]s are placed
+    /// alongside their [satellite `Widget`s]. When you push `Widget`s
+    /// to the `Window`, instead of to a [`Handle`], those widgets are
+    /// placed in the outer region, not being associated with any
+    /// particular `Buffer`.
     ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// setup_duat!(setup);
-    /// use duat::prelude::*;
-    ///
-    /// fn setup() {
-    ///     hook::remove("BufferWidgets");
-    ///     hook::add::<Buffer>(|pa, handle| {
-    ///         LineNumbers::builder().push_on(pa, handle);
-    ///         status!("{name_txt} {selections_txt} {main_txt}").push_on(pa, handle);
-    ///         Ok(())
-    ///     });
-    /// }
-    /// ```
-    ///
-    /// In this case, each buffer will have [`LineNumbers`] with
-    /// relative/absolute numbering, and a [`StatusLine`] showing
-    /// the buffer's name, how many selections are in it, and its main
-    /// selection.
+    /// In this case, each `Window` will have a [`LogBook`] on the
+    /// left side as well as [`FooterWidgets`] on the bottom.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    /// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
-    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
+    /// [`LogBook`]: https://docs.rs/duat/latest/duat/widgets/struct.LogBook.html
+    /// [`FooterWidgets`]: https://docs.rs/duat/latest/duat/widgets/struct.FooterWidgets.html
     /// [`WindowCreated`]: crate::hook::WindowCreated
+    /// [satellite `Widget`s]: context::Handle::push_outer_widget
     pub fn push_inner<W: Widget>(
         &self,
         pa: &mut Pass,
@@ -928,7 +940,41 @@ impl Window {
             .unwrap()
     }
 
-    /// Docs: TODO
+    /// Pushes a [`Widget`] to the edges of a `Window`
+    ///
+    /// When you push a `Widget`, it is placed on an edge of the
+    /// area, and a new parent area may be created to hold both
+    /// widgets. If created, that new area will be used for pushing
+    /// widgets in the future.
+    ///
+    /// This means that, if you push widget *B* to the bottom, then
+    /// you push widget *A* to the left, you will get this layout:
+    ///
+    /// ```text
+    /// ╭───┬───────────╮
+    /// │   │           │
+    /// │   │  Buffers  │
+    /// │ A │           │
+    /// │   ├───────────┤
+    /// │   │     B     │
+    /// ╰───┴───────────╯
+    /// ```
+    ///
+    /// The `Buffers` region here represents a central area that all
+    /// `Window`s contain, where all the [`Buffer`]s are placed
+    /// alongside their [satellite `Widget`s]. When you push `Widget`s
+    /// to the `Window`, instead of to a [`Handle`], those widgets are
+    /// placed in the outer region, not being associated with any
+    /// particular `Buffer`.
+    ///
+    /// In this case, each `Window` will have a [`LogBook`] on the
+    /// left side as well as [`FooterWidgets`] on the bottom.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`LogBook`]: https://docs.rs/duat/latest/duat/widgets/struct.LogBook.html
+    /// [`FooterWidgets`]: https://docs.rs/duat/latest/duat/widgets/struct.FooterWidgets.html
+    /// [`WindowCreated`]: crate::hook::WindowCreated
+    /// [satellite `Widget`s]: context::Handle::push_outer_widget
     pub fn push_outer<W: Widget>(
         &self,
         pa: &mut Pass,
@@ -941,6 +987,26 @@ impl Window {
 
         context::windows()
             .push_widget(pa, (&target, Some(false), specs), widget, None)
+            .unwrap()
+    }
+
+    /// Spawns a new static [`Widget`] on this `Window`
+    ///
+    /// This `Widget`, unlike all other kinds, does not follow changes
+    /// in the layout by the resizing or closure of other `Widget`s.
+    /// It instead stays in a single [`Coord`], its width and height
+    /// being predefined.
+    ///
+    /// There is one circumstance in which this `Widget` will move,
+    /// however: when the window resizes. In this circumstance, the
+    /// `Widget` will be relocated as to be placed in relatively the
+    /// same place on screen, in relation to the bottom right corner
+    /// of the screen.
+    ///
+    /// [`Coord`]: super::Coord
+    pub fn spawn<W: Widget>(&self, pa: &mut Pass, widget: W, specs: StaticSpawnSpecs) -> Handle<W> {
+        context::windows()
+            .spawn_static(pa, (specs, self.0.read(pa).index), widget)
             .unwrap()
     }
 

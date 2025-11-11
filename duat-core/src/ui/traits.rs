@@ -20,8 +20,8 @@ use crate::{
     form::Painter,
     opts::PrintOpts,
     session::{DuatSender, TwoPointsPlace},
-    text::{Item, SpawnId, Text, TwoPoints},
-    ui::{Caret, Coord, DynSpawnSpecs, PushSpecs},
+    text::{Item, Text, TwoPoints},
+    ui::{Caret, Coord, DynSpawnSpecs, PushSpecs, SpawnId, StaticSpawnSpecs},
 };
 
 /// All the methods that a working gui/tui will need to implement in
@@ -80,22 +80,34 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// [`RawArea`]: RawUi::Area
     fn new_root(&'static self, cache: <Self::Area as RawArea>::Cache) -> Self::Area;
 
-    /// Initiates and returns a new "floating" [`RawArea`]
+    /// Initiates and returns a new "dynamic spawned" [`RawArea`]
     ///
-    /// This is one of two ways of spawning floating [`Widget`]s. The
-    /// other way is with [`RawArea::spawn`], in which a `Widget`
-    /// will be bolted on the edges of another.
+    /// This is one of three ways of spawning floating [`Widget`]s.
+    /// Another is with [`RawArea::spawn`], in which a `Widget` will
+    /// be bolted on the edges of another. Another one is through
+    /// [`RawUi::new_static_spawned`].
     ///
-    /// TODO: There will probably be some way of defining floating
-    /// `Widget`s with coordinates in the not too distant future as
-    /// well.
-    ///
-    /// [`RawArea`]: RawUi::Area
     /// [`Widget`]: super::Widget
-    fn new_spawned(
+    fn new_dyn_spawned(
         &'static self,
         id: SpawnId,
         specs: DynSpawnSpecs,
+        cache: <Self::Area as RawArea>::Cache,
+        win: usize,
+    ) -> Self::Area;
+
+    /// Initiates and returns a new "static spawned" [`RawArea`]
+    ///
+    /// This is one of three ways of spawning floating [`Widget`]s.
+    /// Another is with [`RawArea::spawn`], in which a `Widget` will
+    /// be bolted on the edges of another. Another one is through
+    /// [`RawUi::new_dyn_spawned`].
+    ///
+    /// [`Widget`]: super::Widget
+    fn new_static_spawned(
+        &'static self,
+        id: SpawnId,
+        specs: StaticSpawnSpecs,
         cache: <Self::Area as RawArea>::Cache,
         win: usize,
     ) -> Self::Area;
@@ -241,7 +253,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`Side::Right`]: super::Side::Right
     fn push(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         specs: PushSpecs,
         on_files: bool,
         cache: Self::Cache,
@@ -259,7 +271,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [deleted]: RawArea::delete
     fn spawn(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         id: SpawnId,
         specs: DynSpawnSpecs,
         cache: Self::Cache,
@@ -274,7 +286,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// If the `RawArea`'s parent was also deleted, return it.
     ///
     /// [`Widget`]: super::Widget
-    fn delete(&self, _: CoreAccess) -> (bool, Vec<Self>);
+    fn delete(&self, _: UiPass) -> (bool, Vec<Self>);
 
     /// Swaps this `RawArea` with another one
     ///
@@ -289,41 +301,41 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// It can fail if either of the `RawArea`s was already deleted,
     /// or if no swap happened because they belonged to the same
     /// cluster master.
-    fn swap(&self, _: CoreAccess, rhs: &Self) -> bool;
+    fn swap(&self, _: UiPass, rhs: &Self) -> bool;
 
     ////////// Constraint changing functions
 
     /// Sets a width for the `RawArea`
-    fn set_width(&self, _: CoreAccess, width: f32) -> Result<(), Text>;
+    fn set_width(&self, _: UiPass, width: f32) -> Result<(), Text>;
 
     /// Sets a height for the `RawArea`
-    fn set_height(&self, _: CoreAccess, height: f32) -> Result<(), Text>;
+    fn set_height(&self, _: UiPass, height: f32) -> Result<(), Text>;
 
     /// Hides the `RawArea`
-    fn hide(&self, _: CoreAccess) -> Result<(), Text>;
+    fn hide(&self, _: UiPass) -> Result<(), Text>;
 
     /// Reveals the `RawArea`
-    fn reveal(&self, _: CoreAccess) -> Result<(), Text>;
+    fn reveal(&self, _: UiPass) -> Result<(), Text>;
 
     /// What width the given [`Text`] would occupy, if unwrapped
-    fn width_of_text(&self, _: CoreAccess, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
+    fn width_of_text(&self, _: UiPass, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
 
     /// Tells the [`RawUi`] that this `RawArea` is the one that is
     /// currently focused.
     ///
     /// Should make `self` the active `RawArea` while deactivating
     /// any other active `RawArea`.
-    fn set_as_active(&self, _: CoreAccess);
+    fn set_as_active(&self, _: UiPass);
 
     ////////// Printing functions
 
     /// Prints the [`Text`]
-    fn print(&self, _: CoreAccess, text: &Text, opts: PrintOpts, painter: Painter);
+    fn print(&self, _: UiPass, text: &Text, opts: PrintOpts, painter: Painter);
 
     /// Prints the [`Text`] with a callback function
     fn print_with<'a>(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &Text,
         opts: PrintOpts,
         painter: Painter,
@@ -331,12 +343,12 @@ pub trait RawArea: Sized + PartialEq + 'static {
     );
 
     /// The current printing information of the area
-    fn get_print_info(&self, _: CoreAccess) -> Self::PrintInfo;
+    fn get_print_info(&self, _: UiPass) -> Self::PrintInfo;
 
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
     /// [`PrintInfo`]: RawArea::PrintInfo
-    fn set_print_info(&self, _: CoreAccess, info: Self::PrintInfo);
+    fn set_print_info(&self, _: UiPass, info: Self::PrintInfo);
 
     /// Returns a printing iterator
     ///
@@ -351,7 +363,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`text::Item`]: Item
     fn print_iter<'a>(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -369,7 +381,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`text::Item`]: Item
     fn rev_print_iter<'a>(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &'a Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -382,7 +394,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
-    fn scroll_ver(&self, _: CoreAccess, text: &Text, dist: i32, opts: PrintOpts);
+    fn scroll_ver(&self, _: UiPass, text: &Text, dist: i32, opts: PrintOpts);
 
     /// Scrolls the [`Text`] on all four directions until the given
     /// [`TwoPoints`] is within the [`ScrollOff`] range
@@ -395,7 +407,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`ScrollOff`]: crate::opts::ScrollOff
     /// [`scroll_ver`]: RawArea::scroll_ver
     /// [`scroll_to_points`]: RawArea::scroll_to_points
-    fn scroll_around_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts);
+    fn scroll_around_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
     ///
@@ -408,13 +420,13 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// `scrolloff.y` value.
     ///
     /// [line wrapping]: crate::opts::PrintOpts::wrap_lines
-    fn scroll_to_points(&self, _: CoreAccess, text: &Text, points: TwoPoints, opts: PrintOpts);
+    fn scroll_to_points(&self, _: UiPass, text: &Text, points: TwoPoints, opts: PrintOpts);
 
     /// The start points that should be printed
-    fn start_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints;
+    fn start_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints;
 
     /// The [`TwoPoints`] immediately after the last printed one
-    fn end_points(&self, _: CoreAccess, text: &Text, opts: PrintOpts) -> TwoPoints;
+    fn end_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints;
 
     ////////// Queries
 
@@ -425,29 +437,29 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// box, but it may be something else.
     ///
     /// [`PrintInfo`]: RawArea::PrintInfo
-    fn has_changed(&self, _: CoreAccess) -> bool;
+    fn has_changed(&self, _: UiPass) -> bool;
 
     /// Whether or not [`self`] is the "master" of `other`
     ///
     /// This can only happen if, by following [`self`]'s children, you
     /// would eventually reach `other`.
-    fn is_master_of(&self, _: CoreAccess, other: &Self) -> bool;
+    fn is_master_of(&self, _: UiPass, other: &Self) -> bool;
 
     /// Returns the clustered master of [`self`], if there is one
     ///
     /// If [`self`] belongs to a clustered group, return the most
     /// senior member of said cluster, which must hold all other
     /// members of the cluster.
-    fn get_cluster_master(&self, _: CoreAccess) -> Option<Self>;
+    fn get_cluster_master(&self, _: UiPass) -> Option<Self>;
 
     /// Returns the statics from `self`
-    fn cache(&self, _: CoreAccess) -> Option<Self::Cache>;
+    fn cache(&self, _: UiPass) -> Option<Self::Cache>;
 
     /// The top left [`Coord`] of this `Area`
-    fn top_left(&self, _: CoreAccess) -> Coord;
+    fn top_left(&self, _: UiPass) -> Coord;
 
     /// The bottom right [`Coord`] of this `Area`
-    fn bottom_right(&self, _: CoreAccess) -> Coord;
+    fn bottom_right(&self, _: UiPass) -> Coord;
 
     /// The [`Coord`] where the given [`TwoPoints`] would be printed
     ///
@@ -455,7 +467,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`Text`]
     fn coord_at_points(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &Text,
         points: TwoPoints,
         opts: PrintOpts,
@@ -468,7 +480,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// [`Text`] is not printed.
     fn points_at_coord(
         &self,
-        _: CoreAccess,
+        _: UiPass,
         text: &Text,
         coord: Coord,
         opts: PrintOpts,
@@ -477,22 +489,25 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// Returns `true` if this is the currently active `RawArea`
     ///
     /// Only one `RawArea` should be active at any given moment.
-    fn is_active(&self, _: CoreAccess) -> bool;
+    fn is_active(&self, _: UiPass) -> bool;
 }
 
 /// Prevents direct use of the [`RawArea`] functions
 ///
 /// The methods of `RawArea` are all meant to be accessed only
-/// through the type erased [`RwArea`] and [`Area`]
+/// through the type erased [`RwArea`] and [`Area`].
+///
+/// Another guarantee of this struct is that any function that takes
+/// it is guaranteed to be taking place in the main thread.
 ///
 /// [`RwArea`]: super::RwArea
 /// [`Area`]: super::Area
 #[non_exhaustive]
 #[derive(Clone, Copy)]
-pub struct CoreAccess {}
+pub struct UiPass {}
 
-impl CoreAccess {
+impl UiPass {
     pub(super) fn new() -> Self {
-        CoreAccess {}
+        UiPass {}
     }
 }

@@ -1,4 +1,4 @@
-use duat_core::{text::SpawnId, ui::Axis};
+use duat_core::ui::{Axis, SpawnId};
 use kasuari::{AddConstraintError, Expression, RemoveConstraintError, Solver, Variable};
 
 use super::VarPoint;

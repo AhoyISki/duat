@@ -1,9 +1,6 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use duat_core::{
-    text::SpawnId,
-    ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs},
-};
+use duat_core::ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, SpawnId};
 use kasuari::{Constraint, WeightedRelation::*};
 
 pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
