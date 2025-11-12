@@ -22,15 +22,16 @@
 use core::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEventKind, MouseButton};
+pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind};
 
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;
 
 pub(crate) use self::cursor::reinsert_selections;
+#[doc(inline)]
+pub use self::{bindings::*, patterns::*};
 pub use self::{
     cursor::{CaretOrRange, Cursor, Cursors, Selection, Selections, VPoint},
-    patterns::*,
     remap::*,
     switch::*,
 };
@@ -42,6 +43,7 @@ use crate::{
     ui::{Coord, Widget},
 };
 
+mod bindings;
 mod cursor;
 mod patterns;
 mod remap;
@@ -450,25 +452,79 @@ pub trait Mode: Sized + Clone + Send + 'static {
     /// [`before_exit`]: Mode::before_exit
     fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {}
 
+    /// A list of all available keybindings for this `Mode`
+    ///
+    /// The [`Bindings`] struct serves the purpose of documenting the
+    /// key bindings of a `Mode`. Note that if a [`KeyEvent`] does
+    /// _not_ match in the list, then that `KeyEvent` will _not_ be
+    /// sent to a `Mode`, and a message of no binding will be sent
+    /// instead.
+    ///
+    /// You should implement this function using the [`bindings!`]
+    /// macro. In it, you use a `match` statement to select keys, with
+    /// each pattern returning a description [`Text`] for the binding.
+    /// Here's an example using some Vim keybindings:
+    ///
+    /// ```
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// #[derive(Clone)]
+    /// struct VimNormal;
+    ///
+    /// impl Mode for VimNormal {
+    ///     # type Widget = Buffer;
+    ///     # fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
+    ///     // ...
+    ///     fn bindings() -> mode::Bindings {
+    ///         let t = |l: &str, r: &str| txt!("{l}[separator]|{r}");
+    ///         let word = txt!("[a]word[separator]|[a]WORD");
+    ///
+    ///         let objects = mode::bindings!(match obj {
+    ///             event!('w' | 'W') => [t("w", "W"), txt!("Until next {}", word.clone())],
+    ///             event!('e' | 'E') => [t("e", "E"), txt!("End of {}", word.clone())],
+    ///             event!('b' | 'B') => [t("b", "B"), txt!("Until start of {}", word.clone())],
+    ///             _ => "rest of the things, damn",
+    ///         });
+    ///
+    ///         mode::bindings!(match key_event {
+    ///             event!(KeyCode::Char('0'..'9')) => [txt!("0[separator]..[]9"), "Add to count"],
+    ///             event!('w' | 'W') => [t("w", "W"), txt!("Move to next {}", word.clone())],
+    ///             event!('e' | 'E') => [t("e", "E"), txt!("Move to end of {}", word.clone())],
+    ///             event!('b' | 'B') => [t("b", "B"), txt!("Move to start of {}", word.clone())],
+    ///             event!('r') => (
+    ///                 [txt!("[a]r"), txt!("Replace selection with [a]char")],
+    ///                 match key_event {
+    ///                     event!(KeyCode::Char(_)) => "Character to replace with",
+    ///                 }
+    ///             ),
+    ///             event!('d') => (["d", "Delete the next object"], objects.clone()),
+    ///             event!('c') => (["d", "Change the next object"], objects.clone()),
+    ///             _ => "Not properly documented, but will be sent",
+    ///         })
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// One thing to note about this function is that it will only be
+    /// called _once_ for each `Mode`, since Duat considers each mode
+    /// as a static collection of key bindings, each doing their own
+    /// thing.
+    ///
+    /// This is the reason why this function takes no arguments, as it
+    /// is not supposed to depend on the state of the application.
+    ///
+    /// [`Text`]: crate::text::Text
+    fn bindings() -> Bindings {
+        bindings!(match key_event {
+            _ => "No key declarations",
+        })
+    }
+
     /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
     #[doc(hidden)]
     fn just_keys(&self) -> Option<&str> {
         None
-    }
-}
-
-// This implementation exists only to allow &strs to be passed to
-// remaps.
-impl Mode for &'static str {
-    // Doesn't matter
-    type Widget = Buffer;
-
-    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
-        unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
-    }
-
-    fn just_keys(&self) -> Option<&str> {
-        Some(self)
     }
 }
 
@@ -514,4 +570,19 @@ pub fn key_events<const LEN: usize>(str: &str, modif: KeyMod) -> [KeyEvent; LEN]
     }
 
     events
+}
+
+// This implementation exists only to allow &strs to be passed to
+// remaps.
+impl Mode for &'static str {
+    // Doesn't matter
+    type Widget = Buffer;
+
+    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
+        unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
+    }
+
+    fn just_keys(&self) -> Option<&str> {
+        Some(self)
+    }
 }
