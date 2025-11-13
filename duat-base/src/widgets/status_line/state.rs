@@ -22,16 +22,16 @@ use duat_core::{
     context::{self, Handle},
     data::{DataMap, Pass, RwData},
     mode::{Selection, Selections},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
+    text::{AlignCenter, AlignLeft, AlignRight, AsBuilderPart, Builder, Ghost, Spacer, Text},
     ui::{Area, Window},
 };
 
 use crate::widgets::status_line::CheckerFn;
 
 /// A struct that reads state in order to return [`Text`].
-enum Appender<_T: Clone = (), D: Display + Clone = String> {
+enum Appender<Part: AsBuilderPart<D, _T> = String, _T = (), D: Display = String> {
     FromFn(BuilderFn),
-    Part(BuilderPart<D, _T>),
+    Part(Part, PhantomData<(D, _T)>),
 }
 
 /// A part of the [`StatusLine`]
@@ -44,20 +44,17 @@ enum Appender<_T: Clone = (), D: Display + Clone = String> {
 /// [`impl Display`]: std::fmt::Display
 /// [`Buffer`]: duat_core::buffer::Buffer
 #[doc(hidden)]
-pub struct State<_T = (), D = String>
-where
-    _T: Clone + Send,
-    D: Display + Clone + Send,
-{
-    appender: Appender<_T, D>,
+pub struct State<_T1 = (), Part: AsBuilderPart<D, _T2> = String, _T2 = (), D: Display = String> {
+    appender: Appender<Part, _T2, D>,
     checker: Option<CheckerFn>,
-    ghost: PhantomData<_T>,
+    ghost: PhantomData<_T1>,
 }
 
-impl<_T, D> State<_T, D>
+impl<_T1, Part, _T2, D> State<_T1, Part, _T2, D>
 where
-    _T: Clone + Send + 'static,
-    D: Display + Clone + Send + 'static,
+    Part: AsBuilderPart<D, _T2> + Send + 'static,
+    _T2: 'static,
+    D: Display + 'static,
 {
     /// Returns the two building block functions for the
     /// [`Statusline`]
@@ -67,8 +64,8 @@ where
         (
             match self.appender {
                 Appender::FromFn(f) => f,
-                Appender::Part(builder_part) => {
-                    Box::new(move |_, b, _| b.push(builder_part.clone()))
+                Appender::Part(part, _) => {
+                    Box::new(move |_, b, _| b.push_builder_part(part.as_builder_part()))
                 }
             },
             Box::new(move |pa| self.checker.as_ref().is_some_and(|check| check(pa))),
@@ -76,27 +73,27 @@ where
     }
 }
 
-impl<D: Display + Clone + Send + 'static> From<D> for State<D, D> {
+impl<D: Display + Send + 'static> From<D> for State<D, D, D, D> {
     fn from(value: D) -> Self {
         Self {
-            appender: Appender::Part(value.into()),
+            appender: Appender::Part(value, PhantomData),
             checker: None,
             ghost: PhantomData,
         }
     }
 }
 
-impl From<Text> for State<()> {
+impl From<Text> for State<(), Text> {
     fn from(value: Text) -> Self {
         Self {
-            appender: Appender::Part(BuilderPart::from(value)),
+            appender: Appender::Part(value, PhantomData),
             checker: None,
             ghost: PhantomData,
         }
     }
 }
 
-impl<D: Display + Clone + Send + 'static> From<RwData<D>> for State<DataArg<D>> {
+impl<D: Display + 'static> From<RwData<D>> for State<DataArg<D>, D, D, D> {
     fn from(value: RwData<D>) -> Self {
         let checker = value.checker();
         Self {
@@ -107,7 +104,7 @@ impl<D: Display + Clone + Send + 'static> From<RwData<D>> for State<DataArg<D>> 
     }
 }
 
-impl From<RwData<Text>> for State<DataArg<()>> {
+impl From<RwData<Text>> for State<DataArg<()>, Text> {
     fn from(value: RwData<Text>) -> Self {
         let checker = value.checker();
         Self {
@@ -118,7 +115,7 @@ impl From<RwData<Text>> for State<DataArg<()>> {
     }
 }
 
-impl<I: ?Sized, O: Display> From<DataMap<I, O>> for State<DataArg<String>> {
+impl<I: ?Sized, O: Display> From<DataMap<I, O>> for State<DataArg<O>, O, O, O> {
     fn from(value: DataMap<I, O>) -> Self {
         let checker = value.checker();
         State {
@@ -129,7 +126,7 @@ impl<I: ?Sized, O: Display> From<DataMap<I, O>> for State<DataArg<String>> {
     }
 }
 
-impl<I: ?Sized> From<DataMap<I, Text>> for State<DataArg<Text>> {
+impl<I: ?Sized> From<DataMap<I, Text>> for State<DataArg<Text>, Text> {
     fn from(value: DataMap<I, Text>) -> Self {
         let checker = value.checker();
         State {
@@ -140,50 +137,50 @@ impl<I: ?Sized> From<DataMap<I, Text>> for State<DataArg<Text>> {
     }
 }
 
-impl From<AlignLeft> for State<AlignLeft> {
+impl From<AlignLeft> for State<AlignLeft, AlignLeft> {
     fn from(_: AlignLeft) -> Self {
         Self {
-            appender: Appender::Part(BuilderPart::AlignLeft),
+            appender: Appender::Part(AlignLeft, PhantomData),
             checker: None,
             ghost: PhantomData,
         }
     }
 }
 
-impl From<AlignCenter> for State<AlignCenter> {
+impl From<AlignCenter> for State<AlignCenter, AlignCenter> {
     fn from(_: AlignCenter) -> Self {
         Self {
-            appender: Appender::Part(BuilderPart::AlignCenter),
+            appender: Appender::Part(AlignCenter, PhantomData),
             checker: None,
             ghost: PhantomData,
         }
     }
 }
 
-impl From<AlignRight> for State<AlignRight> {
+impl From<AlignRight> for State<AlignRight, AlignRight> {
     fn from(_: AlignRight) -> Self {
         Self {
-            appender: Appender::Part(BuilderPart::AlignRight),
+            appender: Appender::Part(AlignRight, PhantomData),
             checker: None,
             ghost: PhantomData,
         }
     }
 }
 
-impl From<Spacer> for State<()> {
+impl From<Spacer> for State<Spacer, Spacer> {
     fn from(_: Spacer) -> Self {
         Self {
-            appender: Appender::Part(BuilderPart::from(Spacer)),
+            appender: Appender::Part(Spacer, PhantomData),
             checker: None,
             ghost: PhantomData,
         }
     }
 }
 
-impl<T: Into<Text> + Clone> From<Ghost<T>> for State<()> {
-    fn from(value: Ghost<T>) -> Self {
+impl From<Ghost> for State<(), Ghost> {
+    fn from(value: Ghost) -> Self {
         Self {
-            appender: Appender::Part(BuilderPart::from(value)),
+            appender: Appender::Part(value, PhantomData),
             checker: None,
             ghost: PhantomData,
         }
@@ -195,7 +192,7 @@ impl<T: Into<Text> + Clone> From<Ghost<T>> for State<()> {
 macro_rules! implFromFn {
     ($($arg:ident),*) => {
         #[allow(unused_parens, non_snake_case)]
-        impl<Fmt, D, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), String>>
+        impl<Fmt, D, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), D>, D, D, D>
         where
             Fmt: Fn($(&$arg),*) -> D + Send + 'static,
             D: Display,
@@ -217,7 +214,7 @@ macro_rules! implFromFn {
         }
 
         #[allow(unused_parens, non_snake_case)]
-        impl<Fmt, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), Text>>
+        impl<Fmt, $($arg),*> From<Fmt> for State<FnArg<($($arg),*), Text>, Text>
         where
             Fmt: Fn($(&$arg),*) -> Text + Send + 'static,
             $($arg: StateArg),*

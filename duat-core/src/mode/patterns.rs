@@ -236,10 +236,10 @@ macro_rules! __ctrl__ {
         $crate::__modified__!(@code $($tokens)*)
     };
     (@modif [$($mods:tt),*] $($tokens:tt)*) => {
-        $crate::__modified__!(@modif [CONTROL $(, $mods)*] $($tokens)*)
+        $crate::__modified__!(@modif [CONTROL $(,$mods)*] $($tokens)*)
     };
     (@bindings [$($mods:tt),*] $($tokens:tt)*) => {
-        $crate::__modified__!(@bindings [CONTROL $(, $mods)*] $($tokens)*)
+        $crate::__modified__!(@bindings [CONTROL $(,$mods)*] $($tokens)*)
     };
     ($($tokens:tt)*) => {
         $crate::__modified__!([CONTROL] $($tokens)*)
@@ -417,7 +417,7 @@ macro_rules! __modified__ {
         ))
     }};
     (@bindings [$($mods:ident),*] $list:ident, $($chars:literal)|*) => {{
-        let modif = $crate::__join_modifiers__![$($mods,)* $($mod,)?];
+        let modif = $crate::__join_modifiers__![$($mods),*];
         $list.extend([$(
             $crate::mode::BindingPat::new($crate::mode::KeyCode::Char($chars), modif)
         ),*])

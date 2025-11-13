@@ -31,7 +31,7 @@ use crate::{
     mode::{MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{BuilderPart, Bytes, Text, txt},
+    text::{Bytes, Text, txt},
     ui::{RwArea, Widget},
 };
 
@@ -736,9 +736,3 @@ impl PartialEq for PathKind {
 }
 
 impl Eq for PathKind {}
-
-impl From<PathKind> for BuilderPart {
-    fn from(value: PathKind) -> Self {
-        BuilderPart::Text(value.name_txt())
-    }
-}

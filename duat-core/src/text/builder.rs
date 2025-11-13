@@ -10,11 +10,12 @@
 use std::{
     fmt::{Alignment, Display, Write},
     marker::PhantomData,
-    path::PathBuf,
+    path::Path,
 };
 
 use super::{Change, Tagger, Text};
 use crate::{
+    buffer::PathKind,
     form::FormId,
     text::{AlignCenter, AlignLeft, AlignRight, FormTag, Ghost, Spacer},
 };
@@ -115,13 +116,13 @@ impl Builder {
     ///
     /// [`impl Display`]: std::fmt::Display
     /// [`impl Tag`]: super::Tag
-    pub fn push<D: Display, _T>(&mut self, part: impl Into<BuilderPart<D, _T>>) {
-        self.push_builder_part(part.into());
+    pub fn push<D: Display, _T>(&mut self, part: impl AsBuilderPart<D, _T>) {
+        self.push_builder_part(part.as_builder_part());
     }
 
     #[doc(hidden)]
     pub fn push_builder_part<_T>(&mut self, part: BuilderPart<impl Display, _T>) {
-        fn push_basic(builder: &mut Builder, part: BuilderPart) {
+        fn push_ref(builder: &mut Builder, part: BuilderPart) {
             use Alignment::*;
             use BuilderPart as BP;
 
@@ -130,7 +131,9 @@ impl Builder {
 
             match part {
                 BP::Text(text) => builder.push_text(text),
-                BP::Builder(new) => builder.push_text(new.build()),
+                BP::Builder(other) => builder.push_builder(other),
+                BP::Path(path) => builder.push_str(path.to_string_lossy()),
+                BP::PathKind(text) => builder.push_text(&text),
                 BP::Form(tag) => {
                     let last_form = if tag == crate::form::DEFAULT_ID.to_tag(0) {
                         builder.last_form.take()
@@ -171,18 +174,14 @@ impl Builder {
                     None => builder.last_align = Some((end, Right)),
                     Some(_) => {}
                 },
-                BP::Spacer(_) => {
-                    builder.text.insert_tag(tagger, end, Spacer);
-                }
-                BP::Ghost(text) => {
-                    builder.text.insert_tag(tagger, end, Ghost(text));
-                }
+                BP::Spacer(_) => _ = builder.text.insert_tag(tagger, end, Spacer),
+                BP::Ghost(ghost) => _ = builder.text.insert_tag(tagger, end, ghost.clone()),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }
 
         match part.try_to_basic() {
-            Ok(basic_part) => push_basic(self, basic_part),
+            Ok(part_ref) => push_ref(self, part_ref),
             Err(BuilderPart::ToString(display)) => self.push_str(display),
             Err(_) => unsafe { std::hint::unreachable_unchecked() },
         }
@@ -253,9 +252,33 @@ impl Builder {
     }
 
     /// Pushes [`Text`] directly
-    fn push_text(&mut self, text: Text) {
+    fn push_text(&mut self, text: &Text) {
         self.last_was_empty = text.is_empty();
         self.text.insert_text(self.text.last_point(), text);
+    }
+
+    /// Pushes [`Text`] directly
+    fn push_builder(&mut self, other: &Builder) {
+        let offset = self.text.last_point().byte();
+
+        self.last_was_empty = other.text.is_empty();
+        self.text.insert_text(self.text.last_point(), &other.text);
+
+        if let Some((b, id)) = other.last_form
+            && b < other.text.last_point().byte()
+        {
+            self.text.insert_tag(Tagger::basic(), offset + b.., id);
+        }
+        if let Some((b, align)) = other.last_align
+            && b < other.text.last_point().byte()
+        {
+            let tagger = Tagger::basic();
+            if let Alignment::Center = align {
+                self.text.insert_tag(tagger, offset + b.., AlignCenter);
+            } else {
+                self.text.insert_tag(tagger, offset + b.., AlignRight);
+            }
+        }
     }
 }
 
@@ -288,24 +311,28 @@ impl From<Builder> for Text {
 
 /// A part to be pushed to a [`Builder`] by a macro
 #[derive(Clone)]
-pub enum BuilderPart<D: Display = String, _T = ()> {
+pub enum BuilderPart<'a, D: Display = String, _T = ()> {
     /// Text to be pushed
     ///
-    /// > [!NOTE]
-    /// >
-    /// > Every [`Text`] struct has a `\n` attached at the end,
-    /// > but when pushing it to a [`Builder`], said `\n` is
-    /// > automatically removed. If you want to keep a `\n` at the
-    /// > end, push an additional one.
-    Text(Text),
+    /// # Note
+    ///
+    /// Every [`Text`] struct has a `\n` attached at the end,
+    /// but when pushing it to a [`Builder`], said `\n` is
+    /// automatically removed. If you want to keep a `\n` at the
+    /// end, push an additional one.
+    Text(&'a Text),
     /// A Text Builder
     ///
     /// Much like the [`Text`], normally, the [`Builder`] finishes
     /// with a `\n`, but when pushed to another [`Builder`], that `\n`
     /// is removed as well.
-    Builder(Builder),
+    Builder(&'a Builder),
     /// An [`impl Display`](std::fmt::Display) type
-    ToString(D),
+    ToString(&'a D),
+    /// An [`Path`] reference
+    Path(&'a std::path::Path),
+    /// A [`PathKind`]
+    PathKind(Text),
     /// A [`FormId`]
     Form(FormTag),
     /// Sets the alignment to the left, i.e. resets it
@@ -317,100 +344,64 @@ pub enum BuilderPart<D: Display = String, _T = ()> {
     /// A spacer for more advanced alignment
     Spacer(PhantomData<_T>),
     /// Ghost [`Text`] that is separate from the real thing
-    Ghost(Text),
+    Ghost(&'a Ghost),
 }
 
-impl<D: Display, _T> BuilderPart<D, _T> {
-    fn try_to_basic(self) -> Result<BuilderPart, Self> {
+impl<'a, D: Display, _T> BuilderPart<'a, D, _T> {
+    fn try_to_basic(self) -> Result<BuilderPart<'a>, Self> {
         match self {
             BuilderPart::Text(text) => Ok(BuilderPart::Text(text)),
             BuilderPart::Builder(builder) => Ok(BuilderPart::Builder(builder)),
-            BuilderPart::ToString(d) => Err(BuilderPart::ToString(d)),
+            BuilderPart::ToString(_) => Err(self),
+            BuilderPart::Path(path) => Ok(BuilderPart::Path(path)),
+            BuilderPart::PathKind(text) => Ok(BuilderPart::PathKind(text)),
             BuilderPart::Form(form_id) => Ok(BuilderPart::Form(form_id)),
             BuilderPart::AlignLeft => Ok(BuilderPart::AlignLeft),
             BuilderPart::AlignCenter => Ok(BuilderPart::AlignCenter),
             BuilderPart::AlignRight => Ok(BuilderPart::AlignRight),
             BuilderPart::Spacer(_) => Ok(BuilderPart::Spacer(PhantomData)),
-            BuilderPart::Ghost(text) => Ok(BuilderPart::Ghost(text)),
+            BuilderPart::Ghost(ghost) => Ok(BuilderPart::Ghost(ghost)),
         }
     }
 }
 
-impl From<Builder> for BuilderPart {
-    fn from(value: Builder) -> Self {
-        Self::Builder(value)
-    }
+/// Defines which types can be pushed onto a [`Builder`]
+///
+/// Every [`Tag`], as well as any [`Display`] and [`AsRef<Path>`]
+/// types can be pushed to a `Builder`.
+///
+/// [`Tag`]: super::Tag
+pub trait AsBuilderPart<D: Display = String, _T = ()> {
+    /// Gets a [`BuilderPart`] fro this value
+    fn as_builder_part(&self) -> BuilderPart<'_, D, _T>;
 }
 
-impl From<FormId> for BuilderPart {
-    fn from(value: FormId) -> Self {
-        Self::Form(value.to_tag(0))
-    }
+macro_rules! implAsBuilderPart {
+    ($type:ident, $value:ident, $result:expr) => {
+        impl AsBuilderPart for $type {
+            fn as_builder_part(&self) -> BuilderPart<'_> {
+                let $value = self;
+                $result
+            }
+        }
+    };
 }
 
-impl From<FormTag> for BuilderPart {
-    fn from(value: FormTag) -> Self {
-        Self::Form(value)
-    }
-}
+implAsBuilderPart!(Builder, builder, BuilderPart::Builder(builder));
+implAsBuilderPart!(FormId, form_id, BuilderPart::Form(form_id.to_tag(0)));
+implAsBuilderPart!(FormTag, form_tag, BuilderPart::Form(*form_tag));
+implAsBuilderPart!(AlignLeft, _align, BuilderPart::AlignLeft);
+implAsBuilderPart!(AlignCenter, _align, BuilderPart::AlignCenter);
+implAsBuilderPart!(AlignRight, _align, BuilderPart::AlignRight);
+implAsBuilderPart!(Spacer, _spacer, BuilderPart::Spacer(PhantomData));
+implAsBuilderPart!(Ghost, ghost, BuilderPart::Ghost(ghost));
+implAsBuilderPart!(Text, text, BuilderPart::Text(text));
+implAsBuilderPart!(Path, path, BuilderPart::Path(path));
+implAsBuilderPart!(PathKind, path, BuilderPart::PathKind(path.name_txt()));
 
-impl From<AlignLeft> for BuilderPart {
-    fn from(_: AlignLeft) -> Self {
-        Self::AlignLeft
-    }
-}
-
-impl From<AlignCenter> for BuilderPart {
-    fn from(_: AlignCenter) -> Self {
-        Self::AlignCenter
-    }
-}
-
-impl From<AlignRight> for BuilderPart {
-    fn from(_: AlignRight) -> Self {
-        Self::AlignRight
-    }
-}
-
-impl From<Spacer> for BuilderPart {
-    fn from(_: Spacer) -> Self {
-        Self::Spacer(PhantomData)
-    }
-}
-
-impl<T: Into<Text>> From<Ghost<T>> for BuilderPart {
-    fn from(value: Ghost<T>) -> Self {
-        Self::Ghost(value.0.into())
-    }
-}
-
-impl From<Text> for BuilderPart {
-    fn from(value: Text) -> Self {
-        Self::Text(value)
-    }
-}
-
-impl<D: Display> From<D> for BuilderPart<D, D> {
-    fn from(value: D) -> Self {
-        Self::ToString(value)
-    }
-}
-
-impl From<PathBuf> for BuilderPart {
-    fn from(value: PathBuf) -> Self {
-        Self::ToString(value.to_string_lossy().to_string())
-    }
-}
-
-impl<'a> From<&'a PathBuf> for BuilderPart<std::borrow::Cow<'a, str>> {
-    fn from(value: &'a PathBuf) -> Self {
-        Self::ToString(value.to_string_lossy())
-    }
-}
-
-impl<'a> From<&'a std::path::Path> for BuilderPart<std::borrow::Cow<'a, str>> {
-    fn from(value: &'a std::path::Path) -> Self {
-        Self::ToString(value.to_string_lossy())
+impl<D: Display> AsBuilderPart<D, D> for D {
+    fn as_builder_part(&self) -> BuilderPart<'_, D, D> {
+        BuilderPart::ToString(self)
     }
 }
 
@@ -467,8 +458,9 @@ macro_rules! __parse_str__ {
 #[doc(hidden)]
 macro_rules! __parse_arg__ {
     ($builder:expr,"", $arg:expr) => {{
+        use $crate::text::AsBuilderPart;
         let builder = $builder;
-        builder.push_builder_part($arg.into());
+        builder.push_builder_part($arg.as_builder_part());
         builder
     }};
     ($builder:expr, $modif:literal, $arg:expr) => {{
@@ -482,24 +474,27 @@ macro_rules! __parse_arg__ {
 #[doc(hidden)]
 macro_rules! __parse_form__ {
     ($builder:expr, $priority:literal,) => {{
+        use $crate::text::AsBuilderPart;
         const PRIORITY: u8 = $crate::priority($priority);
         let builder = $builder;
         let id = $crate::form::DEFAULT_ID;
-        builder.push_builder_part(id.to_tag(PRIORITY).into());
+        builder.push_builder_part(id.to_tag(PRIORITY).as_builder_part());
         builder
     }};
     ($builder:expr, $priority:literal, a) => {{
+        use $crate::text::AsBuilderPart;
         const PRIORITY: u8 = $crate::priority($priority);
         let builder = $builder;
         let id = $crate::form::ACCENT_ID;
-        builder.push_builder_part(id.to_tag(PRIORITY).into());
+        builder.push_builder_part(id.to_tag(PRIORITY).as_builder_part());
         builder
     }};
     ($builder:expr, $priority:literal, $($form:tt)*) => {{
+        use $crate::text::AsBuilderPart;
         const PRIORITY: u8 = $crate::priority($priority);
         let builder = $builder;
         let id = $crate::form::id_of!(concat!($(stringify!($form)),*));
-        builder.push_builder_part(id.to_tag(PRIORITY).into());
+        builder.push_builder_part(id.to_tag(PRIORITY).as_builder_part());
         builder
     }};
 }

@@ -134,7 +134,7 @@ impl Prompt {
             handle.text_mut(pa).insert_tag_after(
                 *PREVIEW_TAGGER,
                 0,
-                Ghost(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
+                Ghost::new(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
             );
         }
     }
@@ -289,7 +289,7 @@ impl mode::Mode for Prompt {
             *pl.text_mut() = Text::with_default_main_selection();
             pl.text_mut().replace_range(0..0, &self.starting_text);
 
-            let tag = Ghost(match pl.prompt_of_id(self.ty) {
+            let tag = Ghost::new(match pl.prompt_of_id(self.ty) {
                 Some(text) => txt!("{text}[prompt.colon]:"),
                 None => txt!("{}[prompt.colon]:", self.mode.prompt()),
             });
@@ -354,7 +354,7 @@ impl Clone for Prompt {
 ///
 /// impl PromptMode for RealTimeSwitch {
 ///     type ExitWidget = Buffer;
-///     
+///
 ///     fn update(&mut self, pa: &mut Pass, text: Text, area: &ui::RwArea) -> Text {
 ///         let name = text.to_string();
 ///

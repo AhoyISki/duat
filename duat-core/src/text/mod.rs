@@ -96,7 +96,7 @@ use std::{rc::Rc, sync::Arc};
 pub(crate) use self::history::MomentFetcher;
 use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
-    builder::{Builder, BuilderPart},
+    builder::{AsBuilderPart, Builder, BuilderPart},
     bytes::{Bytes, Lines, Slices, Strs},
     history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
@@ -438,15 +438,14 @@ impl Text {
     }
 
     /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
-    pub fn insert_text(&mut self, mut p: Point, mut text: Text) {
-        text = text.without_last_nl();
+    pub fn insert_text(&mut self, mut p: Point, text: &Text) {
         p = p.min(self.last_point());
 
-        let added_str = text.0.bytes.strs(..).unwrap().to_string();
+        let added_str = text.0.bytes.strs(..text.last_point()).unwrap().to_string();
         let change = Change::str_insert(&added_str, p);
         self.apply_change_inner(0, change);
 
-        self.0.tags.insert_tags(p, text.0.tags);
+        self.0.tags.insert_tags(p, &text.0.tags);
     }
 
     ////////// History functions
@@ -916,16 +915,27 @@ impl_from_to_string!(std::borrow::Cow<'_, str>);
 /// A [`Text`] that is guaranteed not to have [`Selections`] in it
 ///
 /// Useful for sending across threads, especially when it comes to
-/// [`Logs`].
+/// [`Logs`], since [`Text`] doesn't implement [`Send`] because of the
+/// inner [`Selections`].
 ///
 /// [`Logs`]: crate::context::Logs
 #[derive(Clone, Debug)]
 pub struct Selectionless(Text);
 
 impl Selectionless {
+    /// Consumes `self`, taking the inner [`Text`]
+    pub fn take(self) -> Text {
+        self.0
+    }
+
     /// Gets the [`Text`] within, allowing for mutation again
     pub fn get(&self) -> Text {
         self.0.clone()
+    }
+
+    /// A reference to the [`Text`] within
+    pub fn text(&self) -> &Text {
+        &self.0
     }
 }
 
@@ -933,13 +943,13 @@ impl std::ops::Deref for Selectionless {
     type Target = Text;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.text()
     }
 }
 
 impl From<Selectionless> for Text {
     fn from(value: Selectionless) -> Self {
-        value.0
+        value.take()
     }
 }
 

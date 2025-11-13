@@ -9,6 +9,7 @@ use std::{
     self,
     iter::Chain,
     ops::{Range, RangeBounds},
+    sync::Arc,
 };
 
 use self::{bounds::Bounds, taggers::TaggerExtents, types::Toggle};
@@ -28,6 +29,7 @@ use super::{
 use crate::{
     context::Handle,
     data::Pass,
+    text::Selectionless,
     ui::{SpawnId, Widget},
     utils::get_ends,
 };
@@ -182,7 +184,7 @@ impl std::fmt::Debug for Tags<'_> {
 /// functions of [`ToggleStart`]s
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
-    ghosts: Vec<(GhostId, Text)>,
+    ghosts: Vec<(GhostId, Arc<Selectionless>)>,
     toggles: Vec<(ToggleId, Toggle)>,
     spawns: Vec<SpawnCell>,
     pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
@@ -215,7 +217,7 @@ impl InnerTags {
     where
         R: Copy,
     {
-        let (start, end, ret) = tag.get_raw(i, self.len_bytes(), tagger);
+        let (start, end, ret) = tag.get_raw(self, i, self.len_bytes(), tagger);
         let inserted = self.insert_raw(start, end, after);
 
         if inserted {
@@ -293,7 +295,7 @@ impl InnerTags {
     }
 
     /// Insert another [`InnerTags`] into this one
-    pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
+    pub fn insert_tags(&mut self, p: Point, other: &InnerTags) {
         let mut starts = Vec::new();
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
@@ -310,7 +312,7 @@ impl InnerTags {
                 ConcealUntil(_) => unreachable!(),
                 RawTag::Ghost(_, id) => {
                     self.ghosts
-                        .extend(other.ghosts.extract_if(.., |(l, _)| l == &id).next());
+                        .extend(other.ghosts.iter().find(|(l, _)| l == &id).cloned());
                     self.insert_raw((b, tag), None, false);
                 }
                 StartToggle(..) | EndToggle(..) => todo!(),
@@ -600,7 +602,7 @@ impl InnerTags {
     pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
         self.ghosts
             .iter()
-            .find_map(|(lhs, text)| (*lhs == id).then_some(text))
+            .find_map(|(lhs, arc)| (*lhs == id).then_some(arc.text()))
     }
 
     /// A list of all [`SpawnId`]s that belong to this `Tags`
@@ -677,11 +679,11 @@ impl PartialEq for InnerTags {
                     let self_ghost = self
                         .ghosts
                         .iter()
-                        .find_map(|(id, text)| (lhs == *id).then_some(text));
+                        .find_map(|(id, arc)| (lhs == *id).then_some(arc.text()));
                     let other_ghost = other
                         .ghosts
                         .iter()
-                        .find_map(|(id, text)| (rhs == *id).then_some(text));
+                        .find_map(|(id, arc)| (rhs == *id).then_some(arc.text()));
                     self_ghost == other_ghost && l_b == r_b
                 }
                 (MainCaret(_), MainCaret(_))

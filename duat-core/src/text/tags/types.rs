@@ -17,8 +17,8 @@ use crate::{
     context::{self, Handle},
     data::Pass,
     form::FormId,
-    text::{Point, Text, TextRange},
-    ui::{DynSpawnSpecs, Widget},
+    text::{Point, Selectionless, Text, TextRange},
+    ui::{Coord, DynSpawnSpecs, Widget},
 };
 
 macro_rules! simple_impl_Tag {
@@ -26,6 +26,7 @@ macro_rules! simple_impl_Tag {
         impl Tag<usize> for $tag {
             fn get_raw(
                 &self,
+                _: &super::InnerTags,
                 byte: usize,
                 max: usize,
                 tagger: Tagger,
@@ -41,12 +42,13 @@ macro_rules! simple_impl_Tag {
         impl Tag<Point> for $tag {
             fn get_raw(
                 &self,
+                tags: &super::InnerTags,
                 point: Point,
                 max: usize,
                 tagger: Tagger,
             ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
                 let byte = point.byte();
-                self.get_raw(byte, max, tagger)
+                self.get_raw(tags, byte, max, tagger)
             }
         }
     };
@@ -57,6 +59,7 @@ macro_rules! ranged_impl_tag {
         impl<I: TextRange> Tag<I> for $tag {
             fn get_raw(
                 &self,
+                _: &super::InnerTags,
                 index: I,
                 max: usize,
                 tagger: Tagger,
@@ -105,6 +108,7 @@ pub trait Tag<Index, Return: Copy = ()>: Sized {
     #[doc(hidden)]
     fn get_raw(
         &self,
+        tags: &super::InnerTags,
         index: Index,
         max: usize,
         tagger: Tagger,
@@ -138,6 +142,7 @@ pub struct FormTag(pub FormId, pub u8);
 impl<I: TextRange> Tag<I> for FormTag {
     fn get_raw(
         &self,
+        _: &super::InnerTags,
         index: I,
         max: usize,
         tagger: Tagger,
@@ -258,12 +263,27 @@ simple_impl_Tag!(Spacer, RawTag::Spacer);
 /// since the text is non interactable.
 ///
 /// [`Builder`]: crate::text::Builder
-#[derive(Debug, Clone, Copy)]
-pub struct Ghost<T: Into<Text>>(pub T);
+#[derive(Debug, Clone)]
+pub struct Ghost(Arc<Selectionless>);
 
-impl<T: Into<Text> + std::fmt::Debug> Tag<usize, GhostId> for Ghost<T> {
+impl Ghost {
+    /// Returns a new `Ghost`, which can be inserted on [`Text`]
+    pub fn new(value: impl Into<Text>) -> Self {
+        Self(Arc::new(
+            Into::<Text>::into(value).without_last_nl().no_selections(),
+        ))
+    }
+
+    /// The [`Text`] of this `Ghost`
+    pub fn text(&self) -> &Text {
+        &self.0
+    }
+}
+
+impl Tag<usize, GhostId> for Ghost {
     fn get_raw(
         &self,
+        tags: &super::InnerTags,
         byte: usize,
         max: usize,
         tagger: Tagger,
@@ -272,28 +292,38 @@ impl<T: Into<Text> + std::fmt::Debug> Tag<usize, GhostId> for Ghost<T> {
             byte <= max,
             "index out of bounds: the len is {max}, but the index is {byte}",
         );
-        let id = GhostId::new();
+        let id = if let Some((id, _)) = tags
+            .ghosts
+            .iter()
+            .find(|(_, arc)| Arc::ptr_eq(arc, &self.0))
+        {
+            *id
+        } else {
+            GhostId::new()
+        };
+
         ((byte, RawTag::Ghost(tagger, id)), None, id)
     }
 
     fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
-        tags.ghosts.push((ret, self.0.into().without_last_nl()))
+        tags.ghosts.push((ret, self.0.clone()))
     }
 }
 
-impl<T: Into<Text> + std::fmt::Debug> Tag<Point, GhostId> for Ghost<T> {
+impl Tag<Point, GhostId> for Ghost {
     fn get_raw(
         &self,
+        tags: &super::InnerTags,
         point: Point,
         max: usize,
         tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
         let byte = point.byte();
-        self.get_raw(byte, max, tagger)
+        self.get_raw(tags, byte, max, tagger)
     }
 
     fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
-        tags.ghosts.push((ret, self.0.into()))
+        tags.ghosts.push((ret, self.0))
     }
 }
 
@@ -357,6 +387,7 @@ impl SpawnTag {
 impl Tag<Point, SpawnId> for SpawnTag {
     fn get_raw(
         &self,
+        _: &super::InnerTags,
         index: Point,
         max: usize,
         tagger: Tagger,
@@ -377,6 +408,7 @@ impl Tag<Point, SpawnId> for SpawnTag {
 impl Tag<usize, SpawnId> for SpawnTag {
     fn get_raw(
         &self,
+        _: &super::InnerTags,
         index: usize,
         max: usize,
         tagger: Tagger,
@@ -700,7 +732,7 @@ impl std::fmt::Debug for RawTag {
 
 /// A toggleable function in a range of [`Text`], kind of like a
 /// button
-pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;
+pub type Toggle = Arc<dyn Fn(Point, Coord, MouseEventKind) + 'static + Send + Sync>;
 
 fn ranged<Return>(
     r: Range<usize>,

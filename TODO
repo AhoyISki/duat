@@ -19,12 +19,14 @@ FOR NEXT UPDATE:
 
 KNOWN BUGS:
  HIGH PRIORITY:
+  [ ] Forms coming out wrong from txt!.
   [ ] track_area not actually tracking correctly.
   [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
   [ ] First Point not updating when there are changes before the start of the screen.
   [ ] Apparently treesitter still ain't working.
              
  LOW PRIORITY:
+  [ ] statics remain as the program reloads.
   [ ] Completions aren't properly sized.
   [ ] Perfect print iterators.
     [ ] Perfect words iterator.

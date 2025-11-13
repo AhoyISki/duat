@@ -67,7 +67,7 @@ mod global {
         /// called, then the sequence will be shown by itself.
         ///
         /// [`Bindings`]: crate::mode::Bindings
-        fn doc<T: Into<Text>>(self, doc: T) {
+        pub fn doc<T: Into<Text>>(self, doc: T) {
             let mut builder = self;
             builder.doc = Some(doc.into());
         }
@@ -75,8 +75,7 @@ mod global {
 
     impl Drop for RemapBuilder {
         fn drop(&mut self) {
-            crate::context::queue(|_| {
-            });
+            crate::context::queue(|_| {});
         }
     }
 
@@ -526,7 +525,7 @@ impl Remapper {
                         widget.text_mut().insert_tag(
                             Tagger::for_alias(),
                             main,
-                            Ghost(txt!("[alias]{}", keys_to_string(&cur_seq))),
+                            Ghost::new(txt!("[alias]{}", keys_to_string(&cur_seq))),
                         );
                     });
                 }

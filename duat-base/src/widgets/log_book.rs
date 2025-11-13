@@ -51,7 +51,7 @@ impl Widget for LogBook {
         lb.len_of_taken += new_records.len();
 
         for rec_text in new_records.into_iter().filter_map(&mut lb.fmt) {
-            lb.text.insert_text(lb.text.len(), rec_text);
+            lb.text.insert_text(lb.text.len(), &rec_text);
         }
 
         if !lb.has_updated_once {
@@ -119,7 +119,7 @@ impl LogBookOpts {
         let records = logs.get(..).unwrap();
         let len_of_taken = records.len();
         for rec_text in records.into_iter().filter_map(&mut self.fmt) {
-            text.insert_text(text.len(), rec_text);
+            text.insert_text(text.len(), &rec_text);
         }
 
         let log_book = LogBook {

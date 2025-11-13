@@ -478,30 +478,26 @@ pub trait Mode: Sized + Clone + Send + 'static {
     ///     # fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
     ///     // ...
     ///     fn bindings() -> mode::Bindings {
-    ///         let t = |l: &str, r: &str| txt!("{l}[separator]|{r}");
     ///         let word = txt!("[a]word[separator]|[a]WORD");
     ///
-    ///         let objects = mode::bindings!(match obj {
-    ///             event!('w' | 'W') => [t("w", "W"), txt!("Until next {}", word.clone())],
-    ///             event!('e' | 'E') => [t("e", "E"), txt!("End of {}", word.clone())],
-    ///             event!('b' | 'B') => [t("b", "B"), txt!("Until start of {}", word.clone())],
-    ///             _ => "rest of the things, damn",
+    ///         let objects = mode::bindings!(match _ {
+    ///             event!('w' | 'W') => txt!("Until next {}", word.clone()),
+    ///             event!('e' | 'E') => txt!("End of {}", word.clone()),
+    ///             event!('b' | 'B') => txt!("Until start of {}", word.clone()),
+    ///             // All unlisted keys will not be sent.
     ///         });
     ///
-    ///         mode::bindings!(match key_event {
-    ///             event!(KeyCode::Char('0'..'9')) => [txt!("0[separator]..[]9"), "Add to count"],
-    ///             event!('w' | 'W') => [t("w", "W"), txt!("Move to next {}", word.clone())],
-    ///             event!('e' | 'E') => [t("e", "E"), txt!("Move to end of {}", word.clone())],
-    ///             event!('b' | 'B') => [t("b", "B"), txt!("Move to start of {}", word.clone())],
-    ///             event!('r') => (
-    ///                 [txt!("[a]r"), txt!("Replace selection with [a]char")],
-    ///                 match key_event {
-    ///                     event!(KeyCode::Char(_)) => "Character to replace with",
-    ///                 }
-    ///             ),
-    ///             event!('d') => (["d", "Delete the next object"], objects.clone()),
-    ///             event!('c') => (["d", "Change the next object"], objects.clone()),
-    ///             _ => "Not properly documented, but will be sent",
+    ///         mode::bindings!(match _ {
+    ///             event!(KeyCode::Char('0'..'9')) => txt!("Add to count"),
+    ///             event!('w' | 'W') => txt!("Move to next {}", word.clone()),
+    ///             event!('e' | 'E') => txt!("Move to end of {}", word.clone()),
+    ///             event!('b' | 'B') => txt!("Move to start of {}", word.clone()),
+    ///             event!('r') => (txt!("Replace selection with [a]char"), match key_event {
+    ///                 event!(KeyCode::Char(_)) => txt!("Character to replace with"),
+    ///             }),
+    ///             event!('d') => (txt!("Delete the next object"), objects.clone()),
+    ///             event!('c') => (txt!("Change the next object"), objects.clone()),
+    ///             _ => txt!("Not properly documented, but will be sent"),
     ///         })
     ///     }
     /// }
@@ -517,14 +513,7 @@ pub trait Mode: Sized + Clone + Send + 'static {
     ///
     /// [`Text`]: crate::text::Text
     fn bindings() -> Bindings {
-        use KeyCode::*;
         bindings!(match _ {
-            event!(shift!(Up)) | shift!(ctrl!(Char('a'..'c') | Tab)) => txt!("ha"),
-            shift!(alt!(Up | Down | Tab | BackTab))
-            | ctrl!('3' | '7' | '#')
-            | alt!(Char('b'..='p')) => (txt!("complicated"), match _ {
-                event!('g') => txt!("hello"),
-            }),
             _ => txt!("No key binding declarations, implement Mode::bindings"),
         })
     }
