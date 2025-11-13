@@ -490,7 +490,7 @@ macro_rules! __modified__ {
         $list.push($crate::mode::BindingPat::from(($elem, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
-    (@binding_entry $list:ident, $modif:expr,  $(| $($rest:tt)*)?) => {
+    (@binding_entry $list:ident, $modif:expr, $elem:literal $(| $($rest:tt)*)?) => {
         $list.push($crate::mode::BindingPat::from(($elem, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };

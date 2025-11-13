@@ -515,7 +515,7 @@ pub fn set_notifs(set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
 /// fn setup() {
 ///     opts::set_logs(|opts| {
 ///         opts.fmt(|rec| match rec.level() {
-///             context::Level::Error => Some(txt!("[log_book.error]  {}", rec.text().clone())),
+///             context::Level::Error => Some(txt!("[log_book.error]  {}", rec.text())),
 ///             _ => None,
 ///         });
 ///

@@ -295,11 +295,11 @@ impl InnerTags {
     }
 
     /// Insert another [`InnerTags`] into this one
-    pub fn insert_tags(&mut self, p: Point, other: &InnerTags) {
+    pub fn insert_tags(&mut self, p: Point, cap: usize, other: &InnerTags) {
         let mut starts = Vec::new();
 
         for (_, (b, tag)) in other.list.iter_fwd(..) {
-            let b = b as usize + p.byte();
+            let b = (b as usize).min(cap) + p.byte();
             match tag {
                 PushForm(..) | StartAlignCenter(_) | StartAlignRight(_) | StartConceal(_) => {
                     starts.push((b, tag))
@@ -307,7 +307,9 @@ impl InnerTags {
                 PopForm(..) | EndAlignCenter(_) | EndAlignRight(_) | EndConceal(_) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, stag) = starts.remove(i);
-                    self.insert_raw((sb, stag), Some((b, tag)), false);
+                    if b > sb {
+                        self.insert_raw((sb, stag), Some((b, tag)), false);
+                    }
                 }
                 ConcealUntil(_) => unreachable!(),
                 RawTag::Ghost(_, id) => {

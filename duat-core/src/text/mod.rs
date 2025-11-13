@@ -438,14 +438,16 @@ impl Text {
     }
 
     /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
-    pub fn insert_text(&mut self, mut p: Point, text: &Text) {
-        p = p.min(self.last_point());
+    pub fn insert_text(&mut self, p: impl TextIndex, text: &Text) {
+        let b = p.to_byte_index().min(self.last_point().byte());
+        let cap = text.last_point().byte();
 
-        let added_str = text.0.bytes.strs(..text.last_point()).unwrap().to_string();
-        let change = Change::str_insert(&added_str, p);
+        let added_str = text.0.bytes.strs(..cap).unwrap().to_string();
+        let point = self.point_at_byte(b);
+        let change = Change::str_insert(&added_str, point);
         self.apply_change_inner(0, change);
 
-        self.0.tags.insert_tags(p, &text.0.tags);
+        self.0.tags.insert_tags(point, cap, &text.0.tags);
     }
 
     ////////// History functions

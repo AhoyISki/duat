@@ -122,7 +122,7 @@ impl Builder {
 
     #[doc(hidden)]
     pub fn push_builder_part<_T>(&mut self, part: BuilderPart<impl Display, _T>) {
-        fn push_ref(builder: &mut Builder, part: BuilderPart) {
+        fn push_simple(builder: &mut Builder, part: BuilderPart) {
             use Alignment::*;
             use BuilderPart as BP;
 
@@ -181,7 +181,7 @@ impl Builder {
         }
 
         match part.try_to_basic() {
-            Ok(part_ref) => push_ref(self, part_ref),
+            Ok(part_ref) => push_simple(self, part_ref),
             Err(BuilderPart::ToString(display)) => self.push_str(display),
             Err(_) => unsafe { std::hint::unreachable_unchecked() },
         }
@@ -259,24 +259,25 @@ impl Builder {
 
     /// Pushes [`Text`] directly
     fn push_builder(&mut self, other: &Builder) {
-        let offset = self.text.last_point().byte();
-
         self.last_was_empty = other.text.is_empty();
-        self.text.insert_text(self.text.last_point(), &other.text);
+
+        let offset = self.text.last_point().byte();
+        self.text.insert_text(offset, &other.text);
+        let end = self.text.last_point().byte();
 
         if let Some((b, id)) = other.last_form
             && b < other.text.last_point().byte()
         {
-            self.text.insert_tag(Tagger::basic(), offset + b.., id);
+            self.text.insert_tag(Tagger::basic(), offset + b..end, id);
         }
         if let Some((b, align)) = other.last_align
             && b < other.text.last_point().byte()
         {
             let tagger = Tagger::basic();
             if let Alignment::Center = align {
-                self.text.insert_tag(tagger, offset + b.., AlignCenter);
+                self.text.insert_tag(tagger, offset + b..end, AlignCenter);
             } else {
-                self.text.insert_tag(tagger, offset + b.., AlignRight);
+                self.text.insert_tag(tagger, offset + b..end, AlignRight);
             }
         }
     }
