@@ -65,43 +65,25 @@ pub use crate::{__alt__ as alt, __ctrl__ as ctrl, __event__ as event, __shift__ 
 ///
 /// You should also check out [`alt!`], [`ctrl!`] and [`shift!`],
 /// which are like this macro, but also add their respective
-/// [`KeyMod`]s, and can be nested. This macro _cannot_ be nested with
-/// them however, for obvious reasons.
+/// [`KeyMod`]s, and can be nested.
 ///
 /// [`KeyEvent`]: super::KeyEvent
 /// [`Mode`]: super::Mode
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __event__ {
-    ($($chars:literal)|+) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
-            modifiers: $crate::mode::KeyMod::NONE,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@code $($tokens:tt)*) => {
+        $crate::__modified__!(@code $($tokens)*)
     };
-    // Straight up useless tbh.
-    ($char:ident @ $chars:literal) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($char @ $chars),
-            modifiers: $crate::mode::KeyMod::NONE,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@modif [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@modif [$($mods),*] $($tokens)*)
     };
-    ($char:ident @ ($($chars:literal)|+)) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
-            modifiers: $crate::mode::KeyMod::NONE,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@bindings [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@bindings [$($mods),*] $($tokens)*)
     };
-    ($code:pat) => {
-        $crate::mode::KeyEvent {
-            code: $code,
-            modifiers: $crate::mode::KeyMod::NONE,
-            ..
-        }
-    }
+    ($($tokens:tt)*) => {
+        $crate::__modified__!([] $($tokens)*)
+    };
 }
 
 /// Macro for pattern matching [`KeyEvent`]s with [`KeyMod::ALT`]
@@ -170,66 +152,17 @@ macro_rules! __event__ {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __alt__ {
-    ($($chars:literal)|+) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
-            modifiers: $crate::mode::KeyMod::ALT,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@code $($tokens:tt)*) => {
+        $crate::__modified__!(@code $($tokens)*)
     };
-    // Straight up useless tbh.
-    ($char:ident @ $chars:literal) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($char @ $chars),
-            modifiers: $crate::mode::KeyMod::ALT,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@modif [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@modif [ALT $(, $mods)*] $($tokens)*)
     };
-    ($char:ident @ ($($chars:literal)|+)) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
-            modifiers: $crate::mode::KeyMod::ALT,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@bindings [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@bindings [ALT $(, $mods)*] $($tokens)*)
     };
-    // I use $excl here in order to make it look like part of the macro,
-    // so rust analyzer properly highlights it.
-    ($modif:ident$excl:tt($($tokens:tt)+)) => {
-        $crate::mode::KeyEvent {
-            code: $modif$excl(@code $($tokens)+),
-            modifiers: $modif$excl(@modif [ALT] $($tokens)+),
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
-    };
-    ($code:pat) => {
-        $crate::mode::KeyEvent {
-            code: $code,
-            modifiers: $crate::mode::KeyMod::ALT,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
-    };
-
-    (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
-        $modif$excl(@code $($tokens)+)
-    };
-    (@code $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($chars)|+)
-    };
-    (@code $char:ident @ $chars:literal) => {
-        $crate::mode::KeyCode::Char($char @ $chars)
-    };
-    (@code $char:ident @ ($($chars:literal)|+)) => {
-        $crate::mode::KeyCode::Char($char @ ($($chars)|+))
-    };
-    (@code $code:pat) => {
-        $code
-    };
-
-    (@modif [$($list:ident),+] $modif:ident$excl:tt($($tokens:tt)+)) => {
-        $modif$excl(@modif [ALT, $($list),+] $($tokens)+)
-    };
-    (@modif [$($list:ident),+] $($other:tt)+) => {
-        $crate::__join_modifiers__![ALT, $($list),+]
+    ($($tokens:tt)*) => {
+        $crate::__modified__!([ALT] $($tokens)*)
     };
 }
 
@@ -299,67 +232,18 @@ macro_rules! __alt__ {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __ctrl__ {
-    ($($chars:literal)|+) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
-            modifiers: $crate::mode::KeyMod::CONTROL,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@code $($tokens:tt)*) => {
+        $crate::__modified__!(@code $($tokens)*)
     };
-    // Straight up useless tbh.
-    ($char:ident @ $chars:literal) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($char @ $chars),
-            modifiers: $crate::mode::KeyMod::CONTROL,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@modif [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@modif [CONTROL $(, $mods)*] $($tokens)*)
     };
-    ($char:ident @ ($($chars:literal)|+)) => {
-        $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
-            modifiers: $crate::mode::KeyMod::CONTROL,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    (@bindings [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@bindings [CONTROL $(, $mods)*] $($tokens)*)
     };
-    // I use $excl here in order to make it look like part of the macro,
-    // so rust analyzer properly highlights it.
-    ($modif:ident$excl:tt($($tokens:tt)+)) => {
-        $crate::mode::KeyEvent {
-            code: $modif$excl(@code $($tokens)+),
-            modifiers: $modif$excl(@modif [CONTROL] $($tokens)+),
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
+    ($($tokens:tt)*) => {
+        $crate::__modified__!([CONTROL] $($tokens)*)
     };
-    ($code:pat) => {
-        $crate::mode::KeyEvent {
-            code: $code,
-            modifiers: $crate::mode::KeyMod::CONTROL,
-            kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
-        }
-    };
-
-    (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
-        $modif$excl(@code $($tokens)+)
-    };
-    (@code $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($chars)|+)
-    };
-    (@code $char:ident @ $chars:literal) => {
-        $crate::mode::KeyCode::Char($char @ $chars)
-    };
-    (@code $char:ident @ ($($chars:literal)|+)) => {
-        $crate::mode::KeyCode::Char($char @ ($($chars)|+))
-    };
-    (@code $code:pat) => {
-        $code
-    };
-
-    (@modif [$($list:ident),+] $modif:ident$excl:tt($($tokens:tt)+)) => {
-        $modif$excl(@modif [CONTROL, $($list),+] $($tokens)+)
-    };
-    (@modif [$($list:ident),+] $($other:tt)+) => {
-        $crate::__join_modifiers__![CONTROL, $($list),+]
-    }
 }
 
 /// Macro for pattern matching [`KeyEvent`]s with [`KeyMod::SHIFT`]
@@ -443,67 +327,193 @@ macro_rules! __ctrl__ {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __shift__ {
-    ($($chars:literal)|+) => {
+    (@code $($tokens:tt)*) => {
+        $crate::__modified__!(@code $($tokens)*)
+    };
+    (@modif [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@modif [SHIFT $(, $mods)*] $($tokens)*)
+    };
+    (@bindings [$($mods:tt),*] $($tokens:tt)*) => {
+        $crate::__modified__!(@bindings [SHIFT $(, $mods)*] $($tokens)*)
+    };
+    ($($tokens:tt)*) => {
+        $crate::__modified__!([SHIFT] $($tokens)*)
+    };
+}
+
+/// Macro that backs [`alt!`], [`ctrl!`] and [`shift!`]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __modified__ {
+    ([$($mods:ident),*] $($chars:literal)|*) => {
         $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($($chars)|+),
-            modifiers: $crate::mode::KeyMod::SHIFT,
+            code: $crate::mode::KeyCode::Char($($chars)|*),
+            modifiers: $crate::__join_modifiers__![$($mods),*],
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     };
     // Straight up useless tbh.
-    ($char:ident @ $chars:literal) => {
+    ([$($mods:ident),*] $char:ident @ $chars:literal) => {
         $crate::mode::KeyEvent {
             code: $crate::mode::KeyCode::Char($char @ $chars),
-            modifiers: $crate::mode::KeyMod::SHIFT,
+            modifiers: $crate::__join_modifiers__![$($mods),*],
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     };
-    ($char:ident @ ($($chars:literal)|+)) => {
+    ([$($mods:ident),*] $char:ident @ ($($chars:literal)|*)) => {
         $crate::mode::KeyEvent {
-            code: $crate::mode::KeyCode::Char($char @ ($($chars)|+)),
-            modifiers: $crate::mode::KeyMod::SHIFT,
+            code: $crate::mode::KeyCode::Char($char @ ($($chars)|*)),
+            modifiers: $crate::__join_modifiers__![$($mods),*],
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     };
     // I use $excl here in order to make it look like part of the macro,
     // so rust analyzer properly highlights it.
-    ($modif:ident$excl:tt($($tokens:tt)+)) => {
+    ([$($mods:ident),*] $modif:ident$excl:tt($($tokens:tt)*)) => {
         $crate::mode::KeyEvent {
-            code: $modif$excl(@code $($tokens)+),
-            modifiers: $modif$excl(@modif [SHIFT] $($tokens)+),
+            code: $modif$excl(@code $($tokens)*),
+            modifiers: $modif$excl(@modif [$($mods),*] $($tokens)*),
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     };
-    ($code:pat) => {
+    ([$($mods:ident),*] $code:pat) => {
         $crate::mode::KeyEvent {
             code: $code,
-            modifiers: $crate::mode::KeyMod::SHIFT,
+            modifiers: $crate::__join_modifiers__![$($mods),*],
             kind: $crate::mode::KeyEventKind::Press | $crate::mode::KeyEventKind::Repeat, ..
         }
     };
 
-    (@code $modif:ident$excl:tt($($tokens:tt)+)) => {
-        $modif$excl(@code $($tokens)+)
+    (@code $modif:ident$excl:tt($($tokens:tt)*)) => {
+        $modif$excl(@code $($tokens)*)
     };
-    (@code $($chars:literal)|+) => {
-        $crate::mode::KeyCode::Char($($chars)|+)
+    (@code $($chars:literal)|*) => {
+        $crate::mode::KeyCode::Char($($chars)|*)
     };
     (@code $char:ident @ $chars:literal) => {
         $crate::mode::KeyCode::Char($char @ $chars)
     };
-    (@code $char:ident @ ($($chars:literal)|+)) => {
-        $crate::mode::KeyCode::Char($char @ ($($chars)|+))
+    (@code $char:ident @ ($($chars:literal)|*)) => {
+        $crate::mode::KeyCode::Char($char @ ($($chars)|*))
     };
     (@code $code:pat) => {
         $code
     };
 
-    (@modif [$($list:ident),+] $modif:ident$excl:tt($($tokens:tt)+)) => {
-        $modif$excl(@modif [SHIFT, $($list),+] $($tokens)+)
+    (@modif [$($mods:ident),*] $modif:ident$excl:tt($($tokens:tt)*)) => {
+        $modif$excl(@modif [$($mods),*] $($tokens)*)
     };
-    (@modif [$($list:ident),+] $($other:tt)+) => {
-        $crate::__join_modifiers__![SHIFT, $($list),+]
-    }
+    (@modif [$($mods:ident),*] $($other:tt)*) => {
+        $crate::__join_modifiers__![$($mods),*]
+    };
+
+    (@bindings [$($mods:ident),*] $list:ident, $modif:ident$excl:tt($($tokens:tt)*)) => {
+        $modif$excl(@bindings [$($mods),*] $list, $($tokens)*)
+    };
+    (@bindings [$($mods:ident),*] $list:ident, $char:literal) => {{
+        $list.push($crate::mode::BindingPat::new(
+            $crate::mode::KeyCode::Char($char),
+            $crate::__join_modifiers__![$($mods),*],
+        ))
+    }};
+    (@bindings [$($mods:ident),*] $list:ident, $($chars:literal)|*) => {{
+        let modif = $crate::__join_modifiers__![$($mods,)* $($mod,)?];
+        $list.extend([$(
+            $crate::mode::BindingPat::new($crate::mode::KeyCode::Char($chars), modif)
+        ),*])
+    }};
+    (@bindings [$($mods:ident),*] $list:ident, $($tokens:tt)*) => {{
+        let modif = $crate::__join_modifiers__![$($mods),*];
+        $crate::__modified__!(@fill_bindings $list, modif, $($tokens)*);
+    }};
+
+    (@fill_bindings $list:ident, $modif:expr,) => {};
+    (@fill_bindings $list:ident, $modif:expr, $($variant:ident)::+ $(| $($rest:tt)*)?) => {
+        $list.push($crate::mode::BindingPat::new($($variant)::+, $modif));
+        $crate::__modified__!(@fill_bindings $list, $modif, $($($rest)*)?);
+    };
+    (@fill_bindings
+        $list:ident,
+        $modif:expr,
+        $($variant:ident)::+(..)
+        $(| $($rest:tt)*)?
+    ) => {
+        // For better diagnostics and pattern validation.
+        let _unused = |code| matches!(code, $($variant)::+(..));
+        $crate::__modified__!(@two_dots_entry $list, $modif, $($variant)::+);
+        $crate::__modified__!(@fill_bindings $list, $modif, $($($rest)*)?);
+    };
+    (@fill_bindings
+        $list:ident,
+        $modif:expr,
+        $($variant:ident)::+($($patterns:tt)*)
+        $(| $($rest:tt)*)?
+    ) => {
+        // For better diagnostics and pattern validation.
+        let _unused = |code| matches!(code, $($variant)::*($($patterns)*));
+        $crate::__modified__!(@binding_entry $list, $modif, $($patterns)*);
+        $crate::__modified__!(@fill_bindings $list, $modif, $($($rest)*)?);
+    };
+    (@fill_bindings $list:ident, $modif:expr, _) => {
+        let mut binding = $crate::mode::BindingPat::anything();
+        binding.modif = Some($modif);
+        $list.push(binding);
+    };
+    (@fill_bindings $list:ident, $modif:expr, $($nonsense:tt)*) => {
+        // For better diagnostics and pattern validation.
+        let _unused = |code: $crate::mode::KeyCode| matches!(code, $($nonsense)*);
+        compile_error!("Pattern may be valid, but can't create known list of bindings");
+    };
+
+    (@binding_entry $list:ident, $modif:expr,) => {};
+    (@binding_entry $list:ident, $modif:expr, $s:literal..$e:literal $(| $($rest:tt)*)?) => {
+        $list.push($crate::mode::BindingPat::from(($s..$e, $modif)));
+        $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
+    };
+    (@binding_entry $list:ident, $modif:expr, $s:literal..=$e:literal $(| $($rest:tt)*)?) => {
+        $list.push($crate::mode::BindingPat::from(($s..=$e, $modif)));
+        $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
+    };
+    (@binding_entry $list:ident, $modif:expr, ..$e:literal $(| $($rest:tt)*)?) => {
+        $list.push($crate::mode::BindingPat::from((..$e, $modif)));
+        $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
+    };
+    (@binding_entry $list:ident, $modif:expr, ..=$e:literal $(| $($rest:tt)*)?) => {
+        $list.push($crate::mode::BindingPat::from((..=$e, $modif)));
+        $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
+    };
+    (@binding_entry $list:ident, $modif:expr, $s:literal.. $(| $($rest:tt)*)?) => {
+        $list.push($crate::mode::BindingPat::from(($s.., $modif)));
+        $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
+    };
+    (@binding_entry $list:ident, $modif:expr, $elem:literal $(| $($rest:tt)*)?) => {
+        $list.push($crate::mode::BindingPat::from(($elem, $modif)));
+        $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
+    };
+
+    (@two_dots_entry $list:ident, $modif:expr, $path:ident $(::$rest:ident)+) => {{
+        $crate::__modified__!(@two_dots_entry $list, $modif, $($rest)::+);
+    }};
+    (@two_dots_entry $list:ident, $modif:expr, Char) => {{
+        $list.push($crate::mode::BindingPat::CharRange(
+            ::std::ops::Bound::Unbounded,
+            ::std::ops::Bound::Unbounded,
+            $modif
+        ))
+    }};
+    (@two_dots_entry $list:ident, $modif:expr, F) => {{
+        $list.push($crate::mode::BindingPat::FnRange(
+            ::std::ops::Bound::Unbounded,
+            ::std::ops::Bound::Unbounded,
+            $modif
+        ))
+    }};
+    (@two_dots_entry $list:ident, $modif:expr, Media) => {{
+        $list.push($crate::mode::BindingPat::AnyMedia($modif))
+    }};
+    (@two_dots_entry $list:ident, $modif:expr, Modifier) => {{
+        $list.push($crate::mode::BindingPat::AnyModifier($modif))
+    }}
 }
 
 /// A simple macro to join [`KeyMod`]s into a `const` `KeyMod` that
@@ -511,18 +521,22 @@ macro_rules! __shift__ {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __join_modifiers__ {
+    [] => { $crate::mode::KeyMod::NONE };
+    [ALT] => { $crate::mode::KeyMod::ALT };
+    [CONTROL] => { $crate::mode::KeyMod::CONTROL };
+    [SHIFT] => { $crate::mode::KeyMod::SHIFT };
     [ALT, CONTROL] => { $crate::mode::ALT_CONTROL };
     [CONTROL, ALT] => { $crate::mode::ALT_CONTROL };
     [ALT, SHIFT] => { $crate::mode::ALT_SHIFT };
     [SHIFT, ALT] => { $crate::mode::ALT_SHIFT };
     [CONTROL, SHIFT] => { $crate::mode::CONTROL_SHIFT };
     [SHIFT, CONTROL] => { $crate::mode::CONTROL_SHIFT };
-    [ALT, CONTROL, SHIFTl] => { $crate::mode::ALT_CONTROL_SHIFT };
-    [ALT, SHIFT, CONTROLl] => { $crate::mode::ALT_CONTROL_SHIFT };
-    [CONTROL, ALT, SHIFTl] => { $crate::mode::ALT_CONTROL_SHIFT };
-    [CONTROL, SHIFT, ALTl] => { $crate::mode::ALT_CONTROL_SHIFT };
-    [SHIFT, ALT, CONTROLl] => { $crate::mode::ALT_CONTROL_SHIFT };
-    [SHIFT, CONTROL, ALTl] => { $crate::mode::ALT_CONTROL_SHIFT };
+    [ALT, CONTROL, SHIFT] => { $crate::mode::ALT_CONTROL_SHIFT };
+    [ALT, SHIFT, CONTROL] => { $crate::mode::ALT_CONTROL_SHIFT };
+    [CONTROL, ALT, SHIFT] => { $crate::mode::ALT_CONTROL_SHIFT };
+    [CONTROL, SHIFT, ALT] => { $crate::mode::ALT_CONTROL_SHIFT };
+    [SHIFT, ALT, CONTROL] => { $crate::mode::ALT_CONTROL_SHIFT };
+    [SHIFT, CONTROL, ALT] => { $crate::mode::ALT_CONTROL_SHIFT };
     [$($other:tt)+] => {
         compile_error!("Don't nest identical modifier macros while forming patterns")
     }

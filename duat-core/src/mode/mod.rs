@@ -40,6 +40,7 @@ use crate::{
     context::Handle,
     data::Pass,
     session::{DuatEvent, TwoPointsPlace},
+    text::txt,
     ui::{Coord, Widget},
 };
 
@@ -516,8 +517,15 @@ pub trait Mode: Sized + Clone + Send + 'static {
     ///
     /// [`Text`]: crate::text::Text
     fn bindings() -> Bindings {
-        bindings!(match key_event {
-            _ => "No key declarations",
+        use KeyCode::*;
+        bindings!(match _ {
+            event!(shift!(Up)) | shift!(ctrl!(Char('a'..'c') | Tab)) => txt!("ha"),
+            shift!(alt!(Up | Down | Tab | BackTab))
+            | ctrl!('3' | '7' | '#')
+            | alt!(Char('b'..='p')) => (txt!("complicated"), match _ {
+                event!('g') => txt!("hello"),
+            }),
+            _ => txt!("No key binding declarations, implement Mode::bindings"),
         })
     }
 

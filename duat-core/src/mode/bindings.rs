@@ -1,9 +1,14 @@
-use std::sync::Arc;
+use std::{
+    ops::{Bound, RangeBounds},
+    sync::Arc,
+};
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{
+    KeyCode, KeyEvent, KeyEventKind, KeyEventState, MediaKeyCode, ModifierKeyCode,
+};
 
 pub use crate::__bindings__ as bindings;
-use crate::text::Text;
+use crate::{mode::KeyMod, text::Text};
 
 /// A list of key bindings available in a given [`Mode`]
 ///
@@ -33,39 +38,166 @@ pub struct Bindings {
     /// Direct implementation is not recommended, use the
     /// [`bindings!`] macro instead.
     #[doc(hidden)]
-    pub descriptions: Vec<BindingDescription>,
-    /// Followup `Bindings` for further matching
-    ///
-    /// Direct implementation is not recommended, use the
-    /// [`bindings!`] macro instead.
-    #[doc(hidden)]
-    pub followups: Vec<Option<Bindings>>,
+    pub results: Vec<(Vec<BindingPat>, Text, Option<Bindings>)>,
 }
 
-/// A description for a key bindings, this is used to show which key
-/// does what
+/// Possible ways to map keys
+///
+/// This struct serves the purpose of allowing the use of pattern-like
+/// syntax in order to match keys in the [`bindings!`] macro, while
+/// still creating a finitely known list of keys, which can then be
+/// used for documentation.
 #[derive(Debug, Clone)]
-pub enum BindingDescription {
-    /// A simple description, with no key
+pub enum BindingPat {
+    CharRange(Bound<char>, Bound<char>, KeyMod),
+    FnRange(Bound<u8>, Bound<u8>, KeyMod),
+    AnyModifier(KeyMod),
+    AnyMedia(KeyMod),
+    Concrete(Binding),
+}
+
+impl BindingPat {
+    /// Returns a new [concrete `BindingPat`]
     ///
-    /// This should be used for "catch-all" keys, for example, the key
-    /// that follows `f` or `t` on vim.
-    Simple(Text),
-    /// The description for a key pattern
-    ///
-    /// This should be used whenever any key does something specific,
-    /// i.e., in every situation where [`BindingDescription::Simple`]
-    /// doesn't make sense.
-    WithKey(Text, Text),
+    /// [concrete `BindingPat`]: BindingPat::Concrete
+    pub fn new(code: KeyCode, modif: KeyMod) -> Self {
+        Self::Concrete(Binding {
+            code: Some(code),
+            modif: Some(modif),
+            kind: None,
+            state: None,
+        })
+    }
+
+    /// Returns a `BindingPat` that could match _anything_
+    pub fn anything() -> Self {
+        Self::Concrete(Binding::default())
+    }
+}
+
+macro_rules! implFromRange {
+    ($($range:ident)::+) => {
+        impl From<($($range)::+<char>, KeyMod)> for BindingPat {
+            fn from((chars, modif): ($($range)::+<char>, KeyMod)) -> Self {
+                BindingPat::CharRange(
+                    chars.start_bound().cloned(),
+                    chars.end_bound().cloned(),
+                    modif
+                )
+            }
+        }
+
+        impl From<($($range)::+<u8>, KeyMod)> for BindingPat {
+            fn from((fns, modif): ($($range)::+<u8>, KeyMod)) -> Self {
+                BindingPat::FnRange(fns.start_bound().cloned(), fns.end_bound().cloned(), modif)
+            }
+        }
+    };
+}
+
+implFromRange!(std::ops::Range);
+implFromRange!(std::ops::RangeFrom);
+implFromRange!(std::ops::RangeInclusive);
+implFromRange!(std::ops::RangeTo);
+implFromRange!(std::ops::RangeToInclusive);
+
+impl From<(char, KeyMod)> for BindingPat {
+    fn from((char, modif): (char, KeyMod)) -> Self {
+        BindingPat::Concrete(Binding {
+            code: Some(KeyCode::Char(char)),
+            modif: Some(modif),
+            kind: None,
+            state: None,
+        })
+    }
+}
+
+impl From<(u8, KeyMod)> for BindingPat {
+    fn from((f_key, modif): (u8, KeyMod)) -> Self {
+        BindingPat::Concrete(Binding {
+            code: Some(KeyCode::F(f_key)),
+            modif: Some(modif),
+            kind: None,
+            state: None,
+        })
+    }
+}
+
+impl From<(MediaKeyCode, KeyMod)> for BindingPat {
+    fn from((media, modif): (MediaKeyCode, KeyMod)) -> Self {
+        BindingPat::Concrete(Binding {
+            code: Some(KeyCode::Media(media)),
+            modif: Some(modif),
+            kind: None,
+            state: None,
+        })
+    }
+}
+
+impl From<(ModifierKeyCode, KeyMod)> for BindingPat {
+    fn from((modifier, modif): (ModifierKeyCode, KeyMod)) -> Self {
+        BindingPat::Concrete(Binding {
+            code: Some(KeyCode::Modifier(modifier)),
+            modif: Some(modif),
+            kind: None,
+            state: None,
+        })
+    }
+}
+
+/// A key binding, which can have any number of defined fields.
+///
+/// The less specific the key binding (i.e., the more [`None`]s it
+/// has), the less prioritized it is.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Binding {
+    pub code: Option<KeyCode>,
+    pub modif: Option<KeyMod>,
+    pub kind: Option<KeyEventKind>,
+    pub state: Option<KeyEventState>,
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __bindings__ {
+    (match _ $match:tt) => {{
+        #[allow(clippy::vec_init_then_push)]
+        let matcher = $crate::mode::bindings!(@matcher $match);
+
+        #[allow(clippy::vec_init_then_push)]
+        let bindings: Vec<_> = $crate::mode::bindings!(@bindings $match);
+
+        #[allow(clippy::vec_init_then_push)]
+        let descriptions = $crate::mode::bindings!(@descriptions $match);
+
+        #[allow(clippy::vec_init_then_push)]
+        let followups = $crate::mode::bindings!(@followups $match);
+
+        $crate::mode::Bindings {
+            matcher,
+            results: bindings
+                .into_iter()
+                .zip(descriptions)
+                .zip(followups)
+                .map(|((b, d), f)| (b, d, f))
+                .collect()
+        }
+    }};
+
+    (@matcher { $($patterns:tt)* }) => {{
+        #[allow(unused_assignments, irrefutable_let_patterns)]
+        std::sync::Arc::new(move |key_event: $crate::mode::KeyEvent| {
+            let mut index = 0;
+            $crate::mode::bindings!(@match_entry index, key_event: $($patterns)*);
+
+            None
+        })
+    }};
+
     (@match_entry $index:ident, $key_event:ident:) => {};
     (@match_entry
         $index:ident,
-        $key_event:ident: $modif:ident$excl:tt($($tokens:tt)*) => $result:tt
+        $key_event:ident: $modif:ident$excl:tt($($tokens:tt)*) => $result:expr
         $(,$($rest:tt)*)?
     ) => {
         if let $modif$excl($($tokens)*) = $key_event {
@@ -81,157 +213,107 @@ macro_rules! __bindings__ {
         $index += 1;
         $crate::mode::bindings!(@match_entry $index, $key_event: $($($rest)*)?)
     };
-    (@matcher $key_event:ident { $($patterns:tt)+ }) => {{
-        #[allow(unused_assignments, irrefutable_let_patterns)]
-        std::sync::Arc::new(move |$key_event: $crate::mode::KeyEvent| {
-            let mut index = 0;
-            $crate::mode::bindings!(@match_entry index, $key_event: $($patterns)+);
 
-            None
-        })
+    (@bindings { $($patterns:tt)* }) => {{
+        let mut list = vec![Vec::new()];
+        $crate::mode::bindings!(@binding_entry list: $($patterns)*);
+        list
+    }};
+
+    (@binding_entry $list:ident:) => {};
+    (@binding_entry
+        $list:ident: $modif:ident$excl:tt($($tokens:tt)*) | $($rest:tt)*
+    ) => {
+        let last = $list.last_mut().unwrap();
+        $modif$excl(@bindings [] last, $($tokens)*);
+        $crate::mode::bindings!(@binding_entry $list: $($rest)*);
+    };
+    (@binding_entry
+        $list:ident: $modif:ident$excl:tt($($tokens:tt)*) => $result:expr $(, $($rest:tt)*)?
+    ) => {
+        let last = $list.last_mut().unwrap();
+        $modif$excl(@bindings [] last, $($tokens)*);
+        $list.push(Vec::new());
+        $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
+    };
+    (@binding_entry
+        $list:ident: $modif:ident$excl:tt($($tokens:tt)*) => $result:tt $(,)? $($rest:tt)*
+    ) => {
+        let last = $list.last_mut().unwrap();
+        $modif$excl(@bindings last, [] $($tokens)*);
+        $list.push(Vec::new());
+        $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
+    };
+    (@binding_entry $list:ident: _ | $($rest:tt)*) => {
+        $list.last_mut().unwrap().push($crate::mode::BindingPat::anything());
+        $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
+    };
+    (@binding_entry $list:ident: _ => $result:expr, $($rest:tt)*) => {
+        $list.last_mut().unwrap().push($crate::mode::BindingPat::anything());
+        $list.push(Vec::new());
+        $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
+    };
+    (@binding_entry $list:ident: _ => $result:tt $(,)? $($rest:tt)*) => {
+        $list.last_mut().unwrap().push($crate::mode::BindingPat::anything());
+        $list.push(Vec::new());
+        $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
+    };
+    (@binding_entry $list:ident: $pattern:expr => $result:expr, $($rest:tt)*) => {
+        $list.last_mut().push($crate::mode::BindingPat::anything());
+        $list.push(Vec::new());
+        $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
+    };
+    (@binding_entry $list:ident: $binding_pat:expr => $matcher:tt $(,)? $($rest:tt)*) => {
+        $list.last_mut().unwrap().push($binding_pat);
+        $list.push(Vec::new());
+        $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
+    };
+
+    (@descriptions { $($patterns:tt)* }) => {{
+        let mut list = Vec::new();
+        $crate::mode::bindings!(@description_entry list: $($patterns)*);
+        list
     }};
 
     (@description_entry $list:ident:) => {};
     (@description_entry
         $list:ident:
-        $modif:ident$excl:tt($($tokens:tt)*) => ([$text1:expr, $text2:expr], $($matcher:tt)+)
-        $(,$($rest:tt)*)?
-    ) => {
-        $list.push($crate::mode::BindingDescription::WithKey(
-            $crate::text::Text::from($text1),
-            $crate::text::Text::from($text2),
-        ));
-		$crate::mode::bindings!(@description_entry $list: $($($rest)*)?);
-    };
-    (@description_entry
-        $list:ident:
-        $modif:ident$excl:tt($($tokens:tt)*) => ($text:expr, $($matcher:tt)+)
-        $(,$($rest:tt)*)?
-    ) => {
-        $list.push($crate::mode::BindingDescription::Simple($crate::text::Text::from($text)));
-		$crate::mode::bindings!(@description_entry $list: $(,$($rest)*)?);
-    };
-    (@description_entry
-        $list:ident:
-        $modif:ident$excl:tt($($tokens:tt)*) => [$text1:expr, $text2:expr]
-        $(,$($rest:tt)*)?
-    ) => {
-        $list.push($crate::mode::BindingDescription::WithKey(
-            $crate::text::Text::from($text1),
-            $crate::text::Text::from($text2),
-        ));
-		$crate::mode::bindings!(@description_entry $list: $($($rest)*)?);
-    };
-    (@description_entry
-        $list:ident:
-        $modif:ident$excl:tt($($tokens:tt)*) => $text:expr
-        $(,$($rest:tt)*)?
-    ) => {
-        $list.push($crate::mode::BindingDescription::Simple($crate::text::Text::from($text)));
-		$crate::mode::bindings!(@description_entry $list: $($($rest)*)?);
-    };
-    (@description_entry
-        $list:ident:
-        $pattern:pat => ([$text1:expr, $text2:expr], $($matcher:tt)+)
-        $(,$($rest:tt)*)?
-    ) => {
-        $list.push($crate::mode::BindingDescription::WithKey(
-            $crate::text::Text::from($text1),
-            $crate::text::Text::from($text2),
-        ));
-		$crate::mode::bindings!(@description_entry $list: $(,$($rest)*)?);
-    };
-    (@description_entry
-        $list:ident:
         $pattern:pat => ($text:expr, $($matcher:tt)+)
         $(,$($rest:tt)*)?
     ) => {
-        $list.push($crate::mode::BindingDescription::Simple($crate::text::Text::from($text)));
-		$crate::mode::bindings!(@description_entry $list: $(,$($rest)*)?);
-    };
-    (@description_entry
-        $list:ident:
-        $pattern:pat => [$text1:expr, $text2:expr]
-        $(,$($rest:tt)*)?
-    ) => {
-        $list.push($crate::mode::BindingDescription::WithKey(
-            $crate::text::Text::from($text1),
-            $crate::text::Text::from($text2),
-        ))
-		$crate::mode::bindings!(@description_entry $list: $(,$($rest)*)?);
+        $list.push($text);
+        $crate::mode::bindings!(@description_entry $list: $($($rest)*)?);
     };
     (@description_entry $list:ident: $pattern:pat => $text:expr $(,$($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingDescription::Simple($crate::text::Text::from($text)));
+        $list.push($text);
+        $crate::mode::bindings!(@description_entry $list: $($($rest)*)?);
     };
-    (@descriptions { $($patterns:tt)+ }) => {{
-        let mut list = Vec::new();
-		$crate::mode::bindings!(@description_entry list: $($patterns)+);
-		list
-    }};
 
-    (@followup_entry $list:ident:) => {};
-    (@followup_entry
-        $list:ident:
-        $modif:ident$excl:tt($($tokens:tt)*) => ($texts:expr, match $key_event:ident $match:tt)
-        $(,$($rest:tt)*)?
-    ) => {
-    	$list.push(Some($crate::mode::bindings! { match $key_event $match }));
-        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
-	};
-    (@followup_entry
-        $list:ident:
-        $pattern:pat => ($texts:expr, match $key_event:ident $match:tt)
-        $(,$($rest:tt)*)?
-    ) => {
-    	$list.push(Some($crate::mode::bindings! { match $key_event $match }));
-        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
-	};
-    (@followup_entry
-        $list:ident:
-        $modif:ident$excl:tt($($tokens:tt)*) => ($texts:expr, $bindings:expr)
-        $(,$($rest:tt)*)?
-    ) => {
-    	$list.push(Some($bindings));
-        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
-	};
-    (@followup_entry
-        $list:ident:
-        $pattern:pat => ($texts:expr, $bindings:expr)
-        $(,$($rest:tt)*)?
-    ) => {
-    	$list.push(Some($bindings));
-        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
-	};
-    (@followup_entry
-        $list:ident:
-        $modif:ident$excl:tt($($tokens:tt)*) => $texts:expr
-        $(,$($rest:tt)*)?
-    ) => {
-    	$list.push(None);
-        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
-	};
-	(@followup_entry $list:ident: $pattern:pat => $texts:expr $(,$($rest:tt)*)?) => {
-    	$list.push(None);
-        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
-	};
     (@followups { $($patterns:tt)+ }) => {{
         let mut list = Vec::new();
         $crate::mode::bindings!(@followup_entry list: $($patterns)+);
         list
     }};
 
-    (match $key_event:ident $match:tt) => {{
-        #[allow(clippy::vec_init_then_push)]
-        let matcher = $crate::mode::bindings!(@matcher $key_event $match);
-        #[allow(clippy::vec_init_then_push)]
-        let descriptions = $crate::mode::bindings!(@descriptions $match);
-        #[allow(clippy::vec_init_then_push)]
-        let followups = $crate::mode::bindings!(@followups $match);
-
-        $crate::mode::Bindings {
-            matcher,
-            descriptions,
-            followups
-        }
-    }};
+    (@followup_entry $list:ident:) => {};
+    (@followup_entry
+        $list:ident:
+        $pattern:pat => ($texts:expr, match _ $match:tt)
+        $(,$($rest:tt)*)?
+    ) => {
+        $list.push(Some($crate::mode::bindings! { match _ $match }));
+        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
+    };
+    (@followup_entry
+        $list:ident:
+        $pattern:pat => ($text:expr, $bindings:expr)
+        $(,$($rest:tt)*)?
+    ) => {
+        $list.push(Some($bindings));
+        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
+    };
+    (@followup_entry $list:ident: $pattern:pat => $text:expr $(,$($rest:tt)*)?) => {
+        $list.push(None);
+        $crate::mode::bindings!(@followup_entry $list: $($($rest)*)?);
+    };
 }

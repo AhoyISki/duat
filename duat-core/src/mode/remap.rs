@@ -1,3 +1,11 @@
+//! Remapping functionality for Duat
+//!
+//! This module's purpose is to support the [`map`] and [`alias`]
+//! commands, not only by giving having these two functions, but also
+//! in limiting what can be mapped, and making use of [`bindings`] in
+//! order to properly document everything.
+//!
+//! [`bindings`]: super::bindings
 use std::{
     any::TypeId,
     sync::{LazyLock, Mutex},
@@ -16,7 +24,7 @@ use crate::{
 };
 
 mod global {
-    use std::{str::Chars, sync::LazyLock};
+    use std::{any::TypeId, str::Chars, sync::LazyLock};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
@@ -30,6 +38,47 @@ mod global {
     static REMAPPER: Remapper = Remapper::new();
     static SEND_KEY: LazyLock<RwData<fn(&mut Pass, KeyEvent)>> =
         LazyLock::new(|| RwData::new(|_, _| {}));
+
+    /// A mapping constructor, used by the [`map`] and [`alias`]
+    /// commands
+    ///
+    /// This builder's purpose is pretty much just to let you document
+    /// your mappings. This can be useful especially for [`Plugin`]
+    /// writers.
+    ///
+    /// The mapping is done once the `RemapBuilder` is [dropped], so
+    /// assigning it to a variable is not recommended
+    ///
+    /// [`Plugin`]: crate::Plugin
+    /// [dropped]: Drop::drop
+    pub struct RemapBuilder {
+        mode_ty: TypeId,
+        takes: Vec<KeyEvent>,
+        gives: Gives,
+        is_alias: bool,
+        doc: Option<Text>,
+    }
+
+    impl RemapBuilder {
+        /// Adds documentation for the mapped sequence
+        ///
+        /// This documentation will be shown alongside the rest of the
+        /// [`Bindings`] for the [`Mode`]. If this function is not
+        /// called, then the sequence will be shown by itself.
+        ///
+        /// [`Bindings`]: crate::mode::Bindings
+        fn doc<T: Into<Text>>(self, doc: T) {
+            let mut builder = self;
+            builder.doc = Some(doc.into());
+        }
+    }
+
+    impl Drop for RemapBuilder {
+        fn drop(&mut self) {
+            crate::context::queue(|_| {
+            });
+        }
+    }
 
     /// Maps a sequence of keys to another
     ///
@@ -64,7 +113,7 @@ mod global {
     /// - `super => Super`,
     /// - `hyper => Hyper`,
     ///
-    /// If another sequence already exists on the same mode, which
+    /// If another sequence already exists on the same mode which
     /// would intersect with this one, the new sequence will not be
     /// added.
     pub fn map<M: Mode>(take: &str, give: impl AsGives) {
