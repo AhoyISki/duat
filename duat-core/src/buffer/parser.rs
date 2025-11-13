@@ -647,7 +647,7 @@ impl BufferTracker {
     ///
     ///                 if len > 2 {
     ///                     let nums = len.ilog10() as usize + 1;
-    ///                     let ghost = Ghost(if is_main {
+    ///                     let ghost = Ghost::new(if is_main {
     ///                         txt!("[sel_len.main]{len}")
     ///                     } else {
     ///                         txt!("[sel_len]{len}")

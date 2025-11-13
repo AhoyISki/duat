@@ -466,8 +466,8 @@ pub trait Mode: Sized + Clone + Send + 'static {
     /// each pattern returning a description [`Text`] for the binding.
     /// Here's an example using some Vim keybindings:
     ///
-    /// ```
-    /// # duat_core::doc_duat!(duat);
+    /// ```rust
+    /// duat_core::doc_duat!(duat);
     /// use duat::prelude::*;
     ///
     /// #[derive(Clone)]
@@ -481,19 +481,19 @@ pub trait Mode: Sized + Clone + Send + 'static {
     ///         let word = txt!("[a]word[separator]|[a]WORD");
     ///
     ///         let objects = mode::bindings!(match _ {
-    ///             event!('w' | 'W') => txt!("Until next {}", word.clone()),
-    ///             event!('e' | 'E') => txt!("End of {}", word.clone()),
-    ///             event!('b' | 'B') => txt!("Until start of {}", word.clone()),
+    ///             event!('w' | 'W') => txt!("Until next {word}"),
+    ///             event!('e' | 'E') => txt!("End of {word}"),
+    ///             event!('b' | 'B') => txt!("Until start of {word}"),
     ///             // All unlisted keys will not be sent.
     ///         });
-    ///
+    ///         
     ///         mode::bindings!(match _ {
-    ///             event!(KeyCode::Char('0'..'9')) => txt!("Add to count"),
-    ///             event!('w' | 'W') => txt!("Move to next {}", word.clone()),
-    ///             event!('e' | 'E') => txt!("Move to end of {}", word.clone()),
-    ///             event!('b' | 'B') => txt!("Move to start of {}", word.clone()),
-    ///             event!('r') => (txt!("Replace selection with [a]char"), match key_event {
-    ///                 event!(KeyCode::Char(_)) => txt!("Character to replace with"),
+    ///             event!(KeyCode::Char('0'..='9')) => txt!("Add to count"),
+    ///             event!('w' | 'W') => txt!("Move to next {word}"),
+    ///             event!('e' | 'E') => txt!("Move to end of {word}"),
+    ///             event!('b' | 'B') => txt!("Move to start of {word}"),
+    ///             event!('r') => (txt!("Replace selection with [a]char"), match _ {
+    ///                 event!(KeyCode::Char('a')) => txt!("Character to replace with"),
     ///             }),
     ///             event!('d') => (txt!("Delete the next object"), objects.clone()),
     ///             event!('c') => (txt!("Change the next object"), objects.clone()),
@@ -513,6 +513,8 @@ pub trait Mode: Sized + Clone + Send + 'static {
     ///
     /// [`Text`]: crate::text::Text
     fn bindings() -> Bindings {
+        let word = txt!("[a]word[separator]|[a]WORD");
+
         bindings!(match _ {
             _ => txt!("No key binding declarations, implement Mode::bindings"),
         })
