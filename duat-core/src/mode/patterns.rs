@@ -411,7 +411,7 @@ macro_rules! __modified__ {
         $modif$excl(@bindings [$($mods),*] $list, $($tokens)*)
     };
     (@bindings [$($mods:ident),*] $list:ident, $char:literal) => {{
-        $list.push($crate::mode::BindingPat::new(
+        $list.push($crate::mode::Binding::new(
             $crate::mode::KeyCode::Char($char),
             $crate::__join_modifiers__![$($mods),*],
         ))
@@ -419,7 +419,7 @@ macro_rules! __modified__ {
     (@bindings [$($mods:ident),*] $list:ident, $($chars:literal)|*) => {{
         let modif = $crate::__join_modifiers__![$($mods),*];
         $list.extend([$(
-            $crate::mode::BindingPat::new($crate::mode::KeyCode::Char($chars), modif)
+            $crate::mode::Binding::new($crate::mode::KeyCode::Char($chars), modif)
         ),*])
     }};
     (@bindings [$($mods:ident),*] $list:ident, $($tokens:tt)*) => {{
@@ -429,7 +429,7 @@ macro_rules! __modified__ {
 
     (@fill_bindings $list:ident, $modif:expr,) => {};
     (@fill_bindings $list:ident, $modif:expr, $($variant:ident)::+ $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::new($($variant)::+, $modif));
+        $list.push($crate::mode::Binding::new($($variant)::+, $modif));
         $crate::__modified__!(@fill_bindings $list, $modif, $($($rest)*)?);
     };
     (@fill_bindings
@@ -455,7 +455,7 @@ macro_rules! __modified__ {
         $crate::__modified__!(@fill_bindings $list, $modif, $($($rest)*)?);
     };
     (@fill_bindings $list:ident, $modif:expr, _) => {
-        let mut binding = $crate::mode::BindingPat::anything();
+        let mut binding = $crate::mode::Binding::anything();
         binding.modif = Some($modif);
         $list.push(binding);
     };
@@ -467,31 +467,31 @@ macro_rules! __modified__ {
 
     (@binding_entry $list:ident, $modif:expr,) => {};
     (@binding_entry $list:ident, $modif:expr, $s:literal..$e:literal $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::from(($s..$e, $modif)));
+        $list.push($crate::mode::Binding::from(($s..$e, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
     (@binding_entry $list:ident, $modif:expr, $s:literal..=$e:literal $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::from(($s..=$e, $modif)));
+        $list.push($crate::mode::Binding::from(($s..=$e, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
     (@binding_entry $list:ident, $modif:expr, ..$e:literal $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::from((..$e, $modif)));
+        $list.push($crate::mode::Binding::from((..$e, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
     (@binding_entry $list:ident, $modif:expr, ..=$e:literal $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::from((..=$e, $modif)));
+        $list.push($crate::mode::Binding::from((..=$e, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
     (@binding_entry $list:ident, $modif:expr, $s:literal.. $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::from(($s.., $modif)));
+        $list.push($crate::mode::Binding::from(($s.., $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
     (@binding_entry $list:ident, $modif:expr, $elem:literal $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::from(($elem, $modif)));
+        $list.push($crate::mode::Binding::from(($elem, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
     (@binding_entry $list:ident, $modif:expr, $elem:literal $(| $($rest:tt)*)?) => {
-        $list.push($crate::mode::BindingPat::from(($elem, $modif)));
+        $list.push($crate::mode::Binding::from(($elem, $modif)));
         $crate::__modified__!(@binding_entry $list, $modif, $($($rest)*)?);
     };
 
@@ -499,24 +499,24 @@ macro_rules! __modified__ {
         $crate::__modified__!(@two_dots_entry $list, $modif, $($rest)::+);
     }};
     (@two_dots_entry $list:ident, $modif:expr, Char) => {{
-        $list.push($crate::mode::BindingPat::CharRange(
+        $list.push($crate::mode::Binding::CharRange(
             ::std::ops::Bound::Unbounded,
             ::std::ops::Bound::Unbounded,
             $modif
         ))
     }};
     (@two_dots_entry $list:ident, $modif:expr, F) => {{
-        $list.push($crate::mode::BindingPat::FnRange(
+        $list.push($crate::mode::Binding::FnRange(
             ::std::ops::Bound::Unbounded,
             ::std::ops::Bound::Unbounded,
             $modif
         ))
     }};
     (@two_dots_entry $list:ident, $modif:expr, Media) => {{
-        $list.push($crate::mode::BindingPat::AnyMedia($modif))
+        $list.push($crate::mode::Binding::AnyMedia($modif))
     }};
     (@two_dots_entry $list:ident, $modif:expr, Modifier) => {{
-        $list.push($crate::mode::BindingPat::AnyModifier($modif))
+        $list.push($crate::mode::Binding::AnyModifier($modif))
     }}
 }
 

@@ -41,7 +41,7 @@ pub struct Bindings {
     /// Direct implementation is not recommended, use the
     /// [`bindings!`] macro instead.
     #[doc(hidden)]
-    pub results: Vec<(Vec<KeyEventPat>, Selectionless, Option<Bindings>)>,
+    pub results: Vec<(Vec<Binding>, Selectionless, Option<Bindings>)>,
 }
 
 impl Bindings {
@@ -83,56 +83,57 @@ impl Bindings {
 /// still creating a finitely known list of keys, which can then be
 /// used for documentation.
 #[derive(Debug, Clone, Copy)]
-pub enum KeyEventPat {
+pub enum Binding {
+    /// A range of [`KeyEvent`]s with [`KeyCode::Char`], like
+    /// `KeyCode::Char('0'..='9')`
     CharRange(Bound<char>, Bound<char>, KeyMod),
+    /// A range of [`KeyEvent`]s with [`KeyCode::F`], like
+    /// `KeyCode::F(1..=3)`
     FnRange(Bound<u8>, Bound<u8>, KeyMod),
+    /// Any modifier key, like [`ModifierKeyCode::LeftShift`]
+    ///
+    /// Unlikely to be bound
     AnyModifier(KeyMod),
+    /// Any media key, like [`MediaKeyCode::MuteVolume`]
     AnyMedia(KeyMod),
-    Concrete(Binding),
+    /// Any [`KeyCode`], might match anything, given the optional
+    /// [`KeyMod`]
+    Any(Option<KeyMod>),
+    /// A specific [`KeyCode`]/[`KeyMod`] combo
+    Event(KeyCode, KeyMod),
 }
 
-impl KeyEventPat {
-    /// Returns a new [concrete `KeyEventPat`]
+impl Binding {
+    /// Returns a new [concrete `Binding`]
     ///
-    /// [concrete `KeyEventPat`]: KeyEventPat::Concrete
+    /// [concrete `Binding`]: Binding::Pattern
     pub fn new(code: KeyCode, modif: KeyMod) -> Self {
-        Self::Concrete(Binding {
-            code: Some(code),
-            modif: Some(modif),
-            kind: None,
-            state: None,
-        })
+        Self::Event(code, modif)
     }
 
-    /// Returns a `KeyEventPat` that could match _anything_
+    /// Returns a `Binding` that could match _anything_
     pub fn anything() -> Self {
-        Self::Concrete(Binding::default())
+        Self::Any(None)
     }
 
     /// A [`KeyEvent`], with assumptions about less used options
     ///
-    /// Only returns [`Some`] if this is [`KeyEventPat::Concrete`]
+    /// Only returns [`Some`] if this is [`Binding::Pattern`]
     /// with a concrete [`KeyCode`] and [`KeyMod`].
     pub fn as_key_event(&self) -> Option<KeyEvent> {
-        let &KeyEventPat::Concrete(Binding {
-            code: Some(code),
-            modif: Some(modifiers),
-            kind,
-            state,
-        }) = self
-        else {
+        let &Binding::Event(code, modifiers) = self else {
             return None;
         };
 
         Some(KeyEvent {
             code,
             modifiers,
-            kind: kind.unwrap_or(KeyEventKind::Press),
-            state: state.unwrap_or(KeyEventState::NONE),
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
         })
     }
 
-    /// Wether a [`KeyEvent`] would be matched by this `KeyEventPat`
+    /// Wether a [`KeyEvent`] would be matched by this `Binding`
     pub fn matches(&self, key_event: KeyEvent) -> bool {
         fn contains<T: Ord>(b0: Bound<T>, b1: Bound<T>, subject: T) -> bool {
             match b0 {
@@ -148,46 +149,34 @@ impl KeyEventPat {
             }
         }
 
+        if key_event.is_release() {
+            return false;
+        }
+
         match *self {
-            KeyEventPat::CharRange(b0, b1, modifiers) => {
+            Binding::CharRange(b0, b1, modifiers) => {
                 if let KeyCode::Char(char) = key_event.code {
-                    key_event.modifiers == modifiers
-                        && (key_event.kind.is_press() || key_event.kind.is_repeat())
-                        && key_event.state == KeyEventState::NONE
-                        && contains(b0, b1, char)
+                    key_event.modifiers == modifiers && contains(b0, b1, char)
                 } else {
                     false
                 }
             }
-            KeyEventPat::FnRange(b0, b1, modifiers) => {
+            Binding::FnRange(b0, b1, modifiers) => {
                 if let KeyCode::F(num) = key_event.code {
-                    key_event.modifiers == modifiers
-                        && (key_event.kind.is_press() || key_event.kind.is_repeat())
-                        && key_event.state == KeyEventState::NONE
-                        && contains(b0, b1, num)
+                    key_event.modifiers == modifiers && contains(b0, b1, num)
                 } else {
                     false
                 }
             }
-            KeyEventPat::AnyModifier(modifiers) => {
-                matches!(key_event.code, KeyCode::Modifier(_))
-                    && key_event.modifiers == modifiers
-                    && (key_event.kind.is_press() || key_event.kind.is_repeat())
-                    && key_event.state == KeyEventState::NONE
+            Binding::AnyModifier(modifiers) => {
+                matches!(key_event.code, KeyCode::Modifier(_)) && key_event.modifiers == modifiers
             }
-            KeyEventPat::AnyMedia(modifiers) => {
-                matches!(key_event.code, KeyCode::Media(_))
-                    && key_event.modifiers == modifiers
-                    && (key_event.kind.is_press() || key_event.kind.is_repeat())
-                    && key_event.state == KeyEventState::NONE
+            Binding::AnyMedia(modifiers) => {
+                matches!(key_event.code, KeyCode::Media(_)) && key_event.modifiers == modifiers
             }
-            KeyEventPat::Concrete(binding) => {
-                binding.code.is_none_or(|code| code == key_event.code)
-                    && binding
-                        .modif
-                        .is_none_or(|modif| modif == key_event.modifiers)
-                    && binding.kind.is_none_or(|kind| kind == key_event.kind)
-                    && binding.state.is_none_or(|state| state == key_event.state)
+            Binding::Any(modif) => modif.is_none_or(|modif| modif == key_event.modifiers),
+            Binding::Event(code, modif) => {
+                code == key_event.code && modif == key_event.modifiers
             }
         }
     }
@@ -195,9 +184,9 @@ impl KeyEventPat {
 
 macro_rules! implFromRange {
     ($($range:ident)::+) => {
-        impl From<($($range)::+<char>, KeyMod)> for KeyEventPat {
+        impl From<($($range)::+<char>, KeyMod)> for Binding {
             fn from((chars, modif): ($($range)::+<char>, KeyMod)) -> Self {
-                KeyEventPat::CharRange(
+                Binding::CharRange(
                     chars.start_bound().cloned(),
                     chars.end_bound().cloned(),
                     modif
@@ -205,9 +194,9 @@ macro_rules! implFromRange {
             }
         }
 
-        impl From<($($range)::+<u8>, KeyMod)> for KeyEventPat {
+        impl From<($($range)::+<u8>, KeyMod)> for Binding {
             fn from((fns, modif): ($($range)::+<u8>, KeyMod)) -> Self {
-                KeyEventPat::FnRange(fns.start_bound().cloned(), fns.end_bound().cloned(), modif)
+                Binding::FnRange(fns.start_bound().cloned(), fns.end_bound().cloned(), modif)
             }
         }
     };
@@ -219,60 +208,28 @@ implFromRange!(std::ops::RangeInclusive);
 implFromRange!(std::ops::RangeTo);
 implFromRange!(std::ops::RangeToInclusive);
 
-impl From<(char, KeyMod)> for KeyEventPat {
+impl From<(char, KeyMod)> for Binding {
     fn from((char, modif): (char, KeyMod)) -> Self {
-        KeyEventPat::Concrete(Binding {
-            code: Some(KeyCode::Char(char)),
-            modif: Some(modif),
-            kind: None,
-            state: None,
-        })
+        Binding::Event(KeyCode::Char(char), modif)
     }
 }
 
-impl From<(u8, KeyMod)> for KeyEventPat {
-    fn from((f_key, modif): (u8, KeyMod)) -> Self {
-        KeyEventPat::Concrete(Binding {
-            code: Some(KeyCode::F(f_key)),
-            modif: Some(modif),
-            kind: None,
-            state: None,
-        })
+impl From<(u8, KeyMod)> for Binding {
+    fn from((num, modif): (u8, KeyMod)) -> Self {
+        Binding::Event(KeyCode::F(num), modif)
     }
 }
 
-impl From<(MediaKeyCode, KeyMod)> for KeyEventPat {
+impl From<(MediaKeyCode, KeyMod)> for Binding {
     fn from((media, modif): (MediaKeyCode, KeyMod)) -> Self {
-        KeyEventPat::Concrete(Binding {
-            code: Some(KeyCode::Media(media)),
-            modif: Some(modif),
-            kind: None,
-            state: None,
-        })
+        Binding::Event(KeyCode::Media(media), modif)
     }
 }
 
-impl From<(ModifierKeyCode, KeyMod)> for KeyEventPat {
+impl From<(ModifierKeyCode, KeyMod)> for Binding {
     fn from((modifier, modif): (ModifierKeyCode, KeyMod)) -> Self {
-        KeyEventPat::Concrete(Binding {
-            code: Some(KeyCode::Modifier(modifier)),
-            modif: Some(modif),
-            kind: None,
-            state: None,
-        })
+        Binding::Event(KeyCode::Modifier(modifier), modif)
     }
-}
-
-/// A key binding, which can have any number of defined fields.
-///
-/// The less specific the key binding (i.e., the more [`None`]s it
-/// has), the less prioritized it is.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Binding {
-    pub code: Option<KeyCode>,
-    pub modif: Option<KeyMod>,
-    pub kind: Option<KeyEventKind>,
-    pub state: Option<KeyEventState>,
 }
 
 #[macro_export]
@@ -363,21 +320,21 @@ macro_rules! __bindings__ {
         $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
     };
     (@binding_entry $list:ident: _ | $($rest:tt)*) => {
-        $list.last_mut().unwrap().push($crate::mode::KeyEventPat::anything());
+        $list.last_mut().unwrap().push($crate::mode::Binding::anything());
         $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
     };
     (@binding_entry $list:ident: _ => $result:expr, $($rest:tt)*) => {
-        $list.last_mut().unwrap().push($crate::mode::KeyEventPat::anything());
+        $list.last_mut().unwrap().push($crate::mode::Binding::anything());
         $list.push(Vec::new());
         $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
     };
     (@binding_entry $list:ident: _ => $result:tt $(,)? $($rest:tt)*) => {
-        $list.last_mut().unwrap().push($crate::mode::KeyEventPat::anything());
+        $list.last_mut().unwrap().push($crate::mode::Binding::anything());
         $list.push(Vec::new());
         $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
     };
     (@binding_entry $list:ident: $pattern:expr => $result:expr, $($rest:tt)*) => {
-        $list.last_mut().push($crate::mode::KeyEventPat::anything());
+        $list.last_mut().push($crate::mode::Binding::anything());
         $list.push(Vec::new());
         $crate::mode::bindings!(@binding_entry $list: $($($rest)*)?);
     };

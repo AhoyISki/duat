@@ -6,11 +6,7 @@
 //! order to properly document everything.
 //!
 //! [`bindings`]: super::bindings
-use std::{
-    any::TypeId,
-    collections::HashMap,
-    sync::{LazyLock, Mutex},
-};
+use std::{any::TypeId, collections::HashMap, sync::Mutex};
 
 use crossterm::event::KeyEvent;
 
@@ -19,13 +15,13 @@ use super::Mode;
 use crate::{
     context,
     data::{Pass, RwData},
-    mode::{self, Bindings, KeyEventPat},
+    mode::{self, Bindings, Binding},
     text::{Ghost, Selectionless, Tagger, Text, txt},
     ui::Widget,
 };
 
 mod global {
-    use std::{any::TypeId, str::Chars, sync::LazyLock};
+    use std::{str::Chars, sync::LazyLock};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
@@ -53,11 +49,11 @@ mod global {
     /// [`Plugin`]: crate::Plugin
     /// [dropped]: Drop::drop
     pub struct RemapBuilder {
-        mode_ty: TypeId,
         takes: Vec<KeyEvent>,
         gives: Gives,
         is_alias: bool,
         doc: Option<Text>,
+        remap: fn(Vec<KeyEvent>, Gives, bool, Option<Text>),
     }
 
     impl RemapBuilder {
@@ -76,7 +72,12 @@ mod global {
 
     impl Drop for RemapBuilder {
         fn drop(&mut self) {
-            crate::context::queue(|_| {});
+            let remap = self.remap;
+            let takes = std::mem::take(&mut self.takes);
+            let gives = std::mem::replace(&mut self.gives, Gives::Keys(Vec::new()));
+            let is_alias = self.is_alias;
+            let doc = self.doc.take();
+            crate::context::queue(move |_| remap(takes, gives, is_alias, doc));
         }
     }
 
@@ -116,11 +117,15 @@ mod global {
     /// If another sequence already exists on the same mode which
     /// would intersect with this one, the new sequence will not be
     /// added.
-    pub fn map<M: Mode>(take: &str, give: impl AsGives) {
-        let keys = str_to_keys(take);
-        crate::context::queue(move |_| {
-            REMAPPER.remap::<M>(keys, give.into_gives(), false);
-        });
+    pub fn map<M: Mode>(takes: &str, gives: impl AsGives) -> RemapBuilder {
+        let takes = str_to_keys(takes);
+        RemapBuilder {
+            takes,
+            gives: gives.into_gives(),
+            is_alias: false,
+            doc: None,
+            remap: |takes, gives, is_alias, doc| REMAPPER.remap::<M>(takes, gives, is_alias, doc),
+        }
     }
 
     /// Aliases a sequence of keys to another
@@ -146,16 +151,20 @@ mod global {
     ///
     /// [ghost text]: crate::text::Ghost
     /// [form]: crate::form::Form
-    pub fn alias<M: Mode>(take: &str, give: impl AsGives) {
-        let keys = str_to_keys(take);
-        crate::context::queue(move |_| {
-            REMAPPER.remap::<M>(keys, give.into_gives(), true);
-        });
+    pub fn alias<M: Mode>(takes: &str, gives: impl AsGives) -> RemapBuilder {
+        let takes = str_to_keys(takes);
+        RemapBuilder {
+            takes,
+            gives: gives.into_gives(),
+            is_alias: true,
+            doc: None,
+            remap: |takes, gives, is_alias, doc| REMAPPER.remap::<M>(takes, gives, is_alias, doc),
+        }
     }
 
     /// The current sequence of [`KeyEvent`]s being mapped
     pub fn cur_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
-        REMAPPER.cur_seq.map(|seq| seq.clone())
+        REMAPPER.seq.map(|seq| seq.clone())
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
@@ -431,11 +440,183 @@ mod global {
     }
 }
 
+/// The structure responsible for remapping sequences of characters
+struct Remapper {
+    remaps: Mutex<HashMap<TypeId, MappedBindings>>,
+    seq: RwData<(Vec<KeyEvent>, bool)>,
+}
+
+impl Remapper {
+    /// Returns a new instance of [`Remapper`]
+    fn new() -> Self {
+        Remapper {
+            remaps: Mutex::new(HashMap::new()),
+            seq: RwData::default(),
+        }
+    }
+
+    /// Maps a sequence of characters to another
+    fn remap<M: Mode>(&self, take: Vec<KeyEvent>, give: Gives, is_alias: bool, doc: Option<Text>) {
+        fn remap_inner(
+            remapper: &Remapper,
+            type_id: TypeId,
+            takes: Vec<KeyEvent>,
+            gives: Gives,
+            is_alias: bool,
+            doc: Option<Text>,
+        ) {
+            let mut remaps = remapper.remaps.lock().unwrap();
+            let mapped_bindings = remaps.get_mut(&type_id).unwrap();
+
+            if let Gives::Keys(keys) = &gives
+                && !mapped_bindings.bindings.matches_sequence(keys)
+            {
+                context::warn!("Tried mapping to unbound sequence");
+                return;
+            }
+
+            let remap = Remap::new(takes, gives, is_alias, doc.map(Text::no_selections));
+
+            if let Some(i) = mapped_bindings.remaps.iter().position(|r| {
+                r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes)
+            }) {
+                mapped_bindings.remaps[i] = remap;
+            } else {
+                mapped_bindings.remaps.push(remap);
+            }
+        }
+
+        self.remaps
+            .lock()
+            .unwrap()
+            .entry(TypeId::of::<M>())
+            .or_insert_with(MappedBindings::for_mode::<M>);
+
+        remap_inner(self, TypeId::of::<M>(), take, give, is_alias, doc);
+    }
+
+    /// Sends a key to be remapped or not
+    fn send_key<M: Mode>(&self, pa: &mut Pass, key: KeyEvent) {
+        fn send_key_inner(
+            key: KeyEvent,
+            remapper: &Remapper,
+            pa: &mut Pass,
+            ty: TypeId,
+            bindings_fn: fn() -> MappedBindings,
+        ) {
+            let mut remaps_list = remapper.remaps.lock().unwrap();
+            let mapped_bindings = remaps_list.entry(ty).or_insert_with(bindings_fn);
+
+            let (seq, is_alias) = {
+                let (seq, is_alias) = remapper.seq.write(pa);
+                seq.push(key);
+                (seq.clone(), *is_alias)
+            };
+
+            let clear_cur_seq = |pa| {
+                *remapper.seq.write(pa) = (Vec::new(), false);
+            };
+
+            let keys_to_send = if let Some(remap) = mapped_bindings
+                .remaps
+                .iter()
+                .find(|r| r.takes.starts_with(&seq))
+            {
+                if remap.takes.len() == seq.len() {
+                    if remap.is_alias {
+                        remove_alias_and(pa, |_, _| {});
+                    }
+
+                    clear_cur_seq(pa);
+
+                    match &remap.gives {
+                        Gives::Keys(keys) => keys.clone(),
+                        Gives::Mode(set_mode) => {
+                            set_mode();
+                            if let Some(mode_fn) = super::take_set_mode_fn(pa) {
+                                mode_fn(pa);
+                            }
+                            return;
+                        }
+                    }
+                } else {
+                    if remap.is_alias {
+                        remapper.seq.write(pa).1 = true;
+
+                        remove_alias_and(pa, |widget, main| {
+                            widget.text_mut().insert_tag(
+                                Tagger::for_alias(),
+                                main,
+                                Ghost::new(txt!("[alias]{}", keys_to_string(&seq))),
+                            );
+                        });
+                    }
+                    return;
+                }
+            } else {
+                if is_alias {
+                    remove_alias_and(pa, |_, _| {});
+                }
+                clear_cur_seq(pa);
+                seq
+            };
+
+            mode::send_keys_to(pa, keys_to_send);
+        }
+
+        send_key_inner(
+            key,
+            self,
+            pa,
+            TypeId::of::<M>(),
+            MappedBindings::for_mode::<M>,
+        );
+    }
+}
+
+/// A sequence of characters that should be turned into another
+/// sequence of characters
+struct Remap {
+    takes: Vec<KeyEvent>,
+    gives: Gives,
+    is_alias: bool,
+    doc: Option<Selectionless>,
+}
+
+impl Remap {
+    /// Returns a new `Remap`
+    pub fn new(
+        takes: Vec<KeyEvent>,
+        gives: Gives,
+        is_alias: bool,
+        doc: Option<Selectionless>,
+    ) -> Self {
+        Self { takes, gives, is_alias, doc }
+    }
+}
+
+///
+#[doc(hidden)]
+pub enum Gives {
+    Keys(Vec<KeyEvent>),
+    Mode(Box<dyn Fn() + Send>),
+}
+
 /// The set of regular [`Mode`] [`Bindings`], as well as all
 /// [`Remap`]s
 pub struct MappedBindings {
     bindings: Bindings,
     remaps: Vec<Remap>,
+}
+
+impl MappedBindings {
+    /// Returns the available [`Bindings`] for a [`Mode`]
+    fn for_mode<M: Mode>() -> Self {
+        Self {
+            bindings: M::bindings(),
+            remaps: Vec::new(),
+        }
+    }
 }
 
 impl MappedBindings {
@@ -447,7 +628,7 @@ impl MappedBindings {
     pub fn matches_sequence(&self, seq: &[KeyEvent]) -> bool {
         self.bindings.matches_sequence(seq)
             || self.remaps.iter().any(|remap| {
-                &remap.takes == seq && self.matches_sequence(&seq[remap.takes.len()..])
+                seq.starts_with(&remap.takes) && self.matches_sequence(&seq[remap.takes.len()..])
             })
     }
 
@@ -510,7 +691,7 @@ impl MappedBindings {
 /// an [`Iterator`], which returns one of the following:
 ///
 /// - A sequence of `KeyEvent`s that are mapped to the action
-/// - A list of [`KeyEventPat`]s that are bound to the action
+/// - A list of [`Binding`]s that are bound to the action
 ///
 /// The first one happens when you call [`map`] or [`alias`], since
 /// they let you map a sequence of [`KeyEvent`]s.
@@ -527,21 +708,38 @@ impl MappedBindings {
 /// have no keys (or not, you decide I guess).
 ///
 /// One other thing to note is that
-struct Description<'a> {
+pub struct Description<'a> {
+    /// The [`Text`] describing what the [`KeyEvent`] will do
     pub text: Option<&'a Text>,
+    /// The [`Mode`]'s native bindings and all [maps] and [aliases] to
+    /// those bindings
+    ///
+    /// [maps]: map
+    /// [aliases]: alias
     pub bindings_and_remaps: BindingsAndRemaps<'a>,
 }
 
-/// A [`Mode`]'s bound [`KeyEventPat`] or a mapped [`KeyEvent`]
+/// A [`Mode`]'s bound [`Binding`] or a mapped [`KeyEvent`]
 /// sequence
 pub enum BindingOrRemap<'a> {
     /// A [`Mode`]'s regular binding, comes from the [`Bindings`]
     /// struct
-    Binding(KeyEventPat),
+    Binding(Binding),
     /// A remapped sequence, comes from [`map`] or [`alias`]
     Remap(&'a [KeyEvent]),
 }
 
+/// An [`Iterator`] over the possible patterns that match a
+/// [`Description`]
+///
+/// This returns a [`BindingOrRemap`], where
+/// [`BindingOrRemap::Binding`] represents a pattern that is naturally
+/// bound to a [`Mode`], via [`Mode::bindings`], while a
+/// [`BindingOrRemap::Remap`] represents a [`KeyEvent`] sequence that
+/// was [mapped] or [aliased] to it.
+///
+/// [mapped]: map
+/// [aliased]: alias
 pub struct BindingsAndRemaps<'a> {
     seq: &'a [KeyEvent],
     pats_or_remap: PatsOrRemap<'a>,
@@ -559,7 +757,7 @@ impl<'a> Iterator for BindingsAndRemaps<'a> {
                 return remap
                     .takes
                     .strip_prefix(self.seq)
-                    .map(|takes| BindingOrRemap::Remap(takes));
+                    .map(BindingOrRemap::Remap);
             }
         };
 
@@ -591,172 +789,15 @@ impl<'a> Iterator for BindingsAndRemaps<'a> {
     }
 }
 
+/// Two types of description
 enum PatsOrRemap<'a> {
     Pats(
-        &'a [KeyEventPat],
-        std::slice::Iter<'a, KeyEventPat>,
+        &'a [Binding],
+        std::slice::Iter<'a, Binding>,
         &'a [Remap],
         Vec<&'a [KeyEvent]>,
     ),
     Remap(&'a Remap),
-}
-
-/// The structure responsible for remapping sequences of characters
-struct Remapper {
-    remaps: Mutex<HashMap<TypeId, MappedBindings>>,
-    cur_seq: RwData<(Vec<KeyEvent>, bool)>,
-}
-
-impl Remapper {
-    /// Returns a new instance of [`Remapper`]
-    fn new() -> Self {
-        Remapper {
-            remaps: Mutex::new(HashMap::new()),
-            cur_seq: RwData::default(),
-        }
-    }
-
-    /// Maps a sequence of characters to another
-    fn remap<M: Mode>(&self, take: Vec<KeyEvent>, give: Gives, is_alias: bool) {
-        fn remap_inner(
-            remapper: &Remapper,
-            type_id: TypeId,
-            takes: Vec<KeyEvent>,
-            gives: Gives,
-            is_alias: bool,
-        ) {
-            let mut remaps = remapper.remaps.lock().unwrap();
-            let mapped_bindings = remaps.get_mut(&type_id).unwrap();
-
-            if let Gives::Keys(keys) = &gives
-                && !mapped_bindings.bindings.matches_sequence(keys)
-            {
-                context::warn!("Tried mapping to unbound sequence");
-                return;
-            }
-
-            let remap = Remap::new(takes, gives, is_alias);
-
-            if let Some(i) = mapped_bindings.remaps.iter().position(|r| {
-                r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes)
-            }) {
-                mapped_bindings.remaps[i] = remap;
-            } else {
-                mapped_bindings.remaps.push(remap);
-            }
-        }
-
-        self.remaps
-            .lock()
-            .unwrap()
-            .entry(TypeId::of::<M>())
-            .or_insert_with(|| MappedBindings {
-                bindings: M::bindings(),
-                remaps: Vec::new(),
-            });
-
-        remap_inner(self, TypeId::of::<M>(), take, give, is_alias);
-    }
-
-    /// Sends a key to be remapped or not
-    #[allow(clippy::await_holding_lock)]
-    fn send_key<M: Mode>(&self, pa: &mut Pass, key: KeyEvent) {
-        fn send_key_inner(remapper: &Remapper, pa: &mut Pass, ty: TypeId, key: KeyEvent) {
-            // Lock acquired here
-            let remaps_list = remapper.remaps.lock().unwrap();
-
-            let Some(i) = remaps_list.iter().position(|(m, _)| ty == *m) else {
-                drop(remaps_list);
-                mode::send_keys_to(pa, vec![key]);
-                return;
-            };
-
-            let (_, remaps) = &remaps_list[i];
-
-            let (cur_seq, is_alias) = {
-                let (cur_seq, is_alias) = remapper.cur_seq.write(pa);
-                cur_seq.push(key);
-                (cur_seq.clone(), *is_alias)
-            };
-
-            let clear_cur_seq = |pa| {
-                *remapper.cur_seq.write(pa) = (Vec::new(), false);
-            };
-
-            if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
-                if remap.takes.len() == cur_seq.len() {
-                    if remap.is_alias {
-                        remove_alias_and(pa, |_, _| {});
-                    }
-
-                    clear_cur_seq(pa);
-
-                    match &remap.gives {
-                        Gives::Keys(keys) => {
-                            let keys = keys.clone();
-                            // Lock dropped here, before any .awaits
-                            mode::send_keys_to(pa, keys)
-                        }
-                        Gives::Mode(set_mode) => {
-                            set_mode();
-                            if let Some(mode_fn) = super::take_set_mode_fn(pa) {
-                                mode_fn(pa);
-                            }
-                        }
-                    }
-                } else if remap.is_alias {
-                    remapper.cur_seq.write(pa).1 = true;
-
-                    remove_alias_and(pa, |widget, main| {
-                        widget.text_mut().insert_tag(
-                            Tagger::for_alias(),
-                            main,
-                            Ghost::new(txt!("[alias]{}", keys_to_string(&cur_seq))),
-                        );
-                    });
-                }
-            } else if is_alias {
-                // Lock dropped here, before any .awaits
-                remove_alias_and(pa, |_, _| {});
-                clear_cur_seq(pa);
-                mode::send_keys_to(pa, cur_seq);
-            } else {
-                // Lock dropped here, before any .awaits
-                clear_cur_seq(pa);
-                mode::send_keys_to(pa, cur_seq);
-            }
-        }
-
-        send_key_inner(self, pa, TypeId::of::<M>(), key);
-    }
-}
-
-/// A sequence of characters that should be turned into another
-/// sequence of characters
-struct Remap {
-    takes: Vec<KeyEvent>,
-    gives: Gives,
-    is_alias: bool,
-    doc: Option<Selectionless>,
-}
-
-impl Remap {
-    /// Returns a new `Remap`
-    pub fn new(
-        takes: Vec<KeyEvent>,
-        gives: Gives,
-        is_alias: bool,
-        doc: Option<Selectionless>,
-    ) -> Self {
-        Self { takes, gives, is_alias, doc }
-    }
-}
-
-///
-#[doc(hidden)]
-pub enum Gives {
-    Keys(Vec<KeyEvent>),
-    Mode(Box<dyn Fn() + Send>),
 }
 
 fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {

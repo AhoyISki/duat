@@ -192,7 +192,6 @@ pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
 }
 
 /// Static dispatch function that sends keys to a [`Mode`]
-#[allow(clippy::await_holding_refcell_ref)]
 fn send_keys_fn<M: Mode>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>) -> Option<ModeFn> {
     let handle = context::current_widget_node(pa)
         .node(pa)
