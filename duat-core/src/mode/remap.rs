@@ -8,6 +8,7 @@
 //! [`bindings`]: super::bindings
 use std::{
     any::TypeId,
+    collections::HashMap,
     sync::{LazyLock, Mutex},
 };
 
@@ -18,8 +19,8 @@ use super::Mode;
 use crate::{
     context,
     data::{Pass, RwData},
-    mode,
-    text::{Ghost, Tagger, txt},
+    mode::{self, Bindings, KeyEventPat},
+    text::{Ghost, Selectionless, Tagger, Text, txt},
     ui::Widget,
 };
 
@@ -35,7 +36,7 @@ mod global {
         text::{Text, txt},
     };
 
-    static REMAPPER: Remapper = Remapper::new();
+    static REMAPPER: LazyLock<Remapper> = LazyLock::new(Remapper::new);
     static SEND_KEY: LazyLock<RwData<fn(&mut Pass, KeyEvent)>> =
         LazyLock::new(|| RwData::new(|_, _| {}));
 
@@ -396,7 +397,7 @@ mod global {
     impl<M: Mode> AsGives for M {
         fn into_gives(self) -> Gives {
             if let Some(keys) = self.just_keys() {
-                Gives::Taggers(str_to_keys(keys))
+                Gives::Keys(str_to_keys(keys))
             } else {
                 Gives::Mode(Box::new(move || crate::mode::set(self.clone())))
             }
@@ -430,18 +431,188 @@ mod global {
     }
 }
 
+/// The set of regular [`Mode`] [`Bindings`], as well as all
+/// [`Remap`]s
+pub struct MappedBindings {
+    bindings: Bindings,
+    remaps: Vec<Remap>,
+}
+
+impl MappedBindings {
+    /// Wether the given sequence of [`KeyEvent`]s is bound by these
+    /// `MappedBindings`
+    ///
+    /// This will be true if either the normal [`Mode`] provided
+    /// [`Bindings`] match the sequence, or if a remap binds it.
+    pub fn matches_sequence(&self, seq: &[KeyEvent]) -> bool {
+        self.bindings.matches_sequence(seq)
+            || self.remaps.iter().any(|remap| {
+                &remap.takes == seq && self.matches_sequence(&seq[remap.takes.len()..])
+            })
+    }
+
+    /// The [`Description`]s for the bindings available, given the
+    /// keys sent so far
+    pub fn descriptions_for<'a>(
+        &'a self,
+        seq: &'a [KeyEvent],
+    ) -> impl Iterator<Item = Description<'a>> {
+        let bindings = self.bindings.bindings_for(seq);
+
+        bindings
+            .into_iter()
+            .flat_map(|bindings| bindings.results.iter())
+            .map(|(pats, desc, _)| Description {
+                text: Some(desc.text()),
+                bindings_and_remaps: BindingsAndRemaps {
+                    seq,
+                    pats_or_remap: PatsOrRemap::Pats(pats, pats.iter(), &self.remaps, Vec::new()),
+                },
+            })
+            .chain(
+                self.remaps
+                    .iter()
+                    .filter(move |remap| {
+                        if !remap.takes.starts_with(seq) {
+                            return false;
+                        }
+                        if remap.doc.is_some() {
+                            return true;
+                        }
+
+                        if let (Gives::Keys(gives), Some(bindings)) = (&remap.gives, bindings)
+                            && gives.len() == 1
+                            && bindings
+                                .results
+                                .iter()
+                                .any(|(pats, ..)| pats.iter().any(|pat| pat.matches(gives[0])))
+                        {
+                            false
+                        } else {
+                            true
+                        }
+                    })
+                    .map(|remap| Description {
+                        text: remap.doc.as_ref().map(Selectionless::text),
+                        bindings_and_remaps: BindingsAndRemaps {
+                            seq,
+                            pats_or_remap: PatsOrRemap::Remap(remap),
+                        },
+                    }),
+            )
+    }
+}
+
+/// The description for [`KeyEvent`]s that are mapped or bound in a
+/// [`Mode`]
+///
+/// This description will include an explaining [`Text`] as well as
+/// an [`Iterator`], which returns one of the following:
+///
+/// - A sequence of `KeyEvent`s that are mapped to the action
+/// - A list of [`KeyEventPat`]s that are bound to the action
+///
+/// The first one happens when you call [`map`] or [`alias`], since
+/// they let you map a sequence of [`KeyEvent`]s.
+///
+/// The second one comes from a [`Mode`]s own [`Bindings`] from
+/// [`Mode::bindings`]. This is a list of _patterns_ for [`KeyEvent`]s
+/// that are bound to actions. This list is immutable, and each item
+/// is an alternation of _patterns_ (e.g. `'a'..='z'`, "any media
+/// key", concrete [`KeyEvent`]s, etc).
+///
+/// Do note that [`Description::Pattern`] _may_ end up being empty
+/// remaps "take over" all patterns. If you are displaying the
+/// `Description`s in some [`Widget`], you should ignore those that
+/// have no keys (or not, you decide I guess).
+///
+/// One other thing to note is that
+struct Description<'a> {
+    pub text: Option<&'a Text>,
+    pub bindings_and_remaps: BindingsAndRemaps<'a>,
+}
+
+/// A [`Mode`]'s bound [`KeyEventPat`] or a mapped [`KeyEvent`]
+/// sequence
+pub enum BindingOrRemap<'a> {
+    /// A [`Mode`]'s regular binding, comes from the [`Bindings`]
+    /// struct
+    Binding(KeyEventPat),
+    /// A remapped sequence, comes from [`map`] or [`alias`]
+    Remap(&'a [KeyEvent]),
+}
+
+pub struct BindingsAndRemaps<'a> {
+    seq: &'a [KeyEvent],
+    pats_or_remap: PatsOrRemap<'a>,
+}
+
+impl<'a> Iterator for BindingsAndRemaps<'a> {
+    type Item = BindingOrRemap<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (pats, pats_iter, remaps, processed_takes) = match &mut self.pats_or_remap {
+            PatsOrRemap::Pats(pats, pats_iter, remaps, processed) => {
+                (pats, pats_iter, remaps, processed)
+            }
+            PatsOrRemap::Remap(remap) => {
+                return remap
+                    .takes
+                    .strip_prefix(self.seq)
+                    .map(|takes| BindingOrRemap::Remap(takes));
+            }
+        };
+
+        let takess = remaps.iter().filter_map(|r| r.takes.strip_prefix(self.seq));
+
+        pats_iter
+            .find_map(|pat| {
+                pat.as_key_event()
+                    .is_none_or(|key_event| !takess.clone().any(|r| r.starts_with(&[key_event])))
+                    .then_some(BindingOrRemap::Binding(*pat))
+            })
+            .or_else(|| {
+                remaps.iter().find_map(|r| {
+                    let key_events = r.takes.strip_prefix(self.seq)?;
+
+                    if r.doc.is_none()
+                        && let Gives::Keys(gives) = &r.gives
+                        && gives.len() == 1
+                        && pats.iter().any(|pat| pat.matches(gives[0]))
+                        && !processed_takes.contains(&key_events)
+                    {
+                        processed_takes.push(key_events);
+                        Some(BindingOrRemap::Remap(gives))
+                    } else {
+                        None
+                    }
+                })
+            })
+    }
+}
+
+enum PatsOrRemap<'a> {
+    Pats(
+        &'a [KeyEventPat],
+        std::slice::Iter<'a, KeyEventPat>,
+        &'a [Remap],
+        Vec<&'a [KeyEvent]>,
+    ),
+    Remap(&'a Remap),
+}
+
 /// The structure responsible for remapping sequences of characters
 struct Remapper {
-    remaps: Mutex<Vec<(TypeId, Vec<Remap>)>>,
-    cur_seq: LazyLock<RwData<(Vec<KeyEvent>, bool)>>,
+    remaps: Mutex<HashMap<TypeId, MappedBindings>>,
+    cur_seq: RwData<(Vec<KeyEvent>, bool)>,
 }
 
 impl Remapper {
     /// Returns a new instance of [`Remapper`]
-    const fn new() -> Self {
+    fn new() -> Self {
         Remapper {
-            remaps: Mutex::new(Vec::new()),
-            cur_seq: LazyLock::new(RwData::default),
+            remaps: Mutex::new(HashMap::new()),
+            cur_seq: RwData::default(),
         }
     }
 
@@ -450,24 +621,39 @@ impl Remapper {
         fn remap_inner(
             remapper: &Remapper,
             type_id: TypeId,
-            take: Vec<KeyEvent>,
-            give: Gives,
+            takes: Vec<KeyEvent>,
+            gives: Gives,
             is_alias: bool,
         ) {
-            let remap = Remap::new(take, give, is_alias);
-
             let mut remaps = remapper.remaps.lock().unwrap();
+            let mapped_bindings = remaps.get_mut(&type_id).unwrap();
 
-            if let Some((_, remaps)) = remaps.iter_mut().find(|(m, _)| type_id == *m) {
-                if remaps.iter().all(|r| {
-                    !(r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes))
-                }) {
-                    remaps.push(remap);
-                }
+            if let Gives::Keys(keys) = &gives
+                && !mapped_bindings.bindings.matches_sequence(keys)
+            {
+                context::warn!("Tried mapping to unbound sequence");
+                return;
+            }
+
+            let remap = Remap::new(takes, gives, is_alias);
+
+            if let Some(i) = mapped_bindings.remaps.iter().position(|r| {
+                r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes)
+            }) {
+                mapped_bindings.remaps[i] = remap;
             } else {
-                remaps.push((type_id, vec![remap]));
+                mapped_bindings.remaps.push(remap);
             }
         }
+
+        self.remaps
+            .lock()
+            .unwrap()
+            .entry(TypeId::of::<M>())
+            .or_insert_with(|| MappedBindings {
+                bindings: M::bindings(),
+                remaps: Vec::new(),
+            });
 
         remap_inner(self, TypeId::of::<M>(), take, give, is_alias);
     }
@@ -506,7 +692,7 @@ impl Remapper {
                     clear_cur_seq(pa);
 
                     match &remap.gives {
-                        Gives::Taggers(keys) => {
+                        Gives::Keys(keys) => {
                             let keys = keys.clone();
                             // Lock dropped here, before any .awaits
                             mode::send_keys_to(pa, keys)
@@ -551,18 +737,25 @@ struct Remap {
     takes: Vec<KeyEvent>,
     gives: Gives,
     is_alias: bool,
+    doc: Option<Selectionless>,
 }
 
 impl Remap {
-    pub fn new(takes: Vec<KeyEvent>, gives: Gives, is_alias: bool) -> Self {
-        Self { takes, gives, is_alias }
+    /// Returns a new `Remap`
+    pub fn new(
+        takes: Vec<KeyEvent>,
+        gives: Gives,
+        is_alias: bool,
+        doc: Option<Selectionless>,
+    ) -> Self {
+        Self { takes, gives, is_alias, doc }
     }
 }
 
 ///
 #[doc(hidden)]
 pub enum Gives {
-    Taggers(Vec<KeyEvent>),
+    Keys(Vec<KeyEvent>),
     Mode(Box<dyn Fn() + Send>),
 }
 
