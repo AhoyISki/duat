@@ -6,7 +6,7 @@
 //! order to properly document everything.
 //!
 //! [`bindings`]: super::bindings
-use std::{any::TypeId, collections::HashMap, sync::Mutex};
+use std::{any::TypeId, collections::HashMap, slice, sync::Mutex};
 
 use crossterm::event::KeyEvent;
 
@@ -126,7 +126,7 @@ mod global {
     /// If another sequence already exists on the same mode which
     /// would intersect with this one, the new sequence will not be
     /// added.
-    pub fn map<M: Mode>(takes: &str, gives: impl AsGives) -> RemapBuilder {
+    pub fn map<M: Mode>(takes: &str, gives: impl IntoGives) -> RemapBuilder {
         let takes = str_to_keys(takes);
         RemapBuilder {
             takes,
@@ -162,7 +162,7 @@ mod global {
     ///
     /// [ghost text]: crate::text::Ghost
     /// [form]: crate::form::Form
-    pub fn alias<M: Mode>(takes: &str, gives: impl AsGives) -> RemapBuilder {
+    pub fn alias<M: Mode>(takes: &str, gives: impl IntoGives) -> RemapBuilder {
         let takes = str_to_keys(takes);
         RemapBuilder {
             takes,
@@ -227,41 +227,79 @@ mod global {
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
     pub fn keys_to_text(keys: &[KeyEvent]) -> Text {
         use crossterm::event::KeyCode::*;
-        let mut seq = Text::builder();
+        let mut builder = Text::builder();
 
         for key in keys {
+            if key.modifiers != KeyMod::NONE || !matches!(key.code, KeyCode::Char(_)) {
+                builder.push(txt!("[key.angle]<"));
+            }
+
+            builder.push(modifier_text(key.modifiers));
+
             match key.code {
-                Backspace => seq.push(txt!("[key.special]BS")),
-                Enter => seq.push(txt!("[key.special]Enter")),
-                Left => seq.push(txt!("[key.special]Left")),
-                Right => seq.push(txt!("[key.special]Right")),
-                Up => seq.push(txt!("[key.special]Up")),
-                Down => seq.push(txt!("[key.special]Down")),
-                Home => seq.push(txt!("[key.special]Home")),
-                End => seq.push(txt!("[key.special]End")),
-                PageUp => seq.push(txt!("[key.special]PageU")),
-                PageDown => seq.push(txt!("[key.special]PageD")),
-                Tab => seq.push(txt!("[key.special]Tab")),
-                BackTab => seq.push(txt!("[key.special]BTab")),
-                Delete => seq.push(txt!("[key.special]Del")),
-                Insert => seq.push(txt!("[key.special]Ins")),
-                F(num) => seq.push(txt!("[key.special]F{num}")),
-                Char(char) => seq.push(txt!("[key]{char}")),
-                Null => seq.push(txt!("[key.special]Null")),
-                Esc => seq.push(txt!("[key.special]Esc")),
-                CapsLock => seq.push(txt!("[key.special]CapsL")),
-                ScrollLock => seq.push(txt!("[key.special]ScrollL")),
-                NumLock => seq.push(txt!("[key.special]NumL")),
-                PrintScreen => seq.push(txt!("[key.special]PrSc")),
-                Pause => seq.push(txt!("[key.special]Pause")),
-                Menu => seq.push(txt!("[key.special]Menu")),
-                KeypadBegin => seq.push(txt!("[key.special]KeypadBeg")),
-                Media(m_code) => seq.push(txt!("[key.special]Media{m_code}")),
-                Modifier(m_code) => seq.push(txt!("[key.special]Mod{m_code}")),
+                Backspace => builder.push(txt!("[key.special]BS")),
+                Enter => builder.push(txt!("[key.special]Enter")),
+                Left => builder.push(txt!("[key.special]Left")),
+                Right => builder.push(txt!("[key.special]Right")),
+                Up => builder.push(txt!("[key.special]Up")),
+                Down => builder.push(txt!("[key.special]Down")),
+                Home => builder.push(txt!("[key.special]Home")),
+                End => builder.push(txt!("[key.special]End")),
+                PageUp => builder.push(txt!("[key.special]PageU")),
+                PageDown => builder.push(txt!("[key.special]PageD")),
+                Tab => builder.push(txt!("[key.special]Tab")),
+                BackTab => builder.push(txt!("[key.special]BTab")),
+                Delete => builder.push(txt!("[key.special]Del")),
+                Insert => builder.push(txt!("[key.special]Ins")),
+                F(num) => builder.push(txt!("[key.special]F{num}")),
+                Char(char) => builder.push(txt!("[key.char]{char}")),
+                Null => builder.push(txt!("[key.special]Null")),
+                Esc => builder.push(txt!("[key.special]Esc")),
+                CapsLock => builder.push(txt!("[key.special]CapsL")),
+                ScrollLock => builder.push(txt!("[key.special]ScrollL")),
+                NumLock => builder.push(txt!("[key.special]NumL")),
+                PrintScreen => builder.push(txt!("[key.special]PrSc")),
+                Pause => builder.push(txt!("[key.special]Pause")),
+                Menu => builder.push(txt!("[key.special]Menu")),
+                KeypadBegin => builder.push(txt!("[key.special]KeypadBeg")),
+                Media(m_code) => builder.push(txt!("[key.special]Media{m_code}")),
+                Modifier(m_code) => builder.push(txt!("[key.special]Mod{m_code}")),
+            }
+
+            if key.modifiers != KeyMod::NONE || !matches!(key.code, KeyCode::Char(_)) {
+                builder.push(txt!("[key.angle]>"));
             }
         }
 
-        seq.build()
+        builder.build()
+    }
+
+    /// The [`Text`] for a [`KeyMod`], like `AS-`, is empty if `modif
+    /// == KeyMod::NONE`
+    pub fn modifier_text(modif: KeyMod) -> Text {
+        if modif == KeyMod::NONE {
+            return Text::new();
+        }
+
+        let mut builder = Text::builder();
+
+        builder.push(crate::form::id_of!("key.mod"));
+
+        for modif in modif.iter() {
+            builder.push(match modif {
+                KeyMod::ALT => "A",
+                KeyMod::CONTROL => "C",
+                KeyMod::SHIFT => "S",
+                KeyMod::SUPER => "Super",
+                KeyMod::HYPER => "Hyper",
+                KeyMod::META => "Meta",
+                _ => "",
+            });
+        }
+
+        builder.push(txt!("[key.mod.separator]-"));
+
+        builder.build()
     }
 
     /// Turns a string of [`KeyEvent`]s into a [`String`]
@@ -276,9 +314,9 @@ mod global {
                 seq.push('<');
                 for modif in key.modifiers.iter() {
                     seq.push_str(match modif {
-                        Mod::SHIFT => "S",
-                        Mod::CONTROL => "C",
                         Mod::ALT => "A",
+                        Mod::CONTROL => "C",
+                        Mod::SHIFT => "S",
                         Mod::SUPER => "Super",
                         Mod::HYPER => "Hyper",
                         Mod::META => "Meta",
@@ -456,16 +494,16 @@ mod global {
 
     /// Trait to distinguish [`Mode`]s from [`KeyEvent`]s
     #[doc(hidden)]
-    pub trait AsGives: Send + 'static {
+    pub trait IntoGives: Send + 'static {
         fn into_gives(self) -> Gives;
     }
 
-    impl<M: Mode> AsGives for M {
+    impl<M: Mode> IntoGives for M {
         fn into_gives(self) -> Gives {
             if let Some(keys) = self.just_keys() {
                 Gives::Keys(str_to_keys(keys))
             } else {
-                Gives::Mode(Box::new(move || crate::mode::set(self.clone())))
+                Gives::Mode(super::GivenMode::new(self))
             }
         }
     }
@@ -603,8 +641,8 @@ impl Remapper {
 
                     match &mapped_bindings[&ty].remaps[i].gives {
                         Gives::Keys(keys) => keys.clone(),
-                        Gives::Mode(set_mode) => {
-                            set_mode();
+                        Gives::Mode(given) => {
+                            (given.setter)();
                             if let Some(mode_fn) = super::take_set_mode_fn(pa) {
                                 mode_fn(pa);
                             }
@@ -652,6 +690,7 @@ impl Remapper {
 
 /// A sequence of characters that should be turned into another
 /// sequence of characters or a [`Mode`]
+#[derive(Debug)]
 struct Remap {
     takes: Vec<KeyEvent>,
     gives: Gives,
@@ -673,14 +712,46 @@ impl Remap {
 
 /// What a [`map`] or [`alias`] gives, can be a sequence of
 /// [`KeyEvent`]s or a [`Mode`]
-#[doc(hidden)]
+#[derive(Debug)]
 pub enum Gives {
+    /// A sequence of [`KeyEvent`]s that a remap maps to
     Keys(Vec<KeyEvent>),
-    Mode(Box<dyn Fn() + Send>),
+    /// A [`Mode`] that a remap switches to
+    Mode(GivenMode),
+}
+
+/// A [`Mode`] that is "given" by a remap
+pub struct GivenMode {
+    setter: Box<dyn Fn() + Send>,
+    name: &'static str,
+}
+
+impl GivenMode {
+    /// Returns a new `GiveMode`
+    fn new<M: Mode>(mode: M) -> Self {
+        Self {
+            setter: Box::new(move || crate::mode::set(mode.clone())),
+            name: crate::utils::duat_name::<M>(),
+        }
+    }
+
+    /// The name of the [`Mode`]
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+}
+
+impl std::fmt::Debug for GivenMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GivenMode")
+            .field("name", &self.name)
+            .finish()
+    }
 }
 
 /// The set of regular [`Mode`] [`Bindings`], as well as all
 /// [`Remap`]s
+#[derive(Debug)]
 pub struct MappedBindings {
     bindings: Bindings,
     remaps: Vec<Remap>,
@@ -719,12 +790,15 @@ impl MappedBindings {
 
         bindings
             .into_iter()
-            .flat_map(|bindings| bindings.results.iter())
+            .flat_map(|bindings| bindings.list.iter())
             .map(|(pats, desc, _)| Description {
                 text: Some(desc.text()),
-                bindings_and_remaps: BindingsAndRemaps {
+                keys: KeyDescriptions {
                     seq,
-                    pats_or_remap: PatsOrRemap::Pats(pats, pats.iter(), &self.remaps, Vec::new()),
+                    ty: DescriptionType::Binding(pats, pats.iter(), StripPrefix {
+                        seq,
+                        remaps: self.remaps.iter(),
+                    }),
                 },
             })
             .chain(
@@ -741,7 +815,7 @@ impl MappedBindings {
                         if let (Gives::Keys(gives), Some(bindings)) = (&remap.gives, bindings)
                             && gives.len() == 1
                             && bindings
-                                .results
+                                .list
                                 .iter()
                                 .any(|(pats, ..)| pats.iter().any(|pat| pat.matches(gives[0])))
                         {
@@ -752,9 +826,9 @@ impl MappedBindings {
                     })
                     .map(|remap| Description {
                         text: remap.doc.as_ref().map(Selectionless::text),
-                        bindings_and_remaps: BindingsAndRemaps {
+                        keys: KeyDescriptions {
                             seq,
-                            pats_or_remap: PatsOrRemap::Remap(remap),
+                            ty: DescriptionType::Remap(Some(remap)),
                         },
                     }),
             )
@@ -793,71 +867,96 @@ pub struct Description<'a> {
     ///
     /// [maps]: map
     /// [aliases]: alias
-    pub bindings_and_remaps: BindingsAndRemaps<'a>,
+    pub keys: KeyDescriptions<'a>,
 }
 
 /// A [`Mode`]'s bound [`Binding`] or a mapped [`KeyEvent`]
 /// sequence
-pub enum BindingOrRemap<'a> {
+#[derive(Debug)]
+pub enum KeyDescription<'a> {
     /// A [`Mode`]'s regular binding, comes from the [`Bindings`]
     /// struct
     Binding(Binding),
     /// A remapped sequence, comes from [`map`] or [`alias`]
-    Remap(&'a [KeyEvent]),
+    Remap(&'a [KeyEvent], &'a Gives),
 }
 
 /// An [`Iterator`] over the possible patterns that match a
 /// [`Description`]
 ///
-/// This returns a [`BindingOrRemap`], where
-/// [`BindingOrRemap::Binding`] represents a pattern that is naturally
+/// This returns a [`KeyDescription`], where
+/// [`KeyDescription::Binding`] represents a pattern that is naturally
 /// bound to a [`Mode`], via [`Mode::bindings`], while a
-/// [`BindingOrRemap::Remap`] represents a [`KeyEvent`] sequence that
+/// [`KeyDescription::Remap`] represents a [`KeyEvent`] sequence that
 /// was [mapped] or [aliased] to it.
 ///
 /// [mapped]: map
 /// [aliased]: alias
-pub struct BindingsAndRemaps<'a> {
+pub struct KeyDescriptions<'a> {
     seq: &'a [KeyEvent],
-    pats_or_remap: PatsOrRemap<'a>,
+    ty: DescriptionType<'a>,
 }
 
-impl<'a> Iterator for BindingsAndRemaps<'a> {
-    type Item = BindingOrRemap<'a>;
+impl KeyDescriptions<'_> {
+    /// Gets a [`Text`] to describe the [`Binding`]s and remaps
+    ///
+    /// This function makes use of the `key.char`, `key.mod`,
+    /// `key.special`, `key.range` and `key.any`, `separator` and
+    /// `remap` [`Form`]s.
+    pub fn into_text(self) -> Text {
+        let mut builder = Text::builder();
+
+        for (i, key_desc) in self.enumerate() {
+            if i > 0 {
+                builder.push(txt!("[separator],"));
+            }
+            match key_desc {
+                KeyDescription::Binding(binding) => builder.push(binding.as_text()),
+                KeyDescription::Remap(key_events, _) => {
+                    builder.push(txt!("[remap:100]{}", super::keys_to_text(key_events)))
+                }
+            }
+        }
+
+        builder.build()
+    }
+}
+
+impl<'a> Iterator for KeyDescriptions<'a> {
+    type Item = KeyDescription<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (pats, pats_iter, remaps, processed_takes) = match &mut self.pats_or_remap {
-            PatsOrRemap::Pats(pats, pats_iter, remaps, processed) => {
-                (pats, pats_iter, remaps, processed)
-            }
-            PatsOrRemap::Remap(remap) => {
-                return remap
-                    .takes
-                    .strip_prefix(self.seq)
-                    .map(BindingOrRemap::Remap);
+        let (pats, pats_iter, deprefixed) = match &mut self.ty {
+            DescriptionType::Binding(pats, pats_iter, deprefixed) => (pats, pats_iter, deprefixed),
+            DescriptionType::Remap(remap) => {
+                return remap.take().and_then(|remap| {
+                    remap
+                        .takes
+                        .strip_prefix(self.seq)
+                        .map(|takes| KeyDescription::Remap(takes, &remap.gives))
+                });
             }
         };
-
-        let takess = remaps.iter().filter_map(|r| r.takes.strip_prefix(self.seq));
 
         pats_iter
             .find_map(|pat| {
                 pat.as_key_event()
-                    .is_none_or(|key_event| !takess.clone().any(|r| r.starts_with(&[key_event])))
-                    .then_some(BindingOrRemap::Binding(*pat))
+                    .is_none_or(|key_event| {
+                        !deprefixed
+                            .clone()
+                            .any(|(_, takes)| takes.starts_with(&[key_event]))
+                    })
+                    .then_some(KeyDescription::Binding(*pat))
             })
             .or_else(|| {
-                remaps.iter().find_map(|r| {
-                    let key_events = r.takes.strip_prefix(self.seq)?;
-
-                    if r.doc.is_none()
-                        && let Gives::Keys(gives) = &r.gives
-                        && gives.len() == 1
-                        && pats.iter().any(|pat| pat.matches(gives[0]))
-                        && !processed_takes.contains(&key_events)
+                deprefixed.find_map(|(remap, takes)| {
+                    if remap.takes.starts_with(self.seq)
+                        && remap.doc.is_none()
+                        && let Gives::Keys(given_keys) = &remap.gives
+                        && given_keys.len() == 1
+                        && pats.iter().any(|pat| pat.matches(given_keys[0]))
                     {
-                        processed_takes.push(key_events);
-                        Some(BindingOrRemap::Remap(gives))
+                        Some(KeyDescription::Remap(takes, &remap.gives))
                     } else {
                         None
                     }
@@ -867,14 +966,9 @@ impl<'a> Iterator for BindingsAndRemaps<'a> {
 }
 
 /// Two types of description
-enum PatsOrRemap<'a> {
-    Pats(
-        &'a [Binding],
-        std::slice::Iter<'a, Binding>,
-        &'a [Remap],
-        Vec<&'a [KeyEvent]>,
-    ),
-    Remap(&'a Remap),
+enum DescriptionType<'a> {
+    Binding(&'a [Binding], slice::Iter<'a, Binding>, StripPrefix<'a>),
+    Remap(Option<&'a Remap>),
 }
 
 fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
@@ -890,4 +984,19 @@ fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
             f(&mut *widget, byte)
         }
     })
+}
+
+#[derive(Clone)]
+struct StripPrefix<'a> {
+    seq: &'a [KeyEvent],
+    remaps: slice::Iter<'a, Remap>,
+}
+
+impl<'a> Iterator for StripPrefix<'a> {
+    type Item = (&'a Remap, &'a [KeyEvent]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let remap = self.remaps.next()?;
+        Some((remap, remap.takes.strip_prefix(self.seq)?))
+    }
 }

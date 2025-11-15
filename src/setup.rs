@@ -194,8 +194,8 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     // Setup for the StatusLine
     form::set_weak("buffer", Form::yellow().italic());
     form::set_weak("selections", Form::dark_blue());
-    form::set_weak("coord", Form::dark_yellow());
-    form::set_weak("separator", Form::cyan());
+    form::set_weak("coord", "contant");
+    form::set_weak("separator", "punctuation.delimiter");
     form::set_weak("mode", Form::green());
     form::set_weak("default.StatusLine", Form::on_dark_grey());
 
@@ -211,6 +211,13 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
     // Setup for the PromptLine
     form::set_weak("prompt.preview", "comment");
+
+    // Setup for WhichKey
+    form::set_weak("key", "const");
+    form::set_weak("key.mod", "attribute");
+    form::set_weak("key.angle", "punctuation.bracket");
+    form::set_weak("key.special", Form::yellow());
+    form::set_weak("remap", Form::italic());
 
     crate::cmd::add!("logs", |pa| {
         mode::set(Pager::<LogBook>::new());

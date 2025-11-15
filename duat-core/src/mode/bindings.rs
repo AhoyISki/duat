@@ -8,7 +8,10 @@ use crossterm::event::{
 };
 
 pub use crate::__bindings__ as bindings;
-use crate::{mode::KeyMod, text::Selectionless};
+use crate::{
+    mode::KeyMod,
+    text::{Selectionless, Text, txt},
+};
 
 /// A list of key bindings available in a given [`Mode`]
 ///
@@ -41,7 +44,7 @@ pub struct Bindings {
     /// Direct implementation is not recommended, use the
     /// [`bindings!`] macro instead.
     #[doc(hidden)]
-    pub results: Vec<(Vec<Binding>, Selectionless, Option<Bindings>)>,
+    pub list: Vec<(Vec<Binding>, Selectionless, Option<Bindings>)>,
 }
 
 impl Bindings {
@@ -51,7 +54,7 @@ impl Bindings {
         let mut matcher = &self.matcher;
         seq.iter().all(|key_event| {
             if let Some(i) = matcher(*key_event) {
-                matcher = &self.results[i].2.as_ref().unwrap_or(self).matcher;
+                matcher = &self.list[i].2.as_ref().unwrap_or(self).matcher;
                 true
             } else {
                 false
@@ -68,11 +71,19 @@ impl Bindings {
             seq.iter()
                 .map_while(|key_event| {
                     let i = (bindings.matcher)(*key_event)?;
-                    bindings = bindings.results[i].2.as_ref()?;
+                    bindings = bindings.list[i].2.as_ref()?;
                     Some(bindings)
                 })
                 .last()
         }
+    }
+}
+
+impl std::fmt::Debug for Bindings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bindings")
+            .field("list", &self.list)
+            .finish()
     }
 }
 
@@ -114,6 +125,109 @@ impl Binding {
     /// Returns a `Binding` that could match _anything_
     pub fn anything() -> Self {
         Self::Any(None)
+    }
+
+    /// The default [`Text`] formatting for a `Binding`
+    ///
+    /// This function makes use of the `key.char`, `key.mod`,
+    /// `key.special`, `key.range` and `key.any` [`Form`]s.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub fn as_text(&self) -> Text {
+        let mut builder = Text::builder();
+
+        if !matches!(self, Binding::Event(..))
+            && self.modifier().is_some_and(|modif| modif != KeyMod::NONE)
+        {
+            builder.push(txt!("[key.angle]<"));
+            builder.push(super::modifier_text(
+                self.modifier().unwrap_or(KeyMod::NONE),
+            ))
+        }
+
+        builder.push(match self {
+            Binding::CharRange(b0, b1, _) => match (b0, b1) {
+                (Bound::Included(lhs), Bound::Included(rhs)) => {
+                    txt!("[key.char]'{lhs}'[key.range]..=[key.char]'{rhs}'")
+                }
+                (Bound::Included(lhs), Bound::Excluded(rhs)) => {
+                    txt!("[key.char]'{lhs}'[key.range]..[key.char]'{rhs}'")
+                }
+                (Bound::Included(char), Bound::Unbounded) => {
+                    txt!("[key.char]'{char}'[key.range]..")
+                }
+                (Bound::Excluded(lhs), Bound::Included(rhs)) => {
+                    txt!("[key.char]'{lhs}'[key.range]>..=[key.char]'{rhs}'")
+                }
+                (Bound::Excluded(lhs), Bound::Excluded(rhs)) => {
+                    txt!("[key.char]'{lhs}'[key.range]>..[key.char]'{rhs}'")
+                }
+                (Bound::Excluded(char), Bound::Unbounded) => {
+                    txt!("[key.char]'{char}'[key.range]>..")
+                }
+                (Bound::Unbounded, Bound::Included(char)) => {
+                    txt!("[key.range]..=[key.char]'{char}'")
+                }
+                (Bound::Unbounded, Bound::Excluded(char)) => {
+                    txt!("[key.range]..[key.char]'{char}'")
+                }
+                (Bound::Unbounded, Bound::Unbounded) => txt!("[key.any.char]{{char}}"),
+            },
+            Binding::FnRange(b0, b1, _) => match (b0, b1) {
+                (Bound::Included(lhs), Bound::Included(rhs)) => {
+                    txt!("[key.special]F{lhs}[key.range]..=[key.special]F{rhs}")
+                }
+                (Bound::Included(lhs), Bound::Excluded(rhs)) => {
+                    txt!("[key.special]F{lhs}[key.range]..[key.special]F{rhs}")
+                }
+                (Bound::Included(num), Bound::Unbounded) => {
+                    txt!("[key.special]F{num}[key.range]=..")
+                }
+                (Bound::Excluded(lhs), Bound::Included(rhs)) => {
+                    txt!("[key.special]F{lhs}[key.range]>..=[key.special]F{rhs}")
+                }
+                (Bound::Excluded(lhs), Bound::Excluded(rhs)) => {
+                    txt!("[key.special]F{lhs}[key.range]>..[key.special]F{rhs}")
+                }
+                (Bound::Excluded(num), Bound::Unbounded) => {
+                    txt!("[key.special]F{num}[key.range]>..")
+                }
+                (Bound::Unbounded, Bound::Included(num)) => {
+                    txt!("[key.range]..=[key.special]F{num}")
+                }
+                (Bound::Unbounded, Bound::Excluded(num)) => {
+                    txt!("[key.range]..[key.special]F{num}")
+                }
+                (Bound::Unbounded, Bound::Unbounded) => txt!("[key.any]{{f key}}"),
+            },
+            Binding::AnyModifier(_) => txt!("[key.any]{{modifier}}"),
+            Binding::AnyMedia(_) => txt!("[key.any]{{media key}}"),
+            Binding::Any(_) => txt!("[key.any]{{any}}"),
+            Binding::Event(code, _) => super::keys_to_text(&[KeyEvent::new(*code, KeyMod::NONE)]),
+        });
+
+        if !matches!(self, Binding::Event(..))
+            && self.modifier().is_some_and(|modif| modif != KeyMod::NONE)
+        {
+            builder.push(txt!("[key.angle]>"));
+        }
+
+        builder.build()
+    }
+
+    /// The [`KeyMod`] for this `Binding`
+    ///
+    /// Can be [`None`] in case the `Binding` accepts any [`KeyEvent`]
+    /// whatsoever.
+    pub fn modifier(&self) -> Option<KeyMod> {
+        match self {
+            Binding::CharRange(.., modif)
+            | Binding::FnRange(.., modif)
+            | Binding::AnyModifier(modif)
+            | Binding::AnyMedia(modif)
+            | Binding::Event(_, modif) => Some(*modif),
+            Binding::Any(modif) => *modif,
+        }
     }
 
     /// A [`KeyEvent`], with assumptions about less used options
@@ -175,9 +289,7 @@ impl Binding {
                 matches!(key_event.code, KeyCode::Media(_)) && key_event.modifiers == modifiers
             }
             Binding::Any(modif) => modif.is_none_or(|modif| modif == key_event.modifiers),
-            Binding::Event(code, modif) => {
-                code == key_event.code && modif == key_event.modifiers
-            }
+            Binding::Event(code, modif) => code == key_event.code && modif == key_event.modifiers,
         }
     }
 }
@@ -250,7 +362,7 @@ macro_rules! __bindings__ {
 
         $crate::mode::Bindings {
             matcher,
-            results: bindings
+            list: bindings
                 .into_iter()
                 .zip(descriptions)
                 .zip(followups)

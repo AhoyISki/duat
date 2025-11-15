@@ -516,7 +516,7 @@ pub trait Mode: Sized + Clone + Send + 'static {
         let word = txt!("[a]word[separator]|[a]WORD");
 
         bindings!(match _ {
-            _ => txt!("No key binding declarations, implement Mode::bindings"),
+            _ => txt!("No key binding declarations, implement [function]Mode::bindings"),
         })
     }
 

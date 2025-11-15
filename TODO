@@ -11,7 +11,7 @@ FOR NEXT UPDATE:
 [ ] Lazily evaluate height and width, including when pushing and spawning.
 [ ] File tracking.
 [ ] Actually fix injected indentation.
-[ ] Mode keybindings info.
+[ ] WhichKey widget.
 [x] Move to Rust stable (sigh...).
 [ ] Abuse the shit out of catch_unwind.
 [ ] Borders and Titles.

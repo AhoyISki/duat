@@ -10,6 +10,7 @@
 use duat_core::{
     context::{self, Handle, Logs, Record},
     data::Pass,
+    mode::{MouseEvent, MouseEventKind},
     opts::PrintOpts,
     text::{Spacer, Text, txt},
     ui::{PushSpecs, PushTarget, Side, Widget},
@@ -88,6 +89,22 @@ impl Widget for LogBook {
     fn on_unfocus(pa: &mut Pass, handle: &Handle<Self>) {
         if handle.read(pa).close_on_unfocus {
             handle.area().hide(pa).unwrap()
+        }
+    }
+
+    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
+        match event.kind {
+            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+                let (lb, area) = handle.write_with_area(pa);
+                let scroll = if let MouseEventKind::ScrollDown = event.kind {
+                    3
+                } else {
+                    -3
+                };
+
+                area.scroll_ver(&lb.text, scroll, lb.get_print_opts());
+            }
+            _ => {}
         }
     }
 }
