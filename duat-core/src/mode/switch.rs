@@ -261,9 +261,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
     mode.on_switch(pa, handle.clone());
 
     // SAFETY: There is a Pass argument.
-    unsafe {
-        crate::mode::set_send_key::<M>(pa);
-    }
+    crate::mode::set_mode_for_remapper::<M>(pa);
 
     let new_name = duat_name::<M>();
     let old_name = std::mem::replace(context::raw_mode_name().write(pa), new_name);
