@@ -230,7 +230,9 @@ mod global {
         let mut builder = Text::builder();
 
         for key in keys {
-            if key.modifiers != KeyMod::NONE || !matches!(key.code, KeyCode::Char(_)) {
+            if key.modifiers != KeyMod::NONE
+                || !matches!(key.code, KeyCode::Char(char) if char != ' ')
+            {
                 builder.push(txt!("[key.angle]<"));
             }
 
@@ -238,7 +240,7 @@ mod global {
 
             match key.code {
                 Backspace => builder.push(txt!("[key.special]BS")),
-                Enter => builder.push(txt!("[key.special]Enter")),
+                Enter | Char('\n') => builder.push(txt!("[key.special]Enter")),
                 Left => builder.push(txt!("[key.special]Left")),
                 Right => builder.push(txt!("[key.special]Right")),
                 Up => builder.push(txt!("[key.special]Up")),
@@ -252,6 +254,7 @@ mod global {
                 Delete => builder.push(txt!("[key.special]Del")),
                 Insert => builder.push(txt!("[key.special]Ins")),
                 F(num) => builder.push(txt!("[key.special]F{num}")),
+                Char(' ') => builder.push(txt!("[key.char]Space")),
                 Char(char) => builder.push(txt!("[key.char]{char}")),
                 Null => builder.push(txt!("[key.special]Null")),
                 Esc => builder.push(txt!("[key.special]Esc")),
@@ -266,7 +269,9 @@ mod global {
                 Modifier(m_code) => builder.push(txt!("[key.special]Mod{m_code}")),
             }
 
-            if key.modifiers != KeyMod::NONE || !matches!(key.code, KeyCode::Char(_)) {
+            if key.modifiers != KeyMod::NONE
+                || !matches!(key.code, KeyCode::Char(char) if char != ' ')
+            {
                 builder.push(txt!("[key.angle]>"));
             }
         }
@@ -519,12 +524,19 @@ mod global {
             set_mode(pa);
         }
 
-        // SAFETY: This function takes a Pass.
         SEND_KEY.read(pa)(pa, key);
+
+        crate::hook::trigger(pa, crate::hook::KeyTyped(key));
     }
 
     /// Sets the key sending function
     pub(in crate::mode) fn set_mode_for_remapper<M: Mode>(pa: &mut Pass) {
+        REMAPPER
+            .inner
+            .write(pa)
+            .mapped_bindings
+            .entry(TypeId::of::<M>())
+            .or_insert_with(MappedBindings::for_mode::<M>);
         *SEND_KEY.write(pa) = |pa, key| REMAPPER.send_key::<M>(pa, key);
         *MODE_TYPE_ID.lock().unwrap() = TypeId::of::<M>();
     }
@@ -568,13 +580,13 @@ impl Remapper {
     ) {
         fn remap_inner(
             inner: &mut InnerRemapper,
-            type_id: TypeId,
+            ty: TypeId,
             takes: Vec<KeyEvent>,
             gives: Gives,
             is_alias: bool,
             doc: Option<Text>,
         ) {
-            let mapped_bindings = inner.mapped_bindings.get_mut(&type_id).unwrap();
+            let mapped_bindings = inner.mapped_bindings.get_mut(&ty).unwrap();
 
             if let Gives::Keys(keys) = &gives
                 && !mapped_bindings.bindings.matches_sequence(keys)
@@ -605,15 +617,9 @@ impl Remapper {
 
     /// Sends a key to be remapped or not
     fn send_key<M: Mode>(&self, pa: &mut Pass, key: KeyEvent) {
-        fn send_key_inner(
-            key_event: KeyEvent,
-            remapper: &Remapper,
-            pa: &mut Pass,
-            ty: TypeId,
-            bindings_fn: fn() -> MappedBindings,
-        ) {
+        fn send_key_inner(key_event: KeyEvent, remapper: &Remapper, pa: &mut Pass, ty: TypeId) {
             let inner = remapper.inner.write(pa);
-            let mapped_bindings = inner.mapped_bindings.entry(ty).or_insert_with(bindings_fn);
+            let mapped_bindings = &inner.mapped_bindings[&ty];
 
             inner.seq.push(key_event);
             let (seq, is_alias) = (inner.seq.clone(), inner.seq_is_alias);
@@ -678,13 +684,7 @@ impl Remapper {
             remap(pa)
         }
 
-        send_key_inner(
-            key,
-            self,
-            pa,
-            TypeId::of::<M>(),
-            MappedBindings::for_mode::<M>,
-        );
+        send_key_inner(key, self, pa, TypeId::of::<M>());
     }
 }
 
@@ -825,7 +825,13 @@ impl MappedBindings {
                         }
                     })
                     .map(|remap| Description {
-                        text: remap.doc.as_ref().map(Selectionless::text),
+                        text: remap.doc.as_ref().map(Selectionless::text).or_else(|| {
+                            if let Gives::Keys(keys) = &remap.gives {
+                                self.bindings.description_for(keys)
+                            } else {
+                                None
+                            }
+                        }),
                         keys: KeyDescriptions {
                             seq,
                             ty: DescriptionType::Remap(Some(remap)),

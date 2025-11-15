@@ -109,6 +109,27 @@ impl Builder {
         self.text
     }
 
+    /// Builds the [`Text`], removing any double `\n`s at the end
+    ///
+    /// When building multi-line `Text`, it is common to just insert
+    /// every piece of `Text` with a `\n` at the end. This ends up
+    /// resulting in a `Text` that has two `\n`s at the end, since
+    /// there is always at least one final `\n`.
+    ///
+    /// This function lets you construct the [`Text`] taking that
+    /// effect into account.
+    pub fn build_no_double_nl(self) -> Text {
+        let mut text = self.build();
+        if let Some(last_last_byte) = text.len().byte().checked_sub(2)
+            && let Some(strs) = text.strs(last_last_byte..)
+            && strs == "\n\n"
+        {
+            text.replace_range(last_last_byte..last_last_byte + 1, "");
+        }
+
+        text
+    }
+
     /// Pushes a part of the text
     ///
     /// This can be an [`impl Display`] type, an [`impl Tag`], a

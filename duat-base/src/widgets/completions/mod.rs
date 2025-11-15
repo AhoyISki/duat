@@ -20,7 +20,6 @@ use std::{
 use duat_core::{
     context::{self, Handle},
     data::Pass,
-    form::{self, Form},
     hook::{self, FocusChanged},
     mode::{MouseEvent, MouseEventKind},
     text::{Point, SpawnTag, Tagger, Text, txt},
@@ -78,8 +77,6 @@ impl CompletionsBuilder {
     pub fn open(self, pa: &mut Pass) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            form::set_weak("default.Completions", Form::on_dark_grey());
-            form::set_weak("selected.Completions", Form::black().on_grey());
             hook::add::<FocusChanged>(|pa, (prev, _)| {
                 prev.text_mut(pa).remove_tags(*TAGGER, ..);
                 Ok(())
@@ -584,7 +581,8 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             None
         };
 
-        (range.start, Some((builder.build(), replacement)))
+        let text = builder.build_no_double_nl();
+        (range.start, Some((text, replacement)))
     }
 
     fn has_changed(&self, text: Option<&Text>) -> bool {
@@ -658,6 +656,7 @@ const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     height: Some(20.0),
     width: Some(50.0),
     hidden: true,
+    inside: false,
 };
 
 type ProvidersFn =

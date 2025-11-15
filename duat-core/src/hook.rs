@@ -47,8 +47,9 @@
 //! - [`FocusedOn`] triggers when a [widget] is focused.
 //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
 //! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
-//! - [`KeysSent`] lets you act on a [dyn `Widget`], given a [key].
-//! - [`KeysSentTo`] lets you act on a given [widget], given a [key].
+//! - [`KeysSent`] triggers when a keys are sent.
+//! - [`KeysSentTo`] same, but on a specific [widget].
+//! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeSet`] lets you act on a [`Mode`] after switching.
@@ -849,13 +850,22 @@ impl<M: Mode> Hookable for ModeSet<M> {
     }
 }
 
-/// [`Hookable`]: Triggers whenever a [key] is sent
+/// [`Hookable`]: Triggers whenever [key]s are sent
+///
+/// [`KeyEvent`]s are "sent" when you type [unmapped] keys _or_ with
+/// the keys that were mapped, this is in contrast with [`KeysTyped`],
+/// which triggers when you type or when calling [`mode::type_keys`].
+/// For example, if `jk` is mapped to `<Esc>`, [`KeysTyped`] will
+/// trigger once for `j` and once for `k`, while [`KeysSent`] will
+/// trigger once for `<Esc>`.
 ///
 /// # Arguments
 ///
-/// - The [key] sent.
+/// - The sent [key]s.
 ///
 /// [key]: KeyEvent
+/// [unmapped]: crate::mode::map
+/// [`mode::type_keys`]: crate::mode::type_keys
 pub struct KeysSent(pub(crate) Vec<KeyEvent>);
 
 impl Hookable for KeysSent {
@@ -870,7 +880,7 @@ impl Hookable for KeysSent {
 ///
 /// # Arguments
 ///
-/// - The [key] sent.
+/// - The sent [key]s.
 /// - An [`Handle<W>`] for the widget.
 ///
 /// [key]: KeyEvent
@@ -881,6 +891,32 @@ impl<M: Mode> Hookable for KeysSentTo<M> {
 
     fn get_input(&mut self) -> Self::Input<'_> {
         (&self.0.0, &self.0.1)
+    }
+}
+
+/// [`Hookable`]: Triggers whenever a [key] is typed
+///
+/// [`KeyEvent`]s are "typed" when typing keys _or_ when calling the
+/// [`mode::type_keys`] function, this is in contrast with
+/// [`KeysSent`], which triggers when you type [unmapped] keys or with
+/// the remapped keys. For example, if `jk` is mapped to `<Esc>`,
+/// [`KeysTyped`] will trigger once for `j` and once for `k`, while
+/// [`KeysSent`] will trigger once for `<Esc>`.
+///
+/// # Arguments
+///
+/// - The typed [key].
+///
+/// [key]: KeyEvent
+/// [unmapped]: crate::mode::map
+/// [`mode::type_keys`]: crate::mode::type_keys
+pub struct KeyTyped(pub(crate) KeyEvent);
+
+impl Hookable for KeyTyped {
+    type Input<'h> = KeyEvent;
+
+    fn get_input(&mut self) -> Self::Input<'_> {
+        self.0
     }
 }
 
@@ -1053,12 +1089,26 @@ impl InnerHooks {
             !hook.once
         });
 
-        self.types
-            .lock()
-            .unwrap()
-            .insert(TypeId::of::<H>(), unsafe {
+        let mut types = self.types.lock().unwrap();
+        if let Some(new_holder) = types.remove(&TypeId::of::<H>()) {
+            let new_hooks_of = unsafe {
+                let ptr = Box::into_raw(new_holder) as *mut HooksOf<H>;
+                Box::from_raw(ptr)
+            };
+
+            hooks_of
+                .0
+                .borrow_mut()
+                .extend(new_hooks_of.0.borrow_mut().drain(..));
+
+            types.insert(TypeId::of::<H>(), unsafe {
                 Box::from_raw(Box::into_raw(hooks_of) as *mut dyn HookHolder)
             });
+        } else {
+            types.insert(TypeId::of::<H>(), unsafe {
+                Box::from_raw(Box::into_raw(hooks_of) as *mut dyn HookHolder)
+            });
+        }
 
         hookable
     }

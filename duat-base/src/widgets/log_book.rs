@@ -101,7 +101,6 @@ impl Widget for LogBook {
                 } else {
                     -3
                 };
-
                 area.scroll_ver(&lb.text, scroll, lb.get_print_opts());
             }
             _ => {}

@@ -260,7 +260,6 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
 
     mode.on_switch(pa, handle.clone());
 
-    // SAFETY: There is a Pass argument.
     crate::mode::set_mode_for_remapper::<M>(pa);
 
     let new_name = duat_name::<M>();

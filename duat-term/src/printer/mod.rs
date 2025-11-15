@@ -78,14 +78,14 @@ impl Printer {
         len: Option<f32>,
         axis: Axis,
         prefers_before: bool,
+        is_inside: bool,
     ) -> [Variable; 2] {
         self.sync_solver.lock().unwrap().new_widget_spawn(
             id,
             &mut self.vars.lock().unwrap(),
             deps,
-            len,
-            axis,
-            prefers_before,
+            (len, axis),
+            (prefers_before, is_inside),
         )
     }
 

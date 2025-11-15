@@ -199,14 +199,8 @@ impl mode::Mode for Regular {
 
             // Control
             ctrl!('P') | event!(F(1)) => mode::set(RunCommands::new()),
-            ctrl!('p') => {
-                mode::set(RunCommands::new());
-                mode::send_keys("edit ");
-            }
-            ctrl!('n') => {
-                mode::set(RunCommands::new());
-                mode::send_keys("open ");
-            }
+            ctrl!('p') => mode::set(RunCommands::new_with("edit ")),
+            ctrl!('n') => mode::set(RunCommands::new_with("open ")),
             event!('s') => cmd::queue_notify("write"),
             event!('w') => cmd::queue_notify("write-quit"),
             event!(',') => cmd::queue_notify("open --cfg"),

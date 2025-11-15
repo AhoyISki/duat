@@ -419,8 +419,10 @@ pub mod hook {
     //! - [`FocusedOn`] triggers when a widget is focused.
     //! - [`UnfocusedFrom`] triggers when a widget is unfocused.
     //! - [`FocusChanged`] is a generic version of [`FocusedOn`].
-    //! - [`KeysSent`] triggers on every [key press].
-    //! - [`KeysSentTo`] triggers on keys sent to a given [`Mode`].
+    //! - [`KeyTyped`] triggers on every _typed_ key.
+    //! - [`KeysSent`] triggers when keys are sent.
+    //! - [`KeysSentTo`] same, but on a specific `Widget`.
+    //! - [`KeyTyped`] triggers when a key is _typed_, not _sent_.
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
     //! - [`ModeSwitched`] triggers when you change `Mode`.
     //! - [`ModeSet`] triggers when switching `Mode`s.
@@ -593,9 +595,9 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferWritten, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat,
-            FocusChanged, FocusedOnDuat, FormSet, Hookable, KeysSent, KeysSentTo, ModeSet,
-            ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat,
-            WidgetCreated, WindowCreated,
+            FocusChanged, FocusedOnDuat, FormSet, Hookable, KeyTyped, KeysSent, KeysSentTo,
+            ModeSet, ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom,
+            UnfocusedFromDuat, WidgetCreated, WindowCreated,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,

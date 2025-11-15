@@ -77,6 +77,21 @@ impl Bindings {
                 .last()
         }
     }
+
+    /// The description for a particular sequence of bound [keys]
+    ///
+    /// [keys]: KeyEvent
+    pub fn description_for<'a>(&'a self, seq: &[KeyEvent]) -> Option<&'a Text> {
+        let mut bindings = Some(self);
+        seq.iter()
+            .map_while(|key_event| {
+                let i = (bindings?.matcher)(*key_event)?;
+                let text = bindings?.list[i].1.text();
+                bindings = bindings?.list[i].2.as_ref();
+                Some(text)
+            })
+            .last()
+    }
 }
 
 impl std::fmt::Debug for Bindings {

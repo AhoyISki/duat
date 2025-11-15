@@ -26,6 +26,7 @@ pub use self::{
     notifications::{Notifications, NotificationsOpts},
     prompt_line::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
+    which_key::WhichKey
 };
 
 mod completions;
@@ -34,6 +35,7 @@ mod log_book;
 mod notifications;
 mod prompt_line;
 mod status_line;
+mod which_key;
 
 /// A group of [`Widget`]s consisting of a [`StatusLine`],
 /// [`PromptLine`] and [`Notifications`] combo

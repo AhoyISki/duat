@@ -16,15 +16,16 @@ use std::{
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, LogBook, Notifications, WordsCompletionParser, status},
+    widgets::{FooterWidgets, LogBook, Notifications, WhichKey, WordsCompletionParser, status},
 };
 use duat_core::{
     clipboard::Clipboard,
     context::{self, Logs},
     form::{Form, Palette},
+    hook::KeyTyped,
     session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
     text::History,
-    ui::{Ui, Widget},
+    ui::{DynSpawnSpecs, Orientation, Ui, Widget},
 };
 use duat_filetype::FileType;
 use duat_term::VertRule;
@@ -180,6 +181,22 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     })
     .grouped("ReloadOnWrite");
 
+    let cur_seq = mode::current_sequence();
+    hook::add::<KeyTyped>(move |pa, key| {
+        if matches!(key, mode::ctrl!('?')) || !cur_seq.call(pa).0.is_empty() {
+            let specs = DynSpawnSpecs {
+                orientation: Orientation::VerRightBelow,
+                width: None,
+                height: Some(20.0),
+                hidden: false,
+                inside: true,
+            };
+
+            WhichKey::open(pa, specs);
+        }
+        Ok(())
+    });
+
     hook::add::<Buffer>(|pa, handle| WordsCompletionParser::add_to_buffer(handle.write(pa)));
 
     form::enable_mask("error");
@@ -212,7 +229,12 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     // Setup for the PromptLine
     form::set_weak("prompt.preview", "comment");
 
+    // Setup for Completions
+    form::set_weak("default.Completions", Form::on_dark_grey());
+    form::set_weak("selected.Completions", Form::black().on_grey());
+
     // Setup for WhichKey
+    form::set_weak("default.WhichKey", Form::on_dark_grey());
     form::set_weak("key", "const");
     form::set_weak("key.mod", "attribute");
     form::set_weak("key.angle", "punctuation.bracket");

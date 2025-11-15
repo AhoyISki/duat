@@ -1,6 +1,8 @@
 //! A terminal implementation for Duat's Ui
 //!
-//! This implementation is a sort of trial of the "preparedness" of [`RawUi`]'s API, in order to figure out what should be included and what shouldn't.
+//! This implementation is a sort of trial of the "preparedness" of
+//! [`RawUi`]'s API, in order to figure out what should be included
+//! and what shouldn't.
 use std::{
     fmt::Debug,
     io::{self, Write},
@@ -95,6 +97,8 @@ impl RawUi for Ui {
                 unreachable!("Failed to load the Ui");
             };
 
+            terminal::enable_raw_mode().unwrap();
+
             // Initial terminal setup
             // Some key chords (like alt+shift+o for some reason) don't work
             // without this.
@@ -109,10 +113,8 @@ impl RawUi for Ui {
             )
             .unwrap();
 
-            terminal::enable_raw_mode().unwrap();
-
             if let Ok(true) = terminal::supports_keyboard_enhancement() {
-                queue!(
+                execute!(
                     io::stdout(),
                     PushKeyboardEnhancementFlags(
                         KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
@@ -152,14 +154,16 @@ impl RawUi for Ui {
                         }
                         Ok(CtEvent::FocusGained) => duat_tx.send_focused().unwrap(),
                         Ok(CtEvent::FocusLost) => duat_tx.send_unfocused().unwrap(),
-                        Ok(CtEvent::Mouse(event)) => duat_tx.send_mouse(UiMouseEvent {
-                            coord: ui::Coord {
-                                x: event.column as f32,
-                                y: event.row as f32,
-                            },
-                            kind: event.kind,
-                            modifiers: event.modifiers,
-                        }).unwrap(),
+                        Ok(CtEvent::Mouse(event)) => duat_tx
+                            .send_mouse(UiMouseEvent {
+                                coord: ui::Coord {
+                                    x: event.column as f32,
+                                    y: event.row as f32,
+                                },
+                                kind: event.kind,
+                                modifiers: event.modifiers,
+                            })
+                            .unwrap(),
                         Ok(CtEvent::Paste(_)) => {}
                         Err(_) => {}
                     }
@@ -169,8 +173,6 @@ impl RawUi for Ui {
 
     fn close(&self) {
         self.0.lock().unwrap().tx.send(Event::Quit).unwrap();
-
-        terminal::disable_raw_mode().unwrap();
 
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags).unwrap();
@@ -189,16 +191,17 @@ impl RawUi for Ui {
             cursor::Show,
         )
         .unwrap();
+
+        terminal::disable_raw_mode().unwrap();
     }
 
     fn new_root(&self, cache: <Self::Area as RawArea>::Cache) -> Self::Area {
         let mut ui = self.0.lock().unwrap();
         let printer = (ui.printer_fn)();
 
-        let main_id = 
-            // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
-            // from another thread
-            unsafe { ui.layouts.get() }.new_layout(printer.clone(), ui.frame, cache);
+        // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
+        // from another thread
+        let main_id = unsafe { ui.layouts.get() }.new_layout(printer.clone(), ui.frame, cache);
 
         let root = Area::new(main_id, unsafe { ui.layouts.get() }.clone());
         ui.windows.push((root.clone(), printer.clone()));

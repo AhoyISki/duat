@@ -18,35 +18,35 @@ missing_docs = "warn"
 unit_arg = "allow"
 
 [dependencies]
-duat-core = "0.7.2"
+duat-core = "0.7.5"
 dirs-next = "2.0.0"
 log = "0.4.28"
 
 # List of UIs.
-duat-term = { version = "0.7.2", optional = true }
+duat-term = { version = "0.7.4", optional = true }
 
 # Default plugins
-duat-base = "0.7.2"
+duat-base = "0.7.3"
 duat-filetype = "0.3.2"
 duatmode =  "0.7.2"
-duat-treesitter = { version = "0.3.3", optional = true }
+duat-treesitter = { version = "0.3.5", optional = true }
 duat-match-pairs = { version = "0.2.1", optional = true }
 
 # Will become optional if Rust ever gets binary only dependencies.
 # Or once downloading is predominantly through package managers.
 # Cli dependencies
 [dependencies.clap]
-version = "4.5.50"
+version = "4.5.51"
 features = ["derive"]
 
 [dependencies.libloading]
-version = "0.8.9"
+version = "0.9.0"
 
 [dependencies.notify]
 version = "8.2.0"
 
 [dependencies.convert_case]
-version = "0.8.0"
+version = "0.9.0"
 
 [features]
 default = ["term-ui", "treesitter"]

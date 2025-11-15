@@ -126,6 +126,7 @@ impl Rect {
             len,
             specs.orientation.axis(),
             specs.orientation.prefers_before(),
+            specs.inside,
         );
 
         rect.set_dyn_spawned_eqs(

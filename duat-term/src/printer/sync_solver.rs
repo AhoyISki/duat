@@ -88,7 +88,16 @@ impl SyncSolver {
                 };
                 let [lhs, rhs] = spawned.deps.get_values(&self.solver);
 
-                if let Some(len) = spawned.desired_len
+                if spawned.is_inside {
+                    let len = spawned.desired_len.unwrap_or(rhs - lhs).min(rhs - lhs);
+                    self.solver.suggest_value(spawned.len_var, len).unwrap();
+                    let c = if spawned.prefers_before {
+                        lhs + len / 2.0
+                    } else {
+                        rhs - len / 2.0
+                    };
+                    self.solver.suggest_value(spawned.center_var, c).unwrap();
+                } else if let Some(len) = spawned.desired_len
                     && (lhs >= len || max - rhs >= len)
                 {
                     match (spawned.prefers_before, lhs >= len, max - rhs >= len) {
@@ -152,9 +161,8 @@ impl SyncSolver {
         spawn_id: SpawnId,
         variables: &mut super::variables::Variables,
         [tl, br]: [VarPoint; 2],
-        len: Option<f32>,
-        axis: Axis,
-        prefers_before: bool,
+        (len, axis): (Option<f32>, Axis),
+        (prefers_before, is_inside): (bool, bool),
     ) -> [Variable; 2] {
         let center_var = variables.new_var();
         let len_var = variables.new_var();
@@ -174,6 +182,7 @@ impl SyncSolver {
             deps: CenterDeps::Widget(tl, br, axis),
             axis,
             prefers_before,
+            is_inside,
         });
 
         [center_var, len_var]
@@ -222,6 +231,7 @@ impl SyncSolver {
             },
             axis,
             prefers_before,
+            is_inside: false,
         });
 
         ([center_var, len_var], tl)
@@ -325,6 +335,7 @@ struct SpawnedCenter {
     deps: CenterDeps,
     axis: Axis,
     prefers_before: bool,
+    is_inside: bool,
 }
 
 /// What kind of dependency a [`SpawnedCenter`] has

@@ -321,6 +321,14 @@ pub struct DynSpawnSpecs {
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
     pub hidden: bool,
+    /// Put this `Widget` _inside_, rather than outside
+    ///
+    /// A consequence of this is that no repositioning will ever be
+    /// done, since there is no spatial difference between placing the
+    /// [`Widget`] above the bottom or below the top.
+    ///
+    /// This is `false` by default.
+    pub inside: bool,
 }
 
 impl DynSpawnSpecs {

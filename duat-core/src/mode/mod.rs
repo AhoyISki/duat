@@ -128,11 +128,13 @@ pub(crate) fn keys_were_sent(_: &mut Pass) -> bool {
 /// Sends a sequence of [`KeyEvent`]s
 ///
 /// Unlike with [`mode::map`] or [`mode::alias`], the sent keys are
-/// allowed to be remapped to something else.
+/// allowed to be remapped to something else. Additionally, they will
+/// also trigger the [`KeysTyped`] hook.
 ///
 /// [`mode::map`]: map
 /// [`mode::alias`]: alias
-pub fn send_keys(keys: impl AsRef<str>) {
+/// [`KeysTyped`]: crate::hook::KeysTyped
+pub fn type_keys(keys: impl AsRef<str>) {
     let keys = str_to_keys(keys.as_ref());
     if !keys.is_empty() {
         KEYS_WERE_SENT.fetch_add(1, Ordering::Relaxed);
@@ -486,7 +488,7 @@ pub trait Mode: Sized + Clone + Send + 'static {
     ///             event!('b' | 'B') => txt!("Until start of {word}"),
     ///             // All unlisted keys will not be sent.
     ///         });
-    ///         
+    ///
     ///         mode::bindings!(match _ {
     ///             event!(KeyCode::Char('0'..='9')) => txt!("Add to count"),
     ///             event!('w' | 'W') => txt!("Move to next {word}"),

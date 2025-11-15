@@ -15,7 +15,7 @@ use duat_core::{
     text::{Item, Part, Text, TwoPoints, txt},
     ui::{
         self, Caret, DynSpawnSpecs, PushSpecs, SpawnId,
-        traits::{UiPass, RawArea},
+        traits::{RawArea, UiPass},
     },
 };
 use iter::{print_iter, rev_print_iter};
@@ -427,8 +427,20 @@ impl RawArea for Area {
 
         let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts);
 
-        // It can be None if there is total concalment.
-        Ok(iter.map(|(c, _)| c.x + c.len).max().unwrap_or(0) as f32)
+        let mut max = 0;
+        let mut width = 0;
+
+        for (caret, item) in iter {
+            if caret.wrap {
+                max = width.max(max);
+                width = 0;
+            }
+            if item.part.is_char() {
+                width += caret.len;
+            }
+        }
+
+        Ok(max.max(width) as f32)
     }
 
     fn scroll_ver(&self, _: UiPass, text: &Text, by: i32, opts: PrintOpts) {
