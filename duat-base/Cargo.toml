@@ -1,6 +1,6 @@
 [package]
 name = "duat-base"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "Basic components common in Duat, included by default on duat"
@@ -15,5 +15,5 @@ missing_docs = "warn"
 
 [dependencies]
 format-like = "0.4.0"
-duat-core = "0.7.5"
+duat-core = "0.7.6"
 regex-syntax = "0.8.8"

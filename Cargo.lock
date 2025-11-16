@@ -238,9 +238,9 @@ dependencies = [
 
 [[package]]
 name = "convert_case"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baaaa0ecca5b51987b9423ccdc971514dd8b0bb7b4060b983d3664dad3f1f89f"
+checksum = "db05ffb6856bf0ecdf6367558a76a0e8a77b1713044eb92845c692100ed50190"
 dependencies = [
  "unicode-segmentation",
 ]
@@ -341,10 +341,10 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "duat"
-version = "0.7.7"
+version = "0.7.8"
 dependencies = [
  "clap",
- "convert_case 0.8.0",
+ "convert_case 0.9.0",
  "dirs-next",
  "duat-base",
  "duat-core",
@@ -353,16 +353,16 @@ dependencies = [
  "duat-term",
  "duat-treesitter",
  "duatmode",
- "libloading",
+ "libloading 0.9.0",
  "log",
  "notify",
 ]
 
 [[package]]
 name = "duat-base"
-version = "0.7.2"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a5c13af51641b44c08c2106ac72d40d4959ed7058830caffcedec30b256fc54"
+checksum = "d6737b28126a19a080b19ed4f6a42e5767f0f70cb18cded61730be2c4035390c"
 dependencies = [
  "duat-core",
  "format-like",
@@ -371,9 +371,9 @@ dependencies = [
 
 [[package]]
 name = "duat-core"
-version = "0.7.2"
+version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c85465aea952110a5750d1091e31f540d3e0aba52213da380bd4bfda2b088cc1"
+checksum = "1062ce7f3ce728e3339956870b6ee6f82ac7dc345cfd4c586d9665f6bf99b2c3"
 dependencies = [
  "android_clipboard",
  "arboard",
@@ -424,9 +424,9 @@ dependencies = [
 
 [[package]]
 name = "duat-term"
-version = "0.7.3"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8292ff6c42406f068b0f8290a02a99f7bf8482a1855419bcb5749141d367e1e6"
+checksum = "6879c845b49a2f909bc8535ceeb65114484c139f2c00a2892bf238eee10b341a"
 dependencies = [
  "crossterm",
  "duat-core",
@@ -438,15 +438,15 @@ dependencies = [
 
 [[package]]
 name = "duat-treesitter"
-version = "0.3.3"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8e22b1b7a7f779b43e97f27a4039b47f04ae2e99ae596f87d854cf93e6f7fa4"
+checksum = "19ad5d68062e10b6b8249bddc8d3c7e9252208b3a047521f3aa36665aac4dcd3"
 dependencies = [
  "duat-core",
  "duat-filetype",
  "include_dir",
  "indoc",
- "libloading",
+ "libloading 0.8.9",
  "streaming-iterator",
  "tree-sitter",
  "tree-sitter-language",
@@ -454,9 +454,9 @@ dependencies = [
 
 [[package]]
 name = "duatmode"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "803c5af253ccaac4a6d37ec93b2a1daf4915a85a841f3936f9cc0cfb2ea23360"
+checksum = "1679a725f2baecb34233a21466a4fecf0e0de331b331fa5ee4b70bdc6813f86b"
 dependencies = [
  "duat-base",
  "duat-core",
@@ -485,6 +485,12 @@ name = "error-code"
 version = "3.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
+
+[[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 
 [[package]]
 name = "fastrand"
@@ -578,12 +584,6 @@ dependencies = [
  "r-efi",
  "wasip2",
 ]
-
-[[package]]
-name = "glob"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "hashbrown"
@@ -727,12 +727,12 @@ dependencies = [
 
 [[package]]
 name = "lender"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcd28c1ec4505c2ef4671b62e076ce04ee223fb003a41205a41643ff88ecbed8"
+checksum = "1be15bcb008455f62df9154c02f5bbe9411fff6776a547497198e203c151ca77"
 dependencies = [
+ "fallible-iterator",
  "stable_try_trait_v2",
- "trybuild",
 ]
 
 [[package]]
@@ -746,6 +746,16 @@ name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
+
+[[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
 dependencies = [
  "cfg-if",
  "windows-link",
@@ -1234,15 +1244,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_spanned"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e24345aa0fe688594e73770a5f6d1b216508b4f93484c0026d521acd30134392"
-dependencies = [
- "serde_core",
-]
-
-[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1314,12 +1315,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "target-triple"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "591ef38edfb78ca4771ee32cf494cb8771944bee237a9b91fc9c1424ac4b777b"
-
-[[package]]
 name = "tempfile"
 version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1330,15 +1325,6 @@ dependencies = [
  "once_cell",
  "rustix 1.1.2",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "termcolor"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
-dependencies = [
- "winapi-util",
 ]
 
 [[package]]
@@ -1393,45 +1379,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "toml"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0dc8b1fb61449e27716ec0e1bdf0f6b8f3e8f6b05391e8497b8b6d7804ea6d8"
-dependencies = [
- "indexmap",
- "serde_core",
- "serde_spanned",
- "toml_datetime",
- "toml_parser",
- "toml_writer",
- "winnow",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2cdb639ebbc97961c51720f858597f7f24c4fc295327923af55b74c3c724533"
-dependencies = [
- "serde_core",
-]
-
-[[package]]
-name = "toml_parser"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0cbe268d35bdb4bb5a56a2de88d0ad0eb70af5384a99d648cd4b3d04039800e"
-dependencies = [
- "winnow",
-]
-
-[[package]]
-name = "toml_writer"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df8b2b54733674ad286d16267dcfc7a71ed5c776e4ac7aa3c3e2561f7c637bf2"
-
-[[package]]
 name = "tree-sitter"
 version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1461,21 +1408,6 @@ dependencies = [
  "nom",
  "once_cell",
  "petgraph",
-]
-
-[[package]]
-name = "trybuild"
-version = "1.0.113"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "559b6a626c0815c942ac98d434746138b4f89ddd6a1b8cbb168c6845fb3376c5"
-dependencies = [
- "glob",
- "serde",
- "serde_derive",
- "serde_json",
- "target-triple",
- "termcolor",
- "toml",
 ]
 
 [[package]]
@@ -1910,12 +1842,6 @@ name = "windows_x86_64_msvc"
 version = "0.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
-
-[[package]]
-name = "winnow"
-version = "0.7.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
 
 [[package]]
 name = "wit-bindgen"

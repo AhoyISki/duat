@@ -1,6 +1,6 @@
 [package]
 name = "duat-core"
-version = "0.7.5"
+version = "0.7.6"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "The core of Duat, a highly customizable text editor."

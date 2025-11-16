@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.7.7"
+version = "0.7.8"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "A modern, very customizable text editor, configured in rust."
@@ -18,17 +18,17 @@ missing_docs = "warn"
 unit_arg = "allow"
 
 [dependencies]
-duat-core = "0.7.5"
+duat-core = "0.7.6"
 dirs-next = "2.0.0"
 log = "0.4.28"
 
 # List of UIs.
-duat-term = { version = "0.7.4", optional = true }
+duat-term = { version = "0.7.5", optional = true }
 
 # Default plugins
-duat-base = "0.7.3"
+duat-base = "0.7.4"
 duat-filetype = "0.3.2"
-duatmode =  "0.7.2"
+duatmode =  "0.7.3"
 duat-treesitter = { version = "0.3.5", optional = true }
 duat-match-pairs = { version = "0.2.1", optional = true }
 
