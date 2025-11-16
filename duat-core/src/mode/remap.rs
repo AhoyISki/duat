@@ -179,7 +179,7 @@ mod global {
     pub fn current_sequence() -> DataMap<InnerRemapper, (Vec<KeyEvent>, bool)> {
         REMAPPER
             .inner
-            .map(|inner| (inner.seq.clone(), inner.seq_is_alias))
+            .map(|inner| (inner.seq.clone(), inner.mapped_seq_is_alias))
     }
 
     /// The base [`MappedBindings`] for the current [`Mode`]
@@ -552,8 +552,9 @@ struct Remapper {
 #[doc(hidden)]
 pub struct InnerRemapper {
     mapped_bindings: HashMap<TypeId, MappedBindings>,
+    mapped_seq: Vec<KeyEvent>,
+    mapped_seq_is_alias: bool,
     seq: Vec<KeyEvent>,
-    seq_is_alias: bool,
 }
 
 impl Remapper {
@@ -563,8 +564,9 @@ impl Remapper {
             remaps_builders: Mutex::default(),
             inner: RwData::new(InnerRemapper {
                 mapped_bindings: HashMap::new(),
+                mapped_seq: Vec::new(),
+                mapped_seq_is_alias: false,
                 seq: Vec::new(),
-                seq_is_alias: false,
             }),
         }
     }
@@ -622,21 +624,26 @@ impl Remapper {
             let mapped_bindings = &inner.mapped_bindings[&ty];
 
             inner.seq.push(key_event);
-            let (seq, is_alias) = (inner.seq.clone(), inner.seq_is_alias);
+            if !mapped_bindings.sequence_has_followup(&inner.seq) {
+                inner.seq.clear();
+            }
+
+            inner.mapped_seq.push(key_event);
+            let (mapped_seq, is_alias) = (inner.mapped_seq.clone(), inner.mapped_seq_is_alias);
 
             let clear_cur_seq = |pa| {
                 let inner = remapper.inner.write(pa);
-                inner.seq = Vec::new();
-                inner.seq_is_alias = false;
+                inner.mapped_seq = Vec::new();
+                inner.mapped_seq_is_alias = false;
             };
 
             let keys_to_send = if let Some(i) = mapped_bindings
                 .remaps
                 .iter()
-                .position(|r| r.takes.starts_with(&seq))
+                .position(|r| r.takes.starts_with(&mapped_seq))
             {
                 let remap = &mapped_bindings.remaps[i];
-                if remap.takes.len() == seq.len() {
+                if remap.takes.len() == mapped_seq.len() {
                     if remap.is_alias {
                         remove_alias_and(pa, |_, _| {});
                     }
@@ -657,13 +664,13 @@ impl Remapper {
                     }
                 } else {
                     if remap.is_alias {
-                        remapper.inner.write(pa).seq_is_alias = true;
+                        remapper.inner.write(pa).mapped_seq_is_alias = true;
 
                         remove_alias_and(pa, |widget, main| {
                             widget.text_mut().insert_tag(
                                 Tagger::for_alias(),
                                 main,
-                                Ghost::new(txt!("[alias]{}", keys_to_string(&seq))),
+                                Ghost::new(txt!("[alias]{}", keys_to_string(&mapped_seq))),
                             );
                         });
                     }
@@ -674,7 +681,7 @@ impl Remapper {
                     remove_alias_and(pa, |_, _| {});
                 }
                 clear_cur_seq(pa);
-                seq
+                mapped_seq
             };
 
             mode::send_keys_to(pa, keys_to_send);
@@ -768,8 +775,8 @@ impl MappedBindings {
 }
 
 impl MappedBindings {
-    /// Wether the given sequence of [`KeyEvent`]s is bound by these
-    /// `MappedBindings`
+    /// Wether these `MappedBindings` accepts the sequence of
+    /// [`KeyEvent`]s
     ///
     /// This will be true if either the normal [`Mode`] provided
     /// [`Bindings`] match the sequence, or if a remap binds it.
@@ -778,6 +785,19 @@ impl MappedBindings {
             || self.remaps.iter().any(|remap| {
                 seq.starts_with(&remap.takes) && self.matches_sequence(&seq[remap.takes.len()..])
             })
+    }
+
+    /// Wether the given sequence of [`KeyEvent`]s has a followup
+    /// in these `MappedBindings`
+    ///
+    /// This will be true if either the normal [`Mode`] provided
+    /// [`Bindings`] match the sequence, or if a remap binds it.
+    pub fn sequence_has_followup(&self, seq: &[KeyEvent]) -> bool {
+        self.bindings.sequence_has_followup(seq)
+            || self
+                .remaps
+                .iter()
+                .any(|remap| remap.takes.starts_with(seq) && remap.takes.len() > seq.len())
     }
 
     /// The [`Description`]s for the bindings available, given the

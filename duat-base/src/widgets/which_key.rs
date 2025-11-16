@@ -42,7 +42,6 @@ impl WhichKey {
 
         let (wk, area) = handle.write_with_area(pa);
         if let Ok(width) = area.width_of_text(wk.get_print_opts(), wk.text()) {
-            context::debug!("{width}");
             area.set_width(width + 3.0).unwrap();
         }
 

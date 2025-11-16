@@ -48,13 +48,29 @@ pub struct Bindings {
 }
 
 impl Bindings {
-    /// Wether the given sequence of [`KeyEvent`]s is bound by these
-    /// `Bindings`
+    /// Wether these `MappedBindings` accepts the sequence of
+    /// [`KeyEvent`]s
     pub fn matches_sequence(&self, seq: &[KeyEvent]) -> bool {
         let mut matcher = &self.matcher;
         seq.iter().all(|key_event| {
             if let Some(i) = matcher(*key_event) {
                 matcher = &self.list[i].2.as_ref().unwrap_or(self).matcher;
+                true
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Wether the given sequence of [`KeyEvent`]s has a followup
+    /// in these `MappedBindings`
+    pub fn sequence_has_followup(&self, seq: &[KeyEvent]) -> bool {
+        let mut matcher = &self.matcher;
+        seq.iter().all(|key_event| {
+            if let Some(i) = matcher(*key_event)
+                && let Some(bindings) = self.list[i].2.as_ref()
+            {
+                matcher = &bindings.matcher;
                 true
             } else {
                 false
@@ -74,7 +90,7 @@ impl Bindings {
                     bindings = bindings.list[i].2.as_ref()?;
                     Some(bindings)
                 })
-                .last()
+                .nth(seq.len() - 1)
         }
     }
 
