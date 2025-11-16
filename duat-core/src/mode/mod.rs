@@ -82,9 +82,9 @@ mod switch;
 /// impl Plugin for MyPlugin {
 ///     fn plug(self, plugins: &Plugins) {
 ///         //..
-///         map::<User>("fb", RunCommands::new_with("forbnificate "));
+///         map::<User>("fb", mode::RunCommands::new_with("frobnificate "));
 ///
-///         cmd::add!("frobnificate", |pa, buf: Buffer| {
+///         cmd::add("frobnificate", |pa: &mut Pass, buf: Handle| {
 ///             // Do stuff
 ///             Ok(None)
 ///         });

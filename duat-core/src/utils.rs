@@ -322,7 +322,7 @@ macro_rules! doc_duat {
         #[allow(unused, missing_docs)]
         mod $duat {
             pub mod cursor {
-                pub use ::duat_core::form::{
+                pub use $crate::form::{
                     extra_cursor as get_extra, id_of, main_cursor as get_main,
                     set_extra_cursor as set_extra, set_main_cursor as set_main,
                     unset_cursors as unset, unset_extra_cursor as unset_extra,
@@ -332,7 +332,7 @@ macro_rules! doc_duat {
 
             pub mod opts {
                 use super::prelude::*;
-                pub use ::duat_core::opts::{self, PrintOpts};
+                pub use $crate::opts::{self, PrintOpts};
                 pub fn set(set: impl FnOnce(PrintOpts) -> PrintOpts) {}
                 pub fn set_lines<T>(set: T) {}
                 pub fn set_status<T>(set: impl FnMut(&mut Pass) -> T) {}
@@ -342,7 +342,7 @@ macro_rules! doc_duat {
             }
 
             pub mod data {
-                pub use ::duat_core::data::*;
+                pub use $crate::data::*;
             }
 
             pub mod state {
@@ -361,11 +361,16 @@ macro_rules! doc_duat {
                 pub fn cur_map_txt() -> data::DataMap<(Vec<KeyEvent>, bool), Text> { todo!() }
                 pub fn last_key() -> data::RwData<String> { todo!() }
             }
+
+            pub mod mode {
+                pub use $crate::mode::*;
+                pub use super::modes::*;
+            }
                 
             pub mod prelude {
                 pub use std::ops::Range;
                 
-                pub use ::duat_core::{
+                pub use $crate::{
                     Plugin, Plugins,
                     buffer::{Buffer, BufferTracker, Parser},
                     clipboard, cmd,
@@ -379,10 +384,6 @@ macro_rules! doc_duat {
                         WidgetCreated, WindowCreated,
                     },
                     lender::{Lender, DoubleEndedLender, ExactSizeLender},
-                    mode::{
-                        self, KeyCode, KeyEvent, Mode, User, alias, alt, ctrl, event,
-                        map, shift,
-                    },
                     text::{
                         self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer,
                         SpawnTag, Tagger, Text, txt, Point, Searcher
@@ -391,7 +392,12 @@ macro_rules! doc_duat {
                 };
                 
                 pub use super::{
-                    cursor::*, state::*, modes::*, widgets::*, PassFileType, FileType, opts, plug
+                    cursor::*,
+                    mode::{
+                        self, KeyCode, KeyEvent, Mode, Prompt, Pager, User, alias, alt, ctrl, event,
+                        map, shift,
+                    },
+                    state::*, widgets::*, PassFileType, FileType, opts, plug
                 };
 
                 #[macro_export]
@@ -441,13 +447,13 @@ macro_rules! doc_duat {
                 pub struct StatusLine;
                 impl StatusLine {
                     pub fn above(self) -> Self { Self }
-                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
+                    pub fn push_on(self, _: &mut Pass, _: &impl $crate::ui::PushTarget) {}
                 }
 
                 pub struct LogBook;
                 impl LogBook {
                     pub fn builder() -> LogBookOpts { LogBookOpts::default() }
-                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
+                    pub fn push_on(self, _: &mut Pass, _: &impl $crate::ui::PushTarget) {}
                 }
                 #[derive(Default, Clone, Copy, Debug)]
                 pub struct LogBookOpts {
@@ -458,7 +464,7 @@ macro_rules! doc_duat {
                     pub width: f32,
                 }
                 impl LogBookOpts {
-                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
+                    pub fn push_on(self, _: &mut Pass, _: &impl $crate::ui::PushTarget) {}
                 }
                 
                 use super::prelude::*;
@@ -468,7 +474,7 @@ macro_rules! doc_duat {
                 }
                 pub struct VertRuleBuilder;
                 impl VertRuleBuilder {
-                    pub fn push_on(self, _: &mut Pass, _: &impl ::duat_core::ui::PushTarget) {}
+                    pub fn push_on(self, _: &mut Pass, _: &impl $crate::ui::PushTarget) {}
                     pub fn on_the_right(self) -> Self { self }
                 }
             }
@@ -477,12 +483,12 @@ macro_rules! doc_duat {
                 use super::prelude::*;
                 #[derive(Clone)]
                 pub struct Pager;
-                impl ::duat_core::mode::Mode for Pager {
-                    type Widget = ::duat_core::buffer::Buffer;
+                impl $crate::mode::Mode for Pager {
+                    type Widget = $crate::buffer::Buffer;
                     fn send_key(
                         &mut self,
                         _: &mut Pass,
-                        _: ::duat_core::mode::KeyEvent,
+                        _: $crate::mode::KeyEvent,
                         _: Handle<Self::Widget>,
                     ) {
                     }
@@ -490,14 +496,25 @@ macro_rules! doc_duat {
                 
                 #[derive(Clone)]
                 pub struct Prompt;
-                impl ::duat_core::mode::Mode for Prompt {
-                    type Widget = ::duat_core::buffer::Buffer;
+                impl $crate::mode::Mode for Prompt {
+                    type Widget = $crate::buffer::Buffer;
                     fn send_key(
                         &mut self,
                         _: &mut Pass,
-                        _: ::duat_core::mode::KeyEvent,
+                        _: $crate::mode::KeyEvent,
                         _: Handle<Self::Widget>,
                     ) {
+                    }
+                }
+
+                #[derive(Clone)]
+                pub struct RunCommands;
+                impl RunCommands {
+                    pub fn new() -> Prompt {
+                        Prompt
+                    }
+                    pub fn new_with(initial: &str) -> Prompt {
+                        Prompt
                     }
                 }
             }

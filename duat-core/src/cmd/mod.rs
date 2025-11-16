@@ -85,15 +85,20 @@
 //!
 //! # Adding commands
 //!
-//! Commands are added through the [`add!`] macro. This macro takes in
-//! two arguments. The first argument is a list of callers, for
-//! example `["quit", "q"]`, or just a caller, like `"reload"`.
+//! Commands are added through the [`add`] function. This function
+//! takes a caller in the form of `&str` and a function to call.
 //!
-//! The second argument is a _rust-like_ "closure" that receives a
-//! variable number of [`Parameter`]s as arguments, alongside a
-//! [`Pass`]. Inside of this "closure", you will have access to the
-//! ful breatdh of duat's shareable state (just like any other time
-//! you have a `Pass`).
+//! This function should have the following arguments:
+//!
+//! - One `&mut Pass`: This _must_ be annotated.
+//! - Up to 12 [`Parameter`] arguments. These will provide automatic
+//!   checking on the `PromptLine`.
+//!
+//! If the second argument is a closure, all of the arguments _MUST_
+//! have type annotations *INCLUDING the `&mut Pass`*, otherwise type
+//! inference won't work. If this function fails to compile, it is
+//! most likely because you passed a closure with missing argument
+//! type annotations.
 //!
 //! Most Rust [`std`] types (that would make sense) are implemented as
 //! [`Parameter`]s, so you can place [`String`]s, [`f32`]s, [`bool`]s,
@@ -104,15 +109,10 @@
 //! optional `Parameter`.
 //!
 //! ```rust
-//! # mod duat { pub mod prelude { pub use duat_core::{
-//! #     cmd, data::Pass, form::{self, Form}, text::txt
-//! # };}}
+//! # duat_core::doc_duat!(duat);
 //! use duat::prelude::*;
 //!
-//! let callers = ["unset-form", "uf"];
-//! // A `Vec<T>` parameter will try to collect all
-//! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, |pa: &mut Pass, forms: Vec<cmd::FormName>| {
+//! let result = cmd::add("unset-form", |pa: &mut Pass, forms: Vec<cmd::FormName>| {
 //!     for form in forms.iter() {
 //!         form::set("form", Form::new());
 //!     }
@@ -121,6 +121,8 @@
 //!     // For those, you should use the `txt!` macro.
 //!     Ok(Some(txt!("Unset [a]{}[] forms", forms.len())))
 //! });
+//! // You can also alias commands:
+//! cmd::alias("uf", "unset-form").unwrap();
 //! ```
 //!
 //! In the command above, you'll notice that [`Ok`] values return
@@ -142,7 +144,7 @@
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
-//! cmd::add!("pip", |_pa, args: cmd::Remainder| {
+//! cmd::add("pip", |_: &mut Pass, args: cmd::Remainder| {
 //!     let child = std::process::Command::new("pip").spawn()?;
 //!     let res = child.wait_with_output()?;
 //!
@@ -567,7 +569,7 @@ mod global {
     ///     let var = data::RwData::new(35);
     ///
     ///     let var_clone = var.clone();
-    ///     cmd::add("set-var", |pa: &mut Pass, value: usize| {
+    ///     cmd::add("set-var", move |pa: &mut Pass, value: usize| {
     ///         *var_clone.write(pa) = value;
     ///         Ok(None)
     ///     });

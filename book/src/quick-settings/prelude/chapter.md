@@ -47,7 +47,7 @@ fn setup() {
     
     form::set("caret.main", Form::yellow());
     
-    cmd::add!("set-rel-lines", |pa| {
+    cmd::add("set-rel-lines", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows()
             .handles(pa)
             .filter_map(|handle| handle.try_downcast::<LineNumbers>())
