@@ -702,7 +702,6 @@ impl Plugin for DuatMode {
 
         form::enable_mask("Insert");
         form::enable_mask("Normal");
-        form::enable_mask("OneKey");
     }
 }
 
@@ -809,11 +808,10 @@ impl<'a> Object<'a> {
                     .collect();
                 let (s_arg, e_arg) = (format!(r"({s_pat})\s*"), format!(r"\s*({e_pat})"));
 
-                ([s_pat.leak(), e_pat.leak()], [
-                    r"(;|,)\s*",
-                    s_arg.leak(),
-                    e_arg.leak(),
-                ])
+                (
+                    [s_pat.leak(), e_pat.leak()],
+                    [r"(;|,)\s*", s_arg.leak(), e_arg.leak()],
+                )
             })
         };
 

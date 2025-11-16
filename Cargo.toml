@@ -1,6 +1,6 @@
 [package]
 name = "duatmode"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["AhoyISki"]
 description = "The default mode for the Duat text editor"
 repository = "https://github.com/AhoyISki/duat/tree/master/duatmode"
@@ -11,13 +11,13 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat-core = "0.7.2"
-duat-base = "0.7.2"
+duat-core = "0.7.5"
+duat-base = "0.7.3"
 
 [dependencies.treesitter]
-version = "0.3.1"
+version = "0.3.5"
 package = "duat-treesitter"
 
 [dependencies.jump-list]
-version = "0.2.0"
+version = "0.2.1"
 package = "duat-jump-list"

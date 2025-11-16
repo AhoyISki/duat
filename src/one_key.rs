@@ -1,9 +1,8 @@
 use duat_core::{
-    buffer::Buffer,
     cmd,
     context::{self, Handle},
     data::Pass,
-    mode::{self, KeyEvent, KeyMod, Mode, event},
+    mode::{self, KeyEvent, KeyMod, event},
 };
 
 use crate::{
@@ -21,10 +20,11 @@ pub(crate) enum OneKey {
     Replace,
 }
 
-impl Mode for OneKey {
-    type Widget = Buffer;
-
-    fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+impl OneKey {
+    /// Sends a key to this "[`Mode`]"
+    ///
+    /// [`Mode`]: duat_core::mode::Mode
+    pub(crate) fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         let just_char = just_char(key_event);
         let sel_type = match (*self, just_char) {
             (OneKey::GoTo(st), _) => match_goto(pa, &handle, key_event, st),
@@ -56,10 +56,6 @@ impl Mode for OneKey {
         };
 
         mode::set(Normal::new_with_sel_type(sel_type));
-    }
-
-    fn on_switch(&mut self, _: &mut Pass, handle: Handle) {
-        handle.set_mask("OneKey");
     }
 }
 
@@ -104,10 +100,7 @@ fn match_goto(
         event!('a') => _ = cmd::call_notify(pa, "last-buffer"),
         event!('n') => _ = cmd::call_notify(pa, "next-buffer --global"),
         event!('N') => _ = cmd::call_notify(pa, "prev-buffer --global"),
-        key_event => context::warn!(
-            "[a]{}[] not mapped on [a]go to",
-            duat_core::mode::keys_to_string(&[key_event])
-        ),
+        _ => {}
     }
 
     sel_type

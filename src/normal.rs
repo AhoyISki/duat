@@ -10,7 +10,7 @@ use duat_core::{
     lender::Lender,
     mode::{self, KeyEvent, KeyMod, Mode, VPoint, alt, event, shift},
     opts::PrintOpts,
-    text::Point,
+    text::{Point, txt},
 };
 use jump_list::BufferJumps;
 use treesitter::TsCursor;
@@ -41,6 +41,7 @@ pub struct Normal {
     /// will search for the next instance of an `'m'` in the
     /// [`Buffer`]
     pub f_and_t_set_search: bool,
+    one_key: Option<OneKey>,
 }
 
 impl Normal {
@@ -53,6 +54,7 @@ impl Normal {
             brackets: B_PATS,
             indent_on_capital_i: false,
             f_and_t_set_search: false,
+            one_key: None,
         }
     }
 
@@ -88,12 +90,132 @@ impl Normal {
 impl Mode for Normal {
     type Widget = Buffer;
 
+    fn bindings() -> mode::Bindings {
+        use mode::{KeyCode::*, alt, event, shift};
+
+        let word = txt!("[a]word[separator],[a]WORD");
+        let mv = txt!("[a]Move[separator],[a]select");
+        let below = txt!("[a]below[separator],[a]above");
+        let ahead = txt!("[a]ahead[separator],[a]behind");
+        let undo = txt!("[a]Undo[separator],[a]redo");
+
+        let object = mode::bindings!(match _ {
+            event!('b' | '(' | ')') => txt!("parenthesis block"),
+            event!('B' | '{' | '}') => txt!("brace block"),
+            event!('r' | '[' | ']') => txt!("bracket block"),
+            event!('a' | '<' | '>') => txt!("angle bracket block"),
+            event!('"' | 'Q') => txt!("double quote string"),
+            event!('\'' | 'q') => txt!("single quote string"),
+            event!('`' | 'g') => txt!("grave quote string"),
+            event!('w') | alt!('w') => word.clone(),
+            event!('s') => txt!("sentence"),
+            event!('p') => txt!("paragraph"),
+            event!(' ') => txt!("whitespace"),
+            event!('i') => txt!("indent"),
+            event!('u') => txt!("argument"),
+        });
+
+        let goto = mode::bindings!(match _ {
+            event!('h') => txt!("start of line"),
+            event!('j') => txt!("end of [a]Buffer"),
+            event!('k' | 'g') => txt!("start of [a]Buffer"),
+            event!('l') => txt!("end of line"),
+            event!('i') => txt!("first character in line"),
+            event!('a') => txt!("last swapped [a]Buffer"),
+            event!('n') => txt!("next [a]Buffer"),
+            event!('N') => txt!("prev. [a]Buffer"),
+        });
+
+        mode::bindings!(match _ {
+            event!('h' | 'j' | 'k' | 'l') => txt!("Move cursor"),
+            event!('H' | 'J' | 'K' | 'L') => txt!("Select and move cursor"),
+            event!(Left | Up | Down | Right) => txt!("Move cursor wrapped"),
+            shift!(Left | Up | Down | Right) => txt!("Select and move cursor wrapped"),
+            event!('b') | alt!('b') | event!('B') | alt!('B') => txt!("{mv} to start of {word}"),
+            event!('w') | alt!('w') | event!('W') | alt!('W') =>
+                txt!("{mv} to start of next {word}"),
+            event!('e') | alt!('e') | event!('E') | alt!('E') => txt!("{mv} to end of {word}"),
+            event!('x') => txt!("Select whole line"),
+            event!('f' | 'F') => (txt!("{mv} to next match"), match _ {
+                event!(Char(..)) => txt!("{mv} to next [key.char]{{char}}"),
+            }),
+            alt!('f' | 'F') => (txt!("{mv} to prev. match"), match _ {
+                event!(Char(..)) => txt!("{mv} to prev. [key.char]{{char}}"),
+            }),
+            event!('t' | 'T') => (txt!("{mv} until next match"), match _ {
+                event!(Char(..)) => txt!("{mv} until next [key.char]{{char}}"),
+            }),
+            alt!('t' | 'T') => (txt!("{mv} until prev. match"), match _ {
+                event!(Char(..)) => txt!("{mv} until prev. [key.char]{{char}}"),
+            }),
+            alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{mv} to end of line"),
+            alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{mv} to start of line"),
+            alt!('a') => (txt!("Select around [a]object"), object.clone()),
+            alt!('i') => (txt!("Select inside [a]object"), object),
+            event!('%') => txt!("Select whole [a]Buffer"),
+            event!('m' | 'M') => txt!("{mv} to next matching pair"),
+            alt!('m' | 'M') => txt!("{mv} to prev. matching pair"),
+            event!('i') => txt!("[mode]Insert[] before selection"),
+            event!('I') => txt!("[mode]Insert[] at the line's start"),
+            event!('a') => txt!("[mode]Insert[] after selection"),
+            event!('A') => txt!("[mode]Insert[] at the line's end"),
+            event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
+            alt!('o' | 'O') => txt!("Add new line {below}"),
+            event!('r') => (txt!("Replace range"), match _ {
+                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+            }),
+            event!('`') => txt!("Lowercase the selection"),
+            event!('~') => txt!("Uppercase the selection"),
+            alt!('`') => txt!("Swap case of selection"),
+            alt!(';') => txt!("Swap caret and anchor"),
+            event!(';') => txt!("Reduce selection to caret"),
+            alt!(':') => txt!("Place caret on end"),
+            event!(')') => txt!("Rotate main selection forwards"),
+            event!('(') => txt!("Rotate main selection backwards"),
+            alt!(')') => txt!("Rotate selections's content forwards"),
+            alt!('(') => txt!("Rotate selections's content backwards"),
+            alt!('_') => txt!("Merge adjacent selections"),
+            alt!('s') => txt!("Split selections on lines"),
+            alt!('S') => txt!("Split selection on each end"),
+            event!('>') => txt!("Indent selections's lines"),
+            event!('<') => txt!("Dedent selections's lines"),
+            alt!('j') => txt!("Merge selections's lines"),
+            event!('y') => txt!("Yank selections"),
+            event!('d' | 'c') => txt!("[a]Delete[separator],[a]change[] selection"),
+            event!('p' | 'P') => txt!("Paste [a]ahead[separator],[a]behind[]"),
+            event!('R') => txt!("Replace selections with pasted content"),
+            event!(',') => txt!("Remove extra selections"),
+            event!('C') | alt!('C') => txt!("Copy selection {below}"),
+            event!('/') | alt!('/') => txt!("[mode]Search[] {ahead}"),
+            event!('?') | alt!('?') => txt!("[move]Search[] and select {ahead}"),
+            event!('s') => txt!("[mode]Select[] matches in selections"),
+            event!('S') => txt!("[mode]Split[] selections by matches"),
+            alt!('k') => txt!("[mode]Keep[] matching selections"),
+            alt!('K') => txt!("[mode]Keep[] [a]non[] matching selections"),
+            event!('n' | 'N') => txt!("{mv} to next search match"),
+            alt!('n' | 'N') => txt!("{mv} to prev. search match"),
+            event!('*') => txt!("Set main selection as search pattern"),
+            alt!('u' | 'U') => undo.clone(),
+            event!(':') => txt!("[a]Run commands[] in prompt line"),
+            event!('|') => txt!("[a]Pipe selections[] to external command"),
+            event!('g') => (txt!("Go to [parameter]line[] or to places"), goto.clone()),
+            event!('G') => (txt!("Select to [paramenter]line[] or to places"), goto),
+            event!(' ') => txt!("Enter [mode]User[] mode"),
+            event!('u' | 'U') => txt!("{undo} last selection change"),
+        })
+    }
+
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         use mode::KeyCode::*;
 
         let opts = handle.opts(pa);
 
-        let move_to_match = |[c0, c1]: [_; 2], alt_word, moved| {
+        if let Some(mut one_key) = self.one_key.take() {
+            one_key.send_key(pa, key_event, handle);
+            return;
+        }
+
+        let do_match_on_spot = |[c0, c1]: [_; 2], alt_word, moved| {
             use Category::*;
             let (cat0, cat1) = (Category::of(c0, opts), Category::of(c1, opts));
             !matches!(
@@ -190,7 +312,7 @@ impl Mode for Normal {
             event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
-                    let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
+                    let move_to_match = do_match_on_spot([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c.search_fwd(word_and_space(alt_word, opts)).nth(param - 1);
@@ -202,7 +324,7 @@ impl Mode for Normal {
             event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
-                    let move_to_match = move_to_match([c0, c1], alt_word, p0 != c.caret());
+                    let move_to_match = do_match_on_spot([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c.search_fwd(space_and_word(alt_word, opts)).nth(param - 1);
@@ -220,7 +342,7 @@ impl Mode for Normal {
                 if let Some([(p1, c1), (_, c0)]) = init {
                     let moved = p1 != c.caret();
                     c.move_to(p1);
-                    if !move_to_match([c1, c0], alt_word, moved) {
+                    if !do_match_on_spot([c1, c0], alt_word, moved) {
                         c.move_hor(1);
                     }
 
@@ -282,28 +404,28 @@ impl Mode for Normal {
                     (false, false) => SelType::Normal,
                 };
 
-                mode::set(if let 'f' | 'F' = char {
+                self.one_key = Some(if let 'f' | 'F' = char {
                     OneKey::Find(param - 1, sel_type, self.f_and_t_set_search)
                 } else {
                     OneKey::Until(param - 1, sel_type, self.f_and_t_set_search)
                 });
             }
-            alt!('l' | 'L') | event!(End) => handle.edit_all(pa, |mut c| {
+            alt!('l' | 'L') | event!(End) | shift!(End) => handle.edit_all(pa, |mut c| {
                 if key_event.code == Char('l') {
                     c.unset_anchor();
                 }
                 select_to_end_of_line(true, c);
                 self.sel_type = SelType::BeforeEndOfLine;
             }),
-            alt!('h' | 'H') | event!(Home) => handle.edit_all(pa, |mut c| {
+            alt!('h' | 'H') | event!(Home) | shift!(Home) => handle.edit_all(pa, |mut c| {
                 if key_event.code == Char('h') {
                     c.unset_anchor();
                 }
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(-(c.v_caret().char_col() as i32));
             }),
-            alt!('a') => mode::set(OneKey::Around(param - 1, self.brackets)),
-            alt!('i') => mode::set(OneKey::Inside(param - 1, self.brackets)),
+            alt!('a') => self.one_key = Some(OneKey::Around(param - 1, self.brackets)),
+            alt!('i') => self.one_key = Some(OneKey::Inside(param - 1, self.brackets)),
             event!('%') => handle.edit_main(pa, |mut c| {
                 c.move_to_start();
                 c.set_anchor();
@@ -437,7 +559,7 @@ impl Mode for Normal {
             }
 
             ////////// Selection alteration keys
-            event!('r') => mode::set(OneKey::Replace),
+            event!('r') => self.one_key = Some(OneKey::Replace),
             event!('`') => handle.edit_all(pa, |mut c| {
                 let lower = c
                     .selection()
@@ -860,7 +982,7 @@ impl Mode for Normal {
                     c.move_to_coords(param - 1, 0);
                 })
             }
-            event!('g') => mode::set(OneKey::GoTo(SelType::Normal)),
+            event!('g') => self.one_key = Some(OneKey::GoTo(SelType::Normal)),
             event!('G') if param_was_set => {
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
@@ -868,7 +990,7 @@ impl Mode for Normal {
                     c.move_to_coords(param - 1, 0)
                 })
             }
-            event!('G') => mode::set(OneKey::GoTo(SelType::Extend)),
+            event!('G') => self.one_key = Some(OneKey::GoTo(SelType::Extend)),
             event!(' ') => mode::set(mode::User),
 
             ////////// History manipulation

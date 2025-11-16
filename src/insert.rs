@@ -51,6 +51,23 @@ impl Default for Insert {
 impl Mode for Insert {
     type Widget = Buffer;
 
+    fn bindings() -> mode::Bindings {
+        use duat_core::text::txt;
+        use mode::KeyCode::*;
+
+        mode::bindings!(match _ {
+            event!(Char(..)) | event!(Enter) => txt!("Insert the character"),
+            event!(Left | Down | Up | Right) => txt!("Move cursor"),
+            shift!(Left | Down | Up | Right) => txt!("Select and move cursor"),
+            ctrl!('n') => txt!("[a]Next[] completion entry"),
+            ctrl!('p') | shift!(BackTab) => txt!("[a]Prev.[] completion entry"),
+            event!(Tab) => txt!("Depends on [a]tab mode"),
+            event!(Backspace) => txt!("Remove prev. char. or sel."),
+            event!(Delete) => txt!("Remove char. or sel."),
+            event!(Esc) => txt!("Return to [mode]Normal[] mode"),
+        })
+    }
+
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         use mode::KeyCode::*;
 
