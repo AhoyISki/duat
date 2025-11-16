@@ -2,7 +2,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged, KeyTyped},
-    mode::{self, MouseEvent, MouseEventKind},
+    mode::{self, Description, MouseEvent, MouseEventKind},
     text::{Spacer, Text, txt},
     ui::{DynSpawnSpecs, Widget},
 };
@@ -10,23 +10,35 @@ use duat_core::{
 /// A [`Widget`] to display what [keys] will do
 ///
 /// [keys]: mode::KeyEvent
-pub struct WhichKey(Text);
+pub struct WhichKey {
+    text: Text,
+}
 
 impl WhichKey {
     /// Open the `WhichKey` widget
-    pub fn open(pa: &mut Pass, mut specs: DynSpawnSpecs) {
+    ///
+    /// You can optionally pass an
+    #[allow(clippy::type_complexity)] // ??? where?
+    pub fn open(
+        pa: &mut Pass,
+        mut fmt: Option<Box<dyn FnMut(Description) -> Option<Text>>>,
+        mut specs: DynSpawnSpecs,
+    ) {
         let mut builder = Text::builder();
 
         for desc in mode::current_seq_descriptions(pa) {
-            builder.push(txt!("{}{Spacer}", desc.keys.into_text()));
-            if let Some(text) = desc.text {
-                builder.push(txt!("{text}\n"));
-            } else {
-                builder.push('\n');
+            if let Some(fmt) = fmt.as_mut() {
+                if let Some(text) = fmt(desc) {
+                    builder.push(text);
+                }
+            } else if let Some(text) = desc.text
+                && !text.is_empty()
+            {
+                builder.push(txt!("{}{Spacer}{text}\n", desc.keys.into_text()));
             }
         }
 
-        let wk = WhichKey(builder.build_no_double_nl());
+        let wk = WhichKey { text: builder.build_no_double_nl() };
 
         let handles: Vec<_> = context::windows().handles_of::<WhichKey>(pa).collect();
         for handle in handles {
@@ -64,11 +76,11 @@ impl Widget for WhichKey {
     }
 
     fn text(&self) -> &Text {
-        &self.0
+        &self.text
     }
 
     fn text_mut(&mut self) -> &mut Text {
-        &mut self.0
+        &mut self.text
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
@@ -80,7 +92,7 @@ impl Widget for WhichKey {
                 } else {
                     -3
                 };
-                area.scroll_ver(&wk.0, scroll, wk.get_print_opts());
+                area.scroll_ver(&wk.text, scroll, wk.get_print_opts());
             }
             _ => {}
         }

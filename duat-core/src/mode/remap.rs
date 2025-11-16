@@ -37,7 +37,7 @@ mod global {
     };
 
     static REMAPPER: LazyLock<Remapper> = LazyLock::new(Remapper::new);
-    static MODE_TYPE_ID: Mutex<TypeId> = Mutex::new(TypeId::of::<()>());
+    pub(in crate::mode) static MODE_TYPE_ID: Mutex<TypeId> = Mutex::new(TypeId::of::<()>());
     static SEND_KEY: LazyLock<RwData<fn(&mut Pass, KeyEvent)>> =
         LazyLock::new(|| RwData::new(|_, _| {}));
 
@@ -527,7 +527,6 @@ mod global {
         SEND_KEY.read(pa)(pa, key);
 
         crate::hook::trigger(pa, crate::hook::KeyTyped(key));
-        crate::context::debug!("KeyTyped");
     }
 
     /// Sets the key sending function

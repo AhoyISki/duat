@@ -122,6 +122,18 @@ pub(crate) fn keys_were_sent(_: &mut Pass) -> bool {
     }
 }
 
+/// Wether the currently active [`Mode`] is this one
+pub fn is_currently<M: Mode>() -> bool {
+    current_type_id() == std::any::TypeId::of::<M>()
+}
+
+/// The [`TypeId`] of the currently active [`Mode`]
+///
+/// [`TypeId`]: std::any::TypeId
+pub fn current_type_id() -> std::any::TypeId {
+    *remap::MODE_TYPE_ID.lock().unwrap()
+}
+
 /// Sends a sequence of [`KeyEvent`]s
 ///
 /// Unlike with [`mode::map`] or [`mode::alias`], the sent keys are

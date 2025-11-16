@@ -8,7 +8,7 @@
 //!
 //! The crate has the following elements:
 //!
-//! - 6 [`widgets`]:
+//! - 7 [`widgets`]:
 //!   - [`LineNumbers`] shows the numbers on a [`Buffer`] (for now),
 //!     and you can configure their alignment, relativeness, etc.
 //!   - The [`PromptLine`] lets you run commands and do other things,
@@ -24,11 +24,14 @@
 //!   - [`LogBook`] is a log of everything that has been notified to
 //!     Duat. It is usually more admissive than `Notifications`, and
 //!     is most commonly scrolled by the [`Pager`] [`Mode`].
-//!   - [`Completions`] is Duat's completion widget, it provides a
+//!   - [`Completions`] is Duat's completion widget, it provides an
 //!     extensible completions list, which allows you to format the
-//!     entries, and add new providers via the [`CompletionsProvider`]
+//!     entries and add new providers via the [`CompletionsProvider`]
 //!     trait. Right now, the only `CompletionsProvider` is the words
 //!     provider.
+//!   - [`WhichKey`] shows what each key will do. It shows up
+//!     automatically as you are typing and multi key sequences are
+//!     expected (e.g. Vim's `c`, `d`, `f` and others).
 //!
 //! - 3 [`modes`]:
 //!   - [`Prompt`] is a multitool that can serve many purposes,
@@ -109,6 +112,7 @@
 //! [`LogBook`]: widgets::LogBook
 //! [`Completions`]: widgets::Completions
 //! [`CompletionsProvider`]: widgets::CompletionsProvider
+//! [`WhichKey`]: widgets::WhichKey
 use duat_core::{
     form,
     text::{Tagger, Text},

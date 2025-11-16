@@ -7,7 +7,6 @@ FOR NEXT UPDATE:
     [?] Mode integration.
 [ ] Command line completion.
 [x] File path completion.
-[ ] Get rid of Text::selections_mut.
 [ ] Forcefully evaluate height and width when requested.
 [ ] File tracking.
 [ ] Actually fix injected indentation.
@@ -19,6 +18,7 @@ FOR NEXT UPDATE:
 
 KNOWN BUGS:
  HIGH PRIORITY:
+  [ ] Get rid of Text::selections_mut.
   [ ] Forms coming out wrong from txt!.
   [ ] track_area not actually tracking correctly.
   [ ] Removing a bunch of injections at the same time seems to freak treesitter out.

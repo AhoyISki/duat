@@ -12,6 +12,7 @@
 //! - [`StatusLine`], through [`opts::set_status`].
 //! - [`Notifications`], through [`opts::set_notifs`].
 //! - [`LogBook`], through [`opts::set_logs`].
+//! - [`WhichKey`], through, [`opts::set_which_key`].
 //!
 //! Additionally, there are some options pertaining to the group of
 //! `Widget`s at the bottom (`StatusLine`, `PromptLine` and
@@ -51,23 +52,33 @@
 //! [`Notifications`]: crate::widgets::Notifications
 //! [`LogBook`]: crate::widgets::LogBook
 //! [`FooterWidgets`]: crate::widgets::FooterWidgets
+//! [`WhichKey`]: crate::widgets::WhichKey
 //! [`opts::set`]: set
 //! [`opts::set_lines`]: set_lines
 //! [`opts::set_status`]: set_status
 //! [`opts::set_notifs`]: set_notifs
 //! [`opts::set_logs`]: set_logs
+//! [`opts::set_which_key`]: set_which_key
 //! [`opts::footer_on_top`]: footer_on_top
 //! [`opts::one_line_footer`]: one_line_footer
 //! [`PromptLineBuilder::push_on`]: crate::widgets::PromptLineBuilder::push_on
-use std::sync::{
-    LazyLock, Mutex,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    any::TypeId,
+    sync::{
+        LazyLock, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use duat_base::widgets::{LineNumbersOpts, LogBookOpts, StatusLineFmt};
-use duat_core::data::Pass;
 #[allow(unused_imports)]
 pub use duat_core::opts::*;
+use duat_core::{
+    data::Pass,
+    mode::{Description, KeyCode, KeyEvent, KeyMod, Mode},
+    text::Text,
+    ui::Orientation,
+};
 pub use duatmode::opts::*;
 
 use crate::widgets::NotificationsOpts;
@@ -76,11 +87,21 @@ use crate::widgets::NotificationsOpts;
 ///
 /// [`Buffer`]: crate::widgets::Buffer
 pub(crate) static BUFFER_OPTS: Mutex<PrintOpts> = Mutex::new(PrintOpts::default_for_input());
+
 pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts::new());
+
 pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
+
 pub(crate) static NOTIFICATIONS_FN: LazyLock<NotificationsFn> =
     LazyLock::new(|| Mutex::new(Box::new(|_| {})));
+
 pub(crate) static LOGBOOK_FN: LazyLock<LogBookFn> = LazyLock::new(|| Mutex::new(Box::new(|_| {})));
+
+pub(crate) static HELP_KEY: Mutex<Option<KeyEvent>> =
+    Mutex::new(Some(KeyEvent::new(KeyCode::Char('?'), KeyMod::CONTROL)));
+pub(crate) static WHICHKEY_FN: LazyLock<WhichKeyFn> =
+    LazyLock::new(|| Mutex::new(Box::new(|_| {})));
+
 pub(crate) static FOOTER_ON_TOP: AtomicBool = AtomicBool::new(false);
 pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 
@@ -547,6 +568,15 @@ pub fn set_logs(set_fn: impl FnMut(&mut LogBookOpts) + Send + 'static) {
     *LOGBOOK_FN.lock().unwrap() = Box::new(set_fn);
 }
 
+/// Changes the [`WhichKey`] widget
+///
+///
+///
+/// [`WhichKey`]: crate::widgets::WhichKey
+pub fn set_which_key(set_fn: impl FnMut(&mut WhichKeyOpts) + Send + 'static) {
+    *WHICHKEY_FN.lock().unwrap() = Box::new(set_fn);
+}
+
 /// Makes the [`FooterWidgets`] take up one line instead of two
 ///
 /// Normally, the [`StatusLine`] is placed in one line and the
@@ -591,6 +621,85 @@ pub fn footer_on_top(on_top: bool) {
     FOOTER_ON_TOP.store(on_top, Ordering::Relaxed);
 }
 
+/// A [`KeyEvent`] to show the [`WhichKey`] widget
+///
+/// If [`None`] is given, the help key functionality will be disabled
+/// entirely, though the `WhichKey` widget will continue to show up
+/// automatically when appropriate. You can disable that functionality
+/// by [removing] the `"WhichKey"` hook.
+///
+/// [`WhichKey`]: crate::widgets::WhichKey
+/// [removing]: crate::hook::remove
+pub fn set_help_key(key_event: Option<KeyEvent>) {
+    *HELP_KEY.lock().unwrap() = key_event;
+}
+
 type StatusLineFn = Mutex<Option<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>>;
 type NotificationsFn = Mutex<Box<dyn FnMut(&mut NotificationsOpts) + Send>>;
 type LogBookFn = Mutex<Box<dyn FnMut(&mut LogBookOpts) + Send>>;
+type WhichKeyFn = Mutex<Box<dyn FnMut(&mut WhichKeyOpts) + Send>>;
+
+/// Options for the [`WhichKey`] widget
+///
+/// These options concern the formatting and on which [`Mode`]s the
+/// help should show up:
+///
+/// - [`disable_on`]: Disables the automatic showing of `WhichKey` on
+///   a `Mode`. It'll still show up with the [help key]. If you want
+///   to disable for all `Mode`s, [remove] the `"WhichKey"` hook
+///   group.
+///
+/// [`WhichKey`]: crate::widgets::WhichKey
+/// [`disable_on`]: WhichKeyOpts::disable_on
+/// [help key]: set_help_key
+/// [remove]: crate::hook::remove
+#[allow(clippy::type_complexity)] // ??? where?
+pub struct WhichKeyOpts {
+    pub(crate) fmt: Option<Box<dyn FnMut(Description) -> Option<Text>>>,
+    pub(crate) disabled_modes: Vec<TypeId>,
+    /// Where to place the [`Widget`]
+    ///
+    /// Normally, this is [`Orientation::VerRightBelow`]. Since it's
+    /// placed "inside" of the parent `Widget`, this normally places
+    /// the widget on the bottom right corner, inside of the active
+    /// [`Buffer`].
+    ///
+    /// [`Widget`]: crate::widgets::Widget
+    /// [`Buffer`]: crate::widgets::Buffer
+    pub orientation: Orientation,
+}
+
+impl Default for WhichKeyOpts {
+    fn default() -> Self {
+        Self {
+            fmt: None,
+            disabled_modes: vec![TypeId::of::<duatmode::Insert>()],
+            orientation: Orientation::VerRightBelow,
+        }
+    }
+}
+
+impl WhichKeyOpts {
+    /// How to format the `WhichKey` widget
+    ///
+    /// This function returns an [`Option<Text>`]. If it returns
+    /// [`None`], then that specific entry won't show up on the list
+    /// of bindings. This is useful for, for example, hiding entries
+    /// that have no description [`Text`], which is done by default.
+    pub fn fmt(&mut self, fmt: impl FnMut(Description) -> Option<Text> + Send + 'static) {
+        self.fmt = Some(Box::new(fmt))
+    }
+
+    /// Disable hints for the given [`Mode`]
+    ///
+    /// The hints will still show up if you press the [help key]. By
+    /// default, `WhichKey` is disabled for `duatmode`'s [`Insert`]
+    /// mode.
+    ///
+    /// [`Mode`]: crate::mode::Mode
+    /// [help key]: set_help_key
+    /// [`Insert`]: crate::mode::Insert
+    pub fn disable_on<M: Mode>(&mut self) {
+        self.disabled_modes.push(TypeId::of::<M>());
+    }
+}

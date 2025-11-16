@@ -26,7 +26,7 @@ pub use self::{
     notifications::{Notifications, NotificationsOpts},
     prompt_line::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
-    which_key::WhichKey
+    which_key::WhichKey,
 };
 
 mod completions;

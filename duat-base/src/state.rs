@@ -18,7 +18,7 @@ use duat_core::{
     buffer::Buffer,
     context,
     data::{DataMap, RwData},
-    hook::{self, KeysSent},
+    hook::{self, KeyTyped},
     mode,
     text::{Text, txt},
     ui::{Area, Widget},
@@ -270,8 +270,8 @@ pub fn sels_txt(buffer: &Buffer) -> Text {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-/// [keys]: KeyEvent
-pub fn cur_map_txt() -> DataMap<duat_core::mode::InnerRemapper, Text> {
+/// [keys]: duat_core::mode::KeyEvent
+pub fn current_sequence_txt() -> DataMap<duat_core::mode::InnerRemapper, Text> {
     mode::current_sequence().map(|(keys, is_alias)| {
         if is_alias {
             Text::default()
@@ -285,14 +285,14 @@ pub fn cur_map_txt() -> DataMap<duat_core::mode::InnerRemapper, Text> {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [key]: KeyEvent
-pub fn last_key() -> RwData<String> {
-    static LAST_KEY: LazyLock<RwData<String>> = LazyLock::new(|| {
-        let last_key = RwData::new(String::new());
+pub fn last_key() -> RwData<Text> {
+    static LAST_KEY: LazyLock<RwData<Text>> = LazyLock::new(|| {
+        let last_key = RwData::new(Text::new());
 
-        hook::add::<KeysSent>({
+        hook::add::<KeyTyped>({
             let last_key = last_key.clone();
             move |pa, keys| {
-                *last_key.write(pa) = mode::keys_to_string(keys);
+                *last_key.write(pa) = mode::keys_to_text(&[keys]);
                 Ok(())
             }
         });

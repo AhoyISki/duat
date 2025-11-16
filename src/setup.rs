@@ -37,7 +37,7 @@ use crate::{
     mode,
     opts::{
         BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, LOGBOOK_FN, NOTIFICATIONS_FN,
-        ONE_LINE_FOOTER, STATUSLINE_FMT,
+        ONE_LINE_FOOTER, STATUSLINE_FMT, WhichKeyOpts,
     },
     prelude::BufferWritten,
     widgets::Buffer,
@@ -168,6 +168,45 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     })
     .grouped("CacheCursorPosition");
 
+    // WhichKey hooks
+    let wk_specs = DynSpawnSpecs {
+        orientation: Orientation::VerRightBelow,
+        width: None,
+        height: Some(20.0),
+        hidden: false,
+        inside: true,
+    };
+
+    let show_which_key = move |pa: &mut Pass| {
+        let mut wk_specs = wk_specs;
+        let mut opts = WhichKeyOpts::default();
+        crate::opts::WHICHKEY_FN.lock().unwrap()(&mut opts);
+        if !opts.disabled_modes.contains(&mode::current_type_id()) {
+            wk_specs.orientation = opts.orientation;
+            WhichKey::open(pa, opts.fmt, wk_specs);
+        }
+    };
+
+    let cur_seq = mode::current_sequence();
+    hook::add::<KeyTyped>(move |pa, _| {
+        if !cur_seq.call(pa).0.is_empty() {
+            show_which_key(pa);
+        }
+        Ok(())
+    })
+    .grouped("WhichKey");
+    let cur_seq = mode::current_sequence();
+    hook::add::<KeyTyped>(move |pa, key_event| {
+        if cur_seq.call(pa).0.is_empty()
+            && *crate::opts::HELP_KEY.lock().unwrap() == Some(key_event)
+        {
+            show_which_key(pa);
+        }
+        Ok(())
+    });
+
+    hook::add::<mode::User>(move |pa, _| Ok(show_which_key(pa))).grouped("WhichKey");
+
     // Other hooks
 
     hook::add::<BufferWritten>(|_, (path, _, is_quitting)| {
@@ -181,22 +220,6 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         Ok(())
     })
     .grouped("ReloadOnWrite");
-
-    let wk_specs = DynSpawnSpecs {
-        orientation: Orientation::VerRightBelow,
-        width: None,
-        height: Some(20.0),
-        hidden: false,
-        inside: true,
-    };
-    let cur_seq = mode::current_sequence();
-    hook::add::<KeyTyped>(move |pa, key| {
-        if matches!(key, mode::ctrl!('?')) || !cur_seq.call(pa).0.is_empty() {
-            WhichKey::open(pa, wk_specs);
-        }
-        Ok(())
-    });
-    hook::add::<mode::User>(move |pa, _| Ok(WhichKey::open(pa, wk_specs)));
 
     hook::add::<Buffer>(|pa, handle| WordsCompletionParser::add_to_buffer(handle.write(pa)));
 
