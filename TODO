@@ -15,7 +15,7 @@ FOR NEXT UPDATE:
 [x] Move to Rust stable (sigh...).
 [ ] Abuse the shit out of catch_unwind.
 [ ] Borders and Titles.
-[ ] Make cmd::add not a macro (?!).
+[x] Make cmd::add not a macro (?!).
 
 KNOWN BUGS:
  HIGH PRIORITY:

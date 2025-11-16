@@ -209,7 +209,7 @@ pub(crate) fn add_session_commands() {
             None => Ok(Some(txt!("Nothing to be written"))),
         }
     });
-    alias("w", "write");
+    alias("w", "write").unwrap();
 
     add(
         "write-quit",
@@ -236,7 +236,7 @@ pub(crate) fn add_session_commands() {
             }
         },
     );
-    alias("wq", "write-quit");
+    alias("wq", "write-quit").unwrap();
 
     add("write-all", |pa: &mut Pass| {
         let windows = context::windows();
@@ -259,7 +259,7 @@ pub(crate) fn add_session_commands() {
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
     });
-    alias("wa", "write-all");
+    alias("wa", "write-all").unwrap();
 
     add("write-all-quit", |pa: &mut Pass| {
         let windows = context::windows();
@@ -282,7 +282,7 @@ pub(crate) fn add_session_commands() {
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
     });
-    alias("waq", "write-all-quit");
+    alias("waq", "write-all-quit").unwrap();
 
     add("write-all-quit!", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows().buffers(pa).collect();
@@ -294,7 +294,7 @@ pub(crate) fn add_session_commands() {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     });
-    alias("waq!", "write-all-quit!");
+    alias("waq!", "write-all-quit!").unwrap();
 
     add("quit", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
@@ -311,7 +311,7 @@ pub(crate) fn add_session_commands() {
 
         Ok(Some(txt!("Closed [buffer]{}", handle.read(pa).name())))
     });
-    alias("q", "quit");
+    alias("q", "quit").unwrap();
 
     add("quit!", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
@@ -323,7 +323,7 @@ pub(crate) fn add_session_commands() {
 
         Ok(Some(txt!("Forcefully closed {}", handle.read(pa).name())))
     });
-    alias("q!", "quit!");
+    alias("q!", "quit!").unwrap();
 
     add("quit-all", |pa: &mut Pass| {
         let windows = context::windows();
@@ -344,13 +344,13 @@ pub(crate) fn add_session_commands() {
             Err(txt!("There are [a]{unwritten}[] unsaved buffers"))
         }
     });
-    alias("qa", "quit-all");
+    alias("qa", "quit-all").unwrap();
 
     add("quit-all!", |_: &mut Pass| {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     });
-    alias("qa!", "quit-all!");
+    alias("qa!", "quit-all!").unwrap();
 
     add(
         "reload",
@@ -395,9 +395,9 @@ pub(crate) fn add_session_commands() {
         let handle = windows.new_buffer(pa, buffer);
         context::set_current_node(pa, handle);
 
-        return Ok(Some(txt!("Opened {pk}")));
+        Ok(Some(txt!("Opened {pk}")))
     });
-    alias("e", "edit");
+    alias("e", "edit").unwrap().unwrap();
 
     add("open", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
@@ -426,15 +426,15 @@ pub(crate) fn add_session_commands() {
         let file_cfg = *crate::session::FILE_CFG.get().unwrap();
         windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
 
-        return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))));
+        Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
     });
-    alias("o", "open");
+    alias("o", "open").unwrap();
 
     add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
         mode::reset_to(handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
-    alias("b", "buffer");
+    alias("b", "buffer").unwrap();
 
     add("next-buffer", |pa: &mut Pass, flags: Flags| {
         let windows = context::windows();
@@ -589,17 +589,16 @@ mod global {
     /// [`RwData`]: crate::data::RwData
     /// [`Parameter`]: super::Parameter
     pub fn add<Cmd: CmdFn<impl std::any::Any>>(caller: &str, mut cmd: Cmd) {
-        let command = super::Command {
-            caller: caller.to_string(),
+        COMMANDS.add(super::Command::new(
+            caller.to_string(),
             // SAFETY: The type of this RwData doesn't matter, as it is never checked.
-            cmd: unsafe {
+            unsafe {
                 RwData::new_unsized::<Cmd>(Arc::new(UnsafeCell::new(
                     move |pa: &mut Pass, args: super::Args| cmd.call(pa, args),
                 )))
             },
-            check_args: Cmd::check_args,
-        };
-        COMMANDS.add(command);
+            Cmd::check_args,
+        ));
     }
 
     /// Canonical way to quit Duat.

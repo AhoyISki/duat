@@ -434,7 +434,7 @@ impl Parameter for FormName {
 }
 implDeref!(FormName, String);
 
-impl Parameter for Flags<'_> {
+impl Parameter for Flags {
     fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         Ok((args.flags.clone(), None))
     }
@@ -458,7 +458,7 @@ pub struct Args<'a> {
     param_range: Range<usize>,
     has_to_start_param: bool,
     is_forming_param: bool,
-    flags: Flags<'a>,
+    flags: Flags,
 }
 
 impl<'a> Args<'a> {
@@ -556,12 +556,12 @@ impl<'a> Args<'a> {
 /// They work just like flags on regular Linux commands, i.e., you
 /// have word flags, like `"--global"`, and glob flags, like `"-aBc"`.
 #[derive(Clone)]
-pub struct Flags<'a> {
+pub struct Flags {
     blob: String,
-    word: Vec<&'a str>,
+    word: Vec<String>,
 }
 
-impl Flags<'_> {
+impl Flags {
     /// Checks if all of the [`char`]s in the `blob` passed.
     pub fn blob(&self, blob: impl AsRef<str>) -> bool {
         let mut all_chars = true;
@@ -573,7 +573,7 @@ impl Flags<'_> {
 
     /// Returns `true` if the `word` flag was passed.
     pub fn word(&self, flag: impl AsRef<str>) -> bool {
-        self.word.contains(&flag.as_ref())
+        self.word.iter().any(|w| w == flag.as_ref())
     }
 
     /// Returns `true` if no flags have been passed.
@@ -598,8 +598,8 @@ pub fn get_args(command: &str) -> super::Args<'_> {
         if let Some(word_arg) = arg.strip_prefix("--") {
             if !word_arg.is_empty() {
                 args.next();
-                if !word.contains(&word_arg) {
-                    word.push(word_arg)
+                if !word.iter().any(|w| w == word_arg) {
+                    word.push(word_arg.to_string())
                 }
             } else {
                 args.next();

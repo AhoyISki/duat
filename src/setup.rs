@@ -21,6 +21,7 @@ use duat_base::{
 use duat_core::{
     clipboard::Clipboard,
     context::{self, Logs},
+    data::Pass,
     form::{Form, Palette},
     hook::KeyTyped,
     session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
@@ -241,7 +242,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     form::set_weak("key.special", Form::yellow());
     form::set_weak("remap", Form::italic());
 
-    crate::cmd::add!("logs", |pa| {
+    crate::cmd::add("logs", |_: &mut Pass| {
         mode::set(Pager::<LogBook>::new());
         Ok(None)
     });
