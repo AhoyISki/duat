@@ -527,6 +527,7 @@ mod global {
         SEND_KEY.read(pa)(pa, key);
 
         crate::hook::trigger(pa, crate::hook::KeyTyped(key));
+        crate::context::debug!("KeyTyped");
     }
 
     /// Sets the key sending function
@@ -826,9 +827,11 @@ impl MappedBindings {
                     .iter()
                     .filter(move |remap| {
                         if !remap.takes.starts_with(seq) {
+                            context::debug!("doesnt start with");
                             return false;
                         }
                         if remap.doc.is_some() {
+                            context::debug!("has docs");
                             return true;
                         }
 
@@ -839,8 +842,10 @@ impl MappedBindings {
                                 .iter()
                                 .any(|(pats, ..)| pats.iter().any(|pat| pat.matches(gives[0])))
                         {
+                            context::debug!("maps to something that matches");
                             false
                         } else {
+                            context::debug!("maps to other");
                             true
                         }
                     })

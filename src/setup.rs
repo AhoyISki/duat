@@ -24,7 +24,7 @@ use duat_core::{
     form::{Form, Palette},
     hook::KeyTyped,
     session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
-    text::History,
+    text::{History, txt},
     ui::{DynSpawnSpecs, Orientation, Ui, Widget},
 };
 use duat_filetype::FileType;
@@ -181,21 +181,21 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     })
     .grouped("ReloadOnWrite");
 
+    let wk_specs = DynSpawnSpecs {
+        orientation: Orientation::VerRightBelow,
+        width: None,
+        height: Some(20.0),
+        hidden: false,
+        inside: true,
+    };
     let cur_seq = mode::current_sequence();
     hook::add::<KeyTyped>(move |pa, key| {
         if matches!(key, mode::ctrl!('?')) || !cur_seq.call(pa).0.is_empty() {
-            let specs = DynSpawnSpecs {
-                orientation: Orientation::VerRightBelow,
-                width: None,
-                height: Some(20.0),
-                hidden: false,
-                inside: true,
-            };
-
-            WhichKey::open(pa, specs);
+            WhichKey::open(pa, wk_specs);
         }
         Ok(())
     });
+    hook::add::<mode::User>(move |pa, _| Ok(WhichKey::open(pa, wk_specs)));
 
     hook::add::<Buffer>(|pa, handle| WordsCompletionParser::add_to_buffer(handle.write(pa)));
 
@@ -236,7 +236,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     // Setup for WhichKey
     form::set_weak("default.WhichKey", Form::on_dark_grey());
     form::set_weak("key", "const");
-    form::set_weak("key.mod", "attribute");
+    form::set_weak("key.mod", "punctuation.bracket");
     form::set_weak("key.angle", "punctuation.bracket");
     form::set_weak("key.special", Form::yellow());
     form::set_weak("remap", Form::italic());
@@ -246,7 +246,7 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         Ok(None)
     });
 
-    mode::map::<mode::User>("L", Pager::<LogBook>::new());
+    mode::map::<mode::User>("L", Pager::<LogBook>::new()).doc(txt!("Open [mode]Logs"));
 
     #[cfg(feature = "treesitter")]
     {

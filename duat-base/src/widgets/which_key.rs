@@ -21,6 +21,8 @@ impl WhichKey {
             builder.push(txt!("{}{Spacer}", desc.keys.into_text()));
             if let Some(text) = desc.text {
                 builder.push(txt!("{text}\n"));
+            } else {
+                builder.push('\n');
             }
         }
 

@@ -259,8 +259,10 @@ impl Completions {
         }
 
         let (comp, area) = handle.write_with_area(pa);
-        let height = (comp.text.len().line() - 1) as f32;
-        area.set_height(height).unwrap();
+        let height = comp.text.len().line() as f32;
+
+        area.set_height(if comp.text.is_empty() { 0.0 } else { height })
+            .unwrap();
     }
 }
 

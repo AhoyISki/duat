@@ -52,59 +52,56 @@ mod switch;
 
 /// A blank [`Mode`], intended for plugin authors to use
 ///
-/// This [`Mode`] just resets to the default [`Buffer`] `Mode`, no
-/// matter what key is pressed. It is instead used for mapping keys to
-/// other `Mode`s in a common place:
+/// The only key this `Mode` actually accepts is [`KeyCode::Esc`], in
+/// which case it promptly resets to the default [`Buffer`] `Mode`,
+/// which is `duatmode`'s "`Normal`" by default.
 ///
-/// ```rust
+/// This means that you can compose more complex expressions and
+/// accrue them in the `User` mode. For example, something that I find
+/// particularly useful in prose filetypes is the following:
+///
+/// ```
 /// # duat_core::doc_duat!(duat);
-/// # mod plugin0 {
-/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
-/// #     #[derive(Clone, Copy, Debug)]
-/// #     pub struct PluginMode0;
-/// #     impl Mode for PluginMode0 {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
-/// #     }
-/// # }
-/// # mod plugin1 {
-/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
-/// #     #[derive(Clone, Copy, Debug)]
-/// #     pub struct PluginMode1;
-/// #     impl Mode for PluginMode1 {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
-/// #     }
-/// # }
-/// # mod duat_kak {
-/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
-/// #     #[derive(Clone, Copy, Debug)]
-/// #     pub struct Normal;
-/// #     impl Mode for Normal {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle) {}
-/// #     }
-/// # }
-/// setup_duat!(setup);
 /// use duat::prelude::*;
-/// use plugin0::*;
-/// use plugin1::*;
+/// setup_duat!(setup);
 ///
 /// fn setup() {
-///     map::<User>("0", PluginMode0);
-///     map::<User>("1", PluginMode1);
-///     map::<duat_kak::Normal>(" ", User);
+///     map::<User>("f", "<Esc><A-j>|fold -s -w 80<Enter>")
+///         .doc("Fold selected lines by whitespace");
 /// }
 /// ```
 ///
-/// This way, there is a common "hub" for mappings, which plugins can
-/// use in order to map their own [`Mode`]s without interfering with
-/// the user's mapping.
+/// This is also where [`Plugin`] remappings should be done:
+///
+/// ```
+/// # duat_core::doc_duat!(duat);
+/// use duat::prelude::*;
+///
+/// struct MyPlugin;
+///
+/// impl Plugin for MyPlugin {
+///     fn plug(self, plugins: &Plugins) {
+///         //..
+///         map::<User>("fb", RunCommands::new_with("forbnificate "));
+///
+///         cmd::add!("frobnificate", |pa, buf: Buffer| {
+///             // Do stuff
+///             Ok(None)
+///         });
+///     }
+/// }
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct User;
 
 impl Mode for User {
     type Widget = Buffer;
+
+    fn bindings() -> Bindings {
+        bindings!(match _ {
+            event!(KeyCode::Esc) => txt!(""),
+        })
+    }
 
     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
         reset::<Buffer>();

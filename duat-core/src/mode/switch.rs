@@ -206,7 +206,9 @@ fn send_keys_fn<M: Mode>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>) -> Option
         let mode: &mut M = mode.downcast_mut().unwrap();
 
         loop {
-            if let Some(mode_fn) = take_set_mode_fn(pa) {
+            if keys.len() > 0
+                && let Some(mode_fn) = take_set_mode_fn(pa)
+            {
                 break Some(mode_fn);
             }
             let Some(key) = keys.next() else { break None };
@@ -255,25 +257,30 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
         .mutate_data_as(pa, |handle: &Handle<M::Widget>| handle.clone())
         .unwrap();
 
-    let mc = ModeSet((mode, handle.clone()));
-    let mut mode = hook::trigger(pa, mc).0.0;
-
-    mode.on_switch(pa, handle.clone());
-
     crate::mode::set_mode_for_remapper::<M>(pa);
 
+    // Things that happen before the switch, in order to signal that a
+    // switch has happened.
+    *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
+    unsafe {
+        SEND_KEYS
+            .get()
+            .replace(Some(|pa, keys| send_keys_fn::<M>(pa, keys)));
+        BEFORE_EXIT.get().replace(|pa| before_exit_fn::<M>(pa));
+    }
+
+    // Where the mode switch actually happens.
     let new_name = duat_name::<M>();
     let old_name = std::mem::replace(context::raw_mode_name().write(pa), new_name);
 
     hook::trigger(pa, ModeSwitched((old_name, new_name)));
 
-    *MODE_NAME.lock().unwrap() = std::any::type_name::<M>();
+    let mc = ModeSet((mode, handle.clone()));
+    let mut mode = hook::trigger(pa, mc).0.0;
+    mode.on_switch(pa, handle.clone());
+
     unsafe {
         MODE.get().replace(Box::new(mode));
-        SEND_KEYS
-            .get()
-            .replace(Some(|pa, keys| send_keys_fn::<M>(pa, keys)));
-        BEFORE_EXIT.get().replace(|pa| before_exit_fn::<M>(pa));
     }
 
     true

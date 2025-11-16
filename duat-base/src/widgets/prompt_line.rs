@@ -115,7 +115,9 @@ impl Widget for PromptLine {
     }
 }
 
-#[doc(hidden)]
+/// A builder for a new [`PromptLine`]
+///
+/// Can be acquired with [`PromptLine::builder`].
 pub struct PromptLineBuilder {
     prompts: Option<HashMap<TypeId, Text>>,
     specs: PushSpecs,
@@ -137,6 +139,13 @@ impl Default for PromptLineBuilder {
 }
 
 impl PromptLineBuilder {
+    /// Pushes a [`PromptLine`] onto a [`PushTarget`]
+    ///
+    /// This could be a [`Window`] or a [`Handle`], for a [`Buffer`],
+    /// for example.
+    ///
+    /// [`Window`]: duat_core::ui::Window
+    /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<PromptLine> {
         let prompt_line = PromptLine {
             text: Text::default(),

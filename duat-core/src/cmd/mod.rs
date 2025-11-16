@@ -164,7 +164,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{Arc, LazyLock},
+    sync::{LazyLock, Mutex},
 };
 
 use crossterm::style::Color;
@@ -185,16 +185,19 @@ mod parameters;
 
 /// Adds all the usual session commands
 pub(crate) fn add_session_commands() {
-    add!("alias", |pa, alias: &str, command: Remainder| {
-        crate::cmd::alias(pa, alias, command)
-    });
+    use crate::cmd::alias;
 
-    add!(["write", "w"], |pa, path: Option<ValidBuffer>| {
+    add(
+        "alias",
+        |_: &mut Pass, alias: String, command: Remainder| crate::cmd::alias(alias, command.0),
+    );
+
+    add("write", |pa: &mut Pass, path: Option<ValidFilePath>| {
         let handle = context::current_buffer(pa).clone();
         let buffer = handle.write(pa);
 
         let (bytes, name) = if let Some(path) = path {
-            (buffer.save_to(&path)?, path)
+            (buffer.save_to(&path.0)?, path.0)
         } else if let Some(name) = buffer.name_set() {
             (buffer.save()?, std::path::PathBuf::from(name))
         } else {
@@ -206,31 +209,36 @@ pub(crate) fn add_session_commands() {
             None => Ok(Some(txt!("Nothing to be written"))),
         }
     });
+    alias("w", "write");
 
-    add!(["write-quit", "wq"], |pa, path: Option<ValidBuffer>| {
-        let handle = context::current_buffer(pa).clone();
+    add(
+        "write-quit",
+        |pa: &mut Pass, path: Option<ValidFilePath>| {
+            let handle = context::current_buffer(pa).clone();
 
-        let (bytes, name) = {
-            let buffer = handle.write(pa);
-            let bytes = if let Some(path) = path {
-                buffer.save_quit_to(path, true)?
-            } else {
-                buffer.save_quit(true)?
+            let (bytes, name) = {
+                let buffer = handle.write(pa);
+                let bytes = if let Some(path) = path {
+                    buffer.save_quit_to(path.0, true)?
+                } else {
+                    buffer.save_quit(true)?
+                };
+                (bytes, buffer.name())
             };
-            (bytes, buffer.name())
-        };
 
-        context::windows().close(pa, &handle)?;
+            context::windows().close(pa, &handle)?;
 
-        match bytes {
-            Some(bytes) => Ok(Some(txt!(
-                "Closed [buffer]{name}[], writing [a]{bytes}[] bytes"
-            ))),
-            None => Ok(Some(txt!("Closed [buffer]{name}[]"))),
-        }
-    });
+            match bytes {
+                Some(bytes) => Ok(Some(txt!(
+                    "Closed [buffer]{name}[], writing [a]{bytes}[] bytes"
+                ))),
+                None => Ok(Some(txt!("Closed [buffer]{name}[]"))),
+            }
+        },
+    );
+    alias("wq", "write-quit");
 
-    add!(["write-all", "wa"], |pa| {
+    add("write-all", |pa: &mut Pass| {
         let windows = context::windows();
 
         let mut written = 0;
@@ -251,8 +259,9 @@ pub(crate) fn add_session_commands() {
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
     });
+    alias("wa", "write-all");
 
-    add!(["write-all-quit", "waq"], |pa| {
+    add("write-all-quit", |pa: &mut Pass| {
         let windows = context::windows();
 
         let mut written = 0;
@@ -273,8 +282,9 @@ pub(crate) fn add_session_commands() {
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
     });
+    alias("waq", "write-all-quit");
 
-    add!(["write-all-quit!", "waq!"], |pa| {
+    add("write-all-quit!", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows().buffers(pa).collect();
 
         for handle in handles {
@@ -284,8 +294,9 @@ pub(crate) fn add_session_commands() {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     });
+    alias("waq!", "write-all-quit!");
 
-    add!(["quit", "q"], |pa, handle: Option<Buffer>| {
+    add("quit", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
             Some(handle) => handle,
             None => context::current_buffer(pa).clone(),
@@ -300,8 +311,9 @@ pub(crate) fn add_session_commands() {
 
         Ok(Some(txt!("Closed [buffer]{}", handle.read(pa).name())))
     });
+    alias("q", "quit");
 
-    add!(["quit!", "q!"], |pa, handle: Option<Buffer>| {
+    add("quit!", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
             Some(handle) => handle,
             None => context::current_buffer(pa).clone(),
@@ -311,8 +323,9 @@ pub(crate) fn add_session_commands() {
 
         Ok(Some(txt!("Forcefully closed {}", handle.read(pa).name())))
     });
+    alias("q!", "quit!");
 
-    add!(["quit-all", "qa"], |pa| {
+    add("quit-all", |pa: &mut Pass| {
         let windows = context::windows();
         let unwritten = windows
             .buffers(pa)
@@ -331,32 +344,37 @@ pub(crate) fn add_session_commands() {
             Err(txt!("There are [a]{unwritten}[] unsaved buffers"))
         }
     });
+    alias("qa", "quit-all");
 
-    add!(["quit-all!", "qa!"], |_pa| {
+    add("quit-all!", |_: &mut Pass| {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     });
+    alias("qa!", "quit-all!");
 
-    add!(["reload"], |_pa, flags: Flags, profile: Option<String>| {
-        sender()
-            .send(DuatEvent::RequestReload(crate::session::ReloadEvent {
-                clean: flags.word("clean"),
-                update: flags.word("update"),
-                profile: profile.unwrap_or(crate::utils::profile().to_string()),
-            }))
-            .unwrap();
+    add(
+        "reload",
+        |_: &mut Pass, flags: Flags, profile: Option<String>| {
+            sender()
+                .send(DuatEvent::RequestReload(crate::session::ReloadEvent {
+                    clean: flags.word("clean"),
+                    update: flags.word("update"),
+                    profile: profile.unwrap_or(crate::utils::profile().to_string()),
+                }))
+                .unwrap();
 
-        // This has to be done on Windows, since you can't remove
-        // loaded dlls. Thus, we need to quit the curent
-        // configuration first, and then we can start compiling the
-        // new version of the config crate.
-        #[cfg(target_os = "windows")]
-        sender().send(DuatEvent::ReloadSucceeded).unwrap();
+            // This has to be done on Windows, since you can't remove
+            // loaded dlls. Thus, we need to quit the curent
+            // configuration first, and then we can start compiling the
+            // new version of the config crate.
+            #[cfg(target_os = "windows")]
+            sender().send(DuatEvent::ReloadSucceeded).unwrap();
 
-        Ok(None)
-    });
+            Ok(None)
+        },
+    );
 
-    add!(["edit", "e"], |pa, arg: PathOrBufferOrCfg| {
+    add("edit", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
 
         let pk = match arg {
@@ -379,8 +397,9 @@ pub(crate) fn add_session_commands() {
 
         return Ok(Some(txt!("Opened {pk}")));
     });
+    alias("e", "edit");
 
-    add!(["open", "o"], |pa, arg: PathOrBufferOrCfg| {
+    add("open", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
 
         let (pk, msg) = match arg {
@@ -405,17 +424,19 @@ pub(crate) fn add_session_commands() {
         };
 
         let file_cfg = *crate::session::FILE_CFG.get().unwrap();
-        let node = windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
+        windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
 
         return Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))));
     });
+    alias("o", "open");
 
-    add!(["buffer", "b"], |pa, handle: OtherBuffer| {
+    add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
         mode::reset_to(handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
+    alias("b", "buffer");
 
-    add!("next-buffer", |pa, flags: Flags| {
+    add("next-buffer", |pa: &mut Pass, flags: Flags| {
         let windows = context::windows();
         let handle = context::current_buffer(pa);
         let win = context::current_win_index(pa);
@@ -444,7 +465,7 @@ pub(crate) fn add_session_commands() {
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
-    add!("prev-buffer", |pa, flags: Flags| {
+    add("prev-buffer", |pa: &mut Pass, flags: Flags| {
         let windows = context::windows();
         let handle = context::current_buffer(pa);
         let win = context::current_win_index(pa);
@@ -473,12 +494,12 @@ pub(crate) fn add_session_commands() {
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
-    add!("last-buffer", |pa| {
+    add("last-buffer", |pa: &mut Pass| {
         let handle = context::windows().last_buffer(pa)?;
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
-    add!("swap", |pa, lhs: Buffer, rhs: Option<Buffer>| {
+    add("swap", |pa: &mut Pass, lhs: Handle, rhs: Option<Handle>| {
         let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa).clone());
 
         context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
@@ -490,37 +511,40 @@ pub(crate) fn add_session_commands() {
         )))
     });
 
-    add!("colorscheme", |_pa, scheme: ColorSchemeArg| {
-        crate::form::set_colorscheme(scheme);
-        Ok(Some(txt!("Set colorscheme to [a]{scheme}[]")))
+    add("colorscheme", |_: &mut Pass, scheme: ColorSchemeArg| {
+        crate::form::set_colorscheme(&scheme);
+        Ok(Some(txt!("Set colorscheme to [a]{}[]", scheme.0)))
     });
 
-    add!(
+    add(
         "set-form",
-        |_pa, name: FormName, colors: Between<0, 3, Color>| {
+        |_: &mut Pass, name: FormName, colors: Between<0, 3, Color>| {
             let mut form = crate::form::Form::new();
             form.style.foreground_color = colors.first().cloned();
             form.style.background_color = colors.get(1).cloned();
             form.style.underline_color = colors.get(2).cloned();
-            crate::form::set(name, form);
+            crate::form::set(&name.0, form);
 
-            Ok(Some(txt!("Set [a]{name}[] to a new Form")))
-        }
+            Ok(Some(txt!("Set [a]{}[] to a new Form", name.0)))
+        },
     );
 }
 
 mod global {
-    use std::ops::Range;
+    use std::{cell::UnsafeCell, ops::Range, sync::Arc};
 
-    use super::{CheckerFn, CmdFn, CmdResult, Commands};
+    use super::{CmdResult, Commands};
     #[doc(inline)]
-    pub use crate::__add__ as add;
     use crate::{
-        context, data::Pass, form::FormId, main_thread_only::MainThreadOnly, session::DuatEvent,
+        cmd::CmdFn,
+        context,
+        data::{Pass, RwData},
+        form::FormId,
+        session::DuatEvent,
         text::Text,
     };
 
-    static COMMANDS: MainThreadOnly<Commands> = MainThreadOnly::new(Commands::new());
+    static COMMANDS: Commands = Commands::new();
 
     /// Adds a command to Duat
     ///
@@ -543,7 +567,7 @@ mod global {
     ///     let var = data::RwData::new(35);
     ///
     ///     let var_clone = var.clone();
-    ///     cmd::add!("set-var", |pa: &mut Pass, value: usize| {
+    ///     cmd::add("set-var", |pa: &mut Pass, value: usize| {
     ///         *var_clone.write(pa) = value;
     ///         Ok(None)
     ///     });
@@ -564,65 +588,18 @@ mod global {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RwData`]: crate::data::RwData
     /// [`Parameter`]: super::Parameter
-    #[macro_export]
-    #[doc(hidden)]
-    macro_rules! __add__ {
-        ($callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block) => {{
-            use std::{sync::Arc, cell::UnsafeCell};
-            #[allow(unused_imports)]
-            use $crate::{
-                data::{Pass, RwData},
-                cmd::{Args, Caller, CmdFn, CmdResult, Parameter, Remainder, add_inner}
-            };
-
-            #[allow(unused_variables, unused_mut)]
-            let cmd = move |pa: &mut Pass, mut args: Args| -> CmdResult {
-                $(
-                    let ($arg, form): (<$t as Parameter>::Returns, _) =
-                        <$t as Parameter>::new(pa, &mut args)?;
-                )*
-
-                if let Ok(arg) = args.next() {
-                    return Err($crate::text::txt!("Too many arguments"));
-                }
-
-                let mut $pa = pa;
-
-                $f
-            };
-
-            #[allow(unused_variables, unused_mut)]
-            let check_args = |pa: &Pass, mut args: Args| {
-                let mut ok_ranges = Vec::new();
-
-                $(
-                    let start = args.next_start();
-                    let result = <$t as Parameter>::new(pa, &mut args);
-                    match result {
-                        Ok((_, form)) => if let Some(start) = start
-                            .filter(|s| args.param_range().end > *s)
-                        {
-                            ok_ranges.push((start..args.param_range().end, form));
-                        }
-                        Err(err) => return (ok_ranges, Some((args.param_range(), err)))
-                    }
-                )*
-
-                let start = args.next_start();
-                if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
-                    let err = $crate::text::txt!("Too many arguments");
-                    return (ok_ranges, Some((start..args.param_range().end, err)))
-                }
-
-                (ok_ranges, None)
-            };
-
-            let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
-            // SAFETY: This type will never actually be queried
-            let cmd: CmdFn = unsafe { RwData::new_unsized::<()>(Arc::new(UnsafeCell::new(cmd))) };
-
-            add_inner(callers, cmd, check_args)
-        }}
+    pub fn add<Cmd: CmdFn<impl std::any::Any>>(caller: &str, mut cmd: Cmd) {
+        let command = super::Command {
+            caller: caller.to_string(),
+            // SAFETY: The type of this RwData doesn't matter, as it is never checked.
+            cmd: unsafe {
+                RwData::new_unsized::<Cmd>(Arc::new(UnsafeCell::new(
+                    move |pa: &mut Pass, args: super::Args| cmd.call(pa, args),
+                )))
+            },
+            check_args: Cmd::check_args,
+        };
+        COMMANDS.add(command);
     }
 
     /// Canonical way to quit Duat.
@@ -709,9 +686,8 @@ mod global {
     /// Returns an [`Err`] if the `caller` is already a caller for
     /// another command, or if `command` is not a real caller to an
     /// existing command.
-    pub fn alias(pa: &mut Pass, alias: impl ToString, command: impl ToString) -> CmdResult {
-        // SAFETY: Function has a Pass argument.
-        unsafe { COMMANDS.get() }.alias(pa, alias, command)
+    pub fn alias(alias: impl ToString, command: impl ToString) -> CmdResult {
+        COMMANDS.alias(alias, command)
     }
 
     /// Runs a full command synchronously, with a [`Pass`].
@@ -748,15 +724,13 @@ mod global {
     /// [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
     /// [`Flags`]: super::Flags
     pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
-        // SAFETY: Function has a Pass argument.
-        unsafe { COMMANDS.get() }.run(pa, call)
+        COMMANDS.run(pa, call)
     }
 
     /// Like [`call`], but notifies the result
     #[allow(unused_must_use)]
     pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
-        // SAFETY: Function has a Pass argument.
-        let result = unsafe { COMMANDS.get() }.run(pa, call.to_string());
+        let result = COMMANDS.run(pa, call.to_string());
         context::logs().push_cmd_result(result.clone());
 
         result
@@ -778,7 +752,7 @@ mod global {
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
                 // SAFETY: Closure has Pass argument.
-                let _ = unsafe { COMMANDS.get() }.run(pa, call);
+                let _ = COMMANDS.run(pa, call);
             })))
             .unwrap();
     }
@@ -788,8 +762,7 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                context::logs()
-                    .push_cmd_result(unsafe { COMMANDS.get() }.run(pa, call.clone()).clone());
+                context::logs().push_cmd_result(COMMANDS.run(pa, call.clone()).clone());
             })))
             .unwrap()
     }
@@ -799,8 +772,7 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                // SAFETY: Function has a Pass argument.
-                map(unsafe { COMMANDS.get() }.run(pa, call));
+                map(COMMANDS.run(pa, call));
             })))
             .unwrap()
     }
@@ -813,24 +785,12 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                // SAFETY: Function has a Pass argument.
-                let result = unsafe { COMMANDS.get() }.run(pa, call.clone());
+                let result = COMMANDS.run(pa, call.clone());
                 context::logs().push_cmd_result(result.clone());
 
                 map(result)
             })))
             .unwrap()
-    }
-
-    /// Don't call this function, use [`cmd::add`] instead
-    ///
-    /// [`cmd::add`]: add
-    #[doc(hidden)]
-    pub fn add_inner(callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) {
-        // SAFETY: There is no way to obtain an external RwData of Commands,
-        // so you can modify it from anywhere in the main thread.
-        let mut pa = unsafe { Pass::new() };
-        unsafe { COMMANDS.get() }.add(&mut pa, callers, cmd, check_args)
     }
 
     /// Check if the arguments for a given `caller` are correct
@@ -841,8 +801,7 @@ mod global {
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
     )> {
-        // SAFETY: There is a Pass argument
-        unsafe { COMMANDS.get() }.check_args(pa, caller)
+        COMMANDS.check_args(pa, caller)
     }
 }
 
@@ -855,13 +814,13 @@ mod global {
 /// [`Buffer`]: crate::buffer::Buffer
 /// [widget]: crate::ui::Widget
 /// [windows]: crate::ui::Window
-struct Commands(LazyLock<RwData<InnerCommands>>);
+struct Commands(LazyLock<Mutex<InnerCommands>>);
 
 impl Commands {
     /// Returns a new instance of [`Commands`].
     const fn new() -> Self {
         Self(LazyLock::new(|| {
-            RwData::new(InnerCommands {
+            Mutex::new(InnerCommands {
                 list: Vec::new(),
                 aliases: HashMap::new(),
             })
@@ -869,9 +828,10 @@ impl Commands {
     }
 
     /// Aliases a command to a specific word
-    fn alias(&self, pa: &mut Pass, alias: impl ToString, command: impl ToString) -> CmdResult {
+    fn alias(&self, alias: impl ToString, command: impl ToString) -> CmdResult {
         self.0
-            .write(pa)
+            .lock()
+            .unwrap()
             .try_alias(alias.to_string(), command.to_string())
     }
 
@@ -881,7 +841,7 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(txt!("The command is empty"))?.to_string();
 
-        let inner = self.0.read(pa);
+        let inner = self.0.lock().unwrap();
 
         let (command, call) = {
             if let Some(command) = inner.aliases.get(&caller) {
@@ -894,7 +854,7 @@ impl Commands {
                 let command = inner
                     .list
                     .iter()
-                    .find(|cmd| cmd.callers().contains(&caller))
+                    .find(|cmd| cmd.caller().contains(&caller))
                     .ok_or(txt!("[a]{caller}[]: No such command"))?;
 
                 (command.clone(), call.clone())
@@ -912,9 +872,8 @@ impl Commands {
     }
 
     /// Adds a command to the list of commands
-    fn add(&self, pa: &mut Pass, callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) {
-        let cmd = Command::new(callers, cmd, check_args);
-        self.0.write(pa).add(cmd)
+    fn add(&self, command: Command) {
+        self.0.lock().unwrap().add(command)
     }
 
     /// Gets the parameter checker for a command, if it exists
@@ -929,14 +888,14 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        let inner = self.0.read(pa);
+        let inner = self.0.lock().unwrap();
         if let Some((command, _)) = inner.aliases.get(&caller) {
             Some((command.check_args)(pa, get_args(call)))
         } else {
             let command = inner
                 .list
                 .iter()
-                .find(|cmd| cmd.callers().contains(&caller))?;
+                .find(|cmd| cmd.caller().contains(&caller))?;
 
             Some((command.check_args)(pa, get_args(call)))
         }
@@ -955,26 +914,23 @@ pub type CmdResult = Result<Option<Text>, Text>;
 /// A function that can be called by name.
 #[derive(Clone)]
 struct Command {
-    callers: Arc<[String]>,
-    cmd: CmdFn,
+    caller: String,
+    cmd: InnerCmdFn,
     check_args: CheckerFn,
 }
 
 impl Command {
     /// Returns a new instance of command.
-    fn new(callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) -> Self {
-        if let Some(caller) = callers
-            .iter()
-            .find(|caller| caller.split_whitespace().count() != 1)
-        {
+    fn new(caller: String, cmd: InnerCmdFn, check_args: CheckerFn) -> Self {
+        if caller.split_whitespace().count() != 1 {
             panic!("Command caller \"{caller}\" contains more than one word");
         }
-        Self { cmd, check_args, callers: callers.into() }
+        Self { cmd, check_args, caller }
     }
 
-    /// The list of callers that will trigger this command.
-    fn callers(&self) -> &[String] {
-        &self.callers
+    /// The caller for this command
+    fn caller(&self) -> &str {
+        &self.caller
     }
 }
 
@@ -988,11 +944,7 @@ impl InnerCommands {
     ///
     /// Overrides previous commands with the same name.
     fn add(&mut self, command: Command) {
-        let mut new_callers = command.callers().iter();
-
-        self.list
-            .retain(|cmd| new_callers.all(|caller| !cmd.callers.contains(caller)));
-
+        self.list.retain(|cmd| cmd.caller != command.caller());
         self.list.push(command);
     }
 
@@ -1011,7 +963,7 @@ impl InnerCommands {
 
         let mut cmds = self.list.iter();
 
-        if let Some(command) = cmds.find(|cmd| cmd.callers().contains(&caller)) {
+        if let Some(command) = cmds.find(|cmd| cmd.caller().contains(&caller)) {
             let entry = (command.clone(), call.clone());
             Ok(Some(match self.aliases.insert(alias.clone(), entry) {
                 Some((_, prev_call)) => {
@@ -1051,7 +1003,7 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
 
 /// Inner function for Commands
 #[doc(hidden)]
-pub type CmdFn = RwData<dyn FnMut(&mut Pass, Args) -> CmdResult + Send + 'static>;
+pub type InnerCmdFn = RwData<dyn FnMut(&mut Pass, Args) -> CmdResult + Send + 'static>;
 
 /// Inner checking function
 #[doc(hidden)]
@@ -1066,3 +1018,100 @@ pub type CheckerFn = fn(
 pub(crate) fn as_buffer_handle((.., node): (usize, &Node)) -> Option<Handle> {
     node.try_downcast()
 }
+
+trait CmdFn<Arguments>: Send + 'static {
+    fn call(&mut self, pa: &mut Pass, args: Args) -> CmdResult;
+
+    fn check_args(
+        pa: &Pass,
+        args: Args,
+    ) -> (
+        Vec<(Range<usize>, Option<FormId>)>,
+        Option<(Range<usize>, Text)>,
+    );
+}
+
+impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
+    fn call(&mut self, pa: &mut Pass, _: Args) -> CmdResult {
+        self(pa)
+    }
+
+    fn check_args(
+        pa: &Pass,
+        mut args: Args,
+    ) -> (
+        Vec<(Range<usize>, Option<FormId>)>,
+        Option<(Range<usize>, Text)>,
+    ) {
+        let start = args.next_start();
+        if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
+            let err = txt!("Too many arguments");
+            return (Vec::new(), Some((start..args.param_range().end, err)));
+        }
+
+        (Vec::new(), None)
+    }
+}
+
+macro_rules! implCmdFn {
+    ($($param:ident),+) => {
+        impl<$($param),+, F> CmdFn<($($param,)+)> for F
+        where
+            $($param: Parameter,)+
+            F: FnMut(&mut Pass, $($param),+) -> CmdResult + Send + 'static
+        {
+            #[allow(non_snake_case)]
+            fn call(&mut self, pa: &mut Pass, mut args: Args) -> CmdResult {
+                $(
+                    let ($param, _) = $param::new(pa, &mut args)?;
+                )+
+
+                self(pa, $($param),+)
+            }
+
+            fn check_args(
+                pa: &Pass,
+                mut args: Args,
+            ) -> (
+                Vec<(Range<usize>, Option<FormId>)>,
+                Option<(Range<usize>, Text)>,
+            ) {
+                let mut ok_ranges = Vec::new();
+
+				$(
+                    let start = args.next_start();
+                    let result = $param::new(pa, &mut args);
+                    match result {
+                        Ok((_, form)) => {
+                            if let Some(start) = start.filter(|s| args.param_range().end > *s) {
+                                ok_ranges.push((start..args.param_range().end, form));
+                            }
+                        }
+                        Err(err) => return (ok_ranges, Some((args.param_range(), err))),
+                    }
+				)+
+
+                let start = args.next_start();
+                if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
+                    let err = txt!("Too many arguments");
+                    return (ok_ranges, Some((start..args.param_range().end, err)));
+                }
+
+                (ok_ranges, None)
+            }
+        }
+    }
+}
+
+implCmdFn!(P0);
+implCmdFn!(P0, P1);
+implCmdFn!(P0, P1, P2);
+implCmdFn!(P0, P1, P2, P3);
+implCmdFn!(P0, P1, P2, P3, P4);
+implCmdFn!(P0, P1, P2, P3, P4, P5);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);

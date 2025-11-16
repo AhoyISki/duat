@@ -8,13 +8,14 @@ FOR NEXT UPDATE:
 [ ] Command line completion.
 [x] File path completion.
 [ ] Get rid of Text::selections_mut.
-[ ] Lazily evaluate height and width, including when pushing and spawning.
+[ ] Forcefully evaluate height and width when requested.
 [ ] File tracking.
 [ ] Actually fix injected indentation.
-[ ] WhichKey widget.
+[x] WhichKey widget.
 [x] Move to Rust stable (sigh...).
 [ ] Abuse the shit out of catch_unwind.
 [ ] Borders and Titles.
+[ ] Make cmd::add not a macro (?!).
 
 KNOWN BUGS:
  HIGH PRIORITY:

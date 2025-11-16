@@ -234,7 +234,7 @@ impl Binding {
             Binding::AnyModifier(_) => txt!("[key.any]{{modifier}}"),
             Binding::AnyMedia(_) => txt!("[key.any]{{media key}}"),
             Binding::Any(_) => txt!("[key.any]{{any}}"),
-            Binding::Event(code, _) => super::keys_to_text(&[KeyEvent::new(*code, KeyMod::NONE)]),
+            Binding::Event(code, modif) => super::keys_to_text(&[KeyEvent::new(*code, *modif)]),
         });
 
         if !matches!(self, Binding::Event(..))

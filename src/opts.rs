@@ -37,8 +37,9 @@
 //! ```
 //!
 //! **WARNING**: If you do this, you'll lose access to a
-//! [`PromptLine`], so you'll be unable to run commands. Remember, you
-//! can recompile your config with `duat --reload`.
+//! [`PromptLine`], so you'll be unable to run commands. You can
+//! manually readd it with [`PromptLineBuilder::push_on`]. Remember,
+//! you can recompile your config with `duat --reload`.
 //!
 //! [widgets]: crate::widgets
 //! [hooks]: crate::hook
@@ -57,6 +58,7 @@
 //! [`opts::set_logs`]: set_logs
 //! [`opts::footer_on_top`]: footer_on_top
 //! [`opts::one_line_footer`]: one_line_footer
+//! [`PromptLineBuilder::push_on`]: crate::widgets::PromptLineBuilder::push_on
 use std::sync::{
     LazyLock, Mutex,
     atomic::{AtomicBool, Ordering},

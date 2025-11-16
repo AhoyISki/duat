@@ -437,11 +437,12 @@ impl<D: Display> AsBuilderPart<D, D> for D {
 macro_rules! __txt__ {
     ($($parts:tt)+) => {{
         #[allow(unused_imports)]
-        use $crate::{__parse_arg__, __parse_form__, __parse_str__, private_exports::format_like};
+        use $crate::{
+            __parse_arg__, __parse_form__, __parse_str__, private_exports::format_like
+        };
 
         let mut builder = $crate::text::Builder::new();
-
-        format_like!(
+        let _ = format_like!(
             __parse_str__,
             [('{', __parse_arg__, false), ('[', __parse_form__, true)],
             &mut builder,
