@@ -8,10 +8,10 @@ use kasuari::{
 };
 
 use crate::{
-    AreaId, EDGE_PRIO, EQ_LEN_PRIO, Equality, FRAME_PRIO, Frame, SPAWN_ALIGN_PRIO, SPAWN_LEN_PRIO,
-    STATIC_SPAWN_POS_PRIO,
+    AreaId, BORDER_PRIO, Border, EDGE_PRIO, EQ_LEN_PRIO, Equality, FRAME_PRIO, SPAWN_ALIGN_PRIO,
+    SPAWN_LEN_PRIO, STATIC_SPAWN_POS_PRIO,
     area::{Coord, PrintInfo},
-    layout::{Constraints, Layout, SpawnInfo, SpawnSpec},
+    layout::{Constraints, Frame, Layout, SpawnInfo, SpawnSpec},
     printer::{Printer, VarPoint},
 };
 
@@ -39,13 +39,13 @@ pub struct Rect {
     kind: Kind,
     on_files: bool,
     edge: Option<Variable>,
-    frame: Frame,
+    border: Border,
 }
 
 impl Rect {
     /// Returns a new main `Rect`, which represents a full window
-    pub fn new_main(p: &Printer, frame: Frame, cache: PrintInfo) -> Self {
-        let mut main = Rect::new(p, true, Kind::Leaf(cache), None, frame);
+    pub fn new_main(p: &Printer, border: Border, cache: PrintInfo) -> Self {
+        let mut main = Rect::new(p, true, Kind::Leaf(cache), None, border);
 
         main.eqs.extend([
             main.tl.x() | EQ(EDGE_PRIO) | 0.0,
@@ -65,11 +65,11 @@ impl Rect {
     pub fn new_spawned_on_text(
         p: &Printer,
         id: SpawnId,
-        frame: Frame,
+        border: Border,
         cache: PrintInfo,
         mut specs: DynSpawnSpecs,
     ) -> (Self, Constraints) {
-        let mut rect = Rect::new(p, false, Kind::Leaf(cache), Some(id), frame);
+        let mut rect = Rect::new(p, false, Kind::Leaf(cache), Some(id), border);
 
         // Wether the Rect is shown or not is dependent on the SpawnTag being
         // printed or not, it's not a choice of the user.
@@ -87,10 +87,14 @@ impl Rect {
             specs.orientation.prefers_before(),
         );
 
-        rect.set_dyn_spawned_eqs(p, specs, [center, len], [tl.x().into(), tl.y().into()], [
-            tl.x() + 1.0,
-            tl.y() + 1.0,
-        ]);
+        rect.set_dyn_spawned_eqs(
+            p,
+            specs,
+            [center, len],
+            [tl.x().into(), tl.y().into()],
+            [tl.x() + 1.0, tl.y() + 1.0],
+            &Frame::default(),
+        );
 
         let dims = [specs.width, specs.height];
         let cons = Constraints::new(p, dims, specs.hidden, &rect, None);
@@ -112,7 +116,7 @@ impl Rect {
         info: PrintInfo,
     ) -> Option<(Rect, Constraints)> {
         let target = self.get(target)?;
-        let mut rect = Rect::new(p, false, Kind::end(info), Some(id), self.frame);
+        let mut rect = Rect::new(p, false, Kind::end(info), Some(id), self.border);
 
         // Left/bottom, center, right/top, above/left, below/right strengths
         let len = match specs.orientation.axis() {
@@ -135,6 +139,7 @@ impl Rect {
             [center, len],
             [target.tl.x().into(), target.tl.y().into()],
             [target.br.x().into(), target.br.y().into()],
+            &Frame::default(),
         );
 
         let dims = [specs.width, specs.height];
@@ -148,18 +153,18 @@ impl Rect {
     pub fn new_static_spawned(
         p: &Printer,
         id: SpawnId,
-        frame: Frame,
+        border: Border,
         info: PrintInfo,
         specs: StaticSpawnSpecs,
     ) -> (Rect, Constraints, Coord) {
-        let mut rect = Rect::new(p, false, Kind::end(info), Some(id), frame);
+        let mut rect = Rect::new(p, false, Kind::end(info), Some(id), border);
 
         // Since this spawn depends on the max_value, we need to have it
         // calculated first.
         p.update(false, true);
         let max_value = p.max_value();
 
-        rect.set_static_spawned_eqs(p, max_value, specs);
+        rect.set_static_spawned_eqs(p, max_value, specs, &Frame::default());
 
         let dims = [Some(specs.size.x), Some(specs.size.y)];
         let cons = Constraints::new(p, dims, specs.hidden, &rect, None);
@@ -182,19 +187,19 @@ impl Rect {
         on_files: bool,
         spawn_info: &mut Option<&mut SpawnInfo>,
     ) -> bool {
-        let frame = self.frame;
+        let border = self.border;
         let do_cluster = do_cluster || self.spawn_id.is_some();
 
         let spawn_id = self.spawn_id;
         if let Some((i, orig_parent)) = self.get_parent_mut(target_id) {
             let kind = Kind::middle(axis, do_cluster);
-            let mut parent = Rect::new(p, on_files, kind, spawn_id, frame);
+            let mut parent = Rect::new(p, on_files, kind, spawn_id, border);
 
             let axis = orig_parent.kind.axis().unwrap();
             let (mut target, mut cons) = orig_parent.children_mut().unwrap().remove(i);
 
             let is_resizable = target.is_resizable_on(axis, &cons);
-            parent.set_pushed_eqs(i, orig_parent, p, frame, is_resizable, None);
+            parent.set_pushed_eqs(i, orig_parent, p, border, is_resizable, None);
 
             orig_parent
                 .children_mut()
@@ -205,29 +210,23 @@ impl Rect {
             p.remove_eqs(cons.drain());
             p.add_eqs(cons.apply(&target, Some(parent)));
             let is_resizable = target.is_resizable_on(axis, &cons);
-            target.set_pushed_eqs(0, parent, p, frame, is_resizable, None);
+            target.set_pushed_eqs(0, parent, p, border, is_resizable, None);
             parent.children_mut().unwrap().push((target, cons));
 
             if i > 0 {
                 let (mut rect, cons) = orig_parent.children_mut().unwrap().remove(i - 1);
                 let is_resizable = rect.is_resizable_on(axis, &cons);
-                rect.set_pushed_eqs(i - 1, orig_parent, p, frame, is_resizable, None);
+                rect.set_pushed_eqs(i - 1, orig_parent, p, border, is_resizable, None);
                 let entry = (rect, cons);
                 orig_parent.children_mut().unwrap().insert(i - 1, entry);
             }
         } else if target_id == self.id {
             let kind = Kind::middle(axis, do_cluster);
-            let mut parent = Rect::new(p, on_files, kind, spawn_id, frame);
+            let mut parent = Rect::new(p, on_files, kind, spawn_id, border);
 
             let (mut target, cons) = if let Some(info) = spawn_info {
                 let mut cons = std::mem::take(&mut info.cons);
                 p.add_eqs(info.cons.apply(&parent, None));
-
-                if let SpawnSpec::Dynamic(orientation) = info.spec {
-                    let specs = DynSpawnSpecs { orientation, ..Default::default() };
-                    let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
-                    parent.set_dyn_spawned_eqs(p, specs, deps, tl, br);
-                }
 
                 let target = std::mem::replace(self, parent);
                 p.remove_eqs(cons.drain());
@@ -248,7 +247,7 @@ impl Rect {
             };
 
             let is_resizable = target.is_resizable_on(axis, &cons);
-            target.set_pushed_eqs(0, self, p, frame, is_resizable, None);
+            target.set_pushed_eqs(0, self, p, border, is_resizable, None);
             self.children_mut().unwrap().push((target, cons));
         } else {
             return false;
@@ -263,7 +262,7 @@ impl Rect {
         on_files: bool,
         kind: Kind,
         spawn_id: Option<SpawnId>,
-        frame: Frame,
+        border: Border,
     ) -> Self {
         let (tl, br) = (p.new_point(), p.new_point());
         Rect {
@@ -275,7 +274,7 @@ impl Rect {
             kind,
             on_files,
             edge: None,
-            frame,
+            border,
         }
     }
 
@@ -345,11 +344,11 @@ impl Rect {
             (id, Some(parent.id()))
         };
 
-        let frame = self.frame;
+        let border = self.border;
 
         let (i, mut rect, parent, cons, axis) = {
             let (i, parent) = self.get_parent(id)?;
-            let rect = Rect::new(p, on_files, Kind::end(info), parent.spawn_id, self.frame);
+            let rect = Rect::new(p, on_files, Kind::end(info), parent.spawn_id, self.border);
 
             let dims = [specs.width, specs.height];
             let cons = Constraints::new(p, dims, specs.hidden, &rect, Some(parent));
@@ -365,7 +364,7 @@ impl Rect {
         };
 
         let new_id = rect.id();
-        rect.set_pushed_eqs(i, parent, p, frame, cons.is_resizable_on(axis), None);
+        rect.set_pushed_eqs(i, parent, p, border, cons.is_resizable_on(axis), None);
         parent.children_mut().unwrap().insert(i, (rect, cons));
 
         let (i, (mut rect_to_fix, cons_to_fix)) = if i == 0 {
@@ -374,20 +373,21 @@ impl Rect {
             (i - 1, parent.children_mut().unwrap().remove(i - 1))
         };
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons_to_fix);
-        rect_to_fix.set_pushed_eqs(i, parent, p, frame, is_resizable, None);
+        rect_to_fix.set_pushed_eqs(i, parent, p, border, is_resizable, None);
         let entry = (rect_to_fix, cons_to_fix);
         parent.children_mut().unwrap().insert(i, entry);
 
         // Spawned Rects are dynamically sized.
         if let Some(info) = spawn_info {
-            // In this case, the Rect was spawned dynamically.
             match info.spec {
                 SpawnSpec::Dynamic(orientation) => {
+                    let specs = DynSpawnSpecs { orientation, ..Default::default() };
+                    let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
+                    parent.set_dyn_spawned_eqs(p, specs, deps, tl, br, &info.frame);
+
                     let new_len = recurse_length(self, &info.cons, orientation.axis());
                     p.set_spawn_len(info.id, new_len.map(|len| len as f64));
-                    // In this case, it was spawned statically.
                 }
-
                 SpawnSpec::Static {
                     top_left,
                     fractional_repositioning,
@@ -395,12 +395,17 @@ impl Rect {
                 } => {
                     let width = recurse_length(self, &info.cons, Axis::Horizontal).unwrap() as f32;
                     let height = recurse_length(self, &info.cons, Axis::Vertical).unwrap() as f32;
-                    self.set_static_spawned_eqs(p, orig_max, StaticSpawnSpecs {
-                        top_left,
-                        size: duat_core::ui::Coord::new(width, height),
-                        hidden: false,
-                        fractional_repositioning,
-                    });
+                    self.set_static_spawned_eqs(
+                        p,
+                        orig_max,
+                        StaticSpawnSpecs {
+                            top_left,
+                            size: duat_core::ui::Coord::new(width, height),
+                            hidden: false,
+                            fractional_repositioning,
+                        },
+                        &info.frame,
+                    );
                 }
             }
         }
@@ -415,7 +420,7 @@ impl Rect {
     ///
     /// Returns `Some(None)` if the `Rect` is the main one.
     pub fn delete(&mut self, p: &Printer, target_id: AreaId) -> Option<Deletion> {
-        let frame = self.frame;
+        let border = self.border;
         let cluster_id = self.get_cluster_master(target_id)?;
 
         let Some((i, parent)) = self.get_parent_mut(cluster_id) else {
@@ -439,7 +444,7 @@ impl Rect {
 
                 let axis = grandparent.kind.axis().unwrap();
                 let is_resizable = rect.is_resizable_on(axis, &cons);
-                rect.set_pushed_eqs(i, grandparent, p, frame, is_resizable, None);
+                rect.set_pushed_eqs(i, grandparent, p, border, is_resizable, None);
                 grandparent.children_mut().unwrap().insert(i, (rect, cons));
                 (i, grandparent)
             } else {
@@ -476,7 +481,7 @@ impl Rect {
 
         let axis = parent.kind.axis().unwrap();
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-        rect_to_fix.set_pushed_eqs(i, parent, p, frame, is_resizable, None);
+        rect_to_fix.set_pushed_eqs(i, parent, p, border, is_resizable, None);
         let entry = (rect_to_fix, cons);
         parent.children_mut().unwrap().insert(i, entry);
 
@@ -496,7 +501,7 @@ impl Rect {
             return false;
         }
 
-        let frame = self.frame;
+        let border = self.border;
 
         // We're gonna need to reconstrain a bunch of Areas, this is the most
         // ergonomic way of doing that.
@@ -516,7 +521,7 @@ impl Rect {
 
             let axis = parent1.kind.axis().unwrap();
             let is_resizable = rect0.is_resizable_on(axis, &cons1);
-            to_constrain = rect0.set_pushed_eqs(i1, parent1, p, frame, is_resizable, to_constrain);
+            to_constrain = rect0.set_pushed_eqs(i1, parent1, p, border, is_resizable, to_constrain);
 
             parent1
                 .children_mut()
@@ -530,7 +535,7 @@ impl Rect {
             };
             let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
             to_constrain =
-                rect_to_fix.set_pushed_eqs(i, parent1, p, frame, is_resizable, to_constrain);
+                rect_to_fix.set_pushed_eqs(i, parent1, p, border, is_resizable, to_constrain);
             let entry = (rect_to_fix, cons);
             parent1.children_mut().unwrap().insert(i, entry);
 
@@ -540,7 +545,7 @@ impl Rect {
         let parent0 = self.get_mut(p0_id).unwrap();
         let axis = parent0.kind.axis().unwrap();
         let is_resizable = rect1.is_resizable_on(axis, &cons0);
-        to_constrain = rect1.set_pushed_eqs(i0, parent0, p, frame, is_resizable, to_constrain);
+        to_constrain = rect1.set_pushed_eqs(i0, parent0, p, border, is_resizable, to_constrain);
 
         parent0.children_mut().unwrap().insert(i0, (rect1, cons0));
 
@@ -550,7 +555,8 @@ impl Rect {
             (i0 - 1, parent0.children_mut().unwrap().remove(i0 - 1))
         };
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-        to_constrain = rect_to_fix.set_pushed_eqs(i, parent0, p, frame, is_resizable, to_constrain);
+        to_constrain =
+            rect_to_fix.set_pushed_eqs(i, parent0, p, border, is_resizable, to_constrain);
         let entry = (rect_to_fix, cons);
         parent0.children_mut().unwrap().insert(i, entry);
 
@@ -565,7 +571,7 @@ impl Rect {
     /// This can fail (returning `false`) if the `Rect` in question
     /// can't be found within this one.
     pub fn reset_eqs(&mut self, p: &Printer, id: AreaId) -> bool {
-        let frame = self.frame;
+        let border = self.border;
         let mut to_cons = Some(Vec::new());
 
         if let Some((i, parent)) = self.get_parent_mut(id) {
@@ -573,7 +579,7 @@ impl Rect {
 
             let axis = parent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
-            to_cons = rect.set_pushed_eqs(i, parent, p, frame, is_resizable, to_cons);
+            to_cons = rect.set_pushed_eqs(i, parent, p, border, is_resizable, to_cons);
 
             parent.children_mut().unwrap().insert(i, (rect, cons));
 
@@ -583,7 +589,7 @@ impl Rect {
                 (i - 1, parent.children_mut().unwrap().remove(i - 1))
             };
             let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-            to_cons = rect_to_fix.set_pushed_eqs(i, parent, p, frame, is_resizable, to_cons);
+            to_cons = rect_to_fix.set_pushed_eqs(i, parent, p, border, is_resizable, to_cons);
             let entry = (rect_to_fix, cons);
             parent.children_mut().unwrap().insert(i, entry);
         } else if id == self.id {
@@ -601,7 +607,7 @@ impl Rect {
                 for i in 0..children.len() {
                     let (mut child, cons) = self.children_mut().unwrap().remove(i);
                     let is_resizable = child.is_resizable_on(axis, &cons);
-                    to_cons = child.set_pushed_eqs(i, self, p, frame, is_resizable, to_cons);
+                    to_cons = child.set_pushed_eqs(i, self, p, border, is_resizable, to_cons);
                     self.children_mut().unwrap().insert(i, (child, cons));
                 }
             }
@@ -626,7 +632,7 @@ impl Rect {
         i: usize,
         parent: &Rect,
         p: &Printer,
-        fr: Frame,
+        fr: Border,
         is_resizable: bool,
         mut to_constrain: Option<Vec<AreaId>>,
     ) -> Option<Vec<AreaId>> {
@@ -681,9 +687,9 @@ impl Rect {
             if edge == 1.0 && !*clustered {
                 let width = p.set_edge(self.br, next.tl, axis, fr);
                 self.eqs.extend([
-                    width | EQ(FRAME_PRIO) | 1.0,
+                    width | EQ(BORDER_PRIO) | 1.0,
                     (self.end(axis) + width) | EQ(EDGE_PRIO) | next.start(axis),
-                    // Makes the frame have len = 0 when either of its
+                    // Makes the border have len = 0 when either of its
                     // side widgets have len == 0.
                     width | GE(EDGE_PRIO) | 0.0,
                     width | LE(EDGE_PRIO) | 1.0,
@@ -724,13 +730,14 @@ impl Rect {
     /// borders of the terminal, but unlike with pushed [`Rect`]s,
     /// there are no requirement for no collisions with other
     /// [`Rect`]s
-    fn set_dyn_spawned_eqs(
+    pub fn set_dyn_spawned_eqs(
         &mut self,
         p: &Printer,
         specs: DynSpawnSpecs,
         [center, len]: [Variable; 2],
         [tl_x, tl_y]: [Expression; 2],
         [br_x, br_y]: [Expression; 2],
+        frame: &Frame,
     ) {
         use duat_core::ui::Orientation::*;
 
@@ -738,6 +745,8 @@ impl Rect {
             Axis::Horizontal => [self.tl.x(), self.br.x()],
             Axis::Vertical => [self.tl.y(), self.br.y()],
         };
+
+        p.remove_eqs(self.eqs.drain(..));
 
         self.eqs.extend([
             self.tl.x() | GE(EDGE_PRIO) | 0.0,
@@ -747,6 +756,21 @@ impl Rect {
             self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
             self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
         ]);
+
+        self.eqs.extend(
+            [
+                frame.above.then(|| self.tl.y() | GE(FRAME_PRIO) | 1.0),
+                frame
+                    .below
+                    .then(|| self.br.y() | LE(FRAME_PRIO) | (p.max().y() - 1.0)),
+                frame.left.then(|| self.tl.x() | GE(FRAME_PRIO) | 1.0),
+                frame
+                    .right
+                    .then(|| self.br.x() | LE(FRAME_PRIO) | (p.max().x() - 1.0)),
+            ]
+            .into_iter()
+            .flatten(),
+        );
 
         let align_eq = match specs.orientation {
             VerLeftAbove | VerLeftBelow => self.tl.x() | EQ(SPAWN_ALIGN_PRIO) | tl_x,
@@ -776,8 +800,16 @@ impl Rect {
     /// borders of the terminal, but unlike with pushed [`Rect`]s,
     /// there are no requirement for no collisions with other
     /// [`Rect`]s
-    fn set_static_spawned_eqs(&mut self, p: &Printer, max_value: Coord, specs: StaticSpawnSpecs) {
+    pub fn set_static_spawned_eqs(
+        &mut self,
+        p: &Printer,
+        max_value: Coord,
+        specs: StaticSpawnSpecs,
+        frame: &Frame,
+    ) {
         let max = p.max();
+
+        p.remove_eqs(self.eqs.drain(..));
 
         self.eqs.extend([
             self.tl.x() | GE(EDGE_PRIO) | 0.0,
@@ -787,6 +819,21 @@ impl Rect {
             self.br.x() | GE(EDGE_PRIO) | self.tl.x(),
             self.br.y() | GE(EDGE_PRIO) | self.tl.y(),
         ]);
+
+        self.eqs.extend(
+            [
+                frame.above.then(|| self.tl.y() | GE(FRAME_PRIO) | 1.0),
+                frame
+                    .below
+                    .then(|| self.br.y() | LE(FRAME_PRIO) | (p.max().y() - 1.0)),
+                frame.left.then(|| self.tl.x() | GE(FRAME_PRIO) | 1.0),
+                frame
+                    .right
+                    .then(|| self.br.x() | LE(FRAME_PRIO) | (p.max().x() - 1.0)),
+            ]
+            .into_iter()
+            .flatten(),
+        );
 
         self.eqs.extend(match specs.fractional_repositioning {
             None => [
@@ -846,10 +893,8 @@ impl Rect {
             .map(|(pos, parent)| &mut parent.children_mut().unwrap()[pos].1)
     }
 
-    /// Fetches the parent of the [`RwData<Rect>`] with the given
-    /// index, including its positional index and the [`Axis`] of
-    /// its children. Fetches the [`RwData<Rect>`] of the given
-    /// index, if there is one.
+    /// Gets the [`Rect`] associated with an [`AreaId`], if it belongs
+    /// to this one
     pub fn get(&self, id: AreaId) -> Option<&Rect> {
         fn fetch(rect: &Rect, id: AreaId) -> Option<&Rect> {
             if rect.id == id {
@@ -1047,8 +1092,8 @@ impl Rect {
     }
 
     /// The [`Frame`] surrounding this `Rect`
-    pub fn frame(&self) -> Frame {
-        self.frame
+    pub fn border(&self) -> Border {
+        self.border
     }
 }
 

@@ -1,11 +1,14 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use duat_core::ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, SpawnId, StaticSpawnSpecs};
+use duat_core::{
+    text::Text,
+    ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, SpawnId, StaticSpawnSpecs},
+};
 use kasuari::{Constraint, WeightedRelation::*};
 
 pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
 use crate::{
-    AreaId, CONS_SPAWN_LEN_PRIO, Coords, Frame, HIDDEN_PRIO, LEN_PRIO, MANUAL_LEN_PRIO,
+    AreaId, Border, CONS_SPAWN_LEN_PRIO, Coords, HIDDEN_PRIO, LEN_PRIO, MANUAL_LEN_PRIO,
     area::{Coord, PrintInfo},
     printer::{Lines, Printer},
 };
@@ -24,8 +27,8 @@ pub(crate) struct Layouts(Rc<RefCell<InnerLayouts>>);
 
 impl Layouts {
     /// Adds a new layout, returning the main [`AreaId`]
-    pub fn new_layout(&self, printer: Arc<Printer>, frame: Frame, cache: PrintInfo) -> AreaId {
-        let layout = Layout::new(printer, frame, cache);
+    pub fn new_layout(&self, printer: Arc<Printer>, border: Border, cache: PrintInfo) -> AreaId {
+        let layout = Layout::new(printer, border, cache);
         let main_id = layout.main_id();
 
         let mut layouts = self.0.borrow_mut();
@@ -147,8 +150,8 @@ impl Layouts {
     ///
     /// [`Area`]: crate::area::Area
     pub fn swap(&self, lhs: AreaId, rhs: AreaId) -> bool {
-        let mut layouts = self.0.borrow_mut();
-        let list = &mut layouts.list;
+        let mut inner = self.0.borrow_mut();
+        let list = &mut inner.list;
         let (Some((l_layout_i, l_main_id)), Some((r_layout_i, r_main_id))) = (
             list.iter()
                 .enumerate()
@@ -215,8 +218,8 @@ impl Layouts {
     ///
     /// Returns `false` if the [`Rect`] was deleted.
     pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) -> bool {
-        let mut layouts = self.0.borrow_mut();
-        let Some((i, _rect)) = layouts.list.iter_mut().enumerate().find_map(|(i, layout)| {
+        let mut inner = self.0.borrow_mut();
+        let Some((i, _rect)) = inner.list.iter_mut().enumerate().find_map(|(i, layout)| {
             layout
                 .spawned
                 .iter_mut()
@@ -225,8 +228,8 @@ impl Layouts {
             return false;
         };
 
-        layouts.list[i].printer.move_spawn_to(id, coord, char_width);
-        layouts.list[i].printer.update(false, false);
+        inner.list[i].printer.move_spawn_to(id, coord, char_width);
+        inner.list[i].printer.update(false, false);
 
         true
     }
@@ -242,11 +245,32 @@ impl Layouts {
         height: Option<f32>,
         is_hidden: Option<bool>,
     ) -> bool {
-        self.0
-            .borrow_mut()
+        self.0.borrow_mut()
             .list
             .iter_mut()
             .any(|layout| layout.set_constraints(id, width, height, is_hidden))
+    }
+
+    /// Sets the [`Frame`] on a given [`Rect`]'s spawned master
+    ///
+    /// If a spawned `Rect` has multiple `Rect`s within it, then
+    /// setting the `Frame` on any of themwill change the `Frame` of
+    /// the spawned master instead, since the children of spawned
+    /// `Rect`s don't have `Frame`s
+    ///
+    /// Returns `false` if the [`Rect`] was deleted.
+    pub fn set_frame(&self, id: AreaId, mut frame: Frame) -> bool {
+        let mut inner = self.0.borrow_mut();
+        let set_frame = inner
+            .list
+            .iter_mut()
+            .any(|layout| layout.set_frame(id, &mut frame));
+
+        set_frame
+            || inner
+                .list
+                .iter()
+                .any(|layout| layout.main.get(id).is_some())
     }
 
     /// Removes all windows and all spawned widgets
@@ -266,8 +290,8 @@ impl Layouts {
     /// Returns `false` if the `Rect` was deleted or if it is not a
     /// leaf node
     pub fn set_info_of(&self, id: AreaId, new: PrintInfo) -> bool {
-        let mut layouts = self.0.borrow_mut();
-        layouts.list.iter_mut().any(|layout| {
+        let mut inner = self.0.borrow_mut();
+        inner.list.iter_mut().any(|layout| {
             layout
                 .get_mut(id)
                 .and_then(|rect| rect.print_info_mut())
@@ -287,8 +311,8 @@ impl Layouts {
         spawns: impl Iterator<Item = SpawnId>,
         observed_spawns: &[SpawnId],
     ) {
-        let mut layouts = self.0.borrow_mut();
-        let layout = layouts
+        let mut inner = self.0.borrow_mut();
+        let layout = inner
             .list
             .iter_mut()
             .find(|layout| layout.get(area_id).is_some())
@@ -318,9 +342,9 @@ impl Layouts {
     ///
     /// Does nothing if the [`Rect`] of that `AreaId` was deleted.
     pub fn set_active_id(&self, id: AreaId) {
-        let mut layouts = self.0.borrow_mut();
-        if layouts.list.iter().any(|layout| layout.get(id).is_some()) {
-            layouts.active_id = Some(id);
+        let mut inner = self.0.borrow_mut();
+        if inner.list.iter().any(|layout| layout.get(id).is_some()) {
+            inner.active_id = Some(id);
         }
     }
 
@@ -335,8 +359,8 @@ impl Layouts {
     ///
     /// Can return [`None`] if the [`Rect`] has deleted.
     pub fn inspect<Ret>(&self, id: AreaId, f: impl FnOnce(&Rect, &Layout) -> Ret) -> Option<Ret> {
-        let layouts = self.0.borrow();
-        layouts
+        let inner = self.0.borrow();
+        inner
             .list
             .iter()
             .find_map(|layout| layout.get(id).zip(Some(layout)))
@@ -349,8 +373,8 @@ impl Layouts {
     ///
     /// Returns [`None`] if the `Rect` in question was deleted.
     pub fn coords_of(&self, id: AreaId, is_printing: bool) -> Option<Coords> {
-        let layouts = self.0.borrow();
-        layouts
+        let inner = self.0.borrow();
+        inner
             .list
             .iter()
             .find_map(|layout| layout.coords_of(id, is_printing))
@@ -361,8 +385,8 @@ impl Layouts {
     /// Returns [`None`] if the `Rect` was deleted or if it is not a
     /// leaf node
     pub fn get_info_of(&self, id: AreaId) -> Option<PrintInfo> {
-        let layouts = self.0.borrow();
-        layouts
+        let inner = self.0.borrow();
+        inner
             .list
             .iter()
             .find_map(|layout| layout.get(id))
@@ -398,9 +422,9 @@ pub struct Layout {
 
 impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
-    /// [`Frame`] to all inner [`Rect`]s.
-    pub fn new(printer: Arc<Printer>, frame: Frame, cache: PrintInfo) -> Self {
-        let main = Rect::new_main(&printer, frame, cache);
+    /// [`Border`] to all inner [`Rect`]s.
+    pub fn new(printer: Arc<Printer>, border: Border, cache: PrintInfo) -> Self {
+        let main = Rect::new_main(&printer, border, cache);
         Layout { main, spawned: Vec::new(), printer }
     }
 
@@ -522,6 +546,7 @@ impl Layout {
                 id,
                 spec: SpawnSpec::Dynamic(orientation),
                 cons,
+                frame: Default::default(),
             },
             rect,
         ));
@@ -535,7 +560,7 @@ impl Layout {
     /// [`Text`]: duat_core::text::Text
     fn spawn_on_text(&mut self, id: SpawnId, specs: DynSpawnSpecs, cache: PrintInfo) -> AreaId {
         let (rect, cons) =
-            Rect::new_spawned_on_text(&self.printer, id, self.main.frame(), cache, specs);
+            Rect::new_spawned_on_text(&self.printer, id, self.main.border(), cache, specs);
         let rect_id = rect.id();
 
         self.spawned.push((
@@ -543,6 +568,7 @@ impl Layout {
                 id,
                 spec: SpawnSpec::Dynamic(specs.orientation),
                 cons,
+                frame: Default::default(),
             },
             rect,
         ));
@@ -552,7 +578,7 @@ impl Layout {
 
     fn spawn_static(&mut self, id: SpawnId, specs: StaticSpawnSpecs, cache: PrintInfo) -> AreaId {
         let (rect, cons, orig_max) =
-            Rect::new_static_spawned(&self.printer, id, self.main.frame(), cache, specs);
+            Rect::new_static_spawned(&self.printer, id, self.main.border(), cache, specs);
         let rect_id = rect.id();
 
         self.spawned.push((
@@ -564,11 +590,64 @@ impl Layout {
                     orig_max,
                 },
                 cons,
+                frame: Default::default(),
             },
             rect,
         ));
 
         rect_id
+    }
+
+    /// Sets the [`Frame`] for an [`Area`], if it's a spawned one
+    ///
+    /// [`Area`]: super::Area
+    pub fn set_frame(&mut self, id: AreaId, frame: &mut Frame) -> bool {
+        let Some((info, rect)) = self
+            .spawned
+            .iter_mut()
+            .find(|(_, rect)| rect.get(id).is_some())
+        else {
+            return false;
+        };
+
+        if info.frame == *frame {
+            return true;
+        }
+
+        info.frame = std::mem::take(frame);
+
+        match info.spec {
+            SpawnSpec::Static {
+                top_left,
+                fractional_repositioning,
+                orig_max,
+            } => {
+                let width = recurse_length(rect, &info.cons, Axis::Horizontal).unwrap() as f32;
+                let height = recurse_length(rect, &info.cons, Axis::Vertical).unwrap() as f32;
+
+                rect.set_static_spawned_eqs(
+                    &self.printer,
+                    orig_max,
+                    StaticSpawnSpecs {
+                        top_left,
+                        size: duat_core::ui::Coord::new(width, height),
+                        hidden: false,
+                        fractional_repositioning,
+                    },
+                    &info.frame,
+                );
+            }
+            SpawnSpec::Dynamic(orientation) => {
+                let specs = DynSpawnSpecs { orientation, ..Default::default() };
+                let (deps, tl, br) = self.printer.get_spawn_info(info.id).unwrap();
+                rect.set_dyn_spawned_eqs(&self.printer, specs, deps, tl, br, &info.frame);
+                self.printer.set_frame(info.id, &info.frame);
+            }
+        }
+
+        self.printer.update(false, true);
+
+        true
     }
 
     /// Sets the constraints on a given [`Rect`]
@@ -634,7 +713,7 @@ impl Layout {
                 self.printer.clear_spawn(id);
             }
 
-            let (SpawnInfo { id, spec: orientation, cons }, rect) = &self.spawned[i];
+            let (SpawnInfo { id, spec: orientation, cons, .. }, rect) = &self.spawned[i];
             if let SpawnSpec::Dynamic(orientation) = orientation {
                 let len = recurse_length(rect, cons, orientation.axis());
                 self.printer.set_spawn_len(*id, len.map(|len| len as f64));
@@ -750,6 +829,7 @@ struct SpawnInfo {
     id: SpawnId,
     spec: SpawnSpec,
     cons: Constraints,
+    frame: Frame,
 }
 
 /// The specifics of a spawned [`Rect`]
@@ -868,6 +948,101 @@ impl Constraints {
     }
 }
 
+/// A frame around a spawned [`Area`]
+///
+/// This can be configured on an `Area` per `Area` basis, or you can
+/// set a global configuration. In that case [`Widget`]s should strive
+/// to respect the `style` field, even if they override the other
+/// fields as necessary.
+///
+/// [`Area`]: super::Area
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct Frame {
+    /// Show a frame above
+    pub above: bool,
+    // Show a frame below
+    pub below: bool,
+    // Show a frame on the left
+    pub left: bool,
+    // Show a frame on the right
+    pub right: bool,
+    // The `Frame`'s style
+    pub style: FrameStyle,
+    // The `Frame`'s title, shown above
+    pub title: Option<Text>,
+}
+
+impl Frame {
+    /// An [`Iterator`] over the sides of the `Frame`
+    ///
+    /// The order is: above, below, left, right
+    pub fn sides(&self) -> impl Iterator<Item = bool> {
+        [self.above, self.below, self.left, self.right].into_iter()
+    }
+}
+
+/// The style for a spawned [`Area`]'s [`Frame`]
+///
+/// The default is [`FrameStyle::Regular`], which makes use of
+/// characters like `─`, `│`, `┐`
+///
+/// [`Area`]: super::Area
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub enum FrameStyle {
+    /// Uses `─`, `│`, `┐`
+    #[default]
+    Regular,
+    /// Uses `━`, `┃`, `┓`
+    Thick,
+    /// Uses `╌`, `╎`, `┐`
+    Dashed,
+    /// Uses `╍`, `╏`, `┓`
+    ThickDashed,
+    /// Uses `═`, `║`, `╗`
+    Double,
+    /// Uses `─`, `│`, `╮`
+    Rounded,
+    /// Uses `▄`, `▌`, `▖`
+    Halved,
+    /// Uses `-`, `|`, `+`
+    Ascii,
+    /// Uses `char` for all positions
+    Custom {
+        /// The [`char`] to use for each side
+        ///
+        /// The order is: top, bottom, left, right
+        sides: [char; 4],
+        /// The [`char`] to use for the corners
+        ///
+        /// The order is: top-right, top-left, bottom-left,
+        /// bottom-right
+        corners: [char; 4],
+        /// The [`char`] to use when two [`Area`]s with the same
+        /// `FrameStyle` come in contact perpendicularly
+        ///
+        /// This is just like `sides`, but the "side" represents
+        /// which line isn't included.
+        ///
+        /// ```text
+        ///   ┌────┐
+        ///   │    │
+        ///   │ W1 │<- Right side
+        ///   │    │
+        /// ┌─┴────┤<- Right t_merge
+        /// │  W2  │
+        /// └──────┘
+        /// ```
+        ///
+        /// The order is: tob, bottom, left, right
+        ///
+        /// [`Area`]: super::Area
+        t_mergers: Option<[char; 4]>,
+        /// The [`char`] to use when a merge happens on all sides,
+        /// on [`FrameStyle::Regular`] for example, this is `┼`
+        x_merger: Option<char>,
+    },
+}
+
 fn get_cons(
     [width, height]: [Option<(f32, bool)>; 2],
     child: &Rect,
@@ -965,9 +1140,7 @@ fn remove_dependents(
 /// Sets a [`Rect`], as well as all of its children, to be hidden or
 /// revealed
 fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
-    let Some(rect) = layout.get(id) else {
-        return;
-    };
+    let Some(rect) = layout.get(id) else { return };
 
     if layout.get_parent(id).is_none() {
         let [tl, _] = rect.var_points();
@@ -982,9 +1155,7 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
         }
     }
 
-    let Some(rect) = layout.get(id) else {
-        return;
-    };
+    let Some(rect) = layout.get(id) else { return };
 
     if let Some(children) = rect.children() {
         let children: Vec<_> = children.iter().map(|(rect, _)| rect.id()).collect();

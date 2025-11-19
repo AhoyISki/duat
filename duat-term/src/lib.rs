@@ -14,7 +14,6 @@ use std::{
     time::Duration,
 };
 
-pub use area::{Area, Coords};
 use crossterm::{
     cursor,
     event::{self, Event as CtEvent, poll as ct_poll, read as ct_read},
@@ -34,8 +33,10 @@ use duat_core::{
 
 use self::printer::Printer;
 pub use self::{
-    printer::{Brush, Frame},
+    area::{Area, Coords},
+    printer::{Border, BorderStyle},
     rules::{SepChar, VertRule, VertRuleBuilder},
+    layout::Frame
 };
 use crate::layout::Layouts;
 
@@ -50,7 +51,7 @@ struct InnerUi {
     windows: Vec<(Area, Arc<Printer>)>,
     layouts: MainThreadOnly<Layouts>,
     win: usize,
-    frame: Frame,
+    frame: Border,
     printer_fn: fn() -> Arc<Printer>,
     rx: Option<mpsc::Receiver<Event>>,
     tx: mpsc::Sender<Event>,
@@ -72,7 +73,7 @@ impl RawUi for Ui {
                 windows: Vec::new(),
                 layouts: MainThreadOnly::default(),
                 win: 0,
-                frame: Frame::default(),
+                frame: Border::default(),
                 printer_fn: || Arc::new(Printer::new()),
                 rx: Some(rx),
                 tx,
@@ -552,13 +553,15 @@ impl std::hash::Hash for CStyle {
 /// The priority for edges for areas that must not overlap
 const EDGE_PRIO: kasuari::Strength = kasuari::Strength::REQUIRED;
 /// The priority for manually defined lengths
-const MANUAL_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(11.0);
+const MANUAL_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(12.0);
 /// The priority for lengths defined when creating Areas
-const LEN_PRIO: kasuari::Strength = kasuari::Strength::new(10.0);
-/// The priority for frames
-const FRAME_PRIO: kasuari::Strength = kasuari::Strength::new(9.0);
+const LEN_PRIO: kasuari::Strength = kasuari::Strength::new(11.0);
+/// The priority for borders
+const BORDER_PRIO: kasuari::Strength = kasuari::Strength::new(10.0);
 /// The priority for hiding things
-const HIDDEN_PRIO: kasuari::Strength = kasuari::Strength::new(8.0);
+const HIDDEN_PRIO: kasuari::Strength = kasuari::Strength::new(9.0);
+/// The priority for frames around spawned Areas
+const FRAME_PRIO: kasuari::Strength = kasuari::Strength::new(8.0);
 /// The priority for positioning of dynamically spawned Areas
 const DYN_SPAWN_POS_PRIO: kasuari::Strength = kasuari::Strength::new(7.0);
 /// The priority for the center and len variables of spawned Areas

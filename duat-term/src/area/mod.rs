@@ -21,7 +21,12 @@ use duat_core::{
 use iter::{print_iter, rev_print_iter};
 
 pub use self::print_info::PrintInfo;
-use crate::{AreaId, CStyle, Mutex, layout::Layouts, print_style, printer::Lines};
+use crate::{
+    AreaId, CStyle, Mutex,
+    layout::{Frame, Layouts},
+    print_style,
+    printer::Lines,
+};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
 #[bincode(crate = "duat_core::context::bincode")]
@@ -79,6 +84,7 @@ pub struct Area {
     layouts: Layouts,
     id: AreaId,
     ansi_codes: Arc<Mutex<micromap::Map<CStyle, String, 16>>>,
+    set_frame: fn(&mut Self, Frame),
 }
 
 impl PartialEq for Area {
@@ -88,10 +94,29 @@ impl PartialEq for Area {
 }
 
 impl Area {
+    /// Returns a new `Area` from raw parts
     pub(crate) fn new(id: AreaId, layouts: Layouts) -> Self {
-        Self { layouts, id, ansi_codes: Arc::default() }
+        Self {
+            layouts,
+            id,
+            ansi_codes: Arc::default(),
+            set_frame: |area, frame| {
+                if !area.layouts.set_frame(area.id, frame) {
+                    context::warn!("This Area was already deleted");
+                }
+            },
+        }
     }
 
+    /// Adds a frame to this [`Area`]
+    ///
+    /// This function will fail if the `Area` was either deleted or is
+    /// not a spawned `Area`.
+    pub fn set_frame(&mut self, frame: Frame) {
+        (self.set_frame)(self, frame)
+    }
+
+    /// Prints the `Text`
     fn print<'a>(
         &self,
         text: &Text,
@@ -382,7 +407,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't set the width to [a]{width}"))
+            Err(txt!("This Area was already deleted"))
         }
     }
 
@@ -393,7 +418,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't set the height to [a]{height}"))
+            Err(txt!("This Area was already deleted"))
         }
     }
 
@@ -404,7 +429,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't hide the Area"))
+            Err(txt!("This Area was already deleted"))
         }
     }
 
@@ -415,7 +440,7 @@ impl RawArea for Area {
         {
             Ok(())
         } else {
-            Err(txt!("Couldn't reveal the Area"))
+            Err(txt!("This Area was already deleted"))
         }
     }
 
@@ -575,6 +600,11 @@ impl RawArea for Area {
             layouts: self.layouts.clone(),
             id,
             ansi_codes: Arc::default(),
+            set_frame: |area, frame| {
+                if !area.layouts.set_frame(area.id, frame) {
+                    context::warn!("This Area was already deleted");
+                }
+            },
         })
     }
 

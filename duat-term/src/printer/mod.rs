@@ -15,13 +15,17 @@ use duat_core::{
 use kasuari::{Expression, Variable};
 
 use self::{sync_solver::SyncSolver, variables::Variables};
-use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect};
+use crate::{
+    AreaId, Coords, Equality, Mutex,
+    area::Coord,
+    layout::{Frame, Rect},
+};
 
 mod edges;
 mod sync_solver;
 mod variables;
 
-pub use self::edges::{Brush, Frame};
+pub use self::edges::{Border, BorderStyle};
 
 pub struct Printer {
     sync_solver: Mutex<SyncSolver>,
@@ -43,7 +47,7 @@ impl Printer {
             let (width, height) = (width as f64, height as f64);
 
             let max = vars.new_point();
-            let sync_solver = SyncSolver::new(&max, width, height);
+            let sync_solver = SyncSolver::new(max, width, height);
 
             (vars, sync_solver, max)
         };
@@ -68,9 +72,9 @@ impl Printer {
         self.vars.lock().unwrap().new_point()
     }
 
-    /// Returns a new dynamically updated [`Variable`], which centers
-    /// a [`Rect`] as well as another which represents the length of
-    /// said [`Rect`]
+    /// Returns [`Variable`]s for a new dynamically updated widget,
+    /// which centers a [`Rect`] as well as another which
+    /// represents the length of said [`Rect`]
     pub fn new_widget_spawn(
         &self,
         id: SpawnId,
@@ -136,11 +140,16 @@ impl Printer {
         }
     }
 
+	/// Sets the [`Frame`] for a [`SpawnId`]
+    pub fn set_frame(&self, id: SpawnId, frame: &Frame) {
+        self.sync_solver.lock().unwrap().set_frame(id, frame);
+    }
+
     /// Creates a new edge from the two [`VarPoint`]s
     ///
     /// This function will return the [`Variable`] representing the
     /// `width` of that edge. It can only have a value of `1` or `0`.
-    pub fn set_edge(&self, lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Frame) -> Variable {
+    pub fn set_edge(&self, lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Border) -> Variable {
         self.vars.lock().unwrap().set_edge([lhs, rhs], axis, fr)
     }
 

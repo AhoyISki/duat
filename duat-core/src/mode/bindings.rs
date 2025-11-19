@@ -34,7 +34,6 @@ pub struct Bindings {
     ///
     /// Direct implementation is not recommended, use the
     /// [`bindings!`] macro instead
-    #[doc(hidden)]
     pub matcher: Arc<dyn Fn(KeyEvent) -> Option<usize> + Send + Sync + 'static>,
     /// Descriptions for each of the key bindings
     ///
@@ -43,7 +42,6 @@ pub struct Bindings {
     ///
     /// Direct implementation is not recommended, use the
     /// [`bindings!`] macro instead.
-    #[doc(hidden)]
     pub list: Vec<(Vec<Binding>, Selectionless, Option<Bindings>)>,
 }
 

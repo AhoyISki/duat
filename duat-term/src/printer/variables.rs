@@ -8,11 +8,11 @@ use duat_core::{form::Form, ui::Axis};
 use kasuari::Variable;
 
 use super::{
-    Frame, VarPoint,
+    Border, VarPoint,
     edges::{Edge, EdgeCoords},
     stdout::Stdout,
 };
-use crate::{Brush, area::Coord};
+use crate::{BorderStyle, area::Coord};
 
 pub struct Variables {
     list: HashMap<Variable, (u32, usize)>,
@@ -45,7 +45,7 @@ impl Variables {
     }
 
     /// Returns a new [`Variable`] for an [`Edge`]
-    pub fn set_edge(&mut self, [lhs, rhs]: [VarPoint; 2], axis: Axis, fr: Frame) -> Variable {
+    pub fn set_edge(&mut self, [lhs, rhs]: [VarPoint; 2], axis: Axis, fr: Border) -> Variable {
         let var = (self.variable_fn)();
         self.edges.push((var, Edge::new(lhs, rhs, axis.perp(), fr)));
         var
@@ -94,7 +94,7 @@ impl Variables {
             coords
         };
 
-        let mut crossings = Vec::<(Coord, [Option<Brush>; 4])>::new();
+        let mut crossings = Vec::<(Coord, [Option<BorderStyle>; 4])>::new();
 
         for (i, &coords) in edges.iter().enumerate() {
             if let Axis::Horizontal = coords.axis {

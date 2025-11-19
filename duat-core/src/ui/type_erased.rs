@@ -325,7 +325,8 @@ impl RwArea {
     ///
     /// [`Plugin`]: crate::Plugin
     pub fn write_as<'a, A: RawArea>(&'a self, pa: &'a mut Pass) -> Option<&'a mut A> {
-        self.0.write(pa).inner.downcast_mut()
+        let ptr = Box::as_mut(&mut self.0.write(pa).inner) as *mut dyn std::any::Any;
+        unsafe { (ptr as *mut A).as_mut() }
     }
 
     ////////// Area Modification functions

@@ -99,8 +99,7 @@ pub(crate) static LOGBOOK_FN: LazyLock<LogBookFn> = LazyLock::new(|| Mutex::new(
 
 pub(crate) static HELP_KEY: Mutex<Option<KeyEvent>> =
     Mutex::new(Some(KeyEvent::new(KeyCode::Char('?'), KeyMod::CONTROL)));
-pub(crate) static WHICHKEY_FN: LazyLock<WhichKeyFn> =
-    LazyLock::new(|| Mutex::new(Box::new(|_| {})));
+pub(crate) static WHICHKEY_OPTS: LazyLock<Mutex<WhichKeyOpts>> = LazyLock::new(Mutex::default);
 
 pub(crate) static FOOTER_ON_TOP: AtomicBool = AtomicBool::new(false);
 pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
@@ -515,8 +514,13 @@ pub fn set_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'stati
 /// [`LogBook`]: crate::widgets::LogBook
 /// [`Level`]: crate::context::Level
 /// [`Level::Debug`]: crate::context::Level::Debug
-pub fn set_notifs(set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
-    *NOTIFICATIONS_FN.lock().unwrap() = Box::new(set_fn);
+pub fn set_notifs(mut set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
+    let mut notifications_fn = NOTIFICATIONS_FN.lock().unwrap();
+    let mut prev = std::mem::replace(&mut *notifications_fn, Box::new(|_| {}));
+    *notifications_fn = Box::new(move |opts| {
+        prev(opts);
+        set_fn(opts)
+    });
 }
 
 /// Changes the default [`LogBook`]
@@ -564,8 +568,13 @@ pub fn set_notifs(set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
 /// [`Notifications`]: crate::widgets::Notifications
 /// [`Level::Error`]: crate::context::Level::Error
 /// [`Plugin`]: crate::Plugin
-pub fn set_logs(set_fn: impl FnMut(&mut LogBookOpts) + Send + 'static) {
-    *LOGBOOK_FN.lock().unwrap() = Box::new(set_fn);
+pub fn set_logs(mut set_fn: impl FnMut(&mut LogBookOpts) + Send + 'static) {
+    let mut logbook_fn = LOGBOOK_FN.lock().unwrap();
+    let mut prev = std::mem::replace(&mut *logbook_fn, Box::new(|_| {}));
+    *logbook_fn = Box::new(move |opts| {
+        prev(opts);
+        set_fn(opts)
+    });
 }
 
 /// Changes the [`WhichKey`] widget
@@ -573,8 +582,9 @@ pub fn set_logs(set_fn: impl FnMut(&mut LogBookOpts) + Send + 'static) {
 ///
 ///
 /// [`WhichKey`]: crate::widgets::WhichKey
-pub fn set_which_key(set_fn: impl FnMut(&mut WhichKeyOpts) + Send + 'static) {
-    *WHICHKEY_FN.lock().unwrap() = Box::new(set_fn);
+pub fn set_which_key(set_fn: impl FnOnce(&mut WhichKeyOpts)) {
+    let mut whichkey_opts = WHICHKEY_OPTS.lock().unwrap();
+    set_fn(&mut whichkey_opts);
 }
 
 /// Makes the [`FooterWidgets`] take up one line instead of two
@@ -637,26 +647,32 @@ pub fn set_help_key(key_event: Option<KeyEvent>) {
 type StatusLineFn = Mutex<Option<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>>;
 type NotificationsFn = Mutex<Box<dyn FnMut(&mut NotificationsOpts) + Send>>;
 type LogBookFn = Mutex<Box<dyn FnMut(&mut LogBookOpts) + Send>>;
-type WhichKeyFn = Mutex<Box<dyn FnMut(&mut WhichKeyOpts) + Send>>;
 
 /// Options for the [`WhichKey`] widget
 ///
 /// These options concern the formatting and on which [`Mode`]s the
 /// help should show up:
 ///
-/// - [`disable_on`]: Disables the automatic showing of `WhichKey` on
+/// - [`disable_for`]: Disables the automatic showing of `WhichKey` on
 ///   a `Mode`. It'll still show up with the [help key]. If you want
 ///   to disable for all `Mode`s, [remove] the `"WhichKey"` hook
 ///   group.
 ///
 /// [`WhichKey`]: crate::widgets::WhichKey
-/// [`disable_on`]: WhichKeyOpts::disable_on
+/// [`disable_for`]: WhichKeyOpts::disable_for
 /// [help key]: set_help_key
 /// [remove]: crate::hook::remove
 #[allow(clippy::type_complexity)] // ??? where?
 pub struct WhichKeyOpts {
-    pub(crate) fmt: Option<Box<dyn FnMut(Description) -> Option<Text>>>,
+    pub(crate) fmt_getter: Option<
+        Box<
+            dyn Fn() -> Box<dyn FnMut(Description) -> Option<Text> + 'static>
+                + Send
+                + 'static,
+        >,
+    >,
     pub(crate) disabled_modes: Vec<TypeId>,
+    pub(crate) always_shown_modes: Vec<TypeId>,
     /// Where to place the [`Widget`]
     ///
     /// Normally, this is [`Orientation::VerRightBelow`]. Since it's
@@ -672,8 +688,9 @@ pub struct WhichKeyOpts {
 impl Default for WhichKeyOpts {
     fn default() -> Self {
         Self {
-            fmt: None,
+            fmt_getter: None,
             disabled_modes: vec![TypeId::of::<duatmode::Insert>()],
+            always_shown_modes: vec![TypeId::of::<crate::mode::User>()],
             orientation: Orientation::VerRightBelow,
         }
     }
@@ -686,8 +703,8 @@ impl WhichKeyOpts {
     /// [`None`], then that specific entry won't show up on the list
     /// of bindings. This is useful for, for example, hiding entries
     /// that have no description [`Text`], which is done by default.
-    pub fn fmt(&mut self, fmt: impl FnMut(Description) -> Option<Text> + Send + 'static) {
-        self.fmt = Some(Box::new(fmt))
+    pub fn fmt(&mut self, fmt: impl FnMut(Description) -> Option<Text> + Send + Clone + 'static) {
+        self.fmt_getter = Some(Box::new(move || Box::new(fmt.clone())))
     }
 
     /// Disable hints for the given [`Mode`]
@@ -696,10 +713,49 @@ impl WhichKeyOpts {
     /// default, `WhichKey` is disabled for `duatmode`'s [`Insert`]
     /// mode.
     ///
+    /// Calling this function will also remove said `Mode` from the
+    /// [always shown list].
+    ///
     /// [`Mode`]: crate::mode::Mode
     /// [help key]: set_help_key
     /// [`Insert`]: crate::mode::Insert
-    pub fn disable_on<M: Mode>(&mut self) {
+    /// [always shown list]: Self::always_show
+    pub fn disable_for<M: Mode>(&mut self) {
+        self.always_shown_modes
+            .retain(|ty| *ty != TypeId::of::<M>());
         self.disabled_modes.push(TypeId::of::<M>());
+    }
+
+    /// Makes the [`WhichKey`] permanently visible on this [`Mode`]
+    ///
+    /// This is useful for `Mode`s where the keys don't form
+    /// sequences, but you'd still want them shown to the user. By
+    /// default, this is enabled for the [`User`] mode.
+    ///
+    /// Calling this function will also remove said `Mode` from the
+    /// [disabled list].
+    ///
+    /// [`WhichKey`]: crate::widgets::WhichKey
+    /// [`User`]: crate::mode::User
+    /// [disabled list]: Self::disable_for
+    pub fn always_show<M: Mode>(&mut self) {
+        self.disabled_modes.retain(|ty| *ty != TypeId::of::<M>());
+        self.always_shown_modes.push(TypeId::of::<M>());
+    }
+
+    /// Makes the [`WhichKey`] show up normally on this [`Mode`]
+    ///
+    /// This function just removes this `Mode` from the [disabled] and
+    /// [always shown] lists. By calling it, the [`WhichKey`]s widget
+    /// will be displayed when you begin typing a sequence of bound or
+    /// mapped keys.
+    ///
+    /// [`WhichKey`]: crate::widgets::WhichKey
+    /// [disabled]: Self::disable_for
+    /// [always shown]: Self::always_show
+    pub fn show_normally<M: Mode>(&mut self) {
+        self.disabled_modes.retain(|ty| *ty != TypeId::of::<M>());
+        self.always_shown_modes
+            .retain(|ty| *ty != TypeId::of::<M>());
     }
 }

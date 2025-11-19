@@ -23,7 +23,7 @@ use duat_core::{
     context::{self, Logs},
     data::Pass,
     form::{Form, Palette},
-    hook::KeyTyped,
+    hook::{KeyTyped, ModeSwitched},
     session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
     text::{History, txt},
     ui::{DynSpawnSpecs, Orientation, Ui, Widget},
@@ -37,7 +37,7 @@ use crate::{
     mode,
     opts::{
         BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, LOGBOOK_FN, NOTIFICATIONS_FN,
-        ONE_LINE_FOOTER, STATUSLINE_FMT, WhichKeyOpts,
+        ONE_LINE_FOOTER, STATUSLINE_FMT,
     },
     prelude::BufferWritten,
     widgets::Buffer,
@@ -179,22 +179,37 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
     let show_which_key = move |pa: &mut Pass| {
         let mut wk_specs = wk_specs;
-        let mut opts = WhichKeyOpts::default();
-        crate::opts::WHICHKEY_FN.lock().unwrap()(&mut opts);
-        if !opts.disabled_modes.contains(&mode::current_type_id()) {
-            wk_specs.orientation = opts.orientation;
-            WhichKey::open(pa, opts.fmt, wk_specs);
-        }
+        let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
+        wk_specs.orientation = opts.orientation;
+        WhichKey::open(pa, opts.fmt_getter.as_ref().map(|fg| fg()), wk_specs);
     };
 
     let cur_seq = mode::current_sequence();
     hook::add::<KeyTyped>(move |pa, _| {
-        if !cur_seq.call(pa).0.is_empty() {
+        let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
+        let current_ty = mode::current_type_id();
+        if !cur_seq.call(pa).0.is_empty() || opts.always_shown_modes.contains(&current_ty) {
+            drop(opts);
             show_which_key(pa);
         }
         Ok(())
     })
     .grouped("WhichKey");
+    hook::add::<ModeSwitched>(move |pa, _| {
+        let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
+        if opts.always_shown_modes.contains(&mode::current_type_id()) {
+            drop(opts);
+            show_which_key(pa);
+        } else {
+            let handles: Vec<_> = context::windows().handles_of::<WhichKey>(pa).collect();
+            for handle in handles {
+                let _ = handle.close(pa);
+            }
+        }
+        Ok(())
+    })
+    .grouped("WhichKey");
+
     let cur_seq = mode::current_sequence();
     hook::add::<KeyTyped>(move |pa, key_event| {
         if cur_seq.call(pa).0.is_empty()
@@ -204,8 +219,6 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         }
         Ok(())
     });
-
-    hook::add::<mode::User>(move |pa, _| Ok(show_which_key(pa))).grouped("WhichKey");
 
     // Other hooks
 

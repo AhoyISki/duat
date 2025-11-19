@@ -590,13 +590,6 @@ impl Remapper {
         ) {
             let mapped_bindings = inner.mapped_bindings.get_mut(&ty).unwrap();
 
-            if let Gives::Keys(keys) = &gives
-                && !mapped_bindings.bindings.matches_sequence(keys)
-            {
-                context::warn!("Tried mapping to unbound sequence");
-                return;
-            }
-
             let remap = Remap::new(takes, gives, is_alias, doc.map(Text::no_selections));
 
             if let Some(i) = mapped_bindings.remaps.iter().position(|r| {
@@ -826,11 +819,9 @@ impl MappedBindings {
                     .iter()
                     .filter(move |remap| {
                         if !remap.takes.starts_with(seq) {
-                            context::debug!("doesnt start with");
                             return false;
                         }
                         if remap.doc.is_some() {
-                            context::debug!("has docs");
                             return true;
                         }
 
@@ -841,10 +832,8 @@ impl MappedBindings {
                                 .iter()
                                 .any(|(pats, ..)| pats.iter().any(|pat| pat.matches(gives[0])))
                         {
-                            context::debug!("maps to something that matches");
                             false
                         } else {
-                            context::debug!("maps to other");
                             true
                         }
                     })

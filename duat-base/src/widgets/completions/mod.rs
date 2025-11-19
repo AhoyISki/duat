@@ -25,6 +25,7 @@ use duat_core::{
     text::{Point, SpawnTag, Tagger, Text, txt},
     ui::{DynSpawnSpecs, Orientation, Widget},
 };
+use duat_term::Frame;
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
 use crate::widgets::completions::paths::PathCompletions;
@@ -77,6 +78,16 @@ impl CompletionsBuilder {
     pub fn open(self, pa: &mut Pass) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
+            hook::add::<Completions>(|pa, handle| {
+                if let Some(area) = handle.area().write_as::<duat_term::Area>(pa) {
+                    area.set_frame(Frame {
+                        left: true,
+                        right: true,
+                        ..Default::default()
+                    });
+                }
+                Ok(())
+            });
             hook::add::<FocusChanged>(|pa, (prev, _)| {
                 prev.text_mut(pa).remove_tags(*TAGGER, ..);
                 Ok(())

@@ -855,6 +855,8 @@ impl PartialEq for Text {
     }
 }
 
+impl Eq for Text {}
+
 impl PartialEq<&str> for Text {
     fn eq(&self, other: &&str) -> bool {
         self.0.bytes == *other

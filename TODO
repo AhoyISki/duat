@@ -19,7 +19,6 @@ FOR NEXT UPDATE:
 KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Get rid of Text::selections_mut.
-  [ ] Forms coming out wrong from txt!.
   [ ] track_area not actually tracking correctly.
   [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
   [ ] First Point not updating when there are changes before the start of the screen.

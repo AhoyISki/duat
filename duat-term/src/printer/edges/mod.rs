@@ -9,7 +9,7 @@ pub use combinations::*;
 
 /// What type of line should separate widgets
 #[derive(Default, Clone, Copy, Debug)]
-pub enum Brush {
+pub enum BorderStyle {
     /// Uses `─`, `│`, `┐`
     #[default]
     Regular,
@@ -35,12 +35,12 @@ pub struct Edge {
     lhs: VarPoint,
     rhs: VarPoint,
     axis: Axis,
-    fr: Frame,
+    fr: Border,
 }
 
 impl Edge {
     /// Returns a new instance of [`Edge`].
-    pub fn new(lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Frame) -> Self {
+    pub fn new(lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Border) -> Self {
         Self { lhs, rhs, axis, fr }
     }
 
@@ -61,7 +61,7 @@ impl Edge {
             Axis::Vertical => Coord::new(rhs.x, lhs.y),
         };
 
-        Some(EdgeCoords::new(start, end, self.axis, self.fr.brush()))
+        Some(EdgeCoords::new(start, end, self.axis, self.fr.style()))
     }
 }
 
@@ -70,15 +70,15 @@ pub struct EdgeCoords {
     pub tl: Coord,
     pub br: Coord,
     pub axis: Axis,
-    pub line: Option<Brush>,
+    pub line: Option<BorderStyle>,
 }
 
 impl EdgeCoords {
-    fn new(tl: Coord, br: Coord, axis: Axis, line: Option<Brush>) -> Self {
+    fn new(tl: Coord, br: Coord, axis: Axis, line: Option<BorderStyle>) -> Self {
         Self { tl, br, axis, line }
     }
 
-    pub fn crossing(&self, other: EdgeCoords) -> Option<(Coord, [Option<Brush>; 4])> {
+    pub fn crossing(&self, other: EdgeCoords) -> Option<(Coord, [Option<BorderStyle>; 4])> {
         if let Axis::Vertical = self.axis {
             if let Axis::Vertical = other.axis {
                 if self.br.x == other.tl.x && self.br.y + 2 == other.tl.y {
@@ -137,45 +137,45 @@ impl EdgeCoords {
 /// between widgets, around the whole application, or not at all:
 ///
 /// - [`Empty`]: Do not frame at all.
-/// - [`Surround`]: Frame on all sides.
-/// - [`Border`]: Frame only around files.
+/// - [`Surround`]: Border on all sides.
+/// - [`Border`]: Border only around files.
 /// - [`Vertical`]: Like [`Surround`], but only on vertical lines.
 /// - [`VerBorder`]: Like [`Border`], but only on vertical lines.
 /// - [`Horizontal`]: Like [`Surround`], but only on horizontal lines.
 /// - [`HorBorder`]: Like [`Border`], but only on horizontal lines.
 ///
-/// [`Empty`]: Frame::Empty
-/// [`Surround`]: Frame::Surround
-/// [`Border`]: Frame::Border
-/// [`Vertical`]: Frame::Vertical
-/// [`VerBorder`]: Frame::VerBorder
-/// [`Horizontal`]: Frame::Horizontal
-/// [`HorBorder`]: Frame::HorBorder
+/// [`Empty`]: Border::Empty
+/// [`Surround`]: Border::Surround
+/// [`Border`]: Border::Border
+/// [`Vertical`]: Border::Vertical
+/// [`VerBorder`]: Border::VerBorder
+/// [`Horizontal`]: Border::Horizontal
+/// [`HorBorder`]: Border::HorBorder
 #[derive(Clone, Copy, Debug)]
-pub enum Frame {
+pub enum Border {
     /// No frame
     Empty,
-    /// Frame the window's edges and borders between widgets
-    Surround(Brush),
-    /// Frame borders between widgets
-    Border(Brush),
-    /// Frame vertical window edges and borders between widgets
-    Vertical(Brush),
-    /// Frame vertical borders between widgets
-    VerBorder(Brush),
-    /// Frame horizontal window edges and borders between widgets
-    Horizontal(Brush),
-    /// Frame horizontal borders between widgets
-    HorBorder(Brush),
+    /// Border the window's edges and borders between widgets
+    Surround(BorderStyle),
+    /// Border borders between widgets
+    Border(BorderStyle),
+    /// Border vertical window edges and borders between widgets
+    Vertical(BorderStyle),
+    /// Border vertical borders between widgets
+    VerBorder(BorderStyle),
+    /// Border horizontal window edges and borders between widgets
+    Horizontal(BorderStyle),
+    /// Border horizontal borders between widgets
+    HorBorder(BorderStyle),
 }
 
-impl Default for Frame {
+impl Default for Border {
     fn default() -> Self {
-        Self::Border(Brush::Regular)
+        Self::Border(BorderStyle::Regular)
     }
 }
 
-impl Frame {
+impl Border {
     /// Same as [`files_edges`], but on only one [`Axis`]
     ///
     /// [`files_edges`]: Self::files_edges
@@ -191,23 +191,23 @@ impl Frame {
     ///
     /// [`border_edges`]: Self::border_edges
     pub(crate) fn border_edge_on(&self, axis: Axis) -> f64 {
-        let (hor_fr, ver_fr) = self.border_edges();
+        let (hor_border, ver_border) = self.border_edges();
         match axis {
-            Axis::Horizontal => hor_fr,
-            Axis::Vertical => ver_fr,
+            Axis::Horizontal => hor_border,
+            Axis::Vertical => ver_border,
         }
     }
 
-    /// The [`Brush`] in use, [`None`] for [`Frame::Empty`]
-    fn brush(&self) -> Option<Brush> {
+    /// The [`Brush`] in use, [`None`] for [`Border::Empty`]
+    fn style(&self) -> Option<BorderStyle> {
         match self {
             Self::Empty => None,
-            Self::Surround(brush)
-            | Self::Border(brush)
-            | Self::Vertical(brush)
-            | Self::VerBorder(brush)
-            | Self::Horizontal(brush)
-            | Self::HorBorder(brush) => Some(*brush),
+            Self::Surround(style)
+            | Self::Border(style)
+            | Self::Vertical(style)
+            | Self::VerBorder(style)
+            | Self::Horizontal(style)
+            | Self::HorBorder(style) => Some(*style),
         }
     }
 
