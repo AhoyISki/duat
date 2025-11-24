@@ -117,12 +117,12 @@ impl Area {
     }
 
     /// Prints the `Text`
-    fn print<'a>(
+    fn print(
         &self,
         text: &Text,
         opts: PrintOpts,
         mut painter: Painter,
-        mut f: impl FnMut(&Caret, &Item) + 'a,
+        mut f: impl FnMut(&Caret, &Item),
     ) {
         const SPACES: &[u8] = &[b' '; 3000];
 

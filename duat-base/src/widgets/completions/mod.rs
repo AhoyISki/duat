@@ -83,6 +83,8 @@ impl CompletionsBuilder {
                     area.set_frame(Frame {
                         left: true,
                         right: true,
+                        above: true,
+                        below: true,
                         ..Default::default()
                     });
                 }

@@ -174,9 +174,10 @@ impl Bytes {
         let end = {
             let end = self.point_at_byte(range.end);
             let line_start = self.point_at_line(end.line());
-            match line_start == end {
-                true => end,
-                false => self.point_at_line((end.line() + 1).min(self.len().line())),
+            if line_start == end {
+                end
+            } else {
+                self.point_at_line((end.line() + 1).min(self.len().line()))
             }
         };
 
@@ -202,7 +203,7 @@ impl Bytes {
                 None => ("", s0),
             };
             let (after, split1) = match s1.split_once('\n') {
-                Some((after, split)) => (after, split),
+                Some((split, after)) => (after, split),
                 None => ("", s1),
             };
 
