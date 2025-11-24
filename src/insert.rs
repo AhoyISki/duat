@@ -238,7 +238,7 @@ fn remove_empty_line(c: &mut Cursor) {
     let chars_count = line.chars().count();
 
     let dvcol = c.v_caret().desired_visual_col();
-    c.move_hor(-(c.v_caret().char_col() as i32));
+    c.move_to_col(0);
     c.set_anchor();
     c.move_hor(chars_count as i32 - 1);
 
