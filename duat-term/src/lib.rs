@@ -34,9 +34,9 @@ use duat_core::{
 use self::printer::Printer;
 pub use self::{
     area::{Area, Coords},
+    layout::{Frame, FrameStyle},
     printer::{Border, BorderStyle},
     rules::{SepChar, VertRule, VertRuleBuilder},
-    layout::{Frame, FrameStyle}
 };
 use crate::layout::Layouts;
 
@@ -380,7 +380,7 @@ macro_rules! color_values {
     }
 }
 
-fn print_style(
+fn print_hashed_style(
     w: &mut impl Write,
     style: ContentStyle,
     ansi_codes: &mut micromap::Map<CStyle, String, 16>,
@@ -388,153 +388,153 @@ fn print_style(
     if let Some(ansi) = ansi_codes.get(&CStyle(style)) {
         w.write_all(ansi.as_bytes()).unwrap();
     } else if style != ContentStyle::default() {
-        let ansi = {
-            let mut ansi = String::new();
-            use crossterm::style::Attribute::{self, *};
-            const ATTRIBUTES: [(Attribute, &str); 10] = [
-                (Reset, "0"),
-                (Bold, "1"),
-                (Dim, "2"),
-                (Italic, "3"),
-                (Underlined, "4"),
-                (DoubleUnderlined, "4;2"),
-                (Undercurled, "4;3"),
-                (Underdotted, "4;4"),
-                (Underdashed, "4;5"),
-                (Reverse, "7"),
-            ];
-            color_values!(U8, "", "");
-            color_values!(U8_SC, "", ";");
-            color_values!(U8_FG_RGB, "38;2;", ";");
-            color_values!(U8_FG_ANSI, "38;5;", ";");
-            color_values!(U8_BG_RGB, "48;2;", ";");
-            color_values!(U8_BG_ANSI, "48;5;", ";");
-            color_values!(U8_UL_RGB, "58;2;", ";");
-            color_values!(U8_UL_ANSI, "58;5;", ";");
-
-            ansi.push_str("\x1b[");
-
-            let mut semicolon = false;
-            if !style.attributes.is_empty() {
-                for (attr, code) in ATTRIBUTES {
-                    if style.attributes.has(attr) {
-                        if semicolon {
-                            ansi.push(';')
-                        }
-                        ansi.push_str(code);
-                        semicolon = true;
-                    }
-                }
-            }
-
-            let semicolon = if let Some(color) = style.foreground_color {
-                if semicolon {
-                    ansi.push(';');
-                }
-                match color {
-                    Color::Reset => ansi.push_str("39"),
-                    Color::Black => ansi.push_str("30"),
-                    Color::DarkRed => ansi.push_str("31"),
-                    Color::DarkGreen => ansi.push_str("32"),
-                    Color::DarkYellow => ansi.push_str("33"),
-                    Color::DarkBlue => ansi.push_str("34"),
-                    Color::DarkMagenta => ansi.push_str("35"),
-                    Color::DarkCyan => ansi.push_str("36"),
-                    Color::Grey => ansi.push_str("37"),
-                    Color::DarkGrey => ansi.push_str("90"),
-                    Color::Red => ansi.push_str("91"),
-                    Color::Green => ansi.push_str("92"),
-                    Color::Yellow => ansi.push_str("93"),
-                    Color::Blue => ansi.push_str("94"),
-                    Color::Magenta => ansi.push_str("95"),
-                    Color::Cyan => ansi.push_str("96"),
-                    Color::White => ansi.push_str("97"),
-                    Color::Rgb { r, g, b } => {
-                        ansi.push_str(U8_FG_RGB[r as usize]);
-                        ansi.push_str(U8_SC[g as usize]);
-                        ansi.push_str(U8[b as usize])
-                    }
-                    Color::AnsiValue(val) => ansi.push_str(U8_FG_ANSI[val as usize]),
-                };
-                true
-            } else {
-                semicolon
-            };
-
-            let semicolon = if let Some(color) = style.background_color {
-                if semicolon {
-                    ansi.push(';');
-                }
-                match color {
-                    Color::Reset => ansi.push_str("49"),
-                    Color::Black => ansi.push_str("40"),
-                    Color::DarkRed => ansi.push_str("41"),
-                    Color::DarkGreen => ansi.push_str("42"),
-                    Color::DarkYellow => ansi.push_str("43"),
-                    Color::DarkBlue => ansi.push_str("44"),
-                    Color::DarkMagenta => ansi.push_str("45"),
-                    Color::DarkCyan => ansi.push_str("46"),
-                    Color::Grey => ansi.push_str("47"),
-                    Color::DarkGrey => ansi.push_str("100"),
-                    Color::Red => ansi.push_str("101"),
-                    Color::Green => ansi.push_str("102"),
-                    Color::Yellow => ansi.push_str("103"),
-                    Color::Blue => ansi.push_str("104"),
-                    Color::Magenta => ansi.push_str("105"),
-                    Color::Cyan => ansi.push_str("106"),
-                    Color::White => ansi.push_str("107"),
-                    Color::Rgb { r, g, b } => {
-                        ansi.push_str(U8_BG_RGB[r as usize]);
-                        ansi.push_str(U8_SC[g as usize]);
-                        ansi.push_str(U8[b as usize]);
-                    }
-                    Color::AnsiValue(val) => ansi.push_str(U8_BG_ANSI[val as usize]),
-                };
-                true
-            } else {
-                semicolon
-            };
-
-            if let Some(color) = style.underline_color {
-                if semicolon {
-                    ansi.push(';');
-                }
-                match color {
-                    Color::Reset => ansi.push_str("59"),
-                    Color::Black => ansi.push_str("58;0"),
-                    Color::DarkRed => ansi.push_str("58;1"),
-                    Color::DarkGreen => ansi.push_str("58;2"),
-                    Color::DarkYellow => ansi.push_str("58;3"),
-                    Color::DarkBlue => ansi.push_str("58;4"),
-                    Color::DarkMagenta => ansi.push_str("58;5"),
-                    Color::DarkCyan => ansi.push_str("58;6"),
-                    Color::Grey => ansi.push_str("58;7"),
-                    Color::DarkGrey => ansi.push_str("58;8"),
-                    Color::Red => ansi.push_str("58;9"),
-                    Color::Green => ansi.push_str("58;10"),
-                    Color::Yellow => ansi.push_str("58;11"),
-                    Color::Blue => ansi.push_str("58;12"),
-                    Color::Magenta => ansi.push_str("58;13"),
-                    Color::Cyan => ansi.push_str("58;14"),
-                    Color::White => ansi.push_str("58;15"),
-                    Color::Rgb { r, g, b } => {
-                        ansi.push_str(U8_UL_RGB[r as usize]);
-                        ansi.push_str(U8_SC[g as usize]);
-                        ansi.push_str(U8[b as usize])
-                    }
-                    Color::AnsiValue(val) => ansi.push_str(U8_UL_ANSI[val as usize]),
-                };
-            }
-
-            ansi.push('m');
-
-            ansi
-        };
-
+        let ansi = get_ansi(style);
         w.write_all(ansi.as_bytes()).unwrap();
-
         ansi_codes.checked_insert(CStyle(style), ansi);
     }
+}
+
+fn get_ansi(style: ContentStyle) -> String {
+    let mut ansi = String::new();
+    use crossterm::style::Attribute::{self, *};
+    const ATTRIBUTES: [(Attribute, &str); 10] = [
+        (Reset, "0"),
+        (Bold, "1"),
+        (Dim, "2"),
+        (Italic, "3"),
+        (Underlined, "4"),
+        (DoubleUnderlined, "4;2"),
+        (Undercurled, "4;3"),
+        (Underdotted, "4;4"),
+        (Underdashed, "4;5"),
+        (Reverse, "7"),
+    ];
+    color_values!(U8, "", "");
+    color_values!(U8_SC, "", ";");
+    color_values!(U8_FG_RGB, "38;2;", ";");
+    color_values!(U8_FG_ANSI, "38;5;", ";");
+    color_values!(U8_BG_RGB, "48;2;", ";");
+    color_values!(U8_BG_ANSI, "48;5;", ";");
+    color_values!(U8_UL_RGB, "58;2;", ";");
+    color_values!(U8_UL_ANSI, "58;5;", ";");
+
+    ansi.push_str("\x1b[");
+
+    let mut semicolon = false;
+    if !style.attributes.is_empty() {
+        for (attr, code) in ATTRIBUTES {
+            if style.attributes.has(attr) {
+                if semicolon {
+                    ansi.push(';')
+                }
+                ansi.push_str(code);
+                semicolon = true;
+            }
+        }
+    }
+
+    let semicolon = if let Some(color) = style.foreground_color {
+        if semicolon {
+            ansi.push(';');
+        }
+        match color {
+            Color::Reset => ansi.push_str("39"),
+            Color::Black => ansi.push_str("30"),
+            Color::DarkRed => ansi.push_str("31"),
+            Color::DarkGreen => ansi.push_str("32"),
+            Color::DarkYellow => ansi.push_str("33"),
+            Color::DarkBlue => ansi.push_str("34"),
+            Color::DarkMagenta => ansi.push_str("35"),
+            Color::DarkCyan => ansi.push_str("36"),
+            Color::Grey => ansi.push_str("37"),
+            Color::DarkGrey => ansi.push_str("90"),
+            Color::Red => ansi.push_str("91"),
+            Color::Green => ansi.push_str("92"),
+            Color::Yellow => ansi.push_str("93"),
+            Color::Blue => ansi.push_str("94"),
+            Color::Magenta => ansi.push_str("95"),
+            Color::Cyan => ansi.push_str("96"),
+            Color::White => ansi.push_str("97"),
+            Color::Rgb { r, g, b } => {
+                ansi.push_str(U8_FG_RGB[r as usize]);
+                ansi.push_str(U8_SC[g as usize]);
+                ansi.push_str(U8[b as usize])
+            }
+            Color::AnsiValue(val) => ansi.push_str(U8_FG_ANSI[val as usize]),
+        };
+        true
+    } else {
+        semicolon
+    };
+
+    let semicolon = if let Some(color) = style.background_color {
+        if semicolon {
+            ansi.push(';');
+        }
+        match color {
+            Color::Reset => ansi.push_str("49"),
+            Color::Black => ansi.push_str("40"),
+            Color::DarkRed => ansi.push_str("41"),
+            Color::DarkGreen => ansi.push_str("42"),
+            Color::DarkYellow => ansi.push_str("43"),
+            Color::DarkBlue => ansi.push_str("44"),
+            Color::DarkMagenta => ansi.push_str("45"),
+            Color::DarkCyan => ansi.push_str("46"),
+            Color::Grey => ansi.push_str("47"),
+            Color::DarkGrey => ansi.push_str("100"),
+            Color::Red => ansi.push_str("101"),
+            Color::Green => ansi.push_str("102"),
+            Color::Yellow => ansi.push_str("103"),
+            Color::Blue => ansi.push_str("104"),
+            Color::Magenta => ansi.push_str("105"),
+            Color::Cyan => ansi.push_str("106"),
+            Color::White => ansi.push_str("107"),
+            Color::Rgb { r, g, b } => {
+                ansi.push_str(U8_BG_RGB[r as usize]);
+                ansi.push_str(U8_SC[g as usize]);
+                ansi.push_str(U8[b as usize]);
+            }
+            Color::AnsiValue(val) => ansi.push_str(U8_BG_ANSI[val as usize]),
+        };
+        true
+    } else {
+        semicolon
+    };
+
+    if let Some(color) = style.underline_color {
+        if semicolon {
+            ansi.push(';');
+        }
+        match color {
+            Color::Reset => ansi.push_str("59"),
+            Color::Black => ansi.push_str("58;0"),
+            Color::DarkRed => ansi.push_str("58;1"),
+            Color::DarkGreen => ansi.push_str("58;2"),
+            Color::DarkYellow => ansi.push_str("58;3"),
+            Color::DarkBlue => ansi.push_str("58;4"),
+            Color::DarkMagenta => ansi.push_str("58;5"),
+            Color::DarkCyan => ansi.push_str("58;6"),
+            Color::Grey => ansi.push_str("58;7"),
+            Color::DarkGrey => ansi.push_str("58;8"),
+            Color::Red => ansi.push_str("58;9"),
+            Color::Green => ansi.push_str("58;10"),
+            Color::Yellow => ansi.push_str("58;11"),
+            Color::Blue => ansi.push_str("58;12"),
+            Color::Magenta => ansi.push_str("58;13"),
+            Color::Cyan => ansi.push_str("58;14"),
+            Color::White => ansi.push_str("58;15"),
+            Color::Rgb { r, g, b } => {
+                ansi.push_str(U8_UL_RGB[r as usize]);
+                ansi.push_str(U8_SC[g as usize]);
+                ansi.push_str(U8[b as usize])
+            }
+            Color::AnsiValue(val) => ansi.push_str(U8_UL_ANSI[val as usize]),
+        };
+    }
+
+    ansi.push('m');
+
+    ansi
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

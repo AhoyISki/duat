@@ -84,8 +84,8 @@ impl CompletionsBuilder {
                         left: true,
                         right: true,
                         above: true,
-                        below: true,
-                        style: FrameStyle::Rounded,
+                        style: FrameStyle::Halved,
+                        title: Some(txt!("Some bullshit")),
                         ..Default::default()
                     });
                 }

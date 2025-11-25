@@ -521,7 +521,8 @@ impl Node {
             print: Arc::new({
                 let handle = handle.clone();
                 move |pa| {
-                    let painter = form::painter_with_mask::<W>(*handle.mask().lock().unwrap());
+                    let painter =
+                        form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
                     W::print(handle.read(pa), pa, painter, handle.area());
                 }
             }),

@@ -5,7 +5,7 @@ use std::{io::Write, sync::Arc};
 
 use crossterm::{
     cursor, queue,
-    style::{Attribute, Attributes},
+    style::{Attribute, Attributes, ContentStyle},
 };
 use duat_core::{
     context::{self, Decode, Encode},
@@ -24,7 +24,7 @@ pub use self::print_info::PrintInfo;
 use crate::{
     AreaId, CStyle, Mutex,
     layout::{Frame, Layouts},
-    print_style,
+    print_hashed_style,
     printer::Lines,
 };
 
@@ -81,6 +81,10 @@ impl Coords {
     pub fn x_range(&self) -> std::ops::Range<u32> {
         self.tl.x..self.br.x
     }
+
+    pub fn y_range(&self) -> std::ops::Range<u32> {
+        self.tl.y..self.br.y
+    }
 }
 
 #[derive(Clone)]
@@ -125,223 +129,43 @@ impl Area {
         &self,
         text: &Text,
         opts: PrintOpts,
-        mut painter: Painter,
-        mut f: impl FnMut(&Caret, &Item),
+        painter: Painter,
+        on_each: impl FnMut(&Caret, &Item),
     ) {
-        const SPACES: &[u8] = &[b' '; 3000];
-
-        fn end_line(
-            lines: &mut Lines,
-            painter: &Painter,
-            ansi_codes: &mut micromap::Map<CStyle, String, 16>,
-            len: u32,
-            max_x: u32,
-        ) {
-            let mut default_style = painter.get_default();
-            default_style.style.foreground_color = None;
-            default_style.style.underline_color = None;
-            default_style.style.attributes = Attributes::from(Attribute::Reset);
-
-            print_style(lines, default_style.style, ansi_codes);
-            if lines.coords().br.x == max_x {
-                lines.write_all(b"\x1b[0K").unwrap();
-            } else {
-                lines
-                    .write_all(&SPACES[..(lines.coords().width() - len) as usize])
-                    .unwrap();
-            }
-            lines.flush().unwrap();
-        }
-
-        let (mut lines, iter, x_shift, max_x) = {
-            let Some(coords) = self.layouts.coords_of(self.id, true) else {
-                context::warn!("This Area was already deleted");
-                return;
-            };
-
-            let max = self
-                .layouts
-                .inspect(self.id, |_, layout| layout.max_value())
-                .unwrap();
-
-            if coords.width() == 0 || coords.height() == 0 {
-                return;
-            }
-
-            let (s_points, x_shift) = {
-                let mut info = self.layouts.get_info_of(self.id).unwrap();
-                let s_points = info.start_points(coords, text, opts);
-                self.layouts.set_info_of(self.id, info);
-                (s_points, info.x_shift())
-            };
-
-            let lines = Lines::new(coords);
-            let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
-            let iter = print_iter(text, s_points, width, opts);
-
-            (lines, iter, x_shift, max.x)
+        let Some(coords) = self.layouts.coords_of(self.id, true) else {
+            context::warn!("This Area was already deleted");
+            return;
         };
 
-        let mut observed_spawns = Vec::new();
+        let max = self
+            .layouts
+            .inspect(self.id, |_, layout| layout.max_value())
+            .unwrap();
+
+        if coords.width() == 0 || coords.height() == 0 {
+            return;
+        }
+
+        let (s_points, x_shift) = {
+            let mut info = self.layouts.get_info_of(self.id).unwrap();
+            let s_points = info.start_points(coords, text, opts);
+            self.layouts.set_info_of(self.id, info);
+            (s_points, info.x_shift())
+        };
+
         let is_active = self.id == self.layouts.get_active_id();
 
         let mut ansi_codes = self.ansi_codes.lock().unwrap();
-        let mut style_was_set = false;
 
-        enum Cursor {
-            Main,
-            Extra,
-        }
-
-        // The y here represents the bottom of the current row of cells.
-        let tl_y = lines.coords().tl.y;
-        let mut y = tl_y;
-        let mut cursor = None;
-        let mut spawns_for_next: Vec<SpawnId> = Vec::new();
-        let mut last_len = 0;
-
-        for (caret, item) in iter {
-            let (painter, lines, ansi_codes) = (&mut painter, &mut lines, &mut ansi_codes);
-            f(&caret, &item);
-
-            let Caret { x, len, wrap } = caret;
-            let Item { part, .. } = item;
-
-            if wrap {
-                if y == lines.coords().br.y {
-                    break;
-                }
-                if y > lines.coords().tl.y {
-                    end_line(lines, painter, ansi_codes, last_len, max_x);
-                }
-                let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
-                if initial_space > 0 {
-                    let mut default_style = painter.get_default().style;
-                    default_style.attributes.set(Attribute::Reset);
-                    print_style(lines, default_style, ansi_codes);
-                    lines.write_all(&SPACES[..initial_space as usize]).unwrap();
-                }
-                y += 1;
-
-                // Resetting space to prevent erroneous printing.
-                painter.reset_prev_style();
-                style_was_set = true;
-                last_len = initial_space;
-            }
-
-            let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
-
-            match part {
-                Part::Char(char) if is_contained => {
-                    if let Some(str) = get_control_str(char) {
-                        painter.apply(CONTROL_CHAR_ID, 100);
-                        if style_was_set && let Some(style) = painter.relative_style() {
-                            print_style(lines, style, ansi_codes);
-                        }
-                        lines.write_all(str.as_bytes()).unwrap();
-                        painter.remove(CONTROL_CHAR_ID)
-                    } else {
-                        if style_was_set && let Some(style) = painter.relative_style() {
-                            print_style(lines, style, ansi_codes);
-                        }
-                        match char {
-                            '\t' => {
-                                let truncated_start = x_shift.saturating_sub(x);
-                                let truncated_end =
-                                    (x + len).saturating_sub(lines.coords().width() + x_shift);
-                                let tab_len = len - (truncated_start + truncated_end);
-                                lines.write_all(&SPACES[..tab_len as usize]).unwrap()
-                            }
-                            '\n' if opts.print_new_line => lines.write_all(b" ").unwrap(),
-                            '\n' | '\r' => {}
-                            char => {
-                                let mut bytes = [0; 4];
-                                char.encode_utf8(&mut bytes);
-                                lines.write_all(&bytes[..char.len_utf8()]).unwrap();
-                            }
-                        }
-                    }
-
-                    if let Some(cursor) = cursor.take() {
-                        match cursor {
-                            Cursor::Main => painter.remove_main_caret(),
-                            Cursor::Extra => painter.remove_extra_caret(),
-                        }
-                        if let Some(style) = painter.relative_style() {
-                            print_style(lines, style, ansi_codes)
-                        }
-                    }
-                    for id in spawns_for_next.drain(..) {
-                        observed_spawns.push(id);
-                        self.layouts.move_spawn_to(
-                            id,
-                            Coord::new(lines.coords().tl.x + x, y - 1),
-                            len,
-                        );
-                    }
-
-                    last_len = x + len - x_shift;
-                    style_was_set = false;
-                }
-                Part::Char(_) => {
-                    match cursor.take() {
-                        Some(Cursor::Main) => painter.remove_main_caret(),
-                        Some(Cursor::Extra) => painter.remove_extra_caret(),
-                        None => {}
-                    }
-                    spawns_for_next.clear();
-                }
-                Part::PushForm(id, prio) => {
-                    painter.apply(id, prio);
-                    style_was_set = true;
-                }
-                Part::PopForm(id) => {
-                    painter.remove(id);
-                    style_was_set = true;
-                }
-                Part::MainCaret => {
-                    if let Some(shape) = painter.main_cursor()
-                        && is_active
-                    {
-                        lines.show_real_cursor();
-                        queue!(lines, shape, cursor::SavePosition).unwrap();
-                    } else {
-                        cursor = Some(Cursor::Main);
-                        lines.hide_real_cursor();
-                        painter.apply_main_cursor();
-                        style_was_set = true;
-                    }
-                }
-                Part::ExtraCaret => {
-                    cursor = Some(Cursor::Extra);
-                    painter.apply_extra_cursor();
-                    style_was_set = true;
-                }
-                Part::Spacer => {
-                    let truncated_start = x_shift.saturating_sub(x).min(len);
-                    let truncated_end = (x + len)
-                        .saturating_sub(lines.coords().width().saturating_sub(x_shift))
-                        .min(len);
-                    let spacer_len = len - (truncated_start + truncated_end);
-                    lines.write_all(&SPACES[0..spacer_len as usize]).unwrap();
-                    last_len = (x + len)
-                        .saturating_sub(x_shift)
-                        .min(lines.coords().width());
-                }
-                Part::ResetState => print_style(lines, painter.reset(), ansi_codes),
-                Part::SpawnedWidget(id) => spawns_for_next.push(id),
-                Part::ToggleStart(_) | Part::ToggleEnd(_) => {
-                    todo!("Toggles have not been implemented yet.")
-                }
-                Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
-            }
-        }
-
-        end_line(&mut lines, &painter, &mut ansi_codes, last_len, max_x);
-
-        for _ in 0..lines.coords().br.y - y {
-            end_line(&mut lines, &painter, &mut ansi_codes, 0, max_x);
-        }
+        let Some((lines, observed_spawns)) = print_text(
+            (text, opts, painter),
+            (coords, max),
+            (is_active, s_points, x_shift),
+            on_each,
+            |lines, style| print_hashed_style(lines, style, &mut ansi_codes),
+        ) else {
+            return;
+        };
 
         let spawns = text.get_spawned_ids();
 
@@ -832,4 +656,207 @@ const fn get_control_str(char: char) -> Option<&'static str> {
         '\u{9f}' => Some("<9f>"),
         _ => None,
     }
+}
+
+/// The [`Text`] printing function
+#[allow(clippy::type_complexity)]
+pub fn print_text(
+    (text, opts, mut painter): (&Text, PrintOpts, Painter),
+    (coords, max): (Coords, Coord),
+    (is_active, s_points, x_shift): (bool, TwoPoints, u32),
+    mut on_each: impl FnMut(&Caret, &Item),
+    mut print_style: impl FnMut(&mut Lines, ContentStyle),
+) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
+    const SPACES: &[u8] = &[b' '; 3000];
+
+    fn end_line(
+        lines: &mut Lines,
+        painter: &Painter,
+        len: u32,
+        max_x: u32,
+        print_style: &mut impl FnMut(&mut Lines, ContentStyle),
+    ) {
+        let mut default_style = painter.get_default();
+        default_style.style.foreground_color = None;
+        default_style.style.underline_color = None;
+        default_style.style.attributes = Attributes::from(Attribute::Reset);
+
+        print_style(lines, default_style.style);
+        if lines.coords().br.x == max_x {
+            lines.write_all(b"\x1b[0K").unwrap();
+        } else {
+            lines
+                .write_all(&SPACES[..(lines.coords().width() - len) as usize])
+                .unwrap();
+        }
+        lines.flush().unwrap();
+    }
+
+    let (mut lines, iter, x_shift, max_x) = {
+        if coords.width() == 0 || coords.height() == 0 {
+            return None;
+        }
+
+        let lines = Lines::new(coords);
+        let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
+        let iter = print_iter(text, s_points, width, opts);
+
+        (lines, iter, x_shift, max.x)
+    };
+
+    let mut observed_spawns = Vec::new();
+
+    let mut style_was_set = false;
+
+    enum Cursor {
+        Main,
+        Extra,
+    }
+
+    // The y here represents the bottom of the current row of cells.
+    let tl_y = lines.coords().tl.y;
+    let mut y = tl_y;
+    let mut cursor = None;
+    let mut spawns_for_next: Vec<SpawnId> = Vec::new();
+    let mut last_len = 0;
+
+    for (caret, item) in iter {
+        let (painter, lines) = (&mut painter, &mut lines);
+        on_each(&caret, &item);
+
+        let Caret { x, len, wrap } = caret;
+        let Item { part, .. } = item;
+
+        if wrap {
+            if y == lines.coords().br.y {
+                break;
+            }
+            if y > lines.coords().tl.y {
+                end_line(lines, painter, last_len, max_x, &mut print_style);
+            }
+            let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
+            if initial_space > 0 {
+                let mut default_style = painter.get_default().style;
+                default_style.attributes.set(Attribute::Reset);
+                print_style(lines, default_style);
+                lines.write_all(&SPACES[..initial_space as usize]).unwrap();
+            }
+            y += 1;
+
+            // Resetting space to prevent erroneous printing.
+            painter.reset_prev_style();
+            style_was_set = true;
+            last_len = initial_space;
+        }
+
+        let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
+
+        match part {
+            Part::Char(char) if is_contained => {
+                if let Some(str) = get_control_str(char) {
+                    painter.apply(CONTROL_CHAR_ID, 100);
+                    if style_was_set && let Some(style) = painter.relative_style() {
+                        print_style(lines, style);
+                    }
+                    lines.write_all(str.as_bytes()).unwrap();
+                    painter.remove(CONTROL_CHAR_ID)
+                } else {
+                    if style_was_set && let Some(style) = painter.relative_style() {
+                        print_style(lines, style);
+                    }
+                    match char {
+                        '\t' => {
+                            let truncated_start = x_shift.saturating_sub(x);
+                            let truncated_end =
+                                (x + len).saturating_sub(lines.coords().width() + x_shift);
+                            let tab_len = len - (truncated_start + truncated_end);
+                            lines.write_all(&SPACES[..tab_len as usize]).unwrap()
+                        }
+                        '\n' if opts.print_new_line => lines.write_all(b" ").unwrap(),
+                        '\n' | '\r' => {}
+                        char => {
+                            let mut bytes = [0; 4];
+                            char.encode_utf8(&mut bytes);
+                            lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                        }
+                    }
+                }
+
+                if let Some(cursor) = cursor.take() {
+                    match cursor {
+                        Cursor::Main => painter.remove_main_caret(),
+                        Cursor::Extra => painter.remove_extra_caret(),
+                    }
+                    if let Some(style) = painter.relative_style() {
+                        print_style(lines, style)
+                    }
+                }
+                for id in spawns_for_next.drain(..) {
+                    observed_spawns.push((id, Coord::new(lines.coords().tl.x + x, y - 1), len));
+                }
+
+                last_len = x + len - x_shift;
+                style_was_set = false;
+            }
+            Part::Char(_) => {
+                match cursor.take() {
+                    Some(Cursor::Main) => painter.remove_main_caret(),
+                    Some(Cursor::Extra) => painter.remove_extra_caret(),
+                    None => {}
+                }
+                spawns_for_next.clear();
+            }
+            Part::PushForm(id, prio) => {
+                painter.apply(id, prio);
+                style_was_set = true;
+            }
+            Part::PopForm(id) => {
+                painter.remove(id);
+                style_was_set = true;
+            }
+            Part::MainCaret => {
+                if let Some(shape) = painter.main_cursor()
+                    && is_active
+                {
+                    lines.show_real_cursor();
+                    queue!(lines, shape, cursor::SavePosition).unwrap();
+                } else {
+                    cursor = Some(Cursor::Main);
+                    lines.hide_real_cursor();
+                    painter.apply_main_cursor();
+                    style_was_set = true;
+                }
+            }
+            Part::ExtraCaret => {
+                cursor = Some(Cursor::Extra);
+                painter.apply_extra_cursor();
+                style_was_set = true;
+            }
+            Part::Spacer => {
+                let truncated_start = x_shift.saturating_sub(x).min(len);
+                let truncated_end = (x + len)
+                    .saturating_sub(lines.coords().width().saturating_sub(x_shift))
+                    .min(len);
+                let spacer_len = len - (truncated_start + truncated_end);
+                lines.write_all(&SPACES[0..spacer_len as usize]).unwrap();
+                last_len = (x + len)
+                    .saturating_sub(x_shift)
+                    .min(lines.coords().width());
+            }
+            Part::ResetState => print_style(lines, painter.reset()),
+            Part::SpawnedWidget(id) => spawns_for_next.push(id),
+            Part::ToggleStart(_) | Part::ToggleEnd(_) => {
+                todo!("Toggles have not been implemented yet.")
+            }
+            Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
+        }
+    }
+
+    end_line(&mut lines, &painter, last_len, max_x, &mut print_style);
+
+    for _ in 0..lines.coords().br.y - y {
+        end_line(&mut lines, &painter, 0, max_x, &mut print_style);
+    }
+
+    Some((lines, observed_spawns))
 }

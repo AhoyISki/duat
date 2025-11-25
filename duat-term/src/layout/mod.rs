@@ -7,7 +7,8 @@ use crossterm::{
 };
 use duat_core::{
     form::{Form, FormId},
-    text::Text,
+    opts::PrintOpts,
+    text::{Text, TwoPoints},
     ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, Side, SpawnId, StaticSpawnSpecs},
 };
 use kasuari::{Constraint, WeightedRelation::*};
@@ -15,7 +16,7 @@ use kasuari::{Constraint, WeightedRelation::*};
 pub use self::rect::{Deletion, Rect, recurse_length, transfer_vars};
 use crate::{
     AreaId, Border, CONS_SPAWN_LEN_PRIO, Coords, HIDDEN_PRIO, LEN_PRIO, MANUAL_LEN_PRIO,
-    area::{Coord, PrintInfo},
+    area::{Coord, PrintInfo, print_text},
     printer::{Lines, Printer},
 };
 
@@ -217,29 +218,6 @@ impl Layouts {
         true
     }
 
-    /// Moves the [`Rect`] of a [`SpawnId`] to some [`Coord`]
-    ///
-    /// The [`Rect`] will dynamically relocate itself if there isn't
-    /// enough space in its preferred position.
-    ///
-    /// Returns `false` if the [`Rect`] was deleted.
-    pub fn move_spawn_to(&self, id: SpawnId, coord: Coord, char_width: u32) -> bool {
-        let mut inner = self.0.borrow_mut();
-        let Some((i, _rect)) = inner.list.iter_mut().enumerate().find_map(|(i, layout)| {
-            layout
-                .spawned
-                .iter_mut()
-                .find_map(|(info, rect)| (info.id == id).then_some((i, rect)))
-        }) else {
-            return false;
-        };
-
-        inner.list[i].printer.move_spawn_to(id, coord, char_width);
-        inner.list[i].printer.update(false, false);
-
-        true
-    }
-
     /// Sets the constraints on a given [`Rect`]
     ///
     /// Returns `false` if the [`Rect`] was deleted or if there was
@@ -315,7 +293,7 @@ impl Layouts {
         area_id: AreaId,
         lines: Lines,
         spawns: impl Iterator<Item = SpawnId>,
-        observed_spawns: &[SpawnId],
+        observed_spawns: &[(SpawnId, Coord, u32)],
     ) {
         let mut inner = self.0.borrow_mut();
         let layout = inner
@@ -327,7 +305,7 @@ impl Layouts {
         let mut revealed_at_least_one = false;
         for spawn_id in spawns {
             if let Some((_, rect)) = layout.spawned.iter().find(|(info, _)| info.id == spawn_id) {
-                let hidden = !observed_spawns.contains(&spawn_id);
+                let hidden = !observed_spawns.iter().any(|(id, ..)| id == &spawn_id);
                 recurse_set_hidden(layout, rect.id(), hidden);
                 revealed_at_least_one = !hidden;
             }
@@ -347,6 +325,18 @@ impl Layouts {
                 .send_spawn_lines(area_id, info.id, lines, info.frame.clone());
         } else {
             layout.printer.send_lines(lines);
+        }
+
+        for (id, coord, len) in observed_spawns.iter().copied() {
+            if let Some((i, _rect)) = inner.list.iter_mut().enumerate().find_map(|(i, layout)| {
+                layout
+                    .spawned
+                    .iter_mut()
+                    .find_map(|(info, rect)| (info.id == id).then_some((i, rect)))
+            }) {
+                inner.list[i].printer.move_spawn_to(id, coord, len);
+                inner.list[i].printer.update(false, false);
+            }
         }
     }
 
@@ -1034,6 +1024,26 @@ impl Frame {
 
         for (coord, sides) in corners.into_iter().flatten() {
             self.style.draw_corner(stdout, coord, form.style, sides);
+        }
+
+        let coords = (self.above && coords.tl.y > 0).then_some(Coords::new(
+            Coord::new(coords.tl.x - 1, coords.tl.y - 1),
+            Coord::new(coords.br.x + 1, coords.tl.y),
+        ));
+
+        let painter = duat_core::form::painter_with_mask("title");
+        if let Some((text, coords)) = self.title.as_ref().zip(coords)
+            && let Some((lines, _)) = print_text(
+                (text, PrintOpts::default(), painter),
+                (coords, max),
+                (false, TwoPoints::default(), 0),
+                |_, _| {},
+                |lines, style| lines.write_all(crate::get_ansi(style).as_bytes()).unwrap(),
+            )
+        {
+            let (line, _) = lines.on(coords.tl.y).unwrap();
+            queue!(stdout, MoveTo(coords.tl.x as u16, coords.tl.y as u16)).unwrap();
+            stdout.write_all(line).unwrap();
         }
     }
 }

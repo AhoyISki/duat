@@ -491,7 +491,7 @@ impl Lines {
     ///
     /// Returns [`None`] if these [`Lines`] don't intersect with the
     /// given `y`.
-    fn on(&self, y: u32) -> Option<(&'_ [u8], [u32; 2])> {
+    pub fn on(&self, y: u32) -> Option<(&'_ [u8], [u32; 2])> {
         let (tl, br) = (self.coords.tl, self.coords.br);
         let y = y.checked_sub(tl.y)? as usize;
 

@@ -311,7 +311,25 @@ mod global {
     }
 
     /// Creates a [`Painter`] with a mask
-    pub(crate) fn painter_with_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
+    ///
+    /// # Warning
+    ///
+    /// Only [`RawUi`] implementors should ever make use of this
+    /// function, since it reads from the [`RwLock`] that is used for
+    /// [`Form`] setting. If you try to set `Form`s while holding a
+    /// `Painter`, you _will_ deadlock Duat, so be careful with this
+    /// function. Getting `Form`s is _also_ going to cause deadlocks,
+    /// since you might need to mutably borrow in order to set a
+    /// default value for a form.
+    ///
+    /// [`RawUi`]: crate::ui::traits::RawUi
+    /// [`RwLock`]: std::sync::RwLock
+    pub fn painter_with_mask(mask: &'static str) -> Painter {
+        PALETTE.get().unwrap().painter(super::DEFAULT_ID, mask)
+    }
+
+    /// Creates a [`Painter`] with a mask and a widget
+    pub(crate) fn painter_with_widget_and_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
         PALETTE.get().unwrap().painter(
             default_id(TypeId::of::<W>(), crate::utils::duat_name::<W>()),
             mask,
