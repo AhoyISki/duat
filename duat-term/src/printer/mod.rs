@@ -33,7 +33,7 @@ pub struct Printer {
     old_lines: Mutex<Vec<Lines>>,
     new_lines: Mutex<Vec<Lines>>,
     spawned_lines: Mutex<Vec<(AreaId, SpawnId, Lines, Frame)>>,
-    cleared_spawned: AtomicBool,
+    cleared_spawns: AtomicBool,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
 }
@@ -58,7 +58,7 @@ impl Printer {
             old_lines: Mutex::new(Vec::new()),
             new_lines: Mutex::new(Vec::new()),
             spawned_lines: Mutex::new(Vec::new()),
-            cleared_spawned: AtomicBool::new(false),
+            cleared_spawns: AtomicBool::new(false),
             max,
             has_to_print_edges: AtomicBool::new(false),
         }
@@ -254,7 +254,7 @@ impl Printer {
         spawned_lines.retain(|(id, ..)| *id != target);
         if spawned_lines.is_empty() && !was_empty {
             self.has_to_print_edges.store(true, Ordering::Relaxed);
-            self.cleared_spawned.store(true, Ordering::Relaxed);
+            self.cleared_spawns.store(true, Ordering::Relaxed);
         }
     }
 
@@ -307,8 +307,9 @@ impl Printer {
 
         // If there are no more spawns, print everything at least one more
         // time, to clear the spawned areas.
-        let clear_spawned = self.cleared_spawned.load(Ordering::Relaxed);
-        self.cleared_spawned.store(false, Ordering::Relaxed);
+        let print_old_lines =
+            self.cleared_spawns.load(Ordering::Relaxed) || !spawned_lines.is_empty();
+        self.cleared_spawns.store(false, Ordering::Relaxed);
 
         for y in 0..max.y {
             write!(stdout, "\x1b[{}H", y + 1).unwrap();
@@ -319,9 +320,9 @@ impl Printer {
             let mut new_iter = new_lines.iter().filter_map(|lines| lines.on(y)).peekable();
 
             while let Some((bytes, [start, end])) = new_iter
-                .next_if(|(_, [start, _])| spawned_lines.is_empty() || *start == x)
+                .next_if(|(_, [start, _])| !print_old_lines || *start == x)
                 .or_else(|| {
-                    if clear_spawned || !spawned_lines.is_empty() {
+                    if print_old_lines {
                         old_iter.find(|(_, [start, _])| *start >= x)
                     } else {
                         None

@@ -4,6 +4,7 @@ FOR NEXT UPDATE:
   [x] Floating widgets.
   [x] Mouse support.
     [x] Widget integration.
+
     [?] Mode integration.
 [ ] Command line completion.
 [x] File path completion.
@@ -13,7 +14,7 @@ FOR NEXT UPDATE:
 [x] WhichKey widget.
 [x] Move to Rust stable (sigh...).
 [ ] Abuse the shit out of catch_unwind.
-[ ] Borders and Titles.
+[x] Borders and Titles.
 [x] Make cmd::add not a macro (?!).
 
 KNOWN BUGS:
