@@ -36,7 +36,7 @@ pub use self::{
     area::{Area, Coords},
     printer::{Border, BorderStyle},
     rules::{SepChar, VertRule, VertRuleBuilder},
-    layout::Frame
+    layout::{Frame, FrameStyle}
 };
 use crate::layout::Layouts;
 

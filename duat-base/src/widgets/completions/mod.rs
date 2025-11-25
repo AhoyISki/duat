@@ -25,7 +25,7 @@ use duat_core::{
     text::{Point, SpawnTag, Tagger, Text, txt},
     ui::{DynSpawnSpecs, Orientation, Widget},
 };
-use duat_term::Frame;
+use duat_term::{Frame, FrameStyle};
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
 use crate::widgets::completions::paths::PathCompletions;
@@ -85,6 +85,7 @@ impl CompletionsBuilder {
                         right: true,
                         above: true,
                         below: true,
+                        style: FrameStyle::Rounded,
                         ..Default::default()
                     });
                 }

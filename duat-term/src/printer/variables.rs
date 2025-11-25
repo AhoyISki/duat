@@ -86,7 +86,7 @@ impl Variables {
     }
 
     /// Prints the [`Edge`]s
-    pub fn print_edges(&mut self, stdout: &mut Stdout, edge_form: Form) {
+    pub fn print_edges(&mut self, stdout: &mut Stdout, border_form: Form) {
         let edges: Vec<EdgeCoords> = {
             let edges = std::mem::take(&mut self.edges);
             let coords = edges.iter().filter_map(|(_, e)| e.coords(self)).collect();
@@ -109,7 +109,7 @@ impl Variables {
                     stdout,
                     cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
                     ResetColor,
-                    SetStyle(edge_form.style),
+                    SetStyle(border_form.style),
                     Print(line)
                 )
                 .unwrap()
@@ -124,7 +124,7 @@ impl Variables {
                         stdout,
                         cursor::MoveTo(coords.tl.x as u16, y as u16),
                         ResetColor,
-                        SetStyle(edge_form.style),
+                        SetStyle(border_form.style),
                         Print(char)
                     )
                     .unwrap()
@@ -150,7 +150,7 @@ impl Variables {
             queue!(
                 stdout,
                 cursor::MoveTo(coord.x as u16, coord.y as u16),
-                SetStyle(edge_form.style),
+                SetStyle(border_form.style),
                 Print(super::edges::crossing(right, up, left, down, true))
             )
             .unwrap()

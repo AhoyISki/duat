@@ -32,7 +32,7 @@ pub struct Printer {
     vars: Mutex<Variables>,
     old_lines: Mutex<Vec<Lines>>,
     new_lines: Mutex<Vec<Lines>>,
-    spawned_lines: Mutex<Vec<(AreaId, SpawnId, Lines)>>,
+    spawned_lines: Mutex<Vec<(AreaId, SpawnId, Lines, Frame)>>,
     cleared_spawned: AtomicBool,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
@@ -136,11 +136,11 @@ impl Printer {
             self.spawned_lines
                 .lock()
                 .unwrap()
-                .retain(|(_, other, _)| *other != id);
+                .retain(|(_, other, ..)| *other != id);
         }
     }
 
-	/// Sets the [`Frame`] for a [`SpawnId`]
+    /// Sets the [`Frame`] for a [`SpawnId`]
     pub fn set_frame(&self, id: SpawnId, frame: &Frame) {
         self.sync_solver.lock().unwrap().set_frame(id, frame);
     }
@@ -284,7 +284,7 @@ impl Printer {
 
         let stdout = if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
             let mut stdout = stdout::get();
-            let edge_form = form::from_id(form::id_of!("terminal.frame"));
+            let edge_form = form::from_id(form::id_of!("terminal.border"));
             self.vars
                 .lock()
                 .unwrap()
@@ -349,12 +349,16 @@ impl Printer {
             CURSOR_IS_REAL.load(Ordering::Relaxed)
         };
 
-        for (.., lines) in spawned_lines.iter() {
+        let frame_form = form::from_id(form::id_of!("terminal.frame"));
+
+        for (.., lines, frame) in spawned_lines.iter() {
             for y in lines.coords.tl.y..lines.coords.br.y {
                 queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16)).unwrap();
                 let (bytes, ..) = lines.on(y).unwrap();
                 stdout.write_all(bytes).unwrap();
             }
+
+            frame.draw(&mut stdout, lines.coords(), frame_form, max);
         }
 
         if cursor_was_real {
@@ -385,24 +389,27 @@ impl Printer {
         // should also be removed.
         new_lines.retain(|l| !l.coords.intersects(lines.coords));
 
-        let Err(i) = new_lines.binary_search_by_key(&lines.coords, |lines| lines.coords) else {
-            unreachable!("Colliding Lines should have been removed already");
-        };
+        let i = new_lines
+            .binary_search_by_key(&lines.coords, |lines| lines.coords)
+            .unwrap_err();
 
         new_lines.insert(i, lines);
     }
 
     /// Sends the finished [`Lines`] of a floating `Widget` to be
     /// printed
-    pub fn send_spawned_lines(&self, area_id: AreaId, spawn_id: SpawnId, lines: Lines) {
+    pub fn send_spawn_lines(&self, area_id: AreaId, spawn_id: SpawnId, lines: Lines, frame: Frame) {
         let mut spawned_lines = self.spawned_lines.lock().unwrap();
 
         // This is done in order to preserve the order in which the floating
         // Widgets were sent.
-        if let Some((.., old_lines)) = spawned_lines.iter_mut().find(|(id, ..)| *id == area_id) {
+        if let Some((.., old_lines, old_frame)) =
+            spawned_lines.iter_mut().find(|(id, ..)| *id == area_id)
+        {
             *old_lines = lines;
+            *old_frame = frame;
         } else {
-            spawned_lines.push((area_id, spawn_id, lines));
+            spawned_lines.push((area_id, spawn_id, lines, frame));
         }
     }
 

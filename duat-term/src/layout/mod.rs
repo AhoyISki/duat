@@ -1,8 +1,14 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, io::Write, rc::Rc, sync::Arc};
 
+use crossterm::{
+    cursor::MoveTo,
+    queue,
+    style::{ContentStyle, SetStyle},
+};
 use duat_core::{
+    form::{Form, FormId},
     text::Text,
-    ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, SpawnId, StaticSpawnSpecs},
+    ui::{Axis, DynSpawnSpecs, Orientation, PushSpecs, Side, SpawnId, StaticSpawnSpecs},
 };
 use kasuari::{Constraint, WeightedRelation::*};
 
@@ -245,7 +251,8 @@ impl Layouts {
         height: Option<f32>,
         is_hidden: Option<bool>,
     ) -> bool {
-        self.0.borrow_mut()
+        self.0
+            .borrow_mut()
             .list
             .iter_mut()
             .any(|layout| layout.set_constraints(id, width, height, is_hidden))
@@ -306,7 +313,6 @@ impl Layouts {
     pub fn send_lines(
         &self,
         area_id: AreaId,
-        spawn_id: Option<SpawnId>,
         lines: Lines,
         spawns: impl Iterator<Item = SpawnId>,
         observed_spawns: &[SpawnId],
@@ -331,8 +337,14 @@ impl Layouts {
             layout.printer.update(false, false);
         }
 
-        if let Some(spawn_id) = spawn_id {
-            layout.printer.send_spawned_lines(area_id, spawn_id, lines);
+        if let Some((info, _)) = layout
+            .spawned
+            .iter()
+            .find(|(_, rect)| rect.get(area_id).is_some())
+        {
+            layout
+                .printer
+                .send_spawn_lines(area_id, info.id, lines, info.frame.clone());
         } else {
             layout.printer.send_lines(lines);
         }
@@ -960,16 +972,18 @@ impl Constraints {
 pub struct Frame {
     /// Show a frame above
     pub above: bool,
-    // Show a frame below
+    /// Show a frame below
     pub below: bool,
-    // Show a frame on the left
+    /// Show a frame on the left
     pub left: bool,
-    // Show a frame on the right
+    /// Show a frame on the right
     pub right: bool,
-    // The `Frame`'s style
+    /// The `Frame`'s style
     pub style: FrameStyle,
-    // The `Frame`'s title, shown above
+    /// The `Frame`'s title, shown above
     pub title: Option<Text>,
+    /// Which [`FormId`] should be used for the frame
+    pub form: Option<FormId>,
 }
 
 impl Frame {
@@ -978,6 +992,49 @@ impl Frame {
     /// The order is: above, below, left, right
     pub fn sides(&self) -> impl Iterator<Item = bool> {
         [self.above, self.below, self.left, self.right].into_iter()
+    }
+
+    /// Draws the frame
+    pub fn draw(
+        &self,
+        stdout: &mut std::io::BufWriter<std::fs::File>,
+        coords: Coords,
+        form: Form,
+        max: Coord,
+    ) {
+        let sides = [
+            (self.above && coords.tl.y > 0).then_some(Side::Above),
+            (self.right && coords.tl.x < max.x).then_some(Side::Right),
+            (self.below && coords.br.y < max.y).then_some(Side::Below),
+            (self.left && coords.tl.x > 0).then_some(Side::Left),
+        ];
+
+        for side in sides.into_iter().flatten() {
+            self.style.draw_side(stdout, coords, form.style, side);
+        }
+
+        let corners = [
+            (self.above && self.right && coords.br.x < max.x && coords.tl.y > 0).then_some((
+                Coord::new(coords.br.x, coords.tl.y - 1),
+                [Side::Above, Side::Right],
+            )),
+            (self.below && self.right && coords.br.x < max.x && coords.br.y < max.y).then_some((
+                Coord::new(coords.br.x, coords.br.y),
+                [Side::Below, Side::Right],
+            )),
+            (self.below && self.left && coords.tl.x > 0 && coords.br.y < max.y).then_some((
+                Coord::new(coords.tl.x - 1, coords.br.y),
+                [Side::Below, Side::Left],
+            )),
+            (self.above && self.left && coords.tl.x > 0 && coords.tl.y > 0).then_some((
+                Coord::new(coords.tl.x - 1, coords.tl.y - 1),
+                [Side::Above, Side::Left],
+            )),
+        ];
+
+        for (coord, sides) in corners.into_iter().flatten() {
+            self.style.draw_corner(stdout, coord, form.style, sides);
+        }
     }
 }
 
@@ -1004,18 +1061,20 @@ pub enum FrameStyle {
     Rounded,
     /// Uses `▄`, `▌`, `▖`
     Halved,
+    /// Uses `▏`, `▔`, `🭾`
+    ThinBlock,
     /// Uses `-`, `|`, `+`
     Ascii,
     /// Uses `char` for all positions
     Custom {
         /// The [`char`] to use for each side
         ///
-        /// The order is: top, bottom, left, right
+        /// The order is: top, right, bottom, left
         sides: [char; 4],
         /// The [`char`] to use for the corners
         ///
-        /// The order is: top-right, top-left, bottom-left,
-        /// bottom-right
+        /// The order is: top-right, bottom-right, bottom-left,
+        /// top-left
         corners: [char; 4],
         /// The [`char`] to use when two [`Area`]s with the same
         /// `FrameStyle` come in contact perpendicularly
@@ -1033,7 +1092,7 @@ pub enum FrameStyle {
         /// └──────┘
         /// ```
         ///
-        /// The order is: tob, bottom, left, right
+        /// The order is: top, right, bottom, left
         ///
         /// [`Area`]: super::Area
         t_mergers: Option<[char; 4]>,
@@ -1041,6 +1100,126 @@ pub enum FrameStyle {
         /// on [`FrameStyle::Regular`] for example, this is `┼`
         x_merger: Option<char>,
     },
+}
+
+impl FrameStyle {
+    /// Draws the `FrameStyle`
+    pub fn draw_side(
+        &self,
+        stdout: &mut std::io::BufWriter<std::fs::File>,
+        coords: Coords,
+        style: ContentStyle,
+        side: Side,
+    ) {
+        let mut char_str = [b'\0'; 4];
+        let char = match (side, self) {
+            (Side::Above | Side::Below, Self::Regular | Self::Rounded) => "─",
+            (Side::Above | Side::Below, Self::Thick) => "━",
+            (Side::Above | Side::Below, Self::Dashed) => "┄",
+            (Side::Above | Side::Below, Self::ThickDashed) => "┅",
+            (Side::Above | Side::Below, Self::Double) => "═",
+            (Side::Above | Side::Below, Self::Ascii) => "-",
+            (Side::Right | Side::Left, Self::Regular | Self::Rounded) => "│",
+            (Side::Right | Side::Left, Self::Thick) => "┃",
+            (Side::Right | Side::Left, Self::Dashed) => "┆",
+            (Side::Right | Side::Left, Self::ThickDashed) => "┇",
+            (Side::Right | Side::Left, Self::Double) => "║",
+            (Side::Right | Side::Left, Self::Ascii) => "|",
+            (Side::Right | Side::Left, Self::Halved) => "█",
+            (Side::Above, Self::Halved) => "▄",
+            (Side::Below, Self::Halved) => "▀",
+            (Side::Above, Self::ThinBlock) => "▔",
+            (Side::Right, Self::ThinBlock) => "▕",
+            (Side::Below, Self::ThinBlock) => "▁",
+            (Side::Left, Self::ThinBlock) => "▏",
+            (side, Self::Custom { sides, .. }) => match side {
+                Side::Above => sides[0].encode_utf8(&mut char_str),
+                Side::Right => sides[1].encode_utf8(&mut char_str),
+                Side::Below => sides[2].encode_utf8(&mut char_str),
+                Side::Left => sides[3].encode_utf8(&mut char_str),
+            },
+        };
+
+        match side {
+            Side::Left | Side::Right => {
+                let x = if side == Side::Left {
+                    coords.tl.x as u16 - 1
+                } else {
+                    coords.br.x as u16
+                };
+
+                for y in coords.tl.y as u16..coords.br.y as u16 {
+                    queue!(stdout, MoveTo(x, y), SetStyle(style),).unwrap();
+                    write!(stdout, "{char}").unwrap();
+                }
+            }
+            Side::Above | Side::Below => {
+                let y = if side == Side::Above {
+                    coords.tl.y as u16 - 1
+                } else {
+                    coords.br.y as u16
+                };
+
+                queue!(stdout, MoveTo(coords.tl.x as u16, y), SetStyle(style),).unwrap();
+                for _ in 0..(coords.br.x - coords.tl.x) {
+                    write!(stdout, "{char}").unwrap();
+                }
+            }
+        }
+    }
+
+    pub fn draw_corner(
+        &self,
+        stdout: &mut std::io::BufWriter<std::fs::File>,
+        coord: Coord,
+        style: ContentStyle,
+        sides: [Side; 2],
+    ) {
+        use Side::*;
+
+        let mut char_str = [b'\0'; 4];
+        let char = match (sides, self) {
+            ([Above, Right] | [Right, Above], Self::Regular | Self::Dashed) => "┐",
+            ([Above, Right] | [Right, Above], Self::Thick | Self::ThickDashed) => "┓",
+            ([Above, Right] | [Right, Above], Self::Double) => "╗",
+            ([Above, Right] | [Right, Above], Self::Rounded) => "╮",
+            ([Above, Right | Left] | [Right | Left, Above], Self::Halved) => "▄",
+            ([Above, Right] | [Right, Above], Self::ThinBlock) => "🭾",
+            ([Above, Left] | [Left, Above], Self::Regular) => "┌",
+            ([Above, Left] | [Left, Above], Self::Thick | Self::ThickDashed) => "┏",
+            ([Above, Left] | [Left, Above], Self::Double) => "╔",
+            ([Above, Left] | [Left, Above], Self::Rounded) => "╭",
+            ([Above, Left] | [Left, Above], Self::ThinBlock) => "🭽",
+            ([Right, Below] | [Below, Right], Self::Regular) => "┘",
+            ([Right, Below] | [Below, Right], Self::Thick | Self::ThickDashed) => "┛",
+            ([Right, Below] | [Below, Right], Self::Double) => "╝",
+            ([Right, Below] | [Below, Right], Self::Rounded) => "╯",
+            ([Right | Left, Below] | [Below, Right | Left], Self::Halved) => "▀",
+            ([Right, Below] | [Below, Right], Self::ThinBlock) => "🭿",
+            ([Below, Left] | [Left, Below], Self::Regular) => "└",
+            ([Below, Left] | [Left, Below], Self::Thick | Self::ThickDashed) => "┗",
+            ([Below, Left] | [Left, Below], Self::Double) => "╚",
+            ([Below, Left] | [Left, Below], Self::Rounded) => "╰",
+            ([Below, Left] | [Left, Below], Self::ThinBlock) => "🭼",
+            (sides, Self::Custom { corners, .. }) => match sides {
+                [Above, Right] | [Right, Above] => corners[0].encode_utf8(&mut char_str),
+                [Above, Left] | [Left, Above] => corners[1].encode_utf8(&mut char_str),
+                [Right, Below] | [Below, Right] => corners[2].encode_utf8(&mut char_str),
+                [Below, Left] | [Left, Below] => corners[3].encode_utf8(&mut char_str),
+                _ => return,
+            },
+            (_, Self::Ascii) => "+",
+            _ => return,
+        };
+
+        queue!(
+            stdout,
+            MoveTo(coord.x as u16, coord.y as u16),
+            SetStyle(style)
+        )
+        .unwrap();
+        stdout.write_all(char.as_bytes()).unwrap();
+    }
 }
 
 fn get_cons(

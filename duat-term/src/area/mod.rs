@@ -77,6 +77,10 @@ impl Coords {
             && self.tl.y < other.br.y
             && self.br.y > other.tl.y
     }
+
+    pub fn x_range(&self) -> std::ops::Range<u32> {
+        self.tl.x..self.br.x
+    }
 }
 
 #[derive(Clone)]
@@ -179,10 +183,6 @@ impl Area {
         };
 
         let mut observed_spawns = Vec::new();
-        let spawn_id = self
-            .layouts
-            .inspect(self.id, |rect, _| rect.spawn_id())
-            .unwrap();
         let is_active = self.id == self.layouts.get_active_id();
 
         let mut ansi_codes = self.ansi_codes.lock().unwrap();
@@ -346,7 +346,7 @@ impl Area {
         let spawns = text.get_spawned_ids();
 
         self.layouts
-            .send_lines(self.id, spawn_id, lines, spawns, &observed_spawns);
+            .send_lines(self.id, lines, spawns, &observed_spawns);
     }
 }
 
