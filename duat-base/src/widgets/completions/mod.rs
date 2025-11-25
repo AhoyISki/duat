@@ -23,7 +23,7 @@ use duat_core::{
     hook::{self, FocusChanged},
     mode::{MouseEvent, MouseEventKind},
     text::{Point, SpawnTag, Tagger, Text, txt},
-    ui::{DynSpawnSpecs, Orientation, Widget},
+    ui::{DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::{Frame, FrameStyle};
 
@@ -76,18 +76,24 @@ impl CompletionsBuilder {
     ///
     /// [`Selection`]: duat_core::mode::Selection
     pub fn open(self, pa: &mut Pass) {
+        use duat_core::text::AlignCenter;
+
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
             hook::add::<Completions>(|pa, handle| {
                 if let Some(area) = handle.area().write_as::<duat_term::Area>(pa) {
-                    area.set_frame(Frame {
+                    let mut frame = Frame {
                         left: true,
                         right: true,
                         above: true,
-                        style: FrameStyle::Halved,
-                        title: Some(txt!("Some bullshit")),
-                        ..Default::default()
+                        below: true,
+                        style: FrameStyle::Rounded,
+                        ..Frame::default()
+                    };
+                    frame.set_text(Side::Above, |_| {
+                        txt!("{AlignCenter}[terminal.frame]┤[]some bullshit[terminal.frame]├")
                     });
+                    area.set_frame(frame);
                 }
                 Ok(())
             });

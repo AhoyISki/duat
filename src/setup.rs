@@ -271,7 +271,6 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     form::set_weak("selected.Completions", Form::black().on_grey());
 
     // Setup for WhichKey
-    form::set_weak("default.WhichKey", Form::on_dark_grey());
     form::set_weak("key", "const");
     form::set_weak("key.mod", "punctuation.bracket");
     form::set_weak("key.angle", "punctuation.bracket");

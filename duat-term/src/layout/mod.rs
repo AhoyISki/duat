@@ -322,7 +322,7 @@ impl Layouts {
         {
             layout
                 .printer
-                .send_spawn_lines(area_id, info.id, lines, info.frame.clone());
+                .send_spawn_lines(area_id, info.id, lines, &info.frame);
         } else {
             layout.printer.send_lines(lines);
         }
@@ -826,7 +826,7 @@ impl Layout {
 }
 
 /// A listed main spawned [`Rect`]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct SpawnInfo {
     id: SpawnId,
     spec: SpawnSpec,
@@ -958,7 +958,8 @@ impl Constraints {
 /// fields as necessary.
 ///
 /// [`Area`]: super::Area
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Clone)]
+#[allow(clippy::type_complexity)]
 pub struct Frame {
     /// Show a frame above
     pub above: bool,
@@ -970,10 +971,15 @@ pub struct Frame {
     pub right: bool,
     /// The `Frame`'s style
     pub style: FrameStyle,
-    /// The `Frame`'s title, shown above
-    pub title: Option<Text>,
     /// Which [`FormId`] should be used for the frame
     pub form: Option<FormId>,
+    /// The [`Text`] functions for each side
+    ///
+    /// You should call [`Frame::set_text`] to set each of these.
+    ///
+    /// The order is: top, right, bottom, left
+    #[doc(hidden)]
+    pub side_texts: [Option<Arc<dyn Fn(usize) -> Text + Send>>; 4],
 }
 
 impl Frame {
@@ -992,11 +998,16 @@ impl Frame {
         form: Form,
         max: Coord,
     ) {
+        let above = self.above && coords.tl.y > 0;
+        let right = self.right && coords.br.x < max.x;
+        let below = self.below && coords.br.y < max.y;
+        let left = self.left && coords.tl.x > 0;
+
         let sides = [
-            (self.above && coords.tl.y > 0).then_some(Side::Above),
-            (self.right && coords.tl.x < max.x).then_some(Side::Right),
-            (self.below && coords.br.y < max.y).then_some(Side::Below),
-            (self.left && coords.tl.x > 0).then_some(Side::Left),
+            above.then_some(Side::Above),
+            right.then_some(Side::Right),
+            below.then_some(Side::Below),
+            left.then_some(Side::Left),
         ];
 
         for side in sides.into_iter().flatten() {
@@ -1004,49 +1015,125 @@ impl Frame {
         }
 
         let corners = [
-            (self.above && self.right && coords.br.x < max.x && coords.tl.y > 0).then_some((
-                Coord::new(coords.br.x, coords.tl.y - 1),
-                [Side::Above, Side::Right],
-            )),
-            (self.below && self.right && coords.br.x < max.x && coords.br.y < max.y).then_some((
-                Coord::new(coords.br.x, coords.br.y),
-                [Side::Below, Side::Right],
-            )),
-            (self.below && self.left && coords.tl.x > 0 && coords.br.y < max.y).then_some((
-                Coord::new(coords.tl.x - 1, coords.br.y),
-                [Side::Below, Side::Left],
-            )),
-            (self.above && self.left && coords.tl.x > 0 && coords.tl.y > 0).then_some((
-                Coord::new(coords.tl.x - 1, coords.tl.y - 1),
-                [Side::Above, Side::Left],
-            )),
+            (above && right).then_some((Coord::new(coords.br.x, coords.tl.y - 1), [
+                Side::Above,
+                Side::Right,
+            ])),
+            (below && right).then_some((Coord::new(coords.br.x, coords.br.y), [
+                Side::Below,
+                Side::Right,
+            ])),
+            (below && left).then_some((Coord::new(coords.tl.x - 1, coords.br.y), [
+                Side::Below,
+                Side::Left,
+            ])),
+            (above && left).then_some((Coord::new(coords.tl.x - 1, coords.tl.y - 1), [
+                Side::Above,
+                Side::Left,
+            ])),
         ];
 
         for (coord, sides) in corners.into_iter().flatten() {
             self.style.draw_corner(stdout, coord, form.style, sides);
         }
 
-        let coords = (self.above && coords.tl.y > 0).then_some(Coords::new(
-            Coord::new(coords.tl.x - 1, coords.tl.y - 1),
-            Coord::new(coords.br.x + 1, coords.tl.y),
-        ));
+        let text_fn = |tl_x: u32, tl_y: u32, br_x: u32, br_y: u32| {
+            move |text_fn: &Arc<dyn Fn(usize) -> Text + Send>| {
+                let text = text_fn((br_x - tl_x).max(br_y - tl_y) as usize);
+                (
+                    Coords::new(Coord::new(tl_x, tl_y), Coord::new(br_x, br_y)),
+                    text,
+                )
+            }
+        };
 
-        let painter = duat_core::form::painter_with_mask("title");
-        if let Some((text, coords)) = self.title.as_ref().zip(coords)
-            && let Some((lines, _)) = print_text(
-                (text, PrintOpts::default(), painter),
+        let texts = [
+            self.side_texts[0].as_ref().filter(|_| above).map(text_fn(
+                coords.tl.x - left as u32,
+                coords.tl.y - 1,
+                coords.br.x + right as u32,
+                coords.tl.y,
+            )),
+            self.side_texts[1].as_ref().filter(|_| right).map(text_fn(
+                coords.br.x,
+                coords.tl.y,
+                coords.br.x + 1,
+                coords.br.y,
+            )),
+            self.side_texts[2].as_ref().filter(|_| below).map(text_fn(
+                coords.tl.x - left as u32,
+                coords.br.y,
+                coords.br.x + right as u32,
+                coords.br.y + 1,
+            )),
+            self.side_texts[3].as_ref().filter(|_| right).map(text_fn(
+                coords.tl.x - 1,
+                coords.tl.y,
+                coords.tl.x,
+                coords.br.y,
+            )),
+        ];
+
+        let opts = PrintOpts { wrap_lines: true, ..PrintOpts::default() };
+
+        for (coords, text) in texts.into_iter().flatten() {
+            if let Some((lines, _)) = print_text(
+                (&text, opts, duat_core::form::painter_with_mask("title")),
                 (coords, max),
                 (false, TwoPoints::default(), 0),
                 |_, _| {},
                 |lines, style| lines.write_all(crate::get_ansi(style).as_bytes()).unwrap(),
-            )
-        {
-            let (line, _) = lines.on(coords.tl.y).unwrap();
-            queue!(stdout, MoveTo(coords.tl.x as u16, coords.tl.y as u16)).unwrap();
-            stdout.write_all(line).unwrap();
+                |lines, len| write!(lines, "\x1b[{len}C").unwrap(),
+                |lines, _, _| _ = lines.flush(),
+            ) {
+                for y in coords.tl.y..coords.br.y {
+                    let (line, _) = lines.on(y).unwrap();
+                    queue!(stdout, MoveTo(coords.tl.x as u16, y as u16)).unwrap();
+                    stdout.write_all(line).unwrap();
+                }
+            }
+        }
+    }
+
+    /// Prints a [`Side`] as [`Text`]
+    ///
+    /// You can use this to, for example, set a title for your widget.
+    /// This method takes in a function, which produces a `Text` from
+    /// the length of the corresponding `Side`.
+    ///
+    /// The length of [`Side::Above`] and [`Side::Below`] includes the
+    /// left and right corners.
+    pub fn set_text(&mut self, side: Side, text_fn: impl Fn(usize) -> Text + Send + 'static) {
+        match side {
+            Side::Above => self.side_texts[0] = Some(Arc::new(text_fn)),
+            Side::Right => self.side_texts[0] = Some(Arc::new(text_fn)),
+            Side::Below => self.side_texts[0] = Some(Arc::new(text_fn)),
+            Side::Left => self.side_texts[0] = Some(Arc::new(text_fn)),
         }
     }
 }
+
+impl PartialEq for Frame {
+    fn eq(&self, other: &Self) -> bool {
+        self.above == other.above
+            && self.below == other.below
+            && self.left == other.left
+            && self.right == other.right
+            && self.style == other.style
+            && self.form == other.form
+            && self
+                .side_texts
+                .iter()
+                .zip(other.side_texts.iter())
+                .all(|(lhs, rhs)| match (lhs, rhs) {
+                    (None, None) => true,
+                    (Some(lhs), Some(rhs)) => Arc::ptr_eq(lhs, rhs),
+                    _ => false,
+                })
+    }
+}
+
+impl Eq for Frame {}
 
 /// The style for a spawned [`Area`]'s [`Frame`]
 ///
@@ -1054,7 +1141,7 @@ impl Frame {
 /// characters like `─`, `│`, `┐`
 ///
 /// [`Area`]: super::Area
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub enum FrameStyle {
     /// Uses `─`, `│`, `┐`
     #[default]

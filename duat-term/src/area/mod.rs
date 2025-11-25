@@ -163,6 +163,17 @@ impl Area {
             (is_active, s_points, x_shift),
             on_each,
             |lines, style| print_hashed_style(lines, style, &mut ansi_codes),
+            |lines, len| lines.write_all(&SPACES[..len as usize]).unwrap(),
+            |lines, len, max_x| {
+                if lines.coords().br.x == max_x {
+                    lines.write_all(b"\x1b[0K").unwrap();
+                } else {
+                    lines
+                        .write_all(&SPACES[..(lines.coords().width() - len) as usize])
+                        .unwrap();
+                }
+                lines.flush().unwrap();
+            },
         ) else {
             return;
         };
@@ -666,30 +677,19 @@ pub fn print_text(
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
     mut on_each: impl FnMut(&Caret, &Item),
     mut print_style: impl FnMut(&mut Lines, ContentStyle),
+    start_line: fn(&mut Lines, u32),
+    end_line: fn(&mut Lines, u32, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
-    const SPACES: &[u8] = &[b' '; 3000];
-
-    fn end_line(
+    fn print_end_style(
         lines: &mut Lines,
         painter: &Painter,
-        len: u32,
-        max_x: u32,
         print_style: &mut impl FnMut(&mut Lines, ContentStyle),
     ) {
         let mut default_style = painter.get_default();
         default_style.style.foreground_color = None;
         default_style.style.underline_color = None;
         default_style.style.attributes = Attributes::from(Attribute::Reset);
-
         print_style(lines, default_style.style);
-        if lines.coords().br.x == max_x {
-            lines.write_all(b"\x1b[0K").unwrap();
-        } else {
-            lines
-                .write_all(&SPACES[..(lines.coords().width() - len) as usize])
-                .unwrap();
-        }
-        lines.flush().unwrap();
     }
 
     let (mut lines, iter, x_shift, max_x) = {
@@ -732,14 +732,15 @@ pub fn print_text(
                 break;
             }
             if y > lines.coords().tl.y {
-                end_line(lines, painter, last_len, max_x, &mut print_style);
+                print_end_style(lines, painter, &mut print_style);
+                end_line(lines, last_len, max_x);
             }
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
             if initial_space > 0 {
                 let mut default_style = painter.get_default().style;
                 default_style.attributes.set(Attribute::Reset);
                 print_style(lines, default_style);
-                lines.write_all(&SPACES[..initial_space as usize]).unwrap();
+                start_line(lines, initial_space);
             }
             y += 1;
 
@@ -852,11 +853,15 @@ pub fn print_text(
         }
     }
 
-    end_line(&mut lines, &painter, last_len, max_x, &mut print_style);
+    print_end_style(&mut lines, &painter, &mut print_style);
+    end_line(&mut lines, last_len, max_x);
 
     for _ in 0..lines.coords().br.y - y {
-        end_line(&mut lines, &painter, 0, max_x, &mut print_style);
+        print_end_style(&mut lines, &painter, &mut print_style);
+        end_line(&mut lines, 0, max_x);
     }
 
     Some((lines, observed_spawns))
 }
+
+const SPACES: &[u8] = &[b' '; 3000];

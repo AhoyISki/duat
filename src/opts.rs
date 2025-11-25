@@ -666,7 +666,7 @@ type LogBookFn = Mutex<Box<dyn FnMut(&mut LogBookOpts) + Send>>;
 pub struct WhichKeyOpts {
     pub(crate) fmt_getter: Option<
         Box<
-            dyn Fn() -> Box<dyn FnMut(Description) -> Option<Text> + 'static>
+            dyn Fn() -> Box<dyn FnMut(Description) -> Option<(Text, Text)> + 'static>
                 + Send
                 + 'static,
         >,
@@ -699,11 +699,18 @@ impl Default for WhichKeyOpts {
 impl WhichKeyOpts {
     /// How to format the `WhichKey` widget
     ///
-    /// This function returns an [`Option<Text>`]. If it returns
-    /// [`None`], then that specific entry won't show up on the list
-    /// of bindings. This is useful for, for example, hiding entries
-    /// that have no description [`Text`], which is done by default.
-    pub fn fmt(&mut self, fmt: impl FnMut(Description) -> Option<Text> + Send + Clone + 'static) {
+    /// This function returns an [`Option<(Text, Text)>`]. The first
+    /// [`Text`] is used for the keys, the second `Text` is used for
+    /// the description of said keys.
+    ///
+    /// If it returns [`None`], then that specific entry won't show up
+    /// on the list of bindings. This is useful for, for example,
+    /// hiding entries that have no description `Text`, which is done
+    /// by default.
+    pub fn fmt(
+        &mut self,
+        fmt: impl FnMut(Description) -> Option<(Text, Text)> + Send + Clone + 'static,
+    ) {
         self.fmt_getter = Some(Box::new(move || Box::new(fmt.clone())))
     }
 

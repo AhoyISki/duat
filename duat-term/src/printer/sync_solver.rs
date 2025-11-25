@@ -98,7 +98,7 @@ impl SyncSolver {
                     let c = if spawn.prefers_before {
                         lhs_fr + lhs + len / 2.0
                     } else {
-                        rhs_fr + rhs - len / 2.0
+                        rhs - (rhs_fr + len / 2.0)
                     };
                     self.solver.suggest_value(spawn.center_var, c).unwrap();
                 } else if let Some(len) = spawn.desired_len

@@ -1,18 +1,20 @@
+use std::sync::Once;
+
 use duat_core::{
     context::{self, Handle},
     data::Pass,
+    form,
     hook::{self, FocusChanged, KeyTyped},
     mode::{self, Description, MouseEvent, MouseEventKind},
-    text::{Spacer, Text, txt},
-    ui::{DynSpawnSpecs, Widget},
+    text::{Text, txt},
+    ui::{DynSpawnSpecs, PushSpecs, Side, Widget},
 };
+use duat_term::{Frame, FrameStyle};
 
 /// A [`Widget`] to display what [keys] will do
 ///
 /// [keys]: mode::KeyEvent
-pub struct WhichKey {
-    text: Text,
-}
+pub struct WhichKey(Text, Option<Handle<WhichKeyDescriptions>>);
 
 impl WhichKey {
     /// Open the `WhichKey` widget
@@ -21,50 +23,106 @@ impl WhichKey {
     #[allow(clippy::type_complexity)] // ??? where?
     pub fn open(
         pa: &mut Pass,
-        mut fmt: Option<Box<dyn FnMut(Description) -> Option<Text>>>,
+        mut fmt: Option<Box<dyn FnMut(Description) -> Option<(Text, Text)>>>,
         mut specs: DynSpawnSpecs,
     ) {
-        let mut builder = Text::builder();
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            form::set("default.WhichKeyDescriptions", "default.WhichKey");
+        });
+
+        let mut keys_builder = Text::builder();
+        let mut descs_builder = Text::builder();
 
         for desc in mode::current_seq_descriptions(pa) {
             if let Some(fmt) = fmt.as_mut() {
-                if let Some(text) = fmt(desc) {
-                    builder.push(text);
+                if let Some((keys, desc)) = fmt(desc) {
+                    keys_builder.push(keys);
+                    descs_builder.push(desc);
                 }
             } else if let Some(text) = desc.text
                 && !text.is_empty()
             {
-                builder.push(txt!("{}{Spacer}{text}\n", desc.keys.into_text()));
+                keys_builder.push(txt!("{}", desc.keys.into_text()));
+                descs_builder.push(txt!("{text}"));
             }
+
+            keys_builder.push('\n');
+            descs_builder.push('\n');
         }
 
-        let wk = WhichKey { text: builder.build_no_double_nl() };
+        let keys = WhichKey(keys_builder.build_no_double_nl(), None);
+        let mut descs = WhichKeyDescriptions(descs_builder.build_no_double_nl(), None);
 
-        let handles: Vec<_> = context::windows().handles_of::<WhichKey>(pa).collect();
+        let handles: Vec<_> = context::windows()
+            .handles(pa)
+            .filter(|handle| {
+                handle.widget().is::<WhichKey>() || handle.widget().is::<WhichKeyDescriptions>()
+            })
+            .cloned()
+            .collect();
         for handle in handles {
             let _ = handle.close(pa);
         }
 
         if let Some(height) = specs.height.as_mut() {
-            *height = wk.text().len().line().min(*height as usize) as f32;
+            *height = keys.text().len().line().min(*height as usize) as f32;
         }
 
-        let handle = context::current_buffer(pa)
+        let keys_handle = context::current_buffer(pa)
             .clone()
-            .spawn_widget(pa, wk, specs)
+            .spawn_widget(pa, keys, specs)
             .unwrap();
+        descs.1 = Some(keys_handle.clone());
 
-        let (wk, area) = handle.write_with_area(pa);
-        if let Ok(width) = area.width_of_text(wk.get_print_opts(), wk.text()) {
-            area.set_width(width + 3.0).unwrap();
+        let name = crate::state::mode_name().call(pa);
+        if let Some(area) = keys_handle.area().write_as::<duat_term::Area>(pa) {
+            use duat_core::text::AlignCenter;
+
+            let mut frame = Frame {
+                left: true,
+                right: true,
+                above: true,
+                below: true,
+                style: FrameStyle::Rounded,
+                ..Frame::default()
+            };
+            frame.set_text(Side::Above, move |_| {
+                txt!("{AlignCenter}[terminal.frame]┤[]{name}[terminal.frame]├")
+            });
+            area.set_frame(frame);
+        }
+
+        let (keys, area) = keys_handle.write_with_area(pa);
+        if let Ok(width) = area.width_of_text(keys.get_print_opts(), keys.text()) {
+            area.set_width(width + 1.0).unwrap();
+        }
+
+        let descs_handle = keys_handle.push_inner_widget(pa, descs, PushSpecs {
+            side: Side::Right,
+            ..Default::default()
+        });
+        keys_handle.write(pa).1 = Some(descs_handle.clone());
+
+        let (descs, area) = descs_handle.write_with_area(pa);
+        if let Ok(width) = area.width_of_text(descs.get_print_opts(), descs.text()) {
+            area.set_width(width).unwrap();
         }
 
         hook::add::<KeyTyped>({
-            let handle = handle.clone();
-            move |pa, _| Ok(_ = handle.close(pa))
+            let keys_handle = keys_handle.clone();
+            let descs_handle = descs_handle.clone();
+            move |pa, _| {
+                _ = keys_handle.close(pa);
+                Ok(_ = descs_handle.close(pa))
+            }
         })
         .once();
-        hook::add::<FocusChanged>(move |pa, _| Ok(_ = handle.close(pa))).once();
+        hook::add::<FocusChanged>(move |pa, _| {
+            _ = keys_handle.close(pa);
+            Ok(_ = descs_handle.close(pa))
+        })
+        .once();
     }
 }
 
@@ -76,23 +134,64 @@ impl Widget for WhichKey {
     }
 
     fn text(&self) -> &Text {
-        &self.text
+        &self.0
     }
 
     fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+        &mut self.0
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
         match event.kind {
             MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
-                let (wk, area) = handle.write_with_area(pa);
+                let (keys, area) = handle.write_with_area(pa);
                 let scroll = if let MouseEventKind::ScrollDown = event.kind {
                     3
                 } else {
                     -3
                 };
-                area.scroll_ver(&wk.text, scroll, wk.get_print_opts());
+                area.scroll_ver(&keys.0, scroll, keys.get_print_opts());
+                
+                let handle = keys.1.clone().unwrap();
+                let (descs, area) = handle.write_with_area(pa);
+                area.scroll_ver(&descs.0, scroll, descs.get_print_opts());
+            }
+            _ => {}
+        }
+    }
+}
+
+struct WhichKeyDescriptions(Text, Option<Handle<WhichKey>>);
+
+impl Widget for WhichKeyDescriptions {
+    fn update(_: &mut Pass, _: &Handle<Self>) {}
+
+    fn needs_update(&self, _: &Pass) -> bool {
+        false
+    }
+
+    fn text(&self) -> &Text {
+        &self.0
+    }
+
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.0
+    }
+
+    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
+        match event.kind {
+            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+                let (descs, area) = handle.write_with_area(pa);
+                let scroll = if let MouseEventKind::ScrollDown = event.kind {
+                    3
+                } else {
+                    -3
+                };
+                area.scroll_ver(&descs.0, scroll, descs.get_print_opts());
+                
+                let handle = descs.1.clone().unwrap();
+                let (keys, area) = handle.write_with_area(pa);
+                area.scroll_ver(&keys.0, scroll, keys.get_print_opts());
             }
             _ => {}
         }
