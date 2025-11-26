@@ -101,12 +101,32 @@ impl Bindings {
             })
             .last()
     }
+
+    /// The description for a particular sequence of bound [keys]
+    ///
+    /// [keys]: KeyEvent
+    pub fn description_for_mut<'a>(
+        &'a mut self,
+        seq: &[KeyEvent],
+    ) -> Option<&'a mut Selectionless> {
+        let mut bindings = Some(self);
+        seq.iter()
+            .map_while(move |key_event| {
+                let (_, selless, nested) =
+                    bindings.take()?.list.iter_mut().find(|(list, ..)| {
+                        list.iter().any(|binding| binding.matches(*key_event))
+                    })?;
+                bindings = nested.as_mut();
+                Some(selless)
+            })
+            .last()
+    }
 }
 
 fn matches_event(
     key_event: KeyEvent,
 ) -> impl FnMut(&&(Vec<Binding>, Selectionless, Option<Bindings>)) -> bool {
-    move |(bindings, ..)| bindings.iter().any(|binding| binding.matches(key_event))
+    move |(list, ..)| list.iter().any(|binding| binding.matches(key_event))
 }
 
 impl std::fmt::Debug for Bindings {

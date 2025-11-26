@@ -83,7 +83,7 @@ mod global {
             let is_alias = self.is_alias;
             let doc = self.doc.take();
             REMAPPER
-                .remaps_builders
+                .async_actions
                 .lock()
                 .unwrap()
                 .push(Box::new(move |pa| remap(pa, takes, gives, is_alias, doc)));
@@ -195,10 +195,31 @@ mod global {
     ///
     /// [`&mut Pass`]: Pass
     pub fn current_mode_bindings(pa: &mut Pass) -> &MappedBindings {
-        let mut remapper = REMAPPER.remaps_builders.lock().unwrap();
-        remapper.drain(..).for_each(|remap| remap(pa));
+        let mut actions = REMAPPER.async_actions.lock().unwrap();
+        actions.drain(..).for_each(|action| action(pa));
 
         &REMAPPER.inner.read(pa).mapped_bindings[&MODE_TYPE_ID.lock().unwrap()]
+    }
+
+    /// Changes the description for a given [`KeyEvent`] sequence
+    ///
+    /// This will also change the description for every other sequence
+    /// that is associated with the same description.
+    pub fn change_binding_description<M: Mode>(seq: &[KeyEvent], new: Text) {
+        let seq = seq.to_vec();
+        REMAPPER
+            .async_actions
+            .lock()
+            .unwrap()
+            .push(Box::new(move |pa| {
+                let inner = REMAPPER.inner.write(pa);
+                let bindings = inner
+                    .mapped_bindings
+                    .entry(TypeId::of::<M>())
+                    .or_insert_with(MappedBindings::for_mode::<M>);
+
+                bindings.replace_seq_description(&seq, new);
+            }));
     }
 
     /// The [`Description`]s of all [`Binding`]s and remaps of the
@@ -224,9 +245,8 @@ mod global {
     pub fn current_seq_descriptions(
         pa: &mut Pass,
     ) -> (Option<Text>, impl Iterator<Item = Description<'_>>) {
-        // Add remaining remaps.
-        let mut remapper = REMAPPER.remaps_builders.lock().unwrap();
-        remapper.drain(..).for_each(|remap| remap(pa));
+        let mut action = REMAPPER.async_actions.lock().unwrap();
+        action.drain(..).for_each(|action| action(pa));
 
         let inner = REMAPPER.inner.read(pa);
         inner.mapped_bindings[&*MODE_TYPE_ID.lock().unwrap()].descriptions_for(&inner.seq)
@@ -552,7 +572,7 @@ mod global {
 
 /// The structure responsible for remapping sequences of characters
 struct Remapper {
-    remaps_builders: Mutex<Vec<Box<dyn FnOnce(&mut Pass) + Send + 'static>>>,
+    async_actions: Mutex<Vec<Box<dyn FnOnce(&mut Pass) + Send + 'static>>>,
     inner: RwData<InnerRemapper>,
 }
 
@@ -569,7 +589,7 @@ impl Remapper {
     /// Returns a new instance of [`Remapper`]
     fn new() -> Self {
         Remapper {
-            remaps_builders: Mutex::default(),
+            async_actions: Mutex::default(),
             inner: RwData::new(InnerRemapper {
                 mapped_bindings: HashMap::new(),
                 mapped_seq: Vec::new(),
@@ -688,8 +708,8 @@ impl Remapper {
             mode::send_keys_to(pa, keys_to_send);
         }
 
-        for remap in self.remaps_builders.lock().unwrap().drain(..) {
-            remap(pa)
+        for action in self.async_actions.lock().unwrap().drain(..) {
+            action(pa)
         }
 
         send_key_inner(key, self, pa, TypeId::of::<M>());
@@ -703,7 +723,7 @@ struct Remap {
     takes: Vec<KeyEvent>,
     gives: Gives,
     is_alias: bool,
-    doc: Option<Selectionless>,
+    desc: Option<Selectionless>,
 }
 
 impl Remap {
@@ -712,9 +732,9 @@ impl Remap {
         takes: Vec<KeyEvent>,
         gives: Gives,
         is_alias: bool,
-        doc: Option<Selectionless>,
+        desc: Option<Selectionless>,
     ) -> Self {
-        Self { takes, gives, is_alias, doc }
+        Self { takes, gives, is_alias, desc }
     }
 }
 
@@ -782,10 +802,9 @@ impl MappedBindings {
     /// This will be true if either the normal [`Mode`] provided
     /// [`Bindings`] match the sequence, or if a remap binds it.
     pub fn matches_sequence(&self, seq: &[KeyEvent]) -> bool {
-        self.bindings.matches_sequence(seq)
-            || self.remaps.iter().any(|remap| {
-                seq.starts_with(&remap.takes) && self.matches_sequence(&seq[remap.takes.len()..])
-            })
+        self.remaps.iter().any(|remap| {
+            seq.starts_with(&remap.takes) && self.matches_sequence(&seq[remap.takes.len()..])
+        }) || self.bindings.matches_sequence(seq)
     }
 
     /// Wether the given sequence of [`KeyEvent`]s has a followup
@@ -794,11 +813,10 @@ impl MappedBindings {
     /// This will be true if either the normal [`Mode`] provided
     /// [`Bindings`] match the sequence, or if a remap binds it.
     pub fn sequence_has_followup(&self, seq: &[KeyEvent]) -> bool {
-        self.bindings.sequence_has_followup(seq)
-            || self
-                .remaps
-                .iter()
-                .any(|remap| remap.takes.starts_with(seq) && remap.takes.len() > seq.len())
+        self.remaps
+            .iter()
+            .any(|remap| remap.takes.starts_with(seq) && remap.takes.len() > seq.len())
+            || self.bindings.sequence_has_followup(seq)
     }
 
     /// The [`Description`]s for the bindings available, given the
@@ -816,10 +834,11 @@ impl MappedBindings {
                 text: Some(desc.text()),
                 keys: KeyDescriptions {
                     seq,
-                    ty: DescriptionType::Binding(pats, pats.iter(), StripPrefix {
-                        seq,
-                        remaps: self.remaps.iter(),
-                    }),
+                    ty: DescriptionType::Binding(
+                        pats,
+                        pats.iter(),
+                        StripPrefix { seq, remaps: self.remaps.iter() },
+                    ),
                 },
             })
             .chain(
@@ -829,7 +848,7 @@ impl MappedBindings {
                         if !remap.takes.starts_with(seq) {
                             return false;
                         }
-                        if remap.doc.is_some() {
+                        if remap.desc.is_some() {
                             return true;
                         }
 
@@ -846,7 +865,7 @@ impl MappedBindings {
                         }
                     })
                     .map(|remap| Description {
-                        text: remap.doc.as_ref().map(Selectionless::text).or_else(|| {
+                        text: remap.desc.as_ref().map(Selectionless::text).or_else(|| {
                             if let Gives::Keys(keys) = &remap.gives {
                                 self.bindings.description_for(keys)
                             } else {
@@ -861,6 +880,15 @@ impl MappedBindings {
             );
 
         (bindings.and_then(|b| b.title.clone()), iter)
+    }
+
+    /// Replace the description for a sequence of [`KeyEvent`]s
+    fn replace_seq_description(&mut self, seq: &[KeyEvent], new: Text) {
+        if let Some(remap) = self.remaps.iter_mut().find(|remap| remap.takes == seq) {
+            remap.desc = (!new.is_empty_empty()).then_some(new.no_selections());
+        } else if let Some(desc) = self.bindings.description_for_mut(seq) {
+            *desc = new.no_selections();
+        }
     }
 }
 
@@ -980,7 +1008,7 @@ impl<'a> Iterator for KeyDescriptions<'a> {
             .or_else(|| {
                 deprefixed.find_map(|(remap, takes)| {
                     if remap.takes.starts_with(self.seq)
-                        && remap.doc.is_none()
+                        && remap.desc.is_none()
                         && let Gives::Keys(given_keys) = &remap.gives
                         && given_keys.len() == 1
                         && pats.iter().any(|pat| pat.matches(given_keys[0]))

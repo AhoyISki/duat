@@ -43,13 +43,44 @@ impl<W: Widget> Pager<W> {
 impl<W: Widget> Mode for Pager<W> {
     type Widget = W;
 
+    fn bindings() -> mode::Bindings {
+        use duat_core::mode::KeyCode::*;
+
+        if mode::alt_is_reverse() {
+            mode::bindings!(match _ {
+                event!(Char('j') | Down) => txt!("Scroll down"),
+                event!(Char('k') | Up) => txt!("Scroll up"),
+                event!('J') | shift!(Down) => txt!("Scroll to the bottom"),
+                event!('K') | shift!(Up) => txt!("Scroll to the top"),
+                event!('/') => txt!("[mode]Search[] ahead"),
+                alt!('/') => txt!("[mode]Search[] behind"),
+                event!('n') | alt!('n') => txt!("Go to [a]next[],[a]previous[] search match"),
+                event!(Esc) => txt!("[mode]Leave[] pager mode"),
+                event!(':') => txt!("[a]Run commands[] in prompt line"),
+            })
+        } else {
+            mode::bindings!(match _ {
+                event!(Char('j') | Down) => txt!("Scroll down"),
+                event!(Char('k') | Up) => txt!("Scroll up"),
+                event!('J') | shift!(Down) => txt!("Scroll to the bottom"),
+                event!('K') | shift!(Up) => txt!("Scroll to the top"),
+                event!('/') => txt!("[mode]Search[] ahead"),
+                event!('?') => txt!("[mode]Search[] behind"),
+                event!('n' | 'N') => txt!("Go to [a]next[],[a]previous[] search match"),
+                event!(Esc) => txt!("[mode]Leave[] pager mode"),
+                event!(':') => txt!("[a]Run commands[] in prompt line"),
+            })
+        }
+    }
+
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
         use duat_core::mode::KeyCode::*;
+
         match (key, duat_core::mode::alt_is_reverse()) {
             (event!(Char('j') | Down), _) => handle.scroll_ver(pa, 1),
-            (event!(Char('J')) | shift!(Down), _) => handle.scroll_ver(pa, i32::MAX),
+            (event!('J') | shift!(Down), _) => handle.scroll_ver(pa, i32::MAX),
             (event!(Char('k') | Up), _) => handle.scroll_ver(pa, -1),
-            (event!('K') | shift!(Down), _) => handle.scroll_ver(pa, i32::MIN),
+            (event!('K') | shift!(Up), _) => handle.scroll_ver(pa, i32::MIN),
             (event!('/'), _) => mode::set(PagerSearch::new(pa, &handle, true)),
             (alt!('/'), true) | (event!('?'), false) => {
                 mode::set(PagerSearch::new(pa, &handle, false));
