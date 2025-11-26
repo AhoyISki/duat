@@ -215,8 +215,16 @@ mod global {
     /// [`alias`]es that happened asynchronously before this call, so
     /// those need to be added in before returning the [`Iterator`]
     ///
+    /// This function also returns a title in the form of
+    /// [`Option<Text>`] in case the bindings has a custom title that
+    /// better describes what the keys do.
+    ///
     /// [`&mut Pass`]: Pass
-    pub fn current_seq_descriptions(pa: &mut Pass) -> impl Iterator<Item = Description<'_>> {
+    /// [`Binding`]: super::Binding
+    pub fn current_seq_descriptions(
+        pa: &mut Pass,
+    ) -> (Option<Text>, impl Iterator<Item = Description<'_>>) {
+        // Add remaining remaps.
         let mut remapper = REMAPPER.remaps_builders.lock().unwrap();
         remapper.drain(..).for_each(|remap| remap(pa));
 
@@ -798,10 +806,10 @@ impl MappedBindings {
     pub fn descriptions_for<'a>(
         &'a self,
         seq: &'a [KeyEvent],
-    ) -> impl Iterator<Item = Description<'a>> {
+    ) -> (Option<Text>, impl Iterator<Item = Description<'a>>) {
         let bindings = self.bindings.bindings_for(seq);
 
-        bindings
+        let iter = bindings
             .into_iter()
             .flat_map(|bindings| bindings.list.iter())
             .map(|(pats, desc, _)| Description {
@@ -850,7 +858,9 @@ impl MappedBindings {
                             ty: DescriptionType::Remap(Some(remap)),
                         },
                     }),
-            )
+            );
+
+        (bindings.and_then(|b| b.title.clone()), iter)
     }
 }
 

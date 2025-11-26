@@ -25,7 +25,7 @@ use duat_core::{
     text::{Point, SpawnTag, Tagger, Text, txt},
     ui::{DynSpawnSpecs, Orientation, Side, Widget},
 };
-use duat_term::{Frame, FrameStyle};
+use duat_term::Frame;
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
 use crate::widgets::completions::paths::PathCompletions;
@@ -76,30 +76,14 @@ impl CompletionsBuilder {
     ///
     /// [`Selection`]: duat_core::mode::Selection
     pub fn open(self, pa: &mut Pass) {
-        use duat_core::text::AlignCenter;
-
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
             hook::add::<Completions>(|pa, handle| {
-                if let Some(area) = handle.area().write_as::<duat_term::Area>(pa) {
-                    let mut frame = Frame {
-                        left: true,
-                        right: true,
-                        above: true,
-                        below: true,
-                        style: FrameStyle::Rounded,
-                        ..Frame::default()
-                    };
-                    frame.set_text(Side::Above, |_| {
-                        txt!("{AlignCenter}[terminal.frame]┤[]some bullshit[terminal.frame]├")
-                    });
-                    area.set_frame(frame);
-                }
+                Completions::set_frame(pa, handle);
                 Ok(())
             });
             hook::add::<FocusChanged>(|pa, (prev, _)| {
-                prev.text_mut(pa).remove_tags(*TAGGER, ..);
-                Ok(())
+                Ok(prev.text_mut(pa).remove_tags(*TAGGER, ..))
             });
         });
 
@@ -113,10 +97,13 @@ impl CompletionsBuilder {
 
         let (providers, start_byte, entries) = (self.providers)(handle.text(pa), 20);
 
+        let (text, sidebar) = entries.unwrap_or_default();
+
         let completions = Completions {
             master: handle.clone(),
             providers,
-            text: entries.unwrap_or_default(),
+            text,
+            sidebar,
             max_height: 20,
             start_byte,
             show_without_prefix: self.show_without_prefix,
@@ -155,6 +142,7 @@ pub struct Completions {
     master: Handle<dyn Widget>,
     providers: Vec<Box<dyn ErasedInnerProvider>>,
     text: Text,
+    sidebar: Text,
     max_height: usize,
     start_byte: usize,
     show_without_prefix: bool,
@@ -229,43 +217,58 @@ impl Completions {
             .providers
             .iter_mut()
             .map(|inner| {
-                inner.text_and_replacement(
+                let texts_and_rep = inner.texts_and_replacement(
                     master.text(),
                     scroll,
                     comp.max_height,
                     comp.show_without_prefix,
-                )
+                );
+                (texts_and_rep, inner.prefix_regex())
             })
             .collect();
 
-        lists.sort_by_key(|(start, _)| *start);
+        lists.sort_by_key(|((start, _), _)| *start);
 
-        if let Some((start_byte, (text, replacement))) = lists
+        if let Some(((start_byte, prefix_regex), ((text, sidebar), replacement))) = lists
             .into_iter()
-            .find_map(|(start, list)| Some(start).zip(list))
+            .find_map(|((start, list), prefix_regex)| Some((start, prefix_regex)).zip(list))
         {
             comp.text = text;
+            comp.sidebar = sidebar;
+            let prefix_regex = prefix_regex.to_string();
 
+            let mut new_start_byte = start_byte;
             if let Some(replacement) = replacement {
-                master_handle.edit_main(pa, |mut c| {
-                    c.move_to(start_byte..c.caret().byte());
+                master_handle.edit_all(pa, |mut c| {
+                    let prefix_range = c
+                        .search_rev(&prefix_regex)
+                        .next()
+                        .unwrap_or(c.caret().byte()..c.caret().byte());
+
+                    c.move_to(prefix_range.start..c.caret().byte());
                     c.replace(&replacement);
                     c.unset_anchor();
                     if !replacement.is_empty() {
                         c.move_hor(1);
                     }
+
+                    if c.is_main() {
+                        new_start_byte = prefix_range.start;
+                    }
                 });
             }
 
             let comp = handle.write(pa);
+
             // In this case, move the Completions to a new location
             if start_byte != comp.start_byte {
                 let new_comp = Self {
                     master: handle.master().unwrap().clone(),
                     providers: std::mem::take(&mut comp.providers),
                     text: std::mem::take(&mut comp.text),
+                    sidebar: std::mem::take(&mut comp.sidebar),
                     max_height: comp.max_height,
-                    start_byte,
+                    start_byte: new_start_byte,
                     show_without_prefix: false,
                     last_caret: comp.last_caret,
                 };
@@ -273,9 +276,13 @@ impl Completions {
                 let text = master_handle.text_mut(pa);
                 text.remove_tags(*TAGGER, ..);
                 text.insert_tag(*TAGGER, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
+                return;
+            } else {
+                comp.start_byte = new_start_byte;
             }
         } else {
             comp.text = Text::default();
+            comp.sidebar = Text::default();
         }
 
         let (comp, area) = handle.write_with_area(pa);
@@ -283,6 +290,24 @@ impl Completions {
 
         area.set_height(if comp.text.is_empty() { 0.0 } else { height })
             .unwrap();
+        Completions::set_frame(pa, handle);
+    }
+
+    fn set_frame(pa: &mut Pass, handle: &Handle<Self>) {
+        let sidebar = handle.read(pa).sidebar.clone();
+        if let Some(area) = handle.area().write_as::<duat_term::Area>(pa) {
+            let mut frame = Frame {
+                left: true,
+                right: true,
+                ..Frame::default()
+            };
+            frame.set_text(Side::Left, {
+                let sidebar = sidebar.clone();
+                move |_| sidebar.clone()
+            });
+            frame.set_text(Side::Right, move |_| sidebar.clone());
+            area.set_frame(frame);
+        }
     }
 }
 
@@ -290,7 +315,9 @@ impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         Self::update_text_and_position(pa, handle, 0);
         let master_handle = handle.master().unwrap();
-        handle.write(pa).last_caret = master_handle.selections(pa).get_main().unwrap().caret()
+        handle.write(pa).last_caret = master_handle.selections(pa).get_main().unwrap().caret();
+
+        Completions::set_frame(pa, handle);
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
@@ -432,15 +459,18 @@ pub enum CompletionsKind {
 }
 
 trait ErasedInnerProvider: Any + Send {
-    fn text_and_replacement(
+    #[allow(clippy::type_complexity)]
+    fn texts_and_replacement(
         &mut self,
         text: &Text,
         scroll: i32,
         height: usize,
         show_without_prefix: bool,
-    ) -> (usize, Option<(Text, Option<String>)>);
+    ) -> (usize, Option<((Text, Text), Option<String>)>);
 
     fn has_changed(&self, text: Option<&Text>) -> bool;
+
+    fn prefix_regex(&self) -> &str;
 }
 
 #[allow(clippy::type_complexity)]
@@ -457,7 +487,7 @@ struct InnerProvider<P: CompletionsProvider> {
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
-    fn new(mut provider: P, text: &Text, height: usize) -> (Self, usize, Option<Text>) {
+    fn new(mut provider: P, text: &Text, height: usize) -> (Self, usize, Option<(Text, Text)>) {
         let prefix_regex = format!(r"{}\z", provider.word_regex());
         let suffix_regex = format!(r"\A{}", provider.word_regex());
         let (range, [prefix, suffix]) = preffix_and_suffix(text, [&prefix_regex, &suffix_regex]);
@@ -491,19 +521,19 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let (start, text) = inner.text_and_replacement(text, 0, height, true);
+        let (start, text) = inner.texts_and_replacement(text, 0, height, true);
         (inner, start, text.unzip().0)
     }
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
-    fn text_and_replacement(
+    fn texts_and_replacement(
         &mut self,
         text: &Text,
         scroll: i32,
         height: usize,
         show_without_prefix: bool,
-    ) -> (usize, Option<(Text, Option<String>)>) {
+    ) -> (usize, Option<((Text, Text), Option<String>)>) {
         use FilteredEntries::*;
         let (range, [prefix, suffix]) =
             preffix_and_suffix(text, self.regexes.each_ref().map(|s| s.as_str()));
@@ -573,7 +603,8 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             })();
         }
 
-        let mut builder = Text::builder();
+        let mut entries_builder = Text::builder();
+        let mut sidebar_builder = Text::builder();
 
         if let Some((word, dist)) = &mut self.current
             && let Some(word_i) = entries.iter().position(|(w, _)| w == word)
@@ -583,14 +614,17 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             let top_i = word_i.saturating_sub(*dist);
             for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
                 if i == word_i {
-                    builder.push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
+                    entries_builder
+                        .push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
+                    sidebar_builder.push(txt!("[selected.Completions] \n"));
                 } else {
-                    builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+                    entries_builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+                    sidebar_builder.push(txt!("[default.Completions] \n"));
                 }
             }
         } else {
             for (entry, info) in entries.iter().take(height) {
-                builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+                entries_builder.push(txt!("{}\n", (self.fmt)(entry, info)));
             }
         }
 
@@ -603,8 +637,9 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             None
         };
 
-        let text = builder.build_no_double_nl();
-        (range.start, Some((text, replacement)))
+        let entries = entries_builder.build_no_double_nl();
+        let sidebar = sidebar_builder.build_no_double_nl();
+        (range.start, Some(((entries, sidebar), replacement)))
     }
 
     fn has_changed(&self, text: Option<&Text>) -> bool {
@@ -615,6 +650,10 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         });
 
         word_has_changed || self.provider.has_changed()
+    }
+
+    fn prefix_regex(&self) -> &str {
+        &self.regexes[0]
     }
 }
 
@@ -681,5 +720,13 @@ const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     inside: false,
 };
 
-type ProvidersFn =
-    Box<dyn FnOnce(&Text, usize) -> (Vec<Box<dyn ErasedInnerProvider>>, usize, Option<Text>)>;
+type ProvidersFn = Box<
+    dyn FnOnce(
+        &Text,
+        usize,
+    ) -> (
+        Vec<Box<dyn ErasedInnerProvider>>,
+        usize,
+        Option<(Text, Text)>,
+    ),
+>;

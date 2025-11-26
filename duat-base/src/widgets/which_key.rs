@@ -34,7 +34,8 @@ impl WhichKey {
         let mut keys_builder = Text::builder();
         let mut descs_builder = Text::builder();
 
-        for desc in mode::current_seq_descriptions(pa) {
+        let (title, descs) = mode::current_seq_descriptions(pa);
+        for desc in descs {
             if let Some(fmt) = fmt.as_mut() {
                 if let Some((keys, desc)) = fmt(desc) {
                     keys_builder.push(keys);
@@ -43,7 +44,7 @@ impl WhichKey {
             } else if let Some(text) = desc.text
                 && !text.is_empty()
             {
-                keys_builder.push(txt!("{}", desc.keys.into_text()));
+                keys_builder.push(txt!("{}[colon.WhichKey]:", desc.keys.into_text()));
                 descs_builder.push(txt!("{text}"));
             }
 
@@ -75,7 +76,7 @@ impl WhichKey {
             .unwrap();
         descs.1 = Some(keys_handle.clone());
 
-        let name = crate::state::mode_name().call(pa);
+        let title = title.unwrap_or_else(|| txt!("{}", crate::state::mode_name().call(pa)));
         if let Some(area) = keys_handle.area().write_as::<duat_term::Area>(pa) {
             use duat_core::text::AlignCenter;
 
@@ -88,7 +89,7 @@ impl WhichKey {
                 ..Frame::default()
             };
             frame.set_text(Side::Above, move |_| {
-                txt!("{AlignCenter}[terminal.frame]┤[]{name}[terminal.frame]├")
+                txt!("{AlignCenter}[terminal.frame]┤[]{title}[terminal.frame]├")
             });
             area.set_frame(frame);
         }
@@ -151,7 +152,7 @@ impl Widget for WhichKey {
                     -3
                 };
                 area.scroll_ver(&keys.0, scroll, keys.get_print_opts());
-                
+
                 let handle = keys.1.clone().unwrap();
                 let (descs, area) = handle.write_with_area(pa);
                 area.scroll_ver(&descs.0, scroll, descs.get_print_opts());
@@ -188,7 +189,7 @@ impl Widget for WhichKeyDescriptions {
                     -3
                 };
                 area.scroll_ver(&descs.0, scroll, descs.get_print_opts());
-                
+
                 let handle = descs.1.clone().unwrap();
                 let (keys, area) = handle.write_with_area(pa);
                 area.scroll_ver(&keys.0, scroll, keys.get_print_opts());

@@ -979,7 +979,7 @@ pub struct Frame {
     ///
     /// The order is: top, right, bottom, left
     #[doc(hidden)]
-    pub side_texts: [Option<Arc<dyn Fn(usize) -> Text + Send>>; 4],
+    pub side_texts: [Option<Arc<dyn Fn(usize) -> Text>>; 4],
 }
 
 impl Frame {
@@ -1038,7 +1038,7 @@ impl Frame {
         }
 
         let text_fn = |tl_x: u32, tl_y: u32, br_x: u32, br_y: u32| {
-            move |text_fn: &Arc<dyn Fn(usize) -> Text + Send>| {
+            move |text_fn: &Arc<dyn Fn(usize) -> Text>| {
                 let text = text_fn((br_x - tl_x).max(br_y - tl_y) as usize);
                 (
                     Coords::new(Coord::new(tl_x, tl_y), Coord::new(br_x, br_y)),
@@ -1103,7 +1103,7 @@ impl Frame {
     ///
     /// The length of [`Side::Above`] and [`Side::Below`] includes the
     /// left and right corners.
-    pub fn set_text(&mut self, side: Side, text_fn: impl Fn(usize) -> Text + Send + 'static) {
+    pub fn set_text(&mut self, side: Side, text_fn: impl Fn(usize) -> Text + 'static) {
         match side {
             Side::Above => self.side_texts[0] = Some(Arc::new(text_fn)),
             Side::Right => self.side_texts[0] = Some(Arc::new(text_fn)),

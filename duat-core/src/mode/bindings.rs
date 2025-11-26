@@ -29,6 +29,11 @@ use crate::{
 /// [alias]: super::alias
 #[derive(Clone)]
 pub struct Bindings {
+    /// An optional title for this `Bindings`
+    ///
+    /// This should be used to more accurately describe an overall
+    /// "theme" for all keybindings listed.
+    pub title: Option<Text>,
     /// A function to determine which [`KeyEvent`] should result in
     /// which followup.
     ///
@@ -390,6 +395,7 @@ macro_rules! __bindings__ {
         let followups = $crate::mode::bindings!(@followups $match);
 
         $crate::mode::Bindings {
+            title: None,
             matcher,
             list: bindings
                 .into_iter()

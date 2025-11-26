@@ -143,6 +143,12 @@ impl Prompt {
 impl mode::Mode for Prompt {
     type Widget = PromptLine;
 
+    fn bindings() -> mode::Bindings {
+        mode::bindings!(match _ {
+            _ => txt!("No key binding declarations, implement [function]Mode::bindings"),
+        })
+    }
+
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget>) {
         use duat_core::mode::KeyCode::*;
 

@@ -110,7 +110,7 @@ impl Widget for LogBook {
 
 /// Configuration for the [`LogBook`]
 pub struct LogBookOpts {
-    fmt: Box<dyn FnMut(Record) -> Option<Text> + Send>,
+    fmt: Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>,
     /// Wether to close the `LogBook` when unfocusing
     pub close_on_unfocus: bool,
     /// Wether to hide the `LogBook` by default
@@ -123,6 +123,13 @@ pub struct LogBookOpts {
     /// Requested width for the [`LogBook`], ignored if pushing
     /// vertically
     pub width: f32,
+    /// Wether the source of a log should be shown
+    ///
+    /// Can be disabled for less noise. This option is ignored when
+    /// there is [custom formatting].
+    ///
+    /// [custom formatting]: Self::fmt
+    pub show_source: bool,
 }
 
 impl LogBookOpts {
@@ -134,7 +141,15 @@ impl LogBookOpts {
 
         let records = logs.get(..).unwrap();
         let len_of_taken = records.len();
-        for rec_text in records.into_iter().filter_map(&mut self.fmt) {
+        let fmt = |rec| {
+            if let Some(fmt) = self.fmt.as_mut() {
+                fmt(rec)
+            } else {
+                default_fmt(self.show_source, rec)
+            }
+        };
+
+        for rec_text in records.into_iter().filter_map(fmt) {
             text.insert_text(text.len(), &rec_text);
         }
 
@@ -143,7 +158,9 @@ impl LogBookOpts {
             len_of_taken,
             text,
             has_updated_once: false,
-            fmt: self.fmt,
+            fmt: self
+                .fmt
+                .unwrap_or_else(|| Box::new(move |rec| default_fmt(self.show_source, rec))),
             close_on_unfocus: self.close_on_unfocus,
         };
         let specs = match self.side {
@@ -172,40 +189,46 @@ impl LogBookOpts {
     ///
     /// [`Debug`]: context::Level::Debug
     pub fn fmt(&mut self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) {
-        self.fmt = Box::new(fmt);
+        self.fmt = Some(Box::new(fmt));
     }
 }
 
 impl Default for LogBookOpts {
     fn default() -> Self {
-        fn default_fmt(rec: Record) -> Option<Text> {
-            use duat_core::context::Level::*;
-            let mut builder = Text::builder();
-
-            match rec.level() {
-                Error => builder.push(txt!("[log_book.error][[ERROR]][log_book.colon]:  ")),
-                Warn => builder.push(txt!("[log_book.warn][[WARNING]][log_book.colon]:")),
-                Info => builder.push(txt!("[log_book.info][[INFO]][log_book.colon]:   ")),
-                Debug => builder.push(txt!("[log_book.debug][[DEBUG]][log_book.colon]:  ")),
-                Trace => unreachable!("Trace is not meant to be useable"),
-            };
-
-            builder.push(txt!(
-                "[log_book.bracket][] {}{Spacer}([log_book.location]{}[log_book.bracket])\n",
-                rec.text().clone(),
-                rec.location(),
-            ));
-
-            Some(builder.build())
-        }
-
         Self {
-            fmt: Box::new(default_fmt),
+            fmt: None,
             close_on_unfocus: true,
             hidden: true,
             side: Side::Below,
             height: 8.0,
             width: 50.0,
+            show_source: true,
         }
     }
+}
+
+fn default_fmt(show_source: bool, rec: Record) -> Option<Text> {
+    use duat_core::context::Level::*;
+    let mut builder = Text::builder();
+
+    match rec.level() {
+        Error => builder.push(txt!("[log_book.error][[ERROR]][log_book.colon]:  ")),
+        Warn => builder.push(txt!("[log_book.warn][[WARNING]][log_book.colon]:")),
+        Info => builder.push(txt!("[log_book.info][[INFO]][log_book.colon]:   ")),
+        Debug => builder.push(txt!("[log_book.debug][[DEBUG]][log_book.colon]:  ")),
+        Trace => unreachable!("Trace is not meant to be useable"),
+    };
+
+    builder.push(txt!("[log_book.bracket][] {}", rec.text().clone(),));
+
+    if show_source {
+        builder.push(txt!(
+            "{Spacer}([log_book.location]{}[log_book.bracket])",
+            rec.location()
+        ));
+    }
+
+    builder.push('\n');
+
+    Some(builder.build())
 }

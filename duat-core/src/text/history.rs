@@ -44,7 +44,9 @@ impl History {
             state.add_change(change.clone());
         }
 
-        self.new_moment.add_change(guess_i, change)
+        let usize = self.new_moment.add_change(guess_i, change);
+
+        usize
     }
 
     /// Declares that the current moment is complete and starts a
@@ -206,15 +208,15 @@ impl Moment {
         }
 
         // Don't add empty Changes
-        let (from, shift) = if !(change.added_str() == "" && change.taken_str() == "") {
+        let from = if change.added_str() != change.taken_str() {
             self.changes.insert(m_range.start, change);
-            (m_range.start + 1, add(shift, new_shift))
+            m_range.start + 1
         } else {
-            (m_range.start, shift)
+            m_range.start
         };
 
         if from < self.changes.len() {
-            self.shift_state = (from, shift);
+            self.shift_state = (from, add(shift, new_shift));
         } else {
             self.shift_state = (0, [0; 3]);
         }
@@ -321,6 +323,7 @@ impl Change<'static, String> {
             older.added.replace_range(range, &self.added);
 
             let range = (fixed_end.byte() - self.start[0] as usize)..;
+
             older.taken.push_str(&self.taken[range]);
 
             *self = older;
@@ -336,7 +339,7 @@ impl Change<'static, String> {
 
             self.added.push_str(&older.added[range]);
         } else {
-            unreachable!("Changes chosen that don't interact");
+            panic!("Changes chosen that don't interact");
         }
         self.added_end = add(self.start, Point::len_of(&self.added).as_signed());
         self.taken_end = add(self.start, Point::len_of(&self.taken).as_signed());

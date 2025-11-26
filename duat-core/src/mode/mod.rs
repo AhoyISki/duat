@@ -524,8 +524,6 @@ pub trait Mode: Sized + Clone + Send + 'static {
     ///
     /// [`Text`]: crate::text::Text
     fn bindings() -> Bindings {
-        let word = txt!("[a]word[separator]|[a]WORD");
-
         bindings!(match _ {
             _ => txt!("No key binding declarations, implement [function]Mode::bindings"),
         })
