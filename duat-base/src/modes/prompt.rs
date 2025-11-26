@@ -144,8 +144,15 @@ impl mode::Mode for Prompt {
     type Widget = PromptLine;
 
     fn bindings() -> mode::Bindings {
+        use mode::KeyCode::*;
+
         mode::bindings!(match _ {
-            _ => txt!("No key binding declarations, implement [function]Mode::bindings"),
+            event!(Char(..)) => txt!("Insert the character"),
+            event!(Left | Right) => txt!("Move cursor"),
+            event!(Down | Up) => txt!("Move through command history"),
+            event!(Backspace | Delete) => txt!("Remove character or selection"),
+            event!(Enter) => txt!("Run command and [mode]leave"),
+            event!(Esc) => txt!("[mode]Leave[] without running command"),
         })
     }
 
@@ -171,6 +178,14 @@ impl mode::Mode for Prompt {
         handle.text_mut(pa).remove_tags(*PREVIEW_TAGGER, ..);
 
         match key {
+            event!(Char(char)) => {
+                handle.edit_main(pa, |mut c| {
+                    c.insert(char);
+                    c.move_hor(1);
+                });
+                update(pa);
+            }
+
             event!(Backspace) => {
                 if handle.read(pa).text().is_empty() {
                     handle.write(pa).text_mut().selections_mut().clear();
@@ -197,13 +212,6 @@ impl mode::Mode for Prompt {
                 update(pa);
             }
 
-            event!(Char(char)) => {
-                handle.edit_main(pa, |mut c| {
-                    c.insert(char);
-                    c.move_hor(1);
-                });
-                update(pa);
-            }
             event!(Left) => {
                 handle.edit_main(pa, |mut c| c.move_hor(-1));
                 update(pa);

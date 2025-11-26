@@ -4,7 +4,6 @@ FOR NEXT UPDATE:
   [x] Floating widgets.
   [x] Mouse support.
     [x] Widget integration.
-
     [?] Mode integration.
 [ ] Command line completion.
 [x] File path completion.

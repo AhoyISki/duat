@@ -1,7 +1,4 @@
-use std::{
-    ops::{Bound, RangeBounds},
-    sync::Arc,
-};
+use std::ops::{Bound, RangeBounds};
 
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, MediaKeyCode, ModifierKeyCode,
@@ -34,12 +31,6 @@ pub struct Bindings {
     /// This should be used to more accurately describe an overall
     /// "theme" for all keybindings listed.
     pub title: Option<Text>,
-    /// A function to determine which [`KeyEvent`] should result in
-    /// which followup.
-    ///
-    /// Direct implementation is not recommended, use the
-    /// [`bindings!`] macro instead
-    pub matcher: Arc<dyn Fn(KeyEvent) -> Option<usize> + Send + Sync + 'static>,
     /// Descriptions for each of the key bindings
     ///
     /// The bindings of the first element are na _alternation_, not a
@@ -54,10 +45,10 @@ impl Bindings {
     /// Wether these `MappedBindings` accepts the sequence of
     /// [`KeyEvent`]s
     pub fn matches_sequence(&self, seq: &[KeyEvent]) -> bool {
-        let mut matcher = &self.matcher;
+        let mut list = &self.list;
         seq.iter().all(|key_event| {
-            if let Some(i) = matcher(*key_event) {
-                matcher = &self.list[i].2.as_ref().unwrap_or(self).matcher;
+            if let Some((.., bindings)) = list.iter().find(matches_event(*key_event)) {
+                list = &bindings.as_ref().unwrap_or(self).list;
                 true
             } else {
                 false
@@ -68,12 +59,12 @@ impl Bindings {
     /// Wether the given sequence of [`KeyEvent`]s has a followup
     /// in these `MappedBindings`
     pub fn sequence_has_followup(&self, seq: &[KeyEvent]) -> bool {
-        let mut matcher = &self.matcher;
+        let mut list = &self.list;
         seq.iter().all(|key_event| {
-            if let Some(i) = matcher(*key_event)
-                && let Some(bindings) = self.list[i].2.as_ref()
+            if let Some((.., bindings)) = list.iter().find(matches_event(*key_event))
+                && let Some(bindings) = bindings
             {
-                matcher = &bindings.matcher;
+                list = &bindings.list;
                 true
             } else {
                 false
@@ -89,8 +80,8 @@ impl Bindings {
         } else {
             seq.iter()
                 .map_while(|key_event| {
-                    let i = (bindings.matcher)(*key_event)?;
-                    bindings = bindings.list[i].2.as_ref()?;
+                    let (.., nested) = bindings.list.iter().find(matches_event(*key_event))?;
+                    bindings = nested.as_ref()?;
                     Some(bindings)
                 })
                 .nth(seq.len() - 1)
@@ -104,13 +95,18 @@ impl Bindings {
         let mut bindings = Some(self);
         seq.iter()
             .map_while(|key_event| {
-                let i = (bindings?.matcher)(*key_event)?;
-                let text = bindings?.list[i].1.text();
-                bindings = bindings?.list[i].2.as_ref();
-                Some(text)
+                let (_, selless, nested) = bindings?.list.iter().find(matches_event(*key_event))?;
+                bindings = nested.as_ref();
+                Some(selless.text())
             })
             .last()
     }
+}
+
+fn matches_event(
+    key_event: KeyEvent,
+) -> impl FnMut(&&(Vec<Binding>, Selectionless, Option<Bindings>)) -> bool {
+    move |(bindings, ..)| bindings.iter().any(|binding| binding.matches(key_event))
 }
 
 impl std::fmt::Debug for Bindings {
@@ -383,9 +379,6 @@ impl From<(ModifierKeyCode, KeyMod)> for Binding {
 macro_rules! __bindings__ {
     (match _ $match:tt) => {{
         #[allow(clippy::vec_init_then_push)]
-        let matcher = $crate::mode::bindings!(@matcher $match);
-
-        #[allow(clippy::vec_init_then_push)]
         let bindings: Vec<_> = $crate::mode::bindings!(@bindings $match);
 
         #[allow(clippy::vec_init_then_push)]
@@ -396,7 +389,6 @@ macro_rules! __bindings__ {
 
         $crate::mode::Bindings {
             title: None,
-            matcher,
             list: bindings
                 .into_iter()
                 .zip(descriptions)
@@ -405,36 +397,6 @@ macro_rules! __bindings__ {
                 .collect()
         }
     }};
-
-    (@matcher { $($patterns:tt)* }) => {{
-        #[allow(unused_assignments, irrefutable_let_patterns)]
-        std::sync::Arc::new(move |key_event: $crate::mode::KeyEvent| {
-            let mut index = 0;
-            $crate::mode::bindings!(@match_entry index, key_event: $($patterns)*);
-
-            None
-        })
-    }};
-
-    (@match_entry $index:ident, $key_event:ident:) => {};
-    (@match_entry
-        $index:ident,
-        $key_event:ident: $modif:ident$excl:tt($($tokens:tt)*) => $result:expr
-        $(,$($rest:tt)*)?
-    ) => {
-        if let $modif$excl($($tokens)*) = $key_event {
-            return Some($index)
-        }
-        $index += 1;
-        $crate::mode::bindings!(@match_entry $index, $key_event: $($($rest)*)?)
-    };
-    (@match_entry $index:ident, $key_event:ident: $pattern:pat => $result:expr $(,$($rest:tt)*)?) => {
-        if let $pattern = $key_event {
-            return Some($index)
-        }
-        $index += 1;
-        $crate::mode::bindings!(@match_entry $index, $key_event: $($($rest)*)?)
-    };
 
     (@bindings { $($patterns:tt)* }) => {{
         let mut list = vec![Vec::new()];
