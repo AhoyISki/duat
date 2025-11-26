@@ -8,7 +8,7 @@ FOR NEXT UPDATE:
     [?] Mode integration.
 [ ] Command line completion.
 [x] File path completion.
-[ ] Forcefully evaluate height and width when requested.
+[x] Forcefully evaluate height and width when requested.
 [ ] File tracking.
 [ ] Actually fix injected indentation.
 [x] WhichKey widget.

@@ -236,6 +236,14 @@ impl Layouts {
             .any(|layout| layout.set_constraints(id, width, height, is_hidden))
     }
 
+    /// Just updates the [`Printer`] for the [`AreaId`] in question
+    pub fn update(&self, id: AreaId) {
+        let inner = self.0.borrow();
+        if let Some(layout) = inner.list.iter().find(|layout| layout.get(id).is_some()) {
+            layout.printer.update(false, false);
+        }
+    }
+
     /// Sets the [`Frame`] on a given [`Rect`]'s spawned master
     ///
     /// If a spawned `Rect` has multiple `Rect`s within it, then

@@ -449,6 +449,7 @@ impl RawArea for Area {
     }
 
     fn top_left(&self, _: UiPass) -> ui::Coord {
+        self.layouts.update(self.id);
         self.layouts
             .coords_of(self.id, false)
             .map(|coords| ui::Coord {
@@ -459,6 +460,7 @@ impl RawArea for Area {
     }
 
     fn bottom_right(&self, _: UiPass) -> ui::Coord {
+        self.layouts.update(self.id);
         self.layouts
             .coords_of(self.id, false)
             .map(|coords| ui::Coord {
