@@ -46,6 +46,8 @@ impl WhichKey {
             {
                 keys_builder.push(txt!("{}[colon.WhichKey]:", desc.keys.into_text()));
                 descs_builder.push(txt!("{text}"));
+            } else {
+                continue;
             }
 
             keys_builder.push('\n');

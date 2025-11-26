@@ -1066,7 +1066,7 @@ impl Frame {
                 coords.br.x + right as u32,
                 coords.br.y + 1,
             )),
-            self.side_texts[3].as_ref().filter(|_| right).map(text_fn(
+            self.side_texts[3].as_ref().filter(|_| left).map(text_fn(
                 coords.tl.x - 1,
                 coords.tl.y,
                 coords.tl.x,
@@ -1083,7 +1083,11 @@ impl Frame {
                 (false, TwoPoints::default(), 0),
                 |_, _| {},
                 |lines, style| lines.write_all(crate::get_ansi(style).as_bytes()).unwrap(),
-                |lines, len| write!(lines, "\x1b[{len}C").unwrap(),
+                |lines, len| {
+                    if len > 0 {
+                        write!(lines, "\x1b[{len}C").unwrap()
+                    }
+                },
                 |lines, _, _| _ = lines.flush(),
             ) {
                 for y in coords.tl.y..coords.br.y {
@@ -1106,9 +1110,9 @@ impl Frame {
     pub fn set_text(&mut self, side: Side, text_fn: impl Fn(usize) -> Text + 'static) {
         match side {
             Side::Above => self.side_texts[0] = Some(Arc::new(text_fn)),
-            Side::Right => self.side_texts[0] = Some(Arc::new(text_fn)),
-            Side::Below => self.side_texts[0] = Some(Arc::new(text_fn)),
-            Side::Left => self.side_texts[0] = Some(Arc::new(text_fn)),
+            Side::Right => self.side_texts[1] = Some(Arc::new(text_fn)),
+            Side::Below => self.side_texts[2] = Some(Arc::new(text_fn)),
+            Side::Left => self.side_texts[3] = Some(Arc::new(text_fn)),
         }
     }
 }

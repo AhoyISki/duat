@@ -44,9 +44,7 @@ impl History {
             state.add_change(change.clone());
         }
 
-        let usize = self.new_moment.add_change(guess_i, change);
-
-        usize
+        self.new_moment.add_change(guess_i, change)
     }
 
     /// Declares that the current moment is complete and starts a

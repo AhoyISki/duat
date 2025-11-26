@@ -625,6 +625,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         } else {
             for (entry, info) in entries.iter().take(height) {
                 entries_builder.push(txt!("{}\n", (self.fmt)(entry, info)));
+                sidebar_builder.push(txt!("[default.Completions] \n"));
             }
         }
 
