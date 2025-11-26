@@ -39,15 +39,11 @@ struct Args {
     #[arg(long, conflicts_with_all = ["load", "profile", "init-config"])]
     no_load: bool,
     #[cfg_attr(
-        target_os = "macos",
-        doc = "Config crate path [default: ~/Library/Application Support/duat]"
-    )]
-    #[cfg_attr(
         target_os = "windows",
         doc = r"Config crate path [default: ~\AppData\Roaming\duat]"
     )]
     #[cfg_attr(
-        not(any(target_os = "macos", target_os = "windows")),
+        not(target_os = "windows"),
         doc = r"Config crate path [default: ~/.config/duat]"
     )]
     #[arg(short, long)]
@@ -108,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .load
             .clone()
             .map(|crate_dir| crate_dir.leak() as &'static Path)
-            .or_else(|| Some(dirs_next::config_dir()?.join("duat").leak() as &'static Path))
+            .or_else(|| Some(config_dir()?.join("duat").leak() as &'static Path))
             .filter(|_| !args.no_load);
 
         let profile: &'static str = args.profile.clone().leak();
@@ -579,6 +575,14 @@ const fn resolve_config_file() -> &'static str {
 const fn resolve_config_file() -> &'static str {
     "libconfig.so"
 }
+
+#[cfg(not(target_os = "macos"))]
+fn config_dir() -> Option<PathBuf> {
+    dirs_next::home_dir().map(|home| home.join(".config"))
+}
+
+#[cfg(target_os = "macos")]
+fn config_dir() -> Option<PathBuf> {}
 
 fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error>> {
     use convert_case::{Case, Casing};
