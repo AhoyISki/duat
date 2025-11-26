@@ -278,7 +278,7 @@ impl buffer::Parser for TsParser {
 
                 for range in on {
                     let range = range.start.byte()..range.end.byte();
-                    parser.highlight_and_inject(parts.bytes, &mut parts.tags, range);
+                    parser.highlight(parts.bytes, &mut parts.tags, range);
                 }
             }
             ParserState::Remote(..) => {
@@ -358,13 +358,17 @@ impl InnerTsParser {
         let bytes = self.tracker.bytes();
         let moment = self.tracker.moment();
 
-        if moment.is_empty() {
+        if moment.is_empty() && self.old_tree.is_some() {
             return false;
         }
 
         // These new ranges will be used for calculating things like
         // new injections, for example.
-        let mut new_ranges = Ranges::empty();
+        let mut new_ranges = if self.old_tree.is_none() {
+            Ranges::new(0..bytes.len().byte())
+        } else {
+            Ranges::empty()
+        };
 
         for change in moment.changes() {
             let input_edit = input_edit(change, bytes);
@@ -430,10 +434,10 @@ impl InnerTsParser {
     }
 
     /// Highlights and injects based on the [`LangParts`] queries
-    fn highlight_and_inject(&mut self, bytes: &Bytes, tags: &mut Tags, range: Range<usize>) {
+    fn highlight(&mut self, bytes: &Bytes, tags: &mut Tags, range: Range<usize>) {
         tags.remove(ts_tagger(), range.clone());
 
-        highlight_and_inject(
+        highlight(
             self.tree.root_node(),
             &mut self.injections,
             (self.lang_parts, self.forms),
@@ -445,19 +449,21 @@ impl InnerTsParser {
     ////////// Querying functions
 
     /// The expected level of indentation on a given [`Point`]
-    fn indent_on<'a>(&'a self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
+    fn indent_on<'a>(&'a self, p: Point, bytes: &Bytes, opts: PrintOpts) -> Option<usize> {
         let start = bytes.point_at_line(p.line());
 
         let (root, indents, range) = self
             .injections
             .iter()
             .find_map(|inj| inj.get_injection_indent_parts(start.byte()))
-            .unwrap_or((
-                self.tree.root_node(),
-                self.lang_parts.2.indents,
-                0..bytes.len().byte(),
-            ));
-
+            .unwrap_or_else(|| {
+                (
+                    self.tree.root_node(),
+                    self.lang_parts.2.indents,
+                    0..bytes.len().byte(),
+                )
+            });
+            
         let first_line = bytes.point_at_byte(range.start).line();
 
         // The query could be empty.
@@ -500,6 +506,7 @@ impl InnerTsParser {
                         );
                     }
                 });
+                
             |caps: &Captures, node: Node, queries: &[&str]| {
                 caps.get(queries[0])
                     .and_then(|nodes| nodes.get(&node.id()))
@@ -555,9 +562,9 @@ impl InnerTsParser {
             return Some(0);
         }
 
-        let tab = cfg.tabstop as i32;
+        let tab = opts.tabstop as i32;
         let mut indent = if root.start_byte() != 0 {
-            bytes.indent(bytes.point_at_byte(root.start_byte()), cfg) as i32
+            bytes.indent(bytes.point_at_byte(root.start_byte()), opts) as i32
         } else {
             0
         };
@@ -586,6 +593,7 @@ impl InnerTsParser {
                     || (s_line != p.line() && q(&caps, node, &["dedent"])))
             {
                 indent -= tab;
+                context::debug!("branch: {indent}");
                 is_processed = true;
             }
 
@@ -599,6 +607,7 @@ impl InnerTsParser {
             {
                 is_processed = true;
                 indent += tab;
+                context::debug!("begin: {indent}");
             }
 
             if is_in_err && !q(&caps, node, &["align"]) {
@@ -655,10 +664,12 @@ impl InnerTsParser {
                     // like an indent.
                     let indent_is_absolute = if o_is_last_in_line && should_process {
                         indent += tab;
+                        context::debug!("last_o: {indent}");
                         // If the aligned node ended before the current line, its @align
                         // shouldn't affect it.
                         if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
                             indent = (indent - tab).max(0);
+                            context::debug!("last_c: {indent}");
                         }
                         false
                     // Aligned indent
@@ -669,10 +680,12 @@ impl InnerTsParser {
                         && (o_s_line != c_s_line && c_s_line < p.line())
                     {
                         indent = (indent - tab).max(0);
+                        context::debug!("last_c on other line: {indent}");
                         false
                     } else {
                         let inc = props.get("increment").cloned().flatten();
                         indent = o_s_col as i32 + inc.map(str::parse::<i32>).unwrap().unwrap();
+                        context::debug!("increment: {indent}");
                         true
                     };
 
@@ -684,9 +697,11 @@ impl InnerTsParser {
                         && props.contains_key("avoid_last_matching_next");
                     if avoid_last_matching_next {
                         indent += tab;
+                        context::debug!("avoid last: {indent}");
                     }
                     is_processed = true;
                     if indent_is_absolute {
+                        context::debug!("absolute: {indent}");
                         return Some(indent as usize);
                     }
                 }
@@ -1130,89 +1145,23 @@ fn format_root(node: Node) -> Text {
     builder.build()
 }
 
-fn highlight_and_inject(
+fn highlight(
     root: Node,
     injected_trees: &mut Vec<InjectedTree>,
     (lang_parts, forms): (LangParts<'static>, &'static [(FormId, u8)]),
     (bytes, tags): (&Bytes, &mut Tags),
     range: Range<usize>,
 ) {
+    for inj in injected_trees {
+        inj.highlight(bytes, tags, range.clone());
+    }
+
     let tagger = ts_tagger();
-    let (.., Queries { highlights, injections, .. }) = &lang_parts;
+    let (.., Queries { highlights, .. }) = &lang_parts;
 
     let mut cursor = QueryCursor::new();
     cursor.set_byte_range(range.clone());
     let buf = TsBuf(bytes);
-
-    let cn = injections.capture_names();
-    let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
-    let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
-
-    let mut new_langs: Vec<(LangParts<'static>, Ranges)> = Vec::new();
-
-    let mut inj_captures = cursor.captures(injections, root, buf);
-    while let Some((qm, _)) = inj_captures.next() {
-        let Some(cap) = qm.captures.iter().find(is_content) else {
-            continue;
-        };
-        let cap_range = cap.node.byte_range();
-
-        let props = injections.property_settings(qm.pattern_index);
-        let Some(lang) = props
-            .iter()
-            .find_map(|p| {
-                (p.key.as_ref() == "injection.language")
-                    .then_some(p.value.as_ref().unwrap().to_string())
-            })
-            .or_else(|| {
-                let cap = qm.captures.iter().find(is_language)?;
-                Some(bytes.slices(cap.node.byte_range()).try_to_string().unwrap())
-            })
-        else {
-            continue;
-        };
-
-        let Ok(mut lang_parts) = lang_parts_of(&lang) else {
-            continue;
-        };
-
-        // You may want to set a new injections query, only for this capture.
-        if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
-            && let Some(value) = prop.value.as_ref()
-        {
-            match query_from_path(&lang, value, lang_parts.1) {
-                Ok(injections) => {
-                    lang_parts.2.injections = injections;
-                }
-                Err(err) => context::error!("{err}"),
-            }
-        };
-
-        if let Some(inj) = injected_trees
-            .iter_mut()
-            .find(|inj| inj.lang_parts().0 == lang_parts.0)
-        {
-            inj.add_range(cap_range.clone());
-        } else if let Some(new) = new_langs.iter_mut().find(|(lp, _)| lp.0 == lang_parts.0) {
-            new.1.add(cap_range);
-        } else {
-            new_langs.push((lang_parts, Ranges::new(cap_range)));
-        }
-    }
-
-    for (lang_parts, ranges) in new_langs {
-        injected_trees.push(InjectedTree::new(bytes, lang_parts, ranges));
-    }
-
-    injected_trees.retain_mut(|inj| {
-        if inj.is_empty() {
-            false
-        } else {
-            inj.update_tree(bytes);
-            inj.highlight_and_inject(bytes, tags, range.clone());
-            true
-        }
-    });
 
     let mut hi_captures = cursor.captures(highlights, root, buf);
     while let Some((qm, _)) = hi_captures.next() {
@@ -1238,7 +1187,7 @@ fn highlight_and_inject(
 /// Its main purpose is to find the regions where changes have taken
 /// place and add them to the ranges to update.
 fn refactor_injections(
-    ranges: &mut Ranges,
+    ranges_to_update: &mut Ranges,
     (lang_parts, injected_trees): (LangParts, &mut Vec<InjectedTree>),
     (old, new): (Option<&Tree>, &Tree),
     bytes: &Bytes,
@@ -1249,10 +1198,12 @@ fn refactor_injections(
 
     let cn = injections.capture_names();
     let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
+    let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
 
     let mut inj_ranges = Ranges::empty();
+    let mut new_langs: Vec<(LangParts<'static>, Ranges)> = Vec::new();
 
-    for range in ranges.iter() {
+    for range in ranges_to_update.iter() {
         cursor.set_byte_range(range.clone());
 
         if let Some(old) = old {
@@ -1269,17 +1220,75 @@ fn refactor_injections(
 
         let mut inj_captures = cursor.captures(injections, new.root_node(), buf);
         while let Some((qm, _)) = inj_captures.next() {
-            if let Some(cap) = qm.captures.iter().find(is_content) {
-                inj_ranges.add(cap.node.byte_range());
+            let Some(cap) = qm.captures.iter().find(is_content) else {
+                continue;
+            };
+            let props = injections.property_settings(qm.pattern_index);
+            let Some(lang) = props
+                .iter()
+                .find_map(|p| {
+                    (p.key.as_ref() == "injection.language")
+                        .then_some(p.value.as_ref().unwrap().to_string())
+                })
+                .or_else(|| {
+                    let cap = qm.captures.iter().find(is_language)?;
+                    Some(bytes.slices(cap.node.byte_range()).try_to_string().unwrap())
+                })
+            else {
+                continue;
+            };
+
+            let Ok(mut lang_parts) = lang_parts_of(&lang) else {
+                continue;
+            };
+
+            // You may want to set a new injections query, only for this capture.
+            if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
+                && let Some(value) = prop.value.as_ref()
+            {
+                match query_from_path(&lang, value, lang_parts.1) {
+                    Ok(injections) => {
+                        lang_parts.2.injections = injections;
+                    }
+                    Err(err) => context::error!("{err}"),
+                }
+            };
+
+            let cap_range = cap.node.byte_range();
+            inj_ranges.add(cap_range.clone());
+
+            if let Some(inj) = injected_trees
+                .iter_mut()
+                .find(|inj| inj.lang_parts().0 == lang_parts.0)
+            {
+                inj.add_range(cap_range.clone());
+            } else if let Some(new) = new_langs.iter_mut().find(|(lp, _)| lp.0 == lang_parts.0) {
+                new.1.add(cap_range);
+            } else {
+                new_langs.push((lang_parts, Ranges::new(cap_range)));
             }
         }
+
+        injected_trees.retain_mut(|inj| {
+            if inj.is_empty() {
+                false
+            } else {
+                inj.update_tree(bytes);
+                true
+            }
+        });
+    }
+
+    for (lang_parts, ranges) in new_langs {
+        injected_trees.push(InjectedTree::new(bytes, lang_parts, ranges));
     }
 
     for inj in injected_trees.iter_mut() {
-        inj.refactor_injections(ranges, bytes);
+        inj.refactor_injections(ranges_to_update, bytes);
     }
 
-    ranges.merge(inj_ranges);
+    // Injected ranges should be included in ranges to update
+    ranges_to_update.merge(inj_ranges);
 }
 
 type RemoteResult = Result<InnerTsParser, BufferTracker>;

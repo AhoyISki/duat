@@ -8,8 +8,7 @@ use duat_core::{
 use tree_sitter::{InputEdit, Node, Parser, Point as TsPoint, Query, Range as TsRange, Tree};
 
 use crate::{
-    LangParts, forms_from_lang_parts, highlight_and_inject, parser_fn, refactor_injections,
-    ts_tagger,
+    LangParts, forms_from_lang_parts, highlight, parser_fn, refactor_injections, ts_tagger,
 };
 
 /// An injected [`Tree`], which can contain any number of [`Range`]s
@@ -120,18 +119,13 @@ impl InjectedTree {
     }
 
     /// Highlights and injects based on the [`LangParts`] queries
-    pub(crate) fn highlight_and_inject(
-        &mut self,
-        bytes: &Bytes,
-        tags: &mut Tags,
-        range: Range<usize>,
-    ) {
+    pub(crate) fn highlight(&mut self, bytes: &Bytes, tags: &mut Tags, range: Range<usize>) {
         let tagger = ts_tagger();
         for range in self.ranges.iter_over(range.clone()) {
             tags.remove_excl(tagger, range.clone());
         }
 
-        highlight_and_inject(
+        highlight(
             self.tree.root_node(),
             &mut self.injections,
             (self.lang_parts, self.forms),
@@ -188,7 +182,7 @@ impl InjectedTree {
         &self,
         start_byte: usize,
     ) -> Option<(Node<'_>, &'static Query, Range<usize>)> {
-        if let Some(range) = self.ranges.iter().find(|r| r.contains(&start_byte)) {
+        if let Some(range) = self.ranges.iter().find(|range| range.contains(&start_byte)) {
             self.injections
                 .iter()
                 .find_map(|inj| inj.get_injection_indent_parts(start_byte))
@@ -197,7 +191,7 @@ impl InjectedTree {
                         .root_node()
                         .descendant_for_byte_range(range.start, range.end)
                         .unwrap(),
-                    self.lang_parts.2.injections,
+                    self.lang_parts.2.indents,
                     range.clone(),
                 )))
         } else {
