@@ -43,7 +43,7 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, Mutex, OnceLock},
+    sync::{LazyLock, OnceLock},
 };
 
 use parking_lot::RwLock;
@@ -317,13 +317,12 @@ where
 ///
 /// Used in duat-core in order to prevent sudden panics from just
 /// crashing the program, which would be bad for the end user I think.
-pub(crate) fn catch_panic<R>(f: impl FnOnce() -> R) -> Option<R> {
-    let aus = std::panic::AssertUnwindSafe(f);
-    std::panic::catch_unwind(move || {
-        let aus = aus;
-        aus()
-    })
-    .ok()
+///
+/// You shouldn't use this function unless you are doing a trait based
+/// API, where the implementation of traits by users might cause
+/// panics.
+pub fn catch_panic<R>(f: impl FnOnce() -> R) -> Option<R> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).ok()
 }
 
 /// Macro used internally for doc tests in duat-core

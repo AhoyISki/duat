@@ -122,11 +122,36 @@ pub struct Session {
 
 impl Session {
     /// Start the application, initiating a read/response loop.
+    ///
+    /// If it returns `Some(list, _)`, where `list` is an empty
+    /// vector, it means Duat must quit. If the vector is not empty,
+    /// each inner `Vec` represents a different window.
+    ///
+    /// This will return [`None`] if Duat panicked midway through.
     pub fn start(
         self,
         duat_rx: mpsc::Receiver<DuatEvent>,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
-    ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
+    ) -> Option<(Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>)> {
+        match crate::utils::catch_panic(|| self.inner_start(&duat_rx, reload_tx.as_ref())) {
+            Some(ret) => Some((ret, duat_rx)),
+            None => {
+                let pa = unsafe { &mut Pass::new() };
+                for handle in context::windows().buffers(pa).collect::<Vec<_>>() {
+                    let _ = handle.write(pa).save();
+                }
+
+                None
+            }
+        }
+    }
+
+    /// Real start, wrapped on a `catch_unwind`
+    fn inner_start(
+        self,
+        duat_rx: &mpsc::Receiver<DuatEvent>,
+        reload_tx: Option<&mpsc::Sender<ReloadEvent>>,
+    ) -> Vec<Vec<ReloadedBuffer>> {
         fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
             context::windows()
                 .iter(pa)
@@ -259,7 +284,7 @@ impl Session {
                         let ui = self.ui;
                         let buffers = self.take_files(pa);
                         ui.unload();
-                        return (buffers, duat_rx);
+                        return buffers;
                     }
                     DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
@@ -274,7 +299,7 @@ impl Session {
                         }
 
                         self.ui.unload();
-                        return (Vec::new(), duat_rx);
+                        return Vec::new();
                     }
                 }
             }

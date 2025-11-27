@@ -44,10 +44,16 @@ use crate::{
 };
 
 // Setup statics.
+static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
 pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>) {
+    std::panic::set_hook(Box::new(move |panic_info| {
+        context::log_panic(panic_info);
+        *PANIC_INFO.lock().unwrap() = Some(panic_info.to_string())
+    }));
+
     if let Some((logs, forms_init, (crate_dir, profile))) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
@@ -301,28 +307,17 @@ pub fn run_duat(
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
 ) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>) {
-    static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
-
-    std::panic::set_hook(Box::new(move |panic_info| {
-        context::log_panic(panic_info);
-        *PANIC_INFO.lock().unwrap() = Some(panic_info.to_string())
-    }));
-
     ui.load();
 
     let opts = SessionCfg::new(clipb, *BUFFER_OPTS.lock().unwrap());
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
-    let unwind_safe = std::panic::AssertUnwindSafe((ui, buffers));
-
-    match std::panic::catch_unwind(move || {
-        let unwind_safe = unwind_safe;
-        let std::panic::AssertUnwindSafe((ui, buffers)) = unwind_safe;
-        opts.build(ui, buffers, already_plugged)
-            .start(duat_rx, reload_tx)
-    }) {
-        Ok(ret) => ret,
-        Err(_) => {
+    match opts
+        .build(ui, buffers, already_plugged)
+        .start(duat_rx, reload_tx)
+    {
+        Some(ret) => ret,
+        None => {
             ui.close();
             println!("{}", PANIC_INFO.lock().unwrap().as_ref().unwrap());
             std::process::exit(-1);
