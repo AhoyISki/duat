@@ -593,7 +593,6 @@ impl InnerTsParser {
                     || (s_line != p.line() && q(&caps, node, &["dedent"])))
             {
                 indent -= tab;
-                context::debug!("branch: {indent}");
                 is_processed = true;
             }
 
@@ -607,7 +606,6 @@ impl InnerTsParser {
             {
                 is_processed = true;
                 indent += tab;
-                context::debug!("begin: {indent}");
             }
 
             if is_in_err && !q(&caps, node, &["align"]) {
@@ -664,12 +662,10 @@ impl InnerTsParser {
                     // like an indent.
                     let indent_is_absolute = if o_is_last_in_line && should_process {
                         indent += tab;
-                        context::debug!("last_o: {indent}");
                         // If the aligned node ended before the current line, its @align
                         // shouldn't affect it.
                         if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
                             indent = (indent - tab).max(0);
-                            context::debug!("last_c: {indent}");
                         }
                         false
                     // Aligned indent
@@ -680,12 +676,10 @@ impl InnerTsParser {
                         && (o_s_line != c_s_line && c_s_line < p.line())
                     {
                         indent = (indent - tab).max(0);
-                        context::debug!("last_c on other line: {indent}");
                         false
                     } else {
                         let inc = props.get("increment").cloned().flatten();
                         indent = o_s_col as i32 + inc.map(str::parse::<i32>).unwrap().unwrap();
-                        context::debug!("increment: {indent}");
                         true
                     };
 
@@ -697,11 +691,9 @@ impl InnerTsParser {
                         && props.contains_key("avoid_last_matching_next");
                     if avoid_last_matching_next {
                         indent += tab;
-                        context::debug!("avoid last: {indent}");
                     }
                     is_processed = true;
                     if indent_is_absolute {
-                        context::debug!("absolute: {indent}");
                         return Some(indent as usize);
                     }
                 }
