@@ -1,5 +1,5 @@
 use std::{
-    panic::Location,
+    panic::PanicHookInfo,
     sync::{
         Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
@@ -280,7 +280,7 @@ impl Logs {
                 .level(if is_ok { Level::Info } else { Level::Error })
                 .build(),
             text: Box::leak(Box::new(res.no_selections())),
-            location: Location::caller(),
+            location: Location::from_panic_location(std::panic::Location::caller()),
         };
 
         self.list.lock().unwrap().push(rec)
@@ -322,7 +322,7 @@ impl log::Log for Logs {
                 .level(rec.level())
                 .target(rec.target().to_string().leak())
                 .build(),
-            location: Location::caller(),
+            location: Location::from_panic_location(std::panic::Location::caller()),
         };
 
         self.cur_state.fetch_add(1, Ordering::Relaxed);
@@ -340,7 +340,7 @@ impl log::Log for Logs {
 pub struct Record {
     text: &'static Selectionless,
     metadata: log::Metadata<'static>,
-    location: &'static Location<'static>,
+    location: Location,
 }
 
 impl Record {
@@ -351,7 +351,7 @@ impl Record {
         Self {
             text: Box::leak(Box::new(text.no_selections())),
             metadata: log::MetadataBuilder::new().level(level).build(),
-            location: Location::caller(),
+            location: Location::from_panic_location(std::panic::Location::caller()),
         }
     }
 
@@ -381,8 +381,52 @@ impl Record {
 
     /// The [`Location`] where the message was sent from
     #[inline]
-    pub fn location(&self) -> &'static Location<'static> {
+    pub fn location(&self) -> Location {
         self.location
+    }
+}
+
+/// The location where a log came from
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Location {
+    filename: &'static str,
+    line: u32,
+    col: u32,
+}
+
+impl Location {
+    /// Returns a new [`Location`] from a regular panic `Location`
+    pub fn from_panic_location(loc: &std::panic::Location) -> Self {
+        Self {
+            filename: loc.file().to_string().leak(),
+            line: loc.line(),
+            col: loc.column(),
+        }
+    }
+
+    /// Returns the name of the source file
+    #[must_use]
+    pub const fn file(&self) -> &'static str {
+        self.filename
+    }
+
+    /// The line where the message originated from
+    #[must_use]
+    pub const fn line(&self) -> usize {
+        self.line as usize
+    }
+
+    /// The column where the message originated from
+    #[must_use]
+    pub const fn column(&self) -> usize {
+        self.col as usize
+    }
+}
+
+impl std::fmt::Display for Location {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.file(), self.line, self.col)
     }
 }
 
@@ -391,4 +435,17 @@ impl Record {
 #[doc(hidden)]
 pub fn set_logs(logs: Logs) {
     LOGS.set(logs).expect("setup ran twice");
+}
+
+/// Log information about a panic that took place
+#[doc(hidden)]
+pub fn log_panic(panic_info: &PanicHookInfo) {
+    let (Some(msg), Some(location)) = (panic_info.payload_as_str(), panic_info.location()) else {
+        return;
+    };
+    LOGS.get().unwrap().list.lock().unwrap().push(Record {
+        text: Box::leak(Box::new(Text::from(msg).no_selections())),
+        metadata: Metadata::builder().level(Level::Error).build(),
+        location: Location::from_panic_location(location),
+    })
 }

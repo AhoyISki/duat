@@ -301,9 +301,11 @@ pub fn run_duat(
     duat_rx: Receiver<DuatEvent>,
     reload_tx: Option<Sender<ReloadEvent>>,
 ) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>) {
+    static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
+
     std::panic::set_hook(Box::new(move |panic_info| {
-        ui.close();
-        println!("Duat panicked: {panic_info}");
+        context::log_panic(panic_info);
+        *PANIC_INFO.lock().unwrap() = Some(panic_info.to_string())
     }));
 
     ui.load();
@@ -313,16 +315,19 @@ pub fn run_duat(
 
     let unwind_safe = std::panic::AssertUnwindSafe((ui, buffers));
 
-    let Ok(ret) = std::panic::catch_unwind(move || {
+    match std::panic::catch_unwind(move || {
         let unwind_safe = unwind_safe;
         let std::panic::AssertUnwindSafe((ui, buffers)) = unwind_safe;
         opts.build(ui, buffers, already_plugged)
             .start(duat_rx, reload_tx)
-    }) else {
-        std::process::exit(-1);
-    };
-
-    ret
+    }) {
+        Ok(ret) => ret,
+        Err(_) => {
+            ui.close();
+            println!("{}", PANIC_INFO.lock().unwrap().as_ref().unwrap());
+            std::process::exit(-1);
+        }
+    }
 }
 
 ////////// Types used for startup and reloading

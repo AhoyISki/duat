@@ -9,7 +9,7 @@ FOR NEXT UPDATE:
 [x] File path completion.
 [x] Forcefully evaluate height and width when requested.
 [ ] File tracking.
-[ ] Actually fix injected indentation.
+[x] Actually fix injected indentation.
 [x] WhichKey widget.
 [x] Move to Rust stable (sigh...).
 [ ] Abuse the shit out of catch_unwind.
@@ -20,9 +20,8 @@ KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Get rid of Text::selections_mut.
   [ ] track_area not actually tracking correctly.
-  [ ] Removing a bunch of injections at the same time seems to freak treesitter out.
   [ ] First Point not updating when there are changes before the start of the screen.
-  [ ] Apparently treesitter still ain't working.
+  [ ] Completions get hidden kind of glitchly.
              
  LOW PRIORITY:
   [ ] statics remain as the program reloads.

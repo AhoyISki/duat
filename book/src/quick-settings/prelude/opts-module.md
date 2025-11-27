@@ -33,6 +33,7 @@ fn setup() {
         opts.allow_overscroll = false;
     });
 
+
     // Default options for the LineNumbers widget
     opts::set_lines(|opts| {
         // Relative as opposed to absolute numbering.
@@ -64,7 +65,9 @@ fn setup() {
     });
 
     // Default options for the LogBook widget
-    opts::set_logs(|opts| {});
+    opts::set_logs(|opts| {
+
+    });
 
     // Default options for the Notifications widget
     opts::set_notifs(|opts| {});

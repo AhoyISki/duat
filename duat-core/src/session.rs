@@ -142,7 +142,7 @@ impl Session {
         hook::trigger(pa, ConfigLoaded(()));
 
         let Some(mode_fn) = mode::take_set_mode_fn(pa) else {
-            unreachable!("Somebody forgot to set a default mode, I'm looking at you `duat`!");
+            unreachable!("Somebody forgot to set a default mode, I'm looking at you, duat!");
         };
         mode_fn(pa);
 

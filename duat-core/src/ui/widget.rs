@@ -48,6 +48,7 @@ use crate::{
     session::UiMouseEvent,
     text::Text,
     ui::{PrintInfo, RwArea},
+    utils::catch_panic,
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -516,28 +517,28 @@ impl Node {
             handle: handle.to_dyn(),
             update: Arc::new({
                 let handle = handle.clone();
-                move |pa| W::update(pa, &handle)
+                move |pa| _ = catch_panic(|| W::update(pa, &handle))
             }),
             print: Arc::new({
                 let handle = handle.clone();
                 move |pa| {
                     let painter =
                         form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
-                    W::print(handle.read(pa), pa, painter, handle.area());
+                    catch_panic(|| W::print(handle.read(pa), pa, painter, handle.area()));
                 }
             }),
             on_focus: Arc::new({
                 let handle = handle.clone();
                 move |pa, old| {
                     hook::trigger(pa, FocusedOn((old, handle.clone())));
-                    W::on_focus(pa, &handle);
+                    catch_panic(|| W::on_focus(pa, &handle));
                 }
             }),
             on_unfocus: Arc::new({
                 let handle = handle.clone();
                 move |pa, new| {
                     hook::trigger(pa, UnfocusedFrom((handle.clone(), new)));
-                    W::on_unfocus(pa, &handle);
+                    catch_panic(|| W::on_unfocus(pa, &handle));
                 }
             }),
             on_mouse_event: Arc::new({
@@ -552,7 +553,7 @@ impl Node {
                         modifiers: event.modifiers,
                     };
 
-                    W::on_mouse_event(pa, &handle, event);
+                    catch_panic(|| W::on_mouse_event(pa, &handle, event));
                 }
             }),
         }
@@ -610,6 +611,11 @@ impl Node {
         }
 
         (self.update)(pa);
+
+        crate::context::windows().cleanup_despawned(pa);
+        if self.handle().is_closed(pa) {
+            return;
+        }
 
         let print_info = self.handle.area().get_print_info(pa);
         let (widget, area) = self.handle.write_with_area(pa);

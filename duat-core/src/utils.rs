@@ -43,7 +43,7 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, OnceLock},
+    sync::{LazyLock, Mutex, OnceLock},
 };
 
 use parking_lot::RwLock;
@@ -311,6 +311,19 @@ where
     }
 
     Err(left)
+}
+
+/// A function to catch panics
+///
+/// Used in duat-core in order to prevent sudden panics from just
+/// crashing the program, which would be bad for the end user I think.
+pub(crate) fn catch_panic<R>(f: impl FnOnce() -> R) -> Option<R> {
+    let aus = std::panic::AssertUnwindSafe(f);
+    std::panic::catch_unwind(move || {
+        let aus = aus;
+        aus()
+    })
+    .ok()
 }
 
 /// Macro used internally for doc tests in duat-core
