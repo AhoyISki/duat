@@ -357,11 +357,11 @@ pub(crate) fn add_session_commands() {
 
     add(
         "reload",
-        |_: &mut Pass, flags: Flags, profile: Option<String>| {
+        |_: &mut Pass, opts: ReloadOptions, profile: Option<String>| {
             sender()
                 .send(DuatEvent::RequestReload(crate::session::ReloadEvent {
-                    clean: flags.word("clean"),
-                    update: flags.word("update"),
+                    clean: opts.clean,
+                    update: opts.update,
                     profile: profile.unwrap_or(crate::utils::profile().to_string()),
                 }))
                 .unwrap();
@@ -439,7 +439,7 @@ pub(crate) fn add_session_commands() {
     });
     alias("b", "buffer").unwrap();
 
-    add("next-buffer", |pa: &mut Pass, flags: Flags| {
+    add("next-buffer", |pa: &mut Pass, scope: Scope| {
         let windows = context::windows();
         let handle = context::current_buffer(pa);
         let win = context::current_win_index(pa);
@@ -451,7 +451,7 @@ pub(crate) fn add_session_commands() {
             .position(|node| handle.ptr_eq(node.widget()))
             .unwrap_or_else(|| panic!("{}, {win}", handle.read(pa).name()));
 
-        let handle = if flags.word("global") {
+        let handle = if scope == Scope::Global {
             windows
                 .iter_around(pa, win, wid)
                 .find_map(as_buffer_handle)
@@ -468,7 +468,7 @@ pub(crate) fn add_session_commands() {
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     });
 
-    add("prev-buffer", |pa: &mut Pass, flags: Flags| {
+    add("prev-buffer", |pa: &mut Pass, scope: Scope| {
         let windows = context::windows();
         let handle = context::current_buffer(pa);
         let win = context::current_win_index(pa);
@@ -480,7 +480,7 @@ pub(crate) fn add_session_commands() {
             .position(|node| handle.ptr_eq(node.widget()))
             .unwrap();
 
-        let handle = if flags.word("global") {
+        let handle = if scope == Scope::Global {
             windows
                 .iter_around_rev(pa, win, wid)
                 .find_map(as_buffer_handle)
@@ -856,25 +856,27 @@ impl Commands {
                 let command = inner
                     .list
                     .iter()
-                    .find(|cmd| cmd.caller().contains(&caller))
+                    .find(|cmd| cmd.caller() == caller)
                     .ok_or(txt!("[a]{caller}[]: No such command"))?;
 
                 (command.clone(), call.clone())
             }
         };
 
-        let args = get_args(&call);
+        let args = Args::new(&call);
 
         match catch_panic(|| (command.check_args)(pa, args.clone())) {
-            Some((_, Some((_, err)))) => return Err(err),
+            Some((_, Some((_, err)))) => return Err(txt!("[a]{caller}[]: {err}")),
             Some(_) => {}
-            None => return Err(txt!("Argument parsing panicked")),
+            None => return Err(txt!("[a]{caller}[]: Argument parsing panicked")),
         }
 
         let silent = call.len() > call.trim_start().len();
         match catch_panic(|| command.cmd.write(&mut unsafe { Pass::new() })(pa, args)) {
-            Some(result) => result.map(|ok| ok.filter(|_| !silent)),
-            None => Err(txt!("Command panicked")),
+            Some(result) => result
+                .map(|ok| ok.filter(|_| !silent))
+                .map_err(|err| txt!("[a]{caller}[]: {err}")),
+            None => Err(txt!("[a]{caller}[]: Command panicked")),
         }
     }
 
@@ -897,14 +899,11 @@ impl Commands {
 
         let inner = self.0.lock().unwrap();
         if let Some((command, _)) = inner.aliases.get(&caller) {
-            Some((command.check_args)(pa, get_args(call)))
+            Some((command.check_args)(pa, Args::new(call)))
         } else {
-            let command = inner
-                .list
-                .iter()
-                .find(|cmd| cmd.caller().contains(&caller))?;
+            let command = inner.list.iter().find(|cmd| cmd.caller() == caller)?;
 
-            Some((command.check_args)(pa, get_args(call)))
+            Some((command.check_args)(pa, Args::new(call)))
         }
     }
 }

@@ -16,7 +16,7 @@ use duat_core::{
     context::{self, Handle, Level, Record},
     data::Pass,
     hook::{self, KeysSent},
-    text::{Text, txt},
+    text::Text,
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -206,13 +206,7 @@ impl Default for NotificationsOpts {
     fn default() -> Self {
         fn default_fmt(rec: Record) -> Text {
             match rec.level() {
-                Level::Error | Level::Warn | Level::Debug => {
-                    txt!(
-                        "[buffer]{}[notifs.colon]:[] {}",
-                        rec.location(),
-                        rec.text().clone()
-                    )
-                }
+                Level::Error | Level::Warn | Level::Debug => rec.text().clone(),
                 Level::Info => rec.text().clone(),
                 Level::Trace => unreachable!(),
             }

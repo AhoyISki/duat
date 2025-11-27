@@ -479,8 +479,8 @@ impl RunCommands {
         ONCE.call_once(|| {
             form::set_weak("caller.info", "accent.info");
             form::set_weak("caller.error", "accent.error");
-            form::set_weak("parameter.info", "default.info");
-            form::set_weak("parameter.error", "default.error");
+            form::set_weak("param.info", "default.info");
+            form::set_weak("param.error", "default.error");
         });
     }
 }
@@ -498,12 +498,12 @@ impl PromptMode for RunCommands {
                 let id = form::id_of!("caller.info");
                 text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
 
-                let default_id = form::id_of!("parameter.info");
+                let default_id = form::id_of!("param.info");
                 for (range, id) in ok_ranges {
                     text.insert_tag(*TAGGER, range, id.unwrap_or(default_id).to_tag(0));
                 }
                 if let Some((range, _)) = err_range {
-                    let id = form::id_of!("parameter.error");
+                    let id = form::id_of!("param.error");
                     text.insert_tag(*TAGGER, range, id.to_tag(0));
                 }
             } else {
@@ -714,18 +714,18 @@ impl PromptMode for PipeSelections {
         let args = cmd::ArgsIter::new(&command);
 
         let (caller_id, args_id) = if is_in_path(caller) {
-            (form::id_of!("caller.info"), form::id_of!("parameter.indo"))
+            (form::id_of!("caller.info"), form::id_of!("param.info"))
         } else {
             (
                 form::id_of!("caller.error"),
-                form::id_of!("parameter.error"),
+                form::id_of!("param.error"),
             )
         };
 
         let c_s = command.len() - command.trim_start().len();
         text.insert_tag(*TAGGER, c_s..c_s + caller.len(), caller_id.to_tag(0));
 
-        for (_, range) in args {
+        for (_, range, _) in args {
             text.insert_tag(*TAGGER, range, args_id.to_tag(0));
         }
 
@@ -743,7 +743,7 @@ impl PromptMode for PipeSelections {
         let handle = context::current_buffer(pa).clone();
         handle.edit_all(pa, |mut c| {
             let Ok(mut child) = Command::new(caller)
-                .args(cmd::ArgsIter::new(&command).map(|(a, _)| a))
+                .args(cmd::ArgsIter::new(&command).map(|(a, ..)| a))
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .spawn()
