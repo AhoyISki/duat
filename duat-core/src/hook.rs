@@ -189,6 +189,7 @@ use crate::{
     mode::{KeyEvent, Mode},
     text::Text,
     ui::{Widget, Window},
+    utils::catch_panic,
 };
 
 /// Hook functions
@@ -1082,7 +1083,7 @@ impl InnerHooks {
             }
 
             let input = hookable.get_input();
-            if let Err(err) = hook.callback.borrow_mut()(pa, input) {
+            if let Some(Err(err)) = catch_panic(|| hook.callback.borrow_mut()(pa, input)) {
                 crate::context::error!("{err}");
             }
 

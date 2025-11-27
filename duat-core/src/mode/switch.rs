@@ -16,7 +16,7 @@ use crate::{
     hook::{self, FocusChanged, KeysSent, KeysSentTo, ModeSet, ModeSwitched},
     main_thread_only::MainThreadOnly,
     ui::{Node, Widget},
-    utils::duat_name,
+    utils::{catch_panic, duat_name},
 };
 
 static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> = MainThreadOnly::new(RefCell::new(None));
@@ -176,17 +176,19 @@ pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
     let send_keys = unsafe { SEND_KEYS.get() };
     let mut sk = send_keys.take().unwrap();
 
-    while keys.len() > 0 {
-        if let Some(set_mode) = sk(pa, &mut keys)
-            && set_mode(pa)
-        {
-            sk = send_keys.take().unwrap();
-        } else {
-            // You probably don't really want to send the remaining keys to the
-            // current mode if set_mode fails.
-            break;
+    let _ = catch_panic(|| {
+        while keys.len() > 0 {
+            if let Some(set_mode) = sk(pa, &mut keys)
+                && set_mode(pa)
+            {
+                sk = send_keys.take().unwrap();
+            } else {
+                // You probably don't really want to send the remaining keys to the
+                // current mode if set_mode fails.
+                break;
+            }
         }
-    }
+    });
 
     send_keys.replace(Some(sk));
 }

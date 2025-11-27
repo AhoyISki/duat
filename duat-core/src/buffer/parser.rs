@@ -27,6 +27,7 @@ use crate::{
     opts::PrintOpts,
     ranges::Ranges,
     text::{Bytes, Change, Moment, MomentFetcher, Point, Text, TextRange, txt},
+    utils::catch_panic,
 };
 
 /// A [`Buffer`] parser, that can keep up with every [`Change`] that
@@ -381,16 +382,18 @@ impl Parsers {
     pub(super) fn read_parser<P: Parser, Ret>(&self, read: impl FnOnce(&P) -> Ret) -> Option<Ret> {
         let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
-            let mut parser = self.list.borrow_mut()[i].parser.take()?;
+            catch_panic(|| {
+                let mut parser = self.list.borrow_mut()[i].parser.take()?;
 
-            parser.before_get();
+                parser.before_get();
 
-            let ptr: *const dyn Parser = &*parser;
-            let ret = read(unsafe { (ptr as *const P).as_ref() }.unwrap());
+                let ptr: *const dyn Parser = &*parser;
+                let ret = read(unsafe { (ptr as *const P).as_ref() }.unwrap());
 
-            self.list.borrow_mut()[i].parser = Some(parser);
+                self.list.borrow_mut()[i].parser = Some(parser);
 
-            Some(ret)
+                Some(ret)
+            })?
         } else {
             None
         }
@@ -404,16 +407,18 @@ impl Parsers {
     ) -> Option<Ret> {
         let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
-            let mut parser = self.list.borrow_mut()[i].parser.take()?;
+            catch_panic(|| {
+                let mut parser = self.list.borrow_mut()[i].parser.take()?;
 
-            let ptr: *const dyn Parser = &*parser;
-            let ret = parser
-                .before_try_get()
-                .then(|| read(unsafe { (ptr as *const P).as_ref() }.unwrap()));
+                let ptr: *const dyn Parser = &*parser;
+                let ret = parser
+                    .before_try_get()
+                    .then(|| read(unsafe { (ptr as *const P).as_ref() }.unwrap()));
 
-            self.list.borrow_mut()[i].parser = Some(parser);
+                self.list.borrow_mut()[i].parser = Some(parser);
 
-            ret
+                ret
+            })?
         } else {
             None
         }
@@ -426,16 +431,18 @@ impl Parsers {
     ) -> Option<Ret> {
         let position = self.list.borrow().iter().position(type_eq::<P>);
         if let Some(i) = position {
-            let mut parser = self.list.borrow_mut()[i].parser.take()?;
+            catch_panic(|| {
+                let mut parser = self.list.borrow_mut()[i].parser.take()?;
 
-            parser.before_get();
+                parser.before_get();
 
-            let ptr: *const dyn Parser = &*parser;
-            let ret = write(unsafe { (ptr as *mut P).as_mut() }.unwrap());
+                let ptr: *const dyn Parser = &*parser;
+                let ret = write(unsafe { (ptr as *mut P).as_mut() }.unwrap());
 
-            self.list.borrow_mut()[i].parser = Some(parser);
+                self.list.borrow_mut()[i].parser = Some(parser);
 
-            Some(ret)
+                Some(ret)
+            })?
         } else {
             None
         }
@@ -472,14 +479,16 @@ impl Parsers {
             let mut parts = self.list.borrow_mut().remove(i);
             let parser = parts.parser.as_mut().unwrap();
 
-            if parser.parse() {
-                let ranges_to_update = parts
-                    .ranges
-                    .lock()
-                    .remove(on.clone(), handle.read(pa).bytes());
+            let _ = catch_panic(|| {
+                if parser.parse() {
+                    let ranges_to_update = parts
+                        .ranges
+                        .lock()
+                        .remove(on.clone(), handle.read(pa).bytes());
 
-                parser.update(pa, handle, ranges_to_update)
-            }
+                    parser.update(pa, handle, ranges_to_update)
+                }
+            });
 
             parts.update_requested.store(false, Ordering::Relaxed);
 

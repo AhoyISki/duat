@@ -18,6 +18,7 @@ use crate::{
     mode::{self, Binding, Bindings},
     text::{Ghost, Selectionless, Tagger, Text, txt},
     ui::Widget,
+    utils::catch_panic,
 };
 
 mod global {
@@ -548,10 +549,6 @@ mod global {
             key.modifiers.remove(KeyMod::SHIFT);
         }
 
-        if let Some(set_mode) = crate::mode::take_set_mode_fn(pa) {
-            set_mode(pa);
-        }
-
         SEND_KEY.read(pa)(pa, key);
 
         crate::hook::trigger(pa, crate::hook::KeyTyped(key));
@@ -678,7 +675,7 @@ impl Remapper {
                         Gives::Mode(given) => {
                             (given.setter)();
                             if let Some(mode_fn) = super::take_set_mode_fn(pa) {
-                                mode_fn(pa);
+                                catch_panic(|| mode_fn(pa));
                             }
                             return;
                         }
@@ -834,11 +831,10 @@ impl MappedBindings {
                 text: Some(desc.text()),
                 keys: KeyDescriptions {
                     seq,
-                    ty: DescriptionType::Binding(
-                        pats,
-                        pats.iter(),
-                        StripPrefix { seq, remaps: self.remaps.iter() },
-                    ),
+                    ty: DescriptionType::Binding(pats, pats.iter(), StripPrefix {
+                        seq,
+                        remaps: self.remaps.iter(),
+                    }),
                 },
             })
             .chain(

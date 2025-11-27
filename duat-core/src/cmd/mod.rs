@@ -181,6 +181,7 @@ use crate::{
     session::DuatEvent,
     text::{Text, txt},
     ui::{Node, Widget},
+    utils::catch_panic,
 };
 
 mod parameters;
@@ -864,12 +865,17 @@ impl Commands {
 
         let args = get_args(&call);
 
-        if let (_, Some((_, err))) = (command.check_args)(pa, args.clone()) {
-            return Err(err);
+        match catch_panic(|| (command.check_args)(pa, args.clone())) {
+            Some((_, Some((_, err)))) => return Err(err),
+            Some(_) => {}
+            None => return Err(txt!("Argument parsing panicked")),
         }
 
         let silent = call.len() > call.trim_start().len();
-        command.cmd.write(&mut unsafe { Pass::new() })(pa, args).map(|ok| ok.filter(|_| !silent))
+        match catch_panic(|| command.cmd.write(&mut unsafe { Pass::new() })(pa, args)) {
+            Some(result) => result.map(|ok| ok.filter(|_| !silent)),
+            None => Err(txt!("Command panicked")),
+        }
     }
 
     /// Adds a command to the list of commands

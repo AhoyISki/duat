@@ -12,7 +12,7 @@ FOR NEXT UPDATE:
 [x] Actually fix injected indentation.
 [x] WhichKey widget.
 [x] Move to Rust stable (sigh...).
-[ ] Abuse the shit out of catch_unwind.
+[x] Abuse the shit out of catch_unwind.
 [x] Borders and Titles.
 [x] Make cmd::add not a macro (?!).
 

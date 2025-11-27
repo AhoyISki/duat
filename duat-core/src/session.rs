@@ -34,6 +34,7 @@ use crate::{
         Coord, Ui, Windows,
         layout::{Layout, MasterOnLeft},
     },
+    utils::catch_panic,
 };
 
 pub(crate) static FILE_CFG: OnceLock<PrintOpts> = OnceLock::new();
@@ -73,7 +74,7 @@ impl SessionCfg {
                 .find_map(|(f, ty)| f.take().zip(Some(*ty)))
         } {
             if !already_plugged.contains(&ty) {
-                plug(plugins);
+                catch_panic(|| plug(plugins));
             }
         }
 
@@ -133,7 +134,7 @@ impl Session {
         duat_rx: mpsc::Receiver<DuatEvent>,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
     ) -> Option<(Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>)> {
-        match crate::utils::catch_panic(|| self.inner_start(&duat_rx, reload_tx.as_ref())) {
+        match catch_panic(|| self.inner_start(&duat_rx, reload_tx.as_ref())) {
             Some(ret) => Some((ret, duat_rx)),
             None => {
                 let pa = unsafe { &mut Pass::new() };
@@ -225,7 +226,7 @@ impl Session {
 
         loop {
             if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
-                mode_fn(pa);
+                catch_panic(|| mode_fn(pa));
             }
 
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
