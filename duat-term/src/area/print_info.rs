@@ -240,7 +240,7 @@ impl PrintInfo {
             return;
         }
 
-        let (max_shift, start, end) = {
+        let (max_shift, caret_start, caret_end) = {
             let points = text.ghost_max_points_at(p.min(text.len()).byte());
             let after = text
                 .points_after(points)
@@ -248,29 +248,29 @@ impl PrintInfo {
 
             let mut iter = rev_print_iter(text, after, width, opts);
 
-            let (points, start, end) = iter
+            let (points, caret_start, caret_end) = iter
                 .find_map(|(Caret { x, len, .. }, item)| {
                     let points = item.points();
                     item.part.as_char().and(Some((points, x, x + len)))
                 })
                 .unwrap_or((TwoPoints::default(), 0, 0));
 
-            let line_len = print_iter(text, points, width, opts)
+            let max_shift = print_iter(text, points, width, opts)
                 .take_while(|(caret, item)| !caret.wrap || item.points() == points)
                 .last()
                 .map(|(Caret { x, len, .. }, _)| x + len)
                 .unwrap_or(0);
 
-            (line_len, start, end)
+            (max_shift, caret_start, caret_end)
         };
 
         self.x_shift = self
             .x_shift
-            .min(start.saturating_sub(opts.scrolloff.x as u32))
+            .min(caret_start.saturating_sub(opts.scrolloff.x as u32))
             .max(if opts.force_scrolloff {
-                (end + opts.scrolloff.x as u32).saturating_sub(width)
+                (caret_end + opts.scrolloff.x as u32).saturating_sub(width)
             } else {
-                (end + opts.scrolloff.x as u32)
+                (caret_end + opts.scrolloff.x as u32)
                     .min(max_shift)
                     .saturating_sub(width)
             });

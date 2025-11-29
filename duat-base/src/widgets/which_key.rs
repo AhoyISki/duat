@@ -1,3 +1,8 @@
+//! A `Widget` to show available bindings and remaps
+//!
+//! This widget is automatically displayed when deemed necessary.
+//! Normally, this is done on some modes, and when typing remapped key
+//! sequences, be them maps or aliases.
 use std::sync::Once;
 
 use duat_core::{

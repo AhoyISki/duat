@@ -58,7 +58,7 @@ pub fn print_iter(
             }
         }
     }
-
+    
     inner_iter(
         text.iter_fwd(points),
         (total_len, gaps),
@@ -127,7 +127,7 @@ fn inner_iter<'a>(
 
     let mut iter = iter.peekable();
     let mut new_x = 0;
-    let mut first_x = total_len * (total_len < cap) as u32;
+    let mut first_x = total_len * (total_len < cap || !opts.wrap_lines) as u32;
 
     std::iter::from_fn(move || {
         loop {

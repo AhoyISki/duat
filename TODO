@@ -15,14 +15,15 @@ FOR NEXT UPDATE:
 [x] Abuse the shit out of catch_unwind.
 [x] Borders and Titles.
 [x] Make cmd::add not a macro (?!).
-[ ] Revamped Flags.
+[x] Revamped Flags.
 
 KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Get rid of Text::selections_mut.
   [ ] track_area not actually tracking correctly.
   [ ] First Point not updating when there are changes before the start of the screen.
-  [ ] Completions get hidden kind of glitchly.
+  [x] Completions get hidden kind of glitchly.
+  [ ] Completions don't truncate properly.
              
  LOW PRIORITY:
   [ ] statics remain as the program reloads.
@@ -50,7 +51,7 @@ FUTURE UPDATES:
 [ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.
 [ ] Coordinates based tagging.
 [ ] Use track_caller on TextBuilder.
-[ ] Anonymous Forms, which index based on hashing the Form itself.ap
+[ ] Anonymous Forms, which index based on hashing the Form itself.
 [ ] Add Form interpolation and Form::copy.
 [ ] Use Tags for masks.
 [ ] Keep information of PushSpecs and SpawnSpecs on the Handles.

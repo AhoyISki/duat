@@ -466,14 +466,20 @@ pub(crate) fn add_session_commands() {
              automatically reload the compiled binary"
         )),
     )
-    .doc_params([CmdDoc::new(
-        txt!("Available flags: [param.flag]--clean[], [param.flag]--update[]"),
-        Some(txt!(
-            "[param.flag]--clean[] will call [a]cargo clean[] as well as the remove the \
-             [a]cache[] and [a]local[] directories of Duat, [param.flag]--update[] will call \
-             [a]cargo update[]"
-        )),
-    )]);
+    .doc_params([
+        CmdDoc::new(
+            txt!("Available flags: [param.flag]--clean[], [param.flag]--update[]"),
+            Some(txt!(
+                "[param.flag]--clean[] will call [a]cargo clean[] as well as the remove the \
+                 [a]cache[] and [a]local[] directories of Duat, [param.flag]--update[] will call \
+                 [a]cargo update[]"
+            )),
+        ),
+        CmdDoc::new(
+            txt!("An optional [a]profile[] parameter. By default, this is [a]release"),
+            None,
+        ),
+    ]);
 
     add("edit", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
@@ -764,6 +770,7 @@ mod global {
         ///
         /// The iterator must have the same number of elements as the
         /// number of parameters.
+        #[track_caller]
         pub fn doc_params(mut self, docs: impl IntoIterator<Item = CmdDoc>) -> Self {
             let docs: Vec<_> = docs.into_iter().collect();
             assert!(
