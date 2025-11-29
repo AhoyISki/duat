@@ -116,7 +116,7 @@
 ///     cmd::add("set-str", move |pa: &mut Pass, new: String| {
 ///         *changing_str.write(pa) = new.to_string();
 ///         Ok(None)
-///     })
+///     });
 /// }
 /// ```
 ///

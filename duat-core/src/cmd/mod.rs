@@ -110,6 +110,7 @@
 //! optional `Parameter`.
 //!
 //! ```rust
+//! # fn test() {
 //! # duat_core::doc_duat!(duat);
 //! use duat::prelude::*;
 //!
@@ -124,6 +125,7 @@
 //! });
 //! // You can also alias commands:
 //! cmd::alias("uf", "unset-form").unwrap();
+//! # }
 //! ```
 //!
 //! In the command above, you'll notice that [`Ok`] values return
