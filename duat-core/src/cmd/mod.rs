@@ -52,10 +52,11 @@
 //!
 //! The `set-form` command above will fail, since the hsl [`Color`]
 //! [`Parameter`] was not completely matched, missing the saturation
-//! and lightness arguments. It also shows two flag arguments, word
-//! flags (`"--flag"`) and blob flags (`"-abc"`). Even failing, no
-//! notification will be sent, because I called [`queue`], if you want
-//! notifications, call [`queue_notify`].
+//! and lightness arguments. It also shows two unused flag arguments,
+//! word flags (`"--flag"`) and blob flags (`"-abc"`), which will also
+//! cause the command to fail. Even failing, no notification will be
+//! sent, because I called [`queue`], if you want notifications, call
+//! [`queue_notify`].
 //!
 //! If you want to "react" to the result of a queued call, you can use
 //! the [`cmd::queue_and`] function, which lets you also send a
@@ -193,7 +194,18 @@ pub(crate) fn add_session_commands() {
     add(
         "alias",
         |_: &mut Pass, alias: String, command: Remainder| crate::cmd::alias(alias, command.0),
-    );
+    )
+    .doc(
+        txt!("Create an alias for a command"),
+        Some(txt!(
+            "The alias [a]must[] be a single word (no spaces), and the command can include \
+             arguments"
+        )),
+    )
+    .doc_params([
+        CmdDoc::new(txt!("Alias name"), Some(txt!("[a]Must[] be a single word"))),
+        CmdDoc::new(txt!("Aliased command"), Some(txt!("Can include arguments"))),
+    ]);
 
     add("write", |pa: &mut Pass, path: Option<ValidFilePath>| {
         let handle = context::current_buffer(pa).clone();
@@ -211,7 +223,18 @@ pub(crate) fn add_session_commands() {
             Some(bytes) => Ok(Some(txt!("Wrote [a]{bytes}[] bytes to [buffer]{name}"))),
             None => Ok(Some(txt!("Nothing to be written"))),
         }
-    });
+    })
+    .doc(
+        txt!("Saves the [a]Buffer[] in storage"),
+        Some(txt!("By default, will write to the [a]Buffer[]'s path")),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("[a]Optional[] path to write to"),
+        Some(txt!(
+            "If the [a]Buffer[] has no path ([a]scratch buffer[]), then this argument [a]must[] \
+             be included"
+        )),
+    )]);
     alias("w", "write").unwrap();
 
     add(
@@ -238,7 +261,21 @@ pub(crate) fn add_session_commands() {
                 None => Ok(Some(txt!("Closed [buffer]{name}[]"))),
             }
         },
-    );
+    )
+    .doc(
+        txt!("Save the [a]Buffer[] in storage and closes it"),
+        Some(txt!(
+            "By default, will write to the [a]Buffer[]'s path. If this is the last open \
+             [a]Buffer[], also quit Duat"
+        )),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("[a]Optional[] path to write to"),
+        Some(txt!(
+            "If the [a]Buffer[] has no path (a [a]scratch buffer[]), then this argument [a]must[] \
+             be included"
+        )),
+    )]);
     alias("wq", "write-quit").unwrap();
 
     add("write-all", |pa: &mut Pass| {
@@ -261,7 +298,8 @@ pub(crate) fn add_session_commands() {
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
-    });
+    })
+    .doc(txt!("Writes to all [a]Buffer[]s"), None);
     alias("wa", "write-all").unwrap();
 
     add("write-all-quit", |pa: &mut Pass| {
@@ -284,7 +322,13 @@ pub(crate) fn add_session_commands() {
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] buffer{plural}"))
         }
-    });
+    })
+    .doc(
+        txt!("Save all [a]Buffer[]s in storage, then quit"),
+        Some(txt!(
+            "If any [a]Buffer[] fails to be saved, won't quit Duat"
+        )),
+    );
     alias("waq", "write-all-quit").unwrap();
 
     add("write-all-quit!", |pa: &mut Pass| {
@@ -296,7 +340,13 @@ pub(crate) fn add_session_commands() {
 
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
-    });
+    })
+    .doc(
+        txt!("Save all [a]Buffer[]s in storage, then [a]forcibly[] quit"),
+        Some(txt!(
+            "[a]WARNING[]: This command will ignore any failed attempts to write"
+        )),
+    );
     alias("waq!", "write-all-quit!").unwrap();
 
     add("quit", |pa: &mut Pass, handle: Option<Handle>| {
@@ -313,7 +363,18 @@ pub(crate) fn add_session_commands() {
         context::windows().close(pa, &handle)?;
 
         Ok(Some(txt!("Closed [buffer]{}", handle.read(pa).name())))
-    });
+    })
+    .doc(
+        txt!("Close a [a]Buffer[]"),
+        Some(txt!(
+            "This will fail if the [a]Buffer[] has unsaved changes. If it is the last open \
+             [a]Buffer[], also quit Duat"
+        )),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("Optional [a]Buffer[] to quit, instead of the current one"),
+        None,
+    )]);
     alias("q", "quit").unwrap();
 
     add("quit!", |pa: &mut Pass, handle: Option<Handle>| {
@@ -324,8 +385,16 @@ pub(crate) fn add_session_commands() {
 
         context::windows().close(pa, &handle)?;
 
-        Ok(Some(txt!("Forcefully closed {}", handle.read(pa).name())))
-    });
+        Ok(Some(txt!("Forcibly closed {}", handle.read(pa).name())))
+    })
+    .doc(
+        txt!("[a]Forcibly[] close a [a]Buffer[]"),
+        Some(txt!("If it is the last open [a]Buffer[], also quit Duat")),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("Optional [a]Buffer[] to quit, instead of the current one"),
+        None,
+    )]);
     alias("q!", "quit!").unwrap();
 
     add("quit-all", |pa: &mut Pass| {
@@ -346,13 +415,25 @@ pub(crate) fn add_session_commands() {
         } else {
             Err(txt!("There are [a]{unwritten}[] unsaved buffers"))
         }
-    });
+    })
+    .doc(
+        txt!("Close all [a]Buffer[]s, then quit Duat"),
+        Some(txt!(
+            "This will fail if the [a]Buffer[] has unsaved changes"
+        )),
+    );
     alias("qa", "quit-all").unwrap();
 
     add("quit-all!", |_: &mut Pass| {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
-    });
+    })
+    .doc(
+        txt!("[a]Forcibly[] close all [a]Buffer[]s, then quit Duat"),
+        Some(txt!(
+            "[a]WARNING[]: This command will ignore any unsaved changes"
+        )),
+    );
     alias("qa!", "quit-all!").unwrap();
 
     add(
@@ -375,7 +456,22 @@ pub(crate) fn add_session_commands() {
 
             Ok(None)
         },
-    );
+    )
+    .doc(
+        txt!("Reload the configuration crate"),
+        Some(txt!(
+            "This will call [a]cargo build[] on your chosen configuration path, then will \
+             automatically reload the compiled binary"
+        )),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("Available flags: [param.flag]--clean[], [param.flag]--update[]"),
+        Some(txt!(
+            "[param.flag]--clean[] will call [a]cargo clean[] as well as the remove the \
+             [a]cache[] and [a]local[] directories of Duat, [param.flag]--update[] will call \
+             [a]cargo update[]"
+        )),
+    )]);
 
     add("edit", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
@@ -399,7 +495,21 @@ pub(crate) fn add_session_commands() {
         context::set_current_node(pa, handle);
 
         Ok(Some(txt!("Opened {pk}")))
-    });
+    })
+    .doc(
+        txt!("Switch to a [a]Buffer[] or open it on the same window"),
+        Some(txt!(
+            "When opening a new [a]Buffer[], will open it in the current window"
+        )),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("Which [a]Buffer[] to open or switch to"),
+        Some(txt!(
+            "This accepts one of 4 types: an open [a]Buffer[]'s name, a valid file path, or the \
+             one of the flags [param.flag]--cfg[] or [param.flag]--cfg-manifest[], which open \
+             configuration crate files"
+        )),
+    )]);
     alias("e", "edit").unwrap().unwrap();
 
     add("open", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
@@ -430,13 +540,27 @@ pub(crate) fn add_session_commands() {
         windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
 
         Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
-    });
+    })
+    .doc(
+        txt!("Switch to a [a]Buffer[] or open it on another window"),
+        None,
+    )
+    .doc_params([CmdDoc::new(
+        txt!("Which [a]Buffer[] to open or switch to"),
+        Some(txt!(
+            "This accepts one of 4 types: an open [a]Buffer[]'s name, a valid file path, or the \
+             one of the flags [param.flag]--cfg[] or [param.flag]--cfg-manifest[], which open \
+             configuration crate files"
+        )),
+    )]);
     alias("o", "open").unwrap();
 
     add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
         mode::reset_to(handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
-    });
+    })
+    .doc(txt!("Switch to an open [a]Buffer[]"), None)
+    .doc_params([CmdDoc::new(txt!("The name of an open [a]Buffer"), None)]);
     alias("b", "buffer").unwrap();
 
     add("next-buffer", |pa: &mut Pass, scope: Scope| {
@@ -466,7 +590,18 @@ pub(crate) fn add_session_commands() {
 
         mode::reset_to(handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
-    });
+    })
+    .doc(
+        txt!("Switch to the next [a]Buffer[]"),
+        Some(txt!(
+            "If you pass in [param.flag]--global[], then this command will also consider \
+             [a]Buffer[]s on other windows"
+        )),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("An optional [param.flag]--global[], to consider other windows"),
+        None,
+    )]);
 
     add("prev-buffer", |pa: &mut Pass, scope: Scope| {
         let windows = context::windows();
@@ -495,12 +630,30 @@ pub(crate) fn add_session_commands() {
 
         mode::reset_to(handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
-    });
+    })
+    .doc(
+        txt!("Switch to the previous [a]Buffer[]"),
+        Some(txt!(
+            "If you pass in [param.flag]--global[], then this command will also consider \
+             [a]Buffer[]s on other windows"
+        )),
+    )
+    .doc_params([CmdDoc::new(
+        txt!("An optional [param.flag]--global[], to consider other windows"),
+        None,
+    )]);
 
     add("last-buffer", |pa: &mut Pass| {
         let handle = context::windows().last_buffer(pa)?;
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
-    });
+    })
+    .doc(
+        txt!("Switch to the last switched [a]Buffer[]"),
+        Some(txt!(
+            "Not to be confused with [caller.info]last-buffer[], this command switches to the \
+             [a]Buffer[] that was active before the current one"
+        )),
+    );
 
     add("swap", |pa: &mut Pass, lhs: Handle, rhs: Option<Handle>| {
         let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa).clone());
@@ -512,12 +665,30 @@ pub(crate) fn add_session_commands() {
             lhs.read(pa).name(),
             rhs.read(pa).name()
         )))
-    });
+    })
+    .doc(
+        txt!("Swap the positions of two [a]Buffer[]s"),
+        Some(txt!(
+            "If only one parameter is given, then will swap that [a]Buffer[] with the current one"
+        )),
+    )
+    .doc_params([
+        CmdDoc::new(txt!("The [a]Buffer[] to swap with"), None),
+        CmdDoc::new(
+            txt!("Optional, switch with this [a]Buffer[] instead of the current one"),
+            None,
+        ),
+    ]);
 
     add("colorscheme", |_: &mut Pass, scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(&scheme);
         Ok(Some(txt!("Set colorscheme to [a]{}[]", scheme.0)))
-    });
+    })
+    .doc(txt!("Change the active colorscheme"), None)
+    .doc_params([CmdDoc::new(
+        txt!("The name of an existing colorscheme"),
+        None,
+    )]);
 
     add(
         "set-form",
@@ -530,7 +701,29 @@ pub(crate) fn add_session_commands() {
 
             Ok(Some(txt!("Set [a]{}[] to a new Form", name.0)))
         },
-    );
+    )
+    .doc(
+        txt!("Change a [a]Form"),
+        Some(txt!(
+            "This [a]Form[] must already exist, since setting a [a]Form[] that isn't in use is \
+             kind of pointless at runtime"
+        )),
+    )
+    .doc_params([
+        CmdDoc::new(txt!("The name of an existing [a]Form"), None),
+        CmdDoc::new(
+            txt!("Up to three colors"),
+            Some(txt!(
+                "The first color will be used for the foreground, the second for the background, \
+                 and the third for the underline. The colors can be in a hex format \
+                 ([a]#123456[]), rgb ([a]rgb 61 67 69[]), or hsl (hsl 1 2 3) format. For the \
+                 latter two, the value parameters can be integers from [a]0[] to [a]255[] or \
+                 percentages between [a]0%[] and [a]100%[].
+
+                 If there are no parameters, then this will be set to the [a]Default[] form"
+            )),
+        ),
+    ]);
 }
 
 mod global {
@@ -548,6 +741,82 @@ mod global {
     };
 
     static COMMANDS: Commands = Commands::new();
+
+    /// A builder for a command
+    ///
+    /// This struct is created by [`cmd::add`], and when it is
+    /// dropped, the command gets added.
+    pub struct CmdBuilder {
+        command: Option<super::Command>,
+    }
+
+    impl CmdBuilder {
+        /// Adds documentation to this command
+        pub fn doc(mut self, short: Text, long: Option<Text>) -> Self {
+            self.command.as_mut().unwrap().doc = Some(CmdDoc::new(short, long));
+            self
+        }
+
+        /// Adds documentation for each of the parameters of the
+        /// command
+        ///
+        /// The iterator must have the same number of elements as the
+        /// number of parameters.
+        pub fn doc_params(mut self, docs: impl IntoIterator<Item = CmdDoc>) -> Self {
+            let docs: Vec<_> = docs.into_iter().collect();
+            assert!(
+                docs.len() == self.command.as_ref().unwrap().param_count(),
+                "Incorrect number of parameter doc `Text`s"
+            );
+            self.command.as_mut().unwrap().param_docs = Some(docs);
+            self
+        }
+    }
+
+    impl Drop for CmdBuilder {
+        fn drop(&mut self) {
+            COMMANDS.add(self.command.take().unwrap());
+        }
+    }
+
+    /// Documentation for commands and [`Parameter`]s
+    ///
+    /// [`Parameter`]: super::Parameter
+    #[derive(Debug, Clone)]
+    pub struct CmdDoc {
+        /// "Short" documentation for a command or [`Parameter`]
+        ///
+        /// This should be a short line of few words, meant for
+        /// possibly being displayed in a list.
+        ///
+        /// Note that this is _not_ a short version of
+        /// [`CmdDoc::long`]. So they shouldn't present the same
+        /// information.
+        ///
+        /// [`Parameter`]: super::Parameter
+        pub short: Text,
+        /// "Long" documentation for a command or [`Parameter`]
+        ///
+        /// This should add more details to the [`Text`] of
+        /// [`CmdDoc::short`]. This description is meant to be shown
+        /// when more information is required _on top_ of
+        /// [`CmdDoc::short`], so they shouldn't present the same
+        /// information.
+        ///
+        /// Note also that you _can_ add documentation about the
+        /// parameters, however, you should prioritize calling
+        /// [`CmdBuilder::doc_params`] for that purpose instead.
+        ///
+        /// [`Parameter`]: super::Parameter
+        pub long: Option<Text>,
+    }
+
+    impl CmdDoc {
+        /// Returns a new `CmdDoc`
+        pub fn new(short: Text, long: Option<Text>) -> Self {
+            Self { short, long }
+        }
+    }
 
     /// Adds a command to Duat
     ///
@@ -591,17 +860,20 @@ mod global {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RwData`]: crate::data::RwData
     /// [`Parameter`]: super::Parameter
-    pub fn add<Cmd: CmdFn<impl std::any::Any>>(caller: &str, mut cmd: Cmd) {
-        COMMANDS.add(super::Command::new(
-            caller.to_string(),
-            // SAFETY: The type of this RwData doesn't matter, as it is never checked.
-            unsafe {
-                RwData::new_unsized::<Cmd>(Arc::new(UnsafeCell::new(
-                    move |pa: &mut Pass, args: super::Args| cmd.call(pa, args),
-                )))
-            },
-            Cmd::check_args,
-        ));
+    pub fn add<Cmd: CmdFn<impl std::any::Any>>(caller: &str, mut cmd: Cmd) -> CmdBuilder {
+        CmdBuilder {
+            command: Some(super::Command::new(
+                caller.to_string(),
+                // SAFETY: The type of this RwData doesn't matter, as it is never checked.
+                unsafe {
+                    RwData::new_unsized::<Cmd>(Arc::new(UnsafeCell::new(
+                        move |pa: &mut Pass, args: super::Args| cmd.call(pa, args),
+                    )))
+                },
+                Cmd::check_args,
+                Cmd::param_count(),
+            )),
+        }
     }
 
     /// Canonical way to quit Duat.
@@ -700,10 +972,6 @@ mod global {
     /// execution. If you want to call commands from other threads,
     /// see [`cmd::queue`].
     ///
-    /// When running the command, the ordering of [`Flags`] does not
-    /// matter, as long as they are placed before the arguments to the
-    /// command.
-    ///
     /// # Examples
     ///
     /// ```rust
@@ -724,7 +992,6 @@ mod global {
     /// [`cmd::queue`]: queue
     /// [`cmd::call_notify`]: call_notify
     /// [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
-    /// [`Flags`]: super::Flags
     pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
         COMMANDS.run(pa, call)
     }
@@ -923,20 +1190,34 @@ struct Command {
     caller: String,
     cmd: InnerCmdFn,
     check_args: CheckerFn,
+    param_count: usize,
+    doc: Option<CmdDoc>,
+    param_docs: Option<Vec<CmdDoc>>,
 }
 
 impl Command {
     /// Returns a new instance of command.
-    fn new(caller: String, cmd: InnerCmdFn, check_args: CheckerFn) -> Self {
+    fn new(caller: String, cmd: InnerCmdFn, check_args: CheckerFn, param_count: usize) -> Self {
         if caller.split_whitespace().count() != 1 {
             panic!("Command caller \"{caller}\" contains more than one word");
         }
-        Self { cmd, check_args, caller }
+        Self {
+            cmd,
+            check_args,
+            caller,
+            param_count,
+            doc: None,
+            param_docs: None,
+        }
     }
 
     /// The caller for this command
     fn caller(&self) -> &str {
         &self.caller
+    }
+
+    fn param_count(&self) -> usize {
+        self.param_count
     }
 }
 
@@ -1035,6 +1316,8 @@ trait CmdFn<Arguments>: Send + 'static {
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
     );
+
+    fn param_count() -> usize;
 }
 
 impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
@@ -1057,10 +1340,14 @@ impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
 
         (Vec::new(), None)
     }
+
+    fn param_count() -> usize {
+        0
+    }
 }
 
 macro_rules! implCmdFn {
-    ($($param:ident),+) => {
+    ($param_count:literal, $($param:ident),+) => {
         impl<$($param),+, F> CmdFn<($($param,)+)> for F
         where
             $($param: Parameter,)+
@@ -1105,19 +1392,21 @@ macro_rules! implCmdFn {
 
                 (ok_ranges, None)
             }
+
+            fn param_count() -> usize { $param_count }
         }
     }
 }
 
-implCmdFn!(P0);
-implCmdFn!(P0, P1);
-implCmdFn!(P0, P1, P2);
-implCmdFn!(P0, P1, P2, P3);
-implCmdFn!(P0, P1, P2, P3, P4);
-implCmdFn!(P0, P1, P2, P3, P4, P5);
-implCmdFn!(P0, P1, P2, P3, P4, P5, P6);
-implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7);
-implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8);
-implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9);
-implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10);
-implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
+implCmdFn!(1, P0);
+implCmdFn!(2, P0, P1);
+implCmdFn!(3, P0, P1, P2);
+implCmdFn!(4, P0, P1, P2, P3);
+implCmdFn!(5, P0, P1, P2, P3, P4);
+implCmdFn!(6, P0, P1, P2, P3, P4, P5);
+implCmdFn!(7, P0, P1, P2, P3, P4, P5, P6);
+implCmdFn!(8, P0, P1, P2, P3, P4, P5, P6, P7);
+implCmdFn!(9, P0, P1, P2, P3, P4, P5, P6, P7, P8);
+implCmdFn!(10, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9);
+implCmdFn!(11, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10);
+implCmdFn!(12, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
