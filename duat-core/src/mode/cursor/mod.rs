@@ -1060,16 +1060,15 @@ impl<'a, 'lend, W: Widget + ?Sized, S> Lending<'lend> for Cursors<'a, W, S> {
 
 impl<'a, W: Widget + ?Sized, S> Lender for Cursors<'a, W, S> {
     fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
-        let current_i = self.next_i.get();
-        let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
-
         reinsert_selections(
-            self.current
-                .splice(.., [Some((selection, current_i, was_main))])
-                .flatten(),
+            self.current.drain(..).flatten(),
             self.widget,
             Some(&self.next_i),
         );
+
+        let current_i = self.next_i.get();
+        let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
+        self.current.push(Some((selection, current_i, was_main)));
 
         Some(Cursor::new(
             &mut self.current,

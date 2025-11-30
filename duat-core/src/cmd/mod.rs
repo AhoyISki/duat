@@ -166,10 +166,12 @@
 //! [`Form`]: crate::form::Form
 //! [`Handle`]: crate::context::Handle
 use std::{
+    any::Any,
+    cell::UnsafeCell,
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use crossterm::style::Color;
@@ -1080,6 +1082,45 @@ mod global {
         Option<(Range<usize>, Text)>,
     )> {
         COMMANDS.check_args(pa, caller)
+    }
+}
+
+/// A struct used for asynchronously mutating [`RwData`]s without a
+/// [`Pass`]
+///
+/// This works by wrapping the `RwData` and collecting every mutating
+/// function inside a separate [`Mutex`]. Whenever you access the
+/// `Data`, the changes are applied to it.
+///
+/// With this in mind, one limitation of this type is that every
+/// access must make use of a `&mut Pass`, with the exception of
+/// [`BulkDataWriter::try_read`], which returns `Some` only when there
+/// have been no changes to the `Data`.
+struct BulkDataWriter<Data: 'static> {
+    actions: Mutex<Vec<Box<dyn FnOnce(&mut Data) + Send + 'static>>>,
+    data: LazyLock<RwData<Data>>,
+}
+
+impl<Data: Default + 'static> BulkDataWriter<Data> {
+    /// Returns a new `BulkDataWriter`
+    ///
+    /// Considering the fact that this struct is almost exclusively
+    /// used in `static` variables, I have decided to make its
+    /// constructor `const`, to facilitate its usage.
+    pub const fn new() -> Self {
+        Self {
+            actions: Mutex::new(Vec::new()),
+            data: LazyLock::new(|| RwData::new(Data::default())),
+        }
+    }
+
+    /// Adds a mutating function to the list of functions to call upon
+    /// accessing the `Data`
+    ///
+    /// This is useful for allowing mutation from any thread, and
+    /// without needing [`Pass`]es. `duat-core` makes extensive use of
+    /// this function in order to provide pleasant to use APIs.
+    pub fn mutate(&self, f: impl FnOnce(&mut Data) + Send + 'static) {
     }
 }
 

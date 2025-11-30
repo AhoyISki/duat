@@ -48,7 +48,7 @@ FUTURE UPDATES:
 [ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.
 [ ] Get rid of Widget::needs_update?
-[ ] Get rid of print function from Widgets, implement LineNumbers through a Parser.
+[ ] Get rid of print function from Widgets.
 [ ] Coordinates based tagging.
 [ ] Use track_caller on TextBuilder.
 [ ] Anonymous Forms, which index based on hashing the Form itself.
