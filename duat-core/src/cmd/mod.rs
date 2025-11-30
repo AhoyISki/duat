@@ -166,12 +166,10 @@
 //! [`Form`]: crate::form::Form
 //! [`Handle`]: crate::context::Handle
 use std::{
-    any::Any,
-    cell::UnsafeCell,
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, Mutex},
 };
 
 use crossterm::style::Color;
@@ -180,7 +178,7 @@ pub use self::{global::*, parameters::*};
 use crate::{
     buffer::{Buffer, PathKind},
     context::{self, Handle, sender},
-    data::{Pass, RwData},
+    data::Pass,
     form::FormId,
     mode,
     session::DuatEvent,
@@ -197,7 +195,10 @@ pub(crate) fn add_session_commands() {
 
     add(
         "alias",
-        |_: &mut Pass, alias: String, command: Remainder| crate::cmd::alias(alias, command.0),
+        |_: &mut Pass, alias: String, command: Remainder| {
+            crate::cmd::alias(alias, command.0);
+            Ok(None)
+        },
     )
     .doc(
         txt!("Create an alias for a command"),
@@ -239,7 +240,7 @@ pub(crate) fn add_session_commands() {
              be included"
         )),
     )]);
-    alias("w", "write").unwrap();
+    alias("w", "write");
 
     add(
         "write-quit",
@@ -280,7 +281,7 @@ pub(crate) fn add_session_commands() {
              be included"
         )),
     )]);
-    alias("wq", "write-quit").unwrap();
+    alias("wq", "write-quit");
 
     add("write-all", |pa: &mut Pass| {
         let windows = context::windows();
@@ -304,7 +305,7 @@ pub(crate) fn add_session_commands() {
         }
     })
     .doc(txt!("Writes to all [a]Buffer[]s"), None);
-    alias("wa", "write-all").unwrap();
+    alias("wa", "write-all");
 
     add("write-all-quit", |pa: &mut Pass| {
         let windows = context::windows();
@@ -333,7 +334,7 @@ pub(crate) fn add_session_commands() {
             "If any [a]Buffer[] fails to be saved, won't quit Duat"
         )),
     );
-    alias("waq", "write-all-quit").unwrap();
+    alias("waq", "write-all-quit");
 
     add("write-all-quit!", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows().buffers(pa).collect();
@@ -351,7 +352,7 @@ pub(crate) fn add_session_commands() {
             "[a]WARNING[]: This command will ignore any failed attempts to write"
         )),
     );
-    alias("waq!", "write-all-quit!").unwrap();
+    alias("waq!", "write-all-quit!");
 
     add("quit", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
@@ -379,7 +380,7 @@ pub(crate) fn add_session_commands() {
         txt!("Optional [a]Buffer[] to quit, instead of the current one"),
         None,
     )]);
-    alias("q", "quit").unwrap();
+    alias("q", "quit");
 
     add("quit!", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
@@ -399,7 +400,7 @@ pub(crate) fn add_session_commands() {
         txt!("Optional [a]Buffer[] to quit, instead of the current one"),
         None,
     )]);
-    alias("q!", "quit!").unwrap();
+    alias("q!", "quit!");
 
     add("quit-all", |pa: &mut Pass| {
         let windows = context::windows();
@@ -426,7 +427,7 @@ pub(crate) fn add_session_commands() {
             "This will fail if the [a]Buffer[] has unsaved changes"
         )),
     );
-    alias("qa", "quit-all").unwrap();
+    alias("qa", "quit-all");
 
     add("quit-all!", |_: &mut Pass| {
         sender().send(DuatEvent::Quit).unwrap();
@@ -438,7 +439,7 @@ pub(crate) fn add_session_commands() {
             "[a]WARNING[]: This command will ignore any unsaved changes"
         )),
     );
-    alias("qa!", "quit-all!").unwrap();
+    alias("qa!", "quit-all!");
 
     add(
         "reload",
@@ -520,7 +521,7 @@ pub(crate) fn add_session_commands() {
              configuration crate files"
         )),
     )]);
-    alias("e", "edit").unwrap().unwrap();
+    alias("e", "edit");
 
     add("open", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
         let windows = context::windows();
@@ -563,7 +564,7 @@ pub(crate) fn add_session_commands() {
              configuration crate files"
         )),
     )]);
-    alias("o", "open").unwrap();
+    alias("o", "open");
 
     add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
         mode::reset_to(handle.to_dyn());
@@ -571,7 +572,7 @@ pub(crate) fn add_session_commands() {
     })
     .doc(txt!("Switch to an open [a]Buffer[]"), None)
     .doc_params([CmdDoc::new(txt!("The name of an open [a]Buffer"), None)]);
-    alias("b", "buffer").unwrap();
+    alias("b", "buffer");
 
     add("next-buffer", |pa: &mut Pass, scope: Scope| {
         let windows = context::windows();
@@ -737,20 +738,17 @@ pub(crate) fn add_session_commands() {
 }
 
 mod global {
-    use std::{cell::UnsafeCell, ops::Range, sync::Arc};
-
-    use super::{CmdResult, Commands};
-    #[doc(inline)]
-    use crate::{
-        cmd::CmdFn,
-        context,
-        data::{Pass, RwData},
-        form::FormId,
-        session::DuatEvent,
-        text::Text,
+    use std::{
+        ops::Range,
+        sync::{Arc, Mutex},
     };
 
-    static COMMANDS: Commands = Commands::new();
+    use super::{CmdResult, Commands};
+    use crate::data::BulkDataWriter;
+    #[doc(inline)]
+    use crate::{cmd::CmdFn, context, data::Pass, form::FormId, session::DuatEvent, text::Text};
+
+    static COMMANDS: BulkDataWriter<Commands> = BulkDataWriter::new();
 
     /// A builder for a command
     ///
@@ -786,7 +784,8 @@ mod global {
 
     impl Drop for CmdBuilder {
         fn drop(&mut self) {
-            COMMANDS.add(self.command.take().unwrap());
+            let command = self.command.take().unwrap();
+            COMMANDS.mutate(move |cmds| cmds.add(command));
         }
     }
 
@@ -875,12 +874,9 @@ mod global {
         CmdBuilder {
             command: Some(super::Command::new(
                 caller.to_string(),
-                // SAFETY: The type of this RwData doesn't matter, as it is never checked.
-                unsafe {
-                    RwData::new_unsized::<Cmd>(Arc::new(UnsafeCell::new(
-                        move |pa: &mut Pass, args: super::Args| cmd.call(pa, args),
-                    )))
-                },
+                Arc::new(Mutex::new(move |pa: &mut Pass, args: super::Args| {
+                    cmd.call(pa, args)
+                })),
                 Cmd::check_args,
                 Cmd::param_count(),
             )),
@@ -967,12 +963,10 @@ mod global {
     }
 
     /// Tries to alias a `caller` to an existing `command`.
-    ///
-    /// Returns an [`Err`] if the `caller` is already a caller for
-    /// another command, or if `command` is not a real caller to an
-    /// existing command.
-    pub fn alias(alias: impl ToString, command: impl ToString) -> CmdResult {
-        COMMANDS.alias(alias, command)
+    pub fn alias(alias: impl ToString, command: impl ToString) {
+        let alias = alias.to_string();
+        let command = command.to_string();
+        COMMANDS.mutate(move |cmds| context::logs().push_cmd_result(cmds.alias(alias, command)))
     }
 
     /// Runs a full command synchronously, with a [`Pass`].
@@ -1004,13 +998,16 @@ mod global {
     /// [`cmd::call_notify`]: call_notify
     /// [`PromptLine`]: https://docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
     pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
-        COMMANDS.run(pa, call)
+        COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa))
     }
 
     /// Like [`call`], but notifies the result
     #[allow(unused_must_use)]
     pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
-        let result = COMMANDS.run(pa, call.to_string());
+        let result = COMMANDS
+            .write(pa)
+            .get_cmd(call.to_string())
+            .and_then(|cmd| cmd(pa));
         context::logs().push_cmd_result(result.clone());
 
         result
@@ -1032,7 +1029,7 @@ mod global {
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
                 // SAFETY: Closure has Pass argument.
-                let _ = COMMANDS.run(pa, call);
+                let _ = COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa));
             })))
             .unwrap();
     }
@@ -1042,7 +1039,8 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                context::logs().push_cmd_result(COMMANDS.run(pa, call.clone()).clone());
+                context::logs()
+                    .push_cmd_result(COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa)));
             })))
             .unwrap()
     }
@@ -1052,7 +1050,7 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                map(COMMANDS.run(pa, call));
+                map(COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa)));
             })))
             .unwrap()
     }
@@ -1065,7 +1063,7 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                let result = COMMANDS.run(pa, call.clone());
+                let result = COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa));
                 context::logs().push_cmd_result(result.clone());
 
                 map(result)
@@ -1075,69 +1073,13 @@ mod global {
 
     /// Check if the arguments for a given `caller` are correct
     pub fn check_args(
-        pa: &Pass,
+        pa: &mut Pass,
         caller: &str,
     ) -> Option<(
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
     )> {
-        COMMANDS.check_args(pa, caller)
-    }
-}
-
-/// A struct used for asynchronously mutating [`RwData`]s without a
-/// [`Pass`]
-///
-/// This works by wrapping the `RwData` and collecting every mutating
-/// function inside a separate [`Mutex`]. Whenever you access the
-/// `Data`, the changes are applied to it.
-///
-/// With this in mind, one limitation of this type is that every
-/// access must make use of a `&mut Pass`, with the exception of
-/// [`BulkDataWriter::try_read`], which returns `Some` only when there
-/// have been no changes to the `Data`.
-struct BulkDataWriter<Data: 'static> {
-    actions: Mutex<Vec<Box<dyn FnOnce(&mut Data) + Send + 'static>>>,
-    data: LazyLock<RwData<Data>>,
-}
-
-impl<Data: Default + 'static> BulkDataWriter<Data> {
-    /// Returns a new `BulkDataWriter`
-    ///
-    /// Considering the fact that this struct is almost exclusively
-    /// used in `static` variables, I have decided to make its
-    /// constructor `const`, to facilitate its usage.
-    pub const fn new() -> Self {
-        Self {
-            actions: Mutex::new(Vec::new()),
-            data: LazyLock::new(|| RwData::new(Data::default())),
-        }
-    }
-
-    /// Adds a mutating function to the list of functions to call upon
-    /// accessing the `Data`
-    ///
-    /// This is useful for allowing mutation from any thread, and
-    /// without needing [`Pass`]es. `duat-core` makes extensive use of
-    /// this function in order to provide pleasant to use APIs.
-    pub fn mutate(&self, f: impl FnOnce(&mut Data) + Send + 'static) {
-        self.actions.lock().unwrap().push(Box::new(f));
-    }
-
-    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Data {
-        let data = self.data.write(pa);
-        for action in self.actions.lock().unwrap().drain(..) {
-            action(data);
-        }
-        data
-    }
-
-    pub fn try_read<'a>(&'a self, pa: &'a Pass) -> Option<&'a Data> {
-        self.actions
-            .lock()
-            .unwrap()
-            .is_empty()
-            .then(|| self.data.read(pa))
+        COMMANDS.write(pa).check_args(caller).map(|ca| ca(pa))
     }
 }
 
@@ -1150,44 +1092,58 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
 /// [`Buffer`]: crate::buffer::Buffer
 /// [widget]: crate::ui::Widget
 /// [windows]: crate::ui::Window
-struct Commands(LazyLock<Mutex<InnerCommands>>);
+#[derive(Default)]
+struct Commands {
+    list: Vec<Command>,
+    aliases: HashMap<String, (Command, String)>,
+}
 
 impl Commands {
-    /// Returns a new instance of [`Commands`].
-    const fn new() -> Self {
-        Self(LazyLock::new(|| {
-            Mutex::new(InnerCommands {
-                list: Vec::new(),
-                aliases: HashMap::new(),
-            })
-        }))
-    }
-
     /// Aliases a command to a specific word
-    fn alias(&self, alias: impl ToString, command: impl ToString) -> CmdResult {
-        self.0
-            .lock()
-            .unwrap()
-            .try_alias(alias.to_string(), command.to_string())
+    fn alias(&mut self, alias: String, call: String) -> CmdResult {
+        if alias.split_whitespace().count() != 1 {
+            return Err(txt!("Alias [a]{alias}[] is not a single word"));
+        }
+
+        let caller = call
+            .split_whitespace()
+            .next()
+            .ok_or(txt!("The command is empty"))?
+            .to_string();
+
+        let mut cmds = self.list.iter();
+
+        if let Some(command) = cmds.find(|cmd| cmd.caller().contains(&caller)) {
+            let entry = (command.clone(), call.clone());
+            Ok(Some(match self.aliases.insert(alias.clone(), entry) {
+                Some((_, prev_call)) => {
+                    txt!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}")
+                }
+                None => txt!("Aliased [a]{alias}[] to [a]{call}"),
+            }))
+        } else {
+            Err(txt!("The caller [a]{caller}[] was not found"))
+        }
     }
 
     /// Runs a command from a call
-    fn run(&self, pa: &mut Pass, call: impl Display) -> CmdResult {
+    fn get_cmd(
+        &self,
+        call: impl Display,
+    ) -> Result<impl for<'a> FnOnce(&'a mut Pass) -> CmdResult + 'static, Text> {
         let call = call.to_string();
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(txt!("The command is empty"))?.to_string();
 
-        let inner = self.0.lock().unwrap();
-
         let (command, call) = {
-            if let Some(command) = inner.aliases.get(&caller) {
+            if let Some(command) = self.aliases.get(&caller) {
                 let (command, call) = command;
                 let mut call = call.clone() + " ";
                 call.extend(args);
 
                 (command.clone(), call)
             } else {
-                let command = inner
+                let command = self
                     .list
                     .iter()
                     .find(|cmd| cmd.caller() == caller)
@@ -1197,48 +1153,44 @@ impl Commands {
             }
         };
 
-        let args = Args::new(&call);
-
-        match catch_panic(|| (command.check_args)(pa, args.clone())) {
-            Some((_, Some((_, err)))) => return Err(txt!("[a]{caller}[]: {err}")),
-            Some(_) => {}
-            None => return Err(txt!("[a]{caller}[]: Argument parsing panicked")),
-        }
-
         let silent = call.len() > call.trim_start().len();
-        match catch_panic(|| command.cmd.write(&mut unsafe { Pass::new() })(pa, args)) {
-            Some(result) => result
-                .map(|ok| ok.filter(|_| !silent))
-                .map_err(|err| txt!("[a]{caller}[]: {err}")),
-            None => Err(txt!("[a]{caller}[]: Command panicked")),
-        }
+        let cmd = command.cmd.clone();
+        Ok(move |pa: &mut Pass| {
+            let args = Args::new(&call);
+
+            match catch_panic(|| (command.check_args)(pa, args.clone())) {
+                Some((_, Some((_, err)))) => return Err(txt!("[a]{caller}[]: {err}")),
+                Some(_) => {}
+                None => return Err(txt!("[a]{caller}[]: Argument parsing panicked")),
+            }
+
+            match catch_panic(move || cmd.lock().unwrap()(pa, args)) {
+                Some(result) => result
+                    .map(|ok| ok.filter(|_| !silent))
+                    .map_err(|err| txt!("[a]{caller}[]: {err}")),
+                None => Err(txt!("[a]{caller}[]: Command panicked")),
+            }
+        })
     }
 
     /// Adds a command to the list of commands
-    fn add(&self, command: Command) {
-        self.0.lock().unwrap().add(command)
+    fn add(&mut self, command: Command) {
+        self.list.retain(|cmd| cmd.caller != command.caller());
+        self.list.push(command);
     }
 
     /// Gets the parameter checker for a command, if it exists
-    fn check_args(
-        &self,
-        pa: &Pass,
-        call: &str,
-    ) -> Option<(
-        Vec<(Range<usize>, Option<FormId>)>,
-        Option<(Range<usize>, Text)>,
-    )> {
+    fn check_args<'a>(&self, call: &'a str) -> Option<impl FnOnce(&Pass) -> CheckedArgs + 'a> {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        let inner = self.0.lock().unwrap();
-        if let Some((command, _)) = inner.aliases.get(&caller) {
-            Some((command.check_args)(pa, Args::new(call)))
+        let check_args = if let Some((command, _)) = self.aliases.get(&caller) {
+            command.check_args
         } else {
-            let command = inner.list.iter().find(|cmd| cmd.caller() == caller)?;
-
-            Some((command.check_args)(pa, Args::new(call)))
-        }
+            let command = self.list.iter().find(|cmd| cmd.caller() == caller)?;
+            command.check_args
+        };
+        Some(move |pa: &Pass| check_args(pa, Args::new(call)))
     }
 }
 
@@ -1288,49 +1240,6 @@ impl Command {
     }
 }
 
-struct InnerCommands {
-    list: Vec<Command>,
-    aliases: HashMap<String, (Command, String)>,
-}
-
-impl InnerCommands {
-    /// Adds a command to the list
-    ///
-    /// Overrides previous commands with the same name.
-    fn add(&mut self, command: Command) {
-        self.list.retain(|cmd| cmd.caller != command.caller());
-        self.list.push(command);
-    }
-
-    /// Tries to alias a full command (caller, flags, and
-    /// arguments) to an alias.
-    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>, Text> {
-        if alias.split_whitespace().count() != 1 {
-            return Err(txt!("Alias [a]{alias}[] is not a single word"));
-        }
-
-        let caller = call
-            .split_whitespace()
-            .next()
-            .ok_or(txt!("The command is empty"))?
-            .to_string();
-
-        let mut cmds = self.list.iter();
-
-        if let Some(command) = cmds.find(|cmd| cmd.caller().contains(&caller)) {
-            let entry = (command.clone(), call.clone());
-            Ok(Some(match self.aliases.insert(alias.clone(), entry) {
-                Some((_, prev_call)) => {
-                    txt!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}")
-                }
-                None => txt!("Aliased [a]{alias}[] to [a]{call}"),
-            }))
-        } else {
-            Err(txt!("The caller [a]{caller}[] was not found"))
-        }
-    }
-}
-
 /// A list of names to call a command with
 pub trait Caller<'a>: Sized {
     /// An [`Iterator`] over said callers
@@ -1355,16 +1264,9 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
     }
 }
 
-/// Inner function for Commands
-#[doc(hidden)]
-pub type InnerCmdFn = RwData<dyn FnMut(&mut Pass, Args) -> CmdResult + Send + 'static>;
-
-/// Inner checking function
-#[doc(hidden)]
-pub type CheckerFn = fn(
-    &Pass,
-    Args,
-) -> (
+type InnerCmdFn = Arc<Mutex<dyn FnMut(&mut Pass, Args) -> CmdResult + Send + 'static>>;
+type CheckerFn = fn(&Pass, Args) -> CheckedArgs;
+type CheckedArgs = (
     Vec<(Range<usize>, Option<FormId>)>,
     Option<(Range<usize>, Text)>,
 );

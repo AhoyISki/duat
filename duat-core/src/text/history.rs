@@ -11,10 +11,13 @@
 //!
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
-use std::{marker::PhantomData, ops::Range, sync::Arc};
+use std::{
+    marker::PhantomData,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
 
 use bincode::{BorrowDecode, Decode, Encode};
-use parking_lot::Mutex;
 
 use super::{Point, Text};
 use crate::{
@@ -39,7 +42,7 @@ impl History {
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> usize {
-        let mut remote = self.fetcher_moments.lock();
+        let mut remote = self.fetcher_moments.lock().unwrap();
         for state in remote.iter_mut() {
             state.add_change(change.clone());
         }
@@ -77,7 +80,7 @@ impl History {
         if self.cur_moment == self.moments.len() {
             None
         } else {
-            let mut remote = self.fetcher_moments.lock();
+            let mut remote = self.fetcher_moments.lock().unwrap();
             self.cur_moment += 1;
 
             let iter = self.moments[self.cur_moment - 1]
@@ -105,7 +108,7 @@ impl History {
         if self.cur_moment == 0 {
             None
         } else {
-            let mut remote = self.fetcher_moments.lock();
+            let mut remote = self.fetcher_moments.lock().unwrap();
             self.cur_moment -= 1;
 
             let mut shift = [0; 3];
@@ -128,7 +131,7 @@ impl History {
 
     /// Returns a new [`MomentFetcher`]
     pub(crate) fn new_fetcher(&self) -> MomentFetcher {
-        let mut remote = self.fetcher_moments.lock();
+        let mut remote = self.fetcher_moments.lock().unwrap();
         remote.push(FetcherState::Alive(Moment::default()));
         MomentFetcher {
             list: self.fetcher_moments.clone(),
@@ -529,7 +532,7 @@ pub(crate) struct MomentFetcher {
 impl MomentFetcher {
     /// Gets the latest [`Moment`], emptying the list of [`Change`]s
     pub(crate) fn get_moment(&self) -> Moment {
-        self.list.lock()[self.index].take().expect(
+        self.list.lock().unwrap()[self.index].take().expect(
             "This should only return None if the MomentFetcher has been dropped, at which point \
              calling this function should not be possible.",
         )
@@ -540,7 +543,7 @@ impl MomentFetcher {
 // that will never be read, since its reader is gone.
 impl Drop for MomentFetcher {
     fn drop(&mut self) {
-        self.list.lock()[self.index] = FetcherState::Dead;
+        self.list.lock().unwrap()[self.index] = FetcherState::Dead;
     }
 }
 

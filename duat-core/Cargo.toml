@@ -27,7 +27,6 @@ lender = { version = "0.4.1", default-features = false }
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 format-like = "0.4.0"
 log = "0.4.28"
-parking_lot = "0.12.5"
 regex-cursor = { version = "0.1.5", default-features = false, features = ["perf-inline"] }
 regex-syntax = "0.8.8"
 thread-amount = "0.2.2"

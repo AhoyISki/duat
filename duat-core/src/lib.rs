@@ -13,7 +13,7 @@ use std::any::TypeId;
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use lender;
-use parking_lot::Mutex;
+use std::sync::Mutex;
 
 pub use self::{main_thread_only::MainThreadOnly, ranges::Ranges};
 
@@ -102,7 +102,7 @@ impl Plugins {
     pub fn require<P: Plugin + Default>(&self) {
         // SAFETY: This function can only push new elements to the list, not
         // accessing the !Send functions within.
-        let mut plugins = unsafe { self.0.get() }.lock();
+        let mut plugins = unsafe { self.0.get() }.lock().unwrap();
         if !plugins.iter().any(|(_, ty)| *ty == TypeId::of::<P>()) {
             plugins.push((
                 Some(Box::new(|plugins| P::default().plug(plugins))),

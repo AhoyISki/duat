@@ -8,9 +8,10 @@
 //!
 //! [`Buffer`]: crate::buffer::Buffer
 //! [`Widget`]: crate::ui::Widget
-use std::{collections::HashMap, sync::LazyLock};
-
-use parking_lot::Mutex;
+use std::{
+    collections::HashMap,
+    sync::{LazyLock, Mutex},
+};
 
 use crate::text::Matcheable;
 
@@ -268,6 +269,7 @@ impl PrintOpts {
     pub fn word_chars_regex(&self) -> &'static str {
         PATTERNS
             .lock()
+            .unwrap()
             .entry(self.extra_word_chars)
             .or_insert_with(|| {
                 format!(
@@ -282,6 +284,7 @@ impl PrintOpts {
     pub fn is_word_char(&self, char: char) -> bool {
         let pat = *PATTERNS
             .lock()
+            .unwrap()
             .entry(self.extra_word_chars)
             .or_insert_with(|| {
                 format!(

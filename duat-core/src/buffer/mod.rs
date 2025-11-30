@@ -19,7 +19,7 @@ use std::{
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};
-use parking_lot::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard};
 
 use self::parser::Parsers;
 pub use self::parser::{BufferTracker, Parser};
@@ -248,7 +248,7 @@ impl Buffer {
     /// in the buffer, and a `bool`, which is `true` when the line is
     /// wrapped.
     pub fn printed_lines(&self) -> MutexGuard<'_, Vec<(usize, bool)>> {
-        self.printed_lines.lock()
+        self.printed_lines.lock().unwrap()
     }
 
     ////////// General querying functions
@@ -414,7 +414,7 @@ impl Widget for Buffer {
 
         let (buffer, area) = handle.write_with_area(pa);
         if buffer.prev_opts != opts {
-            *buffer.sync_opts.lock() = opts;
+            *buffer.sync_opts.lock().unwrap() = opts;
             buffer.prev_opts = opts;
         }
 
@@ -510,7 +510,7 @@ impl Widget for Buffer {
             .rev_print_iter(pa, &self.text, start_points, opts)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
-        let mut printed_lines = self.printed_lines.lock();
+        let mut printed_lines = self.printed_lines.lock().unwrap();
         printed_lines.clear();
 
         let mut has_wrapped = false;

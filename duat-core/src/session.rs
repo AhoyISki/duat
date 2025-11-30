@@ -70,6 +70,7 @@ impl SessionCfg {
         while let Some((plug, ty)) = {
             unsafe { plugins.0.get() }
                 .lock()
+                .unwrap()
                 .iter_mut()
                 .find_map(|(f, ty)| f.take().zip(Some(*ty)))
         } {

@@ -43,10 +43,8 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, OnceLock},
+    sync::{LazyLock, OnceLock, RwLock},
 };
-
-use parking_lot::RwLock;
 
 use crate::text::{Text, txt};
 
@@ -66,7 +64,7 @@ pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
     fn duat_name_inner(type_id: TypeId, type_name: &str) -> &'static str {
         static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
             LazyLock::new(RwLock::default);
-        let mut names = NAMES.write();
+        let mut names = NAMES.write().unwrap();
 
         if let Some(name) = names.get(&type_id) {
             name
@@ -107,7 +105,7 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     fn src_crate_inner(type_id: TypeId, type_name: &'static str) -> &'static str {
         static CRATES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
             LazyLock::new(|| RwLock::new(HashMap::new()));
-        let mut crates = CRATES.write();
+        let mut crates = CRATES.write().unwrap();
 
         if let Some(src_crate) = crates.get(&type_id) {
             src_crate

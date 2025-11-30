@@ -13,12 +13,10 @@ use std::{
     cell::RefCell,
     ops::Range,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
-
-use parking_lot::Mutex;
 
 use super::Buffer;
 use crate::{
@@ -484,6 +482,7 @@ impl Parsers {
                     let ranges_to_update = parts
                         .ranges
                         .lock()
+                        .unwrap()
                         .remove(on.clone(), handle.read(pa).bytes());
 
                     parser.update(pa, handle, ranges_to_update)
@@ -535,7 +534,10 @@ impl BufferTracker {
         self.moment = self.fetcher.get_moment();
         for change in self.moment.changes() {
             self.bytes.apply_change(change);
-            self.ranges.lock().apply_change(change, &self.bytes);
+            self.ranges
+                .lock()
+                .unwrap()
+                .apply_change(change, &self.bytes);
         }
     }
 
@@ -571,14 +573,14 @@ impl BufferTracker {
     /// [parse is requested]: Self::request_parse
     pub fn add_range(&mut self, range: impl TextRange) {
         let range = range.to_range(self.bytes.len().byte());
-        self.ranges.lock().add_range(range);
+        self.ranges.lock().unwrap().add_range(range);
     }
 
     /// Same as [`add_range`], but add many [`Range`]s at once
     ///
     /// [`add_range`]: Self::add_range
     pub fn add_ranges<R: TextRange>(&mut self, new_ranges: impl IntoIterator<Item = R>) {
-        let mut ranges = self.ranges.lock();
+        let mut ranges = self.ranges.lock().unwrap();
         for range in new_ranges {
             let range = range.to_range(self.bytes.len().byte());
             ranges.add_range(range);
@@ -594,7 +596,7 @@ impl BufferTracker {
     /// [added range]: Change::added_range
     /// [`add_range`]: BufferTracker::add_range
     pub fn track_changed_ranges(&mut self) {
-        let mut tracker = self.ranges.lock();
+        let mut tracker = self.ranges.lock().unwrap();
         *tracker = RangesTracker::ChangedRanges(tracker.take_ranges());
     }
 
@@ -618,7 +620,7 @@ impl BufferTracker {
     /// [added range]: Change::added_range
     /// [`add_range`]: BufferTracker::add_range
     pub fn track_changed_lines(&mut self) {
-        let mut tracker = self.ranges.lock();
+        let mut tracker = self.ranges.lock().unwrap();
         *tracker = RangesTracker::ChangedLines(tracker.take_ranges());
     }
 
@@ -686,7 +688,7 @@ impl BufferTracker {
     /// [`Selections`]: crate::mode::Selections
     /// [`Form`]: crate::form::Form
     pub fn track_area(&mut self) {
-        *self.ranges.lock() = RangesTracker::Area;
+        *self.ranges.lock().unwrap() = RangesTracker::Area;
     }
 
     /// Disable the automatic [`Change`] tracking functionality
@@ -699,7 +701,7 @@ impl BufferTracker {
     ///
     /// [`add_range`]: BufferTracker::add_range
     pub fn turn_off_tracking(&mut self) {
-        let mut tracker = self.ranges.lock();
+        let mut tracker = self.ranges.lock().unwrap();
         *tracker = RangesTracker::Manual(tracker.take_ranges());
     }
 
@@ -740,7 +742,7 @@ impl BufferTracker {
     ///
     /// [`Area`]: crate::ui::Area
     pub fn indent(&self, p: Point) -> usize {
-        self.bytes.indent(p, *self.opts.lock())
+        self.bytes.indent(p, *self.opts.lock().unwrap())
     }
 
     /// The [`PrintOpts`] of the [`Buffer`]
@@ -749,7 +751,7 @@ impl BufferTracker {
     /// always be up to date with what it currently is in the
     /// [`Buffer`]
     pub fn opts(&self) -> PrintOpts {
-        *self.opts.lock()
+        *self.opts.lock().unwrap()
     }
 }
 

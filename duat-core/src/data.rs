@@ -51,8 +51,7 @@ use std::{
     cell::{RefCell, UnsafeCell},
     marker::PhantomData,
     sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, LazyLock, Mutex
     },
     time::Duration,
 };
@@ -486,6 +485,74 @@ impl<I: ?Sized, O> DataMap<I, O> {
 // acquired when there is a Pass, i.e., on the main thread.
 unsafe impl<I: ?Sized + 'static, O: 'static> Send for DataMap<I, O> {}
 unsafe impl<I: ?Sized + 'static, O: 'static> Sync for DataMap<I, O> {}
+
+/// A struct used for asynchronously mutating [`RwData`]s without a
+/// [`Pass`]
+///
+/// This works by wrapping the `RwData` and collecting every mutating
+/// function inside a separate [`Mutex`]. Whenever you access the
+/// `Data`, the changes are applied to it.
+///
+/// With this in mind, one limitation of this type is that every
+/// access must make use of a `&mut Pass`, with the exception of
+/// [`BulkDataWriter::try_read`], which returns `Some` only when there
+/// have been no changes to the `Data`.
+pub struct BulkDataWriter<Data: 'static> {
+    actions: Mutex<Vec<Box<dyn FnOnce(&mut Data) + Send + 'static>>>,
+    data: LazyLock<RwData<Data>>,
+}
+
+impl<Data: Default + 'static> BulkDataWriter<Data> {
+    /// Returns a new `BulkDataWriter`
+    ///
+    /// Considering the fact that this struct is almost exclusively
+    /// used in `static` variables, I have decided to make its
+    /// constructor `const`, to facilitate its usage.
+    #[allow(clippy::new_without_default)]
+    pub const fn new() -> Self {
+        Self {
+            actions: Mutex::new(Vec::new()),
+            data: LazyLock::new(|| RwData::new(Data::default())),
+        }
+    }
+
+    /// Adds a mutating function to the list of functions to call upon
+    /// accessing the `Data`
+    ///
+    /// This is useful for allowing mutation from any thread, and
+    /// without needing [`Pass`]es. `duat-core` makes extensive use of
+    /// this function in order to provide pleasant to use APIs.
+    pub fn mutate(&self, f: impl FnOnce(&mut Data) + Send + 'static) {
+        self.actions.lock().unwrap().push(Box::new(f));
+    }
+
+    /// Accesses the `Data`, calling all added actions
+    ///
+    /// This function will call all actions that were sent by the
+    /// [`BulkDataWriter::mutate`] function in order to write to the
+    /// `Data` asynchronously.
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Data {
+        let data = self.data.write(pa);
+        for action in self.actions.lock().unwrap().drain(..) {
+            action(data);
+        }
+        data
+    }
+
+    /// Attempts to read the `Data`
+    ///
+    /// This function will return [`None`] if there are pending
+    /// actions that need to happen before reading/writing. You should
+    /// almost always prefer calling [`BulkDataWriter::write`]
+    /// instead.
+    pub fn try_read<'a>(&'a self, pa: &'a Pass) -> Option<&'a Data> {
+        self.actions
+            .lock()
+            .unwrap()
+            .is_empty()
+            .then(|| self.data.read(pa))
+    }
+}
 
 /// A key for reading/writing to [`RwData`]
 ///
