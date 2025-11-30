@@ -77,7 +77,11 @@ struct Args {
     author: Option<String>,
 }
 
+static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let start = START.get_or_init(std::time::Instant::now);
+
     let args = <Args as clap::Parser>::parse();
 
     if let Some(name) = args.init_plugin.clone() {
@@ -193,18 +197,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The watcher is returned as to not be dropped.
     let (config_tx, config_rx) = mpsc::channel();
-    let _watcher = match spawn_config_watcher(config_tx.clone(), duat_tx.clone(), crate_dir) {
-        Ok(_watcher) => Some(_watcher),
-        Err(err) => {
-            context::error!("Failed to spawn watcher, [a]reloading will be disabled[]: {err}");
-            None
-        }
-    };
-
     let (reload_tx, reload_rx) = mpsc::channel();
-    spawn_reloader(reload_rx, config_tx.clone(), duat_tx.clone());
 
-    ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
+    std::thread::spawn({
+        let duat_tx = duat_tx.clone();
+        move || {
+            ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
+            
+            let _watcher = match spawn_config_watcher(config_tx.clone(), duat_tx.clone(), crate_dir)
+            {
+                Ok(_watcher) => Some(std::mem::ManuallyDrop::new(_watcher)),
+                Err(err) => {
+                    context::error!("Failed to spawn watcher, [a]reloading disabled[]: {err}");
+                    None
+                }
+            };
+
+            spawn_reloader(reload_rx, config_tx, duat_tx);
+        }
+    });
 
     let mut reloading_profile: Option<String> = None;
 
@@ -227,6 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let clipb = &*CLIPBOARD;
             s.spawn(|| {
                 if let Some(run_duat) = running_duat_fn.take() {
+                    context::debug!("startup: {:?}", start.elapsed());
                     let initials = (logs.clone(), forms_init, (crate_dir, profile));
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
                     run_duat(initials, (ui, clipb), buffers, channel)

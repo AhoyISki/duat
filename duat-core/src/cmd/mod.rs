@@ -1121,6 +1121,23 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
     /// without needing [`Pass`]es. `duat-core` makes extensive use of
     /// this function in order to provide pleasant to use APIs.
     pub fn mutate(&self, f: impl FnOnce(&mut Data) + Send + 'static) {
+        self.actions.lock().unwrap().push(Box::new(f));
+    }
+
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Data {
+        let data = self.data.write(pa);
+        for action in self.actions.lock().unwrap().drain(..) {
+            action(data);
+        }
+        data
+    }
+
+    pub fn try_read<'a>(&'a self, pa: &'a Pass) -> Option<&'a Data> {
+        self.actions
+            .lock()
+            .unwrap()
+            .is_empty()
+            .then(|| self.data.read(pa))
     }
 }
 
