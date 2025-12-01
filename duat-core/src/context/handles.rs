@@ -246,7 +246,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     ///
     /// [`Area`]: crate::ui::Area
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a mut Area) {
-        pa.try_write_two(&self.widget, &self.area.0).unwrap()
+        pa.write_many((&self.widget, &self.area.0))
     }
 
     /// Declares the [`Widget`] within as written

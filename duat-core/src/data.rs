@@ -51,7 +51,8 @@ use std::{
     cell::{RefCell, UnsafeCell},
     marker::PhantomData,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, LazyLock, Mutex
+        Arc, LazyLock, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -272,6 +273,97 @@ impl<T: ?Sized> RwData<T> {
         Some(unsafe { &mut *(&*ptr).get() })
     }
 
+    /// Writes to the value _and_ internal [`RwData`]-like structs
+    ///
+    /// This method takes a function that borrows a [`WriteableTuple`]
+    /// from `self`, letting you write to `self` and the data in the
+    /// tuple (or single element) at the same time.
+    ///
+    /// This is _really_ useful in a scenario where, for example, your
+    /// [`Handle<W>`] for some widget `W` holds a [`Handle<Buffer>`],
+    /// and you wish to access both at the same time, while writing to
+    /// the former:
+    ///
+    /// ```rust
+    /// # duat_core::utils::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// struct MyWidget {
+    ///     text: Text,
+    ///     buf: Handle,
+    /// };
+    ///
+    /// impl Widget for MyWidget {
+    ///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
+    ///         let (wid, buf) = handle.write_then(pa, |wid| &wid.buf);
+    ///         // Updating the widget and reading/writing from the Buffer at the same time.
+    ///         // ...
+    ///     }
+    ///     // ..
+    ///     # fn text(&self) -> &Text { &self.text }
+    ///     # fn text_mut(&mut self) -> &mut Text { &mut self.text }
+    ///     # fn needs_update(&self) -> bool { false }
+    /// }
+    /// ```
+    ///
+    /// You can also return tuples from the function, allowing for
+    /// access to up to twelve different [`RwData`]-like structs:
+    ///
+    /// ```rust
+    /// # duat_core::utils::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// struct MyWidget {
+    ///     text: Text,
+    ///     buf1: Handle,
+    ///     buf2: Handle,
+    /// };
+    ///
+    /// impl Widget for MyWidget {
+    ///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
+    ///         let (wid, (b1, b2)) = handle.write_then(pa, |wid| (&wid.buf1, &wid.buf2));
+    ///         // ...
+    ///     }
+    ///     // ..
+    ///     # fn text(&self) -> &Text { &self.text }
+    ///     # fn text_mut(&mut self) -> &mut Text { &mut self.text }
+    ///     # fn needs_update(&self) -> bool { false }
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if any of the elements of the tuple
+    /// point to the same data as any other element or `self`, see
+    /// [`Pass::write_many`] for more information.
+    ///
+    /// [`Handle<W>`]: crate::context::Handle
+    /// [`Handle<Buffer>`]: crate::context::Handle
+    #[track_caller]
+    #[allow(static_mut_refs)]
+    pub fn write_then<'a, Tup: WriteableTuple<'a, impl std::any::Any>>(
+        &'a self,
+        pa: &'a mut Pass,
+        tup_fn: impl FnOnce(&'a T) -> Tup,
+    ) -> (&'a mut T, Tup::Return) {
+        let tup = tup_fn(self.read(pa));
+        if tup.any_eqs(CurStatePtr(&self.cur_state)) {
+            panic!("Tried writing to the same data multiple times at the same time");
+        }
+
+        /// SAFETY: The ptrs are already verifiably not pointing to
+        /// the data of self.
+        static mut INTERNAL_PASS1: Pass = unsafe { Pass::new() };
+        let tup_ret = unsafe { &mut INTERNAL_PASS1 }.write_many(tup);
+
+        /// SAFETY: This is safe because pa is "busy" borrowing the
+        /// tup from self.
+        static mut INTERNAL_PASS2: Pass = unsafe { Pass::new() };
+        let value = self.write(unsafe { &mut INTERNAL_PASS2 });
+
+        (value, tup_ret)
+    }
+
     /// Simulates a [`write`] without actually writing
     ///
     /// This is useful if you want to tell Duat that you want
@@ -283,6 +375,14 @@ impl<T: ?Sized> RwData<T> {
     pub fn declare_written(&self) {
         let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
         self.read_state.store(prev + 1, Ordering::Relaxed);
+    }
+
+    /// Takes the value within, replacing it with the default
+    pub fn take(&self, pa: &mut Pass) -> T
+    where
+        T: Default,
+    {
+        std::mem::take(self.write(pa))
     }
 
     ////////// Mapping of the inner value
@@ -302,6 +402,26 @@ impl<T: ?Sized> RwData<T> {
         };
 
         DataMap { data, map: Arc::new(RefCell::new(map)) }
+    }
+
+    /// Maps the value to another value with a mutating function
+    ///
+    /// This is useful if you want to repeat a function over and over
+    /// again in order to get a new different result, whilst mutating
+    /// the data within.
+    pub fn map_mut<Ret: 'static>(
+        &self,
+        map: impl FnMut(&mut T) -> Ret + 'static,
+    ) -> MutDataMap<T, Ret> {
+        let RwData { value, cur_state, .. } = self.clone();
+        let data = RwData {
+            value,
+            cur_state,
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))),
+            ty: TypeId::of::<T>(),
+        };
+
+        MutDataMap { data, map: Arc::new(RefCell::new(map)) }
     }
 
     /// Attempts to downcast an [`RwData`] to a concrete type
@@ -331,7 +451,7 @@ impl<T: ?Sized> RwData<T> {
 
     /// Wether this [`RwData`] and another point to the same value
     pub fn ptr_eq<U: ?Sized>(&self, other: &RwData<U>) -> bool {
-        Arc::as_ptr(&self.value).addr() == Arc::as_ptr(&other.value).addr()
+        Arc::ptr_eq(&self.cur_state, &other.cur_state)
     }
 
     /// The [`TypeId`] of the concrete type within
@@ -486,6 +606,71 @@ impl<I: ?Sized, O> DataMap<I, O> {
 unsafe impl<I: ?Sized + 'static, O: 'static> Send for DataMap<I, O> {}
 unsafe impl<I: ?Sized + 'static, O: 'static> Sync for DataMap<I, O> {}
 
+/// A mutable mapping of an [`RwData`]
+///
+/// This works very similarly to the [`DataMap`], except the function
+/// is allowed to mutate the data, so it takes a `&mut Pass` instead
+/// of a regular `&Pass`.
+pub struct MutDataMap<I: ?Sized + 'static, O: 'static> {
+    data: RwData<I>,
+    map: Arc<RefCell<dyn FnMut(&mut I) -> O>>,
+}
+
+impl<I: ?Sized, O> MutDataMap<I, O> {
+    /// Call this `DataMap`'s mapping function, returning the output
+    pub fn call(&self, pa: &mut Pass) -> O {
+        self.map.borrow_mut()(self.data.write(pa))
+    }
+
+    /// Maps the value within, works just like [`RwData::map`]
+    pub fn map<O2>(self, mut f: impl FnMut(O) -> O2 + 'static) -> MutDataMap<I, O2> {
+        self.data
+            .map_mut(move |input| f(self.map.borrow_mut()(input)))
+    }
+
+    /// Wether someone else called [`write`] or [`write_as`] since the
+    /// last [`read`] or [`write`]
+    ///
+    /// Do note that this *DOES NOT* mean that the value inside has
+    /// actually been changed, it just means a mutable reference was
+    /// acquired after the last call to [`has_changed`].
+    ///
+    /// Some types like [`Text`], and traits like [`Widget`] offer
+    /// [`needs_update`] methods, you should try to determine what
+    /// parts to look for changes.
+    ///
+    /// Generally though, you can use this method to gauge that.
+    ///
+    /// [`write`]: RwData::write
+    /// [`write_as`]: RwData::write_as
+    /// [`read`]: RwData::read
+    /// [`has_changed`]: RwData::has_changed
+    /// [`Text`]: crate::text::Text
+    /// [`Widget`]: crate::ui::Widget
+    /// [`needs_update`]: crate::ui::Widget::needs_update
+    pub fn has_changed(&self) -> bool {
+        self.data.has_changed()
+    }
+
+    /// A function that checks if the data has been updated
+    ///
+    /// Do note that this function will check for the specific
+    /// [`RwData`] that was used in its creation, so if you call
+    /// [`read`] on that specific [`RwData`] for example, this
+    /// function will start returning `false`.
+    ///
+    /// [`read`]: RwData::read
+    pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + 'static {
+        self.data.checker()
+    }
+}
+
+// SAFETY: The only parts that are accessible from other threads are
+// the atomic counters from the Arcs. Everything else can only be
+// acquired when there is a Pass, i.e., on the main thread.
+unsafe impl<I: ?Sized + 'static, O: 'static> Send for MutDataMap<I, O> {}
+unsafe impl<I: ?Sized + 'static, O: 'static> Sync for MutDataMap<I, O> {}
+
 /// A struct used for asynchronously mutating [`RwData`]s without a
 /// [`Pass`]
 ///
@@ -497,12 +682,12 @@ unsafe impl<I: ?Sized + 'static, O: 'static> Sync for DataMap<I, O> {}
 /// access must make use of a `&mut Pass`, with the exception of
 /// [`BulkDataWriter::try_read`], which returns `Some` only when there
 /// have been no changes to the `Data`.
-pub struct BulkDataWriter<Data: 'static> {
-    actions: Mutex<Vec<Box<dyn FnOnce(&mut Data) + Send + 'static>>>,
+pub struct BulkDataWriter<Data: Default + 'static> {
+    actions: LazyLock<Arc<Mutex<Vec<Box<dyn FnOnce(&mut Data) + Send + 'static>>>>>,
     data: LazyLock<RwData<Data>>,
 }
 
-impl<Data: Default + 'static> BulkDataWriter<Data> {
+impl<T: Default + 'static> BulkDataWriter<T> {
     /// Returns a new `BulkDataWriter`
     ///
     /// Considering the fact that this struct is almost exclusively
@@ -511,8 +696,8 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
     #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
         Self {
-            actions: Mutex::new(Vec::new()),
-            data: LazyLock::new(|| RwData::new(Data::default())),
+            actions: LazyLock::new(|| Arc::new(Mutex::new(Vec::new()))),
+            data: LazyLock::new(|| RwData::new(T::default())),
         }
     }
 
@@ -522,7 +707,7 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
     /// This is useful for allowing mutation from any thread, and
     /// without needing [`Pass`]es. `duat-core` makes extensive use of
     /// this function in order to provide pleasant to use APIs.
-    pub fn mutate(&self, f: impl FnOnce(&mut Data) + Send + 'static) {
+    pub fn mutate(&self, f: impl FnOnce(&mut T) + Send + 'static) {
         self.actions.lock().unwrap().push(Box::new(f));
     }
 
@@ -531,7 +716,7 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
     /// This function will call all actions that were sent by the
     /// [`BulkDataWriter::mutate`] function in order to write to the
     /// `Data` asynchronously.
-    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Data {
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T {
         let data = self.data.write(pa);
         for action in self.actions.lock().unwrap().drain(..) {
             action(data);
@@ -545,180 +730,30 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
     /// actions that need to happen before reading/writing. You should
     /// almost always prefer calling [`BulkDataWriter::write`]
     /// instead.
-    pub fn try_read<'a>(&'a self, pa: &'a Pass) -> Option<&'a Data> {
+    pub fn try_read<'a>(&'a self, pa: &'a Pass) -> Option<&'a T> {
         self.actions
             .lock()
             .unwrap()
             .is_empty()
             .then(|| self.data.read(pa))
     }
-}
 
-/// A key for reading/writing to [`RwData`]
-///
-/// This key is necessary in order to prevent breakage of the number
-/// one rule of Rust: any number of shared references, or one
-/// exclusive reference.
-///
-/// When you call [`RwData::read`], any call to [`RwData::write`] may
-/// end up breaking this rule, and vice-versa, which is why this
-/// struct is necessary.
-///
-/// One downside of this approach is that it is even more restrictive
-/// than Rust's rule of thumb, since that one is enforced on
-/// individual instances, while this one is enforced on all
-/// [`RwData`]s. This (as far as i know) cannot be circumvented, as a
-/// more advanced compile time checker (that distinguishes
-/// [`RwData<T>`]s of different `T`s, for example) does not seem
-/// feasible without the use of unfinished features, which I am not
-/// willing to use.
-pub struct Pass(PhantomData<()>);
-
-impl Pass {
-    /// Returns a new instance of [`Pass`]
+    /// Maps the value to another value with a mutating function
     ///
-    /// Be careful when using this!
-    pub(crate) const unsafe fn new() -> Self {
-        Pass(PhantomData)
-    }
-
-    /// Writes to two [`RwData`] at the same time
-    ///
-    /// This can only be done when the `RwData`s are of different
-    /// types since, if they were of the same type, they could be
-    /// pointing to the same data, which would be undefined behaviour.
-    ///
-    /// Also, this may only be done with sized types, since for
-    /// example, an [`RwData<Buffer>`] could point to the same
-    /// [`Buffer`] as some [`RwData<dyn Widget>`], even if `dyn
-    /// Widget` and `Buffer` are "different types.
-    ///
-    /// # Panics
-    ///
-    /// For now, due to the inability to compary two [`TypeId`]s at
-    /// compile time in stable Rust, calling this function on two
-    /// [`RwData`]s of the same type will simply panic at runtime.
-    ///
-    /// However, in the future, once [`PartialEq`] is allowed in const
-    /// contexts, this function will refuse to compile if the
-    /// `RwData`s are of the same type.
-    ///
-    /// In practice, the outcome ends up being the same, since
-    /// breaking that invariant results in the rejection of your conde
-    /// regardless, it will just happen in a more convenient place in
-    /// the future.
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub fn write_two<'a, L: 'static, R: 'static>(
-        &'a mut self,
-        lhs: &'a RwData<L>,
-        rhs: &'a RwData<R>,
-    ) -> (&'a mut L, &'a mut R) {
-        static mut INTERNAL_PASS: Pass = unsafe { Pass::new() };
-
-        assert!(
-            TypeId::of::<L>() != TypeId::of::<R>(),
-            "Can't write to two RwData of the same type, since they may point to the same data"
-        );
-
-        #[allow(static_mut_refs)]
-        (lhs.write(self), rhs.write(unsafe { &mut INTERNAL_PASS }))
-    }
-
-    /// Writes to one [`RwData`] and reads from another at the same
-    /// time
-    ///
-    /// This can only be done when the `RwData`s are of different
-    /// types since, if they were of the same type, they could be
-    /// pointing to the same data, which would be undefined behaviour.
-    ///
-    /// Also, this may only be done with sized types, since for
-    /// example, an [`RwData<Buffer>`] could point to the same
-    /// [`Buffer`] as some [`RwData<dyn Widget>`], even if `dyn
-    /// Widget` and `Buffer` are "different types.
-    ///
-    /// # Panics
-    ///
-    /// For now, due to the inability to compary two [`TypeId`]s at
-    /// compile time in stable Rust, calling this function on two
-    /// [`RwData`]s of the same type will simply panic at runtime.
-    ///
-    /// However, in the future, once [`PartialEq`] is allowed in const
-    /// contexts, this function will refuse to compile if the
-    /// `RwData`s are of the same type.
-    ///
-    /// In practice, the outcome ends up being the same, since
-    /// breaking that invariant results in the rejection of your conde
-    /// regardless, it will just happen in a more convenient place in
-    /// the future.
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub fn read_and_write<'a, L: 'static, R: 'static>(
-        &'a mut self,
-        lhs: &'a RwData<L>,
-        rhs: &'a RwData<R>,
-    ) -> (&'a L, &'a mut R) {
-        static INTERNAL_PASS: &Pass = &unsafe { Pass::new() };
-
-        assert!(
-            TypeId::of::<L>() != TypeId::of::<R>(),
-            "Can't read and write to RwDatas of the same type, since they may point to the same \
-             data"
-        );
-
-        (lhs.read(INTERNAL_PASS), rhs.write(self))
-    }
-
-    /// Tries to write to two [`RwData`] at the same time, failing if
-    /// they point to the same data
-    ///
-    /// Almost all the time, you will want to use [`Pass::write_two`]
-    /// instead of this function, since it always returns and is
-    /// checked at compile time. There are only two situations
-    /// where you should consider using this function:
-    ///
-    /// - One or two of the [`RwData`]s point to unsized types.
-    /// - They point to the same type.
-    ///
-    /// Given these two constraints however, you should still make
-    /// sure that the two [`RwData`]s don't point to the same data.
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub fn try_write_two<'a, L: ?Sized + 'static, R: ?Sized + 'static>(
-        &'a mut self,
-        lhs: &'a RwData<L>,
-        rhs: &'a RwData<R>,
-    ) -> Option<(&'a mut L, &'a mut R)> {
-        static mut INTERNAL_PASS: Pass = unsafe { Pass::new() };
-
-        #[allow(static_mut_refs)]
-        (!lhs.ptr_eq(rhs)).then_some((lhs.write(self), rhs.write(unsafe { &mut INTERNAL_PASS })))
-    }
-
-    /// Tries to write to one [`RwData`] and reads from another at the
-    /// same time
-    ///
-    /// Almost all the time, you will want to use
-    /// [`Pass::read_and_write`] instead of this function, since
-    /// it always returns and is checked at compile time. There
-    /// are only two situations where you should consider using
-    /// this function:
-    ///
-    /// - One or two of the [`RwData`]s point to unsized types.
-    /// - They point to the same type.
-    ///
-    /// Given these two constraints however, you should still make
-    /// sure that the two [`RwData`]s don't point to the same data.
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub fn try_read_and_write<'a, L: ?Sized + 'static, R: ?Sized + 'static>(
-        &'a mut self,
-        lhs: &'a RwData<L>,
-        rhs: &'a RwData<R>,
-    ) -> Option<(&'a L, &'a mut R)> {
-        static INTERNAL_PASS: Pass = unsafe { Pass::new() };
-
-        (!lhs.ptr_eq(rhs)).then_some((lhs.read(&INTERNAL_PASS), rhs.write(self)))
+    /// This will apply the delayed updting of
+    /// [`BulkDataWriter::write`] every time the mapping is called, so
+    /// the value always stays up to date.
+    pub fn map_mut<Ret: 'static>(
+        &self,
+        mut map: impl FnMut(&mut T) -> Ret + 'static,
+    ) -> MutDataMap<T, Ret> {
+        let actions = self.actions.clone();
+        self.data.map_mut(move |data| {
+            for action in actions.lock().unwrap().drain(..) {
+                action(data);
+            }
+            map(data)
+        })
     }
 }
 
@@ -751,5 +786,306 @@ impl PeriodicChecker {
 impl Default for PeriodicChecker {
     fn default() -> Self {
         Self::new(Duration::from_secs(1))
+    }
+}
+
+/// A key for reading/writing to [`RwData`]
+///
+/// This key is necessary in order to prevent breakage of the number
+/// one rule of Rust: any number of shared references, or one
+/// exclusive reference.
+///
+/// When you call [`RwData::read`], any call to [`RwData::write`] may
+/// end up breaking this rule, and vice-versa, which is why this
+/// struct is necessary.
+///
+/// One downside of this approach is that it is even more restrictive
+/// than Rust's rule of thumb, since that one is enforced on
+/// individual instances, while this one is enforced on all
+/// [`RwData`]s. This (as far as i know) cannot be circumvented, as a
+/// more advanced compile time checker (that distinguishes
+/// [`RwData<T>`]s of different `T`s, for example) does not seem
+/// feasible without the use of unfinished features, which I am not
+/// willing to use.
+pub struct Pass(PhantomData<()>);
+
+impl Pass {
+    /// Returns a new instance of [`Pass`]
+    ///
+    /// Be careful when using this!
+    pub(crate) const unsafe fn new() -> Self {
+        Pass(PhantomData)
+    }
+
+    /// Writes to many [`RwData`]-like structs at once
+    ///
+    /// This function accepts tuples (or a single element) of
+    /// references to types that implement the [`WriteableData`]
+    /// trait, which is one of the following:
+    ///
+    /// - [`RwData`]: Duat's regular smart pointer.
+    /// - [`BulkDataWriter`]: A pointer to lazyly updated data.
+    /// - [`Handle`]: A handle for a [`Widget`]
+    /// - [`RwArea`]: A handle for a `Widget`'s [`Area`]
+    ///
+    /// Here's an example, which writes to two `RwData`s at the same
+    /// time as a `Handle`:
+    ///
+    /// ```rust
+    /// # duat_core::utils::doc_duat!(duat);
+    /// use duat::{data::RwData, prelude::*};
+    /// setup_duat!(setup);
+    ///
+    /// fn setup() {
+    ///     let [num1, num2] = [RwData::new(0); 2];
+    ///     hook::add::<Buffer>(move |pa, handle: &Handle| {
+    ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
+    ///         // Rest of the function writes to all of them at the same time.
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// This allows for much more flexibility when writing to global
+    /// state, which should hopefully lead to more streamlined
+    /// functions
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if any of the elements of the tuple
+    /// point to the same data as any other element, for example, with
+    /// the earlier code snippet:
+    ///
+    /// ```rust
+    /// # duat_core::utils::doc_duat!(duat);
+    /// use duat::{data::RwData, prelude::*};
+    /// setup_duat!(setup);
+    ///
+    /// fn setup() {
+    ///     let num1 = RwData::new(0);
+    ///     // num2 is now a clone of num1
+    ///     let num2 = num1.clone();
+    ///     hook::add::<Buffer>(move |pa, handle: &Handle| {
+    ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
+    ///         // Rest of the function writes to all of them at the same time.
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// Since `num1` and `num2` point to the same data, you'd be
+    /// getting two `&mut i32` for the same variable, which violates
+    /// rust's "mutability xor aliasing" rule. This is why this will
+    /// panic. If you want a non-panicking version of this function,
+    /// check out [`Pass::try_write_many`], which returns a [`Result`]
+    /// instead.
+    ///
+    /// [`Handle`]: crate::context::Handle
+    /// [`RwArea`]: crate::ui::RwArea
+    /// [`Area`]: crate::ui::Area
+    #[track_caller]
+    pub fn write_many<'a, Tup: WriteableTuple<'a, impl std::any::Any>>(
+        &'a mut self,
+        tup: Tup,
+    ) -> Tup::Return {
+        if let Some(ret) = tup.write_all(self) {
+            ret
+        } else {
+            panic!("Tried writing to the same data multiple times");
+        }
+    }
+
+    /// Tries writing to many [`RwData`]-like structs at once
+    ///
+    /// This function accepts tuples (or a single element) of
+    /// references to types that implement the [`WriteableData`]
+    /// trait, which is one of the following:
+    ///
+    /// - [`RwData`]: Duat's regular smart pointer.
+    /// - [`BulkDataWriter`]: A pointer to lazyly updated data.
+    /// - [`Handle`]: A handle for a [`Widget`]
+    /// - [`RwArea`]: A handle for a `Widget`'s [`Area`]
+    ///
+    /// This function works exactly like [`Pass::write_many`],
+    /// however, instead of panicking, this function returns a
+    /// [`Result`], returning an [`Err`] if any of the tuple's
+    /// elements point to the same data as any of the other elements.
+    ///
+    /// [`Handle`]: crate::context::Handle
+    /// [`RwArea`]: crate::ui::RwArea
+    /// [`Area`]: crate::ui::Area
+    pub fn try_write_many<'a, Tup: WriteableTuple<'a, impl std::any::Any>>(
+        &'a mut self,
+        tup: Tup,
+    ) -> Result<Tup::Return, crate::text::Text> {
+        tup.write_all(self)
+            .ok_or_else(|| crate::text::txt!("Tried writing to the same data multiple times"))
+    }
+}
+
+/// A tuple of [`WriteableData`], used for writing to many things at
+/// once
+#[doc(hidden)]
+pub trait WriteableTuple<'a, _Dummy> {
+    type Return;
+
+    fn write_all(self, pa: &'a mut Pass) -> Option<Self::Return>;
+
+    fn any_eqs(&self, ptr: CurStatePtr) -> bool;
+}
+
+macro_rules! implWriteableTuple {
+    ($(($data:ident, $ret:ident)),+) => {
+        #[allow(non_snake_case, static_mut_refs)]
+        impl<'a, $($data),+, $($ret),+> WriteableTuple<'a, ($(&mut $ret),+)> for ($(&'a $data),+)
+        where
+            $($ret: ?Sized + 'static),+,
+            $($data: $crate::data::WriteableData<$ret>),+
+        {
+            type Return = ($(&'a mut $ret),+);
+
+            fn write_all(self, _: &'a mut Pass) -> Option<Self::Return> {
+                let ($($data),+) = self;
+                let ptrs = [$($data.cur_state_ptr()),+];
+
+                if ptrs.into_iter().enumerate().any(|(lhs, i)| {
+                    ptrs.into_iter()
+                        .enumerate()
+                        .any(|(rhs, j)| lhs == rhs && i != j)
+                }) {
+                    return None;
+                }
+
+				/// SAFETY: The ptrs are already verifiably not pointing to the same data.
+                $(static mut $ret: Pass = unsafe { Pass::new() };)+
+
+                Some(($($data.write_one_of_many(unsafe { &mut $ret })),+))
+            }
+
+            fn any_eqs(&self, ptr: CurStatePtr) -> bool {
+                let ($($data),+) = self;
+
+                $(
+                    if $data.cur_state_ptr() == ptr {
+                        return true;
+                    }
+                )+
+
+                false
+            }
+        }
+    };
+}
+
+impl<'a, Data, T> WriteableTuple<'a, (&'a mut T,)> for &'a Data
+where
+    Data: WriteableData<T>,
+    T: ?Sized + 'static,
+{
+    type Return = &'a mut T;
+
+    fn write_all(self, pa: &'a mut Pass) -> Option<Self::Return> {
+        Some(self.write_one_of_many(pa))
+    }
+
+    fn any_eqs(&self, ptr: CurStatePtr) -> bool {
+        self.cur_state_ptr() == ptr
+    }
+}
+
+implWriteableTuple!((D0, T0), (D1, T1));
+implWriteableTuple!((D0, T0), (D1, T1), (D2, T2));
+implWriteableTuple!((D0, T0), (D1, T1), (D2, T2), (D3, T3));
+implWriteableTuple!((D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4));
+implWriteableTuple!((D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5));
+#[rustfmt::skip]
+implWriteableTuple!((D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5), (D6, T6));
+#[rustfmt::skip]
+implWriteableTuple!((D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5), (D6, T6), (D7, T7));
+#[rustfmt::skip]
+implWriteableTuple!(
+    (D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5), (D6, T6), (D7, T7) , (D8, T8)
+);
+#[rustfmt::skip]
+implWriteableTuple!(
+    (D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5), (D6, T6), (D7, T7) , (D8, T8),
+    (D9, T9)
+);
+#[rustfmt::skip]
+implWriteableTuple!(
+    (D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5), (D6, T6), (D7, T7) , (D8, T8),
+    (D9, T9), (D10, T10)
+);
+#[rustfmt::skip]
+implWriteableTuple!(
+    (D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5), (D6, T6), (D7, T7) , (D8, T8),
+    (D9, T9), (D10, T10), (D11, T11)
+);
+
+/// A trait for writing to multiple [`RwData`]-like structs at once
+#[doc(hidden)]
+pub trait WriteableData<T: ?Sized + 'static>: InnerWriteableData {
+    /// Just like [`RwData::write`]
+    #[doc(hidden)]
+    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T;
+
+    /// A pointer for [`Pass::try_write_many`]
+    #[doc(hidden)]
+    fn cur_state_ptr(&self) -> CurStatePtr<'_>;
+}
+
+impl<T: ?Sized + 'static> WriteableData<T> for RwData<T> {
+    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T {
+        self.write(pa)
+    }
+
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.cur_state)
+    }
+}
+
+impl<T: Default + 'static> WriteableData<T> for BulkDataWriter<T> {
+    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T {
+        self.write(pa)
+    }
+
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.data.cur_state)
+    }
+}
+
+impl<W: Widget + 'static> WriteableData<W> for crate::context::Handle<W> {
+    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut W {
+        self.write(pa)
+    }
+
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.widget().cur_state)
+    }
+}
+
+impl WriteableData<crate::ui::Area> for crate::ui::RwArea {
+    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut crate::ui::Area {
+        self.write(pa)
+    }
+
+    fn cur_state_ptr(&self) -> CurStatePtr<'_> {
+        CurStatePtr(&self.0.cur_state)
+    }
+}
+
+/// To prevent outside implementations
+trait InnerWriteableData {}
+impl<T: ?Sized + 'static> InnerWriteableData for RwData<T> {}
+impl<T: Default + 'static> InnerWriteableData for BulkDataWriter<T> {}
+impl<W: Widget + 'static> InnerWriteableData for crate::context::Handle<W> {}
+impl InnerWriteableData for crate::ui::RwArea {}
+
+/// A struct for comparison when calling [`Pass::write_many`]
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct CurStatePtr<'a>(&'a Arc<AtomicUsize>);
+
+impl std::cmp::PartialEq for CurStatePtr<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(self.0, other.0)
     }
 }

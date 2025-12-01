@@ -209,9 +209,7 @@ impl Completions {
 
     fn update_text_and_position(pa: &mut Pass, handle: &Handle<Self>, scroll: i32) {
         let master_handle = handle.master().unwrap();
-        let (master, comp) = pa
-            .try_read_and_write(master_handle.widget(), handle.widget())
-            .unwrap();
+        let (master, comp) = pa.write_many((master_handle.widget(), handle.widget()));
 
         let mut lists: Vec<_> = comp
             .providers

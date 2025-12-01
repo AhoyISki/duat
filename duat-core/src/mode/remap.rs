@@ -6,7 +6,7 @@
 //! order to properly document everything.
 //!
 //! [`bindings`]: super::bindings
-use std::{any::TypeId, collections::HashMap, slice, sync::Mutex};
+use std::{any::TypeId, collections::HashMap, slice, sync::LazyLock};
 
 use crossterm::event::KeyEvent;
 
@@ -14,12 +14,14 @@ pub use self::global::*;
 use super::Mode;
 use crate::{
     context,
-    data::{Pass, RwData},
+    data::{BulkDataWriter, Pass, RwData},
     mode::{self, Binding, Bindings},
     text::{Ghost, Selectionless, Tagger, Text, txt},
     ui::Widget,
     utils::catch_panic,
 };
+
+static CUR_SEQ: LazyLock<RwData<(Vec<KeyEvent>, bool)>> = LazyLock::new(RwData::default);
 
 mod global {
     use std::{
@@ -32,12 +34,12 @@ mod global {
 
     use super::{Gives, Remapper};
     use crate::{
-        data::{DataMap, Pass, RwData},
-        mode::{Description, MappedBindings, Mode, remap::InnerRemapper},
+        data::{BulkDataWriter, DataMap, Pass, RwData},
+        mode::{Description, MappedBindings, Mode},
         text::{Text, txt},
     };
 
-    static REMAPPER: LazyLock<Remapper> = LazyLock::new(Remapper::new);
+    static REMAPPER: BulkDataWriter<Remapper> = BulkDataWriter::new();
     pub(in crate::mode) static MODE_TYPE_ID: Mutex<TypeId> = Mutex::new(TypeId::of::<()>());
     static SEND_KEY: LazyLock<RwData<fn(&mut Pass, KeyEvent)>> =
         LazyLock::new(|| RwData::new(|_, _| {}));
@@ -59,7 +61,7 @@ mod global {
         pub(super) gives: Gives,
         pub(super) is_alias: bool,
         pub(super) doc: Option<Text>,
-        pub(super) remap: fn(&mut Pass, Vec<KeyEvent>, Gives, bool, Option<Text>),
+        pub(super) remap: fn(&mut Remapper, Vec<KeyEvent>, Gives, bool, Option<Text>),
     }
 
     impl RemapBuilder {
@@ -83,11 +85,7 @@ mod global {
             let gives = std::mem::replace(&mut self.gives, Gives::Keys(Vec::new()));
             let is_alias = self.is_alias;
             let doc = self.doc.take();
-            REMAPPER
-                .async_actions
-                .lock()
-                .unwrap()
-                .push(Box::new(move |pa| remap(pa, takes, gives, is_alias, doc)));
+            REMAPPER.mutate(move |remapper| remap(remapper, takes, gives, is_alias, doc));
         }
     }
 
@@ -134,8 +132,8 @@ mod global {
             gives: gives.into_gives(),
             is_alias: false,
             doc: None,
-            remap: |pa, takes, gives, is_alias, doc| {
-                REMAPPER.remap::<M>(pa, takes, gives, is_alias, doc)
+            remap: |remapper, takes, gives, is_alias, doc| {
+                remapper.remap::<M>(takes, gives, is_alias, doc)
             },
         }
     }
@@ -170,17 +168,15 @@ mod global {
             gives: gives.into_gives(),
             is_alias: true,
             doc: None,
-            remap: |pa, takes, gives, is_alias, doc| {
-                REMAPPER.remap::<M>(pa, takes, gives, is_alias, doc)
+            remap: |remapper, takes, gives, is_alias, doc| {
+                remapper.remap::<M>(takes, gives, is_alias, doc)
             },
         }
     }
 
     /// The current sequence of [`KeyEvent`]s being mapped
-    pub fn current_sequence() -> DataMap<InnerRemapper, (Vec<KeyEvent>, bool)> {
-        REMAPPER
-            .inner
-            .map(|inner| (inner.seq.clone(), inner.mapped_seq_is_alias))
+    pub fn current_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
+        super::CUR_SEQ.map(Clone::clone)
     }
 
     /// The base [`MappedBindings`] for the current [`Mode`]
@@ -196,10 +192,7 @@ mod global {
     ///
     /// [`&mut Pass`]: Pass
     pub fn current_mode_bindings(pa: &mut Pass) -> &MappedBindings {
-        let mut actions = REMAPPER.async_actions.lock().unwrap();
-        actions.drain(..).for_each(|action| action(pa));
-
-        &REMAPPER.inner.read(pa).mapped_bindings[&MODE_TYPE_ID.lock().unwrap()]
+        &REMAPPER.write(pa).mapped_bindings[&MODE_TYPE_ID.lock().unwrap()]
     }
 
     /// Changes the description for a given [`KeyEvent`] sequence
@@ -208,19 +201,40 @@ mod global {
     /// that is associated with the same description.
     pub fn change_binding_description<M: Mode>(seq: &[KeyEvent], new: Text) {
         let seq = seq.to_vec();
-        REMAPPER
-            .async_actions
-            .lock()
-            .unwrap()
-            .push(Box::new(move |pa| {
-                let inner = REMAPPER.inner.write(pa);
-                let bindings = inner
-                    .mapped_bindings
-                    .entry(TypeId::of::<M>())
-                    .or_insert_with(MappedBindings::for_mode::<M>);
+        REMAPPER.mutate(move |remapper| {
+            let bindings = remapper
+                .mapped_bindings
+                .entry(TypeId::of::<M>())
+                .or_insert_with(MappedBindings::for_mode::<M>);
 
-                bindings.replace_seq_description(&seq, new);
-            }));
+            bindings.replace_seq_description(&seq, new);
+        });
+    }
+
+    /// Replaces the [`Bindings`] for a [`Mode`]
+    ///
+    /// Do note that if you change the `Bindings`, you will replace
+    /// _which_ keys get sent to the `Mode`. You can use this for your
+    /// own gain, since you might want to block certain keybindings.
+    ///
+    /// The main purpose for this function, however, is to create
+    /// "dynamic `Bindings`". In Duat, the [`Bindings`] struct kind of
+    /// assumes that your mappings are static sequences of keys,
+    /// however, sometimes that is not the case. This function serves
+    /// the purpose of covering other possibilities.
+    ///
+    /// [`Bindings`]: super::Bindings
+    pub fn change_bindings<M: Mode>(bindings: super::Bindings) {
+        use std::collections::hash_map::Entry;
+
+        let bindings = MappedBindings::new(bindings);
+
+        REMAPPER.mutate(
+            move |remapper| match remapper.mapped_bindings.entry(TypeId::of::<M>()) {
+                Entry::Occupied(mut occupied_entry) => *occupied_entry.get_mut() = bindings,
+                Entry::Vacant(vacant_entry) => _ = vacant_entry.insert(bindings),
+            },
+        );
     }
 
     /// The [`Description`]s of all [`Binding`]s and remaps of the
@@ -245,12 +259,9 @@ mod global {
     /// [`Binding`]: super::Binding
     pub fn current_seq_descriptions(
         pa: &mut Pass,
-    ) -> (Option<Text>, impl Iterator<Item = Description<'_>>) {
-        let mut action = REMAPPER.async_actions.lock().unwrap();
-        action.drain(..).for_each(|action| action(pa));
-
-        let inner = REMAPPER.inner.read(pa);
-        inner.mapped_bindings[&*MODE_TYPE_ID.lock().unwrap()].descriptions_for(&inner.seq)
+    ) -> (Option<&Text>, impl Iterator<Item = Description<'_>>) {
+        let ((cur_seq, _), remapper) = pa.write_many((&*super::CUR_SEQ, &REMAPPER));
+        remapper.mapped_bindings[&*MODE_TYPE_ID.lock().unwrap()].descriptions_for(cur_seq)
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
@@ -557,56 +568,32 @@ mod global {
     /// Sets the key sending function
     pub(in crate::mode) fn set_mode_for_remapper<M: Mode>(pa: &mut Pass) {
         REMAPPER
-            .inner
             .write(pa)
             .mapped_bindings
             .entry(TypeId::of::<M>())
             .or_insert_with(MappedBindings::for_mode::<M>);
-        *SEND_KEY.write(pa) = |pa, key| REMAPPER.send_key::<M>(pa, key);
+        *SEND_KEY.write(pa) = |pa, key| super::send_key::<M>(&REMAPPER, pa, key);
         *MODE_TYPE_ID.lock().unwrap() = TypeId::of::<M>();
     }
 }
 
 /// The structure responsible for remapping sequences of characters
+#[derive(Default)]
 struct Remapper {
-    async_actions: Mutex<Vec<Box<dyn FnOnce(&mut Pass) + Send + 'static>>>,
-    inner: RwData<InnerRemapper>,
-}
-
-/// An inner struct for the remapping, you don't need to care about it
-#[doc(hidden)]
-pub struct InnerRemapper {
     mapped_bindings: HashMap<TypeId, MappedBindings>,
-    mapped_seq: Vec<KeyEvent>,
-    mapped_seq_is_alias: bool,
-    seq: Vec<KeyEvent>,
 }
 
 impl Remapper {
-    /// Returns a new instance of [`Remapper`]
-    fn new() -> Self {
-        Remapper {
-            async_actions: Mutex::default(),
-            inner: RwData::new(InnerRemapper {
-                mapped_bindings: HashMap::new(),
-                mapped_seq: Vec::new(),
-                mapped_seq_is_alias: false,
-                seq: Vec::new(),
-            }),
-        }
-    }
-
     /// Maps a sequence of characters to another
     fn remap<M: Mode>(
-        &self,
-        pa: &mut Pass,
+        &mut self,
         takes: Vec<KeyEvent>,
         gives: Gives,
         is_alias: bool,
         doc: Option<Text>,
     ) {
         fn remap_inner(
-            inner: &mut InnerRemapper,
+            inner: &mut Remapper,
             ty: TypeId,
             takes: Vec<KeyEvent>,
             gives: Gives,
@@ -626,91 +613,83 @@ impl Remapper {
             }
         }
 
-        let inner = self.inner.write(pa);
-        inner
-            .mapped_bindings
+        self.mapped_bindings
             .entry(TypeId::of::<M>())
             .or_insert_with(MappedBindings::for_mode::<M>);
 
-        remap_inner(inner, TypeId::of::<M>(), takes, gives, is_alias, doc);
+        remap_inner(self, TypeId::of::<M>(), takes, gives, is_alias, doc);
     }
+}
 
-    /// Sends a key to be remapped or not
-    fn send_key<M: Mode>(&self, pa: &mut Pass, key: KeyEvent) {
-        fn send_key_inner(key_event: KeyEvent, remapper: &Remapper, pa: &mut Pass, ty: TypeId) {
-            let inner = remapper.inner.write(pa);
-            let mapped_bindings = &inner.mapped_bindings[&ty];
+/// Sends a key to be remapped or not
+fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEvent) {
+    fn send_key_inner(
+        bdw: &BulkDataWriter<Remapper>,
+        key_event: KeyEvent,
+        pa: &mut Pass,
+        ty: TypeId,
+    ) {
+        let ((cur_seq, is_alias), remapper) = pa.write_many((&*CUR_SEQ, bdw));
+        let mapped_bindings = &remapper.mapped_bindings[&ty];
 
-            inner.seq.push(key_event);
-            if !mapped_bindings.sequence_has_followup(&inner.seq) {
-                inner.seq.clear();
-            }
+        if !mapped_bindings.sequence_has_followup(cur_seq) {
+            cur_seq.clear();
+        }
+        cur_seq.push(key_event);
 
-            inner.mapped_seq.push(key_event);
-            let (mapped_seq, is_alias) = (inner.mapped_seq.clone(), inner.mapped_seq_is_alias);
+        let (mapped_seq, is_alias) = (cur_seq.clone(), *is_alias);
 
-            let clear_cur_seq = |pa| {
-                let inner = remapper.inner.write(pa);
-                inner.mapped_seq = Vec::new();
-                inner.mapped_seq_is_alias = false;
-            };
-
-            let keys_to_send = if let Some(i) = mapped_bindings
-                .remaps
-                .iter()
-                .position(|r| r.takes.starts_with(&mapped_seq))
-            {
-                let remap = &mapped_bindings.remaps[i];
-                if remap.takes.len() == mapped_seq.len() {
-                    if remap.is_alias {
-                        remove_alias_and(pa, |_, _| {});
-                    }
-
-                    clear_cur_seq(pa);
-
-                    let mapped_bindings = &remapper.inner.read(pa).mapped_bindings;
-
-                    match &mapped_bindings[&ty].remaps[i].gives {
-                        Gives::Keys(keys) => keys.clone(),
-                        Gives::Mode(given) => {
-                            (given.setter)();
-                            if let Some(mode_fn) = super::take_set_mode_fn(pa) {
-                                catch_panic(|| mode_fn(pa));
-                            }
-                            return;
-                        }
-                    }
-                } else {
-                    if remap.is_alias {
-                        remapper.inner.write(pa).mapped_seq_is_alias = true;
-
-                        remove_alias_and(pa, |widget, main| {
-                            widget.text_mut().insert_tag(
-                                Tagger::for_alias(),
-                                main,
-                                Ghost::new(txt!("[alias]{}", keys_to_string(&mapped_seq))),
-                            );
-                        });
-                    }
-                    return;
-                }
-            } else {
-                if is_alias {
+        let keys_to_send = if let Some(i) = mapped_bindings
+            .remaps
+            .iter()
+            .position(|r| r.takes.starts_with(&mapped_seq))
+        {
+            let remap = &mapped_bindings.remaps[i];
+            if remap.takes.len() == mapped_seq.len() {
+                if remap.is_alias {
                     remove_alias_and(pa, |_, _| {});
                 }
-                clear_cur_seq(pa);
-                mapped_seq
-            };
 
-            mode::send_keys_to(pa, keys_to_send);
-        }
+                *CUR_SEQ.write(pa) = (Vec::new(), false);
 
-        for action in self.async_actions.lock().unwrap().drain(..) {
-            action(pa)
-        }
+                let mapped_bindings = &bdw.write(pa).mapped_bindings;
 
-        send_key_inner(key, self, pa, TypeId::of::<M>());
+                match &mapped_bindings[&ty].remaps[i].gives {
+                    Gives::Keys(keys) => keys.clone(),
+                    Gives::Mode(given) => {
+                        (given.setter)();
+                        if let Some(mode_fn) = super::take_set_mode_fn(pa) {
+                            catch_panic(|| mode_fn(pa));
+                        }
+                        return;
+                    }
+                }
+            } else {
+                if remap.is_alias {
+                    CUR_SEQ.write(pa).1 = true;
+
+                    remove_alias_and(pa, |widget, main| {
+                        widget.text_mut().insert_tag(
+                            Tagger::for_alias(),
+                            main,
+                            Ghost::new(txt!("[alias]{}", keys_to_string(&mapped_seq))),
+                        );
+                    });
+                }
+                return;
+            }
+        } else {
+            if is_alias {
+                remove_alias_and(pa, |_, _| {});
+            }
+            *CUR_SEQ.write(pa) = (Vec::new(), false);
+            mapped_seq
+        };
+
+        mode::send_keys_to(pa, keys_to_send);
     }
+
+    send_key_inner(bdw, key, pa, TypeId::of::<M>());
 }
 
 /// A sequence of characters that should be turned into another
@@ -783,12 +762,17 @@ pub struct MappedBindings {
 }
 
 impl MappedBindings {
-    /// Returns the available [`Bindings`] for a [`Mode`]
+    /// Returns `Self` for the available [`Bindings`] for a [`Mode`]
     fn for_mode<M: Mode>() -> Self {
         Self {
             bindings: M::bindings(),
             remaps: Vec::new(),
         }
+    }
+
+    /// Returns `Self` from custom [`Bindings`]
+    fn new(bindings: Bindings) -> Self {
+        Self { bindings, remaps: Vec::new() }
     }
 }
 
@@ -821,7 +805,7 @@ impl MappedBindings {
     pub fn descriptions_for<'a>(
         &'a self,
         seq: &'a [KeyEvent],
-    ) -> (Option<Text>, impl Iterator<Item = Description<'a>>) {
+    ) -> (Option<&'a Text>, impl Iterator<Item = Description<'a>>) {
         let bindings = self.bindings.bindings_for(seq);
 
         let iter = bindings
@@ -875,7 +859,7 @@ impl MappedBindings {
                     }),
             );
 
-        (bindings.and_then(|b| b.title.clone()), iter)
+        (bindings.and_then(|b| b.title.as_ref()), iter)
     }
 
     /// Replace the description for a sequence of [`KeyEvent`]s

@@ -1138,7 +1138,7 @@ impl Window {
     ) -> Vec<Node> {
         let related = handle.related();
 
-        let (related, inner) = pa.read_and_write(related, &self.0);
+        let (related, inner) = pa.write_many((related, &self.0));
 
         inner
             .nodes

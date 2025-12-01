@@ -19,7 +19,7 @@ use duat_core::{
     context,
     data::{DataMap, RwData},
     hook::{self, KeyTyped},
-    mode,
+    mode::{self, KeyEvent},
     text::{Text, txt},
     ui::{Area, Widget},
 };
@@ -271,7 +271,7 @@ pub fn sels_txt(buffer: &Buffer) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [keys]: duat_core::mode::KeyEvent
-pub fn current_sequence_txt() -> DataMap<duat_core::mode::InnerRemapper, Text> {
+pub fn current_sequence_txt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
     mode::current_sequence().map(|(keys, is_alias)| {
         if is_alias {
             Text::default()

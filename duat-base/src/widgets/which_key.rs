@@ -40,6 +40,7 @@ impl WhichKey {
         let mut descs_builder = Text::builder();
 
         let (title, descs) = mode::current_seq_descriptions(pa);
+        let title = title.cloned();
         for desc in descs {
             if let Some(fmt) = fmt.as_mut() {
                 if let Some((keys, desc)) = fmt(desc) {
@@ -83,7 +84,8 @@ impl WhichKey {
             .unwrap();
         descs.1 = Some(keys_handle.clone());
 
-        let title = title.unwrap_or_else(|| txt!("{}", crate::state::mode_name().call(pa)));
+        let title = title
+            .unwrap_or_else(|| txt!("{}", crate::state::mode_name().call(pa)));
         if let Some(area) = keys_handle.area().write_as::<duat_term::Area>(pa) {
             use duat_core::text::AlignCenter;
 
