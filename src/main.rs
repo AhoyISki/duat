@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 context::error!("Failed to find config crate, loading default");
             }
 
-            pre_setup(None, None);
+            pre_setup(ui, None, None);
             run_duat(
                 (ui, &CLIPBOARD),
                 get_files(args, Path::new(""), "")?,
@@ -203,7 +203,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let duat_tx = duat_tx.clone();
         move || {
             ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
-            
+
             let _watcher = match spawn_config_watcher(config_tx.clone(), duat_tx.clone(), crate_dir)
             {
                 Ok(_watcher) => Some(std::mem::ManuallyDrop::new(_watcher)),
@@ -244,7 +244,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     run_duat(initials, (ui, clipb), buffers, channel)
                 } else {
                     context::error!("No config at [a]{crate_dir}[], loading default");
-                    pre_setup(None, None);
+                    pre_setup(ui, None, None);
                     run_duat((ui, clipb), buffers, duat_rx, Some(reload_tx))
                 }
             })

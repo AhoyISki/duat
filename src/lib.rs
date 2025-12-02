@@ -568,7 +568,7 @@ macro_rules! setup_duat {
             buffers: Vec<Vec<ReloadedBuffer>>,
             (duat_tx, duat_rx, reload_tx): Channels,
         ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
-            pre_setup(Some(initials), Some(duat_tx));
+            pre_setup(ms.0, Some(initials), Some(duat_tx));
             catch_panic($setup);
             run_duat(ms, buffers, duat_rx, Some(reload_tx))
         }

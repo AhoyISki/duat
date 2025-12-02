@@ -84,8 +84,7 @@ impl WhichKey {
             .unwrap();
         descs.1 = Some(keys_handle.clone());
 
-        let title = title
-            .unwrap_or_else(|| txt!("{}", crate::state::mode_name().call(pa)));
+        let title = title.unwrap_or_else(|| txt!("{}", crate::state::mode_name().call(pa)));
         if let Some(area) = keys_handle.area().write_as::<duat_term::Area>(pa) {
             use duat_core::text::AlignCenter;
 
@@ -94,7 +93,7 @@ impl WhichKey {
                 right: true,
                 above: true,
                 below: true,
-                style: FrameStyle::Rounded,
+                style: Some(FrameStyle::Rounded),
                 ..Frame::default()
             };
             frame.set_text(Side::Above, move |_| {
@@ -152,14 +151,11 @@ impl Widget for WhichKey {
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
+        use MouseEventKind::{ScrollDown, ScrollUp};
         match event.kind {
-            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+            ScrollDown | ScrollUp => {
                 let (keys, area) = handle.write_with_area(pa);
-                let scroll = if let MouseEventKind::ScrollDown = event.kind {
-                    3
-                } else {
-                    -3
-                };
+                let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
                 area.scroll_ver(&keys.0, scroll, keys.get_print_opts());
 
                 let handle = keys.1.clone().unwrap();

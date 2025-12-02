@@ -3,7 +3,7 @@
 //! This is a very simple `Widget`, it basically just exists so I
 //! don't have to define a new `Widget` every time I want to show
 //! static information.
-use duat_core::{context::Handle, data::Pass, text::Text, ui::Widget};
+use duat_core::{context::Handle, data::Pass, mode::{MouseEvent, MouseEventKind}, text::Text, ui::Widget};
 
 /// A simple static widget, meant to simply convery information
 ///
@@ -33,7 +33,13 @@ impl Info {
 }
 
 impl Widget for Info {
-    fn update(_: &mut Pass, _: &Handle<Self>) {}
+    fn update(pa: &mut Pass, handle: &Handle<Self>) {
+        let (info, area) = handle.write_with_area(pa);
+        let _ = area.set_width(
+            area.width_of_text(info.get_print_opts(), &info.text)
+                .unwrap(),
+        );
+    }
 
     fn needs_update(&self, _: &Pass) -> bool {
         false
@@ -45,5 +51,17 @@ impl Widget for Info {
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
+    }
+
+    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
+        use MouseEventKind::{ScrollDown, ScrollUp};
+        match event.kind {
+            ScrollDown | ScrollUp => {
+                let (info, area) = handle.write_with_area(pa);
+                let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
+                area.scroll_ver(&info.text, scroll, info.get_print_opts());
+            }
+            _ => {}
+        }
     }
 }

@@ -37,6 +37,7 @@ pub use self::{
     layout::{Frame, FrameStyle},
     printer::{Border, BorderStyle},
     rules::{SepChar, VertRule, VertRuleBuilder},
+    shared_fns::*,
 };
 use crate::layout::Layouts;
 
@@ -45,7 +46,43 @@ mod layout;
 mod printer;
 mod rules;
 
-pub struct Ui(Mutex<InnerUi>);
+mod shared_fns {
+    use std::sync::OnceLock;
+
+    use crate::FrameStyle;
+
+    /// Execution address space functions
+    #[derive(Clone, Copy)]
+    pub(super) struct ExecSpaceFns {
+        set_default_frame_style: fn(FrameStyle),
+    }
+
+    impl Default for ExecSpaceFns {
+        fn default() -> Self {
+            Self {
+                set_default_frame_style: crate::layout::set_default_frame_style,
+            }
+        }
+    }
+
+    pub(super) static FNS: OnceLock<ExecSpaceFns> = OnceLock::new();
+
+    /// Sets the default [`FrameStyle`] for all spawned [`Area`]s
+    ///
+    /// By default, it is [`FrameStyle::Regular`], which uses
+    /// characters like `─`, `│` and `┐`.
+    ///
+    /// [`Area`]: crate::Area
+    pub fn set_default_frame_style(frame_style: FrameStyle) {
+        (FNS.get().unwrap().set_default_frame_style)(frame_style)
+    }
+}
+
+/// The [`RawUi`] implementation for `duat-term`
+pub struct Ui {
+    mt: Mutex<InnerUi>,
+    fns: shared_fns::ExecSpaceFns,
+}
 
 struct InnerUi {
     windows: Vec<(Area, Arc<Printer>)>,
@@ -69,16 +106,23 @@ impl RawUi for Ui {
         let (tx, rx) = mpsc::channel();
 
         (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
-            Box::leak(Box::new(Self(Mutex::new(InnerUi {
-                windows: Vec::new(),
-                layouts: MainThreadOnly::default(),
-                win: 0,
-                frame: Border::default(),
-                printer_fn: || Arc::new(Printer::new()),
-                rx: Some(rx),
-                tx,
-            })))) as &'static Self
+            Box::leak(Box::new(Self {
+                mt: Mutex::new(InnerUi {
+                    windows: Vec::new(),
+                    layouts: MainThreadOnly::default(),
+                    win: 0,
+                    frame: Border::default(),
+                    printer_fn: || Arc::new(Printer::new()),
+                    rx: Some(rx),
+                    tx,
+                }),
+                fns: ExecSpaceFns::default(),
+            })) as &'static Self
         })
+    }
+
+    fn config_address_space_setup(&'static self) {
+        shared_fns::FNS.set(self.fns).ok().unwrap();
     }
 
     fn open(&self, duat_tx: DuatSender) {
@@ -87,8 +131,8 @@ impl RawUi for Ui {
         form::set_weak("rule.upper", "default.VertRule");
         form::set_weak("rule.lower", "default.VertRule");
 
-        let term_rx = self.0.lock().unwrap().rx.take().unwrap();
-        let term_tx = self.0.lock().unwrap().tx.clone();
+        let term_rx = self.mt.lock().unwrap().rx.take().unwrap();
+        let term_tx = self.mt.lock().unwrap().tx.clone();
 
         let print_thread = std::thread::Builder::new().name("print loop".to_string());
         let _ = print_thread.spawn(move || {
@@ -173,7 +217,7 @@ impl RawUi for Ui {
     }
 
     fn close(&self) {
-        self.0.lock().unwrap().tx.send(Event::Quit).unwrap();
+        self.mt.lock().unwrap().tx.send(Event::Quit).unwrap();
 
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags).unwrap();
@@ -197,7 +241,7 @@ impl RawUi for Ui {
     }
 
     fn new_root(&self, cache: <Self::Area as RawArea>::Cache) -> Self::Area {
-        let mut ui = self.0.lock().unwrap();
+        let mut ui = self.mt.lock().unwrap();
         let printer = (ui.printer_fn)();
 
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
@@ -220,7 +264,7 @@ impl RawUi for Ui {
         cache: <Self::Area as RawArea>::Cache,
         win: usize,
     ) -> Self::Area {
-        let ui = self.0.lock().unwrap();
+        let ui = self.mt.lock().unwrap();
         let id = unsafe { ui.layouts.get() }.spawn_on_text(id, specs, cache, win);
 
         Area::new(id, unsafe { ui.layouts.get() }.clone())
@@ -233,14 +277,14 @@ impl RawUi for Ui {
         cache: <Self::Area as RawArea>::Cache,
         win: usize,
     ) -> Self::Area {
-        let ui = self.0.lock().unwrap();
+        let ui = self.mt.lock().unwrap();
         let id = unsafe { ui.layouts.get() }.spawn_static(id, specs, cache, win);
 
         Area::new(id, unsafe { ui.layouts.get() }.clone())
     }
 
     fn switch_window(&self, win: usize) {
-        let mut ui = self.0.lock().unwrap();
+        let mut ui = self.mt.lock().unwrap();
         ui.win = win;
         let printer = ui.windows[win].1.clone();
         printer.update(true, true);
@@ -248,14 +292,14 @@ impl RawUi for Ui {
     }
 
     fn flush_layout(&self) {
-        let ui = self.0.lock().unwrap();
+        let ui = self.mt.lock().unwrap();
         if let Some((_, printer)) = ui.windows.get(ui.win) {
             printer.update(false, false);
         }
     }
 
     fn print(&self) {
-        self.0.lock().unwrap().tx.send(Event::Print).unwrap();
+        self.mt.lock().unwrap().tx.send(Event::Print).unwrap();
     }
 
     fn load(&'static self) {
@@ -268,7 +312,7 @@ impl RawUi for Ui {
     }
 
     fn unload(&self) {
-        let mut ui = self.0.lock().unwrap();
+        let mut ui = self.mt.lock().unwrap();
         ui.windows = Vec::new();
         // SAFETY: Ui is not Send + Sync, so this can't be called
         // from another thread
@@ -277,7 +321,7 @@ impl RawUi for Ui {
     }
 
     fn remove_window(&self, win: usize) {
-        let mut ui = self.0.lock().unwrap();
+        let mut ui = self.mt.lock().unwrap();
         ui.windows.remove(win);
         // SAFETY: Ui is not Send + Sync, so this can't be called
         // from another thread
@@ -288,7 +332,7 @@ impl RawUi for Ui {
     }
 
     fn size(&'static self) -> ui::Coord {
-        let ui = self.0.lock().unwrap();
+        let ui = self.mt.lock().unwrap();
         ui.windows[0].1.update(false, false);
         let coord = ui.windows[0].1.max_value();
         ui::Coord { x: coord.x as f32, y: coord.y as f32 }

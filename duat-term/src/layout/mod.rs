@@ -1,4 +1,9 @@
-use std::{cell::RefCell, io::Write, rc::Rc, sync::Arc};
+use std::{
+    cell::RefCell,
+    io::Write,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 use crossterm::{
     cursor::MoveTo,
@@ -978,7 +983,7 @@ pub struct Frame {
     /// Show a frame on the right
     pub right: bool,
     /// The `Frame`'s style
-    pub style: FrameStyle,
+    pub style: Option<FrameStyle>,
     /// Which [`FormId`] should be used for the frame
     pub form: Option<FormId>,
     /// The [`Text`] functions for each side
@@ -1017,9 +1022,13 @@ impl Frame {
             below.then_some(Side::Below),
             left.then_some(Side::Left),
         ];
+        let style = self
+            .style
+            .clone()
+            .unwrap_or_else(|| DEFAULT_FRAME_STYLE.lock().unwrap().clone());
 
         for side in sides.into_iter().flatten() {
-            self.style.draw_side(stdout, coords, form.style, side);
+            style.draw_side(stdout, coords, form.style, side);
         }
 
         let corners = [
@@ -1042,7 +1051,7 @@ impl Frame {
         ];
 
         for (coord, sides) in corners.into_iter().flatten() {
-            self.style.draw_corner(stdout, coord, form.style, sides);
+            style.draw_corner(stdout, coord, form.style, sides);
         }
 
         let text_fn = |tl_x: u32, tl_y: u32, br_x: u32, br_y: u32| {
@@ -1057,9 +1066,9 @@ impl Frame {
 
         let texts = [
             self.side_texts[0].as_ref().filter(|_| above).map(text_fn(
-                coords.tl.x - left as u32,
+                coords.tl.x,
                 coords.tl.y - 1,
-                coords.br.x + right as u32,
+                coords.br.x,
                 coords.tl.y,
             )),
             self.side_texts[1].as_ref().filter(|_| right).map(text_fn(
@@ -1069,9 +1078,9 @@ impl Frame {
                 coords.br.y,
             )),
             self.side_texts[2].as_ref().filter(|_| below).map(text_fn(
-                coords.tl.x - left as u32,
+                coords.tl.x,
                 coords.br.y,
-                coords.br.x + right as u32,
+                coords.br.x,
                 coords.br.y + 1,
             )),
             self.side_texts[3].as_ref().filter(|_| left).map(text_fn(
@@ -1112,9 +1121,6 @@ impl Frame {
     /// You can use this to, for example, set a title for your widget.
     /// This method takes in a function, which produces a `Text` from
     /// the length of the corresponding `Side`.
-    ///
-    /// The length of [`Side::Above`] and [`Side::Below`] includes the
-    /// left and right corners.
     pub fn set_text(&mut self, side: Side, text_fn: impl Fn(usize) -> Text + 'static) {
         match side {
             Side::Above => self.side_texts[0] = Some(Arc::new(text_fn)),
@@ -1456,4 +1462,16 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
         layout.printer.clear_spawn(id);
     }
     layout.set_constraints(id, None, None, Some(hidden));
+}
+
+static DEFAULT_FRAME_STYLE: Mutex<FrameStyle> = Mutex::new(FrameStyle::Regular);
+
+/// Sets the default [`FrameStyle`] for all spawned [`Area`]s
+///
+/// By default, it is [`FrameStyle::Regular`], which uses characters
+/// like `─`, `│` and `┐`.
+///
+/// [`Area`]: crate::Area
+pub fn set_default_frame_style(frame_style: FrameStyle) {
+    *DEFAULT_FRAME_STYLE.lock().unwrap() = frame_style;
 }

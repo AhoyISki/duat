@@ -266,13 +266,30 @@ impl Completions {
                     };
 
                     let info_handle = handle.spawn_widget(pa, Info::new(info_text), specs);
-                    if let Some(info_handle) =
+
+                    if let Some(info_handle) = info_handle.as_ref()
+                        && let Some(area) = info_handle.area().write_as::<duat_term::Area>(pa)
+                    {
+                        let mut frame = Frame {
+                            above: true,
+                            below: true,
+                            left: true,
+                            right: true,
+                            ..Default::default()
+                        };
+                        frame.set_text(Side::Above, |_| {
+                            txt!("[terminal.frame.Info]┤Info[terminal.frame.Info]├")
+                        });
+                        area.set_frame(frame);
+                    }
+
+                    if let Some(prev) =
                         std::mem::replace(&mut handle.write(pa).info_handle, info_handle)
                     {
-                        let _ = info_handle.close(pa);
+                        let _ = prev.close(pa);
                     };
-                } else if let Some(info_handle) = handle.write(pa).info_handle.take() {
-                    let _ = info_handle.close(pa);
+                } else if let Some(prev) = handle.write(pa).info_handle.take() {
+                    let _ = prev.close(pa);
                 }
             }
 

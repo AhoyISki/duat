@@ -16,7 +16,11 @@
 //! [`ui`]: super
 //! [`Area`]: super::traits::Area
 //! [`Area::PrintInfo`]: super::traits::Area::PrintInfo
-use std::{any::Any, path::Path, sync::OnceLock};
+use std::{
+    any::{Any, TypeId},
+    path::Path,
+    sync::OnceLock,
+};
 
 use crate::{
     context::{self, Cache},
@@ -30,6 +34,30 @@ use crate::{
         traits::{RawArea, RawUi, UiPass},
     },
 };
+
+static CANONICAL_UI: OnceLock<TypeId> = OnceLock::new();
+static CANONICAL_AREA: OnceLock<TypeId> = OnceLock::new();
+
+/// Returns `true` if the [`RawUi`] is of the given type
+pub fn ui_is<U: RawUi>() -> bool {
+    *CANONICAL_UI.get().unwrap() == TypeId::of::<U>()
+}
+
+/// Sets the canonical type ids for [`RawUi`] related types
+///
+/// *ONLY MEANT FOR USE BY THE DUAT EXECUTABLE*
+///
+/// Calling this outside of the duat executable will cause a panic.
+#[doc(hidden)]
+#[track_caller]
+pub fn config_address_space_ui_setup<U: RawUi>(ui: Ui) {
+    CANONICAL_UI
+        .set(TypeId::of::<U>())
+        .expect("You are not allowed to use this function");
+    CANONICAL_AREA.set(TypeId::of::<U::Area>()).unwrap();
+    let ui = unsafe { (std::ptr::from_ref(ui.ui) as *const U).as_ref().unwrap() };
+    ui.config_address_space_setup();
+}
 
 /// A type erased [`Ui`]
 #[derive(Clone, Copy)]
@@ -308,7 +336,10 @@ impl RwArea {
     ///
     /// [`Plugin`]: crate::Plugin
     pub fn read_as<'a, A: RawArea>(&'a self, pa: &'a Pass) -> Option<&'a A> {
-        self.0.read(pa).inner.downcast_ref()
+        (TypeId::of::<A>() == *CANONICAL_AREA.get().unwrap()).then(|| {
+            let ptr = Box::as_ref(&self.0.read(pa).inner) as *const dyn std::any::Any;
+            unsafe { (ptr as *const A).as_ref().unwrap() }
+        })
     }
 
     /// Attempt to write this as a specific implementation of
@@ -325,8 +356,10 @@ impl RwArea {
     ///
     /// [`Plugin`]: crate::Plugin
     pub fn write_as<'a, A: RawArea>(&'a self, pa: &'a mut Pass) -> Option<&'a mut A> {
-        let ptr = Box::as_mut(&mut self.0.write(pa).inner) as *mut dyn std::any::Any;
-        unsafe { (ptr as *mut A).as_mut() }
+        (TypeId::of::<A>() == *CANONICAL_AREA.get().unwrap()).then(|| {
+            let ptr = Box::as_mut(&mut self.0.write(pa).inner) as *mut dyn std::any::Any;
+            unsafe { (ptr as *mut A).as_mut().unwrap() }
+        })
     }
 
     ////////// Area Modification functions

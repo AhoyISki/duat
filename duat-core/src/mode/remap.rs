@@ -815,7 +815,6 @@ impl MappedBindings {
         &'a self,
         seq: &'a [KeyEvent],
     ) -> (Option<&'a Text>, impl Iterator<Item = Description<'a>>) {
-        context::debug!("{seq:?}");
         let bindings = self.bindings.bindings_for(seq);
 
         let iter = bindings

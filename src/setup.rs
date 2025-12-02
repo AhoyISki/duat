@@ -48,7 +48,7 @@ static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
-pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>) {
+pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         context::log_panic(panic_info);
         *PANIC_INFO.lock().unwrap() = Some(panic_info.to_string())
@@ -195,7 +195,6 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
         let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
         let current_ty = mode::current_type_id();
         let cur_seq = cur_seq.call(pa).0;
-        context::debug!("{cur_seq:?}");
         if !cur_seq.is_empty() || opts.always_shown_modes.contains(&current_ty) {
             drop(opts);
             show_which_key(pa);
@@ -298,6 +297,9 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
 
         Plugins::_new().require::<duat_match_pairs::MatchPairs>();
     }
+
+    #[cfg(feature = "term-ui")]
+    duat_core::ui::config_address_space_ui_setup::<duat_term::Ui>(ui);
 
     duat_core::Plugins::_new().require::<duatmode::DuatMode>();
 }

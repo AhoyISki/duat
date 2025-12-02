@@ -65,6 +65,20 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// Return [`Some`] only on the first call
     fn get_once() -> Option<&'static Self>;
 
+    /// Config crate address space setup
+    ///
+    /// THIS IS THE ONLY FUNCTION THAT WILL TAKE PLACE IN THE CONFIG
+    /// CRATE ADRESS SPACE, NOT ON THAT OF THE EXECUTABLE.
+    ///
+    /// The purpose of this function is to "share variables" between
+    /// the executable address space and the config address space.
+    /// Remember, this `RawUi` was created in the executable address
+    /// space, so every static variable from the config address space
+    /// is pointing to a different memory address from those of the
+    /// executable address space. So you can use this function to give
+    /// the correct address space for those variables.
+    fn config_address_space_setup(&'static self);
+
     /// Functions to trigger when the program begins
     fn open(&'static self, duat_tx: DuatSender);
 
