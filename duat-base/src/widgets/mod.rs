@@ -26,6 +26,7 @@ pub use self::{
     notifications::{Notifications, NotificationsOpts},
     prompt_line::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
+    info::Info,
     which_key::WhichKey,
 };
 

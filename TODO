@@ -59,7 +59,7 @@ FUTURE UPDATES:
 [ ] Initial installation configuration menu.
 [ ] Print only changed lines.
 [ ] Handle mostly utf-8 strings.
-[ ] Allow Modes to detect when a key is mapped.
+[x] Allow Modes to detect when a key is mapped.
 [ ] Add a failure mode for remapping.
 [/] Bring back multithreading?
 [ ] Additive Forms.

@@ -682,6 +682,7 @@ unsafe impl<I: ?Sized + 'static, O: 'static> Sync for MutDataMap<I, O> {}
 /// access must make use of a `&mut Pass`, with the exception of
 /// [`BulkDataWriter::try_read`], which returns `Some` only when there
 /// have been no changes to the `Data`.
+#[derive(Default)]
 pub struct BulkDataWriter<Data: Default + 'static> {
     actions: LazyLock<Arc<Mutex<Vec<Box<dyn FnOnce(&mut Data) + Send + 'static>>>>>,
     data: LazyLock<RwData<Data>>,

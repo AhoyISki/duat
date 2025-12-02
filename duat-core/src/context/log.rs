@@ -1,3 +1,10 @@
+//! Logging for Duat
+//!
+//! This module defines types and functions for logging in Duat. It
+//! defines the [`debug!`], [`info!`], [`warn!`] and [`error!`] macros
+//! to directly log [`Text`] to Duat. They are essentially just
+//! wrappers around the [`txt!`] macro which log information. This
+//! module is also responsible for logging command results and panics.
 use std::{
     panic::PanicHookInfo,
     sync::{

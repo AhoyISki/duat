@@ -1081,6 +1081,68 @@ mod global {
     )> {
         COMMANDS.write(pa).check_args(caller).map(|ca| ca(pa))
     }
+
+    /// The description for a Duat command, which can be executed in
+    /// the `PromptLine`
+    pub struct CmdDescription<'a> {
+        /// The caller for the command
+        pub caller: &'a str,
+        /// Documentation about said command
+        pub doc: Option<&'a CmdDoc>,
+        /// Documentation about the command's parameters
+        pub doc_params: Option<&'a [CmdDoc]>,
+    }
+
+    /// The description for a Duat alias, which can be executed in
+    /// the `PromptLine`, aliasing to a proper command
+    pub struct AliasDescription<'a> {
+        /// The caller for the alias
+        pub caller: &'a str,
+        /// What the caller gets replaced by
+        pub replacement: &'a str,
+        /// The description of the original command
+        pub cmd: CmdDescription<'a>,
+    }
+
+    /// Description of a Duat command or alias
+    pub enum Description<'a> {
+        /// The description of a command.
+        Command(CmdDescription<'a>),
+        /// The description of an alias for a command.
+        Alias(AliasDescription<'a>),
+    }
+
+    impl Description<'_> {
+        /// The caller for the command/alias
+        pub fn caller(&self) -> &str {
+            match self {
+                Description::Command(cmd_description) => cmd_description.caller,
+                Description::Alias(alias_description) => alias_description.caller,
+            }
+        }
+    }
+
+    /// A list of descriptions for all commands in Duat
+    ///
+    /// This list does not have any inherent sorting, with the
+    /// exception that aliases are listed after commands.
+    pub fn cmd_list<'a>(pa: &'a mut Pass) -> Vec<Description<'a>> {
+        let cmd_desc = |cmd: &'a super::Command| CmdDescription {
+            caller: &cmd.caller,
+            doc: cmd.doc.as_ref(),
+            doc_params: cmd.param_docs.as_ref().map(|list| list.as_ref()),
+        };
+
+        let commands = COMMANDS.write(pa);
+        commands
+            .list
+            .iter()
+            .map(|cmd| Description::Command(cmd_desc(cmd)))
+            .chain(commands.aliases.iter().map(|(caller, (cmd, replacement))| {
+                Description::Alias(AliasDescription { caller, replacement, cmd: cmd_desc(cmd) })
+            }))
+            .collect()
+    }
 }
 
 /// A list of commands.

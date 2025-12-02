@@ -194,7 +194,9 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>)
     hook::add::<KeyTyped>(move |pa, _| {
         let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
         let current_ty = mode::current_type_id();
-        if !cur_seq.call(pa).0.is_empty() || opts.always_shown_modes.contains(&current_ty) {
+        let cur_seq = cur_seq.call(pa).0;
+        context::debug!("{cur_seq:?}");
+        if !cur_seq.is_empty() || opts.always_shown_modes.contains(&current_ty) {
             drop(opts);
             show_which_key(pa);
         }

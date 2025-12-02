@@ -581,6 +581,7 @@ mod global {
 #[derive(Default)]
 struct Remapper {
     mapped_bindings: HashMap<TypeId, MappedBindings>,
+    mapped_seq: Vec<KeyEvent>,
 }
 
 impl Remapper {
@@ -632,12 +633,18 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
         let ((cur_seq, is_alias), remapper) = pa.write_many((&*CUR_SEQ, bdw));
         let mapped_bindings = &remapper.mapped_bindings[&ty];
 
+        cur_seq.push(key_event);
         if !mapped_bindings.sequence_has_followup(cur_seq) {
             cur_seq.clear();
         }
-        cur_seq.push(key_event);
+        remapper.mapped_seq.push(key_event);
 
-        let (mapped_seq, is_alias) = (cur_seq.clone(), *is_alias);
+        let clear_mapped_sequence = |pa: &mut Pass| {
+            bdw.write(pa).mapped_seq.clear();
+            CUR_SEQ.write(pa).1 = false;
+        };
+
+        let (mapped_seq, is_alias) = (remapper.mapped_seq.clone(), *is_alias);
 
         let keys_to_send = if let Some(i) = mapped_bindings
             .remaps
@@ -650,7 +657,7 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                     remove_alias_and(pa, |_, _| {});
                 }
 
-                *CUR_SEQ.write(pa) = (Vec::new(), false);
+                clear_mapped_sequence(pa);
 
                 let mapped_bindings = &bdw.write(pa).mapped_bindings;
 
@@ -682,7 +689,9 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
             if is_alias {
                 remove_alias_and(pa, |_, _| {});
             }
-            *CUR_SEQ.write(pa) = (Vec::new(), false);
+
+            clear_mapped_sequence(pa);
+
             mapped_seq
         };
 
@@ -806,6 +815,7 @@ impl MappedBindings {
         &'a self,
         seq: &'a [KeyEvent],
     ) -> (Option<&'a Text>, impl Iterator<Item = Description<'a>>) {
+        context::debug!("{seq:?}");
         let bindings = self.bindings.bindings_for(seq);
 
         let iter = bindings

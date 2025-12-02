@@ -1,3 +1,8 @@
+//! Functionality for switching modes
+//!
+//! This module just defines the functions that are necessary whenever
+//! the current mode switches. It does all the synchronization between
+//! the parts of Duat that rely on the current mode.
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
