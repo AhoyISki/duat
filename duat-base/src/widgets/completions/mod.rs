@@ -28,7 +28,7 @@ use duat_core::{
 use duat_term::Frame;
 
 pub use self::words::{WordCompletions, WordsCompletionParser};
-use crate::widgets::completions::paths::PathCompletions;
+use crate::widgets::{Info, completions::paths::PathCompletions};
 
 mod paths;
 mod words;
@@ -108,6 +108,7 @@ impl CompletionsBuilder {
             start_byte,
             show_without_prefix: self.show_without_prefix,
             last_caret: main.caret(),
+            info_handle: None,
         };
 
         let text = handle.text_mut(pa);
@@ -147,6 +148,7 @@ pub struct Completions {
     start_byte: usize,
     show_without_prefix: bool,
     last_caret: Point,
+    info_handle: Option<Handle<Info>>,
 }
 
 impl Completions {
@@ -215,7 +217,7 @@ impl Completions {
             .providers
             .iter_mut()
             .map(|inner| {
-                let texts_and_rep = inner.texts_and_replacement(
+                let texts_and_rep = inner.texts_and_match(
                     master.text(),
                     scroll,
                     comp.max_height,
@@ -236,7 +238,7 @@ impl Completions {
             let prefix_regex = prefix_regex.to_string();
 
             let mut new_start_byte = start_byte;
-            if let Some(replacement) = replacement {
+            if let Some((replacement, info_text)) = replacement {
                 master_handle.edit_all(pa, |mut c| {
                     let prefix_range = c
                         .search_rev(&prefix_regex)
@@ -254,6 +256,24 @@ impl Completions {
                         new_start_byte = prefix_range.start;
                     }
                 });
+
+                if let Some(info_text) = info_text {
+                    let specs = DynSpawnSpecs {
+                        orientation: Orientation::HorTopRight,
+                        width: None,
+                        height: Some(20.0),
+                        ..Default::default()
+                    };
+
+                    let info_handle = handle.spawn_widget(pa, Info::new(info_text), specs);
+                    if let Some(info_handle) =
+                        std::mem::replace(&mut handle.write(pa).info_handle, info_handle)
+                    {
+                        let _ = info_handle.close(pa);
+                    };
+                } else if let Some(info_handle) = handle.write(pa).info_handle.take() {
+                    let _ = info_handle.close(pa);
+                }
             }
 
             let comp = handle.write(pa);
@@ -269,6 +289,7 @@ impl Completions {
                     start_byte: new_start_byte,
                     show_without_prefix: false,
                     last_caret: comp.last_caret,
+                    info_handle: comp.info_handle.take(),
                 };
 
                 let text = master_handle.text_mut(pa);
@@ -397,6 +418,10 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// This is particularly useful if the `CompletionsProvider` could
     /// be slow, such as one from an LSP or things of the sort.
     fn has_changed(&self) -> bool;
+
+    /// Additional information about an entry, which can be shown when
+    /// it is selected.
+    fn info_on(&self, item: (&str, &Self::Info)) -> Option<Text>;
 }
 
 /// A list of entries for completion
@@ -458,13 +483,16 @@ pub enum CompletionsKind {
 
 trait ErasedInnerProvider: Any + Send {
     #[allow(clippy::type_complexity)]
-    fn texts_and_replacement(
+    fn texts_and_match(
         &mut self,
         text: &Text,
         scroll: i32,
         height: usize,
         show_without_prefix: bool,
-    ) -> (usize, Option<((Text, Text), Option<String>)>);
+    ) -> (
+        usize,
+        Option<((Text, Text), Option<(String, Option<Text>)>)>,
+    );
 
     fn has_changed(&self, text: Option<&Text>) -> bool;
 
@@ -519,19 +547,22 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let (start, text) = inner.texts_and_replacement(text, 0, height, true);
+        let (start, text) = inner.texts_and_match(text, 0, height, true);
         (inner, start, text.unzip().0)
     }
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
-    fn texts_and_replacement(
+    fn texts_and_match(
         &mut self,
         text: &Text,
         scroll: i32,
         height: usize,
         show_without_prefix: bool,
-    ) -> (usize, Option<((Text, Text), Option<String>)>) {
+    ) -> (
+        usize,
+        Option<((Text, Text), Option<(String, Option<Text>)>)>,
+    ) {
         use FilteredEntries::*;
         let (range, [prefix, suffix]) =
             preffix_and_suffix(text, self.regexes.each_ref().map(|s| s.as_str()));
@@ -576,26 +607,30 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             return (range.start, None);
         }
 
+        let mut ret_info = None;
         if scroll != 0 {
             // No try blocks on stable Rust 🤮.
             self.current = (|| -> Option<(String, usize)> {
                 if let Some((prev, dist)) = &self.current {
                     let dist = dist.saturating_add_signed(scroll as isize).min(height - 1);
                     let prev_i = entries.iter().position(|(w, _)| w == prev)?;
-                    let (word, _) = entries.get(prev_i.checked_add_signed(scroll as isize)?)?;
+                    let (word, info) = entries.get(prev_i.checked_add_signed(scroll as isize)?)?;
 
+                    ret_info = Some(info);
                     Some((word.clone(), dist))
                 } else if scroll > 0 {
                     let scroll = scroll.unsigned_abs() as usize - 1;
                     let dist = (scroll).min(height - 1);
-                    let (word, _) = entries.get(scroll)?;
+                    let (word, info) = entries.get(scroll)?;
 
+                    ret_info = Some(info);
                     Some((word.clone(), dist))
                 } else {
                     let scroll = scroll.unsigned_abs() as usize;
                     let dist = height.saturating_sub(scroll);
-                    let (word, _) = entries.get(entries.len().checked_sub(scroll)?)?;
+                    let (word, info) = entries.get(entries.len().checked_sub(scroll)?)?;
 
+                    ret_info = Some(info);
                     Some((word.clone(), dist))
                 }
             })();
@@ -630,8 +665,11 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let replacement = if scroll != 0 {
             self.current
                 .clone()
-                .map(|(w, _)| w)
-                .or_else(|| Some(self.orig_prefix.clone()))
+                .map(|(w, _)| {
+                    let text = self.provider.info_on((&w, ret_info.unwrap()));
+                    (w, text)
+                })
+                .or_else(|| Some((self.orig_prefix.clone(), None)))
         } else {
             None
         };

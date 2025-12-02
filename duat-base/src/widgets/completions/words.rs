@@ -73,6 +73,10 @@ impl CompletionsProvider for WordCompletions {
     fn has_changed(&self) -> bool {
         false
     }
+
+    fn info_on(&self, (word, path): (&str, &Self::Info)) -> Option<Text> {
+        Some(txt!("Hiiii pookie {word} from {path.source}!"))
+    }
 }
 
 /// Information about an entry in the [`WordCompletions`]
@@ -159,10 +163,10 @@ impl Parser for WordsCompletionParser {
             match (buffer_words.get_mut(word), is_taken) {
                 (Some(info), false) => info.count += 1,
                 (None, false) => {
-                    buffer_words.insert(
-                        word.to_string(),
-                        WordInfo { source: buffer.name(), count: 1 },
-                    );
+                    buffer_words.insert(word.to_string(), WordInfo {
+                        source: buffer.name(),
+                        count: 1,
+                    });
                 }
                 (Some(info), true) if info.count > 1 => info.count -= 1,
                 (Some(_), true) => {
