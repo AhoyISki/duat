@@ -22,8 +22,10 @@ use crate::{
 };
 
 macro_rules! simple_impl_Tag {
-    ($tag:ty, $raw_tag:expr) => {
+    ($tag:ty, $raw_tag:expr, $is_meta:literal) => {
         impl Tag<usize> for $tag {
+            const IS_META: bool = $is_meta;
+
             fn get_raw(
                 &self,
                 _: &super::InnerTags,
@@ -40,6 +42,8 @@ macro_rules! simple_impl_Tag {
         }
 
         impl Tag<Point> for $tag {
+            const IS_META: bool = $is_meta;
+
             fn get_raw(
                 &self,
                 tags: &super::InnerTags,
@@ -55,8 +59,10 @@ macro_rules! simple_impl_Tag {
 }
 
 macro_rules! ranged_impl_tag {
-    ($tag:ty, $start:expr, $end:expr) => {
+    ($tag:ty, $start:expr, $end:expr, $is_meta:literal) => {
         impl<I: TextRange> Tag<I> for $tag {
+            const IS_META: bool = $is_meta;
+
             fn get_raw(
                 &self,
                 _: &super::InnerTags,
@@ -104,6 +110,12 @@ macro_rules! ranged_impl_tag {
 /// [`Buffer`]: crate::buffer::Buffer
 /// [`Widget`]: crate::ui::Widget
 pub trait Tag<Index, Return: Copy = ()>: Sized {
+    /// A meta `Tag` is one that changes the layout of the [`Text`]
+    /// itself
+    ///
+    /// The only two meta `Tag`s are [`Ghost`] and [`Conceal`].
+    const IS_META: bool;
+
     /// Gets the [`RawTag`]s and a possible return id from the `Tag`
     #[doc(hidden)]
     fn get_raw(
@@ -140,6 +152,8 @@ pub trait Tag<Index, Return: Copy = ()>: Sized {
 pub struct FormTag(pub FormId, pub u8);
 
 impl<I: TextRange> Tag<I> for FormTag {
+    const IS_META: bool = false;
+
     fn get_raw(
         &self,
         _: &super::InnerTags,
@@ -162,7 +176,7 @@ impl<I: TextRange> Tag<I> for FormTag {
 /// [`Selections`]: crate::mode::Selections
 #[derive(Debug, Clone, Copy)]
 pub struct MainCaret;
-simple_impl_Tag!(MainCaret, RawTag::MainCaret);
+simple_impl_Tag!(MainCaret, RawTag::MainCaret, false);
 
 /// [`Tag`]: Places an extra Caret on the [`Text`]
 ///
@@ -181,7 +195,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 /// [`Form`]: crate::form::Form
 #[derive(Debug, Clone, Copy)]
 pub struct ExtraCaret;
-simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
+simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret, false);
 
 /////////// Alignment Tags
 
@@ -194,7 +208,8 @@ pub struct AlignCenter;
 ranged_impl_tag!(
     AlignCenter,
     RawTag::StartAlignCenter,
-    RawTag::EndAlignCenter
+    RawTag::EndAlignCenter,
+    false
 );
 
 /// [`Tag`]: Aligns the [`Text`] on the right in a [range]
@@ -203,7 +218,12 @@ ranged_impl_tag!(
 /// [range]: TextRange
 #[derive(Debug, Clone, Copy)]
 pub struct AlignRight;
-ranged_impl_tag!(AlignRight, RawTag::StartAlignRight, RawTag::EndAlignRight);
+ranged_impl_tag!(
+    AlignRight,
+    RawTag::StartAlignRight,
+    RawTag::EndAlignRight,
+    false
+);
 
 /// [`Builder`] part: Begins alignment on the left
 ///
@@ -253,7 +273,7 @@ pub struct AlignLeft;
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone, Copy)]
 pub struct Spacer;
-simple_impl_Tag!(Spacer, RawTag::Spacer);
+simple_impl_Tag!(Spacer, RawTag::Spacer, false);
 
 ////////// Text modification Tags
 
@@ -281,6 +301,8 @@ impl Ghost {
 }
 
 impl Tag<usize, GhostId> for Ghost {
+    const IS_META: bool = true;
+
     fn get_raw(
         &self,
         tags: &super::InnerTags,
@@ -311,6 +333,8 @@ impl Tag<usize, GhostId> for Ghost {
 }
 
 impl Tag<Point, GhostId> for Ghost {
+    const IS_META: bool = true;
+
     fn get_raw(
         &self,
         tags: &super::InnerTags,
@@ -336,7 +360,7 @@ impl Tag<Point, GhostId> for Ghost {
 /// [range]: TextRange
 #[derive(Debug, Clone, Copy)]
 pub struct Conceal;
-ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
+ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal, true);
 
 ////////// Layout modification Tags
 
@@ -385,6 +409,8 @@ impl SpawnTag {
 }
 
 impl Tag<Point, SpawnId> for SpawnTag {
+    const IS_META: bool = false;
+
     fn get_raw(
         &self,
         _: &super::InnerTags,
@@ -406,6 +432,8 @@ impl Tag<Point, SpawnId> for SpawnTag {
 }
 
 impl Tag<usize, SpawnId> for SpawnTag {
+    const IS_META: bool = false;
+
     fn get_raw(
         &self,
         _: &super::InnerTags,

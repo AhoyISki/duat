@@ -14,7 +14,7 @@ use duat_core::{
     text::{Text, txt},
     ui::{DynSpawnSpecs, PushSpecs, Side, Widget},
 };
-use duat_term::{Frame, FrameStyle};
+use duat_term::Frame;
 
 /// A [`Widget`] to display what [keys] will do
 ///
@@ -93,7 +93,6 @@ impl WhichKey {
                 right: true,
                 above: true,
                 below: true,
-                style: Some(FrameStyle::Rounded),
                 ..Frame::default()
             };
             frame.set_text(Side::Above, move |_| {

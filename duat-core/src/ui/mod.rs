@@ -749,3 +749,12 @@ impl std::fmt::Debug for SpawnId {
         write!(f, "SpawnId({})", self.0)
     }
 }
+
+/// Information about a line that was printed
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PrintedLine {
+    /// The line's number
+    pub number: usize,
+    /// Wether the line is wrapped
+    pub is_wrapped: bool,
+}

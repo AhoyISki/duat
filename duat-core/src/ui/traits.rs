@@ -21,7 +21,7 @@ use crate::{
     opts::PrintOpts,
     session::{DuatSender, TwoPointsPlace},
     text::{Item, Text, TwoPoints},
-    ui::{Caret, Coord, DynSpawnSpecs, PushSpecs, SpawnId, StaticSpawnSpecs},
+    ui::{Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs},
 };
 
 /// All the methods that a working gui/tui will need to implement in
@@ -363,6 +363,20 @@ pub trait RawArea: Sized + PartialEq + 'static {
     ///
     /// [`PrintInfo`]: RawArea::PrintInfo
     fn set_print_info(&self, _: UiPass, info: Self::PrintInfo);
+
+    /// For a given [`Text`], returns a list of [`PrintedLine`]s
+    ///
+    /// This should list all lines that are presently on screen. Note
+    /// that a "line" in this context represents all characters in a
+    /// row, not sequences divided by `\n`.
+    ///
+    /// Returns [`None`] if the `Area` was deleted.
+    fn get_printed_lines(
+        &self,
+        _: UiPass,
+        text: &Text,
+        opts: PrintOpts,
+    ) -> Option<Vec<PrintedLine>>;
 
     /// Returns a printing iterator
     ///

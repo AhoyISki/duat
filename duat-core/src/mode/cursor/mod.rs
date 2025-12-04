@@ -15,7 +15,6 @@ use lender::{Lender, Lending};
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
-    buffer::{Buffer, Parser},
     opts::PrintOpts,
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextIndex, TextRange},
     ui::{Area, Widget},
@@ -954,15 +953,6 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// The [`PrintOpts`] in use
     pub fn opts(&self) -> PrintOpts {
         self.widget.get_print_opts()
-    }
-}
-
-impl<S> Cursor<'_, Buffer, S> {
-    /// Reads the [`Bytes`] and a [`Parser`]
-    ///
-    /// [`Bytes`]: crate::text::Bytes
-    pub fn read_parser<Rd: Parser, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
-        self.widget.read_parser(read)
     }
 }
 

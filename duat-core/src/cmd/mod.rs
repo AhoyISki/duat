@@ -1177,12 +1177,8 @@ impl Commands {
 
         if let Some(command) = cmds.find(|cmd| cmd.caller().contains(&caller)) {
             let entry = (command.clone(), call.clone());
-            Ok(Some(match self.aliases.insert(alias.clone(), entry) {
-                Some((_, prev_call)) => {
-                    txt!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}")
-                }
-                None => txt!("Aliased [a]{alias}[] to [a]{call}"),
-            }))
+            self.aliases.insert(alias.clone(), entry);
+            Ok(None)
         } else {
             Err(txt!("The caller [a]{caller}[] was not found"))
         }

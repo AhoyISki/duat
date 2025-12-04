@@ -44,6 +44,7 @@
 //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
 //! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
+//! - [`BufferUpdated`] triggers whenever a buffer changes.
 //! - [`FocusedOn`] triggers when a [widget] is focused.
 //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
 //! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
@@ -69,7 +70,7 @@
 //! impl Hookable for CustomHook {
 //!     type Input<'h> = usize;
 //!
-//!     fn get_input(&mut self) -> Self::Input<'_> {
+//!     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
 //!         self.0
 //!     }
 //! }
@@ -98,7 +99,7 @@
 //! # struct CustomHook(usize);
 //! # impl Hookable for CustomHook {
 //! #     type Input<'h> = usize;
-//! #     fn get_input(&mut self) -> Self::Input<'_> { self.0 }
+//! #     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> { self.0 }
 //! # }
 //! fn on_a_thread_far_far_away() {
 //!     let arg = 42;
@@ -126,7 +127,7 @@
 //! impl Hookable for MyConfigCreated {
 //!     type Input<'h> = &'h mut MyConfig;
 //!
-//!     fn get_input(&mut self) -> Self::Input<'_> {
+//!     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
 //!         &mut self.0
 //!     }
 //! }
@@ -151,7 +152,7 @@
 //! # struct MyConfigCreated(MyConfig);
 //! # impl Hookable for MyConfigCreated {
 //! #     type Input<'h> = &'h mut MyConfig;
-//! #     fn get_input(&mut self) -> Self::Input<'_> { &mut self.0 }
+//! #     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> { &mut self.0 }
 //! # }
 //! use duat::prelude::*;
 //! setup_duat!(setup);
@@ -421,7 +422,7 @@ pub struct ConfigLoaded(pub(crate) ());
 impl Hookable for ConfigLoaded {
     type Input<'h> = ();
 
-    fn get_input(&mut self) -> Self::Input<'_> {}
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
 /// [`Hookable`]: Triggers when Duat closes or has to reload
@@ -432,7 +433,7 @@ pub struct ConfigUnloaded(pub(crate) ());
 impl Hookable for ConfigUnloaded {
     type Input<'h> = ();
 
-    fn get_input(&mut self) -> Self::Input<'_> {}
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
 /// [`Hookable`]: Triggers when Duat closes
@@ -443,7 +444,7 @@ pub struct ExitedDuat(pub(crate) ());
 impl Hookable for ExitedDuat {
     type Input<'h> = ();
 
-    fn get_input(&mut self) -> Self::Input<'_> {}
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
 /// [`Hookable`]: Triggers when Duat is refocused
@@ -456,7 +457,7 @@ pub struct FocusedOnDuat(pub(crate) ());
 impl Hookable for FocusedOnDuat {
     type Input<'h> = ();
 
-    fn get_input(&mut self) -> Self::Input<'_> {}
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
 /// [`Hookable`]: Triggers when Duat is unfocused
@@ -469,7 +470,7 @@ pub struct UnfocusedFromDuat(pub(crate) ());
 impl Hookable for UnfocusedFromDuat {
     type Input<'h> = ();
 
-    fn get_input(&mut self) -> Self::Input<'_> {}
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
 /// [`Hookable`]: Triggers when a [`Widget`] is created
@@ -537,7 +538,7 @@ pub struct WidgetCreated<W: Widget>(pub(crate) Handle<W>);
 impl<W: Widget> Hookable for WidgetCreated<W> {
     type Input<'h> = &'h Handle<W>;
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
@@ -616,7 +617,7 @@ pub struct WindowCreated(pub(crate) Window);
 impl Hookable for WindowCreated {
     type Input<'h> = &'h mut Window;
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &mut self.0
     }
 }
@@ -638,7 +639,7 @@ pub struct BufferClosed(pub(crate) (Handle, Cache));
 impl Hookable for BufferClosed {
     type Input<'h> = &'h (Handle, Cache);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
@@ -660,7 +661,73 @@ pub struct BufferReloaded(pub(crate) (Handle, Cache));
 impl Hookable for BufferReloaded {
     type Input<'h> = &'h (Handle, Cache);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        &self.0
+    }
+}
+
+/// [`Hookable`]: Triggers when a [`Buffer`] updates
+///
+/// This is triggered after a batch of writing calls to the `Buffer`,
+/// once per frame. This can happen after typing a key, calling a
+/// command, triggering hooks, or any other action with access to a
+/// [`Pass`], which could be used to write to the `Buffer`.
+///
+/// Think of this is as a "last pass" on the `Buffer`, right before
+/// printing, where it can be adjusted given the modifications to it,
+/// like [`Change`]s and such.
+///
+/// The function [`Buffer::new_changes`] keeps track of this hook
+/// specifically, and it will return the full list of [`Change`]s
+/// since the last triggering of this hook. Essentially, it will
+/// trigger once per frame, letting you adjust the `Buffer`
+/// accordingly.
+///
+/// As a silly example, here's a hook that will replace every instance
+/// of the letter `a` with the letter alpha `α`:
+///
+/// ```rust
+/// # duat_core::utils::doc_duat!(duat);
+/// use duat::prelude::*;
+///
+/// fn setup() {
+///     hook::add::<BufferReloaded>(|pa, handle| {
+///         let buffer = handle.write(pa);
+///         let ranges: Vec<_> = buffer
+///             .new_changes()
+///             .iter()
+///             .map(|change| (change.added_str().replace("a", "α"), change.added_range()))
+///             .collect();
+///
+///         for (alphaed, range) in ranges {
+///             buffer.text_mut().replace_range(range, alphaed);
+///         }
+///
+///         Ok(())
+///     });
+/// }
+/// ```
+///
+/// Of course, if other hooks were added to `BufferReloaded` and they
+/// trigger after this one. [`Buffer::new_changes`] will also include
+/// these "a" to "α" replacements.
+///
+/// # Arguments
+///
+/// - The [`Buffer`]'s [`Handle`]
+///
+/// [`Area`]: crate::ui::Area
+/// [`Buffer`]: crate::buffer::Buffer
+/// [`Buffer::new_changes`]: crate::buffer::Buffer::new_changes
+/// [`PrintOpts`]: crate::opts::PrintOpts
+/// [`Change`]: crate::text::Change
+pub struct BufferUpdated(pub(crate) Handle);
+
+impl Hookable for BufferUpdated {
+    type Input<'h> = &'h Handle;
+
+    fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
+        self.0.write(pa).inter_hook_update();
         &self.0
     }
 }
@@ -683,7 +750,7 @@ pub struct FocusedOn<W: Widget>(pub(crate) (Handle<dyn Widget>, Handle<W>));
 impl<W: Widget> Hookable for FocusedOn<W> {
     type Input<'h> = &'h (Handle<dyn Widget>, Handle<W>);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
@@ -713,7 +780,7 @@ pub struct UnfocusedFrom<W: Widget>(pub(crate) (Handle<W>, Handle<dyn Widget>));
 impl<W: Widget> Hookable for UnfocusedFrom<W> {
     type Input<'h> = &'h (Handle<W>, Handle<dyn Widget>);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
@@ -746,7 +813,7 @@ pub struct FocusChanged(pub(crate) (Handle<dyn Widget>, Handle<dyn Widget>));
 impl Hookable for FocusChanged {
     type Input<'h> = &'h (Handle<dyn Widget>, Handle<dyn Widget>);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
@@ -762,7 +829,7 @@ pub struct ModeSwitched(pub(crate) (&'static str, &'static str));
 impl Hookable for ModeSwitched {
     type Input<'h> = (&'static str, &'static str);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         self.0
     }
 }
@@ -846,7 +913,7 @@ pub struct ModeSet<M: Mode>(pub(crate) (M, Handle<M::Widget>));
 impl<M: Mode> Hookable for ModeSet<M> {
     type Input<'h> = (&'h mut M, &'h Handle<M::Widget>);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&mut self.0.0, &self.0.1)
     }
 }
@@ -872,7 +939,7 @@ pub struct KeysSent(pub(crate) Vec<KeyEvent>);
 impl Hookable for KeysSent {
     type Input<'h> = &'h [KeyEvent];
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
@@ -890,7 +957,7 @@ pub struct KeysSentTo<M: Mode>(pub(crate) (Vec<KeyEvent>, Handle<M::Widget>));
 impl<M: Mode> Hookable for KeysSentTo<M> {
     type Input<'h> = (&'h [KeyEvent], &'h Handle<M::Widget>);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&self.0.0, &self.0.1)
     }
 }
@@ -916,7 +983,7 @@ pub struct KeyTyped(pub(crate) KeyEvent);
 impl Hookable for KeyTyped {
     type Input<'h> = KeyEvent;
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         self.0
     }
 }
@@ -937,7 +1004,7 @@ pub struct FormSet(pub(crate) (&'static str, FormId, Form));
 impl Hookable for FormSet {
     type Input<'h> = (&'static str, FormId, Form);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (self.0.0, self.0.1, self.0.2)
     }
 }
@@ -957,7 +1024,7 @@ pub struct ColorSchemeSet(pub(crate) &'static str);
 impl Hookable for ColorSchemeSet {
     type Input<'h> = &'static str;
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         self.0
     }
 }
@@ -980,7 +1047,7 @@ pub struct BufferWritten(pub(crate) (String, usize, bool));
 impl Hookable for BufferWritten {
     type Input<'h> = (&'h str, usize, bool);
 
-    fn get_input(&mut self) -> Self::Input<'_> {
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&self.0.0, self.0.1, self.0.2)
     }
 }
@@ -999,7 +1066,42 @@ pub trait Hookable: Sized + 'static {
     /// The arguments that are passed to each hook.
     type Input<'h>;
     /// How to get the arguments from the [`Hookable`]
-    fn get_input(&mut self) -> Self::Input<'_>;
+    ///
+    /// This function is triggered once on every call that was added
+    /// via [`hook::add`]. So if three hooks were added to
+    /// [`BufferWritten`], for example, [`BufferWritten::get_input`]
+    /// will be called three times, once before each hook.
+    ///
+    /// The vast majority of the time, this function is just a
+    /// "getter", as it should take a copy, clone, or reference to the
+    /// input type, which should be owned by the `Hookable`. For
+    /// example, here's the definition of the [`KeyTyped`] hook:
+    ///
+    /// ```rust
+    /// # duat_core::utils::doc_duat!(duat);
+    /// use duat::{hook::Hookable, mode::KeyEvent};
+    ///
+    /// struct KeyTyped(pub(crate) KeyEvent);
+    ///
+    /// impl Hookable for KeyTyped {
+    ///     type Input<'h> = KeyEvent;
+    ///
+    ///     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
+    ///         self.0
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// However, given the `&mut self` and `&mut Pass`, you can also
+    /// do "inter hook mutations", in order to prepare for future hook
+    /// calls. An example of this is on [`BufferUpdated`].
+    ///
+    /// Note that the [`Pass`] here is purely for internal use, you
+    /// are not allowed to return something that borrows from it, as
+    /// the borrow checker will prevent you.
+    ///
+    /// [`hook::add`]: add
+    fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h>;
 }
 
 /// Where all hooks of Duat are stored
@@ -1082,7 +1184,7 @@ impl InnerHooks {
                 return true;
             }
 
-            let input = hookable.get_input();
+            let input = hookable.get_input(pa);
             if let Some(Err(err)) = catch_panic(|| hook.callback.borrow_mut()(pa, input)) {
                 crate::context::error!("{err}");
             }
@@ -1175,7 +1277,7 @@ struct Hook<H: Hookable> {
 /// impl<T: 'static> Hookable for CreatedStruct<T> {
 ///     type Input<'h> = &'h mut T;
 ///
-///     fn get_input(&mut self) -> Self::Input<'_> {
+///     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
 ///         &mut self.0
 ///     }
 /// }
@@ -1208,7 +1310,7 @@ struct Hook<H: Hookable> {
 /// impl<T: 'static> Hookable for CreatedStruct<T> {
 ///     type Input<'h> = &'h mut T;
 ///
-///     fn get_input(&mut self) -> Self::Input<'_> {
+///     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
 ///         &mut self.0
 ///     }
 /// }

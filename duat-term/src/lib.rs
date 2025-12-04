@@ -76,6 +76,11 @@ mod shared_fns {
     pub fn set_default_frame_style(frame_style: FrameStyle) {
         (FNS.get().unwrap().set_default_frame_style)(frame_style)
     }
+
+    /// Resetting functions, right before reloading.
+    pub(super) fn reset_state() {
+        set_default_frame_style(FrameStyle::Regular);
+    }
 }
 
 /// The [`RawUi`] implementation for `duat-term`
@@ -104,6 +109,7 @@ impl RawUi for Ui {
     fn get_once() -> Option<&'static Self> {
         static GOT: AtomicBool = AtomicBool::new(false);
         let (tx, rx) = mpsc::channel();
+        shared_fns::FNS.set(ExecSpaceFns::default()).unwrap();
 
         (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
             Box::leak(Box::new(Self {
@@ -318,6 +324,7 @@ impl RawUi for Ui {
         // from another thread
         unsafe { ui.layouts.get() }.reset();
         ui.win = 0;
+        shared_fns::reset_state();
     }
 
     fn remove_window(&self, win: usize) {

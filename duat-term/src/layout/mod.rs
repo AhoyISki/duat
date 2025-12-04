@@ -615,6 +615,10 @@ impl Layout {
 
     /// Sets the [`Frame`] for an [`Area`], if it's a spawned one
     ///
+    /// Note that setting the frame for an `Area` pushed onto an
+    /// already existing spawned `Area` will just set the frame for
+    /// both.
+    ///
     /// [`Area`]: super::Area
     pub fn set_frame(&mut self, id: AreaId, frame: &mut Frame) -> bool {
         let Some((info, rect)) = self

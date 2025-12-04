@@ -80,8 +80,6 @@ struct Args {
 static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let start = START.get_or_init(std::time::Instant::now);
-
     let args = <Args as clap::Parser>::parse();
 
     if let Some(name) = args.init_plugin.clone() {
@@ -238,7 +236,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let clipb = &*CLIPBOARD;
             s.spawn(|| {
                 if let Some(run_duat) = running_duat_fn.take() {
-                    context::debug!("startup: {:?}", start.elapsed());
                     let initials = (logs.clone(), forms_init, (crate_dir, profile));
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
                     run_duat(initials, (ui, clipb), buffers, channel)

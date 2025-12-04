@@ -30,8 +30,7 @@ use crate::{
     session::{DuatSender, TwoPointsPlace},
     text::{Item, Text, TwoPoints},
     ui::{
-        Caret, Coord, DynSpawnSpecs, PushSpecs, SpawnId, StaticSpawnSpecs,
-        traits::{RawArea, RawUi, UiPass},
+        traits::{RawArea, RawUi, UiPass}, Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs
     },
 };
 
@@ -721,6 +720,13 @@ impl Area {
         (self.fns.set_print_info)(self, info)
     }
 
+	/// Returns a list of the lines that were printed
+    pub fn get_printed_lines(&self, text: &Text, opts: PrintOpts) -> Option<Vec<PrintedLine>> {
+        (self.fns.get_printed_lines)(self, text, opts)
+    }
+
+    ////////// PROBABLY DUE FOR DELETION, DON'T LIKE THESE
+
     /// Returns a printing iterator
     ///
     /// Given an iterator of [`text::Item`]s, returns an iterator
@@ -899,29 +905,30 @@ struct AreaFunctions {
     set_height: fn(&Area, height: f32) -> Result<(), Text>,
     hide: fn(&Area) -> Result<(), Text>,
     reveal: fn(&Area) -> Result<(), Text>,
-    width_of_text: fn(&Area, opts: PrintOpts, text: &Text) -> Result<f32, Text>,
+    width_of_text: fn(&Area, PrintOpts, &Text) -> Result<f32, Text>,
     set_as_active: fn(&Area),
-    print: fn(&Area, text: &Text, opts: PrintOpts, painter: Painter),
+    print: fn(&Area, &Text, PrintOpts, Painter),
     print_with: for<'a> fn(&Area, &Text, PrintOpts, Painter, Box<dyn FnMut(&Caret, &Item) + 'a>),
     get_print_info: fn(&Area) -> PrintInfo,
     set_print_info: fn(&Area, PrintInfo),
+    get_printed_lines: fn(&Area, &Text, PrintOpts) -> Option<Vec<PrintedLine>>,
     print_iter: for<'a> fn(
         &Area,
-        text: &'a Text,
-        points: TwoPoints,
-        opts: PrintOpts,
+        &'a Text,
+        TwoPoints,
+        PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>,
     rev_print_iter: for<'a> fn(
         &Area,
-        text: &'a Text,
-        points: TwoPoints,
-        opts: PrintOpts,
+        &'a Text,
+        TwoPoints,
+        PrintOpts,
     ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>,
-    scroll_ver: fn(&Area, text: &Text, dist: i32, opts: PrintOpts),
-    scroll_around_points: fn(&Area, text: &Text, points: TwoPoints, opts: PrintOpts),
-    scroll_to_points: fn(&Area, text: &Text, points: TwoPoints, opts: PrintOpts),
-    start_points: fn(&Area, text: &Text, opts: PrintOpts) -> TwoPoints,
-    end_points: fn(&Area, text: &Text, opts: PrintOpts) -> TwoPoints,
+    scroll_ver: fn(&Area, &Text, i32, PrintOpts),
+    scroll_around_points: fn(&Area, &Text, TwoPoints, PrintOpts),
+    scroll_to_points: fn(&Area, &Text, TwoPoints, PrintOpts),
+    start_points: fn(&Area, &Text, PrintOpts) -> TwoPoints,
+    end_points: fn(&Area, &Text, PrintOpts) -> TwoPoints,
     has_changed: fn(&Area) -> bool,
     is_master_of: fn(&Area, &Area) -> bool,
     get_cluster_master: fn(&Area) -> Option<RwArea>,
@@ -1018,6 +1025,10 @@ impl AreaFunctions {
                 };
 
                 area.set_print_info(UiPass::new(), info.clone());
+            },
+            get_printed_lines: |area, text, opts| {
+                let area = area.inner.downcast_ref::<U::Area>().unwrap();
+                area.get_printed_lines(UiPass::new(), text, opts)
             },
             print_iter: |area, text, points, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();

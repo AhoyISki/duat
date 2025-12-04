@@ -48,7 +48,7 @@ mod types;
 /// for example, holding a reference to the [`Bytes`] of the [`Text`]
 ///
 /// [`Bytes`]: super::Bytes
-pub struct Tags<'a>(pub(super) &'a mut InnerTags);
+pub struct Tags<'a>(&'a mut InnerTags);
 
 impl Tags<'_> {
     /// Inserts a [`Tag`] at the given position
@@ -162,6 +162,12 @@ impl Tags<'_> {
     pub fn len_bytes(&self) -> usize {
         self.0.len_bytes()
     }
+
+    /// Returns `true` if meta tags like [`Conceal`] or [`Ghost`] were
+    /// added
+    pub(crate) fn meta_tags_changed(&mut self) -> bool {
+        std::mem::take(&mut self.0.meta_tags_changed)
+    }
 }
 
 impl std::ops::Deref for Tags<'_> {
@@ -190,9 +196,15 @@ pub struct InnerTags {
     pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
+    meta_tags_changed: bool,
 }
 
 impl InnerTags {
+    /// Returns a [`Tags`] of `self`
+    pub(super) fn tags(&mut self) -> Tags<'_> {
+        Tags(self)
+    }
+
     /// Creates a new [`InnerTags`] with a given len
     pub fn new(max: usize) -> Self {
         Self {
@@ -203,18 +215,14 @@ impl InnerTags {
             spawn_fns: Vec::new(),
             bounds: Bounds::new(max),
             extents: TaggerExtents::new(max),
+            meta_tags_changed: false,
         }
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert<I, R>(
-        &mut self,
-        tagger: Tagger,
-        i: I,
-        tag: impl Tag<I, R>,
-        after: bool,
-    ) -> Option<R>
+    pub fn insert<T, I, R>(&mut self, tagger: Tagger, i: I, tag: T, after: bool) -> Option<R>
     where
+        T: Tag<I, R>,
         R: Copy,
     {
         let (start, end, ret) = tag.get_raw(self, i, self.len_bytes(), tagger);
@@ -222,6 +230,7 @@ impl InnerTags {
 
         if inserted {
             tag.on_insertion(ret, self);
+            self.meta_tags_changed |= T::IS_META;
             Some(ret)
         } else {
             None
@@ -337,7 +346,7 @@ impl InnerTags {
         self.extents.extend(other.extents);
     }
 
-    /// Removes all [`RawTag`]s of a give [`Taggers`]
+    /// Removes all [`RawTag`]s of a given [`Taggers`]
     pub fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let (start, end) = crate::utils::get_ends(within, self.len_bytes());
 
@@ -406,6 +415,11 @@ impl InnerTags {
             .for_each(|(i, (_, tag))| {
                 removed += 1;
                 self.bounds.shift_by(i, [-1, 0]);
+
+                // This is the only place where this should be checked.
+                self.meta_tags_changed |=
+                    matches!(tag, RawTag::EndConceal(_) | RawTag::StartConceal(_));
+
                 if tag.is_start() {
                     starts.push(tag);
                 } else if tag.is_end() {
@@ -623,6 +637,7 @@ impl Clone for InnerTags {
             spawn_fns: Vec::new(),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
+            meta_tags_changed: false
         }
     }
 }

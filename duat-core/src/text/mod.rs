@@ -265,7 +265,7 @@ impl Text {
     pub fn parts(&mut self) -> TextParts<'_> {
         TextParts {
             bytes: &self.0.bytes,
-            tags: Tags(&mut self.0.tags),
+            tags: self.0.tags.tags(),
             selections: &self.0.selections,
         }
     }
@@ -785,6 +785,12 @@ impl Text {
     /// A list of all [`SpawnId`]s that belong to this `Text`
     pub fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
         self.0.tags.get_spawned_ids()
+    }
+
+	/// Wether the `Text` has changed, structurally speaking
+    pub(crate) fn has_structurally_changed(&mut self) -> bool {
+        let tags_have_changed = self.0.tags.tags().meta_tags_changed();
+        std::mem::take(&mut self.0.has_changed) || tags_have_changed
     }
 }
 

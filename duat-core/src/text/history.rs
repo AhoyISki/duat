@@ -177,7 +177,11 @@ pub struct Moment {
 impl Moment {
     /// First try to merge this change with as many changes as
     /// possible, then add it in
-    fn add_change(&mut self, guess_i: Option<usize>, mut change: Change<'static, String>) -> usize {
+    pub(crate) fn add_change(
+        &mut self,
+        guess_i: Option<usize>,
+        mut change: Change<'static, String>,
+    ) -> usize {
         let new_shift = change.shift();
         let (from, shift) = self.shift_state;
 

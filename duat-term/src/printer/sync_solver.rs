@@ -66,7 +66,7 @@ impl SyncSolver {
         let mut changes = Vec::new();
         let mut new_changes = self.solver.fetch_changes().to_vec();
 
-        // Update the floating Widgets
+        // Update the spawned Widgets
         loop {
             let mut to_update = self
                 .spawns
