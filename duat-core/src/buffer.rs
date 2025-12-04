@@ -13,10 +13,11 @@
 //! [`Cursor`]: crate::mode::Cursor
 //! [`RawArea::PrintInfo`]: crate::ui::traits::RawArea::PrintInfo
 use std::{
+    any::Any,
     fs,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};
@@ -29,8 +30,8 @@ use crate::{
     mode::{MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Bytes, Change, Moment, MomentFetcher, Point, Strs, Text, TextRange, txt},
-    ui::{Area, PrintInfo, PrintedLine, Widget},
+    text::{Bytes, Change, Moment, MomentFetcher, Point, Strs, Text, TextRange, TextState, txt},
+    ui::{Area, PrintedLine, Widget},
 };
 
 /// The widget that is used to print and edit buffers
@@ -38,14 +39,11 @@ pub struct Buffer {
     path: PathKind,
     text: Text,
     pub(crate) layout_order: usize,
+    stored: Mutex<Vec<Box<dyn Any + Send + 'static>>>,
 
     moment: Moment,
     moment_fetcher: Option<MomentFetcher>,
-
-    cached_print_info: Option<(Range<Point>, Vec<PrintedLine>)>,
-    printed_line_ranges: Option<Vec<Range<Point>>>,
-    visible_line_ranges: Option<Vec<Range<usize>>>,
-    print_info: Option<PrintInfo>,
+    cached_print_info: Mutex<Option<CachedPrintInfo>>,
 
     /// The [`PrintOpts`] of this [`Buffer`]
     ///
@@ -53,7 +51,6 @@ pub struct Buffer {
     /// be printed specifically.
     pub opts: PrintOpts,
     sync_opts: Arc<Mutex<PrintOpts>>,
-    prev_opts: PrintOpts,
 }
 
 impl Buffer {
@@ -89,18 +86,15 @@ impl Buffer {
             path,
             text,
             layout_order: 0,
+            stored: Mutex::default(),
 
             moment: Moment::default(),
             moment_fetcher,
 
-            cached_print_info: None,
-            printed_line_ranges: None,
-            visible_line_ranges: None,
-            print_info: None,
+            cached_print_info: Mutex::new(None),
 
             sync_opts: Arc::new(Mutex::new(opts)),
             opts,
-            prev_opts: opts,
         }
     }
 
@@ -254,7 +248,7 @@ impl Buffer {
         self.path.clone()
     }
 
-    ////////// Methods for incremental parsing
+    ////////// Auxiliatory methods for incremental parsing
 
     /// Returns a [`Moment`] with the list of [`Change`]s that took
     /// place since the last [`BufferUpdated`] triggering
@@ -289,6 +283,60 @@ impl Buffer {
         }
     }
 
+    /// Stores an "object" to associate it with this `Buffer`
+    ///
+    /// This is useful if you want to associate an object with each
+    /// `Buffer` and have that object be dropped as the `Buffer` is.
+    /// It is particularly useful for "parsers", a design pattern
+    /// where a struct is responsible for updating the `Buffer`
+    /// whenever it changes, while also being retrievable by, for
+    /// example, trait methods added to the `Buffer`, for ease of
+    /// convenience.
+    ///
+    /// An example of where this is used is in the `duat-jump-list`
+    /// crate, which associates a jump list with each `Buffer`. As
+    /// those `Buffer`s get removed from Duat, so too do the jump
+    /// lists.
+    ///
+    /// If the object was already added to the `Buffer`, this new one
+    /// will replace the old, returning it.
+    pub fn store_object<T: Any + Send>(&self, obj: T) -> Option<T> {
+        let mut stored = self.stored.lock().unwrap();
+        if let Some(prev) = stored.iter_mut().find_map(|any| any.downcast_mut()) {
+            Some(std::mem::replace(prev, obj))
+        } else {
+            stored.push(Box::new(obj));
+            None
+        }
+    }
+
+    /// Calls a mutating function on the stored object
+    ///
+    /// Within this function, any calls to [`Buffer::write_object`] on
+    /// the same `T` will return [`None`], since the object is "busy"
+    /// in this function. Calls on other types will still work.
+    ///
+    /// Returns [`None`] if there was no object.
+    pub fn write_object<T: Any + Send, Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Option<Ret> {
+        let mut stored = self.stored.lock().unwrap();
+
+        if let Some(i) = stored
+            .iter()
+            .position(|any| any.downcast_ref::<T>().is_some())
+        {
+            let mut obj = stored.remove(i);
+            drop(stored);
+
+            let ret = f(obj.downcast_mut().unwrap());
+
+            self.stored.lock().unwrap().insert(i, obj);
+
+            Some(ret)
+        } else {
+            None
+        }
+    }
+
     /// An inter hook call, in order to rectify potential [`Text`]
     /// modifications.
     pub(crate) fn inter_hook_update(&mut self) {
@@ -299,40 +347,42 @@ impl Buffer {
 
     /// Resets the print info if deemed necessary, returning the final
     /// result, as well as `true` if things have changed
-    fn reset_printed_info_if_needed<'a>(
-        &'a mut self,
+    ///
+    /// After calling this, `self.cached_print_info` is guaranteed to
+    /// be [`Some`]
+    fn reset_print_info_if_needed<'a>(
+        &'a self,
         area: &Area,
-    ) -> (Range<Point>, &'a [PrintedLine]) {
-        let mut cache_print_info = |cached: &mut Option<_>, text: &Text| {
-            let start = area.start_points(text, self.opts).real;
-            let end = area.end_points(text, self.opts).real;
-            let printed_lines = area.get_printed_lines(text, self.opts).unwrap();
-            self.printed_line_ranges = None;
-            self.visible_line_ranges = None;
-
-            *cached = Some((start..end, printed_lines));
-        };
-
-        let opts_changed = if self.prev_opts != self.opts {
-            *self.sync_opts.lock().unwrap() = self.opts;
-            self.prev_opts = self.opts;
+    ) -> MutexGuard<'a, Option<CachedPrintInfo>> {
+        let mut sync_opts = self.sync_opts.lock().unwrap();
+        let opts_changed = if *sync_opts != self.opts {
+            *sync_opts = self.opts;
             true
         } else {
             false
         };
 
-        let print_info = Some(area.get_print_info());
-        if self.text.has_structurally_changed()
-            || opts_changed
+        let mut cached_print_info = self.cached_print_info.lock().unwrap();
+        if opts_changed
             || area.has_changed()
-            || self.print_info != print_info
-            || self.cached_print_info.is_none()
+            || cached_print_info
+                .as_ref()
+                .is_none_or(|cpi| self.text.text_state().has_changed_since(cpi.text_state))
         {
-            cache_print_info(&mut self.cached_print_info, &self.text);
+            let start = area.start_points(&self.text, self.opts).real;
+            let end = area.end_points(&self.text, self.opts).real;
+            let printed_line_numbers = area.get_printed_lines(&self.text, self.opts).unwrap();
+
+            *cached_print_info = Some(CachedPrintInfo {
+                range: start..end,
+                printed_line_numbers,
+                printed_line_ranges: None,
+                _visible_line_ranges: None,
+                text_state: self.text.text_state(),
+            });
         }
 
-        let (range, lines) = self.cached_print_info.as_ref().unwrap();
-        (range.clone(), lines)
+        cached_print_info
     }
 
     ////////// General querying functions
@@ -383,18 +433,14 @@ impl Buffer {
             path: self.path.clone(),
             text: std::mem::take(&mut self.text),
             layout_order: self.layout_order,
+            stored: Mutex::default(),
 
             moment: Moment::default(),
             moment_fetcher: self.moment_fetcher.take(),
-
-            cached_print_info: None,
-            printed_line_ranges: None,
-            visible_line_ranges: None,
-            print_info: None,
+            cached_print_info: Mutex::new(self.cached_print_info.lock().unwrap().take()),
 
             sync_opts: Arc::default(),
             opts: PrintOpts::default(),
-            prev_opts: PrintOpts::default(),
         }
     }
 }
@@ -412,7 +458,7 @@ impl Widget for Buffer {
             );
         }
 
-        buffer.reset_printed_info_if_needed(area);
+        drop(buffer.reset_print_info_if_needed(area));
         buffer.moment = buffer.moment_fetcher.as_mut().unwrap().get_moment();
 
         hook::trigger(pa, BufferUpdated(handle.clone()));
@@ -423,7 +469,11 @@ impl Widget for Buffer {
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
-        self.text.has_changed()
+        self.cached_print_info
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_none_or(|cpi| self.text.text_state().has_changed_since(cpi.text_state))
     }
 
     fn text(&self) -> &Text {
@@ -486,32 +536,6 @@ impl Widget for Buffer {
             MouseEventKind::ScrollRight => {}
         }
     }
-
-    // fn print(&self, pa: &Pass, painter: Painter, area: &RwArea) {
-    //     let opts = self.opts;
-    //     let start_points = area.start_points(pa, &self.text, opts);
-
-    //     let mut last_line = area
-    //         .rev_print_iter(pa, &self.text, start_points, opts)
-    //         .find_map(|(caret, item)|
-    // caret.wrap.then_some(item.line()));
-
-    //     let mut printed_lines = self.cached_print_info.lock().unwrap();
-    //     printed_lines.clear();
-
-    //     let mut has_wrapped = false;
-
-    //     area.print_with(pa, &self.text, opts, painter, move |caret,
-    // item| {         has_wrapped |= caret.wrap;
-    //         if has_wrapped && item.part.is_char() {
-    //             has_wrapped = false;
-    //             let line = item.line();
-    //             let wrapped = last_line.is_some_and(|ll| ll == line);
-    //             last_line = Some(line);
-    //             printed_lines.push((line, wrapped));
-    //         }
-    //     })
-    // }
 }
 
 impl Handle {
@@ -525,10 +549,10 @@ impl Handle {
     /// check out [`Handle::printed_lines`]. If you want the content
     /// of only the _visible_ portion of these lines, check out
     /// [`Handle::visible_lines`].
-    pub fn printed_line_numbers(&self, pa: &mut Pass) -> Vec<PrintedLine> {
-        let (buffer, area) = self.write_with_area(pa);
-        let (_, lines) = buffer.reset_printed_info_if_needed(area);
-        lines.to_vec()
+    pub fn printed_line_numbers(&self, pa: &Pass) -> Vec<PrintedLine> {
+        let buffer = self.read(pa);
+        let cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
+        cpi.as_ref().unwrap().printed_line_numbers.clone()
     }
 
     /// The printed [`Range<Point>`]
@@ -539,10 +563,10 @@ impl Handle {
     /// [`Handle::printed_lines`]. If you want to exclude every
     /// concealed or out of screen section, check out
     /// [`Handle::visible_lines`].
-    pub fn printed_range(&self, pa: &mut Pass) -> Range<Point> {
-        let (buffer, area) = self.write_with_area(pa);
-        let (range, _) = buffer.reset_printed_info_if_needed(area);
-        range
+    pub fn printed_range(&self, pa: &Pass) -> Range<Point> {
+        let buffer = self.read(pa);
+        let cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
+        cpi.as_ref().unwrap().range.clone()
     }
 
     /// Returns the list of printed lines
@@ -566,16 +590,17 @@ impl Handle {
     /// out [`Handle::printed_line_numbers`].
     ///
     /// [concealed]: crate::text::Conceal
-    pub fn printed_lines<'a>(&'a self, pa: &'a mut Pass) -> Vec<Strs<'a>> {
-        let (buffer, area) = self.write_with_area(pa);
-        let _ = buffer.reset_printed_info_if_needed(area);
-        let (_, lines) = buffer.cached_print_info.as_ref().unwrap();
+    pub fn printed_lines<'a>(&'a self, pa: &'a Pass) -> Vec<Strs<'a>> {
+        let buffer = self.read(pa);
+        let mut cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
+        let cpi = cpi.as_mut().unwrap();
+        let lines = &cpi.printed_line_numbers;
 
-        let printed_lines = if let Some(printed_lines) = &buffer.printed_line_ranges {
+        let printed_lines = if let Some(printed_lines) = &cpi.printed_line_ranges {
             printed_lines
         } else {
             let mut last = None;
-            buffer.printed_line_ranges.insert(
+            cpi.printed_line_ranges.insert(
                 lines
                     .iter()
                     .filter(|line| {
@@ -598,7 +623,7 @@ impl Handle {
     /// This is just like [`Handle::printed_lines`], but excludes
     /// _every_ section that was concealed or is not visible on
     /// screen.
-    pub fn visible_lines<'a>(&'a self, _: &'a mut Pass) -> Vec<Strs<'a>> {
+    pub fn visible_lines<'a>(&'a self, _: &'a Pass) -> Vec<Strs<'a>> {
         todo!();
     }
 }
@@ -698,6 +723,8 @@ impl BufferTracker {
     /// include the parts of the line that are outside of the area.
     /// For the other tracking options, this won't be the case.
     ///
+    /// This is the default method of tracking [`Change`]s.
+    ///
     /// [added range]: Change::added_range
     /// [`add_range`]: BufferTracker::add_range
     pub fn track_changed_lines(&mut self) {
@@ -710,10 +737,8 @@ impl BufferTracker {
     /// automatically whenever a [`Change`] takes place. Instead, they
     /// all must be added through [`add_range`].
     ///
-    /// This is the default method of tracking [`Change`]s.
-    ///
     /// [`add_range`]: BufferTracker::add_range
-    pub fn turn_off_tracking(&mut self) {
+    pub fn disable_change_tracking(&mut self) {
         self.ranges = RangesTracker::Manual(self.ranges.take_ranges());
     }
 
@@ -858,8 +883,17 @@ impl RangesTracker {
     }
 }
 
+/// Cached information about the printing of this [`Buffer`]
+struct CachedPrintInfo {
+    range: Range<Point>,
+    printed_line_numbers: Vec<PrintedLine>,
+    printed_line_ranges: Option<Vec<Range<Point>>>,
+    _visible_line_ranges: Option<Vec<Range<Point>>>,
+    text_state: TextState,
+}
+
 /// Represents the presence or absence of a path
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PathKind {
     /// A [`PathBuf`] that has been defined and points to a real
     /// buffer
@@ -1037,18 +1071,3 @@ impl<P: AsRef<Path>> From<P> for PathKind {
         }
     }
 }
-
-impl PartialEq for PathKind {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                Self::SetExists(l0) | Self::SetAbsent(l0),
-                Self::SetExists(r0) | Self::SetAbsent(r0),
-            ) => l0 == r0,
-            (Self::NotSet(l0), Self::NotSet(r0)) => l0 == r0,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for PathKind {}

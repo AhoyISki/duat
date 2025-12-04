@@ -181,7 +181,7 @@ impl std::fmt::Debug for Tags<'_> {
 /// The struct that holds the [`RawTag`]s of the [`Text`]
 ///
 /// It also holds the [`Text`]s of any [`Ghost`]s, and the
-/// functions of [`ToggleStart`]s
+/// functions of [`StartToggle`]s
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
     ghosts: Vec<(GhostId, Arc<Selectionless>)>,
@@ -190,8 +190,8 @@ pub struct InnerTags {
     pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
-    has_changed: bool,
-    meta_tags_changed: bool,
+    tags_state: u64,
+    meta_tags_state: u64,
 }
 
 impl InnerTags {
@@ -210,8 +210,8 @@ impl InnerTags {
             spawn_fns: Vec::new(),
             bounds: Bounds::new(max),
             extents: TaggerExtents::new(max),
-            has_changed: false,
-            meta_tags_changed: false,
+            tags_state: 0,
+            meta_tags_state: 0,
         }
     }
 
@@ -226,8 +226,8 @@ impl InnerTags {
 
         if inserted {
             tag.on_insertion(ret, self);
-            self.meta_tags_changed |= T::IS_META;
-            self.has_changed = true;
+            self.meta_tags_state += T::IS_META as u64;
+            self.tags_state += 1;
             Some(ret)
         } else {
             None
@@ -403,6 +403,8 @@ impl InnerTags {
         let mut removed = 0;
         let mut starts = Vec::new();
         let mut ends = Vec::new();
+        let mut meta_tags_changed = false;
+        let mut tags_changed = false;
 
         let (Ok(start) | Err(start)) = self.list.find_by_key(range.start as i32, |(b, _)| b);
         let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as i32, |(b, _)| b);
@@ -414,8 +416,8 @@ impl InnerTags {
                 self.bounds.shift_by(i, [-1, 0]);
 
                 // This is the only place where this should be checked.
-                self.meta_tags_changed |=
-                    matches!(tag, RawTag::EndConceal(_) | RawTag::StartConceal(_));
+                tags_changed = true;
+                meta_tags_changed |= matches!(tag, RawTag::EndConceal(_) | RawTag::StartConceal(_));
 
                 if tag.is_start() {
                     starts.push(tag);
@@ -457,6 +459,9 @@ impl InnerTags {
                 }
             })
             .for_each(|_| {});
+
+        self.meta_tags_state += meta_tags_changed as u64;
+        self.tags_state += tags_changed as u64;
     }
 
     /// Transforms a byte range into another byte range
@@ -590,16 +595,12 @@ impl InnerTags {
 
     ////////// Querying functions
 
-    /// Wether there have been any changes, at all
-    pub(super) fn has_changed(&self) -> bool {
-        self.has_changed
-    }
-
-    /// Returns `true` if meta tags like [`Conceal`] or [`Ghost`] were
-    /// added
-    pub(super) fn meta_tags_changed(&mut self) -> bool {
-        self.has_changed = false;
-        std::mem::take(&mut self.meta_tags_changed)
+    /// The state of the `InnerTags`
+    ///
+    /// First element is the `tags_state`, second is the
+    /// `meta_tags_state`
+    pub(super) fn states(&self) -> (u64, u64) {
+        (self.tags_state, self.meta_tags_state)
     }
 
     /// Returns true if there are no [`RawTag`]s
@@ -646,8 +647,8 @@ impl Clone for InnerTags {
             spawn_fns: Vec::new(),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
-            meta_tags_changed: false,
-            has_changed: false,
+            tags_state: self.tags_state,
+            meta_tags_state: self.tags_state,
         }
     }
 }

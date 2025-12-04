@@ -147,7 +147,7 @@ struct InnerText {
     selections: Selections,
     // Specific to Buffers
     history: Option<History>,
-    has_changed: bool,
+    bytes_state: u64,
     has_unsaved_changes: bool,
 }
 
@@ -206,7 +206,7 @@ impl Text {
             tags,
             selections,
             history: with_history.then(History::default),
-            has_changed: false,
+            bytes_state: 0,
             has_unsaved_changes: false,
         }))
     }
@@ -382,7 +382,7 @@ impl Text {
         );
         let change = Change::new(edit, start..end, self);
 
-        self.0.has_changed = true;
+        self.0.bytes_state += 1;
         self.apply_change_inner(0, change.as_ref());
         self.0
             .history
@@ -395,7 +395,7 @@ impl Text {
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> (Option<usize>, usize) {
-        self.0.has_changed = true;
+        self.0.bytes_state += 1;
 
         let selections_taken = self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
         let history = self.0.history.as_mut();
@@ -460,7 +460,7 @@ impl Text {
             && let Some((changes, saved_moment)) = history.move_backwards()
         {
             self.apply_and_process_changes(changes);
-            self.0.has_changed = true;
+            self.0.bytes_state += 1;
             self.0.has_unsaved_changes = !saved_moment;
         }
 
@@ -475,7 +475,7 @@ impl Text {
             && let Some((changes, saved_moment)) = history.move_forward()
         {
             self.apply_and_process_changes(changes);
-            self.0.has_changed = true;
+            self.0.bytes_state += 1;
             self.0.has_unsaved_changes = !saved_moment;
         }
 
@@ -787,21 +787,21 @@ impl Text {
         self.0.tags.get_spawned_ids()
     }
 
-    /// Wether the `Text` has changed
+    /// A struct representing how many changes took place since the
+    /// creation of this [`Text`]
     ///
-    /// If it is [`None`], absolutely no changes have taken place
-    /// since the last call. If it is `Some(false)`, only non
-    /// structural changes took place. If it is `Some(true)`,
-    /// structural changes took place.
-    pub(crate) fn has_structurally_changed(&mut self) -> bool {
-        let meta_tags_changed = self.0.tags.meta_tags_changed();
-        let bytes_have_changed = self.0.has_changed;
-        bytes_have_changed || meta_tags_changed
-    }
+    /// This struct tracks all [`Change`]s and [`Tag`]
+    /// additions/removals, giving you information about wether this
+    /// `Text` has changed, when comparing this to previous
+    /// [`TextState`]s of the same `Text`.
+    pub fn text_state(&self) -> TextState {
+        let (tags_state, meta_tags_state) = self.0.tags.states();
 
-    /// Wether any changes took place on this `Text`
-    pub(crate) fn has_changed(&self) -> bool {
-        self.0.has_changed || self.0.tags.has_changed()
+        TextState {
+            bytes_state: self.0.bytes_state,
+            tags_state,
+            meta_tags_state,
+        }
     }
 }
 
@@ -1004,4 +1004,61 @@ pub struct TextParts<'a> {
     ///
     /// [`Widget`]: crate::ui::Widget
     pub selections: &'a Selections,
+}
+
+/// A representation of how many changes took place in a [`Text`]
+///
+/// The purpose of this struct is merely to be compared with
+/// previously acquired instances of itself, to just quickly check if
+/// certain properties of the `Text` have changed.
+///
+/// Note that this is a [`Text`] agnostic struct, comparing the
+/// `TextState`s from two different `Text`s is pointless.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextState {
+    bytes_state: u64,
+    tags_state: u64,
+    meta_tags_state: u64,
+}
+
+impl TextState {
+    /// Wether there have been _any_ changes to the [`Text`] since
+    /// this previous instance
+    pub fn has_changed_since(&self, other: Self) -> bool {
+        self.bytes_state > other.bytes_state
+            || self.tags_state > other.tags_state
+            || self.meta_tags_state > other.meta_tags_state
+    }
+
+    /// Wether the [`Bytes`] have changed since this previous instance
+    pub fn bytes_have_changed_since(&self, other: Self) -> bool {
+        self.bytes_state > other.bytes_state
+    }
+
+    /// Wether the [`Tags`] have changed since this previous instance
+    ///
+    /// Note that this only tracks if [`Tag`]s have been
+    /// added/removed. So if, for example, you [replace a range] where
+    /// no `Tag`s existed, this would return `false`, even though the
+    /// position of `Tag`s have changed internally.
+    ///
+    /// [replace a range]: Text::replace_range
+    pub fn tags_have_changed_since(&self, other: Self) -> bool {
+        self.tags_state > other.tags_state
+    }
+
+    /// Wether this [`Text`] has "structurally changed" since this
+    /// previous instance
+    ///
+    /// A `Text` has structurally changed when printing it from the
+    /// same point could result in a different characters being
+    /// printed. This not only happens when the [`Bytes`] change, but
+    /// also with certain [`Tag`]s, like [`Ghost`] and [`Conceal`],
+    /// which also add and remove characters to be printed.
+    ///
+    /// These `Tag`s are called "meta tags" internally, since they
+    /// change the very structure of what `Text` has been printed.
+    pub fn has_structurally_changed_since(&self, other: Self) -> bool {
+        self.bytes_state > other.bytes_state || self.meta_tags_state > other.meta_tags_state
+    }
 }

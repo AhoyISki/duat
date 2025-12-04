@@ -179,7 +179,7 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn read<'a>(&'a self, _: &'a Pass) -> &'a T {
+    pub fn read<'p>(&'p self, _: &'p Pass) -> &'p T {
         self.read_state
             .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
         // SAFETY: If one were to try and write to this value, this reference
@@ -198,7 +198,7 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn read_as<'a, U: 'static>(&'a self, _: &'a Pass) -> Option<&'a U> {
+    pub fn read_as<'p, U: 'static>(&'p self, _: &'p Pass) -> Option<&'p U> {
         if TypeId::of::<U>() != self.ty {
             return None;
         }
@@ -238,7 +238,7 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn write<'a>(&'a self, _: &'a mut Pass) -> &'a mut T {
+    pub fn write<'p>(&'p self, _: &'p mut Pass) -> &'p mut T {
         let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
         self.read_state.store(prev + 1, Ordering::Relaxed);
         // SAFETY: Again, the mutable reference to the Pass ensures that this
@@ -258,7 +258,7 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn write_as<'a, U: 'static>(&'a self, _: &'a mut Pass) -> Option<&'a mut U> {
+    pub fn write_as<'p, U: 'static>(&'p self, _: &'p mut Pass) -> Option<&'p mut U> {
         if TypeId::of::<U>() != self.ty {
             return None;
         }
@@ -341,11 +341,11 @@ impl<T: ?Sized> RwData<T> {
     /// [`Handle<Buffer>`]: crate::context::Handle
     #[track_caller]
     #[allow(static_mut_refs)]
-    pub fn write_then<'a, Tup: WriteableTuple<'a, impl std::any::Any>>(
-        &'a self,
-        pa: &'a mut Pass,
-        tup_fn: impl FnOnce(&'a T) -> Tup,
-    ) -> (&'a mut T, Tup::Return) {
+    pub fn write_then<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p self,
+        pa: &'p mut Pass,
+        tup_fn: impl FnOnce(&'p T) -> Tup,
+    ) -> (&'p mut T, Tup::Return) {
         let tup = tup_fn(self.read(pa));
         if tup.any_eqs(CurStatePtr(&self.cur_state)) {
             panic!("Tried writing to the same data multiple times at the same time");
@@ -717,7 +717,7 @@ impl<T: Default + 'static> BulkDataWriter<T> {
     /// This function will call all actions that were sent by the
     /// [`BulkDataWriter::mutate`] function in order to write to the
     /// `Data` asynchronously.
-    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T {
+    pub fn write<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
         let data = self.data.write(pa);
         for action in self.actions.lock().unwrap().drain(..) {
             action(data);
@@ -731,7 +731,7 @@ impl<T: Default + 'static> BulkDataWriter<T> {
     /// actions that need to happen before reading/writing. You should
     /// almost always prefer calling [`BulkDataWriter::write`]
     /// instead.
-    pub fn try_read<'a>(&'a self, pa: &'a Pass) -> Option<&'a T> {
+    pub fn try_read<'p>(&'p self, pa: &'p Pass) -> Option<&'p T> {
         self.actions
             .lock()
             .unwrap()
@@ -883,8 +883,8 @@ impl Pass {
     /// [`RwArea`]: crate::ui::RwArea
     /// [`Area`]: crate::ui::Area
     #[track_caller]
-    pub fn write_many<'a, Tup: WriteableTuple<'a, impl std::any::Any>>(
-        &'a mut self,
+    pub fn write_many<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p mut self,
         tup: Tup,
     ) -> Tup::Return {
         if let Some(ret) = tup.write_all(self) {
@@ -913,8 +913,8 @@ impl Pass {
     /// [`Handle`]: crate::context::Handle
     /// [`RwArea`]: crate::ui::RwArea
     /// [`Area`]: crate::ui::Area
-    pub fn try_write_many<'a, Tup: WriteableTuple<'a, impl std::any::Any>>(
-        &'a mut self,
+    pub fn try_write_many<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p mut self,
         tup: Tup,
     ) -> Result<Tup::Return, crate::text::Text> {
         tup.write_all(self)
@@ -925,10 +925,10 @@ impl Pass {
 /// A tuple of [`WriteableData`], used for writing to many things at
 /// once
 #[doc(hidden)]
-pub trait WriteableTuple<'a, _Dummy> {
+pub trait WriteableTuple<'p, _Dummy> {
     type Return;
 
-    fn write_all(self, pa: &'a mut Pass) -> Option<Self::Return>;
+    fn write_all(self, pa: &'p mut Pass) -> Option<Self::Return>;
 
     fn any_eqs(&self, ptr: CurStatePtr) -> bool;
 }
@@ -936,14 +936,14 @@ pub trait WriteableTuple<'a, _Dummy> {
 macro_rules! implWriteableTuple {
     ($(($data:ident, $ret:ident)),+) => {
         #[allow(non_snake_case, static_mut_refs)]
-        impl<'a, $($data),+, $($ret),+> WriteableTuple<'a, ($(&mut $ret),+)> for ($(&'a $data),+)
+        impl<'p, $($data),+, $($ret),+> WriteableTuple<'p, ($(&mut $ret),+)> for ($(&'p $data),+)
         where
             $($ret: ?Sized + 'static),+,
             $($data: $crate::data::WriteableData<$ret>),+
         {
-            type Return = ($(&'a mut $ret),+);
+            type Return = ($(&'p mut $ret),+);
 
-            fn write_all(self, _: &'a mut Pass) -> Option<Self::Return> {
+            fn write_all(self, _: &'p mut Pass) -> Option<Self::Return> {
                 let ($($data),+) = self;
                 let ptrs = [$($data.cur_state_ptr()),+];
 
@@ -976,14 +976,14 @@ macro_rules! implWriteableTuple {
     };
 }
 
-impl<'a, Data, T> WriteableTuple<'a, (&'a mut T,)> for &'a Data
+impl<'p, Data, T> WriteableTuple<'p, (&'p mut T,)> for &'p Data
 where
     Data: WriteableData<T>,
     T: ?Sized + 'static,
 {
-    type Return = &'a mut T;
+    type Return = &'p mut T;
 
-    fn write_all(self, pa: &'a mut Pass) -> Option<Self::Return> {
+    fn write_all(self, pa: &'p mut Pass) -> Option<Self::Return> {
         Some(self.write_one_of_many(pa))
     }
 
@@ -1026,7 +1026,7 @@ implWriteableTuple!(
 pub trait WriteableData<T: ?Sized + 'static>: InnerWriteableData {
     /// Just like [`RwData::write`]
     #[doc(hidden)]
-    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T;
+    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T;
 
     /// A pointer for [`Pass::try_write_many`]
     #[doc(hidden)]
@@ -1034,7 +1034,7 @@ pub trait WriteableData<T: ?Sized + 'static>: InnerWriteableData {
 }
 
 impl<T: ?Sized + 'static> WriteableData<T> for RwData<T> {
-    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T {
+    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
     }
 
@@ -1044,7 +1044,7 @@ impl<T: ?Sized + 'static> WriteableData<T> for RwData<T> {
 }
 
 impl<T: Default + 'static> WriteableData<T> for BulkDataWriter<T> {
-    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut T {
+    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
     }
 
@@ -1054,7 +1054,7 @@ impl<T: Default + 'static> WriteableData<T> for BulkDataWriter<T> {
 }
 
 impl<W: Widget + 'static> WriteableData<W> for crate::context::Handle<W> {
-    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut W {
+    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut W {
         self.write(pa)
     }
 
@@ -1064,7 +1064,7 @@ impl<W: Widget + 'static> WriteableData<W> for crate::context::Handle<W> {
 }
 
 impl WriteableData<crate::ui::Area> for crate::ui::RwArea {
-    fn write_one_of_many<'a>(&'a self, pa: &'a mut Pass) -> &'a mut crate::ui::Area {
+    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut crate::ui::Area {
         self.write(pa)
     }
 
@@ -1083,7 +1083,7 @@ impl InnerWriteableData for crate::ui::RwArea {}
 /// A struct for comparison when calling [`Pass::write_many`]
 #[doc(hidden)]
 #[derive(Clone, Copy)]
-pub struct CurStatePtr<'a>(&'a Arc<AtomicUsize>);
+pub struct CurStatePtr<'p>(&'p Arc<AtomicUsize>);
 
 impl std::cmp::PartialEq for CurStatePtr<'_> {
     fn eq(&self, other: &Self) -> bool {

@@ -41,7 +41,7 @@ use std::sync::{Arc, Mutex};
 use crate::{
     context::Handle,
     data::{Pass, RwData},
-    form::{self, Painter},
+    form,
     hook::{self, FocusedOn, UnfocusedFrom},
     mode::MouseEvent,
     opts::PrintOpts,
@@ -473,21 +473,6 @@ pub trait Widget: Send + 'static {
     fn get_print_opts(&self) -> PrintOpts {
         PrintOpts::new()
     }
-
-    /// Prints the widget
-    ///
-    /// Very rarely shouuld you actually implement this method, one
-    /// example of where this is actually implemented is in
-    /// [`Buffer::print`], where [`RwArea::print_with`] is called in
-    /// order to simultaneously update the list of lines numbers,
-    /// for widgets like [`LineNumbers`] to read.
-    ///
-    /// [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
-    /// [`Buffer::print`]: crate::buffer::Buffer::print
-    fn print(&self, pa: &Pass, painter: Painter, area: &RwArea) {
-        let opts = self.get_print_opts();
-        area.print(pa, self.text(), opts, painter)
-    }
 }
 
 /// Elements related to the [`Widget`]s
@@ -524,7 +509,9 @@ impl Node {
                 move |pa| {
                     let painter =
                         form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
-                    catch_panic(|| W::print(handle.read(pa), pa, painter, handle.area()));
+                    handle
+                        .area
+                        .print(pa, handle.text(pa), handle.opts(pa), painter)
                 }
             }),
             on_focus: Arc::new({

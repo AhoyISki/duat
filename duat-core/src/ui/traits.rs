@@ -346,16 +346,6 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// Prints the [`Text`]
     fn print(&self, _: UiPass, text: &Text, opts: PrintOpts, painter: Painter);
 
-    /// Prints the [`Text`] with a callback function
-    fn print_with<'a>(
-        &self,
-        _: UiPass,
-        text: &Text,
-        opts: PrintOpts,
-        painter: Painter,
-        f: impl FnMut(&Caret, &Item) + 'a,
-    );
-
     /// The current printing information of the area
     fn get_print_info(&self, _: UiPass) -> Self::PrintInfo;
 

@@ -46,11 +46,12 @@ impl VertRule {
 
 impl Widget for VertRule {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let (vr, buffer) = handle.write(pa);
-                let lines = handle.printed_line_numbers(pa);
+        let vr = handle.read(pa);
+        
         let text = if let Some(handle) = vr.handle.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char
         {
+            let lines = handle.printed_line_numbers(pa);
             let (upper, middle, lower) = {
                 let buffer = handle.read(pa);
 

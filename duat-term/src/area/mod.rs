@@ -14,7 +14,7 @@ use duat_core::{
     session::TwoPointsPlace,
     text::{Item, Part, Text, TwoPoints, txt},
     ui::{
-        self, Caret, DynSpawnSpecs, PushSpecs, SpawnId,
+        self, Caret, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
         traits::{RawArea, UiPass},
     },
 };
@@ -125,13 +125,7 @@ impl Area {
     }
 
     /// Prints the `Text`
-    fn print(
-        &self,
-        text: &Text,
-        opts: PrintOpts,
-        painter: Painter,
-        on_each: impl FnMut(&Caret, &Item),
-    ) {
+    fn print(&self, text: &Text, opts: PrintOpts, painter: Painter) {
         let Some(coords) = self.layouts.coords_of(self.id, true) else {
             context::warn!("This Area was already deleted");
             return;
@@ -161,7 +155,6 @@ impl Area {
             (text, opts, painter),
             (coords, max),
             (is_active, s_points, x_shift),
-            on_each,
             |lines, style| print_hashed_style(lines, style, &mut ansi_codes),
             |lines, len| lines.write_all(&SPACES[..len as usize]).unwrap(),
             |lines, len, max_x| {
@@ -359,24 +352,53 @@ impl RawArea for Area {
     }
 
     fn print(&self, _: UiPass, text: &Text, opts: PrintOpts, painter: Painter) {
-        self.print(text, opts, painter, |_, _| {})
-    }
-
-    fn print_with<'a>(
-        &self,
-        _: UiPass,
-        text: &Text,
-        opts: PrintOpts,
-        painter: Painter,
-        f: impl FnMut(&Caret, &Item) + 'a,
-    ) {
-        self.print(text, opts, painter, f)
+        self.print(text, opts, painter,)
     }
 
     ////////// Queries
 
+    fn get_print_info(&self, _: UiPass) -> Self::PrintInfo {
+        self.layouts.get_info_of(self.id).unwrap_or_default()
+    }
+
     fn set_print_info(&self, _: UiPass, info: Self::PrintInfo) {
         self.layouts.set_info_of(self.id, info);
+    }
+
+    fn get_printed_lines(
+        &self,
+        pa: UiPass,
+        text: &Text,
+        opts: PrintOpts,
+    ) -> Option<Vec<ui::PrintedLine>> {
+        let coords = self.layouts.coords_of(self.id, true)?;
+        let points = self.start_points(pa, text, opts);
+
+        let mut prev_line = self
+            .rev_print_iter(pa, text, points, opts)
+            .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
+
+        let mut printed_lines = Vec::new();
+        let mut has_wrapped = false;
+        let mut y = coords.tl.y;
+
+        for (caret, item) in print_iter(text, points, coords.width(), opts) {
+            if y == coords.br.y {
+                break;
+            }
+            y += caret.wrap as u32;
+
+            has_wrapped |= caret.wrap;
+            if has_wrapped && item.part.is_char() {
+                has_wrapped = false;
+                let number = item.line();
+                let is_wrapped = prev_line.is_some_and(|ll| ll == number);
+                prev_line = Some(number);
+                printed_lines.push(PrintedLine { number, is_wrapped });
+            }
+        }
+
+        Some(printed_lines)
     }
 
     fn print_iter<'a>(
@@ -595,10 +617,6 @@ impl RawArea for Area {
         end_points
     }
 
-    fn get_print_info(&self, _: UiPass) -> Self::PrintInfo {
-        self.layouts.get_info_of(self.id).unwrap_or_default()
-    }
-
     fn is_active(&self, _: UiPass) -> bool {
         self.layouts.get_active_id() == self.id
     }
@@ -677,7 +695,6 @@ pub fn print_text(
     (text, opts, mut painter): (&Text, PrintOpts, Painter),
     (coords, max): (Coords, Coord),
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
-    mut on_each: impl FnMut(&Caret, &Item),
     mut print_style: impl FnMut(&mut Lines, ContentStyle),
     start_line: fn(&mut Lines, u32),
     end_line: fn(&mut Lines, u32, u32),
@@ -724,7 +741,6 @@ pub fn print_text(
 
     for (caret, item) in iter {
         let (painter, lines) = (&mut painter, &mut lines);
-        on_each(&caret, &item);
 
         let Caret { x, len, wrap } = caret;
         let Item { part, .. } = item;

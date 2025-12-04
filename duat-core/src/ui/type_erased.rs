@@ -30,7 +30,8 @@ use crate::{
     session::{DuatSender, TwoPointsPlace},
     text::{Item, Text, TwoPoints},
     ui::{
-        traits::{RawArea, RawUi, UiPass}, Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs
+        Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs,
+        traits::{RawArea, RawUi, UiPass},
     },
 };
 
@@ -439,20 +440,8 @@ impl RwArea {
     ////////// Printing functions
 
     /// Prints the [`Text`]
-    pub fn print(&self, pa: &Pass, text: &Text, opts: PrintOpts, painter: Painter) {
+    pub(crate) fn print(&self, pa: &Pass, text: &Text, opts: PrintOpts, painter: Painter) {
         self.0.read(pa).print(text, opts, painter)
-    }
-
-    /// Prints the [`Text`] with a callback function
-    pub fn print_with<'a>(
-        &self,
-        pa: &Pass,
-        text: &Text,
-        opts: PrintOpts,
-        painter: Painter,
-        f: impl FnMut(&Caret, &Item) + 'a,
-    ) {
-        self.0.read(pa).print_with(text, opts, painter, Box::new(f))
     }
 
     /// The current printing information of the area
@@ -566,6 +555,10 @@ impl RwArea {
     /////////// Querying functions
 
     /// Wether this [`Area`] has changed since last being printed
+    ///
+    /// This includes changes to the area's size, location, and
+    /// [`PrintInfo`], as well as other ui implementation specific
+    /// information.
     pub fn has_changed(&self, pa: &Pass) -> bool {
         self.0.read(pa).has_changed()
     }
@@ -695,19 +688,8 @@ impl Area {
     ////////// Printing functions
 
     /// Prints the [`Text`] via an [`Iterator`]
-    pub fn print(&self, text: &Text, opts: PrintOpts, painter: Painter) {
+    pub(crate) fn print(&self, text: &Text, opts: PrintOpts, painter: Painter) {
         (self.fns.print)(self, text, opts, painter)
-    }
-
-    /// Prints the [`Text`] with a callback function
-    pub fn print_with<'a>(
-        &self,
-        text: &Text,
-        opts: PrintOpts,
-        painter: Painter,
-        f: impl FnMut(&Caret, &Item) + 'a,
-    ) {
-        (self.fns.print_with)(self, text, opts, painter, Box::new(f))
     }
 
     /// The current printing information of the area
@@ -720,7 +702,7 @@ impl Area {
         (self.fns.set_print_info)(self, info)
     }
 
-	/// Returns a list of the lines that were printed
+    /// Returns a list of the lines that were printed
     pub fn get_printed_lines(&self, text: &Text, opts: PrintOpts) -> Option<Vec<PrintedLine>> {
         (self.fns.get_printed_lines)(self, text, opts)
     }
@@ -820,6 +802,10 @@ impl Area {
     /////////// Querying functions
 
     /// Wether this `Area` has changed since last being printed
+    ///
+    /// This includes changes to the area's size, location, and
+    /// [`PrintInfo`], as well as other ui implementation specific
+    /// information.
     pub fn has_changed(&self) -> bool {
         (self.fns.has_changed)(self)
     }
@@ -908,7 +894,6 @@ struct AreaFunctions {
     width_of_text: fn(&Area, PrintOpts, &Text) -> Result<f32, Text>,
     set_as_active: fn(&Area),
     print: fn(&Area, &Text, PrintOpts, Painter),
-    print_with: for<'a> fn(&Area, &Text, PrintOpts, Painter, Box<dyn FnMut(&Caret, &Item) + 'a>),
     get_print_info: fn(&Area) -> PrintInfo,
     set_print_info: fn(&Area, PrintInfo),
     get_printed_lines: fn(&Area, &Text, PrintOpts) -> Option<Vec<PrintedLine>>,
@@ -1005,10 +990,6 @@ impl AreaFunctions {
             print: |area, text, opts, painter| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 area.print(UiPass::new(), text, opts, painter)
-            },
-            print_with: |area, text, print_opts, painter, f| {
-                let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.print_with(UiPass::new(), text, print_opts, painter, f);
             },
             get_print_info: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
