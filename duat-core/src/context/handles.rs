@@ -11,7 +11,7 @@ use lender::Lender;
 
 use crate::{
     context,
-    data::{Pass, RwData},
+    data::{Pass, RwData, WriteableTuple},
     mode::{Cursor, Cursors, Selection, Selections},
     opts::PrintOpts,
     text::{Searcher, Text, TextParts, TwoPoints, txt},
@@ -245,8 +245,20 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// relatively large amount of shareable state.
     ///
     /// [`Area`]: crate::ui::Area
-    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a mut Area) {
+    pub fn write_with_area<'p>(&'p self, pa: &'p mut Pass) -> (&'p mut W, &'p mut Area) {
         pa.write_many((&self.widget, &self.area.0))
+    }
+
+    /// The same as [`RwData::write_then`]
+    ///
+    /// This lets you write to a [`Widget`] and other [`RwData`]-like
+    /// structs within said `Widget` at the same time.
+    pub fn write_then<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p self,
+        pa: &'p mut Pass,
+        tup_fn: impl FnOnce(&'p W) -> Tup,
+    ) -> (&'p mut W, Tup::Return) {
+        self.widget.write_then(pa, tup_fn)
     }
 
     /// Declares the [`Widget`] within as written

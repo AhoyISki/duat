@@ -113,7 +113,8 @@ pub trait Tag<Index, Return: Copy = ()>: Sized {
     /// A meta `Tag` is one that changes the layout of the [`Text`]
     /// itself
     ///
-    /// The only two meta `Tag`s are [`Ghost`] and [`Conceal`].
+    /// The only meta `Tag`s are [`Ghost`] and [`Conceal`],
+    /// [`Spacer`], [`AlignCenter`] and [`AlignRight`].
     const IS_META: bool;
 
     /// Gets the [`RawTag`]s and a possible return id from the `Tag`
@@ -209,7 +210,7 @@ ranged_impl_tag!(
     AlignCenter,
     RawTag::StartAlignCenter,
     RawTag::EndAlignCenter,
-    false
+    true
 );
 
 /// [`Tag`]: Aligns the [`Text`] on the right in a [range]
@@ -222,7 +223,7 @@ ranged_impl_tag!(
     AlignRight,
     RawTag::StartAlignRight,
     RawTag::EndAlignRight,
-    false
+    true
 );
 
 /// [`Builder`] part: Begins alignment on the left

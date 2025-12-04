@@ -46,19 +46,19 @@ impl VertRule {
 
 impl Widget for VertRule {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let vr = handle.read(pa);
+        let (vr, buffer) = handle.write(pa);
+                let lines = handle.printed_line_numbers(pa);
         let text = if let Some(handle) = vr.handle.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char
         {
             let (upper, middle, lower) = {
-                let file = handle.read(pa);
+                let buffer = handle.read(pa);
 
-                let lines = file.printed_lines();
-                if let Some(main) = file.selections().get_main() {
+                if let Some(main) = buffer.selections().get_main() {
                     let main = main.line();
-                    let upper = lines.iter().filter(|&(line, _)| *line < main).count();
-                    let middle = lines.iter().filter(|&(line, _)| *line == main).count();
-                    let lower = lines.iter().filter(|&(line, _)| *line > main).count();
+                    let upper = lines.iter().filter(|&line| line.number < main).count();
+                    let middle = lines.iter().filter(|&line| line.number == main).count();
+                    let lower = lines.iter().filter(|&line| line.number > main).count();
                     (upper, middle, lower)
                 } else {
                     (0, lines.len(), 0)

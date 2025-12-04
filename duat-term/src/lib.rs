@@ -109,7 +109,7 @@ impl RawUi for Ui {
     fn get_once() -> Option<&'static Self> {
         static GOT: AtomicBool = AtomicBool::new(false);
         let (tx, rx) = mpsc::channel();
-        shared_fns::FNS.set(ExecSpaceFns::default()).unwrap();
+        shared_fns::FNS.set(ExecSpaceFns::default()).ok().unwrap();
 
         (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
             Box::leak(Box::new(Self {

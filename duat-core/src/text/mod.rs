@@ -787,10 +787,21 @@ impl Text {
         self.0.tags.get_spawned_ids()
     }
 
-	/// Wether the `Text` has changed, structurally speaking
+    /// Wether the `Text` has changed
+    ///
+    /// If it is [`None`], absolutely no changes have taken place
+    /// since the last call. If it is `Some(false)`, only non
+    /// structural changes took place. If it is `Some(true)`,
+    /// structural changes took place.
     pub(crate) fn has_structurally_changed(&mut self) -> bool {
-        let tags_have_changed = self.0.tags.tags().meta_tags_changed();
-        std::mem::take(&mut self.0.has_changed) || tags_have_changed
+        let meta_tags_changed = self.0.tags.meta_tags_changed();
+        let bytes_have_changed = self.0.has_changed;
+        bytes_have_changed || meta_tags_changed
+    }
+
+    /// Wether any changes took place on this `Text`
+    pub(crate) fn has_changed(&self) -> bool {
+        self.0.has_changed || self.0.tags.has_changed()
     }
 }
 

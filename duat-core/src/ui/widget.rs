@@ -599,7 +599,7 @@ impl Node {
 
     /// Wether this [`Widget`] needs to be updated
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
-        self.handle.has_changed(pa) || self.handle.read(pa).needs_update(pa)
+        self.handle.area.has_changed(pa) || self.handle.read(pa).needs_update(pa)
     }
 
     ////////// Eventful functions

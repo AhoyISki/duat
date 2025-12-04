@@ -162,12 +162,6 @@ impl Tags<'_> {
     pub fn len_bytes(&self) -> usize {
         self.0.len_bytes()
     }
-
-    /// Returns `true` if meta tags like [`Conceal`] or [`Ghost`] were
-    /// added
-    pub(crate) fn meta_tags_changed(&mut self) -> bool {
-        std::mem::take(&mut self.0.meta_tags_changed)
-    }
 }
 
 impl std::ops::Deref for Tags<'_> {
@@ -196,6 +190,7 @@ pub struct InnerTags {
     pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
     bounds: Bounds,
     extents: TaggerExtents,
+    has_changed: bool,
     meta_tags_changed: bool,
 }
 
@@ -215,6 +210,7 @@ impl InnerTags {
             spawn_fns: Vec::new(),
             bounds: Bounds::new(max),
             extents: TaggerExtents::new(max),
+            has_changed: false,
             meta_tags_changed: false,
         }
     }
@@ -231,6 +227,7 @@ impl InnerTags {
         if inserted {
             tag.on_insertion(ret, self);
             self.meta_tags_changed |= T::IS_META;
+            self.has_changed = true;
             Some(ret)
         } else {
             None
@@ -593,6 +590,18 @@ impl InnerTags {
 
     ////////// Querying functions
 
+    /// Wether there have been any changes, at all
+    pub(super) fn has_changed(&self) -> bool {
+        self.has_changed
+    }
+
+    /// Returns `true` if meta tags like [`Conceal`] or [`Ghost`] were
+    /// added
+    pub(super) fn meta_tags_changed(&mut self) -> bool {
+        self.has_changed = false;
+        std::mem::take(&mut self.meta_tags_changed)
+    }
+
     /// Returns true if there are no [`RawTag`]s
     pub fn is_empty(&self) -> bool {
         self.list.is_empty()
@@ -637,7 +646,8 @@ impl Clone for InnerTags {
             spawn_fns: Vec::new(),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
-            meta_tags_changed: false
+            meta_tags_changed: false,
+            has_changed: false,
         }
     }
 }

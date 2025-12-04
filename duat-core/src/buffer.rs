@@ -423,7 +423,7 @@ impl Widget for Buffer {
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
-        false
+        self.text.has_changed()
     }
 
     fn text(&self) -> &Text {
@@ -525,10 +525,10 @@ impl Handle {
     /// check out [`Handle::printed_lines`]. If you want the content
     /// of only the _visible_ portion of these lines, check out
     /// [`Handle::visible_lines`].
-    pub fn printed_line_numbers<'a>(&'a self, pa: &'a mut Pass) -> &'a [PrintedLine] {
+    pub fn printed_line_numbers(&self, pa: &mut Pass) -> Vec<PrintedLine> {
         let (buffer, area) = self.write_with_area(pa);
         let (_, lines) = buffer.reset_printed_info_if_needed(area);
-        lines
+        lines.to_vec()
     }
 
     /// The printed [`Range<Point>`]
