@@ -12,7 +12,7 @@ use std::ops::Range;
 
 use duat_core::{
     Plugin, Plugins,
-    buffer::{Buffer, BufferTracker, Parser},
+    buffer::{Buffer, BufferTracker},
     hook,
 };
 use gapbuf::GapBuffer;
@@ -28,7 +28,13 @@ pub struct JumpList;
 
 impl Plugin for JumpList {
     fn plug(self, _: &Plugins) {
-        hook::add::<Buffer>(|pa, handle| handle.add_parser(pa, Jumps::new));
+        hook::add::<Buffer>(|pa, handle| {
+            let buffer = handle.write(pa);
+            let mut tracker = buffer.tracker();
+            tracker.disable_change_tracking();
+            buffer.store_object(Jumps::new(buffer.tracker()));
+            Ok(())
+        });
     }
 }
 
@@ -76,14 +82,8 @@ impl Jumps {
     fn new(tracker: BufferTracker) -> Self {
         Self { list: GapBuffer::new(), tracker, cur: 0 }
     }
-}
 
-impl Parser for Jumps {
-    fn parse(&mut self) -> bool {
-        false
-    }
-
-    fn before_get(&mut self) {
+    fn update(&mut self) {
         self.tracker.update();
 
         // If there are no elements, every future jump is already correctly
@@ -116,11 +116,6 @@ impl Parser for Jumps {
             );
             changes.add_change(change);
         }
-    }
-
-    fn before_try_get(&mut self) -> bool {
-        self.before_get();
-        true
     }
 }
 
@@ -177,7 +172,9 @@ pub trait BufferJumps {
 
 impl BufferJumps for Buffer {
     fn record_selections(&mut self, allow_duplicates: bool) -> bool {
-        self.write_parser(|jumps: &mut Jumps| {
+        self.write_object(|jumps: &mut Jumps| {
+            jumps.update();
+
             let selections = self.selections();
 
             if !allow_duplicates {
@@ -239,7 +236,9 @@ impl BufferJumps for Buffer {
     }
 
     fn jump_selections_by(&mut self, mut by: i32) -> Option<Jump> {
-        self.write_parser(|jumps: &mut Jumps| {
+        self.write_object(|jumps: &mut Jumps| {
+            jumps.update();
+
             let mut changes = Changes::default();
             let mut last_seen = None;
 
@@ -315,7 +314,9 @@ impl BufferJumps for Buffer {
     }
 
     fn jump_to_selections(&mut self, n: usize) -> Option<Jump> {
-        let cur_n = self.write_parser(|jumps: &mut Jumps| {
+        let cur_n = self.write_object(|jumps: &mut Jumps| {
+            jumps.update();
+
             jumps
                 .list
                 .iter()

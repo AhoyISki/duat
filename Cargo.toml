@@ -11,5 +11,5 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat-core = "0.7.2"
+duat-core = "0.7.5"
 gapbuf = "0.1.4"
