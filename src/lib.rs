@@ -8,14 +8,20 @@
 //!
 //! [`Selections`]: duat_core::mode::Selections
 //! [`Change`]: duat_core::text::Change
-use std::ops::Range;
+use std::{
+    collections::HashMap,
+    ops::Range,
+    sync::{LazyLock, Mutex},
+};
 
 use duat_core::{
     Plugin, Plugins,
-    buffer::{Buffer, BufferTracker},
-    hook,
+    buffer::{Buffer, BufferId, BufferTracker},
+    hook::{self, BufferClosed},
 };
 use gapbuf::GapBuffer;
+
+static PARSERS: LazyLock<Mutex<HashMap<BufferId, Parser>>> = LazyLock::new(Mutex::default);
 
 /// [`Plugin`]: Adds a `Jumps` parser to every [`Buffer`]
 ///
@@ -32,7 +38,16 @@ impl Plugin for JumpList {
             let buffer = handle.write(pa);
             let mut tracker = buffer.tracker();
             tracker.disable_change_tracking();
-            buffer.store_object(Jumps::new(buffer.tracker()));
+            PARSERS
+                .lock()
+                .unwrap()
+                .insert(buffer.buffer_id(), Parser::new(tracker));
+
+            Ok(())
+        });
+
+        hook::add::<BufferClosed>(|pa, (handle, _)| {
+            PARSERS.lock().unwrap().remove(&handle.read(pa).buffer_id());
             Ok(())
         });
     }
@@ -72,13 +87,13 @@ impl Jump {
 }
 
 #[derive(Debug)]
-struct Jumps {
+struct Parser {
     list: GapBuffer<Saved>,
     tracker: BufferTracker,
     cur: usize,
 }
 
-impl Jumps {
+impl Parser {
     fn new(tracker: BufferTracker) -> Self {
         Self { list: GapBuffer::new(), tracker, cur: 0 }
     }
@@ -172,158 +187,156 @@ pub trait BufferJumps {
 
 impl BufferJumps for Buffer {
     fn record_selections(&mut self, allow_duplicates: bool) -> bool {
-        self.write_object(|jumps: &mut Jumps| {
-            jumps.update();
+        let mut parsers = PARSERS.lock().unwrap();
+        let jumps = parsers.get_mut(&self.buffer_id()).unwrap();
+        jumps.update();
 
-            let selections = self.selections();
+        let selections = self.selections();
 
-            if !allow_duplicates {
-                for i in [Some(jumps.cur), jumps.cur.checked_sub(1)]
-                    .into_iter()
-                    .flatten()
-                {
-                    let Some(Saved::Jump(jump)) = jumps.list.get(i) else {
-                        continue;
-                    };
+        if !allow_duplicates {
+            for i in [Some(jumps.cur), jumps.cur.checked_sub(1)]
+                .into_iter()
+                .flatten()
+            {
+                let Some(Saved::Jump(jump)) = jumps.list.get(i) else {
+                    continue;
+                };
 
-                    match jump {
-                        Jump::Single(sel) => {
-                            if selections.len() == 1
-                                && selections.get_main().unwrap().byte_range(self.bytes()) == *sel
-                            {
-                                return false;
-                            }
+                match jump {
+                    Jump::Single(sel) => {
+                        if selections.len() == 1
+                            && selections.get_main().unwrap().byte_range(self.bytes()) == *sel
+                        {
+                            return false;
                         }
-                        Jump::Multiple(sels, main) => {
-                            if *main == selections.main_index()
-                                && sels.len() == selections.len()
-                                && sels
-                                    .iter()
-                                    .zip(selections.iter())
-                                    .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(self.bytes()))
-                            {
-                                return false;
-                            }
+                    }
+                    Jump::Multiple(sels, main) => {
+                        if *main == selections.main_index()
+                            && sels.len() == selections.len()
+                            && sels
+                                .iter()
+                                .zip(selections.iter())
+                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(self.bytes()))
+                        {
+                            return false;
                         }
                     }
                 }
             }
+        }
 
-            if selections.len() == 1 {
-                jumps.list.insert(
-                    jumps.cur,
-                    Saved::Jump(Jump::Single(
-                        selections.get_main().unwrap().byte_range(self.bytes()),
-                    )),
-                );
-            } else if selections.len() > 1 {
-                jumps.list.insert(
-                    jumps.cur,
-                    Saved::Jump(Jump::Multiple(
-                        selections
-                            .iter()
-                            .map(|(sel, _)| sel.byte_range(self.bytes()))
-                            .collect(),
-                        selections.main_index(),
-                    )),
-                );
-            }
-            jumps.cur += 1;
+        if selections.len() == 1 {
+            jumps.list.insert(
+                jumps.cur,
+                Saved::Jump(Jump::Single(
+                    selections.get_main().unwrap().byte_range(self.bytes()),
+                )),
+            );
+        } else if selections.len() > 1 {
+            jumps.list.insert(
+                jumps.cur,
+                Saved::Jump(Jump::Multiple(
+                    selections
+                        .iter()
+                        .map(|(sel, _)| sel.byte_range(self.bytes()))
+                        .collect(),
+                    selections.main_index(),
+                )),
+            );
+        }
+        jumps.cur += 1;
 
-            true
-        })
-        .unwrap()
+        true
     }
 
     fn jump_selections_by(&mut self, mut by: i32) -> Option<Jump> {
-        self.write_object(|jumps: &mut Jumps| {
-            jumps.update();
+        let mut parsers = PARSERS.lock().unwrap();
+        let jumps = parsers.get_mut(&self.buffer_id()).unwrap();
+        jumps.update();
 
-            let mut changes = Changes::default();
-            let mut last_seen = None;
+        let mut changes = Changes::default();
+        let mut last_seen = None;
 
-            let jump = if by >= 0 {
-                loop {
-                    match jumps.list.get_mut(jumps.cur) {
-                        Some(Saved::Jump(jump)) => {
-                            if by == 0 {
-                                break Some(jump.clone());
-                            } else if jumps.cur + 1 < jumps.list.len() {
-                                last_seen = Some(jumps.cur);
-                                by -= 1;
-                                jumps.cur += 1;
-                            } else {
-                                break None;
-                            }
+        let jump = if by >= 0 {
+            loop {
+                match jumps.list.get_mut(jumps.cur) {
+                    Some(Saved::Jump(jump)) => {
+                        if by == 0 {
+                            break Some(jump.clone());
+                        } else if jumps.cur + 1 < jumps.list.len() {
+                            last_seen = Some(jumps.cur);
+                            by -= 1;
+                            jumps.cur += 1;
+                        } else {
+                            break None;
                         }
-                        Some(Saved::Changes(_)) => unreachable!(),
-                        None => break None,
                     }
+                    Some(Saved::Changes(_)) => unreachable!(),
+                    None => break None,
                 }
-            } else {
-                loop {
-                    match jumps.cur.checked_sub(1).and_then(|j| jumps.list.get_mut(j)) {
-                        Some(Saved::Jump(jump)) => {
-                            jumps.cur -= 1;
-                            if jump.shift(&changes) {
-                                by += 1;
-                                if by == 0 {
-                                    let jump = jump.clone();
-                                    if !changes.list.is_empty() && jumps.cur > 0 {
-                                        jumps
-                                            .list
-                                            .insert(jumps.cur, Saved::Changes(Box::new(changes)));
-                                        jumps.cur += 1;
-                                    }
-                                    break Some(jump);
-                                } else {
-                                    last_seen = Some(jumps.cur);
+            }
+        } else {
+            loop {
+                match jumps.cur.checked_sub(1).and_then(|j| jumps.list.get_mut(j)) {
+                    Some(Saved::Jump(jump)) => {
+                        jumps.cur -= 1;
+                        if jump.shift(&changes) {
+                            by += 1;
+                            if by == 0 {
+                                let jump = jump.clone();
+                                if !changes.list.is_empty() && jumps.cur > 0 {
+                                    jumps
+                                        .list
+                                        .insert(jumps.cur, Saved::Changes(Box::new(changes)));
+                                    jumps.cur += 1;
                                 }
+                                break Some(jump);
                             } else {
-                                if let Some(last_seen) = last_seen.as_mut() {
-                                    *last_seen -= 1;
-                                }
-                                jumps.list.remove(jumps.cur);
+                                last_seen = Some(jumps.cur);
                             }
-                        }
-                        Some(Saved::Changes(_)) => {
+                        } else {
                             if let Some(last_seen) = last_seen.as_mut() {
                                 *last_seen -= 1;
                             }
-                            jumps.cur -= 1;
-                            let Saved::Changes(rev) = jumps.list.remove(jumps.cur) else {
-                                unreachable!();
-                            };
-                            changes.merge(*rev);
+                            jumps.list.remove(jumps.cur);
                         }
-                        None => break None,
                     }
+                    Some(Saved::Changes(_)) => {
+                        if let Some(last_seen) = last_seen.as_mut() {
+                            *last_seen -= 1;
+                        }
+                        jumps.cur -= 1;
+                        let Saved::Changes(rev) = jumps.list.remove(jumps.cur) else {
+                            unreachable!();
+                        };
+                        changes.merge(*rev);
+                    }
+                    None => break None,
                 }
-            };
+            }
+        };
 
-            jump.or_else(|| {
-                last_seen.map(|i| {
-                    let Some(Saved::Jump(jump)) = jumps.list.get(i) else {
-                        unreachable!();
-                    };
-                    jump.clone()
-                })
+        jump.or_else(|| {
+            last_seen.map(|i| {
+                let Some(Saved::Jump(jump)) = jumps.list.get(i) else {
+                    unreachable!();
+                };
+                jump.clone()
             })
         })
-        .flatten()
     }
 
     fn jump_to_selections(&mut self, n: usize) -> Option<Jump> {
-        let cur_n = self.write_object(|jumps: &mut Jumps| {
-            jumps.update();
+        let mut parsers = PARSERS.lock().unwrap();
+        let jumps = parsers.get_mut(&self.buffer_id()).unwrap();
+        jumps.update();
 
-            jumps
-                .list
-                .iter()
-                .take(jumps.cur)
-                .filter(|s| matches!(s, Saved::Jump(_)))
-                .count()
-        })?;
+        let cur_n = jumps
+            .list
+            .iter()
+            .take(jumps.cur)
+            .filter(|s| matches!(s, Saved::Jump(_)))
+            .count();
 
         self.jump_selections_by(n as i32 - cur_n as i32)
     }
