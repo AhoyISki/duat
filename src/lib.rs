@@ -87,15 +87,15 @@ use std::{
 
 use duat_core::{
     Plugin, Plugins,
-    buffer::{Buffer, Parser},
     context::Handle,
     data::Pass,
-    form, hook,
+    form,
+    hook::{self, BufferUpdated},
     text::{Point, Tagger},
     ui::Widget,
 };
 use duat_filetype::FileType;
-use duat_treesitter::TsParser;
+use duat_treesitter::{Parser, TsBuffer};
 
 /// [`Parser`] to highlight the match of the delimiter under
 /// [`Selection`]s
@@ -175,62 +175,75 @@ impl Plugin for MatchPairs {
     fn plug(self, plugins: &Plugins) {
         plugins.require::<duat_treesitter::TreeSitter>();
 
-        hook::add::<Buffer>(move |pa, handle| {
-            let mut match_pairs = self.clone();
-
+        hook::add::<BufferUpdated>(move |pa, handle| {
             let file = handle.write(pa);
-            if let Some(path) = file.path_set()
-                && let Some(path) = path.filetype()
-            {
-                match_pairs.ts_only = match path {
-                    "rust" => vec![[b"<", b">"], [b"|", b"|"]],
-                    _ => match_pairs.ts_only,
-                }
+            
+            let match_pairs_ref = MatchPairsRef {
+                ts_and_reg: &self.ts_and_reg,
+                ts_only: if let Some(path) = file.path_set()
+                    && let Some(filetype) = path.filetype()
+                {
+                    match filetype {
+                        "rust" => &[[b"<".as_slice(), b">"], [b"|", b"|"]],
+                        _ => self.ts_only.as_slice(),
+                    }
+                } else {
+                    &self.ts_only
+                },
+                escaped: &self.escaped,
             };
 
-            file.add_parser(|mut tracker| {
-                tracker.track_area();
-                MatchPairsParser(match_pairs)
-            })
+            let range = handle.printed_range(pa);
+            match_pairs_ref.update(pa, handle, range);
+
+            Ok(())
         });
     }
 }
 
-struct MatchPairsParser(MatchPairs);
+impl Default for MatchPairs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-impl Parser for MatchPairsParser {
-    fn update(&mut self, pa: &mut Pass, handle: &Handle, on: Vec<Range<Point>>) {
+struct MatchPairsRef<'mp> {
+    ts_and_reg: &'mp [[&'static [u8]; 2]],
+    ts_only: &'mp [[&'static [u8]; 2]],
+    escaped: &'mp [[&'static str; 2]],
+}
+
+impl MatchPairsRef<'_> {
+    fn update(self, pa: &mut Pass, handle: &Handle, range: Range<Point>) {
         fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
         }
-        let file = handle.write(pa);
 
-        file.text_mut().remove_tags(*PAREN_TAGGER, ..);
+        let buffer = handle.write(pa);
 
-        let selections: Vec<(Range<usize>, bool)> = on
-            .into_iter()
-            .flat_map(|r| {
-                file.selections()
-                    .iter_within(r)
-                    .map(|(_, sel, is_main)| (sel.byte_range(file.bytes()), is_main))
-            })
+        buffer.text_mut().remove_tags(*PAREN_TAGGER, ..);
+
+        let selections: Vec<_> = buffer
+            .selections()
+            .iter_within(range)
+            .map(|(_, sel, is_main)| (sel.byte_range(buffer.bytes()), is_main))
             .collect();
 
         'selections: for (c_range, is_main) in selections {
-            let str: Vec<u8> = file.bytes().slices(c_range.clone()).collect();
+            let str: Vec<u8> = buffer.bytes().slices(c_range.clone()).collect();
 
             // TODO: Support multi-character pairs
-            let (delims, escaped) = if let Some(i) = self.0.ts_and_reg.iter().position(ends(&str)) {
-                (self.0.ts_and_reg[i], Some(self.0.escaped[i]))
-            } else if let Some(i) = self.0.ts_only.iter().position(ends(&str)) {
-                (self.0.ts_only[i], None)
+            let (delims, escaped) = if let Some(i) = self.ts_and_reg.iter().position(ends(&str)) {
+                (self.ts_and_reg[i], Some(self.escaped[i]))
+            } else if let Some(i) = self.ts_only.iter().position(ends(&str)) {
+                (self.ts_only[i], None)
             } else {
                 continue;
             };
 
-            let (start_range, end_range) = if let Some(Some((s_range, e_range))) = file
-                .try_read_parser(|ts: &TsParser| {
-                    let node = ts
+            let (start_range, end_range) = if let Some((s_range, e_range)) = buffer
+                .read_ts_parser(|parser: &Parser| {
+                    let node = parser
                         .root()
                         .and_then(|root| root.descendant_for_byte_range(c_range.start, c_range.end))
                         .and_then(|node| {
@@ -260,7 +273,7 @@ impl Parser for MatchPairsParser {
                 (s_range, e_range)
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
-                    let mut iter = file.bytes().search_fwd(escaped, c_range.start..).unwrap();
+                    let mut iter = buffer.bytes().search_fwd(escaped, c_range.start..).unwrap();
                     let mut bounds = 0;
 
                     loop {
@@ -273,7 +286,7 @@ impl Parser for MatchPairsParser {
                         }
                     }
                 } else {
-                    let mut iter = file.bytes().search_rev(escaped, ..c_range.end).unwrap();
+                    let mut iter = buffer.bytes().search_rev(escaped, ..c_range.end).unwrap();
                     let mut bounds = 0;
 
                     loop {
@@ -295,7 +308,8 @@ impl Parser for MatchPairsParser {
             } else {
                 form::id_of!("matched_pair.extra.start")
             };
-            file.text_mut()
+            buffer
+                .text_mut()
                 .insert_tag(*PAREN_TAGGER, start_range, id.to_tag(99));
 
             let id = if is_main {
@@ -303,15 +317,10 @@ impl Parser for MatchPairsParser {
             } else {
                 form::id_of!("matched_pair.extra.end")
             };
-            file.text_mut()
+            buffer
+                .text_mut()
                 .insert_tag(*PAREN_TAGGER, end_range, id.to_tag(99));
         }
-    }
-}
-
-impl Default for MatchPairs {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
