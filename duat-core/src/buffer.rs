@@ -36,7 +36,7 @@ use crate::{
         Bytes, Change, Moment, MomentFetcher, Point, Strs, Tags, Text, TextParts, TextRange,
         TextState, txt,
     },
-    ui::{Area, PrintedLine, Widget},
+    ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
 /// The widget that is used to print and edit buffers
@@ -325,6 +325,7 @@ impl Buffer {
     ///
     /// After calling this, `self.cached_print_info` is guaranteed to
     /// be [`Some`]
+    #[track_caller]
     fn reset_print_info_if_needed<'b>(
         &'b self,
         area: &Area,
@@ -339,14 +340,20 @@ impl Buffer {
 
         let mut cached_print_info = self.cached_print_info.lock().unwrap();
         if opts_changed
-            || area.has_changed()
-            || cached_print_info
-                .as_ref()
-                .is_none_or(|cpi| self.text.text_state().has_changed_since(cpi.text_state))
+            || cached_print_info.as_ref().is_none_or(|cpi| {
+                self.text
+                    .text_state()
+                    .has_structurally_changed_since(cpi.text_state)
+                    || area.get_print_info() != cpi.area_print_info
+                    || area.top_left() != cpi.coords.0
+                    || area.bottom_right() != cpi.coords.1
+            })
         {
             let start = area.start_points(&self.text, self.opts).real;
             let end = area.end_points(&self.text, self.opts).real;
             let printed_line_numbers = area.get_printed_lines(&self.text, self.opts).unwrap();
+            static COUNT: AtomicUsize = AtomicUsize::new(0);
+            context::debug!("oh shit {}", COUNT.fetch_add(1, Ordering::Relaxed));
 
             *cached_print_info = Some(CachedPrintInfo {
                 range: start..end,
@@ -354,10 +361,12 @@ impl Buffer {
                 printed_line_ranges: None,
                 _visible_line_ranges: None,
                 text_state: self.text.text_state(),
+                area_print_info: area.get_print_info(),
+                coords: (area.top_left(), area.bottom_right()),
             });
         } else {
             cached_print_info.as_mut().unwrap().text_state = self.text.text_state();
-        }
+        };
 
         cached_print_info
     }
@@ -460,11 +469,7 @@ impl Widget for Buffer {
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
-        self.cached_print_info
-            .lock()
-            .unwrap()
-            .as_ref()
-            .is_none_or(|cpi| self.text.text_state().has_changed_since(cpi.text_state))
+        false
     }
 
     fn text(&self) -> &Text {
@@ -540,6 +545,7 @@ impl Handle {
     /// check out [`Handle::printed_lines`]. If you want the content
     /// of only the _visible_ portion of these lines, check out
     /// [`Handle::visible_lines`].
+    #[track_caller]
     pub fn printed_line_numbers(&self, pa: &Pass) -> Vec<PrintedLine> {
         let buffer = self.read(pa);
         let cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
@@ -607,6 +613,15 @@ impl Handle {
             .iter()
             .map(|range| buffer.text.strs(range.clone()).unwrap())
             .collect()
+    }
+
+    /// The list of [`Range<Point>`]s for each printed line
+    ///
+    /// This is just a shorthand for calling [`Handle::printed_lines`]
+    /// and mapping each one via [`Strs::range`].
+    pub fn printed_line_byte_ranges(&self, pa: &Pass) -> Vec<Range<usize>> {
+        let lines = self.printed_lines(pa);
+        lines.into_iter().map(|line| line.byte_range()).collect()
     }
 
     /// Only the visible parts of printed lines
@@ -882,6 +897,8 @@ struct CachedPrintInfo {
     printed_line_ranges: Option<Vec<Range<Point>>>,
     _visible_line_ranges: Option<Vec<Range<Point>>>,
     text_state: TextState,
+    area_print_info: PrintInfo,
+    coords: (Coord, Coord),
 }
 
 /// Represents the presence or absence of a path

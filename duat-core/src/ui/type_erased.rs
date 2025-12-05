@@ -803,9 +803,8 @@ impl Area {
 
     /// Wether this `Area` has changed since last being printed
     ///
-    /// This includes changes to the area's size, location, and
-    /// [`PrintInfo`], as well as other ui implementation specific
-    /// information.
+    /// This includes changes to the area's size and location, as well
+    /// as other ui implementation specific information.
     pub fn has_changed(&self) -> bool {
         (self.fns.has_changed)(self)
     }

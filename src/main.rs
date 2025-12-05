@@ -77,8 +77,6 @@ struct Args {
     author: Option<String>,
 }
 
-static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = <Args as clap::Parser>::parse();
 

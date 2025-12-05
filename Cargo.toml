@@ -67,6 +67,3 @@ path = "src/lib.rs"
 codegen-units = 1
 lto = true
 inherits = "release"
-
-[profile.release]
-debug = true

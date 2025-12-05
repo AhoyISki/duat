@@ -89,6 +89,7 @@ impl Coords {
 
 #[derive(Clone)]
 pub struct Area {
+    prev_print_info: Arc<Mutex<PrintInfo>>,
     layouts: Layouts,
     id: AreaId,
     ansi_codes: Arc<Mutex<micromap::Map<CStyle, String, 16>>>,
@@ -105,6 +106,7 @@ impl Area {
     /// Returns a new `Area` from raw parts
     pub(crate) fn new(id: AreaId, layouts: Layouts) -> Self {
         Self {
+            prev_print_info: Arc::new(Mutex::default()),
             layouts,
             id,
             ansi_codes: Arc::default(),
@@ -143,6 +145,7 @@ impl Area {
         let (s_points, x_shift) = {
             let mut info = self.layouts.get_info_of(self.id).unwrap();
             let s_points = info.start_points(coords, text, opts);
+            *self.prev_print_info.lock().unwrap() = info;
             self.layouts.set_info_of(self.id, info);
             (s_points, info.x_shift())
         };
@@ -352,7 +355,7 @@ impl RawArea for Area {
     }
 
     fn print(&self, _: UiPass, text: &Text, opts: PrintOpts, painter: Painter) {
-        self.print(text, opts, painter,)
+        self.print(text, opts, painter)
     }
 
     ////////// Queries
@@ -425,7 +428,12 @@ impl RawArea for Area {
 
     fn has_changed(&self, _: UiPass) -> bool {
         self.layouts
-            .inspect(self.id, |rect, layout| rect.has_changed(layout))
+            .inspect(self.id, |rect, layout| {
+                rect.has_changed(layout)
+                    || rect
+                        .print_info()
+                        .is_some_and(|info| *info != *self.prev_print_info.lock().unwrap())
+            })
             .unwrap_or(false)
     }
 
@@ -454,6 +462,7 @@ impl RawArea for Area {
             .inspect(self.id, |_, layout| layout.get_cluster_master(self.id))??;
 
         Some(Self {
+            prev_print_info: Arc::default(),
             layouts: self.layouts.clone(),
             id,
             ansi_codes: Arc::default(),

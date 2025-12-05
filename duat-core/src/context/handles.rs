@@ -15,7 +15,7 @@ use lender::Lender;
 use crate::{
     context,
     data::{Pass, RwData, WriteableTuple},
-    mode::{Cursor, Cursors, Selection, Selections},
+    mode::{Cursor, Cursors, ModSelection, Selection, Selections},
     opts::PrintOpts,
     text::{Searcher, Text, TextParts, TwoPoints, txt},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
@@ -386,7 +386,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         // This is safe because of the &mut Pass argument
         let mut searcher = self.searcher.borrow_mut();
 
-        let mut selections = vec![Some((selection, n, was_main))];
+        let mut selections = vec![Some(ModSelection::new(selection, n, was_main))];
 
         let ret = edit(Cursor::new(
             &mut selections,

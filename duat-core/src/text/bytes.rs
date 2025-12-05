@@ -754,14 +754,6 @@ impl<'b> Strs<'b> {
             .map(|mut iter| iter.next().is_some())
     }
 
-    /// The [`Range<Point>`] of this `Strs`
-    ///
-    /// If you only care about the byte indices, you should use
-    /// [`Strs::byte_range`] instead, since it'b slightly faster.
-    pub fn range(&self) -> Range<Point> {
-        self.bytes.point_at_byte(self.range.start)..self.bytes.point_at_byte(self.range.end)
-    }
-
     /// A [`Range<usize>`] of the byte indices of this `Strs`.
     pub fn byte_range(&self) -> Range<usize> {
         self.range.clone()

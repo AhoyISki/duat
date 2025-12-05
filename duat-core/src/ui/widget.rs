@@ -587,6 +587,7 @@ impl Node {
     /// Wether this [`Widget`] needs to be updated
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
         self.handle.update_requested.load(Ordering::Relaxed)
+            || self.handle.widget().has_changed()
             || self.handle.area.has_changed(pa)
             || self.handle.read(pa).needs_update(pa)
     }

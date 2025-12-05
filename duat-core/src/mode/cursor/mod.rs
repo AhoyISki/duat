@@ -26,14 +26,19 @@ mod selections;
 
 macro_rules! sel {
     ($cursor:expr) => {
-        $cursor.selections[$cursor.sels_i].as_ref().unwrap().0
+        $cursor.selections[$cursor.sels_i]
+            .as_ref()
+            .unwrap()
+            .selection
     };
 }
 
 macro_rules! sel_mut {
-    ($cursor:expr) => {
-        $cursor.selections[$cursor.sels_i].as_mut().unwrap().0
-    };
+    ($cursor:expr) => {{
+        let mod_sel = $cursor.selections[$cursor.sels_i].as_mut().unwrap();
+        mod_sel.has_changed = true;
+        &mut mod_sel.selection
+    }};
 }
 
 /// A selection that can edit [`Text`], but can't alter selections
@@ -81,7 +86,7 @@ macro_rules! sel_mut {
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
 pub struct Cursor<'a, W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
-    selections: &'a mut Vec<Option<(Selection, usize, bool)>>,
+    selections: &'a mut Vec<Option<ModSelection>>,
     sels_i: usize,
     initial: Selection,
     widget: &'a mut W,
@@ -93,13 +98,13 @@ pub struct Cursor<'a, W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
 impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
-        selections: &'a mut Vec<Option<(Selection, usize, bool)>>,
+        selections: &'a mut Vec<Option<ModSelection>>,
         sels_i: usize,
         (widget, area): (&'a mut W, &'a Area),
         next_i: Option<Rc<Cell<usize>>>,
         searcher: &'a mut S,
     ) -> Self {
-        let initial = selections[sels_i].as_ref().unwrap().0.clone();
+        let initial = selections[sels_i].as_ref().unwrap().selection.clone();
         Self {
             selections,
             sels_i,
@@ -232,6 +237,9 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns the distance moved in chars.
     #[track_caller]
     pub fn move_hor(&mut self, count: i32) -> i32 {
+        if count == 0 {
+            return 0;
+        }
         sel_mut!(self).move_hor(count, self.widget.text())
     }
 
@@ -240,6 +248,9 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns the distance moved in lines.
     #[track_caller]
     pub fn move_ver(&mut self, count: i32) -> i32 {
+        if count == 0 {
+            return 0;
+        }
         sel_mut!(self).move_ver(
             count,
             self.widget.text(),
@@ -254,6 +265,9 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns the distance moved in wrapped lines.
     #[track_caller]
     pub fn move_ver_wrapped(&mut self, count: i32) {
+        if count == 0 {
+            return;
+        }
         sel_mut!(self).move_ver_wrapped(
             count,
             self.widget.text(),
@@ -374,7 +388,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Resets the [`Selection`] to how it was before being modified
     pub fn reset(&mut self) {
-        sel_mut!(self) = self.initial.clone();
+        *sel_mut!(self) = self.initial.clone();
     }
 
     /// Copies the current [`Selection`] in place
@@ -417,7 +431,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             return;
         }
 
-        if self.selections[self.sels_i].as_ref().unwrap().2 {
+        if self.selections[self.sels_i].as_ref().unwrap().was_main {
             self.widget.text_mut().selections_mut().rotate_main(-1);
         }
 
@@ -943,7 +957,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Whether or not this is the main [`Selection`]
     pub fn is_main(&self) -> bool {
-        self.selections[self.sels_i].as_ref().unwrap().2
+        self.selections[self.sels_i].as_ref().unwrap().was_main
     }
 
     /// The [`Text`] of the [`Widget`]
@@ -1031,7 +1045,7 @@ impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
 
 /// An [`Iterator`] overf all [`Cursor`]s
 pub struct Cursors<'a, W: Widget + ?Sized, S> {
-    current: Vec<Option<(Selection, usize, bool)>>,
+    current: Vec<Option<ModSelection>>,
     next_i: Rc<Cell<usize>>,
     widget: &'a mut W,
     area: &'a Area,
@@ -1070,7 +1084,8 @@ impl<'a, W: Widget + ?Sized, S> Lender for Cursors<'a, W, S> {
 
         let current_i = self.next_i.get();
         let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
-        self.current.push(Some((selection, current_i, was_main)));
+        self.current
+            .push(Some(ModSelection::new(selection, current_i, was_main)));
 
         Some(Cursor::new(
             &mut self.current,
@@ -1095,15 +1110,15 @@ impl<'a, W: Widget + ?Sized, S> Drop for Cursors<'a, W, S> {
 /// Reinsert edited [`Selections`]
 #[inline]
 pub(crate) fn reinsert_selections(
-    selections: impl Iterator<Item = (Selection, usize, bool)>,
+    selections: impl Iterator<Item = ModSelection>,
     widget: &mut (impl Widget + ?Sized),
     next_i: Option<&Cell<usize>>,
 ) {
-    for (selection, n, was_main) in selections {
+    for mod_sel in selections {
         let ([inserted_i, selections_taken], last_selection_overhangs) = widget
             .text_mut()
             .selections_mut()
-            .insert(n, selection, was_main);
+            .insert(mod_sel.index, mod_sel.selection, mod_sel.was_main);
 
         if let Some(next_i) = next_i
             && inserted_i <= next_i.get()
@@ -1116,6 +1131,28 @@ pub(crate) fn reinsert_selections(
                     .max(inserted_i)
                     + go_to_next,
             )
+        }
+    }
+}
+
+/// A struct representing the temporary state of a [`Selection`] in a
+/// [`Cursor`]
+#[derive(Clone, Debug)]
+pub(crate) struct ModSelection {
+    selection: Selection,
+    index: usize,
+    was_main: bool,
+    has_changed: bool,
+}
+
+impl ModSelection {
+    /// Returns a new `ModSelection`
+    pub(crate) fn new(selection: Selection, index: usize, was_main: bool) -> Self {
+        Self {
+            selection,
+            index,
+            was_main,
+            has_changed: false,
         }
     }
 }

@@ -27,7 +27,7 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEv
 /// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
 pub type KeyMod = crossterm::event::KeyModifiers;
 
-pub(crate) use self::cursor::reinsert_selections;
+pub(crate) use self::cursor::{ModSelection, reinsert_selections};
 #[doc(inline)]
 pub use self::{bindings::*, patterns::*};
 pub use self::{
