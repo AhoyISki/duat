@@ -374,10 +374,6 @@ impl RawArea for Area {
         text: &Text,
         opts: PrintOpts,
     ) -> Option<Vec<ui::PrintedLine>> {
-		use std::io::Write;
-		let mut log = std::fs::OpenOptions::new().append(true).open("log").unwrap();
-		writeln!(log, "\x1b[0;31;49mentered get_printed_lines").unwrap();
-
         let coords = self.layouts.coords_of(self.id, true)?;
         let points = self.start_points(pa, text, opts);
 
@@ -406,9 +402,6 @@ impl RawArea for Area {
                 printed_lines.push(PrintedLine { number, is_wrapped });
             }
         }
-        
-		writeln!(log, "iterated {n} times").unwrap();
-		writeln!(log, "left get_printed_lines\x1b[0;39;49m").unwrap();
 
         Some(printed_lines)
     }
