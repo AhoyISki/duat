@@ -8,7 +8,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     lender::Lender,
-    mode::{self, KeyEvent, KeyMod, Mode, VPoint, alt, event, shift},
+    mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, event, shift},
     opts::PrintOpts,
     text::{Point, txt},
 };
@@ -94,36 +94,66 @@ impl Mode for Normal {
         use mode::{KeyCode::*, alt, event, shift};
 
         let word = txt!("[a]word[separator],[a]WORD");
-        let mv = txt!("[a]Move[separator],[a]select");
+        let select = txt!("[a]Select[separator],[a]extend");
         let below = txt!("[a]below[separator],[a]above");
         let ahead = txt!("[a]ahead[separator],[a]behind");
         let undo = txt!("[a]Undo[separator],[a]redo");
 
-        let object = mode::bindings!(match _ {
-            event!('b' | '(' | ')') => txt!("parenthesis block"),
-            event!('B' | '{' | '}') => txt!("brace block"),
-            event!('r' | '[' | ']') => txt!("bracket block"),
-            event!('a' | '<' | '>') => txt!("angle bracket block"),
-            event!('"' | 'Q') => txt!("double quote string"),
-            event!('\'' | 'q') => txt!("single quote string"),
-            event!('`' | 'g') => txt!("grave quote string"),
-            event!('w') | alt!('w') => word.clone(),
-            event!('s') => txt!("sentence"),
-            event!('p') => txt!("paragraph"),
-            event!(' ') => txt!("whitespace"),
-            event!('i') => txt!("indent"),
-            event!('u') => txt!("argument"),
-        });
+        let object = {
+            let object = mode::bindings!(match _ {
+                event!('b' | '(' | ')') => txt!("parenthesis block"),
+                event!('B' | '{' | '}') => txt!("brace block"),
+                event!('r' | '[' | ']') => txt!("bracket block"),
+                event!('a' | '<' | '>') => txt!("angle bracket block"),
+                event!('"' | 'Q') => txt!("double quote string"),
+                event!('\'' | 'q') => txt!("single quote string"),
+                event!('`' | 'g') => txt!("grave quote string"),
+                event!('w') | alt!('w') => word.clone(),
+                event!('s') => txt!("sentence"),
+                event!('p') => txt!("paragraph"),
+                event!(' ') => txt!("whitespace"),
+                event!('i') => txt!("indent"),
+                event!('u') => txt!("argument"),
+            });
 
-        let goto = mode::bindings!(match _ {
-            event!('h') => txt!("start of line"),
-            event!('j') => txt!("end of [a]Buffer"),
-            event!('k' | 'g') => txt!("start of [a]Buffer"),
-            event!('l') => txt!("end of line"),
-            event!('i') => txt!("first character in line"),
-            event!('a') => txt!("last swapped [a]Buffer"),
-            event!('n') => txt!("next [a]Buffer"),
-            event!('N') => txt!("prev. [a]Buffer"),
+            move |action: &str| Bindings {
+                title: Some(txt!("{action}")),
+                ..object.clone()
+            }
+        };
+
+        let goto = Bindings {
+            title: Some(txt!("goto")),
+            ..mode::bindings!(match _ {
+                event!('h') => txt!("start of line"),
+                event!('j') => txt!("end of [a]Buffer"),
+                event!('k' | 'g') => txt!("start of [a]Buffer"),
+                event!('l') => txt!("end of line"),
+                event!('i') => txt!("first character in line"),
+                event!('a') => txt!("last swapped [a]Buffer"),
+                event!('n') => txt!("next [a]Buffer"),
+                event!('N') => txt!("previous [a]Buffer"),
+            })
+        };
+
+        let words = [
+            ["select", "to", "next"],
+            ["extend", "to", "next"],
+            ["select", "until", "next"],
+            ["extend", "until", "next"],
+            ["select", "to", "previous"],
+            ["extend", "to", "previous"],
+            ["select", "until", "previous"],
+            ["extend", "until", "previous"],
+        ];
+
+        let mut tf = words.map(|[sel, to, next]| {
+            Some(Bindings {
+                title: Some(txt!("{sel} {to} {next}")),
+                ..mode::bindings!(match _ {
+                    event!(Char(..)) => txt!("[key.char]{{char}}[] to {sel} {to}"),
+                })
+            })
         });
 
         mode::bindings!(match _ {
@@ -131,39 +161,39 @@ impl Mode for Normal {
             event!('H' | 'J' | 'K' | 'L') => txt!("Select and move cursor"),
             event!(Left | Up | Down | Right) => txt!("Move cursor wrapped"),
             shift!(Left | Up | Down | Right) => txt!("Select and move cursor wrapped"),
-            event!('b') | alt!('b') | event!('B') | alt!('B') => txt!("{mv} to start of {word}"),
+            event!('b') | alt!('b') | event!('B') | alt!('B') =>
+                txt!("{select} to start of {word}"),
             event!('w') | alt!('w') | event!('W') | alt!('W') =>
-                txt!("{mv} to start of next {word}"),
-            event!('e') | alt!('e') | event!('E') | alt!('E') => txt!("{mv} to end of {word}"),
+                txt!("{select} to start of next {word}"),
+            event!('e') | alt!('e') | event!('E') | alt!('E') => txt!("{select} to end of {word}"),
             event!('x') => txt!("Select whole line"),
-            event!('f' | 'F') => (txt!("{mv} to next match"), match _ {
-                event!(Char(..)) => txt!("{mv} to next [key.char]{{char}}"),
-            }),
-            alt!('f' | 'F') => (txt!("{mv} to prev. match"), match _ {
-                event!(Char(..)) => txt!("{mv} to prev. [key.char]{{char}}"),
-            }),
-            event!('t' | 'T') => (txt!("{mv} until next match"), match _ {
-                event!(Char(..)) => txt!("{mv} until next [key.char]{{char}}"),
-            }),
-            alt!('t' | 'T') => (txt!("{mv} until prev. match"), match _ {
-                event!(Char(..)) => txt!("{mv} until prev. [key.char]{{char}}"),
-            }),
-            alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{mv} to end of line"),
-            alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{mv} to start of line"),
-            alt!('a') => (txt!("Select around [a]object"), object.clone()),
-            alt!('i') => (txt!("Select inside [a]object"), object),
+            event!('f') => (txt!("Select to next match"), tf[0].take().unwrap()),
+            event!('F') => (txt!("Extend to next match"), tf[1].take().unwrap()),
+            event!('t') => (txt!("Select until next match"), tf[2].take().unwrap()),
+            event!('T') => (txt!("Extend until next match"), tf[3].take().unwrap()),
+            alt!('f') => (txt!("Select to previous match"), tf[4].take().unwrap()),
+            alt!('F') => (txt!("Extend to previous match"), tf[5].take().unwrap()),
+            alt!('t') => (txt!("Select until previous match"), tf[6].take().unwrap()),
+            alt!('T') => (txt!("Extend until previous match"), tf[7].take().unwrap()),
+            alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{select} to end of line"),
+            alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{select} to start of line"),
+            alt!('a') => (txt!("Select around [a]object"), object("select around")),
+            alt!('i') => (txt!("Select inside [a]object"), object("select inside")),
             event!('%') => txt!("Select whole [a]Buffer"),
-            event!('m' | 'M') => txt!("{mv} to next matching pair"),
-            alt!('m' | 'M') => txt!("{mv} to prev. matching pair"),
+            event!('m' | 'M') => txt!("{select} to next matching pair"),
+            alt!('m' | 'M') => txt!("{select} to previous matching pair"),
             event!('i') => txt!("[mode]Insert[] before selection"),
             event!('I') => txt!("[mode]Insert[] at the line's start"),
             event!('a') => txt!("[mode]Insert[] after selection"),
             event!('A') => txt!("[mode]Insert[] at the line's end"),
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
-            event!('r') => (txt!("Replace range"), match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }),
+            event!('r') => (
+                txt!("Replace range"),
+                match _ {
+                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+                }
+            ),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -192,8 +222,8 @@ impl Mode for Normal {
             event!('S') => txt!("[mode]Split[] selections by matches"),
             alt!('k') => txt!("[mode]Keep[] matching selections"),
             alt!('K') => txt!("[mode]Keep[] [a]non[] matching selections"),
-            event!('n' | 'N') => txt!("{mv} to next search match"),
-            alt!('n' | 'N') => txt!("{mv} to prev. search match"),
+            event!('n' | 'N') => txt!("{select} to next search match"),
+            alt!('n' | 'N') => txt!("{select} to previous search match"),
             event!('*') => txt!("Set main selection as search pattern"),
             alt!('u' | 'U') => undo.clone(),
             event!(':') => txt!("[a]Run commands[] in prompt line"),

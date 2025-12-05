@@ -546,7 +546,12 @@ pub mod opts {
         atomic::{AtomicBool, Ordering},
     };
 
-    use crate::insert::TabMode;
+    use duat_core::{
+        mode::{self, KeyCode, KeyEvent},
+        text::txt,
+    };
+
+    use crate::{Insert, insert::TabMode};
 
     pub(crate) static INSERT_TABS: AtomicBool = AtomicBool::new(false);
     pub(crate) static TABMODE: Mutex<TabMode> = Mutex::new(TabMode::VerySmart);
@@ -575,7 +580,11 @@ pub mod opts {
     /// [very smart mode]: set_very_smart_tabs
     /// [spaces or a tab]: insert_tabs
     pub fn set_normal_tabs() {
-        *TABMODE.lock().unwrap() = TabMode::Normal
+        *TABMODE.lock().unwrap() = TabMode::Normal;
+        mode::change_binding_description::<Insert>(
+            &[KeyEvent::from(KeyCode::Tab)],
+            txt!("Insert tab"),
+        );
     }
 
     /// Sets the `Tab` mode to smart
@@ -594,25 +603,28 @@ pub mod opts {
     /// [very smart mode]: set_very_smart_tabs
     /// [spaces or a tab]: insert_tabs
     pub fn set_smart_tabs() {
-        *TABMODE.lock().unwrap() = TabMode::Smart
+        *TABMODE.lock().unwrap() = TabMode::Smart;
+        mode::change_binding_description::<Insert>(
+            &[KeyEvent::from(KeyCode::Tab)],
+            txt!("Reindent or insert tab"),
+        );
     }
 
     /// Sets the `Tab` mode to very smart
     ///
-    /// With this setting, if there are multiple selections, this mode
-    /// will act exactly like [smart tabs].
-    ///
-    /// However, if there is just one selection, then it will try to
-    /// reindent the line if the caret is on leading whitespace. If
-    /// that fails, or the indentation doesn't change, then it will
-    /// [scroll to the next completion entry].
+    /// This mode it will try to reindent the line if the caret is on
+    /// leading whitespace. If that fails, or the indentation doesn't
+    /// change, then it will [scroll to the next completion entry].
     ///
     /// This is the default tab mode.
     ///
-    /// [smart tabs]: set_smart_tabs
     /// [scroll to the next completion entry]: duat_base::widgets::Completions::scroll
     pub fn set_very_smart_tabs() {
-        *TABMODE.lock().unwrap() = TabMode::VerySmart
+        *TABMODE.lock().unwrap() = TabMode::VerySmart;
+        mode::change_binding_description::<Insert>(
+            &[KeyEvent::from(KeyCode::Tab)],
+            txt!("Reindent or next completion entry"),
+        );
     }
 
     /// The current [`TabMode`]
@@ -808,10 +820,11 @@ impl<'a> Object<'a> {
                     .collect();
                 let (s_arg, e_arg) = (format!(r"({s_pat})\s*"), format!(r"\s*({e_pat})"));
 
-                (
-                    [s_pat.leak(), e_pat.leak()],
-                    [r"(;|,)\s*", s_arg.leak(), e_arg.leak()],
-                )
+                ([s_pat.leak(), e_pat.leak()], [
+                    r"(;|,)\s*",
+                    s_arg.leak(),
+                    e_arg.leak(),
+                ])
             })
         };
 

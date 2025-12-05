@@ -56,14 +56,13 @@ impl Mode for Insert {
         use mode::KeyCode::*;
 
         mode::bindings!(match _ {
-            event!(Char(..)) | event!(Enter) => txt!("Insert the character"),
+            event!(Char(..) | Enter) => txt!("Insert the character"),
             event!(Left | Down | Up | Right) => txt!("Move cursor"),
             shift!(Left | Down | Up | Right) => txt!("Select and move cursor"),
-            ctrl!('n') => txt!("[a]Next[] completion entry"),
-            ctrl!('p') | shift!(BackTab) => txt!("[a]Prev.[] completion entry"),
-            event!(Tab) => txt!("Depends on [a]tab mode"),
-            event!(Backspace) => txt!("Remove prev. char. or sel."),
-            event!(Delete) => txt!("Remove char. or sel."),
+            ctrl!('n') => txt!("Next completion entry"),
+            ctrl!('p') | shift!(BackTab) => txt!("Previous completion entry"),
+            event!(Tab) => txt!("Reindent or next completion entry"),
+            event!(Backspace | Delete) => txt!("Remove character or selection"),
             event!(Esc) => txt!("Return to [mode]Normal[] mode"),
         })
     }
@@ -83,8 +82,8 @@ impl Mode for Insert {
             // Autocompletion commands
             ctrl!('n') => Completions::scroll(pa, 1),
             ctrl!('p') | shift!(BackTab) => Completions::scroll(pa, -1),
-            event!(Tab) => match (crate::opts::get_tab_mode(), handle.selections(pa).len() > 1) {
-                (TabMode::Normal, _) => handle.edit_all(pa, |mut c| {
+            event!(Tab) => match crate::opts::get_tab_mode() {
+                TabMode::Normal => handle.edit_all(pa, |mut c| {
                     if self.indent_keys.contains(&'\t') {
                         c.ts_reindent();
                     }
@@ -98,7 +97,7 @@ impl Mode for Insert {
                         c.move_hor(tab_len as i32);
                     }
                 }),
-                (TabMode::Smart, _) | (TabMode::VerySmart, true) => handle.edit_all(pa, |mut c| {
+                TabMode::Smart => handle.edit_all(pa, |mut c| {
                     let char_col = c.v_caret().char_col();
                     if (self.indent_keys.contains(&'\t') || char_col <= c.indent())
                         && c.ts_reindent()
@@ -115,7 +114,7 @@ impl Mode for Insert {
                         c.move_hor(tab_len as i32);
                     }
                 }),
-                (TabMode::VerySmart, false) => {
+                TabMode::VerySmart => {
                     let do_scroll = handle.edit_main(pa, |mut c| {
                         let char_col = c.v_caret().char_col();
                         !((self.indent_keys.contains(&'\t') || char_col <= c.indent())

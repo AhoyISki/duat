@@ -167,7 +167,6 @@ fn match_inside_around(
     is_inside: bool,
 ) {
     let mode::KeyCode::Char(char) = event.code else {
-        context::warn!("Key [a]{event.code}[] not mapped on this mode");
         return;
     };
 
@@ -254,40 +253,37 @@ fn match_inside_around(
                 Some(())
             }),
         }
-    } else {
-        match char {
-            'i' => handle.edit_all(pa, |mut c| {
-                let indent = c.indent();
-                if indent == 0 {
-                    let end = c.len();
-                    c.move_to(..end);
-                } else {
-                    c.set_anchor();
-                    c.move_hor(-(c.v_caret().char_col() as i32));
+    } else if char == 'i' {
+        handle.edit_all(pa, |mut c| {
+            let indent = c.indent();
+            if indent == 0 {
+                let end = c.len();
+                c.move_to(..end);
+            } else {
+                c.set_anchor();
+                c.move_hor(-(c.v_caret().char_col() as i32));
 
-                    while c.indent() >= indent && c.caret().line() > 0 {
-                        c.move_ver(-1);
-                    }
-                    c.move_ver(1);
-                    c.swap_ends();
-
-                    while c.indent() >= indent && c.caret().line() + 1 < c.text().len().line() {
-                        c.move_ver(1);
-                    }
+                while c.indent() >= indent && c.caret().line() > 0 {
                     c.move_ver(-1);
-
-                    if is_inside {
-                        let range = c.text().line_range(c.caret().line());
-                        c.move_to(range.end);
-                        c.move_hor(-1);
-                    } else {
-                        let end = c.search_fwd("\n+").next().unwrap().end;
-                        c.move_to(end);
-                    }
                 }
-            }),
-            _ => context::warn!("Key [a]{event.code}[] not mapped on this mode"),
-        }
+                c.move_ver(1);
+                c.swap_ends();
+
+                while c.indent() >= indent && c.caret().line() + 1 < c.text().len().line() {
+                    c.move_ver(1);
+                }
+                c.move_ver(-1);
+
+                if is_inside {
+                    let range = c.text().line_range(c.caret().line());
+                    c.move_to(range.end);
+                    c.move_hor(-1);
+                } else {
+                    let end = c.search_fwd("\n+").next().unwrap().end;
+                    c.move_to(end);
+                }
+            }
+        })
     }
 
     if initial_cursors_len == 1 && failed {
