@@ -34,11 +34,11 @@ use std::{
 
 use duat_core::{
     Plugins, Ranges,
-    buffer::{self, Buffer, BufferTracker, PathKind},
+    buffer::{Buffer, BufferId, BufferTracker, PathKind},
     context::{self, Handle},
     data::Pass,
     form::{self, Form, FormId},
-    hook,
+    hook::{self, BufferUpdated},
     lender::Lender,
     mode::Cursor,
     opts::PrintOpts,
@@ -48,8 +48,8 @@ use duat_core::{
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
-    InputEdit, Language, Node, Parser, Point as TsPoint, Query, QueryCapture as QueryCap,
-    QueryCursor, QueryMatch, TextProvider, Tree,
+    InputEdit, Language, Node, Parser as TsParser, Point as TsPoint, Query,
+    QueryCapture as QueryCap, QueryCursor, QueryMatch, TextProvider, Tree,
 };
 
 use self::{injections::InjectedTree, languages::parser_is_compiled};
@@ -57,6 +57,8 @@ use self::{injections::InjectedTree, languages::parser_is_compiled};
 mod cursor;
 mod injections;
 mod languages;
+
+static PARSERS: LazyLock<Mutex<HashMap<BufferId, Parser>>> = LazyLock::new(Mutex::default);
 
 /// The [tree-sitter] plugin for Duat
 ///
@@ -165,60 +167,80 @@ impl duat_core::Plugin for TreeSitter {
         );
 
         hook::add::<Buffer>(|pa, handle| {
-            let file = handle.write(pa);
+            let buffer = handle.write(pa);
+            let tracker = buffer.tracker();
 
-            let path = file.path_kind();
-            let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
+            let path = buffer.path_kind();
+
+            let parser = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
                 && let Some(filetype) = path.filetype()
                 && crate::languages::filetype_is_in_list(filetype)
             {
-                filetype
+                if parser_is_compiled(filetype)? && buffer.bytes().len().byte() <= MAX_LEN_FOR_LOCAL
+                {
+                    Parser(Some(ParserState::Present(InnerTsParser::new(
+                        lang_parts_of(filetype)?,
+                        tracker,
+                    ))))
+                } else {
+                    Parser(Some(ParserState::Remote(std::thread::spawn({
+                        let handle = handle.clone();
+                        move || {
+                            let lang_parts = match lang_parts_of(filetype) {
+                                Ok(lang_parts) => lang_parts,
+                                Err(err) => {
+                                    context::error!("{err}");
+                                    return Err(tracker);
+                                }
+                            };
+
+                            let mut parser = InnerTsParser::new(lang_parts, tracker);
+
+                            // Until changes stop coming, keep parsing on another thread.
+                            while !parser.parse_changes().is_empty() {}
+
+                            handle.request_update();
+
+                            Ok(parser)
+                        }
+                    }))))
+                }
             } else {
                 context::debug!(
                     "No filetype set for [a]{}[], will try again once one is set",
                     path.name_txt()
                 );
-                return file.add_parser(|tracker| TsParser(Some(ParserState::NotSet(tracker))));
+                Parser(Some(ParserState::NotSet(tracker)))
             };
 
-            if parser_is_compiled(filetype)? && file.bytes().len().byte() <= MAX_LEN_FOR_LOCAL {
-                let lang_parts = lang_parts_of(filetype)?;
-                handle.add_parser(pa, |tracker| {
-                    TsParser(Some(ParserState::Present(InnerTsParser::new(
-                        lang_parts, tracker,
-                    ))))
-                })
-            } else {
-                handle.add_parser(pa, |tracker| {
-                    TsParser(Some(ParserState::Remote(std::thread::spawn(move || {
-                        let lang_parts = match lang_parts_of(filetype) {
-                            Ok(lang_parts) => lang_parts,
-                            Err(err) => {
-                                context::error!("{err}");
-                                return Err(tracker);
-                            }
-                        };
+            PARSERS
+                .lock()
+                .unwrap()
+                .insert(handle.read(pa).buffer_id(), parser);
 
-                        let mut parser = InnerTsParser::new(lang_parts, tracker);
-
-                        while parser.parse() {}
-
-                        parser.tracker.request_parse();
-                        Ok(parser)
-                    }))))
-                })
-            }
+            Ok(())
         })
         .grouped("TreeSitter");
+
+        hook::add::<BufferUpdated>(move |pa, handle| {
+            let mut parsers = PARSERS.lock().unwrap();
+            let parser = parsers.get_mut(&handle.read(pa).buffer_id()).unwrap();
+            let new_ranges = parser.parse(false);
+            if !new_ranges.is_empty() {
+                parser.highlight_and_inject(pa, handle, new_ranges);
+            }
+
+            Ok(())
+        });
     }
 }
 
 /// [`Parser`] that parses [`Buffer`]'s as [tree-sitter] syntax trees
 ///
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-pub struct TsParser(Option<ParserState>);
+pub struct Parser(Option<ParserState>);
 
-impl TsParser {
+impl Parser {
     /// The root [`Node`] of the syntax tree
     pub fn root(&self) -> Option<Node<'_>> {
         let Some(ParserState::Present(parser)) = &self.0 else {
@@ -247,16 +269,13 @@ impl TsParser {
     /// [`filetype`]: FileType::filetype
     pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
         let Some(ParserState::Present(parser)) = &self.0 else {
-            context::warn!("Called function that shouldn't be possible without present parser");
-            return None;
+            panic!("Called function that shouldn't be possible without present parser");
         };
 
         parser.indent_on(p, bytes, cfg)
     }
-}
 
-impl buffer::Parser for TsParser {
-    fn parse(&mut self) -> bool {
+    fn parse(&mut self, wait: bool) -> Ranges {
         // In this function, the changes will be applied and the Ranges will
         // be updated to include the following regions to be updated:
         //
@@ -265,67 +284,30 @@ impl buffer::Parser for TsParser {
         //   acquired through the injections query, applied on the two
         //   previous range lists,
         let parser_state = self.0.take().unwrap();
-        let (parser_state, do_update) = parser_state.parse();
+        let (parser_state, new_ranges) = parser_state.parse(wait);
         self.0 = Some(parser_state);
 
-        do_update
+        new_ranges
     }
 
-    fn update(&mut self, pa: &mut Pass, file: &Handle, on: Vec<Range<Point>>) {
-        match self.0.as_mut().unwrap() {
-            ParserState::Present(parser) => {
-                let mut parts = file.write(pa).text_mut().parts();
+    fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, new_ranges: Ranges) {
+        let Some(ParserState::Present(parser)) = &mut self.0 else {
+            panic!("Called function that shouldn't be possible without present parser");
+        };
 
-                for range in on {
-                    let range = range.start.byte()..range.end.byte();
-                    parser.highlight(parts.bytes, &mut parts.tags, range);
-                }
-            }
-            ParserState::Remote(..) => {
-                context::warn!("Tried updating parser while it is still remote");
-            }
-            _ => (),
-        }
-    }
-
-    fn before_get(&mut self) {
-        self.parse();
-    }
-
-    fn before_try_get(&mut self) -> bool {
-        let parser_state = self.0.take().unwrap();
-
-        if let ParserState::Remote(join_handle) = parser_state {
-            if join_handle.is_finished() {
-                match join_handle.join().unwrap() {
-                    Ok(parser) => {
-                        self.0 = Some(ParserState::Present(parser));
-                        self.parse()
-                    }
-                    Err(tracker) => {
-                        self.0 = Some(ParserState::NotSet(tracker));
-                        false
-                    }
-                }
-            } else {
-                self.0 = Some(ParserState::Remote(join_handle));
-                false
-            }
-        } else {
-            self.0 = Some(parser_state);
-            true
-        }
+        parser.highlight_and_inject(pa, handle, new_ranges);
     }
 }
 
 struct InnerTsParser {
-    parser: Parser,
+    parser: TsParser,
     lang_parts: LangParts<'static>,
     forms: &'static [(FormId, u8)],
     tree: Tree,
     old_tree: Option<Tree>,
     injections: Vec<InjectedTree>,
     tracker: BufferTracker,
+    first_time: bool,
 }
 
 impl InnerTsParser {
@@ -334,7 +316,7 @@ impl InnerTsParser {
         let (.., lang, _) = &lang_parts;
         let forms = forms_from_lang_parts(lang_parts);
 
-        let mut parser = Parser::new();
+        let mut parser = TsParser::new();
         parser.set_language(lang).unwrap();
 
         let tree = parser
@@ -349,26 +331,20 @@ impl InnerTsParser {
             old_tree: None,
             injections: Vec::new(),
             tracker,
+            first_time: true,
         }
     }
 
-    /// Parse the newest changes, returns `false` if there were none
-    fn parse(&mut self) -> bool {
+    fn parse_changes(&mut self) -> Ranges {
         self.tracker.update();
         let bytes = self.tracker.bytes();
         let moment = self.tracker.moment();
 
-        if moment.is_empty() && self.old_tree.is_some() {
-            return false;
-        }
+        let mut new_ranges = Ranges::empty();
 
-        // These new ranges will be used for calculating things like
-        // new injections, for example.
-        let mut new_ranges = if self.old_tree.is_none() {
-            Ranges::new(0..bytes.len().byte())
-        } else {
-            Ranges::empty()
-        };
+        if moment.is_empty() {
+            return new_ranges;
+        }
 
         for change in moment.changes() {
             let input_edit = input_edit(change, bytes);
@@ -387,10 +363,6 @@ impl InnerTsParser {
             .unwrap();
 
         self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
-
-        for inj in self.injections.iter_mut() {
-            inj.update_tree(bytes);
-        }
 
         // `changed_ranges` should mostly be able to catch any big additions
         // to the tree structure.
@@ -417,6 +389,31 @@ impl InnerTsParser {
             new_ranges.add(start.byte()..range.end.byte())
         }
 
+        for inj in self.injections.iter_mut() {
+            inj.update_tree(bytes);
+        }
+
+        new_ranges
+    }
+
+    /// Parse the newest changes, returns `false` if there were none
+    ///
+    /// Call this only after calling [`Self::parse_changes`]
+    fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, mut new_ranges: Ranges) {
+        let printed_line_ranges: Vec<_> = handle
+            .printed_lines(pa)
+            .into_iter()
+            .map(|line| line.byte_range())
+            .collect();
+
+        if self.first_time {
+            for range in printed_line_ranges.iter() {
+                new_ranges.add(range.clone());
+            }
+        }
+
+        // If this is the first call to parse, then update parse the whole
+        // screen immediately.
         // Finally, in order to properly catch injection changes, a final
         // comparison is done between the old tree and the new tree, in
         // regards to injection captures. This is done on every range in
@@ -425,25 +422,29 @@ impl InnerTsParser {
             &mut new_ranges,
             (self.lang_parts, &mut self.injections),
             (self.old_tree.as_ref(), &self.tree),
-            bytes,
+            handle.text(pa).bytes(),
         );
 
-        self.tracker.add_ranges(new_ranges);
+        for range in new_ranges {
+            self.tracker.add_range(range);
+        }
 
-        true
-    }
+        let mut parts = handle.write(pa).text_mut().parts();
+        for range in printed_line_ranges {
+            for range in self.tracker.ranges_to_update_on(range.clone()) {
+                let range = range.start.byte()..range.end.byte();
 
-    /// Highlights and injects based on the [`LangParts`] queries
-    fn highlight(&mut self, bytes: &Bytes, tags: &mut Tags, range: Range<usize>) {
-        tags.remove(ts_tagger(), range.clone());
+                parts.tags.remove(ts_tagger(), range.clone());
 
-        highlight(
-            self.tree.root_node(),
-            &mut self.injections,
-            (self.lang_parts, self.forms),
-            (bytes, tags),
-            range.start.saturating_sub(1)..(range.end + 1).min(bytes.len().byte()),
-        );
+                highlight(
+                    self.tree.root_node(),
+                    &mut self.injections,
+                    (self.lang_parts, self.forms),
+                    (parts.bytes, &mut parts.tags),
+                    range.start.saturating_sub(1)..(range.end + 1).min(parts.bytes.len().byte()),
+                );
+            }
+        }
     }
 
     ////////// Querying functions
@@ -463,7 +464,7 @@ impl InnerTsParser {
                     0..bytes.len().byte(),
                 )
             });
-            
+
         let first_line = bytes.point_at_byte(range.start).line();
 
         // The query could be empty.
@@ -506,7 +507,7 @@ impl InnerTsParser {
                         );
                     }
                 });
-                
+
             |caps: &Captures, node: Node, queries: &[&str]| {
                 caps.get(queries[0])
                     .and_then(|nodes| nodes.get(&node.id()))
@@ -749,26 +750,33 @@ enum ParserState {
 }
 
 impl ParserState {
-    fn parse(self) -> (Self, bool) {
-        match self {
-            ParserState::Present(mut parser) => {
-                parser.parse();
-                (ParserState::Present(parser), true)
+    fn parse(self, wait: bool) -> (Self, Ranges) {
+        match (self, wait) {
+            (ParserState::Present(mut parser), _) => {
+                let ranges = parser.parse_changes();
+                (ParserState::Present(parser), ranges)
             }
-            ParserState::Remote(join_handle) => {
+            (ParserState::Remote(join_handle), false) => {
                 if join_handle.is_finished() {
                     match join_handle.join().unwrap() {
                         Ok(mut parser) => {
-                            parser.parse();
-                            (ParserState::Present(parser), true)
+                            let ranges = parser.parse_changes();
+                            (ParserState::Present(parser), ranges)
                         }
-                        Err(tracker) => (ParserState::NotSet(tracker), false),
+                        Err(tracker) => (ParserState::NotSet(tracker), Ranges::empty()),
                     }
                 } else {
-                    (ParserState::Remote(join_handle), false)
+                    (ParserState::Remote(join_handle), Ranges::empty())
                 }
             }
-            ParserState::NotSet(tracker) => (ParserState::NotSet(tracker), false),
+            (ParserState::Remote(join_handle), true) => match join_handle.join().unwrap() {
+                Ok(mut parser) => {
+                    let ranges = parser.parse_changes();
+                    (ParserState::Present(parser), ranges)
+                }
+                Err(tracker) => (ParserState::NotSet(tracker), Ranges::empty()),
+            },
+            (ParserState::NotSet(tracker), _) => (ParserState::NotSet(tracker), Ranges::empty()),
         }
     }
 }
@@ -958,14 +966,27 @@ pub trait TsBuffer {
     /// located in
     /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
     fn ts_indent_on(&self, p: Point) -> Option<usize>;
+
+    /// Calls a function on the tree-sitter [`Parser`], this lets you
+    /// traverse the tree and make queries, for example
+    fn read_ts_parser<Ret>(&self, read: impl FnOnce(&Parser) -> Ret) -> Ret;
 }
 
 impl TsBuffer for Buffer {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        self.read_parser(|ts: &TsParser| {
-            ts.indent_on(p, self.text().bytes(), self.get_print_opts())
-        })
-        .flatten()
+        let mut parsers = PARSERS.lock().unwrap();
+        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+        parser.parse(true);
+
+        parser.indent_on(p, self.text().bytes(), self.get_print_opts())
+    }
+
+    fn read_ts_parser<Ret>(&self, read: impl FnOnce(&Parser) -> Ret) -> Ret {
+        let mut parsers = PARSERS.lock().unwrap();
+        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+        parser.parse(true);
+
+        read(parser)
     }
 }
 
@@ -1001,20 +1022,18 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
     }
 
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        let opts = self.opts();
+        let mut parsers = PARSERS.lock().unwrap();
+        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+        parser.parse(true);
 
-        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), opts))
-            .flatten()
+        let opts = self.opts();
+        parser.indent_on(p, self.text().bytes(), opts)
     }
 
     fn ts_reindent(&mut self) -> bool {
         fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<Range<Point>> {
-            let byte_col = c
-                .text()
-                .slices(..c.caret().byte())
-                .take_while(|b| *b != b'\n')
-                .count();
-            let mut lines = c.lines_on(..c.caret().byte() - byte_col);
+            let line_start = c.text().point_at_line(c.caret().line());
+            let mut lines = c.lines_on(..line_start);
             let prev = lines.find_map(|(n, l): (usize, &str)| {
                 l.chars().any(|c| !c.is_whitespace()).then_some(n)
             });
