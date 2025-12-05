@@ -226,9 +226,7 @@ impl duat_core::Plugin for TreeSitter {
             let mut parsers = PARSERS.lock().unwrap();
             let parser = parsers.get_mut(&handle.read(pa).buffer_id()).unwrap();
             let new_ranges = parser.parse(false);
-            if !new_ranges.is_empty() {
-                parser.highlight_and_inject(pa, handle, new_ranges);
-            }
+            parser.highlight_and_inject(pa, handle, new_ranges);
 
             Ok(())
         });
@@ -292,7 +290,7 @@ impl Parser {
 
     fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, new_ranges: Ranges) {
         let Some(ParserState::Present(parser)) = &mut self.0 else {
-            panic!("Called function that shouldn't be possible without present parser");
+            return;
         };
 
         parser.highlight_and_inject(pa, handle, new_ranges);
@@ -400,15 +398,18 @@ impl InnerTsParser {
     ///
     /// Call this only after calling [`Self::parse_changes`]
     fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, mut new_ranges: Ranges) {
-        let printed_line_ranges: Vec<_> = handle
-            .printed_lines(pa)
-            .into_iter()
-            .map(|line| line.byte_range())
-            .collect();
+        let printed_line_ranges = handle.printed_line_byte_ranges(pa);
 
         if self.first_time {
+            self.first_time = false;
             for range in printed_line_ranges.iter() {
                 new_ranges.add(range.clone());
+            }
+        } else {
+            for range in printed_line_ranges.iter() {
+                for range in self.tracker.ranges_to_update_on(range.clone()) {
+                    new_ranges.add(range);
+                }
             }
         }
 
@@ -430,9 +431,9 @@ impl InnerTsParser {
         }
 
         let mut parts = handle.write(pa).text_mut().parts();
-        for range in printed_line_ranges {
+        for range in printed_line_ranges.iter() {
             for range in self.tracker.ranges_to_update_on(range.clone()) {
-                let range = range.start.byte()..range.end.byte();
+                let range = range.start..range.end;
 
                 parts.tags.remove(ts_tagger(), range.clone());
 
