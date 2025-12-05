@@ -413,7 +413,7 @@ pub mod hook {
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
     //! - [`WidgetCreated`] triggers when a [`Widget`] is created.
     //! - [`WindowCreated`], triggers when a [`Window`] is created.
-    //! - [`BufferWritten`] triggers after the [`Buffer`] is written.
+    //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
     //! - [`BufferClosed`] triggers when closing `Buffer`s.
     //! - [`BufferReloaded`] triggers when reloading Duat.
     //! - [`FocusedOn`] triggers when a widget is focused.
@@ -474,7 +474,7 @@ pub mod hook {
     //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
     //!   and [`Notifications`] to new windows, via [`WindowCreated`].
     //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
-    //!   buffer in it is written to, via [`BufferWritten`].
+    //!   buffer in it is written to, via [`BufferSaved`].
     //!
     //! [alias]: duat_core::hook::HookAlias
     //! [hook above]: WidgetCreated
@@ -542,7 +542,10 @@ pub mod widgets {
 #[doc(hidden)]
 pub mod private_exports {
     //! Exports from duat, not meant for direct use.
-    pub use duat_core::{session::{DuatEvent, ReloadedBuffer}, utils::catch_panic};
+    pub use duat_core::{
+        session::{DuatEvent, ReloadedBuffer},
+        utils::catch_panic,
+    };
 
     pub use crate::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 }
@@ -587,17 +590,17 @@ pub mod prelude {
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
         Lender, Plugin, Plugins,
-        buffer::{Buffer, BufferTracker, Parser},
+        buffer::{Buffer, BufferTracker},
         clipboard, cmd,
         context::{self, Handle},
         cursor,
         data::{self, Pass},
         form::{self, CursorShape, Form},
         hook::{
-            self, BufferWritten, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat,
-            FocusChanged, FocusedOnDuat, FormSet, Hookable, KeyTyped, KeysSent, KeysSentTo,
-            ModeSet, ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom,
-            UnfocusedFromDuat, WidgetCreated, WindowCreated,
+            self, BufferReloaded, BufferSaved, BufferUpdated, ColorSchemeSet, ConfigLoaded,
+            ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeyTyped,
+            KeysSent, KeysSentTo, ModeSet, ModeSwitched, SearchPerformed, SearchUpdated,
+            UnfocusedFrom, UnfocusedFromDuat, WidgetCreated, WindowCreated,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,

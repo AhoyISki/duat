@@ -41,7 +41,7 @@
 //!   you change it, [`Widget`] can be used as its [alias]
 //! - [`WindowCreated`], triggers when a [`Window`] is created,
 //!   letting you change it.
-//! - [`BufferWritten`] triggers after the [`Buffer`] is written.
+//! - [`BufferSaved`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
 //! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
 //! - [`BufferUpdated`] triggers whenever a buffer changes.
@@ -644,6 +644,12 @@ impl Hookable for BufferClosed {
     }
 }
 
+impl PartialEq<Handle> for BufferClosed {
+    fn eq(&self, other: &Handle) -> bool {
+        self.0.0 == *other
+    }
+}
+
 /// [`Hookable`]: Triggers before reloading a [`Buffer`]
 ///
 /// # Arguments
@@ -666,6 +672,12 @@ impl Hookable for BufferReloaded {
     }
 }
 
+impl PartialEq<Handle> for BufferReloaded {
+    fn eq(&self, other: &Handle) -> bool {
+        self.0.0 == *other
+    }
+}
+
 /// [`Hookable`]: Triggers when a [`Buffer`] updates
 ///
 /// This is triggered after a batch of writing calls to the `Buffer`,
@@ -677,40 +689,62 @@ impl Hookable for BufferReloaded {
 /// printing, where it can be adjusted given the modifications to it,
 /// like [`Change`]s and such.
 ///
-/// The function [`Buffer::new_changes`] keeps track of this hook
-/// specifically, and it will return the full list of [`Change`]s
-/// since the last triggering of this hook. Essentially, it will
-/// trigger once per frame, letting you adjust the `Buffer`
-/// accordingly.
+/// Since this is a "last pass" before printing, you also aren't
+/// allowed to add more `Change`s to the [`Text`] of the `Buffer`. As
+/// such, you can't call [`Text::replace_range`] or any of modifying
+/// methods from the [`Cursor`]s. Note that this applies only to the
+/// `Buffer` being updated, not other `Buffer`s.
 ///
-/// As a silly example, here's a hook that will replace every instance
-/// of the letter `a` with the letter alpha `α`:
+/// Since you can't modify the [`Text`]'s [`Bytes`], what can you do?
+/// You can read the [`Buffer`], you can add [`Tag`]s to it, change
+/// the [`PrintOpts`], and do all of these other things. Also, you can
+/// [queue] actions that can in turn modify the `Text` of the
+/// `Buffer`.
+///
+/// As an example, here's a hook that will highlight every non ascii
+/// character:
 ///
 /// ```rust
 /// # duat_core::utils::doc_duat!(duat);
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<BufferReloaded>(|pa, handle| {
-///         let buffer = handle.write(pa);
-///         let ranges: Vec<_> = buffer
-///             .new_changes()
-///             .iter()
-///             .map(|change| (change.added_str().replace("a", "α"), change.added_range()))
-///             .collect();
+///     let tagger = Tagger::new();
+///     let form = form::id_of!("non_ascii_char");
 ///
-///         for (alphaed, range) in ranges {
-///             buffer.text_mut().replace_range(range, alphaed);
+///     let highlight_non_ascii = move |buf: &mut Buffer, range| {
+///         let mut parts = buf.text_parts();
+///         for (b, char) in buf.bytes.strs(range).unwrap().char_indices() {
+///             if !char.is_ascii() {
+///                 buf.tags
+///                     .insert(tagger, b..b + char.len_bytes(), form.to_tag(50));
+///             }
 ///         }
+///     };
 ///
+///     hook::add::<Buffer>(move |pa, handle| {
+///         let buf = handle.write(pa);
+///         let range = 0..buf.len().byte();
+///         highlight_non_ascii(buf, range);
+///         Ok(())
+///     });
+///
+///     hook::add::<BufferReloaded>(move |pa, handle| {
+///         let buf = handle.write(pa);
+///         for change in buf.new_changes().iter() {
+///             highlight_non_ascii(buf, change.added_range())
+///         }
 ///         Ok(())
 ///     });
 /// }
 /// ```
 ///
-/// Of course, if other hooks were added to `BufferReloaded` and they
-/// trigger after this one. [`Buffer::new_changes`] will also include
-/// these "a" to "α" replacements.
+/// The function [`Buffer::new_changes`] keeps track of this hook
+/// specifically, and it will return the full list of [`Change`]s
+/// since the last triggering of `BufferUpdated`. Essentially, it will
+/// trigger once per frame, letting you adjust the `Buffer`
+/// accordingly. You can also call this function from other places,
+/// not just this hook.
 ///
 /// # Arguments
 ///
@@ -721,6 +755,9 @@ impl Hookable for BufferReloaded {
 /// [`Buffer::new_changes`]: crate::buffer::Buffer::new_changes
 /// [`PrintOpts`]: crate::opts::PrintOpts
 /// [`Change`]: crate::text::Change
+/// [`Cursor`]: crate::mode::Cursor
+/// [`Tag`]: crate::text::Tag
+/// [`Bytes`]: crate::text::Bytes
 pub struct BufferUpdated(pub(crate) Handle);
 
 impl Hookable for BufferUpdated {
@@ -729,6 +766,12 @@ impl Hookable for BufferUpdated {
     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
         self.0.write(pa).inter_hook_update();
         &self.0
+    }
+}
+
+impl PartialEq<Handle> for BufferUpdated {
+    fn eq(&self, other: &Handle) -> bool {
+        self.0 == *other
     }
 }
 
@@ -1042,9 +1085,9 @@ impl Hookable for ColorSchemeSet {
 ///
 /// [`Buffer::save`]: crate::buffer::Buffer::save
 /// [`Buffer::save_to`]: crate::buffer::Buffer::save_to
-pub struct BufferWritten(pub(crate) (String, usize, bool));
+pub struct BufferSaved(pub(crate) (String, usize, bool));
 
-impl Hookable for BufferWritten {
+impl Hookable for BufferSaved {
     type Input<'h> = (&'h str, usize, bool);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -1069,7 +1112,7 @@ pub trait Hookable: Sized + 'static {
     ///
     /// This function is triggered once on every call that was added
     /// via [`hook::add`]. So if three hooks were added to
-    /// [`BufferWritten`], for example, [`BufferWritten::get_input`]
+    /// [`BufferSaved`], for example, [`BufferSaved::get_input`]
     /// will be called three times, once before each hook.
     ///
     /// The vast majority of the time, this function is just a

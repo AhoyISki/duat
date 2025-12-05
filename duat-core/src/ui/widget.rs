@@ -36,7 +36,7 @@
 //! [`PushSpecs`]: super::PushSpecs
 //! [`DynSpawnSpecs`]: super::DynSpawnSpecs
 //! [`Area`]: super::Area
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::Ordering};
 
 use crate::{
     context::Handle,
@@ -586,13 +586,16 @@ impl Node {
 
     /// Wether this [`Widget`] needs to be updated
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
-        self.handle.area.has_changed(pa) || self.handle.read(pa).needs_update(pa)
+        self.handle.update_requested.load(Ordering::Relaxed)
+            || self.handle.area.has_changed(pa)
+            || self.handle.read(pa).needs_update(pa)
     }
 
     ////////// Eventful functions
 
     /// Updates and prints this [`Node`]
     pub(crate) fn update_and_print(&self, pa: &mut Pass, win: usize) {
+        self.handle.update_requested.store(false, Ordering::Relaxed);
         if self.handle().is_closed(pa) {
             return;
         }

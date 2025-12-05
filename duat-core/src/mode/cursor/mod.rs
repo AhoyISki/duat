@@ -15,6 +15,7 @@ use lender::{Lender, Lending};
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
+    buffer::{Buffer, BufferId},
     opts::PrintOpts,
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextIndex, TextRange},
     ui::{Area, Widget},
@@ -1006,6 +1007,17 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
         let range = sel!(self).byte_range(self.widget.text());
         self.inc_searcher
             .matches(self.widget.text().strs(range).unwrap().to_string().as_str())
+    }
+}
+
+impl<S> Cursor<'_, Buffer, S> {
+    /// A unique identifier for this [`Buffer`]
+    ///
+    /// This is more robust than identifying it by its path or name,
+    /// or event [`PathKind`], since those could change, but this
+    /// cannot.
+    pub fn buffer_id(&self) -> BufferId {
+        self.widget.buffer_id()
     }
 }
 

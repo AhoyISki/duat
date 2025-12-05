@@ -135,7 +135,7 @@ pub mod hooks {
     //!
     //! [`hook`]: duat_core::hook
     //! [`IncSearch`]: crate::modes::IncSearch
-    use duat_core::hook::Hookable;
+    use duat_core::{data::Pass, hook::Hookable};
 
     /// [`Hookable`]: Triggers when a [search] is updated
     ///
@@ -153,7 +153,7 @@ pub mod hooks {
     impl Hookable for SearchUpdated {
         type Input<'h> = (&'h str, &'h str);
 
-        fn get_input(&mut self) -> Self::Input<'_> {
+        fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
             (&self.0.0, &self.0.1)
         }
     }
@@ -172,7 +172,7 @@ pub mod hooks {
     impl Hookable for SearchPerformed {
         type Input<'h> = &'h str;
 
-        fn get_input(&mut self) -> Self::Input<'_> {
+        fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
             &self.0
         }
     }

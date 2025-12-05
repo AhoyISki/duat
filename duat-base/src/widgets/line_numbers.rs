@@ -13,7 +13,6 @@
 use std::fmt::Alignment;
 
 use duat_core::{
-    buffer::Buffer,
     context::Handle,
     data::Pass,
     form,
@@ -69,36 +68,38 @@ impl LineNumbers {
     }
 
     fn form_text(&self, pa: &Pass) -> Text {
-        let (main_line, printed_lines) = {
+        let (main_line_num, printed_line_numbers) = {
+            let printed_line_numbers = self.buffer.printed_line_numbers(pa);
             let buffer = self.buffer.read(pa);
+
             let main_line = if buffer.selections().is_empty() {
                 usize::MAX
             } else {
                 buffer.selections().get_main().unwrap().line()
             };
 
-            (main_line, buffer.printed_lines().to_vec())
+            (main_line, printed_line_numbers)
         };
 
         let mut builder = Text::builder();
         align(&mut builder, self.align);
 
-        for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
-            if *line == main_line {
+        for (index, line) in printed_line_numbers.iter().enumerate() {
+            if line.number == main_line_num {
                 align(&mut builder, self.main_align);
             }
 
-            match (*line == main_line, is_wrapped) {
+            match (line.number == main_line_num, line.is_wrapped) {
                 (false, false) => {}
                 (true, false) => builder.push(form::id_of!("linenum.main")),
                 (false, true) => builder.push(form::id_of!("linenum.wrapped")),
                 (true, true) => builder.push(form::id_of!("linenum.wrapped.main")),
             }
 
-            let is_wrapped = *is_wrapped && index > 0;
-            push_text(&mut builder, *line, main_line, is_wrapped, self);
+            let is_wrapped = line.is_wrapped && index > 0;
+            push_text(&mut builder, line.number, main_line_num, is_wrapped, self);
 
-            if *line == main_line {
+            if line.number == main_line_num {
                 align(&mut builder, self.align);
             }
         }
@@ -128,18 +129,18 @@ impl Widget for LineNumbers {
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
-        let line = |buffer: &Buffer| {
-            let lines = buffer.printed_lines();
+        let line = |pa, handle: &Handle| {
+            let lines = handle.printed_line_numbers(pa);
             event
                 .points
                 .and_then(|tpp| lines.get(tpp.points().real.line()))
-                .map(|(line, _)| *line)
-                .unwrap_or(buffer.text().len().line())
+                .map(|line| line.number)
+                .unwrap_or(handle.text(pa).len().line())
         };
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                let line = line(pa, &handle.read(pa).buffer);
                 let handle = handle.read(pa).buffer.clone();
-                let line = line(handle.read(pa));
 
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
@@ -148,8 +149,8 @@ impl Widget for LineNumbers {
                 })
             }
             MouseEventKind::Drag(MouseButton::Left) => {
+                let line = line(pa, &handle.read(pa).buffer);
                 let handle = handle.read(pa).buffer.clone();
-                let line = line(handle.read(pa));
 
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {

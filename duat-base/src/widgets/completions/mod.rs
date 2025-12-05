@@ -27,7 +27,7 @@ use duat_core::{
 };
 use duat_term::Frame;
 
-pub use self::words::{WordCompletions, WordsCompletionParser};
+pub use self::words::{WordCompletions, track_words};
 use crate::widgets::{Info, completions::paths::PathCompletions};
 
 mod paths;

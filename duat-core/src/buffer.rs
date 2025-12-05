@@ -13,11 +13,13 @@
 //! [`Cursor`]: crate::mode::Cursor
 //! [`RawArea::PrintInfo`]: crate::ui::traits::RawArea::PrintInfo
 use std::{
-    any::Any,
     fs,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};
@@ -26,20 +28,23 @@ use crate::{
     Ranges,
     context::{self, Cache, Handle},
     data::Pass,
-    hook::{self, BufferUpdated, BufferWritten},
+    hook::{self, BufferSaved, BufferUpdated},
     mode::{MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Bytes, Change, Moment, MomentFetcher, Point, Strs, Text, TextRange, TextState, txt},
+    text::{
+        Bytes, Change, Moment, MomentFetcher, Point, Strs, Tags, Text, TextParts, TextRange,
+        TextState, txt,
+    },
     ui::{Area, PrintedLine, Widget},
 };
 
 /// The widget that is used to print and edit buffers
 pub struct Buffer {
+    id: BufferId,
     path: PathKind,
     text: Text,
     pub(crate) layout_order: usize,
-    stored: Mutex<Vec<Box<dyn Any + Send + 'static>>>,
 
     moment: Moment,
     moment_fetcher: Option<MomentFetcher>,
@@ -83,14 +88,13 @@ impl Buffer {
         let moment_fetcher = Some(text.history().unwrap().new_fetcher());
 
         Self {
+            id: BufferId::new(),
             path,
             text,
             layout_order: 0,
-            stored: Mutex::default(),
 
             moment: Moment::default(),
             moment_fetcher,
-
             cached_print_info: Mutex::new(None),
 
             sync_opts: Arc::new(Mutex::new(opts)),
@@ -116,7 +120,7 @@ impl Buffer {
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
                 let path = path.to_string_lossy().to_string();
-                hook::queue(BufferWritten((path, bytes, quit)));
+                hook::queue(BufferSaved((path, bytes, quit)));
 
                 Ok(Some(bytes))
             } else {
@@ -150,7 +154,7 @@ impl Buffer {
                 .map(Some);
 
             if let Ok(Some(bytes)) = res.as_ref() {
-                hook::queue(BufferWritten((
+                hook::queue(BufferSaved((
                     path.to_string_lossy().to_string(),
                     *bytes,
                     quit,
@@ -255,9 +259,34 @@ impl Buffer {
     ///
     /// This also includes all `Change`s that you have made while
     /// mutably borrowing this `Buffer`
+    ///
+    /// A more versatile version of this method is [`Buffer::parts`],
+    /// which includes both the [`Moment`] and [`TextParts`], so you
+    /// can more easily read multiple parts of the `Buffer`.
     pub fn new_changes(&mut self) -> &Moment {
         self.inter_hook_update();
         &self.moment
+    }
+
+    /// The [`TextParts`] of the `Buffer`, as well as the last
+    /// [`Change`]s that took place
+    ///
+    /// This is a combination of the [`Handle::text_parts`] and
+    /// [`Buffer::new_changes`] methods, allowing for simultaneous
+    /// reading of the [`Bytes`] and [`Selections`], addition and
+    /// removal of [`Tag`]s, and inspection of the last [`Moment`],
+    /// without running into borrow checking issues.
+    ///
+    /// [`Tag`]: crate::text::Tag
+    pub fn parts(&mut self) -> BufferParts<'_> {
+        self.inter_hook_update();
+        let TextParts { bytes, tags, selections } = self.text.parts();
+        BufferParts {
+            bytes,
+            tags,
+            selections,
+            new_changes: &self.moment,
+        }
     }
 
     /// A tracker of the [`Change`]s that take place in a `Buffer`,
@@ -283,60 +312,6 @@ impl Buffer {
         }
     }
 
-    /// Stores an "object" to associate it with this `Buffer`
-    ///
-    /// This is useful if you want to associate an object with each
-    /// `Buffer` and have that object be dropped as the `Buffer` is.
-    /// It is particularly useful for "parsers", a design pattern
-    /// where a struct is responsible for updating the `Buffer`
-    /// whenever it changes, while also being retrievable by, for
-    /// example, trait methods added to the `Buffer`, for ease of
-    /// convenience.
-    ///
-    /// An example of where this is used is in the `duat-jump-list`
-    /// crate, which associates a jump list with each `Buffer`. As
-    /// those `Buffer`s get removed from Duat, so too do the jump
-    /// lists.
-    ///
-    /// If the object was already added to the `Buffer`, this new one
-    /// will replace the old, returning it.
-    pub fn store_object<T: Any + Send>(&self, obj: T) -> Option<T> {
-        let mut stored = self.stored.lock().unwrap();
-        if let Some(prev) = stored.iter_mut().find_map(|any| any.downcast_mut()) {
-            Some(std::mem::replace(prev, obj))
-        } else {
-            stored.push(Box::new(obj));
-            None
-        }
-    }
-
-    /// Calls a mutating function on the stored object
-    ///
-    /// Within this function, any calls to [`Buffer::write_object`] on
-    /// the same `T` will return [`None`], since the object is "busy"
-    /// in this function. Calls on other types will still work.
-    ///
-    /// Returns [`None`] if there was no object.
-    pub fn write_object<T: Any + Send, Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Option<Ret> {
-        let mut stored = self.stored.lock().unwrap();
-
-        if let Some(i) = stored
-            .iter()
-            .position(|any| any.downcast_ref::<T>().is_some())
-        {
-            let mut obj = stored.remove(i);
-            drop(stored);
-
-            let ret = f(obj.downcast_mut().unwrap());
-
-            self.stored.lock().unwrap().insert(i, obj);
-
-            Some(ret)
-        } else {
-            None
-        }
-    }
-
     /// An inter hook call, in order to rectify potential [`Text`]
     /// modifications.
     pub(crate) fn inter_hook_update(&mut self) {
@@ -350,10 +325,10 @@ impl Buffer {
     ///
     /// After calling this, `self.cached_print_info` is guaranteed to
     /// be [`Some`]
-    fn reset_print_info_if_needed<'a>(
-        &'a self,
+    fn reset_print_info_if_needed<'b>(
+        &'b self,
         area: &Area,
-    ) -> MutexGuard<'a, Option<CachedPrintInfo>> {
+    ) -> MutexGuard<'b, Option<CachedPrintInfo>> {
         let mut sync_opts = self.sync_opts.lock().unwrap();
         let opts_changed = if *sync_opts != self.opts {
             *sync_opts = self.opts;
@@ -380,12 +355,23 @@ impl Buffer {
                 _visible_line_ranges: None,
                 text_state: self.text.text_state(),
             });
+        } else {
+            cached_print_info.as_mut().unwrap().text_state = self.text.text_state();
         }
 
         cached_print_info
     }
 
     ////////// General querying functions
+
+    /// A unique identifier for this [`Buffer`]
+    ///
+    /// This is more robust than identifying it by its path or name,
+    /// or event [`PathKind`], since those could change, but this
+    /// cannot.
+    pub fn buffer_id(&self) -> BufferId {
+        self.id
+    }
 
     /// The [`Bytes`] of the [`Buffer`]'s [`Text`]
     pub fn bytes(&self) -> &Bytes {
@@ -428,12 +414,14 @@ impl Buffer {
     /// This works by creating a new [`Buffer`], which will take
     /// ownership of a stripped down version of this one's [`Text`]
     pub(crate) fn prepare_for_reloading(&mut self) -> Self {
+        static RELOAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
         self.text.prepare_for_reloading();
         Self {
+            id: BufferId(usize::MAX - RELOAD_COUNT.fetch_add(1, Ordering::Relaxed)),
             path: self.path.clone(),
             text: std::mem::take(&mut self.text),
             layout_order: self.layout_order,
-            stored: Mutex::default(),
 
             moment: Moment::default(),
             moment_fetcher: self.moment_fetcher.take(),
@@ -464,6 +452,9 @@ impl Widget for Buffer {
         hook::trigger(pa, BufferUpdated(handle.clone()));
 
         let buffer = handle.write(pa);
+
+        // This is done to "deregister" changes that took place in the hooks,
+        // to prevent them from being used more than once.
         buffer.moment = Moment::default();
         buffer.text.update_bounds();
     }
@@ -590,7 +581,7 @@ impl Handle {
     /// out [`Handle::printed_line_numbers`].
     ///
     /// [concealed]: crate::text::Conceal
-    pub fn printed_lines<'a>(&'a self, pa: &'a Pass) -> Vec<Strs<'a>> {
+    pub fn printed_lines<'b>(&'b self, pa: &'b Pass) -> Vec<Strs<'b>> {
         let buffer = self.read(pa);
         let mut cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
         let cpi = cpi.as_mut().unwrap();
@@ -623,7 +614,7 @@ impl Handle {
     /// This is just like [`Handle::printed_lines`], but excludes
     /// _every_ section that was concealed or is not visible on
     /// screen.
-    pub fn visible_lines<'a>(&'a self, _: &'a Pass) -> Vec<Strs<'a>> {
+    pub fn visible_lines<'b>(&'b self, _: &'b Pass) -> Vec<Strs<'b>> {
         todo!();
     }
 }
@@ -743,6 +734,7 @@ impl BufferTracker {
     }
 
     /// Returns a list of [`Range<Point>`]s that need to be updated
+    /// within a given range
     ///
     /// These will be defined by your [`Change`] tracking policy, so
     /// if you called [`BufferTracker::track_changed_lines`], these
@@ -1070,4 +1062,33 @@ impl<P: AsRef<Path>> From<P> for PathKind {
             PathKind::SetAbsent(path.into())
         }
     }
+}
+
+/// A unique identifier for a [`Buffer`]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BufferId(usize);
+
+impl BufferId {
+    /// Returns a new `BufferId`, uniquely identifying a [`Buffer`]
+    fn new() -> Self {
+        static CURRENT: AtomicUsize = AtomicUsize::new(0);
+        Self(CURRENT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// A struct to give access to the [`TextParts`] and new [`Change`]s
+/// at the same time
+pub struct BufferParts<'b> {
+    /// The [`Bytes`] of the [`Buffer`]'s [`Text`]
+    pub bytes: &'b Bytes,
+    /// The mutable [`Tags`] of the [`Buffer`]'s [`Text`], allowing
+    /// for the addition and removal of [`Tag`]s.
+    ///
+    /// [`Tag`]: crate::text::Tag
+    pub tags: Tags<'b>,
+    /// The [`Selections`] of the [`Buffer`]'s [`Text`]
+    pub selections: &'b Selections,
+    /// The list of [`Change`]s between the last triggering of
+    /// [`BufferUpdated`] and now
+    pub new_changes: &'b Moment,
 }

@@ -55,7 +55,7 @@ impl Bytes {
     /// This does not check for tags, so with a [`Tag::Ghost`],
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text". If you
-    /// want to check for the `InnerTags`'s possible emptyness as
+    /// want to check for the `InnerTags`'b possible emptyness as
     /// well, see [`Text::is_empty_empty`].
     ///
     /// [`Tag::Ghost`]: super::Ghost
@@ -66,7 +66,7 @@ impl Bytes {
         (s0 == b"\n" && s1 == b"") || (s0 == b"" && s1 == b"\n")
     }
 
-    /// The `char` at the [`Point`]'s position
+    /// The `char` at the [`Point`]'b position
     pub fn char_at(&self, p: impl TextIndex) -> Option<char> {
         if p.to_byte_index() >= self.len().byte() {
             return None;
@@ -86,7 +86,7 @@ impl Bytes {
     /// An [`Iterator`] over the bytes in a given _byte_ range
     ///
     /// Unlike [`strs`], this function works with _byte_ ranges, not
-    /// [`TextRange`]s. That's because [`Strs`] is supposed to return
+    /// [`TextRange`]s. That'b because [`Strs`] is supposed to return
     /// valid UTF-8 strings, which need to have valid character
     /// terminations, so they should be indexed by a character range,
     /// not a byte range.
@@ -560,17 +560,17 @@ impl Bytes {
 /// which means that any line may be split in two. In order to still
 /// return it as an `&str`, a new [`String`] needs to be allocated,
 /// which will be owned by the [`Lines`], hence the [`Lender`] trait.
-pub struct Lines<'a> {
-    lines: [std::str::Lines<'a>; 2],
+pub struct Lines<'b> {
+    lines: [std::str::Lines<'b>; 2],
     split_line: Option<String>,
     fwd_i: usize,
     rev_i: usize,
     split_line_used: bool,
 }
 
-impl<'a> Lines<'a> {
+impl<'b> Lines<'b> {
     fn new(
-        lines: [std::str::Lines<'a>; 2],
+        lines: [std::str::Lines<'b>; 2],
         split_line: Option<String>,
         fwd_i: usize,
         rev_i: usize,
@@ -585,11 +585,11 @@ impl<'a> Lines<'a> {
     }
 }
 
-impl<'a, 'text> Lending<'a> for Lines<'text> {
-    type Lend = (usize, &'a str);
+impl<'b, 'text> Lending<'b> for Lines<'text> {
+    type Lend = (usize, &'b str);
 }
 
-impl<'a> Lender for Lines<'a> {
+impl<'b> Lender for Lines<'b> {
     fn next(&mut self) -> Option<lender::Lend<'_, Self>> {
         self.lines[0]
             .next()
@@ -613,7 +613,7 @@ impl<'a> Lender for Lines<'a> {
     }
 }
 
-impl<'a> DoubleEndedLender for Lines<'a> {
+impl<'b> DoubleEndedLender for Lines<'b> {
     fn next_back(&mut self) -> Option<lender::Lend<'_, Self>> {
         self.lines[1]
             .next_back()
@@ -633,17 +633,17 @@ impl<'a> DoubleEndedLender for Lines<'a> {
     }
 }
 
-impl<'a> ExactSizeLender for Lines<'a> {}
+impl<'b> ExactSizeLender for Lines<'b> {}
 
 /// An [`Iterator`] over the bytes in a [`Text`]
 ///
 /// [`Text`]: super::Text
 #[derive(Clone)]
-pub struct Slices<'a>([std::slice::Iter<'a, u8>; 2]);
+pub struct Slices<'b>([std::slice::Iter<'b, u8>; 2]);
 
-impl<'a> Slices<'a> {
+impl<'b> Slices<'b> {
     /// Converts this [`Iterator`] into an array of its two parts
-    pub fn to_array(&self) -> [&'a [u8]; 2] {
+    pub fn to_array(&self) -> [&'b [u8]; 2] {
         self.0.clone().map(|iter| iter.as_slice())
     }
 
@@ -681,7 +681,7 @@ impl<'a> Slices<'a> {
     }
 }
 
-impl<'a> Iterator for Slices<'a> {
+impl<'b> Iterator for Slices<'b> {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -695,9 +695,9 @@ impl<'a> Iterator for Slices<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for Slices<'a> {}
+impl<'b> ExactSizeIterator for Slices<'b> {}
 
-impl<'a> DoubleEndedIterator for Slices<'a> {
+impl<'b> DoubleEndedIterator for Slices<'b> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0[1]
             .next_back()
@@ -711,26 +711,39 @@ impl<'a> DoubleEndedIterator for Slices<'a> {
 /// [`&str`]: str
 /// [`Text`]: super::Text
 #[derive(Clone)]
-pub struct Strs<'a> {
-    bytes: &'a Bytes,
+pub struct Strs<'b> {
+    bytes: &'b Bytes,
     range: Range<usize>,
-    arr: [&'a str; 2],
+    arr: [&'b str; 2],
     fwd: usize,
     rev: usize,
 }
 
-impl<'a> Strs<'a> {
+impl<'b> Strs<'b> {
     /// Converts this [`Iterator`] into an array of its two parts
-    pub fn to_array(&self) -> [&'a str; 2] {
+    pub fn to_array(&self) -> [&'b str; 2] {
         self.arr
     }
 
-    /// Iterates over the [`char`]s of both [`&str`]s
+    /// Returns and [`Iterator`] over the [`char`]s of both [`&str`]s
     ///
     /// [`&str`]: str
-    pub fn chars(self) -> impl DoubleEndedIterator<Item = char> + 'a {
+    pub fn chars(self) -> impl DoubleEndedIterator<Item = char> + 'b {
         let [s0, s1] = self.arr;
         s0.chars().chain(s1.chars())
+    }
+
+    /// Returns an [`Iterator`] over the [`char`]s and their indices from both [`&str`]s
+    ///
+    /// [`&str`]: str
+    pub fn char_indices(self) -> impl DoubleEndedIterator<Item = (usize, char)> + 'b {
+        let [s0, s1] = self.arr;
+        s0.char_indices()
+            .map(move |(b, c)| (b + self.range.start, c))
+            .chain(
+                s1.char_indices()
+                    .map(move |(b, c)| (b + self.range.start + s0.len(), c)),
+            )
     }
 
     /// Returns `true` if the [`RegexPattern`] can be found in the
@@ -739,6 +752,19 @@ impl<'a> Strs<'a> {
         self.bytes
             .search_fwd(pat, self.range.clone())
             .map(|mut iter| iter.next().is_some())
+    }
+
+    /// The [`Range<Point>`] of this `Strs`
+    ///
+    /// If you only care about the byte indices, you should use
+    /// [`Strs::byte_range`] instead, since it'b slightly faster.
+    pub fn range(&self) -> Range<Point> {
+        self.bytes.point_at_byte(self.range.start)..self.bytes.point_at_byte(self.range.end)
+    }
+
+    /// A [`Range<usize>`] of the byte indices of this `Strs`.
+    pub fn byte_range(&self) -> Range<usize> {
+        self.range.clone()
     }
 }
 
@@ -755,8 +781,8 @@ impl Strs<'static> {
     }
 }
 
-impl<'a> Iterator for Strs<'a> {
-    type Item = &'a str;
+impl<'b> Iterator for Strs<'b> {
+    type Item = &'b str;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.fwd {

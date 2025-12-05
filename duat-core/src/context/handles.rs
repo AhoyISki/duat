@@ -4,7 +4,10 @@
 //! [`RwData<W>`] conjoined with an [`Area`].
 use std::{
     cell::RefCell,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use lender::Lender;
@@ -160,6 +163,7 @@ pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
     searcher: RefCell<S>,
     is_closed: RwData<bool>,
     master: Option<Box<Handle<dyn Widget>>>,
+    pub(crate) update_requested: Arc<AtomicBool>,
 }
 
 impl<W: Widget + ?Sized> Handle<W> {
@@ -178,6 +182,7 @@ impl<W: Widget + ?Sized> Handle<W> {
             searcher: RefCell::new(()),
             is_closed: RwData::new(false),
             master: master.map(Box::new),
+            update_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -281,6 +286,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             searcher: RefCell::new(()),
             is_closed: self.is_closed.clone(),
             master: self.master.clone(),
+            update_requested: self.update_requested.clone(),
         })
     }
 
@@ -612,6 +618,13 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         self.widget.read(pa).get_print_opts()
     }
 
+    /// Request that this [`Handle`] be updated
+    ///
+    /// You can use this to request updates from other threads.
+    pub fn request_update(&self) {
+        self.update_requested.store(true, Ordering::Relaxed);
+    }
+
     ////////// Related Handles
 
     /// Returns the [`Handle`] this one was pushed to, if it was
@@ -722,6 +735,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             searcher: RefCell::new(searcher),
             is_closed: self.is_closed.clone(),
             master: self.master.clone(),
+            update_requested: self.update_requested.clone(),
         }
     }
 
@@ -878,6 +892,7 @@ impl<W: Widget, S> Handle<W, S> {
             searcher: RefCell::new(()),
             is_closed: self.is_closed.clone(),
             master: self.master.clone(),
+            update_requested: self.update_requested.clone(),
         }
     }
 }
@@ -908,6 +923,7 @@ impl<W: Widget + ?Sized> Clone for Handle<W> {
             searcher: self.searcher.clone(),
             is_closed: self.is_closed.clone(),
             master: self.master.clone(),
+            update_requested: self.update_requested.clone(),
         }
     }
 }

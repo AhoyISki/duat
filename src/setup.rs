@@ -16,7 +16,7 @@ use std::{
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, LogBook, Notifications, WhichKey, WordsCompletionParser, status},
+    widgets::{FooterWidgets, LogBook, Notifications, WhichKey, status},
 };
 use duat_core::{
     clipboard::Clipboard,
@@ -39,7 +39,7 @@ use crate::{
         BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, LOGBOOK_FN, NOTIFICATIONS_FN,
         ONE_LINE_FOOTER, STATUSLINE_FMT,
     },
-    prelude::BufferWritten,
+    prelude::BufferSaved,
     widgets::Buffer,
 };
 
@@ -229,7 +229,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
 
     // Other hooks
 
-    hook::add::<BufferWritten>(|_, (path, _, is_quitting)| {
+    hook::add::<BufferSaved>(|_, (path, _, is_quitting)| {
         let path = Path::new(path);
         if !is_quitting
             && let Ok(crate_dir) = crate::utils::crate_dir()
@@ -240,8 +240,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
         Ok(())
     })
     .grouped("ReloadOnWrite");
-
-    hook::add::<Buffer>(|pa, handle| WordsCompletionParser::add_to_buffer(handle.write(pa)));
+	duat_base::widgets::track_words();
 
     form::enable_mask("error");
     form::enable_mask("warn");
