@@ -352,8 +352,6 @@ impl Buffer {
             let start = area.start_points(&self.text, self.opts).real;
             let end = area.end_points(&self.text, self.opts).real;
             let printed_line_numbers = area.get_printed_lines(&self.text, self.opts).unwrap();
-            static COUNT: AtomicUsize = AtomicUsize::new(0);
-            context::debug!("oh shit {}", COUNT.fetch_add(1, Ordering::Relaxed));
 
             *cached_print_info = Some(CachedPrintInfo {
                 range: start..end,
@@ -770,9 +768,8 @@ impl BufferTracker {
     pub fn ranges_to_update_on(
         &mut self,
         range: impl TextRange,
-    ) -> impl Iterator<Item = Range<Point>> {
-        self.ranges
-            .remove(range.to_range(self.bytes.len().byte()), &self.bytes)
+    ) -> impl Iterator<Item = Range<usize>> {
+        self.ranges.remove(range.to_range(self.bytes.len().byte()))
     }
 
     ////////// Querying functions
@@ -875,17 +872,11 @@ impl RangesTracker {
 
     /// Gets the list of [`Range`]s that need to be updated
     #[track_caller]
-    fn remove(
-        &mut self,
-        range: Range<usize>,
-        bytes: &Bytes,
-    ) -> impl ExactSizeIterator<Item = Range<Point>> {
+    fn remove(&mut self, range: Range<usize>) -> impl Iterator<Item = Range<usize>> {
         match self {
             RangesTracker::Manual(ranges)
             | RangesTracker::ChangedRanges(ranges)
-            | RangesTracker::ChangedLines(ranges) => ranges
-                .remove(range)
-                .map(|r| bytes.point_at_byte(r.start)..bytes.point_at_byte(r.end)),
+            | RangesTracker::ChangedLines(ranges) => ranges.remove(range),
         }
     }
 }

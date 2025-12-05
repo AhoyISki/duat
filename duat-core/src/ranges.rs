@@ -124,10 +124,7 @@ impl Ranges {
     /// Removes a [`Range`] from the list, returning an
     /// [`Iterator`] over the [`Range`]s that were taken
     #[track_caller]
-    pub fn remove(
-        &mut self,
-        within: Range<usize>,
-    ) -> impl ExactSizeIterator<Item = Range<usize>> + '_ {
+    pub fn remove(&mut self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> + '_ {
         assert_range(&within);
         let within = within.start as i32..within.end as i32;
 
@@ -178,7 +175,7 @@ impl Ranges {
 
         self.list
             .splice(m_range, split_off.into_iter().flatten())
-            .map(|r| r.start as usize..r.end as usize)
+            .filter_map(|r| (!r.is_empty()).then_some(r.start as usize..r.end as usize))
     }
 
     /// Applies the [`add`] function to another [`Ranges`]s

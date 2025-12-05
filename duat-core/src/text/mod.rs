@@ -292,6 +292,7 @@ impl Text {
     /// [points]: TwoPoints
     /// [point]: Bytes::point_at_byte
     #[inline(always)]
+    #[track_caller]
     pub fn ghost_max_points_at(&self, b: usize) -> TwoPoints {
         let point = self.point_at_byte(b);
         if let Some(total_ghost) = self.0.tags.ghosts_total_at(point.byte()) {

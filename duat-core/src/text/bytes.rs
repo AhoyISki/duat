@@ -287,7 +287,7 @@ impl Bytes {
                 .take_while(|&(rhs, ..)| b <= rhs)
                 .last()
         };
-
+        
         found
             .map(|(b, c, l)| Point::from_raw(b, c, l))
             .unwrap_or(self.len())
@@ -733,7 +733,8 @@ impl<'b> Strs<'b> {
         s0.chars().chain(s1.chars())
     }
 
-    /// Returns an [`Iterator`] over the [`char`]s and their indices from both [`&str`]s
+    /// Returns an [`Iterator`] over the [`char`]s and their indices
+    /// from both [`&str`]s
     ///
     /// [`&str`]: str
     pub fn char_indices(self) -> impl DoubleEndedIterator<Item = (usize, char)> + 'b {

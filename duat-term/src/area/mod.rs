@@ -374,6 +374,10 @@ impl RawArea for Area {
         text: &Text,
         opts: PrintOpts,
     ) -> Option<Vec<ui::PrintedLine>> {
+		use std::io::Write;
+		let mut log = std::fs::OpenOptions::new().append(true).open("log").unwrap();
+		writeln!(log, "\x1b[0;31;49mentered get_printed_lines").unwrap();
+
         let coords = self.layouts.coords_of(self.id, true)?;
         let points = self.start_points(pa, text, opts);
 
@@ -384,12 +388,14 @@ impl RawArea for Area {
         let mut printed_lines = Vec::new();
         let mut has_wrapped = false;
         let mut y = coords.tl.y;
+        let mut n = 0;
 
         for (caret, item) in print_iter(text, points, coords.width(), opts) {
             if y == coords.br.y {
                 break;
             }
             y += caret.wrap as u32;
+            n += 1;
 
             has_wrapped |= caret.wrap;
             if has_wrapped && item.part.is_char() {
@@ -400,6 +406,9 @@ impl RawArea for Area {
                 printed_lines.push(PrintedLine { number, is_wrapped });
             }
         }
+        
+		writeln!(log, "iterated {n} times").unwrap();
+		writeln!(log, "left get_printed_lines\x1b[0;39;49m").unwrap();
 
         Some(printed_lines)
     }
