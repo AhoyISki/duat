@@ -78,5 +78,3 @@ For more information about modification of the `StatusLine`, see the chapter on 
 
 [modding the `StatusLine`]: ../../scripting-duat/mod-status.md
 [`Text`]: ../../scripting-duat/text/chapter.md
-
-

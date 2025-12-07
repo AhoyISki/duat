@@ -320,8 +320,7 @@ where
 /// API, where the implementation of traits by users might cause
 /// panics.
 pub fn catch_panic<R>(f: impl FnOnce() -> R) -> Option<R> {
-    Some(f())
-    //std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).ok()
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).ok()
 }
 
 /// Macro used internally for doc tests in duat-core

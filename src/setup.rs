@@ -208,8 +208,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
             drop(opts);
             show_which_key(pa);
         } else {
-            let handles: Vec<_> = context::windows().handles_of::<WhichKey>(pa).collect();
-            for handle in handles {
+            for handle in context::windows().handles_of::<WhichKey>(pa) {
                 let _ = handle.close(pa);
             }
         }
@@ -240,7 +239,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
         Ok(())
     })
     .grouped("ReloadOnWrite");
-	duat_base::widgets::track_words();
+    duat_base::widgets::track_words();
 
     form::enable_mask("error");
     form::enable_mask("warn");

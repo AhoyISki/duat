@@ -246,9 +246,11 @@ impl InnerTags {
             }
         };
 
-        if let Some((e_b, e_tag)) = end
-            && s_b < e_b
-        {
+        if let Some((e_b, e_tag)) = end {
+            if s_b >= e_b {
+                return false;
+            }
+
             let (s_i, e_i) = {
                 let (mut s_i, mut e_i) = match (
                     self.list.find_by_key((s_b as i32, s_tag), |t| t),
@@ -262,7 +264,7 @@ impl InnerTags {
 
                 if after {
                     s_i += self.list.iter_fwd(s_i..).take_while(same_prio(s_b)).count();
-                    e_i += self.list.iter_fwd(s_i..).take_while(same_prio(e_b)).count();
+                    e_i += self.list.iter_fwd(e_i..).take_while(same_prio(e_b)).count();
                 }
 
                 (s_i, e_i)
@@ -370,7 +372,7 @@ impl InnerTags {
             self.remove_from_if(range, |(b, tag)| {
                 taggers.contains_tagger(tag.tagger())
                     && ((b > start as i32 || !tag.is_end())
-                        && (b < excl_end as i32 && !tag.is_start()))
+                        && (b < excl_end as i32 || !tag.is_start()))
             });
         }
     }
@@ -411,7 +413,7 @@ impl InnerTags {
 
         self.list
             .extract_if_while(start..end, |_, entry| Some(filter(entry)))
-            .for_each(|(i, (_, tag))| {
+            .for_each(|(i, (b, tag))| {
                 removed += 1;
                 self.bounds.shift_by(i, [-1, 0]);
 

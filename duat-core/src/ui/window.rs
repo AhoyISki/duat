@@ -774,24 +774,22 @@ impl Windows {
     }
 
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat
-    pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = &'a Handle<dyn Widget>> {
+    pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle<dyn Widget>> + 'a {
         self.inner
             .read(pa)
             .list
             .iter()
-            .flat_map(|w| w.nodes(pa).map(|n| n.handle()))
+            .flat_map(|w| w.nodes(pa).map(|n| n.handle().clone()))
     }
 
     /// Returns an [`Iterator`] over the [`Handle`]s of Duat
-    pub fn handles_of<'a, W: Widget>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl Iterator<Item = Handle<W>> + 'a {
+    pub fn handles_of<W: Widget>(&self, pa: &Pass) -> Vec<Handle<W>> {
         self.inner
             .read(pa)
             .list
             .iter()
             .flat_map(|w| w.nodes(pa).filter_map(|n| n.handle().try_downcast()))
+            .collect()
     }
 
     /// Iterates over all [`Handle<Buffer>`]s in Duat

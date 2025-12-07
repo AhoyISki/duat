@@ -684,6 +684,14 @@ impl Part {
         matches!(self, Part::Char(_))
     }
 
+    /// Returns `true` if the part is not [`Char`]
+    ///
+    /// [`Char`]: Part::Char
+    #[inline]
+    pub const fn is_tag(&self) -> bool {
+        !self.is_char()
+    }
+
     /// Returns [`Some`] if the part is [`Char`]
     ///
     /// [`Char`]: Part::Char
@@ -694,13 +702,5 @@ impl Part {
         } else {
             None
         }
-    }
-
-    /// Returns `true` if the part is not [`Char`]
-    ///
-    /// [`Char`]: Part::Char
-    #[inline]
-    pub const fn is_tag(&self) -> bool {
-        !self.is_char()
     }
 }

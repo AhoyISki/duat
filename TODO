@@ -8,7 +8,6 @@ FOR NEXT UPDATE:
 [ ] Command line completion.
 [x] File path completion.
 [x] Forcefully evaluate height and width when requested.
-[ ] File tracking.
 [x] Actually fix injected indentation.
 [x] WhichKey widget.
 [x] Move to Rust stable (sigh...).
@@ -16,7 +15,7 @@ FOR NEXT UPDATE:
 [x] Borders and Titles.
 [x] Make cmd::add not a macro (?!).
 [x] Revamped Flags.
-[ ] Remove Parsers apparently.
+[x] Remove Parsers apparently.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -38,6 +37,8 @@ KNOWN BUGS:
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
 
 FUTURE UPDATES:
+[ ] Add a little button next to tree-sitter injections to download them.
+[ ] File tracking.
 [ ] Add a HandleMut or something like that.
 [ ] Add a simplified TOML based configuration, in systems where people don't want to have to install cargo.
 [ ] Named StatusParts.

@@ -124,7 +124,7 @@ impl Ranges {
     /// Removes a [`Range`] from the list, returning an
     /// [`Iterator`] over the [`Range`]s that were taken
     #[track_caller]
-    pub fn remove(&mut self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> + '_ {
+    pub fn remove(&mut self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
         assert_range(&within);
         let within = within.start as i32..within.end as i32;
 

@@ -350,7 +350,7 @@ impl Session {
 /// It can be either an exact match, that is, the mouse was in the
 /// position of the `TwoPoints`, or it can be on the same line as the
 /// `TwoPoints` at the end of the line.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TwoPointsPlace {
     /// The mouse was on top of the character that matched.
     Within(TwoPoints),

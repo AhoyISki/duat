@@ -20,7 +20,7 @@ use crate::utils::{binary_search_by_key_and_index, get_ends};
 /// which group they belong to.
 #[derive(Default, Clone)]
 pub(super) struct ShiftList<S: Shiftable> {
-    buf: GapBuffer<S>,
+    pub(super) buf: GapBuffer<S>,
     pub(super) from: usize,
     pub(super) shift: S::Shift,
     pub(super) max: S::Shift,
@@ -88,6 +88,8 @@ impl<S: Shiftable> ShiftList<S> {
     ) -> impl Iterator<Item = (usize, S)> + 'a {
         let (mut i, mut end) = get_ends(range, self.buf.len());
 
+        let r = (i..end) == (52..55);
+
         std::iter::from_fn(move || {
             while i < end {
                 let shifted = if i >= self.from {
@@ -95,6 +97,10 @@ impl<S: Shiftable> ShiftList<S> {
                 } else {
                     self.buf[i]
                 };
+
+                if r {
+                    crate::context::debug!("shifted: {shifted:?}");
+                }
 
                 if f(i, shifted)? {
                     self.buf.remove(i);

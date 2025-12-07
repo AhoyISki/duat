@@ -191,8 +191,9 @@ impl Completions {
         }
 
         let Some(handle) = context::windows()
-            .handles(pa)
-            .find_map(Handle::try_downcast::<Completions>)
+            .handles_of::<Completions>(pa)
+            .first()
+            .cloned()
         else {
             context::warn!("No Completions open");
             return;

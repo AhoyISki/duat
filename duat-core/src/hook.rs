@@ -51,6 +51,7 @@
 //! - [`KeysSent`] triggers when a keys are sent.
 //! - [`KeysSentTo`] same, but on a specific [widget].
 //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
+//! - [`OnMouseEvent`] triggers with mouse events.
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeSet`] lets you act on a [`Mode`] after switching.
@@ -182,12 +183,14 @@
 //! [`SearchUpdated`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchUpdated.html
 use std::{any::TypeId, cell::RefCell, collections::HashMap, sync::Mutex};
 
+use crossterm::event::MouseEventKind;
+
 pub use self::global::*;
 use crate::{
     context::{Cache, Handle},
     data::Pass,
     form::{Form, FormId},
-    mode::{KeyEvent, Mode},
+    mode::{KeyEvent, Mode, MouseEvent},
     text::Text,
     ui::{Widget, Window},
     utils::catch_panic,
@@ -1028,6 +1031,40 @@ impl Hookable for KeyTyped {
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         self.0
+    }
+}
+
+/// [`Hookable`]: Triggers on every [`MouseEvent`]
+///
+/// # Arguments
+///
+/// - The [`Handle<dyn Widget>`] under the mouse.
+/// - The [`MouseEvent`] itself.
+pub struct OnMouseEvent(pub(crate) (Handle<dyn Widget>, MouseEvent));
+
+impl Hookable for OnMouseEvent {
+    type Input<'h> = (&'h Handle<dyn Widget>, MouseEvent);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, self.0.1)
+    }
+}
+
+impl PartialEq<MouseEvent> for OnMouseEvent {
+    fn eq(&self, other: &MouseEvent) -> bool {
+        self.0.1 == *other
+    }
+}
+
+impl PartialEq<MouseEventKind> for OnMouseEvent {
+    fn eq(&self, other: &MouseEventKind) -> bool {
+        self.0.1.kind == *other
+    }
+}
+
+impl<W: Widget> PartialEq<Handle<W>> for OnMouseEvent {
+    fn eq(&self, other: &Handle<W>) -> bool {
+        self.0.0.ptr_eq(other.widget())
     }
 }
 

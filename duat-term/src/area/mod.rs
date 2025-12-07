@@ -384,14 +384,12 @@ impl RawArea for Area {
         let mut printed_lines = Vec::new();
         let mut has_wrapped = false;
         let mut y = coords.tl.y;
-        let mut n = 0;
 
         for (caret, item) in print_iter(text, points, coords.width(), opts) {
             if y == coords.br.y {
                 break;
             }
             y += caret.wrap as u32;
-            n += 1;
 
             has_wrapped |= caret.wrap;
             if has_wrapped && item.part.is_char() {

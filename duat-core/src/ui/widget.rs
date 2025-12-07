@@ -42,7 +42,7 @@ use crate::{
     context::Handle,
     data::{Pass, RwData},
     form,
-    hook::{self, FocusedOn, UnfocusedFrom},
+    hook::{self, FocusedOn, OnMouseEvent, UnfocusedFrom},
     mode::MouseEvent,
     opts::PrintOpts,
     session::UiMouseEvent,
@@ -529,6 +529,7 @@ impl Node {
                 }
             }),
             on_mouse_event: Arc::new({
+                let dyn_handle = handle.to_dyn();
                 let handle = handle.clone();
                 move |pa, event| {
                     let opts = handle.opts(pa);
@@ -540,7 +541,10 @@ impl Node {
                         modifiers: event.modifiers,
                     };
 
-                    catch_panic(|| W::on_mouse_event(pa, &handle, event));
+                    catch_panic(|| {
+                        hook::trigger(pa, OnMouseEvent((dyn_handle.clone(), event)));
+                        W::on_mouse_event(pa, &handle, event);
+                    });
                 }
             }),
         }

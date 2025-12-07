@@ -371,7 +371,7 @@ implTextRangeOrIndex!(RangeFrom);
 ///
 /// [`Text`]: super::Text
 /// [`Ghost`]: super::Ghost
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, Hash)]
 pub struct TwoPoints {
     /// The real `Point` in the [`Text`]
     ///

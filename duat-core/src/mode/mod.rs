@@ -537,7 +537,7 @@ pub trait Mode: Sized + Clone + Send + 'static {
 }
 
 /// A mouse event, representing a click, drag, hover, etc
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MouseEvent {
     /// The position on the [`Text`] where the mouse was.
     ///

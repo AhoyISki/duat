@@ -68,7 +68,6 @@ impl WhichKey {
             .filter(|handle| {
                 handle.widget().is::<WhichKey>() || handle.widget().is::<WhichKeyDescriptions>()
             })
-            .cloned()
             .collect();
         for handle in handles {
             let _ = handle.close(pa);
