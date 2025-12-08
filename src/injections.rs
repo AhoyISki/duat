@@ -100,10 +100,16 @@ impl InjectedTree {
     /// Adds another [`Range`] to be parsed with this [`InjectedTree`]
     ///
     /// In addition, this will also mark this [`Range`] as one to be
-    /// parsed
-    pub(crate) fn add_range(&mut self, range: Range<usize>) {
+    /// parsed. However, this is only done if the range was not
+    /// already included. If it was, then this funcion returns
+    /// `false`.
+    pub(crate) fn add_range(&mut self, range: Range<usize>) -> bool {
+        if self.ranges.iter().any(|r| r == range) {
+            return false;
+        }
         self.ranges.add(range.clone());
         self.ranges_to_parse.add(range);
+        true
     }
 
     /// Removes a [`Range`] from the list of parsed [`Range`]s

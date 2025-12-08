@@ -267,7 +267,7 @@ impl Parser {
     /// [`filetype`]: FileType::filetype
     pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
         let Some(ParserState::Present(parser)) = &self.0 else {
-            panic!("Called function that shouldn't be possible without present parser");
+            return None;
         };
 
         parser.indent_on(p, bytes, cfg)
@@ -375,16 +375,7 @@ impl InnerTsParser {
                     .flat_map(InjectedTree::changed_ranges),
             )
         {
-            // The rows seem kind of unpredictable, which is why I have to do this
-            // nonsense
-            let start = bytes.point_at_line(bytes.point_at_byte(range.start_byte).line());
-            let range = bytes.line_range(
-                bytes
-                    .point_at_byte(range.end_byte.min(bytes.len().byte()))
-                    .line(),
-            );
-
-            new_ranges.add(start.byte()..range.end.byte())
+            new_ranges.add(range.start_byte..range.end_byte)
         }
 
         for inj in self.injections.iter_mut() {
@@ -426,17 +417,18 @@ impl InnerTsParser {
             handle.text(pa).bytes(),
         );
 
+        let mut parts = handle.write(pa).text_mut().parts();
+        let tagger = ts_tagger();
+
         for range in new_ranges {
+            parts.tags.remove(tagger, range.start..=range.end);
             self.tracker.add_range(range);
         }
 
-        let mut parts = handle.write(pa).text_mut().parts();
         for range in printed_line_ranges.iter() {
             for range in self.tracker.ranges_to_update_on(range.clone()) {
                 let range = range.start..range.end;
-
-                parts.tags.remove(ts_tagger(), range.clone());
-
+                
                 highlight(
                     self.tree.root_node(),
                     &mut self.injections,
@@ -1267,29 +1259,32 @@ fn refactor_injections(
             };
 
             let cap_range = cap.node.byte_range();
-            inj_ranges.add(cap_range.clone());
 
             if let Some(inj) = injected_trees
                 .iter_mut()
                 .find(|inj| inj.lang_parts().0 == lang_parts.0)
             {
-                inj.add_range(cap_range.clone());
+                if inj.add_range(cap_range.clone()) {
+                    inj_ranges.add(cap_range.clone());
+                }
             } else if let Some(new) = new_langs.iter_mut().find(|(lp, _)| lp.0 == lang_parts.0) {
+                inj_ranges.add(cap_range.clone());
                 new.1.add(cap_range);
             } else {
+                inj_ranges.add(cap_range.clone());
                 new_langs.push((lang_parts, Ranges::new(cap_range)));
             }
         }
-
-        injected_trees.retain_mut(|inj| {
-            if inj.is_empty() {
-                false
-            } else {
-                inj.update_tree(bytes);
-                true
-            }
-        });
     }
+
+    injected_trees.retain_mut(|inj| {
+        if inj.is_empty() {
+            false
+        } else {
+            inj.update_tree(bytes);
+            true
+        }
+    });
 
     for (lang_parts, ranges) in new_langs {
         injected_trees.push(InjectedTree::new(bytes, lang_parts, ranges));
