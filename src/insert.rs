@@ -12,41 +12,8 @@ use treesitter::TsCursor;
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
-#[derive(Clone)]
-pub struct Insert {
-    indent_keys: Vec<char>,
-}
-
-impl Insert {
-    /// Returns a new instance of Kakoune's [`Insert`]
-    pub fn new() -> Self {
-        Self {
-            indent_keys: vec!['\n', '(', ')', '{', '}', '[', ']'],
-        }
-    }
-
-    /// Which [`char`]s, when sent, should reindent the line
-    ///
-    /// By default, this is `'\n'` and the `'('`, `'{'`, `'['` pairs.
-    /// Note that you have to include `'\n'` in order for the
-    /// [`Enter`] key to reindent.
-    ///
-    /// Additionally, if you add '\t' to the list of indent keys, upon
-    /// pressint [`Tab`] on the first character of the line, it will
-    /// automatically be indented by the right amount.
-    ///
-    /// [`Tab`]: mode::KeyCode::Tab
-    /// [`Enter`]: mode::KeyCode::Enter
-    pub fn with_indent_keys(self, chars: impl Iterator<Item = char>) -> Self {
-        Self { indent_keys: chars.collect() }
-    }
-}
-
-impl Default for Insert {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[derive(Clone, Copy)]
+pub struct Insert;
 
 impl Mode for Insert {
     type Widget = Buffer;
@@ -59,7 +26,7 @@ impl Mode for Insert {
             event!(Char(..) | Enter) => txt!("Insert the character"),
             event!(Left | Down | Up | Right) => txt!("Move cursor"),
             shift!(Left | Down | Up | Right) => txt!("Select and move cursor"),
-            event!(Home | End) => txt!("Move to [a]start[],[a]end[] of line"),
+            event!(Home | End) => txt!("Move to [a]start[][separator],[a]end[] of line"),
             ctrl!('n') => txt!("Next completion entry"),
             ctrl!('p') | shift!(BackTab) => txt!("Previous completion entry"),
             event!(Tab) => txt!("Reindent or next completion entry"),
@@ -73,6 +40,7 @@ impl Mode for Insert {
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         use mode::KeyCode::*;
 
+        let opts = crate::opts::get();
         if let shift!(Left | Down | Up | Right) = key_event {
             handle.edit_all(pa, |mut c| {
                 if c.anchor().is_none() {
@@ -85,9 +53,9 @@ impl Mode for Insert {
             // Autocompletion commands
             ctrl!('n') => Completions::scroll(pa, 1),
             ctrl!('p') | shift!(BackTab) => Completions::scroll(pa, -1),
-            event!(Tab) => match crate::opts::get_tab_mode() {
+            event!(Tab) => match opts.tab_mode {
                 TabMode::Normal => handle.edit_all(pa, |mut c| {
-                    if self.indent_keys.contains(&'\t') {
+                    if opts.indent_chars.contains(&'\t') {
                         c.ts_reindent(false);
                     }
 
@@ -102,7 +70,7 @@ impl Mode for Insert {
                 }),
                 TabMode::Smart => handle.edit_all(pa, |mut c| {
                     let char_col = c.v_caret().char_col();
-                    if (self.indent_keys.contains(&'\t') || char_col <= c.indent())
+                    if (opts.indent_chars.contains(&'\t') || char_col <= c.indent())
                         && c.ts_reindent(false)
                     {
                         return;
@@ -120,7 +88,7 @@ impl Mode for Insert {
                 TabMode::VerySmart => {
                     let do_scroll = handle.edit_main(pa, |mut c| {
                         let char_col = c.v_caret().char_col();
-                        !((self.indent_keys.contains(&'\t') || char_col <= c.indent())
+                        !((opts.indent_chars.contains(&'\t') || char_col <= c.indent())
                             && c.ts_reindent(false))
                     });
 
@@ -134,7 +102,7 @@ impl Mode for Insert {
             event!(Char(char)) => handle.edit_all(pa, |mut c| {
                 c.insert(char);
                 c.move_hor(1);
-                if self.indent_keys.contains(&char) && c.indent() == c.v_caret().char_col() - 1 {
+                if opts.indent_chars.contains(&char) && c.indent() == c.v_caret().char_col() - 1 {
                     c.ts_reindent(false);
                 }
             }),
@@ -142,8 +110,8 @@ impl Mode for Insert {
             event!(Enter) => handle.edit_all(pa, |mut c| {
                 c.insert('\n');
                 c.move_hor(1);
-                if self.indent_keys.contains(&'\n') {
-                    c.ts_reindent(false);
+                if opts.indent_chars.contains(&'\n') {
+                    c.ts_reindent(opts.auto_indent);
                 }
             }),
             event!(Backspace) => handle.edit_all(pa, |mut c| {
@@ -229,7 +197,7 @@ impl Mode for Insert {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum TabMode {
+pub enum TabMode {
     Normal,
     Smart,
     VerySmart,

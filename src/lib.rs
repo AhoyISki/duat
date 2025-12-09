@@ -172,6 +172,24 @@
 //! `<A-H>`, `<S-Home>`, `<A-L>`, `<S-End>`\
 //! Same as the previous two, but extends the selection.
 //!
+//! `<A-a>`\
+//! Select around object
+//!
+//! `[`,`]`\
+//! Select around start/end of object
+//!
+//! `{`,`}`\
+//! Extend around start/end of object
+//!
+//! `<A-i>`\
+//! Select inside object
+//!
+//! `<A-[>`,`<A-]>`\
+//! Select inside start/end of object
+//!
+//! `<A-{>`,`<A-}>`\
+//! Extend inside start/end of object
+//!
 //! `m`\
 //! Selects to the next pair of matching brackets.
 //!
@@ -541,95 +559,133 @@ mod parameter {
 }
 
 pub mod opts {
-    use std::sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-    };
+    use std::sync::{Mutex, atomic::AtomicBool};
 
     use duat_core::{
         mode::{self, KeyCode, KeyEvent},
         text::txt,
     };
 
-    use crate::{Insert, insert::TabMode};
+    use crate::{Insert, Memoized, escaped_regex, insert::TabMode, normal::Brackets};
 
     pub(crate) static INSERT_TABS: AtomicBool = AtomicBool::new(false);
-    pub(crate) static TABMODE: Mutex<TabMode> = Mutex::new(TabMode::VerySmart);
+    pub(crate) static DUATMODE_OPTS: Mutex<DuatModeOpts> = Mutex::new(DuatModeOpts::new());
 
-    /// Makes the `Tab` key insert tabs as opposed to spaces
+    /// Options for the [`Insert`] and [`Normal`] modes of `duatmode`
     ///
-    /// Do note that this option interacts with the options for
-    /// [normal], [smart], and [very smart] tabs, the default being
-    /// very smart tabs.
-    ///
-    /// [normal]: set_normal_tabs
-    /// [smart]: set_smart_tabs
-    /// [very smart]: set_very_smart_tabs
-    pub fn insert_tabs(insert_tabs: bool) {
-        INSERT_TABS.store(insert_tabs, Ordering::Relaxed);
+    /// [`Normal`]: super::Normal
+    #[derive(Clone, Copy)]
+    pub struct DuatModeOpts {
+        /// Inserts `\t`s instead of an equivalent amount of spaces
+        ///
+        /// The default is `false`
+        pub insert_tabs: bool,
+        /// How tabs should be handled in [`Insert`] mode.
+        ///
+        /// The default is [`TabMode::VerySmart`], which reindents the
+        /// line if necessary, otherwise, triggers autocompletion.
+        pub tab_mode: TabMode,
+        /// Automatically indent new lines
+        ///
+        /// This makes it so if you press `<Enter>`, the new line will
+        /// keep the same indentation as the old line.
+        ///
+        /// This is only done in [`Buffer`]s that aren't using
+        /// `tree-sitter` or if the `<Enter>` key is not a part of
+        /// `indent_keys`.
+        ///
+        /// The default is `true`
+        pub auto_indent: bool,
+        /// Characters that, upon being typed, reindent the current
+        /// line
+        ///
+        /// The default is all the bracket characters, `\t` and `\n`
+        pub indent_chars: &'static [char],
+        /// Enables auto reindentation upon typing `I` in [`Normal`]
+        /// mode
+        ///
+        /// The default is `true`.
+        ///
+        /// [`Normal`]: super::Normal
+        pub indent_on_capital_i: bool,
+        /// Makes the `'f'` and `'t'` keys set the search pattern
+        ///
+        /// If you type `"fm"`, for example, and then type `'n'`,
+        /// `'n'` will search for the next instance of an
+        /// `'m'` in the [`Buffer`]
+        ///
+        /// The default is `true`
+        pub f_and_t_set_search: bool,
+        pub(crate) brackets: Brackets,
     }
 
-    /// Sets the `Tab` mode to normal
+    impl DuatModeOpts {
+        /// The default version of `DuatModeOpts`
+        pub const fn new() -> Self {
+            const B_PATS: Brackets = Brackets(&[[r"\(", r"\)"], [r"\{", r"\}"], [r"\[", r"\]"]]);
+            Self {
+                insert_tabs: false,
+                tab_mode: TabMode::VerySmart,
+                auto_indent: true,
+                indent_chars: &['\n', '(', ')', '{', '}', '[', ']'],
+                indent_on_capital_i: true,
+                f_and_t_set_search: true,
+                brackets: B_PATS,
+            }
+        }
+
+        /// Changes what is considered a "bracket" in [`Normal`] mode
+        ///
+        /// More specifically, this will change the behavior of keys
+        /// like `'m'` and the `'u'` object, which will now
+        /// consider more patterns when selecting.
+        pub fn set_brackets<'a>(&mut self, brackets: impl Iterator<Item = [&'a str; 2]>) {
+            static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
+
+            let brackets: Vec<[&str; 2]> = brackets.map(|bs| bs.map(escaped_regex)).collect();
+            assert!(
+                brackets.iter().all(|[s_b, e_b]| s_b != e_b),
+                "Brackets are not allowed to look the same"
+            );
+
+            self.brackets =
+                BRACKETS.get_or_insert_with(brackets.clone(), || Brackets(brackets.leak()));
+        }
+    }
+
+    impl Default for DuatModeOpts {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// Sets options for the [`Insert`] and [`Normal`] modes
     ///
-    /// With this setting, the `Tab` key is just a regular tab key,
-    /// and will insert [spaces or a tab], no matter where the caret
-    /// is.
-    ///
-    /// The default is the [very smart mode].
-    ///
-    /// [very smart mode]: set_very_smart_tabs
-    /// [spaces or a tab]: insert_tabs
-    pub fn set_normal_tabs() {
-        *TABMODE.lock().unwrap() = TabMode::Normal;
+    /// [`Normal`]: super::Normal
+    pub fn set(set_fn: impl FnOnce(&mut DuatModeOpts)) {
+        let mut opts = *DUATMODE_OPTS.lock().unwrap();
+        set_fn(&mut opts);
+
         mode::change_binding_description::<Insert>(
             &[KeyEvent::from(KeyCode::Tab)],
-            txt!("Insert tab"),
+            match opts.tab_mode {
+                TabMode::Normal => txt!("Insert tab"),
+                TabMode::Smart => txt!("Reindent or insert tab"),
+                TabMode::VerySmart => txt!("Reindent or next completion entry"),
+            },
         );
+
+        *DUATMODE_OPTS.lock().unwrap() = opts;
     }
 
-    /// Sets the `Tab` mode to smart
+    /// The options currently in effect
     ///
-    /// With this setting, if you press the `Tab` key at the leading
-    /// spaces of a line, then the line will be reindented to the
-    /// appropriate indentation, given the treesitter indentation
-    /// query.
+    /// Setting the values of these options will not change the
+    /// current value. For that, check out [`opts::set`]
     ///
-    /// If you press it and the indentation is not changed by that,
-    /// then [spaces or a tab] will be inserted at the current
-    /// position.
-    ///
-    /// The default is the [very smart mode].
-    ///
-    /// [very smart mode]: set_very_smart_tabs
-    /// [spaces or a tab]: insert_tabs
-    pub fn set_smart_tabs() {
-        *TABMODE.lock().unwrap() = TabMode::Smart;
-        mode::change_binding_description::<Insert>(
-            &[KeyEvent::from(KeyCode::Tab)],
-            txt!("Reindent or insert tab"),
-        );
-    }
-
-    /// Sets the `Tab` mode to very smart
-    ///
-    /// This mode it will try to reindent the line if the caret is on
-    /// leading whitespace. If that fails, or the indentation doesn't
-    /// change, then it will [scroll to the next completion entry].
-    ///
-    /// This is the default tab mode.
-    ///
-    /// [scroll to the next completion entry]: duat_base::widgets::Completions::scroll
-    pub fn set_very_smart_tabs() {
-        *TABMODE.lock().unwrap() = TabMode::VerySmart;
-        mode::change_binding_description::<Insert>(
-            &[KeyEvent::from(KeyCode::Tab)],
-            txt!("Reindent or next completion entry"),
-        );
-    }
-
-    /// The current [`TabMode`]
-    pub(crate) fn get_tab_mode() -> TabMode {
-        *TABMODE.lock().unwrap()
+    /// [`opts::set`]: set
+    pub fn get() -> DuatModeOpts {
+        *DUATMODE_OPTS.lock().unwrap()
     }
 }
 
@@ -650,54 +706,8 @@ pub mod opts {
 /// And so on and so forth.
 ///
 /// [`Form`]: duat_core::form::Form
-pub struct DuatMode {
-    normal: Normal,
-}
-
-impl DuatMode {
-    /// Returns a new instance of [`DuatMode`], the plugin for
-    /// kakoune-like editing
-    pub fn new() -> Self {
-        Self { normal: Normal::new() }
-    }
-}
-
-impl DuatMode {
-    /// Changes what is considered a "bracket" in [`Normal`] mode
-    ///
-    /// More specifically, this will change the behavior of keys like
-    /// `m` and the `u` object, which will now consider more
-    /// patterns when selecting.
-    pub fn with_brackets<'o>(mut self, brackets: impl Iterator<Item = [&'o str; 2]>) -> Self {
-        self.normal.set_brackets(brackets);
-        self
-    }
-
-    /// Makes it so the `I` key no longer indents the line in
-    /// [`Normal`] mode
-    ///
-    /// By default, when you press `I`, the line will be reindented,
-    /// in order to send you to the "proper" insertion spot, not just
-    /// to the first non whitespace character.
-    ///
-    /// This function disables that behavior.
-    pub fn with_no_indent_on_capital_i(mut self) -> Self {
-        self.normal.indent_on_capital_i = false;
-        self
-    }
-
-    /// Makes the `'f'` and `'t'` keys set the search pattern
-    ///
-    /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
-    /// will search for the next instance of an `'m'` in the
-    /// [`Buffer`]
-    ///
-    /// [`Buffer`]: duat_core::buffer::Buffer
-    pub fn f_and_t_set_search(mut self) -> Self {
-        self.normal.f_and_t_set_search = true;
-        self
-    }
-}
+#[derive(Default)]
+pub struct DuatMode;
 
 impl Plugin for DuatMode {
     fn plug(self, plugins: &Plugins) {
@@ -714,12 +724,6 @@ impl Plugin for DuatMode {
 
         form::enable_mask("Insert");
         form::enable_mask("Normal");
-    }
-}
-
-impl Default for DuatMode {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

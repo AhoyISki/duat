@@ -6,7 +6,7 @@ use duat_core::{
 };
 
 use crate::{
-    Normal, Object, SEARCH, SelType, edit_or_destroy_all, normal::Brackets, select_to_end_of_line,
+    Object, SEARCH, SelType, edit_or_destroy_all, normal::Brackets, select_to_end_of_line,
     set_anchor_if_needed,
 };
 
@@ -25,9 +25,9 @@ impl OneKey {
     /// Sends a key to this "[`Mode`]"
     ///
     /// [`Mode`]: duat_core::mode::Mode
-    pub(crate) fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
+    pub(crate) fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) -> SelType {
         let just_char = just_char(event);
-        let sel_type = match (*self, just_char) {
+        match (*self, just_char) {
             (OneKey::GoTo(st), _) => match_goto(pa, &handle, event, st),
             (OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss), Some(char)) => {
                 let is_t = matches!(*self, OneKey::Until(..));
@@ -71,9 +71,7 @@ impl OneKey {
                 SelType::Normal
             }
             _ => SelType::Normal,
-        };
-
-        mode::set(Normal::new_with_sel_type(sel_type));
+        }
     }
 }
 

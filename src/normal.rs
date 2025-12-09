@@ -16,7 +16,7 @@ use jump_list::BufferJumps;
 use treesitter::TsCursor;
 
 use crate::{
-    Category, Memoized, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
+    Category, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
     inc_searchers::{KeepMatching, Select, Split},
     one_key::OneKey,
     opts::INSERT_TABS,
@@ -26,21 +26,6 @@ use crate::{
 #[derive(Clone, Copy)]
 pub struct Normal {
     sel_type: SelType,
-    brackets: Brackets,
-    /// Wheter to indent the line when pressing the `I` key
-    ///
-    /// The default is `true`.
-    ///
-    /// Normally, when you press `'I'`, the line will be reindented,
-    /// in order to send you to the "proper" insertion spot, not just
-    /// to the first non whitespace character.
-    pub indent_on_capital_i: bool,
-    /// Makes the `'f'` and `'t'` keys set the search pattern
-    ///
-    /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
-    /// will search for the next instance of an `'m'` in the
-    /// [`Buffer`]
-    pub f_and_t_set_search: bool,
     one_key: Option<OneKey>,
     only_one_action: bool,
 }
@@ -49,12 +34,8 @@ impl Normal {
     /// Returns an instance of the [`Normal`] mode, inspired by
     /// Kakoune
     pub const fn new() -> Self {
-        const B_PATS: Brackets = Brackets(&[[r"\(", r"\)"], [r"\{", r"\}"], [r"\[", r"\]"]]);
         Normal {
             sel_type: SelType::Normal,
-            brackets: B_PATS,
-            indent_on_capital_i: false,
-            f_and_t_set_search: false,
             one_key: None,
             only_one_action: false,
         }
@@ -64,34 +45,6 @@ impl Normal {
     /// mode
     pub(crate) const fn only_one_action() -> Self {
         Self { only_one_action: true, ..Self::new() }
-    }
-
-    /// [`Normal`] mode with different type of selection
-    pub(crate) fn new_with_sel_type(sel_type: SelType) -> Self {
-        let mut normal = Self::new();
-        normal.sel_type = sel_type;
-        normal
-    }
-
-    /// Changes what is considered a "bracket" in [`Normal`] mode
-    ///
-    /// More specifically, this will change the behavior of keys like
-    /// `'m'` and the `'u'` object, which will now consider more
-    /// patterns when selecting.
-    pub fn set_brackets<'a>(&mut self, brackets: impl Iterator<Item = [&'a str; 2]>) {
-        static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
-
-        let brackets: Vec<[&str; 2]> = brackets.map(|bs| bs.map(escaped_regex)).collect();
-        assert!(
-            brackets.iter().all(|[s_b, e_b]| s_b != e_b),
-            "Brackets are not allowed to look the same"
-        );
-
-        self.brackets = BRACKETS.get_or_insert_with(brackets.clone(), || Brackets(brackets.leak()));
-    }
-
-    pub fn with_no_indent_on_capital_i(self) -> Self {
-        Self { indent_on_capital_i: false, ..self }
     }
 }
 
@@ -243,6 +196,7 @@ impl Mode for Normal {
             alt!('j') => txt!("Merge selections's lines"),
             event!('y') => txt!("Yank selections"),
             event!('d' | 'c') => txt!("[a]Delete[separator],[a]change[] selection"),
+            alt!('d' | 'c') => txt!("[a]Delete[separator],[a]change[] selection w/o yanking"),
             event!('p' | 'P') => txt!("Paste [a]ahead[separator],[a]behind[]"),
             event!('R') => txt!("Replace selections with pasted content"),
             event!(',') => txt!("Remove extra selections"),
@@ -269,20 +223,21 @@ impl Mode for Normal {
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         use mode::KeyCode::*;
 
-        let opts = handle.opts(pa);
-        let brackets = self.brackets;
+        let p_opts = handle.opts(pa);
+        let opts = crate::opts::get();
+        let brackets = opts.brackets;
 
         if let Some(mut one_key) = self.one_key.take() {
-            one_key.send_key(pa, key_event, handle);
+            self.sel_type = one_key.send_key(pa, key_event, handle);
             if self.only_one_action {
-                mode::set(crate::Insert::new());
+                mode::set(crate::Insert);
             }
             return;
         }
 
         let do_match_on_spot = |[c0, c1]: [_; 2], alt_word, moved| {
             use Category::*;
-            let (cat0, cat1) = (Category::of(c0, opts), Category::of(c1, opts));
+            let (cat0, cat1) = (Category::of(c0, p_opts), Category::of(c1, p_opts));
             !matches!(
                 (cat0, cat1, alt_word, moved),
                 (Word, Word, ..)
@@ -380,7 +335,9 @@ impl Mode for Normal {
                     let move_to_match = do_match_on_spot([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
-                    let range = c.search_fwd(word_and_space(alt_word, opts)).nth(param - 1);
+                    let range = c
+                        .search_fwd(word_and_space(alt_word, p_opts))
+                        .nth(param - 1);
                     if let Some(range) = range {
                         c.move_to(range);
                     }
@@ -392,7 +349,9 @@ impl Mode for Normal {
                     let move_to_match = do_match_on_spot([c0, c1], alt_word, p0 != c.caret());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
-                    let range = c.search_fwd(space_and_word(alt_word, opts)).nth(param - 1);
+                    let range = c
+                        .search_fwd(space_and_word(alt_word, p_opts))
+                        .nth(param - 1);
                     if let Some(range) = range {
                         c.move_to(range);
                     }
@@ -411,7 +370,9 @@ impl Mode for Normal {
                         c.move_hor(1);
                     }
 
-                    let range = c.search_rev(word_and_space(alt_word, opts)).nth(param - 1);
+                    let range = c
+                        .search_rev(word_and_space(alt_word, p_opts))
+                        .nth(param - 1);
                     if let Some(range) = range {
                         c.move_to(range);
                         c.set_caret_on_start();
@@ -423,8 +384,10 @@ impl Mode for Normal {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some(range) = { c.search_fwd(word_and_space(alt_word, opts)).nth(param - 1) }
-                {
+                if let Some(range) = {
+                    c.search_fwd(word_and_space(alt_word, p_opts))
+                        .nth(param - 1)
+                } {
                     c.move_to(range.end);
                     c.move_hor(-1);
                 }
@@ -433,8 +396,10 @@ impl Mode for Normal {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                if let Some(range) = { c.search_fwd(space_and_word(alt_word, opts)).nth(param - 1) }
-                {
+                if let Some(range) = {
+                    c.search_fwd(space_and_word(alt_word, p_opts))
+                        .nth(param - 1)
+                } {
                     c.move_to(range.end);
                     c.move_hor(-1);
                 }
@@ -442,8 +407,10 @@ impl Mode for Normal {
             event!('B') | alt!('B') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
-                if let Some(range) = { c.search_rev(word_and_space(alt_word, opts)).nth(param - 1) }
-                {
+                if let Some(range) = {
+                    c.search_rev(word_and_space(alt_word, p_opts))
+                        .nth(param - 1)
+                } {
                     c.move_to(range.start);
                 }
             }),
@@ -470,9 +437,9 @@ impl Mode for Normal {
                 };
 
                 self.one_key = Some(if let 'f' | 'F' = char {
-                    OneKey::Find(param - 1, sel_type, self.f_and_t_set_search)
+                    OneKey::Find(param - 1, sel_type, opts.f_and_t_set_search)
                 } else {
-                    OneKey::Until(param - 1, sel_type, self.f_and_t_set_search)
+                    OneKey::Until(param - 1, sel_type, opts.f_and_t_set_search)
                 });
             }
             alt!('l' | 'L') | event!(End) | shift!(End) => handle.edit_all(pa, |mut c| {
@@ -508,7 +475,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(key_event, opts, brackets).unwrap();
+                    let object = Object::new(key_event, p_opts, brackets).unwrap();
                     let end = object.find_ahead(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
@@ -537,7 +504,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(key_event, opts, brackets).unwrap();
+                    let object = Object::new(key_event, p_opts, brackets).unwrap();
                     let start = object.find_behind(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
@@ -566,25 +533,25 @@ impl Mode for Normal {
             ////////// Insertion mode keys
             event!('i') => {
                 handle.edit_all(pa, |mut c| _ = c.set_caret_on_start());
-                mode::set(crate::Insert::new());
+                mode::set(crate::Insert);
             }
             event!('I') => {
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
-                    if self.indent_on_capital_i {
+                    if opts.indent_on_capital_i {
                         c.ts_reindent(false);
                     } else {
                         c.move_to_col(c.indent());
                     }
                 });
-                mode::set(crate::Insert::new());
+                mode::set(crate::Insert);
             }
             event!('a') => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_end();
                     c.move_hor(1);
                 });
-                mode::set(crate::Insert::new());
+                mode::set(crate::Insert);
             }
             event!('A') => {
                 handle.edit_all(pa, |mut c| {
@@ -592,25 +559,24 @@ impl Mode for Normal {
                     let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
                     c.move_to(p);
                 });
-                mode::set(crate::Insert::new());
+                mode::set(crate::Insert);
             }
             // TODO: Implement parameter
             event!('o') | alt!('o') => {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_end();
                     let caret = c.caret();
-                    let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
-                    c.move_to(p);
+                    c.move_to_col(usize::MAX);
                     c.append("\n");
                     if key_event.modifiers == KeyMod::NONE {
                         c.move_hor(1);
-                        c.ts_reindent(false);
+                        c.ts_reindent(opts.auto_indent);
                     } else {
                         c.move_to(caret);
                     }
                 });
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(crate::Insert::new());
+                    mode::set(crate::Insert);
                 }
             }
             // TODO: Implement parameter
@@ -618,16 +584,16 @@ impl Mode for Normal {
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_start();
                     let char_col = c.v_caret().char_col();
-                    c.move_hor(-(char_col as i32));
+                    c.move_to_col(0);
                     c.insert("\n");
                     if key_event.modifiers == KeyMod::NONE {
-                        c.ts_reindent(false);
+                        c.ts_reindent(opts.auto_indent);
                     } else {
                         c.move_hor(char_col as i32 + 1);
                     }
                 });
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(crate::Insert::new());
+                    mode::set(crate::Insert);
                 }
             }
 
@@ -865,7 +831,7 @@ impl Mode for Normal {
 
             ////////// Clipboard keys
             event!('y') => duat_base::modes::copy_selections(pa, &handle),
-            event!(char @ ('d' | 'c')) => {
+            event!(char @ ('d' | 'c')) | alt!(char @ ('d' | 'c')) => {
                 if key_event.modifiers == KeyMod::NONE {
                     duat_base::modes::copy_selections(pa, &handle);
                 }
@@ -884,7 +850,7 @@ impl Mode for Normal {
                     c.unset_anchor();
                 });
                 if char == 'c' {
-                    mode::set(crate::Insert::new());
+                    mode::set(crate::Insert);
                 }
             }
             event!(char @ ('p' | 'P')) => {
@@ -1079,7 +1045,7 @@ impl Mode for Normal {
         }
 
         if self.one_key.is_none() && self.only_one_action {
-            mode::set(crate::Insert::new());
+            mode::set(crate::Insert);
         }
     }
 
@@ -1095,7 +1061,7 @@ impl Default for Normal {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(crate) struct Brackets(&'static [[&'static str; 2]]);
+pub(crate) struct Brackets(pub(crate) &'static [[&'static str; 2]]);
 
 impl Brackets {
     pub(crate) fn bounds_matching(&self, bound: &str) -> Option<[&'static str; 2]> {
