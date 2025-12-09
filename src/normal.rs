@@ -136,25 +136,43 @@ impl Mode for Normal {
             })
         };
 
-        let words = [
-            ["select", "to", "next"],
-            ["extend", "to", "next"],
-            ["select", "until", "next"],
-            ["extend", "until", "next"],
-            ["select", "to", "previous"],
-            ["extend", "to", "previous"],
-            ["select", "until", "previous"],
-            ["extend", "until", "previous"],
-        ];
+        let mut tf = {
+            let words = [
+                ["select", "to", "next"],
+                ["extend", "to", "next"],
+                ["select", "until", "next"],
+                ["extend", "until", "next"],
+                ["select", "to", "previous"],
+                ["extend", "to", "previous"],
+                ["select", "until", "previous"],
+                ["extend", "until", "previous"],
+            ];
 
-        let mut tf = words.map(|[sel, to, next]| {
-            Some(Bindings {
-                title: Some(txt!("{sel} {to} {next}")),
-                ..mode::bindings!(match _ {
-                    event!(Char(..)) => txt!("[key.char]{{char}}[] to {sel} {to}"),
+            words
+                .map(|[sel, to, next]| Bindings {
+                    title: Some(txt!("{sel} {to} {next}")),
+                    ..mode::bindings!(match _ {
+                        event!(Char(..)) => txt!("[key.char]{{char}}[] to {sel} {to}"),
+                    })
                 })
-            })
-        });
+                .into_iter()
+        };
+
+        let mut obj = {
+            let words = [
+                ["select", "to", "start"],
+                ["select", "to", "end"],
+                ["extend", "to", "start"],
+                ["extend", "to", "end"],
+                ["select", "until", "start"],
+                ["select", "until", "end"],
+                ["extend", "until", "start"],
+                ["extend", "until", "end"],
+            ];
+            words
+                .map(|[sel, to, dir]| object(format!("{sel} {to} whole object {dir}").as_str()))
+                .into_iter()
+        };
 
         mode::bindings!(match _ {
             event!('h' | 'j' | 'k' | 'l') => txt!("Move cursor"),
@@ -167,18 +185,26 @@ impl Mode for Normal {
                 txt!("{select} to start of next {word}"),
             event!('e') | alt!('e') | event!('E') | alt!('E') => txt!("{select} to end of {word}"),
             event!('x') => txt!("Select whole line"),
-            event!('f') => (txt!("Select to next match"), tf[0].take().unwrap()),
-            event!('F') => (txt!("Extend to next match"), tf[1].take().unwrap()),
-            event!('t') => (txt!("Select until next match"), tf[2].take().unwrap()),
-            event!('T') => (txt!("Extend until next match"), tf[3].take().unwrap()),
-            alt!('f') => (txt!("Select to previous match"), tf[4].take().unwrap()),
-            alt!('F') => (txt!("Extend to previous match"), tf[5].take().unwrap()),
-            alt!('t') => (txt!("Select until previous match"), tf[6].take().unwrap()),
-            alt!('T') => (txt!("Extend until previous match"), tf[7].take().unwrap()),
+            event!('f') => (txt!("Select to next match"), tf.next().unwrap()),
+            event!('F') => (txt!("Extend to next match"), tf.next().unwrap()),
+            event!('t') => (txt!("Select until next match"), tf.next().unwrap()),
+            event!('T') => (txt!("Extend until next match"), tf.next().unwrap()),
+            alt!('f') => (txt!("Select to previous match"), tf.next().unwrap()),
+            alt!('F') => (txt!("Extend to previous match"), tf.next().unwrap()),
+            alt!('t') => (txt!("Select until previous match"), tf.next().unwrap()),
+            alt!('T') => (txt!("Extend until previous match"), tf.next().unwrap()),
             alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{select} to end of line"),
             alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{select} to start of line"),
             alt!('a') => (txt!("Select around [a]object"), object("select around")),
+            event!('[') => (txt!("Select to [a]object[] start"), obj.next().unwrap()),
+            event!(']') => (txt!("Select to [a]object[] end"), obj.next().unwrap()),
+            event!('{') => (txt!("Extend to [a]object[] start"), obj.next().unwrap()),
+            event!('}') => (txt!("Extend to [a]object[] end"), obj.next().unwrap()),
             alt!('i') => (txt!("Select inside [a]object"), object("select inside")),
+            alt!('[') => (txt!("Select until [a]object[] start"), obj.next().unwrap()),
+            alt!(']') => (txt!("Select until [a]object[] end"), obj.next().unwrap()),
+            alt!('{') => (txt!("Extend until [a]object[] start"), obj.next().unwrap()),
+            alt!('}') => (txt!("Extend until [a]object[] end"), obj.next().unwrap()),
             event!('%') => txt!("Select whole [a]Buffer"),
             event!('m' | 'M') => txt!("{select} to next matching pair"),
             alt!('m' | 'M') => txt!("{select} to previous matching pair"),
@@ -236,6 +262,7 @@ impl Mode for Normal {
         use mode::KeyCode::*;
 
         let opts = handle.opts(pa);
+        let brackets = self.brackets;
 
         if let Some(mut one_key) = self.one_key.take() {
             one_key.send_key(pa, key_event, handle);
@@ -451,8 +478,16 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(-(c.v_caret().char_col() as i32));
             }),
-            alt!('a') => self.one_key = Some(OneKey::Around(param, self.brackets)),
-            alt!('i') => self.one_key = Some(OneKey::Inside(param, self.brackets)),
+            alt!('a') => self.one_key = Some(OneKey::Surrounding(param, brackets, false)),
+            event!('[') => self.one_key = Some(OneKey::ToPrevious(param, brackets, false, true)),
+            event!(']') => self.one_key = Some(OneKey::ToNext(param, brackets, false, true)),
+            event!('{') => self.one_key = Some(OneKey::ToPrevious(param, brackets, false, false)),
+            event!('}') => self.one_key = Some(OneKey::ToNext(param, brackets, false, false)),
+            alt!('i') => self.one_key = Some(OneKey::Surrounding(param, brackets, true)),
+            alt!('[') => self.one_key = Some(OneKey::ToPrevious(param, brackets, true, true)),
+            alt!(']') => self.one_key = Some(OneKey::ToNext(param, brackets, true, true)),
+            alt!('{') => self.one_key = Some(OneKey::ToPrevious(param, brackets, true, false)),
+            alt!('}') => self.one_key = Some(OneKey::ToNext(param, brackets, true, false)),
             event!('%') => handle.edit_main(pa, |mut c| {
                 c.move_to_start();
                 c.set_anchor();
@@ -462,7 +497,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(key_event, opts, self.brackets).unwrap();
+                    let object = Object::new(key_event, opts, brackets).unwrap();
                     let end = object.find_ahead(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
@@ -470,7 +505,7 @@ impl Mode for Normal {
                     c.move_hor(-1);
 
                     let bound = c.strs(..end).unwrap().to_string();
-                    let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
+                    let [s_b, e_b] = brackets.bounds_matching(&bound)?;
                     let start = Object::two_bounds_simple(s_b, e_b).find_behind(c, 1, false)?;
                     if char == 'm' {
                         c.set_anchor();
@@ -491,14 +526,14 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(key_event, opts, self.brackets).unwrap();
+                    let object = Object::new(key_event, opts, brackets).unwrap();
                     let start = object.find_behind(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
                     c.move_to(start);
 
                     let bound = c.strs(start..).unwrap().to_string();
-                    let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
+                    let [s_b, e_b] = brackets.bounds_matching(&bound)?;
 
                     let end = Object::two_bounds_simple(s_b, e_b).find_ahead(c, 1, false)?;
                     if char == 'm' {

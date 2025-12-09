@@ -15,8 +15,9 @@ pub(crate) enum OneKey {
     GoTo(SelType),
     Find(usize, SelType, bool),
     Until(usize, SelType, bool),
-    Inside(usize, Brackets),
-    Around(usize, Brackets),
+    Surrounding(usize, Brackets, bool),
+    ToNext(usize, Brackets, bool, bool),
+    ToPrevious(usize, Brackets, bool, bool),
     Replace,
 }
 
@@ -24,10 +25,10 @@ impl OneKey {
     /// Sends a key to this "[`Mode`]"
     ///
     /// [`Mode`]: duat_core::mode::Mode
-    pub(crate) fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
-        let just_char = just_char(key_event);
+    pub(crate) fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
+        let just_char = just_char(event);
         let sel_type = match (*self, just_char) {
-            (OneKey::GoTo(st), _) => match_goto(pa, &handle, key_event, st),
+            (OneKey::GoTo(st), _) => match_goto(pa, &handle, event, st),
             (OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss), Some(char)) => {
                 let is_t = matches!(*self, OneKey::Until(..));
                 match_find_until(pa, handle, char, nth, is_t, st);
@@ -36,9 +37,26 @@ impl OneKey {
                 }
                 SelType::Normal
             }
-            (OneKey::Inside(nth, brackets) | OneKey::Around(nth, brackets), _) => {
-                let is_inside = matches!(*self, OneKey::Inside(..));
-                match_inside_around(pa, handle, key_event, nth, brackets, is_inside);
+            (OneKey::Surrounding(nth, brackets, is_inside), _) => {
+                match_bounds(pa, handle, event, nth, brackets, is_inside, Bounds::Both);
+                SelType::Normal
+            }
+            (OneKey::ToNext(nth, brackets, is_inside, set_anchor), _) => {
+                if set_anchor {
+                    handle.edit_all(pa, |mut c| c.set_anchor());
+                } else {
+                    handle.edit_all(pa, |mut c| _ = c.set_anchor_if_needed());
+                }
+                match_bounds(pa, handle, event, nth, brackets, is_inside, Bounds::Ahead);
+                SelType::Normal
+            }
+            (OneKey::ToPrevious(nth, brackets, is_inside, set_anchor), _) => {
+                if set_anchor {
+                    handle.edit_all(pa, |mut c| c.set_anchor());
+                } else {
+                    handle.edit_all(pa, |mut c| _ = c.set_anchor_if_needed());
+                }
+                match_bounds(pa, handle, event, nth, brackets, is_inside, Bounds::Behind);
                 SelType::Normal
             }
             (OneKey::Replace, Some(char)) => {
@@ -158,18 +176,15 @@ fn match_find_until(
     });
 }
 
-fn match_inside_around(
+fn match_bounds(
     pa: &mut Pass,
     handle: Handle,
     event: KeyEvent,
     nth: usize,
     brackets: Brackets,
     is_inside: bool,
+    bounds: Bounds,
 ) {
-    let mode::KeyCode::Char(char) = event.code else {
-        return;
-    };
-
     let opts = handle.opts(pa);
     let initial_cursors_len = handle.selections(pa).len();
 
@@ -177,42 +192,23 @@ fn match_inside_around(
 
     if let Some(object) = Object::new(event, opts, brackets) {
         edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-            let start = object.find_behind(c, nth, is_inside)?;
-            let end = object.find_ahead(c, nth, is_inside)?;
-            c.move_to(start..end);
+            match bounds {
+                Bounds::Ahead => {
+                    let p = object.find_ahead(c, nth, is_inside)?;
+                    c.move_to(p.saturating_sub(1));
+                }
+                Bounds::Behind => {
+                    let p = object.find_behind(c, nth, is_inside)?;
+                    c.move_to(p);
+                }
+                Bounds::Both => {
+                    let start = object.find_behind(c, nth, is_inside)?;
+                    let end = object.find_ahead(c, nth, is_inside)?;
+                    c.move_to(start..end);
+                }
+            };
             Some(())
         });
-    } else if char == 'i' {
-        handle.edit_all(pa, |mut c| {
-            let indent = c.indent();
-            if indent == 0 {
-                let end = c.len();
-                c.move_to(..end);
-            } else {
-                c.set_anchor();
-                c.move_hor(-(c.v_caret().char_col() as i32));
-
-                while c.indent() >= indent && c.caret().line() > 0 {
-                    c.move_ver(-1);
-                }
-                c.move_ver(1);
-                c.swap_ends();
-
-                while c.indent() >= indent && c.caret().line() + 1 < c.text().len().line() {
-                    c.move_ver(1);
-                }
-                c.move_ver(-1);
-
-                if is_inside {
-                    let range = c.text().line_range(c.caret().line());
-                    c.move_to(range.end);
-                    c.move_hor(-1);
-                } else {
-                    let end = c.search_fwd("\n+").next().unwrap().end;
-                    c.move_to(end);
-                }
-            }
-        })
     }
 
     if initial_cursors_len == 1 && failed {
@@ -227,4 +223,10 @@ fn just_char(key_event: KeyEvent) -> Option<char> {
     } else {
         None
     }
+}
+
+enum Bounds {
+    Ahead,
+    Behind,
+    Both,
 }

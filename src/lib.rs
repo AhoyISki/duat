@@ -459,6 +459,7 @@ use duat_core::{
     context::Handle,
     data::Pass,
     form, hook,
+    lender::Lender,
     mode::{self, Cursor, KeyEvent, alt, event},
     opts::PrintOpts,
 };
@@ -822,6 +823,7 @@ enum Object<'o> {
         ahead: Regexes<'o>,
         behind: Regexes<'o>,
     },
+    Indent,
 }
 
 impl<'o> Object<'o> {
@@ -925,6 +927,7 @@ impl<'o> Object<'o> {
                 behind: Regexes::new("\n*[ \t]\\z", "\n*"),
                 repeat: false,
             }),
+            event!('i') => Some(Self::Indent),
             event!(mode::KeyCode::Char(char)) if !char.is_alphanumeric() => Some(Self::OneBound({
                 static BOUNDS: Memoized<char, Regexes> = Memoized::new();
                 BOUNDS.get_or_insert_with(char, || Regexes::simple(char.to_string().leak()))
@@ -972,6 +975,25 @@ impl<'o> Object<'o> {
                     range.end
                 } else {
                     range.start
+                });
+            }
+            Object::Indent => {
+                let indent = c.indent();
+                let mut point = c.text().point_at_line(c.caret().line());
+
+                while c.indent_on(point) >= indent && point.line() < c.text().len().line() {
+                    point = c.text().point_at_line(point.line() + 1)
+                }
+
+                return Some(if is_inside {
+                    point.byte()
+                } else {
+                    c.text()
+                        .lines(point..)
+                        .find(|(_, line)| line.chars().any(|c| !c.is_ascii_whitespace()))
+                        .map(|(num, _)| c.text().point_at_line(num))
+                        .unwrap_or(c.text().len())
+                        .byte()
                 });
             }
         };
@@ -1023,6 +1045,31 @@ impl<'o> Object<'o> {
                     range.start + 1
                 } else {
                     range.end
+                });
+            }
+            Object::Indent => {
+                let indent = c.indent();
+                let mut point = c.text().point_at_line(c.caret().line());
+
+                while let Some(prev_line) = point.line().checked_sub(1) {
+                    let prev = c.text().point_at_line(prev_line);
+                    if c.indent_on(prev) < indent {
+                        break;
+                    }
+                    point = c.text().point_at_line(point.line() - 1)
+                }
+
+                return Some(if is_inside {
+                    point.byte()
+                } else {
+                    c.text()
+                        .lines(..point)
+                        .rev()
+                        .take_while(|(_, line)| line.chars().all(|c| c.is_ascii_whitespace()))
+                        .last()
+                        .map(|(num, _)| c.text().point_at_line(num))
+                        .unwrap_or(point)
+                        .byte()
                 });
             }
         };
