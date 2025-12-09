@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering;
+use std::sync::{LazyLock, Mutex, atomic::Ordering};
 
 use duat_base::modes::{
     ExtendFwd, ExtendRev, IncSearch, PipeSelections, RunCommands, SearchFwd, SearchRev,
@@ -7,6 +7,7 @@ use duat_core::{
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
+    hook::{self, KeyTyped},
     lender::Lender,
     mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, event, shift},
     opts::PrintOpts,
@@ -154,6 +155,9 @@ impl Mode for Normal {
             alt!('F') => (txt!("Extend to previous match"), tf.next().unwrap()),
             alt!('t') => (txt!("Select until previous match"), tf.next().unwrap()),
             alt!('T') => (txt!("Extend until previous match"), tf.next().unwrap()),
+            alt!('.') => txt!(
+                "Repeats the last [a]<A-i>[separator],[a]<I-i>[separator],[a]g[separator],[a]f[separator],[a]t[] [separator]or[] v sequence"
+            ),
             alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{select} to end of line"),
             alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{select} to start of line"),
             alt!('a') => (txt!("Select around [a]object"), object("select around")),
@@ -215,23 +219,34 @@ impl Mode for Normal {
             event!('|') => txt!("[a]Pipe selections[] to external command"),
             event!('g') => (txt!("Go to [parameter]line[] or to places"), goto.clone()),
             event!('G') => (txt!("Select to [paramenter]line[] or to places"), goto),
+            event!('Q') => txt!("Toggle macro recording"),
+            event!('q') => txt!("Replay macro"),
             event!(' ') => txt!("Enter [mode]User[] mode"),
             event!('u' | 'U') => txt!("{undo} last selection change"),
         })
     }
 
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+        static ALT_DOT: Mutex<Option<(OneKey, KeyEvent)>> = Mutex::new(None);
+        static MACRO: Mutex<Option<Vec<KeyEvent>>> = Mutex::new(None);
+        static MACRO_GROUP: LazyLock<hook::GroupId> = LazyLock::new(hook::GroupId::new);
+
         use mode::KeyCode::*;
 
         let p_opts = handle.opts(pa);
         let opts = crate::opts::get();
-        let brackets = opts.brackets;
 
-        if let Some(mut one_key) = self.one_key.take() {
-            self.sel_type = one_key.send_key(pa, key_event, handle);
+        if let Some(one_key) = self.one_key.take() {
+            let (sel_type, succeeded) = one_key.send_key(pa, key_event, handle);
+            self.sel_type = sel_type;
             if self.only_one_action {
                 mode::set(crate::Insert);
             }
+
+            if succeeded {
+                *ALT_DOT.lock().unwrap() = Some((one_key, key_event))
+            }
+
             return;
         }
 
@@ -442,6 +457,14 @@ impl Mode for Normal {
                     OneKey::Until(param - 1, sel_type, opts.f_and_t_set_search)
                 });
             }
+            alt!('.') => {
+                if let Some((one_key, key_event)) = *ALT_DOT.lock().unwrap() {
+                    let (sel_type, _) = one_key.send_key(pa, key_event, handle);
+                    self.sel_type = sel_type;
+                } else {
+                    context::warn!("No previous 2 key sequence");
+                }
+            }
             alt!('l' | 'L') | event!(End) | shift!(End) => handle.edit_all(pa, |mut c| {
                 if key_event.code == Char('l') {
                     c.unset_anchor();
@@ -456,16 +479,16 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(-(c.v_caret().char_col() as i32));
             }),
-            alt!('a') => self.one_key = Some(OneKey::Surrounding(param, brackets, false)),
-            event!('[') => self.one_key = Some(OneKey::ToPrevious(param, brackets, false, true)),
-            event!(']') => self.one_key = Some(OneKey::ToNext(param, brackets, false, true)),
-            event!('{') => self.one_key = Some(OneKey::ToPrevious(param, brackets, false, false)),
-            event!('}') => self.one_key = Some(OneKey::ToNext(param, brackets, false, false)),
-            alt!('i') => self.one_key = Some(OneKey::Surrounding(param, brackets, true)),
-            alt!('[') => self.one_key = Some(OneKey::ToPrevious(param, brackets, true, true)),
-            alt!(']') => self.one_key = Some(OneKey::ToNext(param, brackets, true, true)),
-            alt!('{') => self.one_key = Some(OneKey::ToPrevious(param, brackets, true, false)),
-            alt!('}') => self.one_key = Some(OneKey::ToNext(param, brackets, true, false)),
+            alt!('a') => self.one_key = Some(OneKey::Surrounding(param, false)),
+            event!('[') => self.one_key = Some(OneKey::ToPrevious(param, false, true)),
+            event!(']') => self.one_key = Some(OneKey::ToNext(param, false, true)),
+            event!('{') => self.one_key = Some(OneKey::ToPrevious(param, false, false)),
+            event!('}') => self.one_key = Some(OneKey::ToNext(param, false, false)),
+            alt!('i') => self.one_key = Some(OneKey::Surrounding(param, true)),
+            alt!('[') => self.one_key = Some(OneKey::ToPrevious(param, true, true)),
+            alt!(']') => self.one_key = Some(OneKey::ToNext(param, true, true)),
+            alt!('{') => self.one_key = Some(OneKey::ToPrevious(param, true, false)),
+            alt!('}') => self.one_key = Some(OneKey::ToNext(param, true, false)),
             event!('%') => handle.edit_main(pa, |mut c| {
                 c.move_to_start();
                 c.set_anchor();
@@ -475,7 +498,7 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(key_event, p_opts, brackets).unwrap();
+                    let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
                     let end = object.find_ahead(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
@@ -483,7 +506,7 @@ impl Mode for Normal {
                     c.move_hor(-1);
 
                     let bound = c.strs(..end).unwrap().to_string();
-                    let [s_b, e_b] = brackets.bounds_matching(&bound)?;
+                    let [s_b, e_b] = opts.brackets.bounds_matching(&bound)?;
                     let start = Object::two_bounds_simple(s_b, e_b).find_behind(c, 1, false)?;
                     if char == 'm' {
                         c.set_anchor();
@@ -504,14 +527,14 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
-                    let object = Object::new(key_event, p_opts, brackets).unwrap();
+                    let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
                     let start = object.find_behind(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
                     c.move_to(start);
 
                     let bound = c.strs(start..).unwrap().to_string();
-                    let [s_b, e_b] = brackets.bounds_matching(&bound)?;
+                    let [s_b, e_b] = opts.brackets.bounds_matching(&bound)?;
 
                     let end = Object::two_bounds_simple(s_b, e_b).find_ahead(c, 1, false)?;
                     if char == 'm' {
@@ -1014,6 +1037,44 @@ impl Mode for Normal {
                             handle.write(pa).selections_mut().set_main(main);
                         }
                     }
+                }
+            }
+
+            ////////// Macro keys
+            event!('q') if hook::group_exists(*MACRO_GROUP) => {
+                context::warn!("Recursive macro calls are not permitted");
+                return;
+            }
+            event!('q') => {
+                if let Some(key_events) = MACRO.lock().unwrap().clone() {
+                    duat_core::mode::type_keys(key_events);
+                } else {
+                    context::warn!("No macro recorded");
+                }
+            }
+            event!('Q') => {
+                if hook::group_exists(*MACRO_GROUP) {
+                    context::info!("Stopped recording macro");
+                    hook::remove(*MACRO_GROUP);
+                } else {
+                    context::info!("Started recording macro");
+                    *MACRO.lock().unwrap() = None;
+                    hook::add::<KeyTyped>(|_, key_event| {
+                        if mode::is_currently::<Normal>()
+                            && let event!('Q' | 'q') = key_event
+                        {
+                            return Ok(());
+                        }
+
+                        let mut macro_keys = MACRO.lock().unwrap();
+                        if let Some(key_events) = macro_keys.as_mut() {
+                            key_events.push(key_event);
+                        } else {
+                            *macro_keys = Some(vec![key_event]);
+                        }
+                        Ok(())
+                    })
+                    .grouped(*MACRO_GROUP);
                 }
             }
 

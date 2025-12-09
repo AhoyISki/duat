@@ -6,8 +6,7 @@ use duat_core::{
 };
 
 use crate::{
-    Object, SEARCH, SelType, edit_or_destroy_all, normal::Brackets, select_to_end_of_line,
-    set_anchor_if_needed,
+    Object, SEARCH, SelType, edit_or_destroy_all, select_to_end_of_line, set_anchor_if_needed,
 };
 
 #[derive(Clone, Copy)]
@@ -15,9 +14,9 @@ pub(crate) enum OneKey {
     GoTo(SelType),
     Find(usize, SelType, bool),
     Until(usize, SelType, bool),
-    Surrounding(usize, Brackets, bool),
-    ToNext(usize, Brackets, bool, bool),
-    ToPrevious(usize, Brackets, bool, bool),
+    Surrounding(usize, bool),
+    ToNext(usize, bool, bool),
+    ToPrevious(usize, bool, bool),
     Replace,
 }
 
@@ -25,8 +24,14 @@ impl OneKey {
     /// Sends a key to this "[`Mode`]"
     ///
     /// [`Mode`]: duat_core::mode::Mode
-    pub(crate) fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) -> SelType {
+    pub(crate) fn send_key(
+        &self,
+        pa: &mut Pass,
+        event: KeyEvent,
+        handle: Handle,
+    ) -> (SelType, bool) {
         let just_char = just_char(event);
+
         match (*self, just_char) {
             (OneKey::GoTo(st), _) => match_goto(pa, &handle, event, st),
             (OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss), Some(char)) => {
@@ -35,29 +40,29 @@ impl OneKey {
                 if ss {
                     *SEARCH.lock().unwrap() = char.to_string();
                 }
-                SelType::Normal
+                (SelType::Normal, true)
             }
-            (OneKey::Surrounding(nth, brackets, is_inside), _) => {
-                match_bounds(pa, handle, event, nth, brackets, is_inside, Bounds::Both);
-                SelType::Normal
+            (OneKey::Surrounding(nth, is_inside), _) => {
+                match_bounds(pa, handle, event, nth, is_inside, Bounds::Both);
+                (SelType::Normal, true)
             }
-            (OneKey::ToNext(nth, brackets, is_inside, set_anchor), _) => {
+            (OneKey::ToNext(nth, is_inside, set_anchor), _) => {
                 if set_anchor {
                     handle.edit_all(pa, |mut c| c.set_anchor());
                 } else {
                     handle.edit_all(pa, |mut c| _ = c.set_anchor_if_needed());
                 }
-                match_bounds(pa, handle, event, nth, brackets, is_inside, Bounds::Ahead);
-                SelType::Normal
+                match_bounds(pa, handle, event, nth, is_inside, Bounds::Ahead);
+                (SelType::Normal, true)
             }
-            (OneKey::ToPrevious(nth, brackets, is_inside, set_anchor), _) => {
+            (OneKey::ToPrevious(nth, is_inside, set_anchor), _) => {
                 if set_anchor {
                     handle.edit_all(pa, |mut c| c.set_anchor());
                 } else {
                     handle.edit_all(pa, |mut c| _ = c.set_anchor_if_needed());
                 }
-                match_bounds(pa, handle, event, nth, brackets, is_inside, Bounds::Behind);
-                SelType::Normal
+                match_bounds(pa, handle, event, nth, is_inside, Bounds::Behind);
+                (SelType::Normal, true)
             }
             (OneKey::Replace, Some(char)) => {
                 handle.edit_all(pa, |mut c| {
@@ -68,9 +73,9 @@ impl OneKey {
                         c.unset_anchor();
                     }
                 });
-                SelType::Normal
+                (SelType::Normal, true)
             }
-            _ => SelType::Normal,
+            _ => (SelType::Normal, false),
         }
     }
 }
@@ -80,7 +85,8 @@ fn match_goto(
     handle: &Handle,
     key_event: KeyEvent,
     mut sel_type: SelType,
-) -> SelType {
+) -> (SelType, bool) {
+    let mut matched = true;
     match key_event {
         event!('h') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
@@ -95,10 +101,12 @@ fn match_goto(
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
             c.move_to_coords(0, 0)
         }),
-        event!('l') => handle.edit_all(pa, |c| {
-            select_to_end_of_line(sel_type == SelType::Extend, c);
+        event!('l') => {
+            handle.edit_all(pa, |c| {
+                select_to_end_of_line(sel_type == SelType::Extend, c)
+            });
             sel_type = SelType::BeforeEndOfLine;
-        }),
+        }
         event!('i') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
             let range = c.search_rev("(^|\n)[ \t]*").next();
@@ -116,10 +124,10 @@ fn match_goto(
         event!('a') => _ = cmd::call_notify(pa, "last-buffer"),
         event!('n') => _ = cmd::call_notify(pa, "next-buffer --global"),
         event!('N') => _ = cmd::call_notify(pa, "prev-buffer --global"),
-        _ => {}
+        _ => matched = false,
     }
 
-    sel_type
+    (sel_type, matched)
 }
 
 fn match_find_until(
@@ -179,12 +187,12 @@ fn match_bounds(
     handle: Handle,
     event: KeyEvent,
     nth: usize,
-    brackets: Brackets,
     is_inside: bool,
     bounds: Bounds,
 ) {
     let opts = handle.opts(pa);
     let initial_cursors_len = handle.selections(pa).len();
+    let brackets = crate::opts::get().brackets;
 
     let mut failed = false;
 
