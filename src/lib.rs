@@ -242,7 +242,6 @@ impl Parser {
     /// The root [`Node`] of the syntax tree
     pub fn root(&self) -> Option<Node<'_>> {
         let Some(ParserState::Present(parser)) = &self.0 else {
-            context::warn!("Called function that shouldn't be possible without present parser");
             return None;
         };
 
@@ -252,7 +251,6 @@ impl Parser {
     /// Logs the root node with the [`context::debug`] macro
     pub fn debug_root(&self) {
         let Some(ParserState::Present(parser)) = &self.0 else {
-            context::warn!("Called function that shouldn't be possible without present parser");
             return;
         };
 
@@ -1006,7 +1004,12 @@ pub trait TsCursor {
     /// This is determined by a query, currently, it is the query
     /// located in
     /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
-    fn ts_reindent(&mut self) -> bool;
+    ///
+    /// If `also_without_parser` is set to true, then the line will be
+    /// reindented even if there is no parser being used on the
+    /// [`Buffer`]. It will be reindented to the level of the last non
+    /// empty line.
+    fn ts_reindent(&mut self, also_without_parser: bool) -> bool;
 }
 
 impl<S> TsCursor for Cursor<'_, Buffer, S> {
@@ -1023,7 +1026,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
         parser.indent_on(p, self.text().bytes(), opts)
     }
 
-    fn ts_reindent(&mut self) -> bool {
+    fn ts_reindent(&mut self, also_without_parser: bool) -> bool {
         fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<Range<Point>> {
             let line_start = c.text().point_at_line(c.caret().line());
             let mut lines = c.lines_on(..line_start).rev();
@@ -1039,7 +1042,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
         let old_indent = self.indent();
         let new_indent = if let Some(indent) = self.ts_indent() {
             indent
-        } else if PARSERS.lock().unwrap().get(&self.buffer_id()).is_some() {
+        } else if also_without_parser {
             let prev_non_empty = prev_non_empty_line_points(self);
             prev_non_empty
                 .map(|range| self.indent_on(range.start))
