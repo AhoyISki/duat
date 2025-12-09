@@ -188,12 +188,9 @@ impl Mode for Normal {
             event!('A') => txt!("[mode]Insert[] at the line's end"),
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
-            event!('r') => (
-                txt!("Replace range"),
-                match _ {
-                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-                }
-            ),
+            event!('r') => (txt!("Replace range"), match _ {
+                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+            }),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -454,8 +451,8 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(-(c.v_caret().char_col() as i32));
             }),
-            alt!('a') => self.one_key = Some(OneKey::Around(param - 1, self.brackets)),
-            alt!('i') => self.one_key = Some(OneKey::Inside(param - 1, self.brackets)),
+            alt!('a') => self.one_key = Some(OneKey::Around(param, self.brackets)),
+            alt!('i') => self.one_key = Some(OneKey::Inside(param, self.brackets)),
             event!('%') => handle.edit_main(pa, |mut c| {
                 c.move_to_start();
                 c.set_anchor();
@@ -466,24 +463,24 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(key_event, opts, self.brackets).unwrap();
-                    let e_range = object.find_ahead(c, 0)?;
+                    let end = object.find_ahead(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
-                    c.move_to(e_range.end);
+                    c.move_to(end);
                     c.move_hor(-1);
 
-                    let bound = c.strs(e_range.clone()).unwrap().to_string();
+                    let bound = c.strs(..end).unwrap().to_string();
                     let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
-                    let s_range = Object::Bounds(s_b, e_b).find_behind(c, 1)?;
+                    let start = Object::two_bounds_simple(s_b, e_b).find_behind(c, 1, false)?;
                     if char == 'm' {
                         c.set_anchor();
                     }
-                    c.move_to(s_range.start);
-                    if prev_caret.byte() != e_range.end - 1 {
+                    c.move_to(start);
+                    if prev_caret.byte() != end - 1 {
                         if char == 'm' {
                             c.set_anchor();
                         }
-                        c.move_to(e_range.end);
+                        c.move_to(end);
                         c.move_hor(-1);
                     }
 
@@ -495,25 +492,25 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(key_event, opts, self.brackets).unwrap();
-                    let s_range = object.find_behind(c, 0)?;
+                    let start = object.find_behind(c, 0, false)?;
                     let prev_caret = c.caret();
                     set_anchor_if_needed(char == 'M', c);
-                    c.move_to(s_range.start);
+                    c.move_to(start);
 
-                    let bound = c.strs(s_range.clone()).unwrap().to_string();
+                    let bound = c.strs(start..).unwrap().to_string();
                     let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
 
-                    let e_range = Object::Bounds(s_b, e_b).find_ahead(c, 1)?;
+                    let end = Object::two_bounds_simple(s_b, e_b).find_ahead(c, 1, false)?;
                     if char == 'm' {
                         c.set_anchor();
                     }
-                    c.move_to(e_range.end);
+                    c.move_to(end);
                     c.move_hor(-1);
-                    if prev_caret.byte() != s_range.start {
+                    if prev_caret.byte() != start {
                         if char == 'm' {
                             c.set_anchor();
                         }
-                        c.move_to(s_range.start);
+                        c.move_to(start);
                     }
 
                     Some(())

@@ -442,7 +442,6 @@
 //! [tab mode]: opts::set_very_smart_tabs
 use std::{
     collections::HashMap,
-    ops::Range,
     sync::{LazyLock, Mutex},
 };
 
@@ -457,7 +456,7 @@ mod one_key;
 use duat_base::hooks::SearchPerformed;
 use duat_core::{
     Plugin, Plugins,
-    context::{self, Handle},
+    context::Handle,
     data::Pass,
     form, hook,
     mode::{self, Cursor, KeyEvent, alt, event},
@@ -668,7 +667,7 @@ impl DuatMode {
     /// More specifically, this will change the behavior of keys like
     /// `m` and the `u` object, which will now consider more
     /// patterns when selecting.
-    pub fn with_brackets<'a>(mut self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
+    pub fn with_brackets<'o>(mut self, brackets: impl Iterator<Item = [&'o str; 2]>) -> Self {
         self.normal.set_brackets(brackets);
         self
     }
@@ -794,18 +793,51 @@ impl Category {
     }
 }
 
+/// Regex patterns for searching inside and around objects
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Object<'a> {
-    Anchored(&'a str),
-    Bounds(&'a str, &'a str),
-    Argument(&'a str, &'a str, &'a str),
-    Bound(&'a str),
+struct Regexes<'o> {
+    around: &'o str,
+    inside: &'o str,
 }
 
-impl<'a> Object<'a> {
+impl<'o> Regexes<'o> {
+    fn simple(pat: &'o str) -> Self {
+        Self { around: pat, inside: pat }
+    }
+
+    fn new(around: &'o str, inside: &'o str) -> Self {
+        Self { around, inside }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Object<'o> {
+    OneBound(Regexes<'o>),
+    TwoBounds {
+        ahead: Regexes<'o>,
+        behind: Regexes<'o>,
+        repeat: bool,
+    },
+    Argument {
+        ahead: Regexes<'o>,
+        behind: Regexes<'o>,
+    },
+}
+
+impl<'o> Object<'o> {
+    pub fn two_bounds_simple(ahead: &'o str, behind: &'o str) -> Self {
+        Self::TwoBounds {
+            ahead: Regexes::simple(ahead),
+            behind: Regexes::simple(behind),
+            repeat: true,
+        }
+    }
+}
+
+impl<'o> Object<'o> {
     fn new(key_event: KeyEvent, opts: PrintOpts, brackets: Brackets) -> Option<Self> {
-        static BRACKET_PATS: Memoized<Brackets, ([&str; 2], [&str; 3])> = Memoized::new();
-        let m_and_u_patterns = |brackets: Brackets| {
+        static BRACKET_PATS: Memoized<Brackets, [Regexes; 2]> = Memoized::new();
+        let bound_patterns = |brackets: Brackets| {
             BRACKET_PATS.get_or_insert_with(brackets, || {
                 let (s_pat, e_pat): (String, String) = brackets
                     .iter()
@@ -818,104 +850,189 @@ impl<'a> Object<'a> {
                         }
                     })
                     .collect();
-                let (s_arg, e_arg) = (format!(r"({s_pat})\s*"), format!(r"\s*({e_pat})"));
 
-                ([s_pat.leak(), e_pat.leak()], [
-                    r"(;|,)\s*",
-                    s_arg.leak(),
-                    e_arg.leak(),
-                ])
+                [
+                    Regexes::simple(s_pat.leak() as &'static _),
+                    Regexes::simple(e_pat.leak()),
+                ]
             })
         };
 
         match key_event {
-            event!('Q') => Some(Self::Bound("\"")),
-            event!('q') => Some(Self::Bound("'")),
-            event!('g') => Some(Self::Bound("`")),
-            event!('|') => Some(Self::Bound(r"\|")),
-            event!('$') => Some(Self::Bound(r"\$")),
-            event!('^') => Some(Self::Bound(r"\^")),
-            event!('s') => Some(Self::Bound(r"[\.;!\?]\s*")),
-            event!('p') => Some(Self::Bound("^\n+|\n{2,}|\n$")),
-            event!('b' | '(' | ')') => Some(Self::Bounds(r"\(", r"\)")),
-            event!('B' | '{' | '}') => Some(Self::Bounds(r"\{", r"\}")),
-            event!('r' | '[' | ']') => Some(Self::Bounds(r"\[", r"\]")),
-            event!('a' | '<' | '>') => Some(Self::Bounds("<", ">")),
+            event!('Q') => Some(Self::OneBound(Regexes::simple("\""))),
+            event!('q') => Some(Self::OneBound(Regexes::simple("'"))),
+            event!('g') => Some(Self::OneBound(Regexes::simple("`"))),
+            event!('|') => Some(Self::OneBound(Regexes::simple(r"\|"))),
+            event!('$') => Some(Self::OneBound(Regexes::simple(r"\$"))),
+            event!('^') => Some(Self::OneBound(Regexes::simple(r"\^"))),
+            event!('s') => Some(Self::TwoBounds {
+                ahead: Regexes::simple(r"[\.;!\?]\s*"),
+                behind: Regexes::new(r"[^\.;!\?]*", r"\s*"),
+                repeat: false,
+            }),
+            event!('p') => Some(Self::TwoBounds {
+                ahead: Regexes::new(r"\n{2,}|\z", r"(^\n)*"),
+                behind: Regexes::new(r"\n{2,}|\A", r"(^\n)*"),
+                repeat: false,
+            }),
+            event!('b' | '(' | ')') => Some(Self::TwoBounds {
+                ahead: Regexes::simple(r"\)"),
+                behind: Regexes::simple(r"\("),
+                repeat: true,
+            }),
+            event!('B' | '{' | '}') => Some(Self::TwoBounds {
+                ahead: Regexes::simple(r"\}"),
+                behind: Regexes::simple(r"\{"),
+                repeat: true,
+            }),
+            event!('r' | '[' | ']') => Some(Self::TwoBounds {
+                ahead: Regexes::simple(r"\]"),
+                behind: Regexes::simple(r"\["),
+                repeat: true,
+            }),
+            event!('a' | '<' | '>') => Some(Self::TwoBounds {
+                ahead: Regexes::simple(r">"),
+                behind: Regexes::simple(r"<"),
+                repeat: true,
+            }),
             event!('m' | 'M') | alt!('m' | 'M') => Some({
-                let ([s_b, e_b], _) = m_and_u_patterns(brackets);
-                Self::Bounds(s_b, e_b)
+                let [behind, ahead] = bound_patterns(brackets);
+                Self::TwoBounds { ahead, behind, repeat: true }
             }),
             event!('u') => Some({
-                let (_, [m_b, s_arg, e_arg]) = m_and_u_patterns(brackets);
-                Self::Argument(m_b, s_arg, e_arg)
+                let [behind, ahead] = bound_patterns(brackets);
+                Self::Argument { ahead, behind }
             }),
-            event!('w') => Some(Self::Anchored({
-                static WORD_PATS: Memoized<&'static [char], &str> = Memoized::new();
-                WORD_PATS.get_or_insert_with(opts.extra_word_chars, || {
+            event!('w') => Some({
+                static WORD_PATS: Memoized<&'static [char], [Regexes; 2]> = Memoized::new();
+                let [ahead, behind] = WORD_PATS.get_or_insert_with(opts.extra_word_chars, || {
                     let cat = opts.word_chars_regex();
-                    format!("\\A({cat}+|[^{cat} \t\n]+)\\z").leak()
-                })
-            })),
-            alt!('w') => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
-            event!(' ') => Some(Self::Anchored(r"\A\s*\z")),
-            event!(mode::KeyCode::Char(char)) if !char.is_alphanumeric() => Some(Self::Bound({
-                static BOUNDS: Memoized<char, &str> = Memoized::new();
-                BOUNDS.get_or_insert_with(char, || char.to_string().leak())
+                    [
+                        Regexes::new(format!("\\A({cat}+|[^{cat} \t\n]+)\\s*").leak(), r"\s*"),
+                        Regexes::new(format!("({cat}*|[^{cat} \t\n]*)\\z").leak(), ""),
+                    ]
+                });
+
+                Self::TwoBounds { ahead, behind, repeat: false }
+            }),
+            alt!('w') => Some(Self::TwoBounds {
+                ahead: Regexes::new("\\A[^ \t\n]+\\s*", r"\s*"),
+                behind: Regexes::new("[^ \t\n]*\\z", ""),
+                repeat: false,
+            }),
+            event!(' ') => Some(Self::TwoBounds {
+                ahead: Regexes::new("\\A[ \t]\n*", "\n*"),
+                behind: Regexes::new("\n*[ \t]\\z", "\n*"),
+                repeat: false,
+            }),
+            event!(mode::KeyCode::Char(char)) if !char.is_alphanumeric() => Some(Self::OneBound({
+                static BOUNDS: Memoized<char, Regexes> = Memoized::new();
+                BOUNDS.get_or_insert_with(char, || Regexes::simple(char.to_string().leak()))
             })),
             _ => None,
         }
     }
 
-    fn find_ahead(self, c: &mut Cursor, s_count: usize) -> Option<Range<usize>> {
-        let mut s_count = s_count as i32;
-        match self {
-            Object::Anchored(pat) => {
-                let pat = pat.strip_suffix(r"\z").unwrap();
-                c.search_fwd(pat).next()
+    fn find_ahead(self, c: &mut Cursor, count: usize, is_inside: bool) -> Option<usize> {
+        let mut s_diff = count as i32;
+        let (range, inside_pat) = match self {
+            Object::OneBound(ahead) => (
+                c.search_fwd(ahead.around).nth(count.saturating_sub(1))?,
+                ahead.inside,
+            ),
+            Object::TwoBounds { ahead, repeat: false, .. } => {
+                (c.search_fwd(ahead.around).next()?, ahead.inside)
             }
-            Object::Bounds(s_b, e_b) => {
-                let (_, range) = c.search_fwd_excl([s_b, e_b]).find(|&(id, _)| {
-                    s_count += (id == 0) as i32 - (id == 1) as i32;
-                    s_count <= 0
+            Object::TwoBounds { ahead, behind, repeat: true } => {
+                let pat = [behind.around, ahead.around];
+                let (_, range) = c.search_fwd(pat).find(|&(id, _)| {
+                    s_diff += (id == 0) as i32 - (id == 1) as i32;
+                    s_diff <= 0
                 })?;
-                Some(range)
+                (range, ahead.inside)
             }
-            Object::Bound(b) => c.search_fwd(b).next(),
-            Object::Argument(m_b, s_b, e_b) => {
-                context::debug!("{m_b:?}, {s_b:?}, {e_b:?}");
-                let caret = c.caret();
-                let (_, range) = c.search_fwd([m_b, s_b, e_b]).find(|(id, range)| {
-                    s_count += (*id == 1) as i32 - (*id == 2 && range.start != caret.byte()) as i32;
-                    s_count == 0 || (s_count == 1 && *id == 0)
+            Object::Argument { ahead, behind } => {
+                let pat = [r"\s*([;,]\s*|\z)", behind.around, ahead.around];
+                let (id, range) = c.search_fwd_excl(pat).find(|(id, _)| {
+                    s_diff += (*id == 1) as i32 - (*id == 2) as i32;
+                    s_diff == 0 || (s_diff == 1 && *id == 0)
                 })?;
-                Some(range)
+
+                return Some(if is_inside {
+                    if id == 0 {
+                        range.start
+                    } else {
+                        c.text()
+                            .search_rev(r"\s*", ..range.start)
+                            .unwrap()
+                            .next()?
+                            .start
+                    }
+                } else if id == 0 {
+                    range.end
+                } else {
+                    range.start
+                });
             }
-        }
+        };
+
+        Some(if is_inside {
+            let pat = inside_pat;
+            c.text().search_rev(pat, ..range.end).unwrap().next()?.start
+        } else {
+            range.end
+        })
     }
 
-    fn find_behind(self, c: &mut Cursor, e_count: usize) -> Option<Range<usize>> {
-        let mut e_count = e_count as i32;
-        match self {
-            Object::Anchored(pat) => {
-                let pat = pat.strip_prefix(r"\A").unwrap();
-                c.search_rev(pat).next()
+    fn find_behind(self, c: &mut Cursor, count: usize, is_inside: bool) -> Option<usize> {
+        let mut e_diff = count as i32;
+        let (range, inside_pat) = match self {
+            Object::OneBound(behind) => (
+                c.search_rev(behind.around).nth(count.saturating_sub(1))?,
+                behind.inside,
+            ),
+            Object::TwoBounds { behind, repeat: false, .. } => {
+                (c.search_rev(behind.around).next()?, behind.inside)
             }
-            Object::Bounds(s_b, e_b) => {
-                let (_, range) = c.search_rev([s_b, e_b]).find(|&(id, _)| {
-                    e_count += (id == 1) as i32 - (id == 0) as i32;
-                    e_count <= 0
+            Object::TwoBounds { ahead, behind, repeat: true } => {
+                let pat = [behind.around, ahead.around];
+                let (_, range) = c.search_rev(pat).find(|&(id, _)| {
+                    e_diff += (id == 1) as i32 - (id == 0) as i32;
+                    e_diff <= 0
                 })?;
-                Some(range)
+                (range, behind.inside)
             }
-            Object::Bound(b) => c.search_rev(b).next(),
-            Object::Argument(m_b, s_b, e_b) => {
-                let (_, range) = c.search_rev([m_b, s_b, e_b]).find(|&(id, _)| {
-                    e_count += (id == 2) as i32 - (id == 1) as i32;
-                    e_count == 0 || (e_count == 1 && id == 0)
+            Object::Argument { ahead, behind } => {
+                let pat = [r"(\A|[;,])\s*", behind.around, ahead.around];
+                let (id, range) = c.search_rev_incl(pat).find(|(id, _)| {
+                    e_diff += (*id == 2) as i32 - (*id == 1) as i32;
+                    e_diff == 0 || (e_diff == 1 && *id == 0)
                 })?;
-                Some(range)
+
+                return Some(if is_inside {
+                    if id == 0 {
+                        range.end
+                    } else {
+                        c.text()
+                            .search_fwd(r"\s*", range.end..)
+                            .unwrap()
+                            .next()?
+                            .end
+                    }
+                } else if id == 0 {
+                    range.start + 1
+                } else {
+                    range.end
+                });
             }
-        }
+        };
+
+        Some(if is_inside {
+            let pat = inside_pat;
+            c.text().search_fwd(pat, range.start..).unwrap().next()?.end
+        } else {
+            range.start
+        })
     }
 }
 

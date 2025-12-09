@@ -2,12 +2,12 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::Pass,
-    mode::{self, KeyEvent, KeyMod, event},
+    mode::{self, KeyEvent, event},
 };
 
 use crate::{
-    Category, Normal, Object, SEARCH, SelType, edit_or_destroy_all, normal::Brackets,
-    select_to_end_of_line, set_anchor_if_needed,
+    Normal, Object, SEARCH, SelType, edit_or_destroy_all, normal::Brackets, select_to_end_of_line,
+    set_anchor_if_needed,
 };
 
 #[derive(Clone, Copy)]
@@ -176,83 +176,12 @@ fn match_inside_around(
     let mut failed = false;
 
     if let Some(object) = Object::new(event, opts, brackets) {
-        match char {
-            'w' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let prefix = object.find_behind(c, 0);
-                let suffix = object.find_ahead(c, 0)?;
-                let b0 = {
-                    let b0 = prefix.map(|range| range.start).unwrap_or(c.caret().byte());
-                    let b0_cat = Category::of(c.char_at(b0).unwrap(), opts);
-                    let b1_cat = Category::of(c.char(), opts);
-                    let is_same_cat = event.modifiers == KeyMod::ALT || b0_cat == b1_cat;
-                    if is_same_cat { b0 } else { c.caret().byte() }
-                };
-                c.move_to(b0..suffix.end);
-                Some(())
-            }),
-            's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let start = object.find_behind(c, 0)?.end;
-                let end_range = object.find_ahead(c, 0)?;
-                if is_inside {
-                    c.move_to(start..=end_range.start)
-                } else {
-                    c.move_to(start..end_range.end)
-                }
-
-                Some(())
-            }),
-            'p' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let end_range = object.find_ahead(c, 0)?;
-                let start_range = c
-                    .text()
-                    .search_rev(r"^\n+", ..end_range.start)
-                    .unwrap()
-                    .next()?;
-
-                if is_inside {
-                    c.move_to(start_range.end..end_range.start);
-                } else {
-                    c.move_to(start_range.end..end_range.end);
-                }
-                Some(())
-            }),
-            'u' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let e_range = object.find_ahead(c, nth + 1)?;
-                c.move_to(e_range.start);
-                let s_range = object.find_behind(c, nth + 1)?;
-                if is_inside {
-                    c.move_to(s_range.end..e_range.start);
-                } else {
-                    let space_start = c.text().search_fwd(r"\A\s+", e_range.start..);
-                    let end = if let Some(range) = space_start.unwrap().next() {
-                        range.end
-                    } else {
-                        e_range.end
-                    };
-
-                    let space_start = c.text().search_fwd(r"\s+\z", ..s_range.end);
-                    let start = if let Some(range) = space_start.unwrap().next() {
-                        range.start
-                    } else {
-                        s_range.start
-                    };
-
-                    c.move_to(start..end);
-                }
-
-                Some(())
-            }),
-            _char => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
-                let e_range = object.find_ahead(c, nth + 1)?;
-                let s_range = object.find_behind(c, nth + 1)?;
-                c.move_to(if is_inside {
-                    s_range.end..e_range.start
-                } else {
-                    s_range.start..e_range.end
-                });
-                Some(())
-            }),
-        }
+        edit_or_destroy_all(pa, &handle, &mut failed, |c| {
+            let start = object.find_behind(c, nth, is_inside)?;
+            let end = object.find_ahead(c, nth, is_inside)?;
+            c.move_to(start..end);
+            Some(())
+        });
     } else if char == 'i' {
         handle.edit_all(pa, |mut c| {
             let indent = c.indent();
