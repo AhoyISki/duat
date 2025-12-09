@@ -428,7 +428,7 @@ impl InnerTsParser {
         for range in printed_line_ranges.iter() {
             for range in self.tracker.ranges_to_update_on(range.clone()) {
                 let range = range.start..range.end;
-                
+
                 highlight(
                     self.tree.root_node(),
                     &mut self.injections,
@@ -1016,7 +1016,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
 
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
         let mut parsers = PARSERS.lock().unwrap();
-        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+        let parser = parsers.get_mut(&self.buffer_id())?;
         parser.parse(true);
 
         let opts = self.opts();
@@ -1026,7 +1026,7 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
     fn ts_reindent(&mut self) -> bool {
         fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<Range<Point>> {
             let line_start = c.text().point_at_line(c.caret().line());
-            let mut lines = c.lines_on(..line_start);
+            let mut lines = c.lines_on(..line_start).rev();
             let prev = lines.find_map(|(n, l): (usize, &str)| {
                 l.chars().any(|c| !c.is_whitespace()).then_some(n)
             });
@@ -1039,12 +1039,15 @@ impl<S> TsCursor for Cursor<'_, Buffer, S> {
         let old_indent = self.indent();
         let new_indent = if let Some(indent) = self.ts_indent() {
             indent
-        } else {
+        } else if PARSERS.lock().unwrap().get(&self.buffer_id()).is_some() {
             let prev_non_empty = prev_non_empty_line_points(self);
             prev_non_empty
                 .map(|range| self.indent_on(range.start))
                 .unwrap_or(0)
+        } else {
+            return false;
         };
+
         let indent_diff = new_indent as i32 - old_indent as i32;
 
         self.move_hor(-(old_col as i32));
