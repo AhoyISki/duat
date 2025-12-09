@@ -42,12 +42,13 @@ pub struct Normal {
     /// [`Buffer`]
     pub f_and_t_set_search: bool,
     one_key: Option<OneKey>,
+    only_one_action: bool,
 }
 
 impl Normal {
     /// Returns an instance of the [`Normal`] mode, inspired by
     /// Kakoune
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         const B_PATS: Brackets = Brackets(&[[r"\(", r"\)"], [r"\{", r"\}"], [r"\[", r"\]"]]);
         Normal {
             sel_type: SelType::Normal,
@@ -55,7 +56,14 @@ impl Normal {
             indent_on_capital_i: false,
             f_and_t_set_search: false,
             one_key: None,
+            only_one_action: false,
         }
+    }
+
+    /// The same as [`Self::new`], but immediately returns to insert
+    /// mode
+    pub(crate) const fn only_one_action() -> Self {
+        Self { only_one_action: true, ..Self::new() }
     }
 
     /// [`Normal`] mode with different type of selection
@@ -229,7 +237,7 @@ impl Mode for Normal {
             alt!('(') => txt!("Rotate selections's content backwards"),
             alt!('_') => txt!("Merge adjacent selections"),
             alt!('s') => txt!("Split selections on lines"),
-            alt!('S') => txt!("Split selection on each end"),
+            shift!('D') => txt!("Divide selections on each end"),
             event!('>') => txt!("Indent selections's lines"),
             event!('<') => txt!("Dedent selections's lines"),
             alt!('j') => txt!("Merge selections's lines"),
@@ -266,6 +274,9 @@ impl Mode for Normal {
 
         if let Some(mut one_key) = self.one_key.take() {
             one_key.send_key(pa, key_event, handle);
+            if self.only_one_action {
+                mode::set(crate::Insert::new());
+            }
             return;
         }
 
@@ -655,6 +666,9 @@ impl Mode for Normal {
             event!('(') => handle.selections_mut(pa).rotate_main(-1),
             // TODO: Implement parameter
             alt!(')') => {
+                if handle.selections(pa).len() == 1 {
+                    return;
+                }
                 let last_sel = handle.edit_iter(pa, |mut iter| {
                     let mut last_sel = iter.next().map(|c| c.selection().to_string());
 
@@ -671,6 +685,9 @@ impl Mode for Normal {
             }
             // TODO: Implement parameter
             alt!('(') => {
+                if handle.selections(pa).len() == 1 {
+                    return;
+                }
                 let mut selections = Vec::<String>::new();
                 handle.edit_all(pa, |c| selections.push(c.selection().collect()));
                 let mut s_iter = selections.into_iter().cycle();
@@ -712,7 +729,7 @@ impl Mode for Normal {
                 c.move_to(last_end);
                 c.swap_ends();
             }),
-            alt!('S') => handle.edit_all(pa, |mut c| {
+            event!('D') => handle.edit_all(pa, |mut c| {
                 if c.anchor().is_some() {
                     let mut e_copy = c.copy();
                     e_copy.swap_ends();
@@ -1059,6 +1076,10 @@ impl Mode for Normal {
             event!('u') => handle.text_mut(pa).undo(),
             event!('U') => handle.text_mut(pa).redo(),
             _ => {}
+        }
+
+        if self.one_key.is_none() && self.only_one_action {
+            mode::set(crate::Insert::new());
         }
     }
 

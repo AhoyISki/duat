@@ -6,7 +6,7 @@ use duat_core::{
     context::Handle,
     data::Pass,
     lender::Lender,
-    mode::{self, Cursor, KeyEvent, KeyMod, Mode, ctrl, event, shift},
+    mode::{self, Cursor, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
 };
 use treesitter::TsCursor;
 
@@ -59,11 +59,13 @@ impl Mode for Insert {
             event!(Char(..) | Enter) => txt!("Insert the character"),
             event!(Left | Down | Up | Right) => txt!("Move cursor"),
             shift!(Left | Down | Up | Right) => txt!("Select and move cursor"),
+            event!(Home | End) => txt!("Move to [a]start[],[a]end[] of line"),
             ctrl!('n') => txt!("Next completion entry"),
             ctrl!('p') | shift!(BackTab) => txt!("Previous completion entry"),
             event!(Tab) => txt!("Reindent or next completion entry"),
             event!(Backspace | Delete) => txt!("Remove character or selection"),
             event!(Esc) => txt!("Return to [mode]Normal[] mode"),
+            alt!(';') => txt!("Run a single [mode]Normal[] mode command"),
         })
     }
 
@@ -202,10 +204,14 @@ impl Mode for Insert {
                 c.move_hor(1);
             }),
 
+            event!(Home) => handle.edit_all(pa, |mut c| c.move_to_col(0)),
+            event!(End) => handle.edit_all(pa, |mut c| c.move_to_col(usize::MAX)),
+
             event!(Esc) => {
                 handle.text_mut(pa).new_moment();
                 mode::set(Normal::new());
             }
+            alt!(';') => mode::set(Normal::only_one_action()),
             _ => {}
         }
     }
