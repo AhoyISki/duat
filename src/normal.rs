@@ -572,7 +572,7 @@ impl Mode for Normal {
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
                     if self.indent_on_capital_i {
-                        c.ts_reindent();
+                        c.ts_reindent(false);
                     } else {
                         c.move_to_col(c.indent());
                     }
@@ -604,7 +604,7 @@ impl Mode for Normal {
                     c.append("\n");
                     if key_event.modifiers == KeyMod::NONE {
                         c.move_hor(1);
-                        c.ts_reindent();
+                        c.ts_reindent(false);
                     } else {
                         c.move_to(caret);
                     }
@@ -621,7 +621,7 @@ impl Mode for Normal {
                     c.move_hor(-(char_col as i32));
                     c.insert("\n");
                     if key_event.modifiers == KeyMod::NONE {
-                        c.ts_reindent();
+                        c.ts_reindent(false);
                     } else {
                         c.move_hor(char_col as i32 + 1);
                     }

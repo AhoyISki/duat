@@ -66,6 +66,7 @@ impl Mode for Insert {
             event!(Backspace | Delete) => txt!("Remove character or selection"),
             event!(Esc) => txt!("Return to [mode]Normal[] mode"),
             alt!(';') => txt!("Run a single [mode]Normal[] mode command"),
+            ctrl!('u') => txt!("Merge changes to this point in a single [a]Moment"),
         })
     }
 
@@ -87,7 +88,7 @@ impl Mode for Insert {
             event!(Tab) => match crate::opts::get_tab_mode() {
                 TabMode::Normal => handle.edit_all(pa, |mut c| {
                     if self.indent_keys.contains(&'\t') {
-                        c.ts_reindent();
+                        c.ts_reindent(false);
                     }
 
                     if INSERT_TABS.load(Ordering::Relaxed) {
@@ -102,7 +103,7 @@ impl Mode for Insert {
                 TabMode::Smart => handle.edit_all(pa, |mut c| {
                     let char_col = c.v_caret().char_col();
                     if (self.indent_keys.contains(&'\t') || char_col <= c.indent())
-                        && c.ts_reindent()
+                        && c.ts_reindent(false)
                     {
                         return;
                     }
@@ -120,7 +121,7 @@ impl Mode for Insert {
                     let do_scroll = handle.edit_main(pa, |mut c| {
                         let char_col = c.v_caret().char_col();
                         !((self.indent_keys.contains(&'\t') || char_col <= c.indent())
-                            && c.ts_reindent())
+                            && c.ts_reindent(false))
                     });
 
                     if do_scroll {
@@ -134,7 +135,7 @@ impl Mode for Insert {
                 c.insert(char);
                 c.move_hor(1);
                 if self.indent_keys.contains(&char) && c.indent() == c.v_caret().char_col() - 1 {
-                    c.ts_reindent();
+                    c.ts_reindent(false);
                 }
             }),
 
@@ -142,7 +143,7 @@ impl Mode for Insert {
                 c.insert('\n');
                 c.move_hor(1);
                 if self.indent_keys.contains(&'\n') {
-                    c.ts_reindent();
+                    c.ts_reindent(false);
                 }
             }),
             event!(Backspace) => handle.edit_all(pa, |mut c| {
@@ -212,6 +213,7 @@ impl Mode for Insert {
                 mode::set(Normal::new());
             }
             alt!(';') => mode::set(Normal::only_one_action()),
+            ctrl!('u') => handle.text_mut(pa).new_moment(),
             _ => {}
         }
     }
