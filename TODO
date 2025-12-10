@@ -41,6 +41,7 @@ KNOWN BUGS:
   [ ] std::mem::replace (grrrr...).
   [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
+  [ ] On slow updates, tree-sitter can get a lil slow.
 
 FUTURE UPDATES:
 [ ] Hover to reveal full shell expansion.
