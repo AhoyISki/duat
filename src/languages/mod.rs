@@ -46,7 +46,6 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
     let parser_path = lib_dir.join(resolve_lib_file(&lang));
 
     if let Ok(lib) = unsafe { Library::new(&parser_path) } {
-        context::debug!("Loading tree-sitter parser for [a]{filetype}");
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
             let lang_fn = lib
