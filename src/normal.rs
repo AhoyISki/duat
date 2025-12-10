@@ -530,27 +530,16 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
-                    let end = object.find_ahead(c, 0, false)?;
-                    let prev_caret = c.caret();
-                    set_anchor_if_needed(char == 'M', c);
-                    c.move_to(end);
-                    c.move_hor(-1);
 
-                    let bound = c.strs(..end).unwrap().to_string();
-                    let [s_b, e_b] = opts.brackets.bounds_matching(&bound)?;
-                    let start = Object::two_bounds_simple(s_b, e_b).find_behind(c, 1, false)?;
+					c.move_hor(1);
+                    let end = object.find_ahead(c, 0, true)?;
+                    c.move_to(end);
                     if char == 'm' {
                         c.set_anchor();
+                        let start = object.find_behind(c, 1, false)?;
+                        c.move_to(start);
+                        c.set_caret_on_end();
                     }
-                    c.move_to(start);
-                    if prev_caret.byte() != end - 1 {
-                        if char == 'm' {
-                            c.set_anchor();
-                        }
-                        c.move_to(end);
-                        c.move_hor(-1);
-                    }
-
                     Some(())
                 })
             }
@@ -559,27 +548,16 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
+
                     let start = object.find_behind(c, 0, false)?;
-                    let prev_caret = c.caret();
-                    set_anchor_if_needed(char == 'M', c);
                     c.move_to(start);
-
-                    let bound = c.strs(start..).unwrap().to_string();
-                    let [s_b, e_b] = opts.brackets.bounds_matching(&bound)?;
-
-                    let end = Object::two_bounds_simple(s_b, e_b).find_ahead(c, 1, false)?;
+                    
                     if char == 'm' {
                         c.set_anchor();
+                        let end = object.find_ahead(c, 0, true)?;
+                        c.move_to(end);
+                        c.set_caret_on_start();
                     }
-                    c.move_to(end);
-                    c.move_hor(-1);
-                    if prev_caret.byte() != start {
-                        if char == 'm' {
-                            c.set_anchor();
-                        }
-                        c.move_to(start);
-                    }
-
                     Some(())
                 })
             }
