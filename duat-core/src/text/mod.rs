@@ -728,25 +728,35 @@ impl Text {
     /// This iterator will consider some [`Tag`]s before `b`, since
     /// their ranges may overlap with `b`
     ///
+    /// The amount of tags to look for behind depeds on the internal
+    /// `min_len` factor. You can override by providing a lookaround,
+    /// which will tell Duat how many `Tag`s to look behind. If you
+    /// set it to `Some(0)`, lookaround will be disabled.
+    ///
     /// # Note
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_fwd(&self, b: usize) -> FwdTags<'_> {
-        self.0.tags.fwd_at(b)
+    pub fn tags_fwd(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
+        self.0.tags.fwd_at(b, lookaround)
     }
 
     /// An reverse iterator over the [`Tag`]s of the [`Text`]
     ///
-    /// This iterator will consider some [`Tag`]s ahead of `b`, since
-    /// their ranges may overlap with `b`
+    /// This iterator will consider some `Tag`s ahead of `b`, since
+    /// their ranges may overlap with `b`.
+    ///
+    /// The amount of tags to look for ahead depeds on the internal
+    /// `min_len` factor. You can override by providing a lookaround,
+    /// which will tell Duat how many `Tag`s to look ahead. If you set
+    /// it to `Some(0)`, lookaround will be disabled.
     ///
     /// # Note
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_rev(&self, b: usize) -> RevTags<'_> {
-        self.0.tags.rev_at(b)
+    pub fn tags_rev(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
+        self.0.tags.rev_at(b, lookaround)
     }
 
     /// A forward [`Iterator`] over the [`RawTag`]s

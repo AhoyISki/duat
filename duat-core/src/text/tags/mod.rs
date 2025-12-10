@@ -347,7 +347,7 @@ impl InnerTags {
 
     /// Removes all [`RawTag`]s of a given [`Taggers`]
     pub fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
-        let (start, end) = crate::utils::get_ends(within, self.len_bytes());
+        let (start, end) = crate::utils::get_ends(within, self.len_bytes() + 1);
 
         for range in self
             .extents
@@ -413,7 +413,7 @@ impl InnerTags {
 
         self.list
             .extract_if_while(start..end, |_, entry| Some(filter(entry)))
-            .for_each(|(i, (b, tag))| {
+            .for_each(|(i, (_, tag))| {
                 removed += 1;
                 self.bounds.shift_by(i, [-1, 0]);
 
@@ -543,10 +543,10 @@ impl InnerTags {
     ////////// Iterator functions
 
     /// Returns a forward iterator at a given byte
-    pub fn fwd_at(&self, b: usize) -> FwdTags<'_> {
+    pub fn fwd_at(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
         let start = {
             let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
-            s_i.saturating_sub(self.bounds.min_len())
+            s_i.saturating_sub(lookaround.unwrap_or(self.bounds.min_len()))
         };
 
         let bounds = FwdBoundsBefore { iter: self.bounds.iter_fwd(), start };
@@ -558,10 +558,10 @@ impl InnerTags {
     }
 
     /// Returns a reverse iterator at a given byte
-    pub fn rev_at(&self, b: usize) -> RevTags<'_> {
+    pub fn rev_at(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
         let end = {
             let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(b as i32, |(b, _)| b);
-            (e_i + self.bounds.min_len()).min(self.list.len())
+            (e_i + lookaround.unwrap_or(self.bounds.min_len())).min(self.list.len())
         };
 
         let bounds = RevBoundsAfter { iter: self.bounds.iter_rev(), end };

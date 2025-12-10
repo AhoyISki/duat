@@ -58,16 +58,10 @@ impl Bytes {
         let mut rev_cache = dfas.rev.1.write().unwrap();
 
         Ok(std::iter::from_fn(move || {
-            let init = fwd_input.start();
-            let h_end = loop {
+            let h_end = {
                 if let Ok(Some(half)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input)
                 {
-                    // Ignore empty matches at the start of the input.
-                    if half.offset() == init {
-                        fwd_input.set_start(init + 1);
-                    } else {
-                        break half.offset();
-                    }
+                    half.offset()
                 } else {
                     return None;
                 }
@@ -80,6 +74,15 @@ impl Bytes {
                 return None;
             };
             let h_start = half.offset();
+
+            // To not repeatedly match the same empty thing over and over.
+            if h_start == h_end {
+                if h_end == fwd_input.end() {
+                    return None;
+                }
+                fwd_input.set_start(h_end + 1);
+                fwd_input.set_start(h_end + 1);
+            }
 
             Some(R::get_match(
                 b_start + h_start..b_start + h_end,
@@ -114,31 +117,34 @@ impl Bytes {
         let mut rev_cache = dfas.rev.1.write().unwrap();
 
         Ok(std::iter::from_fn(move || {
-            let init = rev_input.end();
-            let start = loop {
+            let h_start = {
                 if let Ok(Some(half)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input)
                 {
-                    // Ignore empty matches at the end of the input.
-                    if half.offset() == init {
-                        rev_input.set_end(init.checked_sub(1)?);
-                    } else {
-                        break half.offset();
-                    }
+                    half.offset()
                 } else {
                     return None;
                 }
             };
 
-            rev_input.set_end(start);
-            fwd_input.set_start(start);
+            rev_input.set_end(h_start);
+            fwd_input.set_start(h_start);
 
             let Ok(Some(half)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) else {
                 return None;
             };
-            let end = half.offset();
+            let h_end = half.offset();
+
+            // To not repeatedly match the same empty thing over and over.
+            if h_start == h_end {
+                if h_start == 0 {
+                    return None;
+                }
+                fwd_input.set_start(h_end - 1);
+                fwd_input.set_start(h_end - 1);
+            }
 
             Some(R::get_match(
-                range.start + start..range.start + end,
+                range.start + h_start..range.start + h_end,
                 half.pattern(),
             ))
         }))
@@ -210,19 +216,12 @@ impl<S: AsRef<str>> Matcheable for S {
         let mut rev_cache = dfas.rev.1.write().unwrap();
 
         Ok(std::iter::from_fn(move || {
-            let init = fwd_input.start();
-            let h_end = loop {
-                if let Ok(Some(half)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input)
-                {
-                    // Ignore empty matches at the start of the input.
-                    if half.offset() == init {
-                        fwd_input.set_start(init + 1);
-                    } else {
-                        break half.offset();
-                    }
-                } else {
-                    return None;
-                }
+            let h_end = if let Ok(Some(half)) =
+                try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input)
+            {
+                half.offset()
+            } else {
+                return None;
             };
 
             fwd_input.set_start(h_end);
@@ -232,6 +231,15 @@ impl<S: AsRef<str>> Matcheable for S {
                 return None;
             };
             let h_start = hm.offset();
+
+            // To not repeatedly match the same empty thing over and over.
+            if h_start == h_end {
+                if h_end == fwd_input.end() {
+                    return None;
+                }
+                fwd_input.set_start(h_end + 1);
+                fwd_input.set_start(h_end + 1);
+            }
 
             Some((start + h_start..start + h_end, &str[h_start..h_end]))
         }))
@@ -254,16 +262,10 @@ impl<S: AsRef<str>> Matcheable for S {
         let mut rev_cache = dfas.rev.1.write().unwrap();
 
         Ok(std::iter::from_fn(move || {
-            let init = rev_input.end();
-            let h_start = loop {
+            let h_start = {
                 if let Ok(Some(half)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input)
                 {
-                    // Ignore empty matches at the end of the input.
-                    if half.offset() == init {
-                        rev_input.set_end(init.checked_sub(1)?);
-                    } else {
-                        break half.offset();
-                    }
+                    half.offset()
                 } else {
                     return None;
                 }
@@ -277,6 +279,15 @@ impl<S: AsRef<str>> Matcheable for S {
             };
             let h_end = hm.offset();
 
+            // To not repeatedly match the same empty thing over and over.
+            if h_start == h_end {
+                if h_start == 0 {
+                    return None;
+                }
+                fwd_input.set_start(h_end - 1);
+                fwd_input.set_start(h_end - 1);
+            }
+            
             Some((start + h_start..start + h_end, &str[h_start..h_end]))
         }))
     }

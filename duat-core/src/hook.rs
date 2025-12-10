@@ -388,8 +388,8 @@ mod global {
     /// followed these additions
     ///
     /// [`hook::remove`]: remove
-    pub fn group_exists(group: &'static str) -> bool {
-        HOOKS.group_exists(group)
+    pub fn group_exists(group: impl Into<InnerGroupId>) -> bool {
+        HOOKS.group_exists(group.into())
     }
 }
 
@@ -1297,8 +1297,8 @@ impl InnerHooks {
     }
 
     /// Checks if a hook group exists
-    fn group_exists(&self, group: impl Into<InnerGroupId>) -> bool {
-        self.groups.lock().unwrap().contains(&group.into())
+    fn group_exists(&self, group: InnerGroupId) -> bool {
+        self.groups.lock().unwrap().contains(&group)
     }
 }
 

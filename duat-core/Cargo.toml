@@ -30,6 +30,7 @@ log = "0.4.28"
 regex-cursor = { version = "0.1.5", default-features = false, features = ["perf-inline"] }
 regex-syntax = "0.8.8"
 thread-amount = "0.2.2"
+shellexpand = "3.1.1"
 
 [target.'cfg(target_os = "android")'.dependencies.android_clipboard]
 version = "0.1.0"

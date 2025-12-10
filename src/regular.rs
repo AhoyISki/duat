@@ -63,7 +63,7 @@ impl mode::Mode for Regular {
                     c.insert(' '.repeat(indent));
 
                     #[cfg(feature = "treesitter")]
-                    c.ts_reindent();
+                    c.ts_reindent(false);
                 })
             }
 

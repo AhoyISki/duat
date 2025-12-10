@@ -16,6 +16,12 @@ FOR NEXT UPDATE:
 [x] Make cmd::add not a macro (?!).
 [x] Revamped Flags.
 [x] Remove Parsers apparently.
+[x] Standardize duatmode objects.
+[ ] More duatmode bindings.
+  [x] . and <a-.>.
+  [ ] <c-o> and <c-i>.
+  [x] q and Q
+[ ] Fix existing duatmode bindings.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -37,6 +43,7 @@ KNOWN BUGS:
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
 
 FUTURE UPDATES:
+[ ] Hover to reveal full shell expansion.
 [ ] Add a little button next to tree-sitter injections to download them.
 [ ] File tracking.
 [ ] Add a HandleMut or something like that.

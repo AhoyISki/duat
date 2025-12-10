@@ -79,7 +79,7 @@ use duat_core::{
     text::Text,
     ui::Orientation,
 };
-pub use duatmode::opts::*;
+use duatmode::opts::DuatModeOpts;
 
 use crate::widgets::NotificationsOpts;
 
@@ -87,16 +87,11 @@ use crate::widgets::NotificationsOpts;
 ///
 /// [`Buffer`]: crate::widgets::Buffer
 pub(crate) static BUFFER_OPTS: Mutex<PrintOpts> = Mutex::new(PrintOpts::default_for_input());
-
 pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts::new());
-
 pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
-
 pub(crate) static NOTIFICATIONS_FN: LazyLock<NotificationsFn> =
     LazyLock::new(|| Mutex::new(Box::new(|_| {})));
-
 pub(crate) static LOGBOOK_FN: LazyLock<LogBookFn> = LazyLock::new(|| Mutex::new(Box::new(|_| {})));
-
 pub(crate) static HELP_KEY: Mutex<Option<KeyEvent>> =
     Mutex::new(Some(KeyEvent::new(KeyCode::Char('?'), KeyMod::CONTROL)));
 pub(crate) static WHICHKEY_OPTS: LazyLock<Mutex<WhichKeyOpts>> = LazyLock::new(Mutex::default);
@@ -203,6 +198,14 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 /// [`Text`]: crate::text::Text
 pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
     set_fn(&mut BUFFER_OPTS.lock().unwrap())
+}
+
+/// Sets options for the [`Insert`] and [`Normal`] modes of `duatmode`
+///
+/// [`Insert`]: duatmode::Insert
+/// [`Normal`]: duatmode::Normal
+pub fn set_duatmode(set_fn: impl FnOnce(&mut DuatModeOpts)) {
+    duatmode::opts::set(set_fn)
 }
 
 /// Change the global [`PrintOpts`] for [`LineNumber`]s
@@ -578,8 +581,6 @@ pub fn set_logs(mut set_fn: impl FnMut(&mut LogBookOpts) + Send + 'static) {
 }
 
 /// Changes the [`WhichKey`] widget
-///
-///
 ///
 /// [`WhichKey`]: crate::widgets::WhichKey
 pub fn set_which_key(set_fn: impl FnOnce(&mut WhichKeyOpts)) {

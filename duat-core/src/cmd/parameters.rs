@@ -453,7 +453,11 @@ pub struct ValidFilePath(pub PathBuf);
 
 impl Parameter for ValidFilePath {
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
-        let path = args.next_as::<PathBuf>(pa)?;
+        let path = PathBuf::from(
+            shellexpand::full(args.next()?.value)
+                .map_err(|err| txt!("{err}"))?
+                .into_owned(),
+        );
 
         let canon_path = path.canonicalize();
         let path = if let Ok(path) = &canon_path {

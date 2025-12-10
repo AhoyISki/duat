@@ -71,7 +71,7 @@ impl<'a> FwdIter<'a> {
             point,
             init_point: point,
             chars: buf_chars_fwd(text, point.byte()),
-            tags: text.tags_fwd(point.byte()),
+            tags: text.tags_fwd(point.byte(), None),
             conceals: 0,
 
             main_iter: None,
@@ -290,7 +290,7 @@ impl<'a> RevIter<'a> {
             point,
             init_point: point,
             chars: buf_chars_rev(text, point.byte()),
-            tags: text.tags_rev(point.byte()),
+            tags: text.tags_rev(point.byte(), None),
             conceals: 0,
 
             main_iter: None,

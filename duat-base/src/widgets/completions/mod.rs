@@ -184,10 +184,10 @@ impl Completions {
     }
 
     /// Goes to the next entry on the list.
-    pub fn scroll(pa: &mut Pass, scroll: i32) {
+    pub fn scroll(pa: &mut Pass, scroll: i32) -> Option<(String, String)> {
         if scroll == 0 {
             context::warn!("Scrolling [a]Completions[] by 0");
-            return;
+            return None;
         }
 
         let Some(handle) = context::windows()
@@ -196,11 +196,12 @@ impl Completions {
             .cloned()
         else {
             context::warn!("No Completions open");
-            return;
+            return None;
         };
 
-        Completions::update_text_and_position(pa, &handle, scroll);
+        let main_repl = Completions::update_text_and_position(pa, &handle, scroll);
         handle.write(pa).show_without_prefix = true;
+        main_repl
     }
 
     /// Wether there is an open `Completions` [`Widget`]
@@ -210,7 +211,11 @@ impl Completions {
             .any(|handle| handle.widget().is::<Completions>())
     }
 
-    fn update_text_and_position(pa: &mut Pass, handle: &Handle<Self>, scroll: i32) {
+    fn update_text_and_position(
+        pa: &mut Pass,
+        handle: &Handle<Self>,
+        scroll: i32,
+    ) -> Option<(String, String)> {
         let master_handle = handle.master().unwrap();
         let (master, comp) = pa.write_many((master_handle.widget(), handle.widget()));
 
@@ -230,13 +235,16 @@ impl Completions {
 
         lists.sort_by_key(|((start, _), _)| *start);
 
-        if let Some(((start_byte, prefix_regex), ((text, sidebar), replacement))) = lists
-            .into_iter()
-            .find_map(|((start, list), prefix_regex)| Some((start, prefix_regex)).zip(list))
+        let main_repl = if let Some(((start_byte, prefix_regex), ((text, sidebar), replacement))) =
+            lists
+                .into_iter()
+                .find_map(|((start, list), prefix_regex)| Some((start, prefix_regex)).zip(list))
         {
             comp.text = text;
             comp.sidebar = sidebar;
             let prefix_regex = prefix_regex.to_string();
+
+            let mut main_replacement = None;
 
             let mut new_start_byte = start_byte;
             if let Some((replacement, info_text)) = replacement {
@@ -247,6 +255,11 @@ impl Completions {
                         .unwrap_or(c.caret().byte()..c.caret().byte());
 
                     c.move_to(prefix_range.start..c.caret().byte());
+
+                    if c.is_main() {
+                        main_replacement = Some((c.selection().to_string(), replacement.clone()));
+                    }
+
                     c.replace(&replacement);
                     c.unset_anchor();
                     if !replacement.is_empty() {
@@ -313,14 +326,17 @@ impl Completions {
                 let text = master_handle.text_mut(pa);
                 text.remove_tags(*TAGGER, ..);
                 text.insert_tag(*TAGGER, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
-                return;
+                return main_replacement;
             } else {
                 comp.start_byte = new_start_byte;
             }
+
+            main_replacement
         } else {
             comp.text = Text::default();
             comp.sidebar = Text::default();
-        }
+            None
+        };
 
         let (comp, area) = handle.write_with_area(pa);
         let height = comp.text.len().line() as f32;
@@ -328,6 +344,8 @@ impl Completions {
         area.set_height(if comp.text.is_empty() { 0.0 } else { height })
             .unwrap();
         Completions::set_frame(pa, handle);
+
+        main_repl
     }
 
     fn set_frame(pa: &mut Pass, handle: &Handle<Self>) {
@@ -376,8 +394,8 @@ impl Widget for Completions {
 
     fn on_mouse_event(pa: &mut Pass, _: &Handle<Self>, event: MouseEvent) {
         match event.kind {
-            MouseEventKind::ScrollDown => Self::scroll(pa, 1),
-            MouseEventKind::ScrollUp => Self::scroll(pa, -1),
+            MouseEventKind::ScrollDown => _ = Self::scroll(pa, 1),
+            MouseEventKind::ScrollUp => _ = Self::scroll(pa, -1),
             _ => {}
         }
     }

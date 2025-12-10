@@ -143,8 +143,8 @@ pub fn current_type_id() -> std::any::TypeId {
 /// [`mode::map`]: map
 /// [`mode::alias`]: alias
 /// [`KeysTyped`]: crate::hook::KeysTyped
-pub fn type_keys(keys: impl AsRef<str>) {
-    let keys = str_to_keys(keys.as_ref());
+pub fn type_keys(keys: impl IntoIterator<Item = KeyEvent>) {
+    let keys: Vec<_> = keys.into_iter().collect();
     if !keys.is_empty() {
         KEYS_WERE_SENT.fetch_add(1, Ordering::Relaxed);
         crate::context::sender()

@@ -310,14 +310,14 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         let range = self
             .text()
             .line_range(line.min(self.text().last_point().line()));
-        let (p, _) = self
+        let byte = self
             .text()
             .chars_fwd(range.clone())
             .unwrap()
+            .map(|(p, _)| p.byte())
             .take(col + 1)
-            .last()
-            .unzip();
-        self.move_to(p.unwrap_or(range.end));
+            .last();
+        self.move_to(byte.unwrap_or(range.end.byte() - 1));
     }
 
     /// Moves to a column on the current line
