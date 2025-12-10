@@ -179,6 +179,7 @@ impl Mode for Normal {
             event!('A') => txt!("[mode]Insert[] at the line's end"),
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
+            event!('.') => txt!("Repeats the last [mode]Insert[] command"),
             event!('r') => (txt!("Replace range"), match _ {
                 event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
             }),
@@ -227,6 +228,7 @@ impl Mode for Normal {
     }
 
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
+        static LAST_INSERT_KEY: Mutex<Option<InsertKey>> = Mutex::new(None);
         static ALT_DOT: Mutex<Option<(OneKey, KeyEvent)>> = Mutex::new(None);
         static MACRO: Mutex<Option<Vec<KeyEvent>>> = Mutex::new(None);
         static MACRO_GROUP: LazyLock<hook::GroupId> = LazyLock::new(hook::GroupId::new);
@@ -278,6 +280,35 @@ impl Mode for Normal {
         } else {
             let (param, param_was_set) = crate::parameter::take_param(pa);
             (param as usize, param_was_set)
+        };
+
+        // Insert mode functions
+        let open_new_line_below = |pa: &mut Pass| {
+            handle.edit_all(pa, |mut c| {
+                c.set_caret_on_end();
+                let caret = c.caret();
+                c.move_to_col(usize::MAX);
+                c.append("\n");
+                if key_event.modifiers == KeyMod::NONE {
+                    c.move_hor(1);
+                    c.ts_reindent(opts.auto_indent);
+                } else {
+                    c.move_to(caret);
+                }
+            });
+        };
+        let open_new_line_above = |pa: &mut Pass| {
+            handle.edit_all(pa, |mut c| {
+                c.set_caret_on_start();
+                let char_col = c.v_caret().char_col();
+                c.move_to_col(0);
+                c.insert("\n");
+                if key_event.modifiers == KeyMod::NONE {
+                    c.ts_reindent(opts.auto_indent);
+                } else {
+                    c.move_hor(char_col as i32 + 1);
+                }
+            });
         };
 
         match key_event {
@@ -556,6 +587,7 @@ impl Mode for Normal {
             ////////// Insertion mode keys
             event!('i') => {
                 handle.edit_all(pa, |mut c| _ = c.set_caret_on_start());
+                *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Insert);
                 mode::set(crate::Insert);
             }
             event!('I') => {
@@ -567,6 +599,7 @@ impl Mode for Normal {
                         c.move_to_col(c.indent());
                     }
                 });
+                *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::InsertStart);
                 mode::set(crate::Insert);
             }
             event!('a') => {
@@ -574,50 +607,59 @@ impl Mode for Normal {
                     c.set_caret_on_end();
                     c.move_hor(1);
                 });
+                *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Append);
                 mode::set(crate::Insert);
             }
             event!('A') => {
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
-                    let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
-                    c.move_to(p);
+                    c.move_to_col(usize::MAX);
                 });
+                *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::AppendEnd);
                 mode::set(crate::Insert);
             }
             // TODO: Implement parameter
             event!('o') | alt!('o') => {
-                handle.edit_all(pa, |mut c| {
-                    c.set_caret_on_end();
-                    let caret = c.caret();
-                    c.move_to_col(usize::MAX);
-                    c.append("\n");
-                    if key_event.modifiers == KeyMod::NONE {
-                        c.move_hor(1);
-                        c.ts_reindent(opts.auto_indent);
-                    } else {
-                        c.move_to(caret);
-                    }
-                });
+                open_new_line_below(pa);
+                *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineBelow);
                 if key_event.modifiers == KeyMod::NONE {
                     mode::set(crate::Insert);
                 }
             }
             // TODO: Implement parameter
             event!('O') | alt!('O') => {
-                handle.edit_all(pa, |mut c| {
-                    c.set_caret_on_start();
-                    let char_col = c.v_caret().char_col();
-                    c.move_to_col(0);
-                    c.insert("\n");
-                    if key_event.modifiers == KeyMod::NONE {
-                        c.ts_reindent(opts.auto_indent);
-                    } else {
-                        c.move_hor(char_col as i32 + 1);
-                    }
-                });
+                open_new_line_above(pa);
+                *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineAbove);
                 if key_event.modifiers == KeyMod::NONE {
                     mode::set(crate::Insert);
                 }
+            }
+            event!('.') => {
+                match *LAST_INSERT_KEY.lock().unwrap() {
+                    Some(InsertKey::Insert) => {
+                        handle.edit_all(pa, |mut c| _ = c.set_caret_on_start())
+                    }
+                    Some(InsertKey::Append) => handle.edit_all(pa, |mut c| {
+                        c.set_caret_on_end();
+                        c.move_hor(1);
+                    }),
+                    Some(InsertKey::InsertStart) => handle.edit_all(pa, |mut c| {
+                        c.unset_anchor();
+                        if opts.indent_on_capital_i {
+                            c.ts_reindent(false);
+                        } else {
+                            c.move_to_col(c.indent());
+                        }
+                    }),
+                    Some(InsertKey::AppendEnd) => handle.edit_all(pa, |mut c| {
+                        c.unset_anchor();
+                        c.move_to_col(usize::MAX);
+                    }),
+                    Some(InsertKey::NewLineAbove) => open_new_line_above(pa),
+                    Some(InsertKey::NewLineBelow) => open_new_line_below(pa),
+                    None => context::warn!("No previous insertion"),
+                }
+                crate::insert::repeat_last_insert(pa, &handle)
             }
 
             ////////// Selection alteration keys
@@ -1177,4 +1219,14 @@ fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool
             .1
             .zip(rhs.1)
             .is_none_or(|(lhs, rhs)| lhs.visual_col() == rhs.visual_col())
+}
+
+#[derive(Clone, Copy)]
+enum InsertKey {
+    Insert,
+    Append,
+    InsertStart,
+    AppendEnd,
+    NewLineBelow,
+    NewLineAbove,
 }
