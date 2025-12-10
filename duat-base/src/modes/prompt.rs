@@ -238,7 +238,9 @@ impl mode::Mode for Prompt {
                     c.move_to(..);
                     c.replace(ty_history[index].clone());
                     c.unset_anchor();
-                })
+                });
+                
+                update(pa);
             }
             event!(Down) => {
                 let history = HISTORY.lock().unwrap();
@@ -264,6 +266,8 @@ impl mode::Mode for Prompt {
                         })
                     }
                 };
+                
+                update(pa);
             }
 
             event!(Esc) => {
@@ -272,6 +276,7 @@ impl mode::Mode for Prompt {
                     c.replace("");
                 });
                 handle.write(pa).text_mut().selections_mut().clear();
+                
                 update(pa);
                 reset(self);
             }
