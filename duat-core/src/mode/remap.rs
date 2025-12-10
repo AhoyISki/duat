@@ -332,12 +332,12 @@ mod global {
 
         for modif in modif.iter() {
             builder.push(match modif {
-                KeyMod::ALT => "A",
-                KeyMod::CONTROL => "C",
-                KeyMod::SHIFT => "S",
+                KeyMod::ALT => "a",
+                KeyMod::CONTROL => "c",
+                KeyMod::SHIFT => "s",
+                KeyMod::META => "m",
                 KeyMod::SUPER => "Super",
                 KeyMod::HYPER => "Hyper",
-                KeyMod::META => "Meta",
                 _ => "",
             });
         }
@@ -359,12 +359,12 @@ mod global {
                 seq.push('<');
                 for modif in key.modifiers.iter() {
                     seq.push_str(match modif {
-                        Mod::ALT => "A",
-                        Mod::CONTROL => "C",
-                        Mod::SHIFT => "S",
+                        Mod::ALT => "a",
+                        Mod::CONTROL => "c",
+                        Mod::SHIFT => "s",
+                        Mod::META => "m",
                         Mod::SUPER => "Super",
                         Mod::HYPER => "Hyper",
-                        Mod::META => "Meta",
                         _ => "",
                     });
                 }
@@ -446,10 +446,10 @@ mod global {
             ("F12", KeyCode::F(12)),
         ];
         const MODS: &[(&str, KeyMod)] = &[
-            ("C", KeyMod::CONTROL),
-            ("A", KeyMod::ALT),
-            ("S", KeyMod::SHIFT),
-            ("M", KeyMod::META),
+            ("c", KeyMod::CONTROL),
+            ("a", KeyMod::ALT),
+            ("s", KeyMod::SHIFT),
+            ("m", KeyMod::META),
             ("super", KeyMod::SUPER),
             ("hyper", KeyMod::HYPER),
         ];
