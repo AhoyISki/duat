@@ -170,7 +170,7 @@ impl Parser {
             list.truncate(*cur);
 
             if *cur == 0 {
-                return;
+                continue;
             }
 
             let changes = if let Saved::Changes(changes) = &mut list[*cur - 1] {
@@ -315,6 +315,7 @@ impl BufferJumps for Buffer {
                 Jump::Single(selections.get_main().unwrap().byte_range(self.bytes())),
                 jump_id,
             ));
+            *cur += 1;
         } else if selections.len() > 1 {
             list.push_back(Saved::Jump(
                 Jump::Multiple(
@@ -326,8 +327,8 @@ impl BufferJumps for Buffer {
                 ),
                 jump_id,
             ));
+            *cur += 1;
         }
-        *cur += 1;
 
         Some(jump_id)
     }
@@ -424,9 +425,9 @@ impl BufferJumps for Buffer {
             let mut parsers = PARSERS.lock().unwrap();
             let parser = parsers.get_mut(&self.buffer_id()).unwrap();
 
-            let (list, cur) = parser.jump_lists.entry(jump_list_id).or_default();
+            let (list, cur) = parser.jump_lists.get_mut(&jump_list_id).unwrap();
 
-            list.range(..*cur)
+            list.range(..(*cur + 1).min(list.len()))
                 .iter()
                 .rev()
                 .find_map(|saved| {
