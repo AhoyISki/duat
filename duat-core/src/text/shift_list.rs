@@ -98,10 +98,6 @@ impl<S: Shiftable> ShiftList<S> {
                     self.buf[i]
                 };
 
-                if r {
-                    crate::context::debug!("shifted: {shifted:?}");
-                }
-
                 if f(i, shifted)? {
                     self.buf.remove(i);
                     self.from -= (i < self.from) as usize;
