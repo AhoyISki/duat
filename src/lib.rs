@@ -20,6 +20,8 @@ use std::{
 use duat_core::{
     Plugin, Plugins,
     buffer::{Buffer, BufferId, BufferTracker},
+    context::Handle,
+    data::Pass,
     hook::{self, BufferClosed},
 };
 use gapbuf::GapBuffer;
@@ -71,6 +73,59 @@ pub enum Jump {
 }
 
 impl Jump {
+    /// Wether the `Jump`'s selections are the same as those of the
+    /// [`Selections`]
+    ///
+    /// [`Selections`]: duat_core::mode::Selections
+    pub fn is_eq(&self, buf: &Buffer) -> bool {
+        match self {
+            Jump::Single(range) => {
+                buf.selections().len() == 1
+                    && buf.selections().get_main().unwrap().byte_range(buf.bytes()) == *range
+            }
+            Jump::Multiple(ranges, main_i) => {
+                buf.selections().len() == ranges.len()
+                    && buf.selections().iter().zip(ranges.iter()).enumerate().all(
+                        |(i, ((sel, is_main), range))| {
+                            sel.byte_range(buf.bytes()) == *range && ((i == *main_i) == is_main)
+                        },
+                    )
+            }
+        }
+    }
+
+    /// Applies the `Jump` to the [`Selections`] of a [`Buffer`]
+    pub fn apply(&self, pa: &mut Pass, handle: &Handle) {
+        match self {
+            Jump::Single(selection) => {
+                handle.write(pa).selections_mut().remove_extras();
+                handle.edit_main(pa, |mut c| {
+                    let start = c.text().point_at_byte(selection.start);
+                    let end = c.text().point_at_byte(selection.end);
+                    c.move_to(start..end)
+                });
+            }
+            Jump::Multiple(selections, main) => {
+                handle.write(pa).selections_mut().remove_extras();
+
+                handle.edit_main(pa, |mut c| {
+                    let mut is_first = true;
+                    for selection in selections {
+                        if !is_first {
+                            c.copy();
+                        }
+
+                        let start = c.text().point_at_byte(selection.start);
+                        let end = c.text().point_at_byte(selection.end);
+                        c.move_to(start..end);
+                        is_first = false;
+                    }
+                });
+                handle.write(pa).selections_mut().set_main(*main);
+            }
+        }
+    }
+
     fn shift(&mut self, changes: &Changes) -> bool {
         match self {
             Jump::Single(selection) => {
@@ -91,14 +146,13 @@ impl Jump {
 
 #[derive(Debug)]
 struct Parser {
-    list: GapBuffer<Saved>,
+    jump_lists: HashMap<JumpListId, (GapBuffer<Saved>, usize)>,
     tracker: BufferTracker,
-    cur: usize,
 }
 
 impl Parser {
     fn new(tracker: BufferTracker) -> Self {
-        Self { list: GapBuffer::new(), tracker, cur: 0 }
+        Self { jump_lists: HashMap::new(), tracker }
     }
 
     fn update(&mut self) {
@@ -106,33 +160,38 @@ impl Parser {
 
         // If there are no elements, every future jump is already correctly
         // shifted, so no need to add these Changes lists
-        if self.list.is_empty() || self.tracker.moment().is_empty() {
-            return;
-        }
-        self.list.truncate(self.cur);
-
-        if self.cur == 0 {
+        if self.tracker.moment().is_empty()
+            || self.jump_lists.values().all(|(list, _)| list.is_empty())
+        {
             return;
         }
 
-        let changes = if let Saved::Changes(changes) = &mut self.list[self.cur - 1] {
-            changes
-        } else {
-            self.list.insert(self.cur, Saved::Changes(Box::default()));
-            self.cur += 1;
-            let Some(Saved::Changes(changes)) = self.list.get_mut(self.cur - 1) else {
-                unreachable!();
+        for (list, cur) in self.jump_lists.values_mut() {
+            list.truncate(*cur);
+
+            if *cur == 0 {
+                return;
+            }
+
+            let changes = if let Saved::Changes(changes) = &mut list[*cur - 1] {
+                changes
+            } else {
+                list.insert(*cur, Saved::Changes(Box::default()));
+                *cur += 1;
+                let Some(Saved::Changes(changes)) = list.get_mut(*cur - 1) else {
+                    unreachable!();
+                };
+                changes
             };
-            changes
-        };
 
-        for change in self.tracker.moment().changes() {
-            let change = (
-                change.start().byte() as i32,
-                change.taken_end().byte() as i32,
-                change.added_end().byte() as i32,
-            );
-            changes.add_change(change);
+            for change in self.tracker.moment().changes() {
+                let change = (
+                    change.start().byte() as i32,
+                    change.taken_end().byte() as i32,
+                    change.added_end().byte() as i32,
+                );
+                changes.add_change(change);
+            }
         }
     }
 }
@@ -161,10 +220,10 @@ pub trait BufferJumps {
     /// This function will return `None` if no jump was recorded,
     /// otherwise it will return a `Some(JumptId)`], which can be used
     /// to jump to specific selections via
-    /// [`Buffer::jump_to_selections`].
+    /// [`Buffer::go_to_jump`].
     ///
     /// [`Selections`]: duat_core::mode::Selections
-    fn record_selections(&mut self, allow_duplicates: bool) -> Option<JumpId>;
+    fn record_jump(&self, jump_list_id: JumpListId, allow_duplicates: bool) -> Option<JumpId>;
 
     /// Jumps forwards or backwards through the [`Jump`]s on the list
     ///
@@ -176,9 +235,9 @@ pub trait BufferJumps {
     /// This will return [`None`] if the [`JumpList`] plugin was not
     /// plugged, or if no jumps have been saved/all jumps have been
     /// removed.
-    fn jump_selections_by(&mut self, by: i32) -> Option<Jump>;
+    fn move_jumps_by(&self, jump_list_id: JumpListId, by: i32) -> Option<Jump>;
 
-    /// Jumps to the `n`th [`Jump`]
+    /// Jumps to the [`Jump`] specified by a [`JumpId`]
     ///
     /// The `Jump` can either be a single selection, represented by
     /// an exclusive [`Range<usize>`], or it can be multiple
@@ -186,94 +245,113 @@ pub trait BufferJumps {
     /// main selection's index included.
     ///
     /// This will return [`None`] if the [`JumpList`] plugin was not
-    /// plugged, or if no jumps have been saved/all jumps have been
-    /// removed.
-    fn jump_to_selections(&mut self, id: JumpId) -> Option<Jump>;
+    /// plugged, or if the [`JumpId`] in question doesn't belong to
+    /// this [`Buffer`].
+    ///
+    /// If you want the `Jump` without actually jumping, see
+    /// [`Buffer::get_jump`].
+    fn go_to_jump(&self, jump_list_id: JumpListId, id: JumpId) -> Option<Jump>;
+
+    /// Gets the [`Jump`] specified by a [`JumpId`]
+    ///
+    /// The `Jump` can either be a single selection, represented by
+    /// an exclusive [`Range<usize>`], or it can be multiple
+    /// selections, also represented by a `Range<usize>`, with the
+    /// main selection's index included.
+    ///
+    /// This will return [`None`] if the [`JumpList`] plugin was not
+    /// plugged, or if the [`JumpId`] in question doesn't belong to
+    /// this [`Buffer`].
+    fn get_jump(&self, jump_list_id: JumpListId, id: JumpId) -> Option<Jump>;
+
+    /// Records a non duplicated selection if there is none, returning
+    /// it if successful. Otherwise returns the current [`JumpId`]
+    fn record_or_get_current_jump(&self, jump_list_id: JumpListId) -> JumpId;
 }
 
 impl BufferJumps for Buffer {
-    fn record_selections(&mut self, allow_duplicates: bool) -> Option<JumpId> {
+    fn record_jump(&self, jump_list_id: JumpListId, allow_duplicates: bool) -> Option<JumpId> {
         let mut parsers = PARSERS.lock().unwrap();
-        let jumps = parsers.get_mut(&self.buffer_id()).unwrap();
-        jumps.update();
-        jumps.list.truncate(jumps.cur);
-
+        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+        parser.update();
         let selections = self.selections();
 
-        if !allow_duplicates
-            && let Some(prev_i) = jumps.cur.checked_sub(1)
-            && let Some(Saved::Jump(jump, _)) = jumps.list.get(prev_i)
-        {
-            match jump {
-                Jump::Single(sel) => {
-                    if selections.len() == 1
-                        && selections.get_main().unwrap().byte_range(self.bytes()) == *sel
-                    {
-                        return None;
+        let (list, cur) = parser.jump_lists.entry(jump_list_id).or_default();
+
+        if !allow_duplicates {
+            for i in [Some(*cur), cur.checked_sub(1)].into_iter().flatten() {
+                let Some(Saved::Jump(jump, _)) = list.get(i) else {
+                    continue;
+                };
+
+                match jump {
+                    Jump::Single(sel) => {
+                        if selections.len() == 1
+                            && selections.get_main().unwrap().byte_range(self.bytes()) == *sel
+                        {
+                            return None;
+                        }
                     }
-                }
-                Jump::Multiple(sels, main) => {
-                    if *main == selections.main_index()
-                        && sels.len() == selections.len()
-                        && sels
-                            .iter()
-                            .zip(selections.iter())
-                            .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(self.bytes()))
-                    {
-                        return None;
+                    Jump::Multiple(sels, main) => {
+                        if *main == selections.main_index()
+                            && sels.len() == selections.len()
+                            && sels
+                                .iter()
+                                .zip(selections.iter())
+                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(self.bytes()))
+                        {
+                            return None;
+                        }
                     }
                 }
             }
         }
 
+        list.truncate(*cur);
         let jump_id = JumpId::new();
 
         if selections.len() == 1 {
-            jumps.list.insert(
-                jumps.cur,
-                Saved::Jump(
-                    Jump::Single(selections.get_main().unwrap().byte_range(self.bytes())),
-                    jump_id,
-                ),
-            );
+            list.push_back(Saved::Jump(
+                Jump::Single(selections.get_main().unwrap().byte_range(self.bytes())),
+                jump_id,
+            ));
         } else if selections.len() > 1 {
-            jumps.list.insert(
-                jumps.cur,
-                Saved::Jump(
-                    Jump::Multiple(
-                        selections
-                            .iter()
-                            .map(|(sel, _)| sel.byte_range(self.bytes()))
-                            .collect(),
-                        selections.main_index(),
-                    ),
-                    jump_id,
+            list.push_back(Saved::Jump(
+                Jump::Multiple(
+                    selections
+                        .iter()
+                        .map(|(sel, _)| sel.byte_range(self.bytes()))
+                        .collect(),
+                    selections.main_index(),
                 ),
-            );
+                jump_id,
+            ));
         }
-        jumps.cur += 1;
+        *cur += 1;
 
         Some(jump_id)
     }
 
-    fn jump_selections_by(&mut self, mut by: i32) -> Option<Jump> {
+    fn move_jumps_by(&self, jump_list_id: JumpListId, mut by: i32) -> Option<Jump> {
         let mut parsers = PARSERS.lock().unwrap();
-        let jumps = parsers.get_mut(&self.buffer_id()).unwrap();
-        jumps.update();
+        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+        parser.update();
 
         let mut changes = Changes::default();
         let mut last_seen = None;
 
+        let (list, cur) = parser.jump_lists.entry(jump_list_id).or_default();
+
         let jump = if by >= 0 {
             loop {
-                match jumps.list.get_mut(jumps.cur) {
+                match list.get_mut(*cur) {
                     Some(Saved::Jump(jump, _)) => {
                         if by == 0 {
                             break Some(jump.clone());
-                        } else if jumps.cur + 1 < jumps.list.len() {
-                            last_seen = Some(jumps.cur);
+                        } else if *cur + 1 < list.len() {
+                            last_seen = Some(*cur);
                             by -= 1;
-                            jumps.cur += 1;
+                            *cur += 1;
                         } else {
                             break None;
                         }
@@ -284,36 +362,34 @@ impl BufferJumps for Buffer {
             }
         } else {
             loop {
-                match jumps.cur.checked_sub(1).and_then(|j| jumps.list.get_mut(j)) {
+                match cur.checked_sub(1).and_then(|j| list.get_mut(j)) {
                     Some(Saved::Jump(jump, _)) => {
-                        jumps.cur -= 1;
+                        *cur -= 1;
                         if jump.shift(&changes) {
                             by += 1;
                             if by == 0 {
                                 let jump = jump.clone();
-                                if !changes.list.is_empty() && jumps.cur > 0 {
-                                    jumps
-                                        .list
-                                        .insert(jumps.cur, Saved::Changes(Box::new(changes)));
-                                    jumps.cur += 1;
+                                if !changes.list.is_empty() && *cur > 0 {
+                                    list.insert(*cur, Saved::Changes(Box::new(changes)));
+                                    *cur += 1;
                                 }
                                 break Some(jump);
                             } else {
-                                last_seen = Some(jumps.cur);
+                                last_seen = Some(*cur);
                             }
                         } else {
                             if let Some(last_seen) = last_seen.as_mut() {
                                 *last_seen -= 1;
                             }
-                            jumps.list.remove(jumps.cur);
+                            list.remove(*cur);
                         }
                     }
                     Some(Saved::Changes(_)) => {
                         if let Some(last_seen) = last_seen.as_mut() {
                             *last_seen -= 1;
                         }
-                        jumps.cur -= 1;
-                        let Saved::Changes(rev) = jumps.list.remove(jumps.cur) else {
+                        *cur -= 1;
+                        let Saved::Changes(rev) = list.remove(*cur) else {
                             unreachable!();
                         };
                         changes.merge(*rev);
@@ -325,7 +401,7 @@ impl BufferJumps for Buffer {
 
         jump.or_else(|| {
             last_seen.map(|i| {
-                let Some(Saved::Jump(jump, _)) = jumps.list.get(i) else {
+                let Some(Saved::Jump(jump, _)) = list.get(i) else {
                     unreachable!();
                 };
                 jump.clone()
@@ -333,53 +409,99 @@ impl BufferJumps for Buffer {
         })
     }
 
-    fn jump_to_selections(&mut self, id: JumpId) -> Option<Jump> {
-        let mut parsers = PARSERS.lock().unwrap();
-        let jumps = parsers.get_mut(&self.buffer_id()).unwrap();
-        jumps.update();
-
-        let mut changes = Changes::default();
-        let mut initial_cur = jumps.cur;
-
-        let jump = (|| {
-            loop {
-                match jumps.list.get_mut(jumps.cur) {
-                    Some(Saved::Jump(jump, other)) => {
-                        if jump.shift(&changes) {
-                            if *other == id {
-                                break Some(jump.clone());
-                            } else if *other > id && jumps.cur <= initial_cur {
-                                jumps.cur = jumps.cur.checked_sub(1)?;
-                            } else if jumps.cur >= initial_cur {
-                                jumps.cur += 1;
-                            } else {
-                                return None;
-                            }
-                        } else {
-                            jumps.cur = jumps.cur.checked_sub(1)?;
-                            initial_cur -= 1;
-                            jumps.list.remove(jumps.cur);
-                        }
-                    }
-                    Some(Saved::Changes(_)) => {
-                        jumps.cur -= 1;
-                        initial_cur -= 1;
-                        let Saved::Changes(rev) = jumps.list.remove(jumps.cur) else {
-                            unreachable!();
-                        };
-                        changes.merge(*rev);
-                    }
-                    None => jumps.cur = jumps.cur.checked_sub(1)?,
-                }
-            }
-        })();
-
-        if jump.is_none() {
-            jumps.cur = initial_cur
-        }
-
-        jump
+    fn go_to_jump(&self, jump_list_id: JumpListId, id: JumpId) -> Option<Jump> {
+        get_jump(self, jump_list_id, id, true)
     }
+
+    fn get_jump(&self, jump_list_id: JumpListId, id: JumpId) -> Option<Jump> {
+        get_jump(self, jump_list_id, id, false)
+    }
+
+    fn record_or_get_current_jump(&self, jump_list_id: JumpListId) -> JumpId {
+        if let Some(jump_id) = self.record_jump(jump_list_id, false) {
+            jump_id
+        } else {
+            let mut parsers = PARSERS.lock().unwrap();
+            let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+
+            let (list, cur) = parser.jump_lists.entry(jump_list_id).or_default();
+
+            list.range(..*cur)
+                .iter()
+                .rev()
+                .find_map(|saved| {
+                    if let Saved::Jump(_, jump_id) = saved {
+                        Some(*jump_id)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap()
+        }
+    }
+}
+
+fn get_jump(buf: &Buffer, jump_list_id: JumpListId, id: JumpId, do_jump: bool) -> Option<Jump> {
+    let mut parsers = PARSERS.lock().unwrap();
+    let parser = parsers.get_mut(&buf.buffer_id()).unwrap();
+    parser.update();
+
+    let (list, cur) = parser.jump_lists.entry(jump_list_id).or_default();
+
+    let mut changes = Changes::default();
+    let mut new_cur = *cur;
+
+    let jump = (|| {
+        // For better readability, consider `jumps.cur <= new_cur` to mean
+        // "moving forwards", and `jumps.cur >= new_cur` to mean "moving
+        // backwards".
+        loop {
+            match list.get_mut(new_cur) {
+                Some(Saved::Jump(jump, other)) => {
+                    if jump.shift(&changes) {
+                        if *other == id {
+                            let jump = jump.clone();
+                            if !changes.list.is_empty() && new_cur > 0 {
+                                list.insert(*cur, Saved::Changes(Box::new(changes)));
+                                *cur += 1;
+                            }
+                            break Some(jump);
+                        } else if *other < id && *cur <= new_cur {
+                            new_cur += 1;
+                        } else if *other > id && *cur >= new_cur {
+                            new_cur = new_cur.checked_sub(1)?;
+                        } else {
+                            if !changes.list.is_empty() && new_cur > 0 {
+                                list.insert(*cur, Saved::Changes(Box::new(changes)));
+                                *cur += 1;
+                            }
+                            return None;
+                        }
+                    } else {
+                        list.remove(new_cur);
+                        *cur = cur.checked_sub(1)?;
+                        new_cur -= 1;
+                    }
+                }
+                Some(Saved::Changes(_)) => {
+                    let Saved::Changes(rev) = list.remove(new_cur) else {
+                        unreachable!();
+                    };
+                    *cur -= 1;
+                    new_cur -= 1;
+                    changes.merge(*rev);
+                }
+                None if *cur >= new_cur => new_cur = new_cur.checked_sub(1)?,
+                None => break None,
+            }
+        }
+    })();
+
+    if jump.is_some() && do_jump {
+        *cur = new_cur
+    }
+
+    jump
 }
 
 #[derive(Default, Debug)]
@@ -526,5 +648,33 @@ impl JumpId {
     fn new() -> Self {
         static COUNT: AtomicUsize = AtomicUsize::new(0);
         Self(COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// A struct representing a list of jumps
+///
+/// You can use this to maintain multiple separate jump lists for a
+/// single [`Buffer`]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct JumpListId(usize);
+
+impl JumpListId {
+    /// Returns a new unique `JumpListId`
+    ///
+    /// Each id represents a unique sequence of [`Jump`] recordings
+    /// for a given [`Buffer`]. You can use this to modify jump lists
+    /// without invalidating other jumps. As an example, the
+    /// `duatmode` crate uses this feature to keep track of all
+    /// selection changes in a `Buffer`, as well as a separate list
+    /// for specific jumps with the `g` key.
+    pub fn new() -> Self {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        Self(COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl Default for JumpListId {
+    fn default() -> Self {
+        Self::new()
     }
 }
