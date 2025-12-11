@@ -20,7 +20,7 @@ use crate::{
     buffer::{Buffer, PathKind},
     context::{self, Cache, Handle},
     data::{Pass, RwData},
-    hook::{self, BufferClosed, WidgetCreated, WindowCreated},
+    hook::{self, BufferClosed, BufferSwitched, WidgetCreated, WindowCreated},
     mode,
     opts::PrintOpts,
     session::UiMouseEvent,
@@ -535,10 +535,14 @@ impl Windows {
         let win = self.handle_window(pa, node.handle())?;
         let inner = self.inner.write(pa);
 
-        if let Some(handle) = node.try_downcast::<Buffer>() {
-            let current = std::mem::replace(inner.cur_buffer.write(internal_pass), handle.clone());
-            inner.buffer_history.insert(current, handle);
+        if let Some(current) = node.try_downcast::<Buffer>() {
+            let former = std::mem::replace(inner.cur_buffer.write(internal_pass), current.clone());
+            inner.buffer_history.insert(former.clone(), current.clone());
+
+            hook::trigger(pa, BufferSwitched((former, current)));
         }
+
+        let inner = self.inner.write(pa);
         *inner.cur_widget.write(internal_pass) = node.clone();
         inner.cur_win = win;
         self.ui.switch_window(win);

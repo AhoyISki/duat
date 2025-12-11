@@ -179,6 +179,11 @@ mod global {
         super::CUR_SEQ.map(Clone::clone)
     }
 
+	/// Resets the current sequence of sent keys
+    pub fn reset_current_sequence(pa: &mut Pass) {
+        *super::CUR_SEQ.write(pa) = (Vec::new(), false)
+    }
+
     /// The base [`MappedBindings`] for the current [`Mode`]
     ///
     /// This does not take into account the [current_sequence]. For

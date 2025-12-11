@@ -16,14 +16,12 @@ use std::{
     fs,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{
-        Arc, Mutex, MutexGuard,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::{Arc, Mutex, MutexGuard, atomic::AtomicUsize},
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};
 
+pub use crate::buffer::buffer_id::BufferId;
 use crate::{
     Ranges,
     context::{self, Cache, Handle},
@@ -421,11 +419,9 @@ impl Buffer {
     /// This works by creating a new [`Buffer`], which will take
     /// ownership of a stripped down version of this one's [`Text`]
     pub(crate) fn prepare_for_reloading(&mut self) -> Self {
-        static RELOAD_COUNT: AtomicUsize = AtomicUsize::new(0);
-
         self.text.prepare_for_reloading();
         Self {
-            id: BufferId(usize::MAX - RELOAD_COUNT.fetch_add(1, Ordering::Relaxed)),
+            id: self.id,
             path: self.path.clone(),
             text: std::mem::take(&mut self.text),
             layout_order: self.layout_order,
@@ -1072,18 +1068,6 @@ impl<P: AsRef<Path>> From<P> for PathKind {
     }
 }
 
-/// A unique identifier for a [`Buffer`]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BufferId(usize);
-
-impl BufferId {
-    /// Returns a new `BufferId`, uniquely identifying a [`Buffer`]
-    fn new() -> Self {
-        static CURRENT: AtomicUsize = AtomicUsize::new(0);
-        Self(CURRENT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
 /// A struct to give access to the [`TextParts`] and new [`Change`]s
 /// at the same time
 pub struct BufferParts<'b> {
@@ -1099,4 +1083,30 @@ pub struct BufferParts<'b> {
     /// The list of [`Change`]s between the last triggering of
     /// [`BufferUpdated`] and now
     pub new_changes: &'b Moment,
+}
+
+mod buffer_id {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    /// A unique identifier for a [`Buffer`]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct BufferId(usize);
+
+    impl BufferId {
+        /// Returns a new `BufferId`, uniquely identifying a
+        /// [`Buffer`]
+        pub(super) fn new() -> Self {
+            Self(COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+
+        /// Sets the minimum `BufferId`, in order to prevent conflicts
+        pub(crate) fn set_min(buffer_ids: impl Iterator<Item = BufferId>) {
+            COUNT.store(
+                buffer_ids.map(|buf_id| buf_id.0).max().unwrap_or(0) + 1,
+                Ordering::Relaxed,
+            );
+        }
+    }
 }

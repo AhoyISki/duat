@@ -37,7 +37,7 @@ use crate::{
     utils::catch_panic,
 };
 
-pub(crate) static FILE_CFG: OnceLock<PrintOpts> = OnceLock::new();
+pub(crate) static BUFFER_OPTS: OnceLock<PrintOpts> = OnceLock::new();
 
 /// Configuration for a session of Duat
 #[doc(hidden)]
@@ -48,7 +48,7 @@ pub struct SessionCfg {
 impl SessionCfg {
     pub fn new(clipb: &'static Mutex<Clipboard>, file_cfg: PrintOpts) -> Self {
         crate::clipboard::set_clipboard(clipb);
-        FILE_CFG.set(file_cfg).unwrap();
+        BUFFER_OPTS.set(file_cfg).unwrap();
 
         SessionCfg {
             layout: Box::new(Mutex::new(MasterOnLeft)),
@@ -61,6 +61,8 @@ impl SessionCfg {
         buffers: Vec<Vec<ReloadedBuffer>>,
         already_plugged: Vec<TypeId>,
     ) -> Session {
+        crate::buffer::BufferId::set_min(buffers.iter().flatten().map(|rb| rb.buffer.buffer_id()));
+        
         ui.setup_default_print_info();
 
         let plugins = Plugins::_new();
@@ -90,9 +92,9 @@ impl SessionCfg {
 
         let mut layout = Some(self.layout);
 
-        for mut rel_files in buffers.into_iter().map(|rf| rf.into_iter()) {
-            let ReloadedBuffer { mut buffer, is_active } = rel_files.next().unwrap();
-            buffer.opts = *FILE_CFG.get().unwrap();
+        for mut rel_buffers in buffers.into_iter().map(|rf| rf.into_iter()) {
+            let ReloadedBuffer { mut buffer, is_active } = rel_buffers.next().unwrap();
+            buffer.opts = *BUFFER_OPTS.get().unwrap();
 
             if let Some(layout) = layout.take() {
                 Windows::initialize(pa, buffer, layout, ui);
@@ -103,8 +105,8 @@ impl SessionCfg {
                 }
             }
 
-            for ReloadedBuffer { mut buffer, is_active } in rel_files {
-                buffer.opts = *FILE_CFG.get().unwrap();
+            for ReloadedBuffer { mut buffer, is_active } in rel_buffers {
+                buffer.opts = *BUFFER_OPTS.get().unwrap();
                 let node = context::windows().new_buffer(pa, buffer);
                 if is_active {
                     context::set_current_node(pa, node);

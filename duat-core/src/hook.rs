@@ -44,7 +44,8 @@
 //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
 //! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
-//! - [`BufferUpdated`] triggers whenever a buffer changes.
+//! - [`BufferUpdated`] triggers whenever a buffer changesg.
+//! - [`BufferSwitched`] triggers when switching the active buffer.
 //! - [`FocusedOn`] triggers when a [widget] is focused.
 //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
 //! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
@@ -775,6 +776,24 @@ impl Hookable for BufferUpdated {
 impl PartialEq<Handle> for BufferUpdated {
     fn eq(&self, other: &Handle) -> bool {
         self.0 == *other
+    }
+}
+
+/// [`Hookable`]: Triggers whenever the active [`Buffer`] changes
+///
+/// # Arguments
+///
+/// - The former `Buffer`'s [`Handle`]
+/// - The current `Buffer`'s [`Handle`]
+///
+/// [`Buffer`]: crate::buffer::Buffer
+pub struct BufferSwitched(pub(crate) (Handle, Handle));
+
+impl Hookable for BufferSwitched {
+    type Input<'h> = (&'h Handle, &'h Handle);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, &self.0.1)
     }
 }
 

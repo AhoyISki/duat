@@ -21,7 +21,7 @@ FOR NEXT UPDATE:
   [x] . and <a-.>.
   [ ] <c-o> and <c-i>.
   [x] q and Q
-[ ] Fix existing duatmode bindings.
+[x] Fix existing duatmode bindings.
 
 KNOWN BUGS:
  HIGH PRIORITY:

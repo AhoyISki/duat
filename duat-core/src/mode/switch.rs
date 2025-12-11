@@ -282,8 +282,7 @@ fn set_mode_fn<M: Mode>(pa: &mut Pass, mode: M) -> bool {
 
     hook::trigger(pa, ModeSwitched((old_name, new_name)));
 
-    let mc = ModeSet((mode, handle.clone()));
-    let mut mode = hook::trigger(pa, mc).0.0;
+    let mut mode = hook::trigger(pa, ModeSet((mode, handle.clone()))).0.0;
     mode.on_switch(pa, handle.clone());
 
     unsafe {

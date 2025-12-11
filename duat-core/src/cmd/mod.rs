@@ -501,7 +501,7 @@ pub(crate) fn add_session_commands() {
             }
         };
 
-        let buffer = Buffer::new(pk.as_path(), *crate::session::FILE_CFG.get().unwrap());
+        let buffer = Buffer::new(pk.as_path(), *crate::session::BUFFER_OPTS.get().unwrap());
         let handle = windows.new_buffer(pa, buffer);
         context::set_current_node(pa, handle);
 
@@ -547,7 +547,7 @@ pub(crate) fn add_session_commands() {
             }
         };
 
-        let file_cfg = *crate::session::FILE_CFG.get().unwrap();
+        let file_cfg = *crate::session::BUFFER_OPTS.get().unwrap();
         windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
 
         Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
