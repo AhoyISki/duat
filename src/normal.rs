@@ -1318,10 +1318,11 @@ pub(crate) mod jump_list {
 
     /// Add the hook for automatic insertion of jumps
     pub fn add_jump_hook() {
-        hook::add::<BufferSwitched>(|pa, (former, _)| {
+        hook::add::<BufferSwitched>(|pa, (former, current)| {
             if !former.is_closed(pa) {
                 register(pa, former, 5);
             }
+            register(pa, current, 5);
             Ok(())
         })
         .grouped(*JUMPS_HOOK_ID);
