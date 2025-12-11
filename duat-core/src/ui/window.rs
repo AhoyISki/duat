@@ -91,11 +91,11 @@ impl Windows {
         let inner = self.inner.write(pa);
         inner.list.push(window);
 
+        hook::trigger(pa, WindowCreated(self.inner.read(pa).list[win].clone()));
         hook::trigger(
             pa,
             WidgetCreated(node.handle().try_downcast::<Buffer>().unwrap()),
         );
-        hook::trigger(pa, WindowCreated(self.inner.read(pa).list[win].clone()));
 
         node
     }
@@ -394,7 +394,7 @@ impl Windows {
                     });
 
                 if let Some((_, node)) = entry {
-                    crate::mode::reset_to(pa, node.handle().clone());
+                    crate::mode::reset_to(pa, node.handle());
                 } else {
                     // If there is no previous Buffer, just quit.
                     context::sender()
@@ -403,7 +403,7 @@ impl Windows {
                     return Ok(());
                 }
             } else {
-                crate::mode::reset_to(pa, inner.cur_buffer.read(pa).to_dyn());
+                crate::mode::reset_to(pa, &inner.cur_buffer.read(pa).clone());
             }
         }
 
@@ -520,13 +520,14 @@ impl Windows {
         };
 
         if context::current_buffer(pa).read(pa).path_kind() != pk {
-            mode::reset_to(pa, node.handle().clone());
+            mode::reset_to(pa, node.handle());
         }
 
         node
     }
 
     /// Sets the current active [`Handle`]
+    #[track_caller]
     pub(crate) fn set_current_node(&self, pa: &mut Pass, node: Node) -> Result<(), Text> {
         // SAFETY: This Pass is only used when I'm already reborrowing a &mut
         // Pass, and it is known that it only writes to other types.
@@ -731,7 +732,7 @@ impl Windows {
     pub fn jump_buffers_by(&self, pa: &mut Pass, jumps: i32) {
         let current = self.inner.read(pa).cur_buffer.read(pa).clone();
         if let Some(handle) = self.inner.write(pa).buffer_history.jump_by(current, jumps) {
-            mode::reset_to(pa, handle.to_dyn());
+            mode::reset_to(pa, &handle);
         } else {
             context::warn!("No buffer [a]{jumps}[] jumps away from the current one");
         }
@@ -743,7 +744,7 @@ impl Windows {
     pub fn last_buffer(&self, pa: &mut Pass) -> Result<Handle, Text> {
         let current = self.inner.read(pa).cur_buffer.read(pa).clone();
         if let Some(handle) = self.inner.write(pa).buffer_history.last(current) {
-            mode::reset_to(pa, handle.to_dyn());
+            mode::reset_to(pa, &handle);
             Ok(handle)
         } else {
             Err(txt!("No last buffer"))

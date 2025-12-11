@@ -496,14 +496,14 @@ pub(crate) fn add_session_commands() {
             }
             PathOrBufferOrCfg::Path(path) => PathKind::from(path),
             PathOrBufferOrCfg::Buffer(handle) => {
-                mode::reset_to(pa, handle.to_dyn());
+                mode::reset_to(pa, &handle);
                 return Ok(Some(txt!("Switched to {}", handle.read(pa).name())));
             }
         };
 
         let buffer = Buffer::new(pk.as_path(), *crate::session::BUFFER_OPTS.get().unwrap());
-        let handle = windows.new_buffer(pa, buffer);
-        context::set_current_node(pa, handle);
+        let node = windows.new_buffer(pa, buffer);
+        mode::reset_to(pa, node.handle());
 
         Ok(Some(txt!("Opened {pk}")))
     })
@@ -567,7 +567,7 @@ pub(crate) fn add_session_commands() {
     alias("o", "open");
 
     add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
-        mode::reset_to(pa, handle.to_dyn());
+        mode::reset_to(pa, &handle);
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(txt!("Switch to an open [a]Buffer[]"), None)
@@ -599,7 +599,7 @@ pub(crate) fn add_session_commands() {
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
-        mode::reset_to(pa, handle.to_dyn());
+        mode::reset_to(pa, &handle);
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(
@@ -639,7 +639,7 @@ pub(crate) fn add_session_commands() {
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
-        mode::reset_to(pa, handle.to_dyn());
+        mode::reset_to(pa, &handle);
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(
@@ -1028,7 +1028,6 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                // SAFETY: Closure has Pass argument.
                 let _ = COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa));
             })))
             .unwrap();

@@ -59,6 +59,7 @@ mod global {
     /// Attempts to set the current [`Handle`]
     ///
     /// Fails if said [`Handle`] was already deleted.
+    #[track_caller]
     pub(crate) fn set_current_node(pa: &mut Pass, node: crate::ui::Node) {
         if let Err(err) = windows().set_current_node(pa, node) {
             super::warn!("{err}");

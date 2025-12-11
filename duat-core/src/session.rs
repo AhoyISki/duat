@@ -183,26 +183,9 @@ impl Session {
             let mut last_win_len = context::windows().len(pa);
             let mut windows_nodes = get_windows_nodes(pa);
 
-            move |pa: &mut Pass, force: bool| {
-                context::windows().cleanup_despawned(pa);
-                let cur_win = context::current_win_index(pa);
-                let cur_win_len = context::windows().len(pa);
-
-                let mut printed_at_least_one = false;
-
-                let Some(window) = windows_nodes.get(cur_win) else {
-                    return;
-                };
-                for node in window {
-                    let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
-                    if force || windows_changed || node.needs_update(pa) {
-                        node.update_and_print(pa, last_win);
-                        printed_at_least_one = true;
-                    }
-                }
-
+            let correct_window_nodes = |pa: &mut Pass, windows_nodes: &mut Vec<_>| {
                 // Additional Widgets may have been created in the meantime.
-                // DDOS vulnerable i guess.
+                // DDOS vulnerable I guess.
                 while let Some(new_additions) = context::windows().get_additions(pa) {
                     self.ui.flush_layout();
 
@@ -211,8 +194,33 @@ impl Session {
                         node.update_and_print(pa, cur_win);
                     }
 
-                    windows_nodes = get_windows_nodes(pa);
+                    *windows_nodes = get_windows_nodes(pa);
                 }
+            };
+
+            move |pa: &mut Pass, force: bool| {
+                context::windows().cleanup_despawned(pa);
+                correct_window_nodes(pa, &mut windows_nodes);
+
+                let cur_win = context::current_win_index(pa);
+                let cur_win_len = context::windows().len(pa);
+
+                // When exiting Duat, this will return `None`.
+                let Some(window) = windows_nodes.get(cur_win) else{
+                    return;
+                };
+                
+                let mut printed_at_least_one = false;
+                
+                for node in window {
+                    let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
+                    if force || windows_changed || node.needs_update(pa) {
+                        node.update_and_print(pa, last_win);
+                        printed_at_least_one = true;
+                    }
+                }
+
+                correct_window_nodes(pa, &mut windows_nodes);
 
                 if printed_at_least_one {
                     self.ui.print()
@@ -224,7 +232,7 @@ impl Session {
         };
 
         print_screen(pa, true);
-
+        
         loop {
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
                 match event {

@@ -22,12 +22,13 @@ use crate::{
 };
 
 static MODE_NAME: Mutex<&str> = Mutex::new("");
-static MODE_AND_BEFORE_EXIT: LazyLock<RwData<Option<(Box<dyn Any>, fn(&mut Pass, Box<dyn Any>))>>> =
+static MODE_AND_BEFORE_EXIT: LazyLock<RwData<Option<(Box<dyn Any>, BeforeExitFn)>>> =
     LazyLock::new(RwData::default);
 static SEND_KEY: LazyLock<RwData<Option<KeyFn>>> = LazyLock::new(RwData::default);
 static RESET_MODES: LazyLock<Mutex<HashMap<TypeId, ResetFn>>> = LazyLock::new(Mutex::default);
 
 type KeyFn = fn(&mut Pass, KeyEvent);
+type BeforeExitFn = fn(&mut Pass, Box<dyn Any>, Handle<dyn Widget>);
 type ResetFn = Box<dyn FnMut(&mut Pass) -> Option<Handle<dyn Widget>> + Send>;
 
 /// Sets the new default mode
@@ -81,7 +82,7 @@ pub fn set_default<M: Mode>(mode: M) {
 /// [`Widget`]: Mode::Widget
 pub fn set<M: Mode>(pa: &mut Pass, mut mode: M) -> Option<Handle<M::Widget>> {
     // If we are on the correct widget, no switch is needed.
-    if context::current_widget_node(pa).type_id(pa) != TypeId::of::<M::Widget>() {
+    let former = if context::current_widget_node(pa).type_id(pa) != TypeId::of::<M::Widget>() {
         let node = {
             let windows = context::windows();
             if TypeId::of::<M::Widget>() == TypeId::of::<Buffer>() {
@@ -100,12 +101,14 @@ pub fn set<M: Mode>(pa: &mut Pass, mut mode: M) -> Option<Handle<M::Widget>> {
                 context::error!("{err}");
                 return None;
             }
-        };
-    }
+        }
+    } else {
+        context::current_widget(pa).clone()
+    };
 
-    let wid = context::current_widget_node(pa);
+    let node = context::current_widget_node(pa);
 
-    let handle = wid
+    let handle = node
         .mutate_data_as(pa, |handle: &Handle<M::Widget>| handle.clone())
         .unwrap();
 
@@ -121,7 +124,7 @@ pub fn set<M: Mode>(pa: &mut Pass, mut mode: M) -> Option<Handle<M::Widget>> {
         .write(pa)
         .replace((Box::new(mode), before_exit_fn::<M>))
     {
-        before_exit(pa, mode);
+        before_exit(pa, mode, former);
     }
 
     SEND_KEY
@@ -170,7 +173,7 @@ pub fn reset<W: Widget>(pa: &mut Pass) -> Option<Handle<W>> {
 
 /// Resets to the default [`Mode`] of the given [`Widget`], on a
 /// given [`Handle`]
-pub fn reset_to(pa: &mut Pass, handle: Handle<dyn Widget>) {
+pub fn reset_to(pa: &mut Pass, handle: &Handle<impl Widget + ?Sized>) {
     let mut reset_modes = RESET_MODES.lock().unwrap();
     let type_id = handle.widget().type_id();
 
@@ -193,20 +196,18 @@ pub fn reset_to(pa: &mut Pass, handle: Handle<dyn Widget>) {
 }
 
 /// Switches to a certain widget
-pub(super) fn switch_widget(pa: &mut Pass, node: Node) {
+pub(super) fn switch_widget(pa: &mut Pass, node: Node) -> Handle<dyn Widget> {
     let cur_widget = context::current_widget_node(pa);
-    let handle = node.handle().clone();
+    let former = cur_widget.node(pa).handle().clone();
+    let current = node.handle().clone();
 
-    hook::trigger(
-        pa,
-        FocusChanged((cur_widget.node(pa).handle().clone(), node.handle().clone())),
-    );
+    hook::trigger(pa, FocusChanged((former.clone(), current.clone())));
 
-    cur_widget.node(pa).on_unfocus(pa, handle);
-
+    cur_widget.node(pa).on_unfocus(pa, current.clone());
     context::set_current_node(pa, node.clone());
+    node.on_focus(pa, former.clone());
 
-    node.on_focus(pa, cur_widget.node(pa).handle().clone());
+    former.clone()
 }
 
 /// Sends the [`KeyEvent`] to the active [`Mode`]
@@ -246,12 +247,8 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
 
 /// Static dispatch function to use before exiting a given
 /// [`Mode`]
-fn before_exit_fn<M: Mode>(pa: &mut Pass, mode: Box<dyn Any>) {
-    let wid = context::current_widget_node(pa);
-
-    let handle = wid
-        .mutate_data_as(pa, |handle: &Handle<M::Widget>| handle.clone())
-        .unwrap();
+fn before_exit_fn<M: Mode>(pa: &mut Pass, mode: Box<dyn Any>, handle: Handle<dyn Widget>) {
+    let handle = handle.try_downcast().unwrap();
 
     let mut mode: Box<M> = mode.downcast().unwrap();
     mode.before_exit(pa, handle);

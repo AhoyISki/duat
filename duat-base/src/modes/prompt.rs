@@ -169,7 +169,7 @@ impl mode::Mode for Prompt {
 
         let reset = |pa: &mut Pass, prompt: &mut Self| {
             if let Some(ret_handle) = prompt.mode.return_handle() {
-                mode::reset_to(pa, ret_handle);
+                mode::reset_to(pa, &ret_handle);
             } else {
                 (prompt.reset_fn)(pa);
             }
@@ -193,7 +193,7 @@ impl mode::Mode for Prompt {
                     update(pa);
 
                     if let Some(ret_handle) = self.mode.return_handle() {
-                        mode::reset_to(pa, ret_handle);
+                        mode::reset_to(pa, &ret_handle);
                     } else {
                         (self.reset_fn)(pa);
                     }
@@ -239,7 +239,7 @@ impl mode::Mode for Prompt {
                     c.replace(ty_history[index].clone());
                     c.unset_anchor();
                 });
-                
+
                 update(pa);
             }
             event!(Down) => {
@@ -266,7 +266,7 @@ impl mode::Mode for Prompt {
                         })
                     }
                 };
-                
+
                 update(pa);
             }
 
@@ -276,7 +276,7 @@ impl mode::Mode for Prompt {
                     c.replace("");
                 });
                 handle.write(pa).text_mut().selections_mut().clear();
-                
+
                 update(pa);
                 reset(pa, self);
             }
@@ -721,10 +721,7 @@ impl PromptMode for PipeSelections {
         let (caller_id, args_id) = if is_in_path(caller) {
             (form::id_of!("caller.info"), form::id_of!("param.info"))
         } else {
-            (
-                form::id_of!("caller.error"),
-                form::id_of!("param.error"),
-            )
+            (form::id_of!("caller.error"), form::id_of!("param.error"))
         };
 
         let c_s = command.len() - command.trim_start().len();
