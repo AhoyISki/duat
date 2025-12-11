@@ -195,12 +195,12 @@ impl mode::Mode for Regular {
             }
 
             // Searching
-            ctrl!('f') => mode::set(IncSearch::new(SearchFwd)),
+            ctrl!('f') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
 
             // Control
-            ctrl!('P') | event!(F(1)) => mode::set(RunCommands::new()),
-            ctrl!('p') => mode::set(RunCommands::new_with("edit ")),
-            ctrl!('n') => mode::set(RunCommands::new_with("open ")),
+            ctrl!('P') | event!(F(1)) => _ = mode::set(pa, RunCommands::new()),
+            ctrl!('p') => _ = mode::set(pa, RunCommands::new_with("edit ")),
+            ctrl!('n') => _ = mode::set(pa, RunCommands::new_with("open ")),
             event!('s') => cmd::queue_notify("write"),
             event!('w') => cmd::queue_notify("write-quit"),
             event!(',') => cmd::queue_notify("open --cfg"),

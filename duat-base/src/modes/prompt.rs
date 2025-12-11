@@ -78,7 +78,7 @@ pub struct Prompt {
     starting_text: String,
     ty: TypeId,
     clone_fn: Arc<Mutex<ModeCloneFn>>,
-    reset_fn: fn(),
+    reset_fn: fn(pa: &mut Pass),
     history_index: Option<usize>,
 }
 
@@ -99,7 +99,7 @@ impl Prompt {
             starting_text: String::new(),
             ty: TypeId::of::<M>(),
             clone_fn,
-            reset_fn: mode::reset::<M::ExitWidget>,
+            reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -120,7 +120,7 @@ impl Prompt {
             starting_text: initial.to_string(),
             ty: TypeId::of::<M>(),
             clone_fn,
-            reset_fn: mode::reset::<M::ExitWidget>,
+            reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -167,11 +167,11 @@ impl mode::Mode for Prompt {
             *handle.write(pa).text_mut() = text;
         };
 
-        let reset = |prompt: &mut Self| {
+        let reset = |pa: &mut Pass, prompt: &mut Self| {
             if let Some(ret_handle) = prompt.mode.return_handle() {
-                mode::reset_to(ret_handle);
+                mode::reset_to(pa, ret_handle);
             } else {
-                (prompt.reset_fn)();
+                (prompt.reset_fn)(pa);
             }
         };
 
@@ -193,9 +193,9 @@ impl mode::Mode for Prompt {
                     update(pa);
 
                     if let Some(ret_handle) = self.mode.return_handle() {
-                        mode::reset_to(ret_handle);
+                        mode::reset_to(pa, ret_handle);
                     } else {
-                        (self.reset_fn)();
+                        (self.reset_fn)(pa);
                     }
                 } else {
                     handle.edit_main(pa, |mut c| {
@@ -278,7 +278,7 @@ impl mode::Mode for Prompt {
                 handle.write(pa).text_mut().selections_mut().clear();
                 
                 update(pa);
-                reset(self);
+                reset(pa, self);
             }
             event!(Enter) => {
                 handle.write(pa).text_mut().selections_mut().clear();
@@ -294,7 +294,7 @@ impl mode::Mode for Prompt {
                 }
 
                 update(pa);
-                reset(self);
+                reset(pa, self);
             }
             _ => {}
         }

@@ -22,6 +22,7 @@ FOR NEXT UPDATE:
   [ ] <c-o> and <c-i>.
   [x] q and Q
 [x] Fix existing duatmode bindings.
+[ ] Search wrapping around buffer.
 
 KNOWN BUGS:
  HIGH PRIORITY:

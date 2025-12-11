@@ -282,8 +282,8 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
     form::set_weak("key.special", Form::yellow());
     form::set_weak("remap", Form::italic());
 
-    crate::cmd::add("logs", |_: &mut Pass| {
-        mode::set(Pager::<LogBook>::new());
+    crate::cmd::add("logs", |pa: &mut Pass| {
+        mode::set(pa, Pager::<LogBook>::new());
         Ok(None)
     });
 

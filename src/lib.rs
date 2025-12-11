@@ -598,9 +598,9 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferReloaded, BufferSaved, BufferUpdated, ColorSchemeSet, ConfigLoaded,
-            ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeyTyped,
-            KeysSent, KeysSentTo, ModeSet, ModeSwitched, SearchPerformed, SearchUpdated,
-            UnfocusedFrom, UnfocusedFromDuat, WidgetCreated, WindowCreated,
+            ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeySent,
+            KeySentTo, KeyTyped, ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom,
+            UnfocusedFromDuat, WidgetCreated, WindowCreated,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,

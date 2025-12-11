@@ -394,7 +394,7 @@ impl Windows {
                     });
 
                 if let Some((_, node)) = entry {
-                    crate::mode::reset_to(node.handle().clone());
+                    crate::mode::reset_to(pa, node.handle().clone());
                 } else {
                     // If there is no previous Buffer, just quit.
                     context::sender()
@@ -403,7 +403,7 @@ impl Windows {
                     return Ok(());
                 }
             } else {
-                crate::mode::reset_to(inner.cur_buffer.read(pa).to_dyn());
+                crate::mode::reset_to(pa, inner.cur_buffer.read(pa).to_dyn());
             }
         }
 
@@ -520,7 +520,7 @@ impl Windows {
         };
 
         if context::current_buffer(pa).read(pa).path_kind() != pk {
-            mode::reset_to(node.handle().clone());
+            mode::reset_to(pa, node.handle().clone());
         }
 
         node
@@ -731,7 +731,7 @@ impl Windows {
     pub fn jump_buffers_by(&self, pa: &mut Pass, jumps: i32) {
         let current = self.inner.read(pa).cur_buffer.read(pa).clone();
         if let Some(handle) = self.inner.write(pa).buffer_history.jump_by(current, jumps) {
-            mode::reset_to(handle.to_dyn());
+            mode::reset_to(pa, handle.to_dyn());
         } else {
             context::warn!("No buffer [a]{jumps}[] jumps away from the current one");
         }
@@ -743,7 +743,7 @@ impl Windows {
     pub fn last_buffer(&self, pa: &mut Pass) -> Result<Handle, Text> {
         let current = self.inner.read(pa).cur_buffer.read(pa).clone();
         if let Some(handle) = self.inner.write(pa).buffer_history.last(current) {
-            mode::reset_to(handle.to_dyn());
+            mode::reset_to(pa, handle.to_dyn());
             Ok(handle)
         } else {
             Err(txt!("No last buffer"))

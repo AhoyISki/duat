@@ -18,7 +18,6 @@ use crate::{
     mode::{self, Binding, Bindings},
     text::{Ghost, Selectionless, Tagger, Text, txt},
     ui::Widget,
-    utils::catch_panic,
 };
 
 static CUR_SEQ: LazyLock<RwData<(Vec<KeyEvent>, bool)>> = LazyLock::new(RwData::default);
@@ -179,7 +178,7 @@ mod global {
         super::CUR_SEQ.map(Clone::clone)
     }
 
-	/// Resets the current sequence of sent keys
+    /// Resets the current sequence of sent keys
     pub fn reset_current_sequence(pa: &mut Pass) {
         *super::CUR_SEQ.write(pa) = (Vec::new(), false)
     }
@@ -664,15 +663,28 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
 
                 clear_mapped_sequence(pa);
 
-                let mapped_bindings = &bdw.write(pa).mapped_bindings;
+                let mapped_bindings = &mut bdw.write(pa).mapped_bindings;
+                let remap = mapped_bindings.get_mut(&ty).unwrap().remaps.remove(i);
 
-                match &mapped_bindings[&ty].remaps[i].gives {
-                    Gives::Keys(keys) => keys.clone(),
+                match &remap.gives {
+                    Gives::Keys(keys) => {
+                        let keys = keys.clone();
+                        let mapped_bindings = &mut bdw.write(pa).mapped_bindings;
+                        mapped_bindings
+                            .get_mut(&ty)
+                            .unwrap()
+                            .remaps
+                            .insert(i, remap);
+                        keys
+                    }
                     Gives::Mode(given) => {
-                        (given.setter)();
-                        if let Some(mode_fn) = super::take_set_mode_fn(pa) {
-                            catch_panic(|| mode_fn(pa));
-                        }
+                        (given.setter)(pa);
+                        let mapped_bindings = &mut bdw.write(pa).mapped_bindings;
+                        mapped_bindings
+                            .get_mut(&ty)
+                            .unwrap()
+                            .remaps
+                            .insert(i, remap);
                         return;
                     }
                 }
@@ -740,7 +752,7 @@ pub enum Gives {
 
 /// A [`Mode`] that is "given" by a remap
 pub struct GivenMode {
-    setter: Box<dyn Fn() + Send>,
+    setter: Box<dyn Fn(&mut Pass) + Send>,
     name: &'static str,
 }
 
@@ -748,7 +760,7 @@ impl GivenMode {
     /// Returns a new `GiveMode`
     fn new<M: Mode>(mode: M) -> Self {
         Self {
-            setter: Box::new(move || crate::mode::set(mode.clone())),
+            setter: Box::new(move |pa| _ = crate::mode::set(pa, mode.clone())),
             name: crate::utils::duat_name::<M>(),
         }
     }

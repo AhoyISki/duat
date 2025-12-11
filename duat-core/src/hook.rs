@@ -55,7 +55,6 @@
 //! - [`OnMouseEvent`] triggers with mouse events.
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
-//! - [`ModeSet`] lets you act on a [`Mode`] after switching.
 //! - [`SearchPerformed`] (from `duat`) triggers after a search is
 //!   performed.
 //! - [`SearchUpdated`] (from `duat`) triggers after a search updates.
@@ -899,113 +898,29 @@ impl Hookable for ModeSwitched {
     }
 }
 
-/// [`Hookable`]: Lets you modify a [`Mode`] as it is set
-///
-/// # Arguments
-///
-/// - The new mode.
-/// - Its widget.
-///
-/// This hook is very useful if you want to, for example, set
-/// different options upon switching to modes, depending on things
-/// like the language of a [`Buffer`].
-///
-/// # Aliases
-///
-/// Since every `Mode` implements the `HookAlias` trait, given a
-/// `duat_kak` plugin imported as `kak`, instead of writing this:
-///
-/// ```rust
-/// # mod duat_kak {
-/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
-/// #     #[derive(Clone)]
-/// #     pub struct Normal {
-/// #         pub indent_on_capital_i: bool
-/// #     }
-/// #     impl Mode for Normal {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
-/// #     }
-/// # }
-/// # duat_core::doc_duat!(duat);
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-/// use duat_kak::Normal;
-///
-/// fn setup() {
-///     hook::add::<ModeSet<Normal>>(|pa, (normal, handle)|
-///         Ok(normal.indent_on_capital_i = true)
-///     );
-/// }
-/// ```
-///
-/// You can just write this:
-///
-/// ```rust
-/// # duat_core::doc_duat!(duat);
-/// # mod duat_kak {
-/// #     use duat_core::{buffer::Buffer, context::Handle, data::Pass, mode::{Mode, KeyEvent}};
-/// #     #[derive(Clone)]
-/// #     pub struct Normal {
-/// #         pub indent_on_capital_i: bool
-/// #     }
-/// #     impl Mode for Normal {
-/// #         type Widget = Buffer;
-/// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
-/// #     }
-/// # }
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-/// use duat_kak::Normal;
-///
-/// fn setup() {
-///     hook::add::<Normal>(|pa, (normal, handle)|
-///         Ok(normal.indent_on_capital_i = true)
-///     );
-/// }
-/// ```
-///
-/// # Note
-///
-/// You should try to avoid more than one [`Mode`] with the same name.
-/// This can happen if you're using two structs with the same name,
-/// but from different crates.
-///
-/// [`Mode`]: crate::mode::Mode
-/// [`Buffer`]: crate::buffer::Buffer
-pub struct ModeSet<M: Mode>(pub(crate) (M, Handle<M::Widget>));
-
-impl<M: Mode> Hookable for ModeSet<M> {
-    type Input<'h> = (&'h mut M, &'h Handle<M::Widget>);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&mut self.0.0, &self.0.1)
-    }
-}
-
-/// [`Hookable`]: Triggers whenever [key]s are sent
+/// [`Hookable`]: Triggers whenever a [key] is sent
 ///
 /// [`KeyEvent`]s are "sent" when you type [unmapped] keys _or_ with
-/// the keys that were mapped, this is in contrast with [`KeysTyped`],
+/// the keys that were mapped, this is in contrast with [`KeyTyped`],
 /// which triggers when you type or when calling [`mode::type_keys`].
-/// For example, if `jk` is mapped to `<Esc>`, [`KeysTyped`] will
-/// trigger once for `j` and once for `k`, while [`KeysSent`] will
+/// For example, if `jk` is mapped to `<Esc>`, [`KeyTyped`] will
+/// trigger once for `j` and once for `k`, while [`KeySent`] will
 /// trigger once for `<Esc>`.
 ///
 /// # Arguments
 ///
-/// - The sent [key]s.
+/// - The sent [key].
 ///
 /// [key]: KeyEvent
 /// [unmapped]: crate::mode::map
 /// [`mode::type_keys`]: crate::mode::type_keys
-pub struct KeysSent(pub(crate) Vec<KeyEvent>);
+pub struct KeySent(pub(crate) KeyEvent);
 
-impl Hookable for KeysSent {
-    type Input<'h> = &'h [KeyEvent];
+impl Hookable for KeySent {
+    type Input<'h> = KeyEvent;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
+        self.0
     }
 }
 
@@ -1013,17 +928,17 @@ impl Hookable for KeysSent {
 ///
 /// # Arguments
 ///
-/// - The sent [key]s.
+/// - The sent [key].
 /// - An [`Handle<W>`] for the widget.
 ///
 /// [key]: KeyEvent
-pub struct KeysSentTo<M: Mode>(pub(crate) (Vec<KeyEvent>, Handle<M::Widget>));
+pub struct KeySentTo<M: Mode>(pub(crate) (KeyEvent, Handle<M::Widget>));
 
-impl<M: Mode> Hookable for KeysSentTo<M> {
-    type Input<'h> = (&'h [KeyEvent], &'h Handle<M::Widget>);
+impl<M: Mode> Hookable for KeySentTo<M> {
+    type Input<'h> = (KeyEvent, &'h Handle<M::Widget>);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, &self.0.1)
+        (self.0.0, &self.0.1)
     }
 }
 
@@ -1455,11 +1370,6 @@ impl<W: Widget> HookAlias<WidgetCreatedDummy> for W {
     type Input<'h> = <WidgetCreated<W> as Hookable>::Input<'h>;
 }
 
-impl<M: Mode> HookAlias<ModeSetDummy> for M {
-    type Hookable = ModeSet<M>;
-    type Input<'h> = <ModeSet<M> as Hookable>::Input<'h>;
-}
-
 /// For specialization purposes
 #[doc(hidden)]
 pub struct NormalHook;
@@ -1467,7 +1377,3 @@ pub struct NormalHook;
 /// For specialization purposes
 #[doc(hidden)]
 pub struct WidgetCreatedDummy;
-
-/// For specialization purposes
-#[doc(hidden)]
-pub struct ModeSetDummy;

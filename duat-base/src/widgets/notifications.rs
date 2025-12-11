@@ -15,7 +15,7 @@ use std::sync::{
 use duat_core::{
     context::{self, Handle, Level, Record},
     data::Pass,
-    hook::{self, KeysSent},
+    hook::{self, KeySent},
     text::Text,
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
@@ -70,7 +70,7 @@ impl Notifications {
     pub fn builder() -> NotificationsOpts {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            hook::add::<KeysSent>(|_, _| {
+            hook::add::<KeySent>(|_, _| {
                 CLEAR_NOTIFS.store(true, Ordering::Relaxed);
                 Ok(())
             });

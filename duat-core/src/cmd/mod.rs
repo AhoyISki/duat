@@ -496,7 +496,7 @@ pub(crate) fn add_session_commands() {
             }
             PathOrBufferOrCfg::Path(path) => PathKind::from(path),
             PathOrBufferOrCfg::Buffer(handle) => {
-                mode::reset_to(handle.to_dyn());
+                mode::reset_to(pa, handle.to_dyn());
                 return Ok(Some(txt!("Switched to {}", handle.read(pa).name())));
             }
         };
@@ -567,7 +567,7 @@ pub(crate) fn add_session_commands() {
     alias("o", "open");
 
     add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
-        mode::reset_to(handle.to_dyn());
+        mode::reset_to(pa, handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(txt!("Switch to an open [a]Buffer[]"), None)
@@ -599,7 +599,7 @@ pub(crate) fn add_session_commands() {
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
-        mode::reset_to(handle.to_dyn());
+        mode::reset_to(pa, handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(
@@ -639,7 +639,7 @@ pub(crate) fn add_session_commands() {
                 .ok_or_else(|| txt!("There are no other buffers open in this window"))?
         };
 
-        mode::reset_to(handle.to_dyn());
+        mode::reset_to(pa, handle.to_dyn());
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(

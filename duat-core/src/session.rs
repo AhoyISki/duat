@@ -62,7 +62,6 @@ impl SessionCfg {
         already_plugged: Vec<TypeId>,
     ) -> Session {
         crate::buffer::BufferId::set_min(buffers.iter().flatten().map(|rb| rb.buffer.buffer_id()));
-        
         ui.setup_default_print_info();
 
         let plugins = Plugins::_new();
@@ -170,10 +169,9 @@ impl Session {
 
         hook::trigger(pa, ConfigLoaded(()));
 
-        let Some(mode_fn) = mode::take_set_mode_fn(pa) else {
+        if mode::reset::<Buffer>(pa).is_none() {
             unreachable!("Somebody forgot to set a default mode, I'm looking at you, duat!");
         };
-        mode_fn(pa);
 
         let mut reload_requested = false;
         let mut reprint_screen = false;
@@ -228,10 +226,6 @@ impl Session {
         print_screen(pa, true);
 
         loop {
-            if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
-                catch_panic(|| mode_fn(pa));
-            }
-
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
                 match event {
                     DuatEvent::KeyEventSent(key_event) => {

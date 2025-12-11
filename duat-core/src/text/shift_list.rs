@@ -88,8 +88,6 @@ impl<S: Shiftable> ShiftList<S> {
     ) -> impl Iterator<Item = (usize, S)> + 'a {
         let (mut i, mut end) = get_ends(range, self.buf.len());
 
-        let r = (i..end) == (52..55);
-
         std::iter::from_fn(move || {
             while i < end {
                 let shifted = if i >= self.from {
