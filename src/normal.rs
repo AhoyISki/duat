@@ -9,12 +9,12 @@ use duat_core::{
     data::Pass,
     hook::{self, KeyTyped},
     lender::Lender,
-    mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, event, shift},
+    mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, ctrl, event, shift},
     opts::PrintOpts,
-    text::{Point, txt},
+    text::{Point, Strs, txt},
 };
-use jump_list::BufferJumps;
-use treesitter::TsCursor;
+use duat_jump_list::{BufferJumps, JumpListId};
+use duat_treesitter::TsCursor;
 
 use crate::{
     Category, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
@@ -222,6 +222,8 @@ impl Mode for Normal {
             event!('G') => (txt!("Select to [paramenter]line[] or to places"), goto),
             event!('Q') => txt!("Toggle macro recording"),
             event!('q') => txt!("Replay macro"),
+            ctrl!('o') => txt!("Go to previous jump"),
+            ctrl!('i') | event!(Tab) => txt!("Go to next jump"),
             event!(' ') => txt!("Enter [mode]User[] mode"),
             event!('u' | 'U') => txt!("{undo} last selection change"),
         })
@@ -230,27 +232,16 @@ impl Mode for Normal {
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle) {
         static LAST_INSERT_KEY: Mutex<Option<InsertKey>> = Mutex::new(None);
         static ALT_DOT: Mutex<Option<(OneKey, KeyEvent)>> = Mutex::new(None);
+
         static MACRO: Mutex<Option<Vec<KeyEvent>>> = Mutex::new(None);
         static MACRO_GROUP: LazyLock<hook::GroupId> = LazyLock::new(hook::GroupId::new);
+
+        static U_ALT_U_ID: LazyLock<JumpListId> = LazyLock::new(JumpListId::new);
 
         use mode::KeyCode::*;
 
         let p_opts = handle.opts(pa);
         let opts = crate::opts::get();
-
-        if let Some(one_key) = self.one_key.take() {
-            let (sel_type, succeeded) = one_key.send_key(pa, key_event, handle);
-            self.sel_type = sel_type;
-            if self.only_one_action {
-                mode::set(crate::Insert);
-            }
-
-            if succeeded {
-                *ALT_DOT.lock().unwrap() = Some((one_key, key_event))
-            }
-
-            return;
-        }
 
         let do_match_on_spot = |[c0, c1]: [_; 2], alt_word, moved| {
             use Category::*;
@@ -266,11 +257,26 @@ impl Mode for Normal {
         };
 
         handle.text_mut(pa).new_moment();
-        let rec = if handle.write(pa).record_selections(false) {
-            2
-        } else {
-            1
-        };
+
+        if let Some(one_key) = self.one_key.take() {
+            let (sel_type, succeeded) = one_key.send_key(pa, key_event, &handle);
+            self.sel_type = sel_type;
+            if self.only_one_action {
+                mode::set(pa, crate::Insert);
+            }
+
+            if succeeded {
+                match one_key {
+                    OneKey::GoTo(..) | OneKey::Replace => {}
+                    _ => *ALT_DOT.lock().unwrap() = Some((one_key, key_event)),
+                }
+            }
+
+            return;
+        }
+
+        let jump_id = handle.read(pa).record_jump(*U_ALT_U_ID, false);
+        let rec = if jump_id.is_some() { 2 } else { 1 };
 
         let (param, param_was_set) = if let event!(Char(char)) = key_event
             && let Some(digit) = char.to_digit(10)
@@ -490,7 +496,7 @@ impl Mode for Normal {
             }
             alt!('.') => {
                 if let Some((one_key, key_event)) = *ALT_DOT.lock().unwrap() {
-                    let (sel_type, _) = one_key.send_key(pa, key_event, handle);
+                    let (sel_type, _) = one_key.send_key(pa, key_event, &handle);
                     self.sel_type = sel_type;
                 } else {
                     context::warn!("No previous 2 key sequence");
@@ -529,36 +535,52 @@ impl Mode for Normal {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
+                    let mut i = 0;
                     let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
 
-					c.move_hor(1);
-                    let end = object.find_ahead(c, 0, true)?;
-                    c.move_to(end);
-                    if char == 'm' {
-                        c.set_anchor();
-                        let start = object.find_behind(c, 1, false)?;
-                        c.move_to(start);
-                        c.set_caret_on_end();
-                    }
-                    Some(())
+                    (0..param).try_for_each(|_| {
+                        c.move_hor(1);
+                        let end = object.find_ahead(c, 0, true)?;
+                        c.move_to(end);
+                        if char == 'm' {
+                            c.set_anchor();
+                            let bounds = opts.brackets.bounds_matching(c.selection())?;
+                            let object = Object::two_bounds_simple(bounds[0], bounds[1]);
+                            let start = object.find_behind(c, 1, false)?;
+                            c.move_to(start);
+                            c.set_caret_on_end();
+                        }
+                        i += 1;
+                        Some(())
+                    });
+
+                    (i > 0).then_some(())
                 })
             }
             alt!(char @ ('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
+                    let mut i = 0;
                     let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
 
-                    let start = object.find_behind(c, 0, false)?;
-                    c.move_to(start);
-                    
-                    if char == 'm' {
-                        c.set_anchor();
-                        let end = object.find_ahead(c, 0, true)?;
-                        c.move_to(end);
-                        c.set_caret_on_start();
-                    }
-                    Some(())
+                    (0..param).try_for_each(|_| {
+                        let start = object.find_behind(c, 0, false)?;
+                        c.move_to(start);
+
+                        if char == 'm' {
+                            c.set_anchor();
+                            let bounds = opts.brackets.bounds_matching(c.selection())?;
+                            let object = Object::two_bounds_simple(bounds[0], bounds[1]);
+                            let end = object.find_ahead(c, 0, true)?;
+                            c.move_to(end);
+                            c.set_caret_on_start();
+                        }
+                        i += 1;
+                        Some(())
+                    });
+
+                    (i > 0).then_some(())
                 })
             }
 
@@ -566,7 +588,7 @@ impl Mode for Normal {
             event!('i') => {
                 handle.edit_all(pa, |mut c| _ = c.set_caret_on_start());
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Insert);
-                mode::set(crate::Insert);
+                mode::set(pa, crate::Insert);
             }
             event!('I') => {
                 handle.edit_all(pa, |mut c| {
@@ -578,7 +600,7 @@ impl Mode for Normal {
                     }
                 });
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::InsertStart);
-                mode::set(crate::Insert);
+                mode::set(pa, crate::Insert);
             }
             event!('a') => {
                 handle.edit_all(pa, |mut c| {
@@ -586,7 +608,7 @@ impl Mode for Normal {
                     c.move_hor(1);
                 });
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Append);
-                mode::set(crate::Insert);
+                mode::set(pa, crate::Insert);
             }
             event!('A') => {
                 handle.edit_all(pa, |mut c| {
@@ -594,14 +616,14 @@ impl Mode for Normal {
                     c.move_to_col(usize::MAX);
                 });
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::AppendEnd);
-                mode::set(crate::Insert);
+                mode::set(pa, crate::Insert);
             }
             // TODO: Implement parameter
             event!('o') | alt!('o') => {
                 open_new_line_below(pa);
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineBelow);
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(crate::Insert);
+                    mode::set(pa, crate::Insert);
                 }
             }
             // TODO: Implement parameter
@@ -609,7 +631,7 @@ impl Mode for Normal {
                 open_new_line_above(pa);
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineAbove);
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(crate::Insert);
+                    mode::set(pa, crate::Insert);
                 }
             }
             event!('.') => {
@@ -893,7 +915,7 @@ impl Mode for Normal {
                     c.unset_anchor();
                 });
                 if char == 'c' {
-                    mode::set(crate::Insert);
+                    mode::set(pa, crate::Insert);
                 }
             }
             event!(char @ ('p' | 'P')) => {
@@ -980,14 +1002,14 @@ impl Mode for Normal {
             }
 
             ////////// Search keys
-            event!('/') => mode::set(IncSearch::new(SearchFwd)),
-            alt!('/') => mode::set(IncSearch::new(SearchRev)),
-            event!('?') => mode::set(IncSearch::new(ExtendFwd)),
-            alt!('?') => mode::set(IncSearch::new(ExtendRev)),
-            event!('s') => mode::set(IncSearch::new(Select)),
-            event!('S') => mode::set(IncSearch::new(Split)),
-            alt!('k') => mode::set(IncSearch::new(KeepMatching(true))),
-            alt!('K') => mode::set(IncSearch::new(KeepMatching(false))),
+            event!('/') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
+            alt!('/') => _ = mode::set(pa, IncSearch::new(SearchRev)),
+            event!('?') => _ = mode::set(pa, IncSearch::new(ExtendFwd)),
+            alt!('?') => _ = mode::set(pa, IncSearch::new(ExtendRev)),
+            event!('s') => _ = mode::set(pa, IncSearch::new(Select)),
+            event!('S') => _ = mode::set(pa, IncSearch::new(Split)),
+            alt!('k') => _ = mode::set(pa, IncSearch::new(KeepMatching(true))),
+            alt!('K') => _ = mode::set(pa, IncSearch::new(KeepMatching(false))),
 
             event!(char @ ('n' | 'N')) | alt!(char @ ('n' | 'N')) => {
                 let search = SEARCH.lock().unwrap();
@@ -1028,35 +1050,8 @@ impl Mode for Normal {
             ////////// Jumping
             alt!(char @ ('u' | 'U')) => {
                 let jmp = if char == 'u' { -rec } else { rec };
-                if let Some(jump) = handle.write(pa).jump_selections_by(jmp) {
-                    match jump {
-                        jump_list::Jump::Single(selection) => {
-                            handle.write(pa).selections_mut().remove_extras();
-                            handle.edit_main(pa, |mut c| {
-                                let start = c.text().point_at_byte(selection.start);
-                                let end = c.text().point_at_byte(selection.end);
-                                c.move_to(start..end)
-                            });
-                        }
-                        jump_list::Jump::Multiple(selections, main) => {
-                            handle.write(pa).selections_mut().remove_extras();
-
-                            handle.edit_main(pa, |mut c| {
-                                let mut is_first = true;
-                                for selection in selections {
-                                    if !is_first {
-                                        c.copy();
-                                    }
-
-                                    let start = c.text().point_at_byte(selection.start);
-                                    let end = c.text().point_at_byte(selection.end);
-                                    c.move_to(start..end);
-                                    is_first = false;
-                                }
-                            });
-                            handle.write(pa).selections_mut().set_main(main);
-                        }
-                    }
+                if let Some(jump) = handle.write(pa).move_jumps_by(*U_ALT_U_ID, jmp) {
+                    jump.apply(pa, &handle);
                 }
             }
 
@@ -1098,15 +1093,21 @@ impl Mode for Normal {
                 }
             }
 
+            ////////// Jumping around
+            ctrl!('o') => jump_list::jump_by(pa, &handle, -1),
+            ctrl!('i') | event!(Tab) => jump_list::jump_by(pa, &handle, 1),
+
             ////////// Other mode changing keys
-            event!(':') => mode::set(RunCommands::new()),
-            event!('|') => mode::set(PipeSelections::new()),
+            event!(':') => _ = mode::set(pa, RunCommands::new()),
+            event!('|') => _ = mode::set(pa, PipeSelections::new()),
             event!('g') if param_was_set => {
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
                     c.unset_anchor();
                     c.move_to_coords(param - 1, 0);
-                })
+                });
+                mode::reset_current_sequence(pa);
+                jump_list::register(pa, &handle, 5);
             }
             event!('g') => self.one_key = Some(OneKey::GoTo(SelType::Normal)),
             event!('G') if param_was_set => {
@@ -1114,10 +1115,12 @@ impl Mode for Normal {
                 handle.edit_main(pa, |mut c| {
                     c.set_anchor_if_needed();
                     c.move_to_coords(param - 1, 0)
-                })
+                });
+                mode::reset_current_sequence(pa);
+                jump_list::register(pa, &handle, 5);
             }
             event!('G') => self.one_key = Some(OneKey::GoTo(SelType::Extend)),
-            event!(' ') => mode::set(mode::User),
+            event!(' ') => _ = mode::set(pa, mode::User),
 
             ////////// History manipulation
             event!('u') => handle.text_mut(pa).undo(),
@@ -1126,7 +1129,7 @@ impl Mode for Normal {
         }
 
         if self.one_key.is_none() && self.only_one_action {
-            mode::set(crate::Insert);
+            mode::set(pa, crate::Insert);
         }
     }
 
@@ -1145,10 +1148,10 @@ impl Default for Normal {
 pub(crate) struct Brackets(pub(crate) &'static [[&'static str; 2]]);
 
 impl Brackets {
-    pub(crate) fn bounds_matching(&self, bound: &str) -> Option<[&'static str; 2]> {
+    pub(crate) fn bounds_matching(&self, bound: Strs) -> Option<[&'static str; 2]> {
         self.0
             .iter()
-            .find(|bs| bs.contains(&escaped_regex(bound)))
+            .find(|bs| bs.contains(&escaped_regex(bound.clone())))
             .copied()
     }
 
@@ -1207,4 +1210,120 @@ enum InsertKey {
     AppendEnd,
     NewLineBelow,
     NewLineAbove,
+}
+
+pub(crate) mod jump_list {
+    use std::sync::{LazyLock, Mutex};
+
+    use duat_core::{
+        buffer::BufferId,
+        context::{self, Handle},
+        data::Pass,
+        hook::{self, BufferSwitched},
+        mode,
+    };
+    use duat_jump_list::{BufferJumps, JumpId, JumpListId};
+
+    static JUMP_LIST: Mutex<JumpList> = Mutex::new(JumpList::new());
+    static JUMPS_ID: LazyLock<JumpListId> = LazyLock::new(JumpListId::new);
+    static JUMPS_HOOK_ID: LazyLock<hook::GroupId> = LazyLock::new(hook::GroupId::new);
+
+    /// A list for jumping around [`Buffer`]s
+    #[derive(Debug)]
+    pub struct JumpList {
+        list: Vec<(JumpId, BufferId)>,
+        cur: usize,
+    }
+
+    impl JumpList {
+        /// Returns a new `JumpList`
+        pub const fn new() -> Self {
+            Self { list: Vec::new(), cur: 0 }
+        }
+    }
+
+    /// Register a new jump, if it would be different
+    ///
+    /// If an equal jump was found at most `eq_lookback` jumps
+    /// back, then don't register.
+    pub fn register(pa: &mut Pass, handle: &Handle, eq_lookback: usize) {
+        let mut jl = JUMP_LIST.lock().unwrap();
+
+        let buffer = handle.read(pa);
+        let jump_id = buffer.record_or_get_current_jump(*JUMPS_ID);
+
+        for (jump_id, buffer_id) in jl.list[..jl.cur].iter().rev().take(eq_lookback) {
+            if *buffer_id == buffer.buffer_id()
+                && let Some(jump) = buffer.get_jump(*JUMPS_ID, *jump_id)
+                && jump.is_eq(buffer)
+            {
+                return;
+            }
+        }
+
+        let cur = jl.cur;
+        jl.list.truncate(cur);
+        jl.list.push((jump_id, buffer.buffer_id()));
+        jl.cur += 1;
+    }
+
+    /// Jumps by `by` jumps, which can go across [`Buffer`]s and
+    /// stuff.
+    pub fn jump_by(pa: &mut Pass, handle: &Handle, by: i32) {
+        let mut jl = JUMP_LIST.lock().unwrap();
+
+        if jl.list.is_empty() || by == 0 {
+            return;
+        }
+
+        jl.cur = jl.cur.saturating_add_signed(by as isize).min(jl.list.len());
+
+        while let Some((jump_id, buffer_id)) = jl.list.get(jl.cur).cloned() {
+            let cur = jl.cur;
+
+            let new_handle = if buffer_id != handle.read(pa).buffer_id() {
+                if let Some(handle) = {
+                    context::windows()
+                        .buffers(pa)
+                        .find(|handle| handle.read(pa).buffer_id() == buffer_id)
+                } {
+                    hook::remove(*JUMPS_HOOK_ID);
+                    mode::reset_to(pa, &handle);
+                    add_jump_hook();
+
+                    handle.clone()
+                } else {
+                    jl.list.remove(cur);
+                    jl.cur = jl.cur.saturating_sub((by < 0) as usize);
+                    continue;
+                }
+            } else {
+                handle.clone()
+            };
+
+            if let Some(jump) = new_handle.read(pa).go_to_jump(*JUMPS_ID, jump_id) {
+                if !new_handle.ptr_eq(handle.widget()) || !jump.is_eq(new_handle.read(pa)) {
+                    jump.apply(pa, &new_handle);
+                } else if jl.cur > 0 {
+                    jl.cur -= 1;
+                    continue;
+                }
+                break;
+            } else {
+                jl.list.remove(cur);
+                jl.cur = jl.cur.saturating_sub((by < 0) as usize);
+            }
+        }
+    }
+
+    /// Add the hook for automatic insertion of jumps
+    pub fn add_jump_hook() {
+        hook::add::<BufferSwitched>(|pa, (former, _)| {
+            if !former.is_closed(pa) {
+                register(pa, former, 5);
+            }
+            Ok(())
+        })
+        .grouped(*JUMPS_HOOK_ID);
+    }
 }

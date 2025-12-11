@@ -8,7 +8,7 @@ use duat_core::{
     lender::Lender,
     mode::{self, Cursor, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
 };
-use treesitter::TsCursor;
+use duat_treesitter::TsCursor;
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
@@ -196,9 +196,9 @@ impl Mode for Insert {
 
             event!(Esc) => {
                 handle.text_mut(pa).new_moment();
-                mode::set(Normal::new());
+                mode::set(pa, Normal::new());
             }
-            alt!(';') => mode::set(Normal::only_one_action()),
+            alt!(';') => _ = mode::set(pa, Normal::only_one_action()),
             ctrl!('u') => handle.text_mut(pa).new_moment(),
             _ => {}
         }

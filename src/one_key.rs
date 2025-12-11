@@ -28,12 +28,12 @@ impl OneKey {
         &self,
         pa: &mut Pass,
         event: KeyEvent,
-        handle: Handle,
+        handle: &Handle,
     ) -> (SelType, bool) {
         let just_char = just_char(event);
 
         match (*self, just_char) {
-            (OneKey::GoTo(st), _) => match_goto(pa, &handle, event, st),
+            (OneKey::GoTo(st), _) => (match_goto(pa, handle, event, st), false),
             (OneKey::Find(nth, st, ss) | OneKey::Until(nth, st, ss), Some(char)) => {
                 let is_t = matches!(*self, OneKey::Until(..));
                 match_find_until(pa, handle, char, nth, is_t, st);
@@ -85,8 +85,14 @@ fn match_goto(
     handle: &Handle,
     key_event: KeyEvent,
     mut sel_type: SelType,
-) -> (SelType, bool) {
-    let mut matched = true;
+) -> SelType {
+    let mut switch_and_register = |cmd| {
+        if cmd::call_notify(pa, cmd).is_ok() {
+            let handle = context::current_buffer(pa).clone();
+            crate::normal::jump_list::register(pa, &handle, 5);
+        }
+    };
+
     match key_event {
         event!('h') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
@@ -121,18 +127,18 @@ fn match_goto(
         }),
 
         ////////// File change keys
-        event!('a') => _ = cmd::call_notify(pa, "last-buffer"),
-        event!('n') => _ = cmd::call_notify(pa, "next-buffer --global"),
-        event!('N') => _ = cmd::call_notify(pa, "prev-buffer --global"),
-        _ => matched = false,
+        event!('a') => switch_and_register("last-buffer"),
+        event!('n') => switch_and_register("next-buffer --global"),
+        event!('N') => switch_and_register("prev-buffer --global"),
+        _ => {}
     }
 
-    (sel_type, matched)
+    sel_type
 }
 
 fn match_find_until(
     pa: &mut Pass,
-    handle: Handle,
+    handle: &Handle,
     char: char,
     nth: usize,
     is_t: bool,
@@ -184,7 +190,7 @@ fn match_find_until(
 
 fn match_bounds(
     pa: &mut Pass,
-    handle: Handle,
+    handle: &Handle,
     event: KeyEvent,
     nth: usize,
     is_inside: bool,
@@ -197,7 +203,7 @@ fn match_bounds(
     let mut failed = false;
 
     if let Some(object) = Object::new(event, opts, brackets) {
-        edit_or_destroy_all(pa, &handle, &mut failed, |c| {
+        edit_or_destroy_all(pa, handle, &mut failed, |c| {
             match bounds {
                 Bounds::Ahead => {
                     let p = object.find_ahead(c, nth, is_inside)?;

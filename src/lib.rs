@@ -711,8 +711,8 @@ pub struct DuatMode;
 
 impl Plugin for DuatMode {
     fn plug(self, plugins: &Plugins) {
-        plugins.require::<jump_list::JumpList>();
-        plugins.require::<treesitter::TreeSitter>();
+        plugins.require::<duat_jump_list::JumpList>();
+        plugins.require::<duat_treesitter::TreeSitter>();
 
         mode::set_alt_is_reverse(true);
         mode::set_default::<Normal>(Normal::new());
@@ -721,6 +721,8 @@ impl Plugin for DuatMode {
             *SEARCH.lock().unwrap() = search.to_string();
             Ok(())
         });
+
+        normal::jump_list::add_jump_hook();
 
         form::enable_mask("Insert");
         form::enable_mask("Normal");
@@ -831,7 +833,7 @@ enum Object<'o> {
 }
 
 impl<'o> Object<'o> {
-    pub fn two_bounds_simple(ahead: &'o str, behind: &'o str) -> Self {
+    pub fn two_bounds_simple(behind: &'o str, ahead: &'o str) -> Self {
         Self::TwoBounds {
             ahead: Regexes::simple(ahead),
             behind: Regexes::simple(behind),
@@ -1089,12 +1091,13 @@ impl<'o> Object<'o> {
 
 ////////// General utility functions
 
-fn escaped_regex(str: &str) -> &'static str {
+fn escaped_regex(str: impl ToString) -> &'static str {
     static ESCAPED: Memoized<String, &str> = Memoized::new();
     ESCAPED.get_or_insert_with(str.to_string(), || escaped_str(str).leak())
 }
 
-fn escaped_str(str: &str) -> String {
+fn escaped_str(str: impl ToString) -> String {
+    let str = str.to_string();
     let mut escaped = String::new();
     for char in str.chars() {
         if let '(' | ')' | '{' | '}' | '[' | ']' | '$' | '^' | '.' | '*' | '+' | '?' | '|' = char {
