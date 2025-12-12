@@ -91,7 +91,7 @@ use duat_core::{
     data::Pass,
     form,
     hook::{self, BufferUpdated},
-    text::{Point, Tagger},
+    text::{Point, RegexHaystack, Tagger},
     ui::Widget,
 };
 use duat_filetype::FileType;
@@ -177,7 +177,7 @@ impl Plugin for MatchPairs {
 
         hook::add::<BufferUpdated>(move |pa, handle| {
             let file = handle.write(pa);
-            
+
             let match_pairs_ref = MatchPairsRef {
                 ts_and_reg: &self.ts_and_reg,
                 ts_only: if let Some(path) = file.path_set()
@@ -241,8 +241,8 @@ impl MatchPairsRef<'_> {
                 continue;
             };
 
-            let (start_range, end_range) = if let Some((s_range, e_range)) = buffer
-                .read_ts_parser(|parser: &Parser| {
+            let (start_range, end_range) = if let Some((s_range, e_range)) =
+                buffer.read_ts_parser(|parser: &Parser| {
                     let node = parser
                         .root()
                         .and_then(|root| root.descendant_for_byte_range(c_range.start, c_range.end))
@@ -273,7 +273,7 @@ impl MatchPairsRef<'_> {
                 (s_range, e_range)
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
-                    let mut iter = buffer.bytes().search_fwd(escaped, c_range.start..).unwrap();
+                    let mut iter = buffer.bytes().search(escaped).range(c_range.start..);
                     let mut bounds = 0;
 
                     loop {
@@ -286,11 +286,11 @@ impl MatchPairsRef<'_> {
                         }
                     }
                 } else {
-                    let mut iter = buffer.bytes().search_rev(escaped, ..c_range.end).unwrap();
+                    let mut iter = buffer.bytes().search(escaped).range(..c_range.end);
                     let mut bounds = 0;
 
                     loop {
-                        let Some((i, m_range)) = iter.next() else {
+                        let Some((i, m_range)) = iter.next_back() else {
                             continue 'selections;
                         };
                         bounds = (bounds + (i == 1) as usize) - (i == 0) as usize;
