@@ -397,9 +397,6 @@ impl RawArea for Area {
                 let number = item.line();
                 let is_wrapped = prev_line.is_some_and(|ll| ll == number);
                 prev_line = Some(number);
-                if number == 81 {
-                    panic!();
-                }
                 printed_lines.push(PrintedLine { number, is_wrapped });
             }
         }
