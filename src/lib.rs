@@ -42,7 +42,7 @@ use duat_core::{
     lender::Lender,
     mode::Cursor,
     opts::PrintOpts,
-    text::{Builder, Bytes, Change, Matcheable, Point, Tagger, Tags, Text, txt},
+    text::{Builder, Bytes, Change, Point, RegexHaystack, Tagger, Tags, Text, txt},
     ui::Widget,
 };
 use duat_filetype::FileType;
@@ -523,7 +523,7 @@ impl InnerTsParser {
             // Find last previous empty line.
             let mut lines = bytes.lines(..start).rev();
             let Some((prev_l, line)) = lines
-                .find(|(_, line)| !(line.reg_matches(r"^\s*$", ..).unwrap()))
+                .find(|(_, line)| !(line.matches_pat(r"^\s*$").unwrap()))
                 .filter(|(l, _)| *l >= first_line)
             else {
                 // If there is no previous non empty line, align to 0.
