@@ -272,7 +272,7 @@ pub trait BufferJumps {
 impl BufferJumps for Buffer {
     fn record_jump(&self, jump_list_id: JumpListId, allow_duplicates: bool) -> Option<JumpId> {
         let mut parsers = PARSERS.lock().unwrap();
-        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
+        let parser = parsers.get_mut(&self.buffer_id())?;
         parser.update();
         let selections = self.selections();
 
