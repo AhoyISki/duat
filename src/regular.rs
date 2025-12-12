@@ -74,7 +74,7 @@ impl mode::Mode for Regular {
                         c.anchor().is_some()
                             || (c.move_hor(-1) == -1
                                 && c.set_anchor_if_needed()
-                                && c.selection().any(|str| str.contains('\n')))
+                                && c.selection().chars().any(|c| c == '\n'))
                     })
                 });
                 if !matches!(*last_code, Some(Backspace)) || major_removal {
@@ -89,7 +89,7 @@ impl mode::Mode for Regular {
                 let major_removal = handle.edit_iter(pa, |mut cursors| {
                     cursors.any(|mut c| {
                         c.set_anchor_if_needed();
-                        c.selection().contains('\n').unwrap()
+                        c.selection().chars().any(|c| c == '\n')
                     })
                 });
                 if !matches!(*last_code, Some(Delete)) || major_removal {

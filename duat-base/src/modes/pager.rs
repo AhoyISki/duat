@@ -17,7 +17,7 @@ use duat_core::{
     data::Pass,
     form, hook,
     mode::{self, KeyEvent, Mode, alt, event, shift},
-    text::{Searcher, Tagger, Text, txt},
+    text::{RegexHaystack, Searcher, Tagger, Text, txt},
     ui::{PrintInfo, RwArea, Widget},
 };
 
@@ -91,7 +91,7 @@ impl<W: Widget> Mode for Pager<W> {
                 let point = handle.start_points(pa).real;
 
                 let text = handle.read(pa).text();
-                let Some(r) = text.search_fwd(&*se, point..).unwrap().next() else {
+                let Some(r) = text.search(&*se).range(point..).next() else {
                     context::error!("[a]{se}[] was not found");
                     return;
                 };
@@ -105,7 +105,7 @@ impl<W: Widget> Mode for Pager<W> {
                 let point = handle.start_points(pa).real;
 
                 let text = handle.read(pa).text();
-                let Some(r) = text.search_rev(&*se, ..point).unwrap().next() else {
+                let Some(r) = text.search(&*se).range(..point).next() else {
                     context::error!("[a]{se}[] was not found");
                     return;
                 };
@@ -183,7 +183,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                 let mut parts = self.handle.write(pa).text_mut().parts();
                 let id = form::id_of!("pager.search");
 
-                for range in searcher.search_fwd(parts.bytes, ..) {
+                for range in searcher.search(parts.bytes) {
                     parts.tags.insert(*PAGER_TAGGER, range, id.to_tag(0));
                 }
             }
@@ -211,7 +211,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
             Ok(mut se) => {
                 let point = self.handle.start_points(pa).real;
                 if self.is_fwd {
-                    let Some(range) = se.search_fwd(self.handle.read(pa).text(), point..).next()
+                    let Some(range) = se.search(self.handle.read(pa).text()).range(point..).next()
                     else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;
@@ -221,7 +221,10 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                     self.handle
                         .scroll_to_points(pa, start.to_two_points_after());
                 } else {
-                    let Some(range) = se.search_rev(self.handle.read(pa).text(), ..point).next()
+                    let Some(range) = se
+                        .search(self.handle.read(pa).text())
+                        .range(..point)
+                        .next_back()
                     else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;

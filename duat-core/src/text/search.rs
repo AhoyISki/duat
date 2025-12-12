@@ -12,7 +12,8 @@
 //! [`Text`]: super::Text
 use std::{
     collections::HashMap,
-    ops::{Range, RangeBounds},
+    marker::PhantomData,
+    ops::{DerefMut, Range},
     sync::{LazyLock, RwLock, RwLockWriteGuard},
 };
 
@@ -27,289 +28,280 @@ use regex_cursor::{
     },
 };
 
-use super::{Bytes, TextRange};
+use super::TextRange;
+use crate::text::{Bytes, Strs, Text};
 
-impl Bytes {
-    /// Searches forward for a [`RegexPattern`] in a [range]
+/// An [`Iterator`] over the matches returned by a search on a
+/// [haystack]
+///
+/// This is most commonly used with the [`Strs`] and [`Bytes`]
+/// structs, although it is also available with `&str` and any type
+/// implementing [`Deref<Target = str>`]
+///
+/// [haystack]: RegexHaystack
+/// [`Deref<Target = str>`]: std::ops::Deref
+pub struct Matches<'m, H, R, Cc = RwLockWriteGuard<'m, Cache>, C = SearchBytes<'m>>
+where
+    H: RegexHaystack<'m, C> + ?Sized,
+    R: RegexPattern,
+    Cc: DerefMut<Target = Cache>,
+    C: Cursor,
+{
+    haystack: &'m H,
+    b_start: usize,
+    dfas: FwdRev<&'static DFA>,
+    input: FwdRev<Input<C>>,
+    cache: FwdRev<Cc>,
+    _ghost: PhantomData<R>,
+}
+
+impl<'m, H, R, C, Cc> Matches<'m, H, R, Cc, C>
+where
+    H: RegexHaystack<'m, C> + ?Sized,
+    R: RegexPattern,
+    Cc: DerefMut<Target = Cache>,
+    C: Cursor,
+{
+    /// Changes the [`TextRange`] to search on
     ///
-    /// A [`RegexPattern`] can either be a single regex string, an
-    /// array of strings, or a slice of strings. When there are more
-    /// than one pattern, The return value will include which pattern
-    /// matched.
-    ///
-    /// The patterns will also automatically be cached, so you don't
-    /// need to do that.
-    ///
-    /// [range]: TextRange
-    pub fn search_fwd<R: RegexPattern>(
-        &self,
-        pat: R,
-        range: impl TextRange,
-    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().byte());
-        let dfas = dfas_from_pat(pat)?;
-
-        let b_start = self.point_at_byte(range.start).byte();
-
-        let (mut fwd_input, mut rev_input) = get_inputs(self, range.clone());
-        rev_input.anchored(Anchored::Yes);
-
-        let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        let mut rev_cache = dfas.rev.1.write().unwrap();
-
-        Ok(std::iter::from_fn(move || {
-            let h_end = {
-                if let Ok(Some(half)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input)
-                {
-                    half.offset()
-                } else {
-                    return None;
-                }
-            };
-
-            fwd_input.set_start(h_end);
-            rev_input.set_end(h_end);
-
-            let Ok(Some(half)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input) else {
-                return None;
-            };
-            let h_start = half.offset();
-
-            // To not repeatedly match the same empty thing over and over.
-            if h_start == h_end {
-                if h_end == fwd_input.end() {
-                    return None;
-                }
-                fwd_input.set_start(h_end + 1);
-                fwd_input.set_start(h_end + 1);
-            }
-
-            Some(R::get_match(
-                b_start + h_start..b_start + h_end,
-                half.pattern(),
-            ))
-        }))
-    }
-
-    /// Searches in reverse for a [`RegexPattern`] in a [range]
-    ///
-    /// A [`RegexPattern`] can either be a single regex string, an
-    /// array of strings, or a slice of strings. When there are more
-    /// than one pattern, The return value will include which pattern
-    /// matched.
-    ///
-    /// The patterns will also automatically be cached, so you don't
-    /// need to do that.
-    ///
-    /// [range]: TextRange
-    pub fn search_rev<R: RegexPattern>(
-        &self,
-        pat: R,
-        range: impl TextRange,
-    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().byte());
-        let dfas = dfas_from_pat(pat)?;
-
-        let (mut fwd_input, mut rev_input) = get_inputs(self, range.clone());
-        fwd_input.anchored(Anchored::Yes);
-
-        let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        let mut rev_cache = dfas.rev.1.write().unwrap();
-
-        Ok(std::iter::from_fn(move || {
-            let h_start = {
-                if let Ok(Some(half)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input)
-                {
-                    half.offset()
-                } else {
-                    return None;
-                }
-            };
-
-            rev_input.set_end(h_start);
-            fwd_input.set_start(h_start);
-
-            let Ok(Some(half)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) else {
-                return None;
-            };
-            let h_end = half.offset();
-
-            // To not repeatedly match the same empty thing over and over.
-            if h_start == h_end {
-                if h_start == 0 {
-                    return None;
-                }
-                fwd_input.set_start(h_end - 1);
-                fwd_input.set_start(h_end - 1);
-            }
-
-            Some(R::get_match(
-                range.start + h_start..range.start + h_end,
-                half.pattern(),
-            ))
-        }))
-    }
-
-    /// Returns true if the pattern is found in the given range
-    ///
-    /// This is unanchored by default, if you want an anchored search,
-    /// use the `"^$"` characters.
-    pub fn matches(
-        &self,
-        pat: impl RegexPattern,
-        range: impl TextRange,
-    ) -> Result<bool, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().byte());
-        let dfas = dfas_from_pat(pat)?;
-
-        let (mut fwd_input, _) = get_inputs(self, range.clone());
-        fwd_input.anchored(Anchored::Yes);
-
-        let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(hm.offset() == range.end)
-        } else {
-            Ok(false)
+    /// This _will_ reset the [`Iterator`], if it was returning
+    /// [`None`] before, it might start returning [`Some`] again if
+    /// the pattern exists in the specified [`Range`]
+    pub fn range(self, range: impl TextRange) -> Self {
+        let range = range.to_range(self.haystack.range().end);
+        Self {
+            input: self.haystack.get_inputs(range.clone()),
+            b_start: range.start,
+            ..self
         }
     }
 }
 
-/// A trait to match regexes on `&str`s
-pub trait Matcheable: Sized {
-    /// Returns a forward [`Iterator`] over matches of a given regex
-    fn search_fwd(
-        &self,
-        pat: impl RegexPattern,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>>;
+impl<'m, H, R, C, Cc> Iterator for Matches<'m, H, R, Cc, C>
+where
+    H: RegexHaystack<'m, C> + ?Sized,
+    R: RegexPattern,
+    Cc: DerefMut<Target = Cache>,
+    C: Cursor,
+{
+    type Item = R::Match;
 
-    /// Returns a backwards [`Iterator`] over matches of a given regex
-    fn search_rev(
-        &self,
-        pat: impl RegexPattern,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let (fwd_input, rev_input) = (&mut self.input.fwd, &mut self.input.rev);
+        let h_end = try_search_fwd(self.dfas.fwd, &mut self.cache.fwd, fwd_input)
+            .ok()
+            .flatten()?
+            .offset();
 
-    /// Checks if a type matches a [`RegexPattern`]
-    fn reg_matches(
-        &self,
-        pat: impl RegexPattern,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Result<bool, Box<regex_syntax::Error>>;
+        rev_input.set_range(fwd_input.start()..h_end);
+        let half = try_search_rev(self.dfas.rev, &mut self.cache.rev, rev_input)
+            .ok()
+            .flatten()?;
+        let h_start = half.offset();
+
+        fwd_input.set_start(h_end);
+
+        // To not repeatedly match the same empty thing over and over.
+        if h_start == h_end {
+            fwd_input.set_start(h_end + 1);
+        }
+
+        Some(R::get_match(
+            self.b_start + h_start..self.b_start + h_end,
+            half.pattern(),
+        ))
+    }
 }
 
-impl<S: AsRef<str>> Matcheable for S {
-    fn search_fwd(
-        &self,
-        pat: impl RegexPattern,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>> {
-        let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
-        let str = &self.as_ref()[start..end];
-        let dfas = dfas_from_pat(pat)?;
+impl<'m, H, R, C, Cc> DoubleEndedIterator for Matches<'m, H, R, Cc, C>
+where
+    H: RegexHaystack<'m, C> + ?Sized,
+    R: RegexPattern,
+    Cc: DerefMut<Target = Cache>,
+    C: Cursor,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let (fwd_input, rev_input) = (&mut self.input.fwd, &mut self.input.rev);
+        let h_start = try_search_rev(self.dfas.rev, &mut self.cache.rev, fwd_input)
+            .ok()
+            .flatten()?
+            .offset();
 
-        let mut fwd_input = Input::new(str);
-        let mut rev_input = Input::new(str);
-        rev_input.anchored(Anchored::Yes);
+        rev_input.set_range(h_start..fwd_input.end());
+        let half = try_search_fwd(self.dfas.fwd, &mut self.cache.fwd, rev_input)
+            .ok()
+            .flatten()?;
+        let h_end = half.offset();
 
-        let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        let mut rev_cache = dfas.rev.1.write().unwrap();
+        fwd_input.set_end(h_start);
 
-        Ok(std::iter::from_fn(move || {
-            let h_end = if let Ok(Some(half)) =
-                try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input)
-            {
-                half.offset()
-            } else {
-                return None;
-            };
-
-            fwd_input.set_start(h_end);
-            rev_input.set_end(h_end);
-
-            let Ok(Some(hm)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input) else {
-                return None;
-            };
-            let h_start = hm.offset();
-
-            // To not repeatedly match the same empty thing over and over.
-            if h_start == h_end {
-                if h_end == fwd_input.end() {
-                    return None;
-                }
-                fwd_input.set_start(h_end + 1);
-                fwd_input.set_start(h_end + 1);
-            }
-
-            Some((start + h_start..start + h_end, &str[h_start..h_end]))
-        }))
-    }
-
-    fn search_rev(
-        &self,
-        pat: impl RegexPattern,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Result<impl Iterator<Item = (Range<usize>, &str)>, Box<regex_syntax::Error>> {
-        let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
-        let str = &self.as_ref()[start..end];
-        let dfas = dfas_from_pat(pat)?;
-
-        let mut fwd_input = Input::new(str);
-        fwd_input.anchored(Anchored::Yes);
-        let mut rev_input = Input::new(str);
-
-        let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        let mut rev_cache = dfas.rev.1.write().unwrap();
-
-        Ok(std::iter::from_fn(move || {
-            let h_start = {
-                if let Ok(Some(half)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input)
-                {
-                    half.offset()
-                } else {
-                    return None;
-                }
-            };
-
-            rev_input.set_end(h_start);
-            fwd_input.set_start(h_start);
-
-            let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) else {
-                return None;
-            };
-            let h_end = hm.offset();
-
-            // To not repeatedly match the same empty thing over and over.
-            if h_start == h_end {
-                if h_start == 0 {
-                    return None;
-                }
-                fwd_input.set_start(h_end - 1);
-                fwd_input.set_start(h_end - 1);
-            }
-            
-            Some((start + h_start..start + h_end, &str[h_start..h_end]))
-        }))
-    }
-
-    fn reg_matches(
-        &self,
-        pat: impl RegexPattern,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Result<bool, Box<regex_syntax::Error>> {
-        let (start, end) = crate::utils::get_ends(range, self.as_ref().len());
-        let str = &self.as_ref()[start..end];
-        let dfas = dfas_from_pat(pat)?;
-
-        let mut fwd_input = Input::new(str);
-        fwd_input.anchored(Anchored::Yes);
-
-        let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(start + hm.offset() == end)
-        } else {
-            Ok(false)
+        if h_start == h_end {
+            fwd_input.set_end(h_start.checked_sub(1)?);
         }
+
+        Some(R::get_match(
+            self.b_start + h_start..self.b_start + h_end,
+            half.pattern(),
+        ))
+    }
+}
+
+/// A type searcheable by [`DFA`]s
+///
+/// This type is used to create the [`Matches`] [`Iterator`], a useful
+/// and configurable iterator over the matches in the `Haystack`,
+/// primarily on the [`Bytes`] type.
+pub trait RegexHaystack<'h, C: Cursor> {
+    /// An [`Iterator`] over the matches for a given [`RegexPattern`]
+    ///
+    /// This `Iterator` will search through the entire range of the
+    /// haystack. If the haystack is [`Strs`], for example, then it
+    /// will search through the [`Strs::byte_range`]. You can also set
+    /// a custom range for search through the [`Matches::range`]
+    /// method, which will reset the search to encompass the part of a
+    /// [`TextRange`] that is clipped by the haystack.
+    ///
+    /// This `Iterator` also implements [`DoubleEndedIterator`], which
+    /// means that you can get the elements in reverse order.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the [`RegexPattern`] isn't valid.
+    /// If you want a non panicking variety, check out
+    /// [`RegexHaystack::try_search`]
+    #[track_caller]
+    fn search<R: RegexPattern>(
+        &'h self,
+        pat: R,
+    ) -> Matches<'h, Self, R, impl DerefMut<Target = Cache>, C> {
+        match self.try_search(pat) {
+            Ok(matches) => matches,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    /// An [`Iterator`] over the matches for a given [`RegexPattern`]
+    ///
+    /// This `Iterator` will search through the entire range of the
+    /// haystack. If the haystack is [`Strs`], for example, then it
+    /// will search through the [`Strs::byte_range`]. You can also set
+    /// a custom range for search through the [`Matches::range`]
+    /// method, which will reset the search to encompass the part of a
+    /// [`TextRange`] that is clipped by the haystack.
+    ///
+    /// This `Iterator` also implements [`DoubleEndedIterator`], which
+    /// means that you can get the elements in reverse order.
+    ///
+    /// This function will return [`Err`] if the regex pattern is not
+    /// valid. If you want a panicking variety, check out
+    /// [`RegexHaystack::search`]
+    fn try_search<R: RegexPattern>(
+        &'h self,
+        pat: R,
+    ) -> Result<Matches<'h, Self, R, impl DerefMut<Target = Cache>, C>, Box<regex_syntax::Error>>
+    {
+        let dfas = dfas_from_pat(pat)?;
+
+        Ok(Matches {
+            haystack: self,
+            b_start: self.range().start,
+            dfas: FwdRev { fwd: &dfas.fwd.0, rev: &dfas.rev.0 },
+            input: self.get_inputs(self.range()),
+            cache: FwdRev {
+                fwd: dfas.fwd.1.write().unwrap(),
+                rev: dfas.rev.1.write().unwrap(),
+            },
+            _ghost: PhantomData,
+        })
+    }
+
+    /// Wether this haystack contains a match for a [`RegexPattern`]
+    ///
+    /// This is equivalent to calling `self.search().map(|iter|
+    /// iter.next().is_some())`.
+    ///
+    /// This function will return [`Err`] if the regex pattern is not
+    /// valid.
+    fn contains_pat(&'h self, pat: impl RegexPattern) -> Result<bool, Box<regex_syntax::Error>> {
+        Ok(self.try_search(pat)?.next().is_some())
+    }
+
+    /// Wether this haystack matches the [`RegexPattern`] exactly
+    ///
+    /// This function will return [`Err`] if the regex pattern is not
+    /// valid.
+    fn matches_pat(&'h self, pat: impl RegexPattern) -> Result<bool, Box<regex_syntax::Error>> {
+        let mut matches = self.try_search(pat)?;
+        Ok(matches
+            .next()
+            .is_some_and(|_| matches.input.fwd.start() == self.range().end))
+    }
+
+    /// Get [`Input`]s from this type on a given [`Range`]
+    #[allow(private_interfaces)]
+    fn get_inputs(&'h self, range: std::ops::Range<usize>) -> FwdRev<Input<C>>;
+
+    /// The range that a regex search can make use of
+    #[doc(hidden)]
+    fn range(&self) -> Range<usize>;
+}
+
+impl<'b> RegexHaystack<'b, SearchBytes<'b>> for Text {
+    #[allow(private_interfaces)]
+    fn get_inputs(&'b self, range: std::ops::Range<usize>) -> FwdRev<Input<SearchBytes<'b>>> {
+        let haystack = SearchBytes(self.slices(range).to_array(), 0);
+        let mut rev = Input::new(haystack);
+        rev.anchored(Anchored::Yes);
+        FwdRev { fwd: Input::new(haystack), rev }
+    }
+
+    fn range(&self) -> Range<usize> {
+        0..self.len().byte()
+    }
+}
+
+impl<'b> RegexHaystack<'b, SearchBytes<'b>> for Bytes {
+    #[allow(private_interfaces)]
+    fn get_inputs(&'b self, range: std::ops::Range<usize>) -> FwdRev<Input<SearchBytes<'b>>> {
+        let haystack = SearchBytes(self.slices(range).to_array(), 0);
+        let mut rev = Input::new(haystack);
+        rev.anchored(Anchored::Yes);
+        FwdRev { fwd: Input::new(haystack), rev }
+    }
+
+    fn range(&self) -> Range<usize> {
+        0..self.len().byte()
+    }
+}
+
+impl<'b> RegexHaystack<'b, SearchBytes<'b>> for Strs<'b> {
+    #[allow(private_interfaces)]
+    fn get_inputs(&'b self, range: std::ops::Range<usize>) -> FwdRev<Input<SearchBytes<'b>>> {
+        let haystack = SearchBytes(self.slices(range).to_array(), 0);
+        let mut rev = Input::new(haystack);
+        rev.anchored(Anchored::Yes);
+        FwdRev { fwd: Input::new(haystack), rev }
+    }
+
+    fn range(&self) -> Range<usize> {
+        self.byte_range()
+    }
+}
+
+impl<'s, S: std::ops::Deref<Target = str>> RegexHaystack<'s, &'s [u8]> for S {
+    #[allow(private_interfaces)]
+    fn get_inputs(&'s self, range: std::ops::Range<usize>) -> FwdRev<Input<&'s [u8]>> {
+        let range = range.start.min(self.len())..range.end.min(self.len());
+        let mut rev = Input::new(&self.as_bytes()[range.clone()]);
+        rev.set_anchored(Anchored::Yes);
+        FwdRev {
+            fwd: Input::new(&self.as_bytes()[range]),
+            rev,
+        }
+    }
+
+    fn range(&self) -> Range<usize> {
+        0..self.len()
     }
 }
 
@@ -327,7 +319,7 @@ pub struct Searcher {
 impl Searcher {
     /// Returns a new [`Searcher`]
     pub fn new(pat: String) -> Result<Self, Box<regex_syntax::Error>> {
-        let dfas = dfas_from_pat(&pat)?;
+        let dfas = dfas_from_pat(pat.as_str())?;
         Ok(Self {
             pat,
             fwd_dfa: &dfas.fwd.0,
@@ -337,103 +329,28 @@ impl Searcher {
         })
     }
 
-    /// Searches forward for the required regex in a [range]
-    ///
-    /// [range]: TextRange
-    pub fn search_fwd<'b>(
+    /// Searches for this `Searcher`'s pattern through [`Strs`]
+    pub fn search<'b, H: RegexHaystack<'b, C>, C: Cursor>(
         &'b mut self,
-        ref_bytes: &'b impl AsRef<Bytes>,
-        range: impl TextRange,
-    ) -> impl Iterator<Item = Range<usize>> + 'b {
-        let bytes = ref_bytes.as_ref();
-        let range = range.to_range(bytes.len().byte());
+        haystack: &'b H,
+    ) -> Matches<'b, H, String, &'b mut Cache, C> {
+        let input = haystack.get_inputs(haystack.range());
 
-        let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
-        rev_input.set_anchored(Anchored::Yes);
-
-        let fwd_dfa = &self.fwd_dfa;
-        let rev_dfa = &self.rev_dfa;
-        let fwd_cache = &mut self.fwd_cache;
-        let rev_cache = &mut self.rev_cache;
-
-        std::iter::from_fn(move || {
-            let init = fwd_input.start();
-            let h_end = loop {
-                if let Ok(Some(half)) = try_search_fwd(fwd_dfa, fwd_cache, &mut fwd_input) {
-                    // Ignore empty matches at the start of the input.
-                    if half.offset() == init {
-                        fwd_input.set_start(init + 1);
-                    } else {
-                        break half.offset();
-                    }
-                } else {
-                    return None;
-                }
-            };
-
-            fwd_input.set_start(h_end);
-            rev_input.set_end(h_end);
-
-            let h_start = unsafe {
-                try_search_rev(rev_dfa, rev_cache, &mut rev_input)
-                    .unwrap()
-                    .unwrap_unchecked()
-                    .offset()
-            };
-
-            Some(range.start + h_start..range.start + h_end)
-        })
-    }
-
-    /// Searches in reverse for the required regex in a range[range]
-    ///
-    /// [range]: TextRange
-    pub fn search_rev<'b>(
-        &'b mut self,
-        ref_bytes: &'b impl AsRef<Bytes>,
-        range: impl TextRange,
-    ) -> impl Iterator<Item = Range<usize>> + 'b {
-        let bytes = ref_bytes.as_ref();
-        let range = range.to_range(bytes.len().byte());
-
-        let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
-        fwd_input.anchored(Anchored::Yes);
-
-        let fwd_dfa = &self.fwd_dfa;
-        let rev_dfa = &self.rev_dfa;
-        let fwd_cache = &mut self.fwd_cache;
-        let rev_cache = &mut self.rev_cache;
-        std::iter::from_fn(move || {
-            let init = rev_input.end();
-            let h_start = loop {
-                if let Ok(Some(half)) = try_search_rev(rev_dfa, rev_cache, &mut rev_input) {
-                    // Ignore empty matches at the end of the input.
-                    if half.offset() == init {
-                        rev_input.set_end(init - 1);
-                    } else {
-                        break half.offset();
-                    }
-                } else {
-                    return None;
-                }
-            };
-
-            fwd_input.set_start(h_start);
-            rev_input.set_end(h_start);
-
-            let h_end = unsafe {
-                try_search_fwd(fwd_dfa, fwd_cache, &mut fwd_input)
-                    .unwrap()
-                    .unwrap_unchecked()
-                    .offset()
-            };
-
-            Some(range.start + h_start..range.start + h_end)
-        })
+        Matches {
+            haystack,
+            b_start: haystack.range().start,
+            dfas: FwdRev { fwd: self.fwd_dfa, rev: self.rev_dfa },
+            input,
+            cache: FwdRev {
+                fwd: &mut self.fwd_cache,
+                rev: &mut self.rev_cache,
+            },
+            _ghost: PhantomData,
+        }
     }
 
     /// Whether or not the regex matches a specific pattern
-    pub fn matches(&mut self, cursor: impl Cursor) -> bool {
+    pub fn matches_pat(&mut self, cursor: impl Cursor) -> bool {
         let total_bytes = cursor.total_bytes();
 
         let mut input = Input::new(cursor);
@@ -540,7 +457,7 @@ impl Patterns<'_> {
 /// case the matched pattern will be specified.
 pub trait RegexPattern: InnerRegexPattern {
     /// Eiter a [`Range<usize>`] or `(usize, Range<usize>)`
-    type Match: 'static;
+    type Match;
 
     /// transforms a matched pattern into [`RegexPattern::Match`]
     fn get_match(points: Range<usize>, pattern: PatternID) -> Self::Match;
@@ -635,7 +552,8 @@ impl InnerRegexPattern for &[&str] {
 }
 
 #[derive(Clone, Copy)]
-struct SearchBytes<'a>([&'a [u8]; 2], usize);
+#[doc(hidden)]
+pub struct SearchBytes<'a>([&'a [u8]; 2], usize);
 
 impl Cursor for SearchBytes<'_> {
     fn chunk(&self) -> &[u8] {
@@ -672,12 +590,8 @@ impl Cursor for SearchBytes<'_> {
     }
 }
 
-fn get_inputs(
-    bytes: &Bytes,
-    range: std::ops::Range<usize>,
-) -> (Input<SearchBytes<'_>>, Input<SearchBytes<'_>>) {
-    let haystack = SearchBytes(bytes.slices(range).to_array(), 0);
-    let fwd_input = Input::new(haystack);
-    let rev_input = Input::new(haystack);
-    (fwd_input, rev_input)
+#[derive(Clone, Copy)]
+struct FwdRev<T> {
+    fwd: T,
+    rev: T,
 }

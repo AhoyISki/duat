@@ -1,17 +1,16 @@
 use std::{
-    iter::FusedIterator,
     ops::{Range, RangeBounds},
     str::Utf8Error,
-    sync::LazyLock,
 };
 
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
-use super::{Point, RegexPattern, TextRange, records::Records};
+pub use self::strs::Strs;
+use super::{Point, TextRange, records::Records};
 use crate::{opts::PrintOpts, text::TextIndex};
 
-static EMPTY_BYTES: LazyLock<Bytes> = LazyLock::new(Bytes::default);
+mod strs;
 
 /// The bytes of a [`Text`], encoded in UTF-8
 ///
@@ -83,31 +82,14 @@ impl Bytes {
         })
     }
 
-    /// An [`Iterator`] over the bytes in a given _byte_ range
+    /// A subslice of the [`Bytes`]
     ///
-    /// Unlike [`strs`], this function works with _byte_ ranges, not
-    /// [`TextRange`]s. That'b because [`Strs`] is supposed to return
-    /// valid UTF-8 strings, which need to have valid character
-    /// terminations, so they should be indexed by a character range,
-    /// not a byte range.
+    /// Note that this `TextRange` is relative to the whole [`Bytes`]
+    /// struct, not just this [`Strs`]. This method also clips the
+    /// ranges so they fit into the range of these `Strs`.
     ///
-    /// Since buffers is based on `[u8]`s, not `str`s, it doesn't have
-    /// the same restrictions, so a byte range can be used instead.
-    ///
-    /// If the range is fully or partially out of bounds, one or both
-    /// of the slices might be empty.
-    ///
-    /// [`strs`]: Self::strs
-    #[track_caller]
-    pub fn slices(&self, range: impl TextRange) -> Slices<'_> {
-        let (s0, s1) = self
-            .buf
-            .range(range.to_range(self.len().byte()))
-            .as_slices();
-        Slices([s0.iter(), s1.iter()])
-    }
-
-    /// An [`Iterator`] over the [`&str`]s of the [`Text`]
+    /// It will return [`None`] if the range does not start or end in
+    /// valid utf8 boundaries.
     ///
     /// # Note
     ///
@@ -149,16 +131,38 @@ impl Bytes {
     /// [`Text`]: super::Text
     /// [range]: TextRange
     /// [`strs`]: Self::strs
-    #[track_caller]
     pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
         let range = range.to_range(self.len().byte());
-        Some(Strs {
-            bytes: self,
-            range: range.clone(),
-            arr: self.strs_inner(range)?,
-            fwd: 0,
-            rev: 2,
-        })
+
+        Some(Strs::new(
+            self,
+            (range.start, range.end),
+            self.strs_inner(range)?,
+        ))
+    }
+
+    /// An [`Iterator`] over the bytes in a given _byte_ range
+    ///
+    /// Unlike [`strs`], this function works with _byte_ ranges, not
+    /// [`TextRange`]s. That'b because [`Strs`] is supposed to return
+    /// valid UTF-8 strings, which need to have valid character
+    /// terminations, so they should be indexed by a character range,
+    /// not a byte range.
+    ///
+    /// Since buffers is based on `[u8]`s, not `str`s, it doesn't have
+    /// the same restrictions, so a byte range can be used instead.
+    ///
+    /// If the range is fully or partially out of bounds, one or both
+    /// of the slices might be empty.
+    ///
+    /// [`strs`]: Self::strs
+    #[track_caller]
+    pub fn slices(&self, range: impl TextRange) -> Slices<'_> {
+        let (s0, s1) = self
+            .buf
+            .range(range.to_range(self.len().byte()))
+            .as_slices();
+        Slices([s0.iter(), s1.iter()])
     }
 
     /// Returns an iterator over the lines in a given range
@@ -287,7 +291,7 @@ impl Bytes {
                 .take_while(|&(rhs, ..)| b <= rhs)
                 .last()
         };
-        
+
         found
             .map(|(b, c, l)| Point::from_raw(b, c, l))
             .unwrap_or(self.len())
@@ -639,7 +643,7 @@ impl<'b> ExactSizeLender for Lines<'b> {}
 ///
 /// [`Text`]: super::Text
 #[derive(Clone)]
-pub struct Slices<'b>([std::slice::Iter<'b, u8>; 2]);
+pub struct Slices<'b>(pub(super) [std::slice::Iter<'b, u8>; 2]);
 
 impl<'b> Slices<'b> {
     /// Converts this [`Iterator`] into an array of its two parts
@@ -703,121 +707,6 @@ impl<'b> DoubleEndedIterator for Slices<'b> {
             .next_back()
             .or_else(|| self.0[0].next_back())
             .copied()
-    }
-}
-
-/// An [`Iterator`] over the [`&str`]s in a [`Text`]
-///
-/// [`&str`]: str
-/// [`Text`]: super::Text
-#[derive(Clone)]
-pub struct Strs<'b> {
-    bytes: &'b Bytes,
-    range: Range<usize>,
-    arr: [&'b str; 2],
-    fwd: usize,
-    rev: usize,
-}
-
-impl<'b> Strs<'b> {
-    /// Converts this [`Iterator`] into an array of its two parts
-    pub fn to_array(&self) -> [&'b str; 2] {
-        self.arr
-    }
-
-    /// Returns and [`Iterator`] over the [`char`]s of both [`&str`]s
-    ///
-    /// [`&str`]: str
-    pub fn chars(self) -> impl DoubleEndedIterator<Item = char> + 'b {
-        let [s0, s1] = self.arr;
-        s0.chars().chain(s1.chars())
-    }
-
-    /// Returns an [`Iterator`] over the [`char`]s and their indices
-    /// from both [`&str`]s
-    ///
-    /// [`&str`]: str
-    pub fn char_indices(self) -> impl DoubleEndedIterator<Item = (usize, char)> + 'b {
-        let [s0, s1] = self.arr;
-        s0.char_indices()
-            .map(move |(b, c)| (b + self.range.start, c))
-            .chain(
-                s1.char_indices()
-                    .map(move |(b, c)| (b + self.range.start + s0.len(), c)),
-            )
-    }
-
-    /// Returns `true` if the [`RegexPattern`] can be found in the
-    /// [`Strs`]s
-    pub fn contains<P: RegexPattern>(&self, pat: P) -> Result<bool, Box<regex_syntax::Error>> {
-        self.bytes
-            .search_fwd(pat, self.range.clone())
-            .map(|mut iter| iter.next().is_some())
-    }
-
-    /// A [`Range<usize>`] of the byte indices of this `Strs`.
-    pub fn byte_range(&self) -> Range<usize> {
-        self.range.clone()
-    }
-}
-
-impl Strs<'static> {
-    /// An empty `Strs`, useful in some circumstances
-    pub fn empty() -> Self {
-        Self {
-            bytes: &*EMPTY_BYTES,
-            range: 0..0,
-            arr: [""; 2],
-            fwd: 0,
-            rev: 0,
-        }
-    }
-}
-
-impl<'b> Iterator for Strs<'b> {
-    type Item = &'b str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.fwd {
-            0 | 1 if self.fwd != self.rev => {
-                self.fwd += 1;
-                Some(self.arr[self.fwd - 1])
-            }
-            _ => None,
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.rev - self.fwd, Some(self.rev - self.fwd))
-    }
-}
-
-impl ExactSizeIterator for Strs<'_> {}
-
-impl DoubleEndedIterator for Strs<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        match self.rev {
-            1 | 2 if self.fwd != self.rev => {
-                self.rev -= 1;
-                Some(self.arr[self.rev])
-            }
-            _ => None,
-        }
-    }
-}
-
-impl FusedIterator for Strs<'_> {}
-
-impl AsRef<Bytes> for Bytes {
-    fn as_ref(&self) -> &Bytes {
-        self
-    }
-}
-
-impl std::fmt::Display for Strs<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let [s0, s1] = self.to_array();
-        write!(f, "{s0}{s1}")
     }
 }
 

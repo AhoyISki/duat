@@ -58,7 +58,7 @@ pub fn print_iter(
             }
         }
     }
-    
+
     inner_iter(
         text.iter_fwd(points),
         (total_len, gaps),
@@ -228,6 +228,61 @@ fn inner_iter<'a>(
             first_x = 0;
         }
     })
+}
+
+/// Wether the [`TwoPoints`] actually does start a wrapped line.
+pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: PrintOpts) -> bool {
+    let start_points = text.visual_line_start(points, 0);
+    let max_indent = if opts.indent_wraps { width } else { 0 };
+    let cap = opts.wrap_width(width).unwrap_or(width);
+
+    // Line construction variables.
+    let mut total_len = 0;
+    let (mut indent, mut on_indent) = (0, true);
+
+    if start_points == points {
+        true
+    } else if !opts.wrap_lines {
+        false
+    } else {
+        let mut wrapped = true;
+
+        for item in text
+            .iter_fwd(start_points)
+            .take_while(|item| item.points() <= points)
+        {
+            wrapped = false;
+            
+            let old_indent = indent;
+            let len = match item.part {
+                Part::Char('\n') => {
+                    unreachable!("Shouldn't be possible, given the visual line start")
+                }
+                Part::Char(char) => {
+                    process_char(&mut indent, &mut on_indent, total_len, char, opts)
+                }
+                _ => 0,
+            };
+
+            total_len += len;
+            if total_len > cap && opts.wrap_lines {
+                wrapped = true;
+
+                total_len = if let Part::Char('\t') = item.part {
+                    let desired = old_indent + total_len - cap;
+                    if desired < max_indent {
+                        desired
+                    } else {
+                        total_len - cap
+                    }
+                } else {
+                    old_indent * (old_indent < max_indent) as u32 + len
+                };
+            }
+        }
+
+        wrapped
+    }
 }
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].

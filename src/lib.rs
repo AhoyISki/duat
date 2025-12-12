@@ -611,7 +611,7 @@ pub mod prelude {
         state::*,
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Point, Spacer,
-            SpawnTag, Tagger, Text, txt,
+            SpawnTag, Tagger, Text, txt, RegexHaystack
         },
         ui::{self, Area, Widget},
         widgets::*,

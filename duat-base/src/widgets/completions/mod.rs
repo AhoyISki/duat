@@ -22,7 +22,7 @@ use duat_core::{
     data::Pass,
     hook::{self, FocusChanged},
     mode::{MouseEvent, MouseEventKind},
-    text::{Point, SpawnTag, Tagger, Text, txt},
+    text::{Point, RegexHaystack, SpawnTag, Tagger, Text, txt},
     ui::{DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
@@ -250,8 +250,9 @@ impl Completions {
             if let Some((replacement, info_text)) = replacement {
                 master_handle.edit_all(pa, |mut c| {
                     let prefix_range = c
-                        .search_rev(&prefix_regex)
-                        .next()
+                        .search(&prefix_regex)
+                        .to_caret()
+                        .next_back()
                         .unwrap_or(c.caret().byte()..c.caret().byte());
 
                     c.move_to(prefix_range.start..c.caret().byte());
@@ -769,13 +770,13 @@ fn preffix_and_suffix(
 ) -> (Range<usize>, [String; 2]) {
     let caret = text.selections().get_main().unwrap().caret();
     let prefix_range = text
-        .search_rev(prefix_regex, ..caret)
-        .unwrap()
-        .next()
+        .search(prefix_regex)
+        .range(..caret)
+        .next_back()
         .unwrap_or(caret.byte()..caret.byte());
     let suffix_range = text
-        .search_fwd(suffix_regex, caret..)
-        .unwrap()
+        .search(suffix_regex)
+        .range(caret..)
         .next()
         .unwrap_or(caret.byte()..caret.byte());
 

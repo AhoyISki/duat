@@ -17,12 +17,16 @@ FOR NEXT UPDATE:
 [x] Revamped Flags.
 [x] Remove Parsers apparently.
 [x] Standardize duatmode objects.
-[ ] More duatmode bindings.
+[x] More duatmode bindings.
   [x] . and <a-.>.
-  [ ] <c-o> and <c-i>.
+  [x] <c-o> and <c-i>.
   [x] q and Q
 [x] Fix existing duatmode bindings.
 [ ] Search wrapping around buffer.
+[ ] Strs QOL.
+[x] Search QOL.
+  [x] On search.rs.
+  [x] On cursor.rs.
 
 KNOWN BUGS:
  HIGH PRIORITY:

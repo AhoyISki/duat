@@ -520,10 +520,10 @@ impl PromptMode for RunCommands {
         text
     }
 
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         let call = text.to_string();
         if !call.is_empty() {
-            cmd::queue_notify(call);
+            _ = cmd::call_notify(pa, call);
         }
     }
 
@@ -753,7 +753,7 @@ impl PromptMode for PipeSelections {
                 return;
             };
 
-            let input: String = c.selection().collect();
+            let input = c.selection().to_string();
             if let Some(mut stdin) = child.stdin.take() {
                 std::thread::spawn(move || {
                     stdin.write_all(input.as_bytes()).unwrap();

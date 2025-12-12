@@ -101,7 +101,7 @@ pub use self::{
     history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
-    search::{Matcheable, RegexPattern, Searcher},
+    search::{Matches, RegexHaystack, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
         MainCaret, RawTag, Spacer, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,

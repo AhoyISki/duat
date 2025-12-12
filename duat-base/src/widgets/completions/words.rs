@@ -16,7 +16,7 @@ use duat_core::{
     context::Handle,
     data::Pass,
     hook::{self, BufferUpdated},
-    text::{Change, Matcheable, Point, Spacer, Strs, Text, txt},
+    text::{Change, Point, RegexHaystack, Spacer, Strs, Text, txt},
     ui::Widget,
 };
 
@@ -95,7 +95,7 @@ pub fn track_words() {
     hook::add::<Buffer>(|pa, handle| {
         let mut words = BUFFER_WORDS.lock().unwrap();
         let buffer = handle.read(pa);
-        for range in buffer.text().search_fwd(r"\w{3,}", ..).unwrap() {
+        for range in buffer.text().search(r"\w{3,}") {
             let word = buffer.text().strs(range).unwrap().to_string();
             let info = words
                 .entry(word)
@@ -114,6 +114,10 @@ pub fn track_words() {
 }
 
 fn update_counts(pa: &mut Pass, handle: &Handle) {
+    fn to_str<'a>(str: &'a str) -> impl Fn(Range<usize>) -> (Range<usize>, &'a str) {
+        |range| (range.clone(), &str[range])
+    }
+    
     if handle.write(pa).new_changes().is_empty() {
         return;
     }
@@ -125,9 +129,9 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
         let prefix = if match_r.start == 0
             && let Some(text_range) = parts
                 .bytes
-                .search_fwd(r"[\w]+\z", ..change.start())
-                .unwrap()
-                .next()
+                .search(r"[\w]+\z")
+                .range(..change.start())
+                .next_back()
         {
             parts.bytes.strs(text_range).unwrap()
         } else {
@@ -137,8 +141,8 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
         if match_r.end == change_str.len()
             && let Some(text_range) = parts
                 .bytes
-                .search_fwd(r"\A[\w]+", change.added_end()..)
-                .unwrap()
+                .search(r"\A[\w]+")
+                .range(change.added_end()..)
                 .next()
         {
             format!("{prefix}{word}{}", parts.bytes.strs(text_range).unwrap())
@@ -170,9 +174,9 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
 
     for change in parts.new_changes.changes() {
         let added_str = change.added_str();
-        let added_words: Vec<_> = added_str.search_fwd(r"[\w]+", ..).unwrap().collect();
+        let added_words: Vec<_> = added_str.search(r"[\w]+").map(to_str(added_str)).collect();
         let taken_str = change.taken_str();
-        let taken_words: Vec<_> = taken_str.search_fwd(r"[\w]+", ..).unwrap().collect();
+        let taken_words: Vec<_> = taken_str.search(r"[\w]+").map(to_str(taken_str)).collect();
 
         for (is_taken, mut words, change_str) in [
             (false, added_words, added_str),

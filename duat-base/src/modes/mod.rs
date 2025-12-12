@@ -68,7 +68,7 @@ static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// [`Selection`]: duat_core::mode::Selection
 pub fn copy_selections(pa: &mut Pass, handle: &Handle<Buffer, ()>) {
     let mut copies: Vec<String> = Vec::new();
-    handle.edit_all(pa, |c| copies.push(c.selection().collect()));
+    handle.edit_all(pa, |c| copies.push(c.selection().to_string()));
     if copies.len() == 1 && !copies.first().unwrap().is_empty() {
         duat_core::clipboard::set_text(copies.first().unwrap());
     }

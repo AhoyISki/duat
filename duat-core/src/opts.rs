@@ -13,7 +13,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use crate::text::Matcheable;
+use crate::text::RegexHaystack;
 
 /// The distance to keep between the [`Cursor`] and the edges of the
 /// screen when scrolling
@@ -296,7 +296,7 @@ impl PrintOpts {
 
         let mut bytes = [b'\0'; 4];
         let str = char.encode_utf8(&mut bytes);
-        str.reg_matches(pat, ..).unwrap()
+        str.matches_pat(pat).unwrap()
     }
 }
 

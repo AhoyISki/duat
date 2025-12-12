@@ -80,8 +80,12 @@ pub struct SearchFwd;
 impl IncSearcher for SearchFwd {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
-            let caret = c.caret();
-            if let Some(range) = { c.search_inc_fwd(None).find(|r| r.start != caret.byte()) } {
+            if let Some(range) = {
+                c.search_inc()
+                    .from_caret_excl()
+                    .next()
+                    .or_else(|| c.search_inc().to_caret().next())
+            } {
                 c.move_to(range)
             }
         });
@@ -101,8 +105,12 @@ pub struct SearchRev;
 impl IncSearcher for SearchRev {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
-            let caret = c.caret();
-            if let Some(range) = { c.search_inc_rev(None).find(|r| r.end != caret.byte()) } {
+            if let Some(range) = {
+                c.search_inc()
+                    .to_caret()
+                    .next_back()
+                    .or_else(|| c.search_inc().from_caret_excl().next_back())
+            } {
                 c.move_to(range)
             }
         });
@@ -122,10 +130,14 @@ pub struct ExtendFwd;
 impl IncSearcher for ExtendFwd {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
-            let caret = c.caret();
-            if let Some(range) = { c.search_inc_fwd(None).find(|r| r.start != caret.byte()) } {
+            if let Some(range) = {
+                c.search_inc()
+                    .from_caret_excl()
+                    .next()
+                    .or_else(|| c.search_inc().to_caret().next())
+            } {
                 c.set_anchor_if_needed();
-                c.move_to(range.end);
+                c.move_to(range)
             }
         });
     }
@@ -144,10 +156,14 @@ pub struct ExtendRev;
 impl IncSearcher for ExtendRev {
     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
         handle.edit_all(pa, |mut c| {
-            let caret = c.caret();
-            if let Some(range) = { c.search_inc_rev(None).find(|r| r.end != caret.byte()) } {
+            if let Some(range) = {
+                c.search_inc()
+                    .to_caret()
+                    .next_back()
+                    .or_else(|| c.search_inc().from_caret_excl().next_back())
+            } {
                 c.set_anchor_if_needed();
-                c.move_to(range.start);
+                c.move_to(range)
             }
         });
     }

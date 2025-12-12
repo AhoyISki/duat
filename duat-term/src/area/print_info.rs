@@ -7,7 +7,7 @@ use duat_core::{
 
 use crate::{
     Coords,
-    area::iter::{print_iter, rev_print_iter},
+    area::iter::{is_starting_points, print_iter, rev_print_iter},
 };
 
 /// Information about how to print the file on the `Label`.
@@ -35,6 +35,7 @@ impl PrintInfo {
             && s_points <= text.len_points()
             && coords.width() == self.prev_coords.width()
             && coords.height() == self.prev_coords.height()
+            && is_starting_points(text, s_points, coords.width(), opts)
         {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {

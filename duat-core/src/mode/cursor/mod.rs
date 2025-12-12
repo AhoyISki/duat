@@ -7,17 +7,21 @@
 //! [`Mode`]: super::Mode
 use std::{
     cell::{Cell, RefMut},
-    ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
+    ops::{DerefMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     rc::Rc,
 };
 
 use lender::{Lender, Lending};
+use regex_cursor::regex_automata::hybrid::dfa::Cache;
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
     buffer::{Buffer, BufferId},
     opts::PrintOpts,
-    text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextIndex, TextRange},
+    text::{
+        Change, Lines, Matches, Point, RegexHaystack, RegexPattern, Searcher, Strs, Text,
+        TextIndex, TextRange,
+    },
     ui::{Area, Widget},
 };
 
@@ -474,358 +478,39 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Wether the current selection matches a regex pattern
     #[track_caller]
-    pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
+    pub fn matches_pat<R: RegexPattern>(&self, pat: R) -> bool {
         let range = sel!(self).byte_range(self.widget.text());
-        match self.widget.text().matches(pat, range) {
+        match self.widget.text().strs(range).unwrap().matches_pat(pat) {
             Ok(result) => result,
             Err(err) => panic!("{err}"),
         }
     }
 
-    /// Searches the [`Text`] for a regex
+    /// Returns an [`Iterator`] over the matches of a [`RegexPattern`]
     ///
-    /// The search will begin on the `caret` and returns the
-    /// [`Range<usize>`] for the match, where the bounding `usize`s
-    /// represents a byte index, and can be directly used in, for
-    /// example, [`Cursor::move_to`].
+    /// This `Iterator` normally covers the entire range of the
+    /// [`Text`], however, there are methods that you can use to
+    /// narrow it down to ranges relative to the `Cursor`'s [`caret`].
     ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// fn search_nth(pa: &mut Pass, handle: &Handle, n: usize, pat: &str) {
-    ///     handle.edit_all(pa, |mut c| {
-    ///         let mut nth = c.search_fwd(pat).nth(n);
-    ///         if let Some(range) = nth {
-    ///             c.move_to(range);
-    ///         }
-    ///     })
-    /// }
-    /// ```
+    /// For example, [`CursorMatches::from_caret`] will narrow the
+    /// searched range from the beginning of the caret's `char` all
+    /// the way until the end of the [`Text`].
     ///
-    /// # Panics
+    /// This `Iterator` also implements [`DoubleEndedIterator`], which
+    /// means you can search in reverse as well.
     ///
-    /// If the regex is not valid, this method will panic.
+    /// [`caret`]: Self::caret
     #[track_caller]
-    pub fn search_fwd<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let start = sel!(self).caret();
-        let text = self.widget.text();
-        match text.search_fwd(pat, start..text.len()) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// Searches the [`Text`] for a regex, with an upper limit
-    ///
-    /// The search will begin on the `caret` and returns the
-    /// [`Range<usize>`] for the match, where the bounding `usize`s
-    /// represents a byte index, and can be directly used in, for
-    /// example, [`Cursor::move_to`].
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// fn find_within(pa: &mut Pass, handle: &Handle, pat: &str) {
-    ///     handle.edit_all(pa, |mut c| {
-    ///         c.set_caret_on_start();
-    ///         let mut range = c.search_fwd_until(pat, c.range().end).next();
-    ///         if let Some(range) = range {
-    ///             c.move_to(range);
-    ///         }
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    #[track_caller]
-    pub fn search_fwd_until<R: RegexPattern>(
+    pub fn search<R: RegexPattern>(
         &self,
         pat: R,
-        until: impl TextIndex,
-    ) -> impl Iterator<Item = R::Match> + '_ {
-        let start = sel!(self).caret();
+    ) -> CursorMatches<'_, R, impl DerefMut<Target = Cache>> {
         let text = self.widget.text();
-        match text.search_fwd(pat, start.byte()..until.to_byte_index()) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// Searches the [`Text`] for a regex, skipping the caret's
-    /// character
-    ///
-    /// The search will begin one character afer the `caret` and
-    /// returns the [`Range<usize>`] for the match, where the
-    /// bounding `usize`s represents a byte index, and can be
-    /// directly used in, for example, [`Cursor::move_to`].
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// fn next_paren_match(pa: &mut Pass, handle: &Handle) {
-    ///     handle.edit_all(pa, |mut c| {
-    ///         let mut start_count = 0;
-    ///         let mut start_bound = None;
-    ///         let end_bound = c.search_fwd_excl([r"\(", r"\)"]).find(|(id, range)| {
-    ///             start_count += ((*id == 0) as u32).saturating_sub((*id == 1) as u32);
-    ///             start_bound = (*id == 0 && start_count == 0).then_some(range.clone());
-    ///             start_count == 0 && *id == 1
-    ///         });
-    ///
-    ///         if let (Some(start), Some((_, end))) = (start_bound, end_bound) {
-    ///             c.move_to(start.start..end.end);
-    ///         }
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    #[track_caller]
-    pub fn search_fwd_excl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let start = sel!(self).caret();
-        let text = self.widget.text();
-        match text.search_fwd(
-            pat,
-            start.byte() + self.char().len_utf8()..text.len().byte(),
-        ) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// Searches the [`Text`] for a regex, with an upper limit and
-    /// skipping the caret's character
-    ///
-    /// The search will begin one character afer the `caret` and
-    /// returns the [`Range<usize>`] for the match, where the
-    /// bounding `usize`s represents a byte index, and can be
-    /// directly used in, for example, [`Cursor::move_to`].
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// # #[derive(Clone, Copy)]
-    /// # struct Insert;
-    /// # impl Mode for Insert {
-    /// #     type Widget = Buffer;
-    /// #     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {}
-    /// # }
-    /// #[derive(Clone, Copy)]
-    /// enum Action {
-    ///     Move,
-    ///     Select,
-    ///     Delete,
-    ///     Change,
-    /// }
-    ///
-    /// fn f_key_from_vim(pa: &mut Pass, handle: &Handle, char: char, n: usize, action: Action) {
-    ///     handle.edit_all(pa, |mut c| {
-    ///         let line_end = c.search_fwd('\n').next().unwrap();
-    ///         let mut nth = c.search_fwd_excl_until(char, line_end.start).nth(n);
-    ///
-    ///         match (nth, action) {
-    ///             (Some(range), Action::Move) => {
-    ///                 c.unset_anchor();
-    ///                 c.move_to(range.start);
-    ///             }
-    ///             (Some(range), Action::Select) => {
-    ///                 c.set_anchor_if_needed();
-    ///                 c.move_to(range.start);
-    ///             }
-    ///             (Some(range), Action::Delete | Action::Change) => {
-    ///                 c.set_anchor_if_needed();
-    ///                 c.move_to(range.start);
-    ///                 c.replace("");
-    ///             }
-    ///             _ => {}
-    ///         }
-    ///     });
-    ///
-    ///     if let Action::Change = action {
-    ///         mode::set(Insert);
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    #[track_caller]
-    pub fn search_fwd_excl_until<R: RegexPattern>(
-        &self,
-        pat: R,
-        until: impl TextIndex,
-    ) -> impl Iterator<Item = R::Match> + '_ {
-        let start = sel!(self).caret();
-        let text = self.widget.text();
-        match text.search_fwd(
-            pat,
-            start.byte() + self.char().len_utf8()..until.to_byte_index(),
-        ) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// Searches the [`Text`] for a regex, in reverse
-    ///
-    /// The search will begin on the `caret` and returns the
-    /// [`Range<usize>`] for the match, where the bounding `usize`s
-    /// represents a byte index, and can be directly used in, for
-    /// example, [`Cursor::move_to`].
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// fn remove_prefix(pa: &mut Pass, handle: &Handle) {
-    ///     let prefix_pat = format!(r"{}*\z", handle.opts(pa).word_chars_regex());
-    ///     handle.edit_all(pa, |mut c| {
-    ///         let prefix_range = c.search_rev(&prefix_pat).next();
-    ///         if let Some(range) = prefix_range {
-    ///             c.move_to(range);
-    ///             c.replace("");
-    ///         }
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    #[track_caller]
-    pub fn search_rev<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let end = sel!(self).caret();
-        let text = self.widget.text();
-        match text.search_rev(pat, Point::default()..end) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// Searches the [`Text`] for a regex, in reverse, until a given
-    /// point
-    ///
-    /// The search will begin on the `caret` and returns the
-    /// [`Range<usize>`] for the match, where the bounding `usize`s
-    /// represents a byte index, and can be directly used in, for
-    /// example, [`Cursor::move_to`].
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// fn search_before_but_after_prev(pa: &mut Pass, handle: &Handle, pat: &str) {
-    ///     let mut last_end = 0;
-    ///     handle.edit_all(pa, |mut c| {
-    ///         let mut nth = c.search_rev_until(pat, last_end).next();
-    ///         if let Some(range) = nth {
-    ///             c.move_to(range)
-    ///         }
-    ///         last_end = c.range().end.byte();
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    #[track_caller]
-    pub fn search_rev_until<R: RegexPattern>(
-        &self,
-        pat: R,
-        until: impl TextIndex,
-    ) -> impl Iterator<Item = R::Match> + '_ {
-        let end = sel!(self).caret();
-        let start = until.to_byte_index();
-        let text = self.widget.text();
-        match text.search_rev(pat, start..end.byte()) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// Searches the [`Text`] for a regex, in reverse, including the
-    /// caret's character
-    ///
-    /// The search will begin on the character right after the `caret`
-    /// and returns the [`Range<usize>`] for the match, where the
-    /// bounding `usize`s represents a byte index, and can be
-    /// directly used in, for example, [`Cursor::move_to`].
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// fn last_word_in_selection(pa: &mut Pass, handle: &Handle) {
-    ///     let word_pat = format!(r"{}+", handle.opts(pa).word_chars_regex());
-    ///     handle.edit_all(pa, |mut c| {
-    ///         c.set_caret_on_end();
-    ///         let mut nth = c.search_rev_incl(&word_pat).next();
-    ///         if let Some(range) = nth {
-    ///             c.move_to(range)
-    ///         } else {
-    ///             c.reset()
-    ///         }
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    #[track_caller]
-    pub fn search_rev_incl<R: RegexPattern>(&self, pat: R) -> impl Iterator<Item = R::Match> + '_ {
-        let end = sel!(self).caret();
-        let text = self.widget.text();
-        match text.search_rev(pat, ..end.byte() + self.char().len_utf8()) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
-        }
-    }
-
-    /// Searches the [`Text`] for a regex, in reverse, including the
-    /// caret's character, until a given point
-    ///
-    /// The search will begin on the character right after the `caret`
-    /// and returns the [`Range<usize>`] for the match, where the
-    /// bounding `usize`s represents a byte index, and can be
-    /// directly used in, for example, [`Cursor::move_to`].
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// fn last_word_limited_to_selection(pa: &mut Pass, handle: &Handle) {
-    ///     let word_pat = format!(r"{}+", handle.opts(pa).word_chars_regex());
-    ///     handle.edit_all(pa, |mut c| {
-    ///         c.set_caret_on_end();
-    ///         let start = c.range().start;
-    ///         let mut nth = c.search_rev_incl_until(&word_pat, start).next();
-    ///         if let Some(range) = nth {
-    ///             c.move_to(range)
-    ///         } else {
-    ///             c.reset()
-    ///         }
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the regex is not valid, this method will panic.
-    #[track_caller]
-    pub fn search_rev_incl_until<R: RegexPattern>(
-        &self,
-        pat: R,
-        until: impl TextIndex,
-    ) -> impl Iterator<Item = R::Match> + '_ {
-        let end = sel!(self).caret();
-        let start = until.to_byte_index();
-        let text = self.widget.text();
-        match text.search_rev(pat, start..end.byte() + self.char().len_utf8()) {
-            Ok(iter) => iter,
-            Err(err) => panic!("{err}"),
+        let caret = self.caret();
+        CursorMatches {
+            text_byte_len: text.len().byte(),
+            caret_range: caret.byte()..caret.fwd(self.char()).byte(),
+            matches: text.search(pat),
         }
     }
 
@@ -982,35 +667,13 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     /// requested [`Point`].
     ///
     /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
-    pub fn search_inc_fwd(
-        &mut self,
-        end: Option<Point>,
-    ) -> impl Iterator<Item = Range<usize>> + '_ {
-        let range = if let Some(end) = end {
-            (sel!(self).caret()..end).to_range(self.text().len().byte())
-        } else {
-            (sel!(self).caret()..).to_range(self.text().len().byte())
-        };
-        self.inc_searcher.search_fwd(self.widget.text(), range)
-    }
-
-    /// Search incrementally from an [`IncSearch`] request in reverse
-    ///
-    /// This will match the Regex pattern from the current position of
-    /// the caret in reverse. if `start` is [`Some`], the search will
-    /// end at the requested [`Point`].
-    ///
-    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
-    pub fn search_inc_rev(
-        &mut self,
-        start: Option<Point>,
-    ) -> impl Iterator<Item = Range<usize>> + '_ {
-        let range = if let Some(start) = start {
-            (start..sel!(self).caret()).to_range(self.text().len().byte())
-        } else {
-            (..sel!(self).caret()).to_range(self.text().len().byte())
-        };
-        self.inc_searcher.search_rev(self.widget.text(), range)
+    pub fn search_inc(&mut self) -> CursorMatches<'_, String, &mut Cache> {
+        let caret = self.caret();
+        CursorMatches {
+            text_byte_len: self.text().len().byte(),
+            caret_range: caret.byte()..caret.fwd(self.char()).byte(),
+            matches: self.inc_searcher.search(self.widget.text()),
+        }
     }
 
     /// Whether the [`Selection`]'s selection matches the
@@ -1020,7 +683,7 @@ impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
     pub fn matches_inc(&mut self) -> bool {
         let range = sel!(self).byte_range(self.widget.text());
         self.inc_searcher
-            .matches(self.widget.text().strs(range).unwrap().to_string().as_str())
+            .matches_pat(self.widget.text().strs(range).unwrap().to_string().as_str())
     }
 }
 
@@ -1040,6 +703,179 @@ impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
         f.debug_struct("Cursor")
             .field("selection", &sel!(self))
             .finish_non_exhaustive()
+    }
+}
+
+/// An [`Iterator`] over the matches of a [`RegexPattern`]
+///
+/// This `Iterator` comes from searching from a [`Cursor`]. Because of
+/// that, it has methods for added convenience of search. The methods
+/// [`to_caret`], [`to_caret_incl`], [`from_caret`] and
+/// [`from_caret_excl`] will change the [`Range`] of searching to one
+/// starting or ending on the `Cursor`'s [`caret`].
+///
+/// [`to_caret`]: CursorMatches::to_caret
+/// [`to_caret_incl`]: CursorMatches::to_caret_incl
+/// [`from_caret`]: CursorMatches::from_caret
+/// [`from_caret_excl`]: CursorMatches::from_caret_excl
+/// [`caret`]: Cursor::caret
+pub struct CursorMatches<'c, R, Cc>
+where
+    R: RegexPattern,
+    Cc: DerefMut<Target = Cache>,
+{
+    text_byte_len: usize,
+    caret_range: Range<usize>,
+    matches: Matches<'c, Text, R, Cc>,
+}
+
+impl<'c, R, C> CursorMatches<'c, R, C>
+where
+    R: RegexPattern,
+    C: DerefMut<Target = Cache>,
+{
+    /// Changes the [`TextRange`] to search on
+    ///
+    /// This _will_ reset the [`Iterator`], if it was returning
+    /// [`None`] before, it might start returning [`Some`] again if
+    /// the pattern exists in the specified [`Range`]
+    pub fn range(self, range: impl TextRange) -> Self {
+        Self {
+            matches: self.matches.range(range),
+            ..self
+        }
+    }
+
+    /// Searches over a range from the start of the caret to the end
+    /// of the [`Text`]
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn search_nth(pa: &mut Pass, handle: &Handle, n: usize, pat: &str) {
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let mut nth = c.search(pat).from_caret().nth(n);
+    ///         if let Some(range) = nth {
+    ///             c.move_to(range);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[allow(clippy::wrong_self_convention)]
+    pub fn from_caret(self) -> Self {
+        Self {
+            matches: self
+                .matches
+                .range(self.caret_range.start..self.text_byte_len),
+            ..self
+        }
+    }
+
+    /// Searches over a range from the end of the caret to the end
+    /// of the [`Text`]
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn next_paren_match(pa: &mut Pass, handle: &Handle) {
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let mut start_count = 0;
+    ///         let mut start_bound = None;
+    ///         let end_bound = c
+    ///             .search([r"\(", r"\)"])
+    ///             .from_caret_excl()
+    ///             .find(|(id, range)| {
+    ///                 start_count += ((*id == 0) as u32).saturating_sub((*id == 1) as u32);
+    ///                 start_bound = (*id == 0 && start_count == 0).then_some(range.clone());
+    ///                 start_count == 0 && *id == 1
+    ///             });
+    ///
+    ///         if let (Some(start), Some((_, end))) = (start_bound, end_bound) {
+    ///             c.move_to(start.start..end.end);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[allow(clippy::wrong_self_convention)]
+    pub fn from_caret_excl(self) -> Self {
+        Self {
+            matches: self.matches.range(self.caret_range.end..self.text_byte_len),
+            ..self
+        }
+    }
+
+    /// Searches over a range from the start of the [`Text`] to the
+    /// start of the caret's char
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn remove_prefix(pa: &mut Pass, handle: &Handle) {
+    ///     let prefix_pat = format!(r"{}*\z", handle.opts(pa).word_chars_regex());
+    ///     handle.edit_all(pa, |mut c| {
+    ///         let prefix_range = c.search(&prefix_pat).to_caret().rev().next();
+    ///         if let Some(range) = prefix_range {
+    ///             c.move_to(range);
+    ///             c.replace("");
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[allow(clippy::wrong_self_convention)]
+    pub fn to_caret(self) -> Self {
+        Self {
+            matches: self.matches.range(0..self.caret_range.start),
+            ..self
+        }
+    }
+
+    /// Searches over a range from the start of the [`Text`] to the
+    /// end of the caret's char
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// fn last_word_in_selection(pa: &mut Pass, handle: &Handle) {
+    ///     let word_pat = format!(r"{}+", handle.opts(pa).word_chars_regex());
+    ///     handle.edit_all(pa, |mut c| {
+    ///         c.set_caret_on_end();
+    ///         let mut nth = c.search(&word_pat).to_caret_incl().rev().next();
+    ///         if let Some(range) = nth {
+    ///             c.move_to(range)
+    ///         } else {
+    ///             c.reset()
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    #[allow(clippy::wrong_self_convention)]
+    pub fn to_caret_incl(self) -> Self {
+        Self {
+            matches: self.matches.range(0..self.caret_range.end),
+            ..self
+        }
+    }
+}
+
+impl<'c, R, Cc> Iterator for CursorMatches<'c, R, Cc>
+where
+    R: RegexPattern,
+    Cc: DerefMut<Target = Cache>,
+{
+    type Item = R::Match;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.matches.next()
+    }
+}
+
+impl<'c, R, Cc> DoubleEndedIterator for CursorMatches<'c, R, Cc>
+where
+    R: RegexPattern,
+    Cc: DerefMut<Target = Cache>,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.matches.next_back()
     }
 }
 
