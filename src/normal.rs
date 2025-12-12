@@ -388,7 +388,8 @@ impl Mode for Normal {
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c
-                        .search_fwd(word_and_space(alt_word, p_opts))
+                        .search(word_and_space(alt_word, p_opts))
+                        .from_caret()
                         .nth(param - 1);
                     if let Some(range) = range {
                         c.move_to(range);
@@ -402,7 +403,8 @@ impl Mode for Normal {
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c
-                        .search_fwd(space_and_word(alt_word, p_opts))
+                        .search(space_and_word(alt_word, p_opts))
+                        .from_caret()
                         .nth(param - 1);
                     if let Some(range) = range {
                         c.move_to(range);
@@ -423,7 +425,8 @@ impl Mode for Normal {
                     }
 
                     let range = c
-                        .search_rev(word_and_space(alt_word, p_opts))
+                        .search(word_and_space(alt_word, p_opts))
+                        .from_caret()
                         .nth(param - 1);
                     if let Some(range) = range {
                         c.move_to(range);
@@ -437,7 +440,8 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
                 if let Some(range) = {
-                    c.search_fwd(word_and_space(alt_word, p_opts))
+                    c.search(word_and_space(alt_word, p_opts))
+                        .from_caret()
                         .nth(param - 1)
                 } {
                     c.move_to(range.end);
@@ -449,7 +453,8 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
                 if let Some(range) = {
-                    c.search_fwd(space_and_word(alt_word, p_opts))
+                    c.search(space_and_word(alt_word, p_opts))
+                        .from_caret()
                         .nth(param - 1)
                 } {
                     c.move_to(range.end);
@@ -460,7 +465,8 @@ impl Mode for Normal {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 if let Some(range) = {
-                    c.search_rev(word_and_space(alt_word, p_opts))
+                    c.search(word_and_space(alt_word, p_opts))
+                        .from_caret()
                         .nth(param - 1)
                 } {
                     c.move_to(range.start);
@@ -471,11 +477,11 @@ impl Mode for Normal {
                 self.sel_type = SelType::ToEndOfLine;
                 set_anchor_if_needed(true, &mut c);
                 c.set_caret_on_start();
-                let p0 = c.search_rev("\n").next().map(|range| range.end);
-                c.move_to(p0.unwrap_or_default());
+                let b0 = c.search("\n").to_caret().next_back().map(|r| r.end);
+                c.move_to(b0.unwrap_or_default());
                 c.swap_ends();
 
-                let b1 = c.search_fwd("\n").next().map(|range| range.start);
+                let b1 = c.search("\n").to_caret().next_back().map(|r| r.start);
                 c.move_to(b1.unwrap_or(c.last_point().byte()));
                 c.set_desired_vcol(usize::MAX);
             }),
@@ -665,21 +671,15 @@ impl Mode for Normal {
             ////////// Selection alteration keys
             event!('r') => self.one_key = Some(OneKey::Replace),
             event!('`') => handle.edit_all(pa, |mut c| {
-                let lower = c
-                    .selection()
-                    .flat_map(str::chars)
-                    .flat_map(char::to_lowercase);
+                let lower = c.selection().chars().flat_map(char::to_lowercase);
                 c.replace(lower.collect::<String>());
             }),
             event!('~') => handle.edit_all(pa, |mut c| {
-                let upper = c
-                    .selection()
-                    .flat_map(str::chars)
-                    .flat_map(char::to_uppercase);
+                let upper = c.selection().chars().flat_map(char::to_uppercase);
                 c.replace(upper.collect::<String>());
             }),
             alt!('`') => handle.edit_all(pa, |mut c| {
-                let inverted = c.selection().flat_map(str::chars).map(|c| {
+                let inverted = c.selection().chars().map(|c| {
                     if c.is_uppercase() {
                         c.to_lowercase().collect::<String>()
                     } else {
@@ -720,7 +720,7 @@ impl Mode for Normal {
                     return;
                 }
                 let mut selections = Vec::<String>::new();
-                handle.edit_all(pa, |c| selections.push(c.selection().collect()));
+                handle.edit_all(pa, |c| selections.push(c.selection().to_string()));
                 let mut s_iter = selections.into_iter().cycle();
                 s_iter.next();
                 handle.edit_all(pa, |mut c| {
@@ -746,7 +746,8 @@ impl Mode for Normal {
                 let Some(end) = c.anchor() else {
                     return;
                 };
-                let lines: Vec<_> = c.search_fwd_until("[^\n]*\n", end).collect();
+                let caret = c.caret();
+                let lines: Vec<_> = c.search("[^\n]*\n").range(caret..end).collect();
                 let mut last_end = c.caret().byte();
                 for range in lines {
                     let mut e_copy = c.copy();
@@ -824,7 +825,8 @@ impl Mode for Normal {
                         }
                         let s_range = c.text().line_range(line);
                         c.move_to(s_range.start);
-                        let Some(s_range) = c.search_fwd_until(&find, s_range.end).next() else {
+                        let range = c.caret()..s_range.end;
+                        let Some(s_range) = c.search(&find).range(range).next() else {
                             continue;
                         };
 
@@ -858,7 +860,7 @@ impl Mode for Normal {
 
                     if c_range.start.line() == c_range.end.line() {
                         if !processed_lines.contains(&c_range.start.line())
-                            && let Some(range) = { c.search_fwd("\n").next() }
+                            && let Some(range) = { c.search("\n").from_caret().next() }
                         {
                             c.move_to(range);
                             c.replace("");
@@ -867,7 +869,8 @@ impl Mode for Normal {
                         }
                     } else {
                         let caret_was_on_end = c.set_caret_on_start();
-                        let nls: Vec<_> = c.search_fwd_until("\n", c_range.end).collect();
+                        let range = c.caret()..c_range.end;
+                        let nls: Vec<_> = c.search("\n").range(range).collect();
 
                         let mut lines_joined = 0;
                         for (line, range) in nls.into_iter().rev().enumerate() {
@@ -1021,15 +1024,10 @@ impl Mode for Normal {
                     if char == 'N' {
                         c.copy();
                     }
-                    let caret = c.caret();
                     let next = if key_event.modifiers == KeyMod::ALT {
-                        c.search_rev(&*search)
-                            .filter(|r| r.start != caret.byte())
-                            .nth(param - 1)
+                        c.search(&*search).to_caret().nth_back(param - 1)
                     } else {
-                        c.search_fwd(&*search)
-                            .filter(|r| r.start != caret.byte())
-                            .nth(param - 1)
+                        c.search(&*search).from_caret_excl().nth(param - 1)
                     };
                     if let Some(range) = next {
                         c.move_to(range.start);
@@ -1151,7 +1149,7 @@ impl Brackets {
     pub(crate) fn bounds_matching(&self, bound: Strs) -> Option<[&'static str; 2]> {
         self.0
             .iter()
-            .find(|bs| bs.contains(&escaped_regex(bound.clone())))
+            .find(|bs| bs.contains(&escaped_regex(bound)))
             .copied()
     }
 

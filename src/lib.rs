@@ -946,15 +946,17 @@ impl<'o> Object<'o> {
         let mut s_diff = count as i32;
         let (range, inside_pat) = match self {
             Object::OneBound(ahead) => (
-                c.search_fwd(ahead.around).nth(count.saturating_sub(1))?,
+                c.search(ahead.around)
+                    .from_caret()
+                    .nth(count.saturating_sub(1))?,
                 ahead.inside,
             ),
             Object::TwoBounds { ahead, repeat: false, .. } => {
-                (c.search_fwd(ahead.around).next()?, ahead.inside)
+                (c.search(ahead.around).from_caret().next()?, ahead.inside)
             }
             Object::TwoBounds { ahead, behind, repeat: true } => {
                 let pat = [behind.around, ahead.around];
-                let (_, range) = c.search_fwd(pat).find(|&(id, _)| {
+                let (_, range) = c.search(pat).from_caret().find(|&(id, _)| {
                     s_diff += (id == 0) as i32 - (id == 1) as i32;
                     s_diff <= 0
                 })?;
@@ -962,7 +964,7 @@ impl<'o> Object<'o> {
             }
             Object::Argument { ahead, behind } => {
                 let pat = [r"\s*([;,]\s*|\z)", behind.around, ahead.around];
-                let (id, range) = c.search_fwd_excl(pat).find(|(id, _)| {
+                let (id, range) = c.search(pat).from_caret_excl().find(|(id, _)| {
                     s_diff += (*id == 1) as i32 - (*id == 2) as i32;
                     s_diff == 0 || (s_diff == 1 && *id == 0)
                 })?;
@@ -971,11 +973,7 @@ impl<'o> Object<'o> {
                     if id == 0 {
                         range.start
                     } else {
-                        c.text()
-                            .search_rev(r"\s*", ..range.start)
-                            .unwrap()
-                            .next()?
-                            .start
+                        c.search(r"\s*").range(..range.start).next_back()?.start
                     }
                 } else if id == 0 {
                     range.end
@@ -1006,7 +1004,7 @@ impl<'o> Object<'o> {
 
         Some(if is_inside {
             let pat = inside_pat;
-            c.text().search_rev(pat, ..range.end).unwrap().next()?.start
+            c.search(pat).range(..range.end).next_back()?.start
         } else {
             range.end
         })
@@ -1016,15 +1014,18 @@ impl<'o> Object<'o> {
         let mut e_diff = count as i32;
         let (range, inside_pat) = match self {
             Object::OneBound(behind) => (
-                c.search_rev(behind.around).nth(count.saturating_sub(1))?,
+                c.search(behind.around)
+                    .to_caret()
+                    .nth_back(count.saturating_sub(1))?,
                 behind.inside,
             ),
-            Object::TwoBounds { behind, repeat: false, .. } => {
-                (c.search_rev(behind.around).next()?, behind.inside)
-            }
+            Object::TwoBounds { behind, repeat: false, .. } => (
+                c.search(behind.around).to_caret().next_back()?,
+                behind.inside,
+            ),
             Object::TwoBounds { ahead, behind, repeat: true } => {
                 let pat = [behind.around, ahead.around];
-                let (_, range) = c.search_rev(pat).find(|&(id, _)| {
+                let (_, range) = c.search(pat).to_caret().rev().find(|&(id, _)| {
                     e_diff += (id == 1) as i32 - (id == 0) as i32;
                     e_diff <= 0
                 })?;
@@ -1032,7 +1033,7 @@ impl<'o> Object<'o> {
             }
             Object::Argument { ahead, behind } => {
                 let pat = [r"(\A|[;,])\s*", behind.around, ahead.around];
-                let (id, range) = c.search_rev_incl(pat).find(|(id, _)| {
+                let (id, range) = c.search(pat).to_caret_incl().rev().find(|(id, _)| {
                     e_diff += (*id == 2) as i32 - (*id == 1) as i32;
                     e_diff == 0 || (e_diff == 1 && *id == 0)
                 })?;
@@ -1041,11 +1042,7 @@ impl<'o> Object<'o> {
                     if id == 0 {
                         range.end
                     } else {
-                        c.text()
-                            .search_fwd(r"\s*", range.end..)
-                            .unwrap()
-                            .next()?
-                            .end
+                        c.search(r"\s*").range(range.end..).next()?.end
                     }
                 } else if id == 0 {
                     range.start + 1
@@ -1082,7 +1079,7 @@ impl<'o> Object<'o> {
 
         Some(if is_inside {
             let pat = inside_pat;
-            c.text().search_fwd(pat, range.start..).unwrap().next()?.end
+            c.search(pat).range(range.start..).next()?.end
         } else {
             range.start
         })

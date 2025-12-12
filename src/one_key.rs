@@ -67,7 +67,7 @@ impl OneKey {
             (OneKey::Replace, Some(char)) => {
                 handle.edit_all(pa, |mut c| {
                     let anchor_didnt_exist = c.set_anchor_if_needed();
-                    let len = c.selection().flat_map(str::chars).count();
+                    let len = c.selection().chars().count();
                     c.replace(char.to_string().repeat(len));
                     if anchor_didnt_exist {
                         c.unset_anchor();
@@ -96,7 +96,7 @@ fn match_goto(
     match key_event {
         event!('h') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let range = c.search_rev("\n").next();
+            let range = c.search("\n").to_caret().next_back();
             c.move_to(range.unwrap_or_default().end);
         }),
         event!('j') => handle.edit_all(pa, |mut c| {
@@ -115,11 +115,11 @@ fn match_goto(
         }
         event!('i') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let range = c.search_rev("(^|\n)[ \t]*").next();
+            let range = c.search("(^|\n)[ \t]*").to_caret().next_back();
             if let Some(range) = range {
                 c.move_to(range.end);
 
-                let points = c.search_fwd("[^ \t]").next();
+                let points = c.search("[^ \t]").from_caret().next();
                 if let Some(range) = points {
                     c.move_to(range.start)
                 }
@@ -147,18 +147,9 @@ fn match_find_until(
     use SelType::*;
     handle.edit_all(pa, |mut c| {
         let search = format!("\\x{{{:X}}}", char as u32);
-        let b = c.caret().byte();
         let (points, back) = match st {
-            Reverse | ExtendRev => (
-                c.search_rev(search).filter(|range| range.end != b).nth(nth),
-                1,
-            ),
-            Normal | Extend => (
-                c.search_fwd(search)
-                    .filter(|range| range.start != b)
-                    .nth(nth),
-                -1,
-            ),
+            Reverse | ExtendRev => (c.search(search).to_caret().nth_back(nth), 1),
+            Normal | Extend => (c.search(search).from_caret_excl().nth(nth), -1),
             _ => unreachable!(),
         };
 

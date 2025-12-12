@@ -16,7 +16,8 @@ impl IncSearcher for Select {
             c.set_caret_on_start();
             let Some(anchor) = c.anchor() else { return };
 
-            let ranges: Vec<_> = c.search_inc_fwd(Some(anchor)).collect();
+            let range = c.caret()..anchor;
+            let ranges: Vec<_> = c.search_inc().range(range).collect();
 
             for (i, range) in ranges.iter().enumerate() {
                 c.move_to(range.clone());
@@ -42,8 +43,10 @@ impl IncSearcher for Split {
             c.set_caret_on_start();
             let Some(anchor) = c.anchor() else { return };
 
+            let range = c.caret()..anchor;
             let ranges: Vec<usize> = c
-                .search_inc_fwd(Some(anchor))
+                .search_inc()
+                .range(range)
                 .flat_map(|r| [r.start, r.end])
                 .collect();
 
@@ -78,7 +81,8 @@ impl IncSearcher for KeepMatching {
 
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
-            if c.search_inc_fwd(Some(c.range().end)).next().is_some() != keep {
+            let range = c.range();
+            if c.search_inc().range(range).next().is_some() != keep {
                 c.destroy();
             }
         });
