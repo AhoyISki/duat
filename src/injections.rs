@@ -7,9 +7,7 @@ use duat_core::{
 };
 use tree_sitter::{InputEdit, Node, Parser, Point as TsPoint, Query, Range as TsRange, Tree};
 
-use crate::{
-    LangParts, forms_from_lang_parts, highlight, parser_fn, refactor_injections, ts_tagger,
-};
+use crate::{LangParts, forms_from_lang_parts, highlight, inject, parser_fn, ts_tagger};
 
 /// An injected [`Tree`], which can contain any number of [`Range`]s
 pub struct InjectedTree {
@@ -104,7 +102,7 @@ impl InjectedTree {
     /// already included. If it was, then this funcion returns
     /// `false`.
     pub(crate) fn add_range(&mut self, range: Range<usize>) -> bool {
-        if self.ranges.iter().any(|r| r == range) {
+        if self.ranges.iter().any(contains_range(range.clone())) {
             return false;
         }
         self.ranges.add(range.clone());
@@ -113,15 +111,19 @@ impl InjectedTree {
     }
 
     /// Removes a [`Range`] from the list of parsed [`Range`]s
-    pub(crate) fn remove_range(&mut self, range: Range<usize>) {
-        if self.ranges.iter().any(|r| r == range) {
-            let _ = self.ranges.remove(range.clone());
-            let _ = self.ranges_to_parse.remove(range.clone());
-
-            for inj in self.injections.iter_mut() {
-                inj.remove_range(range.clone());
-            }
+    ///
+    /// If the range wasn't included, returns `false`
+    pub(crate) fn remove_range(&mut self, range: Range<usize>) -> bool {
+        if !self.ranges.iter().any(contains_range(range.clone())) {
+            return false;
         }
+        let _ = self.ranges.remove(range.clone());
+        let _ = self.ranges_to_parse.remove(range.clone());
+
+        for inj in self.injections.iter_mut() {
+            inj.remove_range(range.clone());
+        }
+        true
     }
 
     /// Highlights and injects based on the [`LangParts`] queries
@@ -142,9 +144,15 @@ impl InjectedTree {
 
     /// Injects on the given [`Ranges`], incrementing these ranges to
     /// include changes
-    pub(crate) fn refactor_injections(&mut self, ranges: &mut Ranges, bytes: &Bytes) {
-        refactor_injections(
-            ranges,
+    pub(crate) fn refactor_injections(
+        &mut self,
+        range: Range<usize>,
+        new_ranges: &mut Ranges,
+        bytes: &Bytes,
+    ) {
+        inject(
+            range,
+            new_ranges,
             (self.lang_parts, &mut self.injections),
             (self.old_tree.as_ref(), &self.tree),
             bytes,
@@ -237,4 +245,8 @@ fn ts_range_from_range(bytes: &Bytes, range: Range<usize>) -> TsRange {
                 .count(),
         },
     }
+}
+
+fn contains_range(contained: Range<usize>) -> impl Fn(Range<usize>) -> bool {
+    move |range| range.start <= contained.start && range.end >= contained.end
 }

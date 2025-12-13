@@ -49,7 +49,7 @@ use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
     InputEdit, Language, Node, Parser as TsParser, Point as TsPoint, Query,
-    QueryCapture as QueryCap, QueryCursor, QueryMatch, TextProvider, Tree,
+    QueryCapture as QueryCap, QueryCursor, QueryMatch, QueryProperty, TextProvider, Tree,
 };
 
 use self::{injections::InjectedTree, languages::parser_is_compiled};
@@ -206,10 +206,6 @@ impl duat_core::Plugin for TreeSitter {
                     }))))
                 }
             } else {
-                context::debug!(
-                    "No filetype set for [a]{}[], will try again once one is set",
-                    path.name_txt()
-                );
                 Parser(Some(ParserState::NotSet(tracker)))
             };
 
@@ -303,7 +299,6 @@ struct InnerTsParser {
     old_tree: Option<Tree>,
     injections: Vec<InjectedTree>,
     tracker: BufferTracker,
-    first_time: bool,
 }
 
 impl InnerTsParser {
@@ -327,7 +322,6 @@ impl InnerTsParser {
             old_tree: None,
             injections: Vec::new(),
             tracker,
-            first_time: true,
         }
     }
 
@@ -360,8 +354,6 @@ impl InnerTsParser {
 
         self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
 
-        // `changed_ranges` should mostly be able to catch any big additions
-        // to the tree structure.
         for range in self
             .old_tree
             .as_ref()
@@ -386,34 +378,8 @@ impl InnerTsParser {
     /// Parse the newest changes, returns `false` if there were none
     ///
     /// Call this only after calling [`Self::parse_changes`]
-    fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, mut new_ranges: Ranges) {
+    fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, new_ranges: Ranges) {
         let printed_line_ranges = handle.printed_line_byte_ranges(pa);
-
-        if self.first_time {
-            self.first_time = false;
-            for range in printed_line_ranges.iter() {
-                new_ranges.add(range.clone());
-            }
-        } else {
-            for range in printed_line_ranges.iter() {
-                for range in self.tracker.ranges_to_update_on(range.clone()) {
-                    new_ranges.add(range);
-                }
-            }
-        }
-
-        // If this is the first call to parse, then update parse the whole
-        // screen immediately.
-        // Finally, in order to properly catch injection changes, a final
-        // comparison is done between the old tree and the new tree, in
-        // regards to injection captures. This is done on every range in
-        // new_ranges.
-        refactor_injections(
-            &mut new_ranges,
-            (self.lang_parts, &mut self.injections),
-            (self.old_tree.as_ref(), &self.tree),
-            handle.text(pa).bytes(),
-        );
 
         let mut parts = handle.write(pa).text_mut().parts();
         let tagger = ts_tagger();
@@ -423,17 +389,39 @@ impl InnerTsParser {
             self.tracker.add_range(range);
         }
 
-        for range in printed_line_ranges.iter() {
-            for range in self.tracker.ranges_to_update_on(range.clone()) {
-                let range = range.start..range.end;
+        loop {
+            let mut new_ranges = Ranges::empty();
 
-                highlight(
-                    self.tree.root_node(),
-                    &mut self.injections,
-                    (self.lang_parts, self.forms),
-                    (parts.bytes, &mut parts.tags),
-                    range.start.saturating_sub(1)..(range.end + 1).min(parts.bytes.len().byte()),
-                );
+            for range in printed_line_ranges.iter() {
+                for range in self.tracker.ranges_to_update_on(range.clone()) {
+                    let range = range.start..range.end;
+
+                    inject(
+                        range.clone(),
+                        &mut new_ranges,
+                        (self.lang_parts, &mut self.injections),
+                        (self.old_tree.as_ref(), &self.tree),
+                        parts.bytes,
+                    );
+
+                    highlight(
+                        self.tree.root_node(),
+                        &mut self.injections,
+                        (self.lang_parts, self.forms),
+                        (parts.bytes, &mut parts.tags),
+                        range.start.saturating_sub(1)
+                            ..(range.end + 1).min(parts.bytes.len().byte()),
+                    );
+                }
+            }
+
+            if new_ranges.is_empty() {
+                break;
+            } else {
+                for range in new_ranges {
+                    parts.tags.remove(tagger, range.start..=range.end);
+                    self.tracker.add_range(range);
+                }
             }
         }
     }
@@ -1196,90 +1184,114 @@ fn highlight(
 ///
 /// Its main purpose is to find the regions where changes have taken
 /// place and add them to the ranges to update.
-fn refactor_injections(
-    ranges_to_update: &mut Ranges,
+fn inject(
+    range_to_update: Range<usize>,
+    new_ranges: &mut Ranges,
     (lang_parts, injected_trees): (LangParts, &mut Vec<InjectedTree>),
     (old, new): (Option<&Tree>, &Tree),
     bytes: &Bytes,
 ) {
     let buf = TsBuf(bytes);
     let (.., Queries { injections, .. }) = lang_parts;
-    let mut cursor = QueryCursor::new();
 
     let cn = injections.capture_names();
     let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
-    let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
+    let language = |qm: &QueryMatch, props: &[QueryProperty]| {
+        props
+            .iter()
+            .find_map(|p| {
+                (p.key.as_ref() == "injection.language")
+                    .then_some(p.value.as_ref().unwrap().to_string())
+            })
+            .or_else(|| {
+                let cap = qm
+                    .captures
+                    .iter()
+                    .find(|cap| cn[cap.index as usize] == "injection.language")?;
+                Some(bytes.strs(cap.node.byte_range()).unwrap().to_string())
+            })
+    };
 
-    let mut inj_ranges = Ranges::empty();
+    let mut cursor = QueryCursor::new();
+    cursor.set_byte_range(range_to_update.clone());
+
     let mut new_langs: Vec<(LangParts<'static>, Ranges)> = Vec::new();
+    let mut removals = Vec::new();
 
-    for range in ranges_to_update.iter() {
-        cursor.set_byte_range(range.clone());
-
-        if let Some(old) = old {
-            let mut inj_captures = cursor.captures(injections, old.root_node(), buf);
-            while let Some((qm, _)) = inj_captures.next() {
-                if let Some(cap) = qm.captures.iter().find(is_content) {
-                    inj_ranges.add(cap.node.byte_range());
-                    for inj in injected_trees.iter_mut() {
-                        inj.remove_range(cap.node.byte_range());
-                    }
-                }
-            }
-        }
-
-        let mut inj_captures = cursor.captures(injections, new.root_node(), buf);
+    if let Some(old) = old {
+        let mut inj_captures = cursor.captures(injections, old.root_node(), buf);
         while let Some((qm, _)) = inj_captures.next() {
             let Some(cap) = qm.captures.iter().find(is_content) else {
                 continue;
             };
+
             let props = injections.property_settings(qm.pattern_index);
-            let Some(lang) = props
-                .iter()
-                .find_map(|p| {
-                    (p.key.as_ref() == "injection.language")
-                        .then_some(p.value.as_ref().unwrap().to_string())
-                })
-                .or_else(|| {
-                    let cap = qm.captures.iter().find(is_language)?;
-                    Some(bytes.slices(cap.node.byte_range()).try_to_string().unwrap())
-                })
-            else {
+            let Some(lang) = language(qm, props) else {
                 continue;
             };
 
-            let Ok(mut lang_parts) = lang_parts_of(&lang) else {
-                continue;
-            };
+            removals.push((lang, cap.node.byte_range()));
+        }
+    }
 
-            // You may want to set a new injections query, only for this capture.
-            if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
-                && let Some(value) = prop.value.as_ref()
-            {
-                match query_from_path(&lang, value, lang_parts.1) {
-                    Ok(injections) => {
-                        lang_parts.2.injections = injections;
-                    }
-                    Err(err) => context::error!("{err}"),
+    let mut inj_captures = cursor.captures(injections, new.root_node(), buf);
+    while let Some((qm, _)) = inj_captures.next() {
+        let Some(cap) = qm.captures.iter().find(is_content) else {
+            continue;
+        };
+
+        let props = injections.property_settings(qm.pattern_index);
+        let Some(lang) = language(qm, props) else {
+            continue;
+        };
+
+        let Ok(mut lang_parts) = lang_parts_of(&lang) else {
+            continue;
+        };
+
+        // You may want to set a new injections query, only for this capture.
+        if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
+            && let Some(value) = prop.value.as_ref()
+        {
+            match query_from_path(&lang, value, lang_parts.1) {
+                Ok(injections) => {
+                    lang_parts.2.injections = injections;
                 }
-            };
-
-            let cap_range = cap.node.byte_range();
-
-            if let Some(inj) = injected_trees
-                .iter_mut()
-                .find(|inj| inj.lang_parts().0 == lang_parts.0)
-            {
-                if inj.add_range(cap_range.clone()) {
-                    inj_ranges.add(cap_range.clone());
-                }
-            } else if let Some(new) = new_langs.iter_mut().find(|(lp, _)| lp.0 == lang_parts.0) {
-                inj_ranges.add(cap_range.clone());
-                new.1.add(cap_range);
-            } else {
-                inj_ranges.add(cap_range.clone());
-                new_langs.push((lang_parts, Ranges::new(cap_range)));
+                Err(err) => context::error!("{err}"),
             }
+        };
+
+        let cap_range = cap.node.byte_range();
+        removals.retain(|(rm_lang, rm_range)| {
+            // We use contains here because weird injection mergers could cause
+            // the ranges to differ, even if they have the same leaf sizes.
+            !(*rm_lang == lang
+                && (rm_range.contains(&cap_range.start) || cap_range.contains(&rm_range.start)))
+        });
+
+        if let Some(inj) = injected_trees
+            .iter_mut()
+            .find(|inj| inj.lang_parts().0 == lang_parts.0)
+        {
+            if inj.add_range(cap_range.clone()) {
+                new_ranges.add(cap_range.clone());
+            }
+        } else if let Some(new) = new_langs.iter_mut().find(|(lp, _)| lp.0 == lang_parts.0) {
+            new_ranges.add(cap_range.clone());
+            new.1.add(cap_range);
+        } else {
+            new_ranges.add(cap_range.clone());
+            new_langs.push((lang_parts, Ranges::new(cap_range)));
+        }
+    }
+
+    for (lang, range) in removals {
+        if let Some(inj) = injected_trees
+            .iter_mut()
+            .find(|inj| inj.lang_parts().0 == lang)
+            && inj.remove_range(range.clone())
+        {
+            new_ranges.add(range);
         }
     }
 
@@ -1297,11 +1309,8 @@ fn refactor_injections(
     }
 
     for inj in injected_trees.iter_mut() {
-        inj.refactor_injections(ranges_to_update, bytes);
+        inj.refactor_injections(range_to_update.clone(), new_ranges, bytes);
     }
-
-    // Injected ranges should be included in ranges to update
-    ranges_to_update.merge(inj_ranges);
 }
 
 type RemoteResult = Result<InnerTsParser, BufferTracker>;
