@@ -124,7 +124,7 @@
 //!     Ok(Some(txt!("Unset [a]{}[] forms", forms.len())))
 //! });
 //! // You can also alias commands:
-//! cmd::alias("uf", "unset-form").unwrap();
+//! cmd::alias("uf", "unset-form");
 //! # }
 //! ```
 //!

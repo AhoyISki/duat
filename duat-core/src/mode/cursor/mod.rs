@@ -64,7 +64,7 @@ macro_rules! sel_mut {
 /// # duat_core::doc_duat!(duat);
 /// # use duat::prelude::*;
 /// # fn test(mut pa: Pass, handle: &mut Handle) {
-/// let sel: String = handle.edit_main(&mut pa, |mut c| {
+/// let sel = handle.edit_main(&mut pa, |mut c| {
 ///     c.set_anchor();
 ///     c.set_caret_on_end();
 ///     c.replace("my replacement");
@@ -77,7 +77,7 @@ macro_rules! sel_mut {
 ///     c.move_hor(" and my edit".chars().count() as i32);
 ///     c.set_anchor();
 ///     c.move_hor(-("This is my replacement and my edit".chars().count() as i32));
-///     c.selection().into_iter().collect()
+///     c.selection().to_string()
 /// });
 ///
 /// assert_eq!(&sel, "This is my replacement and my edit");

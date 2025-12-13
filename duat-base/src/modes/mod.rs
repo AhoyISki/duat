@@ -20,7 +20,8 @@
 //!     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
 //!         handle.edit_all(pa, |mut c| {
 //!             c.set_caret_on_start();
-//!             if c.search_inc_fwd(Some(c.range().end)).next().is_none() {
+//!             let range = c.range();
+//!             if c.search_inc().range(range).next().is_none() {
 //!                 c.destroy();
 //!             }
 //!         });

@@ -39,12 +39,12 @@ use duat_core::{
 ///     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
 ///         handle.edit_all(pa, |mut c| {
 ///             c.set_caret_on_end();
-///             let Some(e_range) = c.search_inc_fwd(None).next() else {
+///             let Some(e_range) = c.search_inc().from_caret().next() else {
 ///                 return;
 ///             };
 ///
 ///             c.set_caret_on_start();
-///             let Some(s_range) = c.search_inc_rev(None).next() else {
+///             let Some(s_range) = c.search_inc().to_caret().next_back() else {
 ///                 return;
 ///             };
 ///

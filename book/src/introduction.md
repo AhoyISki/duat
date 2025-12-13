@@ -17,59 +17,42 @@ use duat::prelude::*;
 pub struct HighlightMatch;
 
 impl Plugin for HighlightMatch {
-    fn plug(self, plugins: &Plugins) {
-        hook::add::<Buffer>(|pa, handle| {
-            form::set_weak("same_word", Form::underlined());
-            handle.write(pa).add_parser(|mut tracker| {
-                tracker.track_area();
-                HighlightMatchParser {
-                    tagger: Tagger::new(),
-                }
-            })
-        });
-    }
-}
+    fn plug(self, _: &Plugins) {
+        form::set_weak("same_word", Form::underlined());
+        let tagger = Tagger::new();
 
-struct HighlightMatchParser {
-    tagger: Tagger,
-}
+        hook::add::<BufferUpdated>(move |pa, handle| {
+            let lines = handle.printed_line_byte_ranges(pa);
 
-impl Parser for HighlightMatchParser {
-    fn update(&mut self, pa: &mut Pass, handle: &Handle, on: Vec<Range<Point>>) {
-        handle.text_mut(pa).remove_tags(self.tagger, ..);
-        let Some(range) = handle.edit_main(pa, |c| c.search_fwd(r"\A\w+").next()) else {
-            return;
-        };
-        let start = handle
-            .edit_main(pa, |c| c.search_rev(r"\w*\z").next())
-            .map(|range| range.start)
-            .unwrap_or(range.start);
+            handle.text_mut(pa).remove_tags(tagger, ..);
+            let Some(range) = handle.edit_main(pa, |c| c.search(r"\A\w+").from_caret().next())
+            else {
+                return Ok(());
+            };
 
-        let mut parts = handle.text_parts(pa);
-        let pat = parts.bytes.strs(start..range.end);
-        let form_id = form::id_of!("same_word");
+            let start = handle
+                .edit_main(pa, |c| c.search(r"\w*\z").to_caret().next_back())
+                .map(|range| range.start)
+                .unwrap_or(range.start);
 
-        let mut first_range: Option<Range<usize>> = None;
-        for range in on {
-            for (i, range) in parts
-                .bytes
-                .search_fwd(r"\w+", range.clone())
-                .unwrap()
-                .filter(|r| parts.bytes.strs(r.clone()) == pat)
-                .enumerate()
-            {
-                if let Some(first_range) = first_range.clone() {
-                    if i == 1 {
-                        parts
-                            .tags
-                            .insert(self.tagger, first_range, form_id.to_tag(50));
-                    }
-                    parts.tags.insert(self.tagger, range, form_id.to_tag(50));
-                } else {
-                    first_range = Some(range);
+            let mut parts = handle.text_parts(pa);
+            let pat = parts.bytes.strs(start..range.end);
+            let form_id = form::id_of!("same_word");
+            
+            for range in lines {
+                for (i, range) in parts
+                    .bytes
+                    .search(r"\w+")
+                    .range(range.clone())
+                    .filter(|r| parts.bytes.strs(r.clone()) == pat)
+                    .enumerate()
+                {
+                    parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }
             }
-        }
+
+            Ok(())
+        });
     }
 }
 ```

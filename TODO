@@ -22,18 +22,16 @@ FOR NEXT UPDATE:
   [x] <c-o> and <c-i>.
   [x] q and Q
 [x] Fix existing duatmode bindings.
-[ ] Search wrapping around buffer.
-[ ] Strs QOL.
+[x] Search wrapping around buffer.
 [x] Search QOL.
   [x] On search.rs.
   [x] On cursor.rs.
 
 KNOWN BUGS:
  HIGH PRIORITY:
+  [ ] Slow treesitter backspacing.
+  [ ] Excessive foreign panics (thread_hooks pleeeeeeeeeeeasse).
   [ ] Get rid of Text::selections_mut.
-  [ ] track_area not actually tracking correctly.
-  [ ] First Point not updating when there are changes before the start of the screen.
-  [x] Completions get hidden kind of glitchly.
   [ ] Completions don't truncate properly.
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
              
@@ -49,6 +47,7 @@ KNOWN BUGS:
   [ ] On slow updates, tree-sitter can get a lil slow.
 
 FUTURE UPDATES:
+[ ] Strs QOL.
 [ ] Hover to reveal full shell expansion.
 [ ] Add a little button next to tree-sitter injections to download them.
 [ ] File tracking.
@@ -66,7 +65,6 @@ FUTURE UPDATES:
 [ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.
 [ ] Get rid of Widget::needs_update?
-[ ] Get rid of print function from Widgets.
 [ ] Coordinates based tagging.
 [ ] Use track_caller on TextBuilder.
 [ ] Anonymous Forms, which index based on hashing the Form itself.

@@ -285,13 +285,13 @@ impl<T: ?Sized> RwData<T> {
     /// the former:
     ///
     /// ```rust
-    /// # duat_core::utils::doc_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::prelude::*;
     ///
     /// struct MyWidget {
     ///     text: Text,
     ///     buf: Handle,
-    /// };
+    /// }
     ///
     /// impl Widget for MyWidget {
     ///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
@@ -302,7 +302,7 @@ impl<T: ?Sized> RwData<T> {
     ///     // ..
     ///     # fn text(&self) -> &Text { &self.text }
     ///     # fn text_mut(&mut self) -> &mut Text { &mut self.text }
-    ///     # fn needs_update(&self) -> bool { false }
+    ///     # fn needs_update(&self, pa: &Pass) -> bool { false }
     /// }
     /// ```
     ///
@@ -310,14 +310,14 @@ impl<T: ?Sized> RwData<T> {
     /// access to up to twelve different [`RwData`]-like structs:
     ///
     /// ```rust
-    /// # duat_core::utils::doc_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::prelude::*;
     ///
     /// struct MyWidget {
     ///     text: Text,
     ///     buf1: Handle,
     ///     buf2: Handle,
-    /// };
+    /// }
     ///
     /// impl Widget for MyWidget {
     ///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
@@ -327,7 +327,7 @@ impl<T: ?Sized> RwData<T> {
     ///     // ..
     ///     # fn text(&self) -> &Text { &self.text }
     ///     # fn text_mut(&mut self) -> &mut Text { &mut self.text }
-    ///     # fn needs_update(&self) -> bool { false }
+    ///     # fn needs_update(&self, pa: &Pass) -> bool { false }
     /// }
     /// ```
     ///
@@ -833,15 +833,16 @@ impl Pass {
     /// time as a `Handle`:
     ///
     /// ```rust
-    /// # duat_core::utils::doc_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::{data::RwData, prelude::*};
     /// setup_duat!(setup);
     ///
     /// fn setup() {
-    ///     let [num1, num2] = [RwData::new(0); 2];
+    ///     let (num1, num2) = (RwData::new(0), RwData::new(0));
     ///     hook::add::<Buffer>(move |pa, handle: &Handle| {
     ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
     ///         // Rest of the function writes to all of them at the same time.
+    ///         # Ok(())
     ///     });
     /// }
     /// ```
@@ -857,7 +858,7 @@ impl Pass {
     /// the earlier code snippet:
     ///
     /// ```rust
-    /// # duat_core::utils::doc_duat!(duat);
+    /// # duat_core::doc_duat!(duat);
     /// use duat::{data::RwData, prelude::*};
     /// setup_duat!(setup);
     ///
@@ -868,6 +869,7 @@ impl Pass {
     ///     hook::add::<Buffer>(move |pa, handle: &Handle| {
     ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
     ///         // Rest of the function writes to all of them at the same time.
+    ///         # Ok(())
     ///     });
     /// }
     /// ```
@@ -976,7 +978,7 @@ macro_rules! implWriteableTuple {
     };
 }
 
-impl<'p, Data, T> WriteableTuple<'p, (&'p mut T,)> for &'p Data
+impl<'p, Data, T> WriteableTuple<'p, (&mut T,)> for &'p Data
 where
     Data: WriteableData<T>,
     T: ?Sized + 'static,

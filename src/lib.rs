@@ -420,8 +420,8 @@ pub mod hook {
     //! - [`UnfocusedFrom`] triggers when a widget is unfocused.
     //! - [`FocusChanged`] is a generic version of [`FocusedOn`].
     //! - [`KeyTyped`] triggers on every _typed_ key.
-    //! - [`KeysSent`] triggers when keys are sent.
-    //! - [`KeysSentTo`] same, but on a specific `Widget`.
+    //! - [`KeySent`] triggers when keys are sent.
+    //! - [`KeySentTo`] same, but on a specific `Widget`.
     //! - [`KeyTyped`] triggers when a key is _typed_, not _sent_.
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
     //! - [`ModeSwitched`] triggers when you change `Mode`.
@@ -447,9 +447,9 @@ pub mod hook {
     //! fn setup() {
     //!     let key_count = RwData::new(0);
     //!
-    //!     hook::add::<KeysSent>({
+    //!     hook::add::<KeySent>({
     //!         let key_count = key_count.clone();
-    //!         move |pa, keys| Ok(*key_count.write(pa) += 1)
+    //!         move |pa, _| Ok(*key_count.write(pa) += 1)
     //!     })
     //!     .grouped("CountKeys");
     //!
@@ -610,8 +610,8 @@ pub mod prelude {
         setup_duat,
         state::*,
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Point, Spacer,
-            SpawnTag, Tagger, Text, txt, RegexHaystack
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Point,
+            RegexHaystack, Spacer, SpawnTag, Tagger, Text, txt,
         },
         ui::{self, Area, Widget},
         widgets::*,

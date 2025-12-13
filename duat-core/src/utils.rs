@@ -331,6 +331,14 @@ macro_rules! doc_duat {
     ($duat:ident) => {
         #[allow(unused, missing_docs)]
         mod $duat {
+            pub mod hook {
+                pub use $crate::hook::*;
+            }
+            
+            pub mod text {
+                pub use $crate::text::*;
+            }
+            
             pub mod cursor {
                 pub use $crate::form::{
                     extra_cursor as get_extra, id_of, main_cursor as get_main,
@@ -382,15 +390,15 @@ macro_rules! doc_duat {
                 
                 pub use $crate::{
                     Plugin, Plugins,
-                    buffer::{Buffer, BufferTracker, Parser},
+                    buffer::{Buffer, BufferTracker},
                     clipboard, cmd,
                     context::{self, Handle},
                     data::{self, Pass},
                     form::{self, CursorShape, Form},
                     hook::{
-                        self, BufferSaved, ColorSchemeSet, ConfigLoaded, ConfigUnloaded,
-                        ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeysSent,
-                        KeysSentTo, ModeSet, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
+                        self, BufferSaved, BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded,
+                        ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeySent,
+                        KeySentTo, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
                         WidgetCreated, WindowCreated,
                     },
                     lender::{Lender, DoubleEndedLender, ExactSizeLender},

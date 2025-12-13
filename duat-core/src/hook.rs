@@ -49,8 +49,8 @@
 //! - [`FocusedOn`] triggers when a [widget] is focused.
 //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
 //! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
-//! - [`KeysSent`] triggers when a keys are sent.
-//! - [`KeysSentTo`] same, but on a specific [widget].
+//! - [`KeySent`] triggers when a keys are sent.
+//! - [`KeySentTo`] same, but on a specific [widget].
 //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
 //! - [`OnMouseEvent`] triggers with mouse events.
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
@@ -708,34 +708,33 @@ impl PartialEq<Handle> for BufferReloaded {
 /// character:
 ///
 /// ```rust
-/// # duat_core::utils::doc_duat!(duat);
-/// use duat::prelude::*;
+/// # duat_core::doc_duat!(duat);
+/// use duat::{prelude::*, text::{Bytes, Tags}};
 ///
 /// fn setup() {
 ///     let tagger = Tagger::new();
-///     let form = form::id_of!("non_ascii_char");
+///     let tag = form::id_of!("non_ascii_char").to_tag(50);
 ///
-///     let highlight_non_ascii = move |buf: &mut Buffer, range| {
-///         let mut parts = buf.text_parts();
-///         for (b, char) in buf.bytes.strs(range).unwrap().char_indices() {
+///     let highlight_non_ascii = move |tags: &mut Tags, bytes: &Bytes, range| {
+///         for (b, char) in bytes.strs(range).unwrap().char_indices() {
 ///             if !char.is_ascii() {
-///                 buf.tags
-///                     .insert(tagger, b..b + char.len_bytes(), form.to_tag(50));
+///                 tags.insert(tagger, b..b + char.len_utf8(), tag);
 ///             }
 ///         }
 ///     };
 ///
 ///     hook::add::<Buffer>(move |pa, handle| {
-///         let buf = handle.write(pa);
-///         let range = 0..buf.len().byte();
-///         highlight_non_ascii(buf, range);
+///         let mut parts = handle.write(pa).parts();
+///         let range = Point::default()..parts.bytes.len();
+///         highlight_non_ascii(&mut parts.tags, parts.bytes, range);
 ///         Ok(())
 ///     });
 ///
-///     hook::add::<BufferReloaded>(move |pa, handle| {
-///         let buf = handle.write(pa);
-///         for change in buf.new_changes().iter() {
-///             highlight_non_ascii(buf, change.added_range())
+///     hook::add::<BufferUpdated>(move |pa, handle| {
+///         let mut parts = handle.write(pa).parts();
+///         for change in parts.new_changes.changes() {
+///             parts.tags.remove(tagger, change.added_range());
+///             highlight_non_ascii(&mut parts.tags, parts.bytes, change.added_range())
 ///         }
 ///         Ok(())
 ///     });
@@ -946,10 +945,10 @@ impl<M: Mode> Hookable for KeySentTo<M> {
 ///
 /// [`KeyEvent`]s are "typed" when typing keys _or_ when calling the
 /// [`mode::type_keys`] function, this is in contrast with
-/// [`KeysSent`], which triggers when you type [unmapped] keys or with
+/// [`KeySent`], which triggers when you type [unmapped] keys or with
 /// the remapped keys. For example, if `jk` is mapped to `<Esc>`,
 /// [`KeysTyped`] will trigger once for `j` and once for `k`, while
-/// [`KeysSent`] will trigger once for `<Esc>`.
+/// [`KeySent`] will trigger once for `<Esc>`.
 ///
 /// # Arguments
 ///
@@ -1092,8 +1091,8 @@ pub trait Hookable: Sized + 'static {
     /// example, here's the definition of the [`KeyTyped`] hook:
     ///
     /// ```rust
-    /// # duat_core::utils::doc_duat!(duat);
-    /// use duat::{hook::Hookable, mode::KeyEvent};
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::{hook::Hookable, mode::KeyEvent, prelude::*};
     ///
     /// struct KeyTyped(pub(crate) KeyEvent);
     ///

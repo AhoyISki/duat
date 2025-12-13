@@ -404,7 +404,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///             event!(Down) => menu.shift_selection(1),
 ///             event!(Up) => menu.shift_selection(-1),
 ///             event!(Enter | Tab | Char(' ')) => menu.toggle(),
-///             event!(Esc) => mode::reset::<Buffer>(),
+///             event!(Esc) => _ = mode::reset::<Buffer>(pa),
 ///             _ => {}
 ///         }
 ///     }

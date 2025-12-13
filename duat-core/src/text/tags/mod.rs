@@ -87,35 +87,35 @@ impl Tags<'_> {
     /// Removes the [`Tag`]s of a [tagger] from a region
     ///
     /// The input can either be a byte index, a [`Point`], or a
-    /// [range] of byte indices/[`Point`]s. If you are
-    /// implementing a [`Parser`] that applies `Tag`s to the
-    /// [`Text`] [when changes happen]/[on updates], you can "refresh"
-    /// those `Tag`s in a very efficient way -- even in very large
-    /// buffers -- just by doing this:
+    /// [range] of byte indices/[`Point`]s. If you are implementing a
+    /// [`Buffer`] updating hook through [`BufferUpdated`], it can be
+    /// very useful to just "undo" all of the [`Tag`] additions done
+    /// by previous updates, you can do that efficiently with this
+    /// function:
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
     /// use duat::prelude::*;
+    /// setup_duat!(setup);
     ///
-    /// struct MyParser {
-    ///     tagger: Tagger,
-    /// }
+    /// fn setup() {
+    ///     let tagger = Tagger::new();
     ///
-    /// impl Parser for MyParser {
-    ///     fn update(&mut self, pa: &mut Pass, buffer: &Handle, on: Vec<Range<Point>>) {
-    ///         let buffer = buffer.write(pa);
+    ///     hook::add::<BufferUpdated>(move |pa, handle| {
+    ///         let buf = handle.write(pa);
     ///         // Removing on the whole Buffer
-    ///         buffer.text_mut().remove_tags(self.tagger, ..);
-    ///         // Logic to add Tags with self.tagger...
-    ///     }
+    ///         buf.text_mut().remove_tags(tagger, ..);
+    ///         // Logic to add Tags with tagger...
+    ///         
+    ///         Ok(())
+    ///     });
     /// }
     /// ```
     ///
     /// [tagger]: Taggers
     /// [range]: RangeBounds
-    /// [`Parser`]: crate::buffer::Parser
-    /// [when changes happen]: crate::buffer::Parser::parse
-    /// [on updates]: crate::buffer::Parser::update
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`BufferUpdated`]: crate::hook::BufferUpdated
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(taggers, range)

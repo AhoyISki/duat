@@ -499,7 +499,7 @@ pub struct ReloadEvent {
 
 fn wait_for_threads_to_end() {
     let mut count = thread_amount::thread_amount().unwrap();
-    while count.get() > 7 {
+    while count.get() > 6 {
         std::thread::sleep(std::time::Duration::from_millis(10));
         count = thread_amount::thread_amount().unwrap();
     }
