@@ -426,8 +426,8 @@ impl Mode for Normal {
 
                     let range = c
                         .search(word_and_space(alt_word, p_opts))
-                        .from_caret()
-                        .nth(param - 1);
+                        .to_caret()
+                        .nth_back(param - 1);
                     if let Some(range) = range {
                         c.move_to(range);
                         c.set_caret_on_start();
@@ -481,7 +481,7 @@ impl Mode for Normal {
                 c.move_to(b0.unwrap_or_default());
                 c.swap_ends();
 
-                let b1 = c.search("\n").to_caret().next_back().map(|r| r.start);
+                let b1 = c.search("\n").from_caret().next().map(|r| r.start);
                 c.move_to(b1.unwrap_or(c.last_point().byte()));
                 c.set_desired_vcol(usize::MAX);
             }),
@@ -544,6 +544,8 @@ impl Mode for Normal {
                     let mut i = 0;
                     let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
 
+                    set_anchor_if_needed(char == 'M', c);
+
                     (0..param).try_for_each(|_| {
                         c.move_hor(1);
                         let end = object.find_ahead(c, 0, true)?;
@@ -569,6 +571,8 @@ impl Mode for Normal {
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let mut i = 0;
                     let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
+
+                    set_anchor_if_needed(char == 'M', c);
 
                     (0..param).try_for_each(|_| {
                         let start = object.find_behind(c, 0, false)?;
