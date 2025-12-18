@@ -3,12 +3,21 @@
 //! This module lets you access and mutate some things:
 //!
 //! # Buffers
-use std::any::TypeId;
+use std::{
+    any::TypeId,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
+};
+
+use crossterm::event::KeyEvent;
 
 pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
     buffer::Buffer,
     data::{Pass, RwData},
+    session::{DuatEvent, UiMouseEvent},
     ui::{Area, Node, Widget},
 };
 
@@ -21,14 +30,14 @@ mod global {
         path::PathBuf,
         sync::{
             LazyLock, Mutex, OnceLock,
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
             mpsc,
         },
     };
 
     use super::{CurWidgetNode, DynBuffer};
     use crate::{
-        context::Handle,
+        context::{DuatReceiver, DuatSender, Handle},
         data::{DataMap, Pass, RwData},
         session::DuatEvent,
         text::Text,
@@ -40,7 +49,8 @@ mod global {
 
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
-    static SENDER: OnceLock<mpsc::Sender<DuatEvent>> = OnceLock::new();
+    static SENDER: OnceLock<DuatSender> = OnceLock::new();
+    static NEW_EVENT_COUNT: OnceLock<&'static AtomicUsize> = OnceLock::new();
 
     /// Queues a function to be done on the main thread with a
     /// [`Pass`]
@@ -48,13 +58,14 @@ mod global {
     /// You can use this whenever you don't have access to a `Pass`,
     /// in order to execute an action on the main thread, gaining
     /// access to Duat's global state within that function.
+    ///
+    /// Note that, since this can be called from any thread, it needs
+    /// to be [`Send`] and `'static`.
     pub fn queue(f: impl FnOnce(&mut Pass) + Send + 'static) {
-        sender()
-            .send(DuatEvent::QueuedFunction(Box::new(f)))
-            .unwrap();
+        sender().send(DuatEvent::QueuedFunction(Box::new(f)));
     }
 
-    ////////// Internal setters meant to be called once
+    ////////// Internal setters meant to be called internally
 
     /// Attempts to set the current [`Handle`]
     ///
@@ -78,11 +89,44 @@ mod global {
         WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
     }
 
+    /// Wether Duat has received new events that need to be handled
+    ///
+    /// Events can be anything, from a [key press], a [refocus], or
+    /// even a [queued function].
+    ///
+    /// You can use this function to set up "timeouts". That is, if
+    /// the thing you're trying to do is on the main thread and is
+    /// taking way too long, you can check for this function and stop
+    /// what you're doing if there's any new events that Duat hasn't
+    /// handled.
+    ///
+    /// [key press]: crate::mode::KeyEvent
+    /// [refocus]: crate::hook::FocusedOnDuat
+    /// [queued function]: queue
+    pub fn has_unhandled_events() -> bool {
+        NEW_EVENT_COUNT.get().unwrap().load(Ordering::Relaxed) > 0
+    }
+
+    /// A channel for [`DuatEvent`]s
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    #[doc(hidden)]
+    pub fn duat_channel() -> (DuatSender, DuatReceiver) {
+        static NEW_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+        let (sender, receiver) = mpsc::channel();
+        (
+            DuatSender(sender, &NEW_EVENT_COUNT),
+            DuatReceiver(receiver, &NEW_EVENT_COUNT),
+        )
+    }
+
     /// Sets the sender for [`DuatEvent`]s
     ///
     /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
-    pub fn set_sender(sender: mpsc::Sender<DuatEvent>) {
+    pub fn set_sender(sender: DuatSender) {
+        NEW_EVENT_COUNT.set(sender.1).expect("setup ran twice");
         SENDER.set(sender).expect("setup ran twice");
     }
 
@@ -202,7 +246,7 @@ mod global {
     }
 
     /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop
-    pub(crate) fn sender() -> mpsc::Sender<DuatEvent> {
+    pub(crate) fn sender() -> DuatSender {
         SENDER.get().unwrap().clone()
     }
 
@@ -211,6 +255,68 @@ mod global {
     /// Returns `true` if Duat is about to reload
     pub fn will_reload_or_quit() -> bool {
         WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
+    }
+}
+
+/// A sender of [`DuatEvent`]s
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct DuatSender(mpsc::Sender<DuatEvent>, &'static AtomicUsize);
+
+impl DuatSender {
+    /// Sends a [`KeyEvent`]
+    pub fn send_key(&self, key: KeyEvent) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(DuatEvent::KeyEventSent(key)).unwrap();
+    }
+
+    /// Sends a [`MouseEvent`]
+    pub fn send_mouse(&self, mouse: UiMouseEvent) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(DuatEvent::MouseEventSent(mouse)).unwrap();
+    }
+
+    /// Sends a notice that the app has resized
+    pub fn send_resize(&self) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(DuatEvent::Resized).unwrap();
+    }
+
+    /// Triggers the [`FocusedOnDuat`] [`hook`]
+    ///
+    /// [`FocusedOnDuat`]: crate::hook::FocusedOnDuat
+    /// [`hook`]: crate::hook
+    pub fn send_focused(&self) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(DuatEvent::FocusedOnDuat).unwrap();
+    }
+
+    /// Triggers the [`UnfocusedFromDuat`] [`hook`]
+    ///
+    /// [`UnfocusedFromDuat`]: crate::hook::UnfocusedFromDuat
+    /// [`hook`]: crate::hook
+    pub fn send_unfocused(&self) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(DuatEvent::UnfocusedFromDuat).unwrap();
+    }
+
+    /// Sends any [`DuatEvent`]
+    pub(crate) fn send(&self, event: DuatEvent) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(event).unwrap();
+    }
+}
+
+/// A receiver for [`DuatEvent`]s
+#[doc(hidden)]
+pub struct DuatReceiver(mpsc::Receiver<DuatEvent>, &'static AtomicUsize);
+
+impl DuatReceiver {
+    pub(crate) fn recv_timeout(&self, timeout: std::time::Duration) -> Option<DuatEvent> {
+        self.0
+            .recv_timeout(timeout)
+            .inspect(|_| _ = self.1.fetch_sub(1, Ordering::Relaxed))
+            .ok()
     }
 }
 

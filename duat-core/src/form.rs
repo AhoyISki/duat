@@ -8,8 +8,9 @@ pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
+    context::DuatSender,
     hook::{self, FormSet},
-    session::DuatSender,
+    session::DuatEvent,
     text::FormTag,
 };
 
@@ -1204,7 +1205,7 @@ impl Palette {
     fn set_main_cursor(&self, shape: CursorShape) {
         self.0.write().unwrap().main_cursor = Some(shape);
         if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
+            sender.send(DuatEvent::FormChange);
         }
     }
 
@@ -1212,7 +1213,7 @@ impl Palette {
     fn set_extra_cursor(&self, shape: CursorShape) {
         self.0.write().unwrap().extra_cursor = Some(shape);
         if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
+            sender.send(DuatEvent::FormChange);
         }
     }
 
@@ -1220,7 +1221,7 @@ impl Palette {
     fn unset_main_cursor(&self) {
         self.0.write().unwrap().main_cursor = None;
         if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
+            sender.send(DuatEvent::FormChange);
         }
     }
 
@@ -1228,7 +1229,7 @@ impl Palette {
     fn unset_extra_cursor(&self) {
         self.0.write().unwrap().extra_cursor = None;
         if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
+            sender.send(DuatEvent::FormChange);
         }
     }
 
@@ -1284,7 +1285,7 @@ impl InnerPalette {
         }
 
         if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
+            sender.send(DuatEvent::FormChange);
         }
 
         mask_form(name, i, self);
@@ -1301,7 +1302,7 @@ impl InnerPalette {
             *f_ty = FormType::Normal;
 
             if let Some(sender) = SENDER.get() {
-                sender.send_form_changed().unwrap()
+                sender.send(DuatEvent::FormChange);
             }
             for refed in refs_of(self, i) {
                 self.forms[refed].1 = form;
@@ -1329,7 +1330,7 @@ impl InnerPalette {
         }
 
         if let Some(sender) = SENDER.get() {
-            sender.send_form_changed().unwrap()
+            sender.send(DuatEvent::FormChange);
         }
 
         mask_form(name, i, self);
@@ -1349,7 +1350,7 @@ impl InnerPalette {
             *f_ty = FormType::WeakestRef(refed);
 
             if let Some(sender) = SENDER.get() {
-                sender.send_form_changed().unwrap()
+                sender.send(DuatEvent::FormChange);
             }
             for refed in refs_of(self, i) {
                 self.forms[refed].1 = form;

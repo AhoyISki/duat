@@ -23,8 +23,9 @@ use crossterm::{
 };
 use duat_core::{
     MainThreadOnly,
+    context::DuatSender,
     form::{self, Color},
-    session::{DuatSender, UiMouseEvent},
+    session::UiMouseEvent,
     ui::{
         self,
         traits::{RawArea, RawUi},
@@ -196,25 +197,23 @@ impl RawUi for Ui {
                     match ct_read() {
                         Ok(CtEvent::Key(key)) => {
                             if !key.kind.is_release() {
-                                duat_tx.send_key(key).unwrap();
+                                duat_tx.send_key(key);
                             }
                         }
                         Ok(CtEvent::Resize(..)) => {
                             term_tx.send(Event::UpdatePrinter).unwrap();
-                            duat_tx.send_resize().unwrap();
+                            duat_tx.send_resize();
                         }
-                        Ok(CtEvent::FocusGained) => duat_tx.send_focused().unwrap(),
-                        Ok(CtEvent::FocusLost) => duat_tx.send_unfocused().unwrap(),
-                        Ok(CtEvent::Mouse(event)) => duat_tx
-                            .send_mouse(UiMouseEvent {
-                                coord: ui::Coord {
-                                    x: event.column as f32,
-                                    y: event.row as f32,
-                                },
-                                kind: event.kind,
-                                modifiers: event.modifiers,
-                            })
-                            .unwrap(),
+                        Ok(CtEvent::FocusGained) => duat_tx.send_focused(),
+                        Ok(CtEvent::FocusLost) => duat_tx.send_unfocused(),
+                        Ok(CtEvent::Mouse(event)) => duat_tx.send_mouse(UiMouseEvent {
+                            coord: ui::Coord {
+                                x: event.column as f32,
+                                y: event.row as f32,
+                            },
+                            kind: event.kind,
+                            modifiers: event.modifiers,
+                        }),
                         Ok(CtEvent::Paste(_)) => {}
                         Err(_) => {}
                     }

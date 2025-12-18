@@ -20,7 +20,7 @@ use crate::{
     buffer::Buffer,
     clipboard::Clipboard,
     cmd,
-    context::{self, Cache, sender},
+    context::{self, Cache, DuatReceiver, sender},
     data::Pass,
     form,
     hook::{
@@ -133,15 +133,15 @@ impl Session {
     /// This will return [`None`] if Duat panicked midway through.
     pub fn start(
         self,
-        duat_rx: mpsc::Receiver<DuatEvent>,
+        duat_rx: DuatReceiver,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
-    ) -> Option<(Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>)> {
+    ) -> Option<(Vec<Vec<ReloadedBuffer>>, DuatReceiver)> {
         match catch_panic(|| self.inner_start(&duat_rx, reload_tx.as_ref())) {
             Some(ret) => Some((ret, duat_rx)),
             None => {
                 let pa = unsafe { &mut Pass::new() };
                 for handle in context::windows().buffers(pa).collect::<Vec<_>>() {
-                    let _ = handle.write(pa).save();
+                    let _ = handle.save(pa);
                 }
 
                 None
@@ -152,7 +152,7 @@ impl Session {
     /// Real start, wrapped on a `catch_unwind`
     fn inner_start(
         self,
-        duat_rx: &mpsc::Receiver<DuatEvent>,
+        duat_rx: &DuatReceiver,
         reload_tx: Option<&mpsc::Sender<ReloadEvent>>,
     ) -> Vec<Vec<ReloadedBuffer>> {
         fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
@@ -162,7 +162,7 @@ impl Session {
                 .collect()
         }
 
-        form::set_sender(DuatSender::new(sender()));
+        form::set_sender(sender());
 
         // SAFETY: No Passes exists at this point in time.
         let pa = unsafe { &mut Pass::new() };
@@ -206,12 +206,12 @@ impl Session {
                 let cur_win_len = context::windows().len(pa);
 
                 // When exiting Duat, this will return `None`.
-                let Some(window) = windows_nodes.get(cur_win) else{
+                let Some(window) = windows_nodes.get(cur_win) else {
                     return;
                 };
-                
+
                 let mut printed_at_least_one = false;
-                
+
                 for node in window {
                     let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
                     if force || windows_changed || node.needs_update(pa) {
@@ -232,9 +232,9 @@ impl Session {
         };
 
         print_screen(pa, true);
-        
+
         loop {
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
+            if let Some(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
                 match event {
                     DuatEvent::KeyEventSent(key_event) => {
                         mode::send_key_event(pa, key_event);
@@ -414,54 +414,6 @@ pub enum DuatEvent {
     ReloadFailed,
     /// Quit Duat
     Quit,
-}
-
-/// A sender of [`DuatEvent`]s
-pub struct DuatSender(mpsc::Sender<DuatEvent>);
-
-impl DuatSender {
-    /// Returns a new [`DuatSender`]
-    pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
-        Self(sender)
-    }
-
-    /// Sends a [`KeyEvent`]
-    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::KeyEventSent(key))
-    }
-
-    /// Sends a [`MouseEvent`]
-    pub fn send_mouse(&self, mouse: UiMouseEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::MouseEventSent(mouse))
-    }
-
-    /// Sends a notice that the app has resized
-    pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::Resized)
-    }
-
-    /// Triggers the [`FocusedOnDuat`] [`hook`]
-    ///
-    /// [`FocusedOnDuat`]: crate::hook::FocusedOnDuat
-    /// [`hook`]: crate::hook
-    pub fn send_focused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::FocusedOnDuat)
-    }
-
-    /// Triggers the [`UnfocusedFromDuat`] [`hook`]
-    ///
-    /// [`UnfocusedFromDuat`]: crate::hook::UnfocusedFromDuat
-    /// [`hook`]: crate::hook
-    pub fn send_unfocused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::UnfocusedFromDuat)
-    }
-
-    /// Sends a notice that a [`Form`] has changed
-    ///
-    /// [`Form`]: crate::form::Form
-    pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::FormChange)
-    }
 }
 
 /// The parts that compose a [`Buffer`] widget

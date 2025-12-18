@@ -6,9 +6,12 @@ use std::{
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
-pub use self::strs::Strs;
-use super::{Point, TextRange, records::Records};
-use crate::{opts::PrintOpts, text::TextIndex};
+pub use crate::text::bytes::strs::Strs;
+use crate::{
+    buffer::Change,
+    opts::PrintOpts,
+    text::{Point, TextIndex, TextRange, records::Records, utils::implPartialEq},
+};
 
 mod strs;
 
@@ -504,10 +507,31 @@ impl Bytes {
 
     ////////// Modification functions
 
-    /// Applies a [`Change`] to the [`GapBuffer`] within
+    /// Replaces a [`TextRange`] with a `&str`
     ///
-    /// [`Change`]: super::Change
-    pub(crate) fn apply_change(&mut self, change: super::Change<&str>) {
+    /// If you want to apply a [`Change`] to the `Bytes` this way, you
+    /// can use [`Change::taken_range`] as the `TextRange`, and
+    /// [`Change::added_str`] as the replacement text.
+    pub fn replace_range(&mut self, range: impl TextRange, new: impl AsRef<str>) {
+        let edit = new.as_ref();
+        let range = range.to_range(self.len().byte());
+
+        let start = self.point_at_byte(range.start);
+        let taken_len = self.point_at_byte(range.end) - start;
+        let added_len = Point::len_of(edit);
+
+        self.buf.splice(range, edit.bytes());
+
+        let start_rec = [start.byte(), start.char(), start.line()];
+        let old_len = [taken_len.byte(), taken_len.char(), taken_len.line()];
+        let new_len = [added_len.byte(), added_len.char(), added_len.line()];
+
+        self.records.transform(start_rec, old_len, new_len);
+        self.records.insert(start_rec);
+    }
+
+    /// Applies a [`Change`] to the [`GapBuffer`] within
+    pub(crate) fn apply_change(&mut self, change: Change<&str>) {
         let edit = change.added_str();
         let start = change.start();
 
@@ -710,78 +734,6 @@ impl<'b> DoubleEndedIterator for Slices<'b> {
     }
 }
 
-impl std::fmt::Debug for Bytes {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Bytes")
-            .field("buf", &self.strs_inner(..))
-            .field("records", &self.records)
-            .finish()
-    }
-}
-
-impl PartialEq for Bytes {
-    fn eq(&self, other: &Self) -> bool {
-        self.buf.as_slices() == other.buf.as_slices()
-    }
-}
-
-impl PartialEq<&str> for Bytes {
-    fn eq(&self, other: &&str) -> bool {
-        let [s0, s1] = self.strs_inner(..).unwrap();
-        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
-    }
-}
-
-impl PartialEq<String> for Bytes {
-    fn eq(&self, other: &String) -> bool {
-        let [s0, s1] = self.strs_inner(..).unwrap();
-        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
-    }
-}
-
-impl PartialEq for Strs<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_array() == other.to_array()
-    }
-}
-
-impl PartialEq<&str> for Strs<'_> {
-    fn eq(&self, other: &&str) -> bool {
-        let [s0, s1] = self.to_array();
-        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
-    }
-}
-
-impl PartialEq<String> for Strs<'_> {
-    fn eq(&self, other: &String) -> bool {
-        let [s0, s1] = self.to_array();
-        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
-    }
-}
-
-impl PartialEq<Bytes> for &str {
-    fn eq(&self, other: &Bytes) -> bool {
-        other == self
-    }
-}
-
-impl PartialEq<Bytes> for String {
-    fn eq(&self, other: &Bytes) -> bool {
-        other == self
-    }
-}
-
-impl PartialEq<Strs<'_>> for &str {
-    fn eq(&self, other: &Strs) -> bool {
-        other == self
-    }
-}
-
-impl PartialEq<Strs<'_>> for String {
-    fn eq(&self, other: &Strs) -> bool {
-        other == self
-    }
-}
 /// Given a first byte, determines how many bytes are in this UTF-8
 /// character.
 #[must_use]
@@ -808,4 +760,83 @@ pub const fn utf8_char_width(b: u8) -> usize {
         4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
     ];
     UTF8_CHAR_WIDTH[b as usize] as usize
+}
+
+impl Eq for Bytes {}
+implPartialEq!(bytes: Bytes, other: Bytes, bytes.buf.as_slices() == other.buf.as_slices());
+implPartialEq!(bytes: Bytes, other: &str, {
+    let [s0, s1] = bytes.strs_inner(..).unwrap();
+    other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+});
+implPartialEq!(bytes: Bytes, other: String, bytes == &&other.as_str());
+implPartialEq!(str: &str, other: Bytes, other == *str);
+implPartialEq!(string: String, other: Bytes, other == *string);
+
+impl Eq for Strs<'_> {}
+implPartialEq!(strs: Strs<'_>, other: Strs<'_>, strs.to_array() == other.to_array());
+implPartialEq!(strs: Strs<'_>, other: &str, {
+    let [s0, s1] = strs.to_array();
+    other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+});
+implPartialEq!(strs: Strs<'_>, other: String, strs == &&other.as_str());
+implPartialEq!(str: &str, other: Strs<'_>, other == *str);
+implPartialEq!(string: String, other: Strs<'_>, other == *string);
+
+/// Implements [`From<$T>`] for [`Bytes`] where `$T: ToString`
+macro_rules! implFromToString {
+    ($T:ty) => {
+        impl From<$T> for Bytes {
+            fn from(value: $T) -> Self {
+                let string = <$T as ToString>::to_string(&value);
+                Bytes::new(&string)
+            }
+        }
+    };
+}
+
+implFromToString!(u8);
+implFromToString!(u16);
+implFromToString!(u32);
+implFromToString!(u64);
+implFromToString!(u128);
+implFromToString!(usize);
+implFromToString!(i8);
+implFromToString!(i16);
+implFromToString!(i32);
+implFromToString!(i64);
+implFromToString!(i128);
+implFromToString!(isize);
+implFromToString!(f32);
+implFromToString!(f64);
+implFromToString!(char);
+implFromToString!(&str);
+implFromToString!(String);
+implFromToString!(Box<str>);
+implFromToString!(std::rc::Rc<str>);
+implFromToString!(std::sync::Arc<str>);
+implFromToString!(std::borrow::Cow<'_, str>);
+implFromToString!(std::io::Error);
+implFromToString!(Box<dyn std::error::Error>);
+
+impl From<std::path::PathBuf> for Bytes {
+    fn from(value: std::path::PathBuf) -> Self {
+        let value = value.to_string_lossy();
+        Self::from(value)
+    }
+}
+
+impl From<&std::path::Path> for Bytes {
+    fn from(value: &std::path::Path) -> Self {
+        let value = value.to_string_lossy();
+        Self::from(value)
+    }
+}
+
+impl std::fmt::Debug for Bytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bytes")
+            .field("buf", &self.strs_inner(..))
+            .field("records", &self.records)
+            .finish()
+    }
 }

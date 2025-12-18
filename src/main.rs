@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let forms_init = duat_core::form::get_initial();
     duat_core::form::set_initial(forms_init);
 
-    let (duat_tx, mut duat_rx) = mpsc::channel();
+    let (duat_tx, mut duat_rx) = duat::context::duat_channel();
     duat_core::context::set_sender(duat_tx.clone());
 
     let ui = duat_core::ui::Ui::new::<UiImplementation>();

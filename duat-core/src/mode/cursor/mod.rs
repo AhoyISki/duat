@@ -16,11 +16,11 @@ use regex_cursor::regex_automata::hybrid::dfa::Cache;
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
-    buffer::{Buffer, BufferId},
+    buffer::{Buffer, BufferId, Change},
     opts::PrintOpts,
     text::{
-        Change, Lines, Matches, Point, RegexHaystack, RegexPattern, Searcher, Strs, Text,
-        TextIndex, TextRange,
+        Lines, Matches, Point, RegexHaystack, RegexPattern, Searcher, Strs, Text, TextIndex,
+        TextRange,
     },
     ui::{Area, Widget},
 };
@@ -219,7 +219,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Edits the buffer with a [`Change`]
     fn edit(&mut self, change: Change<'static, String>) {
-        let text = self.widget.text_mut();
+        let mut text = self.widget.text_mut();
         let (change_i, selections_taken) =
             text.apply_change(sel!(self).change_i.map(|i| i as usize), change);
         sel_mut!(self).change_i = change_i.map(|i| i as u32);

@@ -17,9 +17,10 @@
 use bincode::{Decode, Encode};
 
 use crate::{
+    context::DuatSender,
     form::Painter,
     opts::PrintOpts,
-    session::{DuatSender, TwoPointsPlace},
+    session::TwoPointsPlace,
     text::{Item, Text, TwoPoints},
     ui::{Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs},
 };

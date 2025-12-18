@@ -23,11 +23,11 @@ use std::{
 };
 
 use crate::{
-    context::{self, Cache},
+    context::{self, Cache, DuatSender},
     data::{Pass, RwData},
     form::Painter,
     opts::PrintOpts,
-    session::{DuatSender, TwoPointsPlace},
+    session::TwoPointsPlace,
     text::{Item, Text, TwoPoints},
     ui::{
         Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs,

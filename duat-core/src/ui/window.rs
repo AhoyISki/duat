@@ -397,9 +397,7 @@ impl Windows {
                     crate::mode::reset_to(pa, node.handle());
                 } else {
                     // If there is no previous Buffer, just quit.
-                    context::sender()
-                        .send(crate::session::DuatEvent::Quit)
-                        .unwrap();
+                    context::sender().send(crate::session::DuatEvent::Quit);
                     return Ok(());
                 }
             } else {

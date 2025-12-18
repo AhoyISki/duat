@@ -76,11 +76,14 @@ impl Ranges {
     /// so it may bridge gaps between ranges or for longer
     /// ranges within, without allowing for the existance
     /// of intersecting ranges.
+    ///
+    /// This function will return `true` if the `Ranges` were changed
+    /// by this addition.
     #[track_caller]
-    pub fn add(&mut self, new: Range<usize>) {
+    pub fn add(&mut self, new: Range<usize>) -> bool {
         assert_range(&new);
         if new.len() < self.min_len {
-            return;
+            return false;
         }
 
         let new = new.start as i32..new.end as i32;
@@ -99,6 +102,13 @@ impl Ranges {
                 range.end += self.shift;
             }
         }
+
+        let changed_ranges = if m_range.len() == 1 {
+            let range = self.list[m_range.start].clone();
+            !(range.start <= new.start && range.end >= new.end)
+        } else {
+            true
+        };
 
         let added_range = {
             let slice = self.list.range(m_range.clone());
@@ -119,12 +129,26 @@ impl Ranges {
         }
 
         self.list.splice(m_range.clone(), [added_range]);
+
+        changed_ranges
+    }
+
+    /// Adds many [`Range`]s to be merged with the existing ones
+    ///
+    /// This function will return `true` if the `Ranges` were changed
+    /// by this addition.
+    pub fn extend(&mut self, ranges: impl IntoIterator<Item = Range<usize>>) -> bool {
+        let mut has_changed = false;
+        for range in ranges {
+            has_changed |= self.add(range);
+        }
+        has_changed
     }
 
     /// Removes a [`Range`] from the list, returning an
     /// [`Iterator`] over the [`Range`]s that were taken
     #[track_caller]
-    pub fn remove(&mut self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
+    pub fn remove_on(&mut self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
         assert_range(&within);
         let within = within.start as i32..within.end as i32;
 
@@ -178,14 +202,54 @@ impl Ranges {
             .filter_map(|r| (!r.is_empty()).then_some(r.start as usize..r.end as usize))
     }
 
+    /// Removes all [`Range`]s that intersect with the given one,
+    /// returning an [`Iterator`] over them
+    #[track_caller]
+    pub fn remove_intersecting(
+        &mut self,
+        within: Range<usize>,
+    ) -> impl Iterator<Item = Range<usize>> {
+        assert_range(&within);
+        let within = within.start as i32..within.end as i32;
+
+        let m_range = merging_range_by_guess_and_lazy_shift(
+            (&self.list, self.list.len()),
+            (self.from, [within.start, within.end]),
+            (self.from, self.shift, 0, std::ops::Add::add),
+            (|r| r.start, |r| r.end),
+        );
+
+        // The ranges in this region have not been callibrated yet.
+        if self.from <= m_range.end {
+            for range in self.list.range_mut(self.from..m_range.end).iter_mut() {
+                range.start += self.shift;
+                range.end += self.shift;
+            }
+        }
+
+        let new_from = self.from.saturating_sub(m_range.len()).max(m_range.start);
+        if new_from < self.list.len() - m_range.len() {
+            self.from = new_from;
+        } else {
+            self.from = 0;
+            self.shift = 0;
+        }
+
+        self.list
+            .drain(m_range)
+            .map(|range| range.start as usize..range.end as usize)
+    }
+
     /// Applies the [`add`] function to another [`Ranges`]s
     ///
     /// [`add`]: Self::add
     #[track_caller]
-    pub fn merge(&mut self, other: Self) {
+    pub fn merge(&mut self, other: Self) -> bool {
+        let mut has_changed = false;
         for range in other.list {
-            self.add(range.start as usize..range.end as usize)
+            has_changed |= self.add(range.start as usize..range.end as usize);
         }
+        has_changed
     }
 
     /// Shifts the [`Range`]s within by a [`Change`]
@@ -273,35 +337,59 @@ impl Ranges {
 
     /// The same as [`Ranges::remove`], but without removing, just
     /// iterating over the relevant ranges
+    ///
+    /// This method will trim the iterated [`Range`]s to the bounds of
+    /// `within`. If you want a non trimmed version of this method,
+    /// check out [`iter_intersecting`].
+    ///
+    /// [`iter_intersecting`]: Self::iter_over_incl
     #[track_caller]
     pub fn iter_over(&self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
-        assert_range(&within);
-        let within = within.start as i32..within.end as i32;
+        self.iter_intersecting(within.clone())
+            .map(move |range| range.start.max(within.start)..range.end.min(within.end))
+    }
 
+    /// Iterates over all [`Range`]s that intersect with `within`
+    ///
+    /// If you want to automatically trim those ranges to the bounds
+    /// of `within`, check out [`iter_over`]
+    ///
+    /// [`iter_over`]: Self::iter_over
+    #[track_caller]
+    pub fn iter_intersecting(&self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
+        assert_range(&within);
         let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.list, self.list.len()),
-            (self.from, [within.start, within.end]),
+            (self.from, [within.start as i32, within.end as i32]),
             (self.from, self.shift, 0, std::ops::Add::add),
             (|r| r.start, |r| r.end),
         );
 
         let (s0, s1) = self.list.range(m_range.clone()).as_slices();
         s0.iter().chain(s1).enumerate().map(move |(i, range)| {
-            let mut range = if i + m_range.start > self.from {
+            let range = if i + m_range.start >= self.from {
                 range.start + self.shift..range.end + self.shift
             } else {
                 range.clone()
             };
 
-            if i == 0 {
-                range.start = range.start.max(within.start);
-            }
-            if i == m_range.len() - 1 {
-                range.end = range.end.min(within.end);
-            }
-
             range.start as usize..range.end as usize
         })
+    }
+
+    /// Wether any [`Range`] in this `Ranges` intersects with the
+    /// given `range`
+    pub fn intersects_with(&self, range: Range<usize>) -> bool {
+        assert_range(&range);
+
+        let m_range = merging_range_by_guess_and_lazy_shift(
+            (&self.list, self.list.len()),
+            (self.from, [range.start as i32, range.end as i32]),
+            (self.from, self.shift, 0, std::ops::Add::add),
+            (|r| r.start, |r| r.end),
+        );
+
+        !m_range.is_empty()
     }
 }
 

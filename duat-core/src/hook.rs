@@ -372,11 +372,9 @@ mod global {
     /// should be able to call this from pretty much anywhere.
     pub fn queue(hookable: impl Hookable + Send) {
         let sender = crate::context::sender();
-        sender
-            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                trigger(pa, hookable);
-            })))
-            .unwrap();
+        sender.send(DuatEvent::QueuedFunction(Box::new(move |pa| {
+            trigger(pa, hookable);
+        })));
     }
 
     /// Checks if a give group exists
@@ -709,7 +707,10 @@ impl PartialEq<Handle> for BufferReloaded {
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// use duat::{prelude::*, text::{Bytes, Tags}};
+/// use duat::{
+///     prelude::*,
+///     text::{Bytes, Tags},
+/// };
 ///
 /// fn setup() {
 ///     let tagger = Tagger::new();
@@ -765,8 +766,7 @@ pub struct BufferUpdated(pub(crate) Handle);
 impl Hookable for BufferUpdated {
     type Input<'h> = &'h Handle;
 
-    fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
-        self.0.write(pa).inter_hook_update();
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
@@ -1042,23 +1042,22 @@ impl Hookable for ColorSchemeSet {
     }
 }
 
-/// [`Hookable`]: Triggers after [`Buffer::save`] or [`Buffer::save_to`]
+/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`]
 ///
 /// Only triggers if the buffer was actually updated.
 ///
 /// # Arguments
 ///
-/// - The path of the buffer
+/// - The [`Handle`] of said [`Buffer`]
 /// - The number of bytes written to said buffer
 /// - Wether Duat is in the process of quitting (happens when calling
 ///   the `wq` or `waq` commands)
 ///
-/// [`Buffer::save`]: crate::buffer::Buffer::save
-/// [`Buffer::save_to`]: crate::buffer::Buffer::save_to
-pub struct BufferSaved(pub(crate) (String, usize, bool));
+/// [`Buffer`]: crate::buffer::Buffer
+pub struct BufferSaved(pub(crate) (Handle, usize, bool));
 
 impl Hookable for BufferSaved {
-    type Input<'h> = (&'h str, usize, bool);
+    type Input<'h> = (&'h Handle, usize, bool);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&self.0.0, self.0.1, self.0.2)

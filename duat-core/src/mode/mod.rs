@@ -147,9 +147,7 @@ pub fn type_keys(keys: impl IntoIterator<Item = KeyEvent>) {
     let keys: Vec<_> = keys.into_iter().collect();
     if !keys.is_empty() {
         KEYS_WERE_SENT.fetch_add(1, Ordering::Relaxed);
-        crate::context::sender()
-            .send(DuatEvent::KeyEventsSent(keys))
-            .unwrap();
+        crate::context::sender().send(DuatEvent::KeyEventsSent(keys));
     }
 }
 

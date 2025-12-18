@@ -91,42 +91,41 @@
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
-use std::{rc::Rc, sync::Arc};
-
-pub(crate) use self::history::MomentFetcher;
-use self::tags::{FwdTags, InnerTags, RevTags};
-pub use self::{
+#[doc(inline)]
+pub use crate::__txt__ as txt;
+pub use crate::text::{
     builder::{AsBuilderPart, Builder, BuilderPart},
     bytes::{Bytes, Lines, Slices, Strs},
-    history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
-    ops::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
     search::{Matches, RegexHaystack, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
         MainCaret, RawTag, Spacer, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,
     },
+    utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
 };
-#[doc(inline)]
-pub use crate::__txt__ as txt;
 use crate::{
+    buffer::{Change, History},
     context::Handle,
     data::Pass,
     form,
     mode::{Selection, Selections},
     opts::PrintOpts,
+    text::{
+        tags::{FwdTags, InnerTags, RevTags},
+        utils::implPartialEq,
+    },
     ui::{Area, SpawnId, Widget},
 };
 
 mod builder;
 mod bytes;
-mod history;
 mod iter;
-mod ops;
 mod records;
 mod search;
 mod shift_list;
 mod tags;
+mod utils;
 
 /// The text of a given [`Widget`]
 ///
@@ -145,8 +144,6 @@ struct InnerText {
     bytes: Bytes,
     tags: InnerTags,
     selections: Selections,
-    // Specific to Buffers
-    history: Option<History>,
     bytes_state: u64,
     has_unsaved_changes: bool,
 }
@@ -156,33 +153,16 @@ impl Text {
 
     /// Returns a new empty [`Text`]
     pub fn new() -> Self {
-        Self::from_parts(Bytes::default(), Selections::new_empty(), false)
+        Self::from_parts(Bytes::default(), Selections::new_empty())
     }
 
     /// Returns a new empty [`Text`] with [`Selections`] enabled
     pub fn with_default_main_selection() -> Self {
-        Self::from_parts(
-            Bytes::default(),
-            Selections::new(Selection::default()),
-            false,
-        )
-    }
-
-    /// Returns a new empty [`Text`] with history enabled
-    pub(crate) fn new_with_history() -> Self {
-        Self::from_parts(
-            Bytes::default(),
-            Selections::new(Selection::default()),
-            true,
-        )
+        Self::from_parts(Bytes::default(), Selections::new(Selection::default()))
     }
 
     /// Creates a [`Text`] from [`Bytes`]
-    pub(crate) fn from_parts(
-        mut bytes: Bytes,
-        mut selections: Selections,
-        with_history: bool,
-    ) -> Self {
+    pub(crate) fn from_parts(mut bytes: Bytes, mut selections: Selections) -> Self {
         if bytes.slices(..).next_back().is_none_or(|b| b != b'\n') {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
@@ -205,7 +185,6 @@ impl Text {
             bytes,
             tags,
             selections,
-            history: with_history.then(History::default),
             bytes_state: 0,
             has_unsaved_changes: false,
         }))
@@ -268,6 +247,20 @@ impl Text {
             tags: self.0.tags.tags(),
             selections: &self.0.selections,
         }
+    }
+
+    /// Returns the [`TextMut`] for this `Text`
+    ///
+    /// This function is used by [`Widget::text_mut`], since that
+    /// function is not supposed to allow the user to swap the
+    /// [`Text`], which could break the history of the [`Buffer`].
+    ///
+    /// For the `Buffer` specifically, it also attaches that `Buffer`
+    /// s `History` to it, which lets one undo and redo things.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn as_mut(&mut self) -> TextMut<'_> {
+        TextMut { text: self, history: None }
     }
 
     /// Gets the indentation level on the current line
@@ -367,7 +360,7 @@ impl Text {
 
     ////////// Modification functions
 
-    /// Replaces a [range] in the [`Text`]
+    /// Replaces a [range] in the `Text`
     ///
     /// # [`TextRange`] behavior:
     ///
@@ -384,29 +377,12 @@ impl Text {
         let change = Change::new(edit, start..end, self);
 
         self.0.bytes_state += 1;
-        self.apply_change_inner(0, change.as_ref());
-        self.0
-            .history
-            .as_mut()
-            .map(|h| h.apply_change(None, change));
-    }
-
-    pub(crate) fn apply_change(
-        &mut self,
-        guess_i: Option<usize>,
-        change: Change<'static, String>,
-    ) -> (Option<usize>, usize) {
-        self.0.bytes_state += 1;
-
-        let selections_taken = self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
-        let history = self.0.history.as_mut();
-        let insertion_i = history.map(|h| h.apply_change(guess_i, change));
-        (insertion_i, selections_taken)
+        self.apply_change(0, change.as_ref());
     }
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
-    fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) -> usize {
+    fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         self.0.bytes.apply_change(change);
         self.0.tags.transform(
             change.start().byte()..change.taken_end().byte(),
@@ -420,25 +396,12 @@ impl Text {
     fn without_last_nl(mut self) -> Self {
         if let Some((_, '\n')) = { self.chars_rev(..).unwrap().next() } {
             let change = Change::remove_last_nl(self.len());
-            self.apply_change_inner(0, change);
+            self.apply_change(0, change);
         }
         self
     }
 
-    /// Updates bounds, so that [`Tag`] ranges can visibly cross the
-    /// screen
-    ///
-    /// This is used in order to allow for very long [`Tag`] ranges
-    /// (say, a [`Form`] being applied on the range `3..999`) to show
-    /// up properly without having to lookback a bazillion [`Tag`]s
-    /// which could be in the way.
-    ///
-    /// [`Form`]: crate::form::Form
-    pub(crate) fn update_bounds(&mut self) {
-        self.0.tags.update_bounds();
-    }
-
-    /// Inserts a [`Text`] into this `Text`, in a specific [`Point`]
+    /// Inserts a `Text` into this `Text`, in a specific [`Point`]
     pub fn insert_text(&mut self, p: impl TextIndex, text: &Text) {
         let b = p.to_byte_index().min(self.last_point().byte());
         let cap = text.last_point().byte();
@@ -446,48 +409,9 @@ impl Text {
         let added_str = text.0.bytes.strs(..cap).unwrap().to_string();
         let point = self.point_at_byte(b);
         let change = Change::str_insert(&added_str, point);
-        self.apply_change_inner(0, change);
+        self.apply_change(0, change);
 
         self.0.tags.insert_tags(point, cap, &text.0.tags);
-    }
-
-    ////////// History functions
-
-    /// Undoes the last moment, if there was one
-    pub fn undo(&mut self) {
-        let mut history = self.0.history.take();
-
-        if let Some(history) = history.as_mut()
-            && let Some((changes, saved_moment)) = history.move_backwards()
-        {
-            self.apply_and_process_changes(changes);
-            self.0.bytes_state += 1;
-            self.0.has_unsaved_changes = !saved_moment;
-        }
-
-        self.0.history = history;
-    }
-
-    /// Redoes the last moment in the history, if there is one
-    pub fn redo(&mut self) {
-        let mut history = self.0.history.take();
-
-        if let Some(history) = history.as_mut()
-            && let Some((changes, saved_moment)) = history.move_forward()
-        {
-            self.apply_and_process_changes(changes);
-            self.0.bytes_state += 1;
-            self.0.has_unsaved_changes = !saved_moment;
-        }
-
-        self.0.history = history;
-    }
-
-    /// Finishes the current moment and adds a new one to the history
-    pub fn new_moment(&mut self) {
-        if let Some(h) = self.0.history.as_mut() {
-            h.new_moment()
-        }
     }
 
     fn apply_and_process_changes<'a>(
@@ -498,7 +422,7 @@ impl Text {
 
         let len = changes.len();
         for (i, change) in changes.enumerate() {
-            self.apply_change_inner(0, change);
+            self.apply_change(0, change);
 
             let start = change.start().min(self.last_point());
             let added_end = match change.added_str().chars().next_back() {
@@ -532,9 +456,6 @@ impl Text {
     /// [writer]: std::io::Write
     pub fn save_on(&mut self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
         self.0.has_unsaved_changes = false;
-        if let Some(history) = &mut self.0.history {
-            history.declare_saved();
-        }
 
         let [s0, s1] = self.0.bytes.slices(..).to_array();
         Ok(writer.write(s0)? + writer.write(s1)?)
@@ -615,72 +536,11 @@ impl Text {
         Selectionless(self)
     }
 
-    /// Removes the tags for all the selections, used before they are
-    /// expected to move
-    pub(crate) fn add_selections(&mut self, area: &Area, opts: PrintOpts) {
-        let within = (self.0.selections.len() >= 500).then(|| {
-            let start = area.start_points(self, opts);
-            let end = area.end_points(self, opts);
-            (start.real, end.real)
-        });
-
-        let mut add_selection = |selection: &Selection, bytes: &mut Bytes, is_main: bool| {
-            let (caret, selection) = selection.tag_points(bytes);
-
-            let key = Tagger::for_selections();
-            let form = if is_main {
-                self.0.tags.insert(key, caret.byte(), MainCaret, false);
-                form::M_SEL_ID
-            } else {
-                self.0.tags.insert(key, caret.byte(), ExtraCaret, false);
-                form::E_SEL_ID
-            };
-
-            bytes.add_record([caret.byte(), caret.char(), caret.line()]);
-
-            if let Some(range) = selection {
-                self.0.tags.insert(key, range, form.to_tag(95), false);
-            }
-        };
-
-        if let Some((start, end)) = within {
-            for (_, selection, is_main) in self.0.selections.iter_within(start..end) {
-                add_selection(selection, &mut self.0.bytes, is_main);
-            }
-        } else {
-            for (selection, is_main) in self.0.selections.iter() {
-                add_selection(selection, &mut self.0.bytes, is_main);
-            }
-        }
-    }
-
-    /// Removes the [`Tag`]s for all [`Selection`]s
-    pub(crate) fn remove_selections(&mut self) {
-        self.remove_tags(Tagger::for_selections(), ..);
-    }
-
     /// Prepares the `Text` for reloading, to be used on [`Buffer`]s
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub(crate) fn prepare_for_reloading(&mut self) {
         self.clear_tags();
-        if let Some(history) = self.0.history.as_mut() {
-            history.prepare_for_reloading()
-        }
-    }
-
-    /// Functions to add  all [`Widget`]s that were spawned in this
-    /// `Text`
-    ///
-    /// This function should only be called right before printing,
-    /// where it is "known" that `Widget`s can no longer get rid of
-    /// the [`SpawnTag`]s
-    ///
-    /// [`Widget`]: crate::ui::Widget
-    pub(crate) fn get_widget_spawns(
-        &mut self,
-    ) -> Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>> {
-        std::mem::take(&mut self.0.tags.spawn_fns)
     }
 
     /////////// Iterator methods
@@ -788,11 +648,6 @@ impl Text {
         &mut self.0.selections
     }
 
-    /// The [`History`] of [`Moment`]s in this `Text`
-    pub fn history(&self) -> Option<&History> {
-        self.0.history.as_ref()
-    }
-
     /// A list of all [`SpawnId`]s that belong to this `Text`
     pub fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
         self.0.tags.get_spawned_ids()
@@ -824,125 +679,246 @@ impl std::ops::Deref for Text {
     }
 }
 
-impl Default for Text {
-    fn default() -> Self {
-        Self::new()
-    }
+/// A struct that allows for [`Text`] modifications from the
+/// [`Widget::text_mut`] function
+///
+/// It is pretty much identical to `&mut Text`, the difference is that
+/// you can't reassign it to a new [`Text`]. This is done in order to
+/// prevent radical changes to the `Text` of the [`Buffer`] from the
+/// outside.
+///
+/// [`Buffer`]: crate::buffer::Buffer
+#[derive(Debug)]
+pub struct TextMut<'t> {
+    text: &'t mut Text,
+    history: Option<&'t mut History>,
 }
 
-impl std::fmt::Debug for Text {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Text")
-            .field("bytes", &self.0.bytes)
-            .field("tags", &self.0.tags)
-            .finish_non_exhaustive()
-    }
-}
+impl<'t> TextMut<'t> {
+    /// Replaces a [range] in the `Text`
+    ///
+    /// # [`TextRange`] behavior:
+    ///
+    /// If you give a single [`usize`]/[`Point`], it will be
+    /// interpreted as a range from.
+    ///
+    /// [range]: TextRange
+    pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
+        let range = range.to_range(self.len().byte());
+        let (start, end) = (
+            self.point_at_byte(range.start),
+            self.point_at_byte(range.end),
+        );
+        let change = Change::new(edit, start..end, self);
 
-impl Clone for Text {
-    fn clone(&self) -> Self {
-        let mut text = Self(self.0.clone());
-        if text.slices(..).next_back().is_none_or(|b| b != b'\n') {
-            let end = text.len();
-            text.apply_change(None, Change::str_insert("\n", end).to_string_change());
+        self.text.0.bytes_state += 1;
+        self.text.apply_change(0, change.as_ref());
+        self.history.as_mut().map(|h| h.apply_change(None, change));
+    }
+
+    /// Applies a [`Change`] to the `Text`
+    pub(crate) fn apply_change(
+        &mut self,
+        guess_i: Option<usize>,
+        change: Change<'static, String>,
+    ) -> (Option<usize>, usize) {
+        self.text.0.bytes_state += 1;
+        let selections_taken = self
+            .text
+            .apply_change(guess_i.unwrap_or(0), change.as_ref());
+        let history = self.history.as_mut();
+        let insertion_i = history.map(|h| h.apply_change(guess_i, change));
+        (insertion_i, selections_taken)
+    }
+
+    ////////// Functions for Tag modifications
+
+    /// The parts that make up a [`Text`]
+    ///
+    /// This function is used when you want to [insert]/[remove]
+    /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
+    /// [`Tags`]), while still being able to read from the
+    /// [`Bytes`] and [`Selections`].
+    ///
+    /// [insert]: Tags::insert
+    /// [remove]: Tags::remove
+    /// [`&mut Bytes`]: Bytes
+    pub fn parts(self) -> TextParts<'t> {
+        self.text.parts()
+    }
+
+    /// Inserts a [`Tag`] at the given position
+    pub fn insert_tag<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        self.text.insert_tag(tagger, r, tag)
+    }
+
+    /// Like [`insert_tag`], but does it after other [`Tag`]s with the
+    /// same priority
+    ///
+    /// [`insert_tag`]: Self::insert_tag
+    pub fn insert_tag_after<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
+    where
+        R: Copy,
+    {
+        self.text.insert_tag_after(tagger, r, tag)
+    }
+
+    /// Removes the [`Tag`]s of a [key] from a region
+    ///
+    /// # Caution
+    ///
+    /// While it is fine to do this on your own widgets, you should
+    /// refrain from using this function in a [`Buffer`]s [`Text`], as
+    /// it must iterate over all tags in the buffer, so if there are a
+    /// lot of other tags, this operation may be slow.
+    ///
+    /// # [`TextRange`] behavior
+    ///
+    /// If you give it a [`Point`] or [`usize`], it will be treated as
+    /// a one byte range.
+    ///
+    /// [key]: Taggers
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len().byte());
+        self.text.remove_tags(taggers, range)
+    }
+
+    /// Removes all [`Tag`]s
+    ///
+    /// Refrain from using this function on [`Buffer`]s, as there may
+    /// be other [`Tag`] providers, and you should avoid messing
+    /// with their tags.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn clear_tags(&mut self) {
+        self.text.clear_tags();
+    }
+
+    /// Updates bounds, so that [`Tag`] ranges can visibly cross the
+    /// screen
+    ///
+    /// This is used in order to allow for very long [`Tag`] ranges
+    /// (say, a [`Form`] being applied on the range `3..999`) to show
+    /// up properly without having to lookback a bazillion [`Tag`]s
+    /// which could be in the way.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub(crate) fn update_bounds(&mut self) {
+        self.text.0.tags.update_bounds();
+    }
+
+    /// Functions to add  all [`Widget`]s that were spawned in this
+    /// `Text`
+    ///
+    /// This function should only be called right before printing,
+    /// where it is "known" that `Widget`s can no longer get rid of
+    /// the [`SpawnTag`]s
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    pub(crate) fn get_widget_spawns(
+        &mut self,
+    ) -> Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>> {
+        std::mem::take(&mut self.text.0.tags.spawn_fns)
+    }
+
+    ////////// History functions
+
+    /// Undoes the last moment, if there was one
+    pub fn undo(&mut self) {
+        if let Some(history) = &mut self.history
+            && let Some((changes, saved_moment)) = history.move_backwards()
+        {
+            self.text.apply_and_process_changes(changes);
+            self.text.0.bytes_state += 1;
+            self.text.0.has_unsaved_changes = !saved_moment;
         }
-
-        text
     }
-}
 
-impl From<std::io::Error> for Text {
-    fn from(value: std::io::Error) -> Self {
-        txt!("{}", value.kind().to_string())
+    /// Redoes the last moment in the history, if there is one
+    pub fn redo(&mut self) {
+        if let Some(history) = &mut self.history
+            && let Some((changes, saved_moment)) = history.move_forward()
+        {
+            self.text.apply_and_process_changes(changes);
+            self.text.0.bytes_state += 1;
+            self.text.0.has_unsaved_changes = !saved_moment;
+        }
     }
-}
 
-impl From<Box<dyn std::error::Error>> for Text {
-    fn from(value: Box<dyn std::error::Error>) -> Self {
-        txt!("{}", value.to_string())
+    /// Finishes the current moment and adds a new one to the history
+    pub fn new_moment(&mut self) {
+        if let Some(h) = &mut self.history {
+            h.new_moment()
+        }
     }
-}
 
-impl From<std::path::PathBuf> for Text {
-    fn from(value: std::path::PathBuf) -> Self {
-        let value = value.to_string_lossy();
-        Self::from(value)
+    ////////// Selections functions
+
+    /// A mut reference to this `Text`'s [`Selections`] if they
+    /// exist
+    pub fn selections_mut(self) -> &'t mut Selections {
+        &mut self.text.0.selections
     }
-}
 
-impl From<&std::path::Path> for Text {
-    fn from(value: &std::path::Path) -> Self {
-        let value = value.to_string_lossy();
-        Self::from(value)
-    }
-}
+    /// Removes the tags for all the selections, used before they are
+    /// expected to move
+    pub(crate) fn add_selections(&mut self, area: &Area, opts: PrintOpts) {
+        let within = (self.0.selections.len() >= 500).then(|| {
+            let start = area.start_points(self, opts);
+            let end = area.end_points(self, opts);
+            (start.real, end.real)
+        });
 
-impl PartialEq for Text {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.bytes == other.0.bytes && self.0.tags == other.0.tags
-    }
-}
+        let mut add_selection = |selection: &Selection, bytes: &mut Bytes, is_main: bool| {
+            let (caret, selection) = selection.tag_points(bytes);
 
-impl Eq for Text {}
+            let key = Tagger::for_selections();
+            let form = if is_main {
+                self.text.0.tags.insert(key, caret.byte(), MainCaret, false);
+                form::M_SEL_ID
+            } else {
+                self.text
+                    .0
+                    .tags
+                    .insert(key, caret.byte(), ExtraCaret, false);
+                form::E_SEL_ID
+            };
 
-impl PartialEq<&str> for Text {
-    fn eq(&self, other: &&str) -> bool {
-        self.0.bytes == *other
-    }
-}
+            bytes.add_record([caret.byte(), caret.char(), caret.line()]);
 
-impl PartialEq<String> for Text {
-    fn eq(&self, other: &String) -> bool {
-        self.0.bytes == *other
-    }
-}
+            if let Some(range) = selection {
+                self.text.0.tags.insert(key, range, form.to_tag(95), false);
+            }
+        };
 
-impl PartialEq<Text> for &str {
-    fn eq(&self, other: &Text) -> bool {
-        other.0.bytes == *self
-    }
-}
-
-impl PartialEq<Text> for String {
-    fn eq(&self, other: &Text) -> bool {
-        other.0.bytes == *self
-    }
-}
-
-/// Implements [`From<$t>`] for [`Text`]
-macro_rules! impl_from_to_string {
-    ($t:ty) => {
-        impl From<$t> for Text {
-            fn from(value: $t) -> Self {
-                let string = <$t as ToString>::to_string(&value);
-                let bytes = Bytes::new(&string);
-                Self::from_parts(bytes, Selections::new_empty(), false)
+        if let Some((start, end)) = within {
+            for (_, selection, is_main) in self.text.0.selections.iter_within(start..end) {
+                add_selection(selection, &mut self.text.0.bytes, is_main);
+            }
+        } else {
+            for (selection, is_main) in self.text.0.selections.iter() {
+                add_selection(selection, &mut self.text.0.bytes, is_main);
             }
         }
-    };
+    }
+
+    /// Removes the [`Tag`]s for all [`Selection`]s
+    pub(crate) fn remove_selections(&mut self) {
+        self.remove_tags(Tagger::for_selections(), ..);
+    }
 }
 
-impl_from_to_string!(u8);
-impl_from_to_string!(u16);
-impl_from_to_string!(u32);
-impl_from_to_string!(u64);
-impl_from_to_string!(u128);
-impl_from_to_string!(usize);
-impl_from_to_string!(i8);
-impl_from_to_string!(i16);
-impl_from_to_string!(i32);
-impl_from_to_string!(i64);
-impl_from_to_string!(i128);
-impl_from_to_string!(isize);
-impl_from_to_string!(f32);
-impl_from_to_string!(f64);
-impl_from_to_string!(char);
-impl_from_to_string!(&str);
-impl_from_to_string!(String);
-impl_from_to_string!(Box<str>);
-impl_from_to_string!(Rc<str>);
-impl_from_to_string!(Arc<str>);
-impl_from_to_string!(std::borrow::Cow<'_, str>);
+impl<'t> std::ops::Deref for TextMut<'t> {
+    type Target = Text;
+
+    fn deref(&self) -> &Self::Target {
+        self.text
+    }
+}
 
 /// A [`Text`] that is guaranteed not to have [`Selections`] in it
 ///
@@ -1073,3 +1049,56 @@ impl TextState {
         self.bytes_state > other.bytes_state || self.meta_tags_state > other.meta_tags_state
     }
 }
+
+////////// Standard impls
+
+impl Default for Text {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Into<Bytes>> From<T> for Text {
+    fn from(value: T) -> Self {
+        Self::from_parts(value.into(), Selections::new_empty())
+    }
+}
+
+impl std::fmt::Debug for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Text")
+            .field("bytes", &self.0.bytes)
+            .field("tags", &self.0.tags)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for Text {
+    fn clone(&self) -> Self {
+        let mut text = Self(self.0.clone());
+        if text.slices(..).next_back().is_none_or(|b| b != b'\n') {
+            let end = text.len();
+            text.apply_change(0, Change::str_insert("\n", end));
+        }
+
+        text
+    }
+}
+
+impl Eq for Text {}
+implPartialEq!(text: Text, other: Text,
+    text.0.bytes == other.0.bytes && text.0.tags == other.0.tags
+);
+implPartialEq!(text: Text, other: &str, text.0.bytes == *other);
+implPartialEq!(text: Text, other: String, text.0.bytes == *other);
+implPartialEq!(str: &str, text: Text, text.0.bytes == **str);
+implPartialEq!(str: String, text: Text, text.0.bytes == **str);
+
+impl Eq for TextMut<'_> {}
+implPartialEq!(text_mut: TextMut<'_>, other: TextMut<'_>, text_mut.text == other.text);
+implPartialEq!(text_mut: TextMut<'_>, other: Text, text_mut.text == other);
+implPartialEq!(text_mut: TextMut<'_>, other: &str, text_mut.text.0.bytes == *other);
+implPartialEq!(text_mut: TextMut<'_>, other: String, text_mut.text.0.bytes == *other);
+implPartialEq!(text: Text, other: TextMut<'_>, *text == other.text);
+implPartialEq!(str: &str, text_mut: TextMut<'_>, text_mut.text.0.bytes == **str);
+implPartialEq!(str: String, text_mut: TextMut<'_>, text_mut.text.0.bytes == **str);

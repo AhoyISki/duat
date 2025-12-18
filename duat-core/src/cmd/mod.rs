@@ -214,12 +214,11 @@ pub(crate) fn add_session_commands() {
 
     add("write", |pa: &mut Pass, path: Option<ValidFilePath>| {
         let handle = context::current_buffer(pa).clone();
-        let buffer = handle.write(pa);
 
         let (bytes, name) = if let Some(path) = path {
-            (buffer.save_to(&path.0)?, path.0)
-        } else if let Some(name) = buffer.name_set() {
-            (buffer.save()?, std::path::PathBuf::from(name))
+            (handle.save_to(pa, &path.0)?, path.0)
+        } else if let Some(name) = handle.read(pa).name_set() {
+            (handle.save(pa)?, std::path::PathBuf::from(name))
         } else {
             return Err(txt!("Buffer has no name path to write to"));
         };
@@ -248,13 +247,12 @@ pub(crate) fn add_session_commands() {
             let handle = context::current_buffer(pa).clone();
 
             let (bytes, name) = {
-                let buffer = handle.write(pa);
                 let bytes = if let Some(path) = path {
-                    buffer.save_quit_to(path.0, true)?
+                    handle.save_quit_to(pa, path.0, true)?
                 } else {
-                    buffer.save_quit(true)?
+                    handle.save_quit(pa, true)?
                 };
-                (bytes, buffer.name())
+                (bytes, handle.read(pa).name())
             };
 
             context::windows().close(pa, &handle)?;
@@ -293,7 +291,7 @@ pub(crate) fn add_session_commands() {
             .collect();
 
         for handle in &handles {
-            written += handle.write(pa).save().is_ok() as usize;
+            written += handle.save(pa).is_ok() as usize;
         }
 
         if written == handles.len() {
@@ -316,11 +314,11 @@ pub(crate) fn add_session_commands() {
             .filter(|handle| handle.read(pa).path_set().is_some())
             .collect();
         for handle in &handles {
-            written += handle.write(pa).save_quit(true).is_ok() as usize;
+            written += handle.save_quit(pa, true).is_ok() as usize;
         }
 
         if written == handles.len() {
-            sender().send(DuatEvent::Quit).unwrap();
+            sender().send(DuatEvent::Quit);
             Ok(None)
         } else {
             let unwritten = handles.len() - written;
@@ -340,10 +338,10 @@ pub(crate) fn add_session_commands() {
         let handles: Vec<_> = context::windows().buffers(pa).collect();
 
         for handle in handles {
-            let _ = handle.write(pa).save_quit(true);
+            let _ = handle.save_quit(pa, true);
         }
 
-        sender().send(DuatEvent::Quit).unwrap();
+        sender().send(DuatEvent::Quit);
         Ok(None)
     })
     .doc(
@@ -413,7 +411,7 @@ pub(crate) fn add_session_commands() {
             .count();
 
         if unwritten == 0 {
-            sender().send(DuatEvent::Quit).unwrap();
+            sender().send(DuatEvent::Quit);
             Ok(None)
         } else if unwritten == 1 {
             Err(txt!("There is [a]1[] unsaved buffer"))
@@ -430,7 +428,7 @@ pub(crate) fn add_session_commands() {
     alias("qa", "quit-all");
 
     add("quit-all!", |_: &mut Pass| {
-        sender().send(DuatEvent::Quit).unwrap();
+        sender().send(DuatEvent::Quit);
         Ok(None)
     })
     .doc(
@@ -444,20 +442,18 @@ pub(crate) fn add_session_commands() {
     add(
         "reload",
         |_: &mut Pass, opts: ReloadOptions, profile: Option<String>| {
-            sender()
-                .send(DuatEvent::RequestReload(crate::session::ReloadEvent {
-                    clean: opts.clean,
-                    update: opts.update,
-                    profile: profile.unwrap_or(crate::utils::profile().to_string()),
-                }))
-                .unwrap();
+            sender().send(DuatEvent::RequestReload(crate::session::ReloadEvent {
+                clean: opts.clean,
+                update: opts.update,
+                profile: profile.unwrap_or(crate::utils::profile().to_string()),
+            }));
 
             // This has to be done on Windows, since you can't remove
             // loaded dlls. Thus, we need to quit the curent
             // configuration first, and then we can start compiling the
             // new version of the config crate.
             #[cfg(target_os = "windows")]
-            sender().send(DuatEvent::ReloadSucceeded).unwrap();
+            sender().send(DuatEvent::ReloadSucceeded);
 
             Ok(None)
         },
@@ -1026,32 +1022,26 @@ mod global {
     /// [`RwData`]: crate::data::RwData
     pub fn queue(call: impl std::fmt::Display) {
         let call = call.to_string();
-        crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                let _ = COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa));
-            })))
-            .unwrap();
+        crate::context::sender().send(DuatEvent::QueuedFunction(Box::new(move |pa| {
+            let _ = COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa));
+        })));
     }
 
     /// Like [`queue`], but notifies the result
     pub fn queue_notify(call: impl std::fmt::Display) {
         let call = call.to_string();
-        crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                context::logs()
-                    .push_cmd_result(COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa)));
-            })))
-            .unwrap()
+        crate::context::sender().send(DuatEvent::QueuedFunction(Box::new(move |pa| {
+            context::logs()
+                .push_cmd_result(COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa)));
+        })))
     }
 
     /// Like [`queue`], but acts on the [`Result`]
     pub fn queue_and(call: impl std::fmt::Display, map: impl FnOnce(CmdResult) + Send + 'static) {
         let call = call.to_string();
-        crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                map(COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa)));
-            })))
-            .unwrap()
+        crate::context::sender().send(DuatEvent::QueuedFunction(Box::new(move |pa| {
+            map(COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa)));
+        })))
     }
 
     /// Like [`queue_and`], but also notifies the [`Result`]
@@ -1060,14 +1050,12 @@ mod global {
         map: impl FnOnce(CmdResult) + Send + 'static,
     ) {
         let call = call.to_string();
-        crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                let result = COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa));
-                context::logs().push_cmd_result(result.clone());
+        crate::context::sender().send(DuatEvent::QueuedFunction(Box::new(move |pa| {
+            let result = COMMANDS.write(pa).get_cmd(call).and_then(|cmd| cmd(pa));
+            context::logs().push_cmd_result(result.clone());
 
-                map(result)
-            })))
-            .unwrap()
+            map(result)
+        })));
     }
 
     /// Check if the arguments for a given `caller` are correct

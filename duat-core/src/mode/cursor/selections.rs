@@ -18,7 +18,8 @@ use gapbuf::{GapBuffer, gap_buffer};
 
 pub use self::cursor::{Selection, VPoint};
 use crate::{
-    text::{Bytes, Change, Point, TextRange},
+    buffer::Change,
+    text::{Bytes, Point, TextRange},
     utils::{add_shifts, merging_range_by_guess_and_lazy_shift},
 };
 
@@ -407,8 +408,9 @@ mod cursor {
     use bincode::{Decode, Encode};
 
     use crate::{
+        buffer::Change,
         opts::PrintOpts,
-        text::{Bytes, Change, Point, Text},
+        text::{Bytes, Point, Text},
         ui::{Area, Caret},
     };
 

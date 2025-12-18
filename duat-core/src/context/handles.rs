@@ -17,7 +17,7 @@ use crate::{
     data::{Pass, RwData, WriteableTuple},
     mode::{Cursor, Cursors, ModSelection, Selection, Selections},
     opts::PrintOpts,
-    text::{Searcher, Text, TextParts, TwoPoints, txt},
+    text::{txt, Searcher, Text, TextMut, TextParts, TwoPoints},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
 };
 
@@ -295,14 +295,14 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// A shared reference to the [`Text`] of the [`Widget`]
     ///
     /// This is the same as calling `handle.read(pa).text()`.
-    pub fn text<'a>(&'a self, pa: &'a Pass) -> &'a Text {
+    pub fn text<'p>(&'p self, pa: &'p Pass) -> &'p Text {
         self.read(pa).text()
     }
 
     /// A mutable reference to the [`Text`] of the [`Widget`]
     ///
     /// This is the same as calling `handle.write(pa).text_mut()`.
-    pub fn text_mut<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Text {
+    pub fn text_mut<'p>(&'p self, pa: &'p mut Pass) -> TextMut<'p> {
         self.write(pa).text_mut()
     }
 
@@ -319,7 +319,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// [`Bytes`]: crate::text::Bytes
     /// [`Tags`]: crate::text::Tags
     /// [`Tag`]: crate::text::Tag
-    pub fn text_parts<'a>(&'a self, pa: &'a mut Pass) -> TextParts<'a> {
+    pub fn text_parts<'p>(&'p self, pa: &'p mut Pass) -> TextParts<'p> {
         self.write(pa).text_mut().parts()
     }
 
@@ -327,7 +327,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// [`Text`]
     ///
     /// This is the same as calling `handle.read(pa).selections()`.
-    pub fn selections<'a>(&'a self, pa: &'a Pass) -> &'a Selections {
+    pub fn selections<'p>(&'p self, pa: &'p Pass) -> &'p Selections {
         self.read(pa).text().selections()
     }
 
@@ -336,7 +336,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     ///
     /// This is the same as calling
     /// `handle.write(pa).selections_mut()`.
-    pub fn selections_mut<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Selections {
+    pub fn selections_mut<'p>(&'p self, pa: &'p mut Pass) -> &'p mut Selections {
         self.write(pa).text_mut().selections_mut()
     }
 

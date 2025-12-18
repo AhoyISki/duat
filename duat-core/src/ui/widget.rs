@@ -46,7 +46,7 @@ use crate::{
     mode::MouseEvent,
     opts::PrintOpts,
     session::UiMouseEvent,
-    text::Text,
+    text::{Text, TextMut},
     ui::{PrintInfo, RwArea},
     utils::catch_panic,
 };
@@ -462,7 +462,7 @@ pub trait Widget: Send + 'static {
     fn text(&self) -> &Text;
 
     /// A mutable reference to the [`Text`] that is printed
-    fn text_mut(&mut self) -> &mut Text;
+    fn text_mut(&mut self) -> TextMut<'_>;
 
     /// The [configuration] for how to print [`Text`]
     ///

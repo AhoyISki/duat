@@ -172,7 +172,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
         }
     };
 
-    for change in parts.new_changes.changes() {
+    for change in parts.new_changes.iter() {
         let added_str = change.added_str();
         let added_words: Vec<_> = added_str.search(r"[\w]+").map(to_str(added_str)).collect();
         let taken_str = change.taken_str();
