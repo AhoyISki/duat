@@ -428,6 +428,12 @@ impl Iterator for IntoIter {
 
 impl ExactSizeIterator for IntoIter {}
 
+impl PartialEq for Ranges {
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().eq(other.iter())
+    }
+}
+
 #[track_caller]
 fn assert_range(range: &Range<usize>) {
     assert!(

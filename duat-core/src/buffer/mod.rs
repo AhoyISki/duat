@@ -13,10 +13,11 @@
 //! [`Cursor`]: crate::mode::Cursor
 //! [`RawArea::PrintInfo`]: crate::ui::traits::RawArea::PrintInfo
 use std::{
+    collections::HashMap,
     fs,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard},
+    sync::{LazyLock, Mutex, MutexGuard},
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};
@@ -29,12 +30,12 @@ pub use crate::buffer::{
 };
 use crate::{
     context::{self, Cache, Handle},
-    data::Pass,
+    data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferSaved, BufferUpdated},
     mode::{MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{txt, Bytes, Point, Strs, Text, TextMut, TextState},
+    text::{Bytes, Point, Strs, Text, TextMut, TextState, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
@@ -772,5 +773,166 @@ mod buffer_id {
                 Ordering::Relaxed,
             );
         }
+    }
+}
+
+/// A struct to associate one `T` to each [`Buffer`]
+///
+/// This is very useful to implement the "parser pattern", where you
+/// have one parser per `Buffer`, acting on changes that take place on
+/// each `Buffer`.
+pub struct PerBuffer<T: 'static> {
+    list: LazyLock<RwData<HashMap<BufferId, T>>>,
+}
+
+impl<T: 'static> PerBuffer<T> {
+    /// Returns a new mapping of [`Buffer`]s to a type `T`
+    ///
+    /// Since this function is `const`, you can conveniently place it
+    /// in a `static` variable, in order to record one `T` for every
+    /// `Buffer` that you want to associate the struct to.
+    ///
+    /// This is very useful in order to create the "parser pattern" on
+    /// a number of different `Buffer`s, letting you store things and
+    /// retrieve them as needed.
+    pub const fn new() -> Self {
+        Self { list: LazyLock::new(RwData::default) }
+    }
+
+    /// Register a [`Buffer`] with an initial value of `T`
+    ///
+    /// If there was a previous version of `T` assoiated with the
+    /// `Buffer`, then the new `T` will replace that old version.
+    ///
+    /// You should most likely call this function on the
+    /// [`WidgetCreated<Buffer>`] hook, often aliased to just
+    /// `Buffer`.
+    ///
+    /// [`WidgetCreated<Buffer>`]: crate::hook::WidgetCreated
+    pub fn register<'p>(
+        &'p self,
+        pa: &'p mut Pass,
+        handle: &'p Handle,
+        new_value: T,
+    ) -> (&'p mut T, &'p mut Buffer) {
+        let (list, buf) = pa.write_many((&*self.list, handle));
+
+        let entry = list.entry(buf.buffer_id()).insert_entry(new_value);
+
+        (entry.into_mut(), buf)
+    }
+
+    /// Unregisters a [`Buffer`]
+    ///
+    /// This will remove the `Buffer` from the list, making future
+    /// calls to [`Self::write`] return [`None`]. You should consider
+    /// doing this on the [`BufferClosed`] hook.
+    /// Returns [`None`] if the `Buffer` wasn't already [registered].
+    ///
+    /// [`BufferClosed`]: crate::hook::BufferClosed
+    /// [registered]: Self::register
+    pub fn unregister(&self, pa: &mut Pass, handle: &Handle) -> Option<T> {
+        let buf_id = handle.read(pa).buffer_id();
+        self.list.write(pa).remove(&buf_id)
+    }
+
+    /// Writes to the [`Buffer`] and the `T` at the same time
+    ///
+    /// Will return [`None`] if the `Buffer` in question wasn't
+    /// [registered] or was [unregistered].
+    ///
+    /// [registered]: Self::register
+    /// [unregistered]: Self::unregister
+    pub fn write<'p>(
+        &'p self,
+        pa: &'p mut Pass,
+        handle: &'p Handle,
+    ) -> Option<(&'p mut T, &'p mut Buffer)> {
+        let (list, buffer) = pa.write_many((&*self.list, handle));
+        Some((list.get_mut(&buffer.buffer_id())?, buffer))
+    }
+
+    /// Writes to the [`Buffer`] and a tuple of [writeable] types
+    ///
+    /// This is an extension to the [`Pass::write_many`] method,
+    /// allowing you to write to many [`RwData`]-like structs at once.
+    ///
+    /// Returns [`None`] if any two structs, either in the [`Handle`],
+    /// [tuple], or [`PerBuffer`] point to the same thing, or if the
+    /// `Buffer` wasn't [registered] or was [unregistered].
+    ///
+    /// [writeable]: crate::data::WriteableData
+    /// [registered]: Self::register
+    /// [unregistered]: Self::unregister
+    pub fn write_with<'p, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p self,
+        pa: &'p mut Pass,
+        handle: &'p Handle,
+        tup: Tup,
+    ) -> Option<(&'p mut T, &'p mut Buffer, Tup::Return)> {
+        let (list, buffer, ret) = pa.try_write_many((&*self.list, handle, tup)).ok()?;
+        Some((list.get_mut(&buffer.buffer_id())?, buffer, ret))
+    }
+
+    /// Tries to write to a bunch of [`Buffer`]s and their respective
+    /// `T`s
+    ///
+    /// Returns [`None`] if any two [`Handle`]s point to the same
+    /// `Buffer`, or if any of the `Buffers` weren't [registered] or
+    /// were [unregistered].
+    ///
+    /// [registered]: Self::register
+    /// [unregistered]: Self::unregister
+    pub fn write_many<'p, const N: usize>(
+        &'p self,
+        pa: &'p mut Pass,
+        handles: [&'p Handle; N],
+    ) -> Option<[(&'p mut T, &'p mut Buffer); N]> {
+        let (list, buffers) = pa.try_write_many((&*self.list, handles)).ok()?;
+        let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
+        let values = list.get_disjoint_mut(buf_ids.each_ref());
+
+        let list = values
+            .into_iter()
+            .zip(buffers)
+            .map(|(value, buf)| value.zip(Some(buf)))
+            .collect::<Option<Vec<_>>>()?;
+
+        list.try_into().ok()
+    }
+
+    /// Fusion of [`write_many`] and [`write_with`]
+    ///
+    /// Returns [`None`] if any two structs point to the same
+    /// [`RwData`]-like struct, or if any of the `Buffers` weren't
+    /// [registered] or were [unregistered].
+    ///
+    /// [`write_many`]: Self::write_many
+    /// [`write_with`]: Self::write_with
+    /// [registered]: Self::register
+    /// [unregistered]: Self::unregister
+    pub fn write_many_with<'p, const N: usize, Tup: WriteableTuple<'p, impl std::any::Any>>(
+        &'p self,
+        pa: &'p mut Pass,
+        handles: [&'p Handle; N],
+        tup: Tup,
+    ) -> Option<([(&'p mut T, &'p mut Buffer); N], Tup::Return)> {
+        let (list, buffers, ret) = pa.try_write_many((&*self.list, handles, tup)).ok()?;
+        let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
+        let values = list.get_disjoint_mut(buf_ids.each_ref());
+
+        let list = values
+            .into_iter()
+            .zip(buffers)
+            .map(|(value, buf)| value.zip(Some(buf)))
+            .collect::<Option<Vec<_>>>()?;
+
+        Some((list.try_into().ok()?, ret))
+    }
+}
+
+impl<T: 'static> Default for PerBuffer<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }

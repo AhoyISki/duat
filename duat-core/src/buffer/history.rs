@@ -326,6 +326,8 @@ impl Moment {
 }
 
 /// A change in a buffer, with a start, taken text, and added text
+///
+/// If you acquired this `Change` from a [`BufferTracker::parts`] call, you need not worry about adding it to the ranges that need to be updated, as that has already been done.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change<'s, S = &'s str> {
     start: [i32; 3],
@@ -577,7 +579,7 @@ impl<'de, Context> BorrowDecode<'de, Context> for Change<'static, String> {
     }
 }
 
-/// A tracker to keep up to date on changes to [`Buffer`]
+/// A tracker to keep up to date on changes to [`Buffer`]s
 ///
 /// This struct is capable of tracking all the [`Change`]s that happen
 /// to any `Buffer`. That happens through the
@@ -818,7 +820,10 @@ impl<'h> ExactSizeIterator for Changes<'h> {}
 /// order that they came in. Because of that, unlike [`Moment::iter`],
 /// these [`Change`]s will not necessarily be ordered by byte index.
 ///
+/// If you want to iterate on the changes multiple times, [cloning] it is a zero cost operation.
+///
 /// [`parts`]: BufferTracker::parts
+/// [cloning]: Clone::clone
 #[derive(Clone, Debug)]
 pub struct FetchedChanges<'h> {
     current: Option<Changes<'h>>,

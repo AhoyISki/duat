@@ -347,19 +347,23 @@ impl<T: ?Sized> RwData<T> {
         tup_fn: impl FnOnce(&'p T) -> Tup,
     ) -> (&'p mut T, Tup::Return) {
         let tup = tup_fn(self.read(pa));
-        if tup.any_eqs(CurStatePtr(&self.cur_state)) {
+        if tup
+            .state_ptrs()
+            .into_iter()
+            .any(|ptr| ptr == CurStatePtr(&self.cur_state))
+        {
             panic!("Tried writing to the same data multiple times at the same time");
         }
 
         /// SAFETY: The ptrs are already verifiably not pointing to
         /// the data of self.
-        static mut INTERNAL_PASS1: Pass = unsafe { Pass::new() };
-        let tup_ret = unsafe { &mut INTERNAL_PASS1 }.write_many(tup);
+        static PASS: Pass = unsafe { Pass::new() };
 
-        /// SAFETY: This is safe because pa is "busy" borrowing the
-        /// tup from self.
-        static mut INTERNAL_PASS2: Pass = unsafe { Pass::new() };
-        let value = self.write(unsafe { &mut INTERNAL_PASS2 });
+        let tup_ret = unsafe { (&raw const PASS as *mut Pass).as_mut() }
+            .unwrap()
+            .write_many(tup);
+
+        let value = self.write(unsafe { (&raw const PASS as *mut Pass).as_mut() }.unwrap());
 
         (value, tup_ret)
     }
@@ -930,52 +934,57 @@ impl Pass {
 pub trait WriteableTuple<'p, _Dummy> {
     type Return;
 
+    #[doc(hidden)]
     fn write_all(self, pa: &'p mut Pass) -> Option<Self::Return>;
 
-    fn any_eqs(&self, ptr: CurStatePtr) -> bool;
+    #[doc(hidden)]
+    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr>;
 }
 
 macro_rules! implWriteableTuple {
-    ($(($data:ident, $ret:ident)),+) => {
-        #[allow(non_snake_case, static_mut_refs)]
-        impl<'p, $($data),+, $($ret),+> WriteableTuple<'p, ($(&mut $ret),+)> for ($(&'p $data),+)
+    ($(($tup:ident, $dummy:ident)),+) => {
+        #[allow(non_snake_case)]
+        impl<'p, $($tup),+, $($dummy),+> WriteableTuple<'p, ($(&mut $dummy),+)> for ($($tup),+)
         where
-            $($ret: ?Sized + 'static),+,
-            $($data: $crate::data::WriteableData<$ret>),+
+            $($tup: WriteableTuple<'p, $dummy>),+
         {
-            type Return = ($(&'p mut $ret),+);
+            type Return = ($($tup::Return),+);
 
             fn write_all(self, _: &'p mut Pass) -> Option<Self::Return> {
-                let ($($data),+) = self;
-                let ptrs = [$($data.cur_state_ptr()),+];
-
-                if ptrs.into_iter().enumerate().any(|(lhs, i)| {
-                    ptrs.into_iter()
+                if self.state_ptrs().into_iter().enumerate().any(|(lhs, i)| {
+                    self.state_ptrs()
+                        .into_iter()
                         .enumerate()
                         .any(|(rhs, j)| lhs == rhs && i != j)
                 }) {
                     return None;
                 }
 
-				/// SAFETY: The ptrs are already verifiably not pointing to the same data.
-                $(static mut $ret: Pass = unsafe { Pass::new() };)+
+                let ($($tup),+) = self;
 
-                Some(($($data.write_one_of_many(unsafe { &mut $ret })),+))
+				/// SAFETY: The ptrs are already verifiably not pointing to the same data.
+                static PASS: Pass = unsafe { Pass::new() };
+
+                Some(($(
+                    $tup.write_all(
+                        unsafe { (&raw const PASS as *mut Pass).as_mut() }.unwrap()
+                    )
+                    .unwrap()
+                ),+))
             }
 
-            fn any_eqs(&self, ptr: CurStatePtr) -> bool {
-                let ($($data),+) = self;
+            fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr<'_>> {
+                let ($($tup),+) = self;
 
-                $(
-                    if $data.cur_state_ptr() == ptr {
-                        return true;
-                    }
-                )+
-
-                false
+                implWriteableTuple!(@chain $($tup),+)
             }
         }
     };
+
+    (@chain $tup:ident $(, $rest:ident)*) => {
+        $tup.state_ptrs().into_iter().chain(implWriteableTuple!(@chain $($rest),*))
+    };
+    (@chain ) => { [] };
 }
 
 impl<'p, Data, T> WriteableTuple<'p, (&mut T,)> for &'p Data
@@ -989,8 +998,8 @@ where
         Some(self.write_one_of_many(pa))
     }
 
-    fn any_eqs(&self, ptr: CurStatePtr) -> bool {
-        self.cur_state_ptr() == ptr
+    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr> {
+        [self.cur_state_ptr()]
     }
 }
 
@@ -1022,6 +1031,35 @@ implWriteableTuple!(
     (D0, T0), (D1, T1), (D2, T2), (D3, T3), (D4, T4), (D5, T5), (D6, T6), (D7, T7) , (D8, T8),
     (D9, T9), (D10, T10), (D11, T11)
 );
+
+impl<'p, const N: usize, Tup, Dummy> WriteableTuple<'p, [Dummy; N]> for [Tup; N]
+where
+    Tup: WriteableTuple<'p, Dummy> + 'p,
+{
+    type Return = [Tup::Return; N];
+
+    fn write_all(self, _: &'p mut Pass) -> Option<Self::Return> {
+        if self.state_ptrs().into_iter().enumerate().any(|(lhs, i)| {
+            self.state_ptrs()
+                .into_iter()
+                .enumerate()
+                .any(|(rhs, j)| lhs == rhs && i != j)
+        }) {
+            return None;
+        }
+
+        static PASS: Pass = unsafe { Pass::new() };
+
+        Some(self.map(|tup| {
+            let pa = &raw const PASS as *mut Pass;
+            tup.write_all(unsafe { pa.as_mut() }.unwrap()).unwrap()
+        }))
+    }
+
+    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr<'_>> {
+        self.iter().flat_map(|tup| tup.state_ptrs())
+    }
+}
 
 /// A trait for writing to multiple [`RwData`]-like structs at once
 #[doc(hidden)]
