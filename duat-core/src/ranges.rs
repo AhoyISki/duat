@@ -434,6 +434,21 @@ impl PartialEq for Ranges {
     }
 }
 
+impl Eq for Ranges {}
+
+impl PartialOrd for Ranges {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Ranges {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let cmp = |r: Range<usize>| [r.start, r.end];
+        self.iter().flat_map(cmp).cmp(other.iter().flat_map(cmp))
+    }
+}
+
 #[track_caller]
 fn assert_range(range: &Range<usize>) {
     assert!(

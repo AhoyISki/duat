@@ -781,9 +781,7 @@ mod buffer_id {
 /// This is very useful to implement the "parser pattern", where you
 /// have one parser per `Buffer`, acting on changes that take place on
 /// each `Buffer`.
-pub struct PerBuffer<T: 'static> {
-    list: LazyLock<RwData<HashMap<BufferId, T>>>,
-}
+pub struct PerBuffer<T: 'static>(LazyLock<RwData<HashMap<BufferId, T>>>);
 
 impl<T: 'static> PerBuffer<T> {
     /// Returns a new mapping of [`Buffer`]s to a type `T`
@@ -795,8 +793,19 @@ impl<T: 'static> PerBuffer<T> {
     /// This is very useful in order to create the "parser pattern" on
     /// a number of different `Buffer`s, letting you store things and
     /// retrieve them as needed.
+    ///
+    /// # Note
+    ///
+    /// This function will _not_ automatically add new [`Buffer`]s to
+    /// the list. To do that, you should add a [hook] on [`Buffer`],
+    /// that calls [`PerBuffer::register`].
+    ///
+    /// Additionally, you will probably also want to setup a hook
+    /// that calls [`PerBuffer::unregister`] on [`BufferClosed`]
+    ///
+    /// [`BufferClosed`]: crate::hook::BufferClosed
     pub const fn new() -> Self {
-        Self { list: LazyLock::new(RwData::default) }
+        Self(LazyLock::new(RwData::default))
     }
 
     /// Register a [`Buffer`] with an initial value of `T`
@@ -815,7 +824,7 @@ impl<T: 'static> PerBuffer<T> {
         handle: &'p Handle,
         new_value: T,
     ) -> (&'p mut T, &'p mut Buffer) {
-        let (list, buf) = pa.write_many((&*self.list, handle));
+        let (list, buf) = pa.write_many((&*self.0, handle));
 
         let entry = list.entry(buf.buffer_id()).insert_entry(new_value);
 
@@ -833,7 +842,52 @@ impl<T: 'static> PerBuffer<T> {
     /// [registered]: Self::register
     pub fn unregister(&self, pa: &mut Pass, handle: &Handle) -> Option<T> {
         let buf_id = handle.read(pa).buffer_id();
-        self.list.write(pa).remove(&buf_id)
+        self.0.write(pa).remove(&buf_id)
+    }
+
+    /// Gets a reference to the `T` associated with this [`Buffer`]
+    ///
+    /// Will return [`None`] if the `Buffer` in question wasn't
+    /// [registered] or was [unregistered].
+    ///
+    /// # Note: Why is this safe?
+    ///
+    /// From the rest of the operations on this struct, you may glean
+    /// that the [`PerBuffer`] struct is backed by a [`RwData`], and
+    /// the only way to safely access the data in those is through a
+    /// [`Pass`].
+    ///
+    /// So why can you suddenly do this without a `Pass`. Basically,
+    /// since you can't construct a `Buffer`, the only way to actually
+    /// get one is by borrowing from a [`RwData<Buffer>`] or
+    /// [`Handle`].
+    ///
+    /// Given that, the [`Pass`] will already be borrowed, and the
+    /// `Buffer` will act as an "extensionto the [`Pass`]'s borrow",
+    /// and will become invalid at the same time.
+    ///
+    /// It is important to note that this is only safe because
+    /// `Buffer`s can't be acquired without a [`Pass`].
+    pub fn get<'b>(&'b self, buffer: &'b Buffer) -> Option<&'b T> {
+        static PASS: Pass = unsafe { Pass::new() };
+        let list = self.0.read(&PASS);
+        list.get(&buffer.buffer_id())
+    }
+
+    /// Gets a mutable reference to the `T` associated with this [`Buffer`]
+    ///
+    /// Will return [`None`] if the `Buffer` in question wasn't
+    /// [registered] or was [unregistered].
+    ///
+    /// # Note: Why is this safe?
+    ///
+    /// For the same reason that [`PerBuffer::get`] is safe. However, in order to prevent multiple borrowings from happening at the same time, this will take a mutable borrow of the `Buffer`, acting much like a `&mut Pass` in that regard.
+    pub fn get_mut<'b>(&'b self, buffer: &'b mut Buffer) -> Option<&'b mut T> {
+        static PASS: Pass = unsafe { Pass::new() };
+        let list = self
+            .0
+            .write(unsafe { (&raw const PASS as *mut Pass).as_mut() }.unwrap());
+        list.get_mut(&buffer.buffer_id())
     }
 
     /// Writes to the [`Buffer`] and the `T` at the same time
@@ -848,7 +902,7 @@ impl<T: 'static> PerBuffer<T> {
         pa: &'p mut Pass,
         handle: &'p Handle,
     ) -> Option<(&'p mut T, &'p mut Buffer)> {
-        let (list, buffer) = pa.write_many((&*self.list, handle));
+        let (list, buffer) = pa.write_many((&*self.0, handle));
         Some((list.get_mut(&buffer.buffer_id())?, buffer))
     }
 
@@ -870,7 +924,7 @@ impl<T: 'static> PerBuffer<T> {
         handle: &'p Handle,
         tup: Tup,
     ) -> Option<(&'p mut T, &'p mut Buffer, Tup::Return)> {
-        let (list, buffer, ret) = pa.try_write_many((&*self.list, handle, tup)).ok()?;
+        let (list, buffer, ret) = pa.try_write_many((&*self.0, handle, tup)).ok()?;
         Some((list.get_mut(&buffer.buffer_id())?, buffer, ret))
     }
 
@@ -888,7 +942,7 @@ impl<T: 'static> PerBuffer<T> {
         pa: &'p mut Pass,
         handles: [&'p Handle; N],
     ) -> Option<[(&'p mut T, &'p mut Buffer); N]> {
-        let (list, buffers) = pa.try_write_many((&*self.list, handles)).ok()?;
+        let (list, buffers) = pa.try_write_many((&*self.0, handles)).ok()?;
         let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
         let values = list.get_disjoint_mut(buf_ids.each_ref());
 
@@ -917,7 +971,7 @@ impl<T: 'static> PerBuffer<T> {
         handles: [&'p Handle; N],
         tup: Tup,
     ) -> Option<([(&'p mut T, &'p mut Buffer); N], Tup::Return)> {
-        let (list, buffers, ret) = pa.try_write_many((&*self.list, handles, tup)).ok()?;
+        let (list, buffers, ret) = pa.try_write_many((&*self.0, handles, tup)).ok()?;
         let buf_ids = buffers.each_ref().map(|buf| buf.buffer_id());
         let values = list.get_disjoint_mut(buf_ids.each_ref());
 

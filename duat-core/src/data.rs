@@ -938,7 +938,7 @@ pub trait WriteableTuple<'p, _Dummy> {
     fn write_all(self, pa: &'p mut Pass) -> Option<Self::Return>;
 
     #[doc(hidden)]
-    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr>;
+    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr<'_>>;
 }
 
 macro_rules! implWriteableTuple {
@@ -998,7 +998,7 @@ where
         Some(self.write_one_of_many(pa))
     }
 
-    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr> {
+    fn state_ptrs(&self) -> impl IntoIterator<Item = CurStatePtr<'_>> {
         [self.cur_state_ptr()]
     }
 }

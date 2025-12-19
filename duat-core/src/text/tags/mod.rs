@@ -346,7 +346,7 @@ impl InnerTags {
     }
 
     /// Removes all [`RawTag`]s of a given [`Taggers`]
-    pub fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
+    pub(crate) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let (start, end) = crate::utils::get_ends(within, self.len_bytes() + 1);
 
         for range in self

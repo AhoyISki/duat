@@ -191,7 +191,6 @@ use crate::{
     data::Pass,
     form::{Form, FormId},
     mode::{KeyEvent, Mode, MouseEvent},
-    text::Text,
     ui::{Widget, Window},
     utils::catch_panic,
 };
@@ -204,7 +203,7 @@ mod global {
     };
 
     use super::{HookAlias, Hookable, InnerGroupId, InnerHooks};
-    use crate::{data::Pass, session::DuatEvent, text::Text};
+    use crate::{data::Pass, session::DuatEvent};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 
@@ -252,8 +251,7 @@ mod global {
     /// [`Handle`]: crate::context::Handle
     /// [removed]: remove
     pub struct HookBuilder<H: Hookable> {
-        callback:
-            Option<Box<dyn FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static>>,
+        callback: Option<Box<dyn FnMut(&mut Pass, H::Input<'_>) + 'static>>,
         group: Option<InnerGroupId>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send>>,
         once: bool,
@@ -334,7 +332,7 @@ mod global {
     /// [`hook::add`]: add
     #[inline(never)]
     pub fn add<H: HookAlias<impl std::any::Any>>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + Send + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) + Send + 'static,
     ) -> HookBuilder<H::Hookable> {
         HookBuilder {
             callback: Some(Box::new(f)),
@@ -761,6 +759,8 @@ impl PartialEq<Handle> for BufferReloaded {
 /// [`Cursor`]: crate::mode::Cursor
 /// [`Tag`]: crate::text::Tag
 /// [`Bytes`]: crate::text::Bytes
+/// [`Text`]: crate::text::Text
+/// [`Text::replace_range`]: crate::text::Text::replace_range
 pub struct BufferUpdated(pub(crate) Handle);
 
 impl Hookable for BufferUpdated {
@@ -1127,7 +1127,7 @@ impl InnerHooks {
     /// Adds a hook for a [`Hookable`]
     fn add<H: Hookable>(
         &self,
-        callback: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> Result<(), Text> + 'static>,
+        callback: Box<dyn FnMut(&mut Pass, H::Input<'_>) + 'static>,
         group: Option<InnerGroupId>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
         once: bool,
@@ -1197,9 +1197,7 @@ impl InnerHooks {
             }
 
             let input = hookable.get_input(pa);
-            if let Some(Err(err)) = catch_panic(|| hook.callback.borrow_mut()(pa, input)) {
-                crate::context::error!("{err}");
-            }
+            catch_panic(|| hook.callback.borrow_mut()(pa, input));
 
             !hook.once
         });
@@ -1263,8 +1261,7 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 }
 
 struct Hook<H: Hookable> {
-    callback:
-        &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> Result<(), Text>>,
+    callback: &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>)>,
     group: Option<InnerGroupId>,
     filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
     once: bool,
