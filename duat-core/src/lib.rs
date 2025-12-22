@@ -8,12 +8,11 @@
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
 
-use std::any::TypeId;
+use std::{any::TypeId, sync::Mutex};
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use lender;
-use std::sync::Mutex;
 
 pub use self::{main_thread_only::MainThreadOnly, ranges::Ranges};
 
@@ -257,3 +256,57 @@ pub const fn priority(priority: &str) -> u8 {
 }
 
 type PluginFn = Option<Box<dyn FnOnce(&Plugins)>>;
+
+/// Tries to evaluate a block that returns [`Result<T, Text>`]
+///
+/// If the block returns [`Ok`], this macro will resolve to `T`. If it
+/// returns [`Err`], it will log the error with [`context::error!`],
+/// then it will return from the function. As an example, this:
+///
+/// ```rust
+/// # duat_core::utils::doc_duat!(duat);
+/// use duat::prelude::*;
+///
+/// let ret = try_or_log_err! {
+///     let value = result_fn()?;
+///     value
+/// });
+///
+/// fn result_fn() -> Result<usize, Text> {
+///     todo!();
+/// }
+/// ```
+///
+/// Will expand into:
+///
+/// ```rust
+/// # duat_core::utils::doc_duat!(duat);
+/// use duat::prelude::*;
+///
+/// let ret = match (|| -> Result<_, Text> { Ok(result_fn()?) })() {
+///     Ok(ret) => ret,
+///     Err(err) => {
+///         context::error!("{err}");
+///         return;
+///     }
+/// };
+///
+/// fn result_fn() -> Result<usize, Text> {
+///     todo!();
+/// }
+/// ```
+///
+/// Note the [`Ok`] wrapping the tokens, so it works like the `try`
+/// keyword in that regard.
+#[macro_export]
+macro_rules! try_or_log_err {
+    { $($tokens:tt)* } => {
+        match (|| -> Result<_, $crate::text::Text> { Ok({ $($tokens)* }) })() {
+             Ok(ret) => ret,
+             Err(err) => {
+                 $crate::context::error!("{err}");
+                 return;
+             }
+        }
+    }
+}

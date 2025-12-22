@@ -3,7 +3,13 @@
 //! This is a very simple `Widget`, it basically just exists so I
 //! don't have to define a new `Widget` every time I want to show
 //! static information.
-use duat_core::{context::Handle, data::Pass, mode::{MouseEvent, MouseEventKind}, text::Text, ui::Widget};
+use duat_core::{
+    context::Handle,
+    data::Pass,
+    mode::{MouseEvent, MouseEventKind},
+    text::{Text, TextMut},
+    ui::Widget,
+};
 
 /// A simple static widget, meant to simply convery information
 ///
@@ -49,8 +55,8 @@ impl Widget for Info {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {

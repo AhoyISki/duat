@@ -13,6 +13,7 @@
 use duat_core::{
     data::Pass,
     hook::{self, FocusedOn, UnfocusedFrom},
+    try_or_log_err,
     ui::PushTarget,
 };
 
@@ -125,18 +126,20 @@ impl FooterWidgets {
         hook::add::<FocusedOn<PromptLine>>({
             let notifications = notifications.clone();
             move |pa, (_, handle)| {
-                notifications.area().hide(pa)?;
-                handle.area().reveal(pa)?;
-                Ok(())
+                try_or_log_err! {
+                    notifications.area().hide(pa)?;
+                    handle.area().reveal(pa)?;
+                }
             }
         })
         .filter(prompt_line.clone());
 
         hook::add::<UnfocusedFrom<PromptLine>>({
             move |pa, (handle, _)| {
-                notifications.area().reveal(pa)?;
-                handle.area().hide(pa)?;
-                Ok(())
+                try_or_log_err! {
+                    notifications.area().reveal(pa)?;
+                    handle.area().hide(pa)?;
+                }
             }
         })
         .filter(prompt_line);

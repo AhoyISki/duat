@@ -12,11 +12,11 @@
 use std::{collections::BTreeMap, ops::Range, sync::Mutex};
 
 use duat_core::{
-    buffer::Buffer,
+    buffer::{Buffer, BufferTracker, Change},
     context::Handle,
     data::Pass,
     hook::{self, BufferUpdated},
-    text::{Change, Point, RegexHaystack, Spacer, Strs, Text, txt},
+    text::{Point, RegexHaystack, Spacer, Strs, Text, txt},
     ui::Widget,
 };
 
@@ -24,6 +24,7 @@ use crate::widgets::completions::{
     CompletionsKind, CompletionsList, CompletionsProvider, string_cmp,
 };
 
+static TRACKER: BufferTracker = BufferTracker::new();
 static BUFFER_WORDS: Mutex<BTreeMap<String, WordInfo>> = Mutex::new(BTreeMap::new());
 
 pub struct WordCompletions;
@@ -93,6 +94,7 @@ pub struct WordInfo {
 /// Begin tracking words for word autocompletions
 pub fn track_words() {
     hook::add::<Buffer>(|pa, handle| {
+        TRACKER.register_buffer(handle.write(pa));
         let mut words = BUFFER_WORDS.lock().unwrap();
         let buffer = handle.read(pa);
         for range in buffer.text().search(r"\w{3,}") {
@@ -103,27 +105,22 @@ pub fn track_words() {
 
             info.count += 1;
         }
-
-        Ok(())
     });
 
-    hook::add::<BufferUpdated>(|pa, handle| {
-        update_counts(pa, handle);
-        Ok(())
-    });
+    hook::add::<BufferUpdated>(update_counts);
 }
 
 fn update_counts(pa: &mut Pass, handle: &Handle) {
     fn to_str<'a>(str: &'a str) -> impl Fn(Range<usize>) -> (Range<usize>, &'a str) {
         |range| (range.clone(), &str[range])
     }
-    
-    if handle.write(pa).new_changes().is_empty() {
-        return;
-    }
 
     let name = handle.read(pa).name();
-    let parts = handle.write(pa).parts();
+    let parts = TRACKER.parts(handle.write(pa)).unwrap();
+
+    if parts.changes.len() == 0 {
+        return;
+    }
 
     let surrounded = |match_r: Range<usize>, word: &str, change_str: &str, change: &Change| {
         let prefix = if match_r.start == 0
@@ -172,7 +169,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
         }
     };
 
-    for change in parts.new_changes.iter() {
+    for change in parts.changes {
         let added_str = change.added_str();
         let added_words: Vec<_> = added_str.search(r"[\w]+").map(to_str(added_str)).collect();
         let taken_str = change.taken_str();

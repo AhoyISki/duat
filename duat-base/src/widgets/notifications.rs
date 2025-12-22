@@ -16,7 +16,7 @@ use duat_core::{
     context::{self, Handle, Level, Record},
     data::Pass,
     hook::{self, KeySent},
-    text::Text,
+    text::{Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -70,10 +70,7 @@ impl Notifications {
     pub fn builder() -> NotificationsOpts {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            hook::add::<KeySent>(|_, _| {
-                CLEAR_NOTIFS.store(true, Ordering::Relaxed);
-                Ok(())
-            });
+            hook::add::<KeySent>(|_, _| CLEAR_NOTIFS.store(true, Ordering::Relaxed));
         });
         NotificationsOpts::default()
     }
@@ -121,8 +118,8 @@ impl Widget for Notifications {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 
     fn needs_update(&self, _: &Pass) -> bool {

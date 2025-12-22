@@ -291,10 +291,7 @@ pub fn last_key() -> RwData<Text> {
 
         hook::add::<KeyTyped>({
             let last_key = last_key.clone();
-            move |pa, keys| {
-                *last_key.write(pa) = mode::keys_to_text(&[keys]);
-                Ok(())
-            }
+            move |pa, keys| *last_key.write(pa) = mode::keys_to_text(&[keys])
         });
 
         last_key

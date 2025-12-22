@@ -542,10 +542,7 @@ pub mod widgets {
 #[doc(hidden)]
 pub mod private_exports {
     //! Exports from duat, not meant for direct use.
-    pub use duat_core::{
-        session::{DuatEvent, ReloadedBuffer},
-        utils::catch_panic,
-    };
+    pub use duat_core::{context::DuatReceiver, session::ReloadedBuffer, utils::catch_panic};
 
     pub use crate::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat};
 }
@@ -557,7 +554,7 @@ pub mod private_exports {
 #[macro_export]
 macro_rules! setup_duat {
     ($setup:expr) => {
-        use std::sync::{Mutex, mpsc};
+        use std::sync::Mutex;
 
         use $crate::{
             prelude::{Buffer, Text, context::Logs, form::Palette},
@@ -570,7 +567,7 @@ macro_rules! setup_duat {
             ms: MetaStatics,
             buffers: Vec<Vec<ReloadedBuffer>>,
             (duat_tx, duat_rx, reload_tx): Channels,
-        ) -> (Vec<Vec<ReloadedBuffer>>, mpsc::Receiver<DuatEvent>) {
+        ) -> (Vec<Vec<ReloadedBuffer>>, DuatReceiver) {
             pre_setup(ms.0, Some(initials), Some(duat_tx));
             catch_panic($setup);
             run_duat(ms, buffers, duat_rx, Some(reload_tx))

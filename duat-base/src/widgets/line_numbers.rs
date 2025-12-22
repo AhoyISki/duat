@@ -17,7 +17,7 @@ use duat_core::{
     data::Pass,
     form,
     mode::{MouseButton, MouseEvent, MouseEventKind},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text},
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, TextMut},
     ui::{PushSpecs, Side, Widget},
 };
 
@@ -124,8 +124,8 @@ impl Widget for LineNumbers {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {

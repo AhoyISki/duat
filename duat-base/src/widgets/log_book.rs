@@ -12,7 +12,7 @@ use duat_core::{
     data::Pass,
     mode::{MouseEvent, MouseEventKind},
     opts::PrintOpts,
-    text::{Spacer, Text, txt},
+    text::{Spacer, Text, TextMut, txt},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -71,8 +71,8 @@ impl Widget for LogBook {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 
     fn get_print_opts(&self) -> PrintOpts {

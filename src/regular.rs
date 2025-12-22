@@ -6,7 +6,7 @@ use duat_core::{
     mode::{ctrl, shift},
 };
 #[cfg(feature = "treesitter")]
-use duat_treesitter::TsCursor;
+use duat_treesitter::TsHandle;
 
 use crate::{
     prelude::{
@@ -61,10 +61,15 @@ impl mode::Mode for Regular {
 
                     #[cfg(not(feature = "treesitter"))]
                     c.insert(' '.repeat(indent));
+                });
 
-                    #[cfg(feature = "treesitter")]
-                    c.ts_reindent(false);
-                })
+                #[cfg(feature = "treesitter")]
+                if let Some(indents) = handle.ts_get_indentations(pa, ..) {
+                    let mut indents = indents.into_iter();
+                    handle.edit_all(pa, |mut c| {
+                        duatmode::reindent(&mut c, indents.next().unwrap());
+                    });
+                }
             }
 
             // Text Removal

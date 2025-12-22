@@ -22,7 +22,7 @@ use duat_core::{
     data::Pass,
     hook::{self, FocusChanged},
     mode::{MouseEvent, MouseEventKind},
-    text::{Point, RegexHaystack, SpawnTag, Tagger, Text, txt},
+    text::{Point, RegexHaystack, SpawnTag, Tagger, Text, TextMut, txt},
     ui::{DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
@@ -78,13 +78,8 @@ impl CompletionsBuilder {
     pub fn open(self, pa: &mut Pass) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            hook::add::<Completions>(|pa, handle| {
-                Completions::set_frame(pa, handle);
-                Ok(())
-            });
-            hook::add::<FocusChanged>(|pa, (prev, _)| {
-                Ok(prev.text_mut(pa).remove_tags(*TAGGER, ..))
-            });
+            hook::add::<Completions>(Completions::set_frame);
+            hook::add::<FocusChanged>(|pa, (prev, _)| prev.text_mut(pa).remove_tags(*TAGGER, ..));
         });
 
         let handle = context::current_widget(pa).clone();
@@ -111,7 +106,7 @@ impl CompletionsBuilder {
             info_handle: None,
         };
 
-        let text = handle.text_mut(pa);
+        let mut text = handle.text_mut(pa);
         text.insert_tag(*TAGGER, start_byte, SpawnTag::new(completions, SPAWN_SPECS));
     }
 
@@ -324,7 +319,7 @@ impl Completions {
                     info_handle: comp.info_handle.take(),
                 };
 
-                let text = master_handle.text_mut(pa);
+                let mut text = master_handle.text_mut(pa);
                 text.remove_tags(*TAGGER, ..);
                 text.insert_tag(*TAGGER, start_byte, SpawnTag::new(new_comp, SPAWN_SPECS));
                 return main_replacement;
@@ -389,8 +384,8 @@ impl Widget for Completions {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 
     fn on_mouse_event(pa: &mut Pass, _: &Handle<Self>, event: MouseEvent) {

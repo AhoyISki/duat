@@ -188,7 +188,7 @@ pub fn plugin_dir(plugin: &str) -> Result<PathBuf, Text> {
 
 /// Convenience function for the bounds of a range
 #[track_caller]
-pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
+pub fn get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Range<usize> {
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,
         std::ops::Bound::Excluded(start) => *start + 1,
@@ -208,7 +208,7 @@ pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize,
         "end out of bounds: the len is {max}, but the index is {end}",
     );
 
-    (start, end)
+    start..end
 }
 
 /// Adds two shifts together
@@ -387,6 +387,7 @@ macro_rules! doc_duat {
                 
             pub mod prelude {
                 pub use std::ops::Range;
+                pub use $crate::try_or_log_err;
                 
                 pub use $crate::{
                     Plugin, Plugins,

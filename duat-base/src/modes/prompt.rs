@@ -162,9 +162,9 @@ impl mode::Mode for Prompt {
         let ty_eq = |&&(ty, _): &&(TypeId, _)| ty == self.ty;
 
         let mut update = |pa: &mut Pass| {
-            let text = std::mem::take(handle.write(pa).text_mut());
+            let text = std::mem::take(&mut handle.write(pa).text);
             let text = self.mode.update(pa, text, handle.area());
-            *handle.write(pa).text_mut() = text;
+            handle.write(pa).text = text;
         };
 
         let reset = |pa: &mut Pass, prompt: &mut Self| {
@@ -305,7 +305,7 @@ impl mode::Mode for Prompt {
     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
         let text = {
             let pl = handle.write(pa);
-            *pl.text_mut() = Text::with_default_main_selection();
+            pl.text = Text::with_default_main_selection();
             pl.text_mut().replace_range(0..0, &self.starting_text);
 
             let tag = Ghost::new(match pl.prompt_of_id(self.ty) {
@@ -314,18 +314,18 @@ impl mode::Mode for Prompt {
             });
             pl.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
 
-            std::mem::take(pl.text_mut())
+            std::mem::take(&mut pl.text)
         };
 
         let text = self.mode.on_switch(pa, text, handle.area());
 
-        *handle.write(pa).text_mut() = text;
+        handle.write(pa).text = text;
 
         self.show_preview(pa, handle);
     }
 
     fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
-        let text = std::mem::take(handle.write(pa).text_mut());
+        let text = std::mem::take(&mut handle.write(pa).text);
         if !text.is_empty() {
             let mut history = HISTORY.lock().unwrap();
             if let Some((_, ty_history)) = history.iter_mut().find(|(ty, _)| *ty == self.ty) {

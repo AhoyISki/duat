@@ -25,14 +25,15 @@ use crossterm::event::{MouseButton, MouseEventKind};
 pub use crate::buffer::{
     buffer_id::BufferId,
     history::{
-        BufferParts, BufferTracker, Change, Changes, FetchedChanges, Moment, RangesToUpdate,
+        BufferParts, BufferTracker, Change, Changes, FetchedChanges, History, Moment,
+        RangesToUpdate,
     },
 };
 use crate::{
     context::{self, Cache, Handle},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferSaved, BufferUpdated},
-    mode::{MouseEvent, Selections},
+    mode::{Cursor, MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
     text::{Bytes, Point, Strs, Text, TextMut, TextState, txt},
@@ -40,7 +41,6 @@ use crate::{
 };
 
 mod history;
-pub(crate) use crate::buffer::history::History;
 
 /// The widget that is used to print and edit buffers
 pub struct Buffer {
@@ -845,7 +845,17 @@ impl<T: 'static> PerBuffer<T> {
         self.0.write(pa).remove(&buf_id)
     }
 
-    /// Gets a reference to the `T` associated with this [`Buffer`]
+    /// Gets a reference to the `T` associated with a [`Buffer`]
+    ///
+    /// This function lets you bipass the normal requirement of a
+    /// [`Pass`] in order to acquire a `T` associated with any given
+    /// `Buffer`.
+    ///
+    /// For now, the two types that can be used as [`BufferPass`]es
+    /// are the [`Buffer`] itself and a [`Cursor<Buffer, S>`] for any
+    /// [`S`]. These types are allowed to do this because they are
+    /// impossible to acquire without first borrowing from an
+    /// [`RwData<Buffer>`], either directly or through a [`Handle`]
     ///
     /// Will return [`None`] if the `Buffer` in question wasn't
     /// [registered] or was [unregistered].
@@ -868,21 +878,43 @@ impl<T: 'static> PerBuffer<T> {
     ///
     /// It is important to note that this is only safe because
     /// `Buffer`s can't be acquired without a [`Pass`].
-    pub fn get<'b>(&'b self, buffer: &'b Buffer) -> Option<&'b T> {
+    ///
+    /// [registered]: Self::register
+    /// [unregistered]: Self::unregister
+    /// [`S`]: crate::text::Searcher
+    pub fn get<'b>(&'b self, buffer_pass: &'b mut impl BufferPass) -> Option<&'b T> {
         static PASS: Pass = unsafe { Pass::new() };
         let list = self.0.read(&PASS);
-        list.get(&buffer.buffer_id())
+        list.get(&buffer_pass.buffer_id())
     }
 
-    /// Gets a mutable reference to the `T` associated with this [`Buffer`]
+    /// Gets a mutable reference to the `T` associated with a
+    /// [`Buffer`]
+    ///
+    /// This function lets you bipass the normal requirement of a
+    /// [`Pass`] in order to acquire a `T` associated with any given
+    /// `Buffer`.
+    ///
+    /// For now, the two types that can be used as [`BufferPass`]es
+    /// are the [`Buffer`] itself and a [`Cursor<Buffer, S>`] for any
+    /// [`S`]. These types are allowed to do this because they are
+    /// impossible to acquire without first borrowing from an
+    /// [`RwData<Buffer>`], either directly or through a [`Handle`]
     ///
     /// Will return [`None`] if the `Buffer` in question wasn't
     /// [registered] or was [unregistered].
     ///
     /// # Note: Why is this safe?
     ///
-    /// For the same reason that [`PerBuffer::get`] is safe. However, in order to prevent multiple borrowings from happening at the same time, this will take a mutable borrow of the `Buffer`, acting much like a `&mut Pass` in that regard.
-    pub fn get_mut<'b>(&'b self, buffer: &'b mut Buffer) -> Option<&'b mut T> {
+    /// For the same reason that [`PerBuffer::get`] is safe. However,
+    /// in order to prevent multiple borrowings from happening at the
+    /// same time, this will take a mutable borrow of the `Buffer`,
+    /// acting much like a `&mut Pass` in that regard.
+    ///
+    /// [registered]: Self::register
+    /// [unregistered]: Self::unregister
+    /// [`S`]: crate::text::Searcher
+    pub fn get_mut<'b>(&'b self, buffer: &'b mut impl BufferPass) -> Option<&'b mut T> {
         static PASS: Pass = unsafe { Pass::new() };
         let list = self
             .0
@@ -990,3 +1022,34 @@ impl<T: 'static> Default for PerBuffer<T> {
         Self::new()
     }
 }
+
+/// An item that identifies that you are [writing] or [reading] from
+/// an [`RwData<Buffer>`]
+///
+/// This trait is used exclusively by the [`PerBuffer`] struct, which
+/// can bipass the usual requirements that [`Pass`]es need to be used
+/// to access the data in [`RwData`]-like structs.
+///
+/// [writing]: RwData::write
+/// [reading]: RwData::read
+#[doc(hidden)]
+pub trait BufferPass: InnerBufferPass {
+    #[doc(hidden)]
+    fn buffer_id(&self) -> BufferId;
+}
+
+impl BufferPass for Buffer {
+    fn buffer_id(&self) -> BufferId {
+        Buffer::buffer_id(self)
+    }
+}
+impl<'b, S> BufferPass for Cursor<'b, Buffer, S> {
+    fn buffer_id(&self) -> BufferId {
+        Cursor::buffer_id(self)
+    }
+}
+
+trait InnerBufferPass {}
+
+impl InnerBufferPass for Buffer {}
+impl<'b, S> InnerBufferPass for Cursor<'b, Buffer, S> {}

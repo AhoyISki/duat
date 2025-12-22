@@ -18,7 +18,7 @@
 use duat_core::{
     context::{self, DynBuffer, Handle},
     data::Pass,
-    text::{AlignRight, Builder, Spacer, Text},
+    text::{AlignRight, Builder, Spacer, Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -185,8 +185,8 @@ impl Widget for StatusLine {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 }
 
@@ -213,13 +213,10 @@ impl StatusLineFmt {
     /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<StatusLine> {
         let specs = self.specs;
-        let status_line = StatusLine::new(
-            self,
-            match push_target.try_downcast() {
-                Some(handle) => BufferHandle::Fixed(handle),
-                None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
-            },
-        );
+        let status_line = StatusLine::new(self, match push_target.try_downcast() {
+            Some(handle) => BufferHandle::Fixed(handle),
+            None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
+        });
 
         push_target.push_outer(pa, status_line, specs)
     }

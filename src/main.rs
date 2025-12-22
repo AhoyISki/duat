@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         LazyLock, Mutex,
-        mpsc::{self, Receiver},
+        mpsc::{self},
     },
     time::Instant,
 };
@@ -15,8 +15,8 @@ use duat::{
 };
 use duat_core::{
     clipboard::Clipboard,
-    context,
-    session::{DuatEvent, ReloadEvent, ReloadedBuffer},
+    context::{self, DuatReceiver, DuatSender},
+    session::{ReloadEvent, ReloadedBuffer},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
@@ -113,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(crate_dir) = crate_dir {
             (crate_dir, profile)
         } else {
-            ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
+            ui.open(duat_tx);
 
             if args.no_load {
                 context::info!("Opened with the default configuration");
@@ -198,7 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::thread::spawn({
         let duat_tx = duat_tx.clone();
         move || {
-            ui.open(duat_core::session::DuatSender::new(duat_tx.clone()));
+            ui.open(duat_tx.clone());
 
             let _watcher = match spawn_config_watcher(config_tx.clone(), duat_tx.clone(), crate_dir)
             {
@@ -315,7 +315,7 @@ fn get_files(
 
 fn spawn_config_watcher(
     config_tx: mpsc::Sender<(PathBuf, String)>,
-    duat_tx: mpsc::Sender<DuatEvent>,
+    duat_tx: DuatSender,
     crate_dir: &'static std::path::Path,
 ) -> Result<notify::RecommendedWatcher, Box<dyn std::error::Error>> {
     let target_dir = crate_dir.join("target");
@@ -344,7 +344,7 @@ fn spawn_config_watcher(
                 // This means that this event should be sent as "reload" is
                 // called, not here.
                 if !cfg!(target_os = "windows") {
-                    duat_tx.send(DuatEvent::ReloadSucceeded).unwrap();
+                    duat_tx.send_reload_succeeded();
                 }
             }
         }
@@ -358,7 +358,7 @@ fn spawn_config_watcher(
 fn spawn_reloader(
     reload_rx: mpsc::Receiver<ReloadEvent>,
     config_tx: mpsc::Sender<(PathBuf, String)>,
-    duat_tx: mpsc::Sender<DuatEvent>,
+    duat_tx: DuatSender,
 ) {
     std::thread::Builder::new()
         .name("reload".to_string())
@@ -387,7 +387,7 @@ fn spawn_reloader(
                     Err(err) => {
                         *RELOAD_INSTANT.lock().unwrap() = None;
                         context::error!("{err}");
-                        duat_tx.send(DuatEvent::ReloadFailed).unwrap();
+                        duat_tx.send_reload_failed();
                     }
                     Ok(status) => {
                         if status.success() {
@@ -400,10 +400,10 @@ fn spawn_reloader(
                                     reload.profile.to_string(),
                                 ))
                                 .unwrap();
-                            duat_tx.send(DuatEvent::ReloadSucceeded).unwrap();
+                            duat_tx.send_reload_succeeded();
                         } else {
                             *RELOAD_INSTANT.lock().unwrap() = None;
-                            duat_tx.send(DuatEvent::ReloadFailed).unwrap();
+                            duat_tx.send_reload_failed();
                         }
                     }
                 }
@@ -642,7 +642,7 @@ type RunFn = fn(
     MetaStatics,
     Vec<Vec<ReloadedBuffer>>,
     Channels,
-) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>);
+) -> (Vec<Vec<ReloadedBuffer>>, DuatReceiver);
 
 #[cfg(feature = "term-ui")]
 type UiImplementation = duat_term::Ui;

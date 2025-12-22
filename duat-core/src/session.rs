@@ -387,7 +387,7 @@ pub struct UiMouseEvent {
 
 /// An event that Duat must handle
 #[doc(hidden)]
-pub enum DuatEvent {
+pub(crate) enum DuatEvent {
     /// A [`KeyEvent`] was typed
     KeyEventSent(KeyEvent),
     /// A [`MouseEvent`] was sent

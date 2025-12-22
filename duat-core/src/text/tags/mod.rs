@@ -31,7 +31,7 @@ use crate::{
     data::Pass,
     text::Selectionless,
     ui::{SpawnId, Widget},
-    utils::get_ends,
+    utils::get_range,
 };
 
 mod bounds;
@@ -106,7 +106,7 @@ impl Tags<'_> {
     ///         // Removing on the whole Buffer
     ///         buf.text_mut().remove_tags(tagger, ..);
     ///         // Logic to add Tags with tagger...
-    ///         
+    ///
     ///         Ok(())
     ///     });
     /// }
@@ -347,31 +347,31 @@ impl InnerTags {
 
     /// Removes all [`RawTag`]s of a given [`Taggers`]
     pub(crate) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
-        let (start, end) = crate::utils::get_ends(within, self.len_bytes() + 1);
+        let range = crate::utils::get_range(within, self.len_bytes() + 1);
 
         for range in self
             .extents
-            .remove_range(start..end, |tagger| taggers.contains_tagger(tagger))
+            .remove_range(range, |tagger| taggers.contains_tagger(tagger))
         {
             self.remove_from_if(range, |(_, tag)| taggers.contains_tagger(tag.tagger()));
         }
     }
 
     fn remove_from_excl(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
-        let (start, end) = crate::utils::get_ends(within, self.len_bytes());
+        let range = crate::utils::get_range(within, self.len_bytes());
         // In this case, this would be an empty range, and returning is
         // appropriate.
-        let Some(excl_end) = end.checked_sub(1).filter(|e| *e >= start) else {
+        let Some(excl_end) = range.end.checked_sub(1).filter(|e| *e >= range.start) else {
             return;
         };
 
         for range in self
             .extents
-            .remove_range(start..end, |tagger| taggers.contains_tagger(tagger))
+            .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
         {
-            self.remove_from_if(range, |(b, tag)| {
+            self.remove_from_if(range.clone(), |(b, tag)| {
                 taggers.contains_tagger(tag.tagger())
-                    && ((b > start as i32 || !tag.is_end())
+                    && ((b > range.start as i32 || !tag.is_end())
                         && (b < excl_end as i32 || !tag.is_start()))
             });
         }
@@ -658,7 +658,7 @@ impl Clone for InnerTags {
 struct DebugBuf<'a, R: RangeBounds<usize>>(&'a InnerTags, R);
 impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (start, end) = get_ends(self.1.clone(), self.0.len_bytes());
+        let range = get_range(self.1.clone(), self.0.len_bytes());
 
         if f.alternate() {
             let n_spc = self.0.list.len().checked_ilog10().unwrap_or(0) as usize + 4;
@@ -670,7 +670,7 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
 
             for (i, (b, tag)) in self.0.list.iter_fwd(..) {
                 nesting = nesting.saturating_sub(tag.is_end() as usize);
-                if (start as u32..=end as u32).contains(&(b as u32)) {
+                if (range.start as u32..=range.end as u32).contains(&(b as u32)) {
                     let space = " ".repeat(nesting);
                     let n_txt = format!("n: {i}");
                     let b_txt = format!("b: {b}");

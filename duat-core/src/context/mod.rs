@@ -300,6 +300,24 @@ impl DuatSender {
         self.0.send(DuatEvent::UnfocusedFromDuat).unwrap();
     }
 
+    /// Informs `duat-core` that a reload was successful
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    #[doc(hidden)]
+    pub fn send_reload_succeeded(&self) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(DuatEvent::ReloadSucceeded).unwrap();
+    }
+
+    /// Informs `duat-core` that a reload failed
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    #[doc(hidden)]
+    pub fn send_reload_failed(&self) {
+        self.1.fetch_add(1, Ordering::Relaxed);
+        self.0.send(DuatEvent::ReloadFailed).unwrap();
+    }
+
     /// Sends any [`DuatEvent`]
     pub(crate) fn send(&self, event: DuatEvent) {
         self.1.fetch_add(1, Ordering::Relaxed);

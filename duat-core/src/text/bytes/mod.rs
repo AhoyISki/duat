@@ -223,7 +223,7 @@ impl Bytes {
     /// Returns the two `&str`s in the byte range.
     #[track_caller]
     fn strs_inner(&self, range: impl RangeBounds<usize>) -> Option<[&str; 2]> {
-        let (start, end) = crate::utils::get_ends(range, self.len().byte());
+        let range = crate::utils::get_range(range, self.len().byte());
         use std::str::from_utf8_unchecked;
 
         let (s0, s1) = self.buf.as_slices();
@@ -231,15 +231,18 @@ impl Bytes {
         // Check if the slices match utf8 boundaries.
         if s0.first().is_some_and(|b| utf8_char_width(*b) == 0)
             || s1.first().is_some_and(|b| utf8_char_width(*b) == 0)
-            || self.buf.get(end).is_some_and(|b| utf8_char_width(*b) == 0)
+            || self
+                .buf
+                .get(range.end)
+                .is_some_and(|b| utf8_char_width(*b) == 0)
         {
             return None;
         }
 
         Some(unsafe {
-            let r0 = start.min(s0.len())..end.min(s0.len());
-            let r1 = start.saturating_sub(s0.len()).min(s1.len())
-                ..end.saturating_sub(s0.len()).min(s1.len());
+            let r0 = range.start.min(s0.len())..range.end.min(s0.len());
+            let r1 = range.start.saturating_sub(s0.len()).min(s1.len())
+                ..range.end.saturating_sub(s0.len()).min(s1.len());
 
             [from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1])]
         })

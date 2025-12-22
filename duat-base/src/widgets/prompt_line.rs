@@ -21,7 +21,7 @@ use duat_core::{
     context::Handle,
     data::Pass,
     opts::PrintOpts,
-    text::Text,
+    text::{Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -49,7 +49,7 @@ use crate::modes::PromptMode;
 /// [`IncSearcher`]: crate::modes::IncSearcher
 /// [`PipeSelections`]: crate::modes::PipeSelections
 pub struct PromptLine {
-    text: Text,
+    pub(crate) text: Text,
     prompts: HashMap<TypeId, Text>,
     request_width: bool,
 }
@@ -104,8 +104,8 @@ impl Widget for PromptLine {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 
     fn get_print_opts(&self) -> PrintOpts {

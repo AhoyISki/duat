@@ -7,11 +7,7 @@
 use std::{
     any::TypeId,
     path::Path,
-    sync::{
-        Mutex,
-        atomic::Ordering,
-        mpsc::{Receiver, Sender},
-    },
+    sync::{Mutex, atomic::Ordering, mpsc::Sender},
 };
 
 use duat_base::{
@@ -19,13 +15,14 @@ use duat_base::{
     widgets::{FooterWidgets, LogBook, Notifications, WhichKey, status},
 };
 use duat_core::{
+    buffer::History,
     clipboard::Clipboard,
-    context::{self, Logs},
+    context::{self, DuatReceiver, DuatSender, Logs},
     data::Pass,
     form::{Form, Palette},
     hook::{KeyTyped, ModeSwitched},
-    session::{DuatEvent, ReloadEvent, ReloadedBuffer, SessionCfg},
-    text::{History, txt},
+    session::{ReloadEvent, ReloadedBuffer, SessionCfg},
+    text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui, Widget},
 };
 use duat_filetype::FileType;
@@ -48,7 +45,7 @@ static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
-pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<DuatEvent>>) {
+pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         context::log_panic(panic_info);
         *PANIC_INFO.lock().unwrap() = Some(panic_info.to_string())
@@ -73,7 +70,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
     hook::add::<Buffer>(|pa, handle| {
         VertRule::builder().push_on(pa, handle);
         LINENUMBERS_OPTS.lock().unwrap().push_on(pa, handle);
-        Ok(())
     })
     .grouped("BufferWidgets");
 
@@ -113,7 +109,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
         }
 
         footer.push_on(pa, handle);
-        Ok(())
     })
     .grouped("FooterWidgets");
 
@@ -121,7 +116,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
         let mut builder = LogBook::builder();
         LOGBOOK_FN.lock().unwrap()(&mut builder);
         builder.push_on(pa, window);
-        Ok(())
     })
     .grouped("LogBook");
 
@@ -139,7 +133,9 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
             context::error!("{err}");
         }
 
-        handle.area().store_cache(pa, &path)
+        duat_core::try_or_log_err! {
+            handle.area().store_cache(pa, &path)?;
+        }
     });
 
     hook::add::<BufferClosed>(|pa, (handle, cache)| {
@@ -150,7 +146,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
         if !buffer.exists() || buffer.text().has_unsaved_changes() {
             cache.delete(path);
         }
-        Ok(())
     });
 
     hook::add::<BufferClosed>(|pa, (handle, cache)| {
@@ -161,7 +156,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
 
         if let Some("gitcommit") = path.filetype() {
             cache.delete(path);
-            return Ok(());
+            return;
         }
 
         if let Some(main) = buffer.selections().get_main()
@@ -170,7 +165,9 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
             context::error!("{err}");
         }
 
-        handle.area().store_cache(pa, &path)
+        duat_core::try_or_log_err! {
+            handle.area().store_cache(pa, &path)?;
+        }
     })
     .grouped("CacheCursorPosition");
 
@@ -199,7 +196,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
             drop(opts);
             show_which_key(pa);
         }
-        Ok(())
     })
     .grouped("WhichKey");
     hook::add::<ModeSwitched>(move |pa, _| {
@@ -212,7 +208,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
                 let _ = handle.close(pa);
             }
         }
-        Ok(())
     })
     .grouped("WhichKey");
 
@@ -223,20 +218,19 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
         {
             show_which_key(pa);
         }
-        Ok(())
     });
 
     // Other hooks
 
-    hook::add::<BufferSaved>(|_, (path, _, is_quitting)| {
-        let path = Path::new(path);
+    hook::add::<BufferSaved>(|pa, (handle, _, is_quitting)| {
+        let path = handle.read(pa).path();
+        let path = Path::new(&path);
         if !is_quitting
             && let Ok(crate_dir) = crate::utils::crate_dir()
             && path.starts_with(crate_dir)
         {
             crate::prelude::cmd::queue("reload");
         }
-        Ok(())
     })
     .grouped("ReloadOnWrite");
     duat_base::widgets::track_words();
@@ -306,9 +300,9 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<Sender<Duat
 pub fn run_duat(
     (ui, clipb): MetaStatics,
     buffers: Vec<Vec<ReloadedBuffer>>,
-    duat_rx: Receiver<DuatEvent>,
+    duat_rx: DuatReceiver,
     reload_tx: Option<Sender<ReloadEvent>>,
-) -> (Vec<Vec<ReloadedBuffer>>, Receiver<DuatEvent>) {
+) -> (Vec<Vec<ReloadedBuffer>>, DuatReceiver) {
     ui.load();
 
     let opts = SessionCfg::new(clipb, *BUFFER_OPTS.lock().unwrap());
@@ -331,7 +325,7 @@ pub fn run_duat(
 
 /// Channels to send information between the runner and executable
 #[doc(hidden)]
-pub type Channels = (Sender<DuatEvent>, Receiver<DuatEvent>, Sender<ReloadEvent>);
+pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadEvent>);
 /// Items that will live for the duration of Duat
 #[doc(hidden)]
 pub type MetaStatics = (Ui, &'static Mutex<Clipboard>);

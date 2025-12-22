@@ -5,7 +5,7 @@ use std::{
 
 use gapbuf::GapBuffer;
 
-use crate::utils::{binary_search_by_key_and_index, get_ends};
+use crate::utils::{binary_search_by_key_and_index, get_range};
 
 /// A sorted list of elements which keeps track of changes in a very
 /// efficient manner
@@ -86,23 +86,23 @@ impl<S: Shiftable> ShiftList<S> {
         range: impl RangeBounds<usize>,
         mut f: impl FnMut(usize, S) -> Option<bool> + 'a,
     ) -> impl Iterator<Item = (usize, S)> + 'a {
-        let (mut i, mut end) = get_ends(range, self.buf.len());
+        let mut range = get_range(range, self.buf.len());
 
         std::iter::from_fn(move || {
-            while i < end {
-                let shifted = if i >= self.from {
-                    self.buf[i].shift(self.shift)
+            while range.start < range.end {
+                let shifted = if range.start >= self.from {
+                    self.buf[range.start].shift(self.shift)
                 } else {
-                    self.buf[i]
+                    self.buf[range.start]
                 };
 
-                if f(i, shifted)? {
-                    self.buf.remove(i);
-                    self.from -= (i < self.from) as usize;
-                    end -= 1;
-                    return Some((i, shifted));
+                if f(range.start, shifted)? {
+                    self.buf.remove(range.start);
+                    self.from -= (range.start < self.from) as usize;
+                    range.end -= 1;
+                    return Some((range.start, shifted));
                 } else {
-                    i += 1;
+                    range.start += 1;
                 }
             }
 
@@ -124,21 +124,21 @@ impl<S: Shiftable> ShiftList<S> {
         range: impl RangeBounds<usize>,
         mut f: impl FnMut(usize, S) -> Option<bool> + 'a,
     ) -> impl Iterator<Item = (usize, S)> + 'a {
-        let (start, mut i) = get_ends(range, self.buf.len());
+        let mut range = get_range(range, self.buf.len());
 
         std::iter::from_fn(move || {
-            while i > start {
-                i -= 1;
-                let shifted = if i >= self.from {
-                    self.buf[i].shift(self.shift)
+            while range.end > range.start {
+                range.end -= 1;
+                let shifted = if range.end >= self.from {
+                    self.buf[range.end].shift(self.shift)
                 } else {
-                    self.buf[i]
+                    self.buf[range.end]
                 };
 
-                if f(i, shifted)? {
-                    self.buf.remove(i);
-                    self.from -= (i < self.from) as usize;
-                    return Some((i, shifted));
+                if f(range.end, shifted)? {
+                    self.buf.remove(range.end);
+                    self.from -= (range.end < self.from) as usize;
+                    return Some((range.end, shifted));
                 }
             }
 
@@ -183,29 +183,29 @@ impl<S: Shiftable> ShiftList<S> {
     /// Iterates forward on a range of indices
     #[inline]
     pub(super) fn iter_fwd(&self, range: impl RangeBounds<usize>) -> IterFwd<'_, S> {
-        let (start, end) = get_ends(range, self.buf.len());
+        let range = get_range(range, self.buf.len());
 
-        let (s0, s1) = self.buf.range(start..end).as_slices();
+        let (s0, s1) = self.buf.range(range.clone()).as_slices();
 
         IterFwd {
             iter: s0.iter().chain(s1).enumerate(),
             from: self.from,
             shift: self.shift,
-            start,
+            start: range.start,
         }
     }
 
     /// Iterates backwards on a range of indices
     #[inline]
     pub(super) fn iter_rev(&self, range: impl RangeBounds<usize>) -> IterRev<'_, S> {
-        let (start, end) = get_ends(range, self.buf.len());
-        let (s0, s1) = self.buf.range(start..end).as_slices();
+        let range = get_range(range, self.buf.len());
+        let (s0, s1) = self.buf.range(range.clone()).as_slices();
 
         IterRev {
             iter: s1.iter().rev().chain(s0.iter().rev()).enumerate(),
             from: self.from,
             shift: self.shift,
-            end,
+            end: range.end,
         }
     }
 

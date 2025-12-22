@@ -9,7 +9,7 @@
 use duat_core::{
     context::Handle,
     data::Pass,
-    text::{Text, txt},
+    text::{txt, Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -92,8 +92,8 @@ impl Widget for VertRule {
         &self.text
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 }
 

@@ -11,7 +11,7 @@ use duat_core::{
     form,
     hook::{self, FocusChanged, KeyTyped},
     mode::{self, Description, MouseEvent, MouseEventKind},
-    text::{Text, txt},
+    text::{Text, TextMut, txt},
     ui::{DynSpawnSpecs, PushSpecs, Side, Widget},
 };
 use duat_term::Frame;
@@ -121,13 +121,13 @@ impl WhichKey {
             let descs_handle = descs_handle.clone();
             move |pa, _| {
                 _ = keys_handle.close(pa);
-                Ok(_ = descs_handle.close(pa))
+                _ = descs_handle.close(pa);
             }
         })
         .once();
         hook::add::<FocusChanged>(move |pa, _| {
             _ = keys_handle.close(pa);
-            Ok(_ = descs_handle.close(pa))
+            _ = descs_handle.close(pa);
         })
         .once();
     }
@@ -144,8 +144,8 @@ impl Widget for WhichKey {
         &self.0
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.0
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.0.as_mut()
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
@@ -178,8 +178,8 @@ impl Widget for WhichKeyDescriptions {
         &self.0
     }
 
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.0
+    fn text_mut(&mut self) -> TextMut<'_> {
+        self.0.as_mut()
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
