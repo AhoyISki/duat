@@ -41,6 +41,7 @@ impl<S: Shiftable> ShiftList<S> {
     ///
     /// The position where this element will be inserted needs to
     /// first be acquired by calling [`ShiftList::find_by_key`].
+    #[track_caller]
     pub(super) fn insert(&mut self, i: usize, new: S) {
         if self.shift != S::Shift::default() {
             if i >= self.from {
@@ -65,6 +66,7 @@ impl<S: Shiftable> ShiftList<S> {
     }
 
     /// Removes the ith element from the [`ShiftList`]
+    #[track_caller]
     pub(super) fn remove(&mut self, i: usize) {
         self.buf.remove(i);
         if self.from > i {
@@ -81,6 +83,7 @@ impl<S: Shiftable> ShiftList<S> {
     /// [`Some(true)`]: Some
     /// [`Some(false)`]: Some
     #[inline]
+    #[track_caller]
     pub(super) fn extract_if_while<'a>(
         &'a mut self,
         range: impl RangeBounds<usize>,
@@ -119,6 +122,7 @@ impl<S: Shiftable> ShiftList<S> {
     /// [`Some(true)`]: Some
     /// [`Some(false)`]: Some
     #[inline]
+    #[track_caller]
     pub(super) fn rextract_if_while<'a>(
         &'a mut self,
         range: impl RangeBounds<usize>,
@@ -147,6 +151,7 @@ impl<S: Shiftable> ShiftList<S> {
     }
 
     /// Shifts the items in the list after a certain point
+    #[track_caller]
     pub(super) fn shift_by(&mut self, from: usize, by: S::Shift) {
         if self.shift != S::Shift::default() {
             if from >= self.from {
@@ -182,6 +187,7 @@ impl<S: Shiftable> ShiftList<S> {
 
     /// Iterates forward on a range of indices
     #[inline]
+    #[track_caller]
     pub(super) fn iter_fwd(&self, range: impl RangeBounds<usize>) -> IterFwd<'_, S> {
         let range = get_range(range, self.buf.len());
 
@@ -197,6 +203,7 @@ impl<S: Shiftable> ShiftList<S> {
 
     /// Iterates backwards on a range of indices
     #[inline]
+    #[track_caller]
     pub(super) fn iter_rev(&self, range: impl RangeBounds<usize>) -> IterRev<'_, S> {
         let range = get_range(range, self.buf.len());
         let (s0, s1) = self.buf.range(range.clone()).as_slices();

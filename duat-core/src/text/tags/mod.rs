@@ -351,7 +351,7 @@ impl InnerTags {
 
         for range in self
             .extents
-            .remove_range(range, |tagger| taggers.contains_tagger(tagger))
+            .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
         {
             self.remove_from_if(range, |(_, tag)| taggers.contains_tagger(tag.tagger()));
         }
@@ -475,6 +475,12 @@ impl InnerTags {
 
         // Old length removal.
         if old.end > old.start {
+            let i = self
+                .list
+                .iter_fwd(..)
+                .take_while(|(_, (b, _))| *b < 1010)
+                .count();
+
             // First, get rid of all ranges that start and/or end in the old
             // range.
             // old.start + 1 because we don't want to get rid of bounds that
@@ -491,7 +497,7 @@ impl InnerTags {
                 let mut iter = self.list.iter_fwd(s_i..);
 
                 while let Some((i, (b, tag))) = iter.next()
-                    && b == old.start as i32
+                    && b <= old.end as i32
                 {
                     if tag.is_start() {
                         starts.push((i, tag));
