@@ -201,7 +201,7 @@ impl Shiftable for i32 {
     }
 }
 
-static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
+static TAGGER_COUNT: AtomicU32 = AtomicU32::new(3);
 
 /// A struct that lets one add and remove [`Tag`]s to a [`Text`]
 ///
@@ -269,10 +269,9 @@ impl Tagger {
     ///
     /// [`Text`]: super::Text
     pub fn new_many(amount: u32) -> Range<Self> {
-        let start = Self(TAGGER_COUNT.fetch_add(amount, Ordering::Relaxed));
-        let end = Self(TAGGER_COUNT.fetch_add(1, Ordering::Relaxed));
+        let start = TAGGER_COUNT.fetch_add(amount + 1, Ordering::Relaxed);
 
-        start..end
+        Self(start)..Self(start + amount)
     }
 
     /// A simple key with no uniqueness guarantee

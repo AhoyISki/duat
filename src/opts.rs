@@ -1,4 +1,5 @@
 //! General options for Duat
+//! 
 //!
 //! These options apply _globally_, and mostly serve as convenience
 //! methods to modify Duat's [widgets]. If you wish to apply them on a

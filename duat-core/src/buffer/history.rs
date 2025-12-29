@@ -327,7 +327,9 @@ impl Moment {
 
 /// A change in a buffer, with a start, taken text, and added text
 ///
-/// If you acquired this `Change` from a [`BufferTracker::parts`] call, you need not worry about adding it to the ranges that need to be updated, as that has already been done.
+/// If you acquired this `Change` from a [`BufferTracker::parts`]
+/// call, you need not worry about adding it to the ranges that need
+/// to be updated, as that has already been done.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change<'s, S = &'s str> {
     start: [i32; 3],
@@ -640,6 +642,8 @@ impl BufferTracker {
 
         let (_, old_track_id, ranges) = tracked.iter_mut().find(|(id, ..)| *id == buf_id)?;
         let new_track_id = buf.history.get_latest_track_id();
+        let debug = format!("{:#?}", buf.history.tracked_moments);
+
         let untracked_moments = buf.history.get_untracked_moments_for(*old_track_id);
         *old_track_id = new_track_id;
 
@@ -649,6 +653,10 @@ impl BufferTracker {
             current: iter.find_map(MomentOrTracking::as_moment).map(Moment::iter),
             iter,
         };
+
+        crate::context::debug!("{untracked_moments:#?}");
+        crate::context::debug!("{debug}");
+        crate::context::debug!("{changes:#?}");
 
         for change in changes.clone() {
             let range = change.added_range();
@@ -820,7 +828,8 @@ impl<'h> ExactSizeIterator for Changes<'h> {}
 /// order that they came in. Because of that, unlike [`Moment::iter`],
 /// these [`Change`]s will not necessarily be ordered by byte index.
 ///
-/// If you want to iterate on the changes multiple times, [cloning] it is a zero cost operation.
+/// If you want to iterate on the changes multiple times, [cloning] it
+/// is a zero cost operation.
 ///
 /// [`parts`]: BufferTracker::parts
 /// [cloning]: Clone::clone

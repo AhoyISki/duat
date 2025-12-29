@@ -22,7 +22,6 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    MainThreadOnly,
     context::DuatSender,
     form::{self, Color},
     session::UiMouseEvent,
@@ -92,7 +91,7 @@ pub struct Ui {
 
 struct InnerUi {
     windows: Vec<(Area, Arc<Printer>)>,
-    layouts: MainThreadOnly<Layouts>,
+    layouts: Layouts,
     win: usize,
     frame: Border,
     printer_fn: fn() -> Arc<Printer>,
@@ -116,7 +115,7 @@ impl RawUi for Ui {
             Box::leak(Box::new(Self {
                 mt: Mutex::new(InnerUi {
                     windows: Vec::new(),
-                    layouts: MainThreadOnly::default(),
+                    layouts: Layouts::default(),
                     win: 0,
                     frame: Border::default(),
                     printer_fn: || Arc::new(Printer::new()),
@@ -159,7 +158,6 @@ impl RawUi for Ui {
                 terminal::EnterAlternateScreen,
                 terminal::Clear(ClearType::All),
                 terminal::DisableLineWrap,
-                event::EnableBracketedPaste,
                 event::EnableFocusChange,
                 event::EnableMouseCapture
             )
@@ -196,7 +194,7 @@ impl RawUi for Ui {
 
                     match ct_read() {
                         Ok(CtEvent::Key(key)) => {
-                            if !key.kind.is_release() {
+                            if !matches!(key.kind, event::KeyEventKind::Release) {
                                 duat_tx.send_key(key);
                             }
                         }
@@ -214,7 +212,6 @@ impl RawUi for Ui {
                             kind: event.kind,
                             modifiers: event.modifiers,
                         }),
-                        Ok(CtEvent::Paste(_)) => {}
                         Err(_) => {}
                     }
                 }
@@ -235,7 +232,6 @@ impl RawUi for Ui {
             cursor::MoveToColumn(0),
             terminal::Clear(ClearType::FromCursorDown),
             terminal::EnableLineWrap,
-            event::DisableBracketedPaste,
             event::DisableFocusChange,
             event::DisableMouseCapture,
             cursor::Show,
@@ -251,9 +247,9 @@ impl RawUi for Ui {
 
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        let main_id = unsafe { ui.layouts.get() }.new_layout(printer.clone(), ui.frame, cache);
+        let main_id = ui.layouts.new_layout(printer.clone(), ui.frame, cache);
 
-        let root = Area::new(main_id, unsafe { ui.layouts.get() }.clone());
+        let root = Area::new(main_id, ui.layouts.clone());
         ui.windows.push((root.clone(), printer.clone()));
         if ui.windows.len() == 1 {
             ui.tx.send(Event::NewPrinter(printer)).unwrap();
@@ -270,9 +266,9 @@ impl RawUi for Ui {
         win: usize,
     ) -> Self::Area {
         let ui = self.mt.lock().unwrap();
-        let id = unsafe { ui.layouts.get() }.spawn_on_text(id, specs, cache, win);
+        let id = ui.layouts.spawn_on_text(id, specs, cache, win);
 
-        Area::new(id, unsafe { ui.layouts.get() }.clone())
+        Area::new(id, ui.layouts.clone())
     }
 
     fn new_static_spawned(
@@ -283,9 +279,9 @@ impl RawUi for Ui {
         win: usize,
     ) -> Self::Area {
         let ui = self.mt.lock().unwrap();
-        let id = unsafe { ui.layouts.get() }.spawn_static(id, specs, cache, win);
+        let id = ui.layouts.spawn_static(id, specs, cache, win);
 
-        Area::new(id, unsafe { ui.layouts.get() }.clone())
+        Area::new(id, ui.layouts.clone())
     }
 
     fn switch_window(&self, win: usize) {
@@ -321,7 +317,7 @@ impl RawUi for Ui {
         ui.windows = Vec::new();
         // SAFETY: Ui is not Send + Sync, so this can't be called
         // from another thread
-        unsafe { ui.layouts.get() }.reset();
+        ui.layouts.reset();
         ui.win = 0;
         shared_fns::reset_state();
     }
@@ -331,7 +327,7 @@ impl RawUi for Ui {
         ui.windows.remove(win);
         // SAFETY: Ui is not Send + Sync, so this can't be called
         // from another thread
-        unsafe { ui.layouts.get() }.remove_window(win);
+        ui.layouts.remove_window(win);
         if ui.win > win {
             ui.win -= 1;
         }

@@ -703,6 +703,7 @@ impl Area {
     }
 
     /// Returns a list of the lines that were printed
+    #[track_caller]
     pub fn get_printed_lines(&self, text: &Text, opts: PrintOpts) -> Option<Vec<PrintedLine>> {
         (self.fns.get_printed_lines)(self, text, opts)
     }

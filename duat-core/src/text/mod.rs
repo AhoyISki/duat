@@ -856,6 +856,11 @@ impl<'t> TextMut<'t> {
         }
     }
 
+	/// Attaches a history to this `TextMut`
+    pub(crate) fn attach_history(&mut self, history: &'t mut History) {
+        self.history = Some(history);
+    }
+
     ////////// Selections functions
 
     /// A mut reference to this `Text`'s [`Selections`] if they

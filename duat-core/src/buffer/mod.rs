@@ -332,7 +332,9 @@ impl Widget for Buffer {
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
-        self.text.as_mut()
+        let mut text_mut = self.text.as_mut();
+        text_mut.attach_history(&mut self.history);
+        text_mut
     }
 
     fn get_print_opts(&self) -> PrintOpts {

@@ -9,7 +9,7 @@
 use duat_core::{
     context::Handle,
     data::Pass,
-    text::{txt, Text, TextMut},
+    text::{Text, TextMut, txt},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -47,7 +47,7 @@ impl VertRule {
 impl Widget for VertRule {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let vr = handle.read(pa);
-        
+
         let text = if let Some(handle) = vr.handle.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char
         {

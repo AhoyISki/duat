@@ -14,7 +14,7 @@ use std::{any::TypeId, sync::Mutex};
 use dirs_next::cache_dir;
 pub use lender;
 
-pub use self::{main_thread_only::MainThreadOnly, ranges::Ranges};
+pub use self::ranges::Ranges;
 
 pub mod buffer;
 pub mod cmd;
@@ -74,11 +74,11 @@ pub trait Plugin: 'static {
     fn plug(self, plugins: &Plugins);
 }
 
-static PLUGINS: Plugins = Plugins(MainThreadOnly::new(Mutex::new(Vec::new())));
+static PLUGINS: Plugins = Plugins(Mutex::new(Vec::new()));
 
 /// A struct for [`Plugin`]s to declare dependencies on other
 /// [`Plugin`]s
-pub struct Plugins(MainThreadOnly<Mutex<Vec<(PluginFn, TypeId)>>>);
+pub struct Plugins(Mutex<Vec<(PluginFn, TypeId)>>);
 
 impl Plugins {
     /// Returnss a new instance of [`Plugins`]
@@ -101,7 +101,7 @@ impl Plugins {
     pub fn require<P: Plugin + Default>(&self) {
         // SAFETY: This function can only push new elements to the list, not
         // accessing the !Send functions within.
-        let mut plugins = unsafe { self.0.get() }.lock().unwrap();
+        let mut plugins = self.0.lock().unwrap();
         if !plugins.iter().any(|(_, ty)| *ty == TypeId::of::<P>()) {
             plugins.push((
                 Some(Box::new(|plugins| P::default().plug(plugins))),
@@ -111,39 +111,9 @@ impl Plugins {
     }
 }
 
-mod main_thread_only {
-    /// A container meant for access in only the main thread
-    ///
-    /// Use this if you want a static value that is not
-    /// [`Send`]/[`Sync`].
-    #[derive(Default)]
-    #[doc(hidden)]
-    pub struct MainThreadOnly<T>(T);
-
-    impl<T> MainThreadOnly<T> {
-        /// Returns a new [`MainThreadOnly`]
-        pub const fn new(value: T) -> Self {
-            Self(value)
-        }
-
-        /// Acquires the inner value.
-        ///
-        /// # Safety
-        ///
-        /// You must ensure that this operation is taking place in the
-        /// main thread of execution, although this function might
-        /// take a [`Pass`] parameter later on, in order to
-        /// lift that requirement.
-        ///
-        /// [`Pass`]: crate::data::Pass
-        pub unsafe fn get(&self) -> &T {
-            &self.0
-        }
-    }
-
-    unsafe impl<T> Send for MainThreadOnly<T> {}
-    unsafe impl<T> Sync for MainThreadOnly<T> {}
-}
+// SAFETY: The !Send functions are only accessed from the main thread
+unsafe impl Send for Plugins {}
+unsafe impl Sync for Plugins {}
 
 pub mod clipboard {
     //! Clipboard interaction for Duat

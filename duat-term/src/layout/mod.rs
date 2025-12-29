@@ -242,10 +242,15 @@ impl Layouts {
     }
 
     /// Just updates the [`Printer`] for the [`AreaId`] in question
-    pub fn update(&self, id: AreaId) {
+    ///
+    /// Returns `false` if the [`Rect`] was deleted.
+    pub fn update(&self, id: AreaId) -> bool {
         let inner = self.0.borrow();
         if let Some(layout) = inner.list.iter().find(|layout| layout.get(id).is_some()) {
             layout.printer.update(false, false);
+            true
+        } else {
+            false
         }
     }
 

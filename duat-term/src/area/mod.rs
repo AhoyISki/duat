@@ -601,10 +601,11 @@ impl RawArea for Area {
     }
 
     fn start_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints {
-        let Some(coords) = self.layouts.coords_of(self.id, false) else {
+        if !self.layouts.update(self.id) {
             context::warn!("This Area was already deleted");
             return Default::default();
-        };
+        }
+        let coords = self.layouts.coords_of(self.id, false).unwrap();
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
         let start_points = info.start_points(coords, text, opts);

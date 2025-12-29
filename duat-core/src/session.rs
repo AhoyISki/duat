@@ -69,7 +69,8 @@ impl SessionCfg {
         // add more plugins, accessing the plugging functions happens only on
         // this thread.
         while let Some((plug, ty)) = {
-            unsafe { plugins.0.get() }
+            plugins
+                .0
                 .lock()
                 .unwrap()
                 .iter_mut()
@@ -297,7 +298,6 @@ impl Session {
                         hook::trigger(pa, ConfigUnloaded(()));
                         hook::trigger(pa, ExitedDuat(()));
                         context::order_reload_or_quit();
-                        wait_for_threads_to_end();
 
                         let handles: Vec<_> = context::windows().buffers(pa).collect();
                         for handle in handles {
@@ -451,7 +451,7 @@ pub struct ReloadEvent {
 
 fn wait_for_threads_to_end() {
     let mut count = thread_amount::thread_amount().unwrap();
-    while count.get() > 6 {
+    while count.get() > 7 {
         std::thread::sleep(std::time::Duration::from_millis(10));
         count = thread_amount::thread_amount().unwrap();
     }

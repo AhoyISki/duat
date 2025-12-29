@@ -138,8 +138,8 @@ mod global {
         let cloned_name = name.clone();
 
         match form.kind() {
-            Kind::Form(form) => queue(move || PALETTE.get().unwrap().set_form(cloned_name, form)),
-            Kind::Ref(refed) => queue(move || PALETTE.get().unwrap().set_ref(cloned_name, refed)),
+            Kind::Form(form) => PALETTE.get().unwrap().set_form(cloned_name, form),
+            Kind::Ref(refed) => PALETTE.get().unwrap().set_ref(cloned_name, refed),
         };
 
         let mut forms = FORMS.get().unwrap().lock().unwrap();
@@ -179,12 +179,8 @@ mod global {
         let cloned_name = name.clone();
 
         match form.kind() {
-            Kind::Form(form) => {
-                queue(move || PALETTE.get().unwrap().set_weak_form(cloned_name, form))
-            }
-            Kind::Ref(refed) => {
-                queue(move || PALETTE.get().unwrap().set_weak_ref(cloned_name, refed))
-            }
+            Kind::Form(form) => PALETTE.get().unwrap().set_weak_form(cloned_name, form),
+            Kind::Ref(refed) => PALETTE.get().unwrap().set_weak_ref(cloned_name, refed),
         };
 
         let mut forms = FORMS.get().unwrap().lock().unwrap();
@@ -237,7 +233,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_main_cursor`]: unset_main_cursor
     pub fn set_main_cursor(shape: CursorShape) {
-        queue(move || PALETTE.get().unwrap().set_main_cursor(shape));
+        PALETTE.get().unwrap().set_main_cursor(shape);
     }
 
     /// Sets extra cursors's [shape]s
@@ -264,7 +260,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_extra_cursor`]: unset_extra_cursor
     pub fn set_extra_cursor(shape: CursorShape) {
-        queue(move || PALETTE.get().unwrap().set_extra_cursor(shape));
+        PALETTE.get().unwrap().set_extra_cursor(shape);
     }
 
     /// Removes the main cursor's [shape]
@@ -278,7 +274,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_main_cursor`]: set_main_cursor
     pub fn unset_main_cursor() {
-        queue(move || PALETTE.get().unwrap().unset_main_cursor());
+        PALETTE.get().unwrap().unset_main_cursor();
     }
 
     /// Removes extra cursors's [shape]s
@@ -295,7 +291,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_extra_cursor`]: set_extra_cursor
     pub fn unset_extra_cursor() {
-        queue(move || PALETTE.get().unwrap().unset_extra_cursor());
+        PALETTE.get().unwrap().unset_extra_cursor();
     }
 
     /// Removes all cursors's [shape]s
@@ -305,10 +301,8 @@ mod global {
     ///
     /// [shape]: CursorShape
     pub fn unset_cursors() {
-        queue(move || {
-            PALETTE.get().unwrap().unset_main_cursor();
-            PALETTE.get().unwrap().unset_extra_cursor();
-        })
+        PALETTE.get().unwrap().unset_main_cursor();
+        PALETTE.get().unwrap().unset_extra_cursor();
     }
 
     /// Creates a [`Painter`] with a mask
@@ -396,24 +390,22 @@ mod global {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`Text`]: crate::text::Text
     pub fn enable_mask(mask: impl AsRef<str> + Send + Sync + 'static) {
-        queue(move || {
-            let mask = mask.as_ref();
-            let mut inner = PALETTE.get().unwrap().0.write().unwrap();
-            if !inner.masks.iter().any(|(m, _)| *m == mask) {
-                let mut remaps: Vec<u16> = (0..inner.forms.len() as u16).collect();
+        let mask = mask.as_ref();
+        let mut inner = PALETTE.get().unwrap().0.write().unwrap();
+        if !inner.masks.iter().any(|(m, _)| *m == mask) {
+            let mut remaps: Vec<u16> = (0..inner.forms.len() as u16).collect();
 
-                for (i, (name, ..)) in inner.forms.iter().enumerate() {
-                    if let Some((pref, suf)) = name.rsplit_once('.')
-                        && suf == mask
-                        && let Some(j) = inner.forms.iter().position(|(name, ..)| *name == pref)
-                    {
-                        remaps[j] = i as u16;
-                    }
+            for (i, (name, ..)) in inner.forms.iter().enumerate() {
+                if let Some((pref, suf)) = name.rsplit_once('.')
+                    && suf == mask
+                    && let Some(j) = inner.forms.iter().position(|(name, ..)| *name == pref)
+                {
+                    remaps[j] = i as u16;
                 }
-
-                inner.masks.push((mask.to_string().leak(), remaps));
             }
-        })
+
+            inner.masks.push((mask.to_string().leak(), remaps));
+        }
     }
 
     /// Returns the [`FormId`] from the name of a [`Form`]
@@ -506,7 +498,7 @@ mod global {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
 
-        queue(move || PALETTE.get().unwrap().set_many(weak, &sets));
+        PALETTE.get().unwrap().set_many(weak, &sets);
 
         ids
     }
@@ -632,38 +624,6 @@ mod global {
             names.push(name.to_string().leak());
             names.len() - 1
         }
-    }
-
-    fn queue<R>(f: impl FnOnce() -> R + Send + Sync + 'static) {
-        static SENDER: Mutex<Option<mpsc::Sender<Box<dyn FnOnce() + Send + Sync>>>> =
-            Mutex::new(None);
-
-        if context::will_reload_or_quit() {
-            return;
-        }
-
-        let f = Box::new(move || {
-            f();
-        });
-
-        let mut sender = SENDER.lock().unwrap();
-        let f = if let Some(tx) = sender.as_ref() {
-            let Err(err) = tx.send(f) else {
-                return;
-            };
-            err.0
-        } else {
-            f
-        };
-        let (tx, rx) = mpsc::channel();
-        tx.send(f).unwrap();
-        *sender = Some(tx);
-
-        std::thread::spawn(move || {
-            while let Ok(f) = rx.recv_timeout(Duration::from_micros(500)) {
-                f();
-            }
-        });
     }
 
     /// Gets a [`Mutex`] for the initial [`Form`]'s list of Duat

@@ -20,7 +20,7 @@ unit_arg = "allow"
 [dependencies]
 duat-core = "0.7.6"
 dirs-next = "2.0.0"
-log = "0.4.28"
+log = "0.4.29"
 
 # List of UIs.
 duat-term = { version = "0.7.5", optional = true }
@@ -36,7 +36,7 @@ duat-match-pairs = { version = "0.2.1", optional = true }
 # Or once downloading is predominantly through package managers.
 # Cli dependencies
 [dependencies.clap]
-version = "4.5.51"
+version = "4.5.53"
 features = ["derive"]
 
 [dependencies.libloading]
@@ -46,7 +46,7 @@ version = "0.9.0"
 version = "8.2.0"
 
 [dependencies.convert_case]
-version = "0.9.0"
+version = "0.10.0"
 
 [features]
 default = ["term-ui", "treesitter"]
