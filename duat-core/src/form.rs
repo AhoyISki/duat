@@ -49,8 +49,7 @@ mod global {
     use std::{
         any::TypeId,
         collections::HashMap,
-        sync::{LazyLock, Mutex, OnceLock, mpsc},
-        time::Duration,
+        sync::{LazyLock, Mutex, OnceLock},
     };
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};

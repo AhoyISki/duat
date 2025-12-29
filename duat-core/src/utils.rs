@@ -225,6 +225,7 @@ pub fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
 /// This function essentially looks at a list of entries and with a
 /// starting shift position, shifts them by an amount, before
 /// comparing inside of the binary search.
+#[track_caller]
 pub fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: Copy>(
     (container, len): (&impl std::ops::Index<usize, Output = T>, usize),
     (guess_i, [start, end]): (usize, [U; 2]),

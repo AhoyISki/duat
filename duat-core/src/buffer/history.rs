@@ -203,7 +203,7 @@ impl History {
                     },
                 );
 
-                let new_i = i - (prev_tracker_i + 1);
+                let new_i = prev_tracker_i + 1;
                 self.tracked_moments
                     .insert(new_i, MomentOrTracking::Moment(moment));
 
@@ -642,7 +642,6 @@ impl BufferTracker {
 
         let (_, old_track_id, ranges) = tracked.iter_mut().find(|(id, ..)| *id == buf_id)?;
         let new_track_id = buf.history.get_latest_track_id();
-        let debug = format!("{:#?}", buf.history.tracked_moments);
 
         let untracked_moments = buf.history.get_untracked_moments_for(*old_track_id);
         *old_track_id = new_track_id;
@@ -653,10 +652,6 @@ impl BufferTracker {
             current: iter.find_map(MomentOrTracking::as_moment).map(Moment::iter),
             iter,
         };
-
-        crate::context::debug!("{untracked_moments:#?}");
-        crate::context::debug!("{debug}");
-        crate::context::debug!("{changes:#?}");
 
         for change in changes.clone() {
             let range = change.added_range();

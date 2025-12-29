@@ -270,7 +270,6 @@ impl Tagger {
     /// [`Text`]: super::Text
     pub fn new_many(amount: u32) -> Range<Self> {
         let start = TAGGER_COUNT.fetch_add(amount + 1, Ordering::Relaxed);
-
         Self(start)..Self(start + amount)
     }
 

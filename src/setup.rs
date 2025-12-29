@@ -6,7 +6,6 @@
 //! require a [`Ui`], which cannot be defined in static time.
 use std::{
     any::TypeId,
-    io::Write,
     path::Path,
     sync::{Mutex, atomic::Ordering, mpsc::Sender},
 };
