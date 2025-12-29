@@ -1,4 +1,10 @@
-use std::{fs, path::PathBuf, process::Command, sync::Mutex};
+use std::{
+    collections::HashSet,
+    fs,
+    path::PathBuf,
+    process::Command,
+    sync::{LazyLock, Mutex},
+};
 
 use duat_core::{
     context,
@@ -10,23 +16,25 @@ use tree_sitter::Language;
 
 use self::list::LANGUAGE_OPTIONS;
 
+static FAILED_COPILATION: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
+
 mod list;
 
-/// Wether the filetype is in the list of parsers
-pub fn filetype_is_in_list(filetype: &str) -> bool {
-    LANGUAGE_OPTIONS.contains_key(filetype)
-}
-
 /// Wether the parser for the given `filetype` is compiled
-pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
-    let options = LANGUAGE_OPTIONS
-        .get(filetype)
-        .ok_or_else(|| txt!("There is no tree-sitter grammar for [a].{filetype}[] files"))?;
+pub fn parser_is_compiled(filetype: &str) -> Option<bool> {
+    let options = LANGUAGE_OPTIONS.get(filetype)?;
+
+    if FAILED_COPILATION.lock().unwrap().contains(filetype) {
+        return None;
+    }
 
     let lib = options.crate_name.replace("-", "_");
-    let so_path = get_parsers_dir()?.join("lib").join(resolve_lib_file(&lib));
+    let so_path = get_parsers_dir()
+        .ok()?
+        .join("lib")
+        .join(resolve_lib_file(&lib));
 
-    Ok(so_path.try_exists()?)
+    so_path.try_exists().ok()
 }
 
 pub fn get_language(filetype: &str) -> Result<Language, Text> {
@@ -83,6 +91,10 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
 
             get_language(filetype)
         } else {
+            FAILED_COPILATION
+                .lock()
+                .unwrap()
+                .insert(filetype.to_string());
             Err(String::from_utf8_lossy(&out.stderr).to_string().into())
         }
     } else {

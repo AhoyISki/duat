@@ -27,38 +27,27 @@
 use std::{
     collections::HashMap,
     fs,
-    ops::Range,
-    path::PathBuf,
+    ops::RangeBounds,
+    path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
-    Plugins, Ranges,
-    buffer::{Buffer, BufferId, BufferTracker, PathKind},
+    Plugins,
+    buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    form::{self, Form, FormId},
-    hook::{self, BufferUpdated},
-    lender::Lender,
-    mode::Cursor,
-    opts::PrintOpts,
-    text::{Builder, Bytes, Change, Point, RegexHaystack, Tagger, Tags, Text, txt},
-    ui::Widget,
+    form::{self, Form},
+    text::{Builder, Point, Text, txt},
 };
-use duat_filetype::FileType;
-use streaming_iterator::StreamingIterator;
-use tree_sitter::{
-    InputEdit, Language, Node, Parser as TsParser, Point as TsPoint, Query,
-    QueryCapture as QueryCap, QueryCursor, QueryMatch, QueryProperty, TextProvider, Tree,
-};
+use tree_sitter::{Language, Node, Query};
 
-use self::{injections::InjectedTree, languages::parser_is_compiled};
+pub use crate::parser::Parser;
 
 mod cursor;
-mod injections;
 mod languages;
-
-static PARSERS: LazyLock<Mutex<HashMap<BufferId, Parser>>> = LazyLock::new(Mutex::default);
+mod parser;
+mod tree;
 
 /// The [tree-sitter] plugin for Duat
 ///
@@ -82,8 +71,6 @@ pub struct TreeSitter;
 
 impl duat_core::Plugin for TreeSitter {
     fn plug(self, _: &Plugins) {
-        use std::path::Path;
-
         fn copy_dir_all(src: &include_dir::Dir, dst: impl AsRef<Path>) -> std::io::Result<()> {
             fs::create_dir_all(&dst)?;
             for entry in src.entries() {
@@ -99,7 +86,6 @@ impl duat_core::Plugin for TreeSitter {
             Ok(())
         }
 
-        const MAX_LEN_FOR_LOCAL: usize = 100_000;
         static QUERIES: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/queries");
 
         let Ok(plugin_dir) = duat_core::utils::plugin_dir("duat-treesitter") else {
@@ -166,550 +152,7 @@ impl duat_core::Plugin for TreeSitter {
             ("node.field", "variable.member"),
         );
 
-        hook::add::<Buffer>(|pa, handle| {
-            let buffer = handle.write(pa);
-            let tracker = buffer.tracker();
-
-            let path = buffer.path_kind();
-
-            let parser = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
-                && let Some(filetype) = path.filetype()
-                && crate::languages::filetype_is_in_list(filetype)
-            {
-                if parser_is_compiled(filetype)? && buffer.bytes().len().byte() <= MAX_LEN_FOR_LOCAL
-                {
-                    Parser(Some(ParserState::Present(InnerTsParser::new(
-                        lang_parts_of(filetype)?,
-                        tracker,
-                    ))))
-                } else {
-                    Parser(Some(ParserState::Remote(std::thread::spawn({
-                        let handle = handle.clone();
-                        move || {
-                            let lang_parts = match lang_parts_of(filetype) {
-                                Ok(lang_parts) => lang_parts,
-                                Err(err) => {
-                                    context::error!("{err}");
-                                    return Err(tracker);
-                                }
-                            };
-
-                            let mut parser = InnerTsParser::new(lang_parts, tracker);
-
-                            // Until changes stop coming, keep parsing on another thread.
-                            while !parser.parse_changes().is_empty() {}
-
-                            handle.request_update();
-
-                            Ok(parser)
-                        }
-                    }))))
-                }
-            } else {
-                Parser(Some(ParserState::NotSet(tracker)))
-            };
-
-            PARSERS
-                .lock()
-                .unwrap()
-                .insert(handle.read(pa).buffer_id(), parser);
-
-            Ok(())
-        })
-        .grouped("TreeSitter");
-
-        hook::add::<BufferUpdated>(move |pa, handle| {
-            let mut parsers = PARSERS.lock().unwrap();
-            let parser = parsers.get_mut(&handle.read(pa).buffer_id()).unwrap();
-            let new_ranges = parser.parse(false);
-            parser.highlight_and_inject(pa, handle, new_ranges);
-
-            Ok(())
-        });
-    }
-}
-
-/// [`Parser`] that parses [`Buffer`]'s as [tree-sitter] syntax trees
-///
-/// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-pub struct Parser(Option<ParserState>);
-
-impl Parser {
-    /// The root [`Node`] of the syntax tree
-    pub fn root(&self) -> Option<Node<'_>> {
-        let Some(ParserState::Present(parser)) = &self.0 else {
-            return None;
-        };
-
-        Some(parser.tree.root_node())
-    }
-
-    /// Logs the root node with the [`context::debug`] macro
-    pub fn debug_root(&self) {
-        let Some(ParserState::Present(parser)) = &self.0 else {
-            return;
-        };
-
-        context::debug!("{}", format_root(parser.tree.root_node()));
-    }
-
-    /// Gets the requested indentation level on a given [`Point`]
-    ///
-    /// Will be [`None`] if the [`filetype`] hasn't been set yet or if
-    /// there is no indentation query for this language.
-    ///
-    /// [`filetype`]: FileType::filetype
-    pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintOpts) -> Option<usize> {
-        let Some(ParserState::Present(parser)) = &self.0 else {
-            return None;
-        };
-
-        parser.indent_on(p, bytes, cfg)
-    }
-
-    fn parse(&mut self, wait: bool) -> Ranges {
-        // In this function, the changes will be applied and the Ranges will
-        // be updated to include the following regions to be updated:
-        //
-        // - The ranges returned by Parser::changed_ranges,
-        // - All ranges where an injection was added or removed, which will be
-        //   acquired through the injections query, applied on the two
-        //   previous range lists,
-        let parser_state = self.0.take().unwrap();
-        let (parser_state, new_ranges) = parser_state.parse(wait);
-        self.0 = Some(parser_state);
-
-        new_ranges
-    }
-
-    fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, new_ranges: Ranges) {
-        let Some(ParserState::Present(parser)) = &mut self.0 else {
-            return;
-        };
-
-        parser.highlight_and_inject(pa, handle, new_ranges);
-    }
-}
-
-struct InnerTsParser {
-    parser: TsParser,
-    lang_parts: LangParts<'static>,
-    forms: &'static [(FormId, u8)],
-    tree: Tree,
-    old_tree: Option<Tree>,
-    injections: Vec<InjectedTree>,
-    tracker: BufferTracker,
-}
-
-impl InnerTsParser {
-    /// Returns a new [`InnerTsParser`]
-    fn new(lang_parts: LangParts<'static>, tracker: BufferTracker) -> InnerTsParser {
-        let (.., lang, _) = &lang_parts;
-        let forms = forms_from_lang_parts(lang_parts);
-
-        let mut parser = TsParser::new();
-        parser.set_language(lang).unwrap();
-
-        let tree = parser
-            .parse_with_options(&mut parser_fn(tracker.bytes()), None, None)
-            .unwrap();
-
-        InnerTsParser {
-            parser,
-            lang_parts,
-            forms,
-            tree,
-            old_tree: None,
-            injections: Vec::new(),
-            tracker,
-        }
-    }
-
-    fn parse_changes(&mut self) -> Ranges {
-        self.tracker.update();
-        let bytes = self.tracker.bytes();
-        let moment = self.tracker.moment();
-
-        let mut new_ranges = Ranges::empty();
-
-        if moment.is_empty() {
-            return new_ranges;
-        }
-
-        for change in moment.changes() {
-            let input_edit = input_edit(change, bytes);
-            self.tree.edit(&input_edit);
-
-            for inj in self.injections.iter_mut() {
-                inj.edit(&input_edit);
-            }
-            let range = change.line_range(bytes);
-            new_ranges.add(range.start.byte()..range.end.byte());
-        }
-
-        let tree = self
-            .parser
-            .parse_with_options(&mut parser_fn(bytes), Some(&self.tree), None)
-            .unwrap();
-
-        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
-
-        for range in self
-            .old_tree
-            .as_ref()
-            .unwrap()
-            .changed_ranges(&self.tree)
-            .chain(
-                self.injections
-                    .iter()
-                    .flat_map(InjectedTree::changed_ranges),
-            )
-        {
-            new_ranges.add(range.start_byte..range.end_byte)
-        }
-
-        for inj in self.injections.iter_mut() {
-            inj.update_tree(bytes);
-        }
-
-        new_ranges
-    }
-
-    /// Parse the newest changes, returns `false` if there were none
-    ///
-    /// Call this only after calling [`Self::parse_changes`]
-    fn highlight_and_inject(&mut self, pa: &mut Pass, handle: &Handle, new_ranges: Ranges) {
-        let printed_line_ranges = handle.printed_line_byte_ranges(pa);
-
-        let mut parts = handle.write(pa).text_mut().parts();
-        let tagger = ts_tagger();
-
-        for range in new_ranges {
-            parts.tags.remove(tagger, range.start..=range.end);
-            self.tracker.add_range(range);
-        }
-
-        loop {
-            let mut new_ranges = Ranges::empty();
-
-            for range in printed_line_ranges.iter() {
-                for range in self.tracker.ranges_to_update_on(range.clone()) {
-                    let range = range.start..range.end;
-
-                    inject(
-                        range.clone(),
-                        &mut new_ranges,
-                        (self.lang_parts, &mut self.injections),
-                        (self.old_tree.as_ref(), &self.tree),
-                        parts.bytes,
-                    );
-
-                    highlight(
-                        self.tree.root_node(),
-                        &mut self.injections,
-                        (self.lang_parts, self.forms),
-                        (parts.bytes, &mut parts.tags),
-                        range.start.saturating_sub(1)
-                            ..(range.end + 1).min(parts.bytes.len().byte()),
-                    );
-                }
-            }
-
-            if new_ranges.is_empty() {
-                break;
-            } else {
-                for range in new_ranges {
-                    parts.tags.remove(tagger, range.start..=range.end);
-                    self.tracker.add_range(range);
-                }
-            }
-        }
-    }
-
-    ////////// Querying functions
-
-    /// The expected level of indentation on a given [`Point`]
-    fn indent_on<'a>(&'a self, p: Point, bytes: &Bytes, opts: PrintOpts) -> Option<usize> {
-        let start = bytes.point_at_line(p.line());
-
-        let (root, indents, range) = self
-            .injections
-            .iter()
-            .find_map(|inj| inj.get_injection_indent_parts(start.byte()))
-            .unwrap_or_else(|| {
-                (
-                    self.tree.root_node(),
-                    self.lang_parts.2.indents,
-                    0..bytes.len().byte(),
-                )
-            });
-
-        let first_line = bytes.point_at_byte(range.start).line();
-
-        // The query could be empty.
-        if indents.pattern_count() == 0 {
-            return None;
-        }
-
-        // TODO: Don't reparse python, apparently.
-
-        type Captures<'a> = HashMap<&'a str, HashMap<usize, HashMap<&'a str, Option<&'a str>>>>;
-        let mut caps = HashMap::new();
-        let q = {
-            let mut cursor = QueryCursor::new();
-            let buf = TsBuf(bytes);
-            cursor
-                .matches(indents, root, buf)
-                .for_each(|qm: &QueryMatch| {
-                    for cap in qm.captures.iter() {
-                        let Some(cap_end) =
-                            indents.capture_names()[cap.index as usize].strip_prefix("indent.")
-                        else {
-                            continue;
-                        };
-
-                        let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
-                            nodes
-                        } else {
-                            caps.insert(cap_end, HashMap::new());
-                            caps.get_mut(cap_end).unwrap()
-                        };
-                        let props = indents.property_settings(qm.pattern_index).iter();
-                        nodes.insert(
-                            cap.node.id(),
-                            props
-                                .map(|p| {
-                                    let key = p.key.strip_prefix("indent.").unwrap();
-                                    (key, p.value.as_deref())
-                                })
-                                .collect(),
-                        );
-                    }
-                });
-
-            |caps: &Captures, node: Node, queries: &[&str]| {
-                caps.get(queries[0])
-                    .and_then(|nodes| nodes.get(&node.id()))
-                    .is_some_and(|props| {
-                        let key = queries.get(1);
-                        key.is_none_or(|key| props.iter().any(|(k, _)| k == key))
-                    })
-            }
-        };
-
-        // The first non indent character of this line.
-        let indented_start = bytes
-            .chars_fwd(start..)
-            .unwrap()
-            .take_while(|(p, _)| p.line() == start.line())
-            .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
-
-        let mut opt_node = if let Some(indented_start) = indented_start {
-            Some(descendant_in(root, indented_start.byte()))
-        // If the line is empty, look behind for another.
-        } else {
-            // Find last previous empty line.
-            let mut lines = bytes.lines(..start).rev();
-            let Some((prev_l, line)) = lines
-                .find(|(_, line)| !(line.matches_pat(r"^\s*$").unwrap()))
-                .filter(|(l, _)| *l >= first_line)
-            else {
-                // If there is no previous non empty line, align to 0.
-                return Some(0);
-            };
-            let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
-
-            let prev_range = bytes.line_range(prev_l);
-            let mut node = descendant_in(root, prev_range.end.byte() - (trail + 1));
-            if node.kind().contains("comment") {
-                // Unless the whole line is a comment, try to find the last node
-                // before the comment.
-                // This technically fails if there are multiple block comments.
-                let first_node = descendant_in(root, prev_range.start.byte());
-                if first_node.id() != node.id() {
-                    node = descendant_in(root, node.start_byte() - 1)
-                }
-            }
-
-            Some(if q(&caps, node, &["end"]) {
-                descendant_in(root, start.byte())
-            } else {
-                node
-            })
-        };
-
-        if q(&caps, opt_node.unwrap(), &["zero"]) {
-            return Some(0);
-        }
-
-        let tab = opts.tabstop as i32;
-        let mut indent = if root.start_byte() != 0 {
-            bytes.indent(bytes.point_at_byte(root.start_byte()), opts) as i32
-        } else {
-            0
-        };
-
-        let mut processed_lines = Vec::new();
-        while let Some(node) = opt_node {
-            let s_line = node.start_position().row;
-            let e_line = node.end_position().row;
-
-            // If a node is not an indent and is marked as auto or ignore, act
-            // accordingly.
-            if !q(&caps, node, &["begin"]) && s_line < p.line() && p.line() <= e_line {
-                if !q(&caps, node, &["align"]) && q(&caps, node, &["auto"]) {
-                    return None;
-                } else if q(&caps, node, &["ignore"]) {
-                    return Some(0);
-                }
-            }
-
-            let should_process = !processed_lines.contains(&s_line);
-
-            let mut is_processed = false;
-
-            if should_process
-                && ((s_line == p.line() && q(&caps, node, &["branch"]))
-                    || (s_line != p.line() && q(&caps, node, &["dedent"])))
-            {
-                indent -= tab;
-                is_processed = true;
-            }
-
-            let is_in_err = should_process && node.parent().is_some_and(|p| p.is_error());
-            // Indent only if the node spans more than one line, or under other
-            // special circumstances.
-            if should_process
-                && q(&caps, node, &["begin"])
-                && (s_line != e_line || is_in_err || q(&caps, node, &["begin", "immediate"]))
-                && (s_line != p.line() || q(&caps, node, &["begin", "start_at_same_line"]))
-            {
-                is_processed = true;
-                indent += tab;
-            }
-
-            if is_in_err && !q(&caps, node, &["align"]) {
-                let mut cursor = node.walk();
-                for child in node.children(&mut cursor) {
-                    if q(&caps, child, &["align"]) {
-                        let props = caps["align"][&child.id()].clone();
-                        caps.get_mut("align").unwrap().insert(node.id(), props);
-                    }
-                }
-            }
-
-            let fd = |node: Node<'a>, delim: &str| -> (Option<Node<'a>>, bool) {
-                let mut c = node.walk();
-                let child = node.children(&mut c).find(|child| child.kind() == delim);
-                let ret = child.map(|child| {
-                    let range = bytes.line_range(child.start_position().row);
-                    let range = child.range().start_byte..range.end.byte();
-
-                    let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
-                        line.split_whitespace().any(|w| w != delim)
-                    } else {
-                        let line = bytes.slices(range).try_to_string().unwrap();
-                        line.split_whitespace().any(|w| w != delim)
-                    };
-
-                    (child, is_last_in_line)
-                });
-                let (child, is_last_in_line) = ret.unzip();
-                (child, is_last_in_line.unwrap_or(false))
-            };
-
-            if should_process
-                && q(&caps, node, &["align"])
-                && (s_line != e_line || is_in_err)
-                && s_line != p.line()
-            {
-                let props = &caps["align"][&node.id()];
-                let (o_delim_node, o_is_last_in_line) = props
-                    .get(&"open_delimiter")
-                    .and_then(|delim| delim.map(|d| fd(node, d)))
-                    .unwrap_or((Some(node), false));
-                let (c_delim_node, c_is_last_in_line) = props
-                    .get(&"close_delimiter")
-                    .and_then(|delim| delim.map(|d| fd(node, d)))
-                    .unwrap_or((Some(node), false));
-
-                if let Some(o_delim_node) = o_delim_node {
-                    let o_s_line = o_delim_node.start_position().row;
-                    let o_s_col = o_delim_node.start_position().column;
-                    let c_s_line = c_delim_node.map(|n| n.start_position().row);
-
-                    // If the previous line was marked with an open_delimiter, treat it
-                    // like an indent.
-                    let indent_is_absolute = if o_is_last_in_line && should_process {
-                        indent += tab;
-                        // If the aligned node ended before the current line, its @align
-                        // shouldn't affect it.
-                        if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
-                            indent = (indent - tab).max(0);
-                        }
-                        false
-                    // Aligned indent
-                    } else if c_is_last_in_line
-                        && let Some(c_s_line) = c_s_line
-                        // If the aligned node ended before the current line, its @align
-                        // shouldn't affect it.
-                        && (o_s_line != c_s_line && c_s_line < p.line())
-                    {
-                        indent = (indent - tab).max(0);
-                        false
-                    } else {
-                        let inc = props.get("increment").cloned().flatten();
-                        indent = o_s_col as i32 + inc.map(str::parse::<i32>).unwrap().unwrap();
-                        true
-                    };
-
-                    // If this is the last line of the @align, then some additional
-                    // indentation may be needed to avoid clashes. This is the case in
-                    // some function parameters, for example.
-                    let avoid_last_matching_next = c_s_line
-                        .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == p.line())
-                        && props.contains_key("avoid_last_matching_next");
-                    if avoid_last_matching_next {
-                        indent += tab;
-                    }
-                    is_processed = true;
-                    if indent_is_absolute {
-                        return Some(indent as usize);
-                    }
-                }
-            }
-
-            if should_process && is_processed {
-                processed_lines.push(s_line);
-            }
-            opt_node = node.parent();
-        }
-
-        // indent < 0 means "keep level of indentation"
-        (indent >= 0).then_some(indent as usize)
-    }
-}
-
-impl std::fmt::Debug for InnerTsParser {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TsParser")
-            .field("tree", &self.tree)
-            .field("old_tree", &self.old_tree)
-            .field("injections", &self.injections)
-            .finish_non_exhaustive()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct TsBuf<'a>(&'a Bytes);
-
-impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
-    type I = std::array::IntoIter<&'a [u8], 2>;
-
-    fn text(&mut self, node: tree_sitter::Node) -> Self::I {
-        let range = node.range();
-        let buffers = self.0.slices(range.start_byte..range.end_byte);
-        buffers.to_array().into_iter()
+        parser::add_parser_hook();
     }
 }
 
@@ -720,115 +163,6 @@ struct Queries<'a> {
     highlights: &'a Query,
     indents: &'a Query,
     injections: &'a Query,
-}
-
-enum ParserState {
-    Present(InnerTsParser),
-    Remote(std::thread::JoinHandle<RemoteResult>),
-    NotSet(BufferTracker),
-}
-
-impl ParserState {
-    fn parse(self, wait: bool) -> (Self, Ranges) {
-        match (self, wait) {
-            (ParserState::Present(mut parser), _) => {
-                let ranges = parser.parse_changes();
-                (ParserState::Present(parser), ranges)
-            }
-            (ParserState::Remote(join_handle), false) => {
-                if join_handle.is_finished() {
-                    match join_handle.join().unwrap() {
-                        Ok(mut parser) => {
-                            let ranges = parser.parse_changes();
-                            (ParserState::Present(parser), ranges)
-                        }
-                        Err(tracker) => (ParserState::NotSet(tracker), Ranges::empty()),
-                    }
-                } else {
-                    (ParserState::Remote(join_handle), Ranges::empty())
-                }
-            }
-            (ParserState::Remote(join_handle), true) => match join_handle.join().unwrap() {
-                Ok(mut parser) => {
-                    let ranges = parser.parse_changes();
-                    (ParserState::Present(parser), ranges)
-                }
-                Err(tracker) => (ParserState::NotSet(tracker), Ranges::empty()),
-            },
-            (ParserState::NotSet(tracker), _) => (ParserState::NotSet(tracker), Ranges::empty()),
-        }
-    }
-}
-
-#[track_caller]
-fn descendant_in(node: Node, byte: usize) -> Node {
-    node.descendant_for_byte_range(byte, byte + 1).unwrap()
-}
-
-fn parser_fn<'a>(bytes: &'a Bytes) -> impl FnMut(usize, TsPoint) -> &'a [u8] {
-    let [s0, s1] = bytes.slices(..).to_array();
-    |byte, _point| {
-        if byte < s0.len() {
-            &s0[byte..]
-        } else {
-            &s1[byte - s0.len()..]
-        }
-    }
-}
-
-fn ts_point(point: Point, buffer: &Bytes) -> TsPoint {
-    let strs = buffer.slices(..point.byte());
-    let iter = strs.into_iter().rev();
-    let col = iter.take_while(|&b| b != b'\n').count();
-
-    TsPoint::new(point.line(), col)
-}
-
-fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TsPoint {
-    let col = if to.line() == from.line() {
-        col + str.len()
-    } else {
-        str.bytes().rev().take_while(|&b| b != b'\n').count()
-    };
-
-    TsPoint::new(to.line(), col)
-}
-
-fn forms_from_lang_parts(
-    (lang, _, Queries { highlights, .. }): LangParts<'static>,
-) -> &'static [(FormId, u8)] {
-    #[rustfmt::skip]
-    const PRIORITIES: &[&str] = &[
-        "markup", "operator", "comment", "string", "diff", "variable", "module", "label",
-        "character", "boolean", "number", "type", "attribute", "property", "function", "constant",
-        "constructor", "keyword", "punctuation",
-    ];
-    type MemoizedForms<'a> = HashMap<&'a str, &'a [(FormId, u8)]>;
-
-    static LISTS: LazyLock<Mutex<MemoizedForms<'static>>> = LazyLock::new(Mutex::default);
-    let mut lists = LISTS.lock().unwrap();
-
-    if let Some(forms) = lists.get(lang) {
-        forms
-    } else {
-        let capture_names = highlights.capture_names();
-        let priorities = capture_names.iter().map(|name| {
-            PRIORITIES
-                .iter()
-                .take_while(|p| !name.starts_with(*p))
-                .count() as u8
-        });
-
-        let ids = form::ids_of_non_static(
-            capture_names
-                .iter()
-                .map(|name| name.to_string() + "." + lang),
-        );
-        let forms: Vec<(FormId, u8)> = ids.into_iter().zip(priorities).collect();
-
-        lists.insert(lang, forms.leak());
-        lists.get(lang).unwrap()
-    }
 }
 
 fn lang_parts_of(lang: &str) -> Result<LangParts<'static>, Text> {
@@ -853,31 +187,6 @@ fn lang_parts_of(lang: &str) -> Result<LangParts<'static>, Text> {
 
         (lang, language, queries)
     })
-}
-
-/// The Key for tree-sitter
-fn ts_tagger() -> Tagger {
-    static TAGGER: LazyLock<Tagger> = Tagger::new_static();
-    *TAGGER
-}
-
-fn input_edit(change: Change<&str>, bytes: &Bytes) -> InputEdit {
-    let start = change.start();
-    let added = change.added_end();
-    let taken = change.taken_end();
-
-    let ts_start = ts_point(start, bytes);
-    let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_str());
-    let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_str());
-
-    InputEdit {
-        start_byte: start.byte(),
-        old_end_byte: taken.byte(),
-        new_end_byte: added.byte(),
-        start_position: ts_start,
-        old_end_position: ts_taken_end,
-        new_end_position: ts_added_end,
-    }
 }
 
 /// Returns a new [`Query`] for a given language and kind
@@ -938,139 +247,53 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
 }
 
 /// Convenience methods for use of tree-sitter in [`Buffer`]s
-pub trait TsBuffer {
-    /// The level of indentation required at a certain [`Point`]
-    ///
-    /// This is determined by a query, currently, it is the query
-    /// located in
-    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
-    fn ts_indent_on(&self, p: Point) -> Option<usize>;
+pub trait TsHandle {
+    fn get_ts_parser<'p>(&'p self, pa: &'p mut Pass) -> Option<(&'p Parser, &'p Buffer)>;
 
-    /// Calls a function on the tree-sitter [`Parser`], this lets you
-    /// traverse the tree and make queries, for example
-    fn read_ts_parser<Ret>(&self, read: impl FnOnce(&Parser) -> Ret) -> Ret;
+    /// Gets the tree sitter indentation values for all the
+    /// selections, from the `start`th selection, to the `end`th
+    /// selection
+    ///
+    /// Returns [`None`] if tree-sitter isn't enabled for the current
+    /// buffer, either because there is no queries for the [filetype]
+    /// or because there is no filetype at all.
+    ///
+    /// [`caret`]: duat_core::mode::Selection::caret
+    /// [filetype]: duat_filetype::FileType::filetype
+    fn ts_get_indentations(
+        &self,
+        pa: &mut Pass,
+        selections: impl RangeBounds<usize> + Clone,
+    ) -> Option<Vec<usize>>;
 }
 
-impl TsBuffer for Buffer {
-    fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        let mut parsers = PARSERS.lock().unwrap();
-        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
-        parser.parse(true);
-
-        parser.indent_on(p, self.text().bytes(), self.get_print_opts())
+impl TsHandle for Handle {
+    fn get_ts_parser<'p>(&'p self, pa: &'p mut Pass) -> Option<(&'p Parser, &'p Buffer)> {
+        parser::sync_parse(pa, self)
     }
 
-    fn read_ts_parser<Ret>(&self, read: impl FnOnce(&Parser) -> Ret) -> Ret {
-        let mut parsers = PARSERS.lock().unwrap();
-        let parser = parsers.get_mut(&self.buffer_id()).unwrap();
-        parser.parse(true);
+    fn ts_get_indentations(
+        &self,
+        pa: &mut Pass,
+        selections: impl RangeBounds<usize> + Clone,
+    ) -> Option<Vec<usize>> {
+        let range = duat_core::utils::get_range(selections, self.selections(pa).len());
 
-        read(parser)
-    }
-}
+        let carets: Vec<Point> = self
+            .selections(pa)
+            .iter()
+            .enumerate()
+            .take(range.end)
+            .skip(range.start)
+            .map(|(_, (sel, _))| sel.caret())
+            .collect();
 
-/// Convenience methods for use of tree-sitter in [`Cursor`]s
-pub trait TsCursor {
-    /// The level of indentation required at the [`Cursor`]'s `caret`
-    ///
-    /// This is determined by a query, currently, it is the query
-    /// located in
-    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
-    fn ts_indent(&self) -> Option<usize>;
+        let (parser, buffer) = parser::sync_parse(pa, self)?;
 
-    /// The level of indentation required at a certain [`Point`]
-    ///
-    /// This is determined by a query, currently, it is the query
-    /// located in
-    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
-    fn ts_indent_on(&self, p: Point) -> Option<usize>;
-
-    /// Reindents the [`Cursor`]'s line
-    ///
-    /// Returns `true` if the line was reindented.
-    ///
-    /// This is determined by a query, currently, it is the query
-    /// located in
-    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
-    ///
-    /// If `also_without_parser` is set to true, then the line will be
-    /// reindented even if there is no parser being used on the
-    /// [`Buffer`]. It will be reindented to the level of the last non
-    /// empty line.
-    fn ts_reindent(&mut self, also_without_parser: bool) -> bool;
-}
-
-impl<S> TsCursor for Cursor<'_, Buffer, S> {
-    fn ts_indent(&self) -> Option<usize> {
-        self.ts_indent_on(self.caret())
-    }
-
-    fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        let mut parsers = PARSERS.lock().unwrap();
-        let parser = parsers.get_mut(&self.buffer_id())?;
-        parser.parse(true);
-
-        let opts = self.opts();
-        parser.indent_on(p, self.text().bytes(), opts)
-    }
-
-    fn ts_reindent(&mut self, also_without_parser: bool) -> bool {
-        fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<Range<Point>> {
-            let line_start = c.text().point_at_line(c.caret().line());
-            let mut lines = c.lines_on(..line_start).rev();
-            let prev = lines.find_map(|(n, l): (usize, &str)| {
-                l.chars().any(|c| !c.is_whitespace()).then_some(n)
-            });
-            prev.map(|n| c.text().line_range(n))
-        }
-
-        let old_col = self.v_caret().char_col();
-        let anchor_existed = self.anchor().is_some();
-
-        let old_indent = self.indent();
-        let new_indent = if let Some(indent) = self.ts_indent() {
-            indent
-        } else if also_without_parser {
-            let prev_non_empty = prev_non_empty_line_points(self);
-            prev_non_empty
-                .map(|range| self.indent_on(range.start))
-                .unwrap_or(0)
-        } else {
-            return false;
-        };
-
-        let indent_diff = new_indent as i32 - old_indent as i32;
-
-        self.move_hor(-(old_col as i32));
-        self.set_anchor();
-        self.move_hor(old_indent as i32);
-
-        if self.caret() == self.anchor().unwrap() {
-            self.insert(" ".repeat(new_indent));
-        } else {
-            self.move_hor(-1);
-            self.replace(" ".repeat(new_indent));
-        }
-        self.set_caret_on_start();
-        self.unset_anchor();
-
-        if anchor_existed {
-            self.set_anchor();
-            if old_col < old_indent {
-                self.move_hor(old_col as i32);
-            } else {
-                self.move_hor(old_col as i32 + indent_diff);
-            }
-            self.swap_ends();
-        }
-
-        if old_col < old_indent {
-            self.move_hor(old_col as i32);
-        } else {
-            self.move_hor(old_col as i32 + indent_diff);
-        }
-
-        indent_diff != 0
+        carets
+            .into_iter()
+            .map(|caret| parser.indent_on(caret, buffer.bytes(), buffer.opts))
+            .collect()
     }
 }
 
@@ -1142,175 +365,3 @@ fn format_root(node: Node) -> Text {
 
     builder.build()
 }
-
-fn highlight(
-    root: Node,
-    injected_trees: &mut Vec<InjectedTree>,
-    (lang_parts, forms): (LangParts<'static>, &'static [(FormId, u8)]),
-    (bytes, tags): (&Bytes, &mut Tags),
-    range: Range<usize>,
-) {
-    for inj in injected_trees {
-        inj.highlight(bytes, tags, range.clone());
-    }
-
-    let tagger = ts_tagger();
-    let (.., Queries { highlights, .. }) = &lang_parts;
-
-    let mut cursor = QueryCursor::new();
-    cursor.set_byte_range(range.clone());
-    let buf = TsBuf(bytes);
-
-    let mut hi_captures = cursor.captures(highlights, root, buf);
-    while let Some((qm, _)) = hi_captures.next() {
-        let qm: &QueryMatch = qm;
-        for cap in qm.captures.iter() {
-            let ts_range = cap.node.range();
-
-            // Assume that an empty range must take up the whole line
-            // Cuz sometimes it be like that
-            let (form, priority) = forms[cap.index as usize];
-            let range = ts_range.start_byte..ts_range.end_byte;
-            tags.insert(tagger, range, form.to_tag(priority));
-        }
-    }
-}
-
-/// Figures out injection changes
-///
-/// This function does not actually modify the injections (beyond
-/// removing deinjected areas), as that will be done by the
-/// highlight_and_inject function.
-///
-/// Its main purpose is to find the regions where changes have taken
-/// place and add them to the ranges to update.
-fn inject(
-    range_to_update: Range<usize>,
-    new_ranges: &mut Ranges,
-    (lang_parts, injected_trees): (LangParts, &mut Vec<InjectedTree>),
-    (old, new): (Option<&Tree>, &Tree),
-    bytes: &Bytes,
-) {
-    let buf = TsBuf(bytes);
-    let (.., Queries { injections, .. }) = lang_parts;
-
-    let cn = injections.capture_names();
-    let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
-    let language = |qm: &QueryMatch, props: &[QueryProperty]| {
-        props
-            .iter()
-            .find_map(|p| {
-                (p.key.as_ref() == "injection.language")
-                    .then_some(p.value.as_ref().unwrap().to_string())
-            })
-            .or_else(|| {
-                let cap = qm
-                    .captures
-                    .iter()
-                    .find(|cap| cn[cap.index as usize] == "injection.language")?;
-                Some(bytes.strs(cap.node.byte_range()).unwrap().to_string())
-            })
-    };
-
-    let mut cursor = QueryCursor::new();
-    cursor.set_byte_range(range_to_update.clone());
-
-    let mut new_langs: Vec<(LangParts<'static>, Ranges)> = Vec::new();
-    let mut removals = Vec::new();
-
-    if let Some(old) = old {
-        let mut inj_captures = cursor.captures(injections, old.root_node(), buf);
-        while let Some((qm, _)) = inj_captures.next() {
-            let Some(cap) = qm.captures.iter().find(is_content) else {
-                continue;
-            };
-
-            let props = injections.property_settings(qm.pattern_index);
-            let Some(lang) = language(qm, props) else {
-                continue;
-            };
-
-            removals.push((lang, cap.node.byte_range()));
-        }
-    }
-
-    let mut inj_captures = cursor.captures(injections, new.root_node(), buf);
-    while let Some((qm, _)) = inj_captures.next() {
-        let Some(cap) = qm.captures.iter().find(is_content) else {
-            continue;
-        };
-
-        let props = injections.property_settings(qm.pattern_index);
-        let Some(lang) = language(qm, props) else {
-            continue;
-        };
-
-        let Ok(mut lang_parts) = lang_parts_of(&lang) else {
-            continue;
-        };
-
-        // You may want to set a new injections query, only for this capture.
-        if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
-            && let Some(value) = prop.value.as_ref()
-        {
-            match query_from_path(&lang, value, lang_parts.1) {
-                Ok(injections) => {
-                    lang_parts.2.injections = injections;
-                }
-                Err(err) => context::error!("{err}"),
-            }
-        };
-
-        let cap_range = cap.node.byte_range();
-        removals.retain(|(rm_lang, rm_range)| {
-            // We use contains here because weird injection mergers could cause
-            // the ranges to differ, even if they have the same leaf sizes.
-            !(*rm_lang == lang
-                && (rm_range.contains(&cap_range.start) || cap_range.contains(&rm_range.start)))
-        });
-
-        if let Some(inj) = injected_trees
-            .iter_mut()
-            .find(|inj| inj.lang_parts().0 == lang_parts.0)
-        {
-            if inj.add_range(cap_range.clone()) {
-                new_ranges.add(cap_range.clone());
-            }
-        } else if let Some(new) = new_langs.iter_mut().find(|(lp, _)| lp.0 == lang_parts.0) {
-            new_ranges.add(cap_range.clone());
-            new.1.add(cap_range);
-        } else {
-            new_ranges.add(cap_range.clone());
-            new_langs.push((lang_parts, Ranges::new(cap_range)));
-        }
-    }
-
-    for (lang, range) in removals {
-        if let Some(inj) = injected_trees
-            .iter_mut()
-            .find(|inj| inj.lang_parts().0 == lang)
-            && inj.remove_range(range.clone())
-        {
-            new_ranges.add(range);
-        }
-    }
-
-    injected_trees.retain_mut(|inj| {
-        if inj.is_empty() {
-            false
-        } else {
-            inj.update_tree(bytes);
-            true
-        }
-    });
-
-    for (lang_parts, ranges) in new_langs {
-        injected_trees.push(InjectedTree::new(bytes, lang_parts, ranges));
-    }
-
-    for inj in injected_trees.iter_mut() {
-        inj.refactor_injections(range_to_update.clone(), new_ranges, bytes);
-    }
-}
-
-type RemoteResult = Result<InnerTsParser, BufferTracker>;
