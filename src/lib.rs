@@ -95,10 +95,9 @@ use duat_core::{
     ui::Widget,
 };
 use duat_filetype::FileType;
-use duat_treesitter::{Parser, TsBuffer};
+use duat_treesitter::TsHandle;
 
-/// [`Parser`] to highlight the match of the delimiter under
-/// [`Selection`]s
+/// highlight the match of delimiters under [`Selection`]s
 ///
 /// [`Selection`]: duat_core::mode::Selection
 #[derive(Clone)]
@@ -193,10 +192,8 @@ impl Plugin for MatchPairs {
                 escaped: &self.escaped,
             };
 
-            let range = handle.printed_range(pa);
+            let range = handle.full_printed_range(pa);
             match_pairs_ref.update(pa, handle, range);
-
-            Ok(())
         });
     }
 }
@@ -230,7 +227,7 @@ impl MatchPairsRef<'_> {
             .collect();
 
         'selections: for (c_range, is_main) in selections {
-            let str: Vec<u8> = buffer.bytes().slices(c_range.clone()).collect();
+            let str: Vec<u8> = handle.text(pa).bytes().slices(c_range.clone()).collect();
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.ts_and_reg.iter().position(ends(&str)) {
@@ -241,39 +238,46 @@ impl MatchPairsRef<'_> {
                 continue;
             };
 
-            let (start_range, end_range) = if let Some((s_range, e_range)) =
-                buffer.read_ts_parser(|parser: &Parser| {
-                    let node = parser
-                        .root()
-                        .and_then(|root| root.descendant_for_byte_range(c_range.start, c_range.end))
-                        .and_then(|node| {
-                            delims
-                                .iter()
-                                .position(|d| *d == node.grammar_name().as_bytes())
-                                .zip(Some(node))
-                        });
-                    let ((delim_side, node), parent) =
-                        node.and_then(|(ds, n)| Some((ds, n)).zip(n.parent()))?;
+            let get_ts_ranges = |parser: &duat_treesitter::Parser| {
+                let node = parser
+                    .root_node()
+                    .descendant_for_byte_range(c_range.start, c_range.end)
+                    .and_then(|node| {
+                        delims
+                            .iter()
+                            .position(|d| *d == node.grammar_name().as_bytes())
+                            .zip(Some(node))
+                    });
+                let ((delim_side, node), parent) =
+                    node.and_then(|(ds, n)| Some((ds, n)).zip(n.parent()))?;
 
-                    let mut c = parent.walk();
+                let mut c = parent.walk();
 
-                    if delim_side == 0
-                        && (c.goto_first_child() && c.node() == node && c.goto_parent())
-                        && (c.goto_last_child() && c.node().grammar_name().as_bytes() == delims[1])
-                    {
-                        Some((node.byte_range(), c.node().byte_range()))
-                    } else if (c.goto_last_child() && c.node() == node && c.goto_parent())
-                        && (c.goto_first_child() && c.node().grammar_name().as_bytes() == delims[0])
-                    {
-                        Some((c.node().byte_range(), node.byte_range()))
-                    } else {
-                        None
-                    }
-                }) {
-                (s_range, e_range)
+                if delim_side == 0
+                    && (c.goto_first_child() && c.node() == node && c.goto_parent())
+                    && (c.goto_last_child() && c.node().grammar_name().as_bytes() == delims[1])
+                {
+                    Some((node.byte_range(), c.node().byte_range()))
+                } else if (c.goto_last_child() && c.node() == node && c.goto_parent())
+                    && (c.goto_first_child() && c.node().grammar_name().as_bytes() == delims[0])
+                {
+                    Some((c.node().byte_range(), node.byte_range()))
+                } else {
+                    None
+                }
+            };
+
+            let (start_range, end_range) = if let Some((parser, _)) = handle.get_ts_parser(pa)
+                && let Some(ranges) = get_ts_ranges(parser)
+            {
+                ranges
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
-                    let mut iter = buffer.bytes().search(escaped).range(c_range.start..);
+                    let mut iter = handle
+                        .text(pa)
+                        .bytes()
+                        .search(escaped)
+                        .range(c_range.start..);
                     let mut bounds = 0;
 
                     loop {
@@ -286,7 +290,7 @@ impl MatchPairsRef<'_> {
                         }
                     }
                 } else {
-                    let mut iter = buffer.bytes().search(escaped).range(..c_range.end);
+                    let mut iter = handle.text(pa).bytes().search(escaped).range(..c_range.end);
                     let mut bounds = 0;
 
                     loop {
@@ -302,6 +306,8 @@ impl MatchPairsRef<'_> {
             } else {
                 continue;
             };
+
+            let buffer = handle.write(pa);
 
             let id = if is_main {
                 form::id_of!("matched_pair.main.start")
