@@ -12,7 +12,7 @@ categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
 dirs-next = "2.0"
-duat-core = "0.7.5"
+duat-core = "0.7.6"
 
 [dependencies.regex]
 version = "1.12"
