@@ -43,20 +43,33 @@ macro_rules! return_err {
 }
 
 pub(crate) fn add_parser_hook() {
-    fn async_parse(pa: &mut Pass, handle: &Handle, printed_lines: &[Range<usize>]) -> bool {
+    fn async_parse(
+        pa: &mut Pass,
+        handle: &Handle,
+        printed_lines: &[Range<usize>],
+        is_queued: bool,
+    ) -> bool {
         if let Some(filetype) = handle.filetype(pa)
             && let Some((parser, buffer)) = PARSERS.write(pa, handle)
             && parser.lang_parts.0 == filetype
         {
+            if parser.is_parsing && !is_queued {
+                return true;
+            }
+
+            parser.is_parsing = true;
+
             let visible_ranges = get_visible_ranges(printed_lines);
             let mut parts = TRACKER.parts(buffer).unwrap();
 
             apply_changes(&parts, parser);
 
-            if !parser.parse(&mut parts, &visible_ranges, false) {
+            if !parser.parse(&mut parts, &visible_ranges, Some(Instant::now())) {
                 let handle = handle.clone();
                 let printed_lines = printed_lines.to_vec();
-                context::queue(move |pa| _ = async_parse(pa, &handle, &printed_lines))
+                context::queue(move |pa| _ = async_parse(pa, &handle, &printed_lines, true))
+            } else {
+                parser.is_parsing = false;
             }
 
             for range in parts
@@ -76,7 +89,7 @@ pub(crate) fn add_parser_hook() {
 
     hook::add::<BufferUpdated>(|pa, handle| {
         let printed_lines = handle.printed_line_ranges(pa);
-        if async_parse(pa, handle, &printed_lines) {
+        if async_parse(pa, handle, &printed_lines, false) {
             return;
         }
 
@@ -102,9 +115,10 @@ pub(crate) fn add_parser_hook() {
                 forms: forms_from_lang_parts(lang_parts),
                 injections: Vec::new(),
                 ranges_to_inject: Ranges::new(0..len_bytes),
+                is_parsing: false,
             });
 
-            async_parse(pa, handle, &printed_lines);
+            async_parse(pa, handle, &printed_lines, false);
         } else {
             let handle = handle.clone();
             std::thread::spawn(move || {
@@ -123,6 +137,7 @@ pub struct Parser {
     forms: &'static [(FormId, u8)],
     ranges_to_inject: Ranges,
     injections: Vec<Parser>,
+    is_parsing: bool,
 }
 
 impl Parser {
@@ -136,14 +151,12 @@ impl Parser {
         &mut self,
         parts: &mut BufferParts,
         visible_ranges: &[Range<usize>],
-        force: bool,
+        start: Option<Instant>,
     ) -> bool {
-        let start = Instant::now();
-
         let mut parsed_at_least_one_region = false;
 
         for range in visible_ranges.iter() {
-            let Some(parsed_a_tree) = self.parse_trees(start, range.clone(), parts, force) else {
+            let Some(parsed_a_tree) = self.parse_trees(range.clone(), parts, start) else {
                 return false;
             };
 
@@ -161,13 +174,13 @@ impl Parser {
 
         for range in ranges_to_inject {
             self.inject(range, parts);
-            if !force && must_yield(start) {
+            if must_yield(start) {
                 return false;
             }
         }
 
         for injection in self.injections.iter_mut() {
-            if !injection.parse(parts, visible_ranges, force) {
+            if !injection.parse(parts, visible_ranges, start) {
                 return false;
             }
         }
@@ -177,12 +190,11 @@ impl Parser {
 
     fn parse_trees(
         &mut self,
-        start: Instant,
         range: Range<usize>,
         parts: &mut BufferParts,
-        force: bool,
+        start: Option<Instant>,
     ) -> Option<bool> {
-        let mut callback = |_: &ParseState| match !force && must_yield(start) {
+        let mut callback = |_: &ParseState| match must_yield(start) {
             true => ControlFlow::Break(()),
             false => ControlFlow::Continue(()),
         };
@@ -324,6 +336,7 @@ impl Parser {
                         forms: forms_from_lang_parts(lang_parts),
                         ranges_to_inject: Ranges::new(0..parts.bytes.len().byte()),
                         injections: Vec::new(),
+                        is_parsing: false,
                     });
 
                     parts.ranges_to_update.add_ranges([cap_range.clone()]);
@@ -688,7 +701,7 @@ pub(crate) fn sync_parse<'p>(
     let mut parts = TRACKER.parts(buffer).unwrap();
 
     apply_changes(&parts, parser);
-    parser.parse(&mut parts, &visible_ranges, true);
+    parser.parse(&mut parts, &visible_ranges, None);
 
     Some((parser, buffer))
 }
@@ -719,8 +732,12 @@ fn input_edit(change: Change<&str>, bytes: &Bytes) -> InputEdit {
 }
 
 /// Spent too long parsing, yield if necessary
-fn must_yield(start: Instant) -> bool {
-    start.elapsed() >= PARSE_TIMEOUT && duat_core::context::has_unhandled_events()
+fn must_yield(start: Option<Instant>) -> bool {
+    if let Some(start) = start {
+        start.elapsed() >= PARSE_TIMEOUT && duat_core::context::has_unhandled_events()
+    } else {
+        false
+    }
 }
 
 fn get_visible_ranges(printed_lines: &[Range<usize>]) -> Vec<Range<usize>> {
