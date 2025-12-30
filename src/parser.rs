@@ -63,6 +63,7 @@ pub(crate) fn add_parser_hook() {
                 .ranges_to_update
                 .select_from(printed_lines.iter().cloned())
             {
+                parts.tags.remove_excl(ts_tagger(), range.clone());
                 parser.highlight(range.clone(), &mut parts);
                 parts.ranges_to_update.update_on([range]);
             }
@@ -97,7 +98,6 @@ pub(crate) fn add_parser_hook() {
             PARSERS.register(pa, handle, Parser {
                 parser,
                 trees: Trees::new([Ranges::new(0..len_bytes)]),
-                n_trees_to_parse: 1,
                 lang_parts,
                 forms: forms_from_lang_parts(lang_parts),
                 injections: Vec::new(),
@@ -119,7 +119,6 @@ pub(crate) fn add_parser_hook() {
 pub struct Parser {
     parser: TsParser,
     trees: Trees,
-    n_trees_to_parse: usize,
     lang_parts: LangParts<'static>,
     forms: &'static [(FormId, u8)],
     ranges_to_inject: Ranges,
@@ -141,21 +140,18 @@ impl Parser {
     ) -> bool {
         let start = Instant::now();
 
-        if self.n_trees_to_parse > 0 {
-            let mut parsed_at_least_one_region = false;
+        let mut parsed_at_least_one_region = false;
 
-            for range in visible_ranges.iter() {
-                let Some(parsed_a_tree) = self.parse_trees(start, range.clone(), parts, force)
-                else {
-                    return false;
-                };
+        for range in visible_ranges.iter() {
+            let Some(parsed_a_tree) = self.parse_trees(start, range.clone(), parts, force) else {
+                return false;
+            };
 
-                parsed_at_least_one_region |= parsed_a_tree;
-            }
+            parsed_at_least_one_region |= parsed_a_tree;
+        }
 
-            if parsed_at_least_one_region {
-                self.ranges_to_inject.add(0..parts.bytes.len().byte());
-            }
+        if parsed_at_least_one_region {
+            self.ranges_to_inject.add(0..parts.bytes.len().byte());
         }
 
         let ranges_to_inject: Vec<Range<usize>> = visible_ranges
@@ -186,9 +182,9 @@ impl Parser {
         parts: &mut BufferParts,
         force: bool,
     ) -> Option<bool> {
-        let mut callback = |_: &ParseState| match force || !must_yield(start) {
-            true => ControlFlow::Continue(()),
-            false => ControlFlow::Break(()),
+        let mut callback = |_: &ParseState| match !force && must_yield(start) {
+            true => ControlFlow::Break(()),
+            false => ControlFlow::Continue(()),
         };
 
         let ts_range = |range: Range<usize>| TsRange {
@@ -238,7 +234,6 @@ impl Parser {
             }
 
             tree.needs_parse = false;
-            self.n_trees_to_parse -= 1;
             parsed_at_least_one_region = true;
         }
 
@@ -325,7 +320,6 @@ impl Parser {
                     self.injections.push(Parser {
                         parser,
                         trees: Trees::new([Ranges::new(cap_range.clone())]),
-                        n_trees_to_parse: 1,
                         lang_parts,
                         forms: forms_from_lang_parts(lang_parts),
                         ranges_to_inject: Ranges::new(0..parts.bytes.len().byte()),
@@ -365,10 +359,7 @@ impl Parser {
         _ = self.ranges_to_inject.remove_on(range);
     }
 
-    fn highlight(&mut self, range: Range<usize>, parts: &mut BufferParts) {
-        let mut cursor = QueryCursor::new();
-
-        cursor.set_byte_range(range.clone());
+    fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
         let buf = TsBuf(parts.bytes);
 
         let tagger = ts_tagger();
@@ -376,16 +367,15 @@ impl Parser {
 
         for (_, tree) in self.trees.intersecting(range.clone()) {
             // If the tree wasn't there, then its addition will readd its range to
-            // parts.ranges_to_update, so we can just ignore it.
+            // parts.ranges_to_update, so we can just ignore this.
             let Some(ts_tree) = tree.ts_tree.as_ref() else {
                 continue;
             };
 
-            for range in tree.region.iter_over(range.clone()) {
-                parts.tags.remove_excl(tagger, range);
-            }
-
+            let mut cursor = QueryCursor::new();
+            cursor.set_byte_range(range.clone());
             let mut hi_captures = cursor.captures(highlights, ts_tree.root_node(), buf);
+
             while let Some((qm, _)) = hi_captures.next() {
                 let qm: &QueryMatch = qm;
                 for cap in qm.captures.iter() {
@@ -400,7 +390,7 @@ impl Parser {
             }
         }
 
-        for injection in self.injections.iter_mut() {
+        for injection in self.injections.iter() {
             injection.highlight(range.clone(), parts);
         }
     }
@@ -677,7 +667,6 @@ impl Parser {
             .trees
             .intersecting_mut(edit.start_byte..edit.new_end_byte)
         {
-            self.n_trees_to_parse += (!tree.needs_parse) as usize;
             tree.needs_parse = true;
         }
 
@@ -730,14 +719,8 @@ fn input_edit(change: Change<&str>, bytes: &Bytes) -> InputEdit {
 }
 
 /// Spent too long parsing, yield if necessary
-#[track_caller]
 fn must_yield(start: Instant) -> bool {
-    if start.elapsed() >= PARSE_TIMEOUT && duat_core::context::has_unhandled_events() {
-        context::debug!("yielded");
-        true
-    } else {
-        false
-    }
+    start.elapsed() >= PARSE_TIMEOUT && duat_core::context::has_unhandled_events()
 }
 
 fn get_visible_ranges(printed_lines: &[Range<usize>]) -> Vec<Range<usize>> {
