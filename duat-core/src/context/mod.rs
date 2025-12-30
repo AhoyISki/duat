@@ -86,7 +86,7 @@ mod global {
 
     /// Orders to quit Duat
     pub(crate) fn order_reload_or_quit() {
-        WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
+        WILL_RELOAD_OR_QUIT.store(true, Ordering::SeqCst);
     }
 
     /// Wether Duat has received new events that need to be handled
@@ -104,7 +104,7 @@ mod global {
     /// [refocus]: crate::hook::FocusedOnDuat
     /// [queued function]: queue
     pub fn has_unhandled_events() -> bool {
-        NEW_EVENT_COUNT.get().unwrap().load(Ordering::Relaxed) > 0
+        NEW_EVENT_COUNT.get().unwrap().load(Ordering::SeqCst) > 0
     }
 
     /// A channel for [`DuatEvent`]s

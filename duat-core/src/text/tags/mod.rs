@@ -475,12 +475,6 @@ impl InnerTags {
 
         // Old length removal.
         if old.end > old.start {
-            let i = self
-                .list
-                .iter_fwd(..)
-                .take_while(|(_, (b, _))| *b < 1010)
-                .count();
-
             // First, get rid of all ranges that start and/or end in the old
             // range.
             // old.start + 1 because we don't want to get rid of bounds that

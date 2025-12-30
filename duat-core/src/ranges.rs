@@ -347,6 +347,7 @@ impl Ranges {
     pub fn iter_over(&self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
         self.iter_intersecting(within.clone())
             .map(move |range| range.start.max(within.start)..range.end.min(within.end))
+            .filter(|range| !range.is_empty())
     }
 
     /// Iterates over all [`Range`]s that intersect with `within`

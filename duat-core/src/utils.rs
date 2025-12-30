@@ -4,19 +4,21 @@
 //! within Duat, but I have found use for them in some of my plugins,
 //! so I'm making them public for other to use as well.
 //!
+//! An example of these functions are those that deal with ranges of
+//! "shifted parts".
+//!
 //! Internally (and externally), these functions work with structs
-//! that have a "shift" component. Specifically, these structs are an
-//! ordered list with a shifting component. The shifting component
-//! indicates at which point in the list there is a shift. Elements
-//! before that point are considered to be correctly shifted, whilst
-//! elements after that point are considered to be incorrectly shifted
-//! by the exact size of the shift.
+//! that have a "shift" component. The shifting component indicates at
+//! which point in the list there is a shift. Elements before that
+//! point are considered to be correctly shifted, while elements
+//! after that point are considered to be incorrectly shifted by the
+//! exact size of the shift.
 //!
 //! This essentially lets me have a sorted list (for binary search and
 //! fast insertion via [`GapBuffer`]s) while still letting me shift
 //! elements (usually by a [`Change`] in the [`Text`]) without
-//! updating every element after the [`Change`]. I just have to shift
-//! elements between where the [`Change`] was inserted and where the
+//! updating every element after the `Change`. I just have to shift
+//! elements between where the `Change` was inserted and where the
 //! shift starts.
 //!
 //! This mirrors how text editing works in the real world. A user
@@ -37,7 +39,7 @@
 //! which I also find really simple with my system.
 //!
 //! [`GapBuffer`]: gapbuf::GapBuffer
-//! [`Change`]: crate::text::Change
+//! [`Change`]: crate::buffer::Change
 use std::{
     any::TypeId,
     collections::HashMap,
