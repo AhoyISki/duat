@@ -256,7 +256,10 @@ impl Parser {
         Some(parsed_at_least_one_region)
     }
 
-    fn inject(&mut self, range: Range<usize>, parts: &mut BufferParts) {
+    fn inject(&mut self, orig_range: Range<usize>, parts: &mut BufferParts) {
+        let range =
+            orig_range.start.saturating_sub(1)..(orig_range.end + 1).min(parts.bytes.len().byte());
+
         let buf = TsBuf(parts.bytes);
         let (.., Queries { injections, .. }) = self.lang_parts;
 
@@ -369,7 +372,7 @@ impl Parser {
             }
         }
 
-        _ = self.ranges_to_inject.remove_on(range);
+        _ = self.ranges_to_inject.remove_on(orig_range);
     }
 
     fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
