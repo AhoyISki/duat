@@ -9,11 +9,13 @@ use crate::{
     },
 };
 
-/// How many [`TagOrSkip`]s to keep a [`RawTag`] range
+/// How many [`Tag`]s to keep a [`RawTag`] range
 ///
 /// The limit is low because most of the time, people don't nest
-/// [`Tag`]s, and a low limit means that iteration will go back very
-/// few [`TagOrSkip`]s
+/// `Tag`s, and a low limit means that iteration will go back very
+/// few `Tag`s
+///
+/// [`Tag`]: super::Tag
 const MIN_FOR_RANGE: usize = 16;
 
 /// A struct to keep better track of very long [`RawTag`] ranges
@@ -58,6 +60,12 @@ impl Bounds {
     /// Represents the given range in the list, if it wasn't there
     /// already
     pub fn represent(&mut self, [s, e]: [([i32; 2], RawTag); 2]) {
+        let [([s_n, s_b], s_tag), ([e_n, e_b], e_tag)] = [s, e];
+
+        if self.min_len > (e_n - s_n) as usize {
+            return;
+        }
+
         let before_id = |(bound, tag, _): ([i32; 2], RawTag, _)| (bound, tag);
 
         let (Err(s_i), Err(e_i)) = (
@@ -67,13 +75,9 @@ impl Bounds {
             return;
         };
 
-        if e_i >= s_i + self.min_len {
-            let [(s_bound, s_tag), (e_bound, e_tag)] = [s, e];
-
-            let id = RangeId::new();
-            self.list.insert(s_i, (s_bound, s_tag, id));
-            self.list.insert(e_i, (e_bound, e_tag, id));
-        }
+        let id = RangeId::new();
+        self.list.insert(e_i, ([e_n, e_b], e_tag, id));
+        self.list.insert(s_i, ([s_n, s_b], s_tag, id));
     }
 
     /// Shifts the bounds within by a difference in a position,
@@ -98,8 +102,10 @@ impl Bounds {
 
     /// Removes all ranges that start or end in the range
     ///
-    /// WILL handle matching [`Tag`]s, WILL handle shifting of ranges,
-    /// will NOT handle fully contained ranges.
+    /// WILL handle matching [`Tag`]s, WILL NOT handle shifting of
+    /// ranges, will NOT handle fully contained ranges.
+    ///
+    /// [`Tag`]: super::Tag
     pub fn remove_intersecting(
         &mut self,
         range: Range<usize>,
@@ -111,11 +117,20 @@ impl Bounds {
         let mut removed = Vec::new();
         let mut starts = Vec::new();
         let mut ends = Vec::new();
+        // For aiding exclusive removal.
+        let mut first_and_last_removed_indices = None;
 
         self.list
             .extract_if_while(s..e, |_, ([_, b], tag, _)| Some(filter((b, tag))))
-            .for_each(|(_, ([n, _], tag, id))| {
+            .for_each(|(i, ([n, _], tag, id))| {
                 removed.push(n as usize);
+
+                if let Some((_, last)) = first_and_last_removed_indices.as_mut() {
+                    *last = i;
+                } else {
+                    first_and_last_removed_indices = Some((i, i));
+                }
+
                 if tag.is_start() {
                     starts.push((n, id));
                 } else {
@@ -123,9 +138,14 @@ impl Bounds {
                 }
             });
 
+        let Some((first, last)) = first_and_last_removed_indices else {
+            removed.sort_unstable();
+            return removed;
+        };
+
         removed.extend(
             self.list
-                .extract_if_while(e - removed.len().., |_, (.., e_id)| {
+                .extract_if_while(first.., |_, (.., e_id)| {
                     if let Some(i) = starts.iter().rposition(|(_, s_id)| *s_id == e_id) {
                         starts.remove(i);
                         Some(true)
@@ -140,7 +160,7 @@ impl Bounds {
 
         removed.extend(
             self.list
-                .rextract_if_while(..s, |_, (.., s_id)| {
+                .rextract_if_while(..last, |_, (.., s_id)| {
                     if let Some(i) = ends.iter().rposition(|(_, e_id)| *e_id == s_id) {
                         ends.remove(i);
                         Some(true)

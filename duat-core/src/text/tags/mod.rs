@@ -349,30 +349,25 @@ impl InnerTags {
     pub(crate) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let range = crate::utils::get_range(within, self.len_bytes() + 1);
 
-        for range in self
+        for extent in self
             .extents
             .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
         {
-            self.remove_from_if(range, |(_, tag)| taggers.contains_tagger(tag.tagger()));
+            self.remove_from_if(extent, |(_, tag)| taggers.contains_tagger(tag.tagger()));
         }
     }
 
     fn remove_from_excl(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let range = crate::utils::get_range(within, self.len_bytes());
-        // In this case, this would be an empty range, and returning is
-        // appropriate.
-        let Some(excl_end) = range.end.checked_sub(1).filter(|e| *e >= range.start) else {
-            return;
-        };
 
-        for range in self
+        for extent in self
             .extents
             .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
         {
-            self.remove_from_if(range.clone(), |(b, tag)| {
+            self.remove_from_if(extent.clone(), |(b, tag)| {
                 taggers.contains_tagger(tag.tagger())
-                    && ((b > range.start as i32 || !tag.is_end())
-                        && (b < excl_end as i32 || !tag.is_start()))
+                    && ((b > range.start as i32 || tag.is_start())
+                        && (b < range.end as i32 || tag.is_end()))
             });
         }
     }
@@ -381,7 +376,7 @@ impl InnerTags {
     /// matches
     ///
     /// WILL remove every required [`RawTag`], WILL shift the indices
-    /// of the [`Bounds`], WILL NOT shift [`TaggerExtents`], since
+    /// of the [`Bounds`], WILL NOT shift [`TaggerExtents`] since
     /// there is no byte shifting, WILL NOT shift the bytes of the
     /// [`Bounds`]
     fn remove_from_if(
@@ -389,12 +384,12 @@ impl InnerTags {
         range: Range<usize>,
         filter: impl Fn((i32, RawTag)) -> bool + Copy,
     ) {
-        for i in self
+        let removed = self
             .bounds
             .remove_intersecting(range.clone(), filter)
-            .into_iter()
-            .rev()
-        {
+            .into_iter();
+
+        for i in removed.rev() {
             // We remove both bounds in order to prevent a state of dangling
             // bounds, which would cause a lookback or lookahead over the whole
             // Text.
@@ -402,11 +397,12 @@ impl InnerTags {
             self.bounds.shift_by(i, [-1, 0]);
         }
 
-        let mut removed = 0;
         let mut starts = Vec::new();
         let mut ends = Vec::new();
         let mut meta_tags_changed = false;
         let mut tags_changed = false;
+        // For aiding exclusive removal.
+        let mut first_and_last_removed_indices = None;
 
         let (Ok(start) | Err(start)) = self.list.find_by_key(range.start as i32, |(b, _)| b);
         let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as i32, |(b, _)| b);
@@ -414,8 +410,13 @@ impl InnerTags {
         self.list
             .extract_if_while(start..end, |_, entry| Some(filter(entry)))
             .for_each(|(i, (_, tag))| {
-                removed += 1;
                 self.bounds.shift_by(i, [-1, 0]);
+
+                if let Some((_, last)) = first_and_last_removed_indices.as_mut() {
+                    *last = i;
+                } else {
+                    first_and_last_removed_indices = Some((i, i));
+                }
 
                 // This is the only place where this should be checked.
                 tags_changed = true;
@@ -434,8 +435,15 @@ impl InnerTags {
                 }
             });
 
+        let Some((first, last)) = first_and_last_removed_indices else {
+            return;
+        };
+
+        self.meta_tags_state += meta_tags_changed as u64;
+        self.tags_state += tags_changed as u64;
+
         self.list
-            .extract_if_while(end - removed.., |i, (_, tag)| {
+            .extract_if_while(last.., |i, (_, tag)| {
                 if let Some(s_i) = starts.iter().rposition(|s| s.ends_with(&tag)) {
                     self.bounds.shift_by(i, [-1, 0]);
                     starts.remove(s_i);
@@ -449,7 +457,7 @@ impl InnerTags {
             .for_each(|_| {});
 
         self.list
-            .rextract_if_while(..start, |i, (_, tag)| {
+            .rextract_if_while(..first, |i, (_, tag)| {
                 if let Some(e_i) = ends.iter().rposition(|e| tag.ends_with(e)) {
                     self.bounds.shift_by(i, [-1, 0]);
                     ends.remove(e_i);
@@ -461,9 +469,6 @@ impl InnerTags {
                 }
             })
             .for_each(|_| {});
-
-        self.meta_tags_state += meta_tags_changed as u64;
-        self.tags_state += tags_changed as u64;
     }
 
     /// Transforms a byte range into another byte range
@@ -524,7 +529,7 @@ impl InnerTags {
     pub fn update_bounds(&mut self) {
         for range in self.bounds.take_ranges() {
             let mut starts = Vec::new();
-            for (i, (b, tag)) in self.list.iter_fwd(range) {
+            for (i, (b, tag)) in self.list.iter_fwd(range.clone()) {
                 if tag.is_start() {
                     starts.push((i as i32, b, tag));
                 } else if tag.is_end()

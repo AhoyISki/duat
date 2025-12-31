@@ -357,7 +357,7 @@ impl<'a, S: Shiftable> std::fmt::Debug for DebugBuf<'a, S> {
                 } else {
                     *elem
                 };
-                writeln!(f, "    {elem:?}")?
+                writeln!(f, "    {i}: {elem:?}")?
             }
             writeln!(f, "]")
         } else {

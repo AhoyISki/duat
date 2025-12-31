@@ -380,6 +380,7 @@ impl Ranges {
 
     /// Wether any [`Range`] in this `Ranges` intersects with the
     /// given `range`
+    #[track_caller]
     pub fn intersects_with(&self, range: Range<usize>) -> bool {
         assert_range(&range);
 
