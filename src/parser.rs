@@ -22,25 +22,11 @@ use tree_sitter::{
     QueryCursor, QueryMatch, QueryProperty, Range as TsRange, StreamingIterator, TextProvider,
 };
 
-use crate::{
-    LangParts, Queries, lang_parts_of, languages::parser_is_compiled, query_from_path, tree::Trees,
-};
+use crate::{LangParts, Queries, lang_parts_of, query_from_path, tree::Trees};
 
 const PARSE_TIMEOUT: Duration = Duration::from_millis(3);
 static TRACKER: BufferTracker = BufferTracker::new();
 static PARSERS: PerBuffer<Parser> = PerBuffer::new();
-
-macro_rules! return_err {
-    ($result:expr) => {{
-        match $result {
-            Ok(ok) => ok,
-            Err(err) => {
-                context::error!("{err}");
-                return;
-            }
-        }
-    }};
-}
 
 pub(crate) fn add_parser_hook() {
     fn async_parse(
@@ -64,7 +50,7 @@ pub(crate) fn add_parser_hook() {
 
             apply_changes(&parts, parser);
 
-            if !parser.parse(&mut parts, &visible_ranges, Some(Instant::now())) {
+            if !parser.parse(&mut parts, &visible_ranges, Some(Instant::now()), handle) {
                 let handle = handle.clone();
                 let printed_lines = printed_lines.to_vec();
                 context::queue(move |pa| _ = async_parse(pa, &handle, &printed_lines, true))
@@ -96,12 +82,8 @@ pub(crate) fn add_parser_hook() {
         let Some(filetype) = handle.read(pa).filetype() else {
             return;
         };
-        let Some(parser_is_compiled) = parser_is_compiled(filetype) else {
-            return;
-        };
 
-        if parser_is_compiled {
-            let lang_parts = return_err!(lang_parts_of(filetype));
+        if let Some(lang_parts) = lang_parts_of(filetype, handle) {
             let len_bytes = handle.text(pa).len().byte();
 
             let mut parser = TsParser::new();
@@ -119,13 +101,6 @@ pub(crate) fn add_parser_hook() {
             });
 
             async_parse(pa, handle, &printed_lines, false);
-        } else {
-            let handle = handle.clone();
-            std::thread::spawn(move || {
-                if lang_parts_of(filetype).is_ok() {
-                    handle.request_update();
-                }
-            });
         }
     });
 }
@@ -152,6 +127,7 @@ impl Parser {
         parts: &mut BufferParts,
         visible_ranges: &[Range<usize>],
         start: Option<Instant>,
+        handle: &Handle,
     ) -> bool {
         let mut parsed_at_least_one_region = false;
 
@@ -173,14 +149,14 @@ impl Parser {
             .collect();
 
         for range in ranges_to_inject {
-            self.inject(range, parts);
+            self.inject(range, parts, handle);
             if must_yield(start) {
                 return false;
             }
         }
 
         for injection in self.injections.iter_mut() {
-            if !injection.parse(parts, visible_ranges, start) {
+            if !injection.parse(parts, visible_ranges, start, handle) {
                 return false;
             }
         }
@@ -256,7 +232,9 @@ impl Parser {
         Some(parsed_at_least_one_region)
     }
 
-    fn inject(&mut self, orig_range: Range<usize>, parts: &mut BufferParts) {
+    fn inject(&mut self, orig_range: Range<usize>, parts: &mut BufferParts, handle: &Handle) {
+        // This is done to prevent situations where the range of a touching
+        // injection isn't looked at, leading to its removal.
         let range =
             orig_range.start.saturating_sub(1)..(orig_range.end + 1).min(parts.bytes.len().byte());
 
@@ -283,12 +261,10 @@ impl Parser {
 
         let mut cursor = QueryCursor::new();
         let mut observed_injections = Vec::new();
+        let mut defered_ranges = Vec::new();
 
         for (_, tree) in self.trees.intersecting(range.clone()) {
-            let ts_tree = tree
-                .ts_tree
-                .as_ref()
-                .unwrap_or_else(|| panic!("{:#?} intersects with {range:?}", tree.region));
+            let ts_tree = tree.ts_tree.as_ref().unwrap();
 
             cursor.set_byte_range(range.clone());
 
@@ -299,12 +275,15 @@ impl Parser {
                     continue;
                 };
 
+                let cap_range = cap.node.byte_range();
                 let props = injections.property_settings(qm.pattern_index);
+
                 let Some(filetype) = language(qm, props) else {
                     continue;
                 };
 
-                let Ok(mut lang_parts) = lang_parts_of(&filetype) else {
+                let Some(mut lang_parts) = lang_parts_of(&filetype, handle) else {
+                    defered_ranges.push(cap_range);
                     continue;
                 };
 
@@ -320,7 +299,6 @@ impl Parser {
                     }
                 };
 
-                let cap_range = cap.node.byte_range();
                 if let Some(injection) = self
                     .injections
                     .iter_mut()
@@ -373,6 +351,10 @@ impl Parser {
         }
 
         _ = self.ranges_to_inject.remove_on(orig_range);
+
+        for range in defered_ranges {
+            self.ranges_to_inject.add(range);
+        }
     }
 
     fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
@@ -704,7 +686,7 @@ pub(crate) fn sync_parse<'p>(
     let mut parts = TRACKER.parts(buffer).unwrap();
 
     apply_changes(&parts, parser);
-    parser.parse(&mut parts, &visible_ranges, None);
+    parser.parse(&mut parts, &visible_ranges, None, handle);
 
     Some((parser, buffer))
 }

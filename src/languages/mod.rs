@@ -1,15 +1,13 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet, hash_map::Entry},
     fs,
     path::PathBuf,
-    process::Command,
+    process::{Command, ExitStatus},
     sync::{LazyLock, Mutex},
+    thread::JoinHandle,
 };
 
-use duat_core::{
-    context,
-    text::{Text, txt},
-};
+use duat_core::context::{self, Handle};
 use indoc::formatdoc;
 use libloading::Library;
 use tree_sitter::Language;
@@ -17,85 +15,121 @@ use tree_sitter::Language;
 use self::list::LANGUAGE_OPTIONS;
 
 static FAILED_COPILATION: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
+static COMPILATIONS: LazyLock<Mutex<HashMap<String, Compilation>>> = LazyLock::new(Mutex::default);
+
+type Compilation = (JoinHandle<Option<ExitStatus>>, Vec<Handle>);
 
 mod list;
 
-/// Wether the parser for the given `filetype` is compiled
-pub fn parser_is_compiled(filetype: &str) -> Option<bool> {
-    let options = LANGUAGE_OPTIONS.get(filetype)?;
+pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
+    static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
     if FAILED_COPILATION.lock().unwrap().contains(filetype) {
         return None;
     }
 
-    let lib = options.crate_name.replace("-", "_");
-    let so_path = get_parsers_dir()
-        .ok()?
-        .join("lib")
-        .join(resolve_lib_file(&lib));
-
-    so_path.try_exists().ok()
-}
-
-pub fn get_language(filetype: &str) -> Result<Language, Text> {
-    static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
-
     let parsers_dir = get_parsers_dir()?;
-    let options = LANGUAGE_OPTIONS
-        .get(filetype)
-        .ok_or_else(|| txt!("There is no tree-sitter grammar for [a]{filetype}"))?;
+    let options = LANGUAGE_OPTIONS.get(filetype)?;
 
     let lib_dir = parsers_dir.join("lib");
-    fs::create_dir_all(&lib_dir)?;
+
+    if fs::create_dir_all(&lib_dir).is_err() {
+        return None;
+    }
+
     let crate_dir = parsers_dir.join(format!("ts-{}", options.crate_name));
     let manifest_path = crate_dir.join("Cargo.toml");
 
     let lang = options.crate_name.replace("-", "_");
-    let parser_path = lib_dir.join(resolve_lib_file(&lang));
+    let language_path = lib_dir.join(resolve_lib_file(&lang));
 
-    if let Ok(lib) = unsafe { Library::new(&parser_path) } {
+    if let Ok(lib) = unsafe { Library::new(&language_path) } {
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
             let lang_fn = lib
                 .get::<fn() -> Language>(symbol.to_lowercase().as_bytes())
-                .map_err(|err| txt!("{err}"))?;
+                .ok()?;
 
             lang_fn()
         };
 
         LIBRARIES.lock().unwrap().push(lib);
 
-        Ok(language)
+        Some(language)
     } else if let Ok(true) = fs::exists(&crate_dir) {
-        context::info!("Compiling tree-sitter parser for [a]{filetype}");
-        let mut cargo = Command::new("cargo");
-
-        cargo
-            .args(["build", "--release", "--manifest-path"])
-            .arg(&manifest_path);
-
-        let out = cargo.output()?;
-        if out.status.success() {
-            fs::copy(
-                crate_dir
-                    .join("target")
-                    .join("release")
-                    .join(resolve_lib_file(&lang)),
-                parser_path,
-            )?;
-            let mut cargo = Command::new("cargo");
-            cargo
-                .args(["clean", "--manifest-path"])
-                .arg(manifest_path)
-                .output()?;
-
-            get_language(filetype)
-        } else {
+        let fail = || {
+            context::error!("Failed to compile tree-sitter language for {filetype}");
             FAILED_COPILATION
                 .lock()
                 .unwrap()
                 .insert(filetype.to_string());
-            Err(String::from_utf8_lossy(&out.stderr).to_string().into())
+            None
+        };
+
+        let mut compilations = COMPILATIONS.lock().unwrap();
+
+        if let Entry::Occupied(mut child) = compilations.entry(filetype.to_string()) {
+            let (join_handle, handles) = child.get_mut();
+            if !join_handle.is_finished() {
+                if !handles.contains(handle) {
+                    handles.push(handle.clone());
+                }
+                return None;
+            }
+            let (_, (join_handle, _)) = child.remove_entry();
+
+            match join_handle.join().unwrap() {
+                Some(status) if status.success() => {
+                    if fs::copy(
+                        crate_dir
+                            .join("target")
+                            .join("release")
+                            .join(resolve_lib_file(&lang)),
+                        language_path,
+                    )
+                    .is_err()
+                    {
+                        return fail();
+                    };
+
+                    let mut cargo = Command::new("cargo");
+                    _ = cargo
+                        .args(["clean", "--manifest-path"])
+                        .arg(manifest_path)
+                        .output();
+
+                    get_language(filetype, handle)
+                }
+                _ => fail(),
+            }
+        } else {
+            context::info!("Compiling tree-sitter parser for [a]{filetype}");
+            let mut cargo = Command::new("cargo");
+
+            cargo
+                .args(["build", "--release", "--manifest-path"])
+                .arg(&manifest_path);
+
+            let join_handle = std::thread::spawn({
+                let filetype = filetype.to_string();
+                move || {
+                    let out = cargo.output().ok()?;
+
+                    if out.status.success() {
+                        let children = COMPILATIONS.lock().unwrap();
+                        let (_, handles) = children.get(&filetype).unwrap();
+                        for handle in handles {
+                            handle.request_update();
+                        }
+                    }
+
+                    Some(out.status)
+                }
+            });
+
+            compilations.insert(filetype.to_string(), (join_handle, vec![handle.clone()]));
+
+            None
         }
     } else {
         let lib_rs: String = options
@@ -142,20 +176,20 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
             package = "tree-sitter-{crate_name}"
         "#};
 
-        fs::create_dir_all(crate_dir.join("src"))?;
-        fs::write(manifest_path, cargo_toml)?;
-        fs::write(crate_dir.join("src/lib.rs"), lib_rs)?;
+        fs::create_dir_all(crate_dir.join("src")).ok()?;
+        fs::write(manifest_path, cargo_toml).ok()?;
+        fs::write(crate_dir.join("src/lib.rs"), lib_rs).ok()?;
 
-        get_language(filetype)
+        get_language(filetype, handle)
     }
 }
 
-fn get_parsers_dir() -> Result<PathBuf, Text> {
-    let workspace_dir = duat_core::utils::plugin_dir("duat-treesitter")?;
+fn get_parsers_dir() -> Option<PathBuf> {
+    let workspace_dir = duat_core::utils::plugin_dir("duat-treesitter").ok()?;
     let parsers_dir = workspace_dir.join("parsers");
-    fs::create_dir_all(&parsers_dir)?;
+    fs::create_dir_all(&parsers_dir).ok()?;
 
-    Ok(parsers_dir)
+    Some(parsers_dir)
 }
 
 struct LanguageOptions {

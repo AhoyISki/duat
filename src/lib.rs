@@ -25,7 +25,7 @@
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     ops::RangeBounds,
     path::{Path, PathBuf},
@@ -42,6 +42,7 @@ use duat_core::{
 };
 use tree_sitter::{Language, Node, Query};
 
+use crate::languages::get_language;
 pub use crate::parser::Parser;
 
 mod cursor;
@@ -165,28 +166,37 @@ struct Queries<'a> {
     injections: &'a Query,
 }
 
-fn lang_parts_of(lang: &str) -> Result<LangParts<'static>, Text> {
+fn lang_parts_of(lang: &str, handle: &Handle) -> Option<LangParts<'static>> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
+    static FAILED_PARTS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
     let mut maps = MAPS.lock().unwrap();
 
-    Ok(if let Some(lang_parts) = maps.get(lang).copied() {
-        lang_parts
+    if let Some(lang_parts) = maps.get(lang).copied() {
+        Some(lang_parts)
+    } else if FAILED_PARTS.lock().unwrap().contains(lang) {
+        None
     } else {
-        let language: &'static Language = Box::leak(Box::new(languages::get_language(lang)?));
+        let language: &'static Language = Box::leak(Box::new(get_language(lang, handle)?));
 
-        let highlights = query_from_path(lang, "highlights", language)?;
-        let indents = query_from_path(lang, "indents", language)?;
-        let injections = query_from_path(lang, "injections", language)?;
+        let get_queries = || {
+            let highlights = query_from_path(lang, "highlights", language).ok()?;
+            let indents = query_from_path(lang, "indents", language).ok()?;
+            let injections = query_from_path(lang, "injections", language).ok()?;
+            Some(Queries { highlights, indents, injections })
+        };
 
-        let queries = Queries { highlights, indents, injections };
+        let Some(queries) = get_queries() else {
+            FAILED_PARTS.lock().unwrap().insert(lang.to_string());
+            return None;
+        };
 
-        let lang = lang.to_string().leak();
+        let lang: &'static str = lang.to_string().leak();
 
         maps.insert(lang, (lang, language, queries));
 
-        (lang, language, queries)
-    })
+        Some((lang, language, queries))
+    }
 }
 
 /// Returns a new [`Query`] for a given language and kind
