@@ -232,6 +232,42 @@ impl Parser {
         Some(parsed_at_least_one_region)
     }
 
+    fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
+        let buf = TsBuf(parts.bytes);
+
+        let tagger = ts_tagger();
+        let (.., Queries { highlights, .. }) = &self.lang_parts;
+
+        for (_, tree) in self.trees.intersecting(range.clone()) {
+            // If the tree wasn't there, then its addition will readd its range to
+            // parts.ranges_to_update, so we can just ignore this.
+            let Some(ts_tree) = tree.ts_tree.as_ref() else {
+                continue;
+            };
+
+            let mut cursor = QueryCursor::new();
+            cursor.set_byte_range(range.clone());
+            let mut hi_captures = cursor.captures(highlights, ts_tree.root_node(), buf);
+
+            while let Some((qm, _)) = hi_captures.next() {
+                let qm: &QueryMatch = qm;
+                for cap in qm.captures.iter() {
+                    let ts_range = cap.node.range();
+
+                    // Assume that an empty range must take up the whole line
+                    // Cuz sometimes it be like that
+                    let (form, priority) = self.forms[cap.index as usize];
+                    let range = ts_range.start_byte..ts_range.end_byte;
+                    parts.tags.insert(tagger, range, form.to_tag(priority));
+                }
+            }
+        }
+
+        for injection in self.injections.iter() {
+            injection.highlight(range.clone(), parts);
+        }
+    }
+
     fn inject(&mut self, orig_range: Range<usize>, parts: &mut BufferParts, handle: &Handle) {
         // This is done to prevent situations where the range of a touching
         // injection isn't looked at, leading to its removal.
@@ -328,7 +364,7 @@ impl Parser {
         }
 
         for injection in self.injections.iter_mut() {
-            let mut trees_to_remove = Vec::new();
+            let mut to_remove = Vec::new();
 
             for (i, tree) in injection.trees.intersecting(range.clone()) {
                 // TODO: Deal with combined injections
@@ -341,12 +377,13 @@ impl Parser {
                     .is_none()
                 {
                     parts.ranges_to_update.add_ranges(tree.region.iter());
-                    trees_to_remove.push(i);
+                    to_remove.push((i, range));
                 }
             }
 
-            for i in trees_to_remove.into_iter().rev() {
+            for (i, range) in to_remove.into_iter().rev() {
                 injection.trees.remove(i);
+                injection.remove_injections_on(range);
             }
         }
 
@@ -357,39 +394,19 @@ impl Parser {
         }
     }
 
-    fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
-        let buf = TsBuf(parts.bytes);
+    fn remove_injections_on(&mut self, range: Range<usize>) {
+        for injection in self.injections.iter_mut() {
+            let trees: Vec<usize> = injection
+                .trees
+                .intersecting(range.clone())
+                .map(|(i, _)| i)
+                .collect();
 
-        let tagger = ts_tagger();
-        let (.., Queries { highlights, .. }) = &self.lang_parts;
-
-        for (_, tree) in self.trees.intersecting(range.clone()) {
-            // If the tree wasn't there, then its addition will readd its range to
-            // parts.ranges_to_update, so we can just ignore this.
-            let Some(ts_tree) = tree.ts_tree.as_ref() else {
-                continue;
-            };
-
-            let mut cursor = QueryCursor::new();
-            cursor.set_byte_range(range.clone());
-            let mut hi_captures = cursor.captures(highlights, ts_tree.root_node(), buf);
-
-            while let Some((qm, _)) = hi_captures.next() {
-                let qm: &QueryMatch = qm;
-                for cap in qm.captures.iter() {
-                    let ts_range = cap.node.range();
-
-                    // Assume that an empty range must take up the whole line
-                    // Cuz sometimes it be like that
-                    let (form, priority) = self.forms[cap.index as usize];
-                    let range = ts_range.start_byte..ts_range.end_byte;
-                    parts.tags.insert(tagger, range, form.to_tag(priority));
-                }
+            for i in trees.into_iter().rev() {
+                injection.trees.remove(i);
             }
-        }
 
-        for injection in self.injections.iter() {
-            injection.highlight(range.clone(), parts);
+            injection.remove_injections_on(range.clone());
         }
     }
 
