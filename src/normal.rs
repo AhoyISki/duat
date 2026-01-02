@@ -14,7 +14,7 @@ use duat_core::{
     text::{Point, Strs, txt},
 };
 use duat_jump_list::{BufferJumps, JumpListId};
-use duat_treesitter::TsCursor;
+use duat_treesitter::TsHandle;
 
 use crate::{
     Category, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
@@ -275,7 +275,7 @@ impl Mode for Normal {
             return;
         }
 
-        let jump_id = handle.read(pa).record_jump(*U_ALT_U_ID, false);
+        let jump_id = handle.record_jump(pa, *U_ALT_U_ID, false);
         let rec = if jump_id.is_some() { 2 } else { 1 };
 
         let (param, param_was_set) = if let event!(Char(char)) = key_event
@@ -294,14 +294,22 @@ impl Mode for Normal {
                 c.set_caret_on_end();
                 let caret = c.caret();
                 c.move_to_col(usize::MAX);
-                c.append("\n");
-                if key_event.modifiers == KeyMod::NONE {
-                    c.move_hor(1);
-                    c.ts_reindent(opts.auto_indent);
-                } else {
+                c.insert("\n");
+                if key_event.modifiers != KeyMod::NONE {
                     c.move_to(caret);
+                } else {
+                    c.move_hor(1);
                 }
             });
+
+            if key_event.modifiers == KeyMod::NONE {
+                let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                if is_ts_indent {
+                    handle.edit_all(pa, |mut c| {
+                        crate::insert::reindent(&mut c, indents.next().unwrap());
+                    });
+                }
+            }
         };
         let open_new_line_above = |pa: &mut Pass| {
             handle.edit_all(pa, |mut c| {
@@ -309,12 +317,19 @@ impl Mode for Normal {
                 let char_col = c.v_caret().char_col();
                 c.move_to_col(0);
                 c.insert("\n");
-                if key_event.modifiers == KeyMod::NONE {
-                    c.ts_reindent(opts.auto_indent);
-                } else {
+                if key_event.modifiers != KeyMod::NONE {
                     c.move_hor(char_col as i32 + 1);
                 }
             });
+
+            if key_event.modifiers == KeyMod::NONE {
+                let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                if is_ts_indent {
+                    handle.edit_all(pa, |mut c| {
+                        crate::insert::reindent(&mut c, indents.next().unwrap());
+                    });
+                }
+            }
         };
 
         match key_event {
@@ -601,14 +616,20 @@ impl Mode for Normal {
                 mode::set(pa, crate::Insert);
             }
             event!('I') => {
+                if opts.indent_on_capital_i {
+                    let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                    if is_ts_indent {
+                        handle.edit_all(pa, |mut c| {
+                            crate::insert::reindent(&mut c, indents.next().unwrap());
+                        });
+                    }
+                }
+
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
-                    if opts.indent_on_capital_i {
-                        c.ts_reindent(false);
-                    } else {
-                        c.move_to_col(c.indent());
-                    }
+                    c.move_to_col(c.indent());
                 });
+
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::InsertStart);
                 mode::set(pa, crate::Insert);
             }
@@ -653,14 +674,23 @@ impl Mode for Normal {
                         c.set_caret_on_end();
                         c.move_hor(1);
                     }),
-                    Some(InsertKey::InsertStart) => handle.edit_all(pa, |mut c| {
-                        c.unset_anchor();
+                    Some(InsertKey::InsertStart) => {
+                        handle.edit_all(pa, |mut c| {
+                            c.unset_anchor();
+                            if !opts.indent_on_capital_i {
+                                c.move_to_col(c.indent());
+                            }
+                        });
+
                         if opts.indent_on_capital_i {
-                            c.ts_reindent(false);
-                        } else {
-                            c.move_to_col(c.indent());
+                            let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                            if is_ts_indent {
+                                handle.edit_all(pa, |mut c| {
+                                    crate::insert::reindent(&mut c, indents.next().unwrap());
+                                })
+                            }
                         }
-                    }),
+                    }
                     Some(InsertKey::AppendEnd) => handle.edit_all(pa, |mut c| {
                         c.unset_anchor();
                         c.move_to_col(usize::MAX);
@@ -1052,7 +1082,7 @@ impl Mode for Normal {
             ////////// Jumping
             alt!(char @ ('u' | 'U')) => {
                 let jmp = if char == 'u' { -rec } else { rec };
-                if let Some(jump) = handle.write(pa).move_jumps_by(*U_ALT_U_ID, jmp) {
+                if let Some(jump) = handle.move_jumps_by(pa, *U_ALT_U_ID, jmp) {
                     jump.apply(pa, &handle);
                 }
             }
@@ -1080,7 +1110,7 @@ impl Mode for Normal {
                         if mode::is_currently::<Normal>()
                             && let event!('Q' | 'q') = key_event
                         {
-                            return Ok(());
+                            return;
                         }
 
                         let mut macro_keys = MACRO.lock().unwrap();
@@ -1089,7 +1119,6 @@ impl Mode for Normal {
                         } else {
                             *macro_keys = Some(vec![key_event]);
                         }
-                        Ok(())
                     })
                     .grouped(*MACRO_GROUP);
                 }
@@ -1251,13 +1280,12 @@ pub(crate) mod jump_list {
     pub fn register(pa: &mut Pass, handle: &Handle, eq_lookback: usize) {
         let mut jl = JUMP_LIST.lock().unwrap();
 
-        let buffer = handle.read(pa);
-        let jump_id = buffer.record_or_get_current_jump(*JUMPS_ID);
+        let jump_id = handle.record_or_get_current_jump(pa, *JUMPS_ID);
 
         for (jump_id, buffer_id) in jl.list[..jl.cur].iter().rev().take(eq_lookback) {
-            if *buffer_id == buffer.buffer_id()
-                && let Some(jump) = buffer.get_jump(*JUMPS_ID, *jump_id)
-                && jump.is_eq(buffer)
+            if *buffer_id == handle.read(pa).buffer_id()
+                && let Some(jump) = handle.get_jump(pa, *JUMPS_ID, *jump_id)
+                && jump.is_eq(handle.read(pa))
             {
                 return;
             }
@@ -1265,7 +1293,7 @@ pub(crate) mod jump_list {
 
         let cur = jl.cur;
         jl.list.truncate(cur);
-        jl.list.push((jump_id, buffer.buffer_id()));
+        jl.list.push((jump_id, handle.read(pa).buffer_id()));
         jl.cur += 1;
     }
 
@@ -1303,7 +1331,7 @@ pub(crate) mod jump_list {
                 handle.clone()
             };
 
-            if let Some(jump) = new_handle.read(pa).go_to_jump(*JUMPS_ID, jump_id) {
+            if let Some(jump) = new_handle.go_to_jump(pa, *JUMPS_ID, jump_id) {
                 if !new_handle.ptr_eq(handle.widget()) || !jump.is_eq(new_handle.read(pa)) {
                     jump.apply(pa, &new_handle);
                 } else if jl.cur > 0 {
@@ -1325,7 +1353,6 @@ pub(crate) mod jump_list {
                 register(pa, former, 5);
             }
             register(pa, current, 5);
-            Ok(())
         })
         .grouped(*JUMPS_HOOK_ID);
     }
