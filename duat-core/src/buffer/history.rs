@@ -12,12 +12,14 @@
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
 use std::{
+    iter::{Chain, Enumerate},
     marker::PhantomData,
     ops::Range,
     sync::{Arc, Mutex},
 };
 
 use bincode::{BorrowDecode, Decode, Encode};
+use gapbuf::GapBuffer;
 
 use super::{Point, Text};
 use crate::{
@@ -238,10 +240,32 @@ impl Clone for History {
 ///
 /// It also contains information about how to print the buffer, so
 /// that going back in time is less jarring.
-#[derive(Clone, Default, Debug, Encode, Decode)]
+#[derive(Clone, Default, Debug)]
 pub struct Moment {
-    changes: Vec<Change<'static, String>>,
+    changes: GapBuffer<Change<'static, String>>,
     shift_state: (usize, [i32; 3]),
+}
+
+impl<Context> Decode<Context> for Moment {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Moment {
+            changes: GapBuffer::from_iter(Vec::<Change<'static, String>>::decode(decoder)?),
+            shift_state: Decode::decode(decoder)?,
+        })
+    }
+}
+
+impl Encode for Moment {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        let changes = self.changes.iter().cloned().collect::<Vec<_>>();
+        changes.encode(encoder)?;
+        self.shift_state.encode(encoder)
+    }
 }
 
 impl Moment {
@@ -266,32 +290,42 @@ impl Moment {
         // If sh_from < c_range.end, I need to shift the changes between the
         // two, so that they match the shifting of the changes before sh_from
         if from < m_range.end && shift != [0; 3] {
-            for change in &mut self.changes[from..m_range.end] {
+            for change in self.changes.range_mut(from..m_range.end).iter_mut() {
                 change.shift_by(shift);
             }
         // Otherwise, the shifting will happen in reverse, and `from`
         // will be moved backwards until the point where m_range ends.
         // This is better for localized Changes.
         } else if from > m_range.end && shift != [0; 3] {
-            for change in &mut self.changes[m_range.end..from] {
+            for change in self.changes.range_mut(m_range.end..from).iter_mut() {
                 change.shift_by(shift.map(|i| -i));
             }
         }
 
-        for c in self.changes.drain(m_range.clone()).rev() {
-            change.try_merge(c);
+        match m_range.len() {
+            1 => {
+                let old = std::mem::replace(&mut self.changes[m_range.start], change);
+                self.changes[m_range.start].try_merge(old);
+            }
+            _ => {
+                let changes: Vec<_> = self.changes.drain(m_range.clone()).collect();
+                for c in changes.into_iter().rev() {
+                    change.try_merge(c);
+                }
+                self.changes.insert(m_range.start, change);
+            }
         }
 
-        // Don't add empty Changes
-        let from = if change.added_str() != change.taken_str() {
-            self.changes.insert(m_range.start, change);
+        let change = &self.changes[m_range.start];
+        let new_from = if change.added_str() != change.taken_str() {
             m_range.start + 1
         } else {
+            self.changes.remove(m_range.start);
             m_range.start
         };
 
-        if from < self.changes.len() {
-            self.shift_state = (from, add(shift, new_shift));
+        if new_from < self.changes.len() {
+            self.shift_state = (new_from, add(shift, new_shift));
         } else {
             self.shift_state = (0, [0; 3]);
         }
@@ -755,7 +789,12 @@ fn to_point(signed: [i32; 3]) -> Point {
 #[derive(Debug, Clone)]
 pub struct Changes<'h> {
     moment: &'h Moment,
-    iter: std::iter::Enumerate<std::slice::Iter<'h, Change<'static, String>>>,
+    iter: Enumerate<
+        Chain<
+            std::slice::Iter<'h, Change<'static, String>>,
+            std::slice::Iter<'h, Change<'static, String>>,
+        >,
+    >,
     undo_shift: Option<[i32; 3]>,
 }
 

@@ -9,7 +9,7 @@
 //!
 //! [`Text`]: super::Text
 //! [`InnerTags`]: super::InnerTags
-const MAX_PER_RECORD: u32 = 256;
+const MAX_PER_RECORD: u32 = 32;
 
 use super::shift_list::{Shift, ShiftList, Shiftable};
 
