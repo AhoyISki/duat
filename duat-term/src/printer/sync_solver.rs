@@ -87,54 +87,62 @@ impl SyncSolver {
                     Axis::Vertical => self.solver.get_value(max.y),
                 };
                 let [lhs, rhs] = spawn.deps.get_values(&self.solver);
-                let [lhs_fr, rhs_fr] = spawn.show_frames.map(|show| show as usize as f64);
-                let fr_len = lhs_fr + rhs_fr;
+                let [lhs_frame, rhs_frame] = spawn.frame.map(|show| show as usize as f64);
+
+                let [lhs_outside, rhs_outside] = {
+                    let [parent_lhs, parent_rhs] = spawn.parent_frame.map(|show| show as usize);
+                    [lhs_frame + parent_rhs as f64, rhs_frame + parent_lhs as f64]
+                };
+
+                let lhs_outside_len = rhs_outside + lhs_frame;
+                let rhs_outside_len = lhs_outside + rhs_frame;
 
                 if spawn.is_inside {
-                    let available = rhs - lhs - fr_len;
-                    let len = spawn.desired_len.unwrap_or(available).min(available);
+                    let inside_len = rhs - lhs - (lhs_frame + rhs_frame);
+                    let len = spawn.desired_len.unwrap_or(inside_len).min(inside_len);
 
                     self.solver.suggest_value(spawn.len_var, len).unwrap();
                     let c = if spawn.prefers_before {
-                        lhs_fr + lhs + len / 2.0
+                        lhs_frame + lhs + len / 2.0
                     } else {
-                        rhs - (rhs_fr + len / 2.0)
+                        rhs - (rhs_frame + len / 2.0)
                     };
                     self.solver.suggest_value(spawn.center_var, c).unwrap();
                 } else if let Some(len) = spawn.desired_len
-                    && (lhs >= len + fr_len || max - rhs >= len + fr_len)
+                    && (lhs >= len + lhs_outside_len || max - rhs >= len + rhs_outside_len)
                 {
                     match (
                         spawn.prefers_before,
-                        lhs >= len + fr_len,
-                        max - rhs >= len + fr_len,
+                        lhs >= len + lhs_outside_len,
+                        max - rhs >= len + rhs_outside_len,
                     ) {
                         (true, true, true | false) | (false, true, false) => {
                             self.solver.suggest_value(spawn.len_var, len).unwrap();
                             self.solver
-                                .suggest_value(spawn.center_var, lhs - (rhs_fr + len / 2.0))
+                                .suggest_value(spawn.center_var, lhs - (rhs_outside + len / 2.0))
                                 .unwrap();
                         }
                         (true, false, true) | (false, true | false, true) => {
                             self.solver.suggest_value(spawn.len_var, len).unwrap();
                             self.solver
-                                .suggest_value(spawn.center_var, rhs + (lhs_fr + len / 2.0))
+                                .suggest_value(spawn.center_var, rhs + (lhs_outside + len / 2.0))
                                 .unwrap();
                         }
                         (true | false, false, false) => unreachable!(),
                     };
-                } else if lhs <= fr_len && max - rhs <= fr_len {
+                } else if lhs <= lhs_outside_len && max - rhs <= rhs_outside_len {
                     self.solver.suggest_value(spawn.len_var, 0.0).unwrap();
                     self.solver.suggest_value(spawn.center_var, 0.0).unwrap();
                 } else {
-                    let center = if lhs > max - rhs {
-                        lhs_fr + (lhs - fr_len) / 2.0
+                    let (center, outside_len) = if lhs > max - rhs {
+                        (lhs_frame + (lhs - lhs_outside_len) / 2.0, lhs_outside_len)
                     } else {
-                        lhs_fr + rhs + (max - rhs - fr_len) / 2.0
+                        let center = lhs_outside + rhs + (max - rhs - rhs_outside_len) / 2.0;
+                        (center, rhs_outside_len)
                     };
 
                     self.solver
-                        .suggest_value(spawn.len_var, lhs.max(max - rhs) - fr_len)
+                        .suggest_value(spawn.len_var, lhs.max(max - rhs) - outside_len)
                         .unwrap();
                     self.solver.suggest_value(spawn.center_var, center).unwrap();
                 }
@@ -162,14 +170,21 @@ impl SyncSolver {
     }
 
     /// Sets the [`Frame`] for a [`SpawnId`]
-    pub fn set_frame(&mut self, id: SpawnId, frame: &Frame) {
+    pub fn set_frame(&mut self, id: SpawnId, frame: &Frame, parent_frame: Option<&Frame>) {
         let Some(spawn) = self.spawns.iter_mut().find(|spawn| spawn.id == id) else {
             return;
         };
 
         match spawn.axis {
-            Axis::Horizontal => spawn.show_frames = [frame.left, frame.right],
-            Axis::Vertical => spawn.show_frames = [frame.above, frame.below],
+            Axis::Horizontal => spawn.frame = [frame.left, frame.right],
+            Axis::Vertical => spawn.frame = [frame.above, frame.below],
+        }
+
+        if let Some(parent_frame) = parent_frame {
+            match spawn.axis {
+                Axis::Horizontal => spawn.parent_frame = [parent_frame.left, parent_frame.right],
+                Axis::Vertical => spawn.parent_frame = [parent_frame.above, parent_frame.below],
+            }
         }
     }
 
@@ -184,6 +199,7 @@ impl SyncSolver {
         [tl, br]: [VarPoint; 2],
         (len, axis): (Option<f32>, Axis),
         (prefers_before, is_inside): (bool, bool),
+        parent_frame: Option<&Frame>,
     ) -> [Variable; 2] {
         let center_var = variables.new_var();
         let len_var = variables.new_var();
@@ -204,7 +220,13 @@ impl SyncSolver {
             axis,
             prefers_before,
             is_inside,
-            show_frames: [false; 2],
+            frame: [false; 2],
+            parent_frame: parent_frame
+                .map(|frame| match axis {
+                    Axis::Horizontal => [frame.left, frame.right],
+                    Axis::Vertical => [frame.above, frame.below],
+                })
+                .unwrap_or_default(),
         });
 
         [center_var, len_var]
@@ -254,7 +276,8 @@ impl SyncSolver {
             axis,
             prefers_before,
             is_inside: false,
-            show_frames: [false; 2],
+            frame: [false; 2],
+            parent_frame: [false; 2],
         });
 
         ([center_var, len_var], tl)
@@ -362,7 +385,8 @@ struct Spawn {
     axis: Axis,
     prefers_before: bool,
     is_inside: bool,
-    show_frames: [bool; 2],
+    frame: [bool; 2],
+    parent_frame: [bool; 2],
 }
 
 /// What kind of dependency a [`SpawnedCenter`] has

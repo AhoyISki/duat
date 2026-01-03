@@ -114,6 +114,7 @@ impl Rect {
         target: AreaId,
         p: &Printer,
         info: PrintInfo,
+        target_frame: Option<&Frame>,
     ) -> Option<(Rect, Constraints)> {
         let target = self.get(target)?;
         let mut rect = Rect::new(p, false, Kind::end(info), Some(id), self.border);
@@ -129,8 +130,8 @@ impl Rect {
             [target.tl, target.br],
             len,
             specs.orientation.axis(),
-            specs.orientation.prefers_before(),
-            specs.inside,
+            (specs.orientation.prefers_before(), specs.inside),
+            target_frame,
         );
 
         rect.set_dyn_spawned_eqs(
@@ -380,7 +381,7 @@ impl Rect {
         // Spawned Rects are dynamically sized.
         if let Some(info) = spawn_info {
             match info.spec {
-                SpawnSpec::Dynamic(orientation) => {
+                SpawnSpec::Dynamic(orientation, _) => {
                     let specs = DynSpawnSpecs { orientation, ..Default::default() };
                     let (deps, tl, br) = p.get_spawn_info(info.id).unwrap();
                     parent.set_dyn_spawned_eqs(p, specs, deps, tl, br, &info.frame);

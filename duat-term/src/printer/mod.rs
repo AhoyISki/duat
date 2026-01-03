@@ -82,8 +82,8 @@ impl Printer {
         deps: [VarPoint; 2],
         len: Option<f32>,
         axis: Axis,
-        prefers_before: bool,
-        is_inside: bool,
+        (prefers_before, is_inside): (bool, bool),
+        parent_frame: Option<&Frame>,
     ) -> [Variable; 2] {
         self.sync_solver.lock().unwrap().new_widget_spawn(
             id,
@@ -91,6 +91,7 @@ impl Printer {
             deps,
             (len, axis),
             (prefers_before, is_inside),
+            parent_frame,
         )
     }
 
@@ -142,8 +143,11 @@ impl Printer {
     }
 
     /// Sets the [`Frame`] for a [`SpawnId`]
-    pub fn set_frame(&self, id: SpawnId, frame: &Frame) {
-        self.sync_solver.lock().unwrap().set_frame(id, frame);
+    pub fn set_frame(&self, id: SpawnId, frame: &Frame, parent_frame: Option<&Frame>) {
+        self.sync_solver
+            .lock()
+            .unwrap()
+            .set_frame(id, frame, parent_frame);
     }
 
     /// Creates a new edge from the two [`VarPoint`]s

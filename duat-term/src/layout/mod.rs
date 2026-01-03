@@ -264,12 +264,12 @@ impl Layouts {
     /// Returns `false` if the [`Rect`] was deleted.
     pub fn set_frame(&self, id: AreaId, mut frame: Frame) -> bool {
         let mut inner = self.0.borrow_mut();
-        let set_frame = inner
+        let frame_was_set = inner
             .list
             .iter_mut()
             .any(|layout| layout.set_frame(id, &mut frame));
 
-        set_frame
+        frame_was_set
             || inner
                 .list
                 .iter()
@@ -553,10 +553,17 @@ impl Layout {
         specs: DynSpawnSpecs,
         cache: PrintInfo,
     ) -> Option<AreaId> {
-        let (rect, cons) = [&mut self.main]
+        let ((rect, cons), target_spawn_id) = [(&mut self.main, None, None)]
             .into_iter()
-            .chain(self.spawned.iter_mut().map(|(_, rect)| rect))
-            .find_map(|rect| rect.new_spawned_on_widget(id, specs, target, &self.printer, cache))?;
+            .chain(
+                self.spawned
+                    .iter_mut()
+                    .map(|(info, rect)| (rect, Some(&info.frame), Some(info.id))),
+            )
+            .find_map(|(rect, frame, target_spawn_id)| {
+                rect.new_spawned_on_widget(id, specs, target, &self.printer, cache, frame)
+                    .map(|ret| (ret, target_spawn_id))
+            })?;
 
         let area_id = rect.id();
         let orientation = specs.orientation;
@@ -564,7 +571,7 @@ impl Layout {
         self.spawned.push((
             SpawnInfo {
                 id,
-                spec: SpawnSpec::Dynamic(orientation),
+                spec: SpawnSpec::Dynamic(orientation, target_spawn_id),
                 cons,
                 frame: Default::default(),
             },
@@ -586,7 +593,7 @@ impl Layout {
         self.spawned.push((
             SpawnInfo {
                 id,
-                spec: SpawnSpec::Dynamic(specs.orientation),
+                spec: SpawnSpec::Dynamic(specs.orientation, None),
                 cons,
                 frame: Default::default(),
             },
@@ -661,11 +668,22 @@ impl Layout {
                     &info.frame,
                 );
             }
-            SpawnSpec::Dynamic(orientation) => {
+            SpawnSpec::Dynamic(orientation, parent_spawn_id) => {
                 let specs = DynSpawnSpecs { orientation, ..Default::default() };
                 let (deps, tl, br) = self.printer.get_spawn_info(info.id).unwrap();
                 rect.set_dyn_spawned_eqs(&self.printer, specs, deps, tl, br, &info.frame);
-                self.printer.set_frame(info.id, &info.frame);
+
+                let info = self
+                    .spawned
+                    .iter()
+                    .find_map(|(info, rect)| rect.get(id).and(Some(info)))
+                    .unwrap();
+
+                let parent_frame = self.spawned.iter().find_map(|(info, _)| {
+                    (Some(info.id) == parent_spawn_id).then_some(&info.frame)
+                });
+
+                self.printer.set_frame(info.id, &info.frame, parent_frame);
             }
         }
 
@@ -738,7 +756,7 @@ impl Layout {
             }
 
             let (SpawnInfo { id, spec: orientation, cons, .. }, rect) = &self.spawned[i];
-            if let SpawnSpec::Dynamic(orientation) = orientation {
+            if let SpawnSpec::Dynamic(orientation, _) = orientation {
                 let len = recurse_length(rect, cons, orientation.axis());
                 self.printer.set_spawn_len(*id, len.map(|len| len as f64));
             }
@@ -864,7 +882,7 @@ enum SpawnSpec {
         fractional_repositioning: Option<bool>,
         orig_max: Coord,
     },
-    Dynamic(Orientation),
+    Dynamic(Orientation, Option<SpawnId>),
 }
 
 /// A list of [`Constraint`] for [`Rect`]s to follow.
