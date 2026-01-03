@@ -26,12 +26,11 @@ FOR NEXT UPDATE:
 [x] Search QOL.
   [x] On search.rs.
   [x] On cursor.rs.
+[x] Properly separated frame on frame spawns.
 
 KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Very slow selection.
-  [x] Slow treesitter backspacing.
-  [ ] Excessive foreign panics (thread_hooks pleeeeeeeeeeeasse).
   [ ] Get rid of Text::selections_mut.
   [ ] Completions don't truncate properly.
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
@@ -42,10 +41,7 @@ KNOWN BUGS:
   [ ] Perfect print iterators.
     [ ] Perfect words iterator.
   [ ] tree-sitter-duat-text is not being used.
-  [ ] std::mem::replace (grrrr...).
-  [ ] Tree-sitter still hangs while loading injected languages, it would be easy to prevent that.
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
-  [x] On slow updates, tree-sitter can get a lil slow.
 
 FUTURE UPDATES:
 [ ] Put all options in a single struct.

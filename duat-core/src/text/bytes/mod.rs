@@ -766,7 +766,11 @@ pub const fn utf8_char_width(b: u8) -> usize {
 }
 
 impl Eq for Bytes {}
-implPartialEq!(bytes: Bytes, other: Bytes, bytes.buf.as_slices() == other.buf.as_slices());
+implPartialEq!(bytes: Bytes, other: Bytes, {
+    let (l_s0, l_s1) = bytes.buf.as_slices();
+    let (r_s0, r_s1) = other.buf.as_slices();
+    (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.iter().chain(l_s1).eq(r_s0.iter().chain(r_s1))
+});
 implPartialEq!(bytes: Bytes, other: &str, {
     let [s0, s1] = bytes.strs_inner(..).unwrap();
     other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
@@ -776,7 +780,11 @@ implPartialEq!(str: &str, other: Bytes, other == *str);
 implPartialEq!(string: String, other: Bytes, other == *string);
 
 impl Eq for Strs<'_> {}
-implPartialEq!(strs: Strs<'_>, other: Strs<'_>, strs.to_array() == other.to_array());
+implPartialEq!(strs: Strs<'_>, other: Strs<'_>, {
+    let [l_s0, l_s1] = strs.to_array();
+    let [r_s0, r_s1] = other.to_array();
+    (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.bytes().chain(l_s1.bytes()).eq(r_s0.bytes().chain(r_s1.bytes()))
+});
 implPartialEq!(strs: Strs<'_>, other: &str, {
     let [s0, s1] = strs.to_array();
     other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
