@@ -14,7 +14,6 @@ use duat_core::{
     text::{Point, Strs, txt},
 };
 use duat_jump_list::{BufferJumps, JumpListId};
-use duat_treesitter::TsHandle;
 
 use crate::{
     Category, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
