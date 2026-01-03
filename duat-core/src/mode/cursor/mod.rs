@@ -173,14 +173,15 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [`replace`]: Self::replace
     /// [`append`]: Self::append
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = sel!(self).caret()..sel!(self).caret();
+        let caret_point = sel!(self).caret_point(self.text());
+        let range = caret_point..caret_point;
         let change = Change::new(edit.to_string(), range, self.widget.text());
-        let (added, taken) = (change.added_end(), change.taken_end());
+        let (added, taken) = (change.added_end().byte(), change.taken_end().byte());
 
         self.edit(change);
 
-        if let Some(anchor) = sel!(self).anchor()
-            && anchor > sel!(self).caret()
+        if let Some(anchor) = sel!(self).anchor_byte()
+            && anchor > sel!(self).caret_byte()
         {
             let new_anchor = anchor + added - taken;
             sel_mut!(self).swap_ends();
@@ -200,15 +201,15 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [`replace`]: Self::replace
     /// [`insert`]: Self::insert
     pub fn append(&mut self, edit: impl ToString) {
-        let caret = sel!(self).caret();
-        let p = caret.fwd(self.widget.text().char_at(caret).unwrap());
-        let change = Change::new(edit.to_string(), p..p, self.widget.text());
-        let (added, taken) = (change.added_end(), change.taken_end());
+        let caret = sel!(self).caret_point(self.text());
+        let after = caret.fwd(self.widget.text().char_at(caret).unwrap());
+        let change = Change::new(edit.to_string(), after..after, self.widget.text());
+        let (added, taken) = (change.added_end().byte(), change.taken_end().byte());
 
         self.edit(change);
 
-        if let Some(anchor) = sel!(self).anchor()
-            && anchor > p
+        if let Some(anchor) = sel!(self).anchor_byte()
+            && anchor > after.byte()
         {
             let new_anchor = anchor + added - taken;
             sel_mut!(self).swap_ends();
@@ -238,29 +239,39 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Moves the selection horizontally. May cause vertical movement
     ///
-    /// Returns the distance moved in chars.
+    /// Returns `true` if the caret moved.
     #[track_caller]
-    pub fn move_hor(&mut self, count: i32) -> i32 {
-        if count == 0 {
-            return 0;
+    pub fn move_hor(&mut self, by: i32) -> bool {
+        if by == 0 {
+            return false;
         }
-        sel_mut!(self).move_hor(count, self.widget.text())
+        let moved = sel_mut!(self).move_hor(by, self.widget.text());
+        if moved {
+            let byte = sel!(self).caret_byte();
+            self.widget.text_mut().add_record_for(byte);
+        }
+        moved
     }
 
     /// Moves the selection vertically. May cause horizontal movement
     ///
     /// Returns the distance moved in lines.
     #[track_caller]
-    pub fn move_ver(&mut self, count: i32) -> i32 {
-        if count == 0 {
+    pub fn move_ver(&mut self, by: i32) -> i32 {
+        if by == 0 {
             return 0;
         }
-        sel_mut!(self).move_ver(
-            count,
+        let line_count = sel_mut!(self).move_ver(
+            by,
             self.widget.text(),
             self.area,
             self.widget.get_print_opts(),
-        )
+        );
+        if line_count != 0 {
+            let byte = sel!(self).caret_byte();
+            self.widget.text_mut().add_record_for(byte);
+        }
+        line_count
     }
 
     /// Moves the selection vertically a number of wrapped lines. May
@@ -296,6 +307,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     #[track_caller]
     pub fn move_to(&mut self, point_or_points: impl CaretOrRange) {
         point_or_points.move_to(self);
+        for byte in [Some(sel!(self).caret_byte()), sel!(self).anchor_byte()]
+            .into_iter()
+            .flatten()
+        {
+            self.widget.text_mut().add_record_for(byte);
+        }
     }
 
     /// Moves the selection to [`Point::default`], i.c., the start of
@@ -318,7 +335,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             .text()
             .chars_fwd(range.clone())
             .unwrap()
-            .map(|(p, _)| p.byte())
+            .map(|(byte, _)| byte)
             .take(col + 1)
             .last();
         self.move_to(byte.unwrap_or(range.end.byte() - 1));
@@ -331,9 +348,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
         self.move_to_coords(line, col);
     }
 
-    /// Returns and takes the anchor of the [`Selection`].
+    /// Returns and takes the anchor of the [`Selection`], if there
+    /// was one
     pub fn unset_anchor(&mut self) -> Option<Point> {
-        sel_mut!(self).unset_anchor()
+        sel_mut!(self)
+            .unset_anchor()
+            .map(|anchor| self.text().point_at_byte(anchor))
     }
 
     /// Sets the `anchor` to the current `caret`
@@ -462,17 +482,19 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Iterates over the [`char`]s
     ///
-    /// This iteration will begin on the `caret`. It will also include
-    /// the [`Point`] of each `char`
-    pub fn chars_fwd(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+    /// Each [`char`] will be accompanied by a byte index, which is
+    /// the position where said character starts, e.g. `0` for the
+    /// first character
+    pub fn chars_fwd(&self) -> impl Iterator<Item = (usize, char)> + '_ {
         self.widget.text().chars_fwd(self.caret()..).unwrap()
     }
 
     /// Iterates over the [`char`]s, in reverse
     ///
-    /// This iteration will begin on the `caret`. It will also include
-    /// the [`Point`] of each `char`
-    pub fn chars_rev(&self) -> impl Iterator<Item = (Point, char)> {
+    /// Each [`char`] will be accompanied by a byte index, which is
+    /// the position where said character starts, e.g. `0` for the
+    /// first character
+    pub fn chars_rev(&self) -> impl Iterator<Item = (usize, char)> {
         self.widget.text().chars_rev(..self.caret()).unwrap()
     }
 
@@ -518,9 +540,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Returns the [`char`] in the `caret`
     pub fn char(&self) -> char {
-        self.text()
-            .char_at(sel!(self).caret())
-            .unwrap_or_else(|| panic!("{:#?}\n{:#?}", sel!(self).caret(), self.text()))
+        self.text().char_at(sel!(self).caret_byte()).unwrap()
     }
 
     /// Returns the [`char`] at a given [`Point`]
@@ -590,12 +610,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Returns the `caret`
     pub fn caret(&self) -> Point {
-        sel!(self).caret()
+        sel!(self).caret_point(self.text())
     }
 
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
-        sel!(self).anchor()
+        sel!(self).anchor_point(self.text())
     }
 
     /// The [`Point`] range of the [`Selection`]
@@ -616,7 +636,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// If you wish for an inclusive range, whose length is always
     /// greater than or equal to 1, see [`RangeInclusive`].
     pub fn range_excl(&self) -> Range<Point> {
-        sel!(self).point_range_excl()
+        sel!(self).point_range_excl(self.text())
     }
 
     /// The [`VPoint`] range of the [`Selection`]
@@ -1020,78 +1040,6 @@ impl CaretOrRange for Point {
     }
 }
 
-impl CaretOrRange for Range<Point> {
-    #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        assert!(
-            self.start <= self.end,
-            "slice index start is larger than end"
-        );
-
-        sel_mut!(cursor).move_to(self.start, cursor.widget.text());
-        if self.start < self.end {
-            cursor.set_anchor();
-            sel_mut!(cursor).move_to(self.end, cursor.widget.text());
-            if self.end < cursor.widget.text().len() {
-                cursor.move_hor(-1);
-            }
-        } else {
-            cursor.unset_anchor();
-        }
-    }
-}
-
-impl CaretOrRange for RangeInclusive<Point> {
-    #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        assert!(
-            self.start() <= self.end(),
-            "slice index start is larger than end"
-        );
-
-        sel_mut!(cursor).move_to(*self.start(), cursor.widget.text());
-        cursor.set_anchor();
-        sel_mut!(cursor).move_to(*self.end(), cursor.widget.text());
-    }
-}
-
-impl CaretOrRange for RangeFrom<Point> {
-    #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        sel_mut!(cursor).move_to(self.start, cursor.widget.text());
-        if self.start < cursor.text().len() {
-            cursor.set_anchor();
-            sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
-            cursor.move_hor(-1);
-        } else {
-            cursor.unset_anchor();
-        }
-    }
-}
-
-impl CaretOrRange for RangeTo<Point> {
-    #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        cursor.move_to_start();
-        if Point::default() < self.end {
-            cursor.set_anchor();
-            sel_mut!(cursor).move_to(self.end, cursor.widget.text());
-            cursor.move_hor(-1);
-        } else {
-            cursor.unset_anchor();
-        }
-    }
-}
-
-impl CaretOrRange for RangeToInclusive<Point> {
-    #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        cursor.move_to_start();
-        cursor.set_anchor();
-        sel_mut!(cursor).move_to(self.end, cursor.widget.text());
-    }
-}
-
 impl CaretOrRange for usize {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
@@ -1102,25 +1050,20 @@ impl CaretOrRange for usize {
     }
 }
 
-impl CaretOrRange for Range<usize> {
+impl<Idx: TextIndex> CaretOrRange for Range<Idx> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        let range = self.start.to_byte_index()..self.end.to_byte_index();
         assert!(
-            self.start <= self.end,
+            range.start <= range.end,
             "slice index start is larger than end"
         );
 
-        sel_mut!(cursor).move_to(
-            cursor.widget.text().point_at_byte(self.start),
-            cursor.widget.text(),
-        );
-        if self.start < self.end {
+        sel_mut!(cursor).move_to(range.start, cursor.widget.text());
+        if range.start < range.end {
             cursor.set_anchor();
-            sel_mut!(cursor).move_to(
-                cursor.widget.text().point_at_byte(self.end),
-                cursor.widget.text(),
-            );
-            if self.end < cursor.widget.text().len().byte() {
+            sel_mut!(cursor).move_to(range.end, cursor.widget.text());
+            if range.end < cursor.widget.text().len().byte() {
                 cursor.move_hor(-1);
             }
         } else {
@@ -1129,34 +1072,27 @@ impl CaretOrRange for Range<usize> {
     }
 }
 
-impl CaretOrRange for RangeInclusive<usize> {
+impl<Idx: TextIndex> CaretOrRange for RangeInclusive<Idx> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        let range = self.start().to_byte_index()..=self.end().to_byte_index();
         assert!(
-            self.start() <= self.end(),
+            range.start() <= range.end(),
             "slice index start is larger than end"
         );
 
-        sel_mut!(cursor).move_to(
-            cursor.widget.text().point_at_byte(*self.start()),
-            cursor.widget.text(),
-        );
+        sel_mut!(cursor).move_to(*range.start(), cursor.widget.text());
         cursor.set_anchor();
-        sel_mut!(cursor).move_to(
-            cursor.widget.text().point_at_byte(*self.end()),
-            cursor.widget.text(),
-        );
+        sel_mut!(cursor).move_to(*range.end(), cursor.widget.text());
     }
 }
 
-impl CaretOrRange for RangeFrom<usize> {
+impl<Idx: TextIndex> CaretOrRange for RangeFrom<Idx> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
-        sel_mut!(cursor).move_to(
-            cursor.widget.text().point_at_byte(self.start),
-            cursor.widget.text(),
-        );
-        if self.start < cursor.text().len().byte() {
+        let start = self.start.to_byte_index();
+        sel_mut!(cursor).move_to(start, cursor.widget.text());
+        if start < cursor.text().len().byte() {
             cursor.set_anchor();
             sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
             cursor.move_hor(-1);
@@ -1166,16 +1102,17 @@ impl CaretOrRange for RangeFrom<usize> {
     }
 }
 
-impl CaretOrRange for RangeTo<usize> {
+impl<Idx: TextIndex> CaretOrRange for RangeTo<Idx> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+        let end = self
+            .end
+            .to_byte_index()
+            .min(cursor.text().last_point().byte());
         cursor.move_to_start();
-        if self.end > 0 {
+        if 0 < end {
             cursor.set_anchor();
-            sel_mut!(cursor).move_to(
-                cursor.widget.text().point_at_byte(self.end),
-                cursor.widget.text(),
-            );
+            sel_mut!(cursor).move_to(end, cursor.widget.text());
             cursor.move_hor(-1);
         } else {
             cursor.unset_anchor();
@@ -1183,15 +1120,12 @@ impl CaretOrRange for RangeTo<usize> {
     }
 }
 
-impl CaretOrRange for RangeToInclusive<usize> {
+impl<Idx: TextIndex> CaretOrRange for RangeToInclusive<Idx> {
     #[track_caller]
     fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
-        sel_mut!(cursor).move_to(
-            cursor.widget.text().point_at_byte(self.end),
-            cursor.widget.text(),
-        );
+        sel_mut!(cursor).move_to(self.end, cursor.widget.text());
     }
 }
 

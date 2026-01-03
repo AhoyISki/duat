@@ -102,7 +102,7 @@ impl CompletionsBuilder {
             max_height: 20,
             start_byte,
             show_without_prefix: self.show_without_prefix,
-            last_caret: main.caret(),
+            last_caret_byte: main.caret_byte(),
             info_handle: None,
         };
 
@@ -142,7 +142,7 @@ pub struct Completions {
     max_height: usize,
     start_byte: usize,
     show_without_prefix: bool,
-    last_caret: Point,
+    last_caret_byte: usize,
     info_handle: Option<Handle<Info>>,
 }
 
@@ -315,7 +315,7 @@ impl Completions {
                     max_height: comp.max_height,
                     start_byte: new_start_byte,
                     show_without_prefix: false,
-                    last_caret: comp.last_caret,
+                    last_caret_byte: comp.last_caret_byte,
                     info_handle: comp.info_handle.take(),
                 };
 
@@ -366,16 +366,16 @@ impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         Self::update_text_and_position(pa, handle, 0);
         let master_handle = handle.master().unwrap();
-        handle.write(pa).last_caret = master_handle.selections(pa).get_main().unwrap().caret();
+        handle.write(pa).last_caret_byte = master_handle.selections(pa).main().caret_byte();
 
         Completions::set_frame(pa, handle);
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
         let text = self.master.has_changed(pa).then_some(self.master.text(pa));
-        let main_moved = text
-            .as_ref()
-            .is_some_and(|text| text.selections().get_main().unwrap().caret() != self.last_caret);
+        let main_moved = text.as_ref().is_some_and(|text| {
+            text.selections().get_main().unwrap().caret_byte() != self.last_caret_byte
+        });
 
         main_moved || self.providers.iter().any(|inner| inner.has_changed(text))
     }
@@ -763,17 +763,17 @@ fn preffix_and_suffix(
     text: &Text,
     [prefix_regex, suffix_regex]: [&str; 2],
 ) -> (Range<usize>, [String; 2]) {
-    let caret = text.selections().get_main().unwrap().caret();
+    let byte = text.selections().get_main().unwrap().caret_byte();
     let prefix_range = text
         .search(prefix_regex)
-        .range(..caret)
+        .range(..byte)
         .next_back()
-        .unwrap_or(caret.byte()..caret.byte());
+        .unwrap_or(byte..byte);
     let suffix_range = text
         .search(suffix_regex)
-        .range(caret..)
+        .range(byte..)
         .next()
-        .unwrap_or(caret.byte()..caret.byte());
+        .unwrap_or(byte..byte);
 
     (
         prefix_range.clone(),

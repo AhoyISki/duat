@@ -215,13 +215,18 @@ impl InnerTags {
         }
     }
 
-    /// Insert a new [`Tag`] at a given byte
-    pub fn insert<T, I, R>(&mut self, tagger: Tagger, i: I, tag: T, after: bool) -> Option<R>
+    /// Insert a new [`Tag`] at a given [`TextIndex`] or [`TextRange`]
+    ///
+    /// If the `Tag` is ranged (like [`FormTag`] or 
+    ///
+    /// [`TextIndex`]: super::TextIndex
+    /// [`TextRange`]: super::TextRange
+    pub fn insert<T, I, R>(&mut self, tagger: Tagger, idx: I, tag: T, after: bool) -> Option<R>
     where
         T: Tag<I, R>,
         R: Copy,
     {
-        let (start, end, ret) = tag.get_raw(self, i, self.len_bytes(), tagger);
+        let (start, end, ret) = tag.get_raw(self, idx, self.len_bytes(), tagger);
         let inserted = self.insert_raw(start, end, after);
 
         if inserted {

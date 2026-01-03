@@ -288,7 +288,7 @@ impl StateArg for Selections {
 
 impl StateArg for Selection {
     fn get<'a>(pa: &'a Pass, handle: &'a Handle) -> &'a Self {
-        handle.text(pa).selections().get_main().unwrap()
+        handle.text(pa).selections().main()
     }
 }
 

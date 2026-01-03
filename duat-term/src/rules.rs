@@ -56,7 +56,7 @@ impl Widget for VertRule {
                 let buffer = handle.read(pa);
 
                 if let Some(main) = buffer.selections().get_main() {
-                    let main = main.line();
+                    let main = main.caret_point(buffer.bytes()).line();
                     let upper = lines.iter().filter(|&line| line.number < main).count();
                     let middle = lines.iter().filter(|&line| line.number == main).count();
                     let lower = lines.iter().filter(|&line| line.number > main).count();

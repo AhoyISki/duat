@@ -90,7 +90,7 @@ impl Widget for PromptLine {
         if let Some(main) = pl.text.selections().get_main() {
             area.scroll_around_points(
                 &pl.text,
-                main.caret().to_two_points_after(),
+                main.caret_point(&pl.text).to_two_points_after(),
                 pl.get_print_opts(),
             );
         }

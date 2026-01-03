@@ -1,5 +1,5 @@
 use std::{
-    ops::{Range, RangeBounds},
+    ops::{ControlFlow, Range, RangeBounds},
     str::Utf8Error,
 };
 
@@ -22,6 +22,7 @@ mod strs;
 pub struct Bytes {
     buf: GapBuffer<u8>,
     records: Records,
+    pub(super) bytes_state: u64,
 }
 
 impl Bytes {
@@ -38,6 +39,7 @@ impl Bytes {
         Self {
             buf,
             records: Records::new([len, chars, lines]),
+            bytes_state: 0,
         }
     }
 
@@ -438,11 +440,14 @@ impl Bytes {
         );
 
         let start = self.point_at_line(l);
-        let end = self
+        let (ControlFlow::Continue(end) | ControlFlow::Break(end)) = self
             .chars_fwd(start..)
             .unwrap()
-            .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
-            .unwrap_or(self.len());
+            .try_fold(start, |end, (_, char)| match end.line() == start.line() {
+                true => ControlFlow::Continue(end.fwd(char)),
+                false => ControlFlow::Break(end.fwd(char)),
+            });
+
         start..end
     }
 
@@ -460,38 +465,36 @@ impl Bytes {
 
     /// A forward iterator of the [`char`]s of [`Bytes`]
     ///
-    /// Each [`char`] will be accompanied by a [`Point`], which is the
-    /// position where said character starts, e.g.
-    /// [`Point::default()`] for the first character
+    /// Each [`char`] will be accompanied by a byte index, which is
+    /// the position where said character starts, e.g. `0` for the
+    /// first character
     #[track_caller]
     pub fn chars_fwd(
         &self,
         range: impl TextRange,
-    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
-        let range = range.to_range(self.len().byte());
-        let p = self.point_at_byte(range.start);
-        Some(self.strs(range)?.chars().scan(p, |p, char| {
-            let old_p = *p;
-            *p = p.fwd(char);
-            Some((old_p, char))
+    ) -> Option<impl Iterator<Item = (usize, char)> + '_> {
+        let mut range = range.to_range(self.len().byte());
+        Some(self.strs(range.clone())?.chars().map(move |char| {
+            let byte = range.start;
+            range.start += char.len_utf8();
+            (byte, char)
         }))
     }
 
     /// A reverse iterator of the [`char`]s in [`Bytes`]
     ///
-    /// Each [`char`] will be accompanied by a [`Point`], which is the
-    /// position where said character starts, e.g.
-    /// [`Point::default()`] for the first character
+    /// Each [`char`] will be accompanied by a byte index, which is
+    /// the position where said character starts, e.g. `0` for the
+    /// first character
     #[track_caller]
     pub fn chars_rev(
         &self,
         range: impl TextRange,
-    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
-        let range = range.to_range(self.len().byte());
-        let p = self.point_at_byte(range.end);
-        Some(self.strs(range)?.chars().rev().scan(p, |p, char| {
-            *p = p.rev(char);
-            Some((*p, char))
+    ) -> Option<impl Iterator<Item = (usize, char)> + '_> {
+        let mut range = range.to_range(self.len().byte());
+        Some(self.strs(range.clone())?.chars().rev().map(move |char| {
+            range.end -= char.len_utf8();
+            (range.end, char)
         }))
     }
 

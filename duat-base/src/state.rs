@@ -175,29 +175,31 @@ pub fn mode_txt() -> DataMap<&'static str, Text> {
 /// [`StatusLine`] part: Byte of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_byte(buffer: &Buffer) -> usize {
-    buffer.selections().get_main().unwrap().byte() + 1
+pub fn main_byte(buf: &Buffer) -> usize {
+    buf.selections().main().caret_byte() + 1
 }
 
 /// [`StatusLine`] part: Char of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_char(buffer: &Buffer) -> usize {
-    buffer.selections().get_main().unwrap().char() + 1
+pub fn main_char(buf: &Buffer) -> usize {
+    let bytes = buf.bytes();
+    buf.selections().main().caret_point(bytes).char() + 1
 }
 
 /// [`StatusLine`] part: Line of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_line(buffer: &Buffer) -> usize {
-    buffer.selections().get_main().unwrap().line() + 1
+pub fn main_line(buf: &Buffer) -> usize {
+    let bytes = buf.bytes();
+    buf.selections().main().caret_point(bytes).line() + 1
 }
 
 /// [`StatusLine`] part: Column of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_col(buffer: &Buffer, area: &Area) -> usize {
-    let main = buffer.selections().get_main().unwrap();
+    let main = buffer.selections().main();
     main.v_caret(buffer.text(), area, buffer.get_print_opts())
         .char_col()
 }

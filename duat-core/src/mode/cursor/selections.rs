@@ -17,11 +17,7 @@ use std::cell::Cell;
 use gapbuf::{GapBuffer, gap_buffer};
 
 pub use self::cursor::{Selection, VPoint};
-use crate::{
-    buffer::Change,
-    text::{Bytes, Point, TextRange},
-    utils::{add_shifts, merging_range_by_guess_and_lazy_shift},
-};
+use crate::{buffer::Change, text::TextRange, utils::merging_range_by_guess_and_lazy_shift};
 
 /// The list of [`Selection`]s in a [`Text`]
 ///
@@ -50,7 +46,7 @@ use crate::{
 pub struct Selections {
     buf: GapBuffer<Selection>,
     main_i: usize,
-    shift_state: Cell<(usize, [i32; 3])>,
+    shift_state: Cell<(usize, i32)>,
 }
 
 impl Selections {
@@ -59,7 +55,7 @@ impl Selections {
         Self {
             buf: gap_buffer![main],
             main_i: 0,
-            shift_state: Cell::new((0, [0; 3])),
+            shift_state: Cell::new((0, 0)),
         }
     }
 
@@ -104,7 +100,7 @@ impl Selections {
         if !self.is_empty() {
             let cursor = self.buf.remove(self.main_i);
             let (shift_from, shift) = self.shift_state.take();
-            if shift_from <= self.main_i && shift != [0; 3] {
+            if shift_from <= self.main_i && shift != 0 {
                 cursor.shift_by(shift);
             }
             self.buf = gap_buffer![cursor];
@@ -112,17 +108,33 @@ impl Selections {
         self.main_i = 0;
     }
 
-    /// Corrects all [`Selection`]s, so that their char and byte
-    /// values reflect the correct position in the [`Bytes`]
-    pub(crate) fn correct_all(&mut self, bytes: &Bytes) {
+    /// Corrects all [`Selection`]s, so that they no longer reference
+    /// outdated data
+    pub(crate) fn correct_all(&mut self) {
         for selection in &mut self.buf {
-            selection.correct(bytes)
+            selection.correct()
         }
     }
 
     ////////// Querying functions
 
+    /// Gets the main [`Selection`]
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if there are no `Selection`s. If you
+    /// want a non-panicking method, see [`Selections::get_main`].
+    pub fn main(&self) -> &Selection {
+        match self.get(self.main_i) {
+            Some(main) => main,
+            None => panic!("No main selection"),
+        }
+    }
+
     /// Gets the main [`Selection`], if there is one
+    ///
+    /// If you want a method that doesn't return an [`Option`] (for
+    /// convenience), see [`Selections::main`].
     pub fn get_main(&self) -> Option<&Selection> {
         self.get(self.main_i)
     }
@@ -133,7 +145,7 @@ impl Selections {
             return None;
         }
         let (shift_from, shift) = self.shift_state.get();
-        if n >= shift_from && shift != [0; 3] {
+        if n >= shift_from && shift != 0 {
             for cursor in self.buf.range(shift_from..n + 1).iter() {
                 cursor.shift_by(shift);
             }
@@ -155,13 +167,13 @@ impl Selections {
         let (mut shift_from, shift) = self.shift_state.get();
 
         self.buf.iter().enumerate().map(move |(i, selection)| {
-            if i >= shift_from && shift != [0; 3] {
+            if i >= shift_from && shift != 0 {
                 selection.shift_by(shift);
                 if i + 1 < self.buf.len() {
                     self.shift_state.set((i + 1, shift));
                     shift_from = i + 1;
                 } else {
-                    self.shift_state.set((0, [0; 3]));
+                    self.shift_state.set((0, 0));
                 }
             }
 
@@ -183,7 +195,7 @@ impl Selections {
         let (shift_from, shift) = self.shift_state.get();
 
         let range = if let Some(last) = self.buf.len().checked_sub(1) {
-            range.to_range(self.buf[last].end_excl().byte())
+            range.to_range(self.buf[last].end_byte_excl())
         } else {
             // If there are no Selections, this value doesn't really matter.
             0..0
@@ -192,25 +204,22 @@ impl Selections {
         let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
             (0, [range.start, range.end]),
-            (shift_from, shift[0], 0, |byte, shift| {
+            (shift_from, shift, 0, |byte, shift| {
                 (byte as i32 + shift) as usize
             }),
-            (
-                |sel: &Selection| sel.start().byte(),
-                |sel: &Selection| sel.end_excl().byte(),
-            ),
+            (Selection::start_byte, Selection::end_byte_excl),
         );
 
         let (s0, s1) = self.buf.range(m_range.clone()).as_slices();
         let iter = [s0, s1].into_iter().flatten().enumerate();
         iter.map(move |(i, selection)| {
             let i = i + m_range.start;
-            if i >= shift_from && shift != [0; 3] {
+            if i >= shift_from && shift != 0 {
                 selection.shift_by(shift);
                 if i + 1 < self.buf.len() {
                     self.shift_state.set((i + 1, shift));
                 } else {
-                    self.shift_state.set((0, [0; 3]));
+                    self.shift_state.set((0, 0));
                 }
             }
 
@@ -249,13 +258,15 @@ impl Selections {
         // The range of cursors that will be drained
         let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
-            (guess_i, [sel.start(), sel.end_excl()]),
-            (shift_from, shift, [0; 3], Point::shift_by),
-            (Selection::start, Selection::end_excl),
+            (guess_i, [sel.start_byte(), sel.end_byte_excl()]),
+            (shift_from, shift, 0, |byte, shift| {
+                (byte as i32 + shift) as usize
+            }),
+            (Selection::start_byte, Selection::end_byte_excl),
         );
 
         // Shift all ranges that preceed the end of the cursor's range.
-        if shift_from < m_range.end && shift != [0; 3] {
+        if shift_from < m_range.end && shift != 0 {
             for cursor in self.buf.range(shift_from..m_range.end).into_iter() {
                 cursor.shift_by(shift);
             }
@@ -278,8 +289,8 @@ impl Selections {
                 (sel.lazy_v_end(), false)
             };
 
-            if let Some(anchor) = sel.anchor() {
-                match sel.caret() < anchor {
+            if let Some(anchor) = sel.anchor_byte() {
+                match sel.caret_byte() < anchor {
                     true => (start, Some(end), last_sel_overhangs),
                     false => (end, Some(start), last_sel_overhangs),
                 }
@@ -318,16 +329,18 @@ impl Selections {
         // The range of cursors that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
-            (guess_i, [change.start(), change.taken_end()]),
-            (shift_from, shift, [0; 3], Point::shift_by),
-            (Selection::start, Selection::end_excl),
+            (guess_i, [change.start().byte(), change.taken_end().byte()]),
+            (shift_from, shift, 0, |byte, shift| {
+                (byte as i32 + shift) as usize
+            }),
+            (Selection::start_byte, Selection::end_byte_excl),
         );
 
         // Since applied changes don't remove Selections, we need to shift all
         // Selections in the whole range. First by the original shift, in
         // order to update them to the latest shift leve, then by the
         // change.
-        if c_range.end > shift_from && shift != [0; 3] {
+        if c_range.end > shift_from && shift != 0 {
             for cursor in self.buf.range(shift_from..c_range.end).into_iter() {
                 cursor.shift_by(shift);
             }
@@ -341,7 +354,7 @@ impl Selections {
             let mut cursors_taken = self.buf.splice(c_range.clone(), []);
             if let Some(first) = cursors_taken.next() {
                 let last = cursors_taken.next_back().unwrap_or(first.clone());
-                let (start, end) = (first.start(), last.end_excl());
+                let (start, end) = (first.start_byte(), last.end_byte_excl());
                 let merged = Selection::new(start, (start < end).then_some(end));
                 drop(cursors_taken);
                 self.buf.insert(c_range.start, merged);
@@ -356,7 +369,7 @@ impl Selections {
             shift_from.saturating_sub(cursors_taken).max(c_range.start) + cursors_added;
         if new_shift_from < self.buf.len() {
             self.shift_state
-                .set((new_shift_from, add_shifts(shift, change.shift())));
+                .set((new_shift_from, shift + change.shift()[0]));
         }
 
         cursors_taken - cursors_added
@@ -369,7 +382,7 @@ impl Selections {
         }
         let (shift_from, shift) = self.shift_state.get();
 
-        if i >= shift_from && shift != [0; 3] {
+        if i >= shift_from && shift != 0 {
             for cursor in self.buf.range(shift_from..i + 1).iter() {
                 cursor.shift_by(shift);
             }
@@ -410,7 +423,7 @@ mod cursor {
     use crate::{
         buffer::Change,
         opts::PrintOpts,
-        text::{Bytes, Point, Text},
+        text::{Bytes, Point, Text, TextIndex},
         ui::{Area, Caret},
     };
 
@@ -425,10 +438,10 @@ mod cursor {
 
     impl Selection {
         /// Returns a new instance of [`Selection`].
-        pub(crate) fn new(caret: Point, anchor: Option<Point>) -> Self {
+        pub(crate) fn new(caret_byte: usize, anchor_byte: Option<usize>) -> Self {
             Self {
-                caret: Cell::new(LazyVPoint::Unknown(caret)),
-                anchor: Cell::new(anchor.map(LazyVPoint::Unknown)),
+                caret: Cell::new(LazyVPoint::Unknown(PointOrByte::Byte(caret_byte))),
+                anchor: Cell::new(anchor_byte.map(PointOrByte::Byte).map(LazyVPoint::Unknown)),
                 change_i: None,
             }
         }
@@ -447,52 +460,56 @@ mod cursor {
 
         /// Moves to specific, pre calculated [`Point`].
         #[track_caller]
-        pub fn move_to(&mut self, p: Point, text: &Text) {
-            if p == self.caret() {
+        pub fn move_to(&mut self, idx: impl TextIndex, text: &Text) {
+            let byte = idx.to_byte_index();
+            if byte == self.caret_byte() {
                 return;
             }
-            let p = text.point_at_byte(p.byte().min(text.last_point().byte()));
-            *self.caret.get_mut() = LazyVPoint::Unknown(p);
+            *self.caret.get_mut() =
+                LazyVPoint::Unknown(PointOrByte::Byte(byte.min(text.len().byte() - 1)));
         }
 
-        /// Internal horizontal movement function.
+        /// Internal horizontal movement function
         ///
-        /// Returns the number of distance moved through.
-        pub fn move_hor(&mut self, by: i32, text: &Text) -> i32 {
+        /// Returns `true` if the caret was moved
+        pub fn move_hor(&mut self, by: i32, text: &Text) -> bool {
             let by = by as isize;
             if by == 0 {
-                return 0;
+                return false;
             };
-            let target = self.caret.get().point().char().saturating_add_signed(by);
 
-            let p = if target == 0 {
-                Point::default()
-            } else if target >= text.last_point().char() {
-                text.last_point()
+            // We move in chars, not bytes, but calculating char index can be
+            // expensive, so do a rough estimate assuming that the text is ascii
+            // only.
+            let rough_target = self.caret_byte().saturating_add_signed(by);
+
+            let byte = if rough_target == 0 {
+                0
+            } else if rough_target >= text.last_point().char() {
+                text.last_point().byte()
             } else if by.abs() < 500 {
                 if by > 0 {
-                    let (point, _) = text
-                        .chars_fwd(self.caret()..)
+                    text.chars_fwd(self.caret_byte()..)
                         .unwrap()
+                        .map(|(byte, _)| byte)
                         .take(by as usize + 1)
                         .last()
-                        .unwrap();
-                    point
-                } else {
-                    let (point, _) = text
-                        .chars_rev(..self.caret())
                         .unwrap()
+                } else {
+                    text.chars_rev(..self.caret_byte())
+                        .unwrap()
+                        .map(|(byte, _)| byte)
                         .take(by.unsigned_abs())
                         .last()
-                        .unwrap();
-                    point
+                        .unwrap()
                 }
             } else {
-                text.point_at_char(target)
+                text.point_at_char(self.caret_point(text).char().saturating_add_signed(by))
+                    .byte()
             };
 
-            let moved = p.char() as i32 - self.caret.get().point().char() as i32;
-            *self.caret.get_mut() = LazyVPoint::Unknown(p);
+            let moved = byte != self.caret_byte();
+            *self.caret.get_mut() = LazyVPoint::Unknown(PointOrByte::Byte(byte));
             moved
         }
 
@@ -508,7 +525,7 @@ mod cursor {
             let (vp, moved) = {
                 let vp = self.caret.get().calculate(text, area, opts);
                 let line_start = {
-                    let target = self.caret.get().point().line().saturating_add_signed(by);
+                    let target = vp.point.line().saturating_add_signed(by);
                     text.point_at_line(target.min(text.last_point().line()))
                 };
 
@@ -531,7 +548,7 @@ mod cursor {
                     })
                     .unwrap_or((0, text.last_point()));
 
-                let moved = p.line() as i32 - vp.p.line() as i32;
+                let moved = p.line() as i32 - vp.point.line() as i32;
                 let vp = vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol);
                 (vp, moved)
             };
@@ -558,14 +575,14 @@ mod cursor {
             let mut wraps = 0;
 
             *self.caret.get_mut() = LazyVPoint::Known(if by > 0 {
-                let line_start = text.point_at_line(vp.p.line());
+                let line_start = text.point_at_line(vp.point.line());
                 let mut vcol = vp.vcol;
-                let mut last = (vp.vcol, vp.wcol, vp.p);
-                let mut last_valid = (vp.vcol, vp.wcol, vp.p);
+                let mut last = (vp.vcol, vp.wcol, vp.point);
+                let mut last_valid = (vp.vcol, vp.wcol, vp.point);
 
                 let (vcol, wcol, p) = area
                     .print_iter(text, line_start.to_two_points_after(), opts)
-                    .skip_while(|(_, item)| item.char() <= self.char())
+                    .skip_while(|(_, item)| item.char() <= vp.char())
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
                         if let Some((p, char)) = item.as_real_char() {
@@ -587,9 +604,9 @@ mod cursor {
                     .unwrap_or(last_valid);
                 vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol)
             } else {
-                let end_points = text.points_after(vp.p.to_two_points_after()).unwrap();
+                let end_points = text.points_after(vp.point.to_two_points_after()).unwrap();
                 let mut just_wrapped = false;
-                let mut last_valid = (vp.wcol, vp.p);
+                let mut last_valid = (vp.wcol, vp.point);
 
                 let mut iter = area.rev_print_iter(text, end_points, opts);
                 let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
@@ -635,41 +652,45 @@ mod cursor {
         }
 
         pub(crate) fn shift_by_change(&self, change: Change<&str>) {
-            let (shift, taken) = (change.shift(), change.taken_end());
-            if self.caret() >= change.start() {
-                let shifted_caret = self.caret().max(taken).shift_by(shift);
-                self.caret.set(LazyVPoint::Unknown(shifted_caret));
+            let (shift, taken) = (change.shift()[0] as isize, change.taken_end().byte());
+            if self.caret_byte() >= change.start().byte() {
+                let shifted_caret = self.caret_byte().max(taken).strict_add_signed(shift);
+                self.caret
+                    .set(LazyVPoint::Unknown(PointOrByte::Byte(shifted_caret)));
             }
             if let Some(anchor) = self.anchor.get()
-                && anchor.point() >= change.start()
+                && anchor.byte() >= change.start().byte()
             {
-                let shifted_anchor = anchor.point().max(taken).shift_by(shift);
-                self.anchor.set(Some(LazyVPoint::Unknown(shifted_anchor)));
+                let shifted_anchor = anchor.byte().max(taken).strict_add_signed(shift);
+                self.anchor
+                    .set(Some(LazyVPoint::Unknown(PointOrByte::Byte(shifted_anchor))));
             }
         }
 
         /// Assumes tha both parts of the cursor are ahead of the
         /// shift
-        pub(crate) fn shift_by(&self, shift: [i32; 3]) {
-            let shifted_caret = self.caret().shift_by(shift);
-            self.caret.set(LazyVPoint::Unknown(shifted_caret));
+        pub(crate) fn shift_by(&self, shift: i32) {
+            let shift = shift as isize;
+            let shifted_caret = self.caret_byte().strict_add_signed(shift);
+            self.caret
+                .set(LazyVPoint::Unknown(PointOrByte::Byte(shifted_caret)));
             if let Some(anchor) = self.anchor.get() {
-                let shifted_anchor = anchor.point().shift_by(shift);
-                self.anchor.set(Some(LazyVPoint::Unknown(shifted_anchor)));
+                let shifted_anchor = anchor.byte().strict_add_signed(shift);
+                self.anchor
+                    .set(Some(LazyVPoint::Unknown(PointOrByte::Byte(shifted_anchor))));
             }
         }
 
-        /// Corrects this [`Selection`], so that their char and byte
-        /// values reflect the correct position in the [`Bytes`]
-        pub(crate) fn correct(&mut self, bytes: &Bytes) {
-            self.caret.set(LazyVPoint::Unknown(
-                bytes.point_at_byte(self.caret.get().point().byte()),
-            ));
+        /// Corrects this [`Selection`], so that it no longer assumes
+        /// to be in the correct position
+        pub(crate) fn correct(&mut self) {
+            self.caret.set(LazyVPoint::Unknown(PointOrByte::Byte(
+                self.caret.get().byte(),
+            )));
 
             if let Some(anchor) = self.anchor.get() {
-                self.anchor.set(Some(LazyVPoint::Unknown(
-                    bytes.point_at_byte(anchor.point().byte()),
-                )))
+                self.anchor
+                    .set(Some(LazyVPoint::Unknown(PointOrByte::Byte(anchor.byte()))))
             }
         }
 
@@ -684,12 +705,12 @@ mod cursor {
             *self.anchor.get_mut() = Some(self.caret.get())
         }
 
-        /// Unsets the anchor
+        /// Unsets the anchor, returning its byte index if it existed
         ///
         /// This is done so the cursor no longer has a valid
         /// selection.
-        pub fn unset_anchor(&mut self) -> Option<Point> {
-            self.anchor.take().map(|a| a.point())
+        pub fn unset_anchor(&mut self) -> Option<usize> {
+            self.anchor.take().map(|a| a.byte())
         }
 
         /// Switches the position of the anchor and caret
@@ -699,73 +720,75 @@ mod cursor {
             }
         }
 
-        /// Returns the cursor's position on the screen
-        pub fn caret(&self) -> Point {
-            self.caret.get().point()
+        /// Returns the byte index of this `Selection`'s `caret`
+        ///
+        /// This operation is cheaper than calling
+        /// `sel.caret_point(bytes).byte()`, since it doesn't have to
+        /// calculate the other elements of the search
+        pub fn caret_byte(&self) -> usize {
+            self.caret.get().byte()
         }
 
-        /// The anchor of this [`Selection`], if it exists
-        pub fn anchor(&self) -> Option<Point> {
-            self.anchor.get().map(|a| a.point())
+        /// Returns the byte index of this `Selection`'s `anchor`, if
+        /// there is one
+        pub fn anchor_byte(&self) -> Option<usize> {
+            self.anchor.get().map(|a| a.byte())
         }
 
-        /// The byte (relative to the beginning of the buffer) of the
-        /// caret. Indexed at 0
-        pub fn byte(&self) -> usize {
-            self.caret.get().point().byte()
+        /// Returns the byte index of this `Selection`'s `caret`
+        pub fn caret_point(&self, bytes: &Bytes) -> Point {
+            let (lazy, point) = get_point_lazily(self.caret.get(), bytes);
+            self.caret.set(lazy);
+            point
         }
 
-        /// The char (relative to the beginning of the buffer) of the
-        /// caret. Indexed at 0
-        pub fn char(&self) -> usize {
-            self.caret.get().point().char()
-        }
-
-        /// The line of the caret. Indexed at 0.
-        pub fn line(&self) -> usize {
-            self.caret.get().point().line()
+        /// Returns the byte index of this `Selection`'s `anchor`, if
+        /// there is one
+        pub fn anchor_point(&self, bytes: &Bytes) -> Option<Point> {
+            self.anchor.get().map(|lazy| {
+                let (lazy, point) = get_point_lazily(lazy, bytes);
+                self.anchor.set(Some(lazy));
+                point
+            })
         }
 
         ////////// Range functions
 
-        /// Returns the range between `caret` and `anchor`.
+        /// Returns the byte index range between the `caret` and
+        /// `anchor`
         ///
         /// If `anchor` isn't set, returns an empty range on `caret`.
         ///
-        /// A [`Selection`]'s range will also never include the last
-        /// character in a [`Text`], which must be a newline.
+        /// # Note
         ///
-        /// # Warning
-        ///
-        /// This function will return the range that is supposed
-        /// to be replaced, if `self.is_inclusive()`, this means that
-        /// it will return one more byte at the end, i.e. start..=end.
+        /// This range is _inclusive_, that is, it will include the
+        /// character at the end. If you use it to replace a range in
+        /// the [`Text`], know that this range will be truncated to
+        /// not include the last `\n`, since it is not allowed to be
+        /// removed.
         pub fn byte_range(&self, bytes: &Bytes) -> Range<usize> {
-            let range = self.point_range(bytes);
-            range.start.byte()..range.end.byte()
+            self.start_byte()..self.end_byte(bytes)
         }
 
-        /// The starting [`Point`] of this [`Selection`]
-        pub fn start(&self) -> Point {
+        /// The starting byte index of this [`Selection`]
+        pub fn start_byte(&self) -> usize {
             if let Some(anchor) = self.anchor.get() {
-                anchor.point().min(self.caret.get().point())
+                anchor.byte().min(self.caret.get().byte())
             } else {
-                self.caret.get().point()
+                self.caret.get().byte()
             }
         }
 
         /// The ending [`Point`] of this [`Selection`]
-        pub fn end(&self, bytes: &Bytes) -> Point {
-            let raw = self.end_excl();
-            assert_ne!(raw, bytes.len(), "Exclusive end is len");
-            raw.fwd(bytes.char_at(raw).unwrap())
+        pub fn end_byte(&self, bytes: &Bytes) -> usize {
+            self.end_byte_excl() + bytes.char_at(self.end_byte_excl()).unwrap().len_utf8()
         }
 
-        pub(super) fn end_excl(&self) -> Point {
+        pub(super) fn end_byte_excl(&self) -> usize {
             if let Some(anchor) = self.anchor.get() {
-                anchor.point().max(self.caret.get().point())
+                anchor.byte().max(self.caret.get().byte())
             } else {
-                self.caret.get().point()
+                self.caret.get().byte()
             }
         }
 
@@ -774,24 +797,24 @@ mod cursor {
         /// If `anchor` isn't set, returns a range that contains only
         /// the `caret`'s current `char`.
         pub fn point_range(&self, bytes: &Bytes) -> Range<Point> {
-            self.start()..self.end(bytes)
+            bytes.point_at_byte(self.start_byte())..bytes.point_at_byte(self.end_byte(bytes))
         }
 
         /// Returns an exclusive range between `caret` and `anchor`
         ///
         /// If `anchor` isn't set, both [`Point`]s will be the same.
-        pub fn point_range_excl(&self) -> Range<Point> {
-            self.start()..self.end_excl()
+        pub fn point_range_excl(&self, bytes: &Bytes) -> Range<Point> {
+            bytes.point_at_byte(self.start_byte())..bytes.point_at_byte(self.end_byte_excl())
         }
 
-        pub(crate) fn tag_points(&self, bytes: &Bytes) -> (Point, Option<Range<Point>>) {
-            let caret = self.caret();
-            if let Some(anchor) = self.anchor() {
+        pub(crate) fn tag_bytes(&self, bytes: &Bytes) -> (usize, Option<Range<usize>>) {
+            let caret = self.caret_byte();
+            if let Some(anchor) = self.anchor_byte() {
                 match anchor.cmp(&caret) {
                     Ordering::Less => (caret, Some(anchor..caret)),
                     Ordering::Equal => (caret, None),
                     Ordering::Greater => {
-                        let end = anchor.fwd(bytes.char_at(anchor).unwrap());
+                        let end = anchor + bytes.char_at(anchor).unwrap().len_utf8();
                         (caret, Some(caret..end))
                     }
                 }
@@ -812,7 +835,7 @@ mod cursor {
                     vp.dwcol = w;
                 }
                 LazyVPoint::Unknown(p) => {
-                    *self.caret.get_mut() = LazyVPoint::Desired { p: *p, dvcol: v, dwcol: w }
+                    *self.caret.get_mut() = LazyVPoint::Desired { p_or_b: *p, dvcol: v, dwcol: w }
                 }
                 LazyVPoint::Desired { dvcol, dwcol, .. } => (*dvcol, *dwcol) = (v, w),
             }
@@ -875,18 +898,23 @@ mod cursor {
     /// of [`Selection`]s
     #[derive(Clone, Copy, Eq, Encode, Decode)]
     pub(super) enum LazyVPoint {
+        Unknown(PointOrByte),
         Known(VPoint),
-        Unknown(Point),
-        Desired { p: Point, dvcol: u16, dwcol: u16 },
+        Desired {
+            p_or_b: PointOrByte,
+            dvcol: u16,
+            dwcol: u16,
+        },
     }
 
     impl LazyVPoint {
-        /// The actual [`Point`]
-        fn point(self) -> Point {
-            match self {
-                LazyVPoint::Known(vp) => vp.p,
-                LazyVPoint::Unknown(p) => p,
-                LazyVPoint::Desired { p, .. } => p,
+        fn byte(&self) -> usize {
+            match *self {
+                LazyVPoint::Unknown(PointOrByte::Point(point))
+                | LazyVPoint::Desired { p_or_b: PointOrByte::Point(point), .. } => point.byte(),
+                LazyVPoint::Unknown(PointOrByte::Byte(byte))
+                | LazyVPoint::Desired { p_or_b: PointOrByte::Byte(byte), .. } => byte,
+                LazyVPoint::Known(vp) => vp.byte(),
             }
         }
 
@@ -894,9 +922,9 @@ mod cursor {
         fn calculate(self, text: &Text, area: &Area, opts: PrintOpts) -> VPoint {
             match self {
                 Self::Known(vp) => vp,
-                Self::Unknown(p) => VPoint::new(p, text, area, opts),
-                Self::Desired { p, dvcol, dwcol } => {
-                    let mut vp = VPoint::new(p, text, area, opts);
+                Self::Unknown(p_or_b) => VPoint::new(p_or_b.point(text), text, area, opts),
+                Self::Desired { p_or_b, dvcol, dwcol } => {
+                    let mut vp = VPoint::new(p_or_b.point(text), text, area, opts);
                     vp.dvcol = dvcol;
                     vp.dwcol = dwcol;
                     vp
@@ -907,14 +935,18 @@ mod cursor {
 
     impl Default for LazyVPoint {
         fn default() -> Self {
-            Self::Desired { p: Point::default(), dvcol: 0, dwcol: 0 }
+            Self::Desired {
+                p_or_b: PointOrByte::Point(Point::default()),
+                dvcol: 0,
+                dwcol: 0,
+            }
         }
     }
 
     #[allow(clippy::non_canonical_partial_ord_impl)]
     impl PartialOrd for LazyVPoint {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.point().cmp(&other.point()))
+            Some(self.byte().cmp(&other.byte()))
         }
     }
 
@@ -926,7 +958,7 @@ mod cursor {
 
     impl PartialEq for LazyVPoint {
         fn eq(&self, other: &Self) -> bool {
-            self.point() == other.point()
+            self.byte() == other.byte()
         }
     }
 
@@ -955,7 +987,7 @@ mod cursor {
     /// [wrapped line]: crate::mode::Cursor::move_ver_wrapped
     #[derive(Clone, Copy, Debug, Eq, Encode, Decode)]
     pub struct VPoint {
-        p: Point,
+        point: Point,
         // No plan to support lines that are far too long
         ccol: u16,
         vcol: u16,
@@ -966,8 +998,8 @@ mod cursor {
 
     impl VPoint {
         /// Returns a new [`VPoint`]
-        fn new(p: Point, text: &Text, area: &Area, opts: PrintOpts) -> Self {
-            let range = text.line_range(p.line());
+        fn new(point: Point, text: &Text, area: &Area, opts: PrintOpts) -> Self {
+            let range = text.line_range(point.line());
 
             let mut vcol = 0;
 
@@ -975,7 +1007,7 @@ mod cursor {
                 .print_iter(text, range.start.to_two_points_before(), opts)
                 .find_map(|(caret, item)| {
                     if let Some((lhs, _)) = item.as_real_char()
-                        && lhs == p
+                        && lhs == point
                     {
                         return Some(caret.x as u16);
                     }
@@ -985,8 +1017,8 @@ mod cursor {
                 .unwrap_or(0);
 
             Self {
-                p,
-                ccol: (p.char() - range.start.char()) as u16,
+                point,
+                ccol: (point.char() - range.start.char()) as u16,
                 vcol,
                 dvcol: vcol,
                 wcol,
@@ -996,22 +1028,22 @@ mod cursor {
 
         /// Returns a new [`VPoint`] from raw data
         fn known(self, p: Point, ccol: u16, vcol: u16, wcol: u16) -> Self {
-            Self { p, ccol, vcol, wcol, ..self }
+            Self { point: p, ccol, vcol, wcol, ..self }
         }
 
         /// The byte index of this [`VPoint`]
         pub fn byte(&self) -> usize {
-            self.p.byte()
+            self.point.byte()
         }
 
         /// The char index of this [`VPoint`]
         pub fn char(&self) -> usize {
-            self.p.char()
+            self.point.char()
         }
 
         /// The line index of this [`VPoint`]
         pub fn line(&self) -> usize {
-            self.p.line()
+            self.point.line()
         }
 
         /// Number of characters from the start of the line
@@ -1043,7 +1075,7 @@ mod cursor {
     #[allow(clippy::non_canonical_partial_ord_impl)]
     impl PartialOrd for VPoint {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.p.cmp(&other.p))
+            Some(self.point.cmp(&other.point))
         }
     }
 
@@ -1055,7 +1087,7 @@ mod cursor {
 
     impl PartialEq for VPoint {
         fn eq(&self, other: &Self) -> bool {
-            self.p == other.p
+            self.point == other.point
         }
     }
 
@@ -1072,17 +1104,57 @@ mod cursor {
     impl std::fmt::Debug for LazyVPoint {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                Self::Known(vp) => write!(f, "Known({:?}, {})", vp.p, vp.dwcol),
-                Self::Unknown(p) => write!(f, "Unknown({p:?}"),
-                Self::Desired { p, dvcol, dwcol } => write!(f, "Desired({p:?}, {dvcol}, {dwcol})"),
+                Self::Known(vp) => write!(f, "Known({:?}, {})", vp.point, vp.dwcol),
+                Self::Unknown(p_or_b) => write!(f, "Unknown({p_or_b:?}"),
+                Self::Desired { p_or_b, dvcol, dwcol } => {
+                    write!(f, "Desired({p_or_b:?}, {dvcol}, {dwcol})")
+                }
             }
+        }
+    }
+
+    /// A struct meant to minimize calculations on very large numbers
+    /// of [`Selection`]s
+    #[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, PartialOrd, Ord)]
+    pub(super) enum PointOrByte {
+        Point(Point),
+        Byte(usize),
+    }
+
+    impl PointOrByte {
+        fn point(&self, bytes: &Bytes) -> Point {
+            match *self {
+                PointOrByte::Point(point) => point,
+                PointOrByte::Byte(byte) => bytes.point_at_byte(byte),
+            }
+        }
+    }
+
+    fn get_point_lazily(lazy: LazyVPoint, bytes: &Bytes) -> (LazyVPoint, Point) {
+        match lazy {
+            LazyVPoint::Unknown(PointOrByte::Point(point))
+            | LazyVPoint::Desired { p_or_b: PointOrByte::Point(point), .. } => (lazy, point),
+            LazyVPoint::Unknown(PointOrByte::Byte(byte)) => {
+                let point = bytes.point_at_byte(byte);
+                (LazyVPoint::Unknown(PointOrByte::Point(point)), point)
+            }
+            LazyVPoint::Desired {
+                p_or_b: PointOrByte::Byte(byte),
+                dvcol,
+                dwcol,
+            } => {
+                let point = bytes.point_at_byte(byte);
+                let p_or_b = PointOrByte::Point(point);
+                (LazyVPoint::Desired { p_or_b, dvcol, dwcol }, point)
+            }
+            LazyVPoint::Known(vpoint) => (lazy, vpoint.point),
         }
     }
 }
 
 impl std::fmt::Debug for Selections {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct DebugShiftState((usize, [i32; 3]));
+        struct DebugShiftState((usize, i32));
         impl std::fmt::Debug for DebugShiftState {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{:?}", self.0)

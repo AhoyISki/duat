@@ -70,12 +70,12 @@ impl LineNumbers {
     fn form_text(&self, pa: &Pass) -> Text {
         let (main_line_num, printed_line_numbers) = {
             let printed_line_numbers = self.buffer.printed_line_numbers(pa);
-            let buffer = self.buffer.read(pa);
+            let buf = self.buffer.read(pa);
 
-            let main_line = if buffer.selections().is_empty() {
+            let main_line = if buf.selections().is_empty() {
                 usize::MAX
             } else {
-                buffer.selections().get_main().unwrap().line()
+                buf.selections().main().caret_point(buf.bytes()).line()
             };
 
             (main_line, printed_line_numbers)

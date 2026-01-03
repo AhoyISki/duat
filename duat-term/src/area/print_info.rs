@@ -53,7 +53,7 @@ impl PrintInfo {
     pub(super) fn end_points(&mut self, coords: Coords, text: &Text, opts: PrintOpts) -> TwoPoints {
         self.prev_main = self.prev_main.min(text.last_point());
 
-        let s_points = if let Some(s_points) = self.s_points
+        let points = if let Some(s_points) = self.s_points
             && coords.width() == self.prev_coords.width()
             && coords.height() == self.prev_coords.height()
         {
@@ -64,14 +64,7 @@ impl PrintInfo {
             return Default::default();
         };
 
-        let (points, mut y) = if let Some(main) = text.selections().get_main()
-            && main.caret() == self.prev_main
-        {
-            (s_points, 0)
-            //(TwoPoints::new_after_ghost(self.prev_main), self.vert_dist)
-        } else {
-            (s_points, 0)
-        };
+        let mut y = 0;
 
         let mut iter = print_iter(text, points, coords.width(), opts);
 

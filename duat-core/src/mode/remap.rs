@@ -1042,7 +1042,7 @@ fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
         let pa = unsafe { &mut Pass::new() };
         let widget = handle.write(pa);
         if let Some(main) = widget.text().selections().get_main() {
-            let byte = main.byte();
+            let byte = main.caret_byte();
             widget.text_mut().remove_tags(Tagger::for_alias(), ..);
             f(&mut *widget, byte)
         }

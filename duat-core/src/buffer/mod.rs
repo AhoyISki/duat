@@ -311,7 +311,7 @@ impl Widget for Buffer {
         if let Some(main) = buffer.text().selections().get_main() {
             area.scroll_around_points(
                 buffer.text(),
-                main.caret().to_two_points_after(),
+                main.caret_point(buffer.bytes()).to_two_points_after(),
                 buffer.get_print_opts(),
             );
         }

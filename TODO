@@ -36,6 +36,7 @@ KNOWN BUGS:
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
              
  LOW PRIORITY:
+  [ ] Selections struct that holds a reference to the bytes.
   [ ] statics remain as the program reloads.
   [ ] Completions aren't properly sized.
   [ ] Perfect print iterators.

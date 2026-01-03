@@ -144,7 +144,6 @@ struct InnerText {
     bytes: Bytes,
     tags: InnerTags,
     selections: Selections,
-    bytes_state: u64,
     has_unsaved_changes: bool,
 }
 
@@ -170,14 +169,14 @@ impl Text {
         let tags = InnerTags::new(bytes.len().byte());
 
         let selections = if selections.iter().any(|(sel, _)| {
-            [Some(sel.caret()), sel.anchor()]
+            [Some(sel.caret_byte()), sel.anchor_byte()]
                 .into_iter()
                 .flatten()
-                .any(|p| p >= bytes.len())
+                .any(|byte| byte >= bytes.len().byte())
         }) {
             Selections::new(Selection::default())
         } else {
-            selections.correct_all(&bytes);
+            selections.correct_all();
             selections
         };
 
@@ -185,7 +184,6 @@ impl Text {
             bytes,
             tags,
             selections,
-            bytes_state: 0,
             has_unsaved_changes: false,
         }))
     }
@@ -376,7 +374,7 @@ impl Text {
         );
         let change = Change::new(edit, start..end, self);
 
-        self.0.bytes_state += 1;
+        self.0.bytes.bytes_state += 1;
         self.apply_change(0, change.as_ref());
     }
 
@@ -424,9 +422,9 @@ impl Text {
         for (i, change) in changes.enumerate() {
             self.apply_change(0, change);
 
-            let start = change.start().min(self.last_point());
+            let start = change.start().min(self.last_point()).byte();
             let added_end = match change.added_str().chars().next_back() {
-                Some(last) => change.added_end().rev(last),
+                Some(last) => change.added_end().rev(last).byte(),
                 None => start,
             };
 
@@ -559,30 +557,6 @@ impl Text {
         RevIter::new_at(self, at)
     }
 
-    /// A forward iterator of the [`char`]s of the [`Text`]
-    ///
-    /// Each [`char`] will be accompanied by a [`Point`], which is the
-    /// position where said character starts, e.g.
-    /// [`Point::default()`] for the first character
-    pub fn chars_fwd(
-        &self,
-        range: impl TextRange,
-    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
-        self.0.bytes.chars_fwd(range)
-    }
-
-    /// A reverse iterator of the [`char`]s of the [`Text`]
-    ///
-    /// Each [`char`] will be accompanied by a [`Point`], which is the
-    /// position where said character starts, e.g.
-    /// [`Point::default()`] for the first character
-    pub fn chars_rev(
-        &self,
-        range: impl TextRange,
-    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
-        self.0.bytes.chars_rev(range)
-    }
-
     /// A forward iterator over the [`Tag`]s of the [`Text`]
     ///
     /// This iterator will consider some [`Tag`]s before `b`, since
@@ -664,7 +638,7 @@ impl Text {
         let (tags_state, meta_tags_state) = self.0.tags.states();
 
         TextState {
-            bytes_state: self.0.bytes_state,
+            bytes_state: self.0.bytes.bytes_state,
             tags_state,
             meta_tags_state,
         }
@@ -711,7 +685,7 @@ impl<'t> TextMut<'t> {
         );
         let change = Change::new(edit, start..end, self);
 
-        self.text.0.bytes_state += 1;
+        self.text.0.bytes.bytes_state += 1;
         self.text.apply_change(0, change.as_ref());
         self.history.as_mut().map(|h| h.apply_change(None, change));
     }
@@ -722,7 +696,7 @@ impl<'t> TextMut<'t> {
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> (Option<usize>, usize) {
-        self.text.0.bytes_state += 1;
+        self.text.0.bytes.bytes_state += 1;
         let selections_taken = self
             .text
             .apply_change(guess_i.unwrap_or(0), change.as_ref());
@@ -833,7 +807,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_backwards()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes_state += 1;
+            self.text.0.bytes.bytes_state += 1;
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -844,7 +818,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_forward()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes_state += 1;
+            self.text.0.bytes.bytes_state += 1;
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -856,7 +830,7 @@ impl<'t> TextMut<'t> {
         }
     }
 
-	/// Attaches a history to this `TextMut`
+    /// Attaches a history to this `TextMut`
     pub(crate) fn attach_history(&mut self, history: &'t mut History) {
         self.history = Some(history);
     }
@@ -871,7 +845,7 @@ impl<'t> TextMut<'t> {
 
     /// Removes the tags for all the selections, used before they are
     /// expected to move
-    pub(crate) fn add_selections(&mut self, area: &Area, opts: PrintOpts) {
+    pub(crate) fn add_selection_tags(&mut self, area: &Area, opts: PrintOpts) {
         let within = (self.0.selections.len() >= 500).then(|| {
             let start = area.start_points(self, opts);
             let end = area.end_points(self, opts);
@@ -879,21 +853,16 @@ impl<'t> TextMut<'t> {
         });
 
         let mut add_selection = |selection: &Selection, bytes: &mut Bytes, is_main: bool| {
-            let (caret, selection) = selection.tag_points(bytes);
+            let (caret, selection) = selection.tag_bytes(bytes);
 
             let key = Tagger::for_selections();
             let form = if is_main {
-                self.text.0.tags.insert(key, caret.byte(), MainCaret, false);
+                self.text.0.tags.insert(key, caret, MainCaret, false);
                 form::M_SEL_ID
             } else {
-                self.text
-                    .0
-                    .tags
-                    .insert(key, caret.byte(), ExtraCaret, false);
+                self.text.0.tags.insert(key, caret, ExtraCaret, false);
                 form::E_SEL_ID
             };
-
-            bytes.add_record([caret.byte(), caret.char(), caret.line()]);
 
             if let Some(range) = selection {
                 self.text.0.tags.insert(key, range, form.to_tag(95), false);
@@ -912,8 +881,15 @@ impl<'t> TextMut<'t> {
     }
 
     /// Removes the [`Tag`]s for all [`Selection`]s
-    pub(crate) fn remove_selections(&mut self) {
+    pub(crate) fn remove_selection_tags(&mut self) {
         self.remove_tags(Tagger::for_selections(), ..);
+    }
+
+	/// Adds a record for the given byte index
+    pub(crate) fn add_record_for(&mut self, byte_idx: usize) {
+        let point = self.0.bytes.point_at_byte(byte_idx);
+        let record = [point.byte(), point.char(), point.line()];
+        self.text.0.bytes.add_record(record);
     }
 }
 
