@@ -43,6 +43,7 @@ impl Trees {
 
     /// Returns an [`Iterator`] over all regions that intersect the
     /// [`Range`] given
+    #[track_caller]
     pub fn intersecting(&self, range: Range<usize>) -> impl Iterator<Item = (usize, &Tree)> + '_ {
         self.0
             .iter()

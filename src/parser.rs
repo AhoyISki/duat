@@ -32,11 +32,11 @@ pub(crate) fn add_parser_hook() {
     fn async_parse(
         pa: &mut Pass,
         handle: &Handle,
-        printed_lines: &[Range<usize>],
+        printed_lines: Vec<Range<usize>>,
         is_queued: bool,
     ) -> bool {
         if let Some(filetype) = handle.filetype(pa)
-            && let Some((parser, buffer)) = PARSERS.write(pa, handle)
+            && let Some((parser, buf)) = PARSERS.write(pa, handle)
             && parser.lang_parts.0 == filetype
         {
             if parser.is_parsing && !is_queued {
@@ -45,15 +45,22 @@ pub(crate) fn add_parser_hook() {
 
             parser.is_parsing = true;
 
-            let visible_ranges = get_visible_ranges(printed_lines);
-            let mut parts = TRACKER.parts(buffer).unwrap();
+            let visible_ranges = get_visible_ranges(&printed_lines);
+            let mut parts = TRACKER.parts(buf).unwrap();
 
             apply_changes(&parts, parser);
 
+            // In this case, the previously sent printed_lines may be outdated and
+            // the TsParsers have been reset, so get new ones.
+            if is_queued && parts.changes.len() > 0 {
+                let printed_lines = handle.printed_line_ranges(pa);
+                return async_parse(pa, handle, printed_lines, is_queued);
+            }
+
             if !parser.parse(&mut parts, &visible_ranges, Some(Instant::now()), handle) {
                 let handle = handle.clone();
-                let printed_lines = printed_lines.to_vec();
-                context::queue(move |pa| _ = async_parse(pa, &handle, &printed_lines, true))
+                let printed_lines = printed_lines.clone();
+                context::queue(move |pa| _ = async_parse(pa, &handle, printed_lines, true))
             } else {
                 parser.is_parsing = false;
             }
@@ -75,7 +82,7 @@ pub(crate) fn add_parser_hook() {
 
     hook::add::<BufferUpdated>(|pa, handle| {
         let printed_lines = handle.printed_line_ranges(pa);
-        if async_parse(pa, handle, &printed_lines, false) {
+        if async_parse(pa, handle, printed_lines.clone(), false) {
             return;
         }
 
@@ -100,7 +107,7 @@ pub(crate) fn add_parser_hook() {
                 is_parsing: false,
             });
 
-            async_parse(pa, handle, &printed_lines, false);
+            async_parse(pa, handle, printed_lines.clone(), false);
         }
     });
 }
