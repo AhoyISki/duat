@@ -483,14 +483,14 @@ impl Parser {
         };
 
         // The first non indent character of this line.
-        let indented_start = bytes
+        let indented_start_byte = bytes
             .chars_fwd(start..)
             .unwrap()
-            .take_while(|(p, _)| p.line() == start.line())
+            .take_while(|(_, char)| *char != '\n')
             .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
 
-        let mut opt_node = if let Some(indented_start) = indented_start {
-            Some(descendant_in(root, indented_start.byte()))
+        let mut opt_node = if let Some(indented_start_byte) = indented_start_byte {
+            Some(descendant_in(root, indented_start_byte))
         // If the line is empty, look behind for another.
         } else {
             // Find last previous empty line.

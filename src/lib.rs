@@ -38,7 +38,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
-    text::{Builder, Point, Text, txt},
+    text::{Builder, Text, txt},
 };
 use tree_sitter::{Language, Node, Query};
 
@@ -289,20 +289,23 @@ impl TsHandle for Handle {
     ) -> Option<Vec<usize>> {
         let range = duat_core::utils::get_range(selections, self.selections(pa).len());
 
-        let carets: Vec<Point> = self
+        let carets: Vec<usize> = self
             .selections(pa)
             .iter()
             .enumerate()
             .take(range.end)
             .skip(range.start)
-            .map(|(_, (sel, _))| sel.caret())
+            .map(|(_, (sel, _))| sel.caret().byte())
             .collect();
 
         let (parser, buffer) = parser::sync_parse(pa, self)?;
 
         carets
             .into_iter()
-            .map(|caret| parser.indent_on(caret, buffer.bytes(), buffer.opts))
+            .map(|byte| {
+                let bytes = buffer.bytes();
+                parser.indent_on(bytes.point_at_byte(byte), bytes, buffer.opts)
+            })
             .collect()
     }
 }
