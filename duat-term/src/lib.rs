@@ -220,7 +220,9 @@ impl RawUi for Ui {
     }
 
     fn close(&self) {
-        self.mt.lock().unwrap().tx.send(Event::Quit).unwrap();
+        if self.mt.lock().unwrap().tx.send(Event::Quit).is_err() {
+            return;
+        }
 
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags).unwrap();
@@ -308,7 +310,6 @@ impl RawUi for Ui {
         // Hook for returning to regular terminal state
         std::panic::set_hook(Box::new(|info| {
             self.close();
-            println!("{}", std::backtrace::Backtrace::force_capture());
             println!("{info}");
         }));
     }

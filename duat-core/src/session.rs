@@ -256,7 +256,7 @@ impl Session {
                             continue;
                         }
                     }
-                    DuatEvent::QueuedFunction(f) => f(pa),
+                    DuatEvent::QueuedFunction(f) => _ = catch_panic(|| f(pa)),
                     DuatEvent::Resized | DuatEvent::FormChange => {
                         reprint_screen = true;
                         continue;

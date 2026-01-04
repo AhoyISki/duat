@@ -48,7 +48,9 @@ pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         context::log_panic(panic_info);
-        *PANIC_INFO.lock().unwrap() = Some(panic_info.to_string())
+        let backtrace = std::backtrace::Backtrace::capture();
+
+        *PANIC_INFO.lock().unwrap() = Some(format!("{panic_info}\n{backtrace}"))
     }));
 
     if let Some((logs, forms_init, (crate_dir, profile))) = initials {
