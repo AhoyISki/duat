@@ -17,7 +17,7 @@ use crate::{
     context::{self, Handle},
     data::Pass,
     form::FormId,
-    text::{Point, Selectionless, Text, TextRange},
+    text::{Point, Text, TextRange},
     ui::{Coord, DynSpawnSpecs, Widget},
 };
 
@@ -285,14 +285,12 @@ simple_impl_Tag!(Spacer, RawTag::Spacer, false);
 ///
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone)]
-pub struct Ghost(Arc<Selectionless>);
+pub struct Ghost(Arc<Text>);
 
 impl Ghost {
     /// Returns a new `Ghost`, which can be inserted on [`Text`]
     pub fn new(value: impl Into<Text>) -> Self {
-        Self(Arc::new(
-            Into::<Text>::into(value).without_last_nl().no_selections(),
-        ))
+        Self(Arc::new(Into::<Text>::into(value).without_last_nl()))
     }
 
     /// The [`Text`] of this `Ghost`
@@ -428,7 +426,7 @@ impl Tag<Point, SpawnId> for SpawnTag {
 
     fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
         tags.spawns.push(super::SpawnCell(ret));
-        tags.spawn_fns.push(self.1);
+        tags.spawn_fns.0.push(self.1);
     }
 }
 
@@ -451,7 +449,7 @@ impl Tag<usize, SpawnId> for SpawnTag {
 
     fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
         tags.spawns.push(super::SpawnCell(ret));
-        tags.spawn_fns.push(self.1);
+        tags.spawn_fns.0.push(self.1);
     }
 }
 

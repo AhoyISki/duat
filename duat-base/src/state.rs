@@ -176,23 +176,21 @@ pub fn mode_txt() -> DataMap<&'static str, Text> {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_byte(buf: &Buffer) -> usize {
-    buf.selections().main().caret_byte() + 1
+    buf.selections().main().caret().byte() + 1
 }
 
 /// [`StatusLine`] part: Char of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_char(buf: &Buffer) -> usize {
-    let bytes = buf.bytes();
-    buf.selections().main().caret_point(bytes).char() + 1
+    buf.selections().main().caret().char() + 1
 }
 
 /// [`StatusLine`] part: Line of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_line(buf: &Buffer) -> usize {
-    let bytes = buf.bytes();
-    buf.selections().main().caret_point(bytes).line() + 1
+    buf.selections().main().caret().line() + 1
 }
 
 /// [`StatusLine`] part: Column of the main selection

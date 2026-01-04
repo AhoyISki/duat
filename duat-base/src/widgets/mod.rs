@@ -19,8 +19,8 @@ use duat_core::{
 
 pub use self::{
     completions::{
-        Completions, CompletionsBuilder, CompletionsKind, CompletionsList, CompletionsProvider,
-        track_words,
+        CommandsCompletions, Completions, CompletionsBuilder, CompletionsKind, CompletionsList,
+        CompletionsProvider, track_words,
     },
     info::Info,
     line_numbers::{LineNumbers, LineNumbersOpts},

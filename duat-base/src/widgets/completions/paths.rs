@@ -66,7 +66,7 @@ impl CompletionsProvider for PathCompletions {
         false
     }
 
-    fn info_on(&self, (item, _): (&str, &Self::Info)) -> Option<Text> {
+    fn default_info_on(&self, (item, _): (&str, &Self::Info)) -> Option<Text> {
         Some(txt!("Hiiii pookie {item}!"))
     }
 }

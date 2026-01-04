@@ -22,14 +22,13 @@ pub use self::{
         Spacer, SpawnTag, Tag,
     },
 };
-use super::{
-    Point, Text, TextRangeOrIndex,
-    shift_list::{Shift, ShiftList, Shiftable},
-};
 use crate::{
     context::Handle,
     data::Pass,
-    text::Selectionless,
+    text::{
+        Point, Text, TextRangeOrIndex,
+        shift_list::{Shift, ShiftList, Shiftable},
+    },
     ui::{SpawnId, Widget},
     utils::get_range,
 };
@@ -184,10 +183,10 @@ impl std::fmt::Debug for Tags<'_> {
 /// functions of [`StartToggle`]s
 pub struct InnerTags {
     list: ShiftList<(i32, RawTag)>,
-    ghosts: Vec<(GhostId, Arc<Selectionless>)>,
+    ghosts: Vec<(GhostId, Arc<Text>)>,
     toggles: Vec<(ToggleId, Toggle)>,
     spawns: Vec<SpawnCell>,
-    pub(super) spawn_fns: Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
+    pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
     extents: TaggerExtents,
     tags_state: u64,
@@ -207,7 +206,7 @@ impl InnerTags {
             ghosts: Vec::new(),
             toggles: Vec::new(),
             spawns: Vec::new(),
-            spawn_fns: Vec::new(),
+            spawn_fns: SpawnFns(Vec::new()),
             bounds: Bounds::new(max),
             extents: TaggerExtents::new(max),
             tags_state: 0,
@@ -217,7 +216,7 @@ impl InnerTags {
 
     /// Insert a new [`Tag`] at a given [`TextIndex`] or [`TextRange`]
     ///
-    /// If the `Tag` is ranged (like [`FormTag`] or 
+    /// If the `Tag` is ranged (like [`FormTag`] or
     ///
     /// [`TextIndex`]: super::TextIndex
     /// [`TextRange`]: super::TextRange
@@ -640,7 +639,7 @@ impl InnerTags {
     pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
         self.ghosts
             .iter()
-            .find_map(|(lhs, arc)| (*lhs == id).then_some(arc.text()))
+            .find_map(|(lhs, text)| (*lhs == id).then_some(text.as_ref()))
     }
 
     /// A list of all [`SpawnId`]s that belong to this `Tags`
@@ -656,7 +655,7 @@ impl Clone for InnerTags {
             ghosts: self.ghosts.clone(),
             toggles: self.toggles.clone(),
             spawns: Vec::new(),
-            spawn_fns: Vec::new(),
+            spawn_fns: SpawnFns(Vec::new()),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
             tags_state: self.tags_state,
@@ -719,11 +718,11 @@ impl PartialEq for InnerTags {
                     let self_ghost = self
                         .ghosts
                         .iter()
-                        .find_map(|(id, arc)| (lhs == *id).then_some(arc.text()));
+                        .find_map(|(id, arc)| (lhs == *id).then_some(arc.as_ref()));
                     let other_ghost = other
                         .ghosts
                         .iter()
-                        .find_map(|(id, arc)| (rhs == *id).then_some(arc.text()));
+                        .find_map(|(id, arc)| (rhs == *id).then_some(arc.as_ref()));
                     self_ghost == other_ghost && l_b == r_b
                 }
                 (MainCaret(_), MainCaret(_))
@@ -900,3 +899,12 @@ impl Drop for SpawnCell {
         crate::context::windows().queue_close_spawned(self.0);
     }
 }
+
+pub(super) struct SpawnFns(
+    pub(super) Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>>,
+);
+
+/// SAFETY: The function are only ever used when there's access to a
+/// Pass Besides, does Sync even apply to FnOnce? isn't it impossible
+/// to do anything with an &FnOnce value?
+unsafe impl Sync for SpawnFns {}

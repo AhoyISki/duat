@@ -76,7 +76,7 @@ impl CompletionsProvider for WordCompletions {
         false
     }
 
-    fn info_on(&self, (word, path): (&str, &Self::Info)) -> Option<Text> {
+    fn default_info_on(&self, (word, path): (&str, &Self::Info)) -> Option<Text> {
         Some(txt!("Hiiii pookie {word} from {path.source}!"))
     }
 }

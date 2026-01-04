@@ -27,9 +27,13 @@ use duat_core::{
 };
 use duat_term::Frame;
 
-pub use self::words::{WordCompletions, track_words};
+pub use self::{
+    commands::CommandsCompletions,
+    words::{WordCompletions, track_words},
+};
 use crate::widgets::{Info, completions::paths::PathCompletions};
 
+mod commands;
 mod paths;
 mod words;
 
@@ -102,7 +106,7 @@ impl CompletionsBuilder {
             max_height: 20,
             start_byte,
             show_without_prefix: self.show_without_prefix,
-            last_caret_byte: main.caret_byte(),
+            last_caret: main.caret(),
             info_handle: None,
         };
 
@@ -142,7 +146,7 @@ pub struct Completions {
     max_height: usize,
     start_byte: usize,
     show_without_prefix: bool,
-    last_caret_byte: usize,
+    last_caret: Point,
     info_handle: Option<Handle<Info>>,
 }
 
@@ -268,14 +272,21 @@ impl Completions {
                 });
 
                 if let Some(info_text) = info_text {
-                    let specs = DynSpawnSpecs {
-                        orientation: Orientation::HorTopRight,
-                        width: None,
-                        height: Some(20.0),
-                        ..Default::default()
-                    };
+                    let info_handle = if let Some(info) = handle.read(pa).info_handle.clone() {
+                        info.write(pa).text = info_text;
+                        Some(info)
+                    } else {
+                        let specs = DynSpawnSpecs {
+                            orientation: Orientation::HorTopRight,
+                            width: None,
+                            height: None,
+                            ..Default::default()
+                        };
 
-                    let info_handle = handle.spawn_widget(pa, Info::new(info_text), specs);
+                        let info_handle = handle.spawn_widget(pa, Info::new(info_text), specs);
+                        handle.write(pa).info_handle = info_handle.clone();
+                        info_handle
+                    };
 
                     if let Some(info_handle) = info_handle.as_ref()
                         && let Some(area) = info_handle.area().write_as::<duat_term::Area>(pa)
@@ -287,17 +298,11 @@ impl Completions {
                             right: true,
                             ..Default::default()
                         };
-                        frame.set_text(Side::Above, |_| {
-                            txt!("[terminal.frame.Info]┤Info[terminal.frame.Info]├")
+                        frame.set_text(Side::Above, move |_| {
+                            txt!("[terminal.frame.Info]┤{replacement}[terminal.frame.Info]├")
                         });
                         area.set_frame(frame);
                     }
-
-                    if let Some(prev) =
-                        std::mem::replace(&mut handle.write(pa).info_handle, info_handle)
-                    {
-                        let _ = prev.close(pa);
-                    };
                 } else if let Some(prev) = handle.write(pa).info_handle.take() {
                     let _ = prev.close(pa);
                 }
@@ -315,7 +320,7 @@ impl Completions {
                     max_height: comp.max_height,
                     start_byte: new_start_byte,
                     show_without_prefix: false,
-                    last_caret_byte: comp.last_caret_byte,
+                    last_caret: comp.last_caret,
                     info_handle: comp.info_handle.take(),
                 };
 
@@ -366,16 +371,16 @@ impl Widget for Completions {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         Self::update_text_and_position(pa, handle, 0);
         let master_handle = handle.master().unwrap();
-        handle.write(pa).last_caret_byte = master_handle.selections(pa).main().caret_byte();
+        handle.write(pa).last_caret = master_handle.selections(pa).main().caret();
 
         Completions::set_frame(pa, handle);
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
         let text = self.master.has_changed(pa).then_some(self.master.text(pa));
-        let main_moved = text.as_ref().is_some_and(|text| {
-            text.selections().get_main().unwrap().caret_byte() != self.last_caret_byte
-        });
+        let main_moved = text
+            .as_ref()
+            .is_some_and(|text| text.selections().get_main().unwrap().caret() != self.last_caret);
 
         main_moved || self.providers.iter().any(|inner| inner.has_changed(text))
     }
@@ -453,7 +458,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 
     /// Additional information about an entry, which can be shown when
     /// it is selected.
-    fn info_on(&self, item: (&str, &Self::Info)) -> Option<Text>;
+    fn default_info_on(&self, item: (&str, &Self::Info)) -> Option<Text>;
 }
 
 /// A list of entries for completion
@@ -698,7 +703,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.current
                 .clone()
                 .map(|(w, _)| {
-                    let text = self.provider.info_on((&w, ret_info.unwrap()));
+                    let text = self.provider.default_info_on((&w, ret_info.unwrap()));
                     (w, text)
                 })
                 .or_else(|| Some((self.orig_prefix.clone(), None)))
@@ -763,7 +768,7 @@ fn preffix_and_suffix(
     text: &Text,
     [prefix_regex, suffix_regex]: [&str; 2],
 ) -> (Range<usize>, [String; 2]) {
-    let byte = text.selections().get_main().unwrap().caret_byte();
+    let byte = text.selections().get_main().unwrap().caret().byte();
     let prefix_range = text
         .search(prefix_regex)
         .range(..byte)

@@ -467,7 +467,7 @@ impl Bytes {
     ///
     /// Each [`char`] will be accompanied by a byte index, which is
     /// the position where said character starts, e.g. `0` for the
-    /// first character
+    /// first character.
     #[track_caller]
     pub fn chars_fwd(
         &self,
@@ -485,7 +485,7 @@ impl Bytes {
     ///
     /// Each [`char`] will be accompanied by a byte index, which is
     /// the position where said character starts, e.g. `0` for the
-    /// first character
+    /// first character.
     #[track_caller]
     pub fn chars_rev(
         &self,
@@ -562,7 +562,7 @@ impl Bytes {
 
     /// Adds a record in the given position
     #[track_caller]
-    pub(super) fn add_record(&mut self, [b, c, l]: [usize; 3]) {
+    pub(crate) fn add_record(&mut self, [b, c, l]: [usize; 3]) {
         self.records.insert([b, c, l]);
     }
 

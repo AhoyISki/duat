@@ -75,7 +75,7 @@ impl LineNumbers {
             let main_line = if buf.selections().is_empty() {
                 usize::MAX
             } else {
-                buf.selections().main().caret_point(buf.bytes()).line()
+                buf.selections().main().caret().line()
             };
 
             (main_line, printed_line_numbers)

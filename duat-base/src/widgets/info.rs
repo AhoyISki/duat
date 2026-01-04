@@ -7,11 +7,12 @@ use duat_core::{
     context::Handle,
     data::Pass,
     mode::{MouseEvent, MouseEventKind},
+    opts::PrintOpts,
     text::{Text, TextMut},
     ui::Widget,
 };
 
-/// A simple static widget, meant to simply convery information
+/// A simple static widget, meant to just convey information
 ///
 /// This is the most flexible of widgets, you can use it anywhere,
 /// just by pushing it around, or spawning it however you want, by
@@ -22,7 +23,8 @@ use duat_core::{
 /// [`DynSpawnSpecs`]: duat_core::ui::DynSpawnSpecs
 /// [`StaticSpawnSpecs`]: duat_core::ui::StaticSpawnSpecs
 pub struct Info {
-    text: Text,
+    /// The [`Text`] that will be shown by this widget
+    pub text: Text,
 }
 
 impl Info {
@@ -69,5 +71,11 @@ impl Widget for Info {
             }
             _ => {}
         }
+    }
+
+    fn get_print_opts(&self) -> PrintOpts {
+        let mut opts = PrintOpts::new();
+        opts.wrap_lines = true;
+        opts
     }
 }

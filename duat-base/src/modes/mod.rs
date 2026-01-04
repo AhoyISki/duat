@@ -44,9 +44,9 @@ use std::sync::Mutex;
 use duat_core::{buffer::Buffer, context::Handle, data::Pass};
 
 pub use self::{
-    inc_search::{ExtendFwd, ExtendRev, IncSearcher, SearchFwd, SearchRev},
+    inc_search::{ExtendFwd, ExtendRev, IncSearch, IncSearcher, SearchFwd, SearchRev},
     pager::{Pager, PagerSearch},
-    prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
+    prompt::{PipeSelections, Prompt, PromptMode, RunCommands},
 };
 
 mod inc_search;

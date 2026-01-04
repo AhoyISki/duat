@@ -173,15 +173,15 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [`replace`]: Self::replace
     /// [`append`]: Self::append
     pub fn insert(&mut self, edit: impl ToString) {
-        let caret_point = sel!(self).caret_point(self.text());
+        let caret_point = sel!(self).caret();
         let range = caret_point..caret_point;
         let change = Change::new(edit.to_string(), range, self.widget.text());
-        let (added, taken) = (change.added_end().byte(), change.taken_end().byte());
+        let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
 
-        if let Some(anchor) = sel!(self).anchor_byte()
-            && anchor > sel!(self).caret_byte()
+        if let Some(anchor) = sel!(self).anchor()
+            && anchor > sel!(self).caret()
         {
             let new_anchor = anchor + added - taken;
             sel_mut!(self).swap_ends();
@@ -201,15 +201,15 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// [`replace`]: Self::replace
     /// [`insert`]: Self::insert
     pub fn append(&mut self, edit: impl ToString) {
-        let caret = sel!(self).caret_point(self.text());
+        let caret = sel!(self).caret();
         let after = caret.fwd(self.widget.text().char_at(caret).unwrap());
         let change = Change::new(edit.to_string(), after..after, self.widget.text());
-        let (added, taken) = (change.added_end().byte(), change.taken_end().byte());
+        let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
 
-        if let Some(anchor) = sel!(self).anchor_byte()
-            && anchor > after.byte()
+        if let Some(anchor) = sel!(self).anchor()
+            && anchor > after
         {
             let new_anchor = anchor + added - taken;
             sel_mut!(self).swap_ends();
@@ -239,16 +239,15 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Moves the selection horizontally. May cause vertical movement
     ///
-    /// Returns `true` if the caret moved.
+    /// Returns the distance traveled, in character indices
     #[track_caller]
-    pub fn move_hor(&mut self, by: i32) -> bool {
+    pub fn move_hor(&mut self, by: i32) -> i32 {
         if by == 0 {
-            return false;
+            return 0;
         }
         let moved = sel_mut!(self).move_hor(by, self.widget.text());
-        if moved {
-            let byte = sel!(self).caret_byte();
-            self.widget.text_mut().add_record_for(byte);
+        if moved != 0 {
+            self.widget.text_mut().add_record_for(sel!(self).caret());
         }
         moved
     }
@@ -268,8 +267,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             self.widget.get_print_opts(),
         );
         if line_count != 0 {
-            let byte = sel!(self).caret_byte();
-            self.widget.text_mut().add_record_for(byte);
+            self.widget.text_mut().add_record_for(sel!(self).caret());
         }
         line_count
     }
@@ -307,11 +305,11 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     #[track_caller]
     pub fn move_to(&mut self, point_or_points: impl CaretOrRange) {
         point_or_points.move_to(self);
-        for byte in [Some(sel!(self).caret_byte()), sel!(self).anchor_byte()]
+        for point in [Some(sel!(self).caret()), sel!(self).anchor()]
             .into_iter()
             .flatten()
         {
-            self.widget.text_mut().add_record_for(byte);
+            self.widget.text_mut().add_record_for(point);
         }
     }
 
@@ -351,9 +349,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// Returns and takes the anchor of the [`Selection`], if there
     /// was one
     pub fn unset_anchor(&mut self) -> Option<Point> {
-        sel_mut!(self)
-            .unset_anchor()
-            .map(|anchor| self.text().point_at_byte(anchor))
+        sel_mut!(self).unset_anchor()
     }
 
     /// Sets the `anchor` to the current `caret`
@@ -540,7 +536,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Returns the [`char`] in the `caret`
     pub fn char(&self) -> char {
-        self.text().char_at(sel!(self).caret_byte()).unwrap()
+        self.text().char_at(sel!(self).caret()).unwrap()
     }
 
     /// Returns the [`char`] at a given [`Point`]
@@ -610,12 +606,12 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
 
     /// Returns the `caret`
     pub fn caret(&self) -> Point {
-        sel!(self).caret_point(self.text())
+        sel!(self).caret()
     }
 
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
-        sel!(self).anchor_point(self.text())
+        sel!(self).anchor()
     }
 
     /// The [`Point`] range of the [`Selection`]
@@ -636,7 +632,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// If you wish for an inclusive range, whose length is always
     /// greater than or equal to 1, see [`RangeInclusive`].
     pub fn range_excl(&self) -> Range<Point> {
-        sel!(self).point_range_excl(self.text())
+        sel!(self).point_range_excl()
     }
 
     /// The [`VPoint`] range of the [`Selection`]

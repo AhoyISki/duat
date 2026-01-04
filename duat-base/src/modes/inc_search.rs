@@ -7,12 +7,166 @@
 //!
 //! [`duat-core`]: duat_core
 //! [`Cursor`]: duat_core::mode::Cursor
+use std::sync::{LazyLock, Once};
+
 use duat_core::{
     buffer::Buffer,
-    context::Handle,
+    context::{self, Handle},
     data::Pass,
-    text::{Searcher, Text, txt},
+    form, hook,
+    text::{Searcher, Tagger, Text, txt},
+    ui::{PrintInfo, RwArea},
 };
+
+use crate::{
+    hooks::{SearchPerformed, SearchUpdated},
+    modes::{Prompt, PromptMode},
+};
+
+static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+
+/// The [`PromptMode`] that makes use of [`IncSearcher`]s
+///
+/// In order to make use of incremental search, you'd do something
+/// like this:
+///
+/// ```rust
+/// # duat_core::doc_duat!(duat);
+/// # use duat_base::modes::{IncSearch, SearchFwd};
+/// use duat::prelude::*;
+///
+/// #[derive(Clone)]
+/// struct Emacs;
+///
+/// impl Mode for Emacs {
+///     type Widget = Buffer;
+///
+///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
+///         match event {
+///             ctrl!('s') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
+///             other_keys_oh_god => todo!(),
+///         }
+///     }
+/// }
+/// ```
+///
+/// This function returns a [`Prompt<IncSearch<SearchFwd>>`],
+pub struct IncSearch<I: IncSearcher> {
+    inc: I,
+    orig: Option<(duat_core::mode::Selections, PrintInfo)>,
+    prev: String,
+}
+
+impl<I: IncSearcher> Clone for IncSearch<I> {
+    fn clone(&self) -> Self {
+        Self {
+            inc: self.inc.clone(),
+            orig: self.orig.clone(),
+            prev: self.prev.clone(),
+        }
+    }
+}
+
+impl<I: IncSearcher> IncSearch<I> {
+    /// Returns a [`Prompt`] with [`IncSearch<I>`] as its
+    /// [`PromptMode`]
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new(inc: I) -> Prompt {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            form::set_weak("regex.error", "accent.error");
+            form::set_weak("regex.operator", "operator");
+            form::set_weak("regex.class", "constant");
+            form::set_weak("regex.bracket", "punctuation.bracket");
+        });
+        Prompt::new(Self { inc, orig: None, prev: String::new() })
+    }
+}
+
+impl<I: IncSearcher> PromptMode for IncSearch<I> {
+    type ExitWidget = Buffer;
+
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
+        let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
+        text.remove_tags(*TAGGER, ..);
+
+        let handle = context::current_buffer(pa).clone();
+
+        if text == self.prev {
+            return text;
+        } else {
+            let prev = std::mem::replace(&mut self.prev, text.to_string());
+            hook::queue(SearchUpdated((prev, self.prev.clone())));
+        }
+
+        match Searcher::new(text.to_string()) {
+            Ok(searcher) => {
+                handle.area().set_print_info(pa, orig_print_info.clone());
+                let buffer = handle.write(pa);
+                *buffer.selections_mut() = orig_selections.clone();
+
+                let ast = regex_syntax::ast::parse::Parser::new()
+                    .parse(&text.to_string())
+                    .unwrap();
+
+                crate::tag_from_ast(*TAGGER, &mut text, &ast);
+
+                if !text.is_empty() {
+                    self.inc.search(pa, handle.attach_searcher(searcher));
+                }
+            }
+            Err(err) => {
+                let regex_syntax::Error::Parse(err) = *err else {
+                    unreachable!("As far as I can tell, regex_syntax has goofed up");
+                };
+
+                let span = err.span();
+                let id = form::id_of!("regex.error");
+
+                text.insert_tag(*TAGGER, span.start.offset..span.end.offset, id.to_tag(0));
+            }
+        }
+
+        text
+    }
+
+    fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &RwArea) -> Text {
+        let handle = context::current_buffer(pa);
+
+        self.orig = Some((
+            handle.read(pa).selections().clone(),
+            handle.area().get_print_info(pa),
+        ));
+
+        text
+    }
+
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
+        if !text.is_empty() {
+            if let Err(err) = Searcher::new(text.to_string()) {
+                let regex_syntax::Error::Parse(err) = *err else {
+                    unreachable!("As far as I can tell, regex_syntax has goofed up");
+                };
+
+                let range = err.span().start.offset..err.span().end.offset;
+                let err = txt!(
+                    "[a]{:?}, \"{}\"[prompt.colon]:[] {}",
+                    range,
+                    text.strs(range).unwrap(),
+                    err.kind()
+                );
+
+                context::error!("{err}")
+            } else {
+                hook::queue(SearchPerformed(text.to_string()));
+            }
+        }
+    }
+
+    fn prompt(&self) -> Text {
+        txt!("{}", self.inc.prompt())
+    }
+}
 
 /// An abstraction trait used to handle incremental search
 ///

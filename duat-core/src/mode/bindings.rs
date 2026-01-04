@@ -7,7 +7,7 @@ use crossterm::event::{
 pub use crate::__bindings__ as bindings;
 use crate::{
     mode::KeyMod,
-    text::{Selectionless, Text, txt},
+    text::{Text, txt},
 };
 
 /// A list of key bindings available in a given [`Mode`]
@@ -38,7 +38,7 @@ pub struct Bindings {
     ///
     /// Direct implementation is not recommended, use the
     /// [`bindings!`] macro instead.
-    pub list: Vec<(Vec<Binding>, Selectionless, Option<Bindings>)>,
+    pub list: Vec<(Vec<Binding>, Text, Option<Bindings>)>,
 }
 
 impl Bindings {
@@ -95,9 +95,9 @@ impl Bindings {
         let mut bindings = Some(self);
         seq.iter()
             .map_while(|key_event| {
-                let (_, selless, nested) = bindings?.list.iter().find(matches_event(*key_event))?;
+                let (_, text, nested) = bindings?.list.iter().find(matches_event(*key_event))?;
                 bindings = nested.as_ref();
-                Some(selless.text())
+                Some(text)
             })
             .last()
     }
@@ -105,19 +105,16 @@ impl Bindings {
     /// The description for a particular sequence of bound [keys]
     ///
     /// [keys]: KeyEvent
-    pub fn description_for_mut<'a>(
-        &'a mut self,
-        seq: &[KeyEvent],
-    ) -> Option<&'a mut Selectionless> {
+    pub fn description_for_mut<'a>(&'a mut self, seq: &[KeyEvent]) -> Option<&'a mut Text> {
         let mut bindings = Some(self);
         seq.iter()
             .map_while(move |key_event| {
-                let (_, selless, nested) =
+                let (_, text, nested) =
                     bindings.take()?.list.iter_mut().find(|(list, ..)| {
                         list.iter().any(|binding| binding.matches(*key_event))
                     })?;
                 bindings = nested.as_mut();
-                Some(selless)
+                Some(text)
             })
             .last()
     }
@@ -125,7 +122,7 @@ impl Bindings {
 
 fn matches_event(
     key_event: KeyEvent,
-) -> impl FnMut(&&(Vec<Binding>, Selectionless, Option<Bindings>)) -> bool {
+) -> impl FnMut(&&(Vec<Binding>, Text, Option<Bindings>)) -> bool {
     move |(list, ..)| list.iter().any(|binding| binding.matches(key_event))
 }
 
@@ -485,11 +482,11 @@ macro_rules! __bindings__ {
         $pattern:pat => ($text:expr, $($matcher:tt)+)
         $(,$($rest:tt)*)?
     ) => {
-        $list.push($text.no_selections());
+        $list.push($text);
         $crate::mode::bindings!(@description_entry $list: $($($rest)*)?);
     };
     (@description_entry $list:ident: $pattern:pat => $text:expr $(,$($rest:tt)*)?) => {
-        $list.push($text.no_selections());
+        $list.push($text);
         $crate::mode::bindings!(@description_entry $list: $($($rest)*)?);
     };
 

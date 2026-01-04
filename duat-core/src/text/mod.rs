@@ -169,14 +169,14 @@ impl Text {
         let tags = InnerTags::new(bytes.len().byte());
 
         let selections = if selections.iter().any(|(sel, _)| {
-            [Some(sel.caret_byte()), sel.anchor_byte()]
+            [Some(sel.caret()), sel.anchor()]
                 .into_iter()
                 .flatten()
-                .any(|byte| byte >= bytes.len().byte())
+                .any(|point| point >= bytes.len())
         }) {
             Selections::new(Selection::default())
         } else {
-            selections.correct_all();
+            selections.correct_all(&mut bytes);
             selections
         };
 
@@ -422,9 +422,9 @@ impl Text {
         for (i, change) in changes.enumerate() {
             self.apply_change(0, change);
 
-            let start = change.start().min(self.last_point()).byte();
+            let start = change.start().min(self.last_point());
             let added_end = match change.added_str().chars().next_back() {
-                Some(last) => change.added_end().rev(last).byte(),
+                Some(last) => change.added_end().rev(last),
                 None => start,
             };
 
@@ -524,15 +524,6 @@ impl Text {
     }
 
     /////////// Internal synchronization functions
-
-    /// Returns a [`Text`] without [`Selections`]
-    ///
-    /// You should use this if you want to send the [`Text`] across
-    /// threads.
-    pub fn no_selections(mut self) -> Selectionless {
-        self.0.selections.clear();
-        Selectionless(self)
-    }
 
     /// Prepares the `Text` for reloading, to be used on [`Buffer`]s
     ///
@@ -796,7 +787,7 @@ impl<'t> TextMut<'t> {
     pub(crate) fn get_widget_spawns(
         &mut self,
     ) -> Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>> {
-        std::mem::take(&mut self.text.0.tags.spawn_fns)
+        std::mem::take(&mut self.text.0.tags.spawn_fns.0)
     }
 
     ////////// History functions
@@ -885,9 +876,8 @@ impl<'t> TextMut<'t> {
         self.remove_tags(Tagger::for_selections(), ..);
     }
 
-	/// Adds a record for the given byte index
-    pub(crate) fn add_record_for(&mut self, byte_idx: usize) {
-        let point = self.0.bytes.point_at_byte(byte_idx);
+    /// Adds a record for the given byte index
+    pub(crate) fn add_record_for(&mut self, point: Point) {
         let record = [point.byte(), point.char(), point.line()];
         self.text.0.bytes.add_record(record);
     }
@@ -900,52 +890,6 @@ impl<'t> std::ops::Deref for TextMut<'t> {
         self.text
     }
 }
-
-/// A [`Text`] that is guaranteed not to have [`Selections`] in it
-///
-/// Useful for sending across threads, especially when it comes to
-/// [`Logs`], since [`Text`] doesn't implement [`Send`] because of the
-/// inner [`Selections`].
-///
-/// [`Logs`]: crate::context::Logs
-#[derive(Clone, Debug)]
-pub struct Selectionless(Text);
-
-impl Selectionless {
-    /// Consumes `self`, taking the inner [`Text`]
-    pub fn take(self) -> Text {
-        self.0
-    }
-
-    /// Gets the [`Text`] within, allowing for mutation again
-    pub fn get(&self) -> Text {
-        self.0.clone()
-    }
-
-    /// A reference to the [`Text`] within
-    pub fn text(&self) -> &Text {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for Selectionless {
-    type Target = Text;
-
-    fn deref(&self) -> &Self::Target {
-        self.text()
-    }
-}
-
-impl From<Selectionless> for Text {
-    fn from(value: Selectionless) -> Self {
-        value.take()
-    }
-}
-
-// SAFETY: This struct is defined by the lack of Selections, the only
-// non Send/Sync part of a Text
-unsafe impl Send for Selectionless {}
-unsafe impl Sync for Selectionless {}
 
 impl AsRef<Bytes> for Text {
     fn as_ref(&self) -> &Bytes {

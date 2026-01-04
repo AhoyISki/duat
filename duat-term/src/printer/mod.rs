@@ -398,6 +398,17 @@ impl Printer {
         }
     }
 
+    /// Clears every area
+    ///
+    /// This function should be used when unloading in order to
+    /// prevent lingering static references to the old loaded config,
+    /// preventing possible segmentation faults.
+    pub fn clear(&self) {
+        *self.old_lines.lock().unwrap() = Vec::new();
+        *self.new_lines.lock().unwrap() = Vec::new();
+        *self.spawned_lines.lock().unwrap() = Vec::new();
+    }
+
     ////////// Lines functions
 
     /// Sends the finished [`Lines`], off to be printed

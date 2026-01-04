@@ -177,6 +177,7 @@ impl RawUi for Ui {
                 match term_rx.recv() {
                     Ok(Event::Print) => printer.print(),
                     Ok(Event::UpdatePrinter) => printer.update(true, true),
+                    Ok(Event::ClearPrinter) => printer.clear(),
                     Ok(Event::NewPrinter(new_printer)) => printer = new_printer,
                     Ok(Event::Quit) => break,
                     Err(_) => {}
@@ -319,6 +320,7 @@ impl RawUi for Ui {
         // from another thread
         ui.layouts.reset();
         ui.win = 0;
+        ui.tx.send(Event::ClearPrinter).unwrap();
         shared_fns::reset_state();
     }
 
@@ -352,6 +354,7 @@ pub enum Anchor {
 enum Event {
     Print,
     UpdatePrinter,
+    ClearPrinter,
     NewPrinter(Arc<Printer>),
     Quit,
 }

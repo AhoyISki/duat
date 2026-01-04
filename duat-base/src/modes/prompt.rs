@@ -33,17 +33,13 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::Pass,
-    form, hook,
-    mode::{self, KeyEvent, event},
-    text::{Ghost, Searcher, Tagger, Text, txt},
-    ui::{PrintInfo, RwArea, Widget},
+    form,
+    mode::{self, KeyEvent, event, shift},
+    text::{Ghost, Tagger, Text, txt},
+    ui::{RwArea, Widget},
 };
 
-use super::IncSearcher;
-use crate::{
-    hooks::{SearchPerformed, SearchUpdated},
-    widgets::PromptLine,
-};
+use crate::widgets::{CommandsCompletions, Completions, PromptLine};
 
 static HISTORY: Mutex<Vec<(TypeId, Vec<String>)>> = Mutex::new(Vec::new());
 static PROMPT_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
@@ -80,6 +76,7 @@ pub struct Prompt {
     clone_fn: Arc<Mutex<ModeCloneFn>>,
     reset_fn: fn(pa: &mut Pass),
     history_index: Option<usize>,
+    completion: Option<Completion>,
 }
 
 impl Prompt {
@@ -101,6 +98,7 @@ impl Prompt {
             clone_fn,
             reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
             history_index: None,
+            completion: None,
         }
     }
 
@@ -115,6 +113,7 @@ impl Prompt {
             let mode = mode.clone();
             move || -> Box<dyn PromptMode> { Box::new(mode.clone()) }
         }));
+
         Self {
             mode: Box::new(mode),
             starting_text: initial.to_string(),
@@ -122,6 +121,7 @@ impl Prompt {
             clone_fn,
             reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
             history_index: None,
+            completion: None,
         }
     }
 
@@ -137,6 +137,34 @@ impl Prompt {
                 Ghost::new(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
             );
         }
+    }
+
+    fn show_completions(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {
+        let text = handle.text(pa);
+        let Some(main) = text.selections().get_main() else {
+            Completions::close(pa);
+            return;
+        };
+
+        let is_parameter = text
+            .chars_rev(..main.caret())
+            .unwrap()
+            .any(|(_, char)| char.is_whitespace());
+
+        let new_completion = if is_parameter {
+            Completion::Parameter
+        } else {
+            Completion::Caller
+        };
+
+        if Some(new_completion) != self.completion {
+            match new_completion {
+                Completion::Caller => Completions::builder(CommandsCompletions::new(pa)).open(pa),
+                Completion::Parameter => Completions::close(pa),
+            }
+        }
+
+        self.completion = Some(new_completion)
     }
 }
 
@@ -270,6 +298,15 @@ impl mode::Mode for Prompt {
                 update(pa);
             }
 
+            event!(Tab) => {
+                Completions::scroll(pa, 1);
+                update(pa);
+            }
+            shift!(BackTab) => {
+                Completions::scroll(pa, -1);
+                update(pa);
+            }
+
             event!(Esc) => {
                 handle.edit_main(pa, |mut c| {
                     c.move_to(..);
@@ -299,6 +336,7 @@ impl mode::Mode for Prompt {
             _ => {}
         }
 
+        self.show_completions(pa, &handle);
         self.show_preview(pa, handle);
     }
 
@@ -350,6 +388,7 @@ impl Clone for Prompt {
             clone_fn: self.clone_fn.clone(),
             reset_fn: self.reset_fn,
             history_index: None,
+            completion: None,
         }
     }
 }
@@ -523,155 +562,13 @@ impl PromptMode for RunCommands {
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         let call = text.to_string();
         if !call.is_empty() {
+            context::debug!("call_notified [a]{call}");
             _ = cmd::call_notify(pa, call);
         }
     }
 
     fn prompt(&self) -> Text {
         Text::default()
-    }
-}
-
-/// The [`PromptMode`] that makes use of [`IncSearcher`]s
-///
-/// In order to make use of incremental search, you'd do something
-/// like this:
-///
-/// ```rust
-/// # duat_core::doc_duat!(duat);
-/// # use duat_base::modes::{IncSearch, SearchFwd};
-/// use duat::prelude::*;
-///
-/// #[derive(Clone)]
-/// struct Emacs;
-///
-/// impl Mode for Emacs {
-///     type Widget = Buffer;
-///
-///     fn send_key(&mut self, pa: &mut Pass, event: KeyEvent, handle: Handle) {
-///         match event {
-///             ctrl!('s') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
-///             other_keys_oh_god => todo!(),
-///         }
-///     }
-/// }
-/// ```
-///
-/// This function returns a [`Prompt<IncSearch<SearchFwd>>`],
-pub struct IncSearch<I: IncSearcher> {
-    inc: I,
-    orig: Option<(mode::Selections, PrintInfo)>,
-    prev: String,
-}
-
-impl<I: IncSearcher> Clone for IncSearch<I> {
-    fn clone(&self) -> Self {
-        Self {
-            inc: self.inc.clone(),
-            orig: self.orig.clone(),
-            prev: self.prev.clone(),
-        }
-    }
-}
-
-impl<I: IncSearcher> IncSearch<I> {
-    /// Returns a [`Prompt`] with [`IncSearch<I>`] as its
-    /// [`PromptMode`]
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(inc: I) -> Prompt {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            form::set_weak("regex.error", "accent.error");
-            form::set_weak("regex.operator", "operator");
-            form::set_weak("regex.class", "constant");
-            form::set_weak("regex.bracket", "punctuation.bracket");
-        });
-        Prompt::new(Self { inc, orig: None, prev: String::new() })
-    }
-}
-
-impl<I: IncSearcher> PromptMode for IncSearch<I> {
-    type ExitWidget = Buffer;
-
-    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &RwArea) -> Text {
-        let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
-        text.remove_tags(*TAGGER, ..);
-
-        let handle = context::current_buffer(pa).clone();
-
-        if text == self.prev {
-            return text;
-        } else {
-            let prev = std::mem::replace(&mut self.prev, text.to_string());
-            hook::queue(SearchUpdated((prev, self.prev.clone())));
-        }
-
-        match Searcher::new(text.to_string()) {
-            Ok(searcher) => {
-                handle.area().set_print_info(pa, orig_print_info.clone());
-                let buffer = handle.write(pa);
-                *buffer.selections_mut() = orig_selections.clone();
-
-                let ast = regex_syntax::ast::parse::Parser::new()
-                    .parse(&text.to_string())
-                    .unwrap();
-
-                crate::tag_from_ast(*TAGGER, &mut text, &ast);
-
-                if !text.is_empty() {
-                    self.inc.search(pa, handle.attach_searcher(searcher));
-                }
-            }
-            Err(err) => {
-                let regex_syntax::Error::Parse(err) = *err else {
-                    unreachable!("As far as I can tell, regex_syntax has goofed up");
-                };
-
-                let span = err.span();
-                let id = form::id_of!("regex.error");
-
-                text.insert_tag(*TAGGER, span.start.offset..span.end.offset, id.to_tag(0));
-            }
-        }
-
-        text
-    }
-
-    fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &RwArea) -> Text {
-        let handle = context::current_buffer(pa);
-
-        self.orig = Some((
-            handle.read(pa).selections().clone(),
-            handle.area().get_print_info(pa),
-        ));
-
-        text
-    }
-
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
-        if !text.is_empty() {
-            if let Err(err) = Searcher::new(text.to_string()) {
-                let regex_syntax::Error::Parse(err) = *err else {
-                    unreachable!("As far as I can tell, regex_syntax has goofed up");
-                };
-
-                let range = err.span().start.offset..err.span().end.offset;
-                let err = txt!(
-                    "[a]{:?}, \"{}\"[prompt.colon]:[] {}",
-                    range,
-                    text.strs(range).unwrap(),
-                    err.kind()
-                );
-
-                context::error!("{err}")
-            } else {
-                hook::queue(SearchPerformed(text.to_string()));
-            }
-        }
-    }
-
-    fn prompt(&self) -> Text {
-        txt!("{}", self.inc.prompt())
     }
 }
 
@@ -773,3 +670,9 @@ impl PromptMode for PipeSelections {
 }
 
 type ModeCloneFn = dyn Fn() -> Box<dyn PromptMode> + Send;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Completion {
+    Caller,
+    Parameter,
+}

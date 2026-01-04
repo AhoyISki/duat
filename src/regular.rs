@@ -77,7 +77,7 @@ impl mode::Mode for Regular {
                 let major_removal = handle.edit_iter(pa, |mut cursors| {
                     cursors.any(|mut c| {
                         c.anchor().is_some()
-                            || (c.move_hor(-1)
+                            || (c.move_hor(-1) != 0
                                 && c.set_anchor_if_needed()
                                 && c.selection().chars().any(|c| c == '\n'))
                     })

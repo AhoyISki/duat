@@ -16,7 +16,7 @@ use crate::{
     context,
     data::{BulkDataWriter, Pass, RwData},
     mode::{self, Binding, Bindings},
-    text::{Ghost, Selectionless, Tagger, Text, txt},
+    text::{Ghost, Tagger, Text, txt},
     ui::Widget,
 };
 
@@ -607,7 +607,7 @@ impl Remapper {
         ) {
             let mapped_bindings = inner.mapped_bindings.get_mut(&ty).unwrap();
 
-            let remap = Remap::new(takes, gives, is_alias, doc.map(Text::no_selections));
+            let remap = Remap::new(takes, gives, is_alias, doc);
 
             if let Some(i) = mapped_bindings.remaps.iter().position(|r| {
                 r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes)
@@ -725,17 +725,12 @@ struct Remap {
     takes: Vec<KeyEvent>,
     gives: Gives,
     is_alias: bool,
-    desc: Option<Selectionless>,
+    desc: Option<Text>,
 }
 
 impl Remap {
     /// Returns a new `Remap`
-    pub fn new(
-        takes: Vec<KeyEvent>,
-        gives: Gives,
-        is_alias: bool,
-        desc: Option<Selectionless>,
-    ) -> Self {
+    pub fn new(takes: Vec<KeyEvent>, gives: Gives, is_alias: bool, desc: Option<Text>) -> Self {
         Self { takes, gives, is_alias, desc }
     }
 }
@@ -838,7 +833,7 @@ impl MappedBindings {
             .into_iter()
             .flat_map(|bindings| bindings.list.iter())
             .map(|(pats, desc, _)| Description {
-                text: Some(desc.text()),
+                text: Some(desc),
                 keys: KeyDescriptions {
                     seq,
                     ty: DescriptionType::Binding(pats, pats.iter(), StripPrefix {
@@ -871,7 +866,7 @@ impl MappedBindings {
                         }
                     })
                     .map(|remap| Description {
-                        text: remap.desc.as_ref().map(Selectionless::text).or_else(|| {
+                        text: remap.desc.as_ref().or_else(|| {
                             if let Gives::Keys(keys) = &remap.gives {
                                 self.bindings.description_for(keys)
                             } else {
@@ -891,9 +886,9 @@ impl MappedBindings {
     /// Replace the description for a sequence of [`KeyEvent`]s
     fn replace_seq_description(&mut self, seq: &[KeyEvent], new: Text) {
         if let Some(remap) = self.remaps.iter_mut().find(|remap| remap.takes == seq) {
-            remap.desc = (!new.is_empty_empty()).then_some(new.no_selections());
+            remap.desc = (!new.is_empty_empty()).then_some(new);
         } else if let Some(desc) = self.bindings.description_for_mut(seq) {
-            *desc = new.no_selections();
+            *desc = new;
         }
     }
 }
@@ -1042,7 +1037,7 @@ fn remove_alias_and(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget, usize)) {
         let pa = unsafe { &mut Pass::new() };
         let widget = handle.write(pa);
         if let Some(main) = widget.text().selections().get_main() {
-            let byte = main.caret_byte();
+            let byte = main.caret().byte();
             widget.text_mut().remove_tags(Tagger::for_alias(), ..);
             f(&mut *widget, byte)
         }

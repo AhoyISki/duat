@@ -16,7 +16,7 @@ use std::{
 pub use log::{Level, Metadata};
 
 pub use self::macros::*;
-use crate::text::{Selectionless, Text};
+use crate::text::Text;
 
 mod macros {
     #[doc(inline)]
@@ -286,7 +286,7 @@ impl Logs {
             metadata: log::MetadataBuilder::new()
                 .level(if is_ok { Level::Info } else { Level::Error })
                 .build(),
-            text: Box::leak(Box::new(res.no_selections())),
+            text: Box::leak(Box::new(res)),
             location: Location::from_panic_location(std::panic::Location::caller()),
         };
 
@@ -322,9 +322,7 @@ impl log::Log for Logs {
     #[track_caller]
     fn log(&self, rec: &log::Record) {
         let rec = Record {
-            text: Box::leak(Box::new(
-                Text::from(std::fmt::format(*rec.args())).no_selections(),
-            )),
+            text: Box::leak(Box::new(Text::from(std::fmt::format(*rec.args())))),
             metadata: log::MetadataBuilder::new()
                 .level(rec.level())
                 .target(rec.target().to_string().leak())
@@ -345,7 +343,7 @@ impl log::Log for Logs {
 /// [`std::fmt::Arguments`], but a [`Text`] instead.
 #[derive(Clone, Debug)]
 pub struct Record {
-    text: &'static Selectionless,
+    text: &'static Text,
     metadata: log::Metadata<'static>,
     location: Location,
 }
@@ -356,7 +354,7 @@ impl Record {
     #[track_caller]
     pub fn new(text: Text, level: Level) -> Self {
         Self {
-            text: Box::leak(Box::new(text.no_selections())),
+            text: Box::leak(Box::new(text)),
             metadata: log::MetadataBuilder::new().level(level).build(),
             location: Location::from_panic_location(std::panic::Location::caller()),
         }
@@ -451,7 +449,7 @@ pub fn log_panic(panic_info: &PanicHookInfo) {
         return;
     };
     LOGS.get().unwrap().list.lock().unwrap().push(Record {
-        text: Box::leak(Box::new(Text::from(msg).no_selections())),
+        text: Box::leak(Box::new(Text::from(msg))),
         metadata: Metadata::builder().level(Level::Error).build(),
         location: Location::from_panic_location(location),
     })

@@ -800,7 +800,7 @@ mod global {
         /// information.
         ///
         /// [`Parameter`]: super::Parameter
-        pub short: Text,
+        pub short: Arc<Text>,
         /// "Long" documentation for a command or [`Parameter`]
         ///
         /// This should add more details to the [`Text`] of
@@ -814,13 +814,16 @@ mod global {
         /// [`CmdBuilder::doc_params`] for that purpose instead.
         ///
         /// [`Parameter`]: super::Parameter
-        pub long: Option<Text>,
+        pub long: Option<Arc<Text>>,
     }
 
     impl CmdDoc {
         /// Returns a new `CmdDoc`
         pub fn new(short: Text, long: Option<Text>) -> Self {
-            Self { short, long }
+            Self {
+                short: Arc::new(short),
+                long: long.map(Arc::new),
+            }
         }
     }
 
@@ -1071,40 +1074,43 @@ mod global {
 
     /// The description for a Duat command, which can be executed in
     /// the `PromptLine`
-    pub struct CmdDescription<'a> {
+    #[derive(Clone)]
+    pub struct CmdDescription {
         /// The caller for the command
-        pub caller: &'a str,
+        pub caller: Arc<str>,
         /// Documentation about said command
-        pub doc: Option<&'a CmdDoc>,
+        pub doc: Option<CmdDoc>,
         /// Documentation about the command's parameters
-        pub doc_params: Option<&'a [CmdDoc]>,
+        pub doc_params: Option<Vec<CmdDoc>>,
     }
 
     /// The description for a Duat alias, which can be executed in
     /// the `PromptLine`, aliasing to a proper command
-    pub struct AliasDescription<'a> {
+    #[derive(Clone)]
+    pub struct AliasDescription {
         /// The caller for the alias
-        pub caller: &'a str,
+        pub caller: Arc<str>,
         /// What the caller gets replaced by
-        pub replacement: &'a str,
+        pub replacement: Arc<str>,
         /// The description of the original command
-        pub cmd: CmdDescription<'a>,
+        pub cmd: CmdDescription,
     }
 
     /// Description of a Duat command or alias
-    pub enum Description<'a> {
+    #[derive(Clone)]
+    pub enum Description {
         /// The description of a command.
-        Command(CmdDescription<'a>),
+        Command(CmdDescription),
         /// The description of an alias for a command.
-        Alias(AliasDescription<'a>),
+        Alias(AliasDescription),
     }
 
-    impl Description<'_> {
+    impl Description {
         /// The caller for the command/alias
         pub fn caller(&self) -> &str {
             match self {
-                Description::Command(cmd_description) => cmd_description.caller,
-                Description::Alias(alias_description) => alias_description.caller,
+                Description::Command(cmd_description) => &cmd_description.caller,
+                Description::Alias(alias_description) => &alias_description.caller,
             }
         }
     }
@@ -1113,11 +1119,11 @@ mod global {
     ///
     /// This list does not have any inherent sorting, with the
     /// exception that aliases are listed after commands.
-    pub fn cmd_list<'a>(pa: &'a mut Pass) -> Vec<Description<'a>> {
-        let cmd_desc = |cmd: &'a super::Command| CmdDescription {
-            caller: &cmd.caller,
-            doc: cmd.doc.as_ref(),
-            doc_params: cmd.param_docs.as_ref().map(|list| list.as_ref()),
+    pub fn cmd_list(pa: &mut Pass) -> Vec<Description> {
+        let cmd_desc = |cmd: &super::Command| CmdDescription {
+            caller: cmd.caller.clone(),
+            doc: cmd.doc.clone(),
+            doc_params: cmd.param_docs.clone(),
         };
 
         let commands = COMMANDS.write(pa);
@@ -1126,7 +1132,11 @@ mod global {
             .iter()
             .map(|cmd| Description::Command(cmd_desc(cmd)))
             .chain(commands.aliases.iter().map(|(caller, (cmd, replacement))| {
-                Description::Alias(AliasDescription { caller, replacement, cmd: cmd_desc(cmd) })
+                Description::Alias(AliasDescription {
+                    caller: caller.clone(),
+                    replacement: replacement.clone(),
+                    cmd: cmd_desc(cmd),
+                })
             }))
             .collect()
     }
@@ -1144,7 +1154,7 @@ mod global {
 #[derive(Default)]
 struct Commands {
     list: Vec<Command>,
-    aliases: HashMap<String, (Command, String)>,
+    aliases: HashMap<Arc<str>, (Command, Arc<str>)>,
 }
 
 impl Commands {
@@ -1163,8 +1173,8 @@ impl Commands {
         let mut cmds = self.list.iter();
 
         if let Some(command) = cmds.find(|cmd| cmd.caller().contains(&caller)) {
-            let entry = (command.clone(), call.clone());
-            self.aliases.insert(alias.clone(), entry);
+            let entry = (command.clone(), Arc::from(call));
+            self.aliases.insert(Arc::from(alias), entry);
             Ok(None)
         } else {
             Err(txt!("The caller [a]{caller}[] was not found"))
@@ -1181,9 +1191,9 @@ impl Commands {
         let caller = args.next().ok_or(txt!("The command is empty"))?.to_string();
 
         let (command, call) = {
-            if let Some(command) = self.aliases.get(&caller) {
+            if let Some(command) = self.aliases.get(caller.as_str()) {
                 let (command, call) = command;
-                let mut call = call.clone() + " ";
+                let mut call = call.to_string() + " ";
                 call.extend(args);
 
                 (command.clone(), call)
@@ -1220,7 +1230,8 @@ impl Commands {
 
     /// Adds a command to the list of commands
     fn add(&mut self, command: Command) {
-        self.list.retain(|cmd| cmd.caller != command.caller());
+        self.list
+            .retain(|cmd| cmd.caller.as_ref() != command.caller());
         self.list.push(command);
     }
 
@@ -1229,7 +1240,7 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        let check_args = if let Some((command, _)) = self.aliases.get(&caller) {
+        let check_args = if let Some((command, _)) = self.aliases.get(caller.as_str()) {
             command.check_args
         } else {
             let command = self.list.iter().find(|cmd| cmd.caller() == caller)?;
@@ -1251,7 +1262,7 @@ pub type CmdResult = Result<Option<Text>, Text>;
 /// A function that can be called by name.
 #[derive(Clone)]
 struct Command {
-    caller: String,
+    caller: Arc<str>,
     cmd: InnerCmdFn,
     check_args: CheckerFn,
     param_count: usize,
@@ -1268,7 +1279,7 @@ impl Command {
         Self {
             cmd,
             check_args,
-            caller,
+            caller: Arc::from(caller),
             param_count,
             doc: None,
             param_docs: None,
