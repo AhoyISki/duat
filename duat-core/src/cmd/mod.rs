@@ -742,6 +742,7 @@ pub(crate) fn add_session_commands() {
 
 mod global {
     use std::{
+        any::TypeId,
         ops::Range,
         sync::{Arc, Mutex},
     };
@@ -1091,12 +1092,22 @@ mod global {
     /// Check if the arguments for a given `caller` are correct
     pub fn check_args(
         pa: &mut Pass,
-        caller: &str,
+        call: &str,
     ) -> Option<(
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
     )> {
-        COMMANDS.write(pa).check_args(caller).map(|ca| ca(pa))
+        COMMANDS.write(pa).check_args(call).map(|ca| ca(pa))
+    }
+
+    /// The [`TypeId`] of the last [`Parameter`] that was passed
+    ///
+    /// [`Parameter`]: super::Parameter
+    pub fn last_parsed_parameter(
+        pa: &mut Pass,
+        call: &str,
+    ) -> Option<(TypeId, &'static [&'static str])> {
+        COMMANDS.write(pa).args_after_check(call)?(pa).last_parsed()
     }
 
     /// The description for a Duat command, which can be executed in
@@ -1253,12 +1264,6 @@ impl Commands {
         Ok(move |pa: &mut Pass| {
             let args = Args::new(&call);
 
-            match catch_panic(|| (command.check_args)(pa, args.clone())) {
-                Some((_, Some((_, err)))) => return Err(txt!("[a]{caller}[]: {err}")),
-                Some(_) => {}
-                None => return Err(txt!("[a]{caller}[]: Argument parsing panicked")),
-            }
-
             match catch_panic(move || cmd.lock().unwrap()(pa, args)) {
                 Some(result) => result
                     .map(|ok| ok.filter(|_| !silent))
@@ -1288,7 +1293,30 @@ impl Commands {
                 .find(|cmd| cmd.doc.caller.as_ref() == caller)?;
             command.check_args
         };
-        Some(move |pa: &Pass| check_args(pa, Args::new(call)))
+
+        Some(move |pa: &Pass| check_args(pa, &mut Args::new(call)))
+    }
+
+    /// Gets the last parsed [`Parameter`] of a call
+    fn args_after_check<'a>(&self, call: &'a str) -> Option<impl FnOnce(&Pass) -> Args<'a> + 'a> {
+        let mut args = call.split_whitespace();
+        let caller = args.next()?.to_string();
+
+        let check_args = if let Some((command, _)) = self.aliases.get(caller.as_str()) {
+            command.check_args
+        } else {
+            let command = self
+                .list
+                .iter()
+                .find(|cmd| cmd.doc.caller.as_ref() == caller)?;
+            command.check_args
+        };
+
+        Some(move |pa: &Pass| {
+            let mut args = Args::new(call);
+            check_args(pa, &mut args);
+            args
+        })
     }
 }
 
@@ -1361,7 +1389,7 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
 }
 
 type InnerCmdFn = Arc<Mutex<dyn FnMut(&mut Pass, Args) -> CmdResult + Send + 'static>>;
-type CheckerFn = fn(&Pass, Args) -> CheckedArgs;
+type CheckerFn = fn(&Pass, &mut Args) -> CheckedArgs;
 type CheckedArgs = (
     Vec<(Range<usize>, Option<FormId>)>,
     Option<(Range<usize>, Text)>,
@@ -1376,7 +1404,7 @@ trait CmdFn<Arguments>: Send + 'static {
 
     fn check_args(
         pa: &Pass,
-        args: Args,
+        args: &mut Args,
     ) -> (
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
@@ -1392,7 +1420,7 @@ impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
 
     fn check_args(
         pa: &Pass,
-        mut args: Args,
+        args: &mut Args,
     ) -> (
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
@@ -1429,7 +1457,7 @@ macro_rules! implCmdFn {
 
             fn check_args(
                 pa: &Pass,
-                mut args: Args,
+                args: &mut Args,
             ) -> (
                 Vec<(Range<usize>, Option<FormId>)>,
                 Option<(Range<usize>, Text)>,
@@ -1438,7 +1466,7 @@ macro_rules! implCmdFn {
 
 				$(
                     let start = args.next_start();
-                    let result = $param::new(pa, &mut args);
+                    let result = $param::new(pa, args);
                     match result {
                         Ok((_, form)) => {
                             if let Some(start) = start.filter(|s| args.param_range().end > *s) {

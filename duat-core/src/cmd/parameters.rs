@@ -7,6 +7,7 @@
 //! multiple branching paths on how to read the arguments, all from
 //! the same command.
 use std::{
+    any::TypeId,
     iter::Peekable,
     ops::Range,
     path::PathBuf,
@@ -57,7 +58,7 @@ macro_rules! implDeref {
 /// `P`s.
 ///
 /// [`Form`]: crate::form::Form
-pub trait Parameter: Sized {
+pub trait Parameter: Sized + 'static {
     /// Tries to consume arguments until forming a parameter
     ///
     /// Since parameters shouldn't mutate data, pa is just a regular
@@ -71,6 +72,18 @@ pub trait Parameter: Sized {
     /// is.
     fn arg_name() -> Text {
         txt!("[param]arg")
+    }
+
+    /// A static list of possible values
+    ///
+    /// This is useful in some circumstances, especially in the case
+    /// of [`Flag`] parameters.
+    ///
+    /// An empty list means that there are no innate completions to
+    /// this type. A [`None`] value means that this type should not
+    /// have completions at all.
+    fn static_list() -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 }
 
@@ -296,6 +309,10 @@ impl Parameter for Scope {
 
     fn arg_name() -> Text {
         txt!("[param.flag]--global[param.punctuation]?")
+    }
+
+    fn static_list() -> Option<&'static [&'static str]> {
+        Some(&["--global"])
     }
 }
 
@@ -644,6 +661,10 @@ impl Parameter for Existing {
     fn arg_name() -> Text {
         txt!("[param.flag]--existing[param.punctuation]?")
     }
+
+    fn static_list() -> Option<&'static [&'static str]> {
+        Some(&["--existing"])
+    }
 }
 
 /// Command [`Parameter`]: An [`f32`] from a [`u8`] or a percentage
@@ -675,6 +696,10 @@ impl Parameter for F32PercentOfU8 {
     fn arg_name() -> Text {
         let punct = form::id_of!("param.punctuation");
         txt!("[param]u8{punct}/[param]0..=100%")
+    }
+
+    fn static_list() -> Option<&'static [&'static str]> {
+        None
     }
 }
 implDeref!(F32PercentOfU8, f32);
@@ -820,28 +845,31 @@ impl Parameter for ReloadOptions {
 }
 
 /// The list of arguments passed to a command
+#[derive(Clone)]
 pub struct Args<'a> {
-    args: Peekable<ArgsIter<'a>>,
+    iter: Peekable<ArgsIter<'a>>,
     param_range: Range<usize>,
     has_to_start_param: bool,
     is_forming_param: bool,
+    last_parsed: Option<(TypeId, &'static [&'static str])>,
 }
 
 impl<'arg> Args<'arg> {
     /// Returns a new instance of `Args`
     pub(super) fn new(command: &'arg str) -> Self {
         Self {
-            args: ArgsIter::new(command).peekable(),
+            iter: ArgsIter::new(command).peekable(),
             param_range: 0..0,
             has_to_start_param: false,
             is_forming_param: false,
+            last_parsed: None,
         }
     }
 
     /// Returns the next word or quoted argument
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Arg<'arg>, Text> {
-        match self.args.next() {
+        match self.iter.next() {
             Some((value, range, is_quoted)) => {
                 self.param_range = range.clone();
                 if self.has_to_start_param {
@@ -859,6 +887,9 @@ impl<'arg> Args<'arg> {
     /// If parsing fails, [`Args`] will be reset as if this function
     /// wasn't called.
     pub fn next_as<P: Parameter>(&mut self, pa: &Pass) -> Result<P, Text> {
+        if let Some(static_list) = P::static_list() {
+            self.last_parsed = Some((TypeId::of::<P>(), static_list));
+        }
         let initial = self.clone();
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
@@ -879,6 +910,9 @@ impl<'arg> Args<'arg> {
         &mut self,
         pa: &Pass,
     ) -> Result<(P, Option<FormId>), Text> {
+        if let Some(static_list) = P::static_list() {
+            self.last_parsed = Some((TypeId::of::<P>(), static_list));
+        }
         let initial = self.clone();
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
@@ -892,7 +926,7 @@ impl<'arg> Args<'arg> {
 
     /// Tries to get the next argument, otherwise returns a [`Text`]
     pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'arg str, Text> {
-        match self.args.next() {
+        match self.iter.next() {
             Some((arg, ..)) => Ok(arg),
             None => Err(to_text.into()),
         }
@@ -904,7 +938,7 @@ impl<'arg> Args<'arg> {
     ///
     /// [`PromptLine`]: docs.rs/duat/latest/duat/widgets/struct.PromptLine.html
     pub fn next_start(&mut self) -> Option<usize> {
-        self.args.peek().map(|(_, r, _)| r.start)
+        self.iter.peek().map(|(_, r, _)| r.start)
     }
 
     /// The range of the previous [`Parameter`]
@@ -916,14 +950,11 @@ impl<'arg> Args<'arg> {
         self.param_range.clone()
     }
 
-    /// A private [`Clone`]
-    pub(super) fn clone(&self) -> Self {
-        Self {
-            args: self.args.clone(),
-            param_range: self.param_range.clone(),
-            has_to_start_param: self.has_to_start_param,
-            is_forming_param: self.is_forming_param,
-        }
+    /// The last [`Parameter`] type that was parsed
+    ///
+    /// This can/should be used for argument completion.
+    pub fn last_parsed(&self) -> Option<(TypeId, &'static [&'static str])> {
+        self.last_parsed
     }
 }
 
@@ -1019,7 +1050,7 @@ impl<'a> Iterator for ArgsIter<'a> {
 }
 
 macro_rules! parse_impl {
-    ($t:ty) => {
+    ($t:ty, $static_list:expr) => {
         impl Parameter for $t {
             fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
                 let arg = args.next()?;
@@ -1035,26 +1066,30 @@ macro_rules! parse_impl {
             fn arg_name() -> Text {
                 txt!("[param]{}", stringify!($t))
             }
+
+            fn static_list() -> Option<&'static [&'static str]> {
+                $static_list
+            }
         }
     };
 }
 
-parse_impl!(bool);
-parse_impl!(u8);
-parse_impl!(u16);
-parse_impl!(u32);
-parse_impl!(u64);
-parse_impl!(u128);
-parse_impl!(usize);
-parse_impl!(i8);
-parse_impl!(i16);
-parse_impl!(i32);
-parse_impl!(i64);
-parse_impl!(i128);
-parse_impl!(isize);
-parse_impl!(f32);
-parse_impl!(f64);
-parse_impl!(path);
+parse_impl!(bool, Some(&["true", "false"]));
+parse_impl!(u8, None);
+parse_impl!(u16, None);
+parse_impl!(u32, None);
+parse_impl!(u64, None);
+parse_impl!(u128, None);
+parse_impl!(usize, None);
+parse_impl!(i8, None);
+parse_impl!(i16, None);
+parse_impl!(i32, None);
+parse_impl!(i64, None);
+parse_impl!(i128, None);
+parse_impl!(isize, None);
+parse_impl!(f32, None);
+parse_impl!(f64, None);
+parse_impl!(path, Some(&[]));
 
 #[allow(non_camel_case_types)]
 type path = std::path::PathBuf;
