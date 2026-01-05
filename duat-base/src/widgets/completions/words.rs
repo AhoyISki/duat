@@ -45,6 +45,7 @@ impl CompletionsProvider for WordCompletions {
         _: Point,
         prefix: &str,
         suffix: &str,
+        _: bool
     ) -> CompletionsList<Self> {
         let mut entries: Vec<_> = BUFFER_WORDS
             .lock()
@@ -88,7 +89,7 @@ pub struct WordInfo {
 
 #[doc(hidden)]
 /// Begin tracking words for word autocompletions
-pub fn track_words() {
+pub(super) fn track_words() {
     hook::add::<Buffer>(|pa, handle| {
         TRACKER.register_buffer(handle.write(pa));
         let mut words = BUFFER_WORDS.lock().unwrap();

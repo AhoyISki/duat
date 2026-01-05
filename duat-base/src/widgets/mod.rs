@@ -20,7 +20,7 @@ use duat_core::{
 pub use self::{
     completions::{
         CommandsCompletions, Completions, CompletionsBuilder, CompletionsKind, CompletionsList,
-        CompletionsProvider, track_words,
+        CompletionsProvider, setup_completions,
     },
     info::Info,
     line_numbers::{LineNumbers, LineNumbersOpts},

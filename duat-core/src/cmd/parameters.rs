@@ -83,7 +83,7 @@ pub trait Parameter: Sized + 'static {
     /// this type. A [`None`] value means that this type should not
     /// have completions at all.
     fn static_list() -> Option<&'static [&'static str]> {
-        Some(&[])
+        None
     }
 }
 
@@ -592,7 +592,8 @@ implDeref!(ValidFilePath, PathBuf);
 ///
 /// This is a generalized way of switching to a [`Handle<Buffer`] on
 /// the `edit` and `open` commands.
-pub(super) enum PathOrBufferOrCfg {
+#[doc(hidden)]
+pub enum PathOrBufferOrCfg {
     Path(PathBuf),
     Buffer(Handle),
     Cfg,
@@ -634,6 +635,10 @@ impl Parameter for PathOrBufferOrCfg {
         let flag = form::id_of!("param.flag");
         let punct = form::id_of!("param.punctuation");
         txt!("[param]path{punct}/[param]buffer{punct}/{flag}--cfg{punct}/{flag}--cfg-manifest")
+    }
+
+    fn static_list() -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 }
 
@@ -696,10 +701,6 @@ impl Parameter for F32PercentOfU8 {
     fn arg_name() -> Text {
         let punct = form::id_of!("param.punctuation");
         txt!("[param]u8{punct}/[param]0..=100%")
-    }
-
-    fn static_list() -> Option<&'static [&'static str]> {
-        None
     }
 }
 implDeref!(F32PercentOfU8, f32);
@@ -890,7 +891,9 @@ impl<'arg> Args<'arg> {
         if let Some(static_list) = P::static_list() {
             self.last_parsed = Some((TypeId::of::<P>(), static_list));
         }
+
         let initial = self.clone();
+
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
         if ret.is_ok() {
@@ -913,7 +916,9 @@ impl<'arg> Args<'arg> {
         if let Some(static_list) = P::static_list() {
             self.last_parsed = Some((TypeId::of::<P>(), static_list));
         }
+
         let initial = self.clone();
+
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
         if ret.is_ok() {

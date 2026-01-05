@@ -1466,7 +1466,7 @@ macro_rules! implCmdFn {
 
 				$(
                     let start = args.next_start();
-                    let result = $param::new(pa, args);
+                    let result = args.next_as_with_form::<$param>(pa);
                     match result {
                         Ok((_, form)) => {
                             if let Some(start) = start.filter(|s| args.param_range().end > *s) {

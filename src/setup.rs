@@ -234,7 +234,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
         }
     })
     .grouped("ReloadOnWrite");
-    duat_base::widgets::track_words();
+    duat_base::widgets::setup_completions();
 
     form::enable_mask("error");
     form::enable_mask("warn");

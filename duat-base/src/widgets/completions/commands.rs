@@ -36,6 +36,7 @@ impl CompletionsProvider for CommandsCompletions {
         _: Point,
         prefix: &str,
         _: &str,
+        _: bool
     ) -> CompletionsList<Self> {
         let mut entries: Vec<_> = self
             .0

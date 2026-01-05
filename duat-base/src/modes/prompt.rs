@@ -557,7 +557,15 @@ impl PromptMode for RunCommands {
             .any(|(_, char)| char.is_whitespace());
 
         let new_completion = if is_parameter {
-            Completion::Parameter
+            let Some((type_id, innate)) =
+                cmd::last_parsed_parameter(pa, &text.strs(..main.caret()).unwrap().to_string())
+            else {
+                self.0 = None;
+                Completions::close(pa);
+                return;
+            };
+
+            Completion::Parameter(type_id, innate)
         } else {
             Completion::Caller
         };
@@ -565,7 +573,13 @@ impl PromptMode for RunCommands {
         if self.0 != Some(new_completion) {
             match new_completion {
                 Completion::Caller => Completions::builder(CommandsCompletions::new(pa)).open(pa),
-                Completion::Parameter => Completions::close(pa),
+                Completion::Parameter(type_id, _innate) => {
+                    if let Some(builder) = Completions::builder_for(pa, type_id) {
+                        builder.open(pa);
+                    } else {
+                        Completions::close(pa);
+                    }
+                }
             }
         }
 
@@ -679,5 +693,5 @@ type ModeCloneFn = dyn Fn() -> Box<dyn PromptMode> + Send;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Completion {
     Caller,
-    Parameter,
+    Parameter(TypeId, &'static [&'static str]),
 }

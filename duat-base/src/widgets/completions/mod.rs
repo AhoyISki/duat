@@ -12,12 +12,14 @@
 //! you, for example, have the default completions be provided by an
 //! LSP, with fallbacks for path and words completions.
 use std::{
-    any::Any,
+    any::{Any, TypeId},
+    collections::HashMap,
     ops::Range,
-    sync::{LazyLock, Once},
+    sync::{LazyLock, Mutex, Once},
 };
 
 use duat_core::{
+    cmd::{Parameter, PathOrBufferOrCfg},
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged},
@@ -27,17 +29,29 @@ use duat_core::{
 };
 use duat_term::Frame;
 
-pub use self::{
-    commands::CommandsCompletions,
-    words::{WordCompletions, track_words},
-};
+pub use self::{commands::CommandsCompletions, words::WordCompletions};
 use crate::widgets::{Info, completions::paths::PathCompletions};
 
 mod commands;
 mod paths;
 mod words;
 
+type ParamCompletions = Box<Mutex<dyn FnMut(&mut Pass) -> CompletionsBuilder + Send + Sync>>;
+
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
+static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, ParamCompletions>>> =
+    LazyLock::new(Mutex::default);
+
+/// Initial setup for completions
+///
+/// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+#[doc(hidden)]
+pub fn setup_completions() {
+    words::track_words();
+    Completions::set_for_parameter::<PathOrBufferOrCfg>(|_| {
+        Completions::builder(paths::PathCompletions::new(true))
+    });
+}
 
 /// A builder for [`Completions`], a [`Widget`] to show word
 /// completions
@@ -157,23 +171,44 @@ impl Completions {
     /// You can add more `CompletionsProvider`s by calling
     /// [`CompletionsBuilder::add_provider`].
     pub fn builder(provider: impl CompletionsProvider) -> CompletionsBuilder {
-        let mut builder = CompletionsBuilder {
+        CompletionsBuilder {
             providers: Box::new(move |text, height| {
                 let (inner, start_byte, entries) = InnerProvider::new(provider, text, height);
 
                 (vec![Box::new(inner)], start_byte, entries)
             }),
             show_without_prefix: true,
-        };
+        }
+    }
 
-        builder.add_provider(PathCompletions);
-
-        builder
+    /// Set the [`CompletionsBuilder`] function for a [`Parameter`]
+    /// type
+    pub fn set_for_parameter<P: Parameter>(
+        func: impl FnMut(&mut Pass) -> CompletionsBuilder + Send + Sync + 'static,
+    ) {
+        COMPLETIONS
+            .lock()
+            .unwrap()
+            .insert(TypeId::of::<P>(), Box::new(Mutex::new(func)));
     }
 
     /// Spawn the `Completions` list
     pub fn open_default(pa: &mut Pass) {
-        Self::builder(WordCompletions).open(pa);
+        let mut builder = Self::builder(WordCompletions);
+        builder.add_provider(PathCompletions::new(false));
+        builder.open(pa);
+    }
+
+    /// Open the `Completions` for a given [`Parameter`]'s [`TypeId`]
+    ///
+    /// This completions must've been previously added via
+    /// [`Completions::set_for_parameter`].
+    pub fn builder_for(pa: &mut Pass, param_type_id: TypeId) -> Option<CompletionsBuilder> {
+        COMPLETIONS
+            .lock()
+            .unwrap()
+            .get(&param_type_id)
+            .map(|func| func.lock().unwrap()(pa))
     }
 
     /// Closes the `Completions` list
@@ -428,6 +463,13 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// completions. If all of them return empty `Iterator`s, then no
     /// completions will be shown.
     ///
+    /// The `target_changed` parameter determines that the prefix has
+    /// changed from what was previously selected, either by the user
+    /// typing more characters or by some other external factor. This
+    /// is useful in circumstances where you want to show completions
+    /// based on what the user typed, and not from the entries that
+    /// were sent.
+    ///
     /// [caret]: duat_core::mode::Selection::caret
     /// [`Self::word_regex`]: CompletionsProvider::word_regex
     /// ["completeness"]: CompletionsKind
@@ -437,6 +479,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
         caret: Point,
         prefix: &str,
         suffix: &str,
+        target_changed: bool,
     ) -> CompletionsList<Self>;
 
     /// Regex for which characters should be part of a word
@@ -554,7 +597,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
         let (range, [prefix, suffix]) = preffix_and_suffix(text, [&prefix_regex, &suffix_regex]);
 
         let CompletionsList { entries, kind } =
-            provider.get_completions(text, text.point_at_byte(range.end), &prefix, &suffix);
+            provider.get_completions(text, text.point_at_byte(range.end), &prefix, &suffix, false);
 
         let mut inner = Self {
             provider,
@@ -612,7 +655,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         {
             self.entries = self
                 .provider
-                .get_completions(text, text.point_at_byte(range.end), &prefix, &suffix)
+                .get_completions(text, text.point_at_byte(range.end), &prefix, &suffix, true)
                 .entries;
         }
 
