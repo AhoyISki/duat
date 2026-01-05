@@ -39,9 +39,9 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("selection.extra", Form::white().on_grey().0, Ref(5)),
     ("cloak", Form::grey().on_black().0, Normal),
     ("character.control", Form::grey().0, Normal),
-    ("param.buffer", Form::yellow().0, Normal),
-    ("param.buffer.open", Form::yellow().0, Ref(8)),
-    ("param.buffer.exists", Form::yellow().underlined().0, Normal),
+    ("param.path", Form::yellow().0, Normal),
+    ("param.path.open", Form::yellow().0, Ref(8)),
+    ("param.path.exists", Form::yellow().underlined().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.

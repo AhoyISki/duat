@@ -1,10 +1,12 @@
 //! A [`CompletionsProvider`] for commands
 //!
-//! This provider will show all available commands 
+//! This provider will show all available commands, as well as
+//! information about the commands.
 use duat_core::{
-    cmd::{CmdDescription, Description},
+    cmd::{CmdDoc, Description},
     data::Pass,
     text::{Point, Spacer, Text, txt},
+    ui::Orientation,
 };
 
 use crate::widgets::{
@@ -22,7 +24,7 @@ impl CommandsCompletions {
 }
 
 impl CompletionsProvider for CommandsCompletions {
-    type Info = CmdDescription;
+    type Info = CmdDoc;
 
     fn default_fmt(entry: &str, _: &Self::Info) -> Text {
         txt!("[cmd.Completions]{entry}{Spacer}")
@@ -54,7 +56,10 @@ impl CompletionsProvider for CommandsCompletions {
             (string_cmp(prefix, lhs), lhs).cmp(&(string_cmp(prefix, rhs), rhs))
         });
 
-        CompletionsList { entries, kind: CompletionsKind::UnfinishedFiltered }
+        CompletionsList {
+            entries,
+            kind: CompletionsKind::UnfinishedFiltered,
+        }
     }
 
     fn word_regex(&self) -> String {
@@ -65,12 +70,29 @@ impl CompletionsProvider for CommandsCompletions {
         false
     }
 
-    fn default_info_on(&self, (_, info): (&str, &Self::Info)) -> Option<Text> {
-        info.doc.as_ref().map(|doc| {
-            doc.long
-                .as_ref()
-                .map(|long| Text::clone(long))
-                .unwrap_or(Text::clone(&doc.short))
-        })
+    fn default_info_on(&self, (_, doc): (&str, &Self::Info)) -> Option<(Text, Orientation)> {
+        let mut builder = Text::builder();
+
+        let short = doc.short.as_ref()?;
+
+        if !doc.params.is_empty() {
+            builder.push(txt!("{}\n\nArguments:", short));
+
+            for param in doc.params.iter() {
+                let Some(short) = param.short.as_ref() else {
+                    continue;
+                };
+
+                builder.push(txt!("\n\t- {param.arg_name}: {short}"));
+            }
+        } else {
+            builder.push(Text::clone(short));
+        }
+
+        if let Some(long) = doc.long.as_ref() {
+            builder.push(txt!("\n\n{}", long));
+        }
+
+        Some((builder.build(), Orientation::HorBottomRight))
     }
 }

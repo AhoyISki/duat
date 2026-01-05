@@ -65,10 +65,6 @@ impl CompletionsProvider for PathCompletions {
     fn has_changed(&self) -> bool {
         false
     }
-
-    fn default_info_on(&self, (item, _): (&str, &Self::Info)) -> Option<Text> {
-        Some(txt!("Hiiii pookie {item}!"))
-    }
 }
 
 fn get_entries(prefix: &str) -> Option<std::fs::ReadDir> {

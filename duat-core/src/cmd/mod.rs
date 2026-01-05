@@ -207,10 +207,16 @@ pub(crate) fn add_session_commands() {
              arguments"
         )),
     )
-    .doc_params([
-        CmdDoc::new(txt!("Alias name"), Some(txt!("[a]Must[] be a single word"))),
-        CmdDoc::new(txt!("Aliased command"), Some(txt!("Can include arguments"))),
-    ]);
+    .doc_param(
+        txt!("Alias name"),
+        Some(txt!("[a]Must[] be a single word")),
+        Some(txt!("[param]alias")),
+    )
+    .doc_param(
+        txt!("Aliased command"),
+        Some(txt!("Can include arguments")),
+        Some(txt!("[param]command")),
+    );
 
     add("write", |pa: &mut Pass, path: Option<ValidFilePath>| {
         let handle = context::current_buffer(pa).clone();
@@ -232,13 +238,14 @@ pub(crate) fn add_session_commands() {
         txt!("Saves the [a]Buffer[] in storage"),
         Some(txt!("By default, will write to the [a]Buffer[]'s path")),
     )
-    .doc_params([CmdDoc::new(
+    .doc_param(
         txt!("[a]Optional[] path to write to"),
         Some(txt!(
             "If the [a]Buffer[] has no path ([a]scratch buffer[]), then this argument [a]must[] \
              be included"
         )),
-    )]);
+        None,
+    );
     alias("w", "write");
 
     add(
@@ -272,13 +279,14 @@ pub(crate) fn add_session_commands() {
              [a]Buffer[], also quit Duat"
         )),
     )
-    .doc_params([CmdDoc::new(
+    .doc_param(
         txt!("[a]Optional[] path to write to"),
         Some(txt!(
             "If the [a]Buffer[] has no path (a [a]scratch buffer[]), then this argument [a]must[] \
              be included"
         )),
-    )]);
+        None,
+    );
     alias("wq", "write-quit");
 
     add("write-all", |pa: &mut Pass| {
@@ -374,10 +382,11 @@ pub(crate) fn add_session_commands() {
              [a]Buffer[], also quit Duat"
         )),
     )
-    .doc_params([CmdDoc::new(
+    .doc_param(
         txt!("Optional [a]Buffer[] to quit, instead of the current one"),
         None,
-    )]);
+        None,
+    );
     alias("q", "quit");
 
     add("quit!", |pa: &mut Pass, handle: Option<Handle>| {
@@ -394,10 +403,11 @@ pub(crate) fn add_session_commands() {
         txt!("[a]Forcibly[] close a [a]Buffer[]"),
         Some(txt!("If it is the last open [a]Buffer[], also quit Duat")),
     )
-    .doc_params([CmdDoc::new(
+    .doc_param(
         txt!("Optional [a]Buffer[] to quit, instead of the current one"),
         None,
-    )]);
+        None,
+    );
     alias("q!", "quit!");
 
     add("quit-all", |pa: &mut Pass| {
@@ -465,101 +475,111 @@ pub(crate) fn add_session_commands() {
              automatically reload the compiled binary"
         )),
     )
-    .doc_params([
-        CmdDoc::new(
-            txt!("Available flags: [param.flag]--clean[], [param.flag]--update[]"),
-            Some(txt!(
-                "[param.flag]--clean[] will call [a]cargo clean[] as well as the remove the \
-                 [a]cache[] and [a]local[] directories of Duat, [param.flag]--update[] will call \
-                 [a]cargo update[]"
-            )),
-        ),
-        CmdDoc::new(
-            txt!("An optional [a]profile[] parameter. By default, this is [a]release"),
-            None,
-        ),
-    ]);
+    .doc_param(
+        txt!("clean files and/or update dependencies"),
+        Some(txt!(
+            "[param.flag]--clean[] will call [a]cargo clean[] as well as the remove the \
+             [a]cache[] and [a]local[] directories of Duat, [param.flag]--update[] will call \
+             [a]cargo update[]"
+        )),
+        None,
+    )
+    .doc_param(
+        txt!("Optional [a]profile[]"),
+        None,
+        Some(txt!("[param]profile[param.punctuation]?")),
+    );
 
-    add("edit", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
-        let windows = context::windows();
+    add(
+        "edit",
+        |pa: &mut Pass, _: Existing, arg: PathOrBufferOrCfg| {
+            let windows = context::windows();
 
-        let pk = match arg {
-            PathOrBufferOrCfg::Cfg => {
-                PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs"))
-            }
-            PathOrBufferOrCfg::CfgManifest => {
-                PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml"))
-            }
-            PathOrBufferOrCfg::Path(path) => PathKind::from(path),
-            PathOrBufferOrCfg::Buffer(handle) => {
-                mode::reset_to(pa, &handle);
-                return Ok(Some(txt!("Switched to {}", handle.read(pa).name())));
-            }
-        };
+            let pk = match arg {
+                PathOrBufferOrCfg::Cfg => {
+                    PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs"))
+                }
+                PathOrBufferOrCfg::CfgManifest => {
+                    PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml"))
+                }
+                PathOrBufferOrCfg::Path(path) => PathKind::from(path),
+                PathOrBufferOrCfg::Buffer(handle) => {
+                    mode::reset_to(pa, &handle);
+                    return Ok(Some(txt!("Switched to {}", handle.read(pa).name())));
+                }
+            };
 
-        let buffer = Buffer::new(pk.as_path(), *crate::session::BUFFER_OPTS.get().unwrap());
-        let node = windows.new_buffer(pa, buffer);
-        mode::reset_to(pa, node.handle());
+            let buffer = Buffer::new(pk.as_path(), *crate::session::BUFFER_OPTS.get().unwrap());
+            let node = windows.new_buffer(pa, buffer);
+            mode::reset_to(pa, node.handle());
 
-        Ok(Some(txt!("Opened {pk}")))
-    })
+            Ok(Some(txt!("Opened {pk}")))
+        },
+    )
     .doc(
         txt!("Switch to a [a]Buffer[] or open it on the same window"),
         Some(txt!(
             "When opening a new [a]Buffer[], will open it in the current window"
         )),
     )
-    .doc_params([CmdDoc::new(
+    .doc_param(txt!("Fail if the file doesn't exist"), None, None)
+    .doc_param(
         txt!("Which [a]Buffer[] to open or switch to"),
         Some(txt!(
             "This accepts one of 4 types: an open [a]Buffer[]'s name, a valid file path, or the \
              one of the flags [param.flag]--cfg[] or [param.flag]--cfg-manifest[], which open \
              configuration crate files"
         )),
-    )]);
+        None,
+    );
     alias("e", "edit");
 
-    add("open", |pa: &mut Pass, arg: PathOrBufferOrCfg| {
-        let windows = context::windows();
+    add(
+        "open",
+        |pa: &mut Pass, _: Existing, arg: PathOrBufferOrCfg| {
+            let windows = context::windows();
 
-        let (pk, msg) = match arg {
-            PathOrBufferOrCfg::Cfg => (
-                PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs")),
-                None,
-            ),
-            PathOrBufferOrCfg::CfgManifest => (
-                PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml")),
-                None,
-            ),
-            PathOrBufferOrCfg::Path(path) => (PathKind::from(path), None),
-            PathOrBufferOrCfg::Buffer(handle) => {
-                let pk = handle.read(pa).path_kind();
-                let (win, ..) = windows.buffer_entry(pa, pk.clone()).unwrap();
-                if windows.get(pa, win).unwrap().buffers(pa).len() == 1 {
-                    (pk.clone(), Some(txt!("Switched to {pk}")))
-                } else {
-                    (pk.clone(), Some(txt!("Moved {pk} to a new window")))
+            let (pk, msg) = match arg {
+                PathOrBufferOrCfg::Cfg => (
+                    PathKind::from(crate::utils::crate_dir()?.join("src").join("lib.rs")),
+                    None,
+                ),
+                PathOrBufferOrCfg::CfgManifest => (
+                    PathKind::from(crate::utils::crate_dir()?.join("Cargo.toml")),
+                    None,
+                ),
+                PathOrBufferOrCfg::Path(path) => (PathKind::from(path), None),
+                PathOrBufferOrCfg::Buffer(handle) => {
+                    let pk = handle.read(pa).path_kind();
+                    let (win, ..) = windows.buffer_entry(pa, pk.clone()).unwrap();
+                    if windows.get(pa, win).unwrap().buffers(pa).len() == 1 {
+                        (pk.clone(), Some(txt!("Switched to {pk}")))
+                    } else {
+                        (pk.clone(), Some(txt!("Moved {pk} to a new window")))
+                    }
                 }
-            }
-        };
+            };
 
-        let file_cfg = *crate::session::BUFFER_OPTS.get().unwrap();
-        windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
+            let file_cfg = *crate::session::BUFFER_OPTS.get().unwrap();
+            windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
 
-        Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
-    })
+            Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
+        },
+    )
     .doc(
         txt!("Switch to a [a]Buffer[] or open it on another window"),
         None,
     )
-    .doc_params([CmdDoc::new(
+    .doc_param(txt!("Fail if the file doesn't exist"), None, None)
+    .doc_param(
         txt!("Which [a]Buffer[] to open or switch to"),
         Some(txt!(
             "This accepts one of 4 types: an open [a]Buffer[]'s name, a valid file path, or the \
              one of the flags [param.flag]--cfg[] or [param.flag]--cfg-manifest[], which open \
              configuration crate files"
         )),
-    )]);
+        None,
+    );
     alias("o", "open");
 
     add("buffer", |pa: &mut Pass, handle: OtherBuffer| {
@@ -567,7 +587,7 @@ pub(crate) fn add_session_commands() {
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(txt!("Switch to an open [a]Buffer[]"), None)
-    .doc_params([CmdDoc::new(txt!("The name of an open [a]Buffer"), None)]);
+    .doc_param(txt!("The name of an open [a]Buffer"), None, None);
     alias("b", "buffer");
 
     add("next-buffer", |pa: &mut Pass, scope: Scope| {
@@ -601,14 +621,10 @@ pub(crate) fn add_session_commands() {
     .doc(
         txt!("Switch to the next [a]Buffer[]"),
         Some(txt!(
-            "If you pass in [param.flag]--global[], then this command will also consider \
-             [a]Buffer[]s on other windows"
+            "The switching is based on the [a]Layout[]. By default, this will move it clockwise"
         )),
     )
-    .doc_params([CmdDoc::new(
-        txt!("An optional [param.flag]--global[], to consider other windows"),
-        None,
-    )]);
+    .doc_param(txt!("Also consider other windows"), None, None);
 
     add("prev-buffer", |pa: &mut Pass, scope: Scope| {
         let windows = context::windows();
@@ -641,24 +657,21 @@ pub(crate) fn add_session_commands() {
     .doc(
         txt!("Switch to the previous [a]Buffer[]"),
         Some(txt!(
-            "If you pass in [param.flag]--global[], then this command will also consider \
-             [a]Buffer[]s on other windows"
+            "The switching is based on the [a]Layout[]. By default, this will move it \
+             anticlockwise"
         )),
     )
-    .doc_params([CmdDoc::new(
-        txt!("An optional [param.flag]--global[], to consider other windows"),
-        None,
-    )]);
+    .doc_param(txt!("Also consider other windows"), None, None);
 
-    add("last-buffer", |pa: &mut Pass| {
-        let handle = context::windows().last_buffer(pa)?;
+    add("last-switched-buffer", |pa: &mut Pass| {
+        let handle = context::windows().last_switched_buffer(pa)?;
         Ok(Some(txt!("Switched to [buffer]{}", handle.read(pa).name())))
     })
     .doc(
         txt!("Switch to the last switched [a]Buffer[]"),
         Some(txt!(
-            "Not to be confused with [caller.info]last-buffer[], this command switches to the \
-             [a]Buffer[] that was active before the current one"
+            "Not to be confused with [caller.info]prev-buffer[], this command switches to the \
+             [a]Buffer[] that was active before the current one."
         )),
     );
 
@@ -679,23 +692,19 @@ pub(crate) fn add_session_commands() {
             "If only one parameter is given, then will swap that [a]Buffer[] with the current one"
         )),
     )
-    .doc_params([
-        CmdDoc::new(txt!("The [a]Buffer[] to swap with"), None),
-        CmdDoc::new(
-            txt!("Optional, switch with this [a]Buffer[] instead of the current one"),
-            None,
-        ),
-    ]);
+    .doc_param(txt!("The [a]Buffer[] to swap with"), None, None)
+    .doc_param(
+        txt!("Optional, switch with this [a]Buffer[] instead of the current one"),
+        None,
+        None,
+    );
 
     add("colorscheme", |_: &mut Pass, scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(&scheme);
         Ok(Some(txt!("Set colorscheme to [a]{}[]", scheme.0)))
     })
     .doc(txt!("Change the active colorscheme"), None)
-    .doc_params([CmdDoc::new(
-        txt!("The name of an existing colorscheme"),
-        None,
-    )]);
+    .doc_param(txt!("The name of an existing colorscheme"), None, None);
 
     add(
         "set-form",
@@ -716,21 +725,19 @@ pub(crate) fn add_session_commands() {
              kind of pointless at runtime"
         )),
     )
-    .doc_params([
-        CmdDoc::new(txt!("The name of an existing [a]Form"), None),
-        CmdDoc::new(
-            txt!("Up to three colors"),
-            Some(txt!(
-                "The first color will be used for the foreground, the second for the background, \
-                 and the third for the underline. The colors can be in a hex format \
-                 ([a]#123456[]), rgb ([a]rgb 61 67 69[]), or hsl (hsl 1 2 3) format. For the \
-                 latter two, the value parameters can be integers from [a]0[] to [a]255[] or \
-                 percentages between [a]0%[] and [a]100%[].
+    .doc_param(txt!("The name of an existing [a]Form"), None, None)
+    .doc_param(
+        txt!("Up to three colors"),
+        Some(txt!(
+            "The first color will be used for the foreground, the second for the background, and \
+             the third for the underline. The colors can be in a hex format ([a]#123456[]) or hsl \
+             (hsl 1 2 3) format. For hsl, the parameters can be integers from [a]0[] to [a]255[] \
+             or percentages between [a]0%[] and [a]100%[].
 
-                 If there are no parameters, then this will be set to the [a]Default[] form"
-            )),
-        ),
-    ]);
+             If there are no parameters, then this will be set to the [a]Default[] form"
+        )),
+        None,
+    );
 }
 
 mod global {
@@ -752,28 +759,59 @@ mod global {
     /// dropped, the command gets added.
     pub struct CmdBuilder {
         command: Option<super::Command>,
+        param_n: usize,
     }
 
     impl CmdBuilder {
         /// Adds documentation to this command
         pub fn doc(mut self, short: Text, long: Option<Text>) -> Self {
-            self.command.as_mut().unwrap().doc = Some(CmdDoc::new(short, long));
+            let command = self.command.as_mut().unwrap();
+            command.doc.short = Some(Arc::new(short));
+            command.doc.long = long.map(Arc::new);
             self
         }
 
-        /// Adds documentation for each of the parameters of the
+        /// Adds documentation for the next [`Parameter`] of the
         /// command
         ///
-        /// The iterator must have the same number of elements as the
-        /// number of parameters.
+        /// You have to give a short description, and you may give a
+        /// long description and a name.
+        ///
+        /// The short and long descriptions should not present the
+        /// same information, the long description merely adds
+        /// additional context.
+        ///
+        /// The `name` argument will rename the argument to something
+        /// else. If it is excluded, then the default name (provided
+        /// by [`Parameter::arg_name`] will be used.
+        ///
+        /// [`Parameter`]: super::Parameter
+        /// [`Parameter::arg_name`]: super::Parameter::arg_name
         #[track_caller]
-        pub fn doc_params(mut self, docs: impl IntoIterator<Item = CmdDoc>) -> Self {
-            let docs: Vec<_> = docs.into_iter().collect();
+        pub fn doc_param(mut self, short: Text, long: Option<Text>, name: Option<Text>) -> Self {
             assert!(
-                docs.len() == self.command.as_ref().unwrap().param_count(),
-                "Incorrect number of parameter doc `Text`s"
+                !self.command.as_ref().unwrap().doc.params.is_empty(),
+                "Command has no parameters to be documented"
             );
-            self.command.as_mut().unwrap().param_docs = Some(docs);
+
+            assert!(
+                self.param_n < self.command.as_ref().unwrap().doc.params.len(),
+                "Too many docs for the number of Parameters",
+            );
+
+            let param = {
+                let params = &mut self.command.as_mut().unwrap().doc.params;
+                &mut Arc::get_mut(params).unwrap()[self.param_n]
+            };
+
+            param.short = Some(short);
+            param.long = long;
+            if let Some(name) = name {
+                param.arg_name = name;
+            }
+
+            self.param_n += 1;
+
             self
         }
     }
@@ -785,46 +823,34 @@ mod global {
         }
     }
 
-    /// Documentation for commands and [`Parameter`]s
+    /// The description for a [`Parameter`], which is used by Duat's
+    /// commands
     ///
     /// [`Parameter`]: super::Parameter
     #[derive(Debug, Clone)]
-    pub struct CmdDoc {
-        /// "Short" documentation for a command or [`Parameter`]
+    pub struct ParamDoc {
+        /// The name for the parameter
+        ///
+        /// This will be used when formatting documentation for the
+        /// command, like `<path>` in `buffer <path>`.
+        pub arg_name: Text,
+        /// "Short" documentation for the `Parameter`
         ///
         /// This should be a short line of few words, meant for
         /// possibly being displayed in a list.
         ///
         /// Note that this is _not_ a short version of
-        /// [`CmdDoc::long`]. So they shouldn't present the same
+        /// [`ParamDoc::long`]. So they shouldn't present the same
         /// information.
-        ///
-        /// [`Parameter`]: super::Parameter
-        pub short: Arc<Text>,
-        /// "Long" documentation for a command or [`Parameter`]
+        pub short: Option<Text>,
+        /// "Long" documentation for a command
         ///
         /// This should add more details to the [`Text`] of
-        /// [`CmdDoc::short`]. This description is meant to be shown
+        /// [`ParamDoc::short`]. This description is meant to be shown
         /// when more information is required _on top_ of
-        /// [`CmdDoc::short`], so they shouldn't present the same
+        /// [`ParamDoc::short`], so they shouldn't present duplicate
         /// information.
-        ///
-        /// Note also that you _can_ add documentation about the
-        /// parameters, however, you should prioritize calling
-        /// [`CmdBuilder::doc_params`] for that purpose instead.
-        ///
-        /// [`Parameter`]: super::Parameter
-        pub long: Option<Arc<Text>>,
-    }
-
-    impl CmdDoc {
-        /// Returns a new `CmdDoc`
-        pub fn new(short: Text, long: Option<Text>) -> Self {
-            Self {
-                short: Arc::new(short),
-                long: long.map(Arc::new),
-            }
-        }
+        pub long: Option<Text>,
     }
 
     /// Adds a command to Duat
@@ -877,8 +903,9 @@ mod global {
                     cmd.call(pa, args)
                 })),
                 Cmd::check_args,
-                Cmd::param_count(),
+                Cmd::param_arg_names(),
             )),
+            param_n: 0,
         }
     }
 
@@ -1075,13 +1102,32 @@ mod global {
     /// The description for a Duat command, which can be executed in
     /// the `PromptLine`
     #[derive(Clone)]
-    pub struct CmdDescription {
+    pub struct CmdDoc {
         /// The caller for the command
         pub caller: Arc<str>,
-        /// Documentation about said command
-        pub doc: Option<CmdDoc>,
+        /// "Short" documentation for a command
+        ///
+        /// This should be a short line of few words, meant for
+        /// possibly being displayed in a list.
+        ///
+        /// Note that this is _not_ a short version of
+        /// [`CmdDoc::long`]. So they shouldn't present the same
+        /// information.
+        pub short: Option<Arc<Text>>,
+        /// "Long" documentation for a command
+        ///
+        /// This should add more details to the [`Text`] of
+        /// [`CmdDoc::short`]. This description is meant to be shown
+        /// when more information is required _on top_ of
+        /// [`CmdDoc::short`], so they shouldn't present the same
+        /// information.
+        ///
+        /// Note also that you _can_ add documentation about the
+        /// parameters, however, you should prioritize calling
+        /// [`CmdBuilder::doc_params`] for that purpose instead.
+        pub long: Option<Arc<Text>>,
         /// Documentation about the command's parameters
-        pub doc_params: Option<Vec<CmdDoc>>,
+        pub params: Arc<[ParamDoc]>,
     }
 
     /// The description for a Duat alias, which can be executed in
@@ -1093,14 +1139,14 @@ mod global {
         /// What the caller gets replaced by
         pub replacement: Arc<str>,
         /// The description of the original command
-        pub cmd: CmdDescription,
+        pub cmd: CmdDoc,
     }
 
     /// Description of a Duat command or alias
     #[derive(Clone)]
     pub enum Description {
         /// The description of a command.
-        Command(CmdDescription),
+        Command(CmdDoc),
         /// The description of an alias for a command.
         Alias(AliasDescription),
     }
@@ -1120,22 +1166,16 @@ mod global {
     /// This list does not have any inherent sorting, with the
     /// exception that aliases are listed after commands.
     pub fn cmd_list(pa: &mut Pass) -> Vec<Description> {
-        let cmd_desc = |cmd: &super::Command| CmdDescription {
-            caller: cmd.caller.clone(),
-            doc: cmd.doc.clone(),
-            doc_params: cmd.param_docs.clone(),
-        };
-
         let commands = COMMANDS.write(pa);
         commands
             .list
             .iter()
-            .map(|cmd| Description::Command(cmd_desc(cmd)))
+            .map(|cmd| Description::Command(cmd.doc.clone()))
             .chain(commands.aliases.iter().map(|(caller, (cmd, replacement))| {
                 Description::Alias(AliasDescription {
                     caller: caller.clone(),
                     replacement: replacement.clone(),
-                    cmd: cmd_desc(cmd),
+                    cmd: cmd.doc.clone(),
                 })
             }))
             .collect()
@@ -1172,7 +1212,7 @@ impl Commands {
 
         let mut cmds = self.list.iter();
 
-        if let Some(command) = cmds.find(|cmd| cmd.caller().contains(&caller)) {
+        if let Some(command) = cmds.find(|cmd| cmd.doc.caller.as_ref() == caller) {
             let entry = (command.clone(), Arc::from(call));
             self.aliases.insert(Arc::from(alias), entry);
             Ok(None)
@@ -1192,16 +1232,16 @@ impl Commands {
 
         let (command, call) = {
             if let Some(command) = self.aliases.get(caller.as_str()) {
-                let (command, call) = command;
-                let mut call = call.to_string() + " ";
-                call.extend(args);
+                let (alias, aliased_call) = command;
+                let mut aliased_call = aliased_call.to_string() + " ";
+                aliased_call.push_str(call.strip_prefix(&caller).unwrap());
 
-                (command.clone(), call)
+                (alias.clone(), aliased_call)
             } else {
                 let command = self
                     .list
                     .iter()
-                    .find(|cmd| cmd.caller() == caller)
+                    .find(|cmd| cmd.doc.caller.as_ref() == caller)
                     .ok_or(txt!("[a]{caller}[]: No such command"))?;
 
                 (command.clone(), call.clone())
@@ -1230,8 +1270,7 @@ impl Commands {
 
     /// Adds a command to the list of commands
     fn add(&mut self, command: Command) {
-        self.list
-            .retain(|cmd| cmd.caller.as_ref() != command.caller());
+        self.list.retain(|cmd| cmd.doc.caller != command.doc.caller);
         self.list.push(command);
     }
 
@@ -1243,7 +1282,10 @@ impl Commands {
         let check_args = if let Some((command, _)) = self.aliases.get(caller.as_str()) {
             command.check_args
         } else {
-            let command = self.list.iter().find(|cmd| cmd.caller() == caller)?;
+            let command = self
+                .list
+                .iter()
+                .find(|cmd| cmd.doc.caller.as_ref() == caller)?;
             command.check_args
         };
         Some(move |pa: &Pass| check_args(pa, Args::new(call)))
@@ -1262,37 +1304,35 @@ pub type CmdResult = Result<Option<Text>, Text>;
 /// A function that can be called by name.
 #[derive(Clone)]
 struct Command {
-    caller: Arc<str>,
     cmd: InnerCmdFn,
     check_args: CheckerFn,
-    param_count: usize,
-    doc: Option<CmdDoc>,
-    param_docs: Option<Vec<CmdDoc>>,
+    doc: CmdDoc,
 }
 
 impl Command {
     /// Returns a new instance of command.
-    fn new(caller: String, cmd: InnerCmdFn, check_args: CheckerFn, param_count: usize) -> Self {
+    fn new(
+        caller: String,
+        cmd: InnerCmdFn,
+        check_args: CheckerFn,
+        param_arg_names: Vec<Text>,
+    ) -> Self {
         if caller.split_whitespace().count() != 1 {
             panic!("Command caller \"{caller}\" contains more than one word");
         }
         Self {
             cmd,
             check_args,
-            caller: Arc::from(caller),
-            param_count,
-            doc: None,
-            param_docs: None,
+            doc: CmdDoc {
+                caller: caller.into(),
+                short: None,
+                long: None,
+                params: param_arg_names
+                    .into_iter()
+                    .map(|arg_name| ParamDoc { arg_name, short: None, long: None })
+                    .collect(),
+            },
         }
-    }
-
-    /// The caller for this command
-    fn caller(&self) -> &str {
-        &self.caller
-    }
-
-    fn param_count(&self) -> usize {
-        self.param_count
     }
 }
 
@@ -1342,7 +1382,7 @@ trait CmdFn<Arguments>: Send + 'static {
         Option<(Range<usize>, Text)>,
     );
 
-    fn param_count() -> usize;
+    fn param_arg_names() -> Vec<Text>;
 }
 
 impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
@@ -1366,13 +1406,13 @@ impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
         (Vec::new(), None)
     }
 
-    fn param_count() -> usize {
-        0
+    fn param_arg_names() -> Vec<Text> {
+        Vec::new()
     }
 }
 
 macro_rules! implCmdFn {
-    ($param_count:literal, $($param:ident),+) => {
+    ($($param:ident),+) => {
         impl<$($param),+, F> CmdFn<($($param,)+)> for F
         where
             $($param: Parameter,)+
@@ -1405,7 +1445,10 @@ macro_rules! implCmdFn {
                                 ok_ranges.push((start..args.param_range().end, form));
                             }
                         }
-                        Err(err) => return (ok_ranges, Some((args.param_range(), err))),
+                        Err(err) => match start.filter(|s| args.param_range().end > *s) {
+                            Some(_) => return (ok_ranges, Some((args.param_range(), err))),
+                            None => return (ok_ranges, None)
+                        }
                     }
 				)+
 
@@ -1418,20 +1461,22 @@ macro_rules! implCmdFn {
                 (ok_ranges, None)
             }
 
-            fn param_count() -> usize { $param_count }
+            fn param_arg_names() -> Vec<Text> {
+                vec![$($param::arg_name()),+]
+            }
         }
     }
 }
 
-implCmdFn!(1, P0);
-implCmdFn!(2, P0, P1);
-implCmdFn!(3, P0, P1, P2);
-implCmdFn!(4, P0, P1, P2, P3);
-implCmdFn!(5, P0, P1, P2, P3, P4);
-implCmdFn!(6, P0, P1, P2, P3, P4, P5);
-implCmdFn!(7, P0, P1, P2, P3, P4, P5, P6);
-implCmdFn!(8, P0, P1, P2, P3, P4, P5, P6, P7);
-implCmdFn!(9, P0, P1, P2, P3, P4, P5, P6, P7, P8);
-implCmdFn!(10, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9);
-implCmdFn!(11, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10);
-implCmdFn!(12, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
+implCmdFn!(P0);
+implCmdFn!(P0, P1);
+implCmdFn!(P0, P1, P2);
+implCmdFn!(P0, P1, P2, P3);
+implCmdFn!(P0, P1, P2, P3, P4);
+implCmdFn!(P0, P1, P2, P3, P4, P5);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10);
+implCmdFn!(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);

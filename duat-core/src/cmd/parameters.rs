@@ -6,7 +6,12 @@
 //! words, which makes this structure very flexible for
 //! multiple branching paths on how to read the arguments, all from
 //! the same command.
-use std::{iter::Peekable, ops::Range, path::PathBuf};
+use std::{
+    iter::Peekable,
+    ops::Range,
+    path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use crossterm::style::Color;
 
@@ -58,6 +63,15 @@ pub trait Parameter: Sized {
     /// Since parameters shouldn't mutate data, pa is just a regular
     /// shared reference.
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text>;
+
+    /// A short descriptive name
+    ///
+    /// This is for the purpose of writing documentation, and will be
+    /// used like `<path>` in `buffer <path>`, displaying what type it
+    /// is.
+    fn arg_name() -> Text {
+        txt!("[param]arg")
+    }
 }
 
 /// Command [`Parameter`]: A flag passed to the command
@@ -111,6 +125,10 @@ impl Parameter for Flag {
         } else {
             Err(txt!("Quoted arguments can't be [param.info]Flag[]s"))
         }
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param.flag]flag")
     }
 }
 
@@ -190,11 +208,15 @@ impl Parameter for Flags {
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let mut list = Vec::new();
 
-        while let Ok((flag, _)) = args.try_next_as(pa) {
+        while let Ok(flag) = args.next_as(pa) {
             list.push(flag);
         }
 
         Ok((Self(list), Some(form::id_of!("param.flag"))))
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param.flag]flags...")
     }
 }
 
@@ -261,17 +283,19 @@ pub enum Scope {
 
 impl Parameter for Scope {
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
-        if let Ok((flag, form)) = args.try_next_as::<Flag>(pa) {
+        if let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa) {
             if flag.is_word("global") {
                 Ok((Scope::Global, form))
             } else {
-                Err(txt!(
-                    "Invalid [param.info]Flag[], it can only be [param.info]--global"
-                ))
+                Err(txt!("Invalid flag, it can only be [param.info]--global"))
             }
         } else {
             Ok((Scope::Local, None))
         }
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param.flag]--global[param.punctuation]?")
     }
 }
 
@@ -288,6 +312,10 @@ impl<P: Parameter> Parameter for Option<P> {
             Err(err) if args.is_forming_param => Err(err),
             Err(_) => Ok((None, None)),
         }
+    }
+
+    fn arg_name() -> Text {
+        txt!("{}[param.punctuation]?", P::arg_name())
     }
 }
 
@@ -308,6 +336,10 @@ impl<P: Parameter> Parameter for Vec<P> {
                 Err(_) => break Ok((returns, None)),
             }
         }
+    }
+
+    fn arg_name() -> Text {
+        txt!("{}[param.punctuation]...", P::arg_name())
     }
 }
 
@@ -330,6 +362,14 @@ impl<const N: usize, P: Parameter> Parameter for [P; N] {
         }
 
         Ok((returns.map(|ret| unsafe { ret.assume_init() }), None))
+    }
+
+    fn arg_name() -> Text {
+        let punct = form::id_of!("param.punctuation");
+        txt!(
+            "{punct}[[{}{punct}; [param.count]{N}{punct}]]",
+            P::arg_name()
+        )
     }
 }
 
@@ -369,6 +409,15 @@ impl<const MIN: usize, const MAX: usize, P: Parameter> Parameter for Between<MIN
             ))
         }
     }
+
+    fn arg_name() -> Text {
+        let punct = form::id_of!("param.punctuation");
+        let count = form::id_of!("param.count");
+        txt!(
+            "{punct}[[{}{punct}; {count}{MIN}{punct}..{count}{MAX}{punct}]]",
+            P::arg_name()
+        )
+    }
 }
 
 impl<const MIN: usize, const MAX: usize, P> std::ops::Deref for Between<MIN, MAX, P> {
@@ -389,6 +438,10 @@ impl Parameter for String {
     fn new(_: &Pass, args: &mut Args) -> Result<(String, Option<FormId>), Text> {
         Ok((args.next()?.to_string(), None))
     }
+
+    fn arg_name() -> Text {
+        txt!("[param]arg")
+    }
 }
 
 /// Command [`Parameter`]: The remaining arguments, divided by a space
@@ -407,6 +460,10 @@ impl Parameter for Remainder {
             Ok((Self(remainder), None))
         }
     }
+
+    fn arg_name() -> Text {
+        txt!("[param]args")
+    }
 }
 implDeref!(Remainder, String);
 
@@ -417,10 +474,14 @@ impl Parameter for Handle {
             .buffers(pa)
             .find(|handle| handle.read(pa).name() == buffer_name)
         {
-            Ok((handle, Some(form::id_of!("param.buffer.open"))))
+            Ok((handle, Some(form::id_of!("param.path.open"))))
         } else {
             Err(txt!("No buffer called [a]{buffer_name}[] open"))
         }
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param]buffer")
     }
 }
 
@@ -437,8 +498,12 @@ impl Parameter for OtherBuffer {
         if *cur_handle == handle {
             Err(txt!("Argument can't be the current buffer"))
         } else {
-            Ok((Self(handle), Some(form::id_of!("param.buffer.open"))))
+            Ok((Self(handle), Some(form::id_of!("param.path.open"))))
         }
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param]buffer")
     }
 }
 implDeref!(OtherBuffer, Handle);
@@ -449,7 +514,7 @@ implDeref!(OtherBuffer, Handle);
 /// or if the file itself exists.
 ///
 /// [`Buffer`]: crate::buffer::Buffer
-pub struct ValidFilePath(pub PathBuf);
+pub struct ValidFilePath(pub PathBuf, bool);
 
 impl Parameter for ValidFilePath {
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
@@ -482,19 +547,23 @@ impl Parameter for ValidFilePath {
             return Err(txt!("Path's parent doesn't exist"));
         }
 
-        let form = if crate::context::windows()
+        let (form, exists_or_is_open) = if crate::context::windows()
             .buffers(pa)
             .map(|handle| handle.read(pa).path())
             .any(|p| std::path::Path::new(&p) == path)
         {
-            form::id_of!("param.buffer.open")
+            (form::id_of!("param.path.open"), true)
         } else if let Ok(true) = path.try_exists() {
-            form::id_of!("param.buffer.exists")
+            (form::id_of!("param.path.exists"), true)
         } else {
-            form::id_of!("param.buffer")
+            (form::id_of!("param.path"), false)
         };
 
-        Ok((Self(path), Some(form)))
+        Ok((Self(path, exists_or_is_open), Some(form)))
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param]path")
     }
 }
 implDeref!(ValidFilePath, PathBuf);
@@ -515,20 +584,65 @@ pub(super) enum PathOrBufferOrCfg {
 
 impl Parameter for PathOrBufferOrCfg {
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
-        if let Ok((flag, _)) = args.try_next_as::<Flag>(pa) {
+        struct DropGuard;
+        impl Drop for DropGuard {
+            fn drop(&mut self) {
+                ONLY_EXISTING.store(false, Ordering::Relaxed);
+            }
+        }
+
+        let _guard = DropGuard;
+
+        if let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa) {
             match flag.as_word()?.as_str() {
-                "cfg" => Ok((Self::Cfg, None)),
-                "cfg-manifest" => Ok((Self::CfgManifest, None)),
+                "cfg" => Ok((Self::Cfg, form)),
+                "cfg-manifest" => Ok((Self::CfgManifest, form)),
                 _ => Err(txt!(
-                    "Invalid flag, pick [param.ok]cfg or [param.info]cfg-manifest[]"
+                    "Invalid flag, pick [param.flag]cfg[] or [param.flag]cfg-manifest[]"
                 )),
             }
-        } else if let Ok((handle, form)) = args.try_next_as::<Handle>(pa) {
+        } else if let Ok((handle, form)) = args.next_as_with_form::<Handle>(pa) {
             Ok((Self::Buffer(handle), form))
         } else {
-            let (path, form) = args.try_next_as::<ValidFilePath>(pa)?;
-            Ok((Self::Path(path.0), form))
+            let (path, form) = args.next_as_with_form::<ValidFilePath>(pa)?;
+            if !path.1 && ONLY_EXISTING.load(Ordering::Relaxed) {
+                Err(txt!("[a]{path}[]: No such file"))
+            } else {
+                Ok((Self::Path(path.0), form))
+            }
         }
+    }
+
+    fn arg_name() -> Text {
+        let flag = form::id_of!("param.flag");
+        let punct = form::id_of!("param.punctuation");
+        txt!("[param]path{punct}/[param]buffer{punct}/{flag}--cfg{punct}/{flag}--cfg-manifest")
+    }
+}
+
+static ONLY_EXISTING: AtomicBool = AtomicBool::new(false);
+
+/// Command [`Parameter`]: The `--existing` flag
+pub(crate) struct Existing;
+
+impl Parameter for Existing {
+    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+        let initial = args.clone();
+        let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa) else {
+            return Ok((Self, None));
+        };
+
+        if flag.is_word("existing") {
+            ONLY_EXISTING.store(true, Ordering::Relaxed);
+        } else {
+            *args = initial;
+        }
+
+        Ok((Self, form))
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param.flag]--existing[param.punctuation]?")
     }
 }
 
@@ -556,6 +670,11 @@ impl Parameter for F32PercentOfU8 {
                 .map_err(|_| txt!("[a]{arg}[] couldn't be parsed"))?;
             Ok((Self(byte as f32 / 255.0), None))
         }
+    }
+
+    fn arg_name() -> Text {
+        let punct = form::id_of!("param.punctuation");
+        txt!("[param]u8{punct}/[param]0..=100%")
     }
 }
 implDeref!(F32PercentOfU8, f32);
@@ -587,12 +706,6 @@ impl Parameter for Color {
             let g = (total >> 8) as u8;
             let b = total as u8;
             Ok((Color::Rgb { r, g, b }, None))
-            // Expects "rgb {red} {green} {blue}"
-        } else if arg == "rgb" {
-            let r = args.next_as::<u8>(pa)?;
-            let g = args.next_as::<u8>(pa)?;
-            let b = args.next_as::<u8>(pa)?;
-            Ok((Color::Rgb { r, g, b }, None))
             // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
         } else if arg == "hsl" {
             let hue = args.next_as::<F32PercentOfU8>(pa)?.0;
@@ -617,6 +730,10 @@ impl Parameter for Color {
             Err(txt!("Color format was not recognized"))
         }
     }
+
+    fn arg_name() -> Text {
+        txt!("[param]#{{rgb hex}}[param.punctuation]/[param]hsl {{h}} {{s}} {{l}}")
+    }
 }
 
 /// Command [`Parameter`]: The name of a [`Form`] that has been [set]
@@ -639,6 +756,10 @@ impl Parameter for FormName {
             Err(txt!("The form [a]{arg}[] has not been set"))
         }
     }
+
+    fn arg_name() -> Text {
+        txt!("[param]form")
+    }
 }
 
 implDeref!(FormName, String);
@@ -656,6 +777,10 @@ impl Parameter for ColorSchemeArg {
         } else {
             Err(txt!("The colorscheme [a]{scheme}[] was not found"))
         }
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param]colorscheme")
     }
 }
 implDeref!(ColorSchemeArg, String);
@@ -686,6 +811,11 @@ impl Parameter for ReloadOptions {
                 Some(form::id_of!("param.flag")),
             ))
         }
+    }
+
+    fn arg_name() -> Text {
+        let punct = form::id_of!("param.punctuation");
+        txt!("[param.flag]--clean{punct}? [param.flag]--update{punct}?")
     }
 }
 
@@ -729,29 +859,33 @@ impl<'arg> Args<'arg> {
     /// If parsing fails, [`Args`] will be reset as if this function
     /// wasn't called.
     pub fn next_as<P: Parameter>(&mut self, pa: &Pass) -> Result<P, Text> {
-        let initial_args = self.args.clone();
+        let initial = self.clone();
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
         if ret.is_ok() {
             self.is_forming_param = false;
         } else {
-            self.args = initial_args
+            *self = initial;
         }
         ret.map(|(arg, _)| arg)
     }
 
-    /// Tries to parse the next argument as `P`
+    /// Tries to parse the next argument as `P`, also returning the
+    /// [`Option<Form>`]
     ///
     /// If parsing fails, [`Args`] will be reset as if this function
     /// wasn't called.
-    pub fn try_next_as<P: Parameter>(&mut self, pa: &Pass) -> Result<(P, Option<FormId>), Text> {
-        let initial_args = self.args.clone();
+    pub fn next_as_with_form<P: Parameter>(
+        &mut self,
+        pa: &Pass,
+    ) -> Result<(P, Option<FormId>), Text> {
+        let initial = self.clone();
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
         if ret.is_ok() {
             self.is_forming_param = false;
         } else {
-            self.args = initial_args
+            *self = initial;
         }
         ret
     }
@@ -798,7 +932,11 @@ impl<'arg> Args<'arg> {
 pub struct Arg<'arg> {
     /// The `&str` of that argument
     pub value: &'arg str,
-    /// Wether said argument was quoted with `"`s
+    /// Wether said argument was quoted
+    ///
+    /// This is useful for the [`Flag`] parameter, since it lets you
+    /// distinguish between `--flag` and `"--flag"`, treating the
+    /// latter as not a `Flag`
     pub is_quoted: bool,
 }
 
@@ -839,7 +977,7 @@ impl<'a> ArgsIter<'a> {
             start: None,
             end: None,
             is_quoting: false,
-            // Initial value doesn't matter, as long as it's not '\'
+            // Initial value doesn't matter, as long as it's not '\' or '"'
             last_char: 'a',
         };
 
@@ -893,6 +1031,10 @@ macro_rules! parse_impl {
                 });
                 arg.map(|arg| (arg, None))
             }
+
+            fn arg_name() -> Text {
+                txt!("[param]{}", stringify!($t))
+            }
         }
     };
 }
@@ -912,4 +1054,7 @@ parse_impl!(i128);
 parse_impl!(isize);
 parse_impl!(f32);
 parse_impl!(f64);
-parse_impl!(std::path::PathBuf);
+parse_impl!(path);
+
+#[allow(non_camel_case_types)]
+type path = std::path::PathBuf;

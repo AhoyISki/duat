@@ -75,10 +75,6 @@ impl CompletionsProvider for WordCompletions {
     fn has_changed(&self) -> bool {
         false
     }
-
-    fn default_info_on(&self, (word, path): (&str, &Self::Info)) -> Option<Text> {
-        Some(txt!("Hiiii pookie {word} from {path.source}!"))
-    }
 }
 
 /// Information about an entry in the [`WordCompletions`]

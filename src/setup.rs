@@ -49,7 +49,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
     std::panic::set_hook(Box::new(move |panic_info| {
         context::log_panic(panic_info);
         let backtrace = std::backtrace::Backtrace::capture();
-
         *PANIC_INFO.lock().unwrap() = Some(format!("{panic_info}\n{backtrace}"))
     }));
 
@@ -281,7 +280,11 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
     crate::cmd::add("logs", |pa: &mut Pass| {
         mode::set(pa, Pager::<LogBook>::new());
         Ok(None)
-    });
+    })
+    .doc(
+        txt!("Open the [a]Logs[] and enter [mode]Pager[] mode"),
+        None,
+    );
 
     mode::map::<mode::User>("L", Pager::<LogBook>::new()).doc(txt!("Open [mode]Logs"));
 

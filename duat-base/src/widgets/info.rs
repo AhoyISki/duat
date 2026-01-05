@@ -76,6 +76,7 @@ impl Widget for Info {
     fn get_print_opts(&self) -> PrintOpts {
         let mut opts = PrintOpts::new();
         opts.wrap_lines = true;
+        opts.tabstop = 2;
         opts
     }
 }

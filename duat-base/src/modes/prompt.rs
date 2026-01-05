@@ -76,7 +76,6 @@ pub struct Prompt {
     clone_fn: Arc<Mutex<ModeCloneFn>>,
     reset_fn: fn(pa: &mut Pass),
     history_index: Option<usize>,
-    completion: Option<Completion>,
 }
 
 impl Prompt {
@@ -98,7 +97,6 @@ impl Prompt {
             clone_fn,
             reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
             history_index: None,
-            completion: None,
         }
     }
 
@@ -121,7 +119,6 @@ impl Prompt {
             clone_fn,
             reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
             history_index: None,
-            completion: None,
         }
     }
 
@@ -137,34 +134,6 @@ impl Prompt {
                 Ghost::new(txt!("[prompt.preview]{}", ty_history.last().unwrap())),
             );
         }
-    }
-
-    fn show_completions(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {
-        let text = handle.text(pa);
-        let Some(main) = text.selections().get_main() else {
-            Completions::close(pa);
-            return;
-        };
-
-        let is_parameter = text
-            .chars_rev(..main.caret())
-            .unwrap()
-            .any(|(_, char)| char.is_whitespace());
-
-        let new_completion = if is_parameter {
-            Completion::Parameter
-        } else {
-            Completion::Caller
-        };
-
-        if Some(new_completion) != self.completion {
-            match new_completion {
-                Completion::Caller => Completions::builder(CommandsCompletions::new(pa)).open(pa),
-                Completion::Parameter => Completions::close(pa),
-            }
-        }
-
-        self.completion = Some(new_completion)
     }
 }
 
@@ -336,7 +305,7 @@ impl mode::Mode for Prompt {
             _ => {}
         }
 
-        self.show_completions(pa, &handle);
+        self.mode.post_update(pa, &handle);
         self.show_preview(pa, handle);
     }
 
@@ -388,7 +357,6 @@ impl Clone for Prompt {
             clone_fn: self.clone_fn.clone(),
             reset_fn: self.reset_fn,
             history_index: None,
-            completion: None,
         }
     }
 }
@@ -485,6 +453,16 @@ pub trait PromptMode: Send + 'static {
     /// finishes the search, etc.
     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &RwArea) {}
 
+    /// A post update hook to be called on the [`Handle`] itself
+    ///
+    /// One useful thing that you can do on this function is a call to
+    /// [`CompletionsBuilder::open`], which doesn't work on
+    /// [`PromptMode::update`] because the [`Text`] of the
+    /// [`PromptLine`] is taken.
+    ///
+    /// [`CompletionsBuilder::open`]: crate::widgets::CompletionsBuilder::open
+    fn post_update(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {}
+
     /// What text should be at the beginning of the [`PromptLine`], as
     /// a [`Ghost`]
     fn prompt(&self) -> Text;
@@ -502,20 +480,20 @@ pub trait PromptMode: Send + 'static {
 ///
 /// [`Parameter`]: duat_core::cmd::Parameter
 #[derive(Default, Clone)]
-pub struct RunCommands;
+pub struct RunCommands(Option<Completion>);
 
 impl RunCommands {
     /// Crates a new [`RunCommands`]
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Prompt {
         Self::call_once();
-        Prompt::new(Self)
+        Prompt::new(Self(None))
     }
 
     /// Opens a [`RunCommands`] with some initial text
     pub fn new_with(initial: impl ToString) -> Prompt {
         Self::call_once();
-        Prompt::new_with(Self, initial)
+        Prompt::new_with(Self(None), initial)
     }
 
     fn call_once() {
@@ -562,9 +540,36 @@ impl PromptMode for RunCommands {
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         let call = text.to_string();
         if !call.is_empty() {
-            context::debug!("call_notified [a]{call}");
             _ = cmd::call_notify(pa, call);
         }
+    }
+
+    fn post_update(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {
+        let text = handle.text(pa);
+        let Some(main) = text.selections().get_main() else {
+            Completions::close(pa);
+            return;
+        };
+
+        let is_parameter = text
+            .chars_rev(..main.caret())
+            .unwrap()
+            .any(|(_, char)| char.is_whitespace());
+
+        let new_completion = if is_parameter {
+            Completion::Parameter
+        } else {
+            Completion::Caller
+        };
+
+        if self.0 != Some(new_completion) {
+            match new_completion {
+                Completion::Caller => Completions::builder(CommandsCompletions::new(pa)).open(pa),
+                Completion::Parameter => Completions::close(pa),
+            }
+        }
+
+        self.0 = Some(new_completion)
     }
 
     fn prompt(&self) -> Text {

@@ -189,14 +189,10 @@ impl Completions {
             return None;
         }
 
-        let Some(handle) = context::windows()
+        let handle = context::windows()
             .handles_of::<Completions>(pa)
             .first()
-            .cloned()
-        else {
-            context::warn!("No Completions open");
-            return None;
-        };
+            .cloned()?;
 
         let main_repl = Completions::update_text_and_position(pa, &handle, scroll);
         handle.write(pa).show_without_prefix = true;
@@ -271,13 +267,13 @@ impl Completions {
                     }
                 });
 
-                if let Some(info_text) = info_text {
+                if let Some((info_text, orientation)) = info_text {
                     let info_handle = if let Some(info) = handle.read(pa).info_handle.clone() {
                         info.write(pa).text = info_text;
                         Some(info)
                     } else {
                         let specs = DynSpawnSpecs {
-                            orientation: Orientation::HorTopRight,
+                            orientation,
                             width: None,
                             height: None,
                             ..Default::default()
@@ -458,7 +454,9 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 
     /// Additional information about an entry, which can be shown when
     /// it is selected.
-    fn default_info_on(&self, item: (&str, &Self::Info)) -> Option<Text>;
+    fn default_info_on(&self, _: (&str, &Self::Info)) -> Option<(Text, Orientation)> {
+        None
+    }
 }
 
 /// A list of entries for completion
@@ -528,7 +526,7 @@ trait ErasedInnerProvider: Any + Send {
         show_without_prefix: bool,
     ) -> (
         usize,
-        Option<((Text, Text), Option<(String, Option<Text>)>)>,
+        Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     );
 
     fn has_changed(&self, text: Option<&Text>) -> bool;
@@ -598,7 +596,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         show_without_prefix: bool,
     ) -> (
         usize,
-        Option<((Text, Text), Option<(String, Option<Text>)>)>,
+        Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     ) {
         use FilteredEntries::*;
         let (range, [prefix, suffix]) =

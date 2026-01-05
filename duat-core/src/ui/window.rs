@@ -739,7 +739,7 @@ impl Windows {
     /// Jumps to the last buffer
     ///
     /// Calling this repeatedly
-    pub fn last_buffer(&self, pa: &mut Pass) -> Result<Handle, Text> {
+    pub fn last_switched_buffer(&self, pa: &mut Pass) -> Result<Handle, Text> {
         let current = self.inner.read(pa).cur_buffer.read(pa).clone();
         if let Some(handle) = self.inner.write(pa).buffer_history.last(current) {
             mode::reset_to(pa, &handle);
