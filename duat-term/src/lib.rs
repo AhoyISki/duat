@@ -430,21 +430,7 @@ macro_rules! color_values {
     }
 }
 
-fn print_hashed_style(
-    w: &mut impl Write,
-    style: ContentStyle,
-    ansi_codes: &mut micromap::Map<CStyle, String, 16>,
-) {
-    if let Some(ansi) = ansi_codes.get(&CStyle(style)) {
-        w.write_all(ansi.as_bytes()).unwrap();
-    } else if style != ContentStyle::default() {
-        let ansi = get_ansi(style);
-        w.write_all(ansi.as_bytes()).unwrap();
-        ansi_codes.checked_insert(CStyle(style), ansi);
-    }
-}
-
-fn get_ansi(style: ContentStyle) -> String {
+fn print_style(w: &mut impl Write, style: ContentStyle) {
     let mut ansi = String::new();
     use crossterm::style::Attribute::{self, *};
     const ATTRIBUTES: [(Attribute, &str); 10] = [
@@ -583,21 +569,8 @@ fn get_ansi(style: ContentStyle) -> String {
     }
 
     ansi.push('m');
-
-    ansi
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct CStyle(ContentStyle);
-
-impl std::hash::Hash for CStyle {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.foreground_color.hash(state);
-        self.0.background_color.hash(state);
-        self.0.foreground_color.hash(state);
-        let attr: u32 = unsafe { std::mem::transmute(self.0.attributes) };
-        attr.hash(state);
-    }
+    
+    w.write_all(ansi.as_bytes()).unwrap();
 }
 
 /// The priority for edges for areas that must not overlap

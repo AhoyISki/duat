@@ -1125,7 +1125,6 @@ impl Frame {
                 (&text, opts, duat_core::form::painter_with_mask("title")),
                 (coords, max),
                 (false, TwoPoints::default(), 0),
-                |lines, style| lines.write_all(crate::get_ansi(style).as_bytes()).unwrap(),
                 |lines, len| {
                     if len > 0 {
                         write!(lines, "\x1b[{len}C").unwrap()

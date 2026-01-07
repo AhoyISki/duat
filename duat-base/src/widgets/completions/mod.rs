@@ -49,7 +49,9 @@ static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, ParamCompletions>>> =
 pub fn setup_completions() {
     words::track_words();
     Completions::set_for_parameter::<PathOrBufferOrCfg>(|_| {
-        Completions::builder(paths::PathCompletions::new(true))
+        let mut builder = Completions::builder(paths::PathCompletions::new(true));
+        builder.show_without_prefix = true;
+        builder
     });
 }
 

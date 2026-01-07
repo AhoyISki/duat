@@ -5,7 +5,7 @@ use std::{io::Write, sync::Arc};
 
 use crossterm::{
     cursor, queue,
-    style::{Attribute, Attributes, ContentStyle},
+    style::{Attribute, Attributes},
 };
 use duat_core::{
     context::{self, Decode, Encode},
@@ -22,9 +22,9 @@ use iter::{print_iter, rev_print_iter};
 
 pub use self::print_info::PrintInfo;
 use crate::{
-    AreaId, CStyle, Mutex,
+    AreaId, Mutex,
     layout::{Frame, Layouts},
-    print_hashed_style,
+    print_style,
     printer::Lines,
 };
 
@@ -92,7 +92,6 @@ pub struct Area {
     prev_print_info: Arc<Mutex<PrintInfo>>,
     layouts: Layouts,
     id: AreaId,
-    ansi_codes: Arc<Mutex<micromap::Map<CStyle, String, 16>>>,
     set_frame: fn(&mut Self, Frame),
 }
 
@@ -109,7 +108,6 @@ impl Area {
             prev_print_info: Arc::new(Mutex::default()),
             layouts,
             id,
-            ansi_codes: Arc::default(),
             set_frame: |area, frame| {
                 if !area.layouts.set_frame(area.id, frame) {
                     context::warn!("This Area was already deleted");
@@ -152,13 +150,10 @@ impl Area {
 
         let is_active = self.id == self.layouts.get_active_id();
 
-        let mut ansi_codes = self.ansi_codes.lock().unwrap();
-
         let Some((lines, observed_spawns)) = print_text(
             (text, opts, painter),
             (coords, max),
             (is_active, s_points, x_shift),
-            |lines, style| print_hashed_style(lines, style, &mut ansi_codes),
             |lines, len| lines.write_all(&SPACES[..len as usize]).unwrap(),
             |lines, len, max_x| {
                 if lines.coords().br.x == max_x {
@@ -465,7 +460,6 @@ impl RawArea for Area {
             prev_print_info: Arc::default(),
             layouts: self.layouts.clone(),
             id,
-            ansi_codes: Arc::default(),
             set_frame: |area, frame| {
                 if !area.layouts.set_frame(area.id, frame) {
                     context::warn!("This Area was already deleted");
@@ -705,15 +699,10 @@ pub fn print_text(
     (text, opts, mut painter): (&Text, PrintOpts, Painter),
     (coords, max): (Coords, Coord),
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
-    mut print_style: impl FnMut(&mut Lines, ContentStyle),
     start_line: fn(&mut Lines, u32),
     end_line: fn(&mut Lines, u32, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
-    fn print_end_style(
-        lines: &mut Lines,
-        painter: &Painter,
-        print_style: &mut impl FnMut(&mut Lines, ContentStyle),
-    ) {
+    fn print_end_style(lines: &mut Lines, painter: &Painter) {
         let mut default_style = painter.get_default();
         default_style.style.foreground_color = None;
         default_style.style.underline_color = None;
@@ -760,7 +749,7 @@ pub fn print_text(
                 break;
             }
             if y > lines.coords().tl.y {
-                print_end_style(lines, painter, &mut print_style);
+                print_end_style(lines, painter);
                 end_line(lines, last_len, max_x);
             }
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
@@ -881,11 +870,11 @@ pub fn print_text(
         }
     }
 
-    print_end_style(&mut lines, &painter, &mut print_style);
+    print_end_style(&mut lines, &painter);
     end_line(&mut lines, last_len, max_x);
 
     for _ in 0..lines.coords().br.y - y {
-        print_end_style(&mut lines, &painter, &mut print_style);
+        print_end_style(&mut lines, &painter);
         end_line(&mut lines, 0, max_x);
     }
 

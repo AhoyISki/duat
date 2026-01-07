@@ -48,6 +48,7 @@ KNOWN BUGS:
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
 
 FUTURE UPDATES:
+[ ] Multiple parameter completions at the same time.
 [ ] An API like search but for chars.
 [ ] Put all options in a single struct.
 [ ] Strs QOL.
