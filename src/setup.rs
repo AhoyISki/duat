@@ -75,10 +75,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
     .grouped("BufferWidgets");
 
     hook::add::<WindowCreated>(|pa, handle| {
-        use crate::{
-            state::*,
-            text::{AlignRight, Spacer},
-        };
+        use crate::{state::*, text::Spacer};
 
         let one_line_footer = ONE_LINE_FOOTER.load(Ordering::Relaxed);
         let status = match &mut *STATUSLINE_FMT.lock().unwrap() {
@@ -86,7 +83,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
             None if one_line_footer => {
                 let mode_txt = mode_txt();
                 let duat_param_txt = duat_param_txt();
-                status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}")
+                status!("{Spacer}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}")
             }
             None => {
                 let mode_txt = mode_txt();

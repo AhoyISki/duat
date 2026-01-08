@@ -1059,22 +1059,22 @@ impl Frame {
         }
 
         let corners = [
-            (above && right).then_some((Coord::new(coords.br.x, coords.tl.y - 1), [
-                Side::Above,
-                Side::Right,
-            ])),
-            (below && right).then_some((Coord::new(coords.br.x, coords.br.y), [
-                Side::Below,
-                Side::Right,
-            ])),
-            (below && left).then_some((Coord::new(coords.tl.x - 1, coords.br.y), [
-                Side::Below,
-                Side::Left,
-            ])),
-            (above && left).then_some((Coord::new(coords.tl.x - 1, coords.tl.y - 1), [
-                Side::Above,
-                Side::Left,
-            ])),
+            (above && right).then_some((
+                Coord::new(coords.br.x, coords.tl.y - 1),
+                [Side::Above, Side::Right],
+            )),
+            (below && right).then_some((
+                Coord::new(coords.br.x, coords.br.y),
+                [Side::Below, Side::Right],
+            )),
+            (below && left).then_some((
+                Coord::new(coords.tl.x - 1, coords.br.y),
+                [Side::Below, Side::Left],
+            )),
+            (above && left).then_some((
+                Coord::new(coords.tl.x - 1, coords.tl.y - 1),
+                [Side::Above, Side::Left],
+            )),
         ];
 
         for (coord, sides) in corners.into_iter().flatten() {
@@ -1121,16 +1121,19 @@ impl Frame {
         let opts = PrintOpts { wrap_lines: true, ..PrintOpts::default() };
 
         for (coords, text) in texts.into_iter().flatten() {
+            let print_space = |lines: &mut Lines, len| {
+                if len > 0 {
+                    write!(lines, "\x1b[{len}C").unwrap()
+                }
+            };
+
             if let Some((lines, _)) = print_text(
                 (&text, opts, duat_core::form::painter_with_mask("title")),
                 (coords, max),
                 (false, TwoPoints::default(), 0),
-                |lines, len| {
-                    if len > 0 {
-                        write!(lines, "\x1b[{len}C").unwrap()
-                    }
-                },
+                print_space,
                 |lines, _, _| _ = lines.flush(),
+                print_space,
             ) {
                 for y in coords.tl.y..coords.br.y {
                     let (line, _) = lines.on(y).unwrap();

@@ -99,8 +99,8 @@ pub use crate::text::{
     iter::{FwdIter, Item, Part, RevIter},
     search::{Matches, RegexHaystack, RegexPattern, Searcher},
     tags::{
-        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
-        MainCaret, RawTag, Spacer, SpawnTag, Tag, Tagger, Taggers, Tags, ToggleId,
+        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, Spacer, SpawnTag, Tag,
+        Tagger, Taggers, Tags, ToggleId,
     },
     utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
 };

@@ -8,7 +8,7 @@
 //!
 //! [`Form`]: crate::form::Form
 use std::{
-    fmt::{Alignment, Display, Write},
+    fmt::{Display, Write},
     marker::PhantomData,
     path::Path,
 };
@@ -17,7 +17,7 @@ use super::{Change, Tagger, Text};
 use crate::{
     buffer::PathKind,
     form::FormId,
-    text::{AlignCenter, AlignLeft, AlignRight, FormTag, Ghost, Spacer},
+    text::{FormTag, Ghost, Spacer},
 };
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -59,7 +59,6 @@ use crate::{
 pub struct Builder {
     text: Text,
     last_form: Option<(usize, FormTag)>,
-    last_align: Option<(usize, Alignment)>,
     buffer: String,
     last_was_empty: bool,
     /// Wether to collapse `" "`s after an empty element is pushed
@@ -91,19 +90,6 @@ impl Builder {
             && b < self.text.last_point().byte()
         {
             self.text.insert_tag(Tagger::basic(), b.., id);
-        }
-        if let Some((b, align)) = self.last_align
-            && b < self.text.last_point().byte()
-        {
-            match align {
-                Alignment::Center => {
-                    self.text.insert_tag(Tagger::basic(), b.., AlignCenter);
-                }
-                Alignment::Right => {
-                    self.text.insert_tag(Tagger::basic(), b.., AlignRight);
-                }
-                _ => {}
-            }
         }
 
         self.text
@@ -144,7 +130,6 @@ impl Builder {
     #[doc(hidden)]
     pub fn push_builder_part<_T>(&mut self, part: BuilderPart<impl Display, _T>) {
         fn push_simple(builder: &mut Builder, part: BuilderPart) {
-            use Alignment::*;
             use BuilderPart as BP;
 
             let end = builder.text.last_point().byte();
@@ -168,33 +153,6 @@ impl Builder {
                         builder.text.insert_tag(tagger, b..end, tag);
                     }
                 }
-                BP::AlignLeft => match builder.last_align.take() {
-                    Some((b, Center)) if b < end => {
-                        builder.text.insert_tag(tagger, b..end, AlignCenter);
-                    }
-                    Some((b, Right)) if b < end => {
-                        builder.text.insert_tag(tagger, b..end, AlignRight);
-                    }
-                    _ => {}
-                },
-                BP::AlignCenter => match builder.last_align.take() {
-                    Some((b, Center)) => builder.last_align = Some((b, Center)),
-                    Some((b, Right)) if b < end => {
-                        builder.text.insert_tag(tagger, b..end, AlignRight);
-                        builder.last_align = Some((end, Center));
-                    }
-                    None => builder.last_align = Some((end, Center)),
-                    Some(_) => {}
-                },
-                BP::AlignRight => match builder.last_align.take() {
-                    Some((b, Right)) => builder.last_align = Some((b, Right)),
-                    Some((b, Center)) if b < end => {
-                        builder.text.insert_tag(tagger, b..end, AlignCenter);
-                        builder.last_align = Some((end, Right));
-                    }
-                    None => builder.last_align = Some((end, Right)),
-                    Some(_) => {}
-                },
                 BP::Spacer(_) => _ = builder.text.insert_tag(tagger, end, Spacer),
                 BP::Ghost(ghost) => _ = builder.text.insert_tag(tagger, end, ghost.clone()),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
@@ -254,24 +212,6 @@ impl Builder {
         }
     }
 
-    /// Resets the [`Form`]
-    ///
-    /// This is equivalent to pushing the `default` `Form`.
-    ///
-    /// [`Form`]: crate::form::Form
-    pub fn reset_alignment(&mut self) {
-        let end = self.text.last_point().byte();
-        match self.last_align.take() {
-            Some((b, Alignment::Center)) if b < end => {
-                self.text.insert_tag(Tagger::basic(), b..end, AlignCenter);
-            }
-            Some((b, Alignment::Right)) if b < end => {
-                self.text.insert_tag(Tagger::basic(), b..end, AlignRight);
-            }
-            _ => {}
-        }
-    }
-
     /// Pushes [`Text`] directly
     fn push_text(&mut self, text: &Text) {
         self.last_was_empty = text.is_empty();
@@ -291,16 +231,6 @@ impl Builder {
         {
             self.text.insert_tag(Tagger::basic(), offset + b..end, id);
         }
-        if let Some((b, align)) = other.last_align
-            && b < other.text.last_point().byte()
-        {
-            let tagger = Tagger::basic();
-            if let Alignment::Center = align {
-                self.text.insert_tag(tagger, offset + b..end, AlignCenter);
-            } else {
-                self.text.insert_tag(tagger, offset + b..end, AlignRight);
-            }
-        }
     }
 }
 
@@ -309,7 +239,6 @@ impl Default for Builder {
         Builder {
             text: Text::new(),
             last_form: None,
-            last_align: None,
             buffer: String::with_capacity(50),
             last_was_empty: false,
             no_space_after_empty: false,
@@ -357,12 +286,6 @@ pub enum BuilderPart<'a, D: Display = String, _T = ()> {
     PathKind(Text),
     /// A [`FormId`]
     Form(FormTag),
-    /// Sets the alignment to the left, i.e. resets it
-    AlignLeft,
-    /// Sets the alignment to the center
-    AlignCenter,
-    /// Sets the alignment to the right
-    AlignRight,
     /// A spacer for more advanced alignment
     Spacer(PhantomData<_T>),
     /// Ghost [`Text`] that is separate from the real thing
@@ -378,9 +301,6 @@ impl<'a, D: Display, _T> BuilderPart<'a, D, _T> {
             BuilderPart::Path(path) => Ok(BuilderPart::Path(path)),
             BuilderPart::PathKind(text) => Ok(BuilderPart::PathKind(text)),
             BuilderPart::Form(form_id) => Ok(BuilderPart::Form(form_id)),
-            BuilderPart::AlignLeft => Ok(BuilderPart::AlignLeft),
-            BuilderPart::AlignCenter => Ok(BuilderPart::AlignCenter),
-            BuilderPart::AlignRight => Ok(BuilderPart::AlignRight),
             BuilderPart::Spacer(_) => Ok(BuilderPart::Spacer(PhantomData)),
             BuilderPart::Ghost(ghost) => Ok(BuilderPart::Ghost(ghost)),
         }
@@ -412,9 +332,6 @@ macro_rules! implAsBuilderPart {
 implAsBuilderPart!(Builder, builder, BuilderPart::Builder(builder));
 implAsBuilderPart!(FormId, form_id, BuilderPart::Form(form_id.to_tag(0)));
 implAsBuilderPart!(FormTag, form_tag, BuilderPart::Form(*form_tag));
-implAsBuilderPart!(AlignLeft, _align, BuilderPart::AlignLeft);
-implAsBuilderPart!(AlignCenter, _align, BuilderPart::AlignCenter);
-implAsBuilderPart!(AlignRight, _align, BuilderPart::AlignRight);
 implAsBuilderPart!(Spacer, _spacer, BuilderPart::Spacer(PhantomData));
 implAsBuilderPart!(Ghost, ghost, BuilderPart::Ghost(ghost));
 implAsBuilderPart!(Text, text, BuilderPart::Text(text));

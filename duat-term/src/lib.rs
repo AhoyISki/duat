@@ -394,11 +394,11 @@ macro_rules! color_values {
     ($name:ident, $p:literal, $s:literal) => {
         macro_rules! c {
             ($n:literal) => {
-                concat!($p, $n, $s)
+                concat!($p, $n, $s).as_bytes()
             }
         }
         
-        const $name: [&str; 256] = [
+        const $name: [&[u8]; 256] = [
             c!(0), c!(1), c!(2), c!(3), c!(4), c!(5), c!(6), c!(7), c!(8), c!(9), c!(10), c!(11),
             c!(12), c!(13), c!(14), c!(15), c!(16), c!(17), c!(18), c!(19), c!(20), c!(21), c!(22),
             c!(23), c!(24), c!(25), c!(26), c!(27), c!(28), c!(29), c!(30), c!(31), c!(32), c!(33),
@@ -431,19 +431,18 @@ macro_rules! color_values {
 }
 
 fn print_style(w: &mut impl Write, style: ContentStyle) {
-    let mut ansi = String::new();
     use crossterm::style::Attribute::{self, *};
-    const ATTRIBUTES: [(Attribute, &str); 10] = [
-        (Reset, "0"),
-        (Bold, "1"),
-        (Dim, "2"),
-        (Italic, "3"),
-        (Underlined, "4"),
-        (DoubleUnderlined, "4;2"),
-        (Undercurled, "4;3"),
-        (Underdotted, "4;4"),
-        (Underdashed, "4;5"),
-        (Reverse, "7"),
+    const ATTRIBUTES: [(Attribute, &[u8]); 10] = [
+        (Reset, b"0"),
+        (Bold, b"1"),
+        (Dim, b"2"),
+        (Italic, b"3"),
+        (Underlined, b"4"),
+        (DoubleUnderlined, b"4;2"),
+        (Undercurled, b"4;3"),
+        (Underdotted, b"4;4"),
+        (Underdashed, b"4;5"),
+        (Reverse, b"7"),
     ];
     color_values!(U8, "", "");
     color_values!(U8_SC, "", ";");
@@ -454,16 +453,16 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
     color_values!(U8_UL_RGB, "58;2;", ";");
     color_values!(U8_UL_ANSI, "58;5;", ";");
 
-    ansi.push_str("\x1b[");
+    w.write_all(b"\x1b[").unwrap();
 
     let mut semicolon = false;
     if !style.attributes.is_empty() {
         for (attr, code) in ATTRIBUTES {
             if style.attributes.has(attr) {
                 if semicolon {
-                    ansi.push(';')
+                    w.write_all(b";").unwrap()
                 }
-                ansi.push_str(code);
+                w.write_all(code).unwrap();
                 semicolon = true;
             }
         }
@@ -471,32 +470,32 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
 
     let semicolon = if let Some(color) = style.foreground_color {
         if semicolon {
-            ansi.push(';');
+            w.write_all(b";").unwrap();
         }
         match color {
-            Color::Reset => ansi.push_str("39"),
-            Color::Black => ansi.push_str("30"),
-            Color::DarkRed => ansi.push_str("31"),
-            Color::DarkGreen => ansi.push_str("32"),
-            Color::DarkYellow => ansi.push_str("33"),
-            Color::DarkBlue => ansi.push_str("34"),
-            Color::DarkMagenta => ansi.push_str("35"),
-            Color::DarkCyan => ansi.push_str("36"),
-            Color::Grey => ansi.push_str("37"),
-            Color::DarkGrey => ansi.push_str("90"),
-            Color::Red => ansi.push_str("91"),
-            Color::Green => ansi.push_str("92"),
-            Color::Yellow => ansi.push_str("93"),
-            Color::Blue => ansi.push_str("94"),
-            Color::Magenta => ansi.push_str("95"),
-            Color::Cyan => ansi.push_str("96"),
-            Color::White => ansi.push_str("97"),
+            Color::Reset => w.write_all(b"39").unwrap(),
+            Color::Black => w.write_all(b"30").unwrap(),
+            Color::DarkRed => w.write_all(b"31").unwrap(),
+            Color::DarkGreen => w.write_all(b"32").unwrap(),
+            Color::DarkYellow => w.write_all(b"33").unwrap(),
+            Color::DarkBlue => w.write_all(b"34").unwrap(),
+            Color::DarkMagenta => w.write_all(b"35").unwrap(),
+            Color::DarkCyan => w.write_all(b"36").unwrap(),
+            Color::Grey => w.write_all(b"37").unwrap(),
+            Color::DarkGrey => w.write_all(b"90").unwrap(),
+            Color::Red => w.write_all(b"91").unwrap(),
+            Color::Green => w.write_all(b"92").unwrap(),
+            Color::Yellow => w.write_all(b"93").unwrap(),
+            Color::Blue => w.write_all(b"94").unwrap(),
+            Color::Magenta => w.write_all(b"95").unwrap(),
+            Color::Cyan => w.write_all(b"96").unwrap(),
+            Color::White => w.write_all(b"97").unwrap(),
             Color::Rgb { r, g, b } => {
-                ansi.push_str(U8_FG_RGB[r as usize]);
-                ansi.push_str(U8_SC[g as usize]);
-                ansi.push_str(U8[b as usize])
+                w.write_all(U8_FG_RGB[r as usize]).unwrap();
+                w.write_all(U8_SC[g as usize]).unwrap();
+                w.write_all(U8[b as usize]).unwrap()
             }
-            Color::AnsiValue(val) => ansi.push_str(U8_FG_ANSI[val as usize]),
+            Color::AnsiValue(val) => w.write_all(U8_FG_ANSI[val as usize]).unwrap(),
         };
         true
     } else {
@@ -505,32 +504,32 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
 
     let semicolon = if let Some(color) = style.background_color {
         if semicolon {
-            ansi.push(';');
+            w.write_all(b";").unwrap();
         }
         match color {
-            Color::Reset => ansi.push_str("49"),
-            Color::Black => ansi.push_str("40"),
-            Color::DarkRed => ansi.push_str("41"),
-            Color::DarkGreen => ansi.push_str("42"),
-            Color::DarkYellow => ansi.push_str("43"),
-            Color::DarkBlue => ansi.push_str("44"),
-            Color::DarkMagenta => ansi.push_str("45"),
-            Color::DarkCyan => ansi.push_str("46"),
-            Color::Grey => ansi.push_str("47"),
-            Color::DarkGrey => ansi.push_str("100"),
-            Color::Red => ansi.push_str("101"),
-            Color::Green => ansi.push_str("102"),
-            Color::Yellow => ansi.push_str("103"),
-            Color::Blue => ansi.push_str("104"),
-            Color::Magenta => ansi.push_str("105"),
-            Color::Cyan => ansi.push_str("106"),
-            Color::White => ansi.push_str("107"),
+            Color::Reset => w.write_all(b"49").unwrap(),
+            Color::Black => w.write_all(b"40").unwrap(),
+            Color::DarkRed => w.write_all(b"41").unwrap(),
+            Color::DarkGreen => w.write_all(b"42").unwrap(),
+            Color::DarkYellow => w.write_all(b"43").unwrap(),
+            Color::DarkBlue => w.write_all(b"44").unwrap(),
+            Color::DarkMagenta => w.write_all(b"45").unwrap(),
+            Color::DarkCyan => w.write_all(b"46").unwrap(),
+            Color::Grey => w.write_all(b"47").unwrap(),
+            Color::DarkGrey => w.write_all(b"100").unwrap(),
+            Color::Red => w.write_all(b"101").unwrap(),
+            Color::Green => w.write_all(b"102").unwrap(),
+            Color::Yellow => w.write_all(b"103").unwrap(),
+            Color::Blue => w.write_all(b"104").unwrap(),
+            Color::Magenta => w.write_all(b"105").unwrap(),
+            Color::Cyan => w.write_all(b"106").unwrap(),
+            Color::White => w.write_all(b"107").unwrap(),
             Color::Rgb { r, g, b } => {
-                ansi.push_str(U8_BG_RGB[r as usize]);
-                ansi.push_str(U8_SC[g as usize]);
-                ansi.push_str(U8[b as usize]);
+                w.write_all(U8_BG_RGB[r as usize]).unwrap();
+                w.write_all(U8_SC[g as usize]).unwrap();
+                w.write_all(U8[b as usize]).unwrap()
             }
-            Color::AnsiValue(val) => ansi.push_str(U8_BG_ANSI[val as usize]),
+            Color::AnsiValue(val) => w.write_all(U8_BG_ANSI[val as usize]).unwrap(),
         };
         true
     } else {
@@ -539,38 +538,36 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
 
     if let Some(color) = style.underline_color {
         if semicolon {
-            ansi.push(';');
+            w.write_all(b";").unwrap();
         }
         match color {
-            Color::Reset => ansi.push_str("59"),
-            Color::Black => ansi.push_str("58;0"),
-            Color::DarkRed => ansi.push_str("58;1"),
-            Color::DarkGreen => ansi.push_str("58;2"),
-            Color::DarkYellow => ansi.push_str("58;3"),
-            Color::DarkBlue => ansi.push_str("58;4"),
-            Color::DarkMagenta => ansi.push_str("58;5"),
-            Color::DarkCyan => ansi.push_str("58;6"),
-            Color::Grey => ansi.push_str("58;7"),
-            Color::DarkGrey => ansi.push_str("58;8"),
-            Color::Red => ansi.push_str("58;9"),
-            Color::Green => ansi.push_str("58;10"),
-            Color::Yellow => ansi.push_str("58;11"),
-            Color::Blue => ansi.push_str("58;12"),
-            Color::Magenta => ansi.push_str("58;13"),
-            Color::Cyan => ansi.push_str("58;14"),
-            Color::White => ansi.push_str("58;15"),
+            Color::Reset => w.write_all(b"59").unwrap(),
+            Color::Black => w.write_all(b"58;0").unwrap(),
+            Color::DarkRed => w.write_all(b"58;1").unwrap(),
+            Color::DarkGreen => w.write_all(b"58;2").unwrap(),
+            Color::DarkYellow => w.write_all(b"58;3").unwrap(),
+            Color::DarkBlue => w.write_all(b"58;4").unwrap(),
+            Color::DarkMagenta => w.write_all(b"58;5").unwrap(),
+            Color::DarkCyan => w.write_all(b"58;6").unwrap(),
+            Color::Grey => w.write_all(b"58;7").unwrap(),
+            Color::DarkGrey => w.write_all(b"58;8").unwrap(),
+            Color::Red => w.write_all(b"58;9").unwrap(),
+            Color::Green => w.write_all(b"58;10").unwrap(),
+            Color::Yellow => w.write_all(b"58;11").unwrap(),
+            Color::Blue => w.write_all(b"58;12").unwrap(),
+            Color::Magenta => w.write_all(b"58;13").unwrap(),
+            Color::Cyan => w.write_all(b"58;14").unwrap(),
+            Color::White => w.write_all(b"58;15").unwrap(),
             Color::Rgb { r, g, b } => {
-                ansi.push_str(U8_UL_RGB[r as usize]);
-                ansi.push_str(U8_SC[g as usize]);
-                ansi.push_str(U8[b as usize])
+                w.write_all(U8_UL_RGB[r as usize]).unwrap();
+                w.write_all(U8_SC[g as usize]).unwrap();
+                w.write_all(U8[b as usize]).unwrap()
             }
-            Color::AnsiValue(val) => ansi.push_str(U8_UL_ANSI[val as usize]),
+            Color::AnsiValue(val) => w.write_all(U8_UL_ANSI[val as usize]).unwrap(),
         };
     }
 
-    ansi.push('m');
-    
-    w.write_all(ansi.as_bytes()).unwrap();
+    w.write_all(b"m").unwrap();
 }
 
 /// The priority for edges for areas that must not overlap

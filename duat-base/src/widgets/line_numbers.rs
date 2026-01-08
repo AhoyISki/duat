@@ -17,7 +17,7 @@ use duat_core::{
     data::Pass,
     form,
     mode::{MouseButton, MouseEvent, MouseEventKind},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, TextMut},
+    text::{Builder, Spacer, Text, TextMut},
     ui::{PushSpecs, Side, Widget},
 };
 
@@ -82,11 +82,16 @@ impl LineNumbers {
         };
 
         let mut builder = Text::builder();
-        align(&mut builder, self.align);
 
         for (index, line) in printed_line_numbers.iter().enumerate() {
-            if line.number == main_line_num {
-                align(&mut builder, self.main_align);
+            let align = if line.number == main_line_num {
+                self.main_align
+            } else {
+                self.align
+            };
+
+            if align != Alignment::Left {
+                builder.push(Spacer);
             }
 
             match (line.number == main_line_num, line.is_wrapped) {
@@ -99,9 +104,12 @@ impl LineNumbers {
             let is_wrapped = line.is_wrapped && index > 0;
             push_text(&mut builder, line.number, main_line_num, is_wrapped, self);
 
-            if line.number == main_line_num {
-                align(&mut builder, self.align);
+            if align == Alignment::Center {
+                builder.push(Spacer);
             }
+
+			builder.push("\n");
+            builder.push(form::DEFAULT_ID);
         }
 
         builder.build()
@@ -257,7 +265,7 @@ impl Default for LineNumbersOpts {
 /// Writes the text of the line number to a given [`String`].
 fn push_text(b: &mut Builder, line: usize, main: usize, is_wrapped: bool, opts: &LineNumbers) {
     if (!is_wrapped || opts.show_wraps) && main != usize::MAX {
-        let num = if opts.relative {
+        b.push(if opts.relative {
             if line != main {
                 line.abs_diff(main)
             } else {
@@ -265,18 +273,6 @@ fn push_text(b: &mut Builder, line: usize, main: usize, is_wrapped: bool, opts: 
             }
         } else {
             line + 1
-        };
-        b.push(num);
-    }
-
-    b.push("\n");
-    b.push(form::DEFAULT_ID);
-}
-
-fn align(b: &mut Builder, alignment: Alignment) {
-    match alignment {
-        Alignment::Left => b.push(AlignLeft),
-        Alignment::Center => b.push(AlignCenter),
-        Alignment::Right => b.push(AlignRight),
+        });
     }
 }

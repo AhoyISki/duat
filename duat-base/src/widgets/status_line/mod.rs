@@ -18,7 +18,7 @@
 use duat_core::{
     context::{self, DynBuffer, Handle},
     data::Pass,
-    text::{AlignRight, Builder, Spacer, Text, TextMut},
+    text::{Builder, Spacer, Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
@@ -115,7 +115,7 @@ impl StatusLine {
                     status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt}")
                 }
                 Side::Right => {
-                    status!("{AlignRight}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
+                    status!("{Spacer}{name_txt} {mode_txt} {sels_txt} {main_txt}",)
                 }
                 Side::Left => unreachable!(),
             };

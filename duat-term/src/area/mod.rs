@@ -165,6 +165,7 @@ impl Area {
                 }
                 lines.flush().unwrap();
             },
+            |lines, spacer_len| lines.write_all(&SPACES[..spacer_len as usize]).unwrap(),
         ) else {
             return;
         };
@@ -701,6 +702,7 @@ pub fn print_text(
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
     start_line: fn(&mut Lines, u32),
     end_line: fn(&mut Lines, u32, u32),
+    print_spacer: fn(&mut Lines, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
     fn print_end_style(lines: &mut Lines, painter: &Painter) {
         let mut default_style = painter.get_default();
@@ -790,7 +792,7 @@ pub fn print_text(
                             let tab_len = len - (truncated_start + truncated_end);
                             lines.write_all(&SPACES[..tab_len as usize]).unwrap()
                         }
-                        '\n' if opts.print_new_line => lines.write_all(b" ").unwrap(),
+                        '\n' if len == 1 => lines.write_all(b" ").unwrap(),
                         '\n' | '\r' => {}
                         char => {
                             let mut bytes = [0; 4];
@@ -856,7 +858,7 @@ pub fn print_text(
                     .saturating_sub(lines.coords().width().saturating_sub(x_shift))
                     .min(len);
                 let spacer_len = len - (truncated_start + truncated_end);
-                lines.write_all(&SPACES[0..spacer_len as usize]).unwrap();
+                print_spacer(lines, spacer_len);
                 last_len = (x + len)
                     .saturating_sub(x_shift)
                     .min(lines.coords().width());
@@ -866,7 +868,6 @@ pub fn print_text(
             Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                 todo!("Toggles have not been implemented yet.")
             }
-            Part::AlignLeft | Part::AlignCenter | Part::AlignRight => {}
         }
     }
 

@@ -85,7 +85,7 @@ impl WhichKey {
 
         let title = title.unwrap_or_else(|| txt!("{}", crate::state::mode_name().call(pa)));
         if let Some(area) = keys_handle.area().write_as::<duat_term::Area>(pa) {
-            use duat_core::text::AlignCenter;
+            use duat_core::text::Spacer;
 
             let mut frame = Frame {
                 left: true,
@@ -95,7 +95,7 @@ impl WhichKey {
                 ..Frame::default()
             };
             frame.set_text(Side::Above, move |_| {
-                txt!("{AlignCenter}[terminal.frame]┤[]{title}[terminal.frame]├")
+                txt!("{Spacer}[terminal.frame]┤[]{title}[terminal.frame]├{Spacer}")
             });
             area.set_frame(frame);
         }

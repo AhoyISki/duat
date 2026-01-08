@@ -607,8 +607,8 @@ pub mod prelude {
         setup_duat,
         state::*,
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Point,
-            RegexHaystack, Spacer, SpawnTag, Tagger, Text, txt,
+            self, Builder, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Tagger, Text,
+            txt,
         },
         ui::{self, Area, Widget},
         widgets::*,

@@ -20,7 +20,7 @@ pub fn print_iter(
     let cap = opts.wrap_width(width).unwrap_or(width);
 
     // Line construction variables.
-    let (mut total_len, mut gaps) = (0, Gaps::OnRight);
+    let (mut total_len, mut spacers) = (0, 0);
     let (mut indent, mut on_indent, mut wrapped_indent) = (0, true, 0);
 
     if start_points != points {
@@ -39,10 +39,12 @@ pub fn print_iter(
                 _ => 0,
             };
 
-            gaps = gaps.replace_by_part(item.part);
+            spacers += matches!(item.part, Part::Spacer) as usize;
 
             total_len += len;
             if total_len > cap && opts.wrap_lines {
+                spacers = 0;
+
                 if let Part::Char('\t') = item.part {
                     let desired = old_indent + total_len - cap;
                     wrapped_indent = if desired < max_indent {
@@ -61,7 +63,7 @@ pub fn print_iter(
 
     inner_iter(
         text.iter_fwd(points),
-        (total_len, gaps),
+        (total_len, spacers),
         (indent, on_indent, wrapped_indent),
         (cap, opts),
     )
@@ -99,7 +101,7 @@ pub fn rev_print_iter(
 
             returns.extend(inner_iter(
                 items.into_iter().rev(),
-                (0, Gaps::OnRight),
+                (0, 0),
                 (0, true, 0),
                 (cap, opts),
             ));
@@ -112,7 +114,7 @@ pub fn rev_print_iter(
 #[inline(always)]
 fn inner_iter<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
-    (mut total_len, mut gaps): (u32, Gaps),
+    (mut total_len, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
@@ -120,10 +122,7 @@ fn inner_iter<'a>(
 
     // Line return variables.
     let (mut line, mut leftover_nl): (Vec<(u32, Item)>, _) = (Vec::new(), None);
-    let (mut x, mut i, mut first_char_was_printed) = (0, 0, false);
-    // Given the backtracked iteration, these should be replaced
-    // correctly.
-    let mut non_spacer_gaps = Gaps::OnRight;
+    let (mut x, mut i, mut has_wrapped) = (0, 0, false);
 
     let mut iter = iter.peekable();
     let mut new_x = 0;
@@ -133,20 +132,20 @@ fn inner_iter<'a>(
         loop {
             // Emptying the line, most next calls should come here.
             if let Some(&(len, item)) = line.get(i) {
-                let wrap = !first_char_was_printed && item.part.is_char();
+                let wrap = !has_wrapped && (len != 0 || item.part.is_char());
                 if wrap {
                     x = new_x;
                 }
                 let caret = Caret { x, len, wrap };
                 i += 1;
                 x += len;
-                first_char_was_printed |= item.part.is_char();
+                has_wrapped |= wrap;
                 break Some((caret, item));
             }
 
             line.clear();
             i = 0;
-            first_char_was_printed = false;
+            has_wrapped = false;
 
             // Emptying a leftover '\n', which may come after the end of a line.
             if let Some((x, item)) = leftover_nl.take() {
@@ -172,17 +171,17 @@ fn inner_iter<'a>(
                     _ => 0,
                 };
 
-                non_spacer_gaps = non_spacer_gaps.replace_by_part_no_spacers(item.part);
-                gaps = gaps.replace_by_part(item.part);
-
                 total_len += len;
+                spacers += matches!(item.part, Part::Spacer) as usize;
 
                 let must_wrap = total_len > cap && opts.wrap_lines;
                 if let Part::Char(char) = item.part
                     && (must_wrap || char == '\n')
                 {
-                    new_x = first_x + wrapped_indent + gaps.space_line(&mut line, cap, total_len);
-                    gaps = non_spacer_gaps;
+                    new_x = first_x + wrapped_indent;
+
+                    space_line(spacers, &mut line, cap, total_len);
+                    spacers = 0;
 
                     let leftover = total_len.saturating_sub(cap);
                     wrapped_indent = match char {
@@ -252,7 +251,7 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
             .take_while(|item| item.points() <= points)
         {
             wrapped = false;
-            
+
             let old_indent = indent;
             let len = match item.part {
                 Part::Char('\n') => {
@@ -289,7 +288,7 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
 #[inline(always)]
 fn _words<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
-    (mut total_len, mut gaps): (u32, Gaps),
+    (mut total_len, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
@@ -344,13 +343,15 @@ fn _words<'a>(
                     _ => 0,
                 };
 
-                gaps = gaps.replace_by_part(item.part);
+                spacers += matches!(item.part, Part::Spacer) as usize;
                 total_len += len;
 
                 if let Part::Char(char) = item.part
                     && ((total_len > cap && opts.wrap_lines) || char == '\n')
                 {
-                    new_x = first_x + wrapped_indent + gaps.space_line(&mut line, cap, total_len);
+                    new_x = first_x + wrapped_indent;
+                    space_line(spacers, &mut line, cap, total_len);
+                    spacers = 0;
 
                     let leftover = total_len.saturating_sub(cap);
                     wrapped_indent = match char {
@@ -425,64 +426,27 @@ fn process_nl(indent: &mut u32, on_indent: &mut bool, x: u32, opts: PrintOpts) -
     len_from(char, x, &opts)
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Gaps {
-    OnRight,
-    OnLeft,
-    OnSides,
-    Spacers(usize),
-}
-
-impl Gaps {
-    /// Replaces the `Gaps`, given an appropriate [`Part`]
-    fn replace_by_part(self, part: Part) -> Self {
-        match (self, part) {
-            (_, Part::AlignLeft) => Gaps::OnRight,
-            (_, Part::AlignCenter) => Gaps::OnSides,
-            (_, Part::AlignRight) => Gaps::OnLeft,
-            (Gaps::Spacers(count), Part::Spacer) => Gaps::Spacers(count + 1),
-            (_, Part::Spacer) => Gaps::Spacers(1),
-            _ => self,
-        }
+/// Adds spacing to a line, and returns the initial amount of
+/// space needed
+fn space_line(spacers: usize, line: &mut [(u32, Item)], cap: u32, total_len: u32) {
+    if spacers == 0 {
+        return;
     }
 
-    /// Replaces the `Gaps`, but ignores [`Part::Spacer`]
-    fn replace_by_part_no_spacers(self, part: Part) -> Self {
-        match part {
-            Part::AlignLeft => Gaps::OnRight,
-            Part::AlignCenter => Gaps::OnSides,
-            Part::AlignRight => Gaps::OnLeft,
-            _ => self,
-        }
+    let space = cap.saturating_sub(total_len) as usize;
+    let mut enough_space = space;
+    while !enough_space.is_multiple_of(spacers) {
+        enough_space += 1;
     }
+    let diff = enough_space - space;
 
-    /// Adds spacing to a line, and returns the initial amount of
-    /// space needed
-    fn space_line(self, line: &mut [(u32, Item)], cap: u32, total_len: u32) -> u32 {
-        match self {
-            Gaps::OnRight => 0,
-            Gaps::OnLeft => cap.saturating_sub(total_len),
-            Gaps::OnSides => cap.saturating_sub(total_len) / 2,
-            Gaps::Spacers(count) => {
-                let space = cap.saturating_sub(total_len) as usize;
-                let mut enough_space = space;
-                while !enough_space.is_multiple_of(count) {
-                    enough_space += 1;
-                }
-                let diff = enough_space - space;
-
-                // Do it in reverse, so skipped Spacers won't change.
-                for (i, (len, _)) in line
-                    .iter_mut()
-                    .rev()
-                    .filter(|(_, item)| matches!(item.part, Part::Spacer))
-                    .enumerate()
-                {
-                    *len = ((enough_space / count) - (i < diff) as usize) as u32;
-                }
-
-                0
-            }
-        }
+    // Do it in reverse, so skipped Spacers won't change.
+    for (i, (len, _)) in line
+        .iter_mut()
+        .rev()
+        .filter(|(_, item)| matches!(item.part, Part::Spacer))
+        .enumerate()
+    {
+        *len = ((enough_space / spacers) - (i < diff) as usize) as u32;
     }
 }

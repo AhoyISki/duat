@@ -22,7 +22,7 @@ use duat_core::{
     context::{self, Handle},
     data::{DataMap, Pass, RwData},
     mode::{Selection, Selections},
-    text::{AlignCenter, AlignLeft, AlignRight, AsBuilderPart, Builder, Ghost, Spacer, Text},
+    text::{AsBuilderPart, Builder, Ghost, Spacer, Text},
     ui::{Area, Window},
 };
 
@@ -132,36 +132,6 @@ impl<I: ?Sized> From<DataMap<I, Text>> for State<DataArg<Text>, Text> {
         State {
             appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.call(pa)))),
             checker: Some(Box::new(move |_| checker())),
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl From<AlignLeft> for State<AlignLeft, AlignLeft> {
-    fn from(_: AlignLeft) -> Self {
-        Self {
-            appender: Appender::Part(AlignLeft, PhantomData),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl From<AlignCenter> for State<AlignCenter, AlignCenter> {
-    fn from(_: AlignCenter) -> Self {
-        Self {
-            appender: Appender::Part(AlignCenter, PhantomData),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl From<AlignRight> for State<AlignRight, AlignRight> {
-    fn from(_: AlignRight) -> Self {
-        Self {
-            appender: Appender::Part(AlignRight, PhantomData),
-            checker: None,
             ghost: PhantomData,
         }
     }

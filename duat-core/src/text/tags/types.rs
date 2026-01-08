@@ -92,8 +92,6 @@ macro_rules! ranged_impl_tag {
 /// - [`FormTag`]: Applies a [`Form`] on a [range];
 /// - [`MainCaret`] and [`ExtraCaret`]: Place `caret`s on the
 ///   [`Text`]. Can be an actual `caret` or just a temporary [`Form`];
-/// - [`AlignCenter`] and [`AlignRight`]: Change the text alignment in
-///   a [range];
 /// - [`Spacer`]: Lets you put arbitrary equally sized spaces on a
 ///   line;
 /// - [`Ghost`]: Places "ghost [`Text`]" on the [`Text`]. This is
@@ -113,8 +111,7 @@ pub trait Tag<Index, Return: Copy = ()>: Sized {
     /// A meta `Tag` is one that changes the layout of the [`Text`]
     /// itself
     ///
-    /// The only meta `Tag`s are [`Ghost`] and [`Conceal`],
-    /// [`Spacer`], [`AlignCenter`] and [`AlignRight`].
+    /// The only meta `Tag`s are [`Ghost`], [`Conceal`] and [`Spacer`]
     const IS_META: bool;
 
     /// Gets the [`RawTag`]s and a possible return id from the `Tag`
@@ -198,46 +195,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret, false);
 pub struct ExtraCaret;
 simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret, false);
 
-/////////// Alignment Tags
-
-/// [`Tag`]: Aligns the [`Text`] on the center in a [range]
-///
-/// [`Builder`]: crate::text::Builder
-/// [range]: TextRange
-#[derive(Debug, Clone, Copy)]
-pub struct AlignCenter;
-ranged_impl_tag!(
-    AlignCenter,
-    RawTag::StartAlignCenter,
-    RawTag::EndAlignCenter,
-    true
-);
-
-/// [`Tag`]: Aligns the [`Text`] on the right in a [range]
-///
-/// [`Builder`]: crate::text::Builder
-/// [range]: TextRange
-#[derive(Debug, Clone, Copy)]
-pub struct AlignRight;
-ranged_impl_tag!(
-    AlignRight,
-    RawTag::StartAlignRight,
-    RawTag::EndAlignRight,
-    true
-);
-
-/// [`Builder`] part: Begins alignment on the left
-///
-/// Note that, unlike [`AlignCenter`] and [`AlignRight`], this struct
-/// is not a [`Tag`], since the left alignment is the default
-/// alignment, i.e., the lack of those other alignment tags. So this
-/// just serves to cancel these other alignments inside of a
-/// [`Builder`].
-///
-/// [`Builder`]: crate::text::Builder
-/// [range]: TextRange
-#[derive(Debug, Clone, Copy)]
-pub struct AlignLeft;
+////////// Meta Tags
 
 /// [`Tag`]: A spacer for more advanced alignment
 ///
@@ -275,8 +233,6 @@ pub struct AlignLeft;
 #[derive(Debug, Clone, Copy)]
 pub struct Spacer;
 simple_impl_Tag!(Spacer, RawTag::Spacer, false);
-
-////////// Text modification Tags
 
 /// [`Builder`] part and [`Tag`]: Places ghost text
 ///
@@ -472,20 +428,6 @@ pub enum RawTag {
     /// Places an extra cursor.
     ExtraCaret(Tagger),
 
-    /// Starts aligning to the center, should happen to the whole
-    /// line, even if it shows up in the middle of it.
-    StartAlignCenter(Tagger),
-    /// Ends aligning to the center, reverting to left alignment.
-    /// Should happen to the whole line, even if it shows up in the
-    /// middle of it.
-    EndAlignCenter(Tagger),
-    /// Starts aligning to the right, should happen to the whole
-    /// line, even if it shows up in the middle of it.
-    StartAlignRight(Tagger),
-    /// Ends aligning to the right, reverting to left alignment.
-    /// Should happen to the whole line, even if it shows up in the
-    /// middle of it.
-    EndAlignRight(Tagger),
     /// A spacer for the current screen line, replaces alignment.
     Spacer(Tagger),
 
@@ -533,10 +475,6 @@ impl RawTag {
             Self::EndToggle(tagger, id) => Some(Self::StartToggle(*tagger, *id)),
             Self::StartConceal(tagger) => Some(Self::EndConceal(*tagger)),
             Self::EndConceal(tagger) => Some(Self::StartConceal(*tagger)),
-            Self::StartAlignCenter(tagger) => Some(Self::EndAlignCenter(*tagger)),
-            Self::EndAlignCenter(tagger) => Some(Self::StartAlignCenter(*tagger)),
-            Self::StartAlignRight(tagger) => Some(Self::EndAlignRight(*tagger)),
-            Self::EndAlignRight(tagger) => Some(Self::StartAlignRight(*tagger)),
             _ => None,
         }
     }
@@ -550,9 +488,7 @@ impl RawTag {
             (Self::StartToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
                 l_id == r_id && l_tagger == r_tagger
             }
-            (Self::StartAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger))
-            | (Self::StartAlignRight(l_tagger), Self::EndAlignRight(r_tagger))
-            | (Self::StartConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
             _ => false,
         }
     }
@@ -561,11 +497,7 @@ impl RawTag {
     pub fn is_start(&self) -> bool {
         matches!(
             self,
-            Self::PushForm(..)
-                | Self::StartAlignCenter(_)
-                | Self::StartAlignRight(_)
-                | Self::StartToggle(..)
-                | Self::StartConceal(_)
+            Self::PushForm(..) | Self::StartToggle(..) | Self::StartConceal(_)
         )
     }
 
@@ -573,22 +505,8 @@ impl RawTag {
     pub fn is_end(&self) -> bool {
         matches!(
             self,
-            Self::PopForm(..)
-                | Self::EndAlignCenter(_)
-                | Self::EndAlignRight(_)
-                | Self::EndToggle(..)
-                | Self::EndConceal(_)
+            Self::PopForm(..) | Self::EndToggle(..) | Self::EndConceal(_)
         )
-    }
-
-    /// Wether this is [`StartAlignCenter`] or [`StartAlignRight`]
-    pub fn is_start_align(&self) -> bool {
-        matches!(self, Self::StartAlignCenter(_) | Self::StartAlignRight(_))
-    }
-
-    /// Wether this is [`EndAlignCenter`] or [`EndAlignRight`]
-    pub fn is_end_align(&self) -> bool {
-        matches!(self, Self::EndAlignCenter(_) | Self::EndAlignRight(_))
     }
 
     /// The [`Tagger`] of this [`RawTag`]
@@ -612,10 +530,6 @@ impl RawTag {
             | Self::PopForm(tagger, _)
             | Self::MainCaret(tagger)
             | Self::ExtraCaret(tagger)
-            | Self::StartAlignCenter(tagger)
-            | Self::EndAlignCenter(tagger)
-            | Self::StartAlignRight(tagger)
-            | Self::EndAlignRight(tagger)
             | Self::Spacer(tagger)
             | Self::StartConceal(tagger)
             | Self::EndConceal(tagger)
@@ -636,13 +550,8 @@ impl RawTag {
             Self::PushForm(.., priority) => *priority + 5,
             Self::PopForm(..) => 0,
             Self::MainCaret(..) | Self::ExtraCaret(..) => 4,
-            Self::StartAlignCenter(..)
-            | Self::StartAlignRight(..)
-            | Self::StartConceal(..)
-            | Self::StartToggle(..) => 3,
-            Self::EndAlignCenter(..)
-            | Self::EndAlignRight(..)
-            | Self::Spacer(..)
+            Self::StartConceal(..) | Self::StartToggle(..) => 3,
+            Self::Spacer(..)
             | Self::EndConceal(..)
             | Self::EndToggle(..)
             | Self::SpawnedWidget(..) => 1,
@@ -663,16 +572,6 @@ impl PartialEq for RawTag {
             }
             (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
             (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartAlignCenter(l_tagger), Self::StartAlignCenter(r_tagger)) => {
-                l_tagger == r_tagger
-            }
-            (Self::EndAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger)) => {
-                l_tagger == r_tagger
-            }
-            (Self::StartAlignRight(l_tagger), Self::StartAlignRight(r_tagger)) => {
-                l_tagger == r_tagger
-            }
-            (Self::EndAlignRight(l_tagger), Self::EndAlignRight(r_tagger)) => l_tagger == r_tagger,
             (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
             (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
             (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
@@ -704,10 +603,6 @@ impl PartialOrd for RawTag {
             }
             (RawTag::MainCaret(l_tagger), RawTag::MainCaret(r_tagger))
             | (RawTag::ExtraCaret(l_tagger), RawTag::ExtraCaret(r_tagger))
-            | (StartAlignCenter(l_tagger), StartAlignCenter(r_tagger))
-            | (EndAlignCenter(l_tagger), EndAlignCenter(r_tagger))
-            | (StartAlignRight(l_tagger), StartAlignRight(r_tagger))
-            | (EndAlignRight(l_tagger), EndAlignRight(r_tagger))
             | (RawTag::Spacer(l_tagger), RawTag::Spacer(r_tagger))
             | (StartConceal(l_tagger), StartConceal(r_tagger))
             | (EndConceal(l_tagger), EndConceal(r_tagger)) => l_tagger.cmp(r_tagger),
@@ -741,10 +636,6 @@ impl std::fmt::Debug for RawTag {
             Self::PopForm(tagger, id) => write!(f, "PopForm({tagger:?}, {})", id.name()),
             Self::MainCaret(tagger) => write!(f, "MainCaret({tagger:?})"),
             Self::ExtraCaret(tagger) => write!(f, "ExtraCaret({tagger:?})"),
-            Self::StartAlignCenter(tagger) => write!(f, "StartAlignCenter({tagger:?})"),
-            Self::EndAlignCenter(tagger) => write!(f, "EndAlignCenter({tagger:?})"),
-            Self::StartAlignRight(tagger) => write!(f, "StartAlignRight({tagger:?})"),
-            Self::EndAlignRight(tagger) => write!(f, "EndAlignRight({tagger:?})"),
             Self::Spacer(tagger) => write!(f, "Spacer({tagger:?})"),
             Self::StartConceal(tagger) => write!(f, "StartConceal({tagger:?})"),
             Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),

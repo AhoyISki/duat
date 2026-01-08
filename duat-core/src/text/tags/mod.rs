@@ -17,7 +17,7 @@ pub use self::{
     ids::*,
     taggers::{Tagger, Taggers},
     types::{
-        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
+        Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
         Spacer, SpawnTag, Tag,
     },
@@ -313,10 +313,8 @@ impl InnerTags {
         for (_, (b, tag)) in other.list.iter_fwd(..) {
             let b = (b as usize).min(cap) + p.byte();
             match tag {
-                PushForm(..) | StartAlignCenter(_) | StartAlignRight(_) | StartConceal(_) => {
-                    starts.push((b, tag))
-                }
-                PopForm(..) | EndAlignCenter(_) | EndAlignRight(_) | EndConceal(_) => {
+                PushForm(..) | StartConceal(_) => starts.push((b, tag)),
+                PopForm(..) | EndConceal(_) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, stag) = starts.remove(i);
                     if b > sb {
@@ -727,10 +725,6 @@ impl PartialEq for InnerTags {
                 }
                 (MainCaret(_), MainCaret(_))
                 | (ExtraCaret(_), ExtraCaret(_))
-                | (StartAlignCenter(_), StartAlignCenter(_))
-                | (EndAlignCenter(_), EndAlignCenter(_))
-                | (StartAlignRight(_), StartAlignRight(_))
-                | (EndAlignRight(_), EndAlignRight(_))
                 | (Spacer(_), Spacer(_))
                 | (StartConceal(_), StartConceal(_))
                 | (EndConceal(_), EndConceal(_))

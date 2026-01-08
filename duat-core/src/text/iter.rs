@@ -613,12 +613,6 @@ pub enum Part {
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
     ExtraCaret,
-    /// End other forms of alignment
-    AlignLeft,
-    /// Begin centered alignment
-    AlignCenter,
-    /// Begin right alignment
-    AlignRight,
     /// Add a [`Spacer`]
     ///
     /// [`Spacer`]: super::Spacer
@@ -660,10 +654,6 @@ impl Part {
             RawTag::PopForm(_, id) => Part::PopForm(id),
             RawTag::MainCaret(_) => Part::MainCaret,
             RawTag::ExtraCaret(_) => Part::ExtraCaret,
-            RawTag::StartAlignCenter(_) => Part::AlignCenter,
-            RawTag::EndAlignCenter(_) => Part::AlignLeft,
-            RawTag::StartAlignRight(_) => Part::AlignRight,
-            RawTag::EndAlignRight(_) => Part::AlignLeft,
             RawTag::Spacer(_) => Part::Spacer,
             RawTag::StartToggle(_, id) => Part::ToggleStart(id),
             RawTag::EndToggle(_, id) => Part::ToggleEnd(id),
