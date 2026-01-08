@@ -332,8 +332,18 @@ pub trait RawArea: Sized + PartialEq + 'static {
     /// Reveals the `RawArea`
     fn reveal(&self, _: UiPass) -> Result<(), Text>;
 
-    /// What width the given [`Text`] would occupy, if unwrapped
-    fn width_of_text(&self, _: UiPass, opts: PrintOpts, text: &Text) -> Result<f32, Text>;
+    /// What size the given [`Text`] would occupy, if unwrapped
+    ///
+    /// The x component represents the width needed to show the
+    /// `Text` without wrapping, while the y component represents
+    /// the height needed to show all the lines of the `Text`.
+    ///
+    /// This function does take into account the size of the screen,
+    /// and assumes that you will want to iterate from the start of
+    /// the `Text`. Therefore, it will preemptively stop iterating
+    /// through the `Text` when the remaining characters wouldn't show
+    /// up on screen.
+    fn size_of_text(&self, _: UiPass, opts: PrintOpts, text: &Text) -> Result<Coord, Text>;
 
     /// Tells the [`RawUi`] that this `RawArea` is the one that is
     /// currently focused.

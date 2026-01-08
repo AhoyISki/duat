@@ -397,6 +397,14 @@ impl Completions {
             frame.set_text(Side::Right, move |_| sidebar.clone());
             area.set_frame(frame);
         }
+
+        let (comp, area) = handle.write_with_area(pa);
+        area.set_width(
+            area.size_of_text(comp.get_print_opts(), &comp.text)
+                .unwrap()
+                .x,
+        )
+        .unwrap();
     }
 }
 

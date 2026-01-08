@@ -548,6 +548,11 @@ impl Lines {
     pub fn coords(&self) -> Coords {
         self.coords
     }
+
+    /// Wether there are leftover bytes, which weren't flushed
+    pub fn has_leftover_bytes(&self) -> bool {
+        *self.offsets.last().unwrap() < self.bytes.len()
+    }
 }
 
 impl std::io::Write for Lines {

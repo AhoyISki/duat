@@ -113,7 +113,7 @@ pub fn rev_print_iter(
 
 #[inline(always)]
 fn inner_iter<'a>(
-    iter: impl Iterator<Item = Item> + Clone + 'a,
+    mut iter: impl Iterator<Item = Item> + Clone + 'a,
     (mut total_len, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
@@ -124,7 +124,6 @@ fn inner_iter<'a>(
     let (mut line, mut leftover_nl): (Vec<(u32, Item)>, _) = (Vec::new(), None);
     let (mut x, mut i, mut has_wrapped) = (0, 0, false);
 
-    let mut iter = iter.peekable();
     let mut new_x = 0;
     let mut first_x = total_len * (total_len < cap || !opts.wrap_lines) as u32;
 
@@ -132,7 +131,7 @@ fn inner_iter<'a>(
         loop {
             // Emptying the line, most next calls should come here.
             if let Some(&(len, item)) = line.get(i) {
-                let wrap = !has_wrapped && (len != 0 || item.part.is_char());
+                let wrap = !has_wrapped && len != 0;
                 if wrap {
                     x = new_x;
                 }
@@ -154,10 +153,13 @@ fn inner_iter<'a>(
 
             // Preparing the line itself.
             loop {
-                let Some(&item) = iter.peek() else {
+                let Some(item) = iter.next() else {
                     if line.is_empty() {
                         return None;
                     } else {
+                        if cap == 2 {
+                            duat_core::context::debug!("{line:#?}");
+                        }
                         break;
                     }
                 };
@@ -186,7 +188,7 @@ fn inner_iter<'a>(
                     let leftover = total_len.saturating_sub(cap);
                     wrapped_indent = match char {
                         '\t' if leftover > 0 => {
-                            line.push((len - leftover, iter.next().unwrap()));
+                            line.push((len - leftover, item));
                             if old_indent + leftover < max_indent && opts.indent_wraps {
                                 old_indent + leftover
                             } else {
@@ -198,10 +200,10 @@ fn inner_iter<'a>(
                                 (true, true) => {
                                     let position = old_indent
                                         * (old_indent < max_indent && opts.indent_wraps) as u32;
-                                    leftover_nl = Some((position, iter.next().unwrap()))
+                                    leftover_nl = Some((position, item))
                                 }
-                                (true, false) => line.push((1, iter.next().unwrap())),
-                                (false, _) => line.push((0, iter.next().unwrap())),
+                                (true, false) => line.push((1, item)),
+                                (false, _) => line.push((0, item)),
                             }
                             0
                         }
@@ -209,19 +211,20 @@ fn inner_iter<'a>(
                             // At this point, the only logical course of action is to wrap on
                             // every character.
                             if cap == 0 && !line.iter().any(|(_, item)| item.part.is_char()) {
-                                line.push((len, iter.next().unwrap()));
+                                line.push((len, item));
                             }
                             old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
                         }
                     };
 
                     total_len = wrapped_indent;
+                    if cap == 2 {
+                        duat_core::context::debug!("{line:#?}");
+                    }
                     break;
                 } else {
                     line.push((len, item));
                 }
-
-                iter.next();
             }
 
             first_x = 0;

@@ -43,10 +43,11 @@ impl Info {
 impl Widget for Info {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let (info, area) = handle.write_with_area(pa);
-        let _ = area.set_width(
-            area.width_of_text(info.get_print_opts(), &info.text)
-                .unwrap(),
-        );
+        let size = area
+            .size_of_text(info.get_print_opts(), &info.text)
+            .unwrap();
+        _ = area.set_width(size.x);
+        _ = area.set_height(size.y);
     }
 
     fn needs_update(&self, _: &Pass) -> bool {

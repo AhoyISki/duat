@@ -271,7 +271,7 @@ impl RawArea for Area {
         }
     }
 
-    fn width_of_text(&self, _: UiPass, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
+    fn size_of_text(&self, _: UiPass, opts: PrintOpts, text: &Text) -> Result<ui::Coord, Text> {
         let max = self
             .layouts
             .inspect(self.id, |_, layout| layout.max_value())
@@ -279,12 +279,17 @@ impl RawArea for Area {
 
         let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts);
 
-        let mut max = 0;
+        let mut max_x = 0;
+        let mut max_y = 0;
         let mut width = 0;
 
         for (caret, item) in iter {
             if caret.wrap {
-                max = width.max(max);
+                if max_y == max.y {
+                    break;
+                }
+                max_x = width.max(max_x);
+                max_y += 1;
                 width = 0;
             }
             if item.part.is_char() {
@@ -292,7 +297,7 @@ impl RawArea for Area {
             }
         }
 
-        Ok(max.max(width) as f32)
+        Ok(ui::Coord::new(max_x.max(width) as f32, max_y as f32))
     }
 
     fn scroll_ver(&self, _: UiPass, text: &Text, by: i32, opts: PrintOpts) {
@@ -705,11 +710,11 @@ pub fn print_text(
     print_spacer: fn(&mut Lines, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
     fn print_end_style(lines: &mut Lines, painter: &Painter) {
-        let mut default_style = painter.get_default();
-        default_style.style.foreground_color = None;
-        default_style.style.underline_color = None;
-        default_style.style.attributes = Attributes::from(Attribute::Reset);
-        print_style(lines, default_style.style);
+        let mut default = painter.get_default();
+        default.style.foreground_color = None;
+        default.style.underline_color = None;
+        default.style.attributes = Attributes::from(Attribute::Reset);
+        print_style(lines, default.style);
     }
 
     let (mut lines, iter, x_shift, max_x) = {
@@ -871,8 +876,10 @@ pub fn print_text(
         }
     }
 
-    print_end_style(&mut lines, &painter);
-    end_line(&mut lines, last_len, max_x);
+    if lines.has_leftover_bytes() {
+        print_end_style(&mut lines, &painter);
+        end_line(&mut lines, last_len, max_x);
+    }
 
     for _ in 0..lines.coords().br.y - y {
         print_end_style(&mut lines, &painter);

@@ -82,7 +82,7 @@ impl Widget for PromptLine {
         let (pl, area) = handle.write_with_area(pa);
 
         if pl.request_width {
-            let width = area.width_of_text(pl.get_print_opts(), &pl.text).unwrap();
+            let width = area.size_of_text(pl.get_print_opts(), &pl.text).unwrap().x;
             area.set_width(width + pl.get_print_opts().scrolloff.x as f32)
                 .unwrap();
         }

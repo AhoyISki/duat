@@ -101,8 +101,8 @@ impl WhichKey {
         }
 
         let (keys, area) = keys_handle.write_with_area(pa);
-        if let Ok(width) = area.width_of_text(keys.get_print_opts(), keys.text()) {
-            area.set_width(width + 1.0).unwrap();
+        if let Ok(size) = area.size_of_text(keys.get_print_opts(), keys.text()) {
+            area.set_width(size.x + 1.0).unwrap();
         }
 
         let descs_handle = keys_handle.push_inner_widget(pa, descs, PushSpecs {
@@ -112,8 +112,8 @@ impl WhichKey {
         keys_handle.write(pa).1 = Some(descs_handle.clone());
 
         let (descs, area) = descs_handle.write_with_area(pa);
-        if let Ok(width) = area.width_of_text(descs.get_print_opts(), descs.text()) {
-            area.set_width(width).unwrap();
+        if let Ok(size) = area.size_of_text(descs.get_print_opts(), descs.text()) {
+            area.set_width(size.x).unwrap();
         }
 
         hook::add::<KeyTyped>({

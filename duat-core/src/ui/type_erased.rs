@@ -432,9 +432,19 @@ impl RwArea {
         self.0.write(pa).set_as_active()
     }
 
-    /// What width the given [`Text`] would occupy, if unwrapped
-    pub fn width_of_text(&self, pa: &Pass, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
-        self.0.read(pa).width_of_text(opts, text)
+    /// What size the given [`Text`] would occupy, if unwrapped
+    ///
+    /// The x component represents the width needed to show the
+    /// `Text` without wrapping, while the y component represents
+    /// the height needed to show all the lines of the `Text`.
+    ///
+    /// This function does take into account the size of the screen,
+    /// and assumes that you will want to iterate from the start of
+    /// the `Text`. Therefore, it will preemptively stop iterating
+    /// through the `Text` when the remaining characters wouldn't show
+    /// up on screen.
+    pub fn size_of_text(&self, pa: &Pass, opts: PrintOpts, text: &Text) -> Result<Coord, Text> {
+        self.0.read(pa).size_of_text(opts, text)
     }
 
     ////////// Printing functions
@@ -680,9 +690,19 @@ impl Area {
         (self.fns.set_as_active)(self)
     }
 
-    /// What width the given [`Text`] would occupy, if unwrapped
-    pub fn width_of_text(&self, opts: PrintOpts, text: &Text) -> Result<f32, Text> {
-        (self.fns.width_of_text)(self, opts, text)
+    /// What size the given [`Text`] would occupy, if unwrapped
+    ///
+    /// The x component represents the width needed to show the
+    /// `Text` without wrapping, while the y component represents
+    /// the height needed to show all the lines of the `Text`.
+    ///
+    /// This function does take into account the size of the screen,
+    /// and assumes that you will want to iterate from the start of
+    /// the `Text`. Therefore, it will preemptively stop iterating
+    /// through the `Text` when the remaining characters wouldn't show
+    /// up on screen.
+    pub fn size_of_text(&self, opts: PrintOpts, text: &Text) -> Result<Coord, Text> {
+        (self.fns.size_of_text)(self, opts, text)
     }
 
     ////////// Printing functions
@@ -891,7 +911,7 @@ struct AreaFunctions {
     set_height: fn(&Area, height: f32) -> Result<(), Text>,
     hide: fn(&Area) -> Result<(), Text>,
     reveal: fn(&Area) -> Result<(), Text>,
-    width_of_text: fn(&Area, PrintOpts, &Text) -> Result<f32, Text>,
+    size_of_text: fn(&Area, PrintOpts, &Text) -> Result<Coord, Text>,
     set_as_active: fn(&Area),
     print: fn(&Area, &Text, PrintOpts, Painter),
     get_print_info: fn(&Area) -> PrintInfo,
@@ -979,9 +999,9 @@ impl AreaFunctions {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 area.reveal(UiPass::new())
             },
-            width_of_text: |area, opts, text| {
+            size_of_text: |area, opts, text| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                area.width_of_text(UiPass::new(), opts, text)
+                area.size_of_text(UiPass::new(), opts, text)
             },
             set_as_active: |area| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
