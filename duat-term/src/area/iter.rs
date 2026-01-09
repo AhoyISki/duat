@@ -131,7 +131,7 @@ fn inner_iter<'a>(
         loop {
             // Emptying the line, most next calls should come here.
             if let Some(&(len, item)) = line.get(i) {
-                let wrap = !has_wrapped && len != 0;
+                let wrap = !has_wrapped && (len != 0 || item.part.is_char());
                 if wrap {
                     x = new_x;
                 }
@@ -157,9 +157,6 @@ fn inner_iter<'a>(
                     if line.is_empty() {
                         return None;
                     } else {
-                        if cap == 2 {
-                            duat_core::context::debug!("{line:#?}");
-                        }
                         break;
                     }
                 };
@@ -218,9 +215,6 @@ fn inner_iter<'a>(
                     };
 
                     total_len = wrapped_indent;
-                    if cap == 2 {
-                        duat_core::context::debug!("{line:#?}");
-                    }
                     break;
                 } else {
                     line.push((len, item));

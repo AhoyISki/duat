@@ -36,7 +36,7 @@ impl CompletionsProvider for CommandsCompletions {
         _: Point,
         prefix: &str,
         _: &str,
-        _: bool
+        _: bool,
     ) -> CompletionsList<Self> {
         let mut entries: Vec<_> = self
             .0
@@ -91,9 +91,9 @@ impl CompletionsProvider for CommandsCompletions {
         }
 
         if let Some(long) = doc.long.as_ref() {
-            builder.push(txt!("\n\n{}", long));
+            builder.push(txt!("\n\n{long}"));
         }
 
-        Some((builder.build(), Orientation::HorBottomRight))
+        Some((builder.build(), Orientation::HorTopRight))
     }
 }

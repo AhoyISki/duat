@@ -876,10 +876,8 @@ pub fn print_text(
         }
     }
 
-    if lines.has_leftover_bytes() {
-        print_end_style(&mut lines, &painter);
-        end_line(&mut lines, last_len, max_x);
-    }
+    print_end_style(&mut lines, &painter);
+    end_line(&mut lines, last_len, max_x);
 
     for _ in 0..lines.coords().br.y - y {
         print_end_style(&mut lines, &painter);

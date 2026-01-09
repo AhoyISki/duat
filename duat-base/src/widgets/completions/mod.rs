@@ -25,7 +25,7 @@ use duat_core::{
     hook::{self, FocusChanged},
     mode::{MouseEvent, MouseEventKind},
     text::{Point, RegexHaystack, SpawnTag, Tagger, Text, TextMut, txt},
-    ui::{DynSpawnSpecs, Orientation, Side, Widget},
+    ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
 
@@ -35,8 +35,6 @@ use crate::widgets::{Info, completions::paths::PathCompletions};
 mod commands;
 mod paths;
 mod words;
-
-type ParamCompletions = Box<Mutex<dyn FnMut(&mut Pass) -> CompletionsBuilder + Send + Sync>>;
 
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
 static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, ParamCompletions>>> =
@@ -249,7 +247,8 @@ impl Completions {
         scroll: i32,
     ) -> Option<(String, String)> {
         let master_handle = handle.master().unwrap();
-        let (master, comp) = pa.write_many((master_handle.widget(), handle.widget()));
+        let (master, area, comp) =
+            pa.write_many((master_handle.widget(), handle.area(), handle.widget()));
 
         let mut lists: Vec<_> = comp
             .providers
@@ -258,6 +257,7 @@ impl Completions {
                 let texts_and_rep = inner.texts_and_match(
                     master.text(),
                     scroll,
+                    Some(area),
                     comp.max_height,
                     comp.show_without_prefix,
                 );
@@ -402,7 +402,8 @@ impl Completions {
         area.set_width(
             area.size_of_text(comp.get_print_opts(), &comp.text)
                 .unwrap()
-                .x,
+                .x
+                .max(40.0),
         )
         .unwrap();
     }
@@ -575,7 +576,8 @@ trait ErasedInnerProvider: Any + Send {
         &mut self,
         text: &Text,
         scroll: i32,
-        height: usize,
+        area: Option<&mut Area>,
+        max_height: usize,
         show_without_prefix: bool,
     ) -> (
         usize,
@@ -635,7 +637,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             fmt: Box::new(P::default_fmt),
         };
 
-        let (start, text) = inner.texts_and_match(text, 0, height, true);
+        let (start, text) = inner.texts_and_match(text, 0, None, height, true);
         (inner, start, text.unzip().0)
     }
 }
@@ -645,7 +647,8 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         &mut self,
         text: &Text,
         scroll: i32,
-        height: usize,
+        area: Option<&mut Area>,
+        max_height: usize,
         show_without_prefix: bool,
     ) -> (
         usize,
@@ -690,10 +693,17 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.orig_prefix = prefix;
         }
 
-        if height == 0 || entries.is_empty() || (range.is_empty() && !show_without_prefix) {
+        if max_height == 0 || entries.is_empty() || (range.is_empty() && !show_without_prefix) {
             self.current = None;
             return (range.start, None);
         }
+
+        let height = if let Some(area) = area {
+            area.set_height(entries.len() as f32).unwrap();
+            area.height() as usize
+        } else {
+            max_height
+        };
 
         let mut ret_info = None;
         if scroll != 0 {
@@ -855,3 +865,4 @@ type ProvidersFn = Box<
         Option<(Text, Text)>,
     ),
 >;
+type ParamCompletions = Box<Mutex<dyn FnMut(&mut Pass) -> CompletionsBuilder + Send + Sync>>;
