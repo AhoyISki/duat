@@ -28,20 +28,19 @@ FOR NEXT UPDATE:
   [x] On search.rs.
   [x] On cursor.rs.
 [x] Properly separated frame on frame spawns.
-[ ] Automatic height and width resizing for spawned widgets.
 
 KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Get rid of Text::selections_mut.
-  [ ] Completions don't truncate properly.
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
   [ ] Indentation is inefficient.
+  [ ] File/Buffer completion can't handle spaces.
+  [ ] Scrolling is bugged on Logs (???).
              
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.
   [ ] statics remain as the program reloads.
-  [ ] Completions aren't properly sized.
   [ ] Perfect print iterators.
     [ ] Perfect words iterator.
   [ ] tree-sitter-duat-text is not being used.

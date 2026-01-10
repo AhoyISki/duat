@@ -308,7 +308,7 @@ impl Widget for Buffer {
         // Asynchronous updating of opts
         let (buffer, area) = handle.write_with_area(pa);
 
-        if let Some(main) = buffer.text().selections().get_main() {
+        if let Some(main) = buffer.text().get_main_sel() {
             area.scroll_around_points(
                 buffer.text(),
                 main.caret().to_two_points_after(),

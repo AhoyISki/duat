@@ -613,6 +613,25 @@ impl Text {
         &mut self.0.selections
     }
 
+    /// Gets the main [`Selection`], if there is one
+    ///
+    /// If you want a method that doesn't return an [`Option`] (for
+    /// convenience), see [`Text::main_sel`].
+    pub fn get_main_sel(&self) -> Option<&Selection> {
+        self.0.selections.get_main()
+    }
+
+    /// Gets the main [`Selection`]
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if there are no `Selection`s. If you
+    /// want a non-panicking method, see [`text::get_main_sel`].
+    #[track_caller]
+    pub fn main_sel(&self) -> &Selection {
+        self.0.selections.main()
+    }
+
     /// A list of all [`SpawnId`]s that belong to this `Text`
     pub fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
         self.0.tags.get_spawned_ids()

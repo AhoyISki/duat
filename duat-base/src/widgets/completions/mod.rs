@@ -14,30 +14,33 @@
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
-    ops::Range,
     sync::{LazyLock, Mutex, Once},
 };
 
 use duat_core::{
-    cmd::{Parameter, PathOrBufferOrCfg},
+    cmd::{CfgOrManifest, Existing, OtherBuffer, Parameter, ValidFilePath},
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged},
     mode::{MouseEvent, MouseEventKind},
-    text::{Point, RegexHaystack, SpawnTag, Tagger, Text, TextMut, txt},
+    text::{Point, SpawnTag, Strs, Tagger, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
 use duat_term::Frame;
 
-pub use self::{commands::CommandsCompletions, words::WordCompletions};
-use crate::widgets::{Info, completions::paths::PathCompletions};
+pub use self::commands::CommandsCompletions;
+use crate::widgets::{
+    Info,
+    completions::{paths::PathCompletions, words::WordCompletions},
+};
 
 mod commands;
 mod paths;
 mod words;
 
+static OPENED_PARAM_COMPLETION: Mutex<Option<Vec<TypeId>>> = Mutex::new(None);
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
-static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, ParamCompletions>>> =
+static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
     LazyLock::new(Mutex::default);
 
 /// Initial setup for completions
@@ -46,10 +49,40 @@ static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, ParamCompletions>>> =
 #[doc(hidden)]
 pub fn setup_completions() {
     words::track_words();
-    Completions::set_for_parameter::<PathOrBufferOrCfg>(|_| {
-        let mut builder = Completions::builder(paths::PathCompletions::new(true));
-        builder.show_without_prefix = true;
-        builder
+    Completions::set_for_parameter::<ValidFilePath>(75, |_, builder| {
+        builder.with_provider(paths::PathCompletions::new(true))
+    });
+
+    Completions::set_for_parameter::<Handle>(50, |pa, builder| {
+        let mut list: Vec<String> = context::windows()
+            .buffers(pa)
+            .map(|buf| buf.read(pa).name())
+            .collect();
+
+        list.sort_unstable();
+
+        builder.with_provider(list)
+    });
+
+    Completions::set_for_parameter::<OtherBuffer>(50, |pa, builder| {
+        let current = context::current_buffer(pa).read(pa).name();
+        let mut list: Vec<String> = context::windows()
+            .buffers(pa)
+            .map(|buf| buf.read(pa).name())
+            .filter(|name| *name != current)
+            .collect();
+
+        list.sort_unstable();
+
+        builder.with_provider(list)
+    });
+
+    Completions::set_for_parameter::<Existing>(25, |_, builder| {
+        builder.with_provider(["--existing"])
+    });
+
+    Completions::set_for_parameter::<CfgOrManifest>(30, |_, builder| {
+        builder.with_provider(["--cfg", "--cfg-manifest"])
     });
 }
 
@@ -74,7 +107,7 @@ pub fn setup_completions() {
 /// [caret]: duat_core::mode::Selection::caret
 /// [`show_without_prefix`]: Self::show_without_prefix
 pub struct CompletionsBuilder {
-    providers: ProvidersFn,
+    providers: Option<ProvidersFn>,
     /// Show the [`Widget`] even if there is no word behind the cursor
     /// This is set to `true` by default when first opening the
     /// `Widget`, but is disabled if the cursor moves around, which
@@ -108,7 +141,11 @@ impl CompletionsBuilder {
             return;
         };
 
-        let (providers, start_byte, entries) = (self.providers)(handle.text(pa), 20);
+        let Some((providers, start_byte, entries)) =
+            self.providers.map(|call| call(handle.text(pa), 20))
+        else {
+            return;
+        };
 
         let (text, sidebar) = entries.unwrap_or_default();
 
@@ -130,15 +167,18 @@ impl CompletionsBuilder {
 
     /// Adds a new [`CompletionsProvider`] to be prioritized over
     /// earlier ones
-    pub fn add_provider(&mut self, provider: impl CompletionsProvider) {
-        let prev = std::mem::replace(
-            &mut self.providers,
-            Box::new(|_, _| panic!("Not supposed to be called")),
-        );
+    pub fn with_provider(mut self, provider: impl CompletionsProvider) -> Self {
+        let prev = self.providers.take();
 
-        self.providers = Box::new(move |text, height| {
+        self.providers = Some(Box::new(move |text, height| {
             let (inner, start_byte, entries) = InnerProvider::new(provider, text, height);
-            let (mut providers, reserve_start_byte, reserve_entries) = prev(text, height);
+
+            let Some((mut providers, reserve_start_byte, reserve_entries)) =
+                prev.map(|call| call(text, height))
+            else {
+                return (vec![Box::new(inner)], start_byte, entries);
+            };
+
             providers.insert(0, Box::new(inner));
 
             let start_byte = entries
@@ -147,7 +187,9 @@ impl CompletionsBuilder {
                 .unwrap_or(reserve_start_byte);
 
             (providers, start_byte, entries.or(reserve_entries))
-        });
+        }));
+
+        self
     }
 }
 
@@ -165,18 +207,17 @@ pub struct Completions {
 }
 
 impl Completions {
-    /// Returns a new `CompletionsBuilder` with the given
-    /// [`CompletionsProvider`]
+    /// Returns a new `CompletionsBuilder`
     ///
-    /// You can add more `CompletionsProvider`s by calling
+    /// This `CompletionsBuilder` will not have any
+    /// [`CompletionsProvider`]s by default, so it won't spawn a
+    /// `Completions` list.
+    ///
+    /// You can add `CompletionsProvider`s by calling
     /// [`CompletionsBuilder::add_provider`].
-    pub fn builder(provider: impl CompletionsProvider) -> CompletionsBuilder {
+    pub fn builder() -> CompletionsBuilder {
         CompletionsBuilder {
-            providers: Box::new(move |text, height| {
-                let (inner, start_byte, entries) = InnerProvider::new(provider, text, height);
-
-                (vec![Box::new(inner)], start_byte, entries)
-            }),
+            providers: None,
             show_without_prefix: true,
         }
     }
@@ -184,31 +225,64 @@ impl Completions {
     /// Set the [`CompletionsBuilder`] function for a [`Parameter`]
     /// type
     pub fn set_for_parameter<P: Parameter>(
-        func: impl FnMut(&mut Pass) -> CompletionsBuilder + Send + Sync + 'static,
+        priority: usize,
+        func: impl FnMut(&Pass, CompletionsBuilder) -> CompletionsBuilder + Send + Sync + 'static,
     ) {
         COMPLETIONS
             .lock()
             .unwrap()
-            .insert(TypeId::of::<P>(), Box::new(Mutex::new(func)));
+            .insert(TypeId::of::<P>(), (priority, Box::new(Mutex::new(func))));
     }
 
     /// Spawn the `Completions` list
     pub fn open_default(pa: &mut Pass) {
-        let mut builder = Self::builder(WordCompletions);
-        builder.add_provider(PathCompletions::new(false));
-        builder.open(pa);
+        Self::builder()
+            .with_provider(WordCompletions)
+            .with_provider(PathCompletions::new(false))
+            .open(pa);
     }
 
     /// Open the `Completions` for a given [`Parameter`]'s [`TypeId`]
     ///
     /// This completions must've been previously added via
     /// [`Completions::set_for_parameter`].
-    pub fn builder_for(pa: &mut Pass, param_type_id: TypeId) -> Option<CompletionsBuilder> {
-        COMPLETIONS
-            .lock()
-            .unwrap()
-            .get(&param_type_id)
-            .map(|func| func.lock().unwrap()(pa))
+    ///
+    /// Returns [`None`] if none of the `TypeId`s had completions set
+    /// for them.
+    pub fn open_for(pa: &mut Pass, param_type_ids: &[TypeId]) {
+        let completions = COMPLETIONS.lock().unwrap();
+        let mut opened_param_completion = OPENED_PARAM_COMPLETION.lock().unwrap();
+
+        let mut builder = Completions::builder();
+        builder.show_without_prefix = true;
+
+        let mut param_fns: Vec<_> = param_type_ids
+            .iter()
+            .filter_map(|ty| Some(*ty).zip(completions.get(ty)))
+            .collect();
+
+        if param_fns.is_empty() {
+            Completions::close(pa);
+            return;
+        }
+
+        param_fns.sort_by_key(|(_, (priority, _))| priority);
+
+        if param_fns
+            .iter()
+            .map(|(ty, _)| ty)
+            .eq(opened_param_completion.iter().flatten())
+        {
+            return;
+        }
+
+        *opened_param_completion = Some(param_fns.iter().map(|(ty, _)| *ty).collect());
+
+        for (_, (_, param_fn)) in param_fns {
+            builder = (param_fn.lock().unwrap())(pa, builder);
+        }
+
+        builder.open(pa);
     }
 
     /// Closes the `Completions` list
@@ -250,44 +324,61 @@ impl Completions {
         let (master, area, comp) =
             pa.write_many((master_handle.widget(), handle.area(), handle.widget()));
 
-        let mut lists: Vec<_> = comp
-            .providers
-            .iter_mut()
-            .map(|inner| {
-                let texts_and_rep = inner.texts_and_match(
-                    master.text(),
-                    scroll,
-                    Some(area),
-                    comp.max_height,
-                    comp.show_without_prefix,
-                );
-                (texts_and_rep, inner.prefix_regex())
-            })
-            .collect();
-
-        lists.sort_by_key(|((start, _), _)| *start);
-
-        let main_repl = if let Some(((start_byte, prefix_regex), ((text, sidebar), replacement))) =
+        let rep = {
+            let mut lists: Vec<_> = comp
+                .providers
+                .iter_mut()
+                .map(|inner| {
+                    let texts_and_rep = inner.texts_and_match(
+                        master.text(),
+                        scroll,
+                        Some(area),
+                        comp.max_height,
+                        comp.show_without_prefix,
+                    );
+                    (texts_and_rep, inner.get_start_fn())
+                })
+                .collect();
+            lists.sort_by_key(|((start, _), _)| *start);
             lists
                 .into_iter()
-                .find_map(|((start, list), prefix_regex)| Some((start, prefix_regex)).zip(list))
-        {
+                .find_map(|((start, list), start_fn)| list.map(|list| ((start, list), start_fn)))
+        };
+
+        // Believe it or not, this is necessary to prevent Drop semantincs
+        // from invalidating the following code.
+        let (other, start_fn) = rep.unzip();
+
+        let main_repl = if let Some((start_byte, ((text, sides), replacement))) = other {
             comp.text = text;
-            comp.sidebar = sidebar;
-            let prefix_regex = prefix_regex.to_string();
+            comp.sidebar = sides;
 
             let mut main_replacement = None;
 
             let mut new_start_byte = start_byte;
             if let Some((replacement, info_text)) = replacement {
-                master_handle.edit_all(pa, |mut c| {
-                    let prefix_range = c
-                        .search(&prefix_regex)
-                        .to_caret()
-                        .next_back()
-                        .unwrap_or(c.caret().byte()..c.caret().byte());
+                // Also necessary, believe it or not.
+                let start_fn = start_fn.unwrap();
 
-                    c.move_to(prefix_range.start..c.caret().byte());
+                let mut starts = master
+                    .text()
+                    .selections()
+                    .iter()
+                    .map(|(sel, _)| start_fn(master.text(), sel.caret()))
+                    .collect::<Vec<_>>()
+                    .into_iter();
+
+                drop(start_fn);
+                let mut shift = 0;
+
+                master_handle.edit_all(pa, |mut c| {
+                    let Some(start) = starts.next().unwrap() else {
+                        return;
+                    };
+                    let start = (start as i32 + shift) as usize;
+                    shift += replacement.len() as i32 - (c.caret().byte() as i32 - start as i32);
+
+                    c.move_to(start..c.caret().byte());
 
                     if c.is_main() {
                         main_replacement = Some((c.selection().to_string(), replacement.clone()));
@@ -300,7 +391,7 @@ impl Completions {
                     }
 
                     if c.is_main() {
-                        new_start_byte = prefix_range.start;
+                        new_start_byte = start;
                     }
                 });
 
@@ -339,6 +430,8 @@ impl Completions {
                 } else if let Some(prev) = handle.write(pa).info_handle.take() {
                     let _ = prev.close(pa);
                 }
+            } else {
+                drop(start_fn);
             }
 
             let comp = handle.write(pa);
@@ -367,6 +460,7 @@ impl Completions {
 
             main_replacement
         } else {
+            drop(start_fn);
             comp.text = Text::default();
             comp.sidebar = Text::default();
             None
@@ -422,7 +516,7 @@ impl Widget for Completions {
         let text = self.master.has_changed(pa).then_some(self.master.text(pa));
         let main_moved = text
             .as_ref()
-            .is_some_and(|text| text.selections().get_main().unwrap().caret() != self.last_caret);
+            .is_some_and(|text| text.get_main_sel().unwrap().caret() != self.last_caret);
 
         main_moved || self.providers.iter().any(|inner| inner.has_changed(text))
     }
@@ -441,6 +535,12 @@ impl Widget for Completions {
             MouseEventKind::ScrollUp => _ = Self::scroll(pa, -1),
             _ => {}
         }
+    }
+}
+
+impl Drop for Completions {
+    fn drop(&mut self) {
+        *OPENED_PARAM_COMPLETION.lock().unwrap() = None;
     }
 }
 
@@ -469,7 +569,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// The `caret` is the position where the main cursor's [caret]
     /// lies, And the `prefix` and `suffix` are .
     ///
-    /// If the `Iterator` within is empty, then the next
+    /// If the `Vec` within is empty, then the next
     /// `CompletionsProvider` will be selected to provide the required
     /// completions. If all of them return empty `Iterator`s, then no
     /// completions will be shown.
@@ -484,21 +584,24 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// [caret]: duat_core::mode::Selection::caret
     /// [`Self::word_regex`]: CompletionsProvider::word_regex
     /// ["completeness"]: CompletionsKind
-    fn get_completions(
+    fn completions(
         &mut self,
         text: &Text,
         caret: Point,
         prefix: &str,
-        suffix: &str,
-        target_changed: bool,
+        has_changed: bool,
     ) -> CompletionsList<Self>;
 
-    /// Regex for which characters should be part of a word
+    /// Get the starting byte for this completions
     ///
-    /// It should be something like `[\w]*` for words or `[^\0]*` for
-    /// file paths. You can also use minimum lengths, like `[\w]{3,}`
-    /// in order to filter for too short matches.
-    fn word_regex(&self) -> String;
+    /// This function should look at the bytes before `from` (and
+    /// sometimes after), in order to figure out where the completion
+    /// starts.
+    ///
+    /// For example, if you're completing words, you should logially
+    /// look for the start of the word that intersects with the
+    /// `from`th byte.
+    fn get_start(&self, text: &Text, caret: Point) -> Option<usize>;
 
     /// Wether the list of completion entries has been updated
     ///
@@ -586,13 +689,13 @@ trait ErasedInnerProvider: Any + Send {
 
     fn has_changed(&self, text: Option<&Text>) -> bool;
 
-    fn prefix_regex(&self) -> &str;
+    #[allow(clippy::type_complexity)]
+    fn get_start_fn(&self) -> Box<dyn Fn(&Text, Point) -> Option<usize> + '_>;
 }
 
 #[allow(clippy::type_complexity)]
 struct InnerProvider<P: CompletionsProvider> {
     provider: P,
-    regexes: [String; 2],
     fmt: Box<dyn FnMut(&str, &P::Info) -> Text + Send>,
 
     orig_prefix: String,
@@ -603,37 +706,46 @@ struct InnerProvider<P: CompletionsProvider> {
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
+    #[allow(clippy::type_complexity)]
     fn new(mut provider: P, text: &Text, height: usize) -> (Self, usize, Option<(Text, Text)>) {
-        let prefix_regex = format!(r"{}\z", provider.word_regex());
-        let suffix_regex = format!(r"\A{}", provider.word_regex());
-        let (range, [prefix, suffix]) = preffix_and_suffix(text, [&prefix_regex, &suffix_regex]);
+        let Some(main_caret) = text.get_main_sel().map(|sel| sel.caret()) else {
+            panic!("Tried to spawn completions on a Text with no main selection");
+        };
 
-        let CompletionsList { entries, kind } =
-            provider.get_completions(text, text.point_at_byte(range.end), &prefix, &suffix, false);
+        let start = provider
+            .get_start(text, main_caret)
+            .unwrap_or(main_caret.byte());
+
+        let orig_prefix = text.strs(start..main_caret.byte()).unwrap().to_string();
+
+        let completions = provider.completions(text, main_caret, &orig_prefix, false);
+
+        let filtered_entries = match completions.kind {
+            CompletionsKind::Finished => FilteredEntries::UnfilteredFinished(
+                completions
+                    .entries
+                    .iter()
+                    .filter(|(entry, _)| string_cmp(&orig_prefix, entry).is_some())
+                    .map(|(entry, info)| (entry.clone(), info.clone()))
+                    .collect(),
+            ),
+            CompletionsKind::UnfinishedFiltered => FilteredEntries::FilteredUnfinished,
+            CompletionsKind::UnfinishedUnfiltered => FilteredEntries::UnfilteredUnfinished({
+                completions
+                    .entries
+                    .iter()
+                    .filter(|(entry, _)| string_cmp(&orig_prefix, entry).is_some())
+                    .map(|(entry, info)| (entry.clone(), info.clone()))
+                    .collect()
+            }),
+        };
 
         let mut inner = Self {
             provider,
-            regexes: [prefix_regex, suffix_regex],
-            orig_prefix: prefix.clone(),
+            orig_prefix,
             current: None,
-            filtered_entries: match kind {
-                CompletionsKind::Finished => FilteredEntries::UnfilteredFinished({
-                    entries
-                        .iter()
-                        .filter(|(entry, _)| string_cmp(&prefix, entry).is_some())
-                        .map(|(entry, info)| (entry.clone(), info.clone()))
-                        .collect()
-                }),
-                CompletionsKind::UnfinishedFiltered => FilteredEntries::FilteredUnfinished,
-                CompletionsKind::UnfinishedUnfiltered => FilteredEntries::UnfilteredUnfinished({
-                    entries
-                        .iter()
-                        .filter(|(entry, _)| string_cmp(&prefix, entry).is_some())
-                        .map(|(entry, info)| (entry.clone(), info.clone()))
-                        .collect()
-                }),
-            },
-            entries,
+            filtered_entries,
+            entries: completions.entries,
             fmt: Box::new(P::default_fmt),
         };
 
@@ -643,6 +755,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
 }
 
 impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
+    #[track_caller]
     fn texts_and_match(
         &mut self,
         text: &Text,
@@ -655,8 +768,21 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     ) {
         use FilteredEntries::*;
-        let (range, [prefix, suffix]) =
-            preffix_and_suffix(text, self.regexes.each_ref().map(|s| s.as_str()));
+        let Some(main_caret) = text.get_main_sel().map(|sel| sel.caret()) else {
+            panic!("Tried to spawn completions on a Text with no main selection");
+        };
+
+        let Some(start) = self.provider.get_start(text, main_caret) else {
+            return (main_caret.byte(), None);
+        };
+
+        let Some(prefix) = text
+            .strs(start..main_caret.byte())
+            .as_ref()
+            .map(Strs::to_string)
+        else {
+            panic!("Failed to get prefix from {:?}", start..main_caret.byte());
+        };
 
         // This should only be true if edits other than the one applied by
         // Completions take place.
@@ -668,7 +794,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         {
             self.entries = self
                 .provider
-                .get_completions(text, text.point_at_byte(range.end), &prefix, &suffix, true)
+                .completions(text, main_caret, &prefix, true)
                 .entries;
         }
 
@@ -693,13 +819,17 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.orig_prefix = prefix;
         }
 
-        if max_height == 0 || entries.is_empty() || (range.is_empty() && !show_without_prefix) {
+        if max_height == 0
+            || entries.is_empty()
+            || (start == main_caret.byte() && !show_without_prefix)
+        {
             self.current = None;
-            return (range.start, None);
+            return (start, None);
         }
 
         let height = if let Some(area) = area {
-            area.set_height(entries.len() as f32).unwrap();
+            area.set_height(entries.len().min(max_height) as f32)
+                .unwrap();
             area.height() as usize
         } else {
             max_height
@@ -774,21 +904,27 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         let entries = entries_builder.build_no_double_nl();
         let sidebar = sidebar_builder.build_no_double_nl();
-        (range.start, Some(((entries, sidebar), replacement)))
+        (start, Some(((entries, sidebar), replacement)))
     }
 
     fn has_changed(&self, text: Option<&Text>) -> bool {
+        let Some(main) = text.and_then(|text| text.get_main_sel()) else {
+            return false;
+        };
+
         let word_has_changed = text.is_some_and(|text| {
-            let (_, [prefix, _]) =
-                preffix_and_suffix(text, self.regexes.each_ref().map(|s| s.as_str()));
-            prefix != self.orig_prefix
+            let prefix = self
+                .provider
+                .get_start(text, main.caret())
+                .and_then(|start| text.strs(start..main.caret().byte()));
+            prefix.is_none_or(|prefix| prefix != self.orig_prefix.as_str())
         });
 
         word_has_changed || self.provider.has_changed()
     }
 
-    fn prefix_regex(&self) -> &str {
-        &self.regexes[0]
+    fn get_start_fn(&self) -> Box<dyn Fn(&Text, Point) -> Option<usize> + '_> {
+        Box::new(|text, caret| self.provider.get_start(text, caret))
     }
 }
 
@@ -825,28 +961,6 @@ fn string_cmp(target: &str, entry: &str) -> Option<usize> {
     Some(diff)
 }
 
-fn preffix_and_suffix(
-    text: &Text,
-    [prefix_regex, suffix_regex]: [&str; 2],
-) -> (Range<usize>, [String; 2]) {
-    let byte = text.selections().get_main().unwrap().caret().byte();
-    let prefix_range = text
-        .search(prefix_regex)
-        .range(..byte)
-        .next_back()
-        .unwrap_or(byte..byte);
-    let suffix_range = text
-        .search(suffix_regex)
-        .range(byte..)
-        .next()
-        .unwrap_or(byte..byte);
-
-    (
-        prefix_range.clone(),
-        [prefix_range, suffix_range].map(|range| text.strs(range).unwrap().to_string()),
-    )
-}
-
 const SPAWN_SPECS: DynSpawnSpecs = DynSpawnSpecs {
     orientation: Orientation::VerLeftBelow,
     height: Some(20.0),
@@ -865,4 +979,93 @@ type ProvidersFn = Box<
         Option<(Text, Text)>,
     ),
 >;
-type ParamCompletions = Box<Mutex<dyn FnMut(&mut Pass) -> CompletionsBuilder + Send + Sync>>;
+type ParamCompletions =
+    Box<Mutex<dyn FnMut(&Pass, CompletionsBuilder) -> CompletionsBuilder + Send + Sync>>;
+
+mod fixed {
+    use duat_core::text::{Point, RegexHaystack, Spacer, Text, txt};
+
+    use crate::widgets::{
+        CompletionsKind, CompletionsList, CompletionsProvider, completions::string_cmp,
+    };
+
+    impl CompletionsProvider for Vec<String> {
+        type Info = ();
+
+        fn default_fmt(entry: &str, _: &Self::Info) -> Text {
+            txt!("{entry}{Spacer}")
+        }
+
+        fn completions(
+            &mut self,
+            _: &Text,
+            _: Point,
+            prefix: &str,
+            _: bool,
+        ) -> CompletionsList<Self> {
+            let mut entries: Vec<_> = self
+                .iter()
+                .filter_map(|entry| string_cmp(prefix, entry).map(|_| (entry.clone(), ())))
+                .collect();
+
+            entries.sort_by(|(lhs, _), (rhs, _)| {
+                string_cmp(prefix, lhs)
+                    .unwrap()
+                    .cmp(&string_cmp(prefix, rhs).unwrap())
+            });
+
+            CompletionsList {
+                entries,
+                kind: CompletionsKind::UnfinishedFiltered,
+            }
+        }
+
+        fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+            Some(text.search("[ \n]*").range(..caret).next()?.start)
+        }
+
+        fn has_changed(&self) -> bool {
+            false
+        }
+    }
+
+    impl<const N: usize> CompletionsProvider for [&'static str; N] {
+        type Info = ();
+
+        fn default_fmt(entry: &str, _: &Self::Info) -> Text {
+            txt!("{entry}{Spacer}")
+        }
+
+        fn completions(
+            &mut self,
+            _: &Text,
+            _: Point,
+            prefix: &str,
+            _: bool,
+        ) -> CompletionsList<Self> {
+            let mut entries: Vec<_> = self
+                .iter()
+                .filter_map(|entry| string_cmp(prefix, entry).map(|_| (entry.to_string(), ())))
+                .collect();
+
+            entries.sort_by(|(lhs, _), (rhs, _)| {
+                string_cmp(prefix, lhs)
+                    .unwrap()
+                    .cmp(&string_cmp(prefix, rhs).unwrap())
+            });
+
+            CompletionsList {
+                entries,
+                kind: CompletionsKind::UnfinishedFiltered,
+            }
+        }
+
+        fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+            Some(text.search("[ \n]*").range(..caret).next()?.start)
+        }
+
+        fn has_changed(&self) -> bool {
+            false
+        }
+    }
+}

@@ -5,7 +5,7 @@
 use duat_core::{
     cmd::{CmdDoc, Description},
     data::Pass,
-    text::{Point, Spacer, Text, txt},
+    text::{Point, RegexHaystack, Spacer, Text, txt},
     ui::Orientation,
 };
 
@@ -30,14 +30,7 @@ impl CompletionsProvider for CommandsCompletions {
         txt!("[cmd.Completions]{entry}{Spacer}")
     }
 
-    fn get_completions(
-        &mut self,
-        _: &Text,
-        _: Point,
-        prefix: &str,
-        _: &str,
-        _: bool,
-    ) -> CompletionsList<Self> {
+    fn completions(&mut self, _: &Text, _: Point, prefix: &str, _: bool) -> CompletionsList<Self> {
         let mut entries: Vec<_> = self
             .0
             .iter()
@@ -63,8 +56,8 @@ impl CompletionsProvider for CommandsCompletions {
         }
     }
 
-    fn word_regex(&self) -> String {
-        r"[^\s]*".to_string()
+    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+        Some(text.search(r"[^\s]*").range(..caret).next_back()?.start)
     }
 
     fn has_changed(&self) -> bool {

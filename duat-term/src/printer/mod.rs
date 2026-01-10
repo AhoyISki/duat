@@ -34,7 +34,7 @@ pub struct Printer {
     old_lines: Mutex<Vec<Lines>>,
     new_lines: Mutex<Vec<Lines>>,
     spawned_lines: Mutex<Vec<(Vec<(AreaId, Lines)>, SpawnId, Frame)>>,
-    cleared_spawns: AtomicBool,
+    spawns_have_changed: AtomicBool,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
 }
@@ -59,7 +59,7 @@ impl Printer {
             old_lines: Mutex::new(Vec::new()),
             new_lines: Mutex::new(Vec::new()),
             spawned_lines: Mutex::new(Vec::new()),
-            cleared_spawns: AtomicBool::new(false),
+            spawns_have_changed: AtomicBool::new(false),
             max,
             has_to_print_edges: AtomicBool::new(false),
         }
@@ -255,14 +255,14 @@ impl Printer {
     /// Clears a spawned Widget from screen, not actually deleting it
     pub fn clear_spawn(&self, area_id: AreaId) {
         let mut spawned_lines = self.spawned_lines.lock().unwrap();
-        let was_empty = spawned_lines.is_empty();
+        let old_len = spawned_lines.len();
         spawned_lines.retain_mut(|(list, ..)| {
             list.retain(|(id, _)| *id != area_id);
             !list.is_empty()
         });
-        if spawned_lines.is_empty() && !was_empty {
+        if old_len != spawned_lines.len() {
             self.has_to_print_edges.store(true, Ordering::Relaxed);
-            self.cleared_spawns.store(true, Ordering::Relaxed);
+            self.spawns_have_changed.store(true, Ordering::Relaxed);
         }
     }
 
@@ -289,35 +289,33 @@ impl Printer {
     /// consistent
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
+        
+        let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
+		let has_to_print_edges = self.has_to_print_edges.swap(false, Ordering::Relaxed);
+        
+        let mut stdout = stdout::get();
 
-        let stdout = if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
-            let mut stdout = stdout::get();
+        queue!(stdout, cursor::Hide, ResetColor).unwrap();
+        write!(stdout, "\x1b[?2026h").unwrap();
+
+        if has_to_print_edges {
             let edge_form = form::from_id(form::id_of!("terminal.border"));
             self.vars
                 .lock()
                 .unwrap()
                 .print_edges(&mut stdout, edge_form);
-            Some(stdout)
-        } else {
-            None
-        };
+        }
 
-        let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
         let spawned_lines = self.spawned_lines.lock().unwrap();
-
         let mut old_lines = self.old_lines.lock().unwrap();
 
-        let mut stdout = stdout.unwrap_or_else(stdout::get);
         let max = self.max_value();
-
-        queue!(stdout, cursor::Hide, ResetColor).unwrap();
-        write!(stdout, "\x1b[?2026h").unwrap();
 
         // If there are no more spawns, print everything at least one more
         // time, to clear the spawned areas.
         let print_old_lines =
-            self.cleared_spawns.load(Ordering::Relaxed) || !spawned_lines.is_empty();
-        self.cleared_spawns.store(false, Ordering::Relaxed);
+            self.spawns_have_changed.load(Ordering::Relaxed) || !spawned_lines.is_empty();
+        self.spawns_have_changed.store(false, Ordering::Relaxed);
 
         for y in 0..max.y {
             write!(stdout, "\x1b[{}H", y + 1).unwrap();
@@ -454,6 +452,8 @@ impl Printer {
         } else {
             list.push((area_id, lines));
         }
+
+        self.spawns_have_changed.store(true, Ordering::Relaxed);
     }
 
     ////////// Querying functions

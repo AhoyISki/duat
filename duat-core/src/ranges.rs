@@ -452,7 +452,7 @@ impl Ord for Ranges {
 }
 
 #[track_caller]
-fn assert_range(range: &Range<usize>) {
+pub fn assert_range(range: &Range<usize>) {
     assert!(
         range.start <= range.end,
         "range starts at {} but ends at {}",

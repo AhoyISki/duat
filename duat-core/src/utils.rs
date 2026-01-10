@@ -201,6 +201,9 @@ pub fn get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Range<
         std::ops::Bound::Excluded(end) => *end,
         std::ops::Bound::Unbounded => max,
     };
+
+    crate::ranges::assert_range(&(start..end));
+
     assert!(
         start <= max,
         "start out of bounds: the len is {max}, but the index is {start}",

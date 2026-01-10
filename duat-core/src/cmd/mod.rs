@@ -1100,14 +1100,28 @@ mod global {
         COMMANDS.write(pa).check_args(call).map(|ca| ca(pa))
     }
 
-    /// The [`TypeId`] of the last [`Parameter`] that was passed
+    /// The [`TypeId`] of the last [`Parameter`]s that were being
+    /// parsed
+    ///
+    /// This is a list that may have multiple `Parameter`s because
+    /// some of those might only optionally take arguments, which
+    /// means that you'd be parsing both the optionally parseable
+    /// `Parameter` as well as the following ones.
+    ///
+    /// Returns [`None`] if the caller couldn't be found, or if the
+    /// call was an empty string.
+    ///
+    /// # Note
+    ///
+    /// You can pass in only a prefix of the full call in order to get
+    /// the parameter completion for the `n`th argument, as opposed to
+    /// just the last one. This is useful if you want to get the
+    /// `TypeId`s being parsed at a cursor's position, which may be in
+    /// the middle of the string as opposed to the end.
     ///
     /// [`Parameter`]: super::Parameter
-    pub fn last_parsed_parameter(
-        pa: &mut Pass,
-        call: &str,
-    ) -> Option<(TypeId, &'static [&'static str])> {
-        COMMANDS.write(pa).args_after_check(call)?(pa).last_parsed()
+    pub fn last_parsed_parameters(pa: &mut Pass, call: &str) -> Option<Vec<TypeId>> {
+        Some(COMMANDS.write(pa).args_after_check(call)?(pa).last_parsed())
     }
 
     /// The description for a Duat command, which can be executed in
@@ -1419,14 +1433,13 @@ impl<F: FnMut(&mut Pass) -> CmdResult + Send + 'static> CmdFn<()> for F {
     }
 
     fn check_args(
-        pa: &Pass,
+        _: &Pass,
         args: &mut Args,
     ) -> (
         Vec<(Range<usize>, Option<FormId>)>,
         Option<(Range<usize>, Text)>,
     ) {
-        let start = args.next_start();
-        if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
+        if let Some(start) = args.next_start() {
             let err = txt!("Too many arguments");
             return (Vec::new(), Some((start..args.param_range().end, err)));
         }
@@ -1466,6 +1479,7 @@ macro_rules! implCmdFn {
 
 				$(
                     let start = args.next_start();
+                    args.use_completions_for::<$param>();
                     let result = args.next_as_with_form::<$param>(pa);
                     match result {
                         Ok((_, form)) => {
@@ -1480,8 +1494,7 @@ macro_rules! implCmdFn {
                     }
 				)+
 
-                let start = args.next_start();
-                if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
+                if let Some(start) = args.next_start() {
                     let err = txt!("Too many arguments");
                     return (ok_ranges, Some((start..args.param_range().end, err)));
                 }

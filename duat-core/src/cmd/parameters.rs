@@ -73,18 +73,6 @@ pub trait Parameter: Sized + 'static {
     fn arg_name() -> Text {
         txt!("[param]arg")
     }
-
-    /// A static list of possible values
-    ///
-    /// This is useful in some circumstances, especially in the case
-    /// of [`Flag`] parameters.
-    ///
-    /// An empty list means that there are no innate completions to
-    /// this type. A [`None`] value means that this type should not
-    /// have completions at all.
-    fn static_list() -> Option<&'static [&'static str]> {
-        None
-    }
 }
 
 /// Command [`Parameter`]: A flag passed to the command
@@ -309,10 +297,6 @@ impl Parameter for Scope {
 
     fn arg_name() -> Text {
         txt!("[param.flag]--global[param.punctuation]?")
-    }
-
-    fn static_list() -> Option<&'static [&'static str]> {
-        Some(&["--global"])
     }
 }
 
@@ -611,13 +595,14 @@ impl Parameter for PathOrBufferOrCfg {
 
         let _guard = DropGuard;
 
-        if let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa) {
-            match flag.as_word()?.as_str() {
-                "cfg" => Ok((Self::Cfg, form)),
-                "cfg-manifest" => Ok((Self::CfgManifest, form)),
-                _ => Err(txt!(
-                    "Invalid flag, pick [param.flag]cfg[] or [param.flag]cfg-manifest[]"
-                )),
+        args.use_completions_for::<CfgOrManifest>();
+        args.use_completions_for::<Handle>();
+        args.use_completions_for::<ValidFilePath>();
+
+        if let Ok((cfg_or_manifest, form)) = args.next_as_with_form::<CfgOrManifest>(pa) {
+            match cfg_or_manifest {
+                CfgOrManifest::Cfg => Ok((Self::Cfg, form)),
+                CfgOrManifest::Manifest => Ok((Self::CfgManifest, form)),
             }
         } else if let Ok((handle, form)) = args.next_as_with_form::<Handle>(pa) {
             Ok((Self::Buffer(handle), form))
@@ -636,16 +621,12 @@ impl Parameter for PathOrBufferOrCfg {
         let punct = form::id_of!("param.punctuation");
         txt!("[param]path{punct}/[param]buffer{punct}/{flag}--cfg{punct}/{flag}--cfg-manifest")
     }
-
-    fn static_list() -> Option<&'static [&'static str]> {
-        Some(&[])
-    }
 }
 
 static ONLY_EXISTING: AtomicBool = AtomicBool::new(false);
 
 /// Command [`Parameter`]: The `--existing` flag
-pub(crate) struct Existing;
+pub struct Existing;
 
 impl Parameter for Existing {
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
@@ -666,9 +647,38 @@ impl Parameter for Existing {
     fn arg_name() -> Text {
         txt!("[param.flag]--existing[param.punctuation]?")
     }
+}
 
-    fn static_list() -> Option<&'static [&'static str]> {
-        Some(&["--existing"])
+/// Command [`Parameter`]: `--cfg` or `--cfg-manifest`
+///
+/// This is a quick shorthand to get `{duat_config}/src/lib.rs` or
+/// `{duat_config}/Cargo.toml`, respectively
+pub enum CfgOrManifest {
+    /// Represents `{duat_config}/src/lib.rs`
+    Cfg,
+    /// Represents `{duat_config}/Cargo.toml`
+    Manifest,
+}
+
+impl Parameter for CfgOrManifest {
+    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+        if let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa)
+            && let Some(ret) = match flag.as_word()?.as_str() {
+                "cfg" => Some((Self::Cfg, form)),
+                "cfg-manifest" => Some((Self::Manifest, form)),
+                _ => None,
+            }
+        {
+            Ok(ret)
+        } else {
+            Err(txt!(
+                "Invalid flag, pick [param.flag]cfg[] or [param.flag]cfg-manifest"
+            ))
+        }
+    }
+
+    fn arg_name() -> Text {
+        txt!("[param.flag]--cfg[param.punctuation]/[param.flag]--cfg-manifest")
     }
 }
 
@@ -852,7 +862,21 @@ pub struct Args<'a> {
     param_range: Range<usize>,
     has_to_start_param: bool,
     is_forming_param: bool,
-    last_parsed: Option<(TypeId, &'static [&'static str])>,
+    // For figuring out what's being parsed atm
+    /// The argument index is used to keep parameters in the
+    /// last_parsed list, even if they failed parsing and another
+    /// parameter was parsed with the same argument instead.
+    arg_n: usize,
+    /// This list will have the TypeId of T within the
+    /// self.next_as::<T>() call. It serves the purpose of keeping
+    /// track of when a type is done being parsed.
+    currently_parsing: Vec<TypeId>,
+    /// This list will have the TypeId of T while T is within
+    /// currently_parsing or we haven't succesfully moved on to the
+    /// next argument.
+    /// This is used to aid completion, by keeping track of when we
+    /// have moved on to parsing a new argument.
+    last_parsed: Vec<(usize, TypeId)>,
 }
 
 impl<'arg> Args<'arg> {
@@ -863,7 +887,9 @@ impl<'arg> Args<'arg> {
             param_range: 0..0,
             has_to_start_param: false,
             is_forming_param: false,
-            last_parsed: None,
+            arg_n: 0,
+            currently_parsing: Vec::new(),
+            last_parsed: Vec::new(),
         }
     }
 
@@ -877,6 +903,13 @@ impl<'arg> Args<'arg> {
                     self.has_to_start_param = false;
                     self.is_forming_param = true;
                 }
+
+                self.last_parsed.retain(|(start_n, ty)| {
+                    self.currently_parsing.contains(ty) || self.arg_n == *start_n
+                });
+
+                self.arg_n += 1;
+
                 Ok(Arg { value, is_quoted })
             }
             None => Err(txt!("Wrong argument count")),
@@ -888,20 +921,7 @@ impl<'arg> Args<'arg> {
     /// If parsing fails, [`Args`] will be reset as if this function
     /// wasn't called.
     pub fn next_as<P: Parameter>(&mut self, pa: &Pass) -> Result<P, Text> {
-        if let Some(static_list) = P::static_list() {
-            self.last_parsed = Some((TypeId::of::<P>(), static_list));
-        }
-
-        let initial = self.clone();
-
-        self.has_to_start_param = true;
-        let ret = P::new(pa, self);
-        if ret.is_ok() {
-            self.is_forming_param = false;
-        } else {
-            *self = initial;
-        }
-        ret.map(|(arg, _)| arg)
+        self.next_as_with_form(pa).map(|(param, _)| param)
     }
 
     /// Tries to parse the next argument as `P`, also returning the
@@ -913,27 +933,38 @@ impl<'arg> Args<'arg> {
         &mut self,
         pa: &Pass,
     ) -> Result<(P, Option<FormId>), Text> {
-        if let Some(static_list) = P::static_list() {
-            self.last_parsed = Some((TypeId::of::<P>(), static_list));
-        }
+        self.currently_parsing.push(TypeId::of::<P>());
 
-        let initial = self.clone();
+        let initial = (
+            self.iter.clone(),
+            self.param_range.clone(),
+            self.has_to_start_param,
+            self.is_forming_param,
+            self.arg_n,
+        );
 
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
         if ret.is_ok() {
             self.is_forming_param = false;
         } else {
-            *self = initial;
+            self.iter = initial.0;
+            self.param_range = initial.1;
+            self.has_to_start_param = initial.2;
+            self.is_forming_param = initial.3;
+            self.arg_n = initial.4;
         }
+
+        self.currently_parsing.retain(|&ty| ty != TypeId::of::<P>());
+
         ret
     }
 
     /// Tries to get the next argument, otherwise returns a [`Text`]
     pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'arg str, Text> {
-        match self.iter.next() {
-            Some((arg, ..)) => Ok(arg),
-            None => Err(to_text.into()),
+        match self.next() {
+            Ok(arg) => Ok(arg.value),
+            Err(_) => Err(to_text.into()),
         }
     }
 
@@ -958,8 +989,18 @@ impl<'arg> Args<'arg> {
     /// The last [`Parameter`] type that was parsed
     ///
     /// This can/should be used for argument completion.
-    pub fn last_parsed(&self) -> Option<(TypeId, &'static [&'static str])> {
-        self.last_parsed
+    pub fn last_parsed(&self) -> Vec<TypeId> {
+        self.last_parsed.iter().map(|(_, ty)| *ty).collect()
+    }
+
+    /// Declare that you are trying to parse the given [`Parameter`]
+    /// type
+    ///
+    /// This is used on completions, where multiple pools of choices
+    /// may be selected from in order to get the completions list to
+    /// show.
+    pub fn use_completions_for<P: Parameter>(&mut self) {
+        self.last_parsed.push((self.arg_n, TypeId::of::<P>()));
     }
 }
 
@@ -1070,10 +1111,6 @@ macro_rules! parse_impl {
 
             fn arg_name() -> Text {
                 txt!("[param]{}", stringify!($t))
-            }
-
-            fn static_list() -> Option<&'static [&'static str]> {
-                $static_list
             }
         }
     };

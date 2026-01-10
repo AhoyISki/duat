@@ -37,12 +37,11 @@ impl CompletionsProvider for PathCompletions {
         txt!("[path.Completions]{entry}{Spacer}")
     }
 
-    fn get_completions(
+    fn completions(
         &mut self,
         _: &Text,
         _: Point,
         prefix: &str,
-        _: &str,
         target_changed: bool,
     ) -> CompletionsList<Self> {
         let Some((cur_dir, entries)) = get_entries(prefix, self.for_parameters, target_changed)
@@ -88,22 +87,31 @@ impl CompletionsProvider for PathCompletions {
     }
 
     #[cfg(not(target_os = "windows"))]
-    fn word_regex(&self) -> String {
-        if self.for_parameters {
-            "[^ \n]*".to_string()
+    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+        use duat_core::text::RegexHaystack;
+
+        text.search(if self.for_parameters {
+            "[^ \n]*"
         } else {
-            duat_core::context::debug!("getting for not parameters");
-            "[^ /\n\t]*/.*".to_string()
-        }
+            "[^ /\n\t]*/.*"
+        })
+        .range(..caret)
+        .next_back()
+        .map(|r| r.start)
     }
 
     #[cfg(target_os = "windows")]
-    fn word_regex(&self) -> String {
-        if self.for_parameters {
-            "[^ \n]*".to_string()
+    fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+        use duat_core::text::RegexHaystack;
+
+        text.search(if self.for_parameters {
+            "[^ \n]*"
         } else {
-            "[^ /\n\t]*(/|\\).*".to_string()
-        }
+            "[^ /\\\n\t]*((/|\\).*)*"
+        })
+        .range(..caret)
+        .next_back()
+        .map(|r| r.start)
     }
 
     fn has_changed(&self) -> bool {

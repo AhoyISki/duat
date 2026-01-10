@@ -546,7 +546,7 @@ impl PromptMode for RunCommands {
 
     fn post_update(&mut self, pa: &mut Pass, handle: &Handle<PromptLine>) {
         let text = handle.text(pa);
-        let Some(main) = text.selections().get_main() else {
+        let Some(main) = text.get_main_sel() else {
             Completions::close(pa);
             return;
         };
@@ -557,29 +557,24 @@ impl PromptMode for RunCommands {
             .any(|(_, char)| char.is_whitespace());
 
         let new_completion = if is_parameter {
-            let Some((type_id, innate)) =
-                cmd::last_parsed_parameter(pa, &text.strs(..main.caret()).unwrap().to_string())
-            else {
+            let call = &text.strs(..main.caret()).unwrap().to_string();
+            let Some(parameters) = cmd::last_parsed_parameters(pa, call) else {
                 self.0 = None;
                 Completions::close(pa);
                 return;
             };
 
-            Completion::Parameter(type_id, innate)
+            Completion::Parameters(parameters)
         } else {
             Completion::Caller
         };
 
-        if self.0 != Some(new_completion) {
-            match new_completion {
-                Completion::Caller => Completions::builder(CommandsCompletions::new(pa)).open(pa),
-                Completion::Parameter(type_id, _innate) => {
-                    if let Some(builder) = Completions::builder_for(pa, type_id) {
-                        builder.open(pa);
-                    } else {
-                        Completions::close(pa);
-                    }
-                }
+        if self.0.as_ref() != Some(&new_completion) {
+            match &new_completion {
+                Completion::Caller => Completions::builder()
+                    .with_provider(CommandsCompletions::new(pa))
+                    .open(pa),
+                Completion::Parameters(params) => Completions::open_for(pa, params),
             }
         }
 
@@ -690,8 +685,20 @@ impl PromptMode for PipeSelections {
 
 type ModeCloneFn = dyn Fn() -> Box<dyn PromptMode> + Send;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Eq)]
 enum Completion {
     Caller,
-    Parameter(TypeId, &'static [&'static str]),
+    Parameters(Vec<TypeId>),
+}
+
+impl PartialEq for Completion {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Parameters(l0), Self::Parameters(r0)) => {
+                l0.iter().all(|param| r0.contains(param))
+                    && r0.iter().all(|param| l0.contains(param))
+            }
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }
