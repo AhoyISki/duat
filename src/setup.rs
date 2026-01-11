@@ -7,12 +7,12 @@
 use std::{
     any::TypeId,
     path::Path,
-    sync::{Mutex, atomic::Ordering, mpsc::Sender},
+    sync::{Mutex, mpsc::Sender},
 };
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, LogBook, Notifications, WhichKey, status},
+    widgets::{FooterWidgets, LogBook, WhichKey, status},
 };
 use duat_core::{
     buffer::History,
@@ -21,6 +21,7 @@ use duat_core::{
     data::Pass,
     form::{Form, Palette},
     hook::{KeyTyped, ModeSwitched},
+    opts::PrintOpts,
     session::{ReloadEvent, ReloadedBuffer, SessionCfg},
     text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui, Widget},
@@ -32,10 +33,7 @@ use crate::{
     form,
     hook::{self, BufferClosed, BufferReloaded, WindowCreated},
     mode,
-    opts::{
-        BUFFER_OPTS, FOOTER_ON_TOP, LINENUMBERS_OPTS, LOGBOOK_FN, NOTIFICATIONS_FN,
-        ONE_LINE_FOOTER, STATUSLINE_FMT,
-    },
+    opts::{OPTS, STATUSLINE_FMT},
     prelude::BufferSaved,
     widgets::Buffer,
 };
@@ -70,17 +68,18 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
     hook::add::<Buffer>(|pa, handle| {
         VertRule::builder().push_on(pa, handle);
-        LINENUMBERS_OPTS.lock().unwrap().push_on(pa, handle);
+        OPTS.lock().unwrap().line_numbers.push_on(pa, handle);
     })
     .grouped("BufferWidgets");
 
     hook::add::<WindowCreated>(|pa, handle| {
         use crate::{state::*, text::Spacer};
 
-        let one_line_footer = ONE_LINE_FOOTER.load(Ordering::Relaxed);
+        let opts = OPTS.lock().unwrap();
+
         let status = match &mut *STATUSLINE_FMT.lock().unwrap() {
             Some(status_fn) => status_fn(pa),
-            None if one_line_footer => {
+            None if opts.one_line_footer => {
                 let mode_txt = mode_txt();
                 let duat_param_txt = duat_param_txt();
                 status!("{Spacer}{name_txt} {mode_txt} {sels_txt} {duat_param_txt} {main_txt}")
@@ -92,28 +91,27 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
             }
         };
 
-        let mut footer = FooterWidgets::new(status).notifs({
-            let mut notifs = Notifications::builder();
-            NOTIFICATIONS_FN.lock().unwrap()(&mut notifs);
-            notifs
-        });
+        let mut footer = FooterWidgets::new(status).notifs(opts.notifications.clone());
 
-        if FOOTER_ON_TOP.load(Ordering::Relaxed) {
+        if opts.footer_on_top {
             footer = footer.above();
         }
 
-        if one_line_footer {
+        if opts.one_line_footer {
             footer = footer.one_line();
         }
 
+        drop(opts);
         footer.push_on(pa, handle);
     })
     .grouped("FooterWidgets");
 
     hook::add::<WindowCreated>(|pa, window| {
-        let mut builder = LogBook::builder();
-        LOGBOOK_FN.lock().unwrap()(&mut builder);
-        builder.push_on(pa, window);
+        let opts = OPTS.lock().unwrap();
+
+        let log_book = opts.logs;
+        drop(opts);
+        log_book.push_on(pa, window);
     })
     .grouped("LogBook");
 
@@ -180,25 +178,33 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
     let show_which_key = move |pa: &mut Pass| {
         let mut wk_specs = wk_specs;
-        let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
-        wk_specs.orientation = opts.orientation;
-        WhichKey::open(pa, opts.fmt_getter.as_ref().map(|fg| fg()), wk_specs);
+        let opts = OPTS.lock().unwrap();
+        wk_specs.orientation = opts.whichkey.orientation;
+        WhichKey::open(
+            pa,
+            opts.whichkey.fmt_getter.as_ref().map(|fg| fg()),
+            wk_specs,
+        );
     };
 
     let cur_seq = mode::current_sequence();
     hook::add::<KeyTyped>(move |pa, _| {
-        let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
+        let opts = OPTS.lock().unwrap();
         let current_ty = mode::current_type_id();
         let cur_seq = cur_seq.call(pa).0;
-        if !cur_seq.is_empty() || opts.always_shown_modes.contains(&current_ty) {
+        if !cur_seq.is_empty() || opts.whichkey.always_shown_modes.contains(&current_ty) {
             drop(opts);
             show_which_key(pa);
         }
     })
     .grouped("WhichKey");
     hook::add::<ModeSwitched>(move |pa, _| {
-        let opts = crate::opts::WHICHKEY_OPTS.lock().unwrap();
-        if opts.always_shown_modes.contains(&mode::current_type_id()) {
+        let opts = OPTS.lock().unwrap();
+        if opts
+            .whichkey
+            .always_shown_modes
+            .contains(&mode::current_type_id())
+        {
             drop(opts);
             show_which_key(pa);
         } else {
@@ -211,9 +217,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
     let cur_seq = mode::current_sequence();
     hook::add::<KeyTyped>(move |pa, key_event| {
-        if cur_seq.call(pa).0.is_empty()
-            && *crate::opts::HELP_KEY.lock().unwrap() == Some(key_event)
-        {
+        if cur_seq.call(pa).0.is_empty() && OPTS.lock().unwrap().help_key == Some(key_event) {
             show_which_key(pa);
         }
     });
@@ -307,7 +311,24 @@ pub fn run_duat(
 ) -> (Vec<Vec<ReloadedBuffer>>, DuatReceiver) {
     ui.load();
 
-    let opts = SessionCfg::new(clipb, *BUFFER_OPTS.lock().unwrap());
+    let default_buffer_opts = {
+        let opts = OPTS.lock().unwrap();
+        PrintOpts {
+            wrap_lines: opts.wrap_lines,
+            wrap_on_word: opts.wrap_on_word,
+            wrapping_cap: opts.wrapping_cap,
+            indent_wraps: opts.indent_wraps,
+            tabstop: opts.tabstop,
+            print_new_line: opts.print_new_line,
+            scrolloff: opts.scrolloff,
+            force_scrolloff: opts.force_scrolloff,
+            extra_word_chars: opts.extra_word_chars,
+            show_ghosts: opts.show_ghosts,
+            allow_overscroll: opts.allow_overscroll,
+        }
+    };
+
+    let opts = SessionCfg::new(clipb, default_buffer_opts);
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
     match opts

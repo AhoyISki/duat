@@ -7,6 +7,8 @@
 //! that you don't care about.
 //!
 //! [`Notifications`]: super::Notifications
+use std::sync::Mutex;
+
 use duat_core::{
     context::{self, Handle, Logs, Record},
     data::Pass,
@@ -16,22 +18,32 @@ use duat_core::{
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
+#[allow(clippy::type_complexity)]
+static GLOBAL_FMT: Mutex<Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>> = Mutex::new(None);
+
 /// A [`Widget`] to display [`Logs`] sent to Duat
 pub struct LogBook {
     logs: Logs,
     len_of_taken: usize,
     text: Text,
-    fmt: Box<dyn FnMut(Record) -> Option<Text> + Send>,
+    fmt: Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>,
     has_updated_once: bool,
     /// Wether to close this [`Widget`] after unfocusing, `true` by
     /// default
     pub close_on_unfocus: bool,
+    /// Wether the source of a log should be shown
+    ///
+    /// Can be disabled for less noise. This option is ignored when
+    /// there is [custom formatting].
+    ///
+    /// [custom formatting]: LogBookOpts::fmt
+    pub show_source: bool,
 }
 
 impl LogBook {
     /// Reformats this `LogBook`
     pub fn fmt(&mut self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) {
-        self.fmt = Box::new(fmt)
+        self.fmt = Some(Box::new(fmt))
     }
 
     /// Returns a [`LogBookOpts`], so you can push `LogBook`s around
@@ -51,8 +63,20 @@ impl Widget for LogBook {
         let records_were_added = !new_records.is_empty();
         lb.len_of_taken += new_records.len();
 
-        for rec_text in new_records.into_iter().filter_map(&mut lb.fmt) {
-            lb.text.insert_text(lb.text.len(), &rec_text);
+        let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
+            for rec_text in new_records.into_iter().filter_map(fmt) {
+                lb.text.insert_text(lb.text.len(), &rec_text);
+            }
+        };
+
+        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
+
+        if let Some(fmt) = lb.fmt.as_mut() {
+            fmt_recs(fmt);
+        } else if let Some(fmt) = global_fmt.as_mut() {
+            fmt_recs(fmt);
+        } else {
+            fmt_recs(&mut |rec| default_fmt(lb.show_source, rec));
         }
 
         if !lb.has_updated_once {
@@ -109,8 +133,8 @@ impl Widget for LogBook {
 }
 
 /// Configuration for the [`LogBook`]
+#[derive(Clone, Copy)]
 pub struct LogBookOpts {
-    fmt: Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>,
     /// Wether to close the `LogBook` when unfocusing
     pub close_on_unfocus: bool,
     /// Wether to hide the `LogBook` by default
@@ -134,23 +158,26 @@ pub struct LogBookOpts {
 
 impl LogBookOpts {
     /// Push a [`LogBook`] around the given [`PushTarget`]
-    pub fn push_on(mut self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<LogBook> {
+    pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<LogBook> {
         let logs = context::logs();
 
         let mut text = Text::new();
 
         let records = logs.get(..).unwrap();
         let len_of_taken = records.len();
-        let fmt = |rec| {
-            if let Some(fmt) = self.fmt.as_mut() {
-                fmt(rec)
-            } else {
-                default_fmt(self.show_source, rec)
+
+        let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
+            for rec_text in records.into_iter().filter_map(fmt) {
+                text.insert_text(text.len(), &rec_text);
             }
         };
 
-        for rec_text in records.into_iter().filter_map(fmt) {
-            text.insert_text(text.len(), &rec_text);
+        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
+
+        if let Some(fmt) = global_fmt.as_mut() {
+            fmt_recs(fmt);
+        } else {
+            fmt_recs(&mut |rec| default_fmt(self.show_source, rec));
         }
 
         let log_book = LogBook {
@@ -158,9 +185,8 @@ impl LogBookOpts {
             len_of_taken,
             text,
             has_updated_once: false,
-            fmt: self
-                .fmt
-                .unwrap_or_else(|| Box::new(move |rec| default_fmt(self.show_source, rec))),
+            fmt: None,
+            show_source: self.show_source,
             close_on_unfocus: self.close_on_unfocus,
         };
         let specs = match self.side {
@@ -189,14 +215,13 @@ impl LogBookOpts {
     ///
     /// [`Debug`]: context::Level::Debug
     pub fn fmt(&mut self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) {
-        self.fmt = Some(Box::new(fmt));
+        *GLOBAL_FMT.lock().unwrap() = Some(Box::new(fmt));
     }
 }
 
 impl Default for LogBookOpts {
     fn default() -> Self {
         Self {
-            fmt: None,
             close_on_unfocus: true,
             hidden: true,
             side: Side::Below,

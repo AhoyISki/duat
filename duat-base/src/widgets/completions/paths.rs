@@ -10,7 +10,7 @@ use std::{
 };
 
 use duat_core::{
-    text::{Point, RegexHaystack, Spacer, Text, txt},
+    text::{Point, Spacer, Text, txt},
     utils::expand_path,
 };
 
@@ -51,7 +51,7 @@ impl CompletionsProvider for PathCompletions {
             Some(prefix) => prefix,
             None => prefix,
         };
-        
+
         let Some((cur_dir, prefix, entries)) =
             get_entries(prefix, self.for_parameters, target_changed)
         else {

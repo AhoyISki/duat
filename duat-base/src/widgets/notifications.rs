@@ -8,7 +8,7 @@
 //! [`PromptLine`]: super::PromptLine
 //! [hook]: hooks
 use std::sync::{
-    Once,
+    Mutex, Once,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -55,14 +55,19 @@ use duat_core::{
 pub struct Notifications {
     logs: context::Logs,
     text: Text,
-    format_rec: Box<dyn FnMut(Record) -> Text + Send>,
+    fmt: Option<Box<dyn FnMut(Record) -> Text + Send>>,
     levels: Vec<Level>,
     last_rec: Option<usize>,
-    get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
+    get_mask: Option<Box<dyn FnMut(Record) -> &'static str + Send>>,
     request_width: bool,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
+#[allow(clippy::type_complexity)]
+static GLOBAL_FMT: Mutex<Option<Box<dyn FnMut(Record) -> Text + Send>>> = Mutex::new(None);
+#[allow(clippy::type_complexity)]
+static GLOBAL_GET_MASK: Mutex<Option<Box<dyn FnMut(Record) -> &'static str + Send>>> =
+    Mutex::new(None);
 
 impl Notifications {
     /// Returns a [`NotificationsOpts`], which can be used to push
@@ -85,8 +90,24 @@ impl Widget for Notifications {
             && let Some((i, rec)) = notifs.logs.last_with_levels(&notifs.levels)
             && notifs.last_rec.is_none_or(|last_i| last_i < i)
         {
-            handle.set_mask((notifs.get_mask)(rec.clone()));
-            notifs.text = (notifs.format_rec)(rec);
+            let mut global_fmt = GLOBAL_FMT.lock().unwrap();
+            let mut global_get_mask = GLOBAL_GET_MASK.lock().unwrap();
+
+            handle.set_mask(if let Some(get_mask) = notifs.get_mask.as_mut() {
+                get_mask(rec.clone())
+            } else if let Some(get_mask) = global_get_mask.as_mut() {
+                get_mask(rec.clone())
+            } else {
+                default_get_mask(rec.clone())
+            });
+
+            notifs.text = if let Some(fmt) = notifs.fmt.as_mut() {
+                fmt(rec)
+            } else if let Some(fmt) = global_fmt.as_mut() {
+                fmt(rec)
+            } else {
+                default_fmt(rec)
+            };
             notifs.last_rec = Some(i);
 
             if notifs.request_width {
@@ -141,9 +162,8 @@ impl Widget for Notifications {
 /// [hook]: hook
 /// [`FooterWidgets`]: super::FooterWidgets
 #[doc(hidden)]
+#[derive(Clone)]
 pub struct NotificationsOpts {
-    fmt: Box<dyn FnMut(Record) -> Text + Send>,
-    get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
     allowed_levels: Vec<Level>,
     request_width: bool,
 }
@@ -154,8 +174,8 @@ impl NotificationsOpts {
         let notifications = Notifications {
             logs: context::logs(),
             text: Text::new(),
-            format_rec: self.fmt,
-            get_mask: self.get_mask,
+            fmt: None,
+            get_mask: None,
             levels: self.allowed_levels,
             last_rec: None,
             request_width: self.request_width,
@@ -177,7 +197,14 @@ impl NotificationsOpts {
     ///
     /// [`set_allowed_levels`]: Self::set_allowed_levels
     pub fn fmt<T: Into<Text>>(&mut self, mut fmt: impl FnMut(Record) -> T + Send + 'static) {
-        self.fmt = Box::new(move |rec| fmt(rec).into());
+        *GLOBAL_FMT.lock().unwrap() = Some(Box::new(move |rec| fmt(rec).into()));
+    }
+
+    /// Changes how [`Notifications`] decides which [mask] to use
+    ///
+    /// [mask]: duat_core::context::Handle::set_mask
+    pub fn set_mask(&mut self, get_mask: impl FnMut(Record) -> &'static str + Send + 'static) {
+        *GLOBAL_GET_MASK.lock().unwrap() = Some(Box::new(get_mask));
     }
 
     /// Filters which [`Level`]s willl show notifications
@@ -188,13 +215,6 @@ impl NotificationsOpts {
         self.allowed_levels = levels.into_iter().collect();
     }
 
-    /// Changes how [`Notifications`] decides which [mask] to use
-    ///
-    /// [mask]: duat_core::context::Handle::set_mask
-    pub fn set_mask(&mut self, get_mask: impl FnMut(Record) -> &'static str + Send + 'static) {
-        self.get_mask = Box::new(get_mask);
-    }
-
     /// Requests the width when printing to the screen
     pub(crate) fn request_width(&mut self) {
         self.request_width = true;
@@ -203,28 +223,26 @@ impl NotificationsOpts {
 
 impl Default for NotificationsOpts {
     fn default() -> Self {
-        fn default_fmt(rec: Record) -> Text {
-            match rec.level() {
-                Level::Error | Level::Warn | Level::Debug => rec.text().clone(),
-                Level::Info => rec.text().clone(),
-                Level::Trace => unreachable!(),
-            }
-        }
-        fn default_get_mask(rec: Record) -> &'static str {
-            match rec.level() {
-                context::Level::Error => "error",
-                context::Level::Warn => "warn",
-                context::Level::Info => "info",
-                context::Level::Debug => "debug",
-                context::Level::Trace => unreachable!(),
-            }
-        }
-
         Self {
-            fmt: Box::new(default_fmt),
-            get_mask: Box::new(default_get_mask),
             allowed_levels: vec![Level::Error, Level::Warn, Level::Info],
             request_width: false,
         }
+    }
+}
+
+fn default_fmt(rec: Record) -> Text {
+    match rec.level() {
+        Level::Error | Level::Warn | Level::Debug => rec.text().clone(),
+        Level::Info => rec.text().clone(),
+        Level::Trace => unreachable!(),
+    }
+}
+fn default_get_mask(rec: Record) -> &'static str {
+    match rec.level() {
+        context::Level::Error => "error",
+        context::Level::Warn => "warn",
+        context::Level::Info => "info",
+        context::Level::Debug => "debug",
+        context::Level::Trace => unreachable!(),
     }
 }

@@ -1,37 +1,23 @@
 //! General options for Duat
-//! 
 //!
-//! These options apply _globally_, and mostly serve as convenience
-//! methods to modify Duat's [widgets]. If you wish to apply them on a
+//! These options apply _globally_ and mostly serve as convenience
+//! methods to modify Duat's behavior. If you wish to apply them on a
 //! case by case way, you should reach out for [hooks].
 //!
-//! This module is primarily concerned with adding configuration for
-//! the following [`Widget`]s:
+//! The main way in which things are configured is through the
+//! [`opts::set`] function, which serves as a way to set options for
+//! newly opened [`Widget`]s and various other properties of Duat.
 //!
-//! - [`Buffer`], through [`opts::set`].
-//! - [`LineNumbers`], through [`opts::set_lines`].
-//! - [`StatusLine`], through [`opts::set_status`].
-//! - [`Notifications`], through [`opts::set_notifs`].
-//! - [`LogBook`], through [`opts::set_logs`].
-//! - [`WhichKey`], through, [`opts::set_which_key`].
-//!
-//! Additionally, there are some options pertaining to the group of
-//! `Widget`s at the bottom (`StatusLine`, `PromptLine` and
-//! `Notifications`):
-//!
-//! - [`opts::footer_on_top`]: Places them on top of the screen.
-//! - [`opts::one_line_footer`]: Makes the footer a one line group.
-//!
-//! If you want to remove the default `Buffer` widgets (`LineNumbers`
-//! and `VertRule`), you can add:
+//! If you want to remove the default `Buffer` widgets
+//! ([`LineNumbers`] and [`VertRule`]), you can add:
 //!
 //! ```rust
 //! # use duat::prelude::*;
 //! hook::remove("BufferWidgets");
 //! ```
 //!
-//! If you want to remove the [`FooterWidgets`] (`StatusLine`,
-//! `PromptLine` and `Notifications`), you can add:
+//! If you want to remove the [`FooterWidgets`] ([`StatusLine`],
+//! [`PromptLine`] and [`Notifications`]), you can add:
 //!
 //! ```rust
 //! # use duat::prelude::*;
@@ -48,6 +34,7 @@
 //! [`Widget`]: crate::widgets::Widget
 //! [`Buffer`]: crate::widgets::Buffer
 //! [`LineNumbers`]: crate::widgets::LineNumbers
+//! [`VertRule`]: duat_term::VertRule
 //! [`StatusLine`]: crate::widgets::StatusLine
 //! [`PromptLine`]: crate::widgets::PromptLine
 //! [`Notifications`]: crate::widgets::Notifications
@@ -55,20 +42,10 @@
 //! [`FooterWidgets`]: crate::widgets::FooterWidgets
 //! [`WhichKey`]: crate::widgets::WhichKey
 //! [`opts::set`]: set
-//! [`opts::set_lines`]: set_lines
-//! [`opts::set_status`]: set_status
-//! [`opts::set_notifs`]: set_notifs
-//! [`opts::set_logs`]: set_logs
-//! [`opts::set_which_key`]: set_which_key
-//! [`opts::footer_on_top`]: footer_on_top
-//! [`opts::one_line_footer`]: one_line_footer
 //! [`PromptLineBuilder::push_on`]: crate::widgets::PromptLineBuilder::push_on
 use std::{
     any::TypeId,
-    sync::{
-        LazyLock, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{LazyLock, Mutex},
 };
 
 use duat_base::widgets::{LineNumbersOpts, LogBookOpts, StatusLineFmt};
@@ -84,78 +61,324 @@ use duatmode::opts::DuatModeOpts;
 
 use crate::widgets::NotificationsOpts;
 
-/// Options for the [`Buffer`]
-///
-/// [`Buffer`]: crate::widgets::Buffer
-pub(crate) static BUFFER_OPTS: Mutex<PrintOpts> = Mutex::new(PrintOpts::default_for_input());
-pub(crate) static LINENUMBERS_OPTS: Mutex<LineNumbersOpts> = Mutex::new(LineNumbersOpts::new());
+pub(crate) static OPTS: LazyLock<Mutex<StartOpts>> = LazyLock::new(Mutex::default);
 pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
-pub(crate) static NOTIFICATIONS_FN: LazyLock<NotificationsFn> =
-    LazyLock::new(|| Mutex::new(Box::new(|_| {})));
-pub(crate) static LOGBOOK_FN: LazyLock<LogBookFn> = LazyLock::new(|| Mutex::new(Box::new(|_| {})));
-pub(crate) static HELP_KEY: Mutex<Option<KeyEvent>> =
-    Mutex::new(Some(KeyEvent::new(KeyCode::Char('?'), KeyMod::CONTROL)));
-pub(crate) static WHICHKEY_OPTS: LazyLock<Mutex<WhichKeyOpts>> = LazyLock::new(Mutex::default);
 
-pub(crate) static FOOTER_ON_TOP: AtomicBool = AtomicBool::new(false);
-pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
+/// General options to set when starting Duat
+pub struct StartOpts {
+    /// Enables wrapping of lines
+    ///
+    /// The default is `true`
+    pub wrap_lines: bool,
+    /// Wrap on word boundaries, rather than on any character
+    ///
+    /// The default is `false`.
+    pub wrap_on_word: bool,
+    /// Where to start wrapping
+    ///
+    /// The default is `None`
+    ///
+    /// If this value is `None` and `opts.wrap_lines == false`, then
+    /// wrapping will take place at the right edge of the screen.
+    ///
+    /// Otherwise, if it is `Some({cap})`, then wrapping will take
+    /// place `{cap}` cells from the left edge. This value may or may
+    /// not be greater than the width of the area. If it is greater
+    /// than it, then wrapping will take place slightly outside the
+    /// screen as a concequence.
+    pub wrapping_cap: Option<u32>,
+    /// Whether to indent wrapped lines or not
+    ///
+    /// In [`Buffer`]s, the default is `true`.
+    ///
+    /// This turns this:
+    ///
+    /// ```text
+    ///     This is a very long line of text, so long that it
+    /// wraps around
+    /// ```
+    ///
+    /// Into this:
+    ///
+    /// ```text
+    ///     This is a very long line of text, so long that it
+    ///     wraps around
+    /// ```
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub indent_wraps: bool,
+    /// How long tabs should be on screen
+    ///
+    /// In [`Buffer`]s, the default is `4`
+    ///
+    /// This also affect other things, like if your tabs are converted
+    /// into spaces, this will also set how many spaces should be
+    /// added.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub tabstop: u8,
+    /// Wether to print the `'\n'` character as an empty space (`' '`)
+    ///
+    /// In [`Buffer`]s, the default is `true`
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub print_new_line: bool,
+    /// How much space to keep between the cursor and edges
+    ///
+    /// In [`Buffer`]s, the default is `ScrollOff { x: 3, y: 3 }`
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub scrolloff: ScrollOff,
+    /// Whether to limit scrolloff at the end of lines
+    ///
+    /// In [`Buffer`]s, the default is `false`
+    ///
+    /// This makes it so, as you reach the end of a long line of text,
+    /// the cursor line will continue scrolling to the left,
+    /// maintaining the `scrolloff.x`'s gap.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub force_scrolloff: bool,
+    /// Extra characters to be considered part of a word
+    ///
+    /// The default is `&[]`.
+    ///
+    /// Normally, word characters include all of those in the [`\w`]
+    /// character set, which most importantly includes `[0-9A-Za-z_]`.
+    ///
+    /// You can use this setting to add more characters to that list,
+    /// usually something like `-`, `$` or `@`, which are useful to
+    /// consider as word characters in some circumstances.
+    ///
+    /// [`\w`]: https://www.unicode.org/reports/tr18/#word
+    pub extra_word_chars: &'static [char],
+    /// Whether to show [ghoxt text]
+    ///
+    /// In [`Buffer`]s, the default is `true`
+    ///
+    /// This is just a switch to decide if you want ghosts or not.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [ghoxt text]: crate::text::Ghost
+    pub show_ghosts: bool,
+    /// Wether to allow the [`Text`] to scroll until only
+    /// `scrolloff.y` line are on screen
+    ///
+    /// In [`Buffer`]s, the default is `true`
+    ///
+    /// If you disable this, when your cursor reaches the end of the
+    /// text, if try to scroll the text down, nothing will happen.
+    /// Otherwise, the text will continue scrolling down until there
+    /// are only `scrolloff.y` lines visible on screen.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`Text`]: crate::text::Text
+    pub allow_overscroll: bool,
+    /// Options concerning the [`duatmode`] [`Mode`]s
+    ///
+    /// `duatmode` is the default key arrangement of Duat. These
+    /// options tweak the behavior of this arrangement.
+    ///
+    /// Note that you can have other arrangements for `mode`s, (e.g. a
+    /// vim one, or a helix one), and these options may not apply to
+    /// those.
+    pub duatmode: DuatModeOpts,
+    /// Makes the [`FooterWidgets`] take up one line instead of two
+    ///
+    /// Normally, the [`StatusLine`] is placed in one line and the
+    /// [`PromptLine`] and [`Notifications`] are placed on another.
+    /// With this option set to `true`, they will all occupy one
+    /// line, the same way Kakoune does it.
+    ///
+    /// If you don't call [`opts::set_status`], this will also
+    /// reformat the [`StatusLine`] to this:
+    ///
+    /// ```rust
+    /// # use duat::prelude::*;
+    /// let mode = mode_txt();
+    /// status!("{AlignRight}{name_txt} {mode} {sels_txt} {main_txt}");
+    /// ```
+    ///
+    /// This will firmly put all the information on the right side,
+    /// like Kakoune does.
+    ///
+    /// [`FooterWidgets`]: crate::widgets::FooterWidgets
+    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`PromptLine`]: crate::widgets::PromptLine
+    /// [`Notifications`]: crate::widgets::Notifications
+    /// [`Widget`]: crate::widgets::Widget
+    /// [`opts::set_status`]: set_status
+    pub one_line_footer: bool,
+    /// Place the [`FooterWidgets`]s on top of the screen
+    ///
+    /// Normally, the [`StatusLine`], [`PromptLine`] and
+    /// [`Notifications`] [`Widget`]s are placed at the bottom of
+    /// the screen, you can use this option to change that.
+    ///
+    /// [`FooterWidgets`]: crate::widgets::FooterWidgets
+    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`PromptLine`]: crate::widgets::PromptLine
+    /// [`Notifications`]: crate::widgets::Notifications
+    /// [`Widget`]: crate::ui::Widget
+    pub footer_on_top: bool,
+    /// A [`KeyEvent`] to show the [`WhichKey`] widget
+    ///
+    /// If [`None`] is given, the help key functionality will be
+    /// disabled entirely, though the `WhichKey` widget will
+    /// continue to show up automatically when appropriate. You
+    /// can disable that functionality by [removing] the
+    /// `"WhichKey"` hook.
+    ///
+    /// [`WhichKey`]: crate::widgets::WhichKey
+    /// [removing]: crate::hook::remove
+    pub help_key: Option<KeyEvent>,
+    /// Options for the [`LineNumbers`]s widget
+    ///
+    /// Do note that, at the moment, these options only apply to newly
+    /// opened `LineNumbers`s, not to those that already exist.
+    ///
+    /// [`LineNumbers`]: crate::widgets::LineNumbers
+    pub line_numbers: LineNumbersOpts,
+    /// Options for the [`Notifications`] widget
+    ///
+    /// The main purpose of these options is to modify how messages
+    /// get displayed in the `Widget`, here's how you can do that:
+    ///
+    /// ```rust
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
+    ///
+    /// fn setup() {
+    ///     opts::set(|opts| {
+    ///         use context::Level::*;
+    ///
+    ///         opts.notifications.fmt(|rec| {
+    ///             let mut builder = Text::builder();
+    ///
+    ///             match rec.level() {
+    ///                 Error => builder.push(txt!("[log_book.error]  ")),
+    ///                 Warn => builder.push(txt!("[log_book.warn]  ")),
+    ///                 Info => builder.push(txt!("[log_book.info]  ")),
+    ///                 Debug => builder.push(txt!("[log_book.debug]  ")),
+    ///                 Trace => unreachable!(""),
+    ///             };
+    ///
+    ///             builder.push(rec.text().clone());
+    ///
+    ///             builder.build()
+    ///         });
+    ///
+    ///         opts.set_allowed_levels([Error, Warn, Info, Debug]);
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// In the snippet above, I'm reformatting the notifications, so
+    /// they show a symbol for identification. I'm also making use
+    /// of the `log_book.{}` forms, since those are already set by
+    /// the [`LogBook`].
+    ///
+    /// Do note that, at the moment, these options only apply to newly
+    /// opened `Notifications`s, not to those that already exist.
+    ///
+    /// [`Notifications`]: crate::widgets::Notifications
+    /// [`LogBook`]: crate::widgets::LogBook
+    pub notifications: NotificationsOpts,
+    /// Changes the [`WhichKey`] widget
+    ///
+    /// This is the [`Widget`] that shows available bindings, as well
+    /// as any possible remappings to those bindings, whenever you
+    /// type a multi key sequence (and on other circumstances too).
+    ///
+    /// [`WhichKey`]: crate::widgets::WhichKey
+    /// [`Widget`]: crate::widgets::Widget
+    pub whichkey: WhichKeyOpts,
+    /// Options for the [`LogBook`] widget
+    ///
+    /// You can open the `LogBook` by calling the `"logs"` command,
+    /// which will also focus on the `Widget`.
+    ///
+    /// By default, the `LogBook` will be shown at the bottom of the
+    /// screen, and it shows the full log of notifications sent do
+    /// Duat, unlike the [`Notifications`] `Widget`, which shows
+    /// only the last one.
+    ///
+    /// You can change how the logs are displayed, here's how:
+    ///
+    /// ```rust
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
+    ///
+    /// fn setup() {
+    ///     opts::set(|opts| {
+    ///         let opts = &mut opts.logs;
+    ///
+    ///         opts.fmt(|rec| match rec.level() {
+    ///             context::Level::Error => Some(txt!("[log_book.error]  {}", rec.text())),
+    ///             _ => None,
+    ///         });
+    ///
+    ///         opts.hidden = false;
+    ///         opts.close_on_unfocus = false;
+    ///         opts.side = ui::Side::Right;
+    ///         opts.width = 75.0;
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// Here, I'm reformatting the notifications. Note that the
+    /// closure return [`Some`] only when the notification is of
+    /// type [`Level::Error`]. This filters out other types of
+    /// notifications, which could be useful for heavy debugging
+    /// sessions.
+    ///
+    /// Also helpful for debugging are the other options set. For
+    /// example, if you're debugging a Duat [`Plugin`], it would
+    /// be useful to show the [`LogBook`] right as Duat is
+    /// reloaded, so you can see diagnostics immediately.
+    ///
+    /// Do note that, at the moment, these options only apply to newly
+    /// opened `LogBook`s, not to those that already exist.
+    ///
+    /// [`Notifications`]: crate::widgets::Notifications
+    /// [`Level::Error`]: crate::context::Level::Error
+    /// [`Plugin`]: crate::Plugin
+    /// [`LogBook`]: crate::widgets::LogBook
+    pub logs: LogBookOpts,
+}
 
-/// Change the global [`PrintOpts`] for [`Buffer`]s
+impl Default for StartOpts {
+    fn default() -> Self {
+        Self {
+            wrap_lines: false,
+            wrap_on_word: false,
+            wrapping_cap: None,
+            indent_wraps: true,
+            tabstop: 4,
+            print_new_line: true,
+            scrolloff: ScrollOff { x: 3, y: 3 },
+            extra_word_chars: &[],
+            force_scrolloff: false,
+            show_ghosts: true,
+            allow_overscroll: true,
+            duatmode: DuatModeOpts::default(),
+            one_line_footer: false,
+            footer_on_top: false,
+            help_key: Some(KeyEvent::new(KeyCode::Char('?'), KeyMod::CONTROL)),
+            line_numbers: LineNumbersOpts::default(),
+            notifications: NotificationsOpts::default(),
+            whichkey: WhichKeyOpts::default(),
+            logs: LogBookOpts::default(),
+        }
+    }
+}
+
+/// Changes global options for Duat
 ///
-/// In this function, you can modify the members of `PrintOpts`, which
-/// are the following:
-///
-/// - `opts.wrap_lines: bool` - Enable wrapping of lines
-///
-///   The default is `false`
-///
-/// - `opts.wrap_on_word: bool` - Try to wrap at word boundaries
-///
-///   The default is `false`
-///
-/// - `opts.wrappint_cap: Option<u32>` - Distance to wrap from. This
-///   will ignore the area's width, so you can wrap from outside the
-///   screen, for example
-///
-///   The default is `None`
-///
-/// - `opts.indent_wrapped`: bool - Whether to indent wrapped lines
-///
-///   The default is `true`
-///
-/// - `opts.tabstop: u8` - How long tabs should be on screen
-///
-///   The default is `4`
-///
-/// - `opts.print_new_line` - Will show new lines as `' '` characters.
-///   Otherwise, they won't get printed, and a cursor on them will
-///   look invisible
-///
-///   The default is `true`
-///
-/// - `opts.scrolloff: ScrollOff` - How much space to keep between the
-///   cursor and edges
-///
-///   The default is [`ScrollOff { x: 3, y: 3 }`]
-///
-/// - `opts.force_scrolloff: bool` - Whether to limit scrolloff at the
-///   end of lines
-///
-///   The default is `false`
-///
-/// - `opts.extra_word_chars: &[char]` - Extra characters to be
-///   considered part of a word
-///
-///   The default is `&[]`
-///
-/// - `opts.show_ghosts: bool` Whether to show [ghoxt text]
-///
-///   The default is `true`
-///   
-/// - `opts.allow_overscroll: bool` Wether to allow the [`Text`] to
-///   scroll until only `scrolloff.y` line are on screen
-///
-///   The default is `true`
+/// Most of these options concern the [`Buffer`] widget, which is the
+/// primary [`Widget`] of Duat. But there are also options for the
+/// other widgets, as well as options to change the layout and
+/// behavior of Duat itself.
 ///
 /// Within the `setup` function, this is how you'd use this function;
 ///
@@ -165,11 +388,12 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 /// opts::set(|opts| {
 ///     opts.tabstop = 2;
 ///     opts.scrolloff.x = 0;
+///     opts.duatmode.indent_on_capital_i = false;
 /// });
 /// ```
 ///
 /// If you want to set these options on a [`Buffer`] by `Buffer`
-/// basis, you should reach out for [hooks], where the same
+/// basis, you should reach out for [hooks]:
 ///
 /// ```rust
 /// use duat::prelude::*;
@@ -191,85 +415,24 @@ pub(crate) static ONE_LINE_FOOTER: AtomicBool = AtomicBool::new(false);
 /// });
 /// ```
 ///
+/// Do note that in this case, the only opts available in
+/// `buffer.opts` are those that actually concern only the [`Buffer`]
+/// struct. For now this is the [`PrintOpts`], which is also used by
+/// other `Widget`s, but it will have more dedicated options in the
+/// near future.
+///
 /// More options will come in the future!
 ///
 /// [`Buffer`]: crate::widgets::Buffer
 /// [`ScrollOff { x: 3, y: 3 }`]: ScrollOff
 /// [hooks]: crate::hook
 /// [`Text`]: crate::text::Text
-pub fn set(set_fn: impl FnOnce(&mut PrintOpts)) {
-    set_fn(&mut BUFFER_OPTS.lock().unwrap())
-}
-
-/// Sets options for the [`Insert`] and [`Normal`] modes of `duatmode`
-///
-/// [`Insert`]: duatmode::Insert
-/// [`Normal`]: duatmode::Normal
-pub fn set_duatmode(set_fn: impl FnOnce(&mut DuatModeOpts)) {
-    duatmode::opts::set(set_fn)
-}
-
-/// Change the global [`PrintOpts`] for [`LineNumber`]s
-///
-/// In this function, you can modify the members of `PrintOpts`, which
-/// are the following:
-///
-/// - `relative: bool` - Wether to show relative numbering
-///
-///   The default is `false`
-///
-/// - `align: std::fmt::Alignment` Where to align the numbers
-///
-///   The default is [`std::fmt::Alignment::Left`]
-///
-/// - `main_align: std::fmt::Alignment` Where to align the main line
-///   number
-///
-///   The default is [`std::fmt::Alignment::Right`]
-///
-/// - `opts.show_wraps: bool` - Wether to show wrapped line's numbers
-///
-///   The default is `false`
-///
-/// - `opts.on_the_right: bool` - Place this [`Widget`] on the right,
-///   as opposed to on the left
-///
-///   The default is `false`
-///   
-/// Within the `setup` function, this is how you'd use this function;
-///
-/// ```rust
-/// use duat::prelude::*;
-///
-/// opts::set_lines(|opts| {
-///     opts.align = std::fmt::Alignment::Right;
-///     opts.relative = true
-/// });
-/// ```
-///
-/// If you want to set these options on a [`Buffer`] by `Buffer`
-/// basis, you should reach out for [hooks], where the same
-///
-/// ```rust
-/// use duat::prelude::*;
-///
-/// hook::add::<LineNumbers>(|pa, handle| {
-///     let filetype = handle.buffer()?.filetype(pa);
-///
-///     handle.write(pa).relative = match filetype {
-///         Some("cpp" | "rust") => true,
-///         _ => false,
-///     };
-///     Ok(())
-/// });
-/// ```
-///
-/// [`Buffer`]: crate::widgets::Buffer
-/// [`LineNumber`]: crate::widgets::LineNumbers
-/// [hooks]: crate::hook
 /// [`Widget`]: crate::widgets::Widget
-pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
-    set_fn(&mut LINENUMBERS_OPTS.lock().unwrap())
+pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
+    let mut opts = std::mem::take(&mut *OPTS.lock().unwrap());
+    set_fn(&mut opts);
+    duatmode::opts::set(|duatmode| *duatmode = opts.duatmode);
+    *OPTS.lock().unwrap() = opts;
 }
 
 /// Reformat the [`StatusLine`] using the [`status!`] macro
@@ -319,7 +482,7 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// - [`main_col`]: column of the main cursor, 1 indexed.
 /// - [`main_txt`]: `Text` showing main cursor and line count info.
 /// - [`sels_txt`]: `Text` showing the number of cursors.
-/// - [`cur_map_txt`]: `Text` showing the keys being mapped.
+/// - [`current_sequence_txt`]: `Text` showing the keys being mapped.
 /// - [`last_key`]: The last typed key.
 ///
 /// A rule of thumb is that every argument suffixed with `_txt` is a
@@ -377,13 +540,13 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// which is a "bundle" of [`Widget`]s, including the [`PromptLine`]
 /// and [`Notifications`]. This means that it will follow
 /// them around, so you have a few options for customization of this
-/// group:
+/// group, all set in [`opts::set`]:
 ///
-/// - [`opts::footer_on_top`]: Will place the `StatusLine`,
+/// - [`Opts::footer_on_top`]: Will place the `StatusLine`,
 ///   `PromptLine`, and `Notifications` `Widget`s on top of the
 ///   window, rather than at the bottom.
 ///
-/// - [`opts::one_line_footer`]: These widgets will occupy one line,
+/// - [`Opts::one_line_footer`]: These widgets will occupy one line,
 ///   rather than two, Kakoune style.
 ///
 /// # Which [`Buffer`]?
@@ -448,7 +611,7 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// [`main_col`]: crate::state::main_col
 /// [`main_txt`]: crate::state::main_txt
 /// [`sels_txt`]: crate::state::sels_txt
-/// [`cur_map_txt`]: crate::state::cur_map_txt
+/// [`current_sequence_txt`]: crate::state::current_sequence_txt
 /// [`last_key`]: crate::state::last_key
 /// [`Display`]: std::fmt::Display
 /// [`Debug`]: std::fmt::Debug
@@ -463,192 +626,10 @@ pub fn set_lines(set_fn: impl FnOnce(&mut LineNumbersOpts)) {
 /// [`PromptLine`]: crate::widgets::PromptLine
 /// [`Notifications`]: crate::widgets::Notifications
 /// [`FooterWidgets`]: crate::widgets::FooterWidgets
-/// [`opts::one_line_footer`]: one_line_footer
-/// [`opts::footer_on_top`]: footer_on_top
-pub fn set_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
+/// [`opts::set`]: set
+pub fn fmt_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'static) {
     *STATUSLINE_FMT.lock().unwrap() = Some(Box::new(set_fn));
 }
-
-/// Changes the default [`Notifications`]
-///
-/// The main purpose of calling this function is to modify how
-/// messages get displayed in the `Widget`, here's how you can do
-/// that:
-///
-/// ```rust
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     opts::set_notifs(|opts| {
-///         use context::Level::*;
-///
-///         opts.fmt(|rec| {
-///             let mut builder = Text::builder();
-///
-///             match rec.level() {
-///                 Error => builder.push(txt!("[log_book.error]  ")),
-///                 Warn => builder.push(txt!("[log_book.warn]  ")),
-///                 Info => builder.push(txt!("[log_book.info]  ")),
-///                 Debug => builder.push(txt!("[log_book.debug]  ")),
-///                 Trace => unreachable!(""),
-///             };
-///
-///             builder.push(rec.text().clone());
-///
-///             builder.build()
-///         });
-///
-///         opts.set_allowed_levels([Error, Warn, Info, Debug]);
-///     });
-/// }
-/// ```
-///
-/// In the snippet above, I'm reformatting the notifications, so they
-/// show a symbol for identification. I'm also making use of the
-/// `log_book.{}` forms, since those are already set by the
-/// [`LogBook`].
-///
-/// Note that I'm also setting which [`Level`]s should be shown, since
-/// by default, [`Level::Debug`] is not included in that list, as it
-/// is mostly meant for the [`LogBook`]. But if you want to be
-/// notified of it, the option's there.
-///
-/// [`Notifications`]: crate::widgets::Notifications
-/// [`LogBook`]: crate::widgets::LogBook
-/// [`Level`]: crate::context::Level
-/// [`Level::Debug`]: crate::context::Level::Debug
-pub fn set_notifs(mut set_fn: impl FnMut(&mut NotificationsOpts) + Send + 'static) {
-    let mut notifications_fn = NOTIFICATIONS_FN.lock().unwrap();
-    let mut prev = std::mem::replace(&mut *notifications_fn, Box::new(|_| {}));
-    *notifications_fn = Box::new(move |opts| {
-        prev(opts);
-        set_fn(opts)
-    });
-}
-
-/// Changes the default [`LogBook`]
-///
-/// You can open the `LogBook` by calling the `"logs"` command, which
-/// will also focus on the `Widget`.
-///
-/// By default, the `LogBook` will be shown at the bottom of the
-/// screen, and it shows the full log of notifications sent do Duat,
-/// unlike the [`Notifications`] `Widget`, which shows only the last
-/// one.
-///
-/// You can change how the logs are displayed, here's how:
-///
-/// ```rust
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     opts::set_logs(|opts| {
-///         opts.fmt(|rec| match rec.level() {
-///             context::Level::Error => Some(txt!("[log_book.error]  {}", rec.text())),
-///             _ => None,
-///         });
-///
-///         opts.hidden = false;
-///         opts.close_on_unfocus = false;
-///         opts.side = ui::Side::Right;
-///         opts.width = 75.0;
-///     });
-/// }
-/// ```
-///
-/// Here, I'm reformatting the notifications. Note that the closure
-/// return [`Some`] only when the notification is of type
-/// [`Level::Error`]. This filters out other types of notifications,
-/// which could be useful for heavy debugging sessions.
-///
-/// Also helpful for debugging are the other options set. For example,
-/// if you're debugging a Duat [`Plugin`], it would be useful to show
-/// the [`LogBook`] right as Duat is reloaded, so you can see
-/// diagnostics immediately.
-///
-/// [`LogBook`]: crate::widgets::LogBook
-/// [`Notifications`]: crate::widgets::Notifications
-/// [`Level::Error`]: crate::context::Level::Error
-/// [`Plugin`]: crate::Plugin
-pub fn set_logs(mut set_fn: impl FnMut(&mut LogBookOpts) + Send + 'static) {
-    let mut logbook_fn = LOGBOOK_FN.lock().unwrap();
-    let mut prev = std::mem::replace(&mut *logbook_fn, Box::new(|_| {}));
-    *logbook_fn = Box::new(move |opts| {
-        prev(opts);
-        set_fn(opts)
-    });
-}
-
-/// Changes the [`WhichKey`] widget
-///
-/// [`WhichKey`]: crate::widgets::WhichKey
-pub fn set_which_key(set_fn: impl FnOnce(&mut WhichKeyOpts)) {
-    let mut whichkey_opts = WHICHKEY_OPTS.lock().unwrap();
-    set_fn(&mut whichkey_opts);
-}
-
-/// Makes the [`FooterWidgets`] take up one line instead of two
-///
-/// Normally, the [`StatusLine`] is placed in one line and the
-/// [`PromptLine`] and [`Notifications`] are placed on another. With
-/// this option set to `true`, they will all occupy one line, the same
-/// way Kakoune does it.
-///
-/// If you don't call [`opts::set_status`], this will also reformat
-/// the [`StatusLine`] to this:
-///
-/// ```rust
-/// # use duat::prelude::*;
-/// let mode = mode_txt();
-/// status!("{AlignRight}{name_txt} {mode} {sels_txt} {main_txt}");
-/// ```
-///
-/// This will firmly put all the information on the right side, like
-/// Kakoune does.
-///
-/// [`FooterWidgets`]: crate::widgets::FooterWidgets
-/// [`StatusLine`]: crate::widgets::StatusLine
-/// [`PromptLine`]: crate::widgets::PromptLine
-/// [`Notifications`]: crate::widgets::Notifications
-/// [`Widget`]: crate::widgets::Widget
-/// [`opts::set_status`]: set_status
-pub fn one_line_footer(one_line: bool) {
-    ONE_LINE_FOOTER.store(one_line, Ordering::Relaxed);
-}
-
-/// Place the [`FooterWidgets`]s on top of the screen
-///
-/// Normally, the [`StatusLine`], [`PromptLine`] and [`Notifications`]
-/// [`Widget`]s are placed at the bottom of the screen, you can use
-/// this option to change that.
-///
-/// [`FooterWidgets`]: crate::widgets::FooterWidgets
-/// [`StatusLine`]: crate::widgets::StatusLine
-/// [`PromptLine`]: crate::widgets::PromptLine
-/// [`Notifications`]: crate::widgets::Notifications
-/// [`Widget`]: crate::ui::Widget
-pub fn footer_on_top(on_top: bool) {
-    FOOTER_ON_TOP.store(on_top, Ordering::Relaxed);
-}
-
-/// A [`KeyEvent`] to show the [`WhichKey`] widget
-///
-/// If [`None`] is given, the help key functionality will be disabled
-/// entirely, though the `WhichKey` widget will continue to show up
-/// automatically when appropriate. You can disable that functionality
-/// by [removing] the `"WhichKey"` hook.
-///
-/// [`WhichKey`]: crate::widgets::WhichKey
-/// [removing]: crate::hook::remove
-pub fn set_help_key(key_event: Option<KeyEvent>) {
-    *HELP_KEY.lock().unwrap() = key_event;
-}
-
-type StatusLineFn = Mutex<Option<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>>;
-type NotificationsFn = Mutex<Box<dyn FnMut(&mut NotificationsOpts) + Send>>;
-type LogBookFn = Mutex<Box<dyn FnMut(&mut LogBookOpts) + Send>>;
 
 /// Options for the [`WhichKey`] widget
 ///
@@ -768,3 +749,5 @@ impl WhichKeyOpts {
             .retain(|ty| *ty != TypeId::of::<M>());
     }
 }
+
+type StatusLineFn = Mutex<Option<Box<dyn FnMut(&mut Pass) -> StatusLineFmt + Send>>>;
