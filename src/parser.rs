@@ -150,10 +150,16 @@ impl Parser {
             self.ranges_to_inject.add(0..parts.bytes.len().byte());
         }
 
-        let ranges_to_inject: Vec<Range<usize>> = visible_ranges
+        let ranges_to_inject = visible_ranges
             .iter()
             .flat_map(|range| self.ranges_to_inject.iter_over(range.clone()))
-            .collect();
+            .fold(Vec::<Range<usize>>::new(), |mut ranges, range| {
+                match ranges.last_mut() {
+                    Some(last) if last.end == range.start => last.end = range.end,
+                    _ => ranges.push(range),
+                }
+                ranges
+            });
 
         for range in ranges_to_inject {
             self.inject(range, parts, handle);
@@ -275,11 +281,18 @@ impl Parser {
         }
     }
 
-    fn inject(&mut self, orig_range: Range<usize>, parts: &mut BufferParts, handle: &Handle) {
-        // This is done to prevent situations where the range of a touching
-        // injection isn't looked at, leading to its removal.
-        let range =
-            orig_range.start.saturating_sub(1)..(orig_range.end + 1).min(parts.bytes.len().byte());
+    fn inject(&mut self, range: Range<usize>, parts: &mut BufferParts, handle: &Handle) {
+        let range = self
+            .injections
+            .iter()
+            .flat_map({
+                let range = range.clone();
+                move |inj| inj.trees.intersecting(range.clone())
+            })
+            .fold(range, |range, (_, tree)| {
+                let inj_range = tree.region.iter().next().unwrap();
+                range.start.min(inj_range.start)..range.end.max(inj_range.end)
+            });
 
         let buf = TsBuf(parts.bytes);
         let (.., Queries { injections, .. }) = self.lang_parts;
@@ -366,6 +379,8 @@ impl Parser {
                     parts.ranges_to_update.add_ranges([cap_range.clone()]);
                 };
 
+                duat_core::context::debug!("{}, {:?}", lang_parts.0, cap_range.clone());
+
                 observed_injections.push((lang_parts.0, cap_range.clone()));
             }
         }
@@ -394,7 +409,7 @@ impl Parser {
             }
         }
 
-        _ = self.ranges_to_inject.remove_on(orig_range);
+        _ = self.ranges_to_inject.remove_on(range);
 
         for range in defered_ranges {
             self.ranges_to_inject.add(range);
@@ -784,6 +799,9 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TsPoint {
 #[track_caller]
 fn apply_changes(parts: &BufferParts<'_>, parser: &mut Parser) {
     for change in parts.changes.clone() {
+        let start = parts.bytes.point_at_line(change.start().line());
+        let end = parts.bytes.point_at_line(change.added_end().line() + 1);
+        parts.ranges_to_update.add_ranges([start..end]);
         let edit = input_edit(change, parts.bytes);
         parser.edit(&edit);
     }
