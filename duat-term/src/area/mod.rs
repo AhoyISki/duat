@@ -817,7 +817,11 @@ pub fn print_text(
                     }
                 }
                 for id in spawns_for_next.drain(..) {
-                    observed_spawns.push((id, Coord::new(lines.coords().tl.x + x, y - 1), len));
+                    observed_spawns.push((
+                        id,
+                        Coord::new(lines.coords().tl.x + x - x_shift, y - 1),
+                        len,
+                    ));
                 }
 
                 last_len = x + len - x_shift;
