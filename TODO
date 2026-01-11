@@ -6,7 +6,7 @@ FOR NEXT UPDATE:
     [x] Widget integration.
     [?] Mode integration.
 [x] Command line completion.
-  [ ] Parameter completion.
+  [x] Parameter completion.
 [x] File path completion.
 [x] Forcefully evaluate height and width when requested.
 [x] Actually fix injected indentation.
@@ -28,13 +28,13 @@ FOR NEXT UPDATE:
   [x] On search.rs.
   [x] On cursor.rs.
 [x] Properly separated frame on frame spawns.
+[ ] Put all options in a single struct.
 
 KNOWN BUGS:
  HIGH PRIORITY:
   [ ] Get rid of Text::selections_mut.
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
   [ ] Indentation is inefficient.
-  [ ] File/Buffer completion can't handle spaces.
   [ ] Scrolling is bugged on Logs (???).
              
  LOW PRIORITY:
@@ -49,7 +49,6 @@ KNOWN BUGS:
 FUTURE UPDATES:
 [ ] Multiple parameter completions at the same time.
 [ ] An API like search but for chars.
-[ ] Put all options in a single struct.
 [ ] Strs QOL.
 [ ] Hover to reveal full shell expansion.
 [ ] Add a little button next to tree-sitter injections to download them.

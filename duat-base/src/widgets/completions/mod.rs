@@ -324,19 +324,19 @@ impl Completions {
         let (master, area, comp) =
             pa.write_many((master_handle.widget(), handle.area(), handle.widget()));
 
-        let rep = {
+        let mat = {
             let mut lists: Vec<_> = comp
                 .providers
                 .iter_mut()
                 .map(|inner| {
-                    let texts_and_rep = inner.texts_and_match(
+                    let texts_and_match = inner.texts_and_match(
                         master.text(),
                         scroll,
                         Some(area),
                         comp.max_height,
                         comp.show_without_prefix,
                     );
-                    (texts_and_rep, inner.get_start_fn())
+                    (texts_and_match, inner.start_fn())
                 })
                 .collect();
             lists.sort_by_key(|((start, _), _)| *start);
@@ -347,7 +347,7 @@ impl Completions {
 
         // Believe it or not, this is necessary to prevent Drop semantincs
         // from invalidating the following code.
-        let (other, start_fn) = rep.unzip();
+        let (other, start_fn) = mat.unzip();
 
         let main_repl = if let Some((start_byte, ((text, sides), replacement))) = other {
             comp.text = text;
@@ -372,10 +372,7 @@ impl Completions {
                 let mut shift = 0;
 
                 master_handle.edit_all(pa, |mut c| {
-                    let Some(start) = starts.next().unwrap() else {
-                        return;
-                    };
-                    let start = (start as i32 + shift) as usize;
+                    let start = (starts.next().unwrap() as i32 + shift) as usize;
                     shift += replacement.len() as i32 - (c.caret().byte() as i32 - start as i32);
 
                     c.move_to(start..c.caret().byte());
@@ -690,7 +687,7 @@ trait ErasedInnerProvider: Any + Send {
     fn has_changed(&self, text: Option<&Text>) -> bool;
 
     #[allow(clippy::type_complexity)]
-    fn get_start_fn(&self) -> Box<dyn Fn(&Text, Point) -> Option<usize> + '_>;
+    fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_>;
 }
 
 #[allow(clippy::type_complexity)]
@@ -768,20 +765,14 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     ) {
         use FilteredEntries::*;
-        let Some(main_caret) = text.get_main_sel().map(|sel| sel.caret()) else {
+        let Some(caret) = text.get_main_sel().map(|sel| sel.caret()) else {
             panic!("Tried to spawn completions on a Text with no main selection");
         };
 
-        let Some(start) = self.provider.get_start(text, main_caret) else {
-            return (main_caret.byte(), None);
-        };
+        let start = self.provider.get_start(text, caret).unwrap_or(caret.byte());
 
-        let Some(prefix) = text
-            .strs(start..main_caret.byte())
-            .as_ref()
-            .map(Strs::to_string)
-        else {
-            panic!("Failed to get prefix from {:?}", start..main_caret.byte());
+        let Some(prefix) = text.strs(start..caret.byte()).as_ref().map(Strs::to_string) else {
+            panic!("Failed to get prefix from {:?}", start..caret.byte());
         };
 
         // This should only be true if edits other than the one applied by
@@ -794,7 +785,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         {
             self.entries = self
                 .provider
-                .completions(text, main_caret, &prefix, true)
+                .completions(text, caret, &prefix, true)
                 .entries;
         }
 
@@ -819,10 +810,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.orig_prefix = prefix;
         }
 
-        if max_height == 0
-            || entries.is_empty()
-            || (start == main_caret.byte() && !show_without_prefix)
-        {
+        if entries.is_empty() || (start == caret.byte() && !show_without_prefix) {
             self.current = None;
             return (start, None);
         }
@@ -913,18 +901,20 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         };
 
         let word_has_changed = text.is_some_and(|text| {
-            let prefix = self
+            let start = self
                 .provider
                 .get_start(text, main.caret())
-                .and_then(|start| text.strs(start..main.caret().byte()));
-            prefix.is_none_or(|prefix| prefix != self.orig_prefix.as_str())
+                .unwrap_or(main.caret().byte());
+            let prefix = text.strs(start..main.caret().byte()).unwrap();
+
+            prefix != self.orig_prefix.as_str()
         });
 
         word_has_changed || self.provider.has_changed()
     }
 
-    fn get_start_fn(&self) -> Box<dyn Fn(&Text, Point) -> Option<usize> + '_> {
-        Box::new(|text, caret| self.provider.get_start(text, caret))
+    fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_> {
+        Box::new(|text, caret| self.provider.get_start(text, caret).unwrap_or(caret.byte()))
     }
 }
 
@@ -1021,7 +1011,7 @@ mod fixed {
         }
 
         fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-            Some(text.search("[ \n]*").range(..caret).next()?.start)
+            Some(text.search(r"\S*").range(..caret).next_back()?.start)
         }
 
         fn has_changed(&self) -> bool {
@@ -1061,7 +1051,7 @@ mod fixed {
         }
 
         fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-            Some(text.search("[ \n]*").range(..caret).next()?.start)
+            Some(text.search(r"\S*").range(..caret).next_back()?.start)
         }
 
         fn has_changed(&self) -> bool {

@@ -48,6 +48,8 @@ use std::{
     sync::{LazyLock, OnceLock, RwLock},
 };
 
+pub use shellexpand::full as expand_path;
+
 use crate::text::{Text, txt};
 
 /// Takes a type and generates an appropriate name for it

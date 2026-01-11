@@ -9,7 +9,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use duat_core::text::{Point, Spacer, Text, txt};
+use duat_core::{
+    text::{Point, RegexHaystack, Spacer, Text, txt},
+    utils::expand_path,
+};
 
 use super::CompletionsList;
 use crate::widgets::{CompletionsKind, CompletionsProvider};
@@ -44,14 +47,19 @@ impl CompletionsProvider for PathCompletions {
         prefix: &str,
         target_changed: bool,
     ) -> CompletionsList<Self> {
-        let Some((cur_dir, entries)) = get_entries(prefix, self.for_parameters, target_changed)
+        let prefix = match prefix.strip_prefix("'") {
+            Some(prefix) => prefix,
+            None => prefix,
+        };
+        
+        let Some((cur_dir, prefix, entries)) =
+            get_entries(prefix, self.for_parameters, target_changed)
         else {
             return CompletionsList {
                 entries: Vec::new(),
                 kind: CompletionsKind::UnfinishedFiltered,
             };
         };
-        duat_core::context::debug!("entries acquired");
 
         let mut entries: Vec<_> = entries
             .filter_map(|entry| entry.ok())
@@ -68,7 +76,11 @@ impl CompletionsProvider for PathCompletions {
                     path.to_mut().push(separator());
                 }
 
-                super::string_cmp(prefix, &path).map(|_| (path.to_string(), ()))
+                if path.chars().any(|char| char.is_whitespace()) {
+                    path.to_mut().insert(0, '\'');
+                }
+
+                super::string_cmp(&prefix, &path).map(|_| (path.to_string(), ()))
             })
             .collect();
 
@@ -76,7 +88,7 @@ impl CompletionsProvider for PathCompletions {
         entries.sort_by_key(|(path, _)| {
             (
                 !path.ends_with(possible_separators()),
-                super::string_cmp(prefix, path).unwrap(),
+                super::string_cmp(&prefix, path).unwrap(),
             )
         });
 
@@ -90,28 +102,34 @@ impl CompletionsProvider for PathCompletions {
     fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
         use duat_core::text::RegexHaystack;
 
-        text.search(if self.for_parameters {
-            "[^ \n]*"
+        if self.for_parameters {
+            text.search([" '([^']|\\')*", "[^ \n]*"])
+                .range(..caret)
+                .next_back()
+                .map(|(pat_id, range)| range.start + (pat_id == 0) as usize)
         } else {
-            "[^ /\n\t]*/.*"
-        })
-        .range(..caret)
-        .next_back()
-        .map(|r| r.start)
+            text.search("[^ /\n\t]*/.*")
+                .range(..caret)
+                .next_back()
+                .map(|range| range.start)
+        }
     }
 
     #[cfg(target_os = "windows")]
     fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
         use duat_core::text::RegexHaystack;
 
-        text.search(if self.for_parameters {
-            "[^ \n]*"
+        if self.for_parameters {
+            text.search(["[^ \n]*", " '([^']|\\')*"])
+                .range(..caret)
+                .next_back()
+                .map(|(pat_id, range)| range.start + 2 * (pat_id == 1) as usize)
         } else {
-            "[^ /\\\n\t]*((/|\\).*)*"
-        })
-        .range(..caret)
-        .next_back()
-        .map(|r| r.start)
+            text.search("[^ /\\\n\t]*(/|\\).*")
+                .range(..caret)
+                .next_back()
+                .map(|range| range.start)
+        }
     }
 
     fn has_changed(&self) -> bool {
@@ -123,18 +141,22 @@ fn get_entries(
     prefix: &str,
     for_parameters: bool,
     target_changed: bool,
-) -> Option<(Option<PathBuf>, ReadDir)> {
-    let path = Path::new(prefix);
+) -> Option<(Option<PathBuf>, String, ReadDir)> {
+    let expanded = expand_path(prefix).ok()?.to_string();
+    let path = Path::new(&expanded);
+
     if target_changed && prefix.ends_with(possible_separators()) && path.is_dir() {
-        Some((None, path.read_dir().ok()?))
+        let read_dir = path.read_dir().ok()?;
+        Some((None, expanded, read_dir))
     } else if let Some(parent) = path.parent()
         && parent != ""
     {
-        Some((None, parent.read_dir().ok()?))
+        let read_dir = parent.read_dir().ok()?;
+        Some((None, expanded, read_dir))
     } else if for_parameters {
         let current_dir = std::env::current_dir().ok()?;
         let read_dir = current_dir.read_dir().ok()?;
-        Some((Some(current_dir), read_dir))
+        Some((Some(current_dir), expanded, read_dir))
     } else {
         None
     }

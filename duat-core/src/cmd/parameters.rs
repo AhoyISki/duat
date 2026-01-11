@@ -1074,14 +1074,14 @@ impl<'a> Iterator for ArgsIter<'a> {
             if self.start.is_some() && char.is_whitespace() && !self.is_quoting {
                 self.end = Some(b);
                 break;
-            } else if char == '"' && lc != '\\' {
+            } else if char == '\'' && lc != '\\' {
                 self.is_quoting = !self.is_quoting;
                 if !self.is_quoting {
                     is_quoted = true;
-                    self.end = Some(b + 1);
+                    self.end = Some(b);
                     break;
                 } else {
-                    self.start = Some(b);
+                    self.start = Some(b + 1);
                 }
             } else if !char.is_whitespace() && self.start.is_none() {
                 self.start = Some(b);
