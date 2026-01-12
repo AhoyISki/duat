@@ -22,6 +22,8 @@
 //! [`SearchFwd`]: super::SearchFwd
 //! [`SearchRev`]: super::SearchRev
 //! [`Selection`]: duat_core::mode::Selection
+//! [`IncSearch`]: crate::modes::IncSearch
+//! [`IncSearcher`]: crate::modes::IncSearcher
 use std::{
     any::TypeId,
     io::Write,
@@ -69,6 +71,8 @@ static PREVIEW_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 /// [`Parameter`]: cmd::Parameter
 /// [`Selection`]: mode::Selection
 /// [`Mode`]: duat_core::mode::Mode
+/// [`IncSearch`]: crate::modes::IncSearch
+/// [`IncSearcher`]: crate::modes::IncSearcher
 pub struct Prompt {
     mode: Box<dyn PromptMode>,
     starting_text: String,
@@ -451,6 +455,8 @@ pub trait PromptMode: Send + 'static {
     /// This usually involves some sor of "commitment" to the result,
     /// e.g., [`RunCommands`] executes the call, [`IncSearch`]
     /// finishes the search, etc.
+    ///
+    /// [`IncSearch`]: crate::modes::IncSearch
     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &RwArea) {}
 
     /// A post update hook to be called on the [`Handle`] itself

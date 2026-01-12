@@ -131,7 +131,7 @@ impl EdgeCoords {
     }
 }
 
-/// Where to apply a [`Brush`] around widgets
+/// Where to apply a [`BorderStyle`] around widgets
 ///
 /// This type serves to determine whether frames will be applied only
 /// between widgets, around the whole application, or not at all:
@@ -198,7 +198,7 @@ impl Border {
         }
     }
 
-    /// The [`Brush`] in use, [`None`] for [`Border::Empty`]
+    /// The [`BorderStyle`] in use, [`None`] for [`Border::Empty`]
     fn style(&self) -> Option<BorderStyle> {
         match self {
             Self::Empty => None,

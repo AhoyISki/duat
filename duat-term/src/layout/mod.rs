@@ -998,6 +998,7 @@ impl Constraints {
 /// fields as necessary.
 ///
 /// [`Area`]: super::Area
+/// [`Widget`]: duat_core::ui::Widget
 #[derive(Default, Clone)]
 #[allow(clippy::type_complexity)]
 pub struct Frame {

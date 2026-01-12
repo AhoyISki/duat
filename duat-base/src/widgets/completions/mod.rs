@@ -221,7 +221,7 @@ impl Completions {
     /// `Completions` list.
     ///
     /// You can add `CompletionsProvider`s by calling
-    /// [`CompletionsBuilder::add_provider`].
+    /// [`CompletionsBuilder::with_provider`].
     pub fn builder() -> CompletionsBuilder {
         CompletionsBuilder {
             providers: None,
@@ -586,7 +586,6 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     /// were sent.
     ///
     /// [caret]: duat_core::mode::Selection::caret
-    /// [`Self::word_regex`]: CompletionsProvider::word_regex
     /// ["completeness"]: CompletionsKind
     fn completions(
         &mut self,
@@ -626,54 +625,57 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 /// the [`Completions`] [`Widget`] (or other similar `Widget`s) to
 /// provide tab completions to users.
 pub struct CompletionsList<P: CompletionsProvider> {
-    /// The list of entries to be received by [`get_completions`]
+    /// The list of entries to be received by [`completions`]
     ///
-    /// [`get_completions`]: CompletionsProvider::get_completions
+    /// [`completions`]: CompletionsProvider::completions
     pub entries: Vec<(String, P::Info)>,
     /// What kind of completion entries have been provided
     pub kind: CompletionsKind,
 }
 
-/// What kind of completions was given by [`get_completions`]
+/// What kind of completions was given by [`completions`]
 ///
-/// [`get_completions`]: CompletionsProvider::get_completions
+/// [`completions`]: CompletionsProvider::completions
 #[derive(Clone, Copy)]
 pub enum CompletionsKind {
     /// Indicates that the entries that were sent are _all_ entries
     /// that exist
     ///
-    /// This means that, if the user types any new [word] characters
-    /// or deletes old ones, this list will remain unaltered.
+    /// This means that, if the user types any new [completion]
+    /// characters or deletes old ones, this list will remain
+    /// unaltered.
     ///
     /// In this case, the [`Completions`] widget will take that
     /// initial list and apply filtering to it in order to narrow down
     /// possible choices.
     ///
-    /// [word]: CompletionsProvider::word_regex
+    /// [completion]: CompletionsProvider::get_start
     Finished,
     /// Indicates that the entries that were sent are not all entries,
     /// but they're already filtered
     ///
-    /// This means that, if the user types any new [word] characters
-    /// or deletes old ones, a new list will have to be acquired.
+    /// This means that, if the user types any new [completion]
+    /// characters or deletes old ones, a new list will have to be
+    /// acquired.
     ///
     /// Unlike in [`CompletionsKind::Finished`] and
     /// [`CompletionsKind::UnfinishedUnfiltered`], the [`Completions`]
     /// widget will not do any filtering of the entries sent.
     ///
-    /// [word]: CompletionsProvider::word_regex
+    /// [completion]: CompletionsProvider::get_start
     UnfinishedFiltered,
     /// Indicates that the entries that were sent are not all entries,
     /// and they're not filtered
     ///
-    /// This means that, if the user types any new [word] characters
-    /// or deletes old ones, a new list will have to be acquired.
+    /// This means that, if the user types any new [completion]
+    /// characters or deletes old ones, a new list will have to be
+    /// acquired.
     ///
     /// In this case, the [`Completions`] widget will take this list
     /// and apply filtering to it in order to narrow down possible
     /// choices.
     ///
-    /// [word]: CompletionsProvider::word_regex
+    /// [completion]: CompletionsProvider::get_start
     UnfinishedUnfiltered,
 }
 
