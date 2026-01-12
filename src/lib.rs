@@ -445,8 +445,8 @@
 //! [caret]: duat_core::mode::Cursor::caret
 //! [anchor]: duat_core::mode::Cursor::anchor
 //! [`Cursor`]: duat_core::mode::Cursor
-//! [Undoes]: duat_core::text::Text::undo
-//! [Redoes]: duat_core::text::Text::redo
+//! [Undoes]: duat_core::text::TextMut::undo
+//! [Redoes]: duat_core::text::TextMut::redo
 //! [`Cargo.toml`'s `dependencies` section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [`IncSearch`]: duat_base::modes::IncSearch
 //! [`IncSearcher`]: duat_base::modes::IncSearcher
@@ -457,7 +457,7 @@
 //! [`duatmode::opts`]: opts
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
 //! [word chars]: duat_core::opts::PrintOpts::extra_word_chars
-//! [tab mode]: opts::set_very_smart_tabs
+//! [tab mode]: TabMode
 use std::{
     collections::HashMap,
     ops::Range,
@@ -510,7 +510,7 @@ mod parameter {
     /// [`Normal`] mode, and is added to by typing digits in `Normal`
     /// mode.
     ///
-    /// [`Normal`]: crate::Normal
+    /// [`Normal`]: crate::normal::Normal
     pub fn add_to_param(pa: &mut Pass, num: u32) {
         let value = VALUE.read(pa);
         match value.checked_mul(10).and_then(|v| v.checked_add(num)) {
@@ -534,7 +534,7 @@ mod parameter {
     /// [`Normal`] mode, and is added to by typing digits in `Normal`
     /// mode.
     ///
-    /// [`Normal`]: crate::Normal
+    /// [`Normal`]: crate::normal::Normal
     /// [`StatusLine`]: duat_base::widgets::StatusLine
     pub fn duat_param() -> DataMap<u32, u32> {
         VALUE.map(|value| *value)
@@ -602,6 +602,8 @@ pub mod opts {
         /// `indent_keys`.
         ///
         /// The default is `true`
+        ///
+        /// [`Buffer`]: duat_core::buffer::Buffer
         pub auto_indent: bool,
         /// Characters that, upon being typed, reindent the current
         /// line
@@ -622,6 +624,8 @@ pub mod opts {
         /// `'m'` in the [`Buffer`]
         ///
         /// The default is `true`
+        ///
+        /// [`Buffer`]: duat_core::buffer::Buffer
         pub f_and_t_set_search: bool,
         pub(crate) brackets: Brackets,
     }
@@ -646,6 +650,8 @@ pub mod opts {
         /// More specifically, this will change the behavior of keys
         /// like `'m'` and the `'u'` object, which will now
         /// consider more patterns when selecting.
+        ///
+        /// [`Normal`]: crate::normal::Normal
         pub fn set_brackets<'a>(&mut self, brackets: impl IntoIterator<Item = [&'a str; 2]>) {
             static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
 
