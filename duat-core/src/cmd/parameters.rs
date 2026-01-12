@@ -822,7 +822,8 @@ impl Parameter for ColorSchemeArg {
 implDeref!(ColorSchemeArg, String);
 
 /// Command [`Parameter`]: Options for reloading
-pub(super) struct ReloadOptions {
+#[doc(hidden)]
+pub struct ReloadOptions {
     /// Wether to clean
     pub clean: bool,
     /// Wether to update

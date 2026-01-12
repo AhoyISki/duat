@@ -543,12 +543,12 @@ pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
 /// them around, so you have a few options for customization of this
 /// group, all set in [`opts::set`]:
 ///
-/// - [`Opts::footer_on_top`]: Will place the `StatusLine`,
+/// - [`StartOpts::footer_on_top`]: Will place the `StatusLine`,
 ///   `PromptLine`, and `Notifications` `Widget`s on top of the
 ///   window, rather than at the bottom.
 ///
-/// - [`Opts::one_line_footer`]: These widgets will occupy one line,
-///   rather than two, Kakoune style.
+/// - [`StartOpts::one_line_footer`]: These widgets will occupy one
+///   line, rather than two, Kakoune style.
 ///
 /// # Which [`Buffer`]?
 ///
@@ -643,7 +643,7 @@ pub fn fmt_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'stati
 ///
 /// [`WhichKey`]: crate::widgets::WhichKey
 /// [`disable_for`]: WhichKeyOpts::disable_for
-/// [help key]: set_help_key
+/// [help key]: StartOpts::help_key
 /// [remove]: crate::hook::remove
 #[allow(clippy::type_complexity)] // ??? where?
 pub struct WhichKeyOpts {
@@ -707,7 +707,7 @@ impl WhichKeyOpts {
     /// [always shown list].
     ///
     /// [`Mode`]: crate::mode::Mode
-    /// [help key]: set_help_key
+    /// [help key]: StartOpts::help_key
     /// [`Insert`]: crate::mode::Insert
     /// [always shown list]: Self::always_show
     pub fn disable_for<M: Mode>(&mut self) {

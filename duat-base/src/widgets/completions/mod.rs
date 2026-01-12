@@ -18,7 +18,7 @@ use std::{
 };
 
 use duat_core::{
-    cmd::{CfgOrManifest, Existing, OtherBuffer, Parameter, ValidFilePath},
+    cmd::{CfgOrManifest, Existing, OtherBuffer, Parameter, ReloadOptions, ValidFilePath},
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged, WidgetOpened},
@@ -28,7 +28,7 @@ use duat_core::{
 };
 use duat_term::Frame;
 
-pub use self::commands::CommandsCompletions;
+pub use self::{commands::CommandsCompletions, fixed::ExhaustiveCompletionsList};
 use crate::widgets::{
     Info,
     completions::{paths::PathCompletions, words::WordCompletions},
@@ -83,6 +83,13 @@ pub fn setup_completions() {
 
     Completions::set_for_parameter::<CfgOrManifest>(30, |_, builder| {
         builder.with_provider(["--cfg", "--cfg-manifest"])
+    });
+
+    Completions::set_for_parameter::<ReloadOptions>(50, |_, builder| {
+        builder.with_provider(ExhaustiveCompletionsList {
+            list: vec!["--clean", "--update"],
+            only_one: false,
+        })
     });
 }
 
@@ -1034,6 +1041,68 @@ mod fixed {
             _: bool,
         ) -> CompletionsList<Self> {
             let mut entries: Vec<_> = self
+                .iter()
+                .filter_map(|entry| string_cmp(prefix, entry).map(|_| (entry.to_string(), ())))
+                .collect();
+
+            entries.sort_by(|(lhs, _), (rhs, _)| {
+                string_cmp(prefix, lhs)
+                    .unwrap()
+                    .cmp(&string_cmp(prefix, rhs).unwrap())
+            });
+
+            CompletionsList {
+                entries,
+                kind: CompletionsKind::UnfinishedFiltered,
+            }
+        }
+
+        fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
+            Some(text.search(r"\S*").range(..caret).next_back()?.start)
+        }
+
+        fn has_changed(&self) -> bool {
+            false
+        }
+    }
+
+    /// A list of words that can be completed with no replacement
+    ///
+    /// This list will show completions for all flags words haven't
+    /// been previously typed on the call.
+    pub struct ExhaustiveCompletionsList {
+        pub list: Vec<&'static str>,
+        pub only_one: bool,
+    }
+
+    impl CompletionsProvider for ExhaustiveCompletionsList {
+        type Info = ();
+
+        fn default_fmt(entry: &str, _: &Self::Info) -> Text {
+            txt!("{entry}{Spacer}")
+        }
+
+        fn completions(
+            &mut self,
+            text: &Text,
+            caret: Point,
+            prefix: &str,
+            _: bool,
+        ) -> CompletionsList<Self> {
+            let yet_to_be_typed: Vec<_> = self
+                .list
+                .iter()
+                .filter(|word| !text.strs(..caret).unwrap().contains_pat(**word).unwrap())
+                .collect();
+
+            if yet_to_be_typed.len() < self.list.len() && self.only_one {
+                return CompletionsList {
+                    entries: Vec::new(),
+                    kind: CompletionsKind::UnfinishedFiltered,
+                };
+            }
+
+            let mut entries: Vec<_> = yet_to_be_typed
                 .iter()
                 .filter_map(|entry| string_cmp(prefix, entry).map(|_| (entry.to_string(), ())))
                 .collect();

@@ -106,7 +106,7 @@
 //!
 //! These are only some of the options available to configure Duat,
 //! you can also add [custom commands], place widgets around other
-//! [`Widget`]s and [windows], create [`Parser`]s that can track every
+//! [`Widget`]s and [windows], create [parser]s that can track every
 //! change on a [`Buffer`], and many other things.
 //!
 //! Duat also comes with a fully fledged [text creation system], which
@@ -305,7 +305,7 @@
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [custom commands]: crate::prelude::cmd
 //! [windows]: crate::hook::WindowOpened
-//! [`Parser`]: duat_core::buffer::Parser
+//! [parser]: duat_core::buffer::BufferTracker
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 
@@ -461,15 +461,13 @@ pub mod hook {
     //! These are the default hook groups:
     //!
     //! - `"BufferWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
-    //!   to new [`Buffer`]s, via [`WidgetOpened`], (using [`Buffer`]
-    //!   as an alias for [`WidgetOpened<Buffer>`]).
+    //!   to new [`Buffer`]s, via [`WidgetOpened`]..
     //! - `"LogBook"`: Pushes a [`LogBook`] to the bottom.
     //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
     //!   and [`Notifications`] to new windows, via [`WindowOpened`].
     //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
     //!   buffer in it is written to, via [`BufferSaved`].
     //!
-    //! [alias]: duat_core::hook::HookAlias
     //! [hook above]: WidgetOpened
     //! [That hook]: crate::prelude::WidgetOpened
     //! [`StatusLine`]: crate::prelude::StatusLine
