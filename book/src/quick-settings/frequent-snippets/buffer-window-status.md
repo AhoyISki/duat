@@ -1,4 +1,4 @@
-# Status on files and on window
+# Status on Buffers and windows
 
 If you want to have a `StatusLine` per `Buffer`, you can add the following:
 
@@ -9,7 +9,6 @@ setup_duat!(setup);
 fn setup() {
     hook::add::<Buffer>(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
-        Ok(())
     });
 }
 ```
@@ -32,7 +31,6 @@ fn setup() {
         };
 
         status.above().push_on(pa, handle);
-        Ok(())
     });
 }
 ```

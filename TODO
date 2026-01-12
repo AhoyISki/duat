@@ -28,7 +28,8 @@ FOR NEXT UPDATE:
   [x] On search.rs.
   [x] On cursor.rs.
 [x] Properly separated frame on frame spawns.
-[ ] Put all options in a single struct.
+[x] Put all options in a single struct.
+[x] Multiple parameter completions at the same time.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -36,6 +37,7 @@ KNOWN BUGS:
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
   [ ] Indentation is inefficient.
   [ ] Scrolling is bugged on Logs (???).
+  [ ] Some strange slowdowns on Buffer switching and reindentation.
              
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
@@ -45,9 +47,9 @@ KNOWN BUGS:
     [ ] Perfect words iterator.
   [ ] tree-sitter-duat-text is not being used.
   [ ] For now, on Windows, duat can only reload if there is only one instance open.
+  [ ] Locking a Mutex on every Change is surely slow.
 
 FUTURE UPDATES:
-[ ] Multiple parameter completions at the same time.
 [ ] An API like search but for chars.
 [ ] Strs QOL.
 [ ] Hover to reveal full shell expansion.
@@ -58,7 +60,6 @@ FUTURE UPDATES:
 [ ] Named StatusParts.
 [ ] Flags parameter macro.
 [ ] An Align Tag?
-[ ] Locking a Mutex on every Change is surely slow.
 [ ] Stop eagerly merging Selections.
 [ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.

@@ -9,13 +9,15 @@ use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
-    opts::one_line_footer(true);
+    opts::set(|opts| {
+        opts.one_line_footer = true;
+    });
 }
 ```
 
 This will call [`FooterWidgets::one_line`] on the window's `FooterWidgets`.
 
-If you want one of these on each file, you can do this instead:
+If you want one of these on each `Buffer`, you can do this instead:
 
 ```rust
 use duat::prelude::*;
@@ -26,7 +28,6 @@ fn setup() {
 
     hook::add::<Buffer>(|pa, handle| {
         FooterWidgets::default().one_line().push_on(pa, handle);
-        Ok(())
     });
 }
 ```

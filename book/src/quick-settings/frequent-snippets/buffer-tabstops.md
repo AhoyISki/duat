@@ -1,6 +1,6 @@
-# File wise tabstops
+# Buffer wise tabstops
 
-If you want to change the tabstop size per file, you can just modify the 
+If you want to change the tabstop size per `Buffer`, you can just modify the 
 following  snippet:
 
 ```rust
@@ -11,10 +11,9 @@ fn setup() {
     hook::add::<Buffer>(|pa, handle| {
         let buffer = handle.write(pa);
         buffer.opts.tabstop = match buffer.filetype() {
-            Some("markdown" | "bash" | "lua" | "javascript" | "lisp") => 2, 
+            Some("markdown" | "bash" | "lua" | "javascript" | "commonlisp") => 2, 
             _ => 4
         };
-        Ok(())
     });
 }
 ```
@@ -40,7 +39,6 @@ fn setup() {
             }
             _ => buffer.opts.tabstop = 4
         }
-        Ok(())
     });
 }
 ```

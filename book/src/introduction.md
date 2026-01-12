@@ -8,26 +8,26 @@ Despite having a rather complex language as its configuration language of choice
 one of the goals of Duat is to have relatively straightforward configuration,
 and easy pluginability.
 
-As a motivating example, here's a small plugin, which shows matches to the word under
-the cursor:
+As a motivating example, here's a small plugin, which highlights matches to the 
+word underthe cursor:
 
 ```rust
 use duat::prelude::*;
 
-pub struct HighlightMatch;
+pub struct HighlightMatches;
 
-impl Plugin for HighlightMatch {
+impl Plugin for HighlightMatches {
     fn plug(self, _: &Plugins) {
         form::set_weak("same_word", Form::underlined());
         let tagger = Tagger::new();
 
         hook::add::<BufferUpdated>(move |pa, handle| {
-            let lines = handle.printed_line_byte_ranges(pa);
+            let lines = handle.printed_line_ranges(pa);
 
             handle.text_mut(pa).remove_tags(tagger, ..);
-            let Some(range) = handle.edit_main(pa, |c| c.search(r"\A\w+").from_caret().next())
-            else {
-                return Ok(());
+            let caret = handle.text(pa).main_sel().caret();
+            let Some(range) = handle.text(pa).search(r"\A\w+").range(..caret).next_back() else {
+                return;
             };
 
             let start = handle
@@ -39,19 +39,11 @@ impl Plugin for HighlightMatch {
             let pat = parts.bytes.strs(start..range.end);
             let form_id = form::id_of!("same_word");
             
-            for range in lines {
-                for (i, range) in parts
-                    .bytes
-                    .search(r"\w+")
-                    .range(range.clone())
-                    .filter(|r| parts.bytes.strs(r.clone()) == pat)
-                    .enumerate()
-                {
+            for range in lines.into_iter().flat_map(|r| parts.bytes.search(r"\w+").range(r)) {
+                if parts.bytes.strs(range.clone()) == pat {
                     parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }
             }
-
-            Ok(())
         });
     }
 }

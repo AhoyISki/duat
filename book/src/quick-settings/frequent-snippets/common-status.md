@@ -13,15 +13,16 @@ Formatted status parts:
   - Uses the forms `coord` and `separator`.
 - `sels_txt`: Prints the number of selections.
   - Uses the form `selections`;
-- `cur_map_txt`: Prints the keys being mapped.
+- `current_sequence_txt`: Prints the keys being mapped.
   - Uses the forms `key` and `key.special`
 
 Unformatted status parts:
 
-- `main_byte`, `main_char`, `main_line`, `main_col`: Parts of the main cursor.
+- `main_byte`, `main_char`, `main_line`, `main_col`: Parts of the main cursor. 
+  1 indexed.
 - `mode_name`: The non `Text` version of `mode_txt`, just a string.
 - `raw_mode`: The raw type name of the mode. Could look something like 
-  `Prompt<IncSearcher<SearchFwd>>>`.
+  `Pager<SomeWidget>`.
 - `selections`: The number of selections, no formatting.
 - `last_key`: The last key that was typed. Useful for asciinema demonstrations. 
 
@@ -29,10 +30,6 @@ Other:
 
 - `Spacer`: This isn't actually a `StatusPart`, it's a `Tag` that can go in any 
   `Text`, which includes the `StatusLine`'s.
-- `AlignLeft`, `AlignCenter`, `AlignRight`: These `Tag`s (like all others) can 
-  also be used in the `StatusLine`. However, do note that they are applied 
-  _line wise_. Using any of them will shift the _whole line_'s alignment. For 
-  that reason, a `Spacer` should generally be preferred.
 - Forms like `[buffer]`. Any form can be placed within those braces, and they are 
   all evaluated at compile time. For more information about them, see the 
   [forms] chapter
@@ -47,11 +44,11 @@ setup_duat!(setup);
 
 fn setup() {
     // Default options for the StatusLine widget
-    opts::set_status(|pa| {
+    opts::fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
         let param = duat_param_txt();
-        status!("{AlignRight}{name_txt} {mode} {sels_txt} {param} {main_txt}");
+        status!("{Spacer}{name_txt} {mode} {sels_txt} {param} {main_txt}");
         // If on regular mode (default):
         let mode = mode_txt();
         let param = duat_param_txt();
@@ -67,7 +64,7 @@ use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
-    opts::set_status(|_| {
+    opts::fmt_status(|_| {
         status!(
             "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
             mode_txt(),
@@ -86,7 +83,7 @@ Customized `name_txt`:
 setup_duat!(setup);
 
 fn setup() {
-    opts::set_status(|_| {
+    opts::fmt_status(|_| {
         status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt()) 
     });
 }

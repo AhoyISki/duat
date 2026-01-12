@@ -24,13 +24,10 @@ fn setup() {
     opts::set(|opts| {
         opts.wrap_lines = true;
         opts.scrolloff.y = 5;
+        opts.line_numbers.align = std::fmt::Alignment::Right;
     });
 
-    opts::set_lines(|opts| {
-        opts.align = std::fmt::Alignment::Right;
-    });
-
-    opts::set_status(|pa| {
+    opts::fmt_status(|pa| {
         let upper_mode = mode_name().map(|m| m.to_uppercase());
 
         status!("[mode]{upper_mode}{Spacer}{custom_name_txt} {sels_txt} {main_txt}")
