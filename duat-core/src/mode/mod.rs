@@ -258,7 +258,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///
 ///     fn build_text(&mut self) {
 ///         let mut builder = Text::builder();
-///         builder.push(AlignCenter);
 ///
 ///         for i in 0..5 {
 ///             let text = if let Some(active) = self.active_entry
@@ -313,8 +312,8 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 ///         &self.text
 ///     }
 ///
-///     fn text_mut(&mut self) -> &mut Text {
-///         &mut self.text
+///     fn text_mut(&mut self) -> TextMut<'_> {
+///         self.text.as_mut()
 ///     }
 /// }
 /// ```
@@ -339,7 +338,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # }
 /// impl Widget for Menu {
 /// #     fn text(&self) -> &Text { todo!() }
-/// #     fn text_mut(&mut self) -> &mut Text { todo!() }
+/// #     fn text_mut(&mut self) -> TextMut<'_> { todo!() }
 /// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
 /// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
 ///     // ...
@@ -382,7 +381,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// # }
 /// # impl Widget for Menu {
 /// #     fn text(&self) -> &Text { todo!() }
-/// #     fn text_mut(&mut self) -> &mut Text { todo!() }
+/// #     fn text_mut(&mut self) -> TextMut<'_> { todo!() }
 /// #     fn update(_: &mut Pass, _: &Handle<Self>) {}
 /// #     fn needs_update(&self, _: &Pass) -> bool { todo!(); }
 /// # }

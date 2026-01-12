@@ -117,6 +117,8 @@ mod global {
     /// reference another form by its name:
     ///
     /// ```rust
+    /// # let (tx, rx) = duat_core::context::duat_channel();
+    /// # duat_core::context::set_sender(tx);
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// # use duat_core::form::{self, Form};
     /// // Creates a regular form
@@ -159,6 +161,8 @@ mod global {
     /// [`form::set`] are called:
     ///
     /// ```rust
+    /// # let (tx, rx) = duat_core::context::duat_channel();
+    /// # duat_core::context::set_sender(tx);
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// use duat_core::form::{self, Form};
     ///
@@ -221,6 +225,8 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form, Color};
+    /// # let (tx, rx) = duat_core::context::duat_channel();
+    /// # duat_core::context::set_sender(tx);
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// form::set("caret.main", Form::black().on("rgb 240 210 200"));
     /// ```
@@ -248,6 +254,8 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form, Color};
+    /// # let (tx, rx) = duat_core::context::duat_channel();
+    /// # duat_core::context::set_sender(tx);
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// form::set("caret.extra", Form::black().on_cyan());
     /// ```
@@ -339,27 +347,28 @@ mod global {
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
+    /// # let (tx, rx) = duat_core::context::duat_channel();
+    /// # duat_core::context::set_sender(tx);
+    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// use duat::prelude::*;
     ///
-    /// fn test<W: Widget>(pa: &mut Pass, handle: Handle<W>) {
-    ///     // Assume that a Form with the given name exists
-    ///     form::set("my_form", Form::red().on_blue());
+    /// let mut text = Text::new();
     ///
-    ///     // If I create a second Form like this one, they are separate
-    ///     form::set("my_form.suffix", Form::undercurled());
+    /// // Assume that a Form with the given name exists
+    /// form::set("my_form", Form::red().on_blue());
     ///
-    ///     *handle.text_mut(pa) = txt!("[my_form]This is red on blue[], [my_form.suffix]undercurled");
+    /// // If I create a second Form like this one, they are separate
+    /// form::set("my_form.suffix", Form::undercurled());
     ///
-    ///     // But if I enable the "suffix" mask that's at the end of the second Form
-    ///     form::enable_mask("suffix");
+    /// text = txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
     ///
-    ///     // After doing this, the Text should be printed with the "suffix" mask
-    ///     handle.set_mask("suffix");
+    /// // But if I enable the "suffix" mask that's at the end of the second Form
+    /// form::enable_mask("suffix");
     ///
-    ///     // So when the widget is printed, it'd be equivalent to this:
-    ///     *handle.text_mut(pa) =
-    ///         txt!("[my_form.suffix]This is red on blue[], [my_form.suffix]undercurled");
-    /// }
+    /// // After calling `handle.set_mask("suffix")` on the Handle that owns this
+    /// // Text, it will be equivalent to this:
+    ///
+    /// text = txt!("[my_form.suffix]This text is red on blue[], [my_form.suffix]undercurled");
     /// ```
     ///
     /// Masks can serve a myriad of different purposes, but here's a
@@ -1344,28 +1353,28 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
+/// # let (tx, rx) = duat_core::context::duat_channel();
+/// # duat_core::context::set_sender(tx);
+/// # duat_core::form::set_initial(duat_core::form::get_initial());
 /// use duat::prelude::*;
 ///
-/// fn test<W: Widget>(pa: &mut Pass, handle: Handle<W>) {
-///     // Assume that a Form with the given name exists
-///     form::set("my_form", Form::red().on_blue());
+/// let mut text = Text::new();
 ///
-///     // If I create a second Form like this one, they are separate
-///     form::set("my_form.suffix", Form::undercurled());
+/// // Assume that a Form with the given name exists
+/// form::set("my_form", Form::red().on_blue());
 ///
-///     *handle.text_mut(pa) =
-///         txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
+/// // If I create a second Form like this one, they are separate
+/// form::set("my_form.suffix", Form::undercurled());
 ///
-///     // But if I enable the "suffix" mask that's at the end of the second Form
-///     form::enable_mask("suffix");
+/// text = txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
 ///
-///     // After doing this, the Text should be printed with the "suffix" mask
-///     handle.set_mask("suffix");
+/// // But if I enable the "suffix" mask that's at the end of the second Form
+/// form::enable_mask("suffix");
 ///
-///     // So when the widget is printed, it'd be equivalent to this:
-///     *handle.text_mut(pa) =
-///         txt!("[my_form.suffix]This text is red on blue[], [my_form.suffix]undercurled");
-/// }
+/// // After calling `handle.set_mask("suffix")` on the Handle that owns this
+/// // Text, it will be equivalent to this:
+///
+/// text = txt!("[my_form.suffix]This text is red on blue[], [my_form.suffix]undercurled");
 /// ```
 ///
 /// Masks can serve a myriad of different purposes, but here's a

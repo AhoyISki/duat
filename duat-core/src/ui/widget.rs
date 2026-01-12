@@ -114,8 +114,8 @@ use crate::{
 ///         &self.0
 ///     }
 ///
-///     fn text_mut(&mut self) -> &mut Text {
-///         &mut self.0
+///     fn text_mut(&mut self) -> TextMut<'_> {
+///         self.0.as_mut()
 ///     }
 /// }
 /// ```
@@ -183,7 +183,7 @@ use crate::{
 ///
 /// impl Widget for UpTime {
 /// #     fn text(&self) -> &Text { &self.0 }
-/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
+/// #     fn text_mut(&mut self) -> TextMut<'_> { self.0.as_mut() }
 /// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
 ///     // ...
 ///     fn update(pa: &mut Pass, handle: &Handle<Self>) {
@@ -249,7 +249,7 @@ use crate::{
 ///
 /// impl Widget for UpTime {
 /// #     fn text(&self) -> &Text { &self.0 }
-/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
+/// #     fn text_mut(&mut self) -> TextMut<'_> { self.0.as_mut() }
 /// #     fn update(pa: &mut Pass, handle: &Handle<Self>) { }
 ///     fn needs_update(&self, pa: &Pass) -> bool {
 ///         // Returns `true` once per second
@@ -291,7 +291,6 @@ use crate::{
 ///                 ..Default::default()
 ///             };
 ///             window.push_inner(pa, UpTime::new(), specs);
-///             Ok(())
 ///         });
 ///     }
 /// }
@@ -325,8 +324,8 @@ use crate::{
 ///         &self.0
 ///     }
 ///
-///     fn text_mut(&mut self) -> &mut Text {
-///         &mut self.0
+///     fn text_mut(&mut self) -> TextMut<'_> {
+///         self.0.as_mut()
 ///     }
 /// }
 /// ```
@@ -436,7 +435,7 @@ pub trait Widget: Send + 'static {
     /// impl Widget for MyWidget {
     /// #   fn update(_: &mut Pass, handle: &Handle<Self>) { todo!() }
     /// #   fn text(&self) -> &Text { todo!() }
-    /// #   fn text_mut(&mut self) -> &mut Text { todo!() }
+    /// #   fn text_mut(&mut self) -> TextMut<'_> { todo!() }
     ///     // ...
     ///     fn needs_update(&self, pa: &Pass) -> bool {
     ///         self.0.has_changed(pa)

@@ -17,7 +17,6 @@
 //!         if let Some("lisp") = buffer.filetype() {
 //!             buffer.opts.wrap_lines = true;
 //!         }
-//!         Ok(())
 //!     });
 //! }
 //! ```
@@ -158,10 +157,7 @@
 //! setup_duat!(setup);
 //!
 //! fn setup() {
-//!     hook::add::<MyConfigCreated>(|pa, my_config| {
-//!         my_config.value_1 = 3;
-//!         Ok(())
-//!     });
+//!     hook::add::<MyConfigCreated>(|pa, my_config| my_config.value_1 = 3);
 //! }
 //! ```
 //!
@@ -489,7 +485,7 @@ impl Hookable for UnfocusedFromDuat {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<WidgetOpened<LineNumbers>>(|pa, ln| Ok(ln.write(pa).relative = true));
+///     hook::add::<WidgetOpened<LineNumbers>>(|pa, ln| ln.write(pa).relative = true);
 /// }
 /// ```
 ///
@@ -501,7 +497,7 @@ impl Hookable for UnfocusedFromDuat {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<LineNumbers>(|pa, ln| Ok(ln.write(pa).relative = true));
+///     hook::add::<WidgetOpened<LineNumbers>>(|pa, ln| ln.write(pa).relative = true);
 /// }
 /// ```
 ///
@@ -516,9 +512,8 @@ impl Hookable for UnfocusedFromDuat {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<LineNumbers>(|pa, handle| {
+///     hook::add::<WidgetOpened<LineNumbers>>(|pa, handle| {
 ///         VertRule::builder().on_the_right().push_on(pa, handle);
-///         Ok(())
 ///     });
 /// }
 /// ```
@@ -708,6 +703,8 @@ impl PartialEq<Handle> for BufferReloaded {
 ///     text::{Bytes, Tags},
 /// };
 ///
+/// static TRACKER: BufferTracker = BufferTracker::new();
+///
 /// fn setup() {
 ///     let tagger = Tagger::new();
 ///     let tag = form::id_of!("non_ascii_char").to_tag(50);
@@ -721,19 +718,20 @@ impl PartialEq<Handle> for BufferReloaded {
 ///     };
 ///
 ///     hook::add::<BufferOpened>(move |pa, handle| {
-///         let mut parts = handle.write(pa).parts();
+///         TRACKER.register_buffer(handle.write(pa));
+///
+///         let mut parts = handle.text_parts(pa);
 ///         let range = Point::default()..parts.bytes.len();
 ///         highlight_non_ascii(&mut parts.tags, parts.bytes, range);
-///         Ok(())
 ///     });
 ///
 ///     hook::add::<BufferUpdated>(move |pa, handle| {
-///         let mut parts = handle.write(pa).parts();
-///         for change in parts.new_changes.changes() {
+///         let mut parts = TRACKER.parts(handle.write(pa)).unwrap();
+///         
+///         for change in parts.changes {
 ///             parts.tags.remove(tagger, change.added_range());
 ///             highlight_non_ascii(&mut parts.tags, parts.bytes, change.added_range())
 ///         }
-///         Ok(())
 ///     });
 /// }
 /// ```

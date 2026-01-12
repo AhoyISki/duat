@@ -234,23 +234,26 @@ type PluginFn = Option<Box<dyn FnOnce(&Plugins)>>;
 /// then it will return from the function. As an example, this:
 ///
 /// ```rust
-/// # duat_core::utils::doc_duat!(duat);
+/// # duat_core::doc_duat!(duat);
+/// # fn test() {
 /// use duat::prelude::*;
 ///
 /// let ret = try_or_log_err! {
 ///     let value = result_fn()?;
 ///     value
-/// });
+/// };
 ///
 /// fn result_fn() -> Result<usize, Text> {
-///     todo!();
+///     Err(txt!(":("))
 /// }
+/// # }
 /// ```
 ///
 /// Will expand into:
 ///
 /// ```rust
-/// # duat_core::utils::doc_duat!(duat);
+/// # duat_core::doc_duat!(duat);
+/// # fn test() {
 /// use duat::prelude::*;
 ///
 /// let ret = match (|| -> Result<_, Text> { Ok(result_fn()?) })() {
@@ -262,8 +265,9 @@ type PluginFn = Option<Box<dyn FnOnce(&Plugins)>>;
 /// };
 ///
 /// fn result_fn() -> Result<usize, Text> {
-///     todo!();
+///     Err(txt!(":("))
 /// }
+/// # }
 /// ```
 ///
 /// Note the [`Ok`] wrapping the tokens, so it works like the `try`

@@ -105,8 +105,6 @@ impl Tags<'_> {
     ///         // Removing on the whole Buffer
     ///         buf.text_mut().remove_tags(tagger, ..);
     ///         // Logic to add Tags with tagger...
-    ///
-    ///         Ok(())
     ///     });
     /// }
     /// ```

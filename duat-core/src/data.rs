@@ -301,7 +301,7 @@ impl<T: ?Sized> RwData<T> {
     ///     }
     ///     // ..
     ///     # fn text(&self) -> &Text { &self.text }
-    ///     # fn text_mut(&mut self) -> &mut Text { &mut self.text }
+    ///     # fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
     ///     # fn needs_update(&self, pa: &Pass) -> bool { false }
     /// }
     /// ```
@@ -326,7 +326,7 @@ impl<T: ?Sized> RwData<T> {
     ///     }
     ///     // ..
     ///     # fn text(&self) -> &Text { &self.text }
-    ///     # fn text_mut(&mut self) -> &mut Text { &mut self.text }
+    ///     # fn text_mut(&mut self) -> TextMut { self.text.as_mut() }
     ///     # fn needs_update(&self, pa: &Pass) -> bool { false }
     /// }
     /// ```
@@ -846,7 +846,6 @@ impl Pass {
     ///     hook::add::<BufferOpened>(move |pa, handle: &Handle| {
     ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
     ///         // Rest of the function writes to all of them at the same time.
-    ///         # Ok(())
     ///     });
     /// }
     /// ```
@@ -873,7 +872,6 @@ impl Pass {
     ///     hook::add::<BufferOpened>(move |pa, handle: &Handle| {
     ///         let (num1, num2, buf) = pa.write_many((&num1, &num2, handle));
     ///         // Rest of the function writes to all of them at the same time.
-    ///         # Ok(())
     ///     });
     /// }
     /// ```

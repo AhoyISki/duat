@@ -144,6 +144,9 @@
 //!
 //! ```rust
 //! # duat_core::doc_duat!(duat);
+//! # let (tx, rx) = duat_core::context::duat_channel();
+//! # duat_core::context::set_sender(tx);
+//! # duat_core::form::set_initial(duat_core::form::get_initial());
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!
@@ -881,11 +884,9 @@ mod global {
     ///     });
     ///
     ///     hook::add::<WindowOpened>(move |mut pa, window| {
-    ///         // status! macro is from duat.
     ///         status!("The value is currently {var}")
     ///             .above()
     ///             .push_on(pa, window);
-    ///         Ok(())
     ///     });
     /// }
     /// ```
