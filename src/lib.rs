@@ -55,18 +55,12 @@ mod tree;
 /// For now, it adds syntax highlighting and indentation, but more
 /// features will be coming in the future.
 ///
-/// These things are done through the [`TsParser`] [`Parser`], which
+/// These things are done through [`duat_treesitter::Parser`], which
 /// reads updates the inner syntax tree when the [`Text`] reports any
 /// changes.
 ///
-/// # NOTE
-///
-/// If you are looking to create a [`Parser`] which can do similar
-/// things, you should look at the code for the implementation of
-/// [`Parser`] for [`TsParser`], it's relatively short and with good
-/// explanations for what is happening.
-///
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
+/// [`duat_treesitter::Parser`]: Parser
 #[derive(Default)]
 pub struct TreeSitter;
 
