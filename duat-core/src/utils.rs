@@ -339,6 +339,22 @@ macro_rules! doc_duat {
     ($duat:ident) => {
         #[allow(unused, missing_docs)]
         mod $duat {
+            pub struct StartOpts {
+                pub wrap_lines: bool,
+                pub wrap_on_word: bool,
+                pub wrapping_cap: Option<u32>,
+                pub indent_wraps: bool,
+                pub tabstop: u8,
+                pub print_new_line: bool,
+                pub scrolloff: $crate::opts::ScrollOff,
+                pub force_scrolloff: bool,
+                pub extra_word_chars: &'static [char],
+                pub show_ghosts: bool,
+                pub allow_overscroll: bool,
+                pub one_line_footer: bool,
+                pub footer_on_top: bool,
+            }
+
             pub mod hook {
                 pub use $crate::hook::*;
             }
@@ -359,12 +375,8 @@ macro_rules! doc_duat {
             pub mod opts {
                 use super::prelude::*;
                 pub use $crate::opts::{self, PrintOpts};
-                pub fn set(set: impl FnOnce(PrintOpts) -> PrintOpts) {}
-                pub fn set_lines<T>(set: T) {}
-                pub fn set_status<T>(set: impl FnMut(&mut Pass) -> T) {}
-                pub fn set_notifs<T>(set: T) {}
-                pub fn set_logs<T>(set: T) {}
-                pub fn one_line_footer() {}
+                pub fn set(set: impl FnOnce(&mut super::StartOpts)) {}
+                pub fn fmt_status<T>(set: impl FnMut(&mut Pass) -> T) {}
             }
 
             pub mod data {
@@ -412,7 +424,9 @@ macro_rules! doc_duat {
                     },
                     lender::{Lender, DoubleEndedLender, ExactSizeLender},
                     text::{
-                        self, Builder, Conceal, Ghost, Spacer, SpawnTag, Tagger, Text, txt, Point},
+                        self, Builder, Conceal, Ghost, Spacer, SpawnTag, Tagger, Text, txt, Point,
+                        TextMut
+                    },
                     ui::{self, Area, Widget},
                 };
                 

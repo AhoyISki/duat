@@ -17,11 +17,11 @@
 //! struct KeepMatching;
 //!
 //! impl IncSearcher for KeepMatching {
-//!     fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+//!     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
 //!         handle.edit_all(pa, |mut c| {
 //!             c.set_caret_on_start();
 //!             let range = c.range();
-//!             if c.search_inc().range(range).next().is_none() {
+//!             if c.search(pat).range(range).next().is_none() {
 //!                 c.destroy();
 //!             }
 //!         });

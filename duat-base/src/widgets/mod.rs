@@ -60,7 +60,6 @@ mod which_key;
 ///             mode_txt()
 ///         ))
 ///         .push_on(pa, handle);
-///         Ok(())
 ///     });
 /// }
 /// ```

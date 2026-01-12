@@ -58,7 +58,7 @@
 /// }
 ///
 /// fn setup() {
-///     opts::set_status(|pa| status!("[buffer]{name_but_funky}{Spacer}{powerline_main_txt}"));
+///     opts::fmt_status(|pa| status!("[buffer]{name_but_funky}{Spacer}{powerline_main_txt}"));
 /// }
 /// ```
 ///
@@ -109,7 +109,6 @@
 ///             status!("{changing_str} [counter]{counter}[] {text}")
 ///                 .above()
 ///                 .push_on(pa, window);
-///             Ok(())
 ///         }
 ///     });
 ///

@@ -36,10 +36,10 @@ pub use crate::__status__ as status;
 /// This widget is updated whenever any of its parts needs to be
 /// updated, and it also automatically adjusts to where it was pushed.
 /// For example, if you push it to a buffer (via
-/// `hook::add::<BufferOpened>`, for example), it's information will point
-/// to the [`Buffer`] to which it was pushed. However, if you push it
-/// with [`WindowOpened`], it will always point to the currently
-/// active [`Buffer`]:
+/// `hook::add::<BufferOpened>`, for example), it's information will
+/// point to the [`Buffer`] to which it was pushed. However, if you
+/// push it with [`WindowOpened`], it will always point to the
+/// currently active [`Buffer`]:
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
@@ -48,14 +48,13 @@ pub use crate::__status__ as status;
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     opts::one_line_footer();
-///     opts::set_status(|pa| status!("{AlignRight}{} {sels_txt} {main_txt}", mode_txt()));
+///     opts::set(|opts| opts.one_line_footer = true);
+///     opts::fmt_status(|pa| status!("{Spacer}{} {sels_txt} {main_txt}", mode_txt()));
 ///
 ///     hook::add::<BufferOpened>(|pa, handle| {
-///         status!("{AlignCenter}{name_txt}")
+///         status!("{Spacer}{name_txt}{Spacer}")
 ///             .above()
 ///             .push_on(pa, handle);
-///         Ok(())
 ///     });
 /// }
 /// ```
@@ -83,7 +82,6 @@ pub use crate::__status__ as status;
 /// fn setup() {
 ///     hook::add::<BufferOpened>(|pa, handle| {
 ///         StatusLine::builder().above().push_on(pa, handle);
-///         Ok(())
 ///     });
 /// }
 /// ```

@@ -122,7 +122,7 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<StatusLine>(|pa, handle| {
+///     hook::add::<WidgetOpened<StatusLine>>(|pa, handle| {
 ///         let mode_upper = state::mode_name().map(|mode| {
 ///             let mode = match mode.split_once('<') {
 ///                 Some((mode, _)) => mode,
@@ -134,7 +134,6 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 ///         handle.write(pa).fmt(status!(
 ///             "{name_txt}{Spacer}[mode]{mode_upper} {sels_txt} {main_txt}"
 ///         ));
-///         Ok(())
 ///     });
 /// }
 /// ```
