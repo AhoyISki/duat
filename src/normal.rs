@@ -11,7 +11,7 @@ use duat_core::{
     lender::Lender,
     mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, ctrl, event, shift},
     opts::PrintOpts,
-    text::{Point, Strs, txt},
+    text::{Strs, txt},
 };
 use duat_jump_list::{BufferJumps, JumpListId};
 
@@ -159,12 +159,12 @@ impl Mode for Normal {
             ),
             alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{select} to end of line"),
             alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{select} to start of line"),
-            alt!('a') => (txt!("Select around [a]object"), object("select around")),
+            event!('\"') => (txt!("Select around [a]object"), object("select around")),
+            event!('\'') => (txt!("Select inside [a]object"), object("select inside")),
             event!('[') => (txt!("Select to [a]object[] start"), obj.next().unwrap()),
             event!(']') => (txt!("Select to [a]object[] end"), obj.next().unwrap()),
             event!('{') => (txt!("Extend to [a]object[] start"), obj.next().unwrap()),
             event!('}') => (txt!("Extend to [a]object[] end"), obj.next().unwrap()),
-            alt!('i') => (txt!("Select inside [a]object"), object("select inside")),
             alt!('[') => (txt!("Select until [a]object[] start"), obj.next().unwrap()),
             alt!(']') => (txt!("Select until [a]object[] end"), obj.next().unwrap()),
             alt!('{') => (txt!("Extend until [a]object[] start"), obj.next().unwrap()),
@@ -179,9 +179,12 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (txt!("Replace range"), match _ {
-                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-            }),
+            event!('r') => (
+                txt!("Replace range"),
+                match _ {
+                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+                }
+            ),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -398,7 +401,8 @@ impl Mode for Normal {
             event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
-                    let move_to_match = do_match_on_spot([c0, c1], alt_word, p0 != c.caret());
+                    let move_to_match =
+                        do_match_on_spot([c0, c1], alt_word, p0 != c.caret().byte());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c
@@ -413,7 +417,8 @@ impl Mode for Normal {
             event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
-                    let move_to_match = do_match_on_spot([c0, c1], alt_word, p0 != c.caret());
+                    let move_to_match =
+                        do_match_on_spot([c0, c1], alt_word, p0 != c.caret().byte());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c
@@ -428,11 +433,13 @@ impl Mode for Normal {
             event!('b') | alt!('b') => handle.edit_all(pa, |mut c| {
                 let alt_word = key_event.modifiers.contains(KeyMod::ALT);
                 let init = {
-                    let iter = [(c.caret(), c.char())].into_iter().chain(c.chars_rev());
+                    let iter = [(c.caret().byte(), c.char())]
+                        .into_iter()
+                        .chain(c.chars_rev());
                     no_nl_pair(iter)
                 };
                 if let Some([(p1, c1), (_, c0)]) = init {
-                    let moved = p1 != c.caret();
+                    let moved = p1 != c.caret().byte();
                     c.move_to(p1);
                     if !do_match_on_spot([c1, c0], alt_word, moved) {
                         c.move_hor(1);
@@ -536,12 +543,12 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(-(c.v_caret().char_col() as i32));
             }),
-            alt!('a') => self.one_key = Some(OneKey::Surrounding(param, false)),
+            event!('\"') => self.one_key = Some(OneKey::Surrounding(param, false)),
+            event!('\'') => self.one_key = Some(OneKey::Surrounding(param, true)),
             event!('[') => self.one_key = Some(OneKey::ToPrevious(param, false, true)),
             event!(']') => self.one_key = Some(OneKey::ToNext(param, false, true)),
             event!('{') => self.one_key = Some(OneKey::ToPrevious(param, false, false)),
             event!('}') => self.one_key = Some(OneKey::ToNext(param, false, false)),
-            alt!('i') => self.one_key = Some(OneKey::Surrounding(param, true)),
             alt!('[') => self.one_key = Some(OneKey::ToPrevious(param, true, true)),
             alt!(']') => self.one_key = Some(OneKey::ToNext(param, true, true)),
             alt!('{') => self.one_key = Some(OneKey::ToPrevious(param, true, false)),
@@ -1035,6 +1042,10 @@ impl Mode for Normal {
                     }
                     c.destroy();
                 });
+
+                handle
+                    .selections_mut(pa)
+                    .set_main(nth + (key_event.modifiers == KeyMod::NONE) as usize);
             }
 
             ////////// Search keys
@@ -1047,22 +1058,58 @@ impl Mode for Normal {
             alt!('k') => _ = mode::set(pa, IncSearch::new(KeepMatching(true))),
             alt!('K') => _ = mode::set(pa, IncSearch::new(KeepMatching(false))),
 
-            event!(char @ ('n' | 'N')) | alt!(char @ ('n' | 'N')) => {
+            event!('n') | alt!('n') => {
                 let search = SEARCH.lock().unwrap();
                 if search.is_empty() {
-                    context::error!("No search pattern set");
+                    context::warn!("No search pattern set");
                     return;
                 }
                 handle.edit_main(pa, |mut c| {
-                    if char == 'N' {
-                        c.copy();
-                    }
-                    let next = if key_event.modifiers == KeyMod::ALT {
-                        c.search(&*search).to_caret().nth_back(param - 1)
+                    let found = if key_event.modifiers == KeyMod::ALT {
+                        c.search(&*search)
+                            .to_caret()
+                            .rev()
+                            .chain(c.search(&*search).from_caret_excl().rev())
+                            .nth(param - 1)
                     } else {
-                        c.search(&*search).from_caret_excl().nth(param - 1)
+                        c.search(&*search)
+                            .from_caret_excl()
+                            .chain(c.search(&*search).to_caret())
+                            .nth(param - 1)
                     };
-                    if let Some(range) = next {
+                    if let Some(range) = found {
+                        c.move_to(range.start);
+                        if !range.is_empty() {
+                            c.set_anchor();
+                            c.move_to(range.end);
+                            c.move_hor(-1);
+                        }
+                    }
+                });
+            }
+            event!('N') | alt!('N') => {
+                let search = SEARCH.lock().unwrap();
+                if search.is_empty() {
+                    context::warn!("No search pattern set");
+                    return;
+                }
+                handle.edit_main(pa, |mut c| {
+                    let mut found = Vec::new();
+                    if key_event.modifiers == KeyMod::ALT {
+                        found.extend(c.search(&*search).to_caret().rev().take(param));
+                        found.extend(
+                            c.search(&*search)
+                                .from_caret_excl()
+                                .rev()
+                                .take(param - found.len()),
+                        );
+                    } else {
+                        found.extend(c.search(&*search).from_caret_excl().take(param));
+                        found.extend(c.search(&*search).to_caret().take(param - found.len()));
+                    };
+
+                    for range in found {
+                        c.copy();
                         c.move_to(range.start);
                         if !range.is_empty() {
                             c.set_anchor();
@@ -1190,7 +1237,7 @@ impl Brackets {
     }
 }
 
-fn no_nl_pair(iter: impl Iterator<Item = (Point, char)>) -> Option<[(Point, char); 2]> {
+fn no_nl_pair(iter: impl Iterator<Item = (usize, char)>) -> Option<[(usize, char); 2]> {
     let mut entry0 = None;
 
     for (point, char) in iter {

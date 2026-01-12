@@ -127,7 +127,7 @@ fn match_goto(
         }),
 
         ////////// File change keys
-        event!('a') => switch_and_register("last-buffer"),
+        event!('a') => switch_and_register("last-switched-buffer"),
         event!('n') => switch_and_register("next-buffer --global"),
         event!('N') => switch_and_register("prev-buffer --global"),
         _ => {}

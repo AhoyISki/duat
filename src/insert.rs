@@ -128,16 +128,18 @@ impl Mode for Insert {
                 handle.edit_all(pa, |mut c| {
                     insert_str(&mut c, char, 1, &mut insert_events);
                 });
-                let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
-                if is_ts_indent {
-                    handle.edit_all(pa, |mut c| {
-                        let indent = indents.next().unwrap();
-                        if opts.indent_chars.contains(&char)
-                            && c.indent() == c.v_caret().char_col() - 1
-                        {
-                            reindent(&mut c, indent);
-                        }
-                    })
+                if opts.indent_chars.contains(&char) {
+                    let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                    if is_ts_indent {
+                        handle.edit_all(pa, |mut c| {
+                            let indent = indents.next().unwrap();
+                            if opts.indent_chars.contains(&char)
+                                && c.indent() == c.v_caret().char_col() - 1
+                            {
+                                reindent(&mut c, indent);
+                            }
+                        })
+                    }
                 }
             }
 
@@ -154,7 +156,7 @@ impl Mode for Insert {
                 let prev_caret = c.caret();
                 let prev_anchor = c.unset_anchor();
 
-                if c.move_hor(-1) < 0 {
+                if c.move_hor(-1) != 0 {
                     c.set_anchor();
                     c.replace("");
                     c.unset_anchor();
@@ -379,8 +381,7 @@ fn insert_str(c: &mut Cursor, new: impl ToString, len: i32, insert_events: &mut 
 }
 
 fn move_hor(c: &mut Cursor, hor: i32, insert_events: &mut Vec<InsertEvent>) {
-    let hor = c.move_hor(hor);
-    if hor != 0 && c.is_main() {
+    if c.move_hor(hor) != 0 && c.is_main() {
         match insert_events.last_mut() {
             Some(InsertEvent::MoveHor(total)) => {
                 *total += hor;

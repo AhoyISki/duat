@@ -466,7 +466,7 @@ use std::{
 
 use crate::normal::Brackets;
 pub use crate::{
-    insert::{Insert, reindent},
+    insert::{Insert, TabMode, reindent},
     normal::Normal,
 };
 
@@ -646,10 +646,11 @@ pub mod opts {
         /// More specifically, this will change the behavior of keys
         /// like `'m'` and the `'u'` object, which will now
         /// consider more patterns when selecting.
-        pub fn set_brackets<'a>(&mut self, brackets: impl Iterator<Item = [&'a str; 2]>) {
+        pub fn set_brackets<'a>(&mut self, brackets: impl IntoIterator<Item = [&'a str; 2]>) {
             static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
 
-            let brackets: Vec<[&str; 2]> = brackets.map(|bs| bs.map(escaped_regex)).collect();
+            let iter = brackets.into_iter();
+            let brackets: Vec<[&str; 2]> = iter.map(|bs| bs.map(escaped_regex)).collect();
             assert!(
                 brackets.iter().all(|[s_b, e_b]| s_b != e_b),
                 "Brackets are not allowed to look the same"
