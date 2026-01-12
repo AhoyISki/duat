@@ -97,7 +97,7 @@ pub use crate::text::{
     builder::{AsBuilderPart, Builder, BuilderPart},
     bytes::{Bytes, Lines, Slices, Strs},
     iter::{FwdIter, Item, Part, RevIter},
-    search::{Matches, RegexHaystack, RegexPattern, Searcher},
+    search::{Matches, RegexHaystack, RegexPattern},
     tags::{
         Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, Spacer, SpawnTag, Tag,
         Tagger, Taggers, Tags, ToggleId,

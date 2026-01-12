@@ -77,24 +77,18 @@
 //!     opts::set(|opts| {
 //!         opts.wrap_lines = true;
 //!         opts.scrolloff.y = 5;
+//!         opts.line_numbers.align = std::fmt::Alignment::Right;
 //!     });
 //!
-//!     opts::set_lines(|opts| {
-//!         opts.align = std::fmt::Alignment::Right;
-//!     });
-//!
-//!     opts::set_status(|pa| {
+//!     opts::fmt_status(|pa| {
 //!         let upper_mode = mode_name().map(|m| m.to_uppercase());
 //!
 //!         status!("[mode]{upper_mode}{Spacer}{name_txt} {sels_txt} {main_txt}")
 //!     });
 //!
-//!     hook::add::<ModeSwitched>(|_, (_, new)| {
-//!         match new {
-//!             "Insert" => cursor::set_main(CursorShape::SteadyBar),
-//!             _ => cursor::unset(),
-//!         }
-//!         Ok(())
+//!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
+//!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
+//!         _ => cursor::unset(),
 //!     });
 //!
 //!     form::set("mode", Form::dark_magenta());
@@ -364,12 +358,13 @@ pub mod hook {
     //!
     //! fn setup() {
     //!     hook::add::<LineNumbers>(|pa, handle| {
-    //!         if let Some("markdown") = handle.buffer()?.filetype(pa) {
+    //!         if let Ok(buf) = handle.buffer()
+    //!             && let Some("markdown") = buf.filetype(pa)
+    //!         {
     //!             let ln = handle.write(pa);
     //!             ln.align = Alignment::Left;
     //!             ln.relative = false;
     //!         }
-    //!         Ok(())
     //!     });
     //! }
     //! ```
@@ -387,7 +382,6 @@ pub mod hook {
     //!         status!("{name_txt}{Spacer}{main_txt}")
     //!             .above()
     //!             .push_on(pa, handle);
-    //!         Ok(())
     //!     });
     //! }
     //! ```
@@ -425,7 +419,6 @@ pub mod hook {
     //! - [`KeyTyped`] triggers when a key is _typed_, not _sent_.
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
     //! - [`ModeSwitched`] triggers when you change `Mode`.
-    //! - [`ModeSet`] triggers when switching `Mode`s.
     //! - [`SearchPerformed`] triggers after a search is performed.
     //! - [`SearchUpdated`] triggers after a search updates.
     //!
@@ -449,12 +442,12 @@ pub mod hook {
     //!
     //!     hook::add::<KeySent>({
     //!         let key_count = key_count.clone();
-    //!         move |pa, _| Ok(*key_count.write(pa) += 1)
+    //!         move |pa, _| *key_count.write(pa) += 1
     //!     })
     //!     .grouped("CountKeys");
     //!
     //!     // Shows the key count on the StatusLine
-    //!     opts::set_status(move |pa| {
+    //!     opts::fmt_status(move |pa| {
     //!         let mode_txt = mode_txt();
     //!         let key_count = key_count.clone();
     //!         status!("{mode_txt}{Spacer}{name_txt} {sels_txt} {main_txt} keys={key_count}")
@@ -606,10 +599,7 @@ pub mod prelude {
         opts::{self, ScrollOff},
         setup_duat,
         state::*,
-        text::{
-            self, Builder, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Tagger, Text,
-            txt,
-        },
+        text::{self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Tagger, Text, txt},
         ui::{self, Area, Widget},
         widgets::*,
     };

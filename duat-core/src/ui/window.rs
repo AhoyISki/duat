@@ -332,10 +332,10 @@ impl Windows {
     ////////// Existing Widget manipulation
 
     /// Closes a [`Handle`], removing it from the ui
-    pub(crate) fn close<W: Widget + ?Sized, S>(
+    pub(crate) fn close<W: Widget + ?Sized>(
         &self,
         pa: &mut Pass,
-        handle: &Handle<W, S>,
+        handle: &Handle<W>,
     ) -> Result<(), Text> {
         let win = self.handle_window(pa, handle)?;
 
@@ -409,11 +409,11 @@ impl Windows {
     }
 
     /// Swaps two [`Handle`]'s positions
-    pub(crate) fn swap<W1: Widget + ?Sized, S1, W2: Widget + ?Sized, S2>(
+    pub(crate) fn swap<W1: Widget + ?Sized, W2: Widget + ?Sized>(
         &self,
         pa: &mut Pass,
-        lhs: &Handle<W1, S1>,
-        rhs: &Handle<W2, S2>,
+        lhs: &Handle<W1>,
+        rhs: &Handle<W2>,
     ) -> Result<(), Text> {
         let lhs_win = self.handle_window(pa, lhs)?;
         let rhs_win = self.handle_window(pa, rhs)?;
@@ -577,10 +577,10 @@ impl Windows {
     ////////// Entry lookup
 
     /// An entry for a [`Handle`]
-    pub(crate) fn handle_window<W: Widget + ?Sized, S>(
+    pub(crate) fn handle_window<W: Widget + ?Sized>(
         &self,
         pa: &Pass,
-        handle: &Handle<W, S>,
+        handle: &Handle<W>,
     ) -> Result<usize, Text> {
         self.entries(pa)
             .find_map(|(win, node)| (node.handle() == handle).then_some(win))
@@ -1052,7 +1052,7 @@ impl Window {
     /// Closes the [`Handle`] and all related ones
     ///
     /// Returns `true` if this `Window` is supposed to be removed.
-    fn close<W: Widget + ?Sized, S>(&self, pa: &mut Pass, handle: &Handle<W, S>) -> bool {
+    fn close<W: Widget + ?Sized>(&self, pa: &mut Pass, handle: &Handle<W>) -> bool {
         let handle_eq = |node: &mut Node| node.handle() == handle;
 
         let inner = self.0.write(pa);
@@ -1132,10 +1132,10 @@ impl Window {
     }
 
     /// Takes all [`Node`]s related to a given [`Node`]
-    fn take_with_related_nodes<W: Widget + ?Sized, S>(
+    fn take_with_related_nodes<W: Widget + ?Sized>(
         &self,
         pa: &mut Pass,
-        handle: &Handle<W, S>,
+        handle: &Handle<W>,
     ) -> Vec<Node> {
         let related = handle.related();
 

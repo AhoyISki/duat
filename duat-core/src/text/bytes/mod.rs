@@ -445,7 +445,7 @@ impl Bytes {
             .unwrap()
             .try_fold(start, |end, (_, char)| match end.line() == start.line() {
                 true => ControlFlow::Continue(end.fwd(char)),
-                false => ControlFlow::Break(end.fwd(char)),
+                false => ControlFlow::Break(end),
             });
 
         start..end

@@ -196,8 +196,8 @@ impl NotificationsOpts {
     /// see [`set_allowed_levels`]
     ///
     /// [`set_allowed_levels`]: Self::set_allowed_levels
-    pub fn fmt<T: Into<Text>>(&mut self, mut fmt: impl FnMut(Record) -> T + Send + 'static) {
-        *GLOBAL_FMT.lock().unwrap() = Some(Box::new(move |rec| fmt(rec).into()));
+    pub fn fmt(&mut self, fmt: impl FnMut(Record) -> Text + Send + 'static) {
+        *GLOBAL_FMT.lock().unwrap() = Some(Box::new(fmt));
     }
 
     /// Changes how [`Notifications`] decides which [mask] to use

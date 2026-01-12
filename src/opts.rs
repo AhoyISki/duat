@@ -57,6 +57,7 @@ use duat_core::{
     text::Text,
     ui::Orientation,
 };
+pub use duatmode::TabMode;
 use duatmode::opts::DuatModeOpts;
 
 use crate::widgets::NotificationsOpts;
@@ -190,13 +191,13 @@ pub struct StartOpts {
     /// With this option set to `true`, they will all occupy one
     /// line, the same way Kakoune does it.
     ///
-    /// If you don't call [`opts::set_status`], this will also
+    /// If you don't call [`opts::fmt_status`], this will also
     /// reformat the [`StatusLine`] to this:
     ///
     /// ```rust
     /// # use duat::prelude::*;
     /// let mode = mode_txt();
-    /// status!("{AlignRight}{name_txt} {mode} {sels_txt} {main_txt}");
+    /// let new_status = status!("{Spacer}{name_txt} {mode} {sels_txt} {main_txt}");
     /// ```
     ///
     /// This will firmly put all the information on the right side,
@@ -207,7 +208,7 @@ pub struct StartOpts {
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [`Notifications`]: crate::widgets::Notifications
     /// [`Widget`]: crate::widgets::Widget
-    /// [`opts::set_status`]: set_status
+    /// [`opts::fmt_status`]: fmt_status
     pub one_line_footer: bool,
     /// Place the [`FooterWidgets`]s on top of the screen
     ///
@@ -268,7 +269,8 @@ pub struct StartOpts {
     ///             builder.build()
     ///         });
     ///
-    ///         opts.set_allowed_levels([Error, Warn, Info, Debug]);
+    ///         opts.notifications
+    ///             .set_allowed_levels([Error, Warn, Info, Debug]);
     ///     });
     /// }
     /// ```
@@ -411,7 +413,6 @@ impl Default for StartOpts {
 ///         }
 ///         _ => {}
 ///     }
-///     Ok(())
 /// });
 /// ```
 ///
@@ -584,7 +585,6 @@ pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
 ///         status!("{name_txt}{Spacer}{buf_percent}")
 ///             .above()
 ///             .push_on(pa, handle);
-///         Ok(())
 ///     });
 /// }
 /// ```

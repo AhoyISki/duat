@@ -6,22 +6,18 @@
 //!
 //! [`Mode`]: super::Mode
 use std::{
-    cell::{Cell, RefMut},
-    ops::{DerefMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
+    cell::Cell,
+    ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     rc::Rc,
 };
 
 use lender::{Lender, Lending};
-use regex_cursor::regex_automata::hybrid::dfa::Cache;
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
     buffer::{Buffer, BufferId, Change},
     opts::PrintOpts,
-    text::{
-        Lines, Matches, Point, RegexHaystack, RegexPattern, Searcher, Strs, Text, TextIndex,
-        TextRange,
-    },
+    text::{Lines, Matches, Point, RegexHaystack, RegexPattern, Strs, Text, TextIndex, TextRange},
     ui::{Area, Widget},
 };
 
@@ -89,24 +85,22 @@ macro_rules! sel_mut {
 /// [`replace`]: Cursor::replace
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
-pub struct Cursor<'a, W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
-    selections: &'a mut Vec<Option<ModSelection>>,
+pub struct Cursor<'c, W: Widget + ?Sized = crate::buffer::Buffer> {
+    selections: &'c mut Vec<Option<ModSelection>>,
     sels_i: usize,
     initial: Selection,
-    widget: &'a mut W,
-    area: &'a Area,
+    widget: &'c mut W,
+    area: &'c Area,
     next_i: Option<Rc<Cell<usize>>>,
-    inc_searcher: &'a mut S,
 }
 
-impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
+impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
-        selections: &'a mut Vec<Option<ModSelection>>,
+        selections: &'c mut Vec<Option<ModSelection>>,
         sels_i: usize,
-        (widget, area): (&'a mut W, &'a Area),
+        (widget, area): (&'c mut W, &'c Area),
         next_i: Option<Rc<Cell<usize>>>,
-        searcher: &'a mut S,
     ) -> Self {
         let initial = selections[sels_i].as_ref().unwrap().selection.clone();
         Self {
@@ -116,7 +110,6 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             widget,
             area,
             next_i,
-            inc_searcher: searcher,
         }
     }
 
@@ -423,7 +416,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     /// you [destroy] it.
     ///
     /// [destroy]: Self::destroy
-    pub fn copy(&mut self) -> Cursor<'_, W, S> {
+    pub fn copy(&mut self) -> Cursor<'_, W> {
         self.selections
             .extend_from_within(self.sels_i..=self.sels_i);
         let sels_i = self.selections.len() - 1;
@@ -432,7 +425,6 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
             sels_i,
             (self.widget, self.area),
             self.next_i.clone(),
-            self.inc_searcher,
         )
     }
 
@@ -519,10 +511,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     ///
     /// [`caret`]: Self::caret
     #[track_caller]
-    pub fn search<R: RegexPattern>(
-        &self,
-        pat: R,
-    ) -> CursorMatches<'_, R, impl DerefMut<Target = Cache>> {
+    pub fn search<R: RegexPattern>(&self, pat: R) -> CursorMatches<'_, R> {
         let text = self.widget.text();
         let caret = self.caret();
         CursorMatches {
@@ -672,38 +661,7 @@ impl<'a, W: Widget + ?Sized, S> Cursor<'a, W, S> {
     }
 }
 
-/// Incremental search functions, only available on [`IncSearcher`]s
-///
-/// [`IncSearcher`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearcher.html
-impl<W: Widget + ?Sized> Cursor<'_, W, Searcher> {
-    /// Search incrementally from an [`IncSearch`] request
-    ///
-    /// This will match the Regex pattern from the current position of
-    /// the caret. if `end` is [`Some`], the search will end at the
-    /// requested [`Point`].
-    ///
-    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
-    pub fn search_inc(&mut self) -> CursorMatches<'_, String, &mut Cache> {
-        let caret = self.caret();
-        CursorMatches {
-            text_byte_len: self.text().len().byte(),
-            caret_range: caret.byte()..caret.fwd(self.char()).byte(),
-            matches: self.inc_searcher.search(self.widget.text()),
-        }
-    }
-
-    /// Whether the [`Selection`]'s selection matches the
-    /// [`IncSearch`] request
-    ///
-    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
-    pub fn matches_inc(&mut self) -> bool {
-        let range = sel!(self).byte_range(self.widget.text());
-        self.inc_searcher
-            .matches_pat(self.widget.text().strs(range).unwrap().to_string().as_str())
-    }
-}
-
-impl<S> Cursor<'_, Buffer, S> {
+impl Cursor<'_, Buffer> {
     /// A unique identifier for this [`Buffer`]
     ///
     /// This is more robust than identifying it by its path or name,
@@ -714,7 +672,7 @@ impl<S> Cursor<'_, Buffer, S> {
     }
 }
 
-impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
+impl<'a, W: Widget + ?Sized> std::fmt::Debug for Cursor<'a, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Cursor")
             .field("selection", &sel!(self))
@@ -735,21 +693,13 @@ impl<'a, W: Widget + ?Sized, S> std::fmt::Debug for Cursor<'a, W, S> {
 /// [`from_caret`]: CursorMatches::from_caret
 /// [`from_caret_excl`]: CursorMatches::from_caret_excl
 /// [`caret`]: Cursor::caret
-pub struct CursorMatches<'c, R, Cc>
-where
-    R: RegexPattern,
-    Cc: DerefMut<Target = Cache>,
-{
+pub struct CursorMatches<'c, R: RegexPattern> {
     text_byte_len: usize,
     caret_range: Range<usize>,
-    matches: Matches<'c, Text, R, Cc>,
+    matches: Matches<'c, R>,
 }
 
-impl<'c, R, C> CursorMatches<'c, R, C>
-where
-    R: RegexPattern,
-    C: DerefMut<Target = Cache>,
-{
+impl<'c, R: RegexPattern> CursorMatches<'c, R> {
     /// Changes the [`TextRange`] to search on
     ///
     /// This _will_ reset the [`Iterator`], if it was returning
@@ -873,11 +823,7 @@ where
     }
 }
 
-impl<'c, R, Cc> Iterator for CursorMatches<'c, R, Cc>
-where
-    R: RegexPattern,
-    Cc: DerefMut<Target = Cache>,
-{
+impl<'c, R: RegexPattern> Iterator for CursorMatches<'c, R> {
     type Item = R::Match;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -885,48 +831,37 @@ where
     }
 }
 
-impl<'c, R, Cc> DoubleEndedIterator for CursorMatches<'c, R, Cc>
-where
-    R: RegexPattern,
-    Cc: DerefMut<Target = Cache>,
-{
+impl<'c, R: RegexPattern> DoubleEndedIterator for CursorMatches<'c, R> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.matches.next_back()
     }
 }
 
 /// An [`Iterator`] overf all [`Cursor`]s
-pub struct Cursors<'a, W: Widget + ?Sized, S> {
+pub struct Cursors<'c, W: Widget + ?Sized> {
     current: Vec<Option<ModSelection>>,
     next_i: Rc<Cell<usize>>,
-    widget: &'a mut W,
-    area: &'a Area,
-    inc_searcher: RefMut<'a, S>,
+    widget: &'c mut W,
+    area: &'c Area,
 }
 
-impl<'a, W: Widget + ?Sized, S> Cursors<'a, W, S> {
+impl<'c, W: Widget + ?Sized> Cursors<'c, W> {
     /// Creates a new [`Cursors`]
-    pub(crate) fn new(
-        next_i: usize,
-        widget: &'a mut W,
-        area: &'a Area,
-        inc_searcher: RefMut<'a, S>,
-    ) -> Self {
+    pub(crate) fn new(next_i: usize, widget: &'c mut W, area: &'c Area) -> Self {
         Self {
             current: Vec::new(),
             next_i: Rc::new(Cell::new(next_i)),
             widget,
             area,
-            inc_searcher,
         }
     }
 }
 
-impl<'a, 'lend, W: Widget + ?Sized, S> Lending<'lend> for Cursors<'a, W, S> {
-    type Lend = Cursor<'lend, W, S>;
+impl<'a, 'lend, W: Widget + ?Sized> Lending<'lend> for Cursors<'a, W> {
+    type Lend = Cursor<'lend, W>;
 }
 
-impl<'a, W: Widget + ?Sized, S> Lender for Cursors<'a, W, S> {
+impl<'a, W: Widget + ?Sized> Lender for Cursors<'a, W> {
     fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
         reinsert_selections(
             self.current.drain(..).flatten(),
@@ -944,12 +879,11 @@ impl<'a, W: Widget + ?Sized, S> Lender for Cursors<'a, W, S> {
             0,
             (self.widget, self.area),
             Some(self.next_i.clone()),
-            &mut self.inc_searcher,
         ))
     }
 }
 
-impl<'a, W: Widget + ?Sized, S> Drop for Cursors<'a, W, S> {
+impl<'a, W: Widget + ?Sized> Drop for Cursors<'a, W> {
     fn drop(&mut self) {
         reinsert_selections(
             self.current.drain(..).flatten(),
@@ -1026,19 +960,19 @@ impl ModSelection {
 pub trait CaretOrRange {
     /// Internal movement function for monomorphization
     #[doc(hidden)]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>);
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>);
 }
 
 impl CaretOrRange for Point {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         sel_mut!(cursor).move_to(self, cursor.widget.text());
     }
 }
 
 impl CaretOrRange for usize {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         sel_mut!(cursor).move_to(
             cursor.widget.text().point_at_byte(self),
             cursor.widget.text(),
@@ -1048,7 +982,7 @@ impl CaretOrRange for usize {
 
 impl<Idx: TextIndex> CaretOrRange for Range<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         let range = self.start.to_byte_index()..self.end.to_byte_index();
         assert!(
             range.start <= range.end,
@@ -1070,7 +1004,7 @@ impl<Idx: TextIndex> CaretOrRange for Range<Idx> {
 
 impl<Idx: TextIndex> CaretOrRange for RangeInclusive<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         let range = self.start().to_byte_index()..=self.end().to_byte_index();
         assert!(
             range.start() <= range.end(),
@@ -1085,7 +1019,7 @@ impl<Idx: TextIndex> CaretOrRange for RangeInclusive<Idx> {
 
 impl<Idx: TextIndex> CaretOrRange for RangeFrom<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         let start = self.start.to_byte_index();
         sel_mut!(cursor).move_to(start, cursor.widget.text());
         if start < cursor.text().len().byte() {
@@ -1100,7 +1034,7 @@ impl<Idx: TextIndex> CaretOrRange for RangeFrom<Idx> {
 
 impl<Idx: TextIndex> CaretOrRange for RangeTo<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         let end = self
             .end
             .to_byte_index()
@@ -1118,7 +1052,7 @@ impl<Idx: TextIndex> CaretOrRange for RangeTo<Idx> {
 
 impl<Idx: TextIndex> CaretOrRange for RangeToInclusive<Idx> {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         cursor.move_to_start();
         cursor.set_anchor();
         sel_mut!(cursor).move_to(self.end, cursor.widget.text());
@@ -1127,7 +1061,7 @@ impl<Idx: TextIndex> CaretOrRange for RangeToInclusive<Idx> {
 
 impl CaretOrRange for RangeFull {
     #[track_caller]
-    fn move_to<W: Widget + ?Sized, S>(self, cursor: &mut Cursor<'_, W, S>) {
+    fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         cursor.move_to_start();
         if cursor.text().len() > Point::default() {
             cursor.set_anchor();

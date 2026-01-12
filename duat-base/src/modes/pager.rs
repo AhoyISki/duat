@@ -17,7 +17,7 @@ use duat_core::{
     data::Pass,
     form, hook,
     mode::{self, KeyEvent, Mode, alt, event, shift},
-    text::{RegexHaystack, Searcher, Tagger, Text, txt},
+    text::{RegexHaystack, Tagger, Text, txt},
     ui::{PrintInfo, RwArea, Widget},
 };
 
@@ -166,13 +166,14 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
             hook::queue(SearchUpdated((prev, self.prev.clone())));
         }
 
-        match Searcher::new(text.to_string()) {
-            Ok(mut searcher) => {
-                self.handle.area().set_print_info(pa, self.orig.clone());
-                self.handle
-                    .write(pa)
-                    .text_mut()
-                    .remove_tags(*PAGER_TAGGER, ..);
+        let (widget, area) = self.handle.write_with_area(pa);
+
+        let mut parts = widget.text_mut().parts();
+
+        match parts.bytes.try_search(text.to_string()) {
+            Ok(matches) => {
+                area.set_print_info(self.orig.clone());
+                parts.tags.remove(*PAGER_TAGGER, ..);
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string())
@@ -180,10 +181,9 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
 
                 crate::tag_from_ast(*PAGER_TAGGER, &mut text, &ast);
 
-                let mut parts = self.handle.write(pa).text_mut().parts();
                 let id = form::id_of!("pager.search");
 
-                for range in searcher.search(parts.bytes) {
+                for range in matches {
                     parts.tags.insert(*PAGER_TAGGER, range, id.to_tag(0));
                 }
             }
@@ -207,12 +207,12 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
     }
 
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
-        match Searcher::new(text.to_string()) {
-            Ok(mut se) => {
-                let point = self.handle.start_points(pa).real;
+        let point = self.handle.start_points(pa).real;
+
+        match self.handle.text(pa).try_search(text.to_string()) {
+            Ok(matches) => {
                 if self.is_fwd {
-                    let Some(range) = se.search(self.handle.read(pa).text()).range(point..).next()
-                    else {
+                    let Some(range) = matches.clone().range(point..).next() else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;
                     };
@@ -221,11 +221,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                     self.handle
                         .scroll_to_points(pa, start.to_two_points_after());
                 } else {
-                    let Some(range) = se
-                        .search(self.handle.read(pa).text())
-                        .range(..point)
-                        .next_back()
-                    else {
+                    let Some(range) = matches.range(..point).next_back() else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;
                     };

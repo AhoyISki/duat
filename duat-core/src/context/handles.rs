@@ -2,12 +2,9 @@
 //!
 //! These are used pretty much everywhere, and are essentially just an
 //! [`RwData<W>`] conjoined with an [`Area`].
-use std::{
-    cell::RefCell,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
 };
 
 use lender::Lender;
@@ -17,7 +14,7 @@ use crate::{
     data::{Pass, RwData, WriteableTuple},
     mode::{Cursor, Cursors, ModSelection, Selection, Selections},
     opts::PrintOpts,
-    text::{txt, Searcher, Text, TextMut, TextParts, TwoPoints},
+    text::{Text, TextMut, TextParts, TwoPoints, txt},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
 };
 
@@ -155,12 +152,11 @@ use crate::{
 /// [`alt!`]: crate::mode::alt
 /// [`ctrl!`]: crate::mode::ctrl
 /// [`shift!`]: crate::mode::shift
-pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer, S = ()> {
+pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer> {
     widget: RwData<W>,
     pub(crate) area: RwArea,
     mask: Arc<Mutex<&'static str>>,
     related: RelatedWidgets,
-    searcher: RefCell<S>,
     is_closed: RwData<bool>,
     master: Option<Box<Handle<dyn Widget>>>,
     pub(crate) update_requested: Arc<AtomicBool>,
@@ -179,7 +175,6 @@ impl<W: Widget + ?Sized> Handle<W> {
             area,
             mask,
             related: RelatedWidgets(RwData::default()),
-            searcher: RefCell::new(()),
             is_closed: RwData::new(false),
             master: master.map(Box::new),
             update_requested: Arc::new(AtomicBool::new(false)),
@@ -187,7 +182,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 }
 
-impl<W: Widget + ?Sized, S> Handle<W, S> {
+impl<W: Widget + ?Sized> Handle<W> {
     ////////// Read and write access functions
 
     /// Reads from the [`Widget`], making use of a [`Pass`]
@@ -283,7 +278,6 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
             area: self.area.clone(),
             mask: self.mask.clone(),
             related: self.related.clone(),
-            searcher: RefCell::new(()),
             is_closed: self.is_closed.clone(),
             master: self.master.clone(),
             update_requested: self.update_requested.clone(),
@@ -364,11 +358,11 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
         &self,
         pa: &mut Pass,
         n: usize,
-        edit: impl FnOnce(Cursor<W, S>) -> Ret,
+        edit: impl FnOnce(Cursor<W>) -> Ret,
     ) -> Ret {
-        fn get_parts<'a, W: Widget + ?Sized, S>(
+        fn get_parts<'a, W: Widget + ?Sized>(
             pa: &'a mut Pass,
-            handle: &'a Handle<W, S>,
+            handle: &'a Handle<W>,
             n: usize,
         ) -> (Selection, bool, &'a mut W, &'a Area) {
             let (widget, area) = handle.write_with_area(pa);
@@ -383,18 +377,9 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
 
         let (selection, was_main, widget, area) = get_parts(pa, self, n);
 
-        // This is safe because of the &mut Pass argument
-        let mut searcher = self.searcher.borrow_mut();
-
         let mut selections = vec![Some(ModSelection::new(selection, n, was_main))];
 
-        let ret = edit(Cursor::new(
-            &mut selections,
-            0,
-            (widget, area),
-            None,
-            &mut searcher,
-        ));
+        let ret = edit(Cursor::new(&mut selections, 0, (widget, area), None));
 
         crate::mode::reinsert_selections(selections.into_iter().flatten(), widget, None);
 
@@ -420,7 +405,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// [`edit_last`]: Self::edit_last
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W, S>) -> Ret) -> Ret {
+    pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W>) -> Ret) -> Ret {
         self.edit_nth(
             pa,
             self.widget.read(pa).text().selections().main_index(),
@@ -447,7 +432,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W, S>) -> Ret) -> Ret {
+    pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W>) -> Ret) -> Ret {
         let len = self.widget.read(pa).text().selections().len();
         self.edit_nth(pa, len.saturating_sub(1), edit)
     }
@@ -470,11 +455,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     ///
     /// [`edit_nth`]: Self::edit_nth
     /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_iter<Ret>(
-        &self,
-        pa: &mut Pass,
-        edit: impl FnOnce(Cursors<'_, W, S>) -> Ret,
-    ) -> Ret {
+    pub fn edit_iter<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursors<'_, W>) -> Ret) -> Ret {
         edit(self.get_iter(pa))
     }
 
@@ -493,17 +474,15 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     /// But it can't return a value, and is meant to reduce the
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
-    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(Cursor<W, S>)) {
+    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(Cursor<W>)) {
         self.get_iter(pa).for_each(edit);
     }
 
-    fn get_iter<'a>(&'a self, pa: &'a mut Pass) -> Cursors<'a, W, S> {
+    fn get_iter<'a>(&'a self, pa: &'a mut Pass) -> Cursors<'a, W> {
         let (widget, area) = self.write_with_area(pa);
         widget.text_mut().selections_mut().populate();
 
-        let searcher = self.searcher.borrow_mut();
-
-        Cursors::new(0, widget, area, searcher)
+        Cursors::new(0, widget, area)
     }
 
     ////////// Area functions
@@ -706,39 +685,6 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
 
     ////////// Other methods
 
-    /// Attaches a [`Searcher`] to this [`Handle`], so you can do
-    /// incremental search
-    ///
-    /// An [`Handle`] with a [`Searcher`] not only has its usual
-    /// editing capabilities, but is also able to act on requested
-    /// regex searches, like those from [`IncSearch`], in
-    /// [`duat`]. This means that a user can type up a
-    /// [prompt] to search for something, and the [`Handle`]
-    /// can use the [`Searcher`] to interpret how that search will
-    /// be utilized. Examples of this can be found in the
-    /// [`duat`] crate, as well as the [`duat-kak`] crate,
-    /// which has some more advanced usage.
-    ///
-    /// [`Searcher`]: crate::text::Searcher
-    /// [`Selection`]: crate::mode::Selection
-    /// [`Cursor`]: crate::mode::Cursor
-    /// [`IncSearch`]: https://docs.rs/duat/latest/duat/modes/struct.IncSearch.html
-    /// [`duat`]: https://docs.rs/duat/lastest/
-    /// [prompt]: https://docs.rs/duat/latest/duat/modes/trait.PromptMode.html
-    /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
-    pub fn attach_searcher(&self, searcher: Searcher) -> Handle<W, Searcher> {
-        Handle {
-            widget: self.widget.clone(),
-            area: self.area.clone(),
-            mask: self.mask.clone(),
-            related: self.related.clone(),
-            searcher: RefCell::new(searcher),
-            is_closed: self.is_closed.clone(),
-            master: self.master.clone(),
-            update_requested: self.update_requested.clone(),
-        }
-    }
-
     /// Pushes a [`Widget`] around this one
     ///
     /// This `Widget` will be placed internally, i.e., around the
@@ -880,7 +826,7 @@ impl<W: Widget + ?Sized, S> Handle<W, S> {
     }
 }
 
-impl<W: Widget, S> Handle<W, S> {
+impl<W: Widget> Handle<W> {
     /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`]
     pub fn to_dyn(&self) -> Handle<dyn Widget> {
         Handle {
@@ -889,7 +835,6 @@ impl<W: Widget, S> Handle<W, S> {
             area: self.area.clone(),
             mask: self.mask.clone(),
             related: self.related.clone(),
-            searcher: RefCell::new(()),
             is_closed: self.is_closed.clone(),
             master: self.master.clone(),
             update_requested: self.update_requested.clone(),
@@ -900,15 +845,15 @@ impl<W: Widget, S> Handle<W, S> {
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
-unsafe impl<W: Widget + ?Sized, S> Send for Handle<W, S> {}
-unsafe impl<W: Widget + ?Sized, S> Sync for Handle<W, S> {}
+unsafe impl<W: Widget + ?Sized> Send for Handle<W> {}
+unsafe impl<W: Widget + ?Sized> Sync for Handle<W> {}
 
-impl<W1, W2, S1, S2> PartialEq<Handle<W2, S2>> for Handle<W1, S1>
+impl<W1, W2> PartialEq<Handle<W2>> for Handle<W1>
 where
     W1: Widget + ?Sized,
     W2: Widget + ?Sized,
 {
-    fn eq(&self, other: &Handle<W2, S2>) -> bool {
+    fn eq(&self, other: &Handle<W2>) -> bool {
         self.widget().ptr_eq(other.widget())
     }
 }
@@ -920,7 +865,6 @@ impl<W: Widget + ?Sized> Clone for Handle<W> {
             area: self.area.clone(),
             mask: self.mask.clone(),
             related: self.related.clone(),
-            searcher: self.searcher.clone(),
             is_closed: self.is_closed.clone(),
             master: self.master.clone(),
             update_requested: self.update_requested.clone(),
@@ -928,7 +872,7 @@ impl<W: Widget + ?Sized> Clone for Handle<W> {
     }
 }
 
-impl<W: Widget + ?Sized, S> std::fmt::Debug for Handle<W, S> {
+impl<W: Widget + ?Sized> std::fmt::Debug for Handle<W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Handle")
             .field("mask", &self.mask)

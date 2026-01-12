@@ -14,7 +14,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form, hook,
-    text::{Searcher, Tagger, Text, txt},
+    text::{Tagger, Text, txt},
     ui::{PrintInfo, RwArea},
 };
 
@@ -49,8 +49,6 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///     }
 /// }
 /// ```
-///
-/// This function returns a [`Prompt<IncSearch<SearchFwd>>`],
 pub struct IncSearch<I: IncSearcher> {
     inc: I,
     orig: Option<(duat_core::mode::Selections, PrintInfo)>,
@@ -99,8 +97,10 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
             hook::queue(SearchUpdated((prev, self.prev.clone())));
         }
 
-        match Searcher::new(text.to_string()) {
-            Ok(searcher) => {
+        let pat = text.to_string();
+
+        match regex_syntax::parse(&pat) {
+            Ok(_) => {
                 handle.area().set_print_info(pa, orig_print_info.clone());
                 let buffer = handle.write(pa);
                 *buffer.selections_mut() = orig_selections.clone();
@@ -112,11 +112,11 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                 crate::tag_from_ast(*TAGGER, &mut text, &ast);
 
                 if !text.is_empty() {
-                    self.inc.search(pa, handle.attach_searcher(searcher));
+                    self.inc.search(pa, &pat, handle);
                 }
             }
             Err(err) => {
-                let regex_syntax::Error::Parse(err) = *err else {
+                let regex_syntax::Error::Parse(err) = err else {
                     unreachable!("As far as I can tell, regex_syntax has goofed up");
                 };
 
@@ -143,8 +143,9 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
     fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
         if !text.is_empty() {
-            if let Err(err) = Searcher::new(text.to_string()) {
-                let regex_syntax::Error::Parse(err) = *err else {
+            let pat = text.to_string();
+            if let Err(err) = regex_syntax::parse(&pat) {
+                let regex_syntax::Error::Parse(err) = err else {
                     unreachable!("As far as I can tell, regex_syntax has goofed up");
                 };
 
@@ -158,7 +159,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
                 context::error!("{err}")
             } else {
-                hook::queue(SearchPerformed(text.to_string()));
+                hook::queue(SearchPerformed(pat));
             }
         }
     }
@@ -216,8 +217,11 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 ///
 /// [`duat-kak`]: https://docs.rs/duat-kak
 pub trait IncSearcher: Clone + Send + 'static {
-    /// Performs the incremental search
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>);
+    /// Performs an incremental search with a `pat`
+    ///
+    /// Using this `pat` inside any searching method is guaranteed not
+    /// to panic.
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>);
 
     /// What prompt to show in the [`PromptLine`]
     ///
@@ -232,13 +236,13 @@ pub trait IncSearcher: Clone + Send + 'static {
 pub struct SearchFwd;
 
 impl IncSearcher for SearchFwd {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search_inc()
+                c.search(pat)
                     .from_caret_excl()
                     .next()
-                    .or_else(|| c.search_inc().to_caret().next())
+                    .or_else(|| c.search(pat).to_caret().next())
             } {
                 c.move_to(range)
             }
@@ -257,13 +261,13 @@ impl IncSearcher for SearchFwd {
 pub struct SearchRev;
 
 impl IncSearcher for SearchRev {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search_inc()
+                c.search(pat)
                     .to_caret()
                     .next_back()
-                    .or_else(|| c.search_inc().from_caret_excl().next_back())
+                    .or_else(|| c.search(pat).from_caret_excl().next_back())
             } {
                 c.move_to(range)
             }
@@ -282,13 +286,13 @@ impl IncSearcher for SearchRev {
 pub struct ExtendFwd;
 
 impl IncSearcher for ExtendFwd {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search_inc()
+                c.search(pat)
                     .from_caret_excl()
                     .next()
-                    .or_else(|| c.search_inc().to_caret().next())
+                    .or_else(|| c.search(pat).to_caret().next())
             } {
                 c.set_anchor_if_needed();
                 c.move_to(range)
@@ -308,13 +312,13 @@ impl IncSearcher for ExtendFwd {
 pub struct ExtendRev;
 
 impl IncSearcher for ExtendRev {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search_inc()
+                c.search(pat)
                     .to_caret()
                     .next_back()
-                    .or_else(|| c.search_inc().from_caret_excl().next_back())
+                    .or_else(|| c.search(pat).from_caret_excl().next_back())
             } {
                 c.set_anchor_if_needed();
                 c.move_to(range)

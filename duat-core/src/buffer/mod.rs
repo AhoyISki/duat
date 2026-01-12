@@ -1045,7 +1045,7 @@ impl BufferPass for Buffer {
         Buffer::buffer_id(self)
     }
 }
-impl<'b, S> BufferPass for Cursor<'b, Buffer, S> {
+impl<'b> BufferPass for Cursor<'b, Buffer> {
     fn buffer_id(&self) -> BufferId {
         Cursor::buffer_id(self)
     }
@@ -1054,4 +1054,4 @@ impl<'b, S> BufferPass for Cursor<'b, Buffer, S> {
 trait InnerBufferPass {}
 
 impl InnerBufferPass for Buffer {}
-impl<'b, S> InnerBufferPass for Cursor<'b, Buffer, S> {}
+impl<'b> InnerBufferPass for Cursor<'b, Buffer> {}
