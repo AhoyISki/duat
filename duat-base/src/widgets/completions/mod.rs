@@ -21,7 +21,7 @@ use duat_core::{
     cmd::{CfgOrManifest, Existing, OtherBuffer, Parameter, ValidFilePath},
     context::{self, Handle},
     data::Pass,
-    hook::{self, FocusChanged},
+    hook::{self, FocusChanged, WidgetOpened},
     mode::{MouseEvent, MouseEventKind},
     text::{Point, SpawnTag, Strs, Tagger, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
@@ -129,7 +129,7 @@ impl CompletionsBuilder {
     pub fn open(self, pa: &mut Pass) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            hook::add::<Completions>(Completions::set_frame);
+            hook::add::<WidgetOpened<Completions>>(Completions::set_frame);
             hook::add::<FocusChanged>(|pa, (prev, _)| prev.text_mut(pa).remove_tags(*TAGGER, ..));
         });
 

@@ -816,10 +816,10 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`, then the new `T` will replace that old version.
     ///
     /// You should most likely call this function on the
-    /// [`WidgetCreated<Buffer>`] hook, often aliased to just
+    /// [`WidgetOpened<Buffer>`] hook, often aliased to just
     /// `Buffer`.
     ///
-    /// [`WidgetCreated<Buffer>`]: crate::hook::WidgetCreated
+    /// [`WidgetOpened<Buffer>`]: crate::hook::WidgetOpened
     pub fn register<'p>(
         &'p self,
         pa: &'p mut Pass,

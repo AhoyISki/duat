@@ -20,7 +20,7 @@ use crate::{
     buffer::{Buffer, PathKind},
     context::{self, Cache, Handle},
     data::{Pass, RwData},
-    hook::{self, BufferClosed, BufferSwitched, WidgetCreated, WindowCreated},
+    hook::{self, BufferClosed, BufferSwitched, WidgetOpened, WindowOpened},
     mode,
     opts::PrintOpts,
     session::UiMouseEvent,
@@ -74,9 +74,9 @@ impl Windows {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<Buffer>().unwrap()),
+            WidgetOpened(node.handle().try_downcast::<Buffer>().unwrap()),
         );
-        hook::trigger(pa, WindowCreated(window));
+        hook::trigger(pa, WindowOpened(window));
     }
 
     ////////// Functions for new Widgets
@@ -91,10 +91,10 @@ impl Windows {
         let inner = self.inner.write(pa);
         inner.list.push(window);
 
-        hook::trigger(pa, WindowCreated(self.inner.read(pa).list[win].clone()));
+        hook::trigger(pa, WindowOpened(self.inner.read(pa).list[win].clone()));
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<Buffer>().unwrap()),
+            WidgetOpened(node.handle().try_downcast::<Buffer>().unwrap()),
         );
 
         node
@@ -170,7 +170,7 @@ impl Windows {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
         );
 
         node.handle().try_downcast()
@@ -201,7 +201,7 @@ impl Windows {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
         );
 
         node.handle().try_downcast().unwrap()
@@ -230,7 +230,7 @@ impl Windows {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
         );
 
         node.handle().try_downcast()
@@ -323,7 +323,7 @@ impl Windows {
 
         hook::trigger(
             pa,
-            WidgetCreated(node.handle().try_downcast::<W>().unwrap()),
+            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
         );
 
         Some(node)
@@ -489,7 +489,7 @@ impl Windows {
 
                 self.inner.write(pa).list.push(window.clone());
 
-                hook::trigger(pa, WindowCreated(window));
+                hook::trigger(pa, WindowOpened(window));
 
                 // Swap the Buffers ahead of the swapped new_root
                 let lo = handle.read(pa).layout_order;
@@ -932,7 +932,7 @@ impl Window {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`LogBook`]: https://docs.rs/duat/latest/duat/widgets/struct.LogBook.html
     /// [`FooterWidgets`]: https://docs.rs/duat/latest/duat/widgets/struct.FooterWidgets.html
-    /// [`WindowCreated`]: crate::hook::WindowCreated
+    /// [`WindowOpened`]: crate::hook::WindowOpened
     /// [satellite `Widget`s]: context::Handle::push_outer_widget
     pub fn push_inner<W: Widget>(
         &self,
@@ -982,7 +982,7 @@ impl Window {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`LogBook`]: https://docs.rs/duat/latest/duat/widgets/struct.LogBook.html
     /// [`FooterWidgets`]: https://docs.rs/duat/latest/duat/widgets/struct.FooterWidgets.html
-    /// [`WindowCreated`]: crate::hook::WindowCreated
+    /// [`WindowOpened`]: crate::hook::WindowOpened
     /// [satellite `Widget`s]: context::Handle::push_outer_widget
     pub fn push_outer<W: Widget>(
         &self,

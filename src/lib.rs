@@ -304,7 +304,7 @@
 //! [`plug!`]: prelude::plug
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [custom commands]: crate::prelude::cmd
-//! [windows]: crate::hook::WindowCreated
+//! [windows]: crate::hook::WindowOpened
 //! [`Parser`]: duat_core::buffer::Parser
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
@@ -357,7 +357,7 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<LineNumbers>(|pa, handle| {
+    //!     hook::add::<WidgetOpened<LineNumbers>>(|pa, handle| {
     //!         if let Ok(buf) = handle.buffer()
     //!             && let Some("markdown") = buf.filetype(pa)
     //!         {
@@ -378,7 +378,7 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<Buffer>(|pa, handle| {
+    //!     hook::add::<BufferOpened>(|pa, handle| {
     //!         status!("{name_txt}{Spacer}{main_txt}")
     //!             .above()
     //!             .push_on(pa, handle);
@@ -405,8 +405,8 @@ pub mod hook {
     //! - [`ExitedDuat`] triggers after Duat has exited.
     //! - [`FocusedOnDuat`] triggers when Duat gains focus.
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
-    //! - [`WidgetCreated`] triggers when a [`Widget`] is created.
-    //! - [`WindowCreated`], triggers when a [`Window`] is created.
+    //! - [`WidgetOpened`] triggers when a [`Widget`] is created.
+    //! - [`WindowOpened`], triggers when a [`Window`] is created.
     //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
     //! - [`BufferClosed`] triggers when closing `Buffer`s.
     //! - [`BufferReloaded`] triggers when reloading Duat.
@@ -461,24 +461,24 @@ pub mod hook {
     //! These are the default hook groups:
     //!
     //! - `"BufferWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
-    //!   to new [`Buffer`]s, via [`WidgetCreated`], (using [`Buffer`]
-    //!   as an alias for [`WidgetCreated<Buffer>`]).
+    //!   to new [`Buffer`]s, via [`WidgetOpened`], (using [`Buffer`]
+    //!   as an alias for [`WidgetOpened<Buffer>`]).
     //! - `"LogBook"`: Pushes a [`LogBook`] to the bottom.
     //! - `"FooterWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
-    //!   and [`Notifications`] to new windows, via [`WindowCreated`].
+    //!   and [`Notifications`] to new windows, via [`WindowOpened`].
     //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
     //!   buffer in it is written to, via [`BufferSaved`].
     //!
     //! [alias]: duat_core::hook::HookAlias
-    //! [hook above]: WidgetCreated
-    //! [That hook]: crate::prelude::WidgetCreated
+    //! [hook above]: WidgetOpened
+    //! [That hook]: crate::prelude::WidgetOpened
     //! [`StatusLine`]: crate::prelude::StatusLine
     //! [buffer's name]: crate::prelude::name_txt
     //! [main `Selection`]: crate::prelude::main_txt
     //! [`VertRule`]: crate::prelude::VertRule
     //! [`PromptLine`]: crate::prelude::PromptLine
     //! [`Notifications`]: crate::prelude::Notifications
-    //! [`WindowCreated`]: crate::prelude::WindowCreated
+    //! [`WindowOpened`]: crate::prelude::WindowOpened
     //! [`LogBook`]: crate::prelude::LogBook
     //! [`Buffer`]: crate::prelude::Buffer
     //! [`LineNumbers`]: crate::prelude::LineNumbers
@@ -587,10 +587,10 @@ pub mod prelude {
         data::{self, Pass},
         form::{self, CursorShape, Form},
         hook::{
-            self, BufferReloaded, BufferSaved, BufferUpdated, ColorSchemeSet, ConfigLoaded,
-            ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeySent,
-            KeySentTo, KeyTyped, ModeSwitched, SearchPerformed, SearchUpdated, UnfocusedFrom,
-            UnfocusedFromDuat, WidgetCreated, WindowCreated,
+            self, BufferOpened, BufferReloaded, BufferSaved, BufferUpdated, ColorSchemeSet,
+            ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat, FormSet,
+            Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched, SearchPerformed, SearchUpdated,
+            UnfocusedFrom, UnfocusedFromDuat, WidgetOpened, WindowOpened,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,

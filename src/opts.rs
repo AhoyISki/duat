@@ -400,7 +400,7 @@ impl Default for StartOpts {
 /// ```rust
 /// use duat::prelude::*;
 ///
-/// hook::add::<Buffer>(|pa, handle| {
+/// hook::add::<BufferOpened>(|pa, handle| {
 ///     let buffer = handle.write(pa);
 ///
 ///     match buffer.filetype() {
@@ -581,7 +581,7 @@ pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
 /// }
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|pa, handle| {
+///     hook::add::<BufferOpened>(|pa, handle| {
 ///         status!("{name_txt}{Spacer}{buf_percent}")
 ///             .above()
 ///             .push_on(pa, handle);

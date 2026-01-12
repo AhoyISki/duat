@@ -26,7 +26,7 @@ setup_duat!(setup);
 fn setup() {
     hook::remove("FooterWidgets");
 
-    hook::add::<Buffer>(|pa, handle| {
+    hook::add::<BufferOpened>(|pa, handle| {
         FooterWidgets::default().one_line().push_on(pa, handle);
     });
 }

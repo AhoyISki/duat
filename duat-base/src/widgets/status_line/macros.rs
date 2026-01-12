@@ -97,7 +97,7 @@
 ///         }
 ///     }
 ///
-///     hook::add::<WindowCreated>({
+///     hook::add::<WindowOpened>({
 ///         let changing_str = changing_str.clone();
 ///         move |pa, window| {
 ///             let changing_str = changing_str.clone();

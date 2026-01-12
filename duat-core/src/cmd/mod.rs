@@ -880,7 +880,7 @@ mod global {
     ///         Ok(None)
     ///     });
     ///
-    ///     hook::add::<WindowCreated>(move |mut pa, window| {
+    ///     hook::add::<WindowOpened>(move |mut pa, window| {
     ///         // status! macro is from duat.
     ///         status!("The value is currently {var}")
     ///             .above()

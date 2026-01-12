@@ -36,7 +36,7 @@
 //!
 //! [`hook`]: crate::hook
 //! [`Buffer`]: crate::buffer::Buffer
-//! [`WidgetCreated`]: crate::hook::WidgetCreated
+//! [`WidgetOpened`]: crate::hook::WidgetOpened
 //! [Ui]: traits::RawUi
 //! [`Ui::Area`]: traits::RawUi::Area
 //! [on `Handle`]: Handle::spawn_widget

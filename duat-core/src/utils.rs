@@ -405,16 +405,14 @@ macro_rules! doc_duat {
                     data::{self, Pass},
                     form::{self, CursorShape, Form},
                     hook::{
-                        self, BufferSaved, BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded,
-                        ExitedDuat, FocusChanged, FocusedOnDuat, FormSet, Hookable, KeySent,
-                        KeySentTo, ModeSwitched, UnfocusedFrom, UnfocusedFromDuat,
-                        WidgetCreated, WindowCreated,
+                        self, BufferOpened, BufferSaved, BufferUpdated, ColorSchemeSet,
+                        ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat,
+                        FormSet, Hookable, KeySent, KeySentTo, ModeSwitched, UnfocusedFrom,
+                        UnfocusedFromDuat, WidgetOpened, WindowOpened,
                     },
                     lender::{Lender, DoubleEndedLender, ExactSizeLender},
                     text::{
-                        self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer,
-                        SpawnTag, Tagger, Text, txt, Point, Searcher
-                    },
+                        self, Builder, Conceal, Ghost, Spacer, SpawnTag, Tagger, Text, txt, Point},
                     ui::{self, Area, Widget},
                 };
                 
@@ -455,7 +453,7 @@ macro_rules! doc_duat {
                     fn update(pa: &mut Pass, handle: &Handle<Self>) {}
                     fn needs_update(&self, pa: &Pass) -> bool { false }
                     fn text(&self) -> &Text { &self.text }
-                    fn text_mut(&mut self) -> &mut Text { &mut self.text }
+                    fn text_mut(&mut self) -> TextMut<'_> { self.text.as_mut() }
                 }
                 #[derive(Clone, Copy, Debug)]
                 pub struct LineNumbersOpts {

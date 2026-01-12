@@ -12,7 +12,7 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     hook::add::<Buffer>(|pa: &mut Pass, handle: &Handle| {
+//!     hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle| {
 //!         let buffer = handle.write(pa);
 //!         if let Some("lisp") = buffer.filetype() {
 //!             buffer.opts.wrap_lines = true;
@@ -37,10 +37,9 @@
 //! - [`ExitedDuat`] triggers after Duat has exited.
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
-//! - [`WidgetCreated`] triggers when a [`Widget`] is created, letting
-//!   you change it, [`Widget`] can be used as its [alias]
-//! - [`WindowCreated`], triggers when a [`Window`] is created,
-//!   letting you change it.
+//! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
+//! - [`WindowOpened`] triggers when a [`Window`] is created.
+//! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
 //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
 //! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
@@ -187,6 +186,7 @@ use crossterm::event::MouseEventKind;
 
 pub use self::global::*;
 use crate::{
+    buffer::Buffer,
     context::{Cache, Handle},
     data::Pass,
     form::{Form, FormId},
@@ -202,7 +202,7 @@ mod global {
         atomic::{AtomicUsize, Ordering},
     };
 
-    use super::{HookAlias, Hookable, InnerGroupId, InnerHooks};
+    use super::{Hookable, InnerGroupId, InnerHooks};
     use crate::{data::Pass, session::DuatEvent};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
@@ -331,9 +331,9 @@ mod global {
     ///
     /// [`hook::add`]: add
     #[inline(never)]
-    pub fn add<H: HookAlias<impl std::any::Any>>(
+    pub fn add<H: Hookable>(
         f: impl FnMut(&mut Pass, H::Input<'_>) + Send + 'static,
-    ) -> HookBuilder<H::Hookable> {
+    ) -> HookBuilder<H> {
         HookBuilder {
             callback: Some(Box::new(f)),
             group: None,
@@ -489,7 +489,7 @@ impl Hookable for UnfocusedFromDuat {
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<WidgetCreated<LineNumbers>>(|pa, ln| Ok(ln.write(pa).relative = true));
+///     hook::add::<WidgetOpened<LineNumbers>>(|pa, ln| Ok(ln.write(pa).relative = true));
 /// }
 /// ```
 ///
@@ -532,15 +532,18 @@ impl Hookable for UnfocusedFromDuat {
 /// [direction]: crate::ui::PushSpecs
 /// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 /// [`VertRule`]: https://docs.rs/duat_term/latest/duat-term/struct.VertRule.html
-pub struct WidgetCreated<W: Widget>(pub(crate) Handle<W>);
+pub struct WidgetOpened<W: Widget>(pub(crate) Handle<W>);
 
-impl<W: Widget> Hookable for WidgetCreated<W> {
+impl<W: Widget> Hookable for WidgetOpened<W> {
     type Input<'h> = &'h Handle<W>;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
 }
+
+/// An alias for [`WidgetOpened<Buffer>`]
+pub type BufferOpened = WidgetOpened<Buffer>;
 
 /// [`Hookable`]: Triggers when a new window is opened
 ///
@@ -603,7 +606,6 @@ impl<W: Widget> Hookable for WidgetCreated<W> {
 /// [hook]: self
 /// [outer `Widget`s]: Window::push_outer
 /// [inner `Widget`s]: Window::push_inner
-/// [`Buffer`]: crate::buffer::Buffer
 /// [`LineNumbers`]: https://docs.rs/duat/duat/latest/widgets/struct.LineNumbers.html
 /// [`VertRule`]: https://docs.rs/duat/duat/latest/widgets/struct.VertRule.html
 /// [`FooterWidgets`]: https://docs.rs/duat/duat/latest/widgets/struct.FooterWidgets.html
@@ -611,9 +613,9 @@ impl<W: Widget> Hookable for WidgetCreated<W> {
 /// [`PromptLine`]: https://docs.rs/duat/duat/latest/widgets/struct.PromptLine.html
 /// [`Notifications`]: https://docs.rs/duat/duat/latest/widgets/struct.Notifications.html
 /// [`LogBook`]: https://docs.rs/duat/duat/latest/widgets/struct.LogBook.html
-pub struct WindowCreated(pub(crate) Window);
+pub struct WindowOpened(pub(crate) Window);
 
-impl Hookable for WindowCreated {
+impl Hookable for WindowOpened {
     type Input<'h> = &'h mut Window;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -631,8 +633,6 @@ impl Hookable for WindowCreated {
 ///
 /// This will not trigger upon reloading Duat. For that, see
 /// [`BufferClosed`].
-///
-/// [`Buffer`]: crate::buffer::Buffer
 pub struct BufferClosed(pub(crate) (Handle, Cache));
 
 impl Hookable for BufferClosed {
@@ -659,8 +659,6 @@ impl PartialEq<Handle> for BufferClosed {
 ///
 /// This will not trigger upon closing Duat. For that, see
 /// [`BufferClosed`].
-///
-/// [`Buffer`]: crate::buffer::Buffer
 pub struct BufferReloaded(pub(crate) (Handle, Cache));
 
 impl Hookable for BufferReloaded {
@@ -722,7 +720,7 @@ impl PartialEq<Handle> for BufferReloaded {
 ///         }
 ///     };
 ///
-///     hook::add::<Buffer>(move |pa, handle| {
+///     hook::add::<BufferOpened>(move |pa, handle| {
 ///         let mut parts = handle.write(pa).parts();
 ///         let range = Point::default()..parts.bytes.len();
 ///         highlight_non_ascii(&mut parts.tags, parts.bytes, range);
@@ -1052,8 +1050,6 @@ impl Hookable for ColorSchemeSet {
 /// - The number of bytes written to said buffer
 /// - Wether Duat is in the process of quitting (happens when calling
 ///   the `wq` or `waq` commands)
-///
-/// [`Buffer`]: crate::buffer::Buffer
 pub struct BufferSaved(pub(crate) (Handle, usize, bool));
 
 impl Hookable for BufferSaved {
@@ -1266,109 +1262,3 @@ struct Hook<H: Hookable> {
     filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
     once: bool,
 }
-
-/// An alias for a [`Hookable`]
-///
-/// This trait is not normally meant to be implemented manually,
-/// instead, it is automatically derived for every [`Hookable`].
-///
-/// You can use this if you want to use something that is not
-/// [`Hookable`] as a [`Hookable`] alias that gets translated to an
-/// actually [`Hookable`] type via [`HookAlias::Hookable`]. An example
-/// of where this is used is with [`Widget`]s and [`Mode`]s:
-///
-/// ```rust
-/// # duat_core::doc_duat!(duat);
-/// use duat::prelude::*;
-///
-/// pub struct CreatedStruct<T: 'static>(T);
-///
-/// impl<T: 'static> Hookable for CreatedStruct<T> {
-///     type Input<'h> = &'h mut T;
-///
-///     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
-///         &mut self.0
-///     }
-/// }
-///
-/// struct MyStructWithAVeryLongName {
-///     pub option_1: bool,
-/// };
-///
-/// // In the user's config crate:
-/// # {
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     // This is way too long
-///     hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|_, arg| Ok(arg.option_1 = true));
-/// }
-/// # }
-/// ```
-///
-/// In this case, you can do this instead:
-///
-/// ```rust
-/// # duat_core::doc_duat!(duat);
-/// use duat::prelude::*;
-/// use hook::HookAlias;
-///
-/// pub struct CreatedStruct<T: 'static>(T);
-///
-/// impl<T: 'static> Hookable for CreatedStruct<T> {
-///     type Input<'h> = &'h mut T;
-///
-///     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h> {
-///         &mut self.0
-///     }
-/// }
-///
-/// struct MyStructWithAVeryLongName {
-///     pub option_1: bool,
-/// };
-///
-/// struct MyDummy;
-///
-/// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {
-///     type Hookable = CreatedStruct<MyStructWithAVeryLongName>;
-///     type Input<'h> = <Self::Hookable as Hookable>::Input<'h>;
-/// }
-///
-/// // In the user's config crate:
-/// # {
-/// setup_duat!(setup);
-/// use duat::prelude::*;
-///
-/// fn setup() {
-///     // Much better
-///     hook::add::<MyStructWithAVeryLongName>(|_, arg| Ok(arg.option_1 = true));
-/// }
-/// # }
-/// ```
-pub trait HookAlias<D: std::any::Any = NormalHook> {
-    /// Just a shorthand for less boilerplate in the function
-    /// definition
-    type Input<'h>;
-    /// The actual [`Hookable`] that this [`HookAlias`] is supposed to
-    /// map to
-    type Hookable: for<'h> Hookable<Input<'h> = Self::Input<'h>>;
-}
-
-impl<H: Hookable> HookAlias for H {
-    type Hookable = Self;
-    type Input<'h> = H::Input<'h>;
-}
-
-impl<W: Widget> HookAlias<WidgetCreatedDummy> for W {
-    type Hookable = WidgetCreated<W>;
-    type Input<'h> = <WidgetCreated<W> as Hookable>::Input<'h>;
-}
-
-/// For specialization purposes
-#[doc(hidden)]
-pub struct NormalHook;
-
-/// For specialization purposes
-#[doc(hidden)]
-pub struct WidgetCreatedDummy;

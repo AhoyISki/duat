@@ -284,7 +284,7 @@ use crate::{
 ///         START_TIME.set(Instant::now()).unwrap();
 ///         form::set_weak("uptime", Form::green());
 ///
-///         hook::add::<WindowCreated>(|pa, window| {
+///         hook::add::<WindowOpened>(|pa, window| {
 ///             let specs = ui::PushSpecs {
 ///                 side: ui::Side::Below,
 ///                 height: Some(1.0),
@@ -340,8 +340,8 @@ use crate::{
 ///
 /// [`Mode`]: crate::mode::Mode
 /// [`PeriodicChecker`]: crate::data::PeriodicChecker
-/// [`WidgetCreated`]: crate::hook::WidgetCreated
-/// [`WindowCreated`]: crate::hook::WindowCreated
+/// [`WidgetOpened`]: crate::hook::WidgetOpened
+/// [`WindowOpened`]: crate::hook::WindowOpened
 /// [hooks]: crate::hook
 /// [commands]: crate::cmd
 /// [`PhantomData<U>`]: std::marker::PhantomData

@@ -7,7 +7,7 @@
 //! [`Widget`]: duat_core::ui::Widget
 //! [`Text`]: duat_core::text::Text
 //! [`Buffer`]: duat_core::buffer::Buffer
-//! [`WindowCreated`]: duat_core::hook::WindowCreated
+//! [`WindowOpened`]: duat_core::hook::WindowOpened
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 use duat_core::{
@@ -54,7 +54,7 @@ mod which_key;
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|pa, handle| {
+///     hook::add::<BufferOpened>(|pa, handle| {
 ///         FooterWidgets::new(status!(
 ///             "{name_txt}{Spacer}{} {sels_txt} {main_txt}",
 ///             mode_txt()
@@ -79,7 +79,7 @@ mod which_key;
 /// Additionally, you can call the [`above`] method in order to place
 /// the footer as a header instead.
 ///
-/// [around the window]: duat_core::hook::WindowCreated
+/// [around the window]: duat_core::hook::WindowOpened
 /// [`Buffer`]: duat_core::buffer::Buffer
 /// [`one_line`]: FooterWidgets::one_line
 /// [`prompt`]: FooterWidgets::prompt

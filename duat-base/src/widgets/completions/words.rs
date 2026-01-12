@@ -9,13 +9,15 @@
 //!
 //! The words will be automatically filtered and sorted by size, using
 //! fuzzy search in order to improve matching.
+//!
+//! [`Buffer`]: duat_core::buffer::Buffer
 use std::{collections::BTreeMap, ops::Range, sync::Mutex};
 
 use duat_core::{
-    buffer::{Buffer, BufferTracker, Change},
+    buffer::{BufferTracker, Change},
     context::Handle,
     data::Pass,
-    hook::{self, BufferUpdated},
+    hook::{self, BufferOpened, BufferUpdated},
     text::{Point, RegexHaystack, Spacer, Strs, Text, txt},
     ui::Widget,
 };
@@ -96,7 +98,7 @@ pub struct WordInfo {
 #[doc(hidden)]
 /// Begin tracking words for word autocompletions
 pub(super) fn track_words() {
-    hook::add::<Buffer>(|pa, handle| {
+    hook::add::<BufferOpened>(|pa, handle| {
         TRACKER.register_buffer(handle.write(pa));
         let mut words = BUFFER_WORDS.lock().unwrap();
         let buffer = handle.read(pa);

@@ -36,9 +36,9 @@ pub use crate::__status__ as status;
 /// This widget is updated whenever any of its parts needs to be
 /// updated, and it also automatically adjusts to where it was pushed.
 /// For example, if you push it to a buffer (via
-/// `hook::add::<Buffer>`, for example), it's information will point
+/// `hook::add::<BufferOpened>`, for example), it's information will point
 /// to the [`Buffer`] to which it was pushed. However, if you push it
-/// with [`WindowCreated`], it will always point to the currently
+/// with [`WindowOpened`], it will always point to the currently
 /// active [`Buffer`]:
 ///
 /// ```rust
@@ -51,7 +51,7 @@ pub use crate::__status__ as status;
 ///     opts::one_line_footer();
 ///     opts::set_status(|pa| status!("{AlignRight}{} {sels_txt} {main_txt}", mode_txt()));
 ///
-///     hook::add::<Buffer>(|pa, handle| {
+///     hook::add::<BufferOpened>(|pa, handle| {
 ///         status!("{AlignCenter}{name_txt}")
 ///             .above()
 ///             .push_on(pa, handle);
@@ -81,7 +81,7 @@ pub use crate::__status__ as status;
 /// use duat::prelude::*;
 ///
 /// fn setup() {
-///     hook::add::<Buffer>(|pa, handle| {
+///     hook::add::<BufferOpened>(|pa, handle| {
 ///         StatusLine::builder().above().push_on(pa, handle);
 ///         Ok(())
 ///     });
@@ -89,7 +89,7 @@ pub use crate::__status__ as status;
 /// ```
 ///
 /// [`Buffer`]: duat_core::buffer::Buffer
-/// [`WindowCreated`]: duat_core::hook::WindowCreated
+/// [`WindowOpened`]: duat_core::hook::WindowOpened
 /// [`PromptLine`]: super::PromptLine
 /// [`Notifications`]: super::Notifications
 /// [`FooterWidgets`]: super::FooterWidgets

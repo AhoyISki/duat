@@ -20,7 +20,7 @@ use duat_core::{
     context::{self, DuatReceiver, DuatSender, Logs},
     data::Pass,
     form::{Form, Palette},
-    hook::{KeyTyped, ModeSwitched},
+    hook::{BufferOpened, KeyTyped, ModeSwitched},
     opts::PrintOpts,
     session::{ReloadEvent, ReloadedBuffer, SessionCfg},
     text::txt,
@@ -31,11 +31,10 @@ use duat_term::VertRule;
 
 use crate::{
     form,
-    hook::{self, BufferClosed, BufferReloaded, WindowCreated},
+    hook::{self, BufferClosed, BufferReloaded, WindowOpened},
     mode,
     opts::{OPTS, STATUSLINE_FMT},
     prelude::BufferSaved,
-    widgets::Buffer,
 };
 
 // Setup statics.
@@ -66,13 +65,13 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
     // Layout hooks
 
-    hook::add::<Buffer>(|pa, handle| {
+    hook::add::<BufferOpened>(|pa, handle| {
         VertRule::builder().push_on(pa, handle);
         OPTS.lock().unwrap().line_numbers.push_on(pa, handle);
     })
     .grouped("BufferWidgets");
 
-    hook::add::<WindowCreated>(|pa, handle| {
+    hook::add::<WindowOpened>(|pa, handle| {
         use crate::{state::*, text::Spacer};
 
         let opts = OPTS.lock().unwrap();
@@ -106,7 +105,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
     })
     .grouped("FooterWidgets");
 
-    hook::add::<WindowCreated>(|pa, window| {
+    hook::add::<WindowOpened>(|pa, window| {
         let opts = OPTS.lock().unwrap();
 
         let log_book = opts.logs;
