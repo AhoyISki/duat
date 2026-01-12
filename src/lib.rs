@@ -7,7 +7,7 @@
 //! account.
 //!
 //! [`Selections`]: duat_core::mode::Selections
-//! [`Change`]: duat_core::text::Change
+//! [`Change`]: duat_core::buffer::Change
 use std::{
     collections::HashMap,
     ops::Range,
@@ -19,7 +19,7 @@ use duat_core::{
     buffer::{Buffer, BufferParts, BufferTracker, PerBuffer},
     context::Handle,
     data::Pass,
-    hook::{self, BufferClosed},
+    hook::{self, BufferClosed, BufferOpened},
 };
 use gapbuf::GapBuffer;
 
@@ -37,7 +37,7 @@ pub struct JumpList;
 
 impl Plugin for JumpList {
     fn plug(self, _: &Plugins) {
-        hook::add::<Buffer>(|pa, handle| {
+        hook::add::<BufferOpened>(|pa, handle| {
             TRACKER.register_buffer(handle.write(pa));
             PARSERS.register(pa, handle, Parser::new());
         });
@@ -85,6 +85,8 @@ impl Jump {
     }
 
     /// Applies the `Jump` to the [`Selections`] of a [`Buffer`]
+    ///
+    /// [`Selections`]: duat_core::mode::Selections
     pub fn apply(&self, pa: &mut Pass, handle: &Handle) {
         match self {
             Jump::Single(selection) => {
@@ -187,12 +189,12 @@ enum Saved {
 
 /// A trait for recording and jumping [`Selections`]
 ///
-/// This trait makes use of an internal [`Parser`], so it
+/// This trait makes use of an internal [`BufferTracker`], so it
 /// automatically takes into consideration any [`Change`]s that may
 /// have taken place in between jumps.
 ///
 /// [`Selections`]: duat_core::mode::Selections
-/// [`Change`]: duat_core::text::Change
+/// [`Change`]: duat_core::buffer::Change
 pub trait BufferJumps {
     /// Record the [`Buffer`]'s [`Selections`]
     ///
@@ -202,8 +204,7 @@ pub trait BufferJumps {
     ///
     /// This function will return `None` if no jump was recorded,
     /// otherwise it will return a `Some(JumptId)`], which can be used
-    /// to jump to specific selections via
-    /// [`Buffer::go_to_jump`].
+    /// to jump to specific selections via [`Handle::go_to_jump`].
     ///
     /// [`Selections`]: duat_core::mode::Selections
     fn record_jump(
@@ -237,7 +238,7 @@ pub trait BufferJumps {
     /// this [`Buffer`].
     ///
     /// If you want the `Jump` without actually jumping, see
-    /// [`Buffer::get_jump`].
+    /// [`Handle::get_jump`].
     fn go_to_jump(&self, pa: &mut Pass, jump_list_id: JumpListId, id: JumpId) -> Option<Jump>;
 
     /// Gets the [`Jump`] specified by a [`JumpId`]
