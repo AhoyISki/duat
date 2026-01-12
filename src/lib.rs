@@ -71,7 +71,7 @@ impl Jump {
         match self {
             Jump::Single(range) => {
                 buf.selections().len() == 1
-                    && buf.selections().get_main().unwrap().byte_range(buf.bytes()) == *range
+                    && buf.selections().main().byte_range(buf.bytes()) == *range
             }
             Jump::Multiple(ranges, main_i) => {
                 buf.selections().len() == ranges.len()
@@ -279,7 +279,7 @@ impl BufferJumps for Handle {
                 match jump {
                     Jump::Single(sel) => {
                         if selections.len() == 1
-                            && selections.get_main().unwrap().byte_range(buffer.bytes()) == *sel
+                            && selections.main().byte_range(buffer.bytes()) == *sel
                         {
                             return None;
                         }
@@ -304,7 +304,7 @@ impl BufferJumps for Handle {
 
         if selections.len() == 1 {
             list.push_back(Saved::Jump(
-                Jump::Single(selections.get_main().unwrap().byte_range(buffer.bytes())),
+                Jump::Single(selections.main().byte_range(buffer.bytes())),
                 jump_id,
             ));
             *cur += 1;
