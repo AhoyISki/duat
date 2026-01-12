@@ -19,10 +19,10 @@
 //! On insert mode, keys are sent normally, with the exception of the
 //! following:
 //!
-//! `<Tab>` and `<S-Tab>` will do different things depending on your
+//! `<Tab>` and `<s-Tab>` will do different things depending on your
 //! [tab mode].
 //!
-//! `<C-n>` and `<C-p>` go to the next and previous completion
+//! `<c-n>` and `<c-p>` go to the next and previous completion
 //! entries.
 //!
 //! `<Esc>` exits insert mode, returning to `Normal` mode`.
@@ -47,8 +47,8 @@
 //! </summary>
 //!
 //! In Duat, there are various types of "objects" for selection. These
-//! get used on `Normal` mode key sequences, most notably on `<A-i>`
-//! and `<A-a>`. Each of them defines something to be selected:
+//! get used on `Normal` mode key sequences, most notably on `'` and
+//! `"`. Each of them defines something to be selected:
 //!
 //! `b`, `(`, `)`\
 //! Inside/around parenthesis.
@@ -71,8 +71,9 @@
 //! `g`, `` ` ``\
 //! Inside/around graves.
 //!
-//! `w`, `<A-w>`
+//! `w`, `<a-w>`
 //! Inside/around `word`s and `WORD`s.
+//! 
 //!
 //! `s`\
 //! Inside/around sentences.
@@ -113,7 +114,7 @@
 //! `l`, `<Right>`\
 //! Move right. Wraps around lines.
 //!
-//! `H`, `<S-Left>`, `J`, `<S-Down>`, `K`, `<S-Up>`, `L`, `<S-Right>`\
+//! `H`, `<s-Left>`, `J`, `<s-Down>`, `K`, `<s-Up>`, `L`, `<s-Right>`\
 //! Same as the previous characters, but extends the selection
 //!
 //! `w`\
@@ -128,11 +129,11 @@
 //! `<(W|B|E)>`\
 //! The same as `(w|b|e)`, but extends the selection.
 //!
-//! `<A-(w|b|e)>`\
+//! `<a-(w|b|e)>`\
 //! The same as `(w|b|e)`, but over a `WORD`.
 //!
-//! `<A-(W|B|E)>`\
-//! The same as `<A-(w|b|e)>`, but extends the selection.
+//! `<a-(W|B|E)>`\
+//! The same as `<a-(w|b|e)>`, but extends the selection.
 //!
 //! `f{char}`\
 //! Selects to the next occurrence of the `{char}`.
@@ -143,11 +144,11 @@
 //! `<(F|T)>{char}`\
 //! Same as `(f|t)`, but extends the selection.
 //!
-//! `<A-(f|t)>{char}`\
+//! `<a-(f|t)>{char}`\
 //! Same as `(f|t)`, but in the opposite direction.
 //!
-//! `<A-(F|T)>{char}`\
-//! Same as `<A-(f|t)>`, but in extends the selection.
+//! `<a-(F|T)>{char}`\
+//! Same as `<a-(f|t)>`, but in extends the selection.
 //!
 //! `{param}g`\
 //! Goes to the `{param}`th line. If param was not set, enters `go to`
@@ -163,16 +164,16 @@
 //! `%`\
 //! Selects the whole buffer.
 //!
-//! `<A-h>`, `<Home>`\
+//! `<a-h>`, `<Home>`\
 //! Selects to the start of the line.
 //!
-//! `<A-l>`, `<End>`\
+//! `<a-l>`, `<End>`\
 //! Selects until the end of the line.
 //!
-//! `<A-H>`, `<S-Home>`, `<A-L>`, `<S-End>`\
+//! `<a-H>`, `<s-Home>`, `<a-L>`, `<s-End>`\
 //! Same as the previous two, but extends the selection.
 //!
-//! `<A-a>`\
+//! `"`\
 //! Select around object
 //!
 //! `[`,`]`\
@@ -181,34 +182,34 @@
 //! `{`,`}`\
 //! Extend around start/end of object
 //!
-//! `<A-i>`\
+//! `'`\
 //! Select inside object
 //!
-//! `<A-[>`,`<A-]>`\
+//! `<a-[>`,`<a-]>`\
 //! Select inside start/end of object
 //!
-//! `<A-{>`,`<A-}>`\
+//! `<a-{>`,`<a-}>`\
 //! Extend inside start/end of object
 //!
 //! `m`\
 //! Selects to the next pair of matching brackets.
 //!
-//! `<A-m>`\
+//! `<a-m>`\
 //! Selects the previous pair of matching brackets.
 //!
-//! `M`, `<A-M>`\
+//! `M`, `<a-M>`\
 //! Same as the previous two, but extends the selection.
 //!
-//! `<A-u>`\
+//! `<a-u>`\
 //! Returns to the previous state for the selections.
 //!
-//! `<A-U>`\
+//! `<a-U>`\
 //! Goes to the next state for the selections.
 //!
 //! `;`\
 //! Reduces selections to just the [caret].
 //!
-//! `<A-;>`\
+//! `<a-;>`\
 //! Flips the [caret] and [anchor] of selectionss around.
 //!
 //! `,`\
@@ -217,20 +218,26 @@
 //! `C`\
 //! Creates a selection on the column below the last one.
 //!
-//! `<A-C>`\
+//! `<a-C>`\
 //! Creates a selection on the column above the first one.
 //!
-//! `<A-:>`\
+//! `<a-:>`\
 //! Places the [caret] ahead of the [anchor] in all selections.
 //!
-//! `<A-s>`\
+//! `<a-s>`\
 //! Divides selection into multiple selections, one per line.
 //!
-//! `<A-S>`\
+//! `D`\
 //! Splits into two selections, one at each end of the selection.
 //!
-//! `<A-_>`\
+//! `<a-_>`\
 //! Merges all adjacent selections.
+//!
+//! `<a-q>`\
+//! Replays the recorded macro.
+//! 
+//! `<a-Q>`\
+//! Starts/stops recording a macro.
 //!
 //! </details>
 //!
@@ -276,10 +283,10 @@
 //! `R`\
 //! Replaces with the pasted text, without yanking.
 //!
-//! `<A-d>`\
+//! `<a-d>`\
 //! Deletes selections without yanking.
 //!
-//! `<A-c>`\
+//! `<a-c>`\
 //! Deletes selections without yanking, then enters `insert` mode.
 //!
 //! `o`\
@@ -288,7 +295,7 @@
 //! `O`\
 //! Creates a new line above and enters `insert` mode in it.
 //!
-//! `<A-(o|O)>`\
+//! `<a-(o|O)>`\
 //! Same as `(o|O)`, but just adds the new line without moving.
 //!
 //! `r{key}`\
@@ -306,7 +313,7 @@
 //! `<`\
 //! Removes indentation to the selected lines.
 //!
-//! `<A-j>`\
+//! `<a-j>`\
 //! Merges selected lines.
 //!
 //! `` ` ``\
@@ -315,13 +322,13 @@
 //! `~`\
 //! Changes selection to uppercase.
 //!
-//! ``<A-`>``\
+//! ``<a-`>``\
 //! Swaps the case of each character.
 //!
-//! `<A-)>`\
+//! `<a-)>`\
 //! Rotates each selection's content forwards.
 //!
-//! `<A-(>`\
+//! `<a-(>`\
 //! Rotates each selection's content backwards.
 //!
 //! `|`\
@@ -345,13 +352,13 @@
 //! `/`\
 //! Searches forward for the next pattern.
 //!
-//! `<A-/>`\
+//! `<a-/>`\
 //! Searches backwards for the previous pattern.
 //!
 //! `?`\
 //! Extends forward for the next pattern.
 //!
-//! `<A-?>`\
+//! `<a-?>`\
 //! Extends backwards for the previous pattern.
 //!
 //! `s`\
@@ -360,10 +367,10 @@
 //! `S`\
 //! Splits current selections by the pattern.
 //!
-//! `<A-k>`\
+//! `<a-k>`\
 //! Keeps only the selections that match the pattern.
 //!
-//! `<A-K>`\
+//! `<a-K>`\
 //! Keeps only the selections that _don't_ match the pattern.
 //!
 //! `n`\
@@ -372,10 +379,10 @@
 //! `N`\
 //! Create a new cursor on the next match for pattern.
 //!
-//! `<A-n>`\
+//! `<a-n>`\
 //! Go to previous match for pattern.
 //!
-//! `<A-N>`\
+//! `<a-N>`\
 //! Create a new cursor on the previous match for pattern.
 //!
 //! `*`\

@@ -222,8 +222,8 @@ impl Mode for Normal {
             event!('|') => txt!("[a]Pipe selections[] to external command"),
             event!('g') => (txt!("Go to [parameter]line[] or to places"), goto.clone()),
             event!('G') => (txt!("Select to [paramenter]line[] or to places"), goto),
-            event!('Q') => txt!("Toggle macro recording"),
-            event!('q') => txt!("Replay macro"),
+            alt!('Q') => txt!("Toggle macro recording"),
+            alt!('q') => txt!("Replay macro"),
             ctrl!('o') => txt!("Go to previous jump"),
             ctrl!('i') | event!(Tab) => txt!("Go to next jump"),
             event!(' ') => txt!("Enter [mode]User[] mode"),
@@ -1134,18 +1134,18 @@ impl Mode for Normal {
             }
 
             ////////// Macro keys
-            event!('q') if hook::group_exists(*MACRO_GROUP) => {
+            alt!('q') if hook::group_exists(*MACRO_GROUP) => {
                 context::warn!("Recursive macro calls are not permitted");
                 return;
             }
-            event!('q') => {
+            alt!('q') => {
                 if let Some(key_events) = MACRO.lock().unwrap().clone() {
                     duat_core::mode::type_keys(key_events);
                 } else {
                     context::warn!("No macro recorded");
                 }
             }
-            event!('Q') => {
+            alt!('Q') => {
                 if hook::group_exists(*MACRO_GROUP) {
                     context::info!("Stopped recording macro");
                     hook::remove(*MACRO_GROUP);
