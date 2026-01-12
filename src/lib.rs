@@ -1125,7 +1125,7 @@ impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Memoized<K, V> {
 static SEARCH: Mutex<String> = Mutex::new(String::new());
 
 fn indents(pa: &mut Pass, handle: &Handle) -> (std::vec::IntoIter<usize>, bool) {
-    fn prev_non_empty_line_points<S>(c: &mut Cursor<Buffer, S>) -> Option<Range<Point>> {
+    fn prev_non_empty_line_points(c: &mut Cursor<Buffer>) -> Option<Range<Point>> {
         let line_start = c.text().point_at_line(c.caret().line());
         let mut lines = c.lines_on(..line_start).rev();
         let prev = lines

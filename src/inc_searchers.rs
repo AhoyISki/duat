@@ -3,7 +3,7 @@ use duat_core::{
     buffer::Buffer,
     context::Handle,
     data::Pass,
-    text::{Searcher, Text, txt},
+    text::{Text, txt},
 };
 
 /// Selects matches from within every cursor
@@ -11,13 +11,13 @@ use duat_core::{
 pub(crate) struct Select;
 
 impl IncSearcher for Select {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             let Some(anchor) = c.anchor() else { return };
 
             let range = c.caret()..anchor;
-            let ranges: Vec<_> = c.search_inc().range(range).collect();
+            let ranges: Vec<_> = c.search(pat).range(range).collect();
 
             for (i, range) in ranges.iter().enumerate() {
                 c.move_to(range.clone());
@@ -38,14 +38,14 @@ impl IncSearcher for Select {
 pub(crate) struct Split;
 
 impl IncSearcher for Split {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             let Some(anchor) = c.anchor() else { return };
 
             let range = c.caret()..anchor;
             let ranges: Vec<usize> = c
-                .search_inc()
+                .search(pat)
                 .range(range)
                 .flat_map(|r| [r.start, r.end])
                 .collect();
@@ -76,13 +76,13 @@ impl IncSearcher for Split {
 pub(crate) struct KeepMatching(pub bool);
 
 impl IncSearcher for KeepMatching {
-    fn search(&mut self, pa: &mut Pass, handle: Handle<Buffer, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         let keep = self.0;
 
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             let range = c.range();
-            if c.search_inc().range(range).next().is_some() != keep {
+            if c.search(pat).range(range).next().is_some() != keep {
                 c.destroy();
             }
         });
