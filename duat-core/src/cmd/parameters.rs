@@ -230,7 +230,7 @@ impl Flags {
             .any(|flag| flag.as_str().as_word() == Ok(word))
     }
 
-    /// Returns `true` if the `Flags` contains [`Flag::Blob]s with
+    /// Returns `true` if the `Flags` contains [`Flag::Blob`]s with
     /// all `char`s in the given blob
     pub fn has_blob(&self, blob: &str) -> bool {
         blob.chars().all(|char| {
@@ -868,11 +868,11 @@ pub struct Args<'a> {
     /// last_parsed list, even if they failed parsing and another
     /// parameter was parsed with the same argument instead.
     arg_n: usize,
-    /// This list will have the TypeId of T within the
-    /// self.next_as::<T>() call. It serves the purpose of keeping
+    /// This list will have the TypeId of `T` within the
+    /// `self.next_as::<T>()` call. It serves the purpose of keeping
     /// track of when a type is done being parsed.
     currently_parsing: Vec<TypeId>,
-    /// This list will have the TypeId of T while T is within
+    /// This list will have the TypeId of `T` while `T` is within
     /// currently_parsing or we haven't succesfully moved on to the
     /// next argument.
     /// This is used to aid completion, by keeping track of when we

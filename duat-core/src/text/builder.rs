@@ -7,6 +7,7 @@
 //! [`Form`]s through specialized arguments.
 //!
 //! [`Form`]: crate::form::Form
+//! [`txt!`]: crate::text::txt
 use std::{
     fmt::{Display, Write},
     marker::PhantomData,
@@ -24,8 +25,8 @@ use crate::{
 /// to it.
 ///
 /// This struct is meant to be used alongside the [`txt!`] macro, as
-/// you can just push more [`Text`] to the [`Builder`] py pushing
-/// another [`Builder`], which can be returned by the [`txt!`] macro:
+/// you can just push more `Text` to the `Builder` py pushing
+/// another `Builder`, which can be returned by the `txt!` macro:
 ///
 /// ```rust
 /// # use duat_core::text::{Text, txt};
@@ -43,18 +44,18 @@ use crate::{
 ///
 /// In the above call, you can see that `num` was interpolated, just
 /// like with [`println!`], there are also [`Form`]s being applied to
-/// the [`Text`]. Each `[]` pair denotes a [`Form`]. These pairs
+/// the `Text`. Each `[]` pair denotes a `Form`. These pairs
 /// follow the following rule:
 ///
-/// - `[]`: Will push the `"default"` [`Form`], which is actually just
-///   removing prior [`Form`]s.
-/// - `[a]`: Will push the `"accent"` [`Form`].
+/// - `[]`: Will push the `"default"` `Form`, which is actually just
+///   removing prior `Form`s.
+/// - `[a]`: Will push the `"accent"` `Form`.
 /// - `[{form}]`: Will push the `"{form}"`, where `{form}` can be any
 ///   sequence of valid identifiers, separated by `"."`s.
 ///
 /// [`impl Display`]: std::fmt::Display
-/// [tag]: AlignCenter
 /// [`Form`]: crate::form::Form
+/// [`txt!`]: crate::text::txt
 #[derive(Clone)]
 pub struct Builder {
     text: Text,
@@ -68,7 +69,7 @@ pub struct Builder {
 impl Builder {
     /// Returns a new instance of [`Builder`]
     ///
-    /// Use [`Text::builder`] if you don't want to bring [`Builder`]
+    /// Use [`Text::builder`] if you don't want to bring `Builder`
     /// into scope.
     pub fn new() -> Self {
         Self::default()
@@ -78,7 +79,7 @@ impl Builder {
     ///
     /// Will also finish the last [`Form`] and alignments pushed to
     /// the [builder], as well as pushing a `'\n'` at the end, much
-    /// like with regular [`Text`] construction.
+    /// like with regular `Text` construction.
     ///
     /// [`Form`]: crate::form::Form
     /// [builder]: Builder
@@ -102,8 +103,8 @@ impl Builder {
     /// resulting in a `Text` that has two `\n`s at the end, since
     /// there is always at least one final `\n`.
     ///
-    /// This function lets you construct the [`Text`] taking that
-    /// effect into account.
+    /// This function lets you construct the `Text` taking that effect
+    /// into account.
     pub fn build_no_double_nl(self) -> Text {
         let mut text = self.build();
         if let Some(last_last_byte) = text.len().byte().checked_sub(2)
@@ -119,10 +120,11 @@ impl Builder {
     /// Pushes a part of the text
     ///
     /// This can be an [`impl Display`] type, an [`impl Tag`], a
-    /// [`FormId`], a [`PathBuf`], or even [`std::process::Output`].
+    /// [`FormId`], or even a [`Path`].
     ///
     /// [`impl Display`]: std::fmt::Display
     /// [`impl Tag`]: super::Tag
+    /// [`Path`]: std::path::Path
     pub fn push<D: Display, _T>(&mut self, part: impl AsBuilderPart<D, _T>) {
         self.push_builder_part(part.as_builder_part());
     }
@@ -275,7 +277,7 @@ pub enum BuilderPart<'a, D: Display = String, _T = ()> {
     /// A Text Builder
     ///
     /// Much like the [`Text`], normally, the [`Builder`] finishes
-    /// with a `\n`, but when pushed to another [`Builder`], that `\n`
+    /// with a `\n`, but when pushed to another `Builder`, that `\n`
     /// is removed as well.
     Builder(&'a Builder),
     /// An [`impl Display`](std::fmt::Display) type

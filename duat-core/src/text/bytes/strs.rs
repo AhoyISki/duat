@@ -5,7 +5,7 @@ use crate::text::{Bytes, Slices, TextRange};
 /// An [`Iterator`] over the [`&str`]s in a [`Text`]
 ///
 /// [`&str`]: str
-/// [`Text`]: super::Text
+/// [`Text`]: crate::text::Text
 #[derive(Clone, Copy)]
 pub struct Strs<'b> {
     bytes: &'b Bytes,
@@ -65,9 +65,10 @@ impl<'b> Strs<'b> {
     /// If you wish to iterate over the lines, see [`Bytes::lines`].
     ///
     /// [`&str`]: str
-    /// [`Text`]: super::Text
+    /// [`Text`]: crate::text::Text
     /// [range]: TextRange
     /// [`strs`]: Self::strs
+    /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
         let range = {
             let range = range.to_range(self.range.1);

@@ -162,7 +162,6 @@
 //! ```
 //!
 //! [`Buffer`]: crate::buffer::Buffer
-//! [alias]: HookAlias
 //! [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 //! [widget]: Widget
 //! [dyn `Widget`]: Widget
@@ -727,7 +726,7 @@ impl PartialEq<Handle> for BufferReloaded {
 ///
 ///     hook::add::<BufferUpdated>(move |pa, handle| {
 ///         let mut parts = TRACKER.parts(handle.write(pa)).unwrap();
-///         
+///
 ///         for change in parts.changes {
 ///             parts.tags.remove(tagger, change.added_range());
 ///             highlight_non_ascii(&mut parts.tags, parts.bytes, change.added_range())
@@ -736,12 +735,16 @@ impl PartialEq<Handle> for BufferReloaded {
 /// }
 /// ```
 ///
-/// The function [`Buffer::new_changes`] keeps track of this hook
-/// specifically, and it will return the full list of [`Change`]s
-/// since the last triggering of `BufferUpdated`. Essentially, it will
-/// trigger once per frame, letting you adjust the `Buffer`
-/// accordingly. You can also call this function from other places,
-/// not just this hook.
+/// The [`BufferTracker`] will keep track of each registered
+/// [`Buffer`], telling you about every new [`Change`] that took place
+/// since the last call to [`BufferTracker::parts`]. The
+/// `BufferTracker::parts` function works much like [`Text::parts`],
+/// by separating the [`Bytes`], [`Tags`] and [`Selections`], letting
+/// you modify the tags, without permitting further edits to the
+/// `Text`.
+///
+/// This is a nice way to automatically keep track of the changes, and
+/// it will work even if the function isn't called frequently.
 ///
 /// # Arguments
 ///
@@ -749,14 +752,18 @@ impl PartialEq<Handle> for BufferReloaded {
 ///
 /// [`Area`]: crate::ui::Area
 /// [`Buffer`]: crate::buffer::Buffer
-/// [`Buffer::new_changes`]: crate::buffer::Buffer::new_changes
 /// [`PrintOpts`]: crate::opts::PrintOpts
-/// [`Change`]: crate::text::Change
+/// [`Change`]: crate::buffer::Change
 /// [`Cursor`]: crate::mode::Cursor
 /// [`Tag`]: crate::text::Tag
 /// [`Bytes`]: crate::text::Bytes
+/// [`Tags`]: crate::text::Tags
+/// [`Selections`]: crate::mode::Selections
 /// [`Text`]: crate::text::Text
+/// [`Text::parts`]: crate::text::Text::parts
 /// [`Text::replace_range`]: crate::text::Text::replace_range
+/// [`BufferTracker`]: crate::buffer::BufferTracker
+/// [`BufferTracker::parts`]: crate::buffer::BufferTracker::parts
 pub struct BufferUpdated(pub(crate) Handle);
 
 impl Hookable for BufferUpdated {
@@ -943,7 +950,7 @@ impl<M: Mode> Hookable for KeySentTo<M> {
 /// [`mode::type_keys`] function, this is in contrast with
 /// [`KeySent`], which triggers when you type [unmapped] keys or with
 /// the remapped keys. For example, if `jk` is mapped to `<Esc>`,
-/// [`KeysTyped`] will trigger once for `j` and once for `k`, while
+/// [`KeyTyped`] will trigger once for `j` and once for `k`, while
 /// [`KeySent`] will trigger once for `<Esc>`.
 ///
 /// # Arguments

@@ -636,6 +636,8 @@ impl<'de, Context> BorrowDecode<'de, Context> for Change<'static, String> {
 /// [`Buffer`]s based on changes that took place and on what is
 /// presently visible. One example of such a parser can be seen in the
 /// `duat-treesitter` crate.
+///
+/// [`PerBuffer`]: super::PerBuffer
 pub struct BufferTracker {
     tracked: Mutex<Vec<(BufferId, TrackId, Arc<Mutex<Ranges>>)>>,
 }
@@ -713,10 +715,6 @@ impl BufferTracker {
     /// Registers a [`Buffer`] on the list of those that should be
     /// tracked
     ///
-    /// This makes it so, instead of returning an empty [`Iterator`]
-    /// of [`Change`]s on the first call to [`ChangedTextParts`], it
-    /// will start tracking the [`Changes`] right at this very moment.
-    ///
     /// Does nothing if the `Buffer` was already registered.
     pub fn register_buffer(&self, buf: &mut Buffer) {
         let mut tracked = self.tracked.lock().unwrap();
@@ -752,7 +750,7 @@ pub struct BufferParts<'b> {
     ///
     /// [adding]: Tags::insert
     /// [removing]: Tags::remove
-    /// [`Tag`]: super::Tag
+    /// [`Tag`]: crate::text::Tag
     pub tags: Tags<'b>,
     /// The [`Selections`] of the [`Buffer`]
     pub selections: &'b Selections,

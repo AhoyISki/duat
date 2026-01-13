@@ -761,6 +761,8 @@ mod global {
     ///
     /// This struct is created by [`cmd::add`], and when it is
     /// dropped, the command gets added.
+    ///
+    /// [`cmd::add`]: add
     pub struct CmdBuilder {
         command: Option<super::Command>,
         param_n: usize,
@@ -1150,7 +1152,7 @@ mod global {
         ///
         /// Note also that you _can_ add documentation about the
         /// parameters, however, you should prioritize calling
-        /// [`CmdBuilder::doc_params`] for that purpose instead.
+        /// [`CmdBuilder::doc_param`] for that purpose instead.
         pub long: Option<Arc<Text>>,
         /// Documentation about the command's parameters
         pub params: Arc<[ParamDoc]>,

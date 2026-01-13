@@ -366,7 +366,7 @@ impl Default for StartOpts {
             duatmode: DuatModeOpts::default(),
             one_line_footer: false,
             footer_on_top: false,
-            help_key: Some(KeyEvent::new(KeyCode::Char('?'), KeyMod::CONTROL)),
+            help_key: Some(KeyEvent::new(KeyCode::Char('h'), KeyMod::CONTROL)),
             line_numbers: LineNumbersOpts::default(),
             notifications: NotificationsOpts::default(),
             whichkey: WhichKeyOpts::default(),

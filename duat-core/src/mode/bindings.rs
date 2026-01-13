@@ -164,7 +164,7 @@ pub enum Binding {
 impl Binding {
     /// Returns a new [concrete `Binding`]
     ///
-    /// [concrete `Binding`]: Binding::Pattern
+    /// [concrete `Binding`]: Binding::Event
     pub fn new(code: KeyCode, modif: KeyMod) -> Self {
         Self::Event(code, modif)
     }
@@ -279,7 +279,7 @@ impl Binding {
 
     /// A [`KeyEvent`], with assumptions about less used options
     ///
-    /// Only returns [`Some`] if this is [`Binding::Pattern`]
+    /// Only returns [`Some`] if this is [`Binding::Event`]
     /// with a concrete [`KeyCode`] and [`KeyMod`].
     pub fn as_key_event(&self) -> Option<KeyEvent> {
         let &Binding::Event(code, modifiers) = self else {

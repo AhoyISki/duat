@@ -665,8 +665,10 @@ impl Cursor<'_, Buffer> {
     /// A unique identifier for this [`Buffer`]
     ///
     /// This is more robust than identifying it by its path or name,
-    /// or event [`PathKind`], since those could change, but this
+    /// or even [`PathKind`], since those could change, but this
     /// cannot.
+    ///
+    /// [`PathKind`]: crate::buffer::PathKind
     pub fn buffer_id(&self) -> BufferId {
         self.widget.buffer_id()
     }

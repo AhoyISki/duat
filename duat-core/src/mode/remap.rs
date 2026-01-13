@@ -775,7 +775,7 @@ impl std::fmt::Debug for GivenMode {
 }
 
 /// The set of regular [`Mode`] [`Bindings`], as well as all
-/// [`Remap`]s
+/// `Remap`s
 #[derive(Debug)]
 pub struct MappedBindings {
     bindings: Bindings,
@@ -911,11 +911,6 @@ impl MappedBindings {
 /// is an alternation of _patterns_ (e.g. `'a'..='z'`, "any media
 /// key", concrete [`KeyEvent`]s, etc).
 ///
-/// Do note that [`Description::Pattern`] _may_ end up being empty
-/// remaps "take over" all patterns. If you are displaying the
-/// `Description`s in some [`Widget`], you should ignore those that
-/// have no keys (or not, you decide I guess).
-///
 /// One other thing to note is that
 pub struct Description<'a> {
     /// The [`Text`] describing what the [`KeyEvent`] will do
@@ -961,6 +956,8 @@ impl KeyDescriptions<'_> {
     /// This function makes use of the `key.char`, `key.mod`,
     /// `key.special`, `key.range` and `key.any`, `separator` and
     /// `remap` [`Form`]s.
+    ///
+    /// [`Form`]: crate::form::Form
     pub fn into_text(self) -> Text {
         let mut builder = Text::builder();
 

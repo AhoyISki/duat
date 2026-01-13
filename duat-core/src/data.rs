@@ -41,8 +41,6 @@
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`context`]: crate::context
 //! [`Mutex`]: std::sync::Mutex
-//! [`Arc<Mutex>`]: std::sync::Arc
-//! [`Arc<RwLock>`]: std::sync::Arc
 //! [`read`]: RwData::read
 //! [`write`]: RwData::write
 use std::{
@@ -64,50 +62,52 @@ use crate::ui::Widget;
 /// This is the struct used internally (and externally) to allow for
 /// massively shareable state in duat's API. Its main purpose is to
 /// hold all of the [`Widget`]s in Duat, making them available for
-/// usage from any function with access to a [`Pass`].
+/// usage from any function with access to a [`Pass`]. However, it can
+/// also be used to hold any other type, and also has the ability to
+/// notify when changes have taken place.
 ///
 /// # [`Pass`]es
 ///
-/// The [`Pass`] is a sort of "key" for accessing the value within an
-/// [`RwData`], it's purpose is to maintain Rust's number one rule,
-/// i.e. one exclusive reference or multiple shared references, and
-/// that is done by borrowing the [`Pass`] mutably or non mutably.
-/// That comes with some limitations, of course, mainly that you can't
-/// really mutate two [`RwData`]s at the same time, even if it is
-/// known that they don't point to the same data.
+/// The `Pass` is a sort of "key" for accessing the value within an
+/// `RwData`, its purpose is to maintain Rust's number one rule,
+/// i.e. one exclusive reference or multiple shared references
+/// (mutability XOR aliasing), and that is done by borrowing the
+/// `Pass` mutably or non mutably. That comes with some limitations
+/// on how they can be used, mostly the fact that you must mutably
+/// borrow all `RwData`s that will be used [_at the same time_] in
+/// order to get multiple mutable references at once.
 ///
-/// There are some common exceptions to this, where Duat provides some
-/// safe way to do that when it is known that the two types are not
-/// the same.
+/// The use of a `Pass` for reading/writing to `RwData`s confers
+/// various benefits:
 ///
-/// # Not [`Send`]/[`Sync`]
+/// - Aside from updating an internal update counter, it is truly
+///   _zero cost_, unlike in the case of a [`Mutex`] or [`RefCell`],
+///   which have to do checks at runtime. This happens because the
+///   `Pass` has zero size, i.e. it gets removed at compile time.
+/// - You can't run into deadlocks like you would be able to when
+///   using `Mutex`es. Neither can you run into panics from
+///   reborrowing, like with `RefCell`.
+/// - You don't have to drop a `Guard` type (like [`MutexGuard`]) in
+///   order to reborrow from the `RwData` since borrowing gives you a
+///   first class `&` or `&mut`, which are much easier to work with.
+/// - You can do sub borrowings, like `&mut data.write(pa).field`,
+///   given the `&mut` borrow.
 ///
-/// Internally, the [`RwData`] makes use of an [`Arc<RefCell>`]. The
-/// usage of an [`Arc<RefCell>`] over an [`Arc<Mutex>`] is, i've
-/// assumed, a necessary evil in order to preserve the aforementioned
-/// rule. But the lack of [`Send`]/[`Sync`] does confer the [`RwData`]
-/// some advantages:
+/// However, there are also a few disadvantages:
 ///
-/// * Deadlocks are impossible, being replaced by much easier to debug
-///   panics.
-/// * The order in which data is accessed doesn't matter, unlike with
-///   [`Mutex`]es.
-/// * Performance of unlocking and cloning should generally be better,
-///   since no atomic operations are done (I actually managed to
-///   observe this, where in my rudimentary benchmarks against neovim,
-///   the [`Arc<Mutex>`] version was very frequently losing to a
-///   comparable neovim build.
+/// - Sometimes, mutably borrowing multiple things in a single
+///   function _can_ be a challenge, although that is mostly mitigated
+///   by [`Pass::write_many`].
+/// - You _cannot_ access the data in a `RwData` from threads other
+///   than the main one, since the `Pass` is only accessible from it.
+///   This isn't _really_ a disadvantage, since it simplifies thought
+///   patterns and eases reasoning about the current state of things.
 ///
-/// However, I admit that there are also some drawbacks, the most
-/// notable being the difficulty of reading or writing to [`Text`]
-/// from outside of the main thread. But for the most common usecase
-/// where that will be needed ([`Parser`]s), a [`Send`]/[`Sync`]
-/// solution will be provided soon.
-///
-/// [`Arc<Mutex>`]: std::sync::Arc
 /// [`Mutex`]: std::sync::Mutex
-/// [`Parser`]: crate::buffer::Parser
+/// [`MutexGuard`]: std::sync::MutexGuard
+/// [parser]: crate::buffer::BufferTracker
 /// [`Text`]: crate::text::Text
+/// [_at the same time_]: Pass::write_many
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {
     value: Arc<UnsafeCell<T>>,

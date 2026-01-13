@@ -14,11 +14,8 @@
 //!   not actually part of the `Text`, i.e., it can be easily ignored
 //!   by external modifiers (like an LSP or tree-sitter) of the
 //!   buffer, without any special checks.
-//! - [Left]/[right]/[center] alignment of output (although that is
-//!   implemented by the [Ui]).
 //! - [Spacers] for even more advanced alignment (also implemented by
 //!   the [Ui]).
-//! - The ability to [undo]/[redo] changes in the history.
 //! - In the future, button ranges that can interact with the mouse.
 //!
 //! The [`Text`] struct is created in two different ways:
@@ -77,12 +74,7 @@
 //! expensive to rebuild. This way of editing the [`Text`] is mostly
 //! used on the [`Buffer`] widget and other textbox-like [`Widget`]s.
 //!
-//! [Left]: AlignLeft
-//! [right]: AlignRight
-//! [center]: AlignCenter
 //! [Spacers]: Spacer
-//! [undo]: Text::undo
-//! [redo]: Text::redo
 //! [gap buffers]: gapbuf::GapBuffer
 //! [colored]: crate::form::Form
 //! [ghost text]: Ghost
@@ -223,8 +215,6 @@ impl Text {
     /// Note that, since [`Text`] has an implementation of
     /// [`std::ops::Deref<Target = Bytes>`], you mostly don't need
     /// to call this method.
-    ///
-    /// [regex searching]: Bytes::search_fwd
     pub fn bytes(&self) -> &Bytes {
         &self.0.bytes
     }
@@ -626,7 +616,7 @@ impl Text {
     /// # Panics
     ///
     /// This method will panic if there are no `Selection`s. If you
-    /// want a non-panicking method, see [`text::get_main_sel`].
+    /// want a non-panicking method, see [`Text::get_main_sel`].
     #[track_caller]
     pub fn main_sel(&self) -> &Selection {
         self.0.selections.main()

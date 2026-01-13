@@ -15,14 +15,14 @@ use crate::utils::merging_range_by_guess_and_lazy_shift;
 
 /// A list of non intersecting exclusive [`Range<usize>`]s
 ///
-/// The primary purpose of this struct is to serve [`Parser`]s by
+/// The primary purpose of this struct is to serve [parser]s by
 /// telling Duat which ranges need to be updated. This lets Duat
 /// minimize as much as possible the amount of work done to update
 /// the [`Text`] when it changes in a [`Buffer`].
 ///
 /// [`Text`]: crate::text::Text
 /// [`Buffer`]: crate::buffer::Buffer
-/// [`Parser`]: crate::buffer::Parser
+/// [parser]: crate::buffer::BufferTracker
 #[derive(Clone, Default, Debug)]
 pub struct Ranges {
     list: GapBuffer<Range<i32>>,
@@ -258,7 +258,7 @@ impl Ranges {
     /// removed), then ranges will be removed ahead of `from`
     /// accordingly.
     ///
-    /// [`Change`]: crate::text::Change
+    /// [`Change`]: crate::buffer::Change
     pub fn shift_by(&mut self, from: usize, shift: i32) {
         let from = from as i32;
 
@@ -335,14 +335,14 @@ impl Ranges {
         })
     }
 
-    /// The same as [`Ranges::remove`], but without removing, just
+    /// The same as [`Ranges::remove_on`], but without removing, just
     /// iterating over the relevant ranges
     ///
     /// This method will trim the iterated [`Range`]s to the bounds of
     /// `within`. If you want a non trimmed version of this method,
     /// check out [`iter_intersecting`].
     ///
-    /// [`iter_intersecting`]: Self::iter_over_incl
+    /// [`iter_intersecting`]: Ranges::iter_intersecting
     #[track_caller]
     pub fn iter_over(&self, within: Range<usize>) -> impl Iterator<Item = Range<usize>> {
         self.iter_intersecting(within.clone())
@@ -353,7 +353,9 @@ impl Ranges {
     /// Iterates over all [`Range`]s that intersect with `within`
     ///
     /// If you want to automatically trim those ranges to the bounds
-    /// of `within`, check out [`iter_over`]
+    /// of `within`, check out [`iter_over`]. If you want to remove
+    /// the ranges that intersect with the given one, see,
+    /// [`Ranges::remove_intersecting`]
     ///
     /// [`iter_over`]: Self::iter_over
     #[track_caller]

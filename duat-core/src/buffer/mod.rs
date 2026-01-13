@@ -5,7 +5,7 @@
 //! `History` system, [`RawArea::PrintInfo`], etc.
 //!
 //! The [`Buffer`] also provides a list of printed lines through the
-//! [`Buffer::printed_lines`] method. This method is notably used by
+//! [`Handle::printed_lines`] method. This method is notably used by
 //! the [`LineNumbers`] widget, that shows the numbers of the
 //! currently printed lines.
 //!
@@ -507,7 +507,7 @@ impl Handle {
     ///
     /// If you want a [`Range<Point>`] of the printed section of the
     /// [`Text`] (including concealed lines), check out
-    /// [`Handle::printed_range`].
+    /// [`Handle::full_printed_range`].
     ///
     /// If you just want the line numbers of the printed lines, check
     /// out [`Handle::printed_line_numbers`].
@@ -758,12 +758,16 @@ mod buffer_id {
     static COUNT: AtomicUsize = AtomicUsize::new(0);
 
     /// A unique identifier for a [`Buffer`]
+    ///
+    /// [`Buffer`]: super::Buffer
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct BufferId(usize);
 
     impl BufferId {
         /// Returns a new `BufferId`, uniquely identifying a
         /// [`Buffer`]
+    ///
+    /// [`Buffer`]: super::Buffer
         pub(super) fn new() -> Self {
             Self(COUNT.fetch_add(1, Ordering::Relaxed))
         }
@@ -854,9 +858,9 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`Cursor<Buffer, S>`] for any
-    /// [`S`]. These types are allowed to do this because they are
-    /// impossible to acquire without first borrowing from an
+    /// are the [`Buffer`] itself and a [`Cursor<Buffer>`]. These
+    /// types are allowed to do this because they are impossible
+    /// to acquire without first borrowing from an
     /// [`RwData<Buffer>`], either directly or through a [`Handle`]
     ///
     /// Will return [`None`] if the `Buffer` in question wasn't
@@ -883,8 +887,7 @@ impl<T: 'static> PerBuffer<T> {
     ///
     /// [registered]: Self::register
     /// [unregistered]: Self::unregister
-    /// [`S`]: crate::text::Searcher
-    pub fn get<'b>(&'b self, buffer_pass: &'b mut impl BufferPass) -> Option<&'b T> {
+    pub fn get<'b>(&'b self, buffer_pass: &'b impl BufferPass) -> Option<&'b T> {
         static PASS: Pass = unsafe { Pass::new() };
         let list = self.0.read(&PASS);
         list.get(&buffer_pass.buffer_id())
@@ -898,10 +901,10 @@ impl<T: 'static> PerBuffer<T> {
     /// `Buffer`.
     ///
     /// For now, the two types that can be used as [`BufferPass`]es
-    /// are the [`Buffer`] itself and a [`Cursor<Buffer, S>`] for any
-    /// [`S`]. These types are allowed to do this because they are
-    /// impossible to acquire without first borrowing from an
-    /// [`RwData<Buffer>`], either directly or through a [`Handle`]
+    /// are the [`Buffer`] itself and a [`Cursor<Buffer>`]. These
+    /// types are allowed to do this because they are impossible
+    /// to acquire without first borrowing from an [`RwData<Buffer>`],
+    /// either directly or through a [`Handle`]
     ///
     /// Will return [`None`] if the `Buffer` in question wasn't
     /// [registered] or was [unregistered].
@@ -915,7 +918,6 @@ impl<T: 'static> PerBuffer<T> {
     ///
     /// [registered]: Self::register
     /// [unregistered]: Self::unregister
-    /// [`S`]: crate::text::Searcher
     pub fn get_mut<'b>(&'b self, buffer: &'b mut impl BufferPass) -> Option<&'b mut T> {
         static PASS: Pass = unsafe { Pass::new() };
         let list = self

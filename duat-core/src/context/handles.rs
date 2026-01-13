@@ -540,8 +540,8 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// Gets this [`Handle`]'s mask
     ///
     /// This mask is going to be used to map [`Form`]s to other
-    /// [`Form`]s when printing via [`Widget::print`]. To see more
-    /// about how masks work, see [`form::enable_mask`].
+    /// [`Form`]s when printing. To see more about how masks work, see
+    /// [`form::enable_mask`].
     ///
     /// [`Form`]: crate::form::Form
     /// [`form::enable_mask`]: crate::form::enable_mask
@@ -552,8 +552,8 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// Sets this [`Handle`]'s mask, returning the previous one
     ///
     /// This mask is going to be used to map [`Form`]s to other
-    /// [`Form`]s when printing via [`Widget::print`]. To see more
-    /// about how masks work, see [`form::enable_mask`].
+    /// [`Form`]s when printing. To see more about how masks work, see
+    /// [`form::enable_mask`].
     ///
     /// [`Form`]: crate::form::Form
     /// [`form::enable_mask`]: crate::form::enable_mask

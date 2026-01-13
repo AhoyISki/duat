@@ -31,7 +31,7 @@ pub(crate) use self::cursor::{ModSelection, reinsert_selections};
 #[doc(inline)]
 pub use self::{bindings::*, patterns::*};
 pub use self::{
-    cursor::{CaretOrRange, Cursor, Cursors, Selection, Selections, VPoint},
+    cursor::{CaretOrRange, Cursor, CursorMatches, Cursors, Selection, Selections, VPoint},
     remap::*,
     switch::*,
 };
@@ -91,6 +91,8 @@ mod switch;
 ///     }
 /// }
 /// ```
+///
+/// [`Plugin`]: crate::Plugin
 #[derive(Clone, Copy, Debug)]
 pub struct User;
 
@@ -138,11 +140,11 @@ pub fn current_type_id() -> std::any::TypeId {
 ///
 /// Unlike with [`mode::map`] or [`mode::alias`], the sent keys are
 /// allowed to be remapped to something else. Additionally, they will
-/// also trigger the [`KeysTyped`] hook.
+/// also trigger the [`KeyTyped`] hook.
 ///
 /// [`mode::map`]: map
 /// [`mode::alias`]: alias
-/// [`KeysTyped`]: crate::hook::KeysTyped
+/// [`KeyTyped`]: crate::hook::KeyTyped
 pub fn type_keys(keys: impl IntoIterator<Item = KeyEvent>) {
     let keys: Vec<_> = keys.into_iter().collect();
     if !keys.is_empty() {
@@ -414,7 +416,6 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// be used for succinctly matching patterns.
 ///
 /// [`Cursor`]: crate::mode::Cursor
-/// [`print`]: Widget::print
 /// [`on_focus`]: Widget::on_focus
 /// [`on_unfocus`]: Widget::on_unfocus
 /// [resizing]: crate::ui::Area::set_height

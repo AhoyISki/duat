@@ -113,12 +113,13 @@ impl<'a> FwdIter<'a> {
 
     /// Returns an [`Iterator`] over only the `char`s
     ///
-    /// The difference betwen this and a regular [`Text::chars_fwd`]
+    /// The difference betwen this and a regular [`Bytes::chars_fwd`]
     /// is that this [`Iterator`] will return [`Ghost`] `char`s and
     /// won't return `char`s that have been concealed
     ///
     /// [`Tag`]: super::Tag
     /// [`Ghost`]: super::Ghost
+    /// [`Bytes::chars_fwd`]: super::Bytes::chars_fwd
     pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
         self.filter(|item| item.part.is_char())
     }
@@ -319,12 +320,13 @@ impl<'a> RevIter<'a> {
 
     /// Returns an [`Iterator`] over only the `char`s
     ///
-    /// The difference betwen this and a regular [`Text::chars_rev`]
+    /// The difference betwen this and a regular [`Bytes::chars_rev`]
     /// is that this [`Iterator`] will return [`Ghost`] `char`s and
     /// won't return `char`s that have been concealed
     ///
     /// [`Tag`]: super::Tag
     /// [`Ghost`]: super::Ghost
+    /// [`Bytes::chars_rev`]: super::Bytes::chars_rev
     pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
         self.filter(|item| item.part.is_char())
     }
