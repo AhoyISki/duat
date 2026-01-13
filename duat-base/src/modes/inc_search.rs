@@ -88,7 +88,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*TAGGER, ..);
 
-        let handle = context::current_buffer(pa).clone();
+        let handle = context::current_buffer(pa);
 
         if text == self.prev {
             return text;

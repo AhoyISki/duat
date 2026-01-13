@@ -78,7 +78,6 @@ impl WhichKey {
         }
 
         let keys_handle = context::current_buffer(pa)
-            .clone()
             .spawn_widget(pa, keys, specs)
             .unwrap();
         descs.1 = Some(keys_handle.clone());

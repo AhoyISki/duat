@@ -35,7 +35,6 @@ test!("quick-settings/chapter", quick_settings {
         test!("quick-settings/frequent-snippets/status-per-buffer", status_per_buffer {});
         test!("quick-settings/frequent-snippets/prompt-status-line", prompt_status_line {});
         test!("quick-settings/frequent-snippets/common-status", common_status {});
-        test!("quick-settings/frequent-snippets/rel-align-linenums", rel_align_linenums {});
         test!("quick-settings/frequent-snippets/buffer-tabstops", buffer_tabstops {});
         test!("quick-settings/frequent-snippets/nerd-status", nerd_status {});
         test!("quick-settings/frequent-snippets/buffer-window-status", buffer_window_status {});

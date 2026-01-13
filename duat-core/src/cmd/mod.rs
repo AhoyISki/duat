@@ -222,7 +222,7 @@ pub(crate) fn add_session_commands() {
     );
 
     add("write", |pa: &mut Pass, path: Option<ValidFilePath>| {
-        let handle = context::current_buffer(pa).clone();
+        let handle = context::current_buffer(pa);
 
         let (bytes, name) = if let Some(path) = path {
             (handle.save_to(pa, &path.0)?, path.0)
@@ -254,7 +254,7 @@ pub(crate) fn add_session_commands() {
     add(
         "write-quit",
         |pa: &mut Pass, path: Option<ValidFilePath>| {
-            let handle = context::current_buffer(pa).clone();
+            let handle = context::current_buffer(pa);
 
             let (bytes, name) = {
                 let bytes = if let Some(path) = path {
@@ -366,7 +366,7 @@ pub(crate) fn add_session_commands() {
     add("quit", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::current_buffer(pa).clone(),
+            None => context::current_buffer(pa),
         };
 
         let buffer = handle.read(pa);
@@ -395,7 +395,7 @@ pub(crate) fn add_session_commands() {
     add("quit!", |pa: &mut Pass, handle: Option<Handle>| {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::current_buffer(pa).clone(),
+            None => context::current_buffer(pa),
         };
 
         context::windows().close(pa, &handle)?;
@@ -679,7 +679,7 @@ pub(crate) fn add_session_commands() {
     );
 
     add("swap", |pa: &mut Pass, lhs: Handle, rhs: Option<Handle>| {
-        let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa).clone());
+        let rhs = rhs.unwrap_or_else(|| context::current_buffer(pa));
 
         context::windows().swap(pa, &lhs.to_dyn(), &rhs.to_dyn())?;
 

@@ -1,3 +1,0 @@
-# Relative and aligned LineNumbers
-
-

@@ -21,7 +21,6 @@
     - [StatusLine on each File](quick-settings/frequent-snippets/status-per-buffer.md)
     - [Prompt and Status on same line](quick-settings/frequent-snippets/prompt-status-line.md)
     - [Common StatusLine parts](quick-settings/frequent-snippets/common-status.md)
-    - [Relative and aligned LineNumbers](quick-settings/frequent-snippets/rel-align-linenums.md)
     - [Buffer wise tabstops](quick-settings/frequent-snippets/buffer-tabstops.md)
     - [Nerdfonts StatusLine](quick-settings/frequent-snippets/nerd-status.md)
     - [Status on buffers and on window](quick-settings/frequent-snippets/buffer-window-status.md)

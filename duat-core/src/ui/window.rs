@@ -442,10 +442,10 @@ impl Windows {
 
         let cur_buffer = context::current_buffer(pa);
         if lhs_win != rhs_win {
-            if lhs == cur_buffer {
+            if *lhs == cur_buffer {
                 self.inner.write(pa).cur_win = lhs_win;
                 self.ui.switch_window(lhs_win);
-            } else if rhs == cur_buffer {
+            } else if *rhs == cur_buffer {
                 self.inner.write(pa).cur_win = rhs_win;
                 self.ui.switch_window(rhs_win);
             }

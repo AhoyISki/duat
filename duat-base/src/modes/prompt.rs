@@ -659,7 +659,7 @@ impl PromptMode for PipeSelections {
             return;
         };
 
-        let handle = context::current_buffer(pa).clone();
+        let handle = context::current_buffer(pa);
         handle.edit_all(pa, |mut c| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::ArgsIter::new(&command).map(|(a, ..)| a))

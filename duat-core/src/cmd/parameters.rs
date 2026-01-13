@@ -496,7 +496,7 @@ impl Parameter for OtherBuffer {
     fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let handle = args.next_as::<Handle>(pa)?;
         let cur_handle = crate::context::current_buffer(pa);
-        if *cur_handle == handle {
+        if cur_handle == handle {
             Err(txt!("Argument can't be the current buffer"))
         } else {
             Ok((Self(handle), Some(form::id_of!("param.path.open"))))

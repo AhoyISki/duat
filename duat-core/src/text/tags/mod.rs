@@ -114,7 +114,7 @@ impl Tags<'_> {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.0.len_bytes());
+        let range = range.to_range(self.0.len_bytes() + 1);
         self.0.remove_from(taggers, range)
     }
 
@@ -130,7 +130,7 @@ impl Tags<'_> {
     ///
     /// [`remove`]: Self::remove
     pub fn remove_excl(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.0.len_bytes());
+        let range = range.to_range(self.0.len_bytes() + 1);
         self.0.remove_from_excl(taggers, range);
     }
 
@@ -358,12 +358,22 @@ impl InnerTags {
     }
 
     fn remove_from_excl(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
-        let range = crate::utils::get_range(within, self.len_bytes());
+        let range = crate::utils::get_range(within, self.len_bytes() + 1);
 
         for extent in self
             .extents
             .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
         {
+            let more = extent.start.saturating_sub(2)..extent.end + 2;
+
+            let tags_in_extent: Vec<_> = self
+                .list
+                .iter_fwd(..)
+                .filter(|(_, (b, tag))| {
+                    more.contains(&(*b as usize)) && taggers.contains_tagger(tag.tagger())
+                })
+                .collect();
+
             self.remove_from_if(extent.clone(), |(b, tag)| {
                 taggers.contains_tagger(tag.tagger())
                     && ((b > range.start as i32 || tag.is_start())
@@ -696,6 +706,7 @@ impl std::fmt::Debug for InnerTags {
         f.debug_struct("InnerTags")
             .field("buf", &DebugBuf(self, ..))
             .field("bounds", &bounds::DebugBounds(self))
+            .field("extents", &self.extents)
             .finish_non_exhaustive()
     }
 }
