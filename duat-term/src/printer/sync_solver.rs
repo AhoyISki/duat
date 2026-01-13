@@ -89,13 +89,13 @@ impl SyncSolver {
                 let [lhs, rhs] = spawn.deps.get_values(&self.solver);
                 let [lhs_frame, rhs_frame] = spawn.frame.map(|show| show as usize as f64);
 
-                let [lhs_outside, rhs_outside] = {
+                let [lhs_dist_from_parent, rhs_dist_from_parent] = {
                     let [parent_lhs, parent_rhs] = spawn.parent_frame.map(|show| show as usize);
-                    [lhs_frame + parent_rhs as f64, rhs_frame + parent_lhs as f64]
+                    [rhs_frame + parent_lhs as f64, lhs_frame + parent_rhs as f64]
                 };
 
-                let lhs_outside_len = rhs_outside + lhs_frame;
-                let rhs_outside_len = lhs_outside + rhs_frame;
+                let lhs_outside_len = lhs_dist_from_parent + lhs_frame;
+                let rhs_outside_len = rhs_dist_from_parent + rhs_frame;
 
                 if spawn.is_inside {
                     let inside_len = rhs - lhs - (lhs_frame + rhs_frame);
@@ -119,13 +119,19 @@ impl SyncSolver {
                         (true, true, true | false) | (false, true, false) => {
                             self.solver.suggest_value(spawn.len_var, len).unwrap();
                             self.solver
-                                .suggest_value(spawn.center_var, lhs - (rhs_outside + len / 2.0))
+                                .suggest_value(
+                                    spawn.center_var,
+                                    lhs - (lhs_dist_from_parent + len / 2.0),
+                                )
                                 .unwrap();
                         }
                         (true, false, true) | (false, true | false, true) => {
                             self.solver.suggest_value(spawn.len_var, len).unwrap();
                             self.solver
-                                .suggest_value(spawn.center_var, rhs + (lhs_outside + len / 2.0))
+                                .suggest_value(
+                                    spawn.center_var,
+                                    rhs + (rhs_dist_from_parent + len / 2.0),
+                                )
                                 .unwrap();
                         }
                         (true | false, false, false) => unreachable!(),
@@ -137,7 +143,8 @@ impl SyncSolver {
                     let (center, outside_len) = if lhs > max - rhs {
                         (lhs_frame + (lhs - lhs_outside_len) / 2.0, lhs_outside_len)
                     } else {
-                        let center = lhs_outside + rhs + (max - rhs - rhs_outside_len) / 2.0;
+                        let center =
+                            rhs_dist_from_parent + rhs + (max - rhs - rhs_outside_len) / 2.0;
                         (center, rhs_outside_len)
                     };
 

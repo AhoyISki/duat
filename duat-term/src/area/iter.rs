@@ -113,7 +113,7 @@ pub fn rev_print_iter(
 
 #[inline(always)]
 fn inner_iter<'a>(
-    mut iter: impl Iterator<Item = Item> + Clone + 'a,
+    iter: impl Iterator<Item = Item> + Clone + 'a,
     (mut total_len, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
@@ -124,6 +124,8 @@ fn inner_iter<'a>(
     let (mut line, mut leftover_nl): (Vec<(u32, Item)>, _) = (Vec::new(), None);
     let (mut x, mut i, mut has_wrapped) = (0, 0, false);
 
+    let mut iter = iter.peekable();
+
     let mut new_x = 0;
     let mut first_x = total_len * (total_len < cap || !opts.wrap_lines) as u32;
 
@@ -131,7 +133,7 @@ fn inner_iter<'a>(
         loop {
             // Emptying the line, most next calls should come here.
             if let Some(&(len, item)) = line.get(i) {
-                let wrap = !has_wrapped && (len != 0 || item.part.is_char());
+                let wrap = !has_wrapped && (len > 0 || item.part.is_char());
                 if wrap {
                     x = new_x;
                 }
@@ -153,7 +155,7 @@ fn inner_iter<'a>(
 
             // Preparing the line itself.
             loop {
-                let Some(item) = iter.next() else {
+                let Some(item) = iter.peek() else {
                     if line.is_empty() {
                         return None;
                     } else {
@@ -185,7 +187,7 @@ fn inner_iter<'a>(
                     let leftover = total_len.saturating_sub(cap);
                     wrapped_indent = match char {
                         '\t' if leftover > 0 => {
-                            line.push((len - leftover, item));
+                            line.push((len - leftover, iter.next().unwrap()));
                             if old_indent + leftover < max_indent && opts.indent_wraps {
                                 old_indent + leftover
                             } else {
@@ -197,10 +199,10 @@ fn inner_iter<'a>(
                                 (true, true) => {
                                     let position = old_indent
                                         * (old_indent < max_indent && opts.indent_wraps) as u32;
-                                    leftover_nl = Some((position, item))
+                                    leftover_nl = Some((position, iter.next().unwrap()))
                                 }
-                                (true, false) => line.push((1, item)),
-                                (false, _) => line.push((0, item)),
+                                (true, false) => line.push((1, iter.next().unwrap())),
+                                (false, _) => line.push((0, iter.next().unwrap())),
                             }
                             0
                         }
@@ -208,7 +210,7 @@ fn inner_iter<'a>(
                             // At this point, the only logical course of action is to wrap on
                             // every character.
                             if cap == 0 && !line.iter().any(|(_, item)| item.part.is_char()) {
-                                line.push((len, item));
+                                line.push((len, iter.next().unwrap()));
                             }
                             old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
                         }
@@ -217,7 +219,7 @@ fn inner_iter<'a>(
                     total_len = wrapped_indent;
                     break;
                 } else {
-                    line.push((len, item));
+                    line.push((len, iter.next().unwrap()));
                 }
             }
 
@@ -251,9 +253,7 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
 
             let old_indent = indent;
             let len = match item.part {
-                Part::Char('\n') => {
-                    unreachable!("Shouldn't be possible, given the visual line start")
-                }
+                Part::Char('\n') => process_nl(&mut indent, &mut on_indent, total_len, opts),
                 Part::Char(char) => {
                     process_char(&mut indent, &mut on_indent, total_len, char, opts)
                 }

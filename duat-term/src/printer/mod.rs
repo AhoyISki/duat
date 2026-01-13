@@ -289,10 +289,10 @@ impl Printer {
     /// consistent
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-        
+
         let new_lines = std::mem::take(&mut *self.new_lines.lock().unwrap());
-		let has_to_print_edges = self.has_to_print_edges.swap(false, Ordering::Relaxed);
-        
+        let has_to_print_edges = self.has_to_print_edges.swap(false, Ordering::Relaxed);
+
         let mut stdout = stdout::get();
 
         queue!(stdout, cursor::Hide, ResetColor).unwrap();
@@ -359,6 +359,17 @@ impl Printer {
         let frame_form = form::from_id(form::id_of!("terminal.frame"));
 
         for (list, _, frame) in spawned_lines.iter() {
+            let tl = list.iter().map(|(_, lines)| lines.coords.tl).min().unwrap();
+            let br = list.iter().map(|(_, lines)| lines.coords.br).max().unwrap();
+
+            if tl.x == br.x
+                || tl.y == br.y
+                || br.x + frame.right as u32 > max.x
+                || br.y + frame.below as u32 > max.y
+            {
+                continue;
+            }
+
             for (_, lines) in list.iter() {
                 for y in lines.coords.tl.y..lines.coords.br.y {
                     queue!(stdout, MoveTo(lines.coords.tl.x as u16, y as u16)).unwrap();
@@ -367,15 +378,7 @@ impl Printer {
                 }
             }
 
-            let tl = list.iter().map(|(_, lines)| lines.coords().tl).min();
-            let br = list.iter().map(|(_, lines)| lines.coords().br).max();
-
-            frame.draw(
-                &mut stdout,
-                Coords::new(tl.unwrap(), br.unwrap()),
-                frame_form,
-                max,
-            );
+            frame.draw(&mut stdout, Coords::new(tl, br), frame_form, max);
         }
 
         if cursor_was_real {

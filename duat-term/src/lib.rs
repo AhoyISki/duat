@@ -580,14 +580,14 @@ const LEN_PRIO: kasuari::Strength = kasuari::Strength::new(11.0);
 const BORDER_PRIO: kasuari::Strength = kasuari::Strength::new(10.0);
 /// The priority for hiding things
 const HIDDEN_PRIO: kasuari::Strength = kasuari::Strength::new(9.0);
-/// The priority for frames around spawned Areas
-const FRAME_PRIO: kasuari::Strength = kasuari::Strength::new(8.0);
+/// The priority for the length of spawned Areas
+const SPAWN_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(8.0);
 /// The priority for positioning of dynamically spawned Areas
 const DYN_SPAWN_POS_PRIO: kasuari::Strength = kasuari::Strength::new(7.0);
 /// The priority for the center and len variables of spawned Areas
 const SPAWN_DIMS_PRIO: kasuari::Strength = kasuari::Strength::new(6.0);
-/// The priority for the length of spawned Areas
-const SPAWN_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(5.0);
+/// The priority for frames around spawned Areas
+const FRAME_PRIO: kasuari::Strength = kasuari::Strength::new(5.0);
 /// The priority for the length of spawned Areas
 const CONS_SPAWN_LEN_PRIO: kasuari::Strength = kasuari::Strength::new(4.0);
 /// The priority for positioning of statically spawned Areas
