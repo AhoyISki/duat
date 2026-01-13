@@ -11,11 +11,6 @@ publish = false
 [lib]
 crate-type = ["dylib"]
 
-[lints.clippy]
-# This is useful to shorten hook declarations, so you can wrap everything in Ok.
-# You can get rid of this if you wish to.
-unit_arg = "allow"
-
 [profile.release]
 split-debuginfo = "unpacked"
 incremental = true
@@ -23,9 +18,9 @@ lto = "off"
 
 [dependencies.duat]
 git = "https://github.com/AhoyISki/duat"
-version = "0.7.4"
+version = "0.8.0"
 
-# Same with this one, it just adds more colorschemes.
+# Plugin to add the catppuccin colorschemes, optional
 [dependencies.duat-catppuccin]
 git = "https://github.com/AhoyISki/duat-catppuccin"
-version = "0.3.1"
+version = "0.3.5"

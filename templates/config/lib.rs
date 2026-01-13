@@ -25,6 +25,7 @@ fn setup() {
         opts.wrap_lines = true;
         opts.scrolloff.y = 5;
         opts.line_numbers.align = std::fmt::Alignment::Right;
+        opts.line_numbers.main_align = std::fmt::Alignment::Left;
     });
 
     opts::fmt_status(|pa| {

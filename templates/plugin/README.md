@@ -11,12 +11,6 @@ Just like other Duat plugins, this one can be installed by calling
 cargo add plugin-name@"*"
 ```
 
-Or, if you are using a `--git-deps` version of duat, do this:
-
-```bash
-cargo add --git {repository_url}
-```
-
 ## Usage
 
 In order to make use of it, just add the following to your `setup`
@@ -51,5 +45,5 @@ fn setup() {
 
 This `Plugin` makes use of these `Form`s:
 
-- `plugin_name.some_suff1`: ...
-- `plugin_name.some_suff2`: ...
+- `plugin_name.some_stuff1`: ...
+- `plugin_name.some_stuff2`: ...
