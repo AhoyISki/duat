@@ -178,12 +178,9 @@ impl Mode for Normal {
             event!('o' | 'O') => txt!("[mode]Insert[] on new line {below}"),
             alt!('o' | 'O') => txt!("Add new line {below}"),
             event!('.') => txt!("Repeats the last [mode]Insert[] command"),
-            event!('r') => (
-                txt!("Replace range"),
-                match _ {
-                    event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
-                }
-            ),
+            event!('r') => (txt!("Replace range"), match _ {
+                event!(Char(..)) => txt!("Replace range with [key.char]{{char}}"),
+            }),
             event!('`') => txt!("Lowercase the selection"),
             event!('~') => txt!("Uppercase the selection"),
             alt!('`') => txt!("Swap case of selection"),
@@ -456,7 +453,8 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 if let Some(range) = {
                     c.search(word_or_space(alt, p_opts))
-                        .from_caret()
+                        .to_caret()
+                        .rev()
                         .nth(param - 1)
                 } {
                     c.move_to(range.start);
@@ -1324,6 +1322,7 @@ pub(crate) mod jump_list {
                 if let Some(handle) = {
                     context::windows()
                         .buffers(pa)
+                        .into_iter()
                         .find(|handle| handle.read(pa).buffer_id() == buffer_id)
                 } {
                     hook::remove(*JUMPS_HOOK_ID);

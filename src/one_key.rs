@@ -88,7 +88,7 @@ fn match_goto(
 ) -> SelType {
     let mut switch_and_register = |cmd| {
         if cmd::call_notify(pa, cmd).is_ok() {
-            let handle = context::current_buffer(pa).clone();
+            let handle = context::current_buffer(pa);
             crate::normal::jump_list::register(pa, &handle, 5);
         }
     };
