@@ -69,7 +69,7 @@ impl Mode for Normal {
                 event!('"' | 'Q') => txt!("double quote string"),
                 event!('\'' | 'q') => txt!("single quote string"),
                 event!('`' | 'g') => txt!("grave quote string"),
-                event!('w') | alt!('w') => word.clone(),
+                event!('w') | event!('e') => word.clone(),
                 event!('s') => txt!("sentence"),
                 event!('p') => txt!("paragraph"),
                 event!(' ') => txt!("whitespace"),
@@ -140,11 +140,10 @@ impl Mode for Normal {
             event!('H' | 'J' | 'K' | 'L') => txt!("Select and move cursor"),
             event!(Left | Up | Down | Right) => txt!("Move cursor wrapped"),
             shift!(Left | Up | Down | Right) => txt!("Select and move cursor wrapped"),
-            event!('b') | alt!('b') | event!('B') | alt!('B') =>
-                txt!("{select} to start of {word}"),
-            event!('w') | alt!('w') | event!('W') | alt!('W') =>
-                txt!("{select} to start of next {word}"),
-            event!('e') | alt!('e') | event!('E') | alt!('E') => txt!("{select} to end of {word}"),
+            event!('w' | 'W') => txt!("{select} to end of [a]word[]/space"),
+            event!('e' | 'E') => txt!("{select} to end of [a]WORD[]/space"),
+            event!('b' | 'B') => txt!("{select} to start of [a]word[]/space"),
+            event!('v' | 'V') => txt!("{select} to start of [a]WORD[]/space"),
             event!('x') => txt!("Select whole line"),
             event!('f') => (txt!("Select to next match"), tf.next().unwrap()),
             event!('F') => (txt!("Extend to next match"), tf.next().unwrap()),
@@ -155,7 +154,7 @@ impl Mode for Normal {
             alt!('t') => (txt!("Select until previous match"), tf.next().unwrap()),
             alt!('T') => (txt!("Extend until previous match"), tf.next().unwrap()),
             alt!('.') => txt!(
-                "Repeats the last [a]<A-i>[separator],[a]<I-i>[separator],[a]g[separator],[a]f[separator],[a]t[] [separator]or[] v sequence"
+                "Repeats the last [a]'[separator],[a]\"[separator],[a]g[separator],[a]f[separator],[a]t[] [separator]or[] v sequence"
             ),
             alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{select} to end of line"),
             alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{select} to start of line"),
@@ -196,7 +195,7 @@ impl Mode for Normal {
             alt!(')') => txt!("Rotate selections's content forwards"),
             alt!('(') => txt!("Rotate selections's content backwards"),
             alt!('_') => txt!("Merge adjacent selections"),
-            alt!('s') => txt!("Split selections on lines"),
+            event!('X') => txt!("Split selections on lines"),
             shift!('D') => txt!("Divide selections on each end"),
             event!('>') => txt!("Indent selections's lines"),
             event!('<') => txt!("Dedent selections's lines"),
@@ -217,7 +216,7 @@ impl Mode for Normal {
             event!('n' | 'N') => txt!("{select} to next search match"),
             alt!('n' | 'N') => txt!("{select} to previous search match"),
             event!('*') => txt!("Set main selection as search pattern"),
-            alt!('u' | 'U') => undo.clone(),
+            event!('u' | 'U') => undo.clone(),
             event!(':') => txt!("[a]Run commands[] in prompt line"),
             event!('|') => txt!("[a]Pipe selections[] to external command"),
             event!('g') => (txt!("Go to [parameter]line[] or to places"), goto.clone()),
@@ -227,7 +226,7 @@ impl Mode for Normal {
             ctrl!('o') => txt!("Go to previous jump"),
             ctrl!('i') | event!(Tab) => txt!("Go to next jump"),
             event!(' ') => txt!("Enter [mode]User[] mode"),
-            event!('u' | 'U') => txt!("{undo} last selection change"),
+            alt!('u' | 'U') => txt!("{undo} last selection change"),
         })
     }
 
@@ -398,15 +397,14 @@ impl Mode for Normal {
             }),
 
             ////////// Object selection keys
-            event!('w') | alt!('w') => handle.edit_all(pa, |mut c| {
-                let alt_word = key_event.modifiers.contains(KeyMod::ALT);
+            event!(char @ ('w' | 'e')) => handle.edit_all(pa, |mut c| {
+                let alt = char == 'e';
                 if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
-                    let move_to_match =
-                        do_match_on_spot([c0, c1], alt_word, p0 != c.caret().byte());
+                    let move_to_match = do_match_on_spot([c0, c1], alt, p0 != c.caret().byte());
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c
-                        .search(word_and_space(alt_word, p_opts))
+                        .search(word_or_space(alt, p_opts))
                         .from_caret()
                         .nth(param - 1);
                     if let Some(range) = range {
@@ -414,24 +412,8 @@ impl Mode for Normal {
                     }
                 };
             }),
-            event!('e') | alt!('e') => handle.edit_all(pa, |mut c| {
-                let alt_word = key_event.modifiers.contains(KeyMod::ALT);
-                if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
-                    let move_to_match =
-                        do_match_on_spot([c0, c1], alt_word, p0 != c.caret().byte());
-                    c.move_to(if move_to_match { p1 } else { p0 });
-
-                    let range = c
-                        .search(space_and_word(alt_word, p_opts))
-                        .from_caret()
-                        .nth(param - 1);
-                    if let Some(range) = range {
-                        c.move_to(range);
-                    }
-                };
-            }),
-            event!('b') | alt!('b') => handle.edit_all(pa, |mut c| {
-                let alt_word = key_event.modifiers.contains(KeyMod::ALT);
+            event!(char @ ('b' | 'v')) => handle.edit_all(pa, |mut c| {
+                let alt = char == 'v';
                 let init = {
                     let iter = [(c.caret().byte(), c.char())]
                         .into_iter()
@@ -441,12 +423,12 @@ impl Mode for Normal {
                 if let Some([(p1, c1), (_, c0)]) = init {
                     let moved = p1 != c.caret().byte();
                     c.move_to(p1);
-                    if !do_match_on_spot([c1, c0], alt_word, moved) {
+                    if !do_match_on_spot([c1, c0], alt, moved) {
                         c.move_hor(1);
                     }
 
                     let range = c
-                        .search(word_and_space(alt_word, p_opts))
+                        .search(word_or_space(alt, p_opts))
                         .to_caret()
                         .nth_back(param - 1);
                     if let Some(range) = range {
@@ -456,12 +438,12 @@ impl Mode for Normal {
                 };
             }),
 
-            event!('W') | alt!('W') => handle.edit_all(pa, |mut c| {
-                let alt_word = key_event.modifiers.contains(KeyMod::ALT);
+            event!(char @ ('W' | 'E')) => handle.edit_all(pa, |mut c| {
+                let alt = char == 'E';
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
                 if let Some(range) = {
-                    c.search(word_and_space(alt_word, p_opts))
+                    c.search(word_or_space(alt, p_opts))
                         .from_caret()
                         .nth(param - 1)
                 } {
@@ -469,24 +451,11 @@ impl Mode for Normal {
                     c.move_hor(-1);
                 }
             }),
-            event!('E') | alt!('E') => handle.edit_all(pa, |mut c| {
-                let alt_word = key_event.modifiers.contains(KeyMod::ALT);
-                set_anchor_if_needed(true, &mut c);
-                c.move_hor(1);
-                if let Some(range) = {
-                    c.search(space_and_word(alt_word, p_opts))
-                        .from_caret()
-                        .nth(param - 1)
-                } {
-                    c.move_to(range.end);
-                    c.move_hor(-1);
-                }
-            }),
-            event!('B') | alt!('B') => handle.edit_all(pa, |mut c| {
-                let alt_word = key_event.modifiers.contains(KeyMod::ALT);
+            event!(char @ ('B' | 'V')) => handle.edit_all(pa, |mut c| {
+                let alt = char == 'V';
                 set_anchor_if_needed(true, &mut c);
                 if let Some(range) = {
-                    c.search(word_and_space(alt_word, p_opts))
+                    c.search(word_or_space(alt, p_opts))
                         .from_caret()
                         .nth(param - 1)
                 } {
@@ -781,7 +750,7 @@ impl Mode for Normal {
                     c.move_hor(-1);
                 });
             }
-            alt!('s') => handle.edit_all(pa, |mut c| {
+            event!('X') => handle.edit_all(pa, |mut c| {
                 c.set_caret_on_start();
                 let Some(end) = c.anchor() else {
                     return;
@@ -1010,7 +979,10 @@ impl Mode for Normal {
                 let pastes = duat_base::modes::paste_strings();
                 if !pastes.is_empty() {
                     let mut p_iter = pastes.iter().cycle();
-                    handle.edit_all(pa, |mut c| c.replace(p_iter.next().unwrap().repeat(param)));
+                    handle.edit_all(pa, |mut c| {
+                        c.set_anchor_if_needed();
+                        c.replace(p_iter.next().unwrap().repeat(param))
+                    });
                 }
             }
 
@@ -1253,21 +1225,12 @@ fn no_nl_pair(iter: impl Iterator<Item = (usize, char)>) -> Option<[(usize, char
     None
 }
 
-fn word_and_space(alt_word: bool, opts: PrintOpts) -> String {
+fn word_or_space(alt_word: bool, opts: PrintOpts) -> String {
     if alt_word {
-        "[^ \t\n]*[ \t]*".to_string()
+        "[^ \t\n]+|[ \t]+".to_string()
     } else {
         let cat = opts.word_chars_regex();
-        format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+")
-    }
-}
-
-fn space_and_word(alt_word: bool, opts: PrintOpts) -> String {
-    if alt_word {
-        "[ \t]*[^ \t\n]*".to_string()
-    } else {
-        let cat = opts.word_chars_regex();
-        format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)|[ \t]+")
+        format!("[{cat}]+|[^{cat} \t\n]+|[ \t]+")
     }
 }
 

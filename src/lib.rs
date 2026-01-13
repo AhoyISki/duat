@@ -71,7 +71,7 @@
 //! `g`, `` ` ``\
 //! Inside/around graves.
 //!
-//! `w`, `<a-w>`
+//! `w`, `e`
 //! Inside/around `word`s and `WORD`s.
 //! 
 //!
@@ -118,22 +118,19 @@
 //! Same as the previous characters, but extends the selection
 //!
 //! `w`\
-//! Selects the `word` and following space ahead of the selection.
-//!
-//! `b`\
-//! Selects the `word` followed by spaces behind the selection.
+//! Selects the `word`/spaces ahead of the selection.
 //!
 //! `e`\
-//! Selects to the end of the next `word` ahead of the selection.
+//! Selects the `WORD`/spaces ahead of the selection.
 //!
-//! `<(W|B|E)>`\
-//! The same as `(w|b|e)`, but extends the selection.
+//! `b`\
+//! Selects the `word`/spaces behind the selection.
 //!
-//! `<a-(w|b|e)>`\
-//! The same as `(w|b|e)`, but over a `WORD`.
+//! `v`\
+//! Selects the `WORD`/spaces behind the selection
 //!
-//! `<a-(W|B|E)>`\
-//! The same as `<a-(w|b|e)>`, but extends the selection.
+//! `<(W|E|B|V)>`\
+//! The same as `(w|b|e|v)`, but extends the selection.
 //!
 //! `f{char}`\
 //! Selects to the next occurrence of the `{char}`.
@@ -224,7 +221,7 @@
 //! `<a-:>`\
 //! Places the [caret] ahead of the [anchor] in all selections.
 //!
-//! `<a-s>`\
+//! `X`\
 //! Divides selection into multiple selections, one per line.
 //!
 //! `D`\
@@ -941,7 +938,7 @@ impl<'o> Object<'o> {
 
                 Self::TwoBounds { ahead, behind, repeat: false }
             }),
-            alt!('w') => Some(Self::TwoBounds {
+            event!('e') => Some(Self::TwoBounds {
                 ahead: Regexes::new("\\A[^ \t\n]+\\s*", r"\s*"),
                 behind: Regexes::new("[^ \t\n]*\\z", ""),
                 repeat: false,
