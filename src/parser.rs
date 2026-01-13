@@ -69,6 +69,7 @@ pub(crate) fn add_parser_hook() {
                 .ranges_to_update
                 .select_from(printed_lines.iter().cloned())
             {
+                let range = range.start..range.end + 1;
                 parts.tags.remove_excl(ts_tagger(), range.clone());
                 parser.highlight(range.clone(), &mut parts);
                 parts.ranges_to_update.update_on([range]);
@@ -378,8 +379,6 @@ impl Parser {
 
                     parts.ranges_to_update.add_ranges([cap_range.clone()]);
                 };
-
-                duat_core::context::debug!("{}, {:?}", lang_parts.0, cap_range.clone());
 
                 observed_injections.push((lang_parts.0, cap_range.clone()));
             }
@@ -800,7 +799,7 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TsPoint {
 fn apply_changes(parts: &BufferParts<'_>, parser: &mut Parser) {
     for change in parts.changes.clone() {
         let start = parts.bytes.point_at_line(change.start().line());
-        let end = parts.bytes.point_at_line(change.added_end().line() + 1);
+        let end = parts.bytes.line_range(change.added_end().line()).end;
         parts.ranges_to_update.add_ranges([start..end]);
         let edit = input_edit(change, parts.bytes);
         parser.edit(&edit);
