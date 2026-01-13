@@ -1,6 +1,6 @@
 [package]
 name = "duat-jump-list"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["AhoyISki"]
 description = "A jump list for Duat, meant to be used by modes"
 repository = "https://github.com/AhoyISki/duat-jump-list"
