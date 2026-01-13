@@ -1,6 +1,6 @@
 [package]
 name = "duat-jump-list"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["AhoyISki"]
 description = "A jump list for Duat, meant to be used by modes"
 repository = "https://github.com/AhoyISki/duat-jump-list"
@@ -11,5 +11,5 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
-duat-core = "0.7.6"
+duat-core = "0.8.0"
 gapbuf = "0.1.4"
