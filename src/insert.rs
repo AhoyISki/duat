@@ -180,7 +180,9 @@ impl Mode for Insert {
             event!(Delete) => handle.edit_all(pa, |mut c| {
                 let prev_caret = c.caret();
                 let prev_anchor = c.unset_anchor();
+                c.set_anchor();
                 c.replace("");
+                c.unset_anchor();
 
                 match insert_events.last_mut() {
                     Some(InsertEvent::Delete(total)) => *total += 1,
