@@ -986,6 +986,14 @@ impl Mode for Normal {
             ////////// Cursor creation and destruction
             event!(',') => handle.selections_mut(pa).remove_extras(),
             event!('C') | alt!('C') => {
+                fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool {
+                    lhs.0.visual_col() == rhs.0.visual_col()
+                        && lhs
+                            .1
+                            .zip(rhs.1)
+                            .is_none_or(|(lhs, rhs)| lhs.visual_col() == rhs.visual_col())
+                }
+
                 let (nth, mult) = if key_event.modifiers == KeyMod::NONE {
                     (handle.read(pa).selections().len() - 1, 1)
                 } else {
@@ -995,7 +1003,7 @@ impl Mode for Normal {
                 handle.edit_nth(pa, nth, |mut c| {
                     c.copy();
                     let (v_caret, v_anchor) = (c.v_caret(), c.v_anchor());
-                    let lines_diff = v_anchor.map(|vp| vp.line() as i32 - v_caret.line() as i32);
+                    let lines_diff = v_anchor.map(|vp| vp.line().abs_diff(v_caret.line()) as i32);
                     let mut lines = mult * (lines_diff.unwrap_or(0) + 1);
 
                     while c.move_ver(lines) == lines {
@@ -1232,14 +1240,6 @@ fn word_or_space(alt_word: bool, opts: PrintOpts) -> String {
         let cat = opts.word_chars_regex();
         format!("[{cat}]+|[^{cat} \t\n]+|[ \t]+")
     }
-}
-
-fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool {
-    lhs.0.visual_col() == rhs.0.visual_col()
-        && lhs
-            .1
-            .zip(rhs.1)
-            .is_none_or(|(lhs, rhs)| lhs.visual_col() == rhs.visual_col())
 }
 
 #[derive(Clone, Copy)]
