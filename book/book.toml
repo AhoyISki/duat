@@ -1,13 +1,11 @@
 [book]
 authors = ["AhoyISki"]
 language = "en"
-multilingual = false
 title = "The Duat text editor"
 
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "navy"
-copy-fonts = true
 git-repository-url = "https://github.com/AhoyISki/duat"
 edit-url-template = "https://github.com/AhoyISki/duat/edit/master/book/{path}"
 site-url = "https://ahoyiski.github.io/duat"
@@ -19,5 +17,3 @@ page-break = false
 [output.html.fold]
 enable = true
 level = 1
-
-[preprocessor.alerts]

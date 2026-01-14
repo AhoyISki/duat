@@ -62,7 +62,6 @@ test!("scripting-duat/chapter", scripting_duat {
 
 test!("extending-duat/chapter", extending_duat {
     use crate::test;
-    test!("extending-duat/duat-core", duat_core {});
     test!("extending-duat/plugins", plugins {});
     test!("extending-duat/widgets", widgets {});
     test!("extending-duat/modes", modes {});

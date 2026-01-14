@@ -108,7 +108,7 @@ already set to something:
 | `number.float`                | floating-point number literals
 | `type`                        | type or class definitions and annotations
 | `type.builtin`                | built-in types
-| `type.definition`             | identifiers in type definitions (e.g. typedef <type> <identifier> in C)
+| `type.definition`             | identifiers in type definitions (e.g. typedef \<type\> \<identifier\> in C)
 | `attribute`                   | attribute annotations (e.g. Python decorators, Rust lifetimes)
 | `attribute.builtin`           | builtin annotations (e.g. @property in Python)
 | `property`                    | the key in key/value pairs

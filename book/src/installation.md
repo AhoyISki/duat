@@ -16,7 +16,7 @@ cargo +nightly install duat
 ```
 
 Or, if you want the `master` version of duat, from the latest commit, you can 
-do this:
+do this (warning: unstable!):
 
 ```bash
 cargo +nightly install --git https://github.com/AhoyISki/duat --features git-deps

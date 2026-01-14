@@ -985,7 +985,7 @@ macro_rules! implWriteableTuple {
 
 impl<'p, Data, T> WriteableTuple<'p, (&mut T,)> for &'p Data
 where
-    Data: WriteableData<T>,
+    Data: WriteableData<'p, T>,
     T: ?Sized + 'p,
 {
     type Return = &'p mut T;
@@ -1059,18 +1059,18 @@ where
 
 /// A trait for writing to multiple [`RwData`]-like structs at once
 #[doc(hidden)]
-pub trait WriteableData<T: ?Sized>: InnerWriteableData {
+pub trait WriteableData<'p, T: ?Sized + 'p>: InnerWriteableData {
     /// Just like [`RwData::write`]
     #[doc(hidden)]
-    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T;
+    fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut T;
 
     /// A pointer for [`Pass::try_write_many`]
     #[doc(hidden)]
     fn cur_state_ptr(&self) -> CurStatePtr<'_>;
 }
 
-impl<T: ?Sized> WriteableData<T> for RwData<T> {
-    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
+impl<'p, T: ?Sized + 'p> WriteableData<'p, T> for RwData<T> {
+    fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
     }
 
@@ -1079,8 +1079,8 @@ impl<T: ?Sized> WriteableData<T> for RwData<T> {
     }
 }
 
-impl<T: Default> WriteableData<T> for BulkDataWriter<T> {
-    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
+impl<'p, T: Default> WriteableData<'p, T> for BulkDataWriter<T> {
+    fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
     }
 
@@ -1089,8 +1089,8 @@ impl<T: Default> WriteableData<T> for BulkDataWriter<T> {
     }
 }
 
-impl<W: Widget> WriteableData<W> for crate::context::Handle<W> {
-    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut W {
+impl<'p, W: Widget> WriteableData<'p, W> for crate::context::Handle<W> {
+    fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut W {
         self.write(pa)
     }
 
@@ -1099,8 +1099,8 @@ impl<W: Widget> WriteableData<W> for crate::context::Handle<W> {
     }
 }
 
-impl WriteableData<crate::ui::Area> for crate::ui::RwArea {
-    fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut crate::ui::Area {
+impl<'p> WriteableData<'p, crate::ui::Area> for crate::ui::RwArea {
+    fn write_one_of_many(&'p self, pa: &'p mut Pass) -> &'p mut crate::ui::Area {
         self.write(pa)
     }
 

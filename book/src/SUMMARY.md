@@ -35,7 +35,6 @@
   - [cmd: Runtime commands](scripting-duat/cmd-module.md)
   - [Modifying the layout](scripting-duat/mod-layout.md)
 - [Extending Duat](extending-duat/chapter.md)
-  - [duat-core](extending-duat/duat-core.md)
   - [Plugins](extending-duat/plugins.md)
   - [Widgets](extending-duat/widgets.md)
   - [Modes](extending-duat/modes.md)
