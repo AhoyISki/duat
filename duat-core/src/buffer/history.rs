@@ -689,13 +689,17 @@ impl BufferTracker {
             iter,
         };
 
+        let mut ranges_lock = ranges.lock().unwrap();
         for change in changes.clone() {
+            ranges_lock.shift_by(
+                change.start().byte(),
+                change.added_end().byte() as i32 - change.taken_end().byte() as i32,
+            );
+            
             let range = change.added_range();
-            ranges
-                .lock()
-                .unwrap()
-                .add(range.start.byte()..range.end.byte());
+            ranges_lock.add(range.start.byte()..range.end.byte());
         }
+        drop(ranges_lock);
 
         let parts = buf.text.parts();
 
