@@ -329,6 +329,22 @@ impl Mode for Normal {
                 }
             }
         };
+        let delete_selections = |pa: &mut Pass| {
+            handle.edit_all(pa, |mut c| {
+                let prev_char = c.chars_rev().next();
+                if c.range().end == c.len()
+                    && c.selection() == "\n"
+                    && let Some((_, '\n')) = prev_char
+                {
+                    c.set_anchor();
+                    c.move_hor(-1);
+                }
+
+                c.set_anchor_if_needed();
+                c.replace("");
+                c.unset_anchor();
+            });
+        };
 
         match key_event {
             ////////// Basic movement keys
@@ -647,6 +663,7 @@ impl Mode for Normal {
                         c.set_caret_on_end();
                         c.move_hor(1);
                     }),
+                    Some(InsertKey::Change) => delete_selections(pa),
                     Some(InsertKey::InsertStart) => {
                         handle.edit_all(pa, |mut c| {
                             c.unset_anchor();
@@ -910,21 +927,9 @@ impl Mode for Normal {
                 if key_event.modifiers == KeyMod::NONE {
                     duat_base::modes::copy_selections(pa, &handle);
                 }
-                handle.edit_all(pa, |mut c| {
-                    let prev_char = c.chars_rev().next();
-                    if c.range().end == c.len()
-                        && c.selection() == "\n"
-                        && let Some((_, '\n')) = prev_char
-                    {
-                        c.set_anchor();
-                        c.move_hor(-1);
-                    }
-
-                    c.set_anchor_if_needed();
-                    c.replace("");
-                    c.unset_anchor();
-                });
+                delete_selections(pa);
                 if char == 'c' {
+                    *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Change);
                     mode::set(pa, crate::Insert);
                 }
             }
@@ -1244,6 +1249,7 @@ fn cols_eq(lhs: (VPoint, Option<VPoint>), rhs: (VPoint, Option<VPoint>)) -> bool
 enum InsertKey {
     Insert,
     Append,
+    Change,
     InsertStart,
     AppendEnd,
     NewLineBelow,
