@@ -999,11 +999,14 @@ impl Mode for Normal {
                     let mut lines = mult * (lines_diff.unwrap_or(0) + 1);
 
                     while c.move_ver(lines) == lines {
-                        if v_anchor.is_some() {
+                        c.move_to_col(v_caret.visual_col());
+                        if let Some(v_anchor) = v_anchor {
                             c.swap_ends();
                             c.move_ver(lines);
+                            c.move_to_col(v_anchor.visual_col());
                             c.swap_ends();
                         }
+
                         if cols_eq((v_caret, v_anchor), (c.v_caret(), c.v_anchor())) {
                             return;
                         }
