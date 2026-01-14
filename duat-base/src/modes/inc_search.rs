@@ -94,7 +94,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
             return text;
         } else {
             let prev = std::mem::replace(&mut self.prev, text.to_string());
-            hook::queue(SearchUpdated((prev, self.prev.clone())));
+            hook::trigger(pa, SearchUpdated((prev, self.prev.clone())));
         }
 
         let pat = text.to_string();
@@ -141,7 +141,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         text
     }
 
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &RwArea) {
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         if !text.is_empty() {
             let pat = text.to_string();
             if let Err(err) = regex_syntax::parse(&pat) {
@@ -159,7 +159,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
                 context::error!("{err}")
             } else {
-                hook::queue(SearchPerformed(pat));
+                hook::trigger(pa, SearchPerformed(pat));
             }
         }
     }

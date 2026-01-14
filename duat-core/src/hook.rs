@@ -351,25 +351,6 @@ mod global {
         HOOKS.trigger(pa, hookable)
     }
 
-    /// Queues a [`Hookable`]'s execution
-    ///
-    /// You should use this if you are not on the main thread of
-    /// execution, and are thus unable to call [`trigger`].
-    /// The notable difference between this function and [`trigger`]
-    /// is that it doesn't return the [`Hookable`], since the
-    /// triggering of the hooks will happen outside of the calling
-    /// function.
-    ///
-    /// Most of the time, this doesn't really matter, as in only a few
-    /// cases do you actually need to recover the [`Hookable`], so you
-    /// should be able to call this from pretty much anywhere.
-    pub fn queue(hookable: impl Hookable + Send) {
-        let sender = crate::context::sender();
-        sender.send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-            trigger(pa, hookable);
-        })));
-    }
-
     /// Checks if a give group exists
     ///
     /// The hook can either be a string type, or a [`GroupId`].

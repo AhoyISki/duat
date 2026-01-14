@@ -163,7 +163,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
             return text;
         } else {
             let prev = std::mem::replace(&mut self.prev, text.to_string());
-            hook::queue(SearchUpdated((prev, self.prev.clone())));
+            hook::trigger(pa, SearchUpdated((prev, self.prev.clone())));
         }
 
         let (widget, area) = self.handle.write_with_area(pa);
@@ -232,7 +232,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                 }
 
                 *SEARCH.lock().unwrap() = text.to_string();
-                hook::queue(SearchPerformed(text.to_string()));
+                hook::trigger(pa, SearchPerformed(text.to_string()));
             }
             Err(err) => {
                 let regex_syntax::Error::Parse(err) = *err else {
