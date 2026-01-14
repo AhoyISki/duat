@@ -417,8 +417,10 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
     ///
     /// [destroy]: Self::destroy
     pub fn copy(&mut self) -> Cursor<'_, W> {
+        let copy = self.selections[self.sels_i].clone().unwrap();
         self.selections
-            .extend_from_within(self.sels_i..=self.sels_i);
+            .push(Some(ModSelection { was_main: false, ..copy }));
+        
         let sels_i = self.selections.len() - 1;
         Cursor::new(
             self.selections,

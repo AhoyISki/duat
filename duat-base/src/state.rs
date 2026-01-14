@@ -141,7 +141,7 @@ pub fn path_txt(buffer: &Buffer) -> Text {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [mode]: duat_core::mode::Mode
 /// [`IncSearch`]: crate::modes::IncSearch
-pub fn raw_mode() -> DataMap<&'static str, &'static str> {
+pub fn raw_mode() -> RwData<&'static str> {
     context::mode_name()
 }
 

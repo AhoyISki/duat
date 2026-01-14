@@ -38,7 +38,7 @@ mod global {
     use super::{CurWidgetNode, DynBuffer};
     use crate::{
         context::{DuatReceiver, DuatSender, Handle},
-        data::{DataMap, Pass, RwData},
+        data::{Pass, RwData},
         session::DuatEvent,
         text::Text,
         ui::{Widget, Window, Windows},
@@ -234,12 +234,7 @@ mod global {
     /// name.
     ///
     /// [`Mode`]: crate::mode::Mode
-    pub fn mode_name() -> DataMap<&'static str, &'static str> {
-        MODE_NAME.map(|name| *name)
-    }
-
-    // pub(crate) in order to keep just the DataMap one public
-    pub(crate) fn raw_mode_name() -> RwData<&'static str> {
+    pub fn mode_name() -> RwData<&'static str> {
         MODE_NAME.clone()
     }
 

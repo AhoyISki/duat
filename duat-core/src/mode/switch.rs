@@ -133,7 +133,7 @@ pub fn set<M: Mode>(pa: &mut Pass, mut mode: M) -> Option<Handle<M::Widget>> {
 
     // Where the mode switch actually happens.
     let new_name = duat_name::<M>();
-    let old_name = std::mem::replace(context::raw_mode_name().write(pa), new_name);
+    let old_name = std::mem::replace(context::mode_name().write(pa), new_name);
 
     hook::trigger(pa, ModeSwitched((old_name, new_name)));
 
