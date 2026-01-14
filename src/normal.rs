@@ -376,25 +376,19 @@ impl Mode for Normal {
                 });
                 self.sel_type = SelType::Normal;
             }
-            event!(char @ ('j' | 'J')) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(char == 'J', &mut c);
-                c.move_ver(param as i32);
-                let v_caret = c.v_caret();
-                if c.char() == '\n'
-                    && v_caret.char_col() > 0
-                    && self.sel_type != SelType::ToEndOfLine
-                {
-                    c.move_hor(-1);
-                    c.set_desired_vcol(if self.sel_type == SelType::BeforeEndOfLine {
-                        usize::MAX
-                    } else {
-                        v_caret.desired_visual_col()
-                    });
+            event!(char @ ('j' | 'J' | 'k' | 'K')) => handle.edit_all(pa, |mut c| {
+                set_anchor_if_needed(char == 'J' || char == 'K', &mut c);
+
+                let param = match char {
+                    'j' | 'J' => param as i32,
+                    'k' | 'K' => -(param as i32),
+                    _ => unreachable!(),
+                };
+                if c.move_ver(param) == 0 {
+                    c.reset();
+                    return;
                 }
-            }),
-            event!(char @ ('k' | 'K')) => handle.edit_all(pa, |mut c| {
-                set_anchor_if_needed(char == 'K', &mut c);
-                c.move_ver(-(param as i32));
+
                 let v_caret = c.v_caret();
                 if c.char() == '\n'
                     && v_caret.char_col() > 0
