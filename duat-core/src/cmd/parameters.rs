@@ -473,6 +473,7 @@ impl Parameter for Handle {
         let buffer_name = args.next()?.value;
         if let Some(handle) = crate::context::windows()
             .buffers(pa)
+            .into_iter()
             .find(|handle| handle.read(pa).name() == buffer_name)
         {
             Ok((handle, Some(form::id_of!("param.path.open"))))
@@ -550,6 +551,7 @@ impl Parameter for ValidFilePath {
 
         let (form, exists_or_is_open) = if crate::context::windows()
             .buffers(pa)
+            .into_iter()
             .map(|handle| handle.read(pa).path())
             .any(|p| std::path::Path::new(&p) == path)
         {

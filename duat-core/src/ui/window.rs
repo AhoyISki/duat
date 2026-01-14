@@ -168,10 +168,7 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(
-            pa,
-            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
-        );
+        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         node.handle().try_downcast()
     }
@@ -199,10 +196,7 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(
-            pa,
-            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
-        );
+        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         node.handle().try_downcast().unwrap()
     }
@@ -228,10 +222,7 @@ impl Windows {
         window.add(pa, node.clone(), None, Location::Spawned(id));
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(
-            pa,
-            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
-        );
+        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         node.handle().try_downcast()
     }
@@ -321,10 +312,7 @@ impl Windows {
         window.add(pa, node.clone(), parent, location);
         self.inner.write(pa).list.insert(win, window);
 
-        hook::trigger(
-            pa,
-            WidgetOpened(node.handle().try_downcast::<W>().unwrap()),
-        );
+        hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
 
         Some(node)
     }
@@ -386,7 +374,7 @@ impl Windows {
                     .write(pa)
                     .buffer_history
                     .jump_by(handle.clone(), -1)
-                    .or_else(|| self.buffers(pa).next())
+                    .or_else(|| self.buffers(pa).first().cloned())
                     .and_then(|handle| {
                         self.entries(pa).find_map(|(win, node)| {
                             (*node.handle() == handle).then(|| (win, node.clone()))
@@ -796,8 +784,13 @@ impl Windows {
     }
 
     /// Iterates over all [`Handle<Buffer>`]s in Duat
-    pub fn buffers<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle> + 'a {
-        self.inner.read(pa).list.iter().flat_map(|w| w.buffers(pa))
+    pub fn buffers(&self, pa: &Pass) -> Vec<Handle> {
+        self.inner
+            .read(pa)
+            .list
+            .iter()
+            .flat_map(|w| w.buffers(pa))
+            .collect()
     }
 
     /// The index of the currently active [`Window`]

@@ -523,10 +523,8 @@ impl<W: Widget> RwData<W> {
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
-unsafe impl<T: ?Sized + 'static> Send for RwData<T> {}
-unsafe impl<T: ?Sized + 'static> Sync for RwData<T> {}
-
-impl<T: ?Sized + 'static> RwData<T> {}
+unsafe impl<T: ?Sized> Send for RwData<T> {}
+unsafe impl<T: ?Sized> Sync for RwData<T> {}
 
 impl<T: ?Sized> Clone for RwData<T> {
     fn clone(&self) -> Self {
@@ -692,7 +690,7 @@ pub struct BulkDataWriter<Data: Default + 'static> {
     data: LazyLock<RwData<Data>>,
 }
 
-impl<T: Default + 'static> BulkDataWriter<T> {
+impl<Data: Default + 'static> BulkDataWriter<Data> {
     /// Returns a new `BulkDataWriter`
     ///
     /// Considering the fact that this struct is almost exclusively
@@ -702,7 +700,7 @@ impl<T: Default + 'static> BulkDataWriter<T> {
     pub const fn new() -> Self {
         Self {
             actions: LazyLock::new(|| Arc::new(Mutex::new(Vec::new()))),
-            data: LazyLock::new(|| RwData::new(T::default())),
+            data: LazyLock::new(|| RwData::new(Data::default())),
         }
     }
 
@@ -712,7 +710,7 @@ impl<T: Default + 'static> BulkDataWriter<T> {
     /// This is useful for allowing mutation from any thread, and
     /// without needing [`Pass`]es. `duat-core` makes extensive use of
     /// this function in order to provide pleasant to use APIs.
-    pub fn mutate(&self, f: impl FnOnce(&mut T) + Send + 'static) {
+    pub fn mutate(&self, f: impl FnOnce(&mut Data) + Send + 'static) {
         self.actions.lock().unwrap().push(Box::new(f));
     }
 
@@ -721,7 +719,7 @@ impl<T: Default + 'static> BulkDataWriter<T> {
     /// This function will call all actions that were sent by the
     /// [`BulkDataWriter::mutate`] function in order to write to the
     /// `Data` asynchronously.
-    pub fn write<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
+    pub fn write<'p>(&'p self, pa: &'p mut Pass) -> &'p mut Data {
         let data = self.data.write(pa);
         for action in self.actions.lock().unwrap().drain(..) {
             action(data);
@@ -735,7 +733,7 @@ impl<T: Default + 'static> BulkDataWriter<T> {
     /// actions that need to happen before reading/writing. You should
     /// almost always prefer calling [`BulkDataWriter::write`]
     /// instead.
-    pub fn try_read<'p>(&'p self, pa: &'p Pass) -> Option<&'p T> {
+    pub fn try_read<'p>(&'p self, pa: &'p Pass) -> Option<&'p Data> {
         self.actions
             .lock()
             .unwrap()
@@ -750,8 +748,8 @@ impl<T: Default + 'static> BulkDataWriter<T> {
     /// the value always stays up to date.
     pub fn map_mut<Ret: 'static>(
         &self,
-        mut map: impl FnMut(&mut T) -> Ret + 'static,
-    ) -> MutDataMap<T, Ret> {
+        mut map: impl FnMut(&mut Data) -> Ret + 'static,
+    ) -> MutDataMap<Data, Ret> {
         let actions = self.actions.clone();
         self.data.map_mut(move |data| {
             for action in actions.lock().unwrap().drain(..) {
@@ -988,7 +986,7 @@ macro_rules! implWriteableTuple {
 impl<'p, Data, T> WriteableTuple<'p, (&mut T,)> for &'p Data
 where
     Data: WriteableData<T>,
-    T: ?Sized + 'static,
+    T: ?Sized + 'p,
 {
     type Return = &'p mut T;
 
@@ -1061,7 +1059,7 @@ where
 
 /// A trait for writing to multiple [`RwData`]-like structs at once
 #[doc(hidden)]
-pub trait WriteableData<T: ?Sized + 'static>: InnerWriteableData {
+pub trait WriteableData<T: ?Sized>: InnerWriteableData {
     /// Just like [`RwData::write`]
     #[doc(hidden)]
     fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T;
@@ -1071,7 +1069,7 @@ pub trait WriteableData<T: ?Sized + 'static>: InnerWriteableData {
     fn cur_state_ptr(&self) -> CurStatePtr<'_>;
 }
 
-impl<T: ?Sized + 'static> WriteableData<T> for RwData<T> {
+impl<T: ?Sized> WriteableData<T> for RwData<T> {
     fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
     }
@@ -1081,7 +1079,7 @@ impl<T: ?Sized + 'static> WriteableData<T> for RwData<T> {
     }
 }
 
-impl<T: Default + 'static> WriteableData<T> for BulkDataWriter<T> {
+impl<T: Default> WriteableData<T> for BulkDataWriter<T> {
     fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut T {
         self.write(pa)
     }
@@ -1091,7 +1089,7 @@ impl<T: Default + 'static> WriteableData<T> for BulkDataWriter<T> {
     }
 }
 
-impl<W: Widget + 'static> WriteableData<W> for crate::context::Handle<W> {
+impl<W: Widget> WriteableData<W> for crate::context::Handle<W> {
     fn write_one_of_many<'p>(&'p self, pa: &'p mut Pass) -> &'p mut W {
         self.write(pa)
     }
@@ -1113,9 +1111,9 @@ impl WriteableData<crate::ui::Area> for crate::ui::RwArea {
 
 /// To prevent outside implementations
 trait InnerWriteableData {}
-impl<T: ?Sized + 'static> InnerWriteableData for RwData<T> {}
-impl<T: Default + 'static> InnerWriteableData for BulkDataWriter<T> {}
-impl<W: Widget + 'static> InnerWriteableData for crate::context::Handle<W> {}
+impl<T: ?Sized> InnerWriteableData for RwData<T> {}
+impl<T: Default> InnerWriteableData for BulkDataWriter<T> {}
+impl<W: Widget> InnerWriteableData for crate::context::Handle<W> {}
 impl InnerWriteableData for crate::ui::RwArea {}
 
 /// A struct for comparison when calling [`Pass::write_many`]

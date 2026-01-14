@@ -199,6 +199,13 @@ mod global {
         WINDOWS.get().unwrap()
     }
 
+    /// A list of all open [`Buffer`]'s [`Handle`]s
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn buffers(pa: &Pass) -> Vec<Handle> {
+        windows().buffers(pa)
+    }
+
     /// The current [`Window`]
     ///
     /// You can iterate through all [`Handle<Buffer>`]s and

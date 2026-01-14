@@ -298,6 +298,7 @@ pub(crate) fn add_session_commands() {
         let mut written = 0;
         let handles: Vec<_> = windows
             .buffers(pa)
+            .into_iter()
             .filter(|handle| handle.read(pa).path_set().is_some())
             .collect();
 
@@ -322,6 +323,7 @@ pub(crate) fn add_session_commands() {
         let mut written = 0;
         let handles: Vec<_> = windows
             .buffers(pa)
+            .into_iter()
             .filter(|handle| handle.read(pa).path_set().is_some())
             .collect();
         for handle in &handles {
@@ -346,9 +348,7 @@ pub(crate) fn add_session_commands() {
     alias("waq", "write-all-quit");
 
     add("write-all-quit!", |pa: &mut Pass| {
-        let handles: Vec<_> = context::windows().buffers(pa).collect();
-
-        for handle in handles {
+        for handle in context::windows().buffers(pa) {
             let _ = handle.save_quit(pa, true);
         }
 
@@ -417,6 +417,7 @@ pub(crate) fn add_session_commands() {
         let windows = context::windows();
         let unwritten = windows
             .buffers(pa)
+            .into_iter()
             .filter(|handle| {
                 let buffer = handle.read(pa);
                 buffer.text().has_unsaved_changes() && buffer.exists()

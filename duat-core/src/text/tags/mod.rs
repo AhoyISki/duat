@@ -364,16 +364,6 @@ impl InnerTags {
             .extents
             .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
         {
-            let more = extent.start.saturating_sub(2)..extent.end + 2;
-
-            let tags_in_extent: Vec<_> = self
-                .list
-                .iter_fwd(..)
-                .filter(|(_, (b, tag))| {
-                    more.contains(&(*b as usize)) && taggers.contains_tagger(tag.tagger())
-                })
-                .collect();
-
             self.remove_from_if(extent.clone(), |(b, tag)| {
                 taggers.contains_tagger(tag.tagger())
                     && ((b > range.start as i32 || tag.is_start())

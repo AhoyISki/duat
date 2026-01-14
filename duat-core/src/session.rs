@@ -141,7 +141,7 @@ impl Session {
             Some(ret) => Some((ret, duat_rx)),
             None => {
                 let pa = unsafe { &mut Pass::new() };
-                for handle in context::windows().buffers(pa).collect::<Vec<_>>() {
+                for handle in context::windows().buffers(pa) {
                     let _ = handle.save(pa);
                 }
 
@@ -283,8 +283,7 @@ impl Session {
                         context::logs().clear();
                         wait_for_threads_to_end();
 
-                        let handles: Vec<_> = context::windows().buffers(pa).collect();
-                        for handle in handles {
+                        for handle in context::windows().buffers(pa) {
                             hook::trigger(pa, BufferReloaded((handle, Cache::new())));
                         }
 
@@ -299,8 +298,7 @@ impl Session {
                         hook::trigger(pa, ExitedDuat(()));
                         context::order_reload_or_quit();
 
-                        let handles: Vec<_> = context::windows().buffers(pa).collect();
-                        for handle in handles {
+                        for handle in context::windows().buffers(pa) {
                             hook::trigger(pa, BufferClosed((handle, Cache::new())));
                         }
 

@@ -56,6 +56,7 @@ pub fn setup_completions() {
     Completions::set_for_parameter::<Handle>(50, |pa, builder| {
         let mut list: Vec<String> = context::windows()
             .buffers(pa)
+            .into_iter()
             .map(|buf| buf.read(pa).name())
             .collect();
 
@@ -68,6 +69,7 @@ pub fn setup_completions() {
         let current = context::current_buffer(pa).read(pa).name();
         let mut list: Vec<String> = context::windows()
             .buffers(pa)
+            .into_iter()
             .map(|buf| buf.read(pa).name())
             .filter(|name| *name != current)
             .collect();

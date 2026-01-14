@@ -582,7 +582,7 @@ pub mod prelude {
         clipboard, cmd,
         context::{self, Handle},
         cursor,
-        data::{self, Pass},
+        data::{self, Pass, RwData},
         form::{self, CursorShape, Form},
         hook::{
             self, BufferOpened, BufferReloaded, BufferSaved, BufferUpdated, ColorSchemeSet,
