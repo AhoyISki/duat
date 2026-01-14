@@ -13,21 +13,20 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
 
@@ -37,9 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-28e300da.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="toc-07fa4c9b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -53,7 +53,7 @@
             </div>
         </div>
     </div>
-    <div id="body-container">
+    <div id="mdbook-body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
             try {
@@ -82,56 +82,59 @@
             html.classList.add("js");
         </script>
 
-        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
             let sidebar = null;
-            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
                 try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
+                sidebar_toggle.checked = false;
             }
-            sidebar_toggle.checked = sidebar === 'visible';
-            html.classList.remove('sidebar-visible');
-            html.classList.add("sidebar-" + sidebar);
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
         </script>
 
-        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
                 <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
             </noscript>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
             </div>
         </nav>
 
-        <div id="page-wrapper" class="page-wrapper">
+        <div id="mdbook-page-wrapper" class="page-wrapper">
 
             <div class="page">
-                <div id="menu-bar-hover-placeholder"></div>
-                <div id="menu-bar" class="menu-bar sticky">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
-                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
-                            <i class="fa fa-bars"></i>
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
                         </label>
-                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
-                            <i class="fa fa-paint-brush"></i>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
                         </button>
-                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
-                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
                         </ul>
-                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
-                            <i class="fa fa-search"></i>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
                         </button>
                     </div>
 
@@ -139,36 +142,41 @@
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
-                            <i id="print-button" class="fa fa-print"></i>
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
                         </a>
                         <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
-                            <i id="git-repository-button" class="fa fa-github"></i>
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
 
                     </div>
                 </div>
 
-                <div id="search-wrapper" class="hidden">
-                    <form id="searchbar-outer" class="searchbar-outer">
-                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
                     </form>
-                    <div id="searchresults-outer" class="searchresults-outer hidden">
-                        <div id="searchresults-header" class="searchresults-header"></div>
-                        <ul id="searchresults">
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
                         </ul>
                     </div>
                 </div>
 
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
                 <script>
-                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
-                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
-                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
                         link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
                     });
                 </script>
 
-                <div id="content" class="content">
+                <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-duat-text-editor"><a class="header" href="#the-duat-text-editor">The Duat Text Editor</a></h1>
 <p>Duat is a text editor that is built and <em>configured</em> in the Rust programming
@@ -177,77 +185,53 @@ great defaults for anyone used to TUI and modal text editors.</p>
 <p>Despite having a rather complex language as its configuration language of choice,
 one of the goals of Duat is to have relatively straightforward configuration,
 and easy pluginability.</p>
-<p>As a motivating example, here's a small plugin, which shows matches to the word under
-the cursor:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<p>As a motivating example, here’s a small plugin, which highlights matches to the
+word underthe cursor:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 
-pub struct HighlightMatch;
+pub struct HighlightMatches;
 
-impl Plugin for HighlightMatch {
-    fn plug(self, plugins: &amp;Plugins) {
-        hook::add::&lt;Buffer&gt;(|pa, handle| {
-            form::set_weak("same_word", Form::underlined());
-            handle.write(pa).add_parser(|mut tracker| {
-                tracker.track_area();
-                HighlightMatchParser {
-                    tagger: Tagger::new(),
+impl Plugin for HighlightMatches {
+    fn plug(self, _: &amp;Plugins) {
+        form::set_weak("same_word", Form::underlined());
+        let tagger = Tagger::new();
+
+        hook::add::&lt;BufferUpdated&gt;(move |pa, handle| {
+            let lines = handle.printed_line_ranges(pa);
+
+            handle.text_mut(pa).remove_tags(tagger, ..);
+            let caret = handle.text(pa).main_sel().caret();
+            let Some(range) = handle.text(pa).search(r"\A\w+").range(..caret).next_back() else {
+                return;
+            };
+
+            let start = handle
+                .edit_main(pa, |c| c.search(r"\w*\z").to_caret().next_back())
+                .map(|range| range.start)
+                .unwrap_or(range.start);
+
+            let mut parts = handle.text_parts(pa);
+            let pat = parts.bytes.strs(start..range.end);
+            let form_id = form::id_of!("same_word");
+            
+            for range in lines.into_iter().flat_map(|r| parts.bytes.search(r"\w+").range(r)) {
+                if parts.bytes.strs(range.clone()) == pat {
+                    parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }
-            })
+            }
         });
     }
 }
-
-struct HighlightMatchParser {
-    tagger: Tagger,
-}
-
-impl Parser for HighlightMatchParser {
-    fn update(&amp;mut self, pa: &amp;mut Pass, handle: &amp;Handle, on: Vec&lt;Range&lt;Point&gt;&gt;) {
-        handle.text_mut(pa).remove_tags(self.tagger, ..);
-        let Some(range) = handle.edit_main(pa, |c| c.search_fwd(r"\A\w+").next()) else {
-            return;
-        };
-        let start = handle
-            .edit_main(pa, |c| c.search_rev(r"\w*\z").next())
-            .map(|range| range.start)
-            .unwrap_or(range.start);
-
-        let mut parts = handle.text_parts(pa);
-        let pat = parts.bytes.strs(start..range.end);
-        let form_id = form::id_of!("same_word");
-
-        let mut first_range: Option&lt;Range&lt;usize&gt;&gt; = None;
-        for range in on {
-            for (i, range) in parts
-                .bytes
-                .search_fwd(r"\w+", range.clone())
-                .unwrap()
-                .filter(|r| parts.bytes.strs(r.clone()) == pat)
-                .enumerate()
-            {
-                if let Some(first_range) = first_range.clone() {
-                    if i == 1 {
-                        parts
-                            .tags
-                            .insert(self.tagger, first_range, form_id.to_tag(50));
-                    }
-                    parts.tags.insert(self.tagger, range, form_id.to_tag(50));
-                } else {
-                    first_range = Some(range);
-                }
-            }
-        }
-    }
-}
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>The goal of this book is to help you understand not only how to operate Duat, but
 hopefully how to do something like this as well.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <p>In order to begin using Duat, you will need <code>cargo</code> installed in your system.
-See <a href="https://www.rust-lang.org/tools/install">cargo's installation instructions</a> for more info. After installing
-<code>cargo</code>, you will want to make sure you're using rust's nighlty toolchain:</p>
+See <a href="https://www.rust-lang.org/tools/install">cargo’s installation instructions</a> for more info. After installing
+<code>cargo</code>, you will want to make sure you’re using rust’s nighlty toolchain:</p>
 <pre><code class="language-bash">rustup install nightly
 </code></pre>
 <p>Now, you can go ahead and install duat using <code>cargo</code>. Duat will be installed
@@ -255,12 +239,12 @@ for the current user, in the <code>~/.cargo/bin/</code> directory:</p>
 <pre><code class="language-bash">cargo +nightly install duat
 </code></pre>
 <p>Or, if you want the <code>master</code> version of duat, from the latest commit, you can
-do this:</p>
+do this (warning: unstable!):</p>
 <pre><code class="language-bash">cargo +nightly install --git https://github.com/AhoyISki/duat --features git-deps
 </code></pre>
-<p>If you don't have <code>~/.cargo/bin/</code> in your <code>$PATH</code> variable, you should add that
+<p>If you don’t have <code>~/.cargo/bin/</code> in your <code>$PATH</code> variable, you should add that
 in order to be able to call <code>duat</code>. Alternatively, you may add just
-<code>~/.cargo/bin/duat</code>, if you don't want to bring the other things in
+<code>~/.cargo/bin/duat</code>, if you don’t want to bring the other things in
 <code>~/.cargo/bin/</code> to global executable scope.</p>
 <p>At this point, you should be able to use Duat by calling <code>duat</code> or <code>duat  some_file</code>. When you first run <code>duat</code>, you will be prompted for the creation
 of a new configuration crate at <code>~/.config/duat/</code>. If you accept, this new
@@ -276,6 +260,7 @@ new default config crate looks like, you can run:</p>
 for its substitution. If you agree, a new default config crate will replace the
 old one.</p>
 <p>This is just for the default crate however. The configuration of Duat is what the rest of this book is for.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="how-to-use"><a class="header" href="#how-to-use">How to use</a></h1>
 <p>When calling <code>duat</code>, with no arguments, you will open a scratch buffer. If you
 pass files as arguments, then <code>duat</code> will open one window for each file.</p>
@@ -299,14 +284,15 @@ path.</li>
 <li><code>--repository</code> will pick a repository for the plugin.</li>
 <li><code>--author</code> will pick an author for the plugin.</li>
 <li><code>--help</code> displays these flags.</li>
-<li><code>--version</code> displays Duat's version.</li>
+<li><code>--version</code> displays Duat’s version.</li>
 </ul>
-<p>Got to the next chapter to figure out how to control Duat once you're in it.</p>
+<p>Got to the next chapter to figure out how to control Duat once you’re in it.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="key-bindings"><a class="header" href="#key-bindings">Key bindings</a></h1>
-<p>Duat's default mode is one heavily inspired by Kakoune. This means that it is
-modal, and follows "object action" semantics, unlike (neo)vim, which follows
-"action object" semantics.</p>
-<p>Duat is extremely capable in the multi-cursor department, so Duat's default
+<p>Duat’s default mode is one heavily inspired by Kakoune. This means that it is
+modal, and follows “object action” semantics, unlike (neo)vim, which follows
+“action object” semantics.</p>
+<p>Duat is extremely capable in the multi-cursor department, so Duat’s default
 mode makes heavy use of multiple cursors. Every action will be done on every
 cursor, unless specified otherwise.</p>
 <p>Given that, here are the bindings for <code>duatmode</code>:</p>
@@ -314,7 +300,7 @@ cursor, unless specified otherwise.</p>
 <p>On every key, if the action involves selections, unless stated
 otherwise, it will take place in all selections.</p>
 <h2 id="insert-mode"><a class="header" href="#insert-mode"><code>Insert</code> mode</a></h2>
-<p>Insert mode is the text editing mode of Duat, much like Vim's. It
+<p>Insert mode is the text editing mode of Duat, much like Vim’s. It
 is also entered via various keys in <code>Normal</code> mode.</p>
 <p>On insert mode, keys are sent normally, with the exception of the
 following:</p>
@@ -326,7 +312,7 @@ entries.</p>
 <h2 id="normal-mode"><a class="header" href="#normal-mode">Normal mode</a></h2>
 <p>The keys in <code>normal</code> mode follow the following patterns:</p>
 <ul>
-<li><code>word</code> characters follow Duat's [word chars], which are normally
+<li><code>word</code> characters follow Duat’s [word chars], which are normally
 used to define where lines wrap.</li>
 <li><code>WORD</code> characters are just any non-whitespace character.</li>
 </ul>
@@ -335,175 +321,98 @@ incremented by typing digits.  For example, if you type
 <code>10&lt;Right&gt;</code>, the selections will move 10 times to the right.</p>
 <details>
 <summary><b>Object selection</b></summary>
-<p>In Duat, there are various types of "objects" for selection. These
+<p>In Duat, there are various types of “objects” for selection. These
 get used on <code>Normal</code> mode key sequences, most notably on <code>&lt;A-i&gt;</code>
 and <code>&lt;A-a&gt;</code>. Each of them defines something to be selected:</p>
-<p><code>b</code>, <code>(</code>, <code>)</code><br />
-Inside/around parenthesis.</p>
-<p><code>B</code>, <code>{</code>, <code>}</code><br />
-Inside/around curly braces.</p>
-<p><code>r</code>, <code>[</code>, <code>]</code><br />
-Inside/around brackets.</p>
-<p><code>a</code>, <code>&lt;</code>, <code>&gt;</code><br />
-Inside/around angle brackets.</p>
-<p><code>q</code>, <code>'</code><br />
-Inside/around single quotes.</p>
-<p><code>Q</code>, <code>"</code><br />
-Inside/around double quotes.</p>
-<p><code>g</code>, <code>`</code><br />
-Inside/around graves.</p>
+<p><code>b</code>, <code>(</code>, <code>)</code><br>Inside/around parenthesis.</p>
+<p><code>B</code>, <code>{</code>, <code>}</code><br>Inside/around curly braces.</p>
+<p><code>r</code>, <code>[</code>, <code>]</code><br>Inside/around brackets.</p>
+<p><code>a</code>, <code>&lt;</code>, <code>&gt;</code><br>Inside/around angle brackets.</p>
+<p><code>q</code>, <code>'</code><br>Inside/around single quotes.</p>
+<p><code>Q</code>, <code>"</code><br>Inside/around double quotes.</p>
+<p><code>g</code>, <code>`</code><br>Inside/around graves.</p>
 <p><code>w</code>, <code>&lt;A-w&gt;</code>
 Inside/around <code>word</code>s and <code>WORD</code>s.</p>
-<p><code>s</code><br />
-Inside/around sentences.</p>
-<p><code>p</code><br />
-Inside/around paragraphs.</p>
-<p><code>i</code><br />
-Inside/around lines of equal or greater indentation.</p>
-<p><code> </code><br />
-Inside/around whitespace.</p>
+<p><code>s</code><br>Inside/around sentences.</p>
+<p><code>p</code><br>Inside/around paragraphs.</p>
+<p><code>i</code><br>Inside/around lines of equal or greater indentation.</p>
+<p><code> </code><br>Inside/around whitespace.</p>
 </details>
 <details>
 <summary><b>Selection keys</b></summary>
-<p><code>h</code>, <code>&lt;Left&gt;</code><br />
-Move left. Wraps around lines.</p>
-<p><code>j</code><br />
-Move down</p>
-<p><code>&lt;Down&gt;</code><br />
-Move down to the next wrapped line (i.c vim's <code>gj</code>).</p>
-<p><code>k</code><br />
-Move up.</p>
-<p><code>&lt;Up&gt;</code><br />
-Move up to the previous wrapped line (i.e. vim's <code>gk</code>).</p>
-<p><code>l</code>, <code>&lt;Right&gt;</code><br />
-Move right. Wraps around lines.</p>
-<p><code>H</code>, <code>&lt;S-Left&gt;</code>, <code>J</code>, <code>&lt;S-Down&gt;</code>, <code>K</code>, <code>&lt;S-Up&gt;</code>, <code>L</code>, <code>&lt;S-Right&gt;</code><br />
-Same as the previous characters, but extends the selection</p>
-<p><code>w</code><br />
-Selects the <code>word</code> and following space ahead of the selection.</p>
-<p><code>b</code><br />
-Selects the <code>word</code> followed by spaces behind the selection.</p>
-<p><code>e</code><br />
-Selects to the end of the next <code>word</code> ahead of the selection.</p>
-<p><code>&lt;(W|B|E)&gt;</code><br />
-The same as <code>(w|b|e)</code>, but extends the selection.</p>
-<p><code>&lt;A-(w|b|e)&gt;</code><br />
-The same as <code>(w|b|e)</code>, but over a <code>WORD</code>.</p>
-<p><code>&lt;A-(W|B|E)&gt;</code><br />
-The same as <code>&lt;A-(w|b|e)&gt;</code>, but extends the selection.</p>
-<p><code>f{char}</code><br />
-Selects to the next occurrence of the <code>{char}</code>.</p>
-<p><code>t{char}</code><br />
-Selects until the next occurrence of the <code>{char}</code>.</p>
-<p><code>&lt;(F|T)&gt;{char}</code><br />
-Same as <code>(f|t)</code>, but extends the selection.</p>
-<p><code>&lt;A-(f|t)&gt;{char}</code><br />
-Same as <code>(f|t)</code>, but in the opposite direction.</p>
-<p><code>&lt;A-(F|T)&gt;{char}</code><br />
-Same as <code>&lt;A-(f|t)&gt;</code>, but in extends the selection.</p>
-<p><code>{param}g</code><br />
-Goes to the <code>{param}</code>th line. If param was not set, enters <code>go to</code>
+<p><code>h</code>, <code>&lt;Left&gt;</code><br>Move left. Wraps around lines.</p>
+<p><code>j</code><br>Move down</p>
+<p><code>&lt;Down&gt;</code><br>Move down to the next wrapped line (i.c vim’s <code>gj</code>).</p>
+<p><code>k</code><br>Move up.</p>
+<p><code>&lt;Up&gt;</code><br>Move up to the previous wrapped line (i.e. vim’s <code>gk</code>).</p>
+<p><code>l</code>, <code>&lt;Right&gt;</code><br>Move right. Wraps around lines.</p>
+<p><code>H</code>, <code>&lt;S-Left&gt;</code>, <code>J</code>, <code>&lt;S-Down&gt;</code>, <code>K</code>, <code>&lt;S-Up&gt;</code>, <code>L</code>, <code>&lt;S-Right&gt;</code><br>Same as the previous characters, but extends the selection</p>
+<p><code>w</code><br>Selects the <code>word</code> and following space ahead of the selection.</p>
+<p><code>b</code><br>Selects the <code>word</code> followed by spaces behind the selection.</p>
+<p><code>e</code><br>Selects to the end of the next <code>word</code> ahead of the selection.</p>
+<p><code>&lt;(W|B|E)&gt;</code><br>The same as <code>(w|b|e)</code>, but extends the selection.</p>
+<p><code>&lt;A-(w|b|e)&gt;</code><br>The same as <code>(w|b|e)</code>, but over a <code>WORD</code>.</p>
+<p><code>&lt;A-(W|B|E)&gt;</code><br>The same as <code>&lt;A-(w|b|e)&gt;</code>, but extends the selection.</p>
+<p><code>f{char}</code><br>Selects to the next occurrence of the <code>{char}</code>.</p>
+<p><code>t{char}</code><br>Selects until the next occurrence of the <code>{char}</code>.</p>
+<p><code>&lt;(F|T)&gt;{char}</code><br>Same as <code>(f|t)</code>, but extends the selection.</p>
+<p><code>&lt;A-(f|t)&gt;{char}</code><br>Same as <code>(f|t)</code>, but in the opposite direction.</p>
+<p><code>&lt;A-(F|T)&gt;{char}</code><br>Same as <code>&lt;A-(f|t)&gt;</code>, but in extends the selection.</p>
+<p><code>{param}g</code><br>Goes to the <code>{param}</code>th line. If param was not set, enters <code>go to</code>
 mode.</p>
-<p><code>{param}G</code><br />
-Extends to the <code>{param}</code>th line. If param was not set, enters <code>go to</code> mode, and actions will extend.</p>
-<p><code>x</code><br />
-Extends selection to encompass full lines.</p>
-<p><code>%</code><br />
-Selects the whole buffer.</p>
-<p><code>&lt;A-h&gt;</code>, <code>&lt;Home&gt;</code><br />
-Selects to the start of the line.</p>
-<p><code>&lt;A-l&gt;</code>, <code>&lt;End&gt;</code><br />
-Selects until the end of the line.</p>
-<p><code>&lt;A-H&gt;</code>, <code>&lt;S-Home&gt;</code>, <code>&lt;A-L&gt;</code>, <code>&lt;S-End&gt;</code><br />
-Same as the previous two, but extends the selection.</p>
-<p><code>m</code><br />
-Selects to the next pair of matching brackets.</p>
-<p><code>&lt;A-m&gt;</code><br />
-Selects the previous pair of matching brackets.</p>
-<p><code>M</code>, <code>&lt;A-M&gt;</code><br />
-Same as the previous two, but extends the selection.</p>
-<p><code>&lt;A-u&gt;</code><br />
-Returns to the previous state for the selections.</p>
-<p><code>&lt;A-U&gt;</code><br />
-Goes to the next state for the selections.</p>
-<p><code>;</code><br />
-Reduces selections to just the [caret].</p>
-<p><code>&lt;A-;&gt;</code><br />
-Flips the [caret] and [anchor] of selectionss around.</p>
-<p><code>,</code><br />
-Removes extra selections.</p>
-<p><code>C</code><br />
-Creates a selection on the column below the last one.</p>
-<p><code>&lt;A-C&gt;</code><br />
-Creates a selection on the column above the first one.</p>
-<p><code>&lt;A-:&gt;</code><br />
-Places the [caret] ahead of the [anchor] in all selections.</p>
-<p><code>&lt;A-s&gt;</code><br />
-Divides selection into multiple selections, one per line.</p>
-<p><code>&lt;A-S&gt;</code><br />
-Splits into two selections, one at each end of the selection.</p>
-<p><code>&lt;A-_&gt;</code><br />
-Merges all adjacent selections.</p>
+<p><code>{param}G</code><br>Extends to the <code>{param}</code>th line. If param was not set, enters <code>go to</code> mode, and actions will extend.</p>
+<p><code>x</code><br>Extends selection to encompass full lines.</p>
+<p><code>%</code><br>Selects the whole buffer.</p>
+<p><code>&lt;A-h&gt;</code>, <code>&lt;Home&gt;</code><br>Selects to the start of the line.</p>
+<p><code>&lt;A-l&gt;</code>, <code>&lt;End&gt;</code><br>Selects until the end of the line.</p>
+<p><code>&lt;A-H&gt;</code>, <code>&lt;S-Home&gt;</code>, <code>&lt;A-L&gt;</code>, <code>&lt;S-End&gt;</code><br>Same as the previous two, but extends the selection.</p>
+<p><code>m</code><br>Selects to the next pair of matching brackets.</p>
+<p><code>&lt;A-m&gt;</code><br>Selects the previous pair of matching brackets.</p>
+<p><code>M</code>, <code>&lt;A-M&gt;</code><br>Same as the previous two, but extends the selection.</p>
+<p><code>&lt;A-u&gt;</code><br>Returns to the previous state for the selections.</p>
+<p><code>&lt;A-U&gt;</code><br>Goes to the next state for the selections.</p>
+<p><code>;</code><br>Reduces selections to just the [caret].</p>
+<p><code>&lt;A-;&gt;</code><br>Flips the [caret] and [anchor] of selectionss around.</p>
+<p><code>,</code><br>Removes extra selections.</p>
+<p><code>C</code><br>Creates a selection on the column below the last one.</p>
+<p><code>&lt;A-C&gt;</code><br>Creates a selection on the column above the first one.</p>
+<p><code>&lt;A-:&gt;</code><br>Places the [caret] ahead of the [anchor] in all selections.</p>
+<p><code>&lt;A-s&gt;</code><br>Divides selection into multiple selections, one per line.</p>
+<p><code>&lt;A-S&gt;</code><br>Splits into two selections, one at each end of the selection.</p>
+<p><code>&lt;A-_&gt;</code><br>Merges all adjacent selections.</p>
 </details>
 <details>
 <summary><b>Text modification</b></summary>
-<p><code>i</code><br />
-Enter <code>insert</code> mode before selections.</p>
-<p><code>a</code><br />
-Enter <code>insert</code> mode after selection.</p>
-<p><code>I</code><br />
-Moves to the beginning of the line (after indent) and enters
+<p><code>i</code><br>Enter <code>insert</code> mode before selections.</p>
+<p><code>a</code><br>Enter <code>insert</code> mode after selection.</p>
+<p><code>I</code><br>Moves to the beginning of the line (after indent) and enters
 <code>insert</code> mode.</p>
-<p><code>A</code><br />
-Moves to the end of the line and enters <code>insert</code> mode.</p>
-<p><code>y</code><br />
-Yanks selections.</p>
-<p><code>d</code><br />
-Deletes and yanks the selections.</p>
-<p><code>c</code><br />
-Deletes, yanks, and enter <code>insert</code> mode.</p>
-<p><code>p</code><br />
-Pastes after end of each selection (multi line selections are
+<p><code>A</code><br>Moves to the end of the line and enters <code>insert</code> mode.</p>
+<p><code>y</code><br>Yanks selections.</p>
+<p><code>d</code><br>Deletes and yanks the selections.</p>
+<p><code>c</code><br>Deletes, yanks, and enter <code>insert</code> mode.</p>
+<p><code>p</code><br>Pastes after end of each selection (multi line selections are
 placed on the next line).</p>
-<p><code>P</code><br />
-Pastes at the start of each selection (multi line pastes are
+<p><code>P</code><br>Pastes at the start of each selection (multi line pastes are
 placed on the previous line).</p>
-<p><code>R</code><br />
-Replaces with the pasted text, without yanking.</p>
-<p><code>&lt;A-d&gt;</code><br />
-Deletes selections without yanking.</p>
-<p><code>&lt;A-c&gt;</code><br />
-Deletes selections without yanking, then enters <code>insert</code> mode.</p>
-<p><code>o</code><br />
-Creates a new line below and enters <code>insert</code> mode in it.</p>
-<p><code>O</code><br />
-Creates a new line above and enters <code>insert</code> mode in it.</p>
-<p><code>&lt;A-(o|O)&gt;</code><br />
-Same as <code>(o|O)</code>, but just adds the new line without moving.</p>
-<p><code>r{key}</code><br />
-Replaces each character with <code>{key}</code></p>
-<p><code>u</code><br />
-[Undoes] the last <code>moment</code></p>
-<p><code>U</code><br />
-[Redoes] the next <code>moment</code></p>
-<p><code>&gt;</code><br />
-Adds indentation to the selected lines.</p>
-<p><code>&lt;</code><br />
-Removes indentation to the selected lines.</p>
-<p><code>&lt;A-j&gt;</code><br />
-Merges selected lines.</p>
-<p><code>`</code><br />
-Changes selection to lowercase.</p>
-<p><code>~</code><br />
-Changes selection to uppercase.</p>
-<p><code>&lt;A-`&gt;</code><br />
-Swaps the case of each character.</p>
-<p><code>&lt;A-)&gt;</code><br />
-Rotates each selection's content forwards.</p>
-<p><code>&lt;A-(&gt;</code><br />
-Rotates each selection's content backwards.</p>
-<p><code>|</code><br />
-Changes mode to [<code>PipeSelections</code>], letting you pipe each
+<p><code>R</code><br>Replaces with the pasted text, without yanking.</p>
+<p><code>&lt;A-d&gt;</code><br>Deletes selections without yanking.</p>
+<p><code>&lt;A-c&gt;</code><br>Deletes selections without yanking, then enters <code>insert</code> mode.</p>
+<p><code>o</code><br>Creates a new line below and enters <code>insert</code> mode in it.</p>
+<p><code>O</code><br>Creates a new line above and enters <code>insert</code> mode in it.</p>
+<p><code>&lt;A-(o|O)&gt;</code><br>Same as <code>(o|O)</code>, but just adds the new line without moving.</p>
+<p><code>r{key}</code><br>Replaces each character with <code>{key}</code></p>
+<p><code>u</code><br>[Undoes] the last <code>moment</code></p>
+<p><code>U</code><br>[Redoes] the next <code>moment</code></p>
+<p><code>&gt;</code><br>Adds indentation to the selected lines.</p>
+<p><code>&lt;</code><br>Removes indentation to the selected lines.</p>
+<p><code>&lt;A-j&gt;</code><br>Merges selected lines.</p>
+<p><code>`</code><br>Changes selection to lowercase.</p>
+<p><code>~</code><br>Changes selection to uppercase.</p>
+<p><code>&lt;A-`&gt;</code><br>Swaps the case of each character.</p>
+<p><code>&lt;A-)&gt;</code><br>Rotates each selection’s content forwards.</p>
+<p><code>&lt;A-(&gt;</code><br>Rotates each selection’s content backwards.</p>
+<p><code>|</code><br>Changes mode to [<code>PipeSelections</code>], letting you pipe each
 selection to an external program.</p>
 </details>
 <details>
@@ -512,32 +421,19 @@ selection to an external program.</p>
 [<code>Mode</code>] from Duat, with some [<code>IncSearcher</code>]s defined in this
 crate. This means that search will be done incrementally over a
 Regex pattern.</p>
-<p><code>/</code><br />
-Searches forward for the next pattern.</p>
-<p><code>&lt;A-/&gt;</code><br />
-Searches backwards for the previous pattern.</p>
-<p><code>?</code><br />
-Extends forward for the next pattern.</p>
-<p><code>&lt;A-?&gt;</code><br />
-Extends backwards for the previous pattern.</p>
-<p><code>s</code><br />
-Selects the pattern from within current selections.</p>
-<p><code>S</code><br />
-Splits current selections by the pattern.</p>
-<p><code>&lt;A-k&gt;</code><br />
-Keeps only the selections that match the pattern.</p>
-<p><code>&lt;A-K&gt;</code><br />
-Keeps only the selections that <em>don't</em> match the pattern.</p>
-<p><code>n</code><br />
-Go to next match for pattern.</p>
-<p><code>N</code><br />
-Create a new cursor on the next match for pattern.</p>
-<p><code>&lt;A-n&gt;</code><br />
-Go to previous match for pattern.</p>
-<p><code>&lt;A-N&gt;</code><br />
-Create a new cursor on the previous match for pattern.</p>
-<p><code>*</code><br />
-Makes the main selection the searching pattern.</p>
+<p><code>/</code><br>Searches forward for the next pattern.</p>
+<p><code>&lt;A-/&gt;</code><br>Searches backwards for the previous pattern.</p>
+<p><code>?</code><br>Extends forward for the next pattern.</p>
+<p><code>&lt;A-?&gt;</code><br>Extends backwards for the previous pattern.</p>
+<p><code>s</code><br>Selects the pattern from within current selections.</p>
+<p><code>S</code><br>Splits current selections by the pattern.</p>
+<p><code>&lt;A-k&gt;</code><br>Keeps only the selections that match the pattern.</p>
+<p><code>&lt;A-K&gt;</code><br>Keeps only the selections that <em>don’t</em> match the pattern.</p>
+<p><code>n</code><br>Go to next match for pattern.</p>
+<p><code>N</code><br>Create a new cursor on the next match for pattern.</p>
+<p><code>&lt;A-n&gt;</code><br>Go to previous match for pattern.</p>
+<p><code>&lt;A-N&gt;</code><br>Create a new cursor on the previous match for pattern.</p>
+<p><code>*</code><br>Makes the main selection the searching pattern.</p>
 </details>
 <h2 id="goto-mode"><a class="header" href="#goto-mode">goto mode</a></h2>
 <p>Goto mode is accessed by the <code>g</code> and <code>G</code> keys in <code>normal</code> mode.
@@ -548,50 +444,43 @@ It serves a s a way to quickly move places, be it on selections or to other
 <p><code>goto</code> mode is entered with the <code>g</code> or <code>G</code> keys in <code>normal</code> mode.</p>
 <p>On every key that selects, <code>G</code> will have the same behavior, but
 extending the selection instead.</p>
-<p><code>h</code><br />
-Move to the beginning of the line (before indents, column 0).</p>
-<p><code>l</code><br />
-Go to the end of the line.</p>
-<p><code>i</code><br />
-Go to the beginning of the line, after indents.</p>
-<p><code>g</code>,<code>k</code><br />
-Go to the first line.</p>
-<p><code>j</code><br />
-Go to the last line.</p>
-<p><code>a</code><br />
-Go to the last buffer. Repeating will return to this buffer</p>
-<p><code>n</code><br />
-Go to the next buffer (includes other windows).</p>
-<p><code>N</code><br />
-Go to the previous buffer (includes other windows).</p>
+<p><code>h</code><br>Move to the beginning of the line (before indents, column 0).</p>
+<p><code>l</code><br>Go to the end of the line.</p>
+<p><code>i</code><br>Go to the beginning of the line, after indents.</p>
+<p><code>g</code>,<code>k</code><br>Go to the first line.</p>
+<p><code>j</code><br>Go to the last line.</p>
+<p><code>a</code><br>Go to the last buffer. Repeating will return to this buffer</p>
+<p><code>n</code><br>Go to the next buffer (includes other windows).</p>
+<p><code>N</code><br>Go to the previous buffer (includes other windows).</p>
 </details>
 <h2 id="user-mode"><a class="header" href="#user-mode">User mode</a></h2>
-<p>In Duat, <code>User</code> mode is a "generalized mode", which should be
+<p>In Duat, <code>User</code> mode is a “generalized mode”, which should be
 used by <code>Plugin</code>s for key maps. For example, you could map <code>l</code>
 on <code>User</code> mode to do LSP related actions.</p>
-<p>Other "monolithic modes" (Vim, Helix, Emacs, etc) should make use
+<p>Other “monolithic modes” (Vim, Helix, Emacs, etc) should make use
 of this <code>User</code> mode for the same purpose. Think of it like the
 leader key in (neo)vim.</p>
 <p>To enter <code>User</code> mode, you type <code>&lt;Space&gt;</code> in <code>Normal</code> mode.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="commands"><a class="header" href="#commands">Commands</a></h1>
 <p>In Duat, you can run commands by pressing the <code>:</code> key. This will focus on the
 <code>PromptLine</code> <code>Widget</code>, where you can run commands.</p>
 <p>You can press <code>&lt;Up&gt;</code> and <code>&lt;Down&gt;</code> to navigate the history of commands, and you
 can also press <code>&lt;Tab&gt;</code> and <code>&lt;S-Tab&gt;</code> to scroll through the commands.</p>
-<p>Here's the list of commands:</p>
+<p>Here’s the list of commands:</p>
 <p>Writing/quitting:</p>
 <ul>
-<li><code>write</code>, <code>w</code> writes the current <code>Buffer</code>. If there's an path argument, saves
+<li><code>write</code>, <code>w</code> writes the current <code>Buffer</code>. If there’s an path argument, saves
 to that path.</li>
-<li><code>quit</code>, <code>q</code> quits the current <code>Buffer</code>, fails if it isn't written. If there's
+<li><code>quit</code>, <code>q</code> quits the current <code>Buffer</code>, fails if it isn’t written. If there’s
 an argument, quits that <code>Buffer</code> instead.</li>
-<li><code>quit!</code>, <code>q!</code> quits the current <code>Buffer</code>, even if it isn't written. If
-there's an argument, quits that <code>Buffer</code> instead.</li>
-<li><code>write-quit</code>, <code>wq</code> writes and quits the current <code>Buffer</code>. If there's an
+<li><code>quit!</code>, <code>q!</code> quits the current <code>Buffer</code>, even if it isn’t written. If
+there’s an argument, quits that <code>Buffer</code> instead.</li>
+<li><code>write-quit</code>, <code>wq</code> writes and quits the current <code>Buffer</code>. If there’s an
 argument, quits that <code>Buffer</code> instead.</li>
 <li><code>write-all</code>, <code>wa</code> writes all <code>Buffer</code>s.</li>
-<li><code>quit-all</code>, <code>qa</code> tries to quit all <code>Buffer</code>s, failing if some aren't written.</li>
-<li><code>quit-all!</code>, <code>qa!</code> quits all <code>Buffer</code>s, even if they aren't written.</li>
+<li><code>quit-all</code>, <code>qa</code> tries to quit all <code>Buffer</code>s, failing if some aren’t written.</li>
+<li><code>quit-all!</code>, <code>qa!</code> quits all <code>Buffer</code>s, even if they aren’t written.</li>
 <li><code>write-all-quit</code>, <code>waq</code> writes to all <code>Buffer</code>s and quits.</li>
 <li><code>write-all-quit!</code>, <code>waq!</code> writes to all <code>Buffer</code>s and quits, even if writing
 fails for some reason.</li>
@@ -609,14 +498,15 @@ two arguments, swaps those two buffers instead.</li>
 </ul>
 <p>Other</p>
 <ul>
-<li><code>set-form</code> takes in a name and 0 to 3 colors (<code>##rrggbb</code>, <code>rgb r g b</code> or <code>hsl  h s l</code>) and sets that name's <code>fg</code>, <code>bg</code> and <code>ul</code> colors. More settings coming
+<li><code>set-form</code> takes in a name and 0 to 3 colors (<code>##rrggbb</code>, <code>rgb r g b</code> or <code>hsl  h s l</code>) and sets that name’s <code>fg</code>, <code>bg</code> and <code>ul</code> colors. More settings coming
 in the future.</li>
 <li><code>colorscheme</code> sets the colorscheme.</li>
 <li><code>alias</code> Aliases a word to a command call.</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-settings"><a class="header" href="#quick-settings">Quick settings</a></h1>
 <p>First of all, before you start anything, you should <em>try</em> to become at least
-<em>somewhat</em> accustomed to how rust works as a programming language. If you don't
+<em>somewhat</em> accustomed to how rust works as a programming language. If you don’t
 know <strong>anything</strong> at all, the <a href="https://doc.rust-lang.org/book/">rust book</a> is a great place to start learning.</p>
 <p>One of the main aspects that Duat tries to accomplish is an emergent complexity
 for its features. That is, the more you learn about Duat, the easier it becomes
@@ -624,24 +514,25 @@ to learn new things about it. Every feature should help you understand other
 features.</p>
 <p>That being said, here are some quick settings, which should hopefully compose
 later on to help you better understand duat.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-setup-function-and-setup_duat"><a class="header" href="#the-setup-function-and-setup_duat">The <code>setup</code> function and <code>setup_duat!</code></a></h1>
 <p>In order for Duat to be able to run your config crate in <code>~/.config/duat</code>, it
 <em>needs</em> to have at the very least this in it:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {}
-<span class="boring">}</span></code></pre></pre>
-<p>That's because Duat will call the <code>setup</code> function (after some initial setup,
+<span class="boring">}</span></code></pre>
+<p>That’s because Duat will call the <code>setup</code> function (after some initial setup,
 and before some final setup) in order configure Duat. For all intents and
 purposes, treat the <code>setup</code> function as if it were the <code>init.lua</code> on a neovim
 configuration.</p>
 <p>Of course, not everything needs to be placed inside of this function. For
 example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">mod duat_catppuccin {
 </span><span class="boring">    use duat::prelude::*;
@@ -661,14 +552,15 @@ fn setup() {
 fn add_plugins() {
     plug(duat_catppuccin::Catppuccin::default());
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>You can add <code>Plugin</code>s to duat by calling the <code>plug</code> function. By default, the
 <code>Treesitter</code> <code>MatchPairs</code>  plugins are added, providing syntax highlighting,
 automatic indentation, and matching parenthesis highlighting. There is also the
 <code>DuatMode</code> plugin, which provides the default control scheme for duat, heavily inspired by Kakoune.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-prelude-module"><a class="header" href="#the-prelude-module">The <code>prelude</code> module</a></h1>
 <p>At the top of your crate, you should be able to find this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
@@ -676,28 +568,28 @@ use duat::prelude::*;
 fn setup() {
     // The stuff inside your setup...
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>This will import everything in the <code>prelude</code> module of <code>duat</code>. This should have
 everything you will need in order to configure Duat, not including things from
 other crates that you may want to import (such as plugins).</p>
 <p>When calling <code>use duat::prelude::*</code>, most imported things will be in the form
 of modules, like this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>use duat::opts;
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>This is importing the <code>opts</code> module, as opposed to importing its items
 directly, like this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>use duat::opts::*;
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>This means that, for most options, their path is made up of a
 <code>{module}::{function}</code> combo. So the usual <code>setup</code> function should look
 something like this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
@@ -725,16 +617,19 @@ fn setup() {
     
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>The exceptions to this are the <code>map</code>, <code>alias</code> and <code>plug</code> functions and the
 <code>setup_duat!</code> macro. These items are imported directly.</p>
 <p>The following chapters should give a quick overview of these items imported
 from the prelude module.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-opts-module"><a class="header" href="#the-opts-module">The <code>opts</code> module</a></h1>
 <p>This module contains a bunch of commonly used options. It covers settings for
 the various <code>Widget</code>s of Duat, most notably the <code>Buffer</code> widget, which is where
 editing takes place.</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<p>Below are the available functions on this module, as well as their default
+values.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
@@ -742,6 +637,7 @@ use duat::prelude::*;
 fn setup() {
     // Default options for the Buffer widget
     opts::set(|opts| {
+        // Buffer options:
         opts.wrap_lines = false;
         opts.wrap_on_word = false;
         // Where to wrap, as opposed to at the rightmost edge.
@@ -762,50 +658,101 @@ fn setup() {
         opts.show_ghosts = true;
         // Allow scrolling until the Buffer shows only scrolloff.y lines.
         opts.allow_overscroll = false;
+        
+        // General settings:
+        // Place the bottom widgets on the top of the screen.
+        opts.footer_on_top = false;
+        // Make the bottom widgets take up only one line of space.
+        opts.one_line_footer = false;
+        // Shows available keybindings
+        opts.help_key = Some(KeyEvent::new(KeyCode::Char('?'), mode::KeyMod::CONTROL));
+        
+        // duatmode settings:
+        // Inserts a \t instead of spaces when pressing Tab
+        opts.duatmode.insert_tabs = false;
+        // How to handle the Tab key
+        opts.duatmode.tab_mode = opts::TabMode::VerySmart;
+        // Auto indent new lines on tree-sitter Buffers
+        opts.duatmode.auto_indent = true;
+        // Characters that trigger a reindentation
+        opts.duatmode.indent_chars = &amp;['\n', '(', ')', '{', '}', '[', ']'];
+        // Reindent when pressing 'I' in normal mode
+        opts.duatmode.indent_on_capital_i = true;
+        // Makes the 'f' and 't' keys set the search pattern
+        opts.duatmode.f_and_t_set_search = true;
+        // Bracket pairs to be considered by keys like 'm' and the 'u' object
+        opts.duatmode.set_brackets([["(", ")"], ["{", "}"], ["[", "]"]]);
+        
+        // LineNumbers options:
+        opts.line_numbers.relative = false;
+        // Where to align the numbers
+        opts.line_numbers.align = std::fmt::Alignment::Left;
+        // Where to align the main line number
+        opts.line_numbers.main_align = std::fmt::Alignment::Right;
+        // Wether to show wrapped line's numbers
+        opts.line_numbers.show_wraps = false;
+        // Place the widget on the right, as opposed to on the left
+        opts.line_numbers.on_the_right = false;
+        
+        // Notifications options:
+        // Reformat the notifications messages
+        opts.notifications.fmt(|rec| todo!("default fmt function"));
+        // Which mask to use to show the messages
+        opts.notifications.set_mask(|rec| todo!("error for error, info for info, etc"));
+        // Which log levels will actually show up on the notifications
+        opts.notifications.set_allowed_levels([
+            context::Level::Error,
+            context::Level::Warn,
+            context::Level::Info
+        ]);
+        
+        // WhichKey options:
+        // How to format each keybinding entry on the widget
+        opts.whichkey.fmt(|desc| todo!("default fmt function"));
+        // Disable the widget for the given Mode
+        // opts.whichkey.disable_for::&lt;{Mode in question}&gt;();
+        // Always show the widget for the given Mode
+        opts.whichkey.always_show::&lt;User&gt;();
+        // Removes the Mode from the disable_for and always_show lists
+        // opts.whichkey.show_normally::&lt;{Mode in question}&gt;();
+        
+        // LogBook options:
+        // How to format each message
+        opts.logs.fmt(|rec| todo!("default log fmt"));
+        opts.logs.close_on_unfocus = true;
+        // It can be shown via the "logs" command
+        opts.logs.hidden = false;
+        // Where to place it
+        opts.logs.side = ui::Side::Below;
+        // Is ignored when the side is Left or Right
+        opts.logs.height = 8.0;
+        // Is ignored when the side is Above or Below
+        opts.logs.width = 50.0;
+        // Wether to show the source of the message (on the default fmt)
+        opts.logs.show_source = true;
     });
-
-    // Default options for the LineNumbers widget
-    opts::set_lines(|opts| {
-        // Relative as opposed to absolute numbering.
-        opts.relative = false;
-        // On which side to align numbers other than the main line's.
-        opts.align = std::fmt::Alignment::Left;
-        // On which side to align the main line's number.
-        opts.main_align = std::fmt::Alignment::Right;
-        // Place the LineNumbers on the right of the Buffer, instead of on the left.
-        opts.on_the_right = false;
-    });
-
-    // Sets a Kakoune style "one line" footer
-    opts::one_line_footer(false);
-
-    // Place the footer on top, instead of on the bottom of the screen.
-    opts::footer_on_top(false);
 
     // Default options for the StatusLine widget
-    opts::set_status(|pa| {
+    opts::fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
         let param = duat_param_txt();
-        status!("{AlignRight}{name_txt} {mode} {sels_txt} {param} {main_txt}");
+        status!("{Spacer}{name_txt} {mode} {sels_txt} {param} {main_txt}");
         // If on regular mode (default):
         let mode = mode_txt();
         let param = duat_param_txt();
         status!("{mode} {name_txt}{Spacer}{sels_txt} {param} {main_txt}")
     });
-
-    // Default options for the LogBook widget
-    opts::set_logs(|opts| {});
-
-    // Default options for the Notifications widget
-    opts::set_notifs(|opts| {});
 }
-<span class="boring">}</span></code></pre></pre>
-<p>For more information about modification of the <code>StatusLine</code>, see the chapter on <a href="quick-settings/prelude/../../scripting-duat/mod-status.html">modding the <code>StatusLine</code></a>. For information on modding the <code>Notifications</code> and <code>LogBook</code> widgets, see the <a href="quick-settings/prelude/../../scripting-duat/text/chapter.html"><code>Text</code></a> chapter</p>
+<span class="boring">}</span></code></pre>
+<p>For more information about modification of the <code>StatusLine</code>, see the chapter on
+<a href="#modding-the-statusline">modding the <code>StatusLine</code></a>. For information on modding the <code>Notifications</code> and
+<code>LogBook</code> widgets, see the <a href="#the-text-struct"><code>Text</code></a> chapter</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="form-how-text-is-colored"><a class="header" href="#form-how-text-is-colored"><code>form</code>: How text is colored</a></h1>
 <p>In duat, the way text is styled is through <code>Form</code>s. The <code>Form</code> struct,
 alongside the <code>form</code> module, are imported by the prelude:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
@@ -819,19 +766,19 @@ fn setup() {
     // Setting by reference
     form::set("accent.debug", "default.debug");
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>The main function that you will use from this module is <code>form::set</code>. This
 function sets the form on the left to the value on the right. This value can be
 of two types:</p>
 <ul>
 <li>A <code>Form</code> argument will be used to color the form directly.</li>
-<li>A <code>&amp;str</code> argument will "reference" the form on the right. If the form on the
+<li>A <code>&amp;str</code> argument will “reference” the form on the right. If the form on the
 right is altered, so will the one on the left. This reduces the need for
 setting a ton of forms in things like colorschemes.</li>
 </ul>
 <h2 id="how-forms-should-be-named"><a class="header" href="#how-forms-should-be-named">How forms should be named</a></h2>
 <p>Every form in duat should be named like this: <code>[a-z0-9]+(\.[a-z0-9]+)*</code>. That
-way, inheritance of forms becomes very predictable, and it's much easier for
+way, inheritance of forms becomes very predictable, and it’s much easier for
 plugin writers to depend on that feature.</p>
 <p>There is one exception to this rule however, that being the <code>default</code> form. The
 <code>default</code> form, unlike other forms, can have <code>Widget</code> specific implementations,
@@ -841,7 +788,7 @@ like <code>default.StatusLine</code>, which will change the <code>default</code>
 <p>The other main function that you will use from this module is the
 <code>form::set_colorscheme</code> function. This function will change the colorscheme to
 a previously named one:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">mod duat_catppuccin {
 </span><span class="boring">    use duat::prelude::*;
@@ -860,19 +807,19 @@ fn setup() {
     
     form::set_colorscheme("catppuccin-latte");
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <h2 id="form-inheritance"><a class="header" href="#form-inheritance"><code>Form</code> inheritance</a></h2>
-<p>Another aspect of duat's forms that can save a lot of typing is the concept of <code>Form</code> inheritance. In Duat, forms follow the following structure:</p>
+<p>Another aspect of duat’s forms that can save a lot of typing is the concept of <code>Form</code> inheritance. In Duat, forms follow the following structure:</p>
 <ul>
 <li>If <code>form.subform</code> is unset, it will reference <code>form</code>;</li>
-<li>If <code>form.subform</code> is set to <code>Form::green()</code>, it won't be changed when
+<li>If <code>form.subform</code> is set to <code>Form::green()</code>, it won’t be changed when
 <code>form</code> changes, staying at <code>Form::green()</code>;</li>
 <li>If <code>form.subform</code> is set to reference <code>other_form</code>, changing
 <code>other_form</code> will also change <code>form.subform</code>, but changing <code>form</code>
-won't;</li>
+won’t;</li>
 </ul>
 <p>As a consequence of this, for example, if you were to set the <code>markup</code> form to
-something, every form with a name like <code>markup.*</code> <em>that isn't already set</em>,
+something, every form with a name like <code>markup.*</code> <em>that isn’t already set</em>,
 would follow the change to the <code>markup</code> form.</p>
 <p>Additionally, if the form <code>f0.f1.f2</code> is set to something, the forms <code>f0</code> and
 <code>f1.f2</code> would also be set, although they will reference the <code>default</code> form in
@@ -880,7 +827,7 @@ that situation, not whatever <code>f0.f1.f2</code> was set to.</p>
 <h3 id="quiz"><a class="header" href="#quiz">Quiz</a></h3>
 <p>Given the following sequence of <code>form::set</code>s, what will each <code>Form</code> be at the
 end?</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span><span class="boring">fn test() {
@@ -889,14 +836,14 @@ form::set("parent.child.granchild", Form::blue());
 form::set("grandparent.parent.child", "parent.child");
 form::set("parent", Form::red());
 <span class="boring">}
-</span><span class="boring">}</span></code></pre></pre>
+</span><span class="boring">}</span></code></pre>
 <details>
 <summary>See results</summary>
 <ul>
-<li>"parent": <code>Form::red()</code>.</li>
-<li>"parent.child": <code>Form::red()</code>.</li>
-<li>"parent.child.grandchild": <code>Form::blue()</code>.</li>
-<li>"grandparent.parent.child": <code>Form::red()</code>.</li>
+<li>“parent”: <code>Form::red()</code>.</li>
+<li>“parent.child”: <code>Form::red()</code>.</li>
+<li>“parent.child.grandchild”: <code>Form::blue()</code>.</li>
+<li>“grandparent.parent.child”: <code>Form::red()</code>.</li>
 </ul>
 </details>
 <h2 id="masks"><a class="header" href="#masks">Masks</a></h2>
@@ -909,10 +856,11 @@ of using the <code>function</code> form, Duat will use <code>function.error</cod
 <p>You can also add more masks through <code>form::enable_mask</code>. If you want to learn
 more about masks and how to use them, you should check out the <a href="quick-settings/prelude/masks.html">masks
 chapter</a></p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="map-and-alias-modifying-keys"><a class="header" href="#map-and-alias-modifying-keys">map and alias: modifying keys</a></h1>
 <p>In Duat, mapping works somewhat like Vim/neovim, but not quite. This is how it
 works:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
@@ -922,23 +870,24 @@ fn setup() {
     alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
     alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take
 the keys as is, and if the sequence matches, outputs the remapping, otherwise,
 outputs the keys that were sent. <code>alias</code> does the same thing, but it also
-""prints"" the sequence that was sent, making it <em>look</em> like you are typing
-real text. Here's a showcase of the difference:</p>
-<p align="center"><img src="quick-settings/prelude/../../../../assets/map-alias.gif"/></p>
+““prints”“ the sequence that was sent, making it <em>look</em> like you are typing
+real text. Here’s a showcase of the difference:</p>
+<p align="center"><img src="../../assets/map-alias.gif" /></p>
+
 <p>Both of these functions also take a <em>required</em> type argument. This type
 argument is the <code>Mode</code> where this mapping will take place. So in the first
 example, in <code>Insert</code> and <code>Prompt</code> mode, if you type <code>jk</code>, the <code>j</code> will show up
-as ""text"", but when you press <code>k</code>, you will immediately exit to <code>Normal</code>
+as ““text”“, but when you press <code>k</code>, you will immediately exit to <code>Normal</code>
 <code>Mode</code>.</p>
-<p><code>User</code> is a standard <code>Mode</code> in Duat. It is meant to be a "hub" for Plugin
+<p><code>User</code> is a standard <code>Mode</code> in Duat. It is meant to be a “hub” for Plugin
 writers to put default mappings on. Sort of like the leader key in Vim/Neovim.
 On <code>Normal</code> mode, by default, this mode is entered by pressing the space bar.
 While you <em>can</em> change that like this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
@@ -948,9 +897,9 @@ fn setup() {
     // In rust, you have to escap a backslash
     map::&lt;Normal&gt;(r"\", " ");
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>You <em>should</em> prefer doing this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
 use duat::prelude::*;
@@ -959,17 +908,17 @@ fn setup() {
     map::&lt;Normal&gt;(" ", "");
     map::&lt;Normal&gt;("\\", User);
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>In this case, instead of putting a sequence of keys to replace the mapped ones,
 I placed the mode directly.</p>
 <p>This is allowed in order to support custom <code>Mode</code>s. That way, you can just
 place the <code>Mode</code> as the second argument, and the mapping will switch modes
 instead of sending keys. This also works with <code>alias</code>es.</p>
-<blockquote>
-<p>[!NOTE]</p>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
 <p>In this case, since <code>User</code> is a struct with no fields, I could just put
 <code>User</code> as the second argument, which acts as a constructor. But in most other
-<code>Mode</code>s, you're gonna have to write something like <code>Insert::new()</code> as the
+<code>Mode</code>s, you’re gonna have to write something like <code>Insert::new()</code> as the
 argument instead.</p>
 </blockquote>
 <h2 id="list-of-keys-and-modifiers"><a class="header" href="#list-of-keys-and-modifiers">List of keys and modifiers</a></h2>
@@ -1009,13 +958,14 @@ composed together:</p>
 <li><code>super =&gt; Super</code>,</li>
 <li><code>hyper =&gt; Hyper</code>,</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cursor-how-to-print-cursors"><a class="header" href="#cursor-how-to-print-cursors"><code>cursor</code>: How to print cursors</a></h1>
 <p>The <code>cursor</code> module is like the <code>print</code> module, in that it provides some basic
 options on how cursors should be printed. These options primarily concern if
-cursors should be printed as "real cursors" (The blinking kind, that can turn
+cursors should be printed as “real cursors” (The blinking kind, that can turn
 into a bar and stuff), or as just <code>Form</code>s.</p>
 <ul>
-<li><code>cursor::set_main</code> will set the "shape" of the main cursor. This takes a
+<li><code>cursor::set_main</code> will set the “shape” of the main cursor. This takes a
 <code>CursorShape</code> argument, and lets you set its shape to a vertical bar, a
 horizontal bar, and make it blink.</li>
 <li><code>cursor::set_extra</code> is the same but for extra cursors. Do note that this may
@@ -1026,26 +976,27 @@ every type of cursor, replacing them with a <code>Form</code>, which will be <co
 and <code>caret.extra</code>, respectively</li>
 <li><code>cursor::unset</code>: The same as calling <code>unset_main</code> and <code>unset_extra</code>.</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="list-of-forms"><a class="header" href="#list-of-forms">List of forms</a></h1>
 <p>Currently, in <code>duat</code>, these are the forms in use:</p>
 <ul>
 <li><code>default</code>: Is applied to every text. Can be <code>Widget</code> dependent, like
 <code>default.LineNumbers</code>.</li>
 <li><code>accent</code>: This form is used when formatting error, warning, information, or
-debug messages. Is used mostly with the <code>error</code>, <code>warn</code> and <code>info</code> <a href="quick-settings/../../scripting-duat/masks.html">masks</a>.</li>
-<li><code>caret.main</code>: The form to use when printing the main "caret" (each cursor has
+debug messages. Is used mostly with the <code>error</code>, <code>warn</code> and <code>info</code> <a href="../scripting-duat/masks.html">masks</a>.</li>
+<li><code>caret.main</code>: The form to use when printing the main “caret” (each cursor has
 a selection, an anchor, and a caret).</li>
 <li><code>caret.extra</code>: Same as <code>caret.main</code>, but for cursors other than the main one.</li>
 <li><code>selection.main</code>: Color to be used on the main selection.</li>
 <li><code>selection.extra</code>: Color to be used on extra selections.</li>
-<li><code>cloak</code>: This form is supposed to be a common "get rid of all forms
-temporarily" form. You should use this when you want to, for example, remove
+<li><code>cloak</code>: This form is supposed to be a common “get rid of all forms
+temporarily” form. You should use this when you want to, for example, remove
 all visible color from the screen, in order to highlight something.  Some
 plugins make use of this form, like <code>duat-hop</code> and <code>duat-sneak</code>, which are
 recreations of some neovim plugins.</li>
-<li><code>alias</code>: Is used on aliases, see the <a href="quick-settings/prelude/map-and-alias.html">map and alias</a>
+<li><code>alias</code>: Is used on aliases, see the <a href="#map-and-alias-modifying-keys">map and alias</a>
 chapter for more information.</li>
-<li><code>matched_pair</code>: Isn't technically part of duat, but it's part of a default
+<li><code>matched_pair</code>: Isn’t technically part of duat, but it’s part of a default
 plugin.</li>
 </ul>
 <p>Some other forms are used by specific <code>Widgets</code>. Remember, the default form for
@@ -1054,7 +1005,7 @@ every <code>Widget</code> will always be <code>default.{WidgetName}</code>:</p>
 <li>
 <p><code>LineNumbers</code>:</p>
 <ul>
-<li><code>linenum.main</code>: The form to be used on the main line's number.</li>
+<li><code>linenum.main</code>: The form to be used on the main line’s number.</li>
 <li><code>linenum.wrapped</code>: The form to be used on wrapped lines.</li>
 <li><code>linenum.wrapped.main</code>: Same, but for the main line, inherits from
 <code>linenum.wrapped</code> by default.</li>
@@ -1067,7 +1018,7 @@ set <code>linenum.wrapped</code>, <code>linenum.main</code> and <code>linenum.wr
 <p><code>StatusLine</code>:</p>
 <ul>
 <li><code>file</code>, <code>file.new</code>, <code>file.unsaved</code>, <code>file.new.scratch</code>: Are all used by
-<a href="https://docs.rs/duat/latest/duat/state/fn.name_txt.html"><code>name_txt</code></a>, which shows the <code>File</code>'s name and some other info.</li>
+<a href="https://docs.rs/duat/latest/duat/state/fn.name_txt.html"><code>name_txt</code></a>, which shows the <code>File</code>’s name and some other info.</li>
 <li><code>mode</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.mode_txt.html"><code>mode_txt</code></a>.</li>
 <li><code>coord</code> and <code>separator</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.main_txt.html"><code>main_txt</code></a>.</li>
 <li><code>selections</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.selections_txt.html"><code>selections_txt</code></a>.</li>
@@ -1077,13 +1028,13 @@ set <code>linenum.wrapped</code>, <code>linenum.main</code> and <code>linenum.wr
 <li>
 <p><code>Completions</code>:</p>
 <ul>
-<li><code>selected.Completions</code> changes the selected entry's form.</li>
+<li><code>selected.Completions</code> changes the selected entry’s form.</li>
 </ul>
 </li>
 <li>
 <p><code>Notifications</code>:</p>
 <ul>
-<li><code>notifs.target</code>: The form for the "target" of the notification.</li>
+<li><code>notifs.target</code>: The form for the “target” of the notification.</li>
 <li><code>notifs.colon</code>: The form used by the <code>':'</code> that follows the target.</li>
 </ul>
 <p>Since the <code>Notifications</code> widget makes heavy use of masks, you can also set
@@ -1109,7 +1060,7 @@ of forms used for highlighting regex searches.</li>
 <ul>
 <li><code>log_book.(error|warn|info|debug)</code>: For the types of messages.</li>
 <li><code>log_book.colon</code>: For the <code>':'</code> that follows them.</li>
-<li><code>log_book.target</code>: For the "target" of the message.</li>
+<li><code>log_book.target</code>: For the “target” of the message.</li>
 <li><code>log_book.bracket</code>: For the <code>(</code>s surrounding the target.</li>
 </ul>
 </li>
@@ -1126,7 +1077,12 @@ queries were taken from nvim-treesitter, the form names follow the same patters
 as those from neovim. Remember, setting <code>form</code> will automatically set
 <code>form.child</code> and <code>form.child.grandchild</code>, and so forth , <em>unless</em> that form is
 already set to something:</p>
-<div class="table-wrapper"><table><thead><tr><th>Form name</th><th>Purpose</th></tr></thead><tbody>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Form name</th><th>Purpose</th></tr>
+</thead>
+<tbody>
 <tr><td><code>variable</code></td><td>various variable names</td></tr>
 <tr><td><code>variable.builtin</code></td><td>built-in variable names (e.g. this, self)</td></tr>
 <tr><td><code>variable.parameter</code></td><td>parameters of a function</td></tr>
@@ -1153,7 +1109,7 @@ already set to something:</p>
 <tr><td><code>number.float</code></td><td>floating-point number literals</td></tr>
 <tr><td><code>type</code></td><td>type or class definitions and annotations</td></tr>
 <tr><td><code>type.builtin</code></td><td>built-in types</td></tr>
-<tr><td><code>type.definition</code></td><td>identifiers in type definitions (e.g. typedef <type> <identifier> in C)</td></tr>
+<tr><td><code>type.definition</code></td><td>identifiers in type definitions (e.g. typedef &lt;type&gt; &lt;identifier&gt; in C)</td></tr>
 <tr><td><code>attribute</code></td><td>attribute annotations (e.g. Python decorators, Rust lifetimes)</td></tr>
 <tr><td><code>attribute.builtin</code></td><td>builtin annotations (e.g. @property in Python)</td></tr>
 <tr><td><code>property</code></td><td>the key in key/value pairs</td></tr>
@@ -1201,7 +1157,7 @@ already set to something:</p>
 <tr><td><code>markup.heading.5</code></td><td>and so forth</td></tr>
 <tr><td><code>markup.heading.6</code></td><td>six levels ought to be enough for anybody</td></tr>
 <tr><td><code>markup.quote</code></td><td>block quotes</td></tr>
-<tr><td><code>markup.math</code></td><td>math environments (e.g. $ ... $ in LaTeX)</td></tr>
+<tr><td><code>markup.math</code></td><td>math environments (e.g. $ … $ in LaTeX)</td></tr>
 <tr><td><code>markup.link</code></td><td>text references, footnotes, citations, etc.</td></tr>
 <tr><td><code>markup.link.label</code></td><td>link, reference descriptions</td></tr>
 <tr><td><code>markup.link.url</code></td><td>URL-style links</td></tr>
@@ -1217,17 +1173,21 @@ already set to something:</p>
 <tr><td><code>tag.builtin</code></td><td>builtin tag names (e.g. HTML5 tags)</td></tr>
 <tr><td><code>tag.attribute</code></td><td>XML-style tag attributes</td></tr>
 <tr><td><code>tag.delimiter</code></td><td>XML-style tag delimiters</td></tr>
-</tbody></table>
-</div><h1 id="frequently-used-snippets"><a class="header" href="#frequently-used-snippets">Frequently used snippets</a></h1>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="frequently-used-snippets"><a class="header" href="#frequently-used-snippets">Frequently used snippets</a></h1>
 <p>If you just want some no nonsense snippets to copy paste into your config, this
 is the chapter for you.</p>
 <p>These should also serve as a good entry point for light modification and learning
 by example.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mapping-jk-to-esc"><a class="header" href="#mapping-jk-to-esc">mapping jk to esc</a></h1>
-<p>This one is pretty simple. This is normally done on Duat's native <code>Insert</code> mode,
+<p>This one is pretty simple. This is normally done on Duat’s native <code>Insert</code> mode,
 but you could replace that with any other <code>Insert</code> mode, provided you got the
 plugin for one:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
@@ -1235,11 +1195,11 @@ setup_duat!(setup);
 fn setup() {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
 }
-<span class="boring">}</span></code></pre></pre>
-<p>This won't print anything to the screen while you're typing, making it seem
+<span class="boring">}</span></code></pre>
+<p>This won’t print anything to the screen while you’re typing, making it seem
 like the <code>j</code> key has a bit of delay. If you wish to print <code>'j'</code> to the screen,
 use this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
@@ -1247,9 +1207,9 @@ setup_duat!(setup);
 fn setup() {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
@@ -1257,10 +1217,10 @@ setup_duat!(setup);
 fn setup() {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>If you want to, you can also have this behavioron the <code>PromptLine</code>, i.e., while
 writing commands and searches:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
@@ -1268,24 +1228,42 @@ setup_duat!(setup);
 fn setup() {
     map::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
 }
-<span class="boring">}</span></code></pre></pre>
-<h1 id="statusline-on-each-file"><a class="header" href="#statusline-on-each-file">StatusLine on each File</a></h1>
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="statusline-on-each-buffer"><a class="header" href="#statusline-on-each-buffer">StatusLine on each Buffer</a></h1>
+<p>If you want one <code>StatusLine</code> on every <code>Buffer</code>, you can do that via hooks:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
+        status!("{name_txt}{Spacer}{main_txt}")
+            .above()
+            .push_on(pa, handle);
+    });
+}
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and Status on same line</a></h1>
 <p>In the Kakoune text editor, the status line occupies the same line as the
 command line and notifications. If you want this behavior in Duat, the
 following snippet is enough:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
-    opts::one_line_footer(true);
+    opts::set(|opts| {
+        opts.one_line_footer = true;
+    });
 }
-<span class="boring">}</span></code></pre></pre>
-<p>This will call [<code>FooterWidgets::one_line</code>] on the window's <code>FooterWidgets</code>.</p>
-<p>If you want one of these on each file, you can do this instead:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<span class="boring">}</span></code></pre>
+<p>This will call [<code>FooterWidgets::one_line</code>] on the window’s <code>FooterWidgets</code>.</p>
+<p>If you want one of these on each <code>Buffer</code>, you can do this instead:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
@@ -1293,24 +1271,24 @@ setup_duat!(setup);
 fn setup() {
     hook::remove("FooterWidgets");
 
-    hook::add::&lt;Buffer&gt;(|pa, handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         FooterWidgets::default().one_line().push_on(pa, handle);
-        Ok(())
     });
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h1>
 <p>The most relevant parts for pretty much every <code>StatusLine</code> are the following.</p>
 <p>Formatted status parts:</p>
 <ul>
-<li><code>name_txt</code>: Prints the <code>Buffer</code>'s name and some info about it's newness.</li>
+<li><code>name_txt</code>: Prints the <code>Buffer</code>’s name and some info about it’s newness.</li>
 <li>Uses the forms <code>buffer</code>, <code>buffer.new</code>, <code>buffer.new.scratch</code> and <code>buffer.unsaved</code>.</li>
-<li><code>mode_txt</code>: The lowercased name of the <code>Mode</code>, e.g. "insert", "normal".
+<li><code>mode_txt</code>: The lowercased name of the <code>Mode</code>, e.g. “insert”, “normal”.
 <ul>
 <li>Uses the form <code>mode</code>.</li>
 </ul>
 </li>
-<li><code>main_txt</code>: Prints the main selection's column and line, and the number of
+<li><code>main_txt</code>: Prints the main selection’s column and line, and the number of
 lines. 1 indexed.
 <ul>
 <li>Uses the forms <code>coord</code> and <code>separator</code>.</li>
@@ -1321,7 +1299,7 @@ lines. 1 indexed.
 <li>Uses the form <code>selections</code>;</li>
 </ul>
 </li>
-<li><code>cur_map_txt</code>: Prints the keys being mapped.
+<li><code>current_sequence_txt</code>: Prints the keys being mapped.
 <ul>
 <li>Uses the forms <code>key</code> and <code>key.special</code></li>
 </ul>
@@ -1329,54 +1307,51 @@ lines. 1 indexed.
 </ul>
 <p>Unformatted status parts:</p>
 <ul>
-<li><code>main_byte</code>, <code>main_char</code>, <code>main_line</code>, <code>main_col</code>: Parts of the main cursor.</li>
+<li><code>main_byte</code>, <code>main_char</code>, <code>main_line</code>, <code>main_col</code>: Parts of the main cursor.
+1 indexed.</li>
 <li><code>mode_name</code>: The non <code>Text</code> version of <code>mode_txt</code>, just a string.</li>
 <li><code>raw_mode</code>: The raw type name of the mode. Could look something like
-<code>Prompt&lt;IncSearcher&lt;SearchFwd&gt;&gt;&gt;</code>.</li>
+<code>Pager&lt;SomeWidget&gt;</code>.</li>
 <li><code>selections</code>: The number of selections, no formatting.</li>
 <li><code>last_key</code>: The last key that was typed. Useful for asciinema demonstrations.</li>
 </ul>
 <p>Other:</p>
 <ul>
-<li><code>Spacer</code>: This isn't actually a <code>StatusPart</code>, it's a <code>Tag</code> that can go in any
-<code>Text</code>, which includes the <code>StatusLine</code>'s.</li>
-<li><code>AlignLeft</code>, <code>AlignCenter</code>, <code>AlignRight</code>: These <code>Tag</code>s (like all others) can
-also be used in the <code>StatusLine</code>. However, do note that they are applied
-<em>line wise</em>. Using any of them will shift the <em>whole line</em>'s alignment. For
-that reason, a <code>Spacer</code> should generally be preferred.</li>
+<li><code>Spacer</code>: This isn’t actually a <code>StatusPart</code>, it’s a <code>Tag</code> that can go in any
+<code>Text</code>, which includes the <code>StatusLine</code>’s.</li>
 <li>Forms like <code>[buffer]</code>. Any form can be placed within those braces, and they are
 all evaluated at compile time. For more information about them, see the
-<a href="quick-settings/frequent-snippets/../prelude/form-module.html">forms</a> chapter</li>
+<a href="#form-how-text-is-colored">forms</a> chapter</li>
 </ul>
 <h2 id="some-examples"><a class="header" href="#some-examples">Some examples</a></h2>
 <p>This is the default:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
     // Default options for the StatusLine widget
-    opts::set_status(|pa| {
+    opts::fmt_status(|pa| {
         // If on one line footer mode:
         let mode = mode_txt();
         let param = duat_param_txt();
-        status!("{AlignRight}{name_txt} {mode} {sels_txt} {param} {main_txt}");
+        status!("{Spacer}{name_txt} {mode} {sels_txt} {param} {main_txt}");
         // If on regular mode (default):
         let mode = mode_txt();
         let param = duat_param_txt();
         status!("{mode} {name_txt}{Spacer}{sels_txt} {param} {main_txt}")
     });
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>Customized <code>main_txt</code>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
-    opts::set_status(|_| {
+    opts::fmt_status(|_| {
         status!(
             "{name_txt}{Spacer}{} {sels_txt} [coord]c{} l{}[separator]|[coord]{}",
             mode_txt(),
@@ -1386,15 +1361,15 @@ fn setup() {
         )
     });
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>Customized <code>name_txt</code>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
-    opts::set_status(|_| {
+    opts::fmt_status(|_| {
         status!("{name_txt}{Spacer}{} {sels_txt} {main_txt}", mode_txt()) 
     });
 }
@@ -1418,36 +1393,35 @@ fn name_txt(buffer: &amp;Buffer) -&gt; Text {
 
     b.build()
 }
-<span class="boring">}</span></code></pre></pre>
-<h1 id="relative-and-aligned-linenumbers"><a class="header" href="#relative-and-aligned-linenumbers">Relative and aligned LineNumbers</a></h1>
-<h1 id="file-wise-tabstops"><a class="header" href="#file-wise-tabstops">File wise tabstops</a></h1>
-<p>If you want to change the tabstop size per file, you can just modify the
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="buffer-wise-tabstops"><a class="header" href="#buffer-wise-tabstops">Buffer wise tabstops</a></h1>
+<p>If you want to change the tabstop size per <code>Buffer</code>, you can just modify the
 following  snippet:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
-    hook::add::&lt;Buffer&gt;(|pa, handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buffer = handle.write(pa);
         buffer.opts.tabstop = match buffer.filetype() {
-            Some("markdown" | "bash" | "lua" | "javascript" | "lisp") =&gt; 2, 
+            Some("markdown" | "bash" | "lua" | "javascript" | "commonlisp") =&gt; 2, 
             _ =&gt; 4
         };
-        Ok(())
     });
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>If you want, you can also set other options with this, like which characters
-should be a part of words. In this case, I'm adding <code>'-'</code> to the list:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+should be a part of words. In this case, I’m adding <code>'-'</code> to the list:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
-    hook::add::&lt;Buffer&gt;(|pa, handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let buffer = handle.write(pa);
         match buffer.filetype() {
             Some("lisp" | "scheme" | "markdown" | "css" | "html") =&gt; {
@@ -1459,13 +1433,13 @@ fn setup() {
             }
             _ =&gt; buffer.opts.tabstop = 4
         }
-        Ok(())
     });
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="nerdfonts-statusline"><a class="header" href="#nerdfonts-statusline">Nerdfonts StatusLine</a></h1>
-<blockquote>
-<p>[!IMPORTANT]</p>
+<blockquote class="blockquote-tag blockquote-tag-important">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>Important</p>
 <p>This chapter assumes that you are using some kind of <a href="https://www.nerdfonts.com/font-downloads">nerd font</a> in your
 <code>Ui</code>. This also goes for this page in the book. If you are not using
 some kind of nerd font in your browser, you will not be able to see the
@@ -1473,7 +1447,7 @@ characters being displayed.</p>
 </blockquote>
 <p>If you want to nerd-fontify your <code>StatusLine</code>, you can just redefine some of
 the status line parts:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::prelude::*;
 
@@ -1493,31 +1467,31 @@ fn name_txt(buffer: &amp;Buffer) -&gt; Text {
 
     b.build()
 }
-<span class="boring">}</span></code></pre></pre>
-<h1 id="status-on-files-and-on-window"><a class="header" href="#status-on-files-and-on-window">Status on files and on window</a></h1>
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="status-on-buffers-and-windows"><a class="header" href="#status-on-buffers-and-windows">Status on Buffers and windows</a></h1>
 <p>If you want to have a <code>StatusLine</code> per <code>Buffer</code>, you can add the following:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
-    hook::add::&lt;Buffer&gt;(|pa, handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
-        Ok(())
     });
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
 <p>The snippet above will place a <code>StatusLine</code> above every single <code>Buffer</code>.</p>
 <p>You can go further with this, what if you want different <code>StatusLine</code>s,
 depending on the <code>Buffer</code>?</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
-    hook::add::&lt;Buffer&gt;(|pa, handle| {
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         let status = if handle.read(pa).path().contains(".config/duat") {
             status!("{name_txt}[config] []{Spacer}{main_txt}")
         } else {
@@ -1525,25 +1499,420 @@ fn setup() {
         };
 
         status.above().push_on(pa, handle);
-        Ok(())
     });
 }
-<span class="boring">}</span></code></pre></pre>
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
-<h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat's global state</a></h1>
+<p>This chapter will teach you how to do “advanced” configuration of duat. It
+covers more complex topics, and details how the API of duat actually works.</p>
+<p>In order to understand duat’s API, you have to understand its memory model.
+Since the text editor uses a “low level” language for configuration, it has no
+garbage collection, and you will have to deal with things like references and
+Rust’s (in)famous borrow checker.</p>
+<p>Duat’s API is designed in a way that it should smooth most of these problems
+out as much as possible. But it is still a work in progress, so you can expect
+improvements in the future.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat’s global state</a></h1>
+<p>The most important concept when configuring duat is the sharing model of
+memory. Every piece of state in Duat is behind some type that requires the
+<code>Pass</code> struct.</p>
+<p>The <code>Pass</code> struct is how you access duat’s global state. It works through
+Rust’s borrow checker, giving you safe access to the variables of the global
+state. It works via mutable and immutable references, that is, whenever you
+mutably borrow a <code>Pass</code>, you get mutable access to the global state of duat,
+and whenever you borrow it normally, you get non mutable access to this global
+state:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+// As a shorthand, you should use `pa` as the variable's name.
+// You don't need to write the types of `pa` and `handle`, they're
+// just here for tutorial reasons.
+hook::add::&lt;BufferOpened&gt;(|pa: &amp;mut Pass, handle: &amp;Handle&lt;Buffer&gt;| {
+    // This function will mutably borrow the `Pass`, preventing other 
+    // uses of it, thus following Rust's mutability XOR aliasing rule.
+    let buf_mut: &amp;mut Buffer = handle.write(pa);
+    
+    // Given the mutable reference, you can change the `Buffer`.
+    buf_mut.opts.wrap_lines = false;
+    buf_mut.opts.tabstop = 2;
+    
+    // This function will immutably borrow the `Pass`, which means you
+    // can do other immutable borrows, letting you have as many
+    // immutable references as you want.
+    // Note that all function available from an immutable borrow are also
+    // available with a mutable one.
+    let buf: &amp;Buffer = handle.read(pa);
+    
+    // The `Buffer` may not have any filetype if it can't be inferred.
+    let Some(filetype) = buf.filetype() else {
+        return;
+    };
+    
+    // Calling this now would cause a compile time error, since you would
+    // have reused a mutable reference (`&amp;mut Buffer`) after getting another
+    // one (`&amp;Buffer`).
+    // buf_mut.opts.scrolloff.y = 5;
+    
+    // The context module will have all the types representing duat's state
+    // This function retrieves `Handle`s to all `Buffer`s in duat.
+    let mut other_buffers = context::buffers(pa);
+    other_buffers.retain(|other| other != handle);
+    
+    if other_buffers.iter().all(|other| other.filetype(pa) != Some(filetype)) {
+        context::info!("Opened the first buffer of filetype [a]{filetype}");
+        context::info!("The buffer is called [a]{}", buf.name());
+    }
+});
+<span class="boring">}</span></code></pre>
+<p>The above example showcases the two types of borrowing. The first type is the
+mutable borrow, which can’t be reused after acquiring other references, and the
+second one is the immutable borrow, which can coexist with any number of other
+immutable references.</p>
+<p>These two borrows govern all of the configuration of duat, and they can only
+bedone on the main thread, given the non <code>Send</code> nature of <code>&amp;Pass</code> and <code>&amp;mut  Pass</code>. Additionally, you won’t always have a <code>&amp;mut Pass</code>. In some APIs, you
+only get access to a <code>&amp;Pass</code>, which grants only reading access to global state,
+making for APIs that are harder to mess up.</p>
+<blockquote class="blockquote-tag blockquote-tag-tip">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 0 1-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 0 0-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.751.751 0 0 1-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75ZM5.75 12h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5ZM6 15.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"></path></svg>Tip</p>
+<p>While editing with rust-analyzer, on functions that require a <code>&amp;Pass</code> or
+<code>&amp;mut Pass</code>, it might suggest a completion like <code>&amp;pa</code>, or <code>&amp;mut pa</code>.
+You should ignore those suggestions and just type <code>pa</code>, since rust will
+automatically convert a <code>&amp;mut Pass</code> to a <code>&amp;Pass</code> given the context, so <code>pa</code>
+should be enough for every single situation.</p>
+</blockquote>
+<h2 id="global-state-types"><a class="header" href="#global-state-types">Global state types</a></h2>
+<p>Above, you saw a <code>Handle&lt;Buffer&gt;</code>. This is a handle to a <code>Widget</code> of type
+<code>Buffer</code>. You can have a <code>Handle&lt;W&gt;</code> for any widget of type <code>W</code>, which lets you
+change them, including the <code>Text</code> that they display.</p>
+<p>Internally, a <code>Handle&lt;W&gt;</code> is backed by two datatypes, an <code>RwData&lt;W&gt;</code> and a
+<code>RwArea</code>. The <code>RwData</code> type is duat’s global state primitive, every kind of
+global access will eventually go through an <code>RwData</code>.</p>
+<h3 id="the-rwdata-type"><a class="header" href="#the-rwdata-type">The <code>RwData</code> type</a></h3>
+<p>This type serves two primary purposes:</p>
+<ul>
+<li>To hold a value, which can be accessed with a <code>Pass</code>.</li>
+<li>To tell others if the value has been updated.</li>
+</ul>
+<p>Lets explore how this happens. Below is a code snippet that shows on the
+<code>StatusLine</code> wether a value has changed:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+fn setup() {
+    let value = RwData::new(0);
+    let value_clone = value.clone();
+   
+    opts::fmt_status(move |_| {
+        let value_changed = {
+            // One copy for this function
+            let value = value_clone.clone();
+            move || {
+                if value.has_changed() {
+                    "value changed to "
+                } else {
+                    ""
+                }
+            }
+        };
+        
+        // And one copy for the `StatusLine`.
+        // This is done so the `StatusLine` updates automatically.
+        let value = value_clone.clone();
+        status!("{name_txt} {value_changed}{value}{Spacer}{main_txt}")
+    });
+    
+    cmd::add("change-value", move |pa: &amp;mut Pass, new: usize| {
+        *value.write(pa) = new;
+        Ok(None)
+    });
+}
+<span class="boring">}</span></code></pre>
+<p>In the snippet above, the <code>value</code> variable will be displayed in the
+<code>StatusLine</code>, and every time it changes, the text `“value changed to” will be
+shown beside it.</p>
+<p>The value inside an <code>RwData</code> is deemed as “changed” if the <code>RwData::write</code>
+function was called in any other copy of the same <code>RwData</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+fn test(pa: &amp;mut Pass) {
+    let value = RwData::new("hello");
+    let value_clone = value.clone();
+    
+    // Since `RwData::read` hasn't been called, both are considered
+    // to have changed.
+    assert!(value.has_changed() == true);
+    assert!(value_clone.has_changed() == true);
+    
+    // Further calls to `RwData::has_changed` will return `true` until
+    // you call `RwData::read`
+    assert!(value.has_changed() == true);
+    
+    _ = value_clone.read(pa);
+    
+    *value.write(pa) = "bye";
+    
+    // Since `value` was written to, copies of `value` will be notified
+    // that the data within has changed.
+    assert!(value_clone.has_changed() == true);
+    
+    // An `RwData::write` also assumes that you have read the value, so
+    // `value.has_changed()` will return `false`.
+    assert!(value.has_changed() == false);
+    
+    // If you don't have a Pass available (rare), you can also say that
+    // you don't care if the data has changed by calling this function.
+    value_clone.declare_as_read();
+    
+    assert!(value_clone.has_changed() == false);
+    
+    // Without a Pass, you can also tell other copies that a value has
+    // been changed, even if nothing changed at all
+    value_clone.declare_written();
+    
+    assert!(value.has_changed() == true);
+}
+<span class="boring">}</span></code></pre>
+<h3 id="widget-handles"><a class="header" href="#widget-handles">Widget <code>Handle</code>s</a></h3>
+<p>A <code>Handle&lt;W: Widget&gt;</code> is a wrapper over two types:</p>
+<ul>
+<li>An <code>RwData&lt;W&gt;</code>, which holds a widget</li>
+<li>An <code>RwArea</code></li>
+</ul>
+<p>This type is responsible for displaying everything on screen, by taking the
+<code>&amp;Text</code> out ofevery widget and printing it on their respective <code>RwArea</code>s.</p>
+<p>The most common <code>Handle</code> you will encounter is the <code>Handle&lt;Buffer&gt;</code>,
+shorthanded to just <code>Handle</code>. You are able to freely modify it whenever you
+have access to an <code>&amp;mut Pass</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+use std::collections::HashSet;
+
+fn setup() {
+    cmd::add("dedup-selections", |pa: &amp;mut Pass| {
+        let buf: Handle&lt;Buffer&gt; = context::current_buffer(pa);
+        let mut dupes = Vec::new();
+        
+        // Handle::edit_all will apply an editing function to all cursors
+        // Because it edits the cursors of the `Buffer`, it needs
+        // mutable access to it, hence the `&amp;mut Pass`.
+        buf.edit_all(pa, |c| {
+            if dupes.iter().any(|dupe| *dupe == c.selection()) {
+                c.destroy()
+            } else {
+                dupes.push(c.selection().to_string());
+            }
+        });
+    
+        Ok(None)
+    })
+    .doc(txt!("Removes selections with duplicate text content"), None);
+}
+<span class="boring">}</span></code></pre>
+<p>The <code>raison d'être</code> of <code>Handle</code>s is to keep both the <code>RwArea</code> and <code>RwData&lt;W&gt;</code>
+in the same struct, so you can use methods that require reading from both:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+fn setup() {
+    opts::fmt_status(|_| {
+        status!("{name_txt} {}{Spacer}{main_txt}{cursors_on_screen}", mode_txt())
+    });
+}
+
+fn cursors_on_screen(pa: &amp;Pass, handle: &amp;Handle) -&gt; Text {
+    /// In order to get the range of the `Text` that is on screen,
+    /// you need both the `Buffer` and the `RwArea` at the same time.
+    let range = handle.full_printed_range(pa);
+    
+    let total = handle.selections(pa).iter_within(range).count();
+    
+    txt!("On screen[separator]:[] [coord]{total}")
+}
+<span class="boring">}</span></code></pre>
+<h3 id="the-type-erased-rwarea"><a class="header" href="#the-type-erased-rwarea">The type erased <code>RwArea</code></a></h3>
+<p>In Duat, you may create your own Ui by implementing the <code>RawUi</code> trait, which
+also requires an area type that implements the <code>RawArea</code> trait.</p>
+<p>The <code>RwArea</code> type is a <a href="https://en.wikipedia.org/wiki/Type_erasure">type erased</a> wrapper over this <code>RawArea</code>. When you call
+<code>RwArea::write</code>, you will get a <code>&amp;mut Area</code> value, which is also type erased,
+but grants direct access to the methods defined in the <code>RawArea</code> trait, without
+the need for a <code>Pass</code>.</p>
+<p>When you have a <code>Handle</code>, you can access the <code>Area</code> value in two ways:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::{prelude::*, ui::RwArea};
+
+fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
+    let rw_area: &amp;RwArea = handle.area();
+    let area: &amp;mut Area = rw_area.write(pa);
+    
+    area.set_width(5.0).unwrap();
+    
+    // Normally, calling `Handle::write` returns only `W`, for
+    // convenience reasons and because you mostly don't need to
+    // access the `Area` value.
+    // You can do this if you need mutable access to both.
+    let (widget, area): (&amp;mut W, &amp;mut Area) = handle.write_with_area(pa);
+    
+    area.set_height(10.0).unwrap();
+    widget.text_mut().replace_range(.., "lmao");
+}
+<span class="boring">}</span></code></pre>
+<p>If required, you can also access the unerased version of the <code>Area</code> by calling
+<code>RwArea::write_as</code> or <code>RwArea::read_as</code>, which takes in a type argument <code>A</code> and
+returns <code>Some(area)</code> if the area is actually of type <code>A</code> (i.e., duat was
+compiled with that <code>RawArea</code>’s <code>RawUi</code>).</p>
+<h3 id="datamap-and-mutdatamap"><a class="header" href="#datamap-and-mutdatamap"><code>DataMap</code> and <code>MutDataMap</code></a></h3>
+<p>On the earlier example which shows wether a value has changed, you might have
+thought that the code looked a little awkward, since we had to put two objects
+on the <code>StatusLine</code> just to get it to update properly.</p>
+<p>Well, there is actually an existing solution to that, which can be achieved by calling the <code>RwData::map</code> function:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+fn setup() {
+    let value = RwData::new(0);
+    let value_clone = value.clone();
+   
+    opts::fmt_status(move |_| {
+        // Clone to check if it has changed from within the function,
+        // you never really need to do this.
+        let clone = value_clone.clone();
+        let show_value = value_clone.map(move |value| {
+            if clone.has_changed() {
+                clone.declare_as_read();
+                format!("value changed to {value}")
+            } else {
+                format!("{value}")
+            }
+        });
+        
+        status!("{name_txt} {show_value}{Spacer}{main_txt}")
+    });
+    
+    cmd::add("change-value", move |pa: &amp;mut Pass, new: usize| {
+        *value.write(pa) = new;
+        Ok(None)
+    });
+}
+<span class="boring">}</span></code></pre>
+<p>This returns a <code>DataMap&lt;usize, String&gt;</code>, which works very similarly to an
+<code>RwData</code>, except for the fact that it can only be read, and reading is
+accompanied by a call to the mapping function, returning its value, as opposed
+to <code>usize</code>.</p>
+<p>This type also has the property of automatically updating the <code>StatusLine</code>
+whenever the value changes, which means that you no longer need to place a
+<code>{value}</code> in order to update the <code>StatusLine</code> automatically.</p>
+<p>The <code>MutDataMap</code> serves a similar purpose, but it can also write to the inner
+value, and is created through <code>RwData::map_mut</code>.</p>
+<h3 id="bulkdatawriter-for-parallelism"><a class="header" href="#bulkdatawriter-for-parallelism"><code>BulkDataWriter</code> for parallelism</a></h3>
+<p>One problem with all of the previously mentioned types is that, in order to
+write to them, you <em>need</em> to have a <code>&amp;mut Pass</code> with you. Since this type can
+only be accessed from the main thread, you <em>cannot</em> update values from other
+threads.</p>
+<p>This type does not change that fact, however, it lets you “push” updating
+functions via the <code>BulkDataWriter::mutate</code> method. This method, which
+doesn’ttake a <code>Pass</code>, will send an <code>impl FnOnce</code> function to update the inner
+value,and the next time someone tries to call <code>BulkDataWriter::write</code>, which
+does takea <code>Pass</code>, that function will be called and will update the value
+before returning the `&amp;mut T.</p>
+<p>This makes it possible to update a value from another thread:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::{data::BulkDataWriter, prelude::*};
+use std::time::Duration;
+
+// You will mostly want this type to be a static variable
+static DATA: BulkDataWriter&lt;Duration&gt; = BulkDataWriter::new();
+
+fn setup() {
+    std::thread::spawn(|| {
+        let one_sec = Duration::from_secs(1);
+        while !context::will_reload_or_quit() {
+            std::thread::sleep(one_sec);
+            DATA.mutate(move |value| *value += one_sec);
+        }
+    });
+    
+    cmd::add("uptime", |pa: &amp;mut Pass| {
+        context::info!("The uptime is {:?}", DATA.write(pa));
+        Ok(None)
+    });
+}
+<span class="boring">}</span></code></pre>
+<p>This type is very focused on building APIs, in particular, it is good at
+permitting functions that don’t take a <code>Pass</code> to be used. For example, in duat,
+the <code>cmd::add</code> function makes use of a <code>BulkDataWriter</code> in order to be called
+without a <code>Pass</code>, only actually adding the function when calling <code>cmd::call</code> or
+other functions that need access to the list of commands.</p>
+<p>Another API that makes use of this is the one backing the <code>map</code> and <code>alias</code>
+functions.</p>
+<h2 id="multiple-simultaneous-writes"><a class="header" href="#multiple-simultaneous-writes">Multiple simultaneous writes</a></h2>
+<p>One limitation that you might have perceived up to this point is that you can’t
+write to two <code>RwData</code>-like structures at the same time, since they would both
+need to borrow from the <code>&amp;mut Pass</code>, breaking Rust’s aliasing XOR mutability
+rule.</p>
+<p>There is, however, one way to do this, which is through the <code>Pass:write_many</code>
+method. This method takes in a group of <code>RwData</code>-like structures and gets
+mutable references to <em>all</em> of them at the same time.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt;u32&gt;) {
+    // You can pass in any tuple (up to 12 elements) or any array
+    // of `RwData`-like structures and this function will give you a
+    // mutable reference to all of them.
+    let ([l0, l1], r): ([&amp;mut u32; 2], &amp;mut u32) = pa.write_many((lhs, rhs));
+    
+    let trouble = [lhs[0], lhs[0]];
+    // Note here that I'm writing to the same variable twice.
+    // Instead of returning two mutable references to the same value, this
+    // call will just panic, returning control to Duat and cancelling
+    // whatever you were doing.
+    let [oops0, oops1] = pa.write_many(trouble);
+    
+    // If you think this might happen, you can call this instead.
+    let handled = pa.try_write_many(trouble);
+    
+    // This function will return an `Err(text)` in the case of failure.
+    assert!(handled.is_err());
+}
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-text-struct"><a class="header" href="#the-text-struct">The Text struct</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="builder-and-txt"><a class="header" href="#builder-and-txt">Builder and txt!</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tags-manipulating-text"><a class="header" href="#tags-manipulating-text">Tags: manipulating Text</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="modding-the-statusline"><a class="header" href="#modding-the-statusline">Modding the StatusLine</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-context-module"><a class="header" href="#the-context-module">The context module</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cmd-runtime-commands"><a class="header" href="#cmd-runtime-commands">cmd: Runtime commands</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="modifying-the-layout"><a class="header" href="#modifying-the-layout">Modifying the layout</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="extending-duat"><a class="header" href="#extending-duat">Extending Duat</a></h1>
-<h1 id="duat-core"><a class="header" href="#duat-core">duat-core</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="plugins"><a class="header" href="#plugins">Plugins</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="widgets"><a class="header" href="#widgets">Widgets</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="modes"><a class="header" href="#modes">Modes</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="parsers"><a class="header" href="#parsers">Parsers</a></h1>
 
                     </main>
@@ -1563,6 +1932,11 @@ fn setup() {
 
         </div>
 
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
 
 
 
@@ -1571,13 +1945,13 @@ fn setup() {
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
 
@@ -1586,6 +1960,7 @@ fn setup() {
             window.setTimeout(window.print, 100);
         });
         </script>
+
 
     </div>
     </body>
