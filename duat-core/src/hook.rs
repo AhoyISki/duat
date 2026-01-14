@@ -31,6 +31,12 @@
 //! are the existing hooks in `duat-core`, but you can also make your
 //! own:
 //!
+//! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
+//! - [`BufferSaved`] triggers after the [`Buffer`] is written.
+//! - [`BufferClosed`] triggers on every buffer upon closing Duat.
+//! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
+//! - [`BufferUpdated`] triggers whenever a buffer changesg.
+//! - [`BufferSwitched`] triggers when switching the active buffer.
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
 //! - [`ExitedDuat`] triggers after Duat has exited.
@@ -38,12 +44,6 @@
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
 //! - [`WindowOpened`] triggers when a [`Window`] is created.
-//! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
-//! - [`BufferSaved`] triggers after the [`Buffer`] is written.
-//! - [`BufferClosed`] triggers on every buffer upon closing Duat.
-//! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
-//! - [`BufferUpdated`] triggers whenever a buffer changesg.
-//! - [`BufferSwitched`] triggers when switching the active buffer.
 //! - [`FocusedOn`] triggers when a [widget] is focused.
 //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
 //! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
@@ -53,9 +53,6 @@
 //! - [`OnMouseEvent`] triggers with mouse events.
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
-//! - [`SearchPerformed`] (from `duat`) triggers after a search is
-//!   performed.
-//! - [`SearchUpdated`] (from `duat`) triggers after a search updates.
 //!
 //! # Basic makeout
 //!
@@ -86,11 +83,11 @@
 //! argument makes it so you can have more convenient parameters for
 //! hooks, like `(usize, &'h str)`, for example.
 //!
-//! Additionally, you may also trigger hooks "remotely". That is, if
-//! you don't have acces to a [`Pass`] (due to not being on the main
-//! thread or for some other reason), you may call [`hook::queue`]
-//! rathe than [`hook::trigger`], in order to queue the hook to be
-//! executed on the main thread:
+//! Sometimes, you may need to trigger hooks "remotely", that is, in a
+//! place wher you don't have acces to a [`Pass`] (due to not being on
+//! the main thread or for some other reason), you can make use of
+//! [`context::queue`] in order to queue the hook to be executed on
+//! the main thread:
 //!
 //! ```rust
 //! # duat_core::doc_duat!(duat);
@@ -102,7 +99,7 @@
 //! # }
 //! fn on_a_thread_far_far_away() {
 //!     let arg = 42;
-//!     hook::queue(CustomHook(arg));
+//!     context::queue(move |pa| _ = hook::trigger(pa, CustomHook(arg)));
 //! }
 //! ```
 //!
@@ -170,7 +167,7 @@
 //! [commands]: crate::cmd
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
-//! [`hook::queue`]: queue
+//! [`context::queue`]: crate::context::queue
 //! [`hook::trigger`]: trigger
 //! [`hook::add`]: add
 //! [`SearchPerformed`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchPerformed.html
@@ -182,7 +179,7 @@ use crossterm::event::MouseEventKind;
 pub use self::global::*;
 use crate::{
     buffer::Buffer,
-    context::{Cache, Handle},
+    context::Handle,
     data::Pass,
     form::{Form, FormId},
     mode::{KeyEvent, Mode, MouseEvent},
@@ -198,7 +195,7 @@ mod global {
     };
 
     use super::{Hookable, InnerGroupId, InnerHooks};
-    use crate::{data::Pass, session::DuatEvent};
+    use crate::data::Pass;
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 
@@ -603,15 +600,10 @@ impl Hookable for WindowOpened {
 /// # Arguments
 ///
 /// - The [`Buffer`]'s [`Handle`].
-/// - A [`Cache`]. This can be used in order to decide wether or not
-///   some things will be reloaded on the next opening of Duat.
-///
-/// This will not trigger upon reloading Duat. For that, see
-/// [`BufferClosed`].
-pub struct BufferClosed(pub(crate) (Handle, Cache));
+pub struct BufferClosed(pub(crate) Handle);
 
 impl Hookable for BufferClosed {
-    type Input<'h> = &'h (Handle, Cache);
+    type Input<'h> = &'h Handle;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
@@ -620,7 +612,7 @@ impl Hookable for BufferClosed {
 
 impl PartialEq<Handle> for BufferClosed {
     fn eq(&self, other: &Handle) -> bool {
-        self.0.0 == *other
+        self.0 == *other
     }
 }
 
@@ -634,10 +626,10 @@ impl PartialEq<Handle> for BufferClosed {
 ///
 /// This will not trigger upon closing Duat. For that, see
 /// [`BufferClosed`].
-pub struct BufferReloaded(pub(crate) (Handle, Cache));
+pub struct BufferReloaded(pub(crate) Handle);
 
 impl Hookable for BufferReloaded {
-    type Input<'h> = &'h (Handle, Cache);
+    type Input<'h> = &'h Handle;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
@@ -646,7 +638,7 @@ impl Hookable for BufferReloaded {
 
 impl PartialEq<Handle> for BufferReloaded {
     fn eq(&self, other: &Handle) -> bool {
-        self.0.0 == *other
+        self.0 == *other
     }
 }
 
@@ -1033,16 +1025,15 @@ impl Hookable for ColorSchemeSet {
 /// # Arguments
 ///
 /// - The [`Handle`] of said [`Buffer`]
-/// - The number of bytes written to said buffer
-/// - Wether Duat is in the process of quitting (happens when calling
-///   the `wq` or `waq` commands)
-pub struct BufferSaved(pub(crate) (Handle, usize, bool));
+/// - Wether the `Buffer` will be closed (happens when calling the
+///   `wq` or `waq` commands)
+pub struct BufferSaved(pub(crate) (Handle, bool));
 
 impl Hookable for BufferSaved {
-    type Input<'h> = (&'h Handle, usize, bool);
+    type Input<'h> = (&'h Handle, bool);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, self.0.1, self.0.2)
+        (&self.0.0, self.0.1)
     }
 }
 

@@ -30,7 +30,7 @@ pub use crate::buffer::{
     },
 };
 use crate::{
-    context::{self, Cache, Handle},
+    context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferSaved, BufferUpdated},
     mode::{Cursor, MouseEvent, Selections},
@@ -68,7 +68,7 @@ impl Buffer {
                     && let Ok(buffer) = std::fs::read_to_string(path)
                 {
                     let selections = {
-                        let selection = Cache::new().load(path).unwrap_or_default();
+                        let selection = cache::load(path).unwrap_or_default();
                         Selections::new(selection)
                     };
                     let text = Text::from_parts(Bytes::new(&buffer), selections);
@@ -393,27 +393,29 @@ impl Widget for Buffer {
 
 impl Handle {
     /// Writes the buffer to the current [`PathBuf`], if one was set
-    pub fn save(&self, pa: &mut Pass) -> Result<Option<usize>, Text> {
+    pub fn save(&self, pa: &mut Pass) -> Result<bool, Text> {
         self.save_quit(pa, false)
     }
 
     /// Saves and quits, resulting in no config reload
-    pub(crate) fn save_quit(&self, pa: &mut Pass, quit: bool) -> Result<Option<usize>, Text> {
+    ///
+    /// Returns `Ok(true)` if it saved, `Ok(false)` if that wasn't
+    /// necessary, and `Err` if there was some problem.
+    pub(crate) fn save_quit(&self, pa: &mut Pass, quit: bool) -> Result<bool, Text> {
         let buf = self.write(pa);
 
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &buf.path {
             let path = path.clone();
             if buf.text.has_unsaved_changes() {
-                let bytes = buf
-                    .text
+                buf.text
                     .save_on(std::io::BufWriter::new(fs::File::create(&path)?))
                     .inspect(|_| buf.path = PathKind::SetExists(path.clone()))?;
 
-                hook::trigger(pa, BufferSaved((self.clone(), bytes, quit)));
+                hook::trigger(pa, BufferSaved((self.clone(), quit)));
 
-                Ok(Some(bytes))
+                Ok(true)
             } else {
-                Ok(None)
+                Ok(false)
             }
         } else {
             Err(txt!("No buffer was set"))
@@ -427,7 +429,7 @@ impl Handle {
         &self,
         pa: &mut Pass,
         path: impl AsRef<std::path::Path>,
-    ) -> std::io::Result<Option<usize>> {
+    ) -> std::io::Result<bool> {
         self.save_quit_to(pa, path, false)
     }
 
@@ -439,24 +441,23 @@ impl Handle {
         pa: &mut Pass,
         path: impl AsRef<std::path::Path>,
         quit: bool,
-    ) -> std::io::Result<Option<usize>> {
+    ) -> std::io::Result<bool> {
         let buf = self.write(pa);
 
         if buf.text.has_unsaved_changes() {
             let path = path.as_ref();
             let res = buf
                 .text
-                .save_on(std::io::BufWriter::new(fs::File::create(path)?))
-                .map(Some);
+                .save_on(std::io::BufWriter::new(fs::File::create(path)?));
             buf.history.declare_saved();
 
-            if let Ok(Some(bytes)) = res.as_ref() {
-                hook::trigger(pa, BufferSaved((self.clone(), *bytes, quit)));
+            if res.as_ref().is_ok() {
+                hook::trigger(pa, BufferSaved((self.clone(), quit)));
             }
 
-            res
+            res.and(Ok(true))
         } else {
-            Ok(None)
+            Ok(false)
         }
     }
 
@@ -766,8 +767,8 @@ mod buffer_id {
     impl BufferId {
         /// Returns a new `BufferId`, uniquely identifying a
         /// [`Buffer`]
-    ///
-    /// [`Buffer`]: super::Buffer
+        ///
+        /// [`Buffer`]: super::Buffer
         pub(super) fn new() -> Self {
             Self(COUNT.fetch_add(1, Ordering::Relaxed))
         }

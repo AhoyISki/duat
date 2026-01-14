@@ -1,5 +1,5 @@
 use duat_core::{
-    context::{Decode, Encode},
+    context::cache::{Decode, Encode},
     opts::PrintOpts,
     text::{Point, Text, TwoPoints},
     ui::Caret,
@@ -12,7 +12,7 @@ use crate::{
 
 /// Information about how to print the file on the `Label`.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Encode, Decode)]
-#[bincode(crate = "duat_core::context::bincode")]
+#[bincode(crate = "duat_core::context::cache::bincode")]
 pub struct PrintInfo {
     s_points: Option<TwoPoints>,
     x_shift: u32,

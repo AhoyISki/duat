@@ -13,7 +13,7 @@ use std::{
 
 use crossterm::event::KeyEvent;
 
-pub use self::{cache::*, global::*, handles::*, log::*};
+pub use self::{global::*, handles::*, log::*};
 use crate::{
     buffer::Buffer,
     data::{Pass, RwData},
@@ -21,7 +21,7 @@ use crate::{
     ui::{Area, Node, Widget},
 };
 
-mod cache;
+pub mod cache;
 mod handles;
 mod log;
 

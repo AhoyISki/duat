@@ -8,7 +8,7 @@ use crossterm::{
     style::{Attribute, Attributes},
 };
 use duat_core::{
-    context::{self, Decode, Encode},
+    context::{self, cache::{Decode, Encode}},
     form::{CONTROL_CHAR_ID, Painter},
     opts::PrintOpts,
     session::TwoPointsPlace,
@@ -29,7 +29,7 @@ use crate::{
 };
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
-#[bincode(crate = "duat_core::context::bincode")]
+#[bincode(crate = "duat_core::context::cache::bincode")]
 pub struct Coord {
     pub x: u32,
     pub y: u32,
@@ -48,7 +48,7 @@ impl Coord {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
-#[bincode(crate = "duat_core::context::bincode")]
+#[bincode(crate = "duat_core::context::cache::bincode")]
 pub struct Coords {
     pub tl: Coord,
     pub br: Coord,

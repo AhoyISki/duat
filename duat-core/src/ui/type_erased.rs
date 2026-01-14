@@ -23,7 +23,7 @@ use std::{
 };
 
 use crate::{
-    context::{self, Cache, DuatSender},
+    context::{self, DuatSender, cache},
     data::{Pass, RwData},
     form::Painter,
     opts::PrintOpts,
@@ -1083,7 +1083,7 @@ impl AreaFunctions {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
 
                 if let Some(area_cache) = area.cache(UiPass::new()) {
-                    Cache::new().store(path, area_cache)?;
+                    cache::store(path, area_cache)?;
                 }
 
                 Ok(())
@@ -1183,7 +1183,7 @@ impl PrintInfoFunctions {
 
 fn get_cache<U: RawUi>(path: Option<&Path>) -> <<U as RawUi>::Area as RawArea>::Cache {
     if let Some(file_path) = path {
-        match Cache::new().load::<<U::Area as RawArea>::Cache>(file_path) {
+        match cache::load::<<U::Area as RawArea>::Cache>(file_path) {
             Ok(cache) => cache,
             Err(err) => {
                 context::error!("{err}");

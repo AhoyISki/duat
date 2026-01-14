@@ -20,7 +20,7 @@ use crate::{
     buffer::Buffer,
     clipboard::Clipboard,
     cmd,
-    context::{self, Cache, DuatReceiver, sender},
+    context::{self, DuatReceiver, sender},
     data::Pass,
     form,
     hook::{
@@ -284,7 +284,7 @@ impl Session {
                         wait_for_threads_to_end();
 
                         for handle in context::windows().buffers(pa) {
-                            hook::trigger(pa, BufferReloaded((handle, Cache::new())));
+                            hook::trigger(pa, BufferReloaded(handle));
                         }
 
                         let ui = self.ui;
@@ -295,12 +295,13 @@ impl Session {
                     DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
                         hook::trigger(pa, ConfigUnloaded(()));
-                        hook::trigger(pa, ExitedDuat(()));
                         context::order_reload_or_quit();
 
                         for handle in context::windows().buffers(pa) {
-                            hook::trigger(pa, BufferClosed((handle, Cache::new())));
+                            hook::trigger(pa, BufferClosed(handle));
                         }
+
+                        hook::trigger(pa, ExitedDuat(()));
 
                         self.ui.unload();
                         return Vec::new();

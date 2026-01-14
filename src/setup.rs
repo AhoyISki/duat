@@ -17,7 +17,7 @@ use duat_base::{
 use duat_core::{
     buffer::History,
     clipboard::Clipboard,
-    context::{self, DuatReceiver, DuatSender, Logs},
+    context::{self, DuatReceiver, DuatSender, Logs, cache},
     data::Pass,
     form::{Form, Palette},
     hook::{BufferOpened, KeyTyped, ModeSwitched},
@@ -116,14 +116,14 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
     // Cache hooks
 
-    hook::add::<BufferReloaded>(|pa, (handle, cache)| {
+    hook::add::<BufferReloaded>(|pa, handle| {
         let buffer = handle.write(pa);
 
         let path = buffer.path();
         buffer.text_mut().new_moment();
 
         if let Some(main) = buffer.selections().get_main()
-            && let Err(err) = cache.store(&path, main.clone())
+            && let Err(err) = cache::store(&path, main.clone())
         {
             context::error!("{err}");
         }
@@ -133,29 +133,29 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
         }
     });
 
-    hook::add::<BufferClosed>(|pa, (handle, cache)| {
+    hook::add::<BufferClosed>(|pa, handle| {
         let buffer = handle.write(pa);
 
         let path = buffer.path();
-        cache.delete_for::<History>(&path);
+        cache::delete_for::<History>(&path);
         if !buffer.exists() || buffer.text().has_unsaved_changes() {
-            cache.delete(path);
+            cache::delete(path);
         }
     });
 
-    hook::add::<BufferClosed>(|pa, (handle, cache)| {
+    hook::add::<BufferClosed>(|pa, handle| {
         let buffer = handle.write(pa);
 
         let path = buffer.path();
         buffer.text_mut().new_moment();
 
         if let Some("gitcommit") = path.filetype() {
-            cache.delete(path);
+            cache::delete(path);
             return;
         }
 
         if let Some(main) = buffer.selections().get_main()
-            && let Err(err) = cache.store(&path, main.clone())
+            && let Err(err) = cache::store(&path, main.clone())
         {
             context::error!("{err}");
         }
@@ -223,10 +223,10 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
     // Other hooks
 
-    hook::add::<BufferSaved>(|pa, (handle, _, is_quitting)| {
+    hook::add::<BufferSaved>(|pa, (handle, is_closing)| {
         let path = handle.read(pa).path();
         let path = Path::new(&path);
-        if !is_quitting
+        if !is_closing
             && let Ok(crate_dir) = crate::utils::crate_dir()
             && path.starts_with(crate_dir)
         {

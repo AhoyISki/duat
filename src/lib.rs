@@ -400,27 +400,30 @@ pub mod hook {
     //! Currently, these are the existing hooks in `duat-core` and
     //! `duat-base`:
     //!
+    //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
+    //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
+    //! - [`BufferClosed`] triggers when closing a `Buffer`.
+    //! - [`BufferReloaded`] triggers on all buffers upon reloading.
+    //! - [`BufferUpdated`] triggers whenever a buffer changes.
+    //! - [`BufferSwitched`] triggers when switching buffers.
     //! - [`ConfigLoaded`] triggers after loading the config.
     //! - [`ConfigUnloaded`] triggers after unloading the config.
     //! - [`ExitedDuat`] triggers after Duat has exited.
     //! - [`FocusedOnDuat`] triggers when Duat gains focus.
     //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
-    //! - [`WidgetOpened`] triggers when a [`Widget`] is created.
-    //! - [`WindowOpened`], triggers when a [`Window`] is created.
-    //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
-    //! - [`BufferClosed`] triggers when closing `Buffer`s.
-    //! - [`BufferReloaded`] triggers when reloading Duat.
+    //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
+    //! - [`WindowOpened`] triggers when a [`Window`] is created.
     //! - [`FocusedOn`] triggers when a widget is focused.
     //! - [`UnfocusedFrom`] triggers when a widget is unfocused.
     //! - [`FocusChanged`] is a generic version of [`FocusedOn`].
-    //! - [`KeyTyped`] triggers on every _typed_ key.
-    //! - [`KeySent`] triggers when keys are sent.
-    //! - [`KeySentTo`] same, but on a specific `Widget`.
-    //! - [`KeyTyped`] triggers when a key is _typed_, not _sent_.
+    //! - [`KeySent`] triggers when a keys are sent.
+    //! - [`KeySentTo`] same, but on a specific widget.
+    //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
+    //! - [`OnMouseEvent`] triggers with mouse events.
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
-    //! - [`ModeSwitched`] triggers when you change `Mode`.
+    //! - [`ModeSwitched`] triggers when you change [`Mode`].
     //! - [`SearchPerformed`] triggers after a search is performed.
-    //! - [`SearchUpdated`] triggers after a search updates.
+    //! - [`SearchUpdated`]  triggers after a search updates.
     //!
     //! These are just the built-in ones, you can [create your own] as
     //! well.
@@ -489,6 +492,8 @@ pub mod hook {
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [create your own]: Hookable
     //! [`Window`]: crate::ui::Window
+    //! [widget]: crate::widgets::Widget
+    //! [dyn `Widget`]: crate::widgets::Widget
     pub use duat_base::hooks::*;
     pub use duat_core::hook::*;
 }

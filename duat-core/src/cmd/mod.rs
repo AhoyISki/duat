@@ -224,7 +224,7 @@ pub(crate) fn add_session_commands() {
     add("write", |pa: &mut Pass, path: Option<ValidFilePath>| {
         let handle = context::current_buffer(pa);
 
-        let (bytes, name) = if let Some(path) = path {
+        let (has_written, name) = if let Some(path) = path {
             (handle.save_to(pa, &path.0)?, path.0)
         } else if let Some(name) = handle.read(pa).name_set() {
             (handle.save(pa)?, std::path::PathBuf::from(name))
@@ -232,9 +232,12 @@ pub(crate) fn add_session_commands() {
             return Err(txt!("Buffer has no name path to write to"));
         };
 
-        match bytes {
-            Some(bytes) => Ok(Some(txt!("Wrote [a]{bytes}[] bytes to [buffer]{name}"))),
-            None => Ok(Some(txt!("Nothing to be written"))),
+        match has_written {
+            true => Ok(Some(txt!(
+                "Wrote [a]{}[] bytes to [buffer]{name}",
+                handle.text(pa).len().byte()
+            ))),
+            false => Ok(Some(txt!("Nothing to be written"))),
         }
     })
     .doc(
@@ -256,7 +259,7 @@ pub(crate) fn add_session_commands() {
         |pa: &mut Pass, path: Option<ValidFilePath>| {
             let handle = context::current_buffer(pa);
 
-            let (bytes, name) = {
+            let (has_written, name) = {
                 let bytes = if let Some(path) = path {
                     handle.save_quit_to(pa, path.0, true)?
                 } else {
@@ -267,11 +270,12 @@ pub(crate) fn add_session_commands() {
 
             context::windows().close(pa, &handle)?;
 
-            match bytes {
-                Some(bytes) => Ok(Some(txt!(
-                    "Closed [buffer]{name}[], writing [a]{bytes}[] bytes"
+            match has_written {
+                true => Ok(Some(txt!(
+                    "Closed [buffer]{name}[], writing [a]{}[] bytes",
+                    handle.text(pa).len().byte()
                 ))),
-                None => Ok(Some(txt!("Closed [buffer]{name}[]"))),
+                false => Ok(Some(txt!("Closed [buffer]{name}[]"))),
             }
         },
     )

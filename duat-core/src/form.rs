@@ -8,7 +8,7 @@ pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
-    context::DuatSender,
+    context::{self, DuatSender},
     hook::{self, FormSet},
     session::DuatEvent,
     text::FormTag,
@@ -542,7 +542,8 @@ mod global {
         let colorschemes = COLORSCHEMES.lock().unwrap();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
             cs.apply();
-            hook::queue(ColorSchemeSet(cs.name()));
+            let name = cs.name();
+            context::queue(move |pa| _ = hook::trigger(pa, ColorSchemeSet(name)));
         } else {
             context::error!("The colorscheme [a]{name}[] was not found");
         }
@@ -1257,7 +1258,9 @@ impl InnerPalette {
         }
 
         mask_form(name, i, self);
-        hook::queue(FormSet((self.forms[i].0, FormId(i as u16), form)));
+
+        let form_set = FormSet((self.forms[i].0, FormId(i as u16), form));
+        context::queue(move |pa| _ = hook::trigger(pa, form_set));
     }
 
     /// Sets a [`Form`] "weakly"
@@ -1302,7 +1305,8 @@ impl InnerPalette {
         }
 
         mask_form(name, i, self);
-        hook::queue(FormSet((self.forms[i].0, FormId(i as u16), form)));
+        let form_set = FormSet((self.forms[i].0, FormId(i as u16), form));
+        context::queue(move |pa| _ = hook::trigger(pa, form_set));
     }
 
     /// Makes a [`Form`] reference another "weakly"

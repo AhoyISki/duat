@@ -18,7 +18,7 @@ use std::{
 use super::{Node, Widget, layout::Layout};
 use crate::{
     buffer::{Buffer, PathKind},
-    context::{self, Cache, Handle},
+    context::{self, Handle},
     data::{Pass, RwData},
     hook::{self, BufferClosed, BufferSwitched, WidgetOpened, WindowOpened},
     mode,
@@ -330,7 +330,7 @@ impl Windows {
         // If it's a Buffer, swap all buffers ahead, so this one becomes the
         // last.
         if let Some(buf_handle) = handle.try_downcast::<Buffer>() {
-            hook::trigger(pa, BufferClosed((buf_handle.clone(), Cache::new())));
+            hook::trigger(pa, BufferClosed(buf_handle.clone()));
 
             let buffers_ahead: Vec<Node> = self.inner.read(pa).list[win]
                 .nodes(pa)

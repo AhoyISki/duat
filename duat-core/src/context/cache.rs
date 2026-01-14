@@ -31,7 +31,6 @@ use std::{
     ffi::OsString,
     fs::File,
     hash::{DefaultHasher, Hash, Hasher},
-    marker::PhantomData,
     path::{Path, PathBuf},
 };
 
@@ -46,86 +45,40 @@ use crate::{
     utils::{duat_name, src_crate},
 };
 
-/// Used in order to cache things
-pub struct Cache(PhantomData<()>);
+/// Tries to load the cache stored by Duat for the given type
+///
+/// The cache must have been previously stored by
+/// [`Cache::store`]. If it does not exist, or the buffer can't
+/// be correctly interpreted, returns [`None`]
+pub fn load<C: Decode<()> + Default + 'static>(path: impl AsRef<Path>) -> Result<C, Text> {
+    let mut cache_file = cache_file::<C>(path.as_ref(), false)?;
 
-impl Cache {
-    /// Returns a new instance of [`Cache`]
-    pub(crate) fn new() -> Self {
-        Self(PhantomData)
+    if cache_file.metadata()?.len() == 0 {
+        return Ok(C::default());
     }
 
-    /// Tries to load the cache stored by Duat for the given type
-    ///
-    /// The cache must have been previously stored by
-    /// [`Cache::store`]. If it does not exist, or the buffer can't
-    /// be correctly interpreted, returns [`None`]
-    pub fn load<C: Decode<()> + Default + 'static>(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<C, Text> {
-        let mut cache_file = cache_file::<C>(path.as_ref(), false)?;
+    let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
+    bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}"))
+}
 
-        if cache_file.metadata()?.len() == 0 {
-            return Ok(C::default());
-        }
+/// Stores the cache for the given type for that buffer
+///
+/// The cache will be stored under
+/// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
+/// The cache can then later be loaded by [`Cache::load`].
+pub fn store<C: Encode + 'static>(path: impl AsRef<Path>, cache: C) -> Result<usize, Text> {
+    let mut cache_file = cache_file::<C>(path.as_ref(), true)?;
 
-        let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
-        bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}"))
-    }
+    let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
+    encode_into_std_write(cache, &mut cache_file, config).map_err(|err| txt!("{err}"))
+}
 
-    /// Stores the cache for the given type for that buffer
-    ///
-    /// The cache will be stored under
-    /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
-    /// The cache can then later be loaded by [`Cache::load`].
-    pub fn store<C: Encode + 'static>(
-        &self,
-        path: impl AsRef<Path>,
-        cache: C,
-    ) -> Result<usize, Text> {
-        let mut cache_file = cache_file::<C>(path.as_ref(), true)?;
-
-        let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
-        encode_into_std_write(cache, &mut cache_file, config).map_err(|err| txt!("{err}"))
-    }
-
-    /// Deletes the cache for all types for `path`
-    ///
-    /// This is done if the buffer no longer exists, in order to
-    /// prevent incorrect storage.
-    pub fn delete(&self, path: impl Into<PathBuf>) {
-        fn delete_cache_inner(path: PathBuf) {
-            let (Some(cache_dir), Some(file_name)) = (dirs_next::cache_dir(), path.file_name())
-            else {
-                return;
-            };
-
-            let mut hasher = DefaultHasher::new();
-            path.hash(&mut hasher);
-            let hash_value = hasher.finish();
-
-            let cached_file_name = {
-                let mut name = OsString::from(format!("{hash_value}-"));
-                name.push(file_name);
-                name
-            };
-
-            let src = cache_dir
-                .join("duat")
-                .join("structs")
-                .join(cached_file_name);
-            // It could fail if the directory doesn't exist, but we don't really
-            // care.
-            let _ = std::fs::remove_dir_all(src);
-        }
-
-        delete_cache_inner(path.into());
-    }
-
-    /// Deletes the cache for everything related to the given `path`
-    pub fn delete_for<C: 'static>(&self, path: impl AsRef<Path>) {
-        let path = path.as_ref();
+/// Deletes the cache for all types for `path`
+///
+/// This is done if the buffer no longer exists, in order to
+/// prevent incorrect storage.
+pub fn delete(path: impl Into<PathBuf>) {
+    fn delete_cache_inner(path: PathBuf) {
         let (Some(cache_dir), Some(file_name)) = (dirs_next::cache_dir(), path.file_name()) else {
             return;
         };
@@ -143,12 +96,40 @@ impl Cache {
         let src = cache_dir
             .join("duat")
             .join("structs")
-            .join(cached_file_name)
-            .join(format!("{}-{}", src_crate::<C>(), duat_name::<C>()));
+            .join(cached_file_name);
+        // It could fail if the directory doesn't exist, but we don't really
+        // care.
+        let _ = std::fs::remove_dir_all(src);
+    }
 
-        if let Ok(true) = src.try_exists() {
-            std::fs::remove_file(src).unwrap();
-        }
+    delete_cache_inner(path.into());
+}
+
+/// Deletes the cache for everything related to the given `path`
+pub fn delete_for<C: 'static>(path: impl AsRef<Path>) {
+    let path = path.as_ref();
+    let (Some(cache_dir), Some(file_name)) = (dirs_next::cache_dir(), path.file_name()) else {
+        return;
+    };
+
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    let hash_value = hasher.finish();
+
+    let cached_file_name = {
+        let mut name = OsString::from(format!("{hash_value}-"));
+        name.push(file_name);
+        name
+    };
+
+    let src = cache_dir
+        .join("duat")
+        .join("structs")
+        .join(cached_file_name)
+        .join(format!("{}-{}", src_crate::<C>(), duat_name::<C>()));
+
+    if let Ok(true) = src.try_exists() {
+        std::fs::remove_file(src).unwrap();
     }
 }
 
