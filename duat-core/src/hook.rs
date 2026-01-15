@@ -621,8 +621,6 @@ impl PartialEq<Handle> for BufferClosed {
 /// # Arguments
 ///
 /// - The [`Buffer`]'s [`Handle`].
-/// - A [`Cache`]. This can be used in order to decide wether or not
-///   some things will be reloaded on the next opening of Duat.
 ///
 /// This will not trigger upon closing Duat. For that, see
 /// [`BufferClosed`].
@@ -652,18 +650,6 @@ impl PartialEq<Handle> for BufferReloaded {
 /// Think of this is as a "last pass" on the `Buffer`, right before
 /// printing, where it can be adjusted given the modifications to it,
 /// like [`Change`]s and such.
-///
-/// Since this is a "last pass" before printing, you also aren't
-/// allowed to add more `Change`s to the [`Text`] of the `Buffer`. As
-/// such, you can't call [`Text::replace_range`] or any of modifying
-/// methods from the [`Cursor`]s. Note that this applies only to the
-/// `Buffer` being updated, not other `Buffer`s.
-///
-/// Since you can't modify the [`Text`]'s [`Bytes`], what can you do?
-/// You can read the [`Buffer`], you can add [`Tag`]s to it, change
-/// the [`PrintOpts`], and do all of these other things. Also, you can
-/// [queue] actions that can in turn modify the `Text` of the
-/// `Buffer`.
 ///
 /// As an example, here's a hook that will highlight every non ascii
 /// character:

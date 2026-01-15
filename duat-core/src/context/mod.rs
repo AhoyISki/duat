@@ -230,9 +230,6 @@ mod global {
 
     /// The name of the current [`Mode`]
     ///
-    /// This uses a [`DataMap`] in order to prevent mutation of said
-    /// name.
-    ///
     /// [`Mode`]: crate::mode::Mode
     pub fn mode_name() -> RwData<&'static str> {
         MODE_NAME.clone()

@@ -15,9 +15,9 @@
 //! on the declaration of the type:
 //!
 //! ```rust
-//! use duat_core::context::{Decode, Encode};
+//! use duat_core::context::cache::{Decode, Encode};
 //! #[derive(Encode, Decode)]
-//! #[bincode(crate = "duat_core::context::bincode")]
+//! #[bincode(crate = "duat_core::context::cache::bincode")]
 //! enum MyCacheableEnum {
 //!     // ...
 //! }
@@ -48,8 +48,10 @@ use crate::{
 /// Tries to load the cache stored by Duat for the given type
 ///
 /// The cache must have been previously stored by
-/// [`Cache::store`]. If it does not exist, or the buffer can't
+/// [`cache::store`]. If it does not exist, or the buffer can't
 /// be correctly interpreted, returns [`None`]
+///
+/// [`cache::store`]: store
 pub fn load<C: Decode<()> + Default + 'static>(path: impl AsRef<Path>) -> Result<C, Text> {
     let mut cache_file = cache_file::<C>(path.as_ref(), false)?;
 
@@ -65,7 +67,9 @@ pub fn load<C: Decode<()> + Default + 'static>(path: impl AsRef<Path>) -> Result
 ///
 /// The cache will be stored under
 /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
-/// The cache can then later be loaded by [`Cache::load`].
+/// The cache can then later be loaded by [`cache::load`].
+///
+/// [`cache::load`]: load
 pub fn store<C: Encode + 'static>(path: impl AsRef<Path>, cache: C) -> Result<usize, Text> {
     let mut cache_file = cache_file::<C>(path.as_ref(), true)?;
 

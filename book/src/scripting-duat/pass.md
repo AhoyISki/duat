@@ -8,8 +8,7 @@ The `Pass` struct is how you access duat's global state. It works through
 Rust's borrow checker, giving you safe access to the variables of the global 
 state. It works via mutable and immutable references, that is, whenever you 
 mutably borrow a `Pass`, you get mutable access to the global state of duat, 
-and whenever you borrow it normally, you get non mutable access to this global 
-state:
+and whenever you borrow it normally, you get non mutable access to said state:
 
 ```rust
 use duat::prelude::*;

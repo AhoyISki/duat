@@ -30,6 +30,7 @@ FOR NEXT UPDATE:
 [x] Properly separated frame on frame spawns.
 [x] Put all options in a single struct.
 [x] Multiple parameter completions at the same time.
+[ ] Remove Widget argument from Modes.
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -77,7 +78,6 @@ FUTURE UPDATES:
 [ ] Initial installation configuration menu.
 [ ] Print only changed lines.
 [ ] Handle mostly utf-8 strings.
-[x] Allow Modes to detect when a key is mapped.
 [ ] Add a failure mode for remapping.
 [/] Bring back multithreading?
 [ ] Additive Forms.
