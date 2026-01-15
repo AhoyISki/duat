@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-28e300da.js";
+            window.path_to_searchindex_js = "searchindex-4a60245c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07fa4c9b.js"></script>
+        <script src="toc-74f781a9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -189,9 +189,7 @@ one of the goals of Duat is to have relatively straightforward configuration,
 and easy pluginability.</p>
 <p>As a motivating example, here’s a small plugin, which highlights matches to the
 word underthe cursor:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 pub struct HighlightMatches;
 
@@ -225,8 +223,7 @@ impl Plugin for HighlightMatches {
             }
         });
     }
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>The goal of this book is to help you understand not only how to operate Duat, but
 hopefully how to do something like this as well.</p>
 

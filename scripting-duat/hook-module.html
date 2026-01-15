@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28e300da.js";
+            window.path_to_searchindex_js = "../searchindex-4a60245c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-07fa4c9b.js"></script>
+        <script src="../toc-74f781a9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,6 +181,264 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
+<p>Hooks in duat are functions that are called automatically whenever some
+specific event happens. They are very similar to kakoune’s hooks or neovim’s
+autocmds. However, one thing that distinguishes the versatility of duat’s hooks
+is the fact that they present you with arguments whose type is inferred at
+compile time:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // Note the Pass, so you have mutable global state access.
+    // The type of the second argument is inferred, it is only
+    // included here for example's sake.
+    hook::add::&lt;ModeSwitched&gt;(|pa, (old, new): (&amp;str, &amp;str)| {
+        if old == "Insert" &amp;&amp; new == "Normal" {
+            _ = context::current_buffer(pa).save(pa);
+        }
+    });
+    
+    hook::add::&lt;BufferOpened&gt;(|pa, handle: &amp;Handle| {
+        let buf = handle.write(pa);
+        match buf.filetype() {
+            Some("rust" | "cpp") =&gt; {
+                buf.opts.wrap_lines = true;
+                buf.opts.wrapping_cap = Some(100);
+            }
+            Some("markdown" | "asciidoc") =&gt; {
+                buf.opts.tabstop = 2;
+                buf.opts.extra_word_chars = &amp;['-'];
+            }
+            Some("lua" | "javascript") =&gt; buf.opts.tabstop = 2, 
+            _ =&gt; {}
+        };
+    });
+    
+    // You can call hooks for many things...
+    hook::add::&lt;WidgetOpened&lt;LineNumbers&gt;&gt;(|pa, handle| {
+        // This will put a vertical ruler on the left of the `LineNumbers`
+        // making for a "stylish" column of numbers.
+        VertRule::builder().push_on(pa, handle);
+    });
+    
+    let key_count = RwData::new(0);
+    hook::add::&lt;KeyTyped&gt;({
+        let key_count = key_count.clone();
+        move |pa, _| {
+            *key_count.write(pa) += 1;
+        }
+    });
+    
+    opts::fmt_status(move |_| {
+        let mode_txt = mode_txt();
+        let key_count = key_count.clone();
+        status!("{name_txt} {mode_txt}{Spacer}{sels_txt} {main_txt} {key_count}")
+    })
+}</code></pre>
+<h2 id="creating-new-hooks"><a class="header" href="#creating-new-hooks">Creating new hooks</a></h2>
+<p>Another interesting thing about hooks in duat is that you can create your own.
+You do that by implementing the <code>Hookable</code> trait on a type:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+
+struct OnIdle(Handle);
+
+impl Hookable for OnIdle {
+    // The Input type is the value available when calling `hook::add`
+    type Input&lt;'h&gt; = &amp;'h Handle;
+    
+    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+        &amp;self.0
+    }
+}</code></pre>
+<p>Then, you decide when to <code>trigger</code> said hook:</p>
+<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle);
+</span><span class="boring">
+</span><span class="boring">impl Hookable for OnIdle {
+</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
+</span><span class="boring">    
+</span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+</span><span class="boring">        &amp;self.0
+</span><span class="boring">    }
+</span><span class="boring">}
+</span>use duat::prelude::*;
+use std::{
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn setup_hook() {
+    // Start counting as soon as the user stops typing.
+    hook::add::&lt;KeyTyped&gt;(|pa, _| COUNTER.store(0, Ordering::Relaxed));
+    
+    std::thread::spawn(|| {
+        while !context::will_reload_or_quit() {
+            std::thread::sleep(Duration::from_secs(1));
+            let elapsed = COUNTER.fetch_add(1, Ordering::Relaxed);
+            
+            // Every 60 seconds, trigger an `OnIdle` event
+            if elapsed + 1 == 60 {
+                // We have to queue it, since this is being
+                // called from another thread.
+                context::queue(|pa| {
+                    let handle = context::current_buffer(pa);
+                    hook::trigger(pa, OnIdle(handle));
+                });
+            }
+        }
+    });
+}</code></pre>
+<p>Then, the user can just add their own hooks, which will be called accordingly:</p>
+<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle);
+</span><span class="boring">
+</span><span class="boring">impl Hookable for OnIdle {
+</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
+</span><span class="boring">    
+</span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+</span><span class="boring">        &amp;self.0
+</span><span class="boring">    }
+</span><span class="boring">}
+</span><span class="boring">fn setup_hook() {}
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // This would be called from a `Plugin::plug` function
+    setup_hook();
+    
+    hook::add::&lt;OnIdle&gt;(|pa, _| {
+        let mut saved = 0;
+        
+        for handle in context::buffers(pa) {
+            if let Ok(true) = handle.save(pa) {
+                saved += 1;
+            }
+        }
+        
+        if saved &gt; 0 {
+            context::info!("Saved [a]{saved}[] buffers from idling");
+        }
+    });
+}</code></pre>
+<h2 id="list-of-hooks"><a class="header" href="#list-of-hooks">List of hooks</a></h2>
+<p>Here’s the list of currently available hooks, more will be added in the future.
+For the list of arguments of each hook, remember that there will always be
+<code>&amp;mut Pass</code> argument, and that the other arguments will come in a tuple.</p>
+<p>For example, if a hook has two arguments, <code>i32</code> and <code>bool</code>, they will actually
+come in as <code>(i32, bool)</code> in the second argument of the hook. So you should pass
+a function like this:</p>
+<pre><code class="language-rust"><span class="boring">struct FooHook;
+</span><span class="boring">impl Hookable for FooHook {
+</span><span class="boring">    type Input&lt;'h&gt; = (i32, bool);
+</span><span class="boring">    
+</span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+</span><span class="boring">        (0, true)
+</span><span class="boring">    }
+</span><span class="boring">}
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    hook::add::&lt;FooHook&gt;(|pa, (arg1, arg2): (i32, bool)| {
+        // ...
+    });
+}</code></pre>
+<p>Also, when a hook says that it has no arguments, what this actually means is
+that the second argument is of type <code>()</code>, so the function argument still needs
+to have two arguments in it.</p>
+<h3 id="bufferopened"><a class="header" href="#bufferopened"><code>BufferOpened</code></a></h3>
+<p>Triggers after opening a <code>Buffer</code>. You will want to use this hook to set
+buffer-wise configuration options:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // Options set initially for all `Buffer`s
+    opts::set(|opts| {
+        opts.tabstop = 4;
+    });
+    
+    // Changing those options on a buffer by buffer basis.
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
+        let buf = handle.write(pa);
+        
+        match buf.filetype() {
+            Some("haskell" | "commonlisp") =&gt; buf.opts.tabstop = 2,
+            Some("txt" | "markdown" | "asciidoc") =&gt; {
+                buf.opts.tabstop = 2;
+                buf.opts.wrap_lines = true;
+                buf.opts.wrapping_cap = Some(80);
+            }
+            _ =&gt; {}
+        }
+    });
+}</code></pre>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> of the <code>Buffer</code> that was
+opened.</li>
+</ul>
+<h3 id="buffersaved"><a class="header" href="#buffersaved"><code>BufferSaved</code></a></h3>
+<p>Triggers right after saving a <code>Buffer</code>. This will happen whenever you call any
+of the <code>write</code> family of commands, or if <code>Handle::&lt;Buffer&gt;::save</code> is called.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was saved.</li>
+<li>A <code>bool</code>, which is <code>true</code> if the <code>Buffer</code> is being closed, through commands
+like <code>wq</code>.</li>
+</ul>
+<h3 id="bufferclosed"><a class="header" href="#bufferclosed"><code>BufferClosed</code></a></h3>
+<p>Triggers as a <code>Buffer</code> is being closed, after <code>BufferSaved</code>. This will happen
+when you run a command like <code>q</code> or <code>wq</code>, or after calling
+<code>Handle::&lt;Buffer&gt;::close</code>. It will also happen after quitting Duat, after
+<code>ConfigUnloaded</code> but before <code>ExitedDuat</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was closed.</li>
+</ul>
+<h3 id="bufferreloaded"><a class="header" href="#bufferreloaded"><code>BufferReloaded</code></a></h3>
+<p>Triggers on every <code>Buffer</code> after the config gets reloaded. This <em>won’t</em> happen
+on the first config that was loaded.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was reloaded.</li>
+</ul>
+<h3 id="configloaded"><a class="header" href="#configloaded"><code>ConfigLoaded</code></a></h3>
+<p>Will trigger right after initially loading the config crate on
+<code>~/.config/duat/</code> or wherever you’re loading the config from.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="configunloaded"><a class="header" href="#configunloaded"><code>ConfigUnloaded</code></a></h3>
+<p>Will trigger right before unloading the config crate on
+<code>~/.config/duat/</code> or wherever you’re loading the config from.
+This will also trigger upon exiting Duat.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="exitedduat"><a class="header" href="#exitedduat"><code>ExitedDuat</code></a></h3>
+<p>Triggers after quitting Duat, after <code>ConfigUnloaded</code> and after triggering
+<code>BufferClosed</code> on each <code>Buffer</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="focusedonduat"><a class="header" href="#focusedonduat"><code>FocusedOnDuat</code></a></h3>
+<p>Triggers when Duat gains focus from the operating system.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="unfocusedfromduat"><a class="header" href="#unfocusedfromduat"><code>UnfocusedFromDuat</code></a></h3>
+<p>Triggers when Duat loses focus from the operating system.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
 
                     </main>
 
@@ -190,7 +448,7 @@
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../scripting-duat/text/chapter.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../scripting-duat/text.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -204,7 +462,7 @@
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../scripting-duat/text/chapter.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../scripting-duat/text.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

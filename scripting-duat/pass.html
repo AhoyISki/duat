@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28e300da.js";
+            window.path_to_searchindex_js = "../searchindex-4a60245c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-07fa4c9b.js"></script>
+        <script src="../toc-74f781a9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -188,11 +188,8 @@ memory. Every piece of state in Duat is behind some type that requires the
 Rust’s borrow checker, giving you safe access to the variables of the global
 state. It works via mutable and immutable references, that is, whenever you
 mutably borrow a <code>Pass</code>, you get mutable access to the global state of duat,
-and whenever you borrow it normally, you get non mutable access to this global
-state:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+and whenever you borrow it normally, you get non mutable access to said state:</p>
+<pre><code class="language-rust">use duat::prelude::*;
 
 // As a shorthand, you should use `pa` as the variable's name.
 // You don't need to write the types of `pa` and `handle`, they're
@@ -232,8 +229,7 @@ hook::add::&lt;BufferOpened&gt;(|pa: &amp;mut Pass, handle: &amp;Handle&lt;Buffe
         context::info!("Opened the first buffer of filetype [a]{filetype}");
         context::info!("The buffer is called [a]{}", buf.name());
     }
-});
-<span class="boring">}</span></code></pre>
+});</code></pre>
 <p>The above example showcases the two types of borrowing. The first type is the
 mutable borrow, which can’t be reused after acquiring other references, and the
 second one is the immutable borrow, which can coexist with any number of other
@@ -265,9 +261,7 @@ global access will eventually go through an <code>RwData</code>.</p>
 </ul>
 <p>Lets explore how this happens. Below is a code snippet that shows on the
 <code>StatusLine</code> wether a value has changed:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn setup() {
     let value = RwData::new(0);
@@ -296,16 +290,13 @@ fn setup() {
         *value.write(pa) = new;
         Ok(None)
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>In the snippet above, the <code>value</code> variable will be displayed in the
 <code>StatusLine</code>, and every time it changes, the text `“value changed to” will be
 shown beside it.</p>
 <p>The value inside an <code>RwData</code> is deemed as “changed” if the <code>RwData::write</code>
 function was called in any other copy of the same <code>RwData</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn test(pa: &amp;mut Pass) {
     let value = RwData::new("hello");
@@ -343,8 +334,7 @@ fn test(pa: &amp;mut Pass) {
     value_clone.declare_written();
     
     assert!(value.has_changed() == true);
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <h3 id="widget-handles"><a class="header" href="#widget-handles">Widget <code>Handle</code>s</a></h3>
 <p>A <code>Handle&lt;W: Widget&gt;</code> is a wrapper over two types:</p>
 <ul>
@@ -356,9 +346,7 @@ fn test(pa: &amp;mut Pass) {
 <p>The most common <code>Handle</code> you will encounter is the <code>Handle&lt;Buffer&gt;</code>,
 shorthanded to just <code>Handle</code>. You are able to freely modify it whenever you
 have access to an <code>&amp;mut Pass</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 use std::collections::HashSet;
 
 fn setup() {
@@ -380,13 +368,10 @@ fn setup() {
         Ok(None)
     })
     .doc(txt!("Removes selections with duplicate text content"), None);
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>The <code>raison d'être</code> of <code>Handle</code>s is to keep both the <code>RwArea</code> and <code>RwData&lt;W&gt;</code>
 in the same struct, so you can use methods that require reading from both:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn setup() {
     opts::fmt_status(|_| {
@@ -402,8 +387,7 @@ fn cursors_on_screen(pa: &amp;Pass, handle: &amp;Handle) -&gt; Text {
     let total = handle.selections(pa).iter_within(range).count();
     
     txt!("On screen[separator]:[] [coord]{total}")
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <h3 id="the-type-erased-rwarea"><a class="header" href="#the-type-erased-rwarea">The type erased <code>RwArea</code></a></h3>
 <p>In Duat, you may create your own Ui by implementing the <code>RawUi</code> trait, which
 also requires an area type that implements the <code>RawArea</code> trait.</p>
@@ -412,9 +396,7 @@ also requires an area type that implements the <code>RawArea</code> trait.</p>
 but grants direct access to the methods defined in the <code>RawArea</code> trait, without
 the need for a <code>Pass</code>.</p>
 <p>When you have a <code>Handle</code>, you can access the <code>Area</code> value in two ways:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::{prelude::*, ui::RwArea};
+<pre><code class="language-rust">use duat::{prelude::*, ui::RwArea};
 
 fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
     let rw_area: &amp;RwArea = handle.area();
@@ -430,8 +412,7 @@ fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
     
     area.set_height(10.0).unwrap();
     widget.text_mut().replace_range(.., "lmao");
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>If required, you can also access the unerased version of the <code>Area</code> by calling
 <code>RwArea::write_as</code> or <code>RwArea::read_as</code>, which takes in a type argument <code>A</code> and
 returns <code>Some(area)</code> if the area is actually of type <code>A</code> (i.e., duat was
@@ -441,9 +422,7 @@ compiled with that <code>RawArea</code>’s <code>RawUi</code>).</p>
 thought that the code looked a little awkward, since we had to put two objects
 on the <code>StatusLine</code> just to get it to update properly.</p>
 <p>Well, there is actually an existing solution to that, which can be achieved by calling the <code>RwData::map</code> function:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn setup() {
     let value = RwData::new(0);
@@ -469,8 +448,7 @@ fn setup() {
         *value.write(pa) = new;
         Ok(None)
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>This returns a <code>DataMap&lt;usize, String&gt;</code>, which works very similarly to an
 <code>RwData</code>, except for the fact that it can only be read, and reading is
 accompanied by a call to the mapping function, returning its value, as opposed
@@ -492,9 +470,7 @@ value,and the next time someone tries to call <code>BulkDataWriter::write</code>
 does takea <code>Pass</code>, that function will be called and will update the value
 before returning the `&amp;mut T.</p>
 <p>This makes it possible to update a value from another thread:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::{data::BulkDataWriter, prelude::*};
+<pre><code class="language-rust">use duat::{data::BulkDataWriter, prelude::*};
 use std::time::Duration;
 
 // You will mostly want this type to be a static variable
@@ -513,8 +489,7 @@ fn setup() {
         context::info!("The uptime is {:?}", DATA.write(pa));
         Ok(None)
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>This type is very focused on building APIs, in particular, it is good at
 permitting functions that don’t take a <code>Pass</code> to be used. For example, in duat,
 the <code>cmd::add</code> function makes use of a <code>BulkDataWriter</code> in order to be called
@@ -530,9 +505,7 @@ rule.</p>
 <p>There is, however, one way to do this, which is through the <code>Pass:write_many</code>
 method. This method takes in a group of <code>RwData</code>-like structures and gets
 mutable references to <em>all</em> of them at the same time.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt;u32&gt;) {
     // You can pass in any tuple (up to 12 elements) or any array
@@ -552,8 +525,7 @@ fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt
     
     // This function will return an `Err(text)` in the case of failure.
     assert!(handled.is_err());
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 
                     </main>
 

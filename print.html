@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-28e300da.js";
+            window.path_to_searchindex_js = "searchindex-4a60245c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07fa4c9b.js"></script>
+        <script src="toc-74f781a9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -187,9 +187,7 @@ one of the goals of Duat is to have relatively straightforward configuration,
 and easy pluginability.</p>
 <p>As a motivating example, here’s a small plugin, which highlights matches to the
 word underthe cursor:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 pub struct HighlightMatches;
 
@@ -223,8 +221,7 @@ impl Plugin for HighlightMatches {
             }
         });
     }
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>The goal of this book is to help you understand not only how to operate Duat, but
 hopefully how to do something like this as well.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -518,13 +515,10 @@ later on to help you better understand duat.</p>
 <h1 id="the-setup-function-and-setup_duat"><a class="header" href="#the-setup-function-and-setup_duat">The <code>setup</code> function and <code>setup_duat!</code></a></h1>
 <p>In order for Duat to be able to run your config crate in <code>~/.config/duat</code>, it
 <em>needs</em> to have at the very least this in it:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
+<pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
-fn setup() {}
-<span class="boring">}</span></code></pre>
+fn setup() {}</code></pre>
 <p>That’s because Duat will call the <code>setup</code> function (after some initial setup,
 and before some final setup) in order configure Duat. For all intents and
 purposes, treat the <code>setup</code> function as if it were the <code>init.lua</code> on a neovim
@@ -532,9 +526,7 @@ configuration.</p>
 <p>Of course, not everything needs to be placed inside of this function. For
 example, you could separate the plugins into a separate function, if you think
 that will look cleaner:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">mod duat_catppuccin {
+<pre><code class="language-rust"><span class="boring">mod duat_catppuccin {
 </span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Catppuccin;
@@ -551,8 +543,7 @@ fn setup() {
 
 fn add_plugins() {
     plug(duat_catppuccin::Catppuccin::default());
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>You can add <code>Plugin</code>s to duat by calling the <code>plug</code> function. By default, the
 <code>Treesitter</code> <code>MatchPairs</code>  plugins are added, providing syntax highlighting,
 automatic indentation, and matching parenthesis highlighting. There is also the
@@ -560,38 +551,27 @@ automatic indentation, and matching parenthesis highlighting. There is also the
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-prelude-module"><a class="header" href="#the-prelude-module">The <code>prelude</code> module</a></h1>
 <p>At the top of your crate, you should be able to find this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
+<pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
     // The stuff inside your setup...
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>This will import everything in the <code>prelude</code> module of <code>duat</code>. This should have
 everything you will need in order to configure Duat, not including things from
 other crates that you may want to import (such as plugins).</p>
 <p>When calling <code>use duat::prelude::*</code>, most imported things will be in the form
 of modules, like this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use duat::opts;
-<span class="boring">}</span></code></pre>
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
+</span>use duat::opts;</code></pre>
 <p>This is importing the <code>opts</code> module, as opposed to importing its items
 directly, like this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use duat::opts::*;
-<span class="boring">}</span></code></pre>
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
+</span>use duat::opts::*;</code></pre>
 <p>This means that, for most options, their path is made up of a
 <code>{module}::{function}</code> combo. So the usual <code>setup</code> function should look
 something like this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
+<pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
@@ -616,22 +596,18 @@ fn setup() {
     });
     
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>The exceptions to this are the <code>map</code>, <code>alias</code> and <code>plug</code> functions and the
 <code>setup_duat!</code> macro. These items are imported directly.</p>
 <p>The following chapters should give a quick overview of these items imported
 from the prelude module.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="the-opts-module"><a class="header" href="#the-opts-module">The <code>opts</code> module</a></h1>
+<h2 id="the-opts-module"><a class="header" href="#the-opts-module">The <code>opts</code> module</a></h2>
 <p>This module contains a bunch of commonly used options. It covers settings for
 the various <code>Widget</code>s of Duat, most notably the <code>Buffer</code> widget, which is where
 editing takes place.</p>
 <p>Below are the available functions on this module, as well as their default
 values.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
+<pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
@@ -743,18 +719,14 @@ fn setup() {
         let param = duat_param_txt();
         status!("{mode} {name_txt}{Spacer}{sels_txt} {param} {main_txt}")
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>For more information about modification of the <code>StatusLine</code>, see the chapter on
-<a href="#modding-the-statusline">modding the <code>StatusLine</code></a>. For information on modding the <code>Notifications</code> and
-<code>LogBook</code> widgets, see the <a href="#the-text-struct"><code>Text</code></a> chapter</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="form-how-text-is-colored"><a class="header" href="#form-how-text-is-colored"><code>form</code>: How text is colored</a></h1>
+<a href="../scripting-duat/mod-status.html">modding the <code>StatusLine</code></a>. For information on modding the <code>Notifications</code> and
+<code>LogBook</code> widgets, see the <a href="../scripting-duat/text/chapter.html"><code>Text</code></a> chapter</p>
+<h2 id="form-how-text-is-colored"><a class="header" href="#form-how-text-is-colored"><code>form</code>: How text is colored</a></h2>
 <p>In duat, the way text is styled is through <code>Form</code>s. The <code>Form</code> struct,
 alongside the <code>form</code> module, are imported by the prelude:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
+<pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
@@ -765,8 +737,7 @@ fn setup() {
     
     // Setting by reference
     form::set("accent.debug", "default.debug");
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>The main function that you will use from this module is <code>form::set</code>. This
 function sets the form on the left to the value on the right. This value can be
 of two types:</p>
@@ -776,7 +747,7 @@ of two types:</p>
 right is altered, so will the one on the left. This reduces the need for
 setting a ton of forms in things like colorschemes.</li>
 </ul>
-<h2 id="how-forms-should-be-named"><a class="header" href="#how-forms-should-be-named">How forms should be named</a></h2>
+<h3 id="how-forms-should-be-named"><a class="header" href="#how-forms-should-be-named">How forms should be named</a></h3>
 <p>Every form in duat should be named like this: <code>[a-z0-9]+(\.[a-z0-9]+)*</code>. That
 way, inheritance of forms becomes very predictable, and it’s much easier for
 plugin writers to depend on that feature.</p>
@@ -784,13 +755,11 @@ plugin writers to depend on that feature.</p>
 <code>default</code> form, unlike other forms, can have <code>Widget</code> specific implementations,
 like <code>default.StatusLine</code>, which will change the <code>default</code> form <em>only</em> on
 <code>StatusLine</code>s, and is set by default.</p>
-<h2 id="colorschemes"><a class="header" href="#colorschemes">Colorschemes</a></h2>
+<h3 id="colorschemes"><a class="header" href="#colorschemes">Colorschemes</a></h3>
 <p>The other main function that you will use from this module is the
 <code>form::set_colorscheme</code> function. This function will change the colorscheme to
 a previously named one:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">mod duat_catppuccin {
+<pre><code class="language-rust"><span class="boring">mod duat_catppuccin {
 </span><span class="boring">    use duat::prelude::*;
 </span><span class="boring">    #[derive(Default)]
 </span><span class="boring">    pub struct Catppuccin;
@@ -806,9 +775,8 @@ fn setup() {
     plug(duat_catppuccin::Catppuccin::default());
     
     form::set_colorscheme("catppuccin-latte");
-}
-<span class="boring">}</span></code></pre>
-<h2 id="form-inheritance"><a class="header" href="#form-inheritance"><code>Form</code> inheritance</a></h2>
+}</code></pre>
+<h3 id="form-inheritance"><a class="header" href="#form-inheritance"><code>Form</code> inheritance</a></h3>
 <p>Another aspect of duat’s forms that can save a lot of typing is the concept of <code>Form</code> inheritance. In Duat, forms follow the following structure:</p>
 <ul>
 <li>If <code>form.subform</code> is unset, it will reference <code>form</code>;</li>
@@ -824,19 +792,16 @@ would follow the change to the <code>markup</code> form.</p>
 <p>Additionally, if the form <code>f0.f1.f2</code> is set to something, the forms <code>f0</code> and
 <code>f1.f2</code> would also be set, although they will reference the <code>default</code> form in
 that situation, not whatever <code>f0.f1.f2</code> was set to.</p>
-<h3 id="quiz"><a class="header" href="#quiz">Quiz</a></h3>
+<p><strong>Quiz</strong></p>
 <p>Given the following sequence of <code>form::set</code>s, what will each <code>Form</code> be at the
 end?</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span><span class="boring">fn test() {
 </span>form::set("parent", Form::green());
 form::set("parent.child.granchild", Form::blue()); 
 form::set("grandparent.parent.child", "parent.child");
 form::set("parent", Form::red());
-<span class="boring">}
-</span><span class="boring">}</span></code></pre>
+<span class="boring">}</span></code></pre>
 <details>
 <summary>See results</summary>
 <ul>
@@ -846,138 +811,17 @@ form::set("parent", Form::red());
 <li>“grandparent.parent.child”: <code>Form::red()</code>.</li>
 </ul>
 </details>
-<h2 id="masks"><a class="header" href="#masks">Masks</a></h2>
+<h3 id="masks"><a class="header" href="#masks">Masks</a></h3>
 <p>A mask is essentially the opposite of the inheritance concept. Instead of the longer form inheriting from the shorter forms, the shorter forms will be mapped for longer ones.</p>
 <p>It works like this: Say I have a <code>File</code> widget, and in it, there are instances
 of the <code>function</code> form, used to highlight function identifiers. If there is a
 <code>function.error</code> form, and I tell the <code>File</code> to use the <code>error</code> mask, instead
 of using the <code>function</code> form, Duat will use <code>function.error</code>.</p>
-<p>In duat, by default there are four masks: <code>error</code>, <code>warning</code>, <code>info</code>, and <code>inactive</code>. The first three are used primarily to show color coded notifications. The last one is unused, but you can use it to change how unfocused files should be displayed.</p>
+<p>In duat, by default there are four masks: <code>error</code>, <code>warning</code>, <code>info</code>, and <code>inactive</code>. The first three are used primarily to show color coded notifications. The last one is unused, but you can use it to change how unfocused buffers should be displayed.</p>
 <p>You can also add more masks through <code>form::enable_mask</code>. If you want to learn
-more about masks and how to use them, you should check out the <a href="quick-settings/prelude/masks.html">masks
+more about masks and how to use them, you should check out the <a href="quick-settings/masks.html">masks
 chapter</a></p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="map-and-alias-modifying-keys"><a class="header" href="#map-and-alias-modifying-keys">map and alias: modifying keys</a></h1>
-<p>In Duat, mapping works somewhat like Vim/neovim, but not quite. This is how it
-works:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    map::&lt;User&gt;("f", "&lt;Esc&gt;&lt;A-j&gt;|fold -s -w 80&lt;Enter&gt;");
-    alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-    alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
-}
-<span class="boring">}</span></code></pre>
-<p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take
-the keys as is, and if the sequence matches, outputs the remapping, otherwise,
-outputs the keys that were sent. <code>alias</code> does the same thing, but it also
-““prints”“ the sequence that was sent, making it <em>look</em> like you are typing
-real text. Here’s a showcase of the difference:</p>
-<p align="center"><img src="../../assets/map-alias.gif" /></p>
-
-<p>Both of these functions also take a <em>required</em> type argument. This type
-argument is the <code>Mode</code> where this mapping will take place. So in the first
-example, in <code>Insert</code> and <code>Prompt</code> mode, if you type <code>jk</code>, the <code>j</code> will show up
-as ““text”“, but when you press <code>k</code>, you will immediately exit to <code>Normal</code>
-<code>Mode</code>.</p>
-<p><code>User</code> is a standard <code>Mode</code> in Duat. It is meant to be a “hub” for Plugin
-writers to put default mappings on. Sort of like the leader key in Vim/Neovim.
-On <code>Normal</code> mode, by default, this mode is entered by pressing the space bar.
-While you <em>can</em> change that like this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    map::&lt;Normal&gt;(" ", "");
-    // In rust, you have to escap a backslash
-    map::&lt;Normal&gt;(r"\", " ");
-}
-<span class="boring">}</span></code></pre>
-<p>You <em>should</em> prefer doing this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    map::&lt;Normal&gt;(" ", "");
-    map::&lt;Normal&gt;("\\", User);
-}
-<span class="boring">}</span></code></pre>
-<p>In this case, instead of putting a sequence of keys to replace the mapped ones,
-I placed the mode directly.</p>
-<p>This is allowed in order to support custom <code>Mode</code>s. That way, you can just
-place the <code>Mode</code> as the second argument, and the mapping will switch modes
-instead of sending keys. This also works with <code>alias</code>es.</p>
-<blockquote class="blockquote-tag blockquote-tag-note">
-<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
-<p>In this case, since <code>User</code> is a struct with no fields, I could just put
-<code>User</code> as the second argument, which acts as a constructor. But in most other
-<code>Mode</code>s, you’re gonna have to write something like <code>Insert::new()</code> as the
-argument instead.</p>
-</blockquote>
-<h2 id="list-of-keys-and-modifiers"><a class="header" href="#list-of-keys-and-modifiers">List of keys and modifiers</a></h2>
-<p>Syntax wise, the keys are very similar to vim style. Regular characters are
-placed normally, special keys are enclosed in <code>&lt;</code>,<code>&gt;</code> pairs, and modified keys
-are enclosed in these pairs, with a <code>&lt;{mod}-{key}&gt;</code> syntax. Examples:</p>
-<ul>
-<li><code>abc&lt;C-Up&gt;&lt;F12&gt;</code>.</li>
-<li><code>&lt;A-Enter&gt;&lt;AS-Left&gt;</code>.</li>
-<li><code>づあっと</code>.</li>
-</ul>
-<p>This is the list of recognized special keys:</p>
-<ul>
-<li><code>&lt;Enter&gt;</code>,</li>
-<li><code>&lt;Tab&gt;</code>,</li>
-<li><code>&lt;Backspace&gt;</code>,</li>
-<li><code>&lt;Del&gt;</code>,</li>
-<li><code>&lt;Esc&gt;</code>,</li>
-<li><code>&lt;Up&gt;</code>,</li>
-<li><code>&lt;Down&gt;</code>,</li>
-<li><code>&lt;Left&gt;</code>,</li>
-<li><code>&lt;Right&gt;</code>,</li>
-<li><code>&lt;PageU&gt;</code>,</li>
-<li><code>&lt;PageD&gt;</code>,</li>
-<li><code>&lt;Home&gt;</code>,</li>
-<li><code>&lt;End&gt;</code>,</li>
-<li><code>&lt;Ins&gt;</code>,</li>
-<li><code>&lt;F{1-12}&gt;</code>,</li>
-</ul>
-<p>And these are the allowed modifiers, which, as you can see above, can be
-composed together:</p>
-<ul>
-<li><code>C =&gt; Control</code>,</li>
-<li><code>A =&gt; Alt</code>,</li>
-<li><code>S =&gt; Shift</code>,</li>
-<li><code>M =&gt; Meta</code>,</li>
-<li><code>super =&gt; Super</code>,</li>
-<li><code>hyper =&gt; Hyper</code>,</li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="cursor-how-to-print-cursors"><a class="header" href="#cursor-how-to-print-cursors"><code>cursor</code>: How to print cursors</a></h1>
-<p>The <code>cursor</code> module is like the <code>print</code> module, in that it provides some basic
-options on how cursors should be printed. These options primarily concern if
-cursors should be printed as “real cursors” (The blinking kind, that can turn
-into a bar and stuff), or as just <code>Form</code>s.</p>
-<ul>
-<li><code>cursor::set_main</code> will set the “shape” of the main cursor. This takes a
-<code>CursorShape</code> argument, and lets you set its shape to a vertical bar, a
-horizontal bar, and make it blink.</li>
-<li><code>cursor::set_extra</code> is the same but for extra cursors. Do note that this may
-not work on some <code>Ui</code>s, mainly terminals, which only allow for one cursor at a
-time.</li>
-<li><code>cursor::unset_main</code> and <code>cursor::unset_extra</code>: Disables cursor shapes for
-every type of cursor, replacing them with a <code>Form</code>, which will be <code>caret.main</code>
-and <code>caret.extra</code>, respectively</li>
-<li><code>cursor::unset</code>: The same as calling <code>unset_main</code> and <code>unset_extra</code>.</li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="list-of-forms"><a class="header" href="#list-of-forms">List of forms</a></h1>
+<h3 id="list-of-forms"><a class="header" href="#list-of-forms">List of forms</a></h3>
 <p>Currently, in <code>duat</code>, these are the forms in use:</p>
 <ul>
 <li><code>default</code>: Is applied to every text. Can be <code>Widget</code> dependent, like
@@ -994,7 +838,7 @@ temporarily” form. You should use this when you want to, for example, remove
 all visible color from the screen, in order to highlight something.  Some
 plugins make use of this form, like <code>duat-hop</code> and <code>duat-sneak</code>, which are
 recreations of some neovim plugins.</li>
-<li><code>alias</code>: Is used on aliases, see the <a href="#map-and-alias-modifying-keys">map and alias</a>
+<li><code>alias</code>: Is used on aliases, see the <a href="quick-settings/prelude/map-and-alias.html">map and alias</a>
 chapter for more information.</li>
 <li><code>matched_pair</code>: Isn’t technically part of duat, but it’s part of a default
 plugin.</li>
@@ -1017,7 +861,7 @@ set <code>linenum.wrapped</code>, <code>linenum.main</code> and <code>linenum.wr
 <li>
 <p><code>StatusLine</code>:</p>
 <ul>
-<li><code>file</code>, <code>file.new</code>, <code>file.unsaved</code>, <code>file.new.scratch</code>: Are all used by
+<li><code>buffer</code>, <code>buffer.new</code>, <code>buffer.unsaved</code>, <code>buffer.new.scratch</code>: Are all used by
 <a href="https://docs.rs/duat/latest/duat/state/fn.name_txt.html"><code>name_txt</code></a>, which shows the <code>File</code>’s name and some other info.</li>
 <li><code>mode</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.mode_txt.html"><code>mode_txt</code></a>.</li>
 <li><code>coord</code> and <code>separator</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.main_txt.html"><code>main_txt</code></a>.</li>
@@ -1176,65 +1020,158 @@ already set to something:</p>
 </tbody>
 </table>
 </div>
+<h2 id="map-and-alias-modifying-keys"><a class="header" href="#map-and-alias-modifying-keys"><code>map</code> and <code>alias</code>: modifying keys</a></h2>
+<p>In Duat, mapping works somewhat like Vim/neovim, but not quite. This is how it
+works:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    map::&lt;User&gt;("f", "&lt;Esc&gt;&lt;A-j&gt;|fold -s -w 80&lt;Enter&gt;");
+    alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
+}</code></pre>
+<p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take
+the keys as is, and if the sequence matches, outputs the remapping, otherwise,
+outputs the keys that were sent. <code>alias</code> does the same thing, but it also
+““prints”“ the sequence that was sent, making it <em>look</em> like you are typing
+real text. Here’s a showcase of the difference:</p>
+<p align="center"><img src="../../../assets/map-alias.gif" /></p>
+
+<p>Both of these functions also take a <em>required</em> type argument. This type
+argument is the <code>Mode</code> where this mapping will take place. So in the first
+example, in <code>Insert</code> and <code>Prompt</code> mode, if you type <code>jk</code>, the <code>j</code> will show up
+as ““text”“, but when you press <code>k</code>, you will immediately exit to <code>Normal</code>
+<code>Mode</code>.</p>
+<p><code>User</code> is a standard <code>Mode</code> in Duat. It is meant to be a “hub” for Plugin
+writers to put default mappings on. Sort of like the leader key in Vim/Neovim.
+On <code>Normal</code> mode, by default, this mode is entered by pressing the space bar.
+While you <em>can</em> change that like this:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    map::&lt;Normal&gt;(" ", "");
+    // In rust, you have to escap a backslash
+    map::&lt;Normal&gt;(r"\", " ");
+}</code></pre>
+<p>You <em>should</em> prefer doing this:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    map::&lt;Normal&gt;(" ", "");
+    map::&lt;Normal&gt;("\\", User);
+}</code></pre>
+<p>In this case, instead of putting a sequence of keys to replace the mapped ones,
+I placed the mode directly.</p>
+<p>This is allowed in order to support custom <code>Mode</code>s. That way, you can just
+place the <code>Mode</code> as the second argument, and the mapping will switch modes
+instead of sending keys. This also works with <code>alias</code>es.</p>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>In this case, since <code>User</code> is a struct with no fields, I could just put
+<code>User</code> as the second argument, which acts as a constructor. But in most other
+<code>Mode</code>s, you’re gonna have to write something like <code>Insert::new()</code> as the
+argument instead.</p>
+</blockquote>
+<h3 id="list-of-keys-and-modifiers"><a class="header" href="#list-of-keys-and-modifiers">List of keys and modifiers</a></h3>
+<p>Syntax wise, the keys are very similar to vim style. Regular characters are
+placed normally, special keys are enclosed in <code>&lt;</code>,<code>&gt;</code> pairs, and modified keys
+are enclosed in these pairs, with a <code>&lt;{mod}-{key}&gt;</code> syntax. Examples:</p>
+<ul>
+<li><code>abc&lt;C-Up&gt;&lt;F12&gt;</code>.</li>
+<li><code>&lt;A-Enter&gt;&lt;AS-Left&gt;</code>.</li>
+<li><code>づあっと</code>.</li>
+</ul>
+<p>This is the list of recognized special keys:</p>
+<ul>
+<li><code>&lt;Enter&gt;</code>,</li>
+<li><code>&lt;Tab&gt;</code>,</li>
+<li><code>&lt;Backspace&gt;</code>,</li>
+<li><code>&lt;Del&gt;</code>,</li>
+<li><code>&lt;Esc&gt;</code>,</li>
+<li><code>&lt;Up&gt;</code>,</li>
+<li><code>&lt;Down&gt;</code>,</li>
+<li><code>&lt;Left&gt;</code>,</li>
+<li><code>&lt;Right&gt;</code>,</li>
+<li><code>&lt;PageU&gt;</code>,</li>
+<li><code>&lt;PageD&gt;</code>,</li>
+<li><code>&lt;Home&gt;</code>,</li>
+<li><code>&lt;End&gt;</code>,</li>
+<li><code>&lt;Ins&gt;</code>,</li>
+<li><code>&lt;F{1-12}&gt;</code>,</li>
+</ul>
+<p>And these are the allowed modifiers, which, as you can see above, can be
+composed together:</p>
+<ul>
+<li><code>C =&gt; Control</code>,</li>
+<li><code>A =&gt; Alt</code>,</li>
+<li><code>S =&gt; Shift</code>,</li>
+<li><code>M =&gt; Meta</code>,</li>
+<li><code>super =&gt; Super</code>,</li>
+<li><code>hyper =&gt; Hyper</code>,</li>
+</ul>
+<h2 id="cursor-how-to-print-cursors"><a class="header" href="#cursor-how-to-print-cursors"><code>cursor</code>: How to print cursors</a></h2>
+<p>The <code>cursor</code> module is like the <code>print</code> module, in that it provides some basic
+options on how cursors should be printed. These options primarily concern if
+cursors should be printed as “real cursors” (The blinking kind, that can turn
+into a bar and stuff), or as just <code>Form</code>s.</p>
+<ul>
+<li><code>cursor::set_main</code> will set the “shape” of the main cursor. This takes a
+<code>CursorShape</code> argument, and lets you set its shape to a vertical bar, a
+horizontal bar, and make it blink.</li>
+<li><code>cursor::set_extra</code> is the same but for extra cursors. Do note that this may
+not work on some <code>Ui</code>s, mainly terminals, which only allow for one cursor at a
+time.</li>
+<li><code>cursor::unset_main</code> and <code>cursor::unset_extra</code>: Disables cursor shapes for
+every type of cursor, replacing them with a <code>Form</code>, which will be <code>caret.main</code>
+and <code>caret.extra</code>, respectively</li>
+<li><code>cursor::unset</code>: The same as calling <code>unset_main</code> and <code>unset_extra</code>.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="frequently-used-snippets"><a class="header" href="#frequently-used-snippets">Frequently used snippets</a></h1>
 <p>If you just want some no nonsense snippets to copy paste into your config, this
 is the chapter for you.</p>
 <p>These should also serve as a good entry point for light modification and learning
 by example.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="mapping-jk-to-esc"><a class="header" href="#mapping-jk-to-esc">mapping jk to esc</a></h1>
+<h2 id="mapping-jk-and-others-to-esc"><a class="header" href="#mapping-jk-and-others-to-esc">mapping jk and others to esc</a></h2>
 <p>This one is pretty simple. This is normally done on Duat’s native <code>Insert</code> mode,
 but you could replace that with any other <code>Insert</code> mode, provided you got the
 plugin for one:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>This won’t print anything to the screen while you’re typing, making it seem
 like the <code>j</code> key has a bit of delay. If you wish to print <code>'j'</code> to the screen,
 use this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>If you want to, you can also have this behavioron the <code>PromptLine</code>, i.e., while
 writing commands and searches:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
     map::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
-}
-<span class="boring">}</span></code></pre>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="statusline-on-each-buffer"><a class="header" href="#statusline-on-each-buffer">StatusLine on each Buffer</a></h1>
+}</code></pre>
+<h2 id="statusline-on-each-buffer"><a class="header" href="#statusline-on-each-buffer"><code>StatusLine</code> on each <code>Buffer</code></a></h2>
 <p>If you want one <code>StatusLine</code> on every <code>Buffer</code>, you can do that via hooks:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
+<pre><code class="language-rust">setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
@@ -1243,29 +1180,22 @@ fn setup() {
             .above()
             .push_on(pa, handle);
     });
-}
-<span class="boring">}</span></code></pre>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and Status on same line</a></h1>
+}</code></pre>
+<h2 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and status on same line</a></h2>
 <p>In the Kakoune text editor, the status line occupies the same line as the
 command line and notifications. If you want this behavior in Duat, the
 following snippet is enough:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
     opts::set(|opts| {
         opts.one_line_footer = true;
     });
-}
-<span class="boring">}</span></code></pre>
-<p>This will call [<code>FooterWidgets::one_line</code>] on the window’s <code>FooterWidgets</code>.</p>
+}</code></pre>
+<p>This will call <code>FooterWidgets::one_line</code> on the window’s <code>FooterWidgets</code>.</p>
 <p>If you want one of these on each <code>Buffer</code>, you can do this instead:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
@@ -1274,10 +1204,8 @@ fn setup() {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         FooterWidgets::default().one_line().push_on(pa, handle);
     });
-}
-<span class="boring">}</span></code></pre>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h1>
+}</code></pre>
+<h2 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h2>
 <p>The most relevant parts for pretty much every <code>StatusLine</code> are the following.</p>
 <p>Formatted status parts:</p>
 <ul>
@@ -1321,13 +1249,10 @@ lines. 1 indexed.
 <code>Text</code>, which includes the <code>StatusLine</code>’s.</li>
 <li>Forms like <code>[buffer]</code>. Any form can be placed within those braces, and they are
 all evaluated at compile time. For more information about them, see the
-<a href="#form-how-text-is-colored">forms</a> chapter</li>
+<a href="prelude/form-module.html">forms</a> chapter</li>
 </ul>
-<h2 id="some-examples"><a class="header" href="#some-examples">Some examples</a></h2>
 <p>This is the default:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
@@ -1342,12 +1267,9 @@ fn setup() {
         let param = duat_param_txt();
         status!("{mode} {name_txt}{Spacer}{sels_txt} {param} {main_txt}")
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>Customized <code>main_txt</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 setup_duat!(setup);
 
 fn setup() {
@@ -1360,12 +1282,9 @@ fn setup() {
             Buffer::len_lines 
         )
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>Customized <code>name_txt</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
@@ -1392,15 +1311,11 @@ fn name_txt(buffer: &amp;Buffer) -&gt; Text {
     }
 
     b.build()
-}
-<span class="boring">}</span></code></pre>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="buffer-wise-tabstops"><a class="header" href="#buffer-wise-tabstops">Buffer wise tabstops</a></h1>
+}</code></pre>
+<h2 id="buffer-wise-tabstops"><a class="header" href="#buffer-wise-tabstops">Buffer wise tabstops</a></h2>
 <p>If you want to change the tabstop size per <code>Buffer</code>, you can just modify the
 following  snippet:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
@@ -1411,13 +1326,10 @@ fn setup() {
             _ =&gt; 4
         };
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>If you want, you can also set other options with this, like which characters
 should be a part of words. In this case, I’m adding <code>'-'</code> to the list:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
@@ -1434,10 +1346,8 @@ fn setup() {
             _ =&gt; buffer.opts.tabstop = 4
         }
     });
-}
-<span class="boring">}</span></code></pre>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="nerdfonts-statusline"><a class="header" href="#nerdfonts-statusline">Nerdfonts StatusLine</a></h1>
+}</code></pre>
+<h2 id="nerdfonts-statusline"><a class="header" href="#nerdfonts-statusline">Nerdfonts StatusLine</a></h2>
 <blockquote class="blockquote-tag blockquote-tag-important">
 <p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>Important</p>
 <p>This chapter assumes that you are using some kind of <a href="https://www.nerdfonts.com/font-downloads">nerd font</a> in your
@@ -1447,9 +1357,7 @@ characters being displayed.</p>
 </blockquote>
 <p>If you want to nerd-fontify your <code>StatusLine</code>, you can just redefine some of
 the status line parts:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn name_txt(buffer: &amp;Buffer) -&gt; Text {
     let mut b = Text::builder();
@@ -1466,28 +1374,21 @@ fn name_txt(buffer: &amp;Buffer) -&gt; Text {
     }
 
     b.build()
-}
-<span class="boring">}</span></code></pre>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="status-on-buffers-and-windows"><a class="header" href="#status-on-buffers-and-windows">Status on Buffers and windows</a></h1>
+}</code></pre>
+<h2 id="status-on-buffers-and-windows"><a class="header" href="#status-on-buffers-and-windows">Status on Buffers and windows</a></h2>
 <p>If you want to have a <code>StatusLine</code> per <code>Buffer</code>, you can add the following:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
         status!("{name_txt}{Spacer}{main_txt}").above().push_on(pa, handle);
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>The snippet above will place a <code>StatusLine</code> above every single <code>Buffer</code>.</p>
 <p>You can go further with this, what if you want different <code>StatusLine</code>s,
 depending on the <code>Buffer</code>?</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
+<pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span>setup_duat!(setup);
 
 fn setup() {
@@ -1500,8 +1401,7 @@ fn setup() {
 
         status.above().push_on(pa, handle);
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
 <p>This chapter will teach you how to do “advanced” configuration of duat. It
@@ -1522,11 +1422,8 @@ memory. Every piece of state in Duat is behind some type that requires the
 Rust’s borrow checker, giving you safe access to the variables of the global
 state. It works via mutable and immutable references, that is, whenever you
 mutably borrow a <code>Pass</code>, you get mutable access to the global state of duat,
-and whenever you borrow it normally, you get non mutable access to this global
-state:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+and whenever you borrow it normally, you get non mutable access to said state:</p>
+<pre><code class="language-rust">use duat::prelude::*;
 
 // As a shorthand, you should use `pa` as the variable's name.
 // You don't need to write the types of `pa` and `handle`, they're
@@ -1566,8 +1463,7 @@ hook::add::&lt;BufferOpened&gt;(|pa: &amp;mut Pass, handle: &amp;Handle&lt;Buffe
         context::info!("Opened the first buffer of filetype [a]{filetype}");
         context::info!("The buffer is called [a]{}", buf.name());
     }
-});
-<span class="boring">}</span></code></pre>
+});</code></pre>
 <p>The above example showcases the two types of borrowing. The first type is the
 mutable borrow, which can’t be reused after acquiring other references, and the
 second one is the immutable borrow, which can coexist with any number of other
@@ -1599,9 +1495,7 @@ global access will eventually go through an <code>RwData</code>.</p>
 </ul>
 <p>Lets explore how this happens. Below is a code snippet that shows on the
 <code>StatusLine</code> wether a value has changed:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn setup() {
     let value = RwData::new(0);
@@ -1630,16 +1524,13 @@ fn setup() {
         *value.write(pa) = new;
         Ok(None)
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>In the snippet above, the <code>value</code> variable will be displayed in the
 <code>StatusLine</code>, and every time it changes, the text `“value changed to” will be
 shown beside it.</p>
 <p>The value inside an <code>RwData</code> is deemed as “changed” if the <code>RwData::write</code>
 function was called in any other copy of the same <code>RwData</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn test(pa: &amp;mut Pass) {
     let value = RwData::new("hello");
@@ -1677,8 +1568,7 @@ fn test(pa: &amp;mut Pass) {
     value_clone.declare_written();
     
     assert!(value.has_changed() == true);
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <h3 id="widget-handles"><a class="header" href="#widget-handles">Widget <code>Handle</code>s</a></h3>
 <p>A <code>Handle&lt;W: Widget&gt;</code> is a wrapper over two types:</p>
 <ul>
@@ -1690,9 +1580,7 @@ fn test(pa: &amp;mut Pass) {
 <p>The most common <code>Handle</code> you will encounter is the <code>Handle&lt;Buffer&gt;</code>,
 shorthanded to just <code>Handle</code>. You are able to freely modify it whenever you
 have access to an <code>&amp;mut Pass</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 use std::collections::HashSet;
 
 fn setup() {
@@ -1714,13 +1602,10 @@ fn setup() {
         Ok(None)
     })
     .doc(txt!("Removes selections with duplicate text content"), None);
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>The <code>raison d'être</code> of <code>Handle</code>s is to keep both the <code>RwArea</code> and <code>RwData&lt;W&gt;</code>
 in the same struct, so you can use methods that require reading from both:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn setup() {
     opts::fmt_status(|_| {
@@ -1736,8 +1621,7 @@ fn cursors_on_screen(pa: &amp;Pass, handle: &amp;Handle) -&gt; Text {
     let total = handle.selections(pa).iter_within(range).count();
     
     txt!("On screen[separator]:[] [coord]{total}")
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <h3 id="the-type-erased-rwarea"><a class="header" href="#the-type-erased-rwarea">The type erased <code>RwArea</code></a></h3>
 <p>In Duat, you may create your own Ui by implementing the <code>RawUi</code> trait, which
 also requires an area type that implements the <code>RawArea</code> trait.</p>
@@ -1746,9 +1630,7 @@ also requires an area type that implements the <code>RawArea</code> trait.</p>
 but grants direct access to the methods defined in the <code>RawArea</code> trait, without
 the need for a <code>Pass</code>.</p>
 <p>When you have a <code>Handle</code>, you can access the <code>Area</code> value in two ways:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::{prelude::*, ui::RwArea};
+<pre><code class="language-rust">use duat::{prelude::*, ui::RwArea};
 
 fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
     let rw_area: &amp;RwArea = handle.area();
@@ -1764,8 +1646,7 @@ fn test&lt;W: Widget&gt;(pa: &amp;mut Pass, handle: &amp;Handle&lt;W&gt;) {
     
     area.set_height(10.0).unwrap();
     widget.text_mut().replace_range(.., "lmao");
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>If required, you can also access the unerased version of the <code>Area</code> by calling
 <code>RwArea::write_as</code> or <code>RwArea::read_as</code>, which takes in a type argument <code>A</code> and
 returns <code>Some(area)</code> if the area is actually of type <code>A</code> (i.e., duat was
@@ -1775,9 +1656,7 @@ compiled with that <code>RawArea</code>’s <code>RawUi</code>).</p>
 thought that the code looked a little awkward, since we had to put two objects
 on the <code>StatusLine</code> just to get it to update properly.</p>
 <p>Well, there is actually an existing solution to that, which can be achieved by calling the <code>RwData::map</code> function:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn setup() {
     let value = RwData::new(0);
@@ -1803,8 +1682,7 @@ fn setup() {
         *value.write(pa) = new;
         Ok(None)
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>This returns a <code>DataMap&lt;usize, String&gt;</code>, which works very similarly to an
 <code>RwData</code>, except for the fact that it can only be read, and reading is
 accompanied by a call to the mapping function, returning its value, as opposed
@@ -1826,9 +1704,7 @@ value,and the next time someone tries to call <code>BulkDataWriter::write</code>
 does takea <code>Pass</code>, that function will be called and will update the value
 before returning the `&amp;mut T.</p>
 <p>This makes it possible to update a value from another thread:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::{data::BulkDataWriter, prelude::*};
+<pre><code class="language-rust">use duat::{data::BulkDataWriter, prelude::*};
 use std::time::Duration;
 
 // You will mostly want this type to be a static variable
@@ -1847,8 +1723,7 @@ fn setup() {
         context::info!("The uptime is {:?}", DATA.write(pa));
         Ok(None)
     });
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <p>This type is very focused on building APIs, in particular, it is good at
 permitting functions that don’t take a <code>Pass</code> to be used. For example, in duat,
 the <code>cmd::add</code> function makes use of a <code>BulkDataWriter</code> in order to be called
@@ -1864,9 +1739,7 @@ rule.</p>
 <p>There is, however, one way to do this, which is through the <code>Pass:write_many</code>
 method. This method takes in a group of <code>RwData</code>-like structures and gets
 mutable references to <em>all</em> of them at the same time.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+<pre><code class="language-rust">use duat::prelude::*;
 
 fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt;u32&gt;) {
     // You can pass in any tuple (up to 12 elements) or any array
@@ -1886,16 +1759,269 @@ fn test(pa: &amp;mut Pass, lhs: [&amp;RwData&lt;u32&gt;; 2], rhs: &amp;RwData&lt
     
     // This function will return an `Err(text)` in the case of failure.
     assert!(handled.is_err());
-}
-<span class="boring">}</span></code></pre>
+}</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
+<p>Hooks in duat are functions that are called automatically whenever some
+specific event happens. They are very similar to kakoune’s hooks or neovim’s
+autocmds. However, one thing that distinguishes the versatility of duat’s hooks
+is the fact that they present you with arguments whose type is inferred at
+compile time:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // Note the Pass, so you have mutable global state access.
+    // The type of the second argument is inferred, it is only
+    // included here for example's sake.
+    hook::add::&lt;ModeSwitched&gt;(|pa, (old, new): (&amp;str, &amp;str)| {
+        if old == "Insert" &amp;&amp; new == "Normal" {
+            _ = context::current_buffer(pa).save(pa);
+        }
+    });
+    
+    hook::add::&lt;BufferOpened&gt;(|pa, handle: &amp;Handle| {
+        let buf = handle.write(pa);
+        match buf.filetype() {
+            Some("rust" | "cpp") =&gt; {
+                buf.opts.wrap_lines = true;
+                buf.opts.wrapping_cap = Some(100);
+            }
+            Some("markdown" | "asciidoc") =&gt; {
+                buf.opts.tabstop = 2;
+                buf.opts.extra_word_chars = &amp;['-'];
+            }
+            Some("lua" | "javascript") =&gt; buf.opts.tabstop = 2, 
+            _ =&gt; {}
+        };
+    });
+    
+    // You can call hooks for many things...
+    hook::add::&lt;WidgetOpened&lt;LineNumbers&gt;&gt;(|pa, handle| {
+        // This will put a vertical ruler on the left of the `LineNumbers`
+        // making for a "stylish" column of numbers.
+        VertRule::builder().push_on(pa, handle);
+    });
+    
+    let key_count = RwData::new(0);
+    hook::add::&lt;KeyTyped&gt;({
+        let key_count = key_count.clone();
+        move |pa, _| {
+            *key_count.write(pa) += 1;
+        }
+    });
+    
+    opts::fmt_status(move |_| {
+        let mode_txt = mode_txt();
+        let key_count = key_count.clone();
+        status!("{name_txt} {mode_txt}{Spacer}{sels_txt} {main_txt} {key_count}")
+    })
+}</code></pre>
+<h2 id="creating-new-hooks"><a class="header" href="#creating-new-hooks">Creating new hooks</a></h2>
+<p>Another interesting thing about hooks in duat is that you can create your own.
+You do that by implementing the <code>Hookable</code> trait on a type:</p>
+<pre><code class="language-rust">use duat::prelude::*;
+
+struct OnIdle(Handle);
+
+impl Hookable for OnIdle {
+    // The Input type is the value available when calling `hook::add`
+    type Input&lt;'h&gt; = &amp;'h Handle;
+    
+    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+        &amp;self.0
+    }
+}</code></pre>
+<p>Then, you decide when to <code>trigger</code> said hook:</p>
+<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle);
+</span><span class="boring">
+</span><span class="boring">impl Hookable for OnIdle {
+</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
+</span><span class="boring">    
+</span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+</span><span class="boring">        &amp;self.0
+</span><span class="boring">    }
+</span><span class="boring">}
+</span>use duat::prelude::*;
+use std::{
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn setup_hook() {
+    // Start counting as soon as the user stops typing.
+    hook::add::&lt;KeyTyped&gt;(|pa, _| COUNTER.store(0, Ordering::Relaxed));
+    
+    std::thread::spawn(|| {
+        while !context::will_reload_or_quit() {
+            std::thread::sleep(Duration::from_secs(1));
+            let elapsed = COUNTER.fetch_add(1, Ordering::Relaxed);
+            
+            // Every 60 seconds, trigger an `OnIdle` event
+            if elapsed + 1 == 60 {
+                // We have to queue it, since this is being
+                // called from another thread.
+                context::queue(|pa| {
+                    let handle = context::current_buffer(pa);
+                    hook::trigger(pa, OnIdle(handle));
+                });
+            }
+        }
+    });
+}</code></pre>
+<p>Then, the user can just add their own hooks, which will be called accordingly:</p>
+<pre><code class="language-rust"><span class="boring">struct OnIdle(Handle);
+</span><span class="boring">
+</span><span class="boring">impl Hookable for OnIdle {
+</span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
+</span><span class="boring">    
+</span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+</span><span class="boring">        &amp;self.0
+</span><span class="boring">    }
+</span><span class="boring">}
+</span><span class="boring">fn setup_hook() {}
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // This would be called from a `Plugin::plug` function
+    setup_hook();
+    
+    hook::add::&lt;OnIdle&gt;(|pa, _| {
+        let mut saved = 0;
+        
+        for handle in context::buffers(pa) {
+            if let Ok(true) = handle.save(pa) {
+                saved += 1;
+            }
+        }
+        
+        if saved &gt; 0 {
+            context::info!("Saved [a]{saved}[] buffers from idling");
+        }
+    });
+}</code></pre>
+<h2 id="list-of-hooks"><a class="header" href="#list-of-hooks">List of hooks</a></h2>
+<p>Here’s the list of currently available hooks, more will be added in the future.
+For the list of arguments of each hook, remember that there will always be
+<code>&amp;mut Pass</code> argument, and that the other arguments will come in a tuple.</p>
+<p>For example, if a hook has two arguments, <code>i32</code> and <code>bool</code>, they will actually
+come in as <code>(i32, bool)</code> in the second argument of the hook. So you should pass
+a function like this:</p>
+<pre><code class="language-rust"><span class="boring">struct FooHook;
+</span><span class="boring">impl Hookable for FooHook {
+</span><span class="boring">    type Input&lt;'h&gt; = (i32, bool);
+</span><span class="boring">    
+</span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
+</span><span class="boring">        (0, true)
+</span><span class="boring">    }
+</span><span class="boring">}
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    hook::add::&lt;FooHook&gt;(|pa, (arg1, arg2): (i32, bool)| {
+        // ...
+    });
+}</code></pre>
+<p>Also, when a hook says that it has no arguments, what this actually means is
+that the second argument is of type <code>()</code>, so the function argument still needs
+to have two arguments in it.</p>
+<h3 id="bufferopened"><a class="header" href="#bufferopened"><code>BufferOpened</code></a></h3>
+<p>Triggers after opening a <code>Buffer</code>. You will want to use this hook to set
+buffer-wise configuration options:</p>
+<pre><code class="language-rust">setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // Options set initially for all `Buffer`s
+    opts::set(|opts| {
+        opts.tabstop = 4;
+    });
+    
+    // Changing those options on a buffer by buffer basis.
+    hook::add::&lt;BufferOpened&gt;(|pa, handle| {
+        let buf = handle.write(pa);
+        
+        match buf.filetype() {
+            Some("haskell" | "commonlisp") =&gt; buf.opts.tabstop = 2,
+            Some("txt" | "markdown" | "asciidoc") =&gt; {
+                buf.opts.tabstop = 2;
+                buf.opts.wrap_lines = true;
+                buf.opts.wrapping_cap = Some(80);
+            }
+            _ =&gt; {}
+        }
+    });
+}</code></pre>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> of the <code>Buffer</code> that was
+opened.</li>
+</ul>
+<h3 id="buffersaved"><a class="header" href="#buffersaved"><code>BufferSaved</code></a></h3>
+<p>Triggers right after saving a <code>Buffer</code>. This will happen whenever you call any
+of the <code>write</code> family of commands, or if <code>Handle::&lt;Buffer&gt;::save</code> is called.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was saved.</li>
+<li>A <code>bool</code>, which is <code>true</code> if the <code>Buffer</code> is being closed, through commands
+like <code>wq</code>.</li>
+</ul>
+<h3 id="bufferclosed"><a class="header" href="#bufferclosed"><code>BufferClosed</code></a></h3>
+<p>Triggers as a <code>Buffer</code> is being closed, after <code>BufferSaved</code>. This will happen
+when you run a command like <code>q</code> or <code>wq</code>, or after calling
+<code>Handle::&lt;Buffer&gt;::close</code>. It will also happen after quitting Duat, after
+<code>ConfigUnloaded</code> but before <code>ExitedDuat</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was closed.</li>
+</ul>
+<h3 id="bufferreloaded"><a class="header" href="#bufferreloaded"><code>BufferReloaded</code></a></h3>
+<p>Triggers on every <code>Buffer</code> after the config gets reloaded. This <em>won’t</em> happen
+on the first config that was loaded.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>The <code>Handle&lt;Buffer&gt;</code> that was reloaded.</li>
+</ul>
+<h3 id="configloaded"><a class="header" href="#configloaded"><code>ConfigLoaded</code></a></h3>
+<p>Will trigger right after initially loading the config crate on
+<code>~/.config/duat/</code> or wherever you’re loading the config from.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="configunloaded"><a class="header" href="#configunloaded"><code>ConfigUnloaded</code></a></h3>
+<p>Will trigger right before unloading the config crate on
+<code>~/.config/duat/</code> or wherever you’re loading the config from.
+This will also trigger upon exiting Duat.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="exitedduat"><a class="header" href="#exitedduat"><code>ExitedDuat</code></a></h3>
+<p>Triggers after quitting Duat, after <code>ConfigUnloaded</code> and after triggering
+<code>BufferClosed</code> on each <code>Buffer</code>.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="focusedonduat"><a class="header" href="#focusedonduat"><code>FocusedOnDuat</code></a></h3>
+<p>Triggers when Duat gains focus from the operating system.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
+<h3 id="unfocusedfromduat"><a class="header" href="#unfocusedfromduat"><code>UnfocusedFromDuat</code></a></h3>
+<p>Triggers when Duat loses focus from the operating system.</p>
+<p><em>Arguments</em></p>
+<ul>
+<li>There are no arguments, just the normal <code>&amp;mut Pass</code></li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="the-text-struct"><a class="header" href="#the-text-struct">The Text struct</a></h1>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="builder-and-txt"><a class="header" href="#builder-and-txt">Builder and txt!</a></h1>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="tags-manipulating-text"><a class="header" href="#tags-manipulating-text">Tags: manipulating Text</a></h1>
+<h1 id="the-text-struct"><a class="header" href="#the-text-struct">The <code>Text</code> struct</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="modding-the-statusline"><a class="header" href="#modding-the-statusline">Modding the StatusLine</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
