@@ -146,7 +146,7 @@ fn setup() {
         let mut saved = 0;
         
         for handle in context::buffers(pa) {
-            if let Ok(Some(_)) = handle.save(pa) {
+            if let Ok(true) = handle.save(pa) {
                 saved += 1;
             }
         }
