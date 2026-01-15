@@ -19,7 +19,7 @@ pub use self::{
     types::{
         Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
-        Spacer, SpawnTag, Tag,
+        ReplaceChar, Spacer, SpawnTag, Tag,
     },
 };
 use crate::{
@@ -274,10 +274,10 @@ impl InnerTags {
 
             self.list.insert(s_i, (s_b as i32, s_tag));
             self.list.insert(e_i, (e_b as i32, e_tag));
-            
+
             self.bounds.shift_by(s_i, [1, 0]);
             self.bounds.shift_by(e_i, [1, 0]);
-            
+
             self.extents.insert(s_tag.tagger(), s_b);
             self.extents.insert(s_tag.tagger(), e_b);
 
@@ -329,6 +329,7 @@ impl InnerTags {
                 RawTag::MainCaret(_)
                 | RawTag::ExtraCaret(_)
                 | RawTag::Spacer(_)
+                | RawTag::ReplaceChar(..)
                 | SpawnedWidget(..) => {
                     self.insert_raw((b, tag), None, false);
                 }

@@ -8,6 +8,11 @@ FOR NEXT UPDATE:
 [ ] Remove Widget argument from Modes.
 [ ] Add registers possibly.
 [ ] ReplaceChar Tags!
+[ ] BufferOpts.
+  [ ] BufferOptsParser.
+  [ ] Indent lines.
+  [ ] Space replacements.
+  [ ] New line replacements.
 
 KNOWN BUGS:
  HIGH PRIORITY:

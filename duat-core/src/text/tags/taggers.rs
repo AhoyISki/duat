@@ -2,7 +2,7 @@ use std::{
     ops::Range,
     sync::{
         LazyLock,
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicU16, Ordering},
     },
 };
 
@@ -201,7 +201,7 @@ impl Shiftable for i32 {
     }
 }
 
-static TAGGER_COUNT: AtomicU32 = AtomicU32::new(3);
+static TAGGER_COUNT: AtomicU16 = AtomicU16::new(3);
 
 /// A struct that lets one add and remove [`Tag`]s to a [`Text`]
 ///
@@ -248,7 +248,7 @@ static TAGGER_COUNT: AtomicU32 = AtomicU32::new(3);
 /// [`Text::insert_tag`]: super::Text::insert_tag
 /// [`Text::remove_tags`]: super::Text::remove_tags
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Tagger(pub(super) u32);
+pub struct Tagger(pub(super) u16);
 
 impl Tagger {
     /// Returns a new, unique [`Tagger`]
@@ -268,7 +268,7 @@ impl Tagger {
     /// control over what gets added and deleted from the [`Text`].
     ///
     /// [`Text`]: super::Text
-    pub fn new_many(amount: u32) -> Range<Self> {
+    pub fn new_many(amount: u16) -> Range<Self> {
         let start = TAGGER_COUNT.fetch_add(amount + 1, Ordering::Relaxed);
         Self(start)..Self(start + amount)
     }

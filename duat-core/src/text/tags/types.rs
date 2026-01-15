@@ -22,22 +22,24 @@ use crate::{
 };
 
 macro_rules! simple_impl_Tag {
-    ($tag:ty, $raw_tag:expr, $is_meta:literal) => {
+    ($self:ident : $tag:ty, $tagger:ident, $raw_tag:expr, $is_meta:literal) => {
         impl Tag<usize> for $tag {
             const IS_META: bool = $is_meta;
 
+            #[allow(unused_variables)]
             fn get_raw(
                 &self,
                 _: &super::InnerTags,
                 byte: usize,
                 max: usize,
-                tagger: Tagger,
+                $tagger: Tagger,
             ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+                let $self = self;
                 assert!(
                     byte <= max,
                     "byte out of bounds: the len is {max}, but the byte is {byte}",
                 );
-                ((byte, $raw_tag(tagger)), None, ())
+                ((byte, $raw_tag), None, ())
             }
         }
 
@@ -53,29 +55,6 @@ macro_rules! simple_impl_Tag {
             ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
                 let byte = point.byte();
                 self.get_raw(tags, byte, max, tagger)
-            }
-        }
-    };
-}
-
-macro_rules! ranged_impl_tag {
-    ($tag:ty, $start:expr, $end:expr, $is_meta:literal) => {
-        impl<I: TextRange> Tag<I> for $tag {
-            const IS_META: bool = $is_meta;
-
-            fn get_raw(
-                &self,
-                _: &super::InnerTags,
-                index: I,
-                max: usize,
-                tagger: Tagger,
-            ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
-                let range = index.to_range(max);
-                (
-                    (range.start, $start(tagger)),
-                    Some((range.end, $end(tagger))),
-                    (),
-                )
             }
         }
     };
@@ -174,7 +153,7 @@ impl<I: TextRange> Tag<I> for FormTag {
 /// [`Selections`]: crate::mode::Selections
 #[derive(Debug, Clone, Copy)]
 pub struct MainCaret;
-simple_impl_Tag!(MainCaret, RawTag::MainCaret, false);
+simple_impl_Tag!(tag: MainCaret, tagger, RawTag::MainCaret(tagger), false);
 
 /// [`Tag`]: Places an extra Caret on the [`Text`]
 ///
@@ -193,7 +172,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret, false);
 /// [`Form`]: crate::form::Form
 #[derive(Debug, Clone, Copy)]
 pub struct ExtraCaret;
-simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret, false);
+simple_impl_Tag!(tag: ExtraCaret, tagger, RawTag::ExtraCaret(tagger), false);
 
 ////////// Meta Tags
 
@@ -232,7 +211,7 @@ simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret, false);
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone, Copy)]
 pub struct Spacer;
-simple_impl_Tag!(Spacer, RawTag::Spacer, false);
+simple_impl_Tag!(tag: Spacer, tagger, RawTag::Spacer(tagger), false);
 
 /// [`Builder`] part and [`Tag`]: Places ghost text
 ///
@@ -308,14 +287,45 @@ impl Tag<Point, GhostId> for Ghost {
 
 /// [`Tag`]: Conceals a [range] in the [`Text`]
 ///
-/// This [range] is completely arbitrary, being able to partially
+/// This range is completely arbitrary, being able to partially
 /// contain lines, as long as it is contained within the length of the
 /// [`Text`].
 ///
 /// [range]: TextRange
 #[derive(Debug, Clone, Copy)]
 pub struct Conceal;
-ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal, true);
+impl<I: TextRange> Tag<I> for Conceal {
+    const IS_META: bool = true;
+
+    fn get_raw(
+        &self,
+        _: &super::InnerTags,
+        index: I,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+        let range = index.to_range(max);
+        (
+            (range.start, (RawTag::StartConceal)(tagger)),
+            Some((range.end, (RawTag::EndConceal)(tagger))),
+            (),
+        )
+    }
+}
+
+/// [`Tag`]: Replaces the next printed character
+///
+/// If this `Tag` is placed in the nth byte, then the character at the
+/// nth byte will be replaced when being printed. This is capable of
+/// canceling out the wrapping of a `\n` char, or make a non `\n` wrap
+/// around by replacing it with a `\n`.
+///
+/// However, if the character at the nth byte is a `\t`, this tag will
+/// replace the first space of the tab. If it is then followed by more
+/// `ReplaceChar`s, the other spaces of the tab will be replaced.
+#[derive(Debug, Clone, Copy)]
+pub struct ReplaceChar(pub char);
+simple_impl_Tag!(tag: ReplaceChar, tagger, RawTag::ReplaceChar(tagger, tag.0), true);
 
 ////////// Layout modification Tags
 
@@ -431,7 +441,6 @@ pub enum RawTag {
     /// A spacer for the current screen line, replaces alignment.
     Spacer(Tagger),
 
-    // In the process of implementing.
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
     /// [`char`]s until the [`EndConceal`] tag shows up.
     ///
@@ -457,6 +466,9 @@ pub enum RawTag {
 
     /// A spawned floating [`Widget`]
     SpawnedWidget(Tagger, SpawnId),
+
+    /// Replaces a printed character or part of a `\t`
+    ReplaceChar(Tagger, char),
 
     // Not Implemented:
     /// Begins a toggleable section in the text.
@@ -534,6 +546,7 @@ impl RawTag {
             | Self::StartConceal(tagger)
             | Self::EndConceal(tagger)
             | Self::Ghost(tagger, _)
+            | Self::ReplaceChar(tagger, _)
             | Self::StartToggle(tagger, _)
             | Self::EndToggle(tagger, _)
             | Self::SpawnedWidget(tagger, _) => Some(*tagger),
@@ -550,7 +563,7 @@ impl RawTag {
             Self::PushForm(.., priority) => *priority + 5,
             Self::PopForm(..) => 0,
             Self::MainCaret(..) | Self::ExtraCaret(..) => 4,
-            Self::StartConceal(..) | Self::StartToggle(..) => 3,
+            Self::StartConceal(..) | Self::StartToggle(..) | Self::ReplaceChar(..) => 3,
             Self::Spacer(..)
             | Self::EndConceal(..)
             | Self::EndToggle(..)
@@ -641,6 +654,7 @@ impl std::fmt::Debug for RawTag {
             Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
             Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
             Self::Ghost(tagger, id) => write!(f, "Ghost({tagger:?}, {id:?})"),
+            Self::ReplaceChar(tagger, char) => write!(f, "ReplaceChar({tagger:?}, {char})"),
             Self::StartToggle(tagger, id) => write!(f, "ToggleStart({tagger:?}), {id:?})"),
             Self::EndToggle(tagger, id) => write!(f, "ToggleEnd({tagger:?}, {id:?})"),
             Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),

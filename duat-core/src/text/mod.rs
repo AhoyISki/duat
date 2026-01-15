@@ -92,7 +92,7 @@ pub use crate::text::{
     search::{Matches, RegexHaystack, RegexPattern},
     tags::{
         Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, Spacer, SpawnTag, Tag,
-        Tagger, Taggers, Tags, ToggleId,
+        Tagger, Taggers, Tags, ToggleId, ReplaceChar
     },
     utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
 };

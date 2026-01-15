@@ -619,6 +619,8 @@ pub enum Part {
     ///
     /// [`Spacer`]: super::Spacer
     Spacer,
+    /// Replaces the next character, or the next space of a tab
+    ReplaceChar(char),
     /// Starts a toggleable region for the given [`ToggleId`]
     ///
     /// Not yet implemented
@@ -657,6 +659,7 @@ impl Part {
             RawTag::MainCaret(_) => Part::MainCaret,
             RawTag::ExtraCaret(_) => Part::ExtraCaret,
             RawTag::Spacer(_) => Part::Spacer,
+            RawTag::ReplaceChar(_, char) => Part::ReplaceChar(char),
             RawTag::StartToggle(_, id) => Part::ToggleStart(id),
             RawTag::EndToggle(_, id) => Part::ToggleEnd(id),
             RawTag::ConcealUntil(_) => Part::ResetState,
