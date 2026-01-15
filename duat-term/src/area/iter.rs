@@ -236,8 +236,6 @@ fn inner_iter<'a>(
 
                 x += len;
 
-                spacers += matches!(item.part, Part::Spacer) as usize;
-
                 let must_wrap = x > cap && opts.wrap_lines;
                 if let Part::Char(char) = item.part
                     && (must_wrap || char == '\n')
@@ -337,13 +335,11 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
                         char
                     };
 
-                    match char {
-                        '\n' => unreachable!("Shouldn't be possible, given the visual line start"),
-                        char => (
-                            Part::Char(char),
-                            process_char(indent, on_indent, x, char, opts),
-                        ),
-                    }
+                    let len = match char {
+                        '\n' => process_nl(indent, on_indent, x, opts),
+                        char => process_char(indent, on_indent, x, char, opts),
+                    };
+                    (Part::Char(char), len)
                 }
                 _ => (item.part, 0),
             };

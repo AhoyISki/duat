@@ -208,6 +208,7 @@ impl<'a> FwdIter<'a> {
             RawTag::MainCaret(_)
             | RawTag::ExtraCaret(_)
             | RawTag::Spacer(_)
+            | RawTag::ReplaceChar(..)
             | RawTag::SpawnedWidget(..)
                 if b < self.init_point.byte() => {}
             _ => return false,
@@ -409,6 +410,7 @@ impl<'a> RevIter<'a> {
             RawTag::MainCaret(_)
             | RawTag::ExtraCaret(_)
             | RawTag::Spacer(_)
+            | RawTag::ReplaceChar(..)
             | RawTag::SpawnedWidget(..)
                 if b > self.init_point.byte() => {}
             _ => return false,
