@@ -42,7 +42,7 @@ impl Plugin for JumpList {
             PARSERS.register(pa, handle, Parser::new());
         });
 
-        hook::add::<BufferClosed>(|pa, (handle, _)| {
+        hook::add::<BufferClosed>(|pa, handle| {
             PARSERS.unregister(pa, handle);
         });
     }
