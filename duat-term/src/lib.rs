@@ -128,7 +128,8 @@ impl RawUi for Ui {
     }
 
     fn config_address_space_setup(&'static self) {
-        shared_fns::FNS.set(self.fns).ok().unwrap();
+        // This is allowed to fail if no_load is set to true.
+        _ = shared_fns::FNS.set(self.fns);
     }
 
     fn open(&self, duat_tx: DuatSender) {
