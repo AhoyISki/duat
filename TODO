@@ -6,6 +6,8 @@ FOR NEXT UPDATE:
   [ ] Add copying and interpolation.
   [ ] Remove generics.
 [ ] Remove Widget argument from Modes.
+[ ] Add registers possibly.
+[ ] ReplaceChar Tags!
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -14,6 +16,7 @@ KNOWN BUGS:
   [ ] Indentation is inefficient.
   [ ] Scrolling is bugged on Logs (???).
   [ ] Some strange slowdowns on Buffer switching and reindentation.
+  [ ] There are still problems with the Tags struct.
              
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
@@ -54,12 +57,9 @@ FUTURE UPDATES:
 [ ] Print only changed lines.
 [ ] Handle mostly utf-8 strings.
 [ ] Add a failure mode for remapping.
-[/] Bring back multithreading?
 [ ] Additive Forms.
 [ ] Remapping on `Mode` creation.
-[x] Use the FileCfg insted of OnFileOpen.
 [ ] FileBuilder::push_detached!
-[ ] ReplaceCell Tags!
 [ ] Split suggested max range by conceals.
 [ ] A MapForm Tag!
 [ ] macro_mode! or something like that.

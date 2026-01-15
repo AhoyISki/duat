@@ -274,10 +274,10 @@ impl InnerTags {
 
             self.list.insert(s_i, (s_b as i32, s_tag));
             self.list.insert(e_i, (e_b as i32, e_tag));
-
-            self.bounds
-                .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
-
+            
+            self.bounds.shift_by(s_i, [1, 0]);
+            self.bounds.shift_by(e_i, [1, 0]);
+            
             self.extents.insert(s_tag.tagger(), s_b);
             self.extents.insert(s_tag.tagger(), e_b);
 
@@ -696,7 +696,6 @@ impl std::fmt::Debug for InnerTags {
         f.debug_struct("InnerTags")
             .field("buf", &DebugBuf(self, ..))
             .field("bounds", &bounds::DebugBounds(self))
-            .field("extents", &self.extents)
             .finish_non_exhaustive()
     }
 }
