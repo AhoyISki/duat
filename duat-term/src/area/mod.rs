@@ -879,6 +879,7 @@ pub fn print_text(
             }
             Part::ResetState => print_style(lines, painter.reset()),
             Part::SpawnedWidget(id) => spawns_for_next.push(id),
+            Part::ReplaceChar(..) => unreachable!(),
             Part::ToggleStart(_) | Part::ToggleEnd(_) => {
                 todo!("Toggles have not been implemented yet.")
             }
