@@ -1,35 +1,10 @@
 FOR NEXT UPDATE:
-[x] Ui coordinates:
-  [x] Implementation.
-  [x] Floating widgets.
-  [x] Mouse support.
-    [x] Widget integration.
-    [?] Mode integration.
-[x] Command line completion.
-  [x] Parameter completion.
-[x] File path completion.
-[x] Forcefully evaluate height and width when requested.
-[x] Actually fix injected indentation.
-[x] WhichKey widget.
-[x] Move to Rust stable (sigh...).
-[x] Abuse the shit out of catch_unwind.
-[x] Borders and Titles.
-[x] Make cmd::add not a macro (?!).
-[x] Revamped Flags.
-[x] Remove Parsers apparently.
-[x] Standardize duatmode objects.
-[x] More duatmode bindings.
-  [x] . and <a-.>.
-  [x] <c-o> and <c-i>.
-  [x] q and Q
-[x] Fix existing duatmode bindings.
-[x] Search wrapping around buffer.
-[x] Search QOL.
-  [x] On search.rs.
-  [x] On cursor.rs.
-[x] Properly separated frame on frame spawns.
-[x] Put all options in a single struct.
-[x] Multiple parameter completions at the same time.
+[ ] Start work on duat-lsp.
+[ ] `z` and `q` keys for duatmode.
+[ ] Augment forms.
+  [ ] Add the Color struct.
+  [ ] Add copying and interpolation.
+  [ ] Remove generics.
 [ ] Remove Widget argument from Modes.
 
 KNOWN BUGS:

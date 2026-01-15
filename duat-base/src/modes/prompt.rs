@@ -209,7 +209,10 @@ impl mode::Mode for Prompt {
                 }
             }
             event!(Delete) => {
-                handle.edit_main(pa, |mut c| c.replace(""));
+                handle.edit_main(pa, |mut c| {
+                    c.set_anchor_if_needed();
+                    c.replace("");
+                });
                 update(pa);
             }
 

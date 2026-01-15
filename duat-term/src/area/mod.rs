@@ -8,7 +8,10 @@ use crossterm::{
     style::{Attribute, Attributes},
 };
 use duat_core::{
-    context::{self, cache::{Decode, Encode}},
+    context::{
+        self,
+        cache::{Decode, Encode},
+    },
     form::{CONTROL_CHAR_ID, Painter},
     opts::PrintOpts,
     session::TwoPointsPlace,
@@ -578,6 +581,10 @@ impl RawArea for Area {
         let mut row = coords.tl.y;
         let mut backup = None;
         for (caret, item) in print_iter(text, s_points, coords.width(), opts) {
+            if item.part.is_tag() {
+                continue;
+            }
+            
             row += caret.wrap as u32;
 
             if row > coord.y as u32 + 1 {
@@ -592,9 +599,7 @@ impl RawArea for Area {
                 }
             }
 
-            if item.part.is_char() {
-                backup = Some(TwoPointsPlace::AheadOf(item.points()));
-            }
+            backup = Some(TwoPointsPlace::AheadOf(item.points()));
         }
 
         None
