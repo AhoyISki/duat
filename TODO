@@ -7,7 +7,7 @@ FOR NEXT UPDATE:
   [ ] Remove generics.
 [ ] Remove Widget argument from Modes.
 [ ] Add registers possibly.
-[ ] ReplaceChar Tags!
+[x] ReplaceChar Tags!
 [ ] BufferOpts.
   [ ] BufferOptsParser.
   [ ] Indent lines.

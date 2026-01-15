@@ -224,6 +224,11 @@ mod global {
         pub fn remove(self) {
             remove(self)
         }
+
+		/// Returns `true` if this `GroupId` has any hooks
+        pub fn has_hooks(self) -> bool {
+            group_exists(self)
+        }
     }
 
     /// A struct used in order to specify more options for [hook]s

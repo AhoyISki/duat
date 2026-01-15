@@ -39,6 +39,24 @@ impl Bounds {
         }
     }
 
+    /// Inserts a new bound to the list
+    pub fn insert(&mut self, [s, e]: [([usize; 2], RawTag); 2]) {
+        let [([s_n, s_b], s_tag), ([e_n, e_b], e_tag)] = [s, e];
+
+        let s_i = self.shift_by(s_n, [1, 0]);
+
+        if e_n - s_n >= self.min_len {
+            let id = RangeId::new();
+
+            self.list.insert(s_i, ([s_n as i32, s_b as i32], s_tag, id));
+
+            let e_i = self.shift_by(e_n, [1, 0]);
+            self.list.insert(e_i, ([e_n as i32, e_b as i32], e_tag, id));
+        } else {
+            self.shift_by(e_n, [1, 0]);
+        }
+    }
+
     /// Represents the given range in the list, if it wasn't there
     /// already
     pub fn represent(&mut self, [s, e]: [([i32; 2], RawTag); 2]) {

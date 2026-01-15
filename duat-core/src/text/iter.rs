@@ -161,7 +161,7 @@ impl<'a> FwdIter<'a> {
     ///
     /// [`Tag`]: super::Tag
     #[inline(always)]
-    fn handle_special_tag(&mut self, tag: &RawTag, b: usize) -> bool {
+    fn handle_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::Ghost(_, id) => {
                 if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
@@ -229,7 +229,7 @@ impl Iterator for FwdIter<'_> {
         {
             self.tags.next();
 
-            if self.handle_special_tag(&tag, b) {
+            if self.handle_meta_tag(&tag, b) {
                 self.next()
             } else {
                 Some(Item::new(self.points(), Part::from_raw(tag)))

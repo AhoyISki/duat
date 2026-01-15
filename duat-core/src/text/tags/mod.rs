@@ -275,8 +275,8 @@ impl InnerTags {
             self.list.insert(s_i, (s_b as i32, s_tag));
             self.list.insert(e_i, (e_b as i32, e_tag));
 
-            self.bounds.shift_by(s_i, [1, 0]);
-            self.bounds.shift_by(e_i, [1, 0]);
+            self.bounds
+                .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
 
             self.extents.insert(s_tag.tagger(), s_b);
             self.extents.insert(s_tag.tagger(), e_b);
@@ -445,7 +445,9 @@ impl InnerTags {
 
         self.list
             .extract_if_while(last.., |i, (_, tag)| {
-                if let Some(s_i) = starts.iter().rposition(|s| s.ends_with(&tag)) {
+                if self.bounds.match_of(i).is_none()
+                    && let Some(s_i) = starts.iter().rposition(|s| s.ends_with(&tag))
+                {
                     self.bounds.shift_by(i, [-1, 0]);
                     starts.remove(s_i);
                     Some(true)
@@ -459,7 +461,9 @@ impl InnerTags {
 
         self.list
             .rextract_if_while(..first, |i, (_, tag)| {
-                if let Some(e_i) = ends.iter().rposition(|e| tag.ends_with(e)) {
+                if self.bounds.match_of(i).is_none()
+                    && let Some(e_i) = ends.iter().rposition(|e| tag.ends_with(e))
+                {
                     self.bounds.shift_by(i, [-1, 0]);
                     ends.remove(e_i);
                     Some(true)

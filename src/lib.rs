@@ -602,7 +602,10 @@ pub mod prelude {
         opts::{self, ScrollOff},
         setup_duat,
         state::*,
-        text::{self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Tagger, Text, txt},
+        text::{
+            self, Conceal, Ghost, Point, RegexHaystack, ReplaceChar, Spacer, SpawnTag, Tagger,
+            Text, txt,
+        },
         ui::{self, Area, Widget},
         widgets::*,
     };
