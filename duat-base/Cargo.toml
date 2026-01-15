@@ -1,6 +1,6 @@
 [package]
 name = "duat-base"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2024"
 authors = ["AhoyISki"]
 description = "Basic components common in Duat, included by default on duat"
