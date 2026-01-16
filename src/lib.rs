@@ -590,10 +590,10 @@ pub mod prelude {
         data::{self, Pass, RwData},
         form::{self, CursorShape, Form},
         hook::{
-            self, BufferOpened, BufferReloaded, BufferSaved, BufferUpdated, ColorSchemeSet,
-            ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat, FormSet,
-            Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched, SearchPerformed, SearchUpdated,
-            UnfocusedFrom, UnfocusedFromDuat, WidgetOpened, WindowOpened,
+            self, BufferClosed, BufferOpened, BufferReloaded, BufferSaved, BufferUpdated,
+            ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat,
+            FormSet, Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched, SearchPerformed,
+            SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened, WindowOpened,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,
