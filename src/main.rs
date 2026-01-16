@@ -590,7 +590,7 @@ fn config_dir() -> Option<PathBuf> {
 
 #[cfg(target_os = "macos")]
 fn config_dir() -> Option<PathBuf> {
-    dirst_next::home_dir().map(|dir| dir.join(".config"))
+    dirs_next::home_dir().map(|dir| dir.join(".config"))
 }
 
 fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error>> {
