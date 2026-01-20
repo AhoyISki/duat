@@ -365,13 +365,13 @@ impl Moment {
 /// call, you need not worry about adding it to the ranges that need
 /// to be updated, as that has already been done.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Change<'s, S = &'s str> {
+pub struct Change<'h, S = &'h str> {
     start: [i32; 3],
     added: S,
     taken: S,
     added_end: [i32; 3],
     taken_end: [i32; 3],
-    _ghost: PhantomData<&'s str>,
+    _ghost: PhantomData<&'h str>,
 }
 
 impl Change<'static, String> {
@@ -448,7 +448,7 @@ impl Change<'static, String> {
     }
 }
 
-impl<'a> Change<'a> {
+impl<'h> Change<'h> {
     /// Creates a [`Change<String>`] from a [`Change<&str>`]
     pub fn to_string_change(&self) -> Change<'static, String> {
         Change {
@@ -462,7 +462,7 @@ impl<'a> Change<'a> {
     }
 
     /// Returns a new copyable [`Change`] from an insertion.
-    pub fn str_insert(added_str: &'a str, start: Point) -> Self {
+    pub fn str_insert(added_str: &'h str, start: Point) -> Self {
         Self {
             start: start.as_signed(),
             added: added_str,

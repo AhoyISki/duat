@@ -100,10 +100,7 @@ impl TaggerExtents {
                 continue;
             }
 
-            let mut bytes_list = Vec::new();
             for byte in bytes {
-                bytes_list.push(byte);
-
                 let i = ranges.iter_mut().take_while(|r| byte + 1 > r.end).count();
 
                 if let Some(range) = ranges.get_mut(i)

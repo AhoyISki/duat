@@ -336,34 +336,29 @@ impl InnerTags {
     }
 
     /// Removes all [`RawTag`]s of a given [`Tagger`]
-    pub(crate) fn remove_from(&mut self, tagger: Tagger, within: impl RangeBounds<usize>) {
-        let range = crate::utils::get_range(within, self.len_bytes() + 1);
-
-        for extent in self.extents.remove(range, |other| other == tagger) {
-            crate::context::debug!("removing from {extent:?}");
+    pub(super) fn remove_from(&mut self, tagger: Tagger, within: Range<usize>) {
+        for extent in self.extents.remove(within.clone(), |other| other == tagger) {
             self.remove_from_if(extent.clone(), |(_, tag)| tag.tagger() == tagger);
         }
     }
 
-    fn remove_from_excl(&mut self, tagger: Tagger, within: impl RangeBounds<usize>) {
-        let range = crate::utils::get_range(within, self.len_bytes() + 1);
-
+    pub(super) fn remove_from_excl(&mut self, tagger: Tagger, within: Range<usize>) {
         let mut remained_on = [false; 2];
 
-        for extent in self.extents.remove(range.clone(), |other| other == tagger) {
+        for extent in self.extents.remove(within.clone(), |other| other == tagger) {
             self.remove_from_if(extent.clone(), |(b, tag)| {
                 if tagger != tag.tagger() {
                     return false;
                 };
 
-                let removed = (b > range.start as i32 || tag.is_start())
-                    && (b < range.end as i32 || tag.is_end());
+                let removed = (b > within.start as i32 || tag.is_start())
+                    && (b < within.end as i32 || tag.is_end());
 
                 if !removed {
-                    if b == range.start as i32 {
+                    if b == within.start as i32 {
                         remained_on[0] = true;
                     }
-                    if b == range.end as i32 {
+                    if b == within.end as i32 {
                         remained_on[1] = true;
                     }
                 }
@@ -373,10 +368,10 @@ impl InnerTags {
         }
 
         if remained_on[0] {
-            self.extents.insert(tagger, range.start);
+            self.extents.insert(tagger, within.start);
         }
         if remained_on[1] {
-            self.extents.insert(tagger, range.end);
+            self.extents.insert(tagger, within.end);
         }
     }
 

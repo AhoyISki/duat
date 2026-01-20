@@ -358,7 +358,7 @@ impl TextRangeOrIndex for Point {
 
 impl TextRangeOrIndex for RangeFull {
     fn to_range(self, max: usize) -> Range<usize> {
-        TextRange::to_range(self, max)
+        0..max
     }
 }
 

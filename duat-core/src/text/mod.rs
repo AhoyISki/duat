@@ -475,25 +475,54 @@ impl Text {
         self.0.tags.insert(tagger, idx, tag, true)
     }
 
-    /// Removes the [`Tag`]s of a [key] from a region
+    /// Removes the [`Tag`]s of a [`Tagger`] from a region
     ///
-    /// # Caution
+    /// The input can either be a byte index, a [`Point`], or a
+    /// [range] of byte indices/[`Point`]s. If you are implementing a
+    /// [`Buffer`] updating hook through [`BufferUpdated`], it can be
+    /// very useful to just "undo" all of the [`Tag`] additions done
+    /// by previous updates, you can do that efficiently with this
+    /// function:
     ///
-    /// While it is fine to do this on your own widgets, you should
-    /// refrain from using this function in a [`Buffer`]s [`Text`], as
-    /// it must iterate over all tags in the buffer, so if there are a
-    /// lot of other tags, this operation may be slow.
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    /// setup_duat!(setup);
     ///
-    /// # [`TextRange`] behavior
+    /// fn setup() {
+    ///     let tagger = Tagger::new();
     ///
-    /// If you give it a [`Point`] or [`usize`], it will be treated as
-    /// a one byte range.
+    ///     hook::add::<BufferUpdated>(move |pa, handle| {
+    ///         let buf = handle.write(pa);
+    ///         // Removing on the whole Buffer
+    ///         buf.text_mut().remove_tags(tagger, ..);
+    ///         // Logic to add Tags with tagger...
+    ///     });
+    /// }
+    /// ```
     ///
-    /// [key]: Taggers
+    /// [range]: std::ops::RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn remove_tags(&mut self, taggers: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.len().byte());
-        self.0.tags.remove_from(taggers, range)
+    /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len().byte() + 1);
+        self.0.tags.remove_from(tagger, range)
+    }
+
+    /// Just like [`Text::remove_tags`] but excludes ends on the start
+    /// and starts on the end
+    ///
+    /// In the regular [`remove_tags`] function, if you remove from a
+    /// range `x..y`, tag ranges that end in `x` or start in `y -
+    /// 1` (exclusive range) will also be removed.
+    ///
+    /// If you don't want that to happen, you can use this function
+    /// instead.
+    ///
+    /// [`remove_tags`]: Self::remove_tags
+    pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len().byte() + 1);
+        self.0.tags.remove_from_excl(tagger, range)
     }
 
     /// Removes all [`Tag`]s
@@ -730,22 +759,52 @@ impl<'t> TextMut<'t> {
 
     /// Removes the [`Tag`]s of a [`Tagger`] from a region
     ///
-    /// # Caution
+    /// The input can either be a byte index, a [`Point`], or a
+    /// [range] of byte indices/[`Point`]s. If you are implementing a
+    /// [`Buffer`] updating hook through [`BufferUpdated`], it can be
+    /// very useful to just "undo" all of the [`Tag`] additions done
+    /// by previous updates, you can do that efficiently with this
+    /// function:
     ///
-    /// While it is fine to do this on your own widgets, you should
-    /// refrain from using this function in a [`Buffer`]s [`Text`], as
-    /// it must iterate over all tags in the buffer, so if there are a
-    /// lot of other tags, this operation may be slow.
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    /// setup_duat!(setup);
     ///
-    /// # [`TextRange`] behavior
+    /// fn setup() {
+    ///     let tagger = Tagger::new();
     ///
-    /// If you give it a [`Point`] or [`usize`], it will be treated as
-    /// a one byte range.
+    ///     hook::add::<BufferUpdated>(move |pa, handle| {
+    ///         let buf = handle.write(pa);
+    ///         // Removing on the whole Buffer
+    ///         buf.text_mut().remove_tags(tagger, ..);
+    ///         // Logic to add Tags with tagger...
+    ///     });
+    /// }
+    /// ```
     ///
+    /// [range]: std::ops::RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
+    /// [`BufferUpdated`]: crate::hook::BufferUpdated
     pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.len().byte());
+        let range = range.to_range(self.len().byte() + 1);
         self.text.remove_tags(tagger, range)
+    }
+
+    /// Just like [`TextMut::remove_tags`] but excludes ends on the start
+    /// and starts on the end
+    ///
+    /// In the regular [`remove_tags`] function, if you remove from a
+    /// range `x..y`, tag ranges that end in `x` or start in `y -
+    /// 1` (exclusive range) will also be removed.
+    ///
+    /// If you don't want that to happen, you can use this function
+    /// instead.
+    ///
+    /// [`remove_tags`]: Self::remove_tags
+    pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len().byte() + 1);
+        self.text.remove_tags_excl(tagger, range)
     }
 
     /// Removes all [`Tag`]s
