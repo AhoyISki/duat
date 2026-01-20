@@ -72,7 +72,7 @@ impl TaggerExtents {
 
     /// Which ranges should be checked, given a removal of this
     /// [`Range`]
-    pub fn remove_range(
+    pub fn remove(
         &mut self,
         range: Range<usize>,
         filter: impl Fn(Tagger) -> bool,
@@ -124,7 +124,7 @@ impl TaggerExtents {
         self.extents.retain(|(tagger, extent)| match extent {
             Extent::Sparse(_) => true,
             Extent::Rampant => {
-                !(filter(*tagger) && range.start == 0 && range.end as u32 == self.max)
+                !(filter(*tagger) && range.start == 0 && range.end as u32 == self.max + 1)
             }
         });
 
@@ -227,19 +227,13 @@ static TAGGER_COUNT: AtomicU16 = AtomicU16::new(3);
 /// // You can create an `impl Tag` directly from a `FormId`
 /// text.insert_tag(key1, 18..20, id.to_tag(0));
 ///
-/// assert_eq!(
-///     text,
-///     txt!("This is text with [invisible]no[] tags in it")
-/// );
+/// assert_eq!(text, txt!("This is text with [invisible]no[] tags in it"));
 ///
 /// // key2 != key1, so it shouldn't be able to change what was done with key1.
 /// let key2 = Tagger::new();
 /// text.remove_tags(key2, 18);
 ///
-/// assert_eq!(
-///     text,
-///     txt!("This is text with [invisible]no[] tags in it")
-/// );
+/// assert_eq!(text, txt!("This is text with [invisible]no[] tags in it"));
 /// ```
 ///
 /// [`Tag`]: super::Tag
@@ -308,48 +302,5 @@ impl std::fmt::Debug for Tagger {
 impl Default for Tagger {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Trait used to distinguish [`Tag`]s
-///
-/// This can be either one [`Tagger`] or multiple, in which case many
-/// different [`Tagger`]s will be searched for and [removed]
-///
-/// [`Tag`]: super::Tag
-/// [removed]: crate::text::Text::remove_tags
-pub trait Taggers: std::fmt::Debug + Clone + PartialEq + Eq {
-    /// Whether this range contains a given [`Tagger`]
-    fn contains_tagger(&self, tagger: Tagger) -> bool;
-}
-
-impl Taggers for Tagger {
-    fn contains_tagger(&self, tagger: Tagger) -> bool {
-        *self == tagger
-    }
-}
-
-impl Taggers for Range<Tagger> {
-    /// Whether this range contains a given [`Tagger`]
-    fn contains_tagger(&self, tagger: Tagger) -> bool {
-        tagger >= self.start && self.end > tagger
-    }
-}
-
-impl Taggers for &[Tagger] {
-    fn contains_tagger(&self, tagger: Tagger) -> bool {
-        self.contains(&tagger)
-    }
-}
-
-impl Taggers for &[Range<Tagger>] {
-    fn contains_tagger(&self, tagger: Tagger) -> bool {
-        self.iter().any(|r| r.contains(&tagger))
-    }
-}
-
-impl<const N: usize> Taggers for [Tagger; N] {
-    fn contains_tagger(&self, tagger: Tagger) -> bool {
-        self.contains(&tagger)
     }
 }

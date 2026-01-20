@@ -91,8 +91,8 @@ pub use crate::text::{
     iter::{FwdIter, Item, Part, RevIter},
     search::{Matches, RegexHaystack, RegexPattern},
     tags::{
-        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, Spacer, SpawnTag, Tag,
-        Tagger, Taggers, Tags, ToggleId, ReplaceChar
+        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, ReplaceChar, Spacer,
+        SpawnTag, Tag, Tagger, Tags, ToggleId,
     },
     utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
 };
@@ -497,7 +497,7 @@ impl Text {
     ///
     /// [key]: Taggers
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
+    pub fn remove_tags(&mut self, taggers: Tagger, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(taggers, range)
     }
@@ -740,7 +740,7 @@ impl<'t> TextMut<'t> {
         self.text.insert_tag_after(tagger, r, tag)
     }
 
-    /// Removes the [`Tag`]s of a [key] from a region
+    /// Removes the [`Tag`]s of a [`Tagger`] from a region
     ///
     /// # Caution
     ///
@@ -754,11 +754,10 @@ impl<'t> TextMut<'t> {
     /// If you give it a [`Point`] or [`usize`], it will be treated as
     /// a one byte range.
     ///
-    /// [key]: Taggers
     /// [`Buffer`]: crate::buffer::Buffer
-    pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
+    pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len().byte());
-        self.text.remove_tags(taggers, range)
+        self.text.remove_tags(tagger, range)
     }
 
     /// Removes all [`Tag`]s

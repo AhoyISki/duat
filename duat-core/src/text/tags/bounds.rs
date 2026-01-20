@@ -135,7 +135,7 @@ impl Bounds {
     pub fn remove_intersecting(
         &mut self,
         range: Range<usize>,
-        filter: impl Fn((i32, RawTag)) -> bool,
+        mut filter: impl FnMut((i32, RawTag)) -> bool,
     ) -> Vec<usize> {
         let (Ok(s) | Err(s)) = self.list.find_by_key(range.start as i32, |([_, c], ..)| c);
         let (Ok(e) | Err(e)) = self.list.find_by_key(range.end as i32, |([_, c], ..)| c);

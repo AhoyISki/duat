@@ -15,7 +15,7 @@ use std::{
 use self::{bounds::Bounds, taggers::TaggerExtents, types::Toggle};
 pub use self::{
     ids::*,
-    taggers::{Tagger, Taggers},
+    taggers::Tagger,
     types::{
         Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
@@ -109,11 +109,10 @@ impl Tags<'_> {
     /// }
     /// ```
     ///
-    /// [tagger]: Taggers
     /// [range]: RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
-    pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
+    pub fn remove(&mut self, taggers: Tagger, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.0.len_bytes() + 1);
         self.0.remove_from(taggers, range)
     }
@@ -129,7 +128,7 @@ impl Tags<'_> {
     /// instead.
     ///
     /// [`remove`]: Self::remove
-    pub fn remove_excl(&mut self, taggers: impl Taggers, range: impl TextRangeOrIndex) {
+    pub fn remove_excl(&mut self, taggers: Tagger, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.0.len_bytes() + 1);
         self.0.remove_from_excl(taggers, range);
     }
@@ -346,32 +345,48 @@ impl InnerTags {
         self.extents.extend(other.extents);
     }
 
-    /// Removes all [`RawTag`]s of a given [`Taggers`]
-    pub(crate) fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
+    /// Removes all [`RawTag`]s of a given [`Tagger`]
+    pub(crate) fn remove_from(&mut self, tagger: Tagger, within: impl RangeBounds<usize>) {
         let range = crate::utils::get_range(within, self.len_bytes() + 1);
 
-        for extent in self
-            .extents
-            .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
-        {
-            self.remove_from_if(extent.clone(), |(_, tag)| {
-                taggers.contains_tagger(tag.tagger())
-            });
+        for extent in self.extents.remove(range, |other| other == tagger) {
+            crate::context::debug!("removing from {extent:?}");
+            self.remove_from_if(extent.clone(), |(_, tag)| tag.tagger() == tagger);
         }
     }
 
-    fn remove_from_excl(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
+    fn remove_from_excl(&mut self, tagger: Tagger, within: impl RangeBounds<usize>) {
         let range = crate::utils::get_range(within, self.len_bytes() + 1);
 
-        for extent in self
-            .extents
-            .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
-        {
+        let mut remained_on = [false; 2];
+
+        for extent in self.extents.remove(range.clone(), |other| other == tagger) {
             self.remove_from_if(extent.clone(), |(b, tag)| {
-                taggers.contains_tagger(tag.tagger())
-                    && ((b > range.start as i32 || tag.is_start())
-                        && (b < range.end as i32 || tag.is_end()))
+                if tagger != tag.tagger() {
+                    return false;
+                };
+
+                let removed = (b > range.start as i32 || tag.is_start())
+                    && (b < range.end as i32 || tag.is_end());
+
+                if !removed {
+                    if b == range.start as i32 {
+                        remained_on[0] = true;
+                    }
+                    if b == range.end as i32 {
+                        remained_on[1] = true;
+                    }
+                }
+
+                removed
             });
+        }
+
+        if remained_on[0] {
+            self.extents.insert(tagger, range.start);
+        }
+        if remained_on[1] {
+            self.extents.insert(tagger, range.end);
         }
     }
 
@@ -385,11 +400,11 @@ impl InnerTags {
     fn remove_from_if(
         &mut self,
         range: Range<usize>,
-        filter: impl Fn((i32, RawTag)) -> bool + Copy,
+        mut filter: impl FnMut((i32, RawTag)) -> bool,
     ) {
         let removed = self
             .bounds
-            .remove_intersecting(range.clone(), filter)
+            .remove_intersecting(range.clone(), &mut filter)
             .into_iter();
 
         for i in removed.rev() {
@@ -492,7 +507,7 @@ impl InnerTags {
             // old.start + 1 because we don't want to get rid of bounds that
             // merely coincide with the edges.
             self.remove_from_if(old.start + 1..old.end, |_| true);
-            self.extents.remove_range(old.start + 1..old.end, |_| true);
+            self.extents.remove(old.start + 1..old.end, |_| true);
 
             // If the range becomes empty, we should remove the remainig pairs
             if new.end == old.start
