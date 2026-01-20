@@ -17,7 +17,7 @@ use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
 use crate::{
     Plugins,
-    buffer::Buffer,
+    buffer::{Buffer, BufferOpts},
     clipboard::Clipboard,
     cmd,
     context::{self, DuatReceiver, sender},
@@ -28,7 +28,6 @@ use crate::{
         FocusedOnDuat, UnfocusedFromDuat,
     },
     mode::{self},
-    opts::PrintOpts,
     text::TwoPoints,
     ui::{
         Coord, Ui, Windows,
@@ -37,7 +36,7 @@ use crate::{
     utils::catch_panic,
 };
 
-pub(crate) static BUFFER_OPTS: OnceLock<PrintOpts> = OnceLock::new();
+pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 
 /// Configuration for a session of Duat
 #[doc(hidden)]
@@ -46,9 +45,9 @@ pub struct SessionCfg {
 }
 
 impl SessionCfg {
-    pub fn new(clipb: &'static Mutex<Clipboard>, file_cfg: PrintOpts) -> Self {
+    pub fn new(clipb: &'static Mutex<Clipboard>, buffer_opts: BufferOpts) -> Self {
         crate::clipboard::set_clipboard(clipb);
-        BUFFER_OPTS.set(file_cfg).unwrap();
+        BUFFER_OPTS.set(buffer_opts).unwrap();
 
         SessionCfg {
             layout: Box::new(Mutex::new(MasterOnLeft)),
@@ -432,7 +431,7 @@ impl ReloadedBuffer {
     #[doc(hidden)]
     pub fn by_args(path: Option<PathBuf>, is_active: bool) -> Result<Self, std::io::Error> {
         Ok(Self {
-            buffer: Buffer::new(path, PrintOpts::default_for_input()),
+            buffer: Buffer::new(path, BufferOpts::default()),
             is_active,
         })
     }

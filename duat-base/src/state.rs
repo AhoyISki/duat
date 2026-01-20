@@ -197,7 +197,7 @@ pub fn main_line(buf: &Buffer) -> usize {
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_col(buffer: &Buffer, area: &Area) -> usize {
     let main = buffer.selections().main();
-    main.v_caret(buffer.text(), area, buffer.get_print_opts())
+    main.v_caret(buffer.text(), area, buffer.print_opts())
         .char_col()
 }
 

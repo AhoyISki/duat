@@ -82,8 +82,8 @@ impl Widget for PromptLine {
         let (pl, area) = handle.write_with_area(pa);
 
         if pl.request_width {
-            let width = area.size_of_text(pl.get_print_opts(), &pl.text).unwrap().x;
-            area.set_width(width + pl.get_print_opts().scrolloff.x as f32)
+            let width = area.size_of_text(pl.print_opts(), &pl.text).unwrap().x;
+            area.set_width(width + pl.print_opts().scrolloff.x as f32)
                 .unwrap();
         }
 
@@ -91,7 +91,7 @@ impl Widget for PromptLine {
             area.scroll_around_points(
                 &pl.text,
                 main.caret().to_two_points_after(),
-                pl.get_print_opts(),
+                pl.print_opts(),
             );
         }
     }
@@ -108,7 +108,7 @@ impl Widget for PromptLine {
         self.text.as_mut()
     }
 
-    fn get_print_opts(&self) -> PrintOpts {
+    fn print_opts(&self) -> PrintOpts {
         let mut opts = PrintOpts::default_for_input();
         opts.force_scrolloff = true;
         opts

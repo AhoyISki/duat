@@ -67,6 +67,14 @@ pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
 
 /// General options to set when starting Duat
 pub struct StartOpts {
+    /// Highlights the current line
+    ///
+    /// The default is `true`
+    ///
+    /// This makes use of the `current_line` [`Form`]
+    ///
+    /// [`Form`]: crate::form::Form
+    pub highlight_current_line: bool,
     /// Enables wrapping of lines
     ///
     /// The default is `true`
@@ -118,12 +126,6 @@ pub struct StartOpts {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub tabstop: u8,
-    /// Wether to print the `'\n'` character as an empty space (`' '`)
-    ///
-    /// In [`Buffer`]s, the default is `true`
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub print_new_line: bool,
     /// How much space to keep between the cursor and edges
     ///
     /// In [`Buffer`]s, the default is `ScrollOff { x: 3, y: 3 }`
@@ -153,28 +155,122 @@ pub struct StartOpts {
     ///
     /// [`\w`]: https://www.unicode.org/reports/tr18/#word
     pub extra_word_chars: &'static [char],
-    /// Whether to show [ghoxt text]
+    /// Indent string
     ///
-    /// In [`Buffer`]s, the default is `true`
+    /// The default is `Some("│   ")`.
     ///
-    /// This is just a switch to decide if you want ghosts or not.
+    /// The indent lines will be printed with the `replace.indent`
+    /// [`Form`].
+    ///
+    /// A string to replace the indentation at the start of the line.
+    /// This string will repeat on every `opts.tabstop` initial spaces
+    /// or on every `\t` character, replacing that many characters of
+    /// the tab stop with those of the string.
+    ///
+    /// For example, if `tabstop == 2 && indent_str == Some("│   ")`,
+    /// this:
+    ///
+    /// ```txt
+    /// int (int var1, int var2) {
+    ///   if (var1 > 2)
+    ///     return 42;
+    ///   else
+    ///     if (var1 <= 50)
+    ///       return 20;
+    ///     else
+    ///       return 10;
+    /// }
+    /// ```
+    ///
+    /// Would be displayed like this:
+    ///
+    /// ```txt
+    /// int (int var1, int var2) {
+    /// │ if (var1 > 2)
+    /// │ │ return 42;
+    /// │ else
+    /// │ │ if (var1 <= 50)
+    /// │ │ │ return 20;
+    /// │ │ else
+    /// │ │ │ return 10;
+    /// }
+    /// ```
+    ///
+    /// That is, it will take `tabstop` characters and print them.
+    /// Where the `tabstop == 4`, it would use all 4 characters.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub indent_str: Option<&'static str>,
+    /// Wether to copy the indentation string of `opts.indent_str` on
+    /// empty lines.
+    ///
+    /// The default is `false`
+    ///
+    /// This will always copy whichever line has the smallest ammount
+    /// of indentation.
+    pub indent_str_on_empty: bool,
+    /// An indent string, just like `opts.indent_str`, but only for
+    /// `\t`s
+    ///
+    /// The default is `None`
+    ///
+    /// This is useful for languages like python, where the mixup of
+    /// tabs and spaces on indentation can cause problems.
+    ///
+    /// If it is `Some`, the `str` will be shown with the
+    /// `replace.indent.tab` form. If this is `None`, then
+    /// `opts.indent_str` will be used instead.
+    pub indent_tab_str: Option<&'static str>,
+    /// A character to be printed in place of the space
+    ///
+    /// The default is `None`
+    ///
+    /// The char will be printed with the `replace.space` [`Form`].
+    ///
+    /// This character will replace only the space characters that are
+    /// not part of the indentation.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub space_char: Option<char>,
+    /// A character to be printed on trailing whitespace
+    ///
+    /// The default is `None`
+    ///
+    /// This character will be printed with the
+    /// `replace.space.trailing` [`Form`]
+    ///
+    /// If it is `None`, it will be the same as `opts.space_char`.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub space_char_trailing: Option<char>,
+    /// Which `char` should be printed in new lines
+    ///
+    /// The default is `' '` (space character)
+    ///
+    /// This character will be printed with the `replace.new_line`
+    /// [`Form`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
-    /// [ghoxt text]: crate::text::Ghost
-    pub show_ghosts: bool,
-    /// Wether to allow the [`Text`] to scroll until only
-    /// `scrolloff.y` line are on screen
+    /// [`Form`]: crate::form::Form
+    pub new_line_char: char,
+    /// A character to be printed on the new line on empty strings
     ///
-    /// In [`Buffer`]s, the default is `true`
+    /// The default is `None`
     ///
-    /// If you disable this, when your cursor reaches the end of the
-    /// text, if try to scroll the text down, nothing will happen.
-    /// Otherwise, the text will continue scrolling down until there
-    /// are only `scrolloff.y` lines visible on screen.
+    /// This character will be printed with the
+    /// `replace.new_line.empty` [`Form`].
     ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    /// [`Text`]: crate::text::Text
-    pub allow_overscroll: bool,
+    /// If it is `None`, it will be the same as `opts.new_line_char`.
+    pub new_line_char_on_empty: Option<char>,
+    /// A character to be printed on trailing new lines
+    ///
+    /// The default is `None`
+    ///
+    /// This character will be printed with the
+    /// `replace.new_line.trailing` [`Form`].
+    ///
+    /// [`Form`]: crate::form::Form
+    pub new_line_trailing: Option<char>,
     /// Options concerning the [`duatmode`] [`Mode`]s
     ///
     /// `duatmode` is the default key arrangement of Duat. These
@@ -352,17 +448,23 @@ pub struct StartOpts {
 impl Default for StartOpts {
     fn default() -> Self {
         Self {
-            wrap_lines: false,
+            highlight_current_line: false,
+            wrap_lines: true,
             wrap_on_word: false,
             wrapping_cap: None,
             indent_wraps: true,
             tabstop: 4,
-            print_new_line: true,
             scrolloff: ScrollOff { x: 3, y: 3 },
-            extra_word_chars: &[],
             force_scrolloff: false,
-            show_ghosts: true,
-            allow_overscroll: true,
+            extra_word_chars: &[],
+            indent_str: Some("▏"),
+            indent_str_on_empty: false,
+            indent_tab_str: None,
+            space_char: None,
+            space_char_trailing: None,
+            new_line_char: ' ',
+            new_line_char_on_empty: None,
+            new_line_trailing: Some('↵'),
             duatmode: DuatModeOpts::default(),
             one_line_footer: false,
             footer_on_top: false,

@@ -44,7 +44,7 @@ impl Widget for Info {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         let (info, area) = handle.write_with_area(pa);
         let size = area
-            .size_of_text(info.get_print_opts(), &info.text)
+            .size_of_text(info.print_opts(), &info.text)
             .unwrap();
         _ = area.set_width(size.x);
         _ = area.set_height(size.y);
@@ -68,13 +68,13 @@ impl Widget for Info {
             ScrollDown | ScrollUp => {
                 let (info, area) = handle.write_with_area(pa);
                 let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-                area.scroll_ver(&info.text, scroll, info.get_print_opts());
+                area.scroll_ver(&info.text, scroll, info.print_opts());
             }
             _ => {}
         }
     }
 
-    fn get_print_opts(&self) -> PrintOpts {
+    fn print_opts(&self) -> PrintOpts {
         let mut opts = PrintOpts::new();
         opts.wrap_lines = true;
         opts.tabstop = 2;

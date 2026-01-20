@@ -10,9 +10,9 @@ FOR NEXT UPDATE:
 [x] ReplaceChar Tags!
 [ ] BufferOpts.
   [ ] BufferOptsParser.
-  [ ] Indent lines.
-  [ ] Space replacements.
-  [ ] New line replacements.
+    [ ] Indent lines.
+    [ ] Space replacements.
+    [ ] New line replacements.
 
 KNOWN BUGS:
  HIGH PRIORITY:

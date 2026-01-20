@@ -100,7 +100,7 @@ impl WhichKey {
         }
 
         let (keys, area) = keys_handle.write_with_area(pa);
-        if let Ok(size) = area.size_of_text(keys.get_print_opts(), keys.text()) {
+        if let Ok(size) = area.size_of_text(keys.print_opts(), keys.text()) {
             area.set_width(size.x + 1.0).unwrap();
         }
 
@@ -111,7 +111,7 @@ impl WhichKey {
         keys_handle.write(pa).1 = Some(descs_handle.clone());
 
         let (descs, area) = descs_handle.write_with_area(pa);
-        if let Ok(size) = area.size_of_text(descs.get_print_opts(), descs.text()) {
+        if let Ok(size) = area.size_of_text(descs.print_opts(), descs.text()) {
             area.set_width(size.x).unwrap();
         }
 
@@ -153,11 +153,11 @@ impl Widget for WhichKey {
             ScrollDown | ScrollUp => {
                 let (keys, area) = handle.write_with_area(pa);
                 let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-                area.scroll_ver(&keys.0, scroll, keys.get_print_opts());
+                area.scroll_ver(&keys.0, scroll, keys.print_opts());
 
                 let handle = keys.1.clone().unwrap();
                 let (descs, area) = handle.write_with_area(pa);
-                area.scroll_ver(&descs.0, scroll, descs.get_print_opts());
+                area.scroll_ver(&descs.0, scroll, descs.print_opts());
             }
             _ => {}
         }
@@ -190,11 +190,11 @@ impl Widget for WhichKeyDescriptions {
                 } else {
                     -3
                 };
-                area.scroll_ver(&descs.0, scroll, descs.get_print_opts());
+                area.scroll_ver(&descs.0, scroll, descs.print_opts());
 
                 let handle = descs.1.clone().unwrap();
                 let (keys, area) = handle.write_with_area(pa);
-                area.scroll_ver(&keys.0, scroll, keys.get_print_opts());
+                area.scroll_ver(&keys.0, scroll, keys.print_opts());
             }
             _ => {}
         }

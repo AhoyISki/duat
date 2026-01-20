@@ -15,13 +15,12 @@ use duat_base::{
     widgets::{FooterWidgets, LogBook, WhichKey, status},
 };
 use duat_core::{
-    buffer::History,
+    buffer::{BufferOpts, History},
     clipboard::Clipboard,
     context::{self, DuatReceiver, DuatSender, Logs, cache},
     data::Pass,
-    form::{Form, Palette},
+    form::Palette,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
-    opts::PrintOpts,
     session::{ReloadEvent, ReloadedBuffer, SessionCfg},
     text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui, Widget},
@@ -60,7 +59,6 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
         duat_core::context::set_sender(duat_tx);
     }
 
-    mode::set_default(crate::mode::Regular);
     mode::set_default(Pager::<LogBook>::new());
 
     // Layout hooks
@@ -234,57 +232,11 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
         }
     })
     .grouped("ReloadOnWrite");
-    duat_base::widgets::setup_completions();
 
     form::enable_mask("error");
     form::enable_mask("warn");
     form::enable_mask("info");
     form::enable_mask("inactive");
-
-    // Setup for the LineNumbers
-    form::set_weak("linenum.main", Form::yellow());
-    form::set_weak("linenum.wrapped", Form::cyan().italic());
-
-    // Setup for the StatusLine
-    form::set_weak("buffer", Form::yellow().italic());
-    form::set_weak("selections", Form::dark_blue());
-    form::set_weak("coord", "contant");
-    form::set_weak("separator", "punctuation.delimiter");
-    form::set_weak("mode", Form::green());
-    form::set_weak("default.StatusLine", Form::on_dark_grey());
-
-    // Setup for the LogBook
-    form::set_weak("default.LogBook", Form::on_dark_grey());
-    form::set_weak("log_book.error", "default.error");
-    form::set_weak("log_book.warn", "default.warn");
-    form::set_weak("log_book.info", "default.info");
-    form::set_weak("log_book.debug", "default.debug");
-    form::set_weak("log_book.colon", "prompt.colon");
-    form::set_weak("log_book.bracket", "punctuation.bracket");
-    form::set_weak("log_book.target", "module");
-
-    // Setup for the PromptLine
-    form::set_weak("prompt.preview", "comment");
-
-    // Setup for Completions
-    form::set_weak("default.Completions", Form::on_dark_grey());
-    form::set_weak("selected.Completions", Form::black().on_grey());
-
-    // Setup for WhichKey
-    form::set_weak("key", "const");
-    form::set_weak("key.mod", "punctuation.bracket");
-    form::set_weak("key.angle", "punctuation.bracket");
-    form::set_weak("key.special", Form::yellow());
-    form::set_weak("remap", Form::italic());
-
-    crate::cmd::add("logs", |pa: &mut Pass| {
-        mode::set(pa, Pager::<LogBook>::new());
-        Ok(None)
-    })
-    .doc(
-        txt!("Open the [a]Logs[] and enter [mode]Pager[] mode"),
-        None,
-    );
 
     mode::map::<mode::User>("L", Pager::<LogBook>::new()).doc(txt!("Open [mode]Logs"));
 
@@ -299,6 +251,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
     duat_core::ui::config_address_space_ui_setup::<duat_term::Ui>(ui);
 
     duat_core::Plugins::_new().require::<duatmode::DuatMode>();
+    crate::prelude::plug(duat_base::DuatBase);
 }
 
 #[doc(hidden)]
@@ -312,18 +265,24 @@ pub fn run_duat(
 
     let default_buffer_opts = {
         let opts = OPTS.lock().unwrap();
-        PrintOpts {
+        BufferOpts {
+            highlight_current_line: opts.highlight_current_line,
             wrap_lines: opts.wrap_lines,
             wrap_on_word: opts.wrap_on_word,
             wrapping_cap: opts.wrapping_cap,
             indent_wraps: opts.indent_wraps,
             tabstop: opts.tabstop,
-            print_new_line: opts.print_new_line,
             scrolloff: opts.scrolloff,
             force_scrolloff: opts.force_scrolloff,
             extra_word_chars: opts.extra_word_chars,
-            show_ghosts: opts.show_ghosts,
-            allow_overscroll: opts.allow_overscroll,
+            indent_str: opts.indent_str,
+            indent_str_on_empty: opts.indent_str_on_empty,
+            indent_tab_str: opts.indent_tab_str,
+            space_char: opts.space_char,
+            space_char_trailing: opts.space_char_trailing,
+            new_line_char: opts.new_line_char,
+            new_line_on_empty: opts.new_line_char_on_empty,
+            new_line_trailing: opts.new_line_trailing,
         }
     };
 

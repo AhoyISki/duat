@@ -469,7 +469,7 @@ pub trait Widget: Send + 'static {
     /// implemented,can be found at [`PrintOpts::new`].
     ///
     /// [configuration]: PrintOpts
-    fn get_print_opts(&self) -> PrintOpts {
+    fn print_opts(&self) -> PrintOpts {
         PrintOpts::new()
     }
 }
@@ -620,7 +620,7 @@ impl Node {
 
         let print_info = self.handle.area().get_print_info(pa);
         let (widget, area) = self.handle.write_with_area(pa);
-        let opts = widget.get_print_opts();
+        let opts = widget.print_opts();
         widget.text_mut().add_selection_tags(area, opts);
 
         if print_info != PrintInfo::default() {

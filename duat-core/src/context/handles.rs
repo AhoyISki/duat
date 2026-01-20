@@ -496,7 +496,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`PrintOpts.allow_overscroll`]: crate::opts::PrintOpts::allow_overscroll
     pub fn scroll_ver(&self, pa: &mut Pass, dist: i32) {
         let (widget, area) = self.write_with_area(pa);
-        area.scroll_ver(widget.text(), dist, widget.get_print_opts());
+        area.scroll_ver(widget.text(), dist, widget.print_opts());
         self.widget.declare_written();
     }
 
@@ -507,7 +507,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// `scrolloff.y` value.
     pub fn scroll_to_points(&self, pa: &mut Pass, points: TwoPoints) {
         let (widget, area) = self.write_with_area(pa);
-        area.scroll_to_points(widget.text(), points, widget.get_print_opts());
+        area.scroll_to_points(widget.text(), points, widget.print_opts());
         self.widget.declare_written();
     }
 
@@ -515,14 +515,14 @@ impl<W: Widget + ?Sized> Handle<W> {
     pub fn start_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
         self.area
-            .start_points(pa, widget.text(), widget.get_print_opts())
+            .start_points(pa, widget.text(), widget.print_opts())
     }
 
     /// The end points that should be printed
     pub fn end_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
         self.area
-            .end_points(pa, widget.text(), widget.get_print_opts())
+            .end_points(pa, widget.text(), widget.print_opts())
     }
 
     ////////// Querying functions
@@ -594,7 +594,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// The [`Widget`]'s [`PrintOpts`]
     pub fn opts(&self, pa: &Pass) -> PrintOpts {
-        self.widget.read(pa).get_print_opts()
+        self.widget.read(pa).print_opts()
     }
 
     /// Request that this [`Handle`] be updated

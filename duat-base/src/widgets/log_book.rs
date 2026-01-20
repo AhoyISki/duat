@@ -80,10 +80,10 @@ impl Widget for LogBook {
         }
 
         if !lb.has_updated_once {
-            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
+            area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
             lb.has_updated_once = true;
         } else if records_were_added {
-            area.scroll_ver(&lb.text, i32::MAX, lb.get_print_opts());
+            area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
         }
     }
 
@@ -99,7 +99,7 @@ impl Widget for LogBook {
         self.text.as_mut()
     }
 
-    fn get_print_opts(&self) -> PrintOpts {
+    fn print_opts(&self) -> PrintOpts {
         let mut opts = PrintOpts::new();
         opts.wrap_lines = true;
         opts.wrap_on_word = true;
@@ -125,7 +125,7 @@ impl Widget for LogBook {
                 } else {
                     -3
                 };
-                area.scroll_ver(&lb.text, scroll, lb.get_print_opts());
+                area.scroll_ver(&lb.text, scroll, lb.print_opts());
             }
             _ => {}
         }

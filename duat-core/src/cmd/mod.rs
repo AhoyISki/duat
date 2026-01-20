@@ -568,8 +568,8 @@ pub(crate) fn add_session_commands() {
                 }
             };
 
-            let file_cfg = *crate::session::BUFFER_OPTS.get().unwrap();
-            windows.open_or_move_to_new_window(pa, pk.clone(), file_cfg);
+            let buffer_opts = *crate::session::BUFFER_OPTS.get().unwrap();
+            windows.open_or_move_to_new_window(pa, pk.clone(), buffer_opts);
 
             Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
         },

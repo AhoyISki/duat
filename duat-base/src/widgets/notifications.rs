@@ -114,7 +114,7 @@ impl Widget for Notifications {
                 let notifs = handle.read(pa);
                 let size = handle
                     .area()
-                    .size_of_text(pa, notifs.get_print_opts(), &notifs.text)
+                    .size_of_text(pa, notifs.print_opts(), &notifs.text)
                     .unwrap();
                 handle.area().set_width(pa, size.x).unwrap();
                 handle.area().set_height(pa, size.y).unwrap();
@@ -128,7 +128,7 @@ impl Widget for Notifications {
                     let notifs = handle.read(pa);
                     let size = handle
                         .area()
-                        .size_of_text(pa, notifs.get_print_opts(), &notifs.text)
+                        .size_of_text(pa, notifs.print_opts(), &notifs.text)
                         .unwrap();
                     handle.area().set_width(pa, size.x).unwrap();
                     handle.area().set_height(pa, size.y).unwrap();

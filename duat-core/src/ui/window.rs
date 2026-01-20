@@ -17,12 +17,11 @@ use std::{
 
 use super::{Node, Widget, layout::Layout};
 use crate::{
-    buffer::{Buffer, PathKind},
+    buffer::{Buffer, BufferOpts, PathKind},
     context::{self, Handle},
     data::{Pass, RwData},
     hook::{self, BufferClosed, BufferSwitched, WidgetOpened, WindowOpened},
     mode,
-    opts::PrintOpts,
     session::UiMouseEvent,
     text::{Text, txt},
     ui::{Coord, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, StaticSpawnSpecs, Ui},
@@ -448,7 +447,7 @@ impl Windows {
         &self,
         pa: &mut Pass,
         pk: PathKind,
-        default_buffer_cfg: PrintOpts,
+        default_buffer_opts: BufferOpts,
     ) -> Node {
         let node = match self.buffer_entry(pa, pk.clone()) {
             Ok((win, handle)) if self.get(pa, win).unwrap().buffers(pa).len() > 1 => {
@@ -502,7 +501,7 @@ impl Windows {
             // The Handle in question is already in its own window, so no need
             // to move it to another one.
             Ok((.., handle)) => Node::from_handle(handle),
-            Err(_) => self.new_window(pa, Buffer::new(pk.as_path(), default_buffer_cfg)),
+            Err(_) => self.new_window(pa, Buffer::new(pk.as_path(), default_buffer_opts)),
         };
 
         if context::current_buffer(pa).read(pa).path_kind() != pk {

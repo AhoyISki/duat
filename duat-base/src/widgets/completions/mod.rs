@@ -500,7 +500,7 @@ impl Completions {
 
         let (comp, area) = handle.write_with_area(pa);
         area.set_width(
-            area.size_of_text(comp.get_print_opts(), &comp.text)
+            area.size_of_text(comp.print_opts(), &comp.text)
                 .unwrap()
                 .x
                 .max(40.0),

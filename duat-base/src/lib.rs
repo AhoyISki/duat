@@ -8,7 +8,7 @@
 //!
 //! The crate has the following elements:
 //!
-//! - 7 [`widgets`]:
+//! - 8 [`widgets`]:
 //!   - [`LineNumbers`] shows the numbers on a [`Buffer`] (for now),
 //!     and you can configure their alignment, relativeness, etc.
 //!   - The [`PromptLine`] lets you run commands and do other things,
@@ -32,8 +32,10 @@
 //!   - [`WhichKey`] shows what each key will do. It shows up
 //!     automatically as you are typing and multi key sequences are
 //!     expected (e.g. Vim's `c`, `d`, `f` and others).
+//!   - [`Info`] just shows static information, resizing itself to
+//!     properly show as much as possible of it.
 //!
-//! - 3 [`modes`]:
+//! - 2 [`modes`]:
 //!   - [`Prompt`] is a multitool that can serve many purposes,
 //!     through the [`PromptMode`] trait, which allows one to act on
 //!     the `PromptLine` while abstracting over less important
@@ -113,15 +115,83 @@
 //! [`Completions`]: widgets::Completions
 //! [`CompletionsProvider`]: widgets::CompletionsProvider
 //! [`WhichKey`]: widgets::WhichKey
+//! [`Info`]: widgets::Info
 use duat_core::{
-    form,
-    text::{Tagger, Text},
+    Plugin, cmd,
+    data::Pass,
+    form::{self, Form},
+    mode,
+    text::{Tagger, Text, txt},
 };
 use regex_syntax::ast::Ast;
 
+use crate::{modes::Pager, widgets::LogBook};
+
+mod buffer_parser;
 pub mod modes;
 pub mod state;
 pub mod widgets;
+
+/// The plugin for `duat-base`
+///
+/// This plugin will setup forms, hooks, completions, and add a
+/// default parser for [`BufferOpts`].
+///
+/// [`BufferOpts`]: duat_core::buffer::BufferOpts
+#[derive(Default)]
+pub struct DuatBase;
+
+impl Plugin for DuatBase {
+    fn plug(self, _: &duat_core::Plugins) {
+        widgets::setup_completions();
+        buffer_parser::enable_parser();
+
+        // Setup for the LineNumbers
+        form::set_weak("linenum.main", Form::yellow());
+        form::set_weak("linenum.wrapped", Form::cyan().italic());
+
+        // Setup for the StatusLine
+        form::set_weak("buffer", Form::yellow().italic());
+        form::set_weak("selections", Form::dark_blue());
+        form::set_weak("coord", "contant");
+        form::set_weak("separator", "punctuation.delimiter");
+        form::set_weak("mode", Form::green());
+        form::set_weak("default.StatusLine", Form::on_dark_grey());
+
+        // Setup for the LogBook
+        form::set_weak("default.LogBook", Form::on_dark_grey());
+        form::set_weak("log_book.error", "default.error");
+        form::set_weak("log_book.warn", "default.warn");
+        form::set_weak("log_book.info", "default.info");
+        form::set_weak("log_book.debug", "default.debug");
+        form::set_weak("log_book.colon", "prompt.colon");
+        form::set_weak("log_book.bracket", "punctuation.bracket");
+        form::set_weak("log_book.target", "module");
+
+        // Setup for the PromptLine
+        form::set_weak("prompt.preview", "comment");
+
+        // Setup for Completions
+        form::set_weak("default.Completions", Form::on_dark_grey());
+        form::set_weak("selected.Completions", Form::black().on_grey());
+
+        // Setup for WhichKey
+        form::set_weak("key", "const");
+        form::set_weak("key.mod", "punctuation.bracket");
+        form::set_weak("key.angle", "punctuation.bracket");
+        form::set_weak("key.special", Form::yellow());
+        form::set_weak("remap", Form::italic());
+
+        cmd::add("logs", |pa: &mut Pass| {
+            mode::set(pa, Pager::<LogBook>::new());
+            Ok(None)
+        })
+        .doc(
+            txt!("Open the [a]Logs[] and enter [mode]Pager[] mode"),
+            None,
+        );
+    }
+}
 
 pub mod hooks {
     //! Additional hooks for `duat-base` specific things

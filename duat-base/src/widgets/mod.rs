@@ -17,10 +17,11 @@ use duat_core::{
     ui::PushTarget,
 };
 
+pub(crate) use self::completions::setup_completions;
 pub use self::{
     completions::{
         CommandsCompletions, Completions, CompletionsBuilder, CompletionsKind, CompletionsList,
-        CompletionsProvider, setup_completions,
+        CompletionsProvider,
     },
     info::Info,
     line_numbers::{LineNumbers, LineNumbersOpts},

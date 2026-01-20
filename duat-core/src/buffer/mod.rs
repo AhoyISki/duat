@@ -28,19 +28,21 @@ pub use crate::buffer::{
         BufferParts, BufferTracker, Change, Changes, FetchedChanges, History, Moment,
         RangesToUpdate,
     },
+    opts::BufferOpts,
 };
 use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
     hook::{self, BufferSaved, BufferUpdated},
     mode::{Cursor, MouseEvent, Selections},
-    opts::{PrintOpts, ScrollOff},
+    opts::PrintOpts,
     session::TwoPointsPlace,
     text::{Bytes, Point, Strs, Text, TextMut, TextState, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
 mod history;
+mod opts;
 
 /// The widget that is used to print and edit buffers
 pub struct Buffer {
@@ -54,13 +56,13 @@ pub struct Buffer {
     ///
     /// You can use this member to change the way this `Buffer` will
     /// be printed specifically.
-    pub opts: PrintOpts,
+    pub opts: BufferOpts,
     prev_opts: Mutex<PrintOpts>,
 }
 
 impl Buffer {
     /// Returns a new [`Buffer`], private for now
-    pub(crate) fn new(path: Option<PathBuf>, opts: PrintOpts) -> Self {
+    pub(crate) fn new(path: Option<PathBuf>, opts: BufferOpts) -> Self {
         let (text, path) = match path {
             Some(path) => {
                 let canon_path = path.canonicalize();
@@ -96,7 +98,7 @@ impl Buffer {
             history: History::default(),
             cached_print_info: Mutex::new(None),
             opts,
-            prev_opts: Mutex::new(opts),
+            prev_opts: Mutex::new(opts.to_print_opts()),
         }
     }
 
@@ -201,8 +203,9 @@ impl Buffer {
     ) -> MutexGuard<'b, Option<CachedPrintInfo>> {
         let opts_changed = {
             let mut prev_opts = self.prev_opts.lock().unwrap();
-            let opts_changed = *prev_opts != self.opts;
-            *prev_opts = self.opts;
+            let cur_opts = self.opts.to_print_opts();
+            let opts_changed = *prev_opts != cur_opts;
+            *prev_opts = cur_opts;
             opts_changed
         };
 
@@ -217,9 +220,10 @@ impl Buffer {
                     || area.bottom_right() != cpi.coords.1
             })
         {
-            let start = area.start_points(&self.text, self.opts).real;
-            let end = area.end_points(&self.text, self.opts).real;
-            let printed_line_numbers = area.get_printed_lines(&self.text, self.opts).unwrap();
+            let opts = self.opts.to_print_opts();
+            let start = area.start_points(&self.text, opts).real;
+            let end = area.end_points(&self.text, opts).real;
+            let printed_line_numbers = area.get_printed_lines(&self.text, opts).unwrap();
 
             *cached_print_info = Some(CachedPrintInfo {
                 range: start..end,
@@ -297,7 +301,7 @@ impl Buffer {
             layout_order: self.layout_order,
             history: std::mem::take(&mut self.history),
             cached_print_info: Mutex::new(self.cached_print_info.lock().unwrap().take()),
-            opts: PrintOpts::default(),
+            opts: BufferOpts::default(),
             prev_opts: Mutex::default(),
         }
     }
@@ -312,7 +316,7 @@ impl Widget for Buffer {
             area.scroll_around_points(
                 buffer.text(),
                 main.caret().to_two_points_after(),
-                buffer.get_print_opts(),
+                buffer.print_opts(),
             );
         }
 
@@ -337,8 +341,8 @@ impl Widget for Buffer {
         text_mut
     }
 
-    fn get_print_opts(&self) -> PrintOpts {
-        self.opts
+    fn print_opts(&self) -> PrintOpts {
+        self.opts.to_print_opts()
     }
 
     fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
@@ -560,213 +564,6 @@ impl Handle {
     pub fn visible_lines<'b>(&'b self, _: &'b Pass) -> Vec<Strs<'b>> {
         todo!();
     }
-}
-
-/// The default suite of options available to [`Buffer`]s
-///
-/// Unlike most other widget options, these ones are dynamic, that is,
-/// if they are changed while duat is still open, the `Buffer` will be
-/// updated accordingly.
-///
-/// # Note
-///
-/// While these options are defined as a core part of the `Buffer`,
-/// they are not implemented natively. The implementation is done in
-/// the `duat-base` crate, which means you may replace the
-/// implementation with your own version if that suits you.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BufferOpts {
-    /// Highlights the current line
-    ///
-    /// The default is `true`
-    ///
-    /// This makes use of the `current_line` [`Form`]
-    ///
-    /// [`Form`]: crate::form::Form
-    pub highlight_current_line: bool,
-    /// Enables wrapping of lines
-    ///
-    /// The default is `true`
-    pub wrap_lines: bool,
-    /// Wrap on word boundaries, rather than on any character
-    ///
-    /// The default is `false`.
-    pub wrap_on_word: bool,
-    /// Where to start wrapping
-    ///
-    /// The default is `None`
-    ///
-    /// If this value is `None` and `opts.wrap_lines == true`, then
-    /// wrapping will take place at the right edge of the screen.
-    ///
-    /// Otherwise, if it is `Some({cap})`, then wrapping will take
-    /// place `{cap}` cells from the left edge. This value may or may
-    /// not be greater than the width of the area. If it is greater
-    /// than it, then wrapping will take place slightly outside the
-    /// screen as a concequence.
-    pub wrapping_cap: Option<u32>,
-    /// Whether to indent wrapped lines or not
-    ///
-    /// The default is `true`.
-    ///
-    /// This turns this:
-    ///
-    /// ```text
-    ///     This is a very long line of text, so long that it
-    /// wraps around
-    /// ```
-    ///
-    /// Into this:
-    ///
-    /// ```text
-    ///     This is a very long line of text, so long that it
-    ///     wraps around
-    /// ```
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub indent_wraps: bool,
-    /// How much space a tab should occupy
-    ///
-    /// The default is `4`
-    ///
-    /// This also affect other things, like if your tabs are converted
-    /// into spaces, this will also set how many spaces should be
-    /// added.
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub tabstop: u8,
-    /// How much space to keep between the cursor and edges
-    ///
-    /// The default is `ScrollOff { x: 3, y: 3 }`
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub scrolloff: ScrollOff,
-    /// Whether to limit scrolloff at the end of lines
-    ///
-    /// The default is `false`
-    ///
-    /// This makes it so, as you reach the end of a long line of text,
-    /// the cursor line will continue scrolling to the left,
-    /// maintaining the `scrolloff.x`'s gap.
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    pub force_scrolloff: bool,
-    /// Extra characters to be considered part of a word
-    ///
-    /// The default is `&[]`.
-    ///
-    /// Normally, word characters include all of those in the [`\w`]
-    /// character set, which most importantly includes `[0-9A-Za-z_]`.
-    ///
-    /// You can use this setting to add more characters to that list,
-    /// usually something like `-`, `$` or `@`, which are useful to
-    /// consider as word characters in some circumstances.
-    ///
-    /// [`\w`]: https://www.unicode.org/reports/tr18/#word
-    pub extra_word_chars: &'static [char],
-    /// Indent string
-    ///
-    /// The default is `Some("│   ")`.
-    ///
-    /// The indent lines will be printed with the `replace.indent`
-    /// [`Form`].
-    ///
-    /// A string to replace the indentation at the start of the line.
-    /// This string will repeat on every `opts.tabstop` initial spaces
-    /// or on every `\t` character, replacing that many characters of
-    /// the tab stop with those of the string.
-    ///
-    /// For example, if `tabstop == 2 && indent_str == Some("│   ")`,
-    /// this:
-    ///
-    /// ```txt
-    /// int (int var1, int var2) {
-    ///   if (var1 > 2)
-    ///     return 42;
-    ///   else
-    ///     if (var1 <= 50)
-    ///       return 20;
-    ///     else
-    ///       return 10;
-    /// }
-    /// ```
-    ///
-    /// Would be displayed like this:
-    ///
-    /// ```txt
-    /// int (int var1, int var2) {
-    /// │ if (var1 > 2)
-    /// │ │ return 42;
-    /// │ else
-    /// │ │ if (var1 <= 50)
-    /// │ │ │ return 20;
-    /// │ │ else
-    /// │ │ │ return 10;
-    /// }
-    /// ```
-    ///
-    /// That is, it will take `tabstop` characters and print them.
-    /// Where the `tabstop == 4`, it would use all 4 characters.
-    ///
-    /// [`Form`]: crate::form::Form
-    pub indent_str: Option<&'static str>,
-    /// Wether to copy the indentation string of `opts.indent_str` on
-    /// empty lines.
-    ///
-    /// The default is `false`
-    ///
-    /// This will always copy whichever line has the smallest ammount
-    /// of indentation.
-    pub indent_str_on_empty: bool,
-    /// A character to be printed in place of the space
-    ///
-    /// The default is `None`
-    ///
-    /// The char will be printed with the `replace.space` [`Form`].
-    ///
-    /// This character will replace only the space characters that are
-    /// not part of the indentation.
-    ///
-    /// [`Form`]: crate::form::Form
-    pub space_char: Option<char>,
-    /// A character to be printed on trailing whitespace
-    ///
-    /// The default is `None`
-    ///
-    /// This character will be printed with the `replace.space.trailing` [`Form`]
-    ///
-    /// If it is `None`, it will be the same as `opts.space_char`.
-    ///
-    /// [`Form`]: crate::form::Form
-    pub space_char_trailing: Option<char>,
-    /// Which `char` should be printed in new lines
-    ///
-    /// The default is `' '` (space character)
-    ///
-    /// This character will be printed with the `replace.new_line`
-    /// [`Form`].
-    ///
-    /// [`Buffer`]: crate::buffer::Buffer
-    /// [`Form`]: crate::form::Form
-    pub new_line_char: char,
-    /// A character to be printed on the new line on empty strings
-    ///
-    /// The default is `None`
-    ///
-    /// This character will be printed with the
-    /// `replace.new_line.empty` [`Form`].
-    ///
-    /// If it is `None`, it will be the same as `opts.new_line_char`.
-    pub new_line_char_on_empty: Option<char>,
-    /// A character to be printed on trailing new lines
-    ///
-    /// The default is `None`
-    ///
-    /// This character will be printed with the `replace.new_line.trailing`
-    /// [`Form`].
-    ///
-    /// [`Form`]: crate::form::Form
-    pub new_line_trailing: Option<char>,
 }
 
 /// Represents the presence or absence of a path

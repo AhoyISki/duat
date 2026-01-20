@@ -257,7 +257,7 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
             by,
             self.widget.text(),
             self.area,
-            self.widget.get_print_opts(),
+            self.widget.print_opts(),
         );
         if line_count != 0 {
             self.widget.text_mut().add_record_for(sel!(self).caret());
@@ -278,7 +278,7 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
             count,
             self.widget.text(),
             self.area,
-            self.widget.get_print_opts(),
+            self.widget.print_opts(),
         );
     }
 
@@ -631,7 +631,7 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
     /// Use only if you need the things that the [`VPoint`] provides,
     /// in order to preven extraneous calculations
     pub fn v_caret(&self) -> VPoint {
-        sel!(self).v_caret(self.widget.text(), self.area, self.widget.get_print_opts())
+        sel!(self).v_caret(self.widget.text(), self.area, self.widget.print_opts())
     }
 
     /// The [`VPoint`] of the anchor, if it exists
@@ -639,7 +639,7 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
     /// Use only if you need the things that the [`VPoint`] provides,
     /// in order to preven extraneous calculations
     pub fn v_anchor(&self) -> Option<VPoint> {
-        sel!(self).v_anchor(self.widget.text(), self.area, self.widget.get_print_opts())
+        sel!(self).v_anchor(self.widget.text(), self.area, self.widget.print_opts())
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`
@@ -659,7 +659,7 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
 
     /// The [`PrintOpts`] in use
     pub fn opts(&self) -> PrintOpts {
-        self.widget.get_print_opts()
+        self.widget.print_opts()
     }
 }
 

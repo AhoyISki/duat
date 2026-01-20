@@ -42,6 +42,7 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("param.path", Form::yellow().0, Normal),
     ("param.path.open", Form::yellow().0, Ref(8)),
     ("param.path.exists", Form::yellow().underlined().0, Normal),
+    ("replace", Form::grey().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
