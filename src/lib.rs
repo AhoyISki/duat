@@ -405,6 +405,7 @@ pub mod hook {
     //! - [`BufferClosed`] triggers when closing a `Buffer`.
     //! - [`BufferReloaded`] triggers on all buffers upon reloading.
     //! - [`BufferUpdated`] triggers whenever a buffer changes.
+    //! - [`BufferPrinted`] triggers after a buffer has been printed.
     //! - [`BufferSwitched`] triggers when switching buffers.
     //! - [`ConfigLoaded`] triggers after loading the config.
     //! - [`ConfigUnloaded`] triggers after unloading the config.
@@ -590,10 +591,11 @@ pub mod prelude {
         data::{self, Pass, RwData},
         form::{self, CursorShape, Form},
         hook::{
-            self, BufferClosed, BufferOpened, BufferReloaded, BufferSaved, BufferUpdated,
-            ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat,
-            FormSet, Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched, SearchPerformed,
-            SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened, WindowOpened,
+            self, BufferClosed, BufferOpened, BufferPrinted, BufferReloaded, BufferSaved,
+            BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged,
+            FocusedOnDuat, FormSet, Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched,
+            SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened,
+            WindowOpened,
         },
         mode::{
             self, Insert, KeyCode, KeyEvent, Mode, Normal, Pager, Prompt, Selection, Selections,

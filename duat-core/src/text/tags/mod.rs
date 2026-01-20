@@ -354,7 +354,9 @@ impl InnerTags {
             .extents
             .remove_range(range.clone(), |tagger| taggers.contains_tagger(tagger))
         {
-            self.remove_from_if(extent, |(_, tag)| taggers.contains_tagger(tag.tagger()));
+            self.remove_from_if(extent.clone(), |(_, tag)| {
+                taggers.contains_tagger(tag.tagger())
+            });
         }
     }
 
@@ -409,7 +411,7 @@ impl InnerTags {
         let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as i32, |(b, _)| b);
 
         self.list
-            .extract_if_while(start..end, |_, entry| Some(filter(entry)))
+            .extract_if_while(start..end, |i, entry| Some(filter(entry)))
             .for_each(|(i, (_, tag))| {
                 self.bounds.shift_by(i, [-1, 0]);
 
@@ -445,8 +447,8 @@ impl InnerTags {
 
         self.list
             .extract_if_while(last.., |i, (_, tag)| {
-                if self.bounds.match_of(i).is_none()
-                    && let Some(s_i) = starts.iter().rposition(|s| s.ends_with(&tag))
+                if let Some(s_i) = starts.iter().rposition(|s| s.ends_with(&tag))
+                    && self.bounds.match_of(i).is_none()
                 {
                     self.bounds.shift_by(i, [-1, 0]);
                     starts.remove(s_i);
@@ -461,8 +463,8 @@ impl InnerTags {
 
         self.list
             .rextract_if_while(..first, |i, (_, tag)| {
-                if self.bounds.match_of(i).is_none()
-                    && let Some(e_i) = ends.iter().rposition(|e| tag.ends_with(e))
+                if let Some(e_i) = ends.iter().rposition(|e| tag.ends_with(e))
+                    && self.bounds.match_of(i).is_none()
                 {
                     self.bounds.shift_by(i, [-1, 0]);
                     ends.remove(e_i);
@@ -518,6 +520,7 @@ impl InnerTags {
 
                 for i in to_remove.into_iter().rev() {
                     self.list.remove(i);
+                    self.bounds.remove_if_represented(i);
                     self.bounds.shift_by(i, [-1, 0]);
                 }
             }

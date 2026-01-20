@@ -464,11 +464,11 @@ pub enum RawTag {
     /// Text that shows up on screen, but is ignored otherwise.
     Ghost(Tagger, GhostId),
 
-    /// A spawned floating [`Widget`]
-    SpawnedWidget(Tagger, SpawnId),
-
     /// Replaces a printed character or part of a `\t`
     ReplaceChar(Tagger, char),
+
+    /// A spawned floating [`Widget`]
+    SpawnedWidget(Tagger, SpawnId),
 
     // Not Implemented:
     /// Begins a toggleable section in the text.
@@ -586,6 +586,9 @@ impl PartialEq for RawTag {
             (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
             (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
             (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
+            (Self::ReplaceChar(l_tagger, l_char), Self::ReplaceChar(r_tagger, r_char)) => {
+                l_tagger == r_tagger && l_char == r_char
+            }
             (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
             (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
             (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
@@ -654,7 +657,7 @@ impl std::fmt::Debug for RawTag {
             Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
             Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
             Self::Ghost(tagger, id) => write!(f, "Ghost({tagger:?}, {id:?})"),
-            Self::ReplaceChar(tagger, char) => write!(f, "ReplaceChar({tagger:?}, {char})"),
+            Self::ReplaceChar(tagger, char) => write!(f, "ReplaceChar({tagger:?}, {char:?})"),
             Self::StartToggle(tagger, id) => write!(f, "ToggleStart({tagger:?}), {id:?})"),
             Self::EndToggle(tagger, id) => write!(f, "ToggleEnd({tagger:?}, {id:?})"),
             Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),

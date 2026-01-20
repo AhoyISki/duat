@@ -19,7 +19,7 @@ use crate::text::RegexHaystack;
 /// screen when scrolling
 ///
 /// [`Cursor`]: crate::mode::Cursor
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ScrollOff {
     /// The horizontal scrolloff
     pub x: u8,
@@ -28,7 +28,7 @@ pub struct ScrollOff {
 }
 
 /// Configuration options for printing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PrintOpts {
     /// Enables wrapping of lines
     ///

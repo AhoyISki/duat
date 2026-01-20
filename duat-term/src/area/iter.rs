@@ -41,21 +41,13 @@ pub fn print_iter(
                     tab_chars = process_tab(indent, on_indent, x, opts, item, replace_chars);
                     continue;
                 }
-                Part::Char(char) => {
-                    let char = if !replace_chars.is_empty() {
-                        replace_chars.remove(0)
-                    } else {
-                        char
-                    };
-
-                    match char {
-                        '\n' => unreachable!("Shouldn't be possible, given the visual line start"),
-                        char => (
-                            Part::Char(char),
-                            process_char(indent, on_indent, x, char, opts),
-                        ),
-                    }
-                }
+                Part::Char(char) => match replace_chars.drain(..).next().unwrap_or(char) {
+                    '\n' => unreachable!("Shouldn't be possible, given the visual line start"),
+                    char => (
+                        Part::Char(char),
+                        process_char(indent, on_indent, x, char, opts),
+                    ),
+                },
                 _ => (item.part, 0),
             };
 
@@ -210,17 +202,16 @@ fn inner_iter<'a>(
                         continue;
                     }
                     Part::Char(char) => {
-                        let char = if !replace_chars.is_empty() {
-                            replace_chars.remove(0)
-                        } else {
-                            char
-                        };
-
-                        let len = match char {
+                        let char = replace_chars.first().copied().unwrap_or(char);
+                        (Item { part: Part::Char(char), ..item }, match char {
+                            '\n' if item.ghost.is_some() => {
+                                *indent = 0;
+                                *on_indent = true;
+                                0
+                            }
                             '\n' => process_nl(indent, on_indent, x, opts),
                             char => process_char(indent, on_indent, x, char, opts),
-                        };
-                        (Item { part: Part::Char(char), ..item }, len)
+                        })
                     }
                     Part::ReplaceChar(char) => {
                         remove_next();
@@ -237,11 +228,14 @@ fn inner_iter<'a>(
                 x += len;
 
                 let must_wrap = x > cap && opts.wrap_lines;
+
                 if let Part::Char(char) = item.part
                     && (must_wrap || char == '\n')
                 {
-                    initial_printed_x = first_printed_x + wrapped_indent;
+                    let is_replacement = !replace_chars.is_empty();
+                    replace_chars.clear();
 
+                    initial_printed_x = first_printed_x + wrapped_indent;
                     space_line(spacers, &mut line, cap, x);
                     spacers = 0;
 
@@ -258,14 +252,12 @@ fn inner_iter<'a>(
                         }
                         '\n' => {
                             remove_next();
-                            match (opts.print_new_line, must_wrap) {
-                                (true, true) => {
-                                    let position = old_indent
-                                        * (old_indent < max_indent && opts.indent_wraps) as u32;
-                                    leftover_nl = Some((position, item))
-                                }
-                                (true, false) => line.push((1, item)),
-                                (false, _) => line.push((0, item)),
+                            if len > 0 && must_wrap {
+                                let position = old_indent
+                                    * (old_indent < max_indent && opts.indent_wraps) as u32;
+                                leftover_nl = Some((position, item))
+                            } else {
+                                line.push((len, item))
                             }
                             0
                         }
@@ -275,7 +267,10 @@ fn inner_iter<'a>(
                             if cap == 0 && !line.iter().any(|(_, item)| item.part.is_char()) {
                                 remove_next();
                                 line.push((len, item));
+                            } else if is_replacement {
+                                remove_next();
                             }
+
                             old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
                         }
                     };
@@ -283,6 +278,9 @@ fn inner_iter<'a>(
                     x = wrapped_indent;
                     break;
                 } else {
+                    if item.part.is_char() {
+                        replace_chars.clear();
+                    }
                     remove_next();
                     line.push((len, item));
                 }
@@ -329,17 +327,16 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
                     continue;
                 }
                 Part::Char(char) => {
-                    let char = if !replace_chars.is_empty() {
-                        replace_chars.remove(0)
-                    } else {
-                        char
-                    };
-
-                    let len = match char {
+                    let char = replace_chars.drain(..).next().unwrap_or(char);
+                    (Part::Char(char), match char {
+                        '\n' if item.ghost.is_some() => {
+                            *indent = 0;
+                            *on_indent = true;
+                            0
+                        }
                         '\n' => process_nl(indent, on_indent, x, opts),
                         char => process_char(indent, on_indent, x, char, opts),
-                    };
-                    (Part::Char(char), len)
+                    })
                 }
                 _ => (item.part, 0),
             };
@@ -525,6 +522,8 @@ fn process_tab(
 
         new_tab_chars.push(Item { part: Part::Char(char), ..item })
     }
+
+    replace_chars.clear();
 
     new_tab_chars.extend((0..len).map(|_| Item { part: Part::Char(' '), ..item }));
     new_tab_chars

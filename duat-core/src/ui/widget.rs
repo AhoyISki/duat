@@ -42,7 +42,7 @@ use crate::{
     context::Handle,
     data::{Pass, RwData},
     form,
-    hook::{self, FocusedOn, OnMouseEvent, UnfocusedFrom},
+    hook::{self, BufferPrinted, FocusedOn, OnMouseEvent, UnfocusedFrom},
     mode::MouseEvent,
     opts::PrintOpts,
     session::UiMouseEvent,
@@ -505,12 +505,19 @@ impl Node {
             }),
             print: Arc::new({
                 let handle = handle.clone();
+                let buf_handle = handle.try_downcast();
+
                 move |pa| {
                     let painter =
                         form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
+                        
                     handle
                         .area
-                        .print(pa, handle.text(pa), handle.opts(pa), painter)
+                        .print(pa, handle.text(pa), handle.opts(pa), painter);
+                    
+                    if let Some(buf_handle) = buf_handle.as_ref() {
+                        hook::trigger(pa, BufferPrinted(buf_handle.clone()));
+                    }
                 }
             }),
             on_focus: Arc::new({

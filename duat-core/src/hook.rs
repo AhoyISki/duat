@@ -35,7 +35,8 @@
 //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
 //! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
-//! - [`BufferUpdated`] triggers whenever a buffer changesg.
+//! - [`BufferUpdated`] triggers whenever a buffer changes.
+//! - [`BufferPrinted`] triggers after a buffer has been printed.
 //! - [`BufferSwitched`] triggers when switching the active buffer.
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
@@ -225,7 +226,7 @@ mod global {
             remove(self)
         }
 
-		/// Returns `true` if this `GroupId` has any hooks
+        /// Returns `true` if this `GroupId` has any hooks
         pub fn has_hooks(self) -> bool {
             group_exists(self)
         }
@@ -741,6 +742,25 @@ impl Hookable for BufferUpdated {
 impl PartialEq<Handle> for BufferUpdated {
     fn eq(&self, other: &Handle) -> bool {
         self.0 == *other
+    }
+}
+
+/// [`Hookable`]: Triggers after a [`Buffer`] is printed
+///
+/// The primary purpose of this `Widget` is to do cleanup on temporary
+/// changes made during a `BufferUpdated` triggering.
+///
+/// One example of this is with the default `BufferOpts`, which allow
+/// you to hightlight the current cursor line. Since this makes use of
+/// disruptive `Tag`s, it is best to do this only during the printing
+/// process, then get rid of said tags.
+pub struct BufferPrinted(pub(crate) Handle);
+
+impl Hookable for BufferPrinted {
+    type Input<'h> = &'h Handle;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        &self.0
     }
 }
 
