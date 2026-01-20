@@ -155,8 +155,8 @@ impl Builder {
                         builder.text.insert_tag(tagger, b..end, tag);
                     }
                 }
-                BP::Spacer(_) => _ = builder.text.insert_tag(tagger, end, Spacer),
-                BP::Ghost(ghost) => _ = builder.text.insert_tag(tagger, end, ghost.clone()),
+                BP::Spacer(_) => builder.text.insert_tag(tagger, end, Spacer),
+                BP::Ghost(ghost) => builder.text.insert_tag(tagger, end, ghost.clone()),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }

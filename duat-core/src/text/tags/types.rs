@@ -7,7 +7,7 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{ops::Range, sync::Arc};
+use std::sync::Arc;
 
 use RawTag::*;
 use crossterm::event::MouseEventKind;
@@ -28,18 +28,18 @@ macro_rules! simple_impl_Tag {
 
             #[allow(unused_variables)]
             fn get_raw(
-                &self,
+                &mut self,
                 _: &super::InnerTags,
                 byte: usize,
                 max: usize,
                 $tagger: Tagger,
-            ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+            ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
                 let $self = self;
                 assert!(
                     byte <= max,
                     "byte out of bounds: the len is {max}, but the byte is {byte}",
                 );
-                ((byte, $raw_tag), None, ())
+                ((byte, $raw_tag), None)
             }
         }
 
@@ -47,12 +47,12 @@ macro_rules! simple_impl_Tag {
             const IS_META: bool = $is_meta;
 
             fn get_raw(
-                &self,
+                &mut self,
                 tags: &super::InnerTags,
                 point: Point,
                 max: usize,
                 tagger: Tagger,
-            ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+            ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
                 let byte = point.byte();
                 self.get_raw(tags, byte, max, tagger)
             }
@@ -86,7 +86,7 @@ macro_rules! simple_impl_Tag {
 /// [range]: TextRange
 /// [`Buffer`]: crate::buffer::Buffer
 /// [`Widget`]: crate::ui::Widget
-pub trait Tag<Index, Return: Copy = ()>: Sized {
+pub trait Tag<Index>: Sized {
     /// A meta `Tag` is one that changes the layout of the [`Text`]
     /// itself
     ///
@@ -96,18 +96,18 @@ pub trait Tag<Index, Return: Copy = ()>: Sized {
     /// Gets the [`RawTag`]s and a possible return id from the `Tag`
     #[doc(hidden)]
     fn get_raw(
-        &self,
+        &mut self,
         tags: &super::InnerTags,
         index: Index,
         max: usize,
         tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Return);
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>);
 
     /// An action to take place if the [`RawTag`]s are successfully
     /// added
     #[doc(hidden)]
     #[allow(unused_variables)]
-    fn on_insertion(self, ret: Return, tags: &mut super::InnerTags) {}
+    fn on_insertion(self, tags: &mut super::InnerTags) {}
 }
 
 ////////// Form-like InnerTags
@@ -132,15 +132,19 @@ impl<I: TextRange> Tag<I> for FormTag {
     const IS_META: bool = false;
 
     fn get_raw(
-        &self,
+        &mut self,
         _: &super::InnerTags,
         index: I,
         max: usize,
         tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let FormTag(id, prio) = *self;
         let range = index.to_range(max);
-        ranged(range, PushForm(tagger, id, prio), PopForm(tagger, id), ())
+        {
+            let s_tag = PushForm(tagger, id, prio);
+            let e_tag = PopForm(tagger, id);
+            ((range.start, s_tag), Some((range.end, e_tag)))
+        }
     }
 }
 
@@ -220,30 +224,38 @@ simple_impl_Tag!(tag: Spacer, tagger, RawTag::Spacer(tagger), false);
 ///
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone)]
-pub struct Ghost(Arc<Text>);
+pub struct Ghost {
+    text: Arc<Text>,
+    id: Option<GhostId>,
+    is_new: bool,
+}
 
 impl Ghost {
     /// Returns a new `Ghost`, which can be inserted on [`Text`]
     pub fn new(value: impl Into<Text>) -> Self {
-        Self(Arc::new(Into::<Text>::into(value).without_last_nl()))
+        Self {
+            text: Arc::new(Into::<Text>::into(value).without_last_nl()),
+            id: None,
+            is_new: false,
+        }
     }
 
     /// The [`Text`] of this `Ghost`
     pub fn text(&self) -> &Text {
-        &self.0
+        &self.text
     }
 }
 
-impl Tag<usize, GhostId> for Ghost {
+impl Tag<usize> for Ghost {
     const IS_META: bool = true;
 
     fn get_raw(
-        &self,
+        &mut self,
         tags: &super::InnerTags,
         byte: usize,
         max: usize,
         tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         assert!(
             byte <= max,
             "index out of bounds: the len is {max}, but the index is {byte}",
@@ -251,37 +263,45 @@ impl Tag<usize, GhostId> for Ghost {
         let id = if let Some((id, _)) = tags
             .ghosts
             .iter()
-            .find(|(_, arc)| Arc::ptr_eq(arc, &self.0))
+            .find(|(_, arc)| Arc::ptr_eq(arc, &self.text))
         {
+            self.is_new = false;
             *id
         } else {
+            self.is_new = true;
             GhostId::new()
         };
 
-        ((byte, RawTag::Ghost(tagger, id)), None, id)
+        self.id = Some(id);
+
+        ((byte, RawTag::Ghost(tagger, id)), None)
     }
 
-    fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
-        tags.ghosts.push((ret, self.0.clone()))
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        if self.is_new {
+            tags.ghosts.push((self.id.unwrap(), self.text.clone()))
+        }
     }
 }
 
-impl Tag<Point, GhostId> for Ghost {
+impl Tag<Point> for Ghost {
     const IS_META: bool = true;
 
     fn get_raw(
-        &self,
+        &mut self,
         tags: &super::InnerTags,
         point: Point,
         max: usize,
         tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, GhostId) {
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let byte = point.byte();
         self.get_raw(tags, byte, max, tagger)
     }
 
-    fn on_insertion(self, ret: GhostId, tags: &mut super::InnerTags) {
-        tags.ghosts.push((ret, self.0))
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        if self.is_new {
+            tags.ghosts.push((self.id.unwrap(), self.text))
+        }
     }
 }
 
@@ -298,17 +318,16 @@ impl<I: TextRange> Tag<I> for Conceal {
     const IS_META: bool = true;
 
     fn get_raw(
-        &self,
+        &mut self,
         _: &super::InnerTags,
         index: I,
         max: usize,
         tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, ()) {
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         let range = index.to_range(max);
         (
             (range.start, (RawTag::StartConceal)(tagger)),
             Some((range.end, (RawTag::EndConceal)(tagger))),
-            (),
         )
     }
 }
@@ -373,48 +392,46 @@ impl SpawnTag {
     }
 }
 
-impl Tag<Point, SpawnId> for SpawnTag {
+impl Tag<Point> for SpawnTag {
     const IS_META: bool = false;
 
     fn get_raw(
-        &self,
+        &mut self,
         _: &super::InnerTags,
         index: Point,
         max: usize,
         tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, SpawnId) {
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         (
             (index.byte().min(max), RawTag::SpawnedWidget(tagger, self.0)),
             None,
-            self.0,
         )
     }
 
-    fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
-        tags.spawns.push(super::SpawnCell(ret));
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        tags.spawns.push(super::SpawnCell(self.0));
         tags.spawn_fns.0.push(self.1);
     }
 }
 
-impl Tag<usize, SpawnId> for SpawnTag {
+impl Tag<usize> for SpawnTag {
     const IS_META: bool = false;
 
     fn get_raw(
-        &self,
+        &mut self,
         _: &super::InnerTags,
         index: usize,
         max: usize,
         tagger: Tagger,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, SpawnId) {
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
         (
             (index.min(max), RawTag::SpawnedWidget(tagger, self.0)),
             None,
-            self.0,
         )
     }
 
-    fn on_insertion(self, ret: SpawnId, tags: &mut super::InnerTags) {
-        tags.spawns.push(super::SpawnCell(ret));
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        tags.spawns.push(super::SpawnCell(self.0));
         tags.spawn_fns.0.push(self.1);
     }
 }
@@ -668,12 +685,3 @@ impl std::fmt::Debug for RawTag {
 /// A toggleable function in a range of [`Text`], kind of like a
 /// button
 pub type Toggle = Arc<dyn Fn(Point, Coord, MouseEventKind) + 'static + Send + Sync>;
-
-fn ranged<Return>(
-    r: Range<usize>,
-    s_tag: RawTag,
-    e_tag: RawTag,
-    ret: Return,
-) -> ((usize, RawTag), Option<(usize, RawTag)>, Return) {
-    ((r.start, s_tag), Some((r.end, e_tag)), ret)
-}

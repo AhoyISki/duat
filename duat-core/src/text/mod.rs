@@ -463,22 +463,16 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
-    where
-        R: Copy,
-    {
-        self.0.tags.insert(tagger, r, tag, false)
+    pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.tags.insert(tagger, idx, tag, false)
     }
 
     /// Like [`insert_tag`], but does it after other [`Tag`]s with the
     /// same priority
     ///
     /// [`insert_tag`]: Self::insert_tag
-    pub fn insert_tag_after<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
-    where
-        R: Copy,
-    {
-        self.0.tags.insert(tagger, r, tag, true)
+    pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.tags.insert(tagger, idx, tag, true)
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -722,22 +716,16 @@ impl<'t> TextMut<'t> {
     }
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
-    where
-        R: Copy,
-    {
-        self.text.insert_tag(tagger, r, tag)
+    pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.text.insert_tag(tagger, idx, tag)
     }
 
     /// Like [`insert_tag`], but does it after other [`Tag`]s with the
     /// same priority
     ///
     /// [`insert_tag`]: Self::insert_tag
-    pub fn insert_tag_after<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
-    where
-        R: Copy,
-    {
-        self.text.insert_tag_after(tagger, r, tag)
+    pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.text.insert_tag_after(tagger, idx, tag)
     }
 
     /// Removes the [`Tag`]s of a [`Tagger`] from a region

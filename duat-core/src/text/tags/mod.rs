@@ -65,22 +65,16 @@ impl Tags<'_> {
     ///
     /// When the `Tag` doesn't return an id, it will return `Some(())`
     /// if the `Tag` was successfully added, and `None` otherwise.
-    pub fn insert<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
-    where
-        R: Copy,
-    {
-        self.0.insert(tagger, r, tag, false)
+    pub fn insert<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.insert(tagger, idx, tag, false)
     }
 
     /// Same as [`insert`], but does it after other [`Tags`] of the
     /// same priority
     ///
     /// [`insert`]: Self::insert
-    pub fn insert_after<I, R>(&mut self, tagger: Tagger, r: I, tag: impl Tag<I, R>) -> Option<R>
-    where
-        R: Copy,
-    {
-        self.0.insert(tagger, r, tag, true)
+    pub fn insert_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.insert(tagger, idx, tag, true)
     }
 
     /// Removes the [`Tag`]s of a [tagger] from a region
@@ -217,21 +211,17 @@ impl InnerTags {
     ///
     /// [`TextIndex`]: super::TextIndex
     /// [`TextRange`]: super::TextRange
-    pub fn insert<T, I, R>(&mut self, tagger: Tagger, idx: I, tag: T, after: bool) -> Option<R>
+    pub fn insert<T, Idx>(&mut self, tagger: Tagger, idx: Idx, mut tag: T, after: bool)
     where
-        T: Tag<I, R>,
-        R: Copy,
+        T: Tag<Idx>,
     {
-        let (start, end, ret) = tag.get_raw(self, idx, self.len_bytes(), tagger);
+        let (start, end) = tag.get_raw(self, idx, self.len_bytes(), tagger);
         let inserted = self.insert_raw(start, end, after);
 
         if inserted {
-            tag.on_insertion(ret, self);
+            tag.on_insertion(self);
             self.meta_tags_state += T::IS_META as u64;
             self.tags_state += 1;
-            Some(ret)
-        } else {
-            None
         }
     }
 
