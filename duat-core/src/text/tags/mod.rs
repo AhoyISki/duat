@@ -411,7 +411,7 @@ impl InnerTags {
         let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as i32, |(b, _)| b);
 
         self.list
-            .extract_if_while(start..end, |i, entry| Some(filter(entry)))
+            .extract_if_while(start..end, |_, entry| Some(filter(entry)))
             .for_each(|(i, (_, tag))| {
                 self.bounds.shift_by(i, [-1, 0]);
 

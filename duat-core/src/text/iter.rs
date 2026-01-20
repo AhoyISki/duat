@@ -28,27 +28,27 @@ use crate::{mode::Selection, text::TwoPoints};
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
 #[derive(Clone)]
-pub struct FwdIter<'a> {
-    text: &'a Text,
+pub struct FwdIter<'t> {
+    text: &'t Text,
     point: Point,
     init_point: Point,
-    chars: FwdChars<'a>,
-    tags: tags::FwdTags<'a>,
+    chars: FwdChars<'t>,
+    tags: tags::FwdTags<'t>,
     conceals: u32,
 
     // Things to deal with ghost text.
-    main_iter: Option<(Point, FwdChars<'a>, tags::FwdTags<'a>)>,
+    main_iter: Option<MainIter<FwdChars<'t>, tags::FwdTags<'t>>>,
     ghost: Option<(Point, usize)>,
 
     // Configuration on how to iterate.
     print_ghosts: bool,
-    _conceals: Conceal<'a>,
+    _conceals: Conceal<'t>,
 }
 
-impl<'a> FwdIter<'a> {
+impl<'t> FwdIter<'t> {
     /// Returns a new forward [`Iterator`] over the [`Item`]s in the
     /// [`Text`]
-    pub(super) fn new_at(text: &'a Text, points: TwoPoints) -> Self {
+    pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
         let point = real.min(text.len());
 
@@ -97,7 +97,7 @@ impl<'a> FwdIter<'a> {
     /// Not yet implemented
     ///
     /// [`Conceal`]: super::Conceal
-    pub fn dont_conceal_containing(self, list: &'a [Selection]) -> Self {
+    pub fn dont_conceal_containing(self, list: &'t [Selection]) -> Self {
         Self {
             _conceals: Conceal::Excluding(list),
             ..self
@@ -120,7 +120,7 @@ impl<'a> FwdIter<'a> {
     /// [`Tag`]: super::Tag
     /// [`Ghost`]: super::Ghost
     /// [`Bytes::chars_fwd`]: super::Bytes::chars_fwd
-    pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
+    pub fn no_tags(self) -> impl Iterator<Item = Item> + 't {
         self.filter(|item| item.part.is_char())
     }
 
@@ -145,15 +145,15 @@ impl<'a> FwdIter<'a> {
     /// [`Iterator`]
     #[inline(always)]
     pub fn points(&self) -> TwoPoints {
-        if let Some((real, ..)) = self.main_iter.as_ref() {
-            TwoPoints::new(*real, self.ghost.map(|(tg, _)| tg).unwrap())
+        if let Some(MainIter { point, .. }) = self.main_iter.as_ref() {
+            TwoPoints::new(*point, self.ghost.map(|(tg, _)| tg).unwrap())
         } else {
             TwoPoints::new_after_ghost(self.point)
         }
     }
 
     /// The [`Text`] that's being iterated over
-    pub fn text(&self) -> &'a Text {
+    pub fn text(&self) -> &'t Text {
         self.text
     }
 
@@ -181,11 +181,12 @@ impl<'a> FwdIter<'a> {
 
                 let iter = text.iter_fwd(this_ghost.to_two_points_before());
                 let point = std::mem::replace(&mut self.point, this_ghost);
+                let init_point = std::mem::replace(&mut self.init_point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
                 self.ghost = Some((total_ghost, total_ghost.byte()));
-                self.main_iter = Some((point, chars, tags));
+                self.main_iter = Some(MainIter { point, init_point, chars, tags });
             }
             RawTag::StartConceal(_) => {
                 self.conceals += 1;
@@ -245,8 +246,12 @@ impl Iterator for FwdIter<'_> {
             };
 
             Some(Item::new(points, Part::Char(char)))
-        } else if let Some(backup) = self.main_iter.take() {
-            (self.point, self.chars, self.tags) = backup;
+        } else if let Some(main_iter) = self.main_iter.take() {
+            self.point = main_iter.point;
+            self.init_point = main_iter.init_point;
+            self.chars = main_iter.chars;
+            self.tags = main_iter.tags;
+
             self.next()
         } else {
             None
@@ -259,26 +264,26 @@ impl Iterator for FwdIter<'_> {
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
 #[derive(Clone)]
-pub struct RevIter<'a> {
-    text: &'a Text,
+pub struct RevIter<'t> {
+    text: &'t Text,
     point: Point,
     init_point: Point,
-    chars: RevChars<'a>,
-    tags: tags::RevTags<'a>,
+    chars: RevChars<'t>,
+    tags: tags::RevTags<'t>,
     conceals: usize,
 
-    main_iter: Option<(Point, RevChars<'a>, tags::RevTags<'a>)>,
+    main_iter: Option<MainIter<RevChars<'t>, tags::RevTags<'t>>>,
     ghost: Option<(Point, usize)>,
 
     // Iteration options:
     print_ghosts: bool,
-    _conceals: Conceal<'a>,
+    _conceals: Conceal<'t>,
 }
 
-impl<'a> RevIter<'a> {
+impl<'t> RevIter<'t> {
     /// Returns a new reverse [`Iterator`] over the [`Item`]s in the
     /// [`Text`]
-    pub(super) fn new_at(text: &'a Text, points: TwoPoints) -> Self {
+    pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
         let point = real.min(text.len());
 
@@ -328,7 +333,7 @@ impl<'a> RevIter<'a> {
     /// [`Tag`]: super::Tag
     /// [`Ghost`]: super::Ghost
     /// [`Bytes::chars_rev`]: super::Bytes::chars_rev
-    pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
+    pub fn no_tags(self) -> impl Iterator<Item = Item> + 't {
         self.filter(|item| item.part.is_char())
     }
 
@@ -336,8 +341,8 @@ impl<'a> RevIter<'a> {
 
     /// Returns the current real and ghost [`Point`]s
     pub fn points(&self) -> TwoPoints {
-        if let Some((real, ..)) = self.main_iter.as_ref() {
-            TwoPoints::new(*real, self.point)
+        if let Some(MainIter { point, .. }) = self.main_iter.as_ref() {
+            TwoPoints::new(*point, self.point)
         } else if let Some((ghost, _)) = self.ghost {
             TwoPoints::new(self.point, ghost)
         } else {
@@ -346,7 +351,7 @@ impl<'a> RevIter<'a> {
     }
 
     /// The [`Text`] that's being iterated over
-    pub fn text(&self) -> &'a Text {
+    pub fn text(&self) -> &'t Text {
         self.text
     }
 
@@ -369,7 +374,7 @@ impl<'a> RevIter<'a> {
                 }
                 let text = self.text.get_ghost(*id).unwrap();
 
-                let (ghost_b, offset) = if let Some((offset, dist)) = &mut self.ghost {
+                let (ghost_b, this_ghost) = if let Some((offset, dist)) = &mut self.ghost {
                     if *dist - text.len().byte() >= offset.byte() {
                         *dist -= text.len().byte();
                         return true;
@@ -385,12 +390,13 @@ impl<'a> RevIter<'a> {
                 };
 
                 let iter = text.iter_rev(ghost_b.to_two_points_before());
-                let point = std::mem::replace(&mut self.point, offset);
+                let point = std::mem::replace(&mut self.point, this_ghost);
+                let init_point = std::mem::replace(&mut self.init_point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
-                self.ghost = Some((offset, offset.byte()));
-                self.main_iter = Some((point, chars, tags));
+                self.ghost = Some((this_ghost, this_ghost.byte()));
+                self.main_iter = Some(MainIter { point, init_point, chars, tags });
             }
 
             RawTag::StartConceal(_) => {
@@ -446,8 +452,12 @@ impl Iterator for RevIter<'_> {
             };
 
             Some(Item::new(self.points(), Part::Char(char)))
-        } else if let Some(last_iter) = self.main_iter.take() {
-            (self.point, self.chars, self.tags) = last_iter;
+        } else if let Some(main_iter) = self.main_iter.take() {
+            self.point = main_iter.point;
+            self.init_point = main_iter.init_point;
+            self.chars = main_iter.chars;
+            self.tags = main_iter.tags;
+
             self.next()
         } else {
             None
@@ -559,16 +569,16 @@ impl Item {
 // To be rethought
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
-enum Conceal<'a> {
+enum Conceal<'s> {
     #[default]
     All,
     None,
-    Excluding(&'a [Selection]),
-    NotOnLineOf(&'a [Selection]),
+    Excluding(&'s [Selection]),
+    NotOnLineOf(&'s [Selection]),
 }
 
-type FwdChars<'a> = Chain<Chars<'a>, Chars<'a>>;
-type RevChars<'a> = Chain<Rev<Chars<'a>>, Rev<Chars<'a>>>;
+type FwdChars<'t> = Chain<Chars<'t>, Chars<'t>>;
+type RevChars<'t> = Chain<Rev<Chars<'t>>, Rev<Chars<'t>>>;
 
 use crate::form::FormId;
 
@@ -700,4 +710,12 @@ impl Part {
             None
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct MainIter<Chars, Tags> {
+    point: Point,
+    init_point: Point,
+    chars: Chars,
+    tags: Tags,
 }
