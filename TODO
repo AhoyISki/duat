@@ -13,6 +13,7 @@ FOR NEXT UPDATE:
     [ ] Indent lines.
     [ ] Space replacements.
     [ ] New line replacements.
+[ ] Line aware tag removal.
 
 KNOWN BUGS:
  HIGH PRIORITY:

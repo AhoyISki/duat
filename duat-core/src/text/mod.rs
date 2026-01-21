@@ -525,6 +525,22 @@ impl Text {
         self.0.tags.remove_from_excl(tagger, range)
     }
 
+    /// Like [`Text::remove_tags`], but removes base on a predicate
+    ///
+    /// If the function returns `true`, then the tag is removed. Note
+    /// that every [`RawTag`] in here is guaranteed to have the same
+    /// [`Tagger`] as the one passed to the function, so you don't
+    /// need to chack for that.
+    pub fn remove_tags_if(
+        &mut self,
+        tagger: Tagger,
+        from: impl TextRangeOrIndex,
+        filter: impl FnMut(usize, RawTag) -> bool,
+    ) {
+        let range = from.to_range(self.len().byte() + 1);
+        self.0.tags.remove_from_if(tagger, range, filter)
+    }
+
     /// Removes all [`Tag`]s
     ///
     /// Refrain from using this function on [`Buffer`]s, as there may
@@ -791,8 +807,8 @@ impl<'t> TextMut<'t> {
         self.text.remove_tags(tagger, range)
     }
 
-    /// Just like [`TextMut::remove_tags`] but excludes ends on the start
-    /// and starts on the end
+    /// Just like [`TextMut::remove_tags`] but excludes ends on the
+    /// start and starts on the end
     ///
     /// In the regular [`remove_tags`] function, if you remove from a
     /// range `x..y`, tag ranges that end in `x` or start in `y -
@@ -805,6 +821,22 @@ impl<'t> TextMut<'t> {
     pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
         let range = range.to_range(self.len().byte() + 1);
         self.text.remove_tags_excl(tagger, range)
+    }
+
+    /// Like [`TextMut::remove_tags`], but removes base on a predicate
+    ///
+    /// If the function returns `true`, then the tag is removed. Note
+    /// that every [`RawTag`] in here is guaranteed to have the same
+    /// [`Tagger`] as the one passed to the function, so you don't
+    /// need to chack for that.
+    pub fn remove_tags_if(
+        &mut self,
+        tagger: Tagger,
+        from: impl TextRangeOrIndex,
+        filter: impl FnMut(usize, RawTag) -> bool,
+    ) {
+        let range = from.to_range(self.len().byte() + 1);
+        self.text.remove_tags_if(tagger, range, filter)
     }
 
     /// Removes all [`Tag`]s

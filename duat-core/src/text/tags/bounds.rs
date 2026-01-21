@@ -100,32 +100,6 @@ impl Bounds {
         i
     }
 
-    /// Removes the bounds for the `n`th entry
-    ///
-    /// Does nothing if no such bound existed
-    pub fn remove_if_represented(&mut self, n: usize) {
-        let Ok(i) = self.list.find_by_key(n as i32, |([n, _], ..)| n) else {
-            return;
-        };
-
-        let (_, tag, id) = self.list.get(i).unwrap();
-        self.list.remove(i);
-
-        let (j, _) = if tag.is_start() {
-            self.list
-                .iter_fwd(i..)
-                .find(|(_, (.., other))| *other == id)
-                .unwrap()
-        } else {
-            self.list
-                .iter_rev(..i)
-                .find(|(_, (.., other))| *other == id)
-                .unwrap()
-        };
-
-        self.list.remove(j);
-    }
-
     /// Removes all ranges that start or end in the range
     ///
     /// WILL handle matching [`Tag`]s, WILL NOT handle shifting of

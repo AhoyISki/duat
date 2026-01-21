@@ -106,9 +106,9 @@ impl Tags<'_> {
     /// [range]: RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
-    pub fn remove(&mut self, taggers: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.0.len_bytes() + 1);
-        self.0.remove_from(taggers, range)
+    pub fn remove(&mut self, tagger: Tagger, from: impl TextRangeOrIndex) {
+        let range = from.to_range(self.0.len_bytes() + 1);
+        self.0.remove_from(tagger, range)
     }
 
     /// Just like [`Tags::remove`] but excludes ends on the start and
@@ -122,9 +122,25 @@ impl Tags<'_> {
     /// instead.
     ///
     /// [`remove`]: Self::remove
-    pub fn remove_excl(&mut self, taggers: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.0.len_bytes() + 1);
-        self.0.remove_from_excl(taggers, range);
+    pub fn remove_excl(&mut self, tagger: Tagger, from: impl TextRangeOrIndex) {
+        let range = from.to_range(self.0.len_bytes() + 1);
+        self.0.remove_from_excl(tagger, range);
+    }
+
+    /// Like [`Tags::remove`], but removes base on a predicate
+    ///
+    /// If the function returns `true`, then the tag is removed. Note
+    /// that every [`RawTag`] in here is guaranteed to have the same
+    /// [`Tagger`] as the one passed to the function, so you don't
+    /// need to chack for that.
+    pub fn remove_if(
+        &mut self,
+        tagger: Tagger,
+        from: impl TextRangeOrIndex,
+        filter: impl FnMut(usize, RawTag) -> bool,
+    ) {
+        let range = from.to_range(self.0.len_bytes() + 1);
+        self.0.remove_from_if(tagger, range, filter)
     }
 
     /// Removes all [`Tag`]s
@@ -338,7 +354,7 @@ impl InnerTags {
     /// Removes all [`RawTag`]s of a given [`Tagger`]
     pub(super) fn remove_from(&mut self, tagger: Tagger, within: Range<usize>) {
         for extent in self.extents.remove(within.clone(), |other| other == tagger) {
-            self.remove_from_if(extent.clone(), |(_, tag)| tag.tagger() == tagger);
+            self.remove_inner(extent.clone(), |(_, tag)| tag.tagger() == tagger);
         }
     }
 
@@ -346,13 +362,13 @@ impl InnerTags {
         let mut remained_on = [false; 2];
 
         for extent in self.extents.remove(within.clone(), |other| other == tagger) {
-            self.remove_from_if(extent.clone(), |(b, tag)| {
+            self.remove_inner(extent.clone(), |(b, tag)| {
                 if tagger != tag.tagger() {
                     return false;
                 };
 
-                let removed = (b > within.start as i32 || tag.is_start())
-                    && (b < within.end as i32 || tag.is_end());
+                let removed = (b > within.start as i32 || !tag.is_end())
+                    && (b < within.end as i32 || !tag.is_start());
 
                 if !removed {
                     if b == within.start as i32 {
@@ -375,6 +391,19 @@ impl InnerTags {
         }
     }
 
+    /// Removes every [`RawTag`] from a range that matches a given
+    /// predicate
+    pub(super) fn remove_from_if(
+        &mut self,
+        tagger: Tagger,
+        within: Range<usize>,
+        mut filter: impl FnMut(usize, RawTag) -> bool,
+    ) {
+        for extent in self.extents.iter_over(within.clone(), tagger) {
+            self.remove_inner(extent.clone(), |(byte, tag)| filter(byte as usize, tag));
+        }
+    }
+
     /// Removes every [`RawTag`] from a range, as well as their
     /// matches
     ///
@@ -382,11 +411,7 @@ impl InnerTags {
     /// of the [`Bounds`], WILL NOT shift [`TaggerExtents`] since
     /// there is no byte shifting, WILL NOT shift the bytes of the
     /// [`Bounds`]
-    fn remove_from_if(
-        &mut self,
-        range: Range<usize>,
-        mut filter: impl FnMut((i32, RawTag)) -> bool,
-    ) {
+    fn remove_inner(&mut self, range: Range<usize>, mut filter: impl FnMut((i32, RawTag)) -> bool) {
         let removed = self
             .bounds
             .remove_intersecting(range.clone(), &mut filter)
@@ -492,43 +517,15 @@ impl InnerTags {
 
         // Old length removal.
         if old.end > old.start {
-            // First, get rid of all ranges that start and/or end in the old
-            // range.
-            // old.start + 1 because we don't want to get rid of bounds that
-            // merely coincide with the edges.
-            self.remove_from_if(old.start + 1..old.end, |_| true);
-            self.extents.remove(old.start + 1..old.end, |_| true);
-
-            // If the range becomes empty, we should remove the remainig pairs
-            if new.end == old.start
-                && let Ok(s_i) = self.list.find_by_key(old.start as i32, |(b, _)| b)
-            {
-                let mut to_remove: Vec<usize> = Vec::new();
-                let mut starts = Vec::new();
-                let mut iter = self.list.iter_fwd(s_i..);
-
-                while let Some((i, (b, tag))) = iter.next()
-                    && b <= old.end as i32
-                {
-                    if tag.is_start() {
-                        starts.push((i, tag));
-                    } else if tag.is_end()
-                        && let Some(s_i) = starts.iter().rposition(|(_, s)| s.ends_with(&tag))
-                    {
-                        let (s_i, _) = starts.remove(s_i);
-                        let rm_i = to_remove.iter().take_while(|j| **j < s_i).count();
-                        to_remove.insert(rm_i, s_i);
-                        let rm_i = to_remove.iter().take_while(|j| **j < i).count();
-                        to_remove.insert(rm_i, i)
-                    }
-                }
-
-                for i in to_remove.into_iter().rev() {
-                    self.list.remove(i);
-                    self.bounds.remove_if_represented(i);
-                    self.bounds.shift_by(i, [-1, 0]);
-                }
+            if new_end == old.start {
+                self.remove_inner(old.start..old.end + 1, |(b, tag)| {
+                    (b > old.start as i32 || tag.is_start())
+                        && (b < old.end as i32 || !tag.is_start())
+                });
+            } else {
+                self.remove_inner(old.start + 1..old.end, |_| true);
             }
+            self.extents.remove(old.start + 1..old.end, |_| true);
         }
 
         let shift = new.len() as i32 - old.len() as i32;

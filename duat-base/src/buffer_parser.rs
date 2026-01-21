@@ -36,6 +36,7 @@ pub fn enable_parser() {
 
     let nl_tagger = Tagger::new();
     let spc_tagger = Tagger::new();
+    let ghost_tagger = Tagger::new();
     let cur_line_tagger = Tagger::new();
 
     hook::add::<BufferUpdated>(move |pa, handle| {
@@ -56,7 +57,12 @@ pub fn enable_parser() {
             hightlight_current_line(&mut parts, cur_line_tagger);
         }
 
-        replace(parts, parser.opts, [spc_tagger, nl_tagger], full_range);
+        replace(
+            parts,
+            parser.opts,
+            [spc_tagger, nl_tagger, ghost_tagger],
+            full_range,
+        );
     })
     .grouped("DefaultOptsParser");
 
@@ -82,10 +88,10 @@ fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
     parts.tags.insert(tagger, line_range, cur_line_form);
 }
 
-fn replace(mut parts: BufferParts, opts: BufferOpts, spc_tagger: [Tagger; 2], range: Range<Point>) {
+fn replace(mut parts: BufferParts, opts: BufferOpts, spc_tagger: [Tagger; 3], range: Range<Point>) {
     static NL_GHOST: LazyLock<Ghost> = LazyLock::new(|| Ghost::new("\n\n"));
 
-    let [spc_tagger, nl_tagger] = spc_tagger;
+    let [spc_tagger, nl_tagger, ghost_tagger] = spc_tagger;
 
     let space_form = form::id_of!("replace.space").to_tag(90);
     let space_form_trailing = form::id_of!("replace.space.trailing").to_tag(90);
@@ -107,6 +113,7 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, spc_tagger: [Tagger; 2], ra
         .add_ranges(parts.changes.map(|change| change.line_range(parts.bytes)));
 
     for range in parts.ranges_to_update.cutoff([range.clone()]) {
+        parts.tags.remove(ghost_tagger, range.start + 1..=range.end);
         parts.tags.remove_excl(nl_tagger, range.start..=range.end);
         parts.tags.remove(spc_tagger, range.clone());
 
@@ -127,7 +134,7 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, spc_tagger: [Tagger; 2], ra
                 if nl_char != ' ' {
                     parts.tags.insert(nl_tagger, byte..byte + 1, nl_form);
                     parts.tags.insert(nl_tagger, byte, ReplaceChar(nl_char));
-                    parts.tags.insert(nl_tagger, byte + 1, NL_GHOST.clone());
+                    parts.tags.insert(ghost_tagger, byte + 1, NL_GHOST.clone());
                 }
 
                 if let Some(first) = first_space_byte.take()

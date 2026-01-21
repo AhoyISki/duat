@@ -128,6 +128,43 @@ impl TaggerExtents {
         ranges
     }
 
+    /// Which ranges should be checked, given a removal of this
+    /// [`Range`]
+    ///
+    /// This function should be used when you don't know if the `RawTag`s in question will actually be removed, so you can't remove their respective extents.
+    pub fn iter_over(&self, range: Range<usize>, tagger: Tagger) -> Vec<Range<usize>> {
+        const MAX_FOR_JOINING: usize = 32;
+
+        let Some((_, extent)) = self.extents.iter().find(|(other, _)| *other == tagger) else {
+            return Vec::new();
+        };
+
+        let Some(bytes) = extent.iter_over(range.clone()) else {
+            return vec![range.clone()];
+        };
+
+        let mut ranges: Vec<Range<usize>> = Vec::new();
+
+        for byte in bytes {
+            let i = ranges.iter_mut().take_while(|r| byte + 1 > r.end).count();
+
+            if let Some(range) = ranges.get_mut(i)
+                && byte + MAX_FOR_JOINING >= range.start
+            {
+                range.start = range.start.min(byte);
+            } else if let Some(prev_i) = i.checked_sub(1)
+                && let Some(range) = ranges.get_mut(prev_i)
+                && byte <= range.end + MAX_FOR_JOINING
+            {
+                range.end = range.end.max(byte + 1);
+            } else {
+                ranges.insert(i, byte..byte + 1);
+            }
+        }
+
+        ranges
+    }
+
     /// Shifts the [`TaggerExtents`] by a given character difference
     pub fn shift_by(&mut self, c: usize, by: i32) {
         self.max = (self.max as i32 + by) as u32;
@@ -187,6 +224,20 @@ impl Extent {
             list.extract_if_while(s_i..e_i, |_, _| Some(true))
                 .map(|(_, c)| c as usize),
         )
+    }
+
+    /// Iterates over the [`RawTag`] indices in a [`Range`]
+    ///
+    /// [`RawTag`]: super::RawTag
+    fn iter_over(&self, range: Range<usize>) -> Option<impl Iterator<Item = usize>> {
+        let Extent::Sparse(list) = self else {
+            return None;
+        };
+
+        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as i32, |c| c);
+        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as i32, |c| c);
+
+        Some(list.iter_fwd(s_i..e_i).map(|(_, c)| c as usize))
     }
 }
 
