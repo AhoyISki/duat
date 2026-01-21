@@ -14,7 +14,7 @@ pub fn print_iter(
     points: TwoPoints,
     width: u32,
     opts: PrintOpts,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+) -> impl Iterator<Item = (Caret, Item)> + '_ {
     let start_points = text.visual_line_start(points, 0);
     let max_indent = if opts.indent_wraps { width } else { 0 };
     let cap = opts.wrap_width(width).unwrap_or(width);
@@ -91,38 +91,49 @@ pub fn rev_print_iter(
     points: TwoPoints,
     cap: u32,
     opts: PrintOpts,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
+) -> impl Iterator<Item = (Caret, Item)> + '_ {
     let mut iter = text.iter_rev(points);
 
     let mut returns = Vec::new();
-    let mut prev_line_nl = None;
+    let mut items = Vec::new();
+
+    // Used exclusively for the ReplaceChar tag
+    let mut parts_in_process = Vec::new();
+    let mut char_in_process = None;
 
     std::iter::from_fn(move || {
         if let Some(next) = returns.pop() {
             Some(next)
         } else {
-            let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
-            #[allow(clippy::while_let_on_iterator)]
-            while let Some(item) = iter.next() {
-                if let Part::Char('\n') = item.part {
-                    if items.is_empty() {
-                        items.push(item);
-                    } else {
-                        prev_line_nl = Some(item);
-                        break;
+            let iter = loop {
+                if let Some(item) = iter.next() {
+                    match item.part {
+                        Part::Char(char) => match char_in_process.replace(char) {
+                            Some('\n') => {
+                                let len = items.len();
+                                items.append(&mut parts_in_process);
+                                if len > 0 {
+                                    parts_in_process.push(item);
+                                    break items.drain(..len).rev();
+                                }
+                            }
+                            _ => items.append(&mut parts_in_process),
+                        },
+                        Part::ReplaceChar(char) => {
+                            char_in_process = char_in_process.and(Some(char));
+                        }
+                        _ => {}
                     }
-                } else {
-                    items.push(item);
-                }
-            }
 
-            returns.extend(inner_iter(
-                items.into_iter().rev(),
-                (0, 0),
-                (0, true, 0),
-                (cap, opts),
-                (Vec::new(), Vec::new()),
-            ));
+                    parts_in_process.push(item);
+                } else {
+                    items.append(&mut parts_in_process);
+                    break items.drain(..).rev();
+                }
+            };
+
+            let vecs = (Vec::new(), Vec::new());
+            returns.extend(inner_iter(iter, (0, 0), (0, true, 0), (cap, opts), vecs));
 
             returns.pop()
         }
@@ -131,12 +142,12 @@ pub fn rev_print_iter(
 
 #[inline(always)]
 fn inner_iter<'a>(
-    iter: impl Iterator<Item = Item> + Clone + 'a,
+    iter: impl Iterator<Item = Item> + 'a,
     (mut x, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
     (mut replace_chars, mut tab_chars): (Vec<char>, Vec<Item>),
-) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+) -> impl Iterator<Item = (Caret, Item)> + 'a {
     let max_indent = if opts.indent_wraps { cap } else { 0 };
 
     // Line return variables.
@@ -203,15 +214,18 @@ fn inner_iter<'a>(
                     }
                     Part::Char(char) => {
                         let char = replace_chars.first().copied().unwrap_or(char);
-                        (Item { part: Part::Char(char), ..item }, match char {
-                            '\n' if item.ghost.is_some() => {
-                                *indent = 0;
-                                *on_indent = true;
-                                0
-                            }
-                            '\n' => process_nl(indent, on_indent, x, opts),
-                            char => process_char(indent, on_indent, x, char, opts),
-                        })
+                        (
+                            Item { part: Part::Char(char), ..item },
+                            match char {
+                                '\n' if item.ghost.is_some() => {
+                                    *indent = 0;
+                                    *on_indent = true;
+                                    0
+                                }
+                                '\n' => process_nl(indent, on_indent, x, opts),
+                                char => process_char(indent, on_indent, x, char, opts),
+                            },
+                        )
                     }
                     Part::ReplaceChar(char) => {
                         remove_next();
@@ -328,15 +342,18 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
                 }
                 Part::Char(char) => {
                     let char = replace_chars.drain(..).next().unwrap_or(char);
-                    (Part::Char(char), match char {
-                        '\n' if item.ghost.is_some() => {
-                            *indent = 0;
-                            *on_indent = true;
-                            0
-                        }
-                        '\n' => process_nl(indent, on_indent, x, opts),
-                        char => process_char(indent, on_indent, x, char, opts),
-                    })
+                    (
+                        Part::Char(char),
+                        match char {
+                            '\n' if item.ghost.is_some() => {
+                                *indent = 0;
+                                *on_indent = true;
+                                0
+                            }
+                            '\n' => process_nl(indent, on_indent, x, opts),
+                            char => process_char(indent, on_indent, x, char, opts),
+                        },
+                    )
                 }
                 _ => (item.part, 0),
             };

@@ -34,7 +34,8 @@ pub fn enable_parser() {
     })
     .grouped("DefaultOptsParser");
 
-    let replace_tagger = Tagger::new();
+    let nl_tagger = Tagger::new();
+    let spc_tagger = Tagger::new();
     let cur_line_tagger = Tagger::new();
 
     hook::add::<BufferUpdated>(move |pa, handle| {
@@ -47,7 +48,7 @@ pub fn enable_parser() {
         let mut parts = TRACKER.parts(buffer).unwrap();
 
         if opts_have_changed {
-            parts.tags.remove(replace_tagger, ..);
+            parts.tags.remove(nl_tagger, ..);
             parts.ranges_to_update.add_ranges([..]);
         }
 
@@ -55,7 +56,7 @@ pub fn enable_parser() {
             hightlight_current_line(&mut parts, cur_line_tagger);
         }
 
-        replace(parts, parser.opts, replace_tagger, full_range);
+        replace(parts, parser.opts, [spc_tagger, nl_tagger], full_range);
     })
     .grouped("DefaultOptsParser");
 
@@ -81,8 +82,10 @@ fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
     parts.tags.insert(tagger, line_range, cur_line_form);
 }
 
-fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, range: Range<Point>) {
+fn replace(mut parts: BufferParts, opts: BufferOpts, spc_tagger: [Tagger; 2], range: Range<Point>) {
     static NL_GHOST: LazyLock<Ghost> = LazyLock::new(|| Ghost::new("\n\n"));
+
+    let [spc_tagger, nl_tagger] = spc_tagger;
 
     let space_form = form::id_of!("replace.space").to_tag(90);
     let space_form_trailing = form::id_of!("replace.space.trailing").to_tag(90);
@@ -104,12 +107,12 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, range: Rang
         .add_ranges(parts.changes.map(|change| change.line_range(parts.bytes)));
 
     for range in parts.ranges_to_update.cutoff([range.clone()]) {
-        parts.tags.remove_excl(tagger, range.start..=range.end);
+        parts.tags.remove_excl(nl_tagger, range.start..=range.end);
+        parts.tags.remove(spc_tagger, range.clone());
 
         for (byte, char) in parts.bytes.chars_fwd(range).unwrap() {
             if char == ' ' {
                 first_space_byte.get_or_insert(byte);
-                
             } else if char == '\n' {
                 indenting = true;
 
@@ -122,27 +125,29 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, range: Rang
                     .unwrap_or((opts.new_line_char, nl_form));
 
                 if nl_char != ' ' {
-                    parts.tags.insert(tagger, byte..byte + 1, nl_form);
-                    parts.tags.insert(tagger, byte, ReplaceChar(nl_char));
-                    parts.tags.insert(tagger, byte + 1, NL_GHOST.clone());
+                    parts.tags.insert(nl_tagger, byte..byte + 1, nl_form);
+                    parts.tags.insert(nl_tagger, byte, ReplaceChar(nl_char));
+                    parts.tags.insert(nl_tagger, byte + 1, NL_GHOST.clone());
                 }
 
                 if let Some(first) = first_space_byte.take()
                     && let Some(space_char) = opts.space_char_trailing.or(opts.space_char)
                 {
-                    parts.tags.insert(tagger, first..byte, space_form_trailing);
+                    let range = first..byte;
+                    parts.tags.insert(spc_tagger, range, space_form_trailing);
                     for byte in first..byte {
-                        parts.tags.insert(tagger, byte, ReplaceChar(space_char));
+                        parts.tags.insert(spc_tagger, byte, ReplaceChar(space_char));
                     }
                 }
             } else {
+                let first_space_byte = first_space_byte.take();
                 if indenting {
-                } else if let Some(first) = first_space_byte.take()
+                } else if let Some(first) = first_space_byte
                     && let Some(space_char) = opts.space_char
                 {
-                    parts.tags.insert(tagger, first..byte, space_form);
+                    parts.tags.insert(spc_tagger, first..byte, space_form);
                     for byte in first..byte {
-                        parts.tags.insert(tagger, byte, ReplaceChar(space_char));
+                        parts.tags.insert(spc_tagger, byte, ReplaceChar(space_char));
                     }
                 }
 
