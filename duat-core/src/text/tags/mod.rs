@@ -392,7 +392,13 @@ impl InnerTags {
             .remove_intersecting(range.clone(), &mut filter)
             .into_iter();
 
+        let mut tags_changed = removed.len() > 0;
+        let mut meta_tags_changed = false;
+
         for i in removed.rev() {
+            let (_, tag) = self.list.get(i).unwrap();
+            meta_tags_changed |= tag.is_meta();
+
             // We remove both bounds in order to prevent a state of dangling
             // bounds, which would cause a lookback or lookahead over the whole
             // Text.
@@ -402,8 +408,6 @@ impl InnerTags {
 
         let mut starts = Vec::new();
         let mut ends = Vec::new();
-        let mut meta_tags_changed = false;
-        let mut tags_changed = false;
         // For aiding exclusive removal.
         let mut first_and_last_removed_indices = None;
 
@@ -421,9 +425,10 @@ impl InnerTags {
                     first_and_last_removed_indices = Some((i, i));
                 }
 
-                // This is the only place where this should be checked.
+                // Matches for meta tags are already accounted for here, so no need to
+                // check ahead.
+                meta_tags_changed |= tag.is_meta();
                 tags_changed = true;
-                meta_tags_changed |= matches!(tag, RawTag::EndConceal(_) | RawTag::StartConceal(_));
 
                 if tag.is_start() {
                     starts.push(tag);

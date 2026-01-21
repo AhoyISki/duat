@@ -538,6 +538,15 @@ impl RawTag {
         )
     }
 
+    /// Wether this is a "meta" tag, that is, wether it alters the
+    /// structure of the text itself
+    pub fn is_meta(&self) -> bool {
+        matches!(
+            self,
+            Self::StartConceal(_) | Self::EndConceal(_) | Self::Ghost(..) | Self::ReplaceChar(..)
+        )
+    }
+
     /// The [`Tagger`] of this [`RawTag`]
     pub(in crate::text) fn tagger(&self) -> Tagger {
         match self.get_tagger() {
