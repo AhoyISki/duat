@@ -510,11 +510,11 @@ impl Node {
                 move |pa| {
                     let painter =
                         form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
-                        
+
                     handle
                         .area
                         .print(pa, handle.text(pa), handle.opts(pa), painter);
-                    
+
                     if let Some(buf_handle) = buf_handle.as_ref() {
                         hook::trigger(pa, BufferPrinted(buf_handle.clone()));
                     }

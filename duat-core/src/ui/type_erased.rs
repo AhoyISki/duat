@@ -26,11 +26,12 @@ use crate::{
     context::{self, DuatSender, cache},
     data::{Pass, RwData},
     form::Painter,
+    mode::VPoint,
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Item, Text, TwoPoints},
+    text::{Point, Text, TwoPoints},
     ui::{
-        Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs,
+        Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs,
         traits::{RawArea, RawUi, UiPass},
     },
 };
@@ -464,47 +465,6 @@ impl RwArea {
         self.0.write(pa).set_print_info(info)
     }
 
-    /// Returns a printing iterator
-    ///
-    /// Given an iterator of [`text::Item`]s, returns an iterator
-    /// which assigns to each of them a [`Caret`]. This struct
-    /// essentially represents where horizontally would this character
-    /// be printed.
-    ///
-    /// If you want a reverse iterator, see
-    /// [`Area::rev_print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    pub fn print_iter<'a>(
-        &self,
-        pa: &Pass,
-        text: &'a Text,
-        points: TwoPoints,
-        opts: PrintOpts,
-    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.0.read(pa).print_iter(text, points, opts)
-    }
-
-    /// Returns a reversed printing iterator
-    ///
-    /// Given an iterator of [`text::Item`]s, returns a reversed
-    /// iterator which assigns to each of them a [`Caret`]. This
-    /// struct essentially represents where horizontally each
-    /// character would be printed.
-    ///
-    /// If you want a forwards iterator, see [`Area::print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    pub fn rev_print_iter<'a>(
-        &self,
-        pa: &Pass,
-        text: &'a Text,
-        points: TwoPoints,
-        opts: PrintOpts,
-    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        self.0.read(pa).rev_print_iter(text, points, opts)
-    }
-
     ////////// Points functions
 
     /// Scrolls the [`Text`] veritcally by an amount
@@ -723,50 +683,50 @@ impl Area {
     }
 
     /// Returns a list of the lines that were printed
-    #[track_caller]
     pub fn get_printed_lines(&self, text: &Text, opts: PrintOpts) -> Option<Vec<PrintedLine>> {
         (self.fns.get_printed_lines)(self, text, opts)
     }
 
     ////////// PROBABLY DUE FOR DELETION, DON'T LIKE THESE
 
-    /// Returns a printing iterator
+    /// Move vertically from a [`Point`] in the `Text`
     ///
-    /// Given an iterator of [`text::Item`]s, returns an iterator
-    /// which assigns to each of them a [`Caret`]. This struct
-    /// essentially represents where horizontally would this character
-    /// be printed.
+    /// This should return a [`VPoint`], which is a struct that
+    /// describes additional information about a position in the text,
+    /// namely the character, visual, and wrapped distances from the
+    /// start of the line.
     ///
-    /// If you want a reverse iterator, see
-    /// [`Area::rev_print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    pub fn print_iter<'a>(
+    /// The `desired_col` parameter describes what visual distance
+    /// from the start of the line is desired.
+    pub fn move_ver(
         &self,
-        text: &'a Text,
-        points: TwoPoints,
+        by: i32,
+        text: &Text,
+        point: Point,
+        desired_col: Option<usize>,
         opts: PrintOpts,
-    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        (self.fns.print_iter)(self, text, points, opts)
+    ) -> VPoint {
+        (self.fns.move_ver)(self, by, text, point, desired_col, opts)
     }
 
-    /// Returns a reversed printing iterator
+    /// Move vertically from a [`Point`] in the `Text` with wrapping
     ///
-    /// Given an iterator of [`text::Item`]s, returns a reversed
-    /// iterator which assigns to each of them a [`Caret`]. This
-    /// struct essentially represents where horizontally each
-    /// character would be printed.
+    /// This should return a [`VPoint`], which is a struct that
+    /// describes additional information about a position in the text,
+    /// namely the character, visual, and wrapped distances from the
+    /// start of the line.
     ///
-    /// If you want a forwards iterator, see [`Area::print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    pub fn rev_print_iter<'a>(
+    /// The `desired_col` parameter describes what visual distance
+    /// from the start of the line is desired.
+    pub fn move_ver_wrapped(
         &self,
-        text: &'a Text,
-        points: TwoPoints,
+        by: i32,
+        text: &Text,
+        point: Point,
+        desired_col: Option<usize>,
         opts: PrintOpts,
-    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a> {
-        (self.fns.rev_print_iter)(self, text, points, opts)
+    ) -> VPoint {
+        (self.fns.move_ver_wrapped)(self, by, text, point, desired_col, opts)
     }
 
     ////////// Points functions
@@ -917,18 +877,8 @@ struct AreaFunctions {
     get_print_info: fn(&Area) -> PrintInfo,
     set_print_info: fn(&Area, PrintInfo),
     get_printed_lines: fn(&Area, &Text, PrintOpts) -> Option<Vec<PrintedLine>>,
-    print_iter: for<'a> fn(
-        &Area,
-        &'a Text,
-        TwoPoints,
-        PrintOpts,
-    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>,
-    rev_print_iter: for<'a> fn(
-        &Area,
-        &'a Text,
-        TwoPoints,
-        PrintOpts,
-    ) -> Box<dyn Iterator<Item = (Caret, Item)> + 'a>,
+    move_ver: fn(&Area, i32, &Text, Point, Option<usize>, PrintOpts) -> VPoint,
+    move_ver_wrapped: fn(&Area, i32, &Text, Point, Option<usize>, PrintOpts) -> VPoint,
     scroll_ver: fn(&Area, &Text, i32, PrintOpts),
     scroll_around_points: fn(&Area, &Text, TwoPoints, PrintOpts),
     scroll_to_points: fn(&Area, &Text, TwoPoints, PrintOpts),
@@ -1031,13 +981,13 @@ impl AreaFunctions {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
                 area.get_printed_lines(UiPass::new(), text, opts)
             },
-            print_iter: |area, text, points, opts| {
+            move_ver: |area, by, text, point, desired_col, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                Box::new(area.print_iter(UiPass::new(), text, points, opts))
+                area.move_ver(UiPass::new(), by, text, point, desired_col, opts)
             },
-            rev_print_iter: |area, text, points, opts| {
+            move_ver_wrapped: |area, by, text, point, desired_col, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();
-                Box::new(area.rev_print_iter(UiPass::new(), text, points, opts))
+                area.move_ver_wrapped(UiPass::new(), by, text, point, desired_col, opts)
             },
             scroll_ver: |area, text, dist, opts| {
                 let area = area.inner.downcast_ref::<U::Area>().unwrap();

@@ -11,9 +11,9 @@ FOR NEXT UPDATE:
 [ ] BufferOpts.
   [ ] BufferOptsParser.
     [ ] Indent lines.
-    [ ] Space replacements.
-    [ ] New line replacements.
-[ ] Line aware tag removal.
+    [x] Space replacements.
+    [x] New line replacements.
+[x] Get rid of the print_iter api.
 
 KNOWN BUGS:
  HIGH PRIORITY:

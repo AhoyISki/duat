@@ -442,7 +442,7 @@ mod cursor {
         buffer::Change,
         opts::PrintOpts,
         text::{Bytes, Point, Text, TextIndex},
-        ui::{Area, Caret},
+        ui::Area,
     };
 
     /// A cursor in the text buffer. This is an editing cursor, -(not
@@ -530,143 +530,53 @@ mod cursor {
 
         /// Internal vertical movement function.
         ///
-        /// Returns the distance moved in lines.
-        pub fn move_ver(&mut self, by: i32, text: &Text, area: &Area, opts: PrintOpts) -> i32 {
-            let by = by as isize;
+        /// Returns `true` if the caret actually moved at all.
+        pub fn move_ver(&mut self, by: i32, text: &Text, area: &Area, opts: PrintOpts) -> bool {
             if by == 0 {
-                return 0;
-            };
-
+                return false;
+            }
             let caret = self.caret.get_mut().unwrap();
+            let point = caret.point();
 
-            let (vp, moved) = {
-                let vp = caret.calculate(text, area, opts);
-                let line_start = {
-                    let target = vp.point.line().saturating_add_signed(by);
-                    text.point_at_line(target.min(text.last_point().line()))
-                };
-
-                let mut wraps = 0;
-                let mut vcol = 0;
-
-                let (wcol, p) = area
-                    .print_iter(text, line_start.to_two_points_before(), opts)
-                    .find_map(|(Caret { len, x, wrap }, item)| {
-                        wraps += wrap as usize;
-
-                        if let Some((p, char)) = item.as_real_char()
-                            && (vcol + len as u16 > vp.dvcol || char == '\n')
-                        {
-                            return Some((x as u16, p));
-                        }
-
-                        vcol += len as u16;
-                        None
-                    })
-                    .unwrap_or((0, text.last_point()));
-
-                let moved = p.line() as i32 - vp.point.line() as i32;
-                let vp = vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol);
-                (vp, moved)
+            let desired_col = match *caret {
+                LazyVPoint::Unknown(_) => None,
+                LazyVPoint::Known(vpoint) => Some(vpoint.desired_visual_col()),
+                LazyVPoint::Desired { dvcol, .. } => Some(dvcol as usize),
             };
 
-            *caret = LazyVPoint::Known(vp);
-            moved
+            let vpoint = area.move_ver(by, text, point, desired_col, opts);
+            *caret = LazyVPoint::Known(vpoint);
+
+            vpoint.point != point
         }
 
         /// Internal vertical movement function.
         ///
-        /// Returns the distance moved in wrapped lines.
+        /// Returns `true` if the caret actually moved at all.
         pub fn move_ver_wrapped(
             &mut self,
             by: i32,
             text: &Text,
             area: &Area,
             opts: PrintOpts,
-        ) -> i32 {
+        ) -> bool {
             if by == 0 {
-                return 0;
+                return false;
             };
+
             let caret = self.caret.get_mut().unwrap();
-            let vp = caret.calculate(text, area, opts);
+            let point = caret.point();
 
-            let mut wraps = 0;
+            let desired_col = match *caret {
+                LazyVPoint::Unknown(_) => None,
+                LazyVPoint::Known(vpoint) => Some(vpoint.desired_wrapped_col()),
+                LazyVPoint::Desired { dwcol, .. } => Some(dwcol as usize),
+            };
 
-            *caret = LazyVPoint::Known(if by > 0 {
-                let line_start = text.point_at_line(vp.point.line());
-                let mut vcol = vp.vcol;
-                let mut last = (vp.vcol, vp.wcol, vp.point);
-                let mut last_valid = (vp.vcol, vp.wcol, vp.point);
+            let vpoint = area.move_ver_wrapped(by, text, point, desired_col, opts);
+            *caret = LazyVPoint::Known(vpoint);
 
-                let (vcol, wcol, p) = area
-                    .print_iter(text, line_start.to_two_points_after(), opts)
-                    .skip_while(|(_, item)| item.char() <= vp.char())
-                    .find_map(|(Caret { x, len, wrap }, item)| {
-                        wraps += wrap as i32;
-                        if let Some((p, char)) = item.as_real_char() {
-                            if (x..x + len).contains(&(vp.dwcol as u32))
-                                || (char == '\n' && x <= vp.dwcol as u32)
-                            {
-                                last_valid = (vcol, x as u16, p);
-                                if wraps == by {
-                                    return Some((vcol, x as u16, p));
-                                }
-                            } else if wraps > by {
-                                return Some(last);
-                            }
-                            last = (vcol, x as u16, p);
-                        }
-                        vcol += len as u16;
-                        None
-                    })
-                    .unwrap_or(last_valid);
-                vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol)
-            } else {
-                let end_points = text.points_after(vp.point.to_two_points_after()).unwrap();
-                let mut just_wrapped = false;
-                let mut last_valid = (vp.wcol, vp.point);
-
-                let mut iter = area.rev_print_iter(text, end_points, opts);
-                let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
-                    if let Some((p, _)) = item.as_real_char() {
-                        // max(1) because it could be a '\n'
-                        if (x..x + len.max(1)).contains(&(vp.dwcol as u32))
-                            || (just_wrapped && x + len < vp.dwcol as u32)
-                        {
-                            last_valid = (x as u16, p);
-                            if wraps == by {
-                                return Some((x as u16, p));
-                            }
-                        }
-                        just_wrapped = false;
-                    }
-                    wraps -= wrap as i32;
-                    just_wrapped |= wrap;
-                    None
-                });
-
-                if let Some((wcol, p)) = wcol_and_p {
-                    let (ccol, vcol) = iter
-                        .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
-                        .fold((0, 0), |(ccol, vcol), (caret, item)| {
-                            (ccol + item.is_real() as u16, vcol + caret.len as u16)
-                        });
-
-                    vp.known(p, ccol, vcol, wcol)
-                } else {
-                    let (wcol, p) = last_valid;
-                    let (ccol, vcol) = area
-                        .rev_print_iter(text, p.to_two_points_before(), opts)
-                        .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
-                        .fold((0, 0), |(ccol, vcol), (caret, item)| {
-                            (ccol + item.is_real() as u16, vcol + caret.len as u16)
-                        });
-
-                    vp.known(p, ccol, vcol, wcol)
-                }
-            });
-
-            wraps
+            vpoint.point != point
         }
 
         pub(crate) fn shift_by_change(&self, change: Change<&str>) {
@@ -932,9 +842,9 @@ mod cursor {
         fn calculate(self, text: &Text, area: &Area, opts: PrintOpts) -> VPoint {
             match self {
                 Self::Known(vp) => vp,
-                Self::Unknown(point) => VPoint::new(point, text, area, opts),
+                Self::Unknown(point) => area.move_ver(0, text, point, None, opts),
                 Self::Desired { point, dvcol, dwcol } => {
-                    let mut vp = VPoint::new(point, text, area, opts);
+                    let mut vp = area.move_ver(0, text, point, Some(dvcol as usize), opts);
                     vp.dvcol = dvcol;
                     vp.dwcol = dwcol;
                     vp
@@ -995,7 +905,7 @@ mod cursor {
     ///
     /// [full line]: crate::mode::Cursor::move_ver
     /// [wrapped line]: crate::mode::Cursor::move_ver_wrapped
-    #[derive(Clone, Copy, Debug, Eq, Encode, Decode)]
+    #[derive(Default, Clone, Copy, Debug, Eq, Encode, Decode)]
     pub struct VPoint {
         point: Point,
         // No plan to support lines that are far too long
@@ -1007,38 +917,9 @@ mod cursor {
     }
 
     impl VPoint {
-        /// Returns a new [`VPoint`]
-        fn new(point: Point, text: &Text, area: &Area, opts: PrintOpts) -> Self {
-            let range = text.line_range(point.line());
-
-            let mut vcol = 0;
-
-            let wcol = area
-                .print_iter(text, range.start.to_two_points_before(), opts)
-                .find_map(|(caret, item)| {
-                    if let Some((lhs, _)) = item.as_real_char()
-                        && lhs == point
-                    {
-                        return Some(caret.x as u16);
-                    }
-                    vcol += caret.len as u16;
-                    None
-                })
-                .unwrap_or(0);
-
-            Self {
-                point,
-                ccol: (point.char() - range.start.char()) as u16,
-                vcol,
-                dvcol: vcol,
-                wcol,
-                dwcol: wcol,
-            }
-        }
-
-        /// Returns a new [`VPoint`] from raw data
-        fn known(self, p: Point, ccol: u16, vcol: u16, wcol: u16) -> Self {
-            Self { point: p, ccol, vcol, wcol, ..self }
+        /// Returns a new `VPoint` from scratch
+        pub fn new(point: Point, ccol: u16, vcol: u16, dvcol: u16, wcol: u16, dwcol: u16) -> Self {
+            Self { point, ccol, vcol, dvcol, wcol, dwcol }
         }
 
         /// The byte index of this [`VPoint`]

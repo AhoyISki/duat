@@ -555,34 +555,6 @@ impl Orientation {
     }
 }
 
-/// A struct representing a "visual position" on the screen
-///
-/// This position differs from a [`VPoint`] in the sense that it
-/// represents three properties of a printed character:
-///
-/// - The x position in which it was printed;
-/// - The amount of horizontal space it occupies;
-/// - Wether this character is the first on the line (i.e. it wraps)
-///
-/// [`VPoint`]: crate::mode::VPoint
-#[derive(Debug, Clone, Copy)]
-pub struct Caret {
-    /// The horizontal position in which a character was printed
-    pub x: u32,
-    /// The horizontal space it occupied
-    pub len: u32,
-    /// Wether it is the first character in the line
-    pub wrap: bool,
-}
-
-impl Caret {
-    /// Returns a new [`Caret`]
-    #[inline(always)]
-    pub fn new(x: u32, len: u32, wrap: bool) -> Self {
-        Self { x, len, wrap }
-    }
-}
-
 /// A target for pushing [`Widget`]s to
 ///
 /// This can either be a [`Handle`], which will push around a `Widget`

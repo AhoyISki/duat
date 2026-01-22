@@ -23,7 +23,7 @@ use super::{
 };
 use crate::{mode::Selection, text::TwoPoints};
 
-/// An [`Iterator`] over the [`Part`]s of the [`Text`].
+/// An [`Iterator`] over the [`TextPart`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
@@ -46,8 +46,8 @@ pub struct FwdIter<'t> {
 }
 
 impl<'t> FwdIter<'t> {
-    /// Returns a new forward [`Iterator`] over the [`Item`]s in the
-    /// [`Text`]
+    /// Returns a new forward [`Iterator`] over the [`TextPlace`]s in
+    /// the [`Text`]
     pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
         let point = real.min(text.len());
@@ -120,7 +120,7 @@ impl<'t> FwdIter<'t> {
     /// [`Tag`]: super::Tag
     /// [`Ghost`]: super::Ghost
     /// [`Bytes::chars_fwd`]: super::Bytes::chars_fwd
-    pub fn no_tags(self) -> impl Iterator<Item = Item> + 't {
+    pub fn no_tags(self) -> impl Iterator<Item = TextPlace> + 't {
         self.filter(|item| item.part.is_char())
     }
 
@@ -220,7 +220,7 @@ impl<'t> FwdIter<'t> {
 }
 
 impl Iterator for FwdIter<'_> {
-    type Item = Item;
+    type Item = TextPlace;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -234,7 +234,7 @@ impl Iterator for FwdIter<'_> {
             if self.handle_meta_tag(&tag, b) {
                 self.next()
             } else {
-                Some(Item::new(self.points(), Part::from_raw(tag)))
+                Some(TextPlace::new(self.points(), TextPart::from_raw(tag)))
             }
         } else if let Some(char) = self.chars.next() {
             let points = self.points();
@@ -245,7 +245,7 @@ impl Iterator for FwdIter<'_> {
                 None => None,
             };
 
-            Some(Item::new(points, Part::Char(char)))
+            Some(TextPlace::new(points, TextPart::Char(char)))
         } else if let Some(main_iter) = self.main_iter.take() {
             self.point = main_iter.point;
             self.init_point = main_iter.init_point;
@@ -259,7 +259,7 @@ impl Iterator for FwdIter<'_> {
     }
 }
 
-/// An [`Iterator`] over the [`Part`]s of the [`Text`].
+/// An [`Iterator`] over the [`TextPart`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
@@ -281,8 +281,8 @@ pub struct RevIter<'t> {
 }
 
 impl<'t> RevIter<'t> {
-    /// Returns a new reverse [`Iterator`] over the [`Item`]s in the
-    /// [`Text`]
+    /// Returns a new reverse [`Iterator`] over the [`TextPlace`]s in
+    /// the [`Text`]
     pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
         let point = real.min(text.len());
@@ -333,7 +333,7 @@ impl<'t> RevIter<'t> {
     /// [`Tag`]: super::Tag
     /// [`Ghost`]: super::Ghost
     /// [`Bytes::chars_rev`]: super::Bytes::chars_rev
-    pub fn no_tags(self) -> impl Iterator<Item = Item> + 't {
+    pub fn no_tags(self) -> impl Iterator<Item = TextPlace> + 't {
         self.filter(|item| item.part.is_char())
     }
 
@@ -427,7 +427,7 @@ impl<'t> RevIter<'t> {
 }
 
 impl Iterator for RevIter<'_> {
-    type Item = Item;
+    type Item = TextPlace;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -441,7 +441,7 @@ impl Iterator for RevIter<'_> {
             if self.handled_meta_tag(&tag, b) {
                 self.next()
             } else {
-                Some(Item::new(self.points(), Part::from_raw(tag)))
+                Some(TextPlace::new(self.points(), TextPart::from_raw(tag)))
             }
         } else if let Some(char) = self.chars.next() {
             self.point = self.point.rev(char);
@@ -451,7 +451,7 @@ impl Iterator for RevIter<'_> {
                 None => None,
             };
 
-            Some(Item::new(self.points(), Part::Char(char)))
+            Some(TextPlace::new(self.points(), TextPart::Char(char)))
         } else if let Some(main_iter) = self.main_iter.take() {
             self.point = main_iter.point;
             self.init_point = main_iter.init_point;
@@ -488,12 +488,12 @@ fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
 /// - A real [`Point`], representing a position on the real [`Text`];
 /// - A ghost [`Point`], which is a position in a [`Ghost`], [`None`]
 ///   if not in a [`Ghost`];
-/// - A [`Part`], which will either be a `char` or a [`Tag`];
+/// - A [`TextPart`], which will either be a `char` or a [`Tag`];
 ///
 /// [`Ghost`]: super::Ghost
 /// [`Tag`]: super::Tag
 #[derive(Debug, Clone, Copy)]
-pub struct Item {
+pub struct TextPlace {
     /// The real [`Point`]
     pub real: Point,
     /// The [`Point`] in a [`Ghost`]
@@ -506,21 +506,21 @@ pub struct Item {
     /// [`Ghost`]: super::Ghost
     /// [lengths]: super::Bytes::len
     pub ghost: Option<Point>,
-    /// A [`Part`], which will either be a `char` or a [`Tag`];
+    /// A [`TextPart`], which will either be a `char` or a [`Tag`];
     ///
     /// [`Tag`]: super::Tag
-    pub part: Part,
+    pub part: TextPart,
 }
 
-impl Item {
-    /// Returns a new [`Item`]
+impl TextPlace {
+    /// Returns a new [`TextPlace`]
     #[inline]
-    const fn new(points: TwoPoints, part: Part) -> Self {
+    const fn new(points: TwoPoints, part: TextPart) -> Self {
         let TwoPoints { real, ghost } = points;
         Self { real, ghost, part }
     }
 
-    /// Whether this [`Item`] is in a [`Ghost`]
+    /// Whether this [`TextPlace`] is in a [`Ghost`]
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn is_real(&self) -> bool {
@@ -600,7 +600,7 @@ use crate::form::FormId;
 /// [Ui]: crate::ui::traits::RawUi
 /// [`ResetState`]: Part::ResetState
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Part {
+pub enum TextPart {
     /// A printed `char`, can be real or a [`Ghost`]
     ///
     /// [`Ghost`]: super::Ghost
@@ -649,7 +649,7 @@ pub enum Part {
     /// Resets all [`FormId`]s, [`ToggleId`]s and alignments
     ///
     /// Used when a [`Conceal`] covers a large region, which Duat
-    /// optimizes by just not iterating over the [`Part`]s within.
+    /// optimizes by just not iterating over the [`TextPart`]s within.
     /// This could skip some [`Tag`]s, so this variant serves the
     /// purpose of terminating or initiating in place of skipped
     /// [`Tag`]s
@@ -661,21 +661,21 @@ pub enum Part {
     ResetState,
 }
 
-impl Part {
-    /// Returns a new [`Part`] from a [`RawTag`]
+impl TextPart {
+    /// Returns a new [`TextPart`] from a [`RawTag`]
     #[inline]
     pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm(_, id, prio) => Part::PushForm(id, prio),
-            RawTag::PopForm(_, id) => Part::PopForm(id),
-            RawTag::MainCaret(_) => Part::MainCaret,
-            RawTag::ExtraCaret(_) => Part::ExtraCaret,
-            RawTag::Spacer(_) => Part::Spacer,
-            RawTag::ReplaceChar(_, char) => Part::ReplaceChar(char),
-            RawTag::StartToggle(_, id) => Part::ToggleStart(id),
-            RawTag::EndToggle(_, id) => Part::ToggleEnd(id),
-            RawTag::ConcealUntil(_) => Part::ResetState,
-            RawTag::SpawnedWidget(_, id) => Part::SpawnedWidget(id),
+            RawTag::PushForm(_, id, prio) => TextPart::PushForm(id, prio),
+            RawTag::PopForm(_, id) => TextPart::PopForm(id),
+            RawTag::MainCaret(_) => TextPart::MainCaret,
+            RawTag::ExtraCaret(_) => TextPart::ExtraCaret,
+            RawTag::Spacer(_) => TextPart::Spacer,
+            RawTag::ReplaceChar(_, char) => TextPart::ReplaceChar(char),
+            RawTag::StartToggle(_, id) => TextPart::ToggleStart(id),
+            RawTag::EndToggle(_, id) => TextPart::ToggleEnd(id),
+            RawTag::ConcealUntil(_) => TextPart::ResetState,
+            RawTag::SpawnedWidget(_, id) => TextPart::SpawnedWidget(id),
             RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Ghost(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }
@@ -688,7 +688,7 @@ impl Part {
     #[must_use]
     #[inline]
     pub const fn is_char(&self) -> bool {
-        matches!(self, Part::Char(_))
+        matches!(self, TextPart::Char(_))
     }
 
     /// Returns `true` if the part is not [`Char`]

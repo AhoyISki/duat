@@ -1472,7 +1472,7 @@ impl Painter {
     ///
     /// Should be used when a [`ResetState`] part is printed
     ///
-    /// [`ResetState`]: crate::text::Part::ResetState
+    /// [`ResetState`]: crate::text::TextPart::ResetState
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
         self.forms.clear();

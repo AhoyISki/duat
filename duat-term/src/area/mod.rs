@@ -13,15 +13,16 @@ use duat_core::{
         cache::{Decode, Encode},
     },
     form::{CONTROL_CHAR_ID, Painter},
+    mode::VPoint,
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Item, Part, Text, TwoPoints, txt},
+    text::{Point, Text, TextPart, TextPlace, TwoPoints, txt},
     ui::{
-        self, Caret, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
+        self, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId,
         traits::{RawArea, UiPass},
     },
 };
-use iter::{print_iter, rev_print_iter};
+use iter::{PrintedPlace, print_iter, rev_print_iter};
 
 pub use self::print_info::PrintInfo;
 use crate::{
@@ -286,8 +287,8 @@ impl RawArea for Area {
         let mut max_y = 0;
         let mut width = 0;
 
-        for (caret, item) in iter {
-            if caret.wrap {
+        for (place, item) in iter {
+            if place.wrap {
                 if max_y == max.y {
                     break;
                 }
@@ -296,7 +297,7 @@ impl RawArea for Area {
                 width = 0;
             }
             if item.part.is_char() {
-                width += caret.len;
+                width += place.len;
             }
         }
 
@@ -381,21 +382,20 @@ impl RawArea for Area {
         let coords = self.layouts.coords_of(self.id, true)?;
         let points = self.start_points(pa, text, opts);
 
-        let mut prev_line = self
-            .rev_print_iter(pa, text, points, opts)
-            .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
+        let mut prev_line = rev_print_iter(text, points, coords.width(), opts)
+            .find_map(|(place, item)| place.wrap.then_some(item.line()));
 
         let mut printed_lines = Vec::new();
         let mut has_wrapped = false;
         let mut y = coords.tl.y;
 
-        for (caret, item) in print_iter(text, points, coords.width(), opts) {
+        for (place, item) in print_iter(text, points, coords.width(), opts) {
             if y == coords.br.y {
                 break;
             }
-            y += caret.wrap as u32;
+            y += place.wrap as u32;
 
-            has_wrapped |= caret.wrap;
+            has_wrapped |= place.wrap;
             if has_wrapped && item.part.is_char() {
                 has_wrapped = false;
                 let number = item.line();
@@ -408,26 +408,165 @@ impl RawArea for Area {
         Some(printed_lines)
     }
 
-    fn print_iter<'a>(
+    fn move_ver(
         &self,
-        ca: UiPass,
-        text: &'a Text,
-        points: TwoPoints,
+        _: UiPass,
+        by: i32,
+        text: &Text,
+        point: Point,
+        desired_col: Option<usize>,
         opts: PrintOpts,
-    ) -> impl Iterator<Item = (Caret, Item)> + 'a {
-        let width = (self.bottom_right(ca).x - self.top_left(ca).x) as u32;
-        print_iter(text, points, width, opts)
+    ) -> VPoint {
+        let Some(coords) = self.layouts.coords_of(self.id, true) else {
+            panic!("Tried to move vertically on a deleted area");
+        };
+
+        let cap = coords.width();
+
+        let desired_col = match desired_col {
+            Some(desired_col) => desired_col as u16,
+            None => {
+                let vpoint = calculate_vpoint(text, point, cap, opts);
+                if by == 0 {
+                    return vpoint;
+                }
+                vpoint.desired_visual_col() as u16
+            }
+        };
+
+        let line_start = {
+            let target = point.line().saturating_add_signed(by as isize);
+            text.point_at_line(target.min(text.last_point().line()))
+        };
+
+        let mut wraps = 0;
+        let mut vcol = 0;
+
+        let (wcol, point) = print_iter(text, line_start.to_two_points_before(), cap, opts)
+            .find_map(|(PrintedPlace { len, x, wrap }, item)| {
+                wraps += wrap as usize;
+
+                if let Some((p, char)) = item.as_real_char()
+                    && (vcol + len as u16 > desired_col || char == '\n')
+                {
+                    return Some((x as u16, p));
+                }
+
+                vcol += len as u16;
+                None
+            })
+            .unwrap_or((0, text.last_point()));
+
+        let ccol = (point.char() - line_start.char()) as u16;
+
+        VPoint::new(point, ccol, vcol, desired_col, wcol, wcol)
     }
 
-    fn rev_print_iter<'a>(
+    fn move_ver_wrapped(
         &self,
-        ca: UiPass,
-        text: &'a Text,
-        points: TwoPoints,
+        _: UiPass,
+        by: i32,
+        text: &Text,
+        point: Point,
+        desired_col: Option<usize>,
         opts: PrintOpts,
-    ) -> impl Iterator<Item = (Caret, Item)> + 'a {
-        let width = (self.bottom_right(ca).x - self.top_left(ca).x) as u32;
-        rev_print_iter(text, points, opts.wrap_width(width).unwrap_or(width), opts)
+    ) -> VPoint {
+        let mut wraps = 0;
+
+        let Some(coords) = self.layouts.coords_of(self.id, true) else {
+            panic!("Tried to move vertically on a deleted area");
+        };
+
+        let cap = coords.width();
+
+        let desired_col = match desired_col {
+            Some(desired_col) => desired_col as u16,
+            None => {
+                let vpoint = calculate_vpoint(text, point, cap, opts);
+                if by == 0 {
+                    return vpoint;
+                }
+                vpoint.desired_wrapped_col() as u16
+            }
+        };
+
+        if by > 0 {
+            let line_start = text.point_at_line(point.line());
+            let points = line_start.to_two_points_after();
+            
+            let mut vcol = 0;
+            let mut last = (0, 0, line_start);
+            let mut last_valid = last;
+
+            let (vcol, wcol, point) = print_iter(text, points, cap, opts)
+                .find_map(|(PrintedPlace { x, len, wrap }, item)| {
+                    wraps += (wrap && item.char() > point.char()) as i32;
+                    if let Some((p, char)) = item.as_real_char() {
+                        if (x..x + len).contains(&(desired_col as u32))
+                            || (char == '\n' && x <= desired_col as u32)
+                        {
+                            last_valid = (vcol, x as u16, p);
+                            if wraps == by {
+                                return Some((vcol, x as u16, p));
+                            }
+                        } else if wraps > by {
+                            return Some(last);
+                        }
+                        last = (vcol, x as u16, p);
+                    }
+                    vcol += len as u16;
+                    None
+                })
+                .unwrap_or(last_valid);
+
+            let ccol = (point.char() - line_start.char()) as u16;
+
+            VPoint::new(point, ccol, vcol, vcol, wcol, desired_col)
+        } else {
+            let end_points = text.points_after(point.to_two_points_after()).unwrap();
+            let mut just_wrapped = false;
+            let mut last_valid = None;
+
+            let mut iter = rev_print_iter(text, end_points, cap, opts);
+            let wcol_and_p = iter.find_map(|(PrintedPlace { x, len, wrap }, item)| {
+                if let Some((p, _)) = item.as_real_char() {
+                    // max(1) because it could be a '\n'
+                    if (x..x + len.max(1)).contains(&(desired_col as u32))
+                        || (just_wrapped && x + len < desired_col as u32)
+                    {
+                        last_valid = Some((x as u16, p));
+                        if wraps == by {
+                            return Some((x as u16, p));
+                        }
+                    }
+                    just_wrapped = false;
+                }
+                wraps -= wrap as i32;
+                just_wrapped |= wrap;
+                None
+            });
+
+            if let Some((wcol, point)) = wcol_and_p {
+                let (ccol, vcol) = iter
+                    .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
+                    .fold((0, 0), |(ccol, vcol), (place, item)| {
+                        (ccol + item.is_real() as u16, vcol + place.len as u16)
+                    });
+
+                VPoint::new(point, ccol, vcol, vcol, wcol, desired_col)
+            } else if let Some((wcol, point)) = last_valid {
+                let points = point.to_two_points_before();
+                let (ccol, vcol) = rev_print_iter(text, points, cap, opts)
+                    .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
+                    .fold((0, 0), |(ccol, vcol), (place, item)| {
+                        (ccol + item.is_real() as u16, vcol + place.len as u16)
+                    });
+
+                VPoint::new(point, ccol, vcol, vcol, wcol, desired_col)
+            } else {
+                VPoint::default()
+            }
+        }
     }
 
     fn has_changed(&self, _: UiPass) -> bool {
@@ -528,17 +667,17 @@ impl RawArea for Area {
         };
 
         let mut row = coords.tl.y;
-        for (caret, item) in print_iter(text, s_points, coords.width(), opts) {
-            row += caret.wrap as u32;
+        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
+            row += place.wrap as u32;
 
             if row > coords.br.y {
                 break;
             }
 
             if item.points() == points && item.part.is_char() {
-                if caret.x >= x_shift && caret.x <= x_shift + coords.width() {
+                if place.x >= x_shift && place.x <= x_shift + coords.width() {
                     return Some(ui::Coord {
-                        x: (coords.tl.x + caret.x - x_shift) as f32,
+                        x: (coords.tl.x + place.x - x_shift) as f32,
                         y: (row - 1) as f32,
                     });
                 } else {
@@ -580,19 +719,19 @@ impl RawArea for Area {
 
         let mut row = coords.tl.y;
         let mut backup = None;
-        for (caret, item) in print_iter(text, s_points, coords.width(), opts) {
+        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
             if item.part.is_tag() {
                 continue;
             }
-            
-            row += caret.wrap as u32;
+
+            row += place.wrap as u32;
 
             if row > coord.y as u32 + 1 {
                 return backup;
             } else if row == coord.y as u32 + 1
-                && let Some(col) = caret.x.checked_sub(x_shift)
+                && let Some(col) = place.x.checked_sub(x_shift)
             {
-                if (coords.tl.x + col..coords.tl.x + col + caret.len).contains(&(coord.x as u32)) {
+                if (coords.tl.x + col..coords.tl.x + col + place.len).contains(&(coord.x as u32)) {
                     return Some(TwoPointsPlace::Within(item.points()));
                 } else if coords.tl.x + col >= coord.x as u32 {
                     return backup;
@@ -750,11 +889,11 @@ pub fn print_text(
     let mut spawns_for_next: Vec<SpawnId> = Vec::new();
     let mut last_len = 0;
 
-    for (caret, item) in iter {
+    for (place, item) in iter {
         let (painter, lines) = (&mut painter, &mut lines);
 
-        let Caret { x, len, wrap } = caret;
-        let Item { part, .. } = item;
+        let PrintedPlace { x, len, wrap } = place;
+        let TextPlace { part, .. } = item;
 
         if wrap {
             if y == lines.coords().br.y {
@@ -782,7 +921,7 @@ pub fn print_text(
         let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
 
         match part {
-            Part::Char(char) if is_contained => {
+            TextPart::Char(char) if is_contained => {
                 if let Some(str) = get_control_str(char) {
                     painter.apply(CONTROL_CHAR_ID, 100);
                     if style_was_set && let Some(style) = painter.relative_style() {
@@ -832,7 +971,7 @@ pub fn print_text(
                 last_len = x + len - x_shift;
                 style_was_set = false;
             }
-            Part::Char(_) => {
+            TextPart::Char(_) => {
                 match cursor.take() {
                     Some(Cursor::Main) => painter.remove_main_caret(),
                     Some(Cursor::Extra) => painter.remove_extra_caret(),
@@ -840,15 +979,15 @@ pub fn print_text(
                 }
                 spawns_for_next.clear();
             }
-            Part::PushForm(id, prio) => {
+            TextPart::PushForm(id, prio) => {
                 painter.apply(id, prio);
                 style_was_set = true;
             }
-            Part::PopForm(id) => {
+            TextPart::PopForm(id) => {
                 painter.remove(id);
                 style_was_set = true;
             }
-            Part::MainCaret => {
+            TextPart::MainCaret => {
                 if let Some(shape) = painter.main_cursor()
                     && is_active
                 {
@@ -861,12 +1000,12 @@ pub fn print_text(
                     style_was_set = true;
                 }
             }
-            Part::ExtraCaret => {
+            TextPart::ExtraCaret => {
                 cursor = Some(Cursor::Extra);
                 painter.apply_extra_cursor();
                 style_was_set = true;
             }
-            Part::Spacer => {
+            TextPart::Spacer => {
                 let truncated_start = x_shift.saturating_sub(x).min(len);
                 let truncated_end = (x + len)
                     .saturating_sub(lines.coords().width().saturating_sub(x_shift))
@@ -877,10 +1016,10 @@ pub fn print_text(
                     .saturating_sub(x_shift)
                     .min(lines.coords().width());
             }
-            Part::ResetState => print_style(lines, painter.reset()),
-            Part::SpawnedWidget(id) => spawns_for_next.push(id),
-            Part::ReplaceChar(..) => unreachable!(),
-            Part::ToggleStart(_) | Part::ToggleEnd(_) => {
+            TextPart::ResetState => print_style(lines, painter.reset()),
+            TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
+            TextPart::ReplaceChar(..) => unreachable!(),
+            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {
                 todo!("Toggles have not been implemented yet.")
             }
         }
@@ -898,3 +1037,30 @@ pub fn print_text(
 }
 
 const SPACES: &[u8] = &[b' '; 3000];
+
+fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
+    let range = text.line_range(point.line());
+
+    let mut vcol = 0;
+
+    let wcol = print_iter(text, range.start.to_two_points_before(), cap, opts)
+        .find_map(|(place, item)| {
+            if let Some((lhs, _)) = item.as_real_char()
+                && lhs == point
+            {
+                return Some(place.x as u16);
+            }
+            vcol += place.len as u16;
+            None
+        })
+        .unwrap_or(0);
+
+    VPoint::new(
+        point,
+        (point.char() - range.start.char()) as u16,
+        vcol,
+        vcol,
+        wcol,
+        wcol,
+    )
+}

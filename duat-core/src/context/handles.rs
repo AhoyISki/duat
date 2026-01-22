@@ -521,8 +521,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// The end points that should be printed
     pub fn end_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
-        self.area
-            .end_points(pa, widget.text(), widget.print_opts())
+        self.area.end_points(pa, widget.text(), widget.print_opts())
     }
 
     ////////// Querying functions

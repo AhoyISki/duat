@@ -88,7 +88,7 @@ pub use crate::__txt__ as txt;
 pub use crate::text::{
     builder::{AsBuilderPart, Builder, BuilderPart},
     bytes::{Bytes, Lines, Slices, Strs},
-    iter::{FwdIter, Item, Part, RevIter},
+    iter::{FwdIter, RevIter, TextPart, TextPlace},
     search::{Matches, RegexHaystack, RegexPattern},
     tags::{
         Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, ReplaceChar, Spacer,
@@ -252,14 +252,17 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, area: &Area, opts: PrintOpts) -> usize {
-        let range = self.line_range(p.line());
-
-        area.print_iter(self, range.start.to_two_points_after(), opts)
-            .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
-            .find(|(_, char)| !char.is_whitespace() || *char == '\n')
-            .map(|(caret, _)| caret.x as usize)
-            .unwrap_or(0)
+    pub fn indent(&self, p: Point, opts: PrintOpts) -> usize {
+        self.chars_fwd(self.line_range(p.line()))
+            .unwrap()
+            .take_while(|&(_, char)| char == ' ' || char == '\t')
+            .fold(0, |sum, (_, char)| {
+                if char == ' ' {
+                    sum + 1
+                } else {
+                    sum + opts.tabstop as usize
+                }
+            })
     }
 
     ////////// Tag related query functions
@@ -326,15 +329,15 @@ impl Text {
         let mut total_seen = 0;
         while let Some(peek) = iter.peek() {
             match peek.part {
-                Part::Char('\n') => {
+                TextPart::Char('\n') => {
                     if total_seen == skip {
                         return points;
                     } else {
                         total_seen += 1;
                     }
                 }
-                Part::Char(_) => points = iter.next().unwrap().points(),
-                _ => drop(iter.next()),
+                TextPart::Char(_) => points = iter.next().unwrap().points(),
+                _ => _ = iter.next(),
             }
         }
 

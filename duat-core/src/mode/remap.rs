@@ -836,10 +836,11 @@ impl MappedBindings {
                 text: Some(desc),
                 keys: KeyDescriptions {
                     seq,
-                    ty: DescriptionType::Binding(pats, pats.iter(), StripPrefix {
-                        seq,
-                        remaps: self.remaps.iter(),
-                    }),
+                    ty: DescriptionType::Binding(
+                        pats,
+                        pats.iter(),
+                        StripPrefix { seq, remaps: self.remaps.iter() },
+                    ),
                 },
             })
             .chain(

@@ -695,7 +695,7 @@ impl BufferTracker {
                 change.start().byte(),
                 change.added_end().byte() as i32 - change.taken_end().byte() as i32,
             );
-            
+
             let range = change.added_range();
             ranges_lock.add(range.start.byte()..range.end.byte());
         }

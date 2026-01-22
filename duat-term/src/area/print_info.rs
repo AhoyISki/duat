@@ -2,12 +2,11 @@ use duat_core::{
     context::cache::{Decode, Encode},
     opts::PrintOpts,
     text::{Point, Text, TwoPoints},
-    ui::Caret,
 };
 
 use crate::{
     Coords,
-    area::iter::{is_starting_points, print_iter, rev_print_iter},
+    area::iter::{PrintedPlace, is_starting_points, print_iter, rev_print_iter},
 };
 
 /// Information about how to print the file on the `Label`.
@@ -70,7 +69,7 @@ impl PrintInfo {
 
         self.prev_coords = coords;
 
-        iter.find_map(|(Caret { wrap, .. }, item)| {
+        iter.find_map(|(PrintedPlace { wrap, .. }, item)| {
             y += (wrap && item.part.is_char()) as u32;
             (y > coords.height()).then_some(item.points())
         })
@@ -243,7 +242,7 @@ impl PrintInfo {
             let mut iter = rev_print_iter(text, after, width, opts);
 
             let (points, caret_start, caret_end) = iter
-                .find_map(|(Caret { x, len, .. }, item)| {
+                .find_map(|(PrintedPlace { x, len, .. }, item)| {
                     let points = item.points();
                     item.part.as_char().and(Some((points, x, x + len)))
                 })
@@ -252,7 +251,7 @@ impl PrintInfo {
             let max_shift = print_iter(text, points, width, opts)
                 .take_while(|(caret, item)| !caret.wrap || item.points() == points)
                 .last()
-                .map(|(Caret { x, len, .. }, _)| x + len)
+                .map(|(PrintedPlace { x, len, .. }, _)| x + len)
                 .unwrap_or(0);
 
             (max_shift, caret_start, caret_end)

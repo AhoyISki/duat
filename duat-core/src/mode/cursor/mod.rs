@@ -247,39 +247,41 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
 
     /// Moves the selection vertically. May cause horizontal movement
     ///
-    /// Returns the distance moved in lines.
+    /// Returns `true` if the caret actually moved at all.
     #[track_caller]
-    pub fn move_ver(&mut self, by: i32) -> i32 {
+    pub fn move_ver(&mut self, by: i32) -> bool {
         if by == 0 {
-            return 0;
+            return false;
         }
-        let line_count = sel_mut!(self).move_ver(
-            by,
-            self.widget.text(),
-            self.area,
-            self.widget.print_opts(),
-        );
-        if line_count != 0 {
+        let moved =
+            sel_mut!(self).move_ver(by, self.widget.text(), self.area, self.widget.print_opts());
+
+        if moved {
             self.widget.text_mut().add_record_for(sel!(self).caret());
         }
-        line_count
+        moved
     }
 
     /// Moves the selection vertically a number of wrapped lines. May
     /// cause horizontal movement
     ///
-    /// Returns the distance moved in wrapped lines.
+    /// Returns `true` if the caret actually moved at all.
     #[track_caller]
-    pub fn move_ver_wrapped(&mut self, count: i32) {
+    pub fn move_ver_wrapped(&mut self, count: i32) -> bool {
         if count == 0 {
-            return;
+            return false;
         }
-        sel_mut!(self).move_ver_wrapped(
+        let moved = sel_mut!(self).move_ver_wrapped(
             count,
             self.widget.text(),
             self.area,
             self.widget.print_opts(),
         );
+
+        if moved {
+            self.widget.text_mut().add_record_for(sel!(self).caret());
+        }
+        moved
     }
 
     /// Moves the selection to a [`Point`] or a [range] of [`Point`]s
@@ -420,7 +422,7 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
         let copy = self.selections[self.sels_i].clone().unwrap();
         self.selections
             .push(Some(ModSelection { was_main: false, ..copy }));
-        
+
         let sels_i = self.selections.len() - 1;
         Cursor::new(
             self.selections,
@@ -583,14 +585,12 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
 
     /// Gets the current level of indentation
     pub fn indent(&self) -> usize {
-        self.widget
-            .text()
-            .indent(self.caret(), self.area, self.opts())
+        self.widget.text().indent(self.caret(), self.opts())
     }
 
     /// Gets the indentation level on the given [`Point`]
     pub fn indent_on(&self, p: Point) -> usize {
-        self.widget.text().indent(p, self.area, self.opts())
+        self.widget.text().indent(p, self.opts())
     }
 
     ////////// Selection queries

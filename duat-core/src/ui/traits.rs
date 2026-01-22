@@ -19,10 +19,11 @@ use bincode::{Decode, Encode};
 use crate::{
     context::DuatSender,
     form::Painter,
+    mode::VPoint,
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Item, Text, TwoPoints},
-    ui::{Caret, Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs},
+    text::{Point, Text, TwoPoints},
+    ui::{Coord, DynSpawnSpecs, PrintedLine, PushSpecs, SpawnId, StaticSpawnSpecs},
 };
 
 /// All the methods that a working gui/tui will need to implement in
@@ -379,42 +380,43 @@ pub trait RawArea: Sized + PartialEq + 'static {
         opts: PrintOpts,
     ) -> Option<Vec<PrintedLine>>;
 
-    /// Returns a printing iterator
+    /// Move vertically from a [`Point`] in the `Text`
     ///
-    /// Given an iterator of [`text::Item`]s, returns an iterator
-    /// which assigns to each of them a [`Caret`]. This struct
-    /// essentially represents where horizontally would this character
-    /// be printed.
+    /// This should return a [`VPoint`], which is a struct that
+    /// describes additional information about a position in the text,
+    /// namely the character, visual, and wrapped distances from the
+    /// start of the line.
     ///
-    /// If you want a reverse iterator, see
-    /// [`RawArea::rev_print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    fn print_iter<'a>(
+    /// The `desired_col` parameter describes what visual distance
+    /// from the start of the line is desired.
+    fn move_ver(
         &self,
         _: UiPass,
-        text: &'a Text,
-        points: TwoPoints,
+        by: i32,
+        text: &Text,
+        point: Point,
+        desired_col: Option<usize>,
         opts: PrintOpts,
-    ) -> impl Iterator<Item = (Caret, Item)> + 'a;
+    ) -> VPoint;
 
-    /// Returns a reversed printing iterator
+    /// Move vertically from a [`Point`] in the `Text` with wrapping
     ///
-    /// Given an iterator of [`text::Item`]s, returns a reversed
-    /// iterator which assigns to each of them a [`Caret`]. This
-    /// struct essentially represents where horizontally each
-    /// character would be printed.
+    /// This should return a [`VPoint`], which is a struct that
+    /// describes additional information about a position in the text,
+    /// namely the character, visual, and wrapped distances from the
+    /// start of the line.
     ///
-    /// If you want a forwards iterator, see [`RawArea::print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    fn rev_print_iter<'a>(
+    /// The `desired_col` parameter describes what visual distance
+    /// from the start of the line is desired.
+    fn move_ver_wrapped(
         &self,
         _: UiPass,
-        text: &'a Text,
-        points: TwoPoints,
+        by: i32,
+        text: &Text,
+        point: Point,
+        desired_col: Option<usize>,
         opts: PrintOpts,
-    ) -> impl Iterator<Item = (Caret, Item)> + 'a;
+    ) -> VPoint;
 
     ////////// Points functions
 
