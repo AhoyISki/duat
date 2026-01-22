@@ -281,7 +281,7 @@ impl RawArea for Area {
             .inspect(self.id, |_, layout| layout.max_value())
             .ok_or_else(|| txt!("This Area was already deleted"))?;
 
-        let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts);
+        let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts, |_| true);
 
         let mut max_x = 0;
         let mut max_y = 0;
@@ -382,14 +382,14 @@ impl RawArea for Area {
         let coords = self.layouts.coords_of(self.id, true)?;
         let points = self.start_points(pa, text, opts);
 
-        let mut prev_line = rev_print_iter(text, points, coords.width(), opts)
+        let mut prev_line = rev_print_iter(text, points, coords.width(), opts, |_| true)
             .find_map(|(place, item)| place.wrap.then_some(item.line()));
 
         let mut printed_lines = Vec::new();
         let mut has_wrapped = false;
         let mut y = coords.tl.y;
 
-        for (place, item) in print_iter(text, points, coords.width(), opts) {
+        for (place, item) in print_iter(text, points, coords.width(), opts, |_| true) {
             if y == coords.br.y {
                 break;
             }
@@ -442,7 +442,8 @@ impl RawArea for Area {
         let mut wraps = 0;
         let mut vcol = 0;
 
-        let (wcol, point) = print_iter(text, line_start.to_two_points_before(), cap, opts)
+        let points = line_start.to_two_points_before();
+        let (wcol, point) = print_iter(text, points, cap, opts, vpoint_filter)
             .find_map(|(PrintedPlace { len, x, wrap }, item)| {
                 wraps += wrap as usize;
 
@@ -493,12 +494,12 @@ impl RawArea for Area {
         if by > 0 {
             let line_start = text.point_at_line(point.line());
             let points = line_start.to_two_points_after();
-            
+
             let mut vcol = 0;
             let mut last = (0, 0, line_start);
             let mut last_valid = last;
 
-            let (vcol, wcol, point) = print_iter(text, points, cap, opts)
+            let (vcol, wcol, point) = print_iter(text, points, cap, opts, vpoint_filter)
                 .find_map(|(PrintedPlace { x, len, wrap }, item)| {
                     wraps += (wrap && item.char() > point.char()) as i32;
                     if let Some((p, char)) = item.as_real_char() {
@@ -527,7 +528,7 @@ impl RawArea for Area {
             let mut just_wrapped = false;
             let mut last_valid = None;
 
-            let mut iter = rev_print_iter(text, end_points, cap, opts);
+            let mut iter = rev_print_iter(text, end_points, cap, opts, vpoint_filter);
             let wcol_and_p = iter.find_map(|(PrintedPlace { x, len, wrap }, item)| {
                 if let Some((p, _)) = item.as_real_char() {
                     // max(1) because it could be a '\n'
@@ -556,7 +557,7 @@ impl RawArea for Area {
                 VPoint::new(point, ccol, vcol, vcol, wcol, desired_col)
             } else if let Some((wcol, point)) = last_valid {
                 let points = point.to_two_points_before();
-                let (ccol, vcol) = rev_print_iter(text, points, cap, opts)
+                let (ccol, vcol) = rev_print_iter(text, points, cap, opts, vpoint_filter)
                     .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
                     .fold((0, 0), |(ccol, vcol), (place, item)| {
                         (ccol + item.is_real() as u16, vcol + place.len as u16)
@@ -667,7 +668,7 @@ impl RawArea for Area {
         };
 
         let mut row = coords.tl.y;
-        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
+        for (place, item) in print_iter(text, s_points, coords.width(), opts, |_| true) {
             row += place.wrap as u32;
 
             if row > coords.br.y {
@@ -719,7 +720,7 @@ impl RawArea for Area {
 
         let mut row = coords.tl.y;
         let mut backup = None;
-        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
+        for (place, item) in print_iter(text, s_points, coords.width(), opts, |_| true) {
             if item.part.is_tag() {
                 continue;
             }
@@ -868,7 +869,7 @@ pub fn print_text(
 
         let lines = Lines::new(coords);
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
-        let iter = print_iter(text, s_points, width, opts);
+        let iter = print_iter(text, s_points, width, opts, |_| true);
 
         (lines, iter, x_shift, max.x)
     };
@@ -1043,7 +1044,8 @@ fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPo
 
     let mut vcol = 0;
 
-    let wcol = print_iter(text, range.start.to_two_points_before(), cap, opts)
+    let points = range.start.to_two_points_before();
+    let wcol = print_iter(text, points, cap, opts, vpoint_filter)
         .find_map(|(place, item)| {
             if let Some((lhs, _)) = item.as_real_char()
                 && lhs == point
@@ -1063,4 +1065,8 @@ fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPo
         wcol,
         wcol,
     )
+}
+
+fn vpoint_filter(place: &TextPlace) -> bool {
+    !matches!(place.part, TextPart::ReplaceChar(_)) && place.ghost.is_none()
 }

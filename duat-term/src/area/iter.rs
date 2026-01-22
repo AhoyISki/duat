@@ -35,6 +35,7 @@ pub fn print_iter(
     points: TwoPoints,
     width: u32,
     opts: PrintOpts,
+    filter: impl Fn(&TextPlace) -> bool + Copy + 'static,
 ) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + '_ {
     let start_points = text.visual_line_start(points, 0);
     let max_indent = if opts.indent_wraps { width } else { 0 };
@@ -50,6 +51,7 @@ pub fn print_iter(
         let (indent, on_indent, replace_chars) = (&mut indent, &mut on_indent, &mut replace_chars);
         let mut iter = text
             .iter_fwd(start_points)
+            .filter(filter)
             .take_while(|item| item.points() < points);
 
         while let Some(item) = (!tab_chars.is_empty())
@@ -104,7 +106,7 @@ pub fn print_iter(
     }
 
     inner_iter(
-        text.iter_fwd(points),
+        text.iter_fwd(points).filter(filter),
         (x, spacers),
         (indent, on_indent, wrapped_indent),
         (cap, opts),
@@ -117,8 +119,9 @@ pub fn rev_print_iter(
     points: TwoPoints,
     cap: u32,
     opts: PrintOpts,
+    filter: impl Fn(&TextPlace) -> bool + Copy + 'static,
 ) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + '_ {
-    let mut iter = text.iter_rev(points);
+    let mut iter = text.iter_rev(points).filter(filter);
 
     let mut returns = Vec::new();
     let mut items = Vec::new();

@@ -21,7 +21,7 @@ use super::{
     Point, SpawnId, Text, ToggleId,
     tags::{self, RawTag},
 };
-use crate::{mode::Selection, text::TwoPoints};
+use crate::text::TwoPoints;
 
 /// An [`Iterator`] over the [`TextPart`]s of the [`Text`].
 ///
@@ -39,10 +39,6 @@ pub struct FwdIter<'t> {
     // Things to deal with ghost text.
     main_iter: Option<MainIter<FwdChars<'t>, tags::FwdTags<'t>>>,
     ghost: Option<(Point, usize)>,
-
-    // Configuration on how to iterate.
-    print_ghosts: bool,
-    _conceals: Conceal<'t>,
 }
 
 impl<'t> FwdIter<'t> {
@@ -76,59 +72,7 @@ impl<'t> FwdIter<'t> {
 
             main_iter: None,
             ghost,
-
-            print_ghosts: true,
-            _conceals: Conceal::All,
         }
-    }
-
-    ////////// Iteration modifiers
-
-    /// Disable all [`Conceal`]s
-    ///
-    /// [`Conceal`]: super::Conceal
-    pub fn no_conceals(self) -> Self {
-        Self { _conceals: Conceal::None, ..self }
-    }
-
-    /// Disable all [`Conceal`]s containing any of the
-    /// `caret`s
-    ///
-    /// Not yet implemented
-    ///
-    /// [`Conceal`]: super::Conceal
-    pub fn dont_conceal_containing(self, list: &'t [Selection]) -> Self {
-        Self {
-            _conceals: Conceal::Excluding(list),
-            ..self
-        }
-    }
-
-    /// Disable all [`Ghost`]s
-    ///
-    /// [`Ghost`]: super::Ghost
-    pub fn no_ghosts(self) -> Self {
-        Self { print_ghosts: false, ..self }
-    }
-
-    /// Returns an [`Iterator`] over only the `char`s
-    ///
-    /// The difference betwen this and a regular [`Bytes::chars_fwd`]
-    /// is that this [`Iterator`] will return [`Ghost`] `char`s and
-    /// won't return `char`s that have been concealed
-    ///
-    /// [`Tag`]: super::Tag
-    /// [`Ghost`]: super::Ghost
-    /// [`Bytes::chars_fwd`]: super::Bytes::chars_fwd
-    pub fn no_tags(self) -> impl Iterator<Item = TextPlace> + 't {
-        self.filter(|item| item.part.is_char())
-    }
-
-    /// Skips to a certain [`TwoPoints`]
-    ///
-    /// Does nothing if the [`TwoPoints`] are behind.
-    pub fn skip_to(&mut self, points: TwoPoints) {
-        *self = self.text.iter_fwd(points.max(self.points()))
     }
 
     ////////// Querying functions
@@ -164,7 +108,7 @@ impl<'t> FwdIter<'t> {
     fn handle_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::Ghost(_, id) => {
-                if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
+                if b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
                 let text = self.text.get_ghost(*id).unwrap();
@@ -274,10 +218,6 @@ pub struct RevIter<'t> {
 
     main_iter: Option<MainIter<RevChars<'t>, tags::RevTags<'t>>>,
     ghost: Option<(Point, usize)>,
-
-    // Iteration options:
-    print_ghosts: bool,
-    _conceals: Conceal<'t>,
 }
 
 impl<'t> RevIter<'t> {
@@ -302,39 +242,7 @@ impl<'t> RevIter<'t> {
 
             main_iter: None,
             ghost,
-
-            print_ghosts: true,
-            _conceals: Conceal::All,
         }
-    }
-
-    ////////// Iteration modifiers
-
-    /// Disable all [`Conceal`]s
-    ///
-    /// [`Conceal`]: super::Conceal
-    pub fn no_conceals(self) -> Self {
-        Self { _conceals: Conceal::None, ..self }
-    }
-
-    /// Disable all [`Ghost`]s
-    ///
-    /// [`Ghost`]: super::Ghost
-    pub fn no_ghosts(self) -> Self {
-        Self { print_ghosts: false, ..self }
-    }
-
-    /// Returns an [`Iterator`] over only the `char`s
-    ///
-    /// The difference betwen this and a regular [`Bytes::chars_rev`]
-    /// is that this [`Iterator`] will return [`Ghost`] `char`s and
-    /// won't return `char`s that have been concealed
-    ///
-    /// [`Tag`]: super::Tag
-    /// [`Ghost`]: super::Ghost
-    /// [`Bytes::chars_rev`]: super::Bytes::chars_rev
-    pub fn no_tags(self) -> impl Iterator<Item = TextPlace> + 't {
-        self.filter(|item| item.part.is_char())
     }
 
     ////////// Querying functions
@@ -369,7 +277,7 @@ impl<'t> RevIter<'t> {
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::Ghost(_, id) => {
-                if !self.print_ghosts || b > self.point.byte() || self.conceals > 0 {
+                if b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
                 let text = self.text.get_ghost(*id).unwrap();
@@ -566,17 +474,6 @@ impl TextPlace {
     }
 }
 
-// To be rethought
-#[allow(dead_code)]
-#[derive(Debug, Default, Clone)]
-enum Conceal<'s> {
-    #[default]
-    All,
-    None,
-    Excluding(&'s [Selection]),
-    NotOnLineOf(&'s [Selection]),
-}
-
 type FwdChars<'t> = Chain<Chars<'t>, Chars<'t>>;
 type RevChars<'t> = Chain<Rev<Chars<'t>>, Rev<Chars<'t>>>;
 
@@ -600,6 +497,7 @@ use crate::form::FormId;
 /// [Ui]: crate::ui::traits::RawUi
 /// [`ResetState`]: Part::ResetState
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[doc(hidden)]
 pub enum TextPart {
     /// A printed `char`, can be real or a [`Ghost`]
     ///
