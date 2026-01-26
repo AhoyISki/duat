@@ -252,6 +252,7 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
+    #[track_caller]
     pub fn indent(&self, p: Point, opts: PrintOpts) -> usize {
         self.chars_fwd(self.line_range(p.line()))
             .unwrap()
@@ -260,7 +261,7 @@ impl Text {
                 if char == ' ' {
                     sum + 1
                 } else {
-                    sum + opts.tabstop as usize
+                    sum + opts.tabstop as usize - (opts.tabstop as usize % sum)
                 }
             })
     }
@@ -275,7 +276,6 @@ impl Text {
     ///
     /// [points]: TwoPoints
     /// [point]: Bytes::point_at_byte
-    #[inline(always)]
     #[track_caller]
     pub fn ghost_max_points_at(&self, b: usize) -> TwoPoints {
         let point = self.point_at_byte(b);
@@ -852,6 +852,8 @@ impl<'t> TextMut<'t> {
     pub fn clear_tags(&mut self) {
         self.text.clear_tags();
     }
+
+    ////////// Internal methods
 
     /// Updates bounds, so that [`Tag`] ranges can visibly cross the
     /// screen

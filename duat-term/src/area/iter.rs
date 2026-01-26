@@ -35,61 +35,30 @@ pub fn print_iter(
     points: TwoPoints,
     width: u32,
     opts: PrintOpts,
-    filter: impl Fn(&TextPlace) -> bool + Copy + 'static,
 ) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + '_ {
     let start_points = text.visual_line_start(points, 0);
-    let max_indent = if opts.indent_wraps { width } else { 0 };
     let cap = opts.wrap_width(width).unwrap_or(width);
+    let max_indent = if opts.indent_wraps { cap } else { 0 };
 
     // Line construction variables.
     let (mut x, mut spacers) = (0, 0);
     let (mut indent, mut on_indent, mut wrapped_indent) = (0, true, 0);
     let mut replace_chars = Vec::with_capacity(opts.tabstop as usize);
-    let mut tab_chars = Vec::new();
 
     if start_points != points {
-        let (indent, on_indent, replace_chars) = (&mut indent, &mut on_indent, &mut replace_chars);
-        let mut iter = text
+        for item in text
             .iter_fwd(start_points)
-            .filter(filter)
-            .take_while(|item| item.points() < points);
-
-        while let Some(item) = (!tab_chars.is_empty())
-            .then(|| tab_chars.remove(0))
-            .or_else(|| iter.next())
+            .take_while(|item| item.points() < points)
         {
-            let old_indent = *indent;
-            let (part, len) = match item.part {
-                TextPart::Char('\t') if !replace_chars.is_empty() => {
-                    tab_chars = process_tab(indent, on_indent, x, opts, item, replace_chars);
-                    continue;
-                }
-                TextPart::Char(char) => match replace_chars.drain(..).next().unwrap_or(char) {
-                    '\n' => {
-                        (x, spacers) = (0, 0);
-                        (*indent, *on_indent, wrapped_indent) = (0, true, 0);
-                        tab_chars.clear();
-                        break;
-                    }
-                    char => (
-                        TextPart::Char(char),
-                        process_char(indent, on_indent, x, char, opts),
-                    ),
-                },
-                _ => (item.part, 0),
-            };
-
-            spacers += matches!(item.part, TextPart::Spacer) as usize;
-
-            if let TextPart::ReplaceChar(char) = item.part {
-                replace_chars.push(char);
-            }
+            let old_indent = indent;
+            let indent = (&mut indent, &mut on_indent);
+            let len = process_part(item, x, opts, indent, &mut spacers, &mut replace_chars);
 
             x += len;
             if x > cap && opts.wrap_lines {
                 spacers = 0;
 
-                if let TextPart::Char('\t') = part {
+                if let TextPart::Char('\t') = item.part {
                     let desired = old_indent + x - cap;
                     wrapped_indent = if desired < max_indent {
                         desired
@@ -106,11 +75,11 @@ pub fn print_iter(
     }
 
     inner_iter(
-        text.iter_fwd(points).filter(filter),
+        text.iter_fwd(points),
         (x, spacers),
         (indent, on_indent, wrapped_indent),
         (cap, opts),
-        (replace_chars, tab_chars),
+        replace_chars,
     )
 }
 
@@ -119,16 +88,11 @@ pub fn rev_print_iter(
     points: TwoPoints,
     cap: u32,
     opts: PrintOpts,
-    filter: impl Fn(&TextPlace) -> bool + Copy + 'static,
 ) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + '_ {
-    let mut iter = text.iter_rev(points).filter(filter);
+    let mut iter = text.iter_rev(points);
 
     let mut returns = Vec::new();
     let mut items = Vec::new();
-
-    // Used exclusively for the ReplaceChar tag
-    let mut parts_in_process = Vec::new();
-    let mut char_in_process = None;
 
     std::iter::from_fn(move || {
         if let Some(next) = returns.pop() {
@@ -136,33 +100,20 @@ pub fn rev_print_iter(
         } else {
             let iter = loop {
                 if let Some(item) = iter.next() {
-                    match item.part {
-                        TextPart::Char(char) => match char_in_process.replace(char) {
-                            Some('\n') => {
-                                let len = items.len();
-                                items.append(&mut parts_in_process);
-                                if len > 0 {
-                                    parts_in_process.push(item);
-                                    break items.drain(..len).rev();
-                                }
-                            }
-                            _ => items.append(&mut parts_in_process),
-                        },
-                        TextPart::ReplaceChar(char) => {
-                            char_in_process = char_in_process.and(Some(char));
+                    items.push(item);
+                    if let TextPart::Char('\n') = item.part {
+                        let len = items.len();
+                        if len > 1 {
+                            break items.drain(..len - 1).rev();
                         }
-                        _ => {}
                     }
-
-                    parts_in_process.push(item);
                 } else {
-                    items.append(&mut parts_in_process);
                     break items.drain(..).rev();
                 }
             };
 
-            let vecs = (Vec::new(), Vec::new());
-            returns.extend(inner_iter(iter, (0, 0), (0, true, 0), (cap, opts), vecs));
+            let reps = Vec::new();
+            returns.extend(inner_iter(iter, (0, 0), (0, true, 0), (cap, opts), reps));
 
             returns.pop()
         }
@@ -170,17 +121,17 @@ pub fn rev_print_iter(
 }
 
 #[inline(always)]
-fn inner_iter<'a>(
-    iter: impl Iterator<Item = TextPlace> + 'a,
+fn inner_iter(
+    iter: impl Iterator<Item = TextPlace>,
     (mut x, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
-    (mut replace_chars, mut tab_chars): (Vec<char>, Vec<TextPlace>),
-) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + 'a {
+    mut replace_chars: Vec<char>,
+) -> impl Iterator<Item = (PrintedPlace, TextPlace)> {
     let max_indent = if opts.indent_wraps { cap } else { 0 };
 
     // Line return variables.
-    let (mut line, mut leftover_nl): (Vec<(u32, TextPlace)>, _) = (Vec::new(), None);
+    let (mut line, mut leftover_nl) = (Vec::<(u32, TextPlace)>::new(), None);
     let (mut printed_x, mut i, mut has_wrapped) = (0, 0, false);
 
     let mut iter = iter.peekable();
@@ -189,7 +140,6 @@ fn inner_iter<'a>(
     let mut first_printed_x = x * (x < cap || !opts.wrap_lines) as u32;
 
     std::iter::from_fn(move || {
-        let (indent, on_indent, replace_chars) = (&mut indent, &mut on_indent, &mut replace_chars);
         loop {
             // Emptying the line, most next calls should come here.
             if let Some(&(len, item)) = line.get(i) {
@@ -215,10 +165,7 @@ fn inner_iter<'a>(
 
             // Preparing the line itself.
             loop {
-                let Some(item) = (!tab_chars.is_empty())
-                    .then(|| tab_chars[0])
-                    .or_else(|| iter.peek().cloned())
-                else {
+                let Some(&item) = iter.peek() else {
                     if line.is_empty() {
                         return None;
                     } else {
@@ -226,47 +173,9 @@ fn inner_iter<'a>(
                     }
                 };
 
-                let mut remove_next = || {
-                    if tab_chars.is_empty() {
-                        iter.next();
-                    } else {
-                        tab_chars.remove(0);
-                    }
-                };
-
-                let old_indent = *indent;
-                let (item, len) = match item.part {
-                    TextPart::Char('\t') if !replace_chars.is_empty() => {
-                        remove_next();
-                        tab_chars = process_tab(indent, on_indent, x, opts, item, replace_chars);
-                        continue;
-                    }
-                    TextPart::Char(char) => {
-                        let char = replace_chars.first().copied().unwrap_or(char);
-                        (
-                            TextPlace { part: TextPart::Char(char), ..item },
-                            match char {
-                                '\n' if item.ghost.is_some() => {
-                                    *indent = 0;
-                                    *on_indent = true;
-                                    0
-                                }
-                                '\n' => process_nl(indent, on_indent, x, opts),
-                                char => process_char(indent, on_indent, x, char, opts),
-                            },
-                        )
-                    }
-                    TextPart::ReplaceChar(char) => {
-                        remove_next();
-                        replace_chars.push(char);
-                        continue;
-                    }
-                    TextPart::Spacer => {
-                        spacers += 1;
-                        (item, 0)
-                    }
-                    _ => (item, 0),
-                };
+                let old_indent = indent;
+                let indent = (&mut indent, &mut on_indent);
+                let len = process_part(item, x, opts, indent, &mut spacers, &mut replace_chars);
 
                 x += len;
 
@@ -275,7 +184,6 @@ fn inner_iter<'a>(
                 if let TextPart::Char(char) = item.part
                     && (must_wrap || char == '\n')
                 {
-                    let is_replacement = !replace_chars.is_empty();
                     replace_chars.clear();
 
                     initial_printed_x = first_printed_x + wrapped_indent;
@@ -285,8 +193,7 @@ fn inner_iter<'a>(
                     let leftover = x.saturating_sub(cap);
                     wrapped_indent = match char {
                         '\t' if leftover > 0 => {
-                            remove_next();
-                            line.push((len - leftover, item));
+                            line.push((len - leftover, iter.next().unwrap()));
                             if old_indent + leftover < max_indent && opts.indent_wraps {
                                 old_indent + leftover
                             } else {
@@ -294,13 +201,12 @@ fn inner_iter<'a>(
                             }
                         }
                         '\n' => {
-                            remove_next();
                             if len > 0 && must_wrap {
                                 let position = old_indent
                                     * (old_indent < max_indent && opts.indent_wraps) as u32;
-                                leftover_nl = Some((position, item))
+                                leftover_nl = Some((position, iter.next().unwrap()))
                             } else {
-                                line.push((len, item))
+                                line.push((len, iter.next().unwrap()))
                             }
                             0
                         }
@@ -308,10 +214,7 @@ fn inner_iter<'a>(
                             // At this point, the only logical course of action is to wrap on
                             // every character.
                             if cap == 0 && !line.iter().any(|(_, item)| item.part.is_char()) {
-                                remove_next();
-                                line.push((len, item));
-                            } else if is_replacement {
-                                remove_next();
+                                line.push((len, iter.next().unwrap()));
                             }
 
                             old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
@@ -324,8 +227,7 @@ fn inner_iter<'a>(
                     if item.part.is_char() {
                         replace_chars.clear();
                     }
-                    remove_next();
-                    line.push((len, item));
+                    line.push((len, iter.next().unwrap()));
                 }
             }
 
@@ -341,11 +243,9 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
     let cap = opts.wrap_width(width).unwrap_or(width);
 
     // Line construction variables.
-    let mut x = 0;
+    let (mut x, mut spacers) = (0, 0);
     let (mut indent, mut on_indent) = (0, true);
-    let (mut replace_chars, mut tab_chars) = (Vec::new(), Vec::new());
-
-    let (indent, on_indent, replace_chars) = (&mut indent, &mut on_indent, &mut replace_chars);
+    let mut replace_chars = Vec::new();
 
     if start_points == points {
         true
@@ -353,42 +253,22 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
         false
     } else {
         let mut wrapped = true;
-        let mut iter = text
-            .iter_fwd(start_points)
-            .take_while(|item| item.points() <= points);
 
-        while let Some(item) = (!tab_chars.is_empty())
-            .then(|| tab_chars.remove(0))
-            .or_else(|| iter.next())
+        for item in text
+            .iter_fwd(start_points)
+            .take_while(|item| item.points() <= points)
         {
             wrapped = false;
 
-            let old_indent = *indent;
-            let (part, len) = match item.part {
-                TextPart::Char('\t') if !replace_chars.is_empty() => {
-                    tab_chars = process_tab(indent, on_indent, x, opts, item, replace_chars);
-                    continue;
-                }
-                TextPart::Char(char) => {
-                    let char = replace_chars.drain(..).next().unwrap_or(char);
-                    (TextPart::Char(char), match char {
-                        '\n' if item.ghost.is_some() => {
-                            *indent = 0;
-                            *on_indent = true;
-                            0
-                        }
-                        '\n' => process_nl(indent, on_indent, x, opts),
-                        char => process_char(indent, on_indent, x, char, opts),
-                    })
-                }
-                _ => (item.part, 0),
-            };
+            let old_indent = indent;
+            let indent = (&mut indent, &mut on_indent);
+            let len = process_part(item, x, opts, indent, &mut spacers, &mut replace_chars);
 
             x += len;
             if x > cap && opts.wrap_lines {
                 wrapped = true;
 
-                x = if let TextPart::Char('\t') = part {
+                x = if let TextPart::Char('\t') = item.part {
                     let desired = old_indent + x - cap;
                     if desired < max_indent {
                         desired
@@ -407,12 +287,12 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
-fn _words<'a>(
-    iter: impl Iterator<Item = TextPlace> + Clone + 'a,
+fn _words(
+    iter: impl Iterator<Item = TextPlace> + Clone,
     (mut total_len, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
-) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + Clone + 'a {
+) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + Clone {
     let max_indent = if opts.indent_wraps { cap } else { 0 };
 
     // Line return variables.
@@ -423,6 +303,7 @@ fn _words<'a>(
     let mut iter = iter.peekable();
     let mut word = Vec::new();
     let (mut new_x, mut first_x) = (0, total_len * (total_len < cap) as u32);
+    let mut replace_chars = Vec::with_capacity(opts.tabstop as usize);
 
     std::iter::from_fn(move || {
         loop {
@@ -456,17 +337,9 @@ fn _words<'a>(
                 };
 
                 let old_indent = indent;
-                let len = match item.part {
-                    TextPart::Char('\n') => {
-                        process_nl(&mut indent, &mut on_indent, total_len, opts)
-                    }
-                    TextPart::Char(char) => {
-                        process_char(&mut indent, &mut on_indent, total_len, char, opts)
-                    }
-                    _ => 0,
-                };
+                let indent = (&mut indent, &mut on_indent);
+                let len = process_part(item, x, opts, indent, &mut spacers, &mut replace_chars);
 
-                spacers += matches!(item.part, TextPart::Spacer) as usize;
                 total_len += len;
 
                 if let TextPart::Char(char) = item.part
@@ -517,7 +390,7 @@ fn _words<'a>(
 }
 
 #[inline(always)]
-fn len_from(char: char, start: u32, opts: &PrintOpts) -> u32 {
+fn len_from(char: char, start: u32, opts: PrintOpts) -> u32 {
     match char {
         '\t' => (opts.tabstop_spaces_at(start)).max(1),
         '\n' => 0,
@@ -527,51 +400,58 @@ fn len_from(char: char, start: u32, opts: &PrintOpts) -> u32 {
     }
 }
 
+fn process_part(
+    item: TextPlace,
+    x: u32,
+    opts: PrintOpts,
+    indent: (&mut u32, &mut bool),
+    spacers: &mut usize,
+    replace_chars: &mut Vec<char>,
+) -> u32 {
+    match item.part {
+        TextPart::Char('\t') => {
+            replace_chars.clear();
+            process_char(indent, x, '\t', opts)
+        }
+        TextPart::Char(orig) => match replace_chars.drain(..).next() {
+            Some(char) => {
+                process_char(indent, x, orig, opts);
+                len_from(char, x, opts)
+            }
+            None => process_char(indent, x, orig, opts),
+        },
+        TextPart::Spacer => {
+            *spacers += 1;
+            0
+        }
+        TextPart::ReplaceChar(char) => {
+            replace_chars.push(char);
+            0
+        }
+        _ => 0,
+    }
+}
+
 #[inline(always)]
 fn process_char(
-    indent: &mut u32,
-    on_indent: &mut bool,
+    (indent, on_indent): (&mut u32, &mut bool),
     x: u32,
     char: char,
     opts: PrintOpts,
 ) -> u32 {
-    let len = len_from(char, x, &opts);
-    *on_indent &= char == ' ' || char == '\t';
-    *indent += len * *on_indent as u32;
-    len
-}
-
-#[inline(always)]
-fn process_nl(indent: &mut u32, on_indent: &mut bool, x: u32, opts: PrintOpts) -> u32 {
-    *indent = 0;
-    *on_indent = true;
-    let char = if opts.print_new_line { ' ' } else { '\n' };
-    len_from(char, x, &opts)
-}
-
-fn process_tab(
-    indent: &mut u32,
-    on_indent: &mut bool,
-    x: u32,
-    opts: PrintOpts,
-    item: TextPlace,
-    replace_chars: &mut Vec<char>,
-) -> Vec<TextPlace> {
-    let mut new_tab_chars = Vec::new();
-    let mut len = process_char(indent, on_indent, x, '\t', opts);
-
-    while !replace_chars.is_empty() && len > 0 {
-        let char = replace_chars.remove(0);
-        let char_len = process_char(indent, on_indent, x, char, opts);
-        len = len.saturating_sub(char_len);
-
-        new_tab_chars.push(TextPlace { part: TextPart::Char(char), ..item })
+    match char {
+        '\n' => {
+            *on_indent = true;
+            *indent = 0;
+            opts.print_new_line as u32
+        }
+        char => {
+            let len = len_from(char, x, opts);
+            *on_indent &= char == ' ' || char == '\t';
+            *indent += len * *on_indent as u32;
+            len
+        }
     }
-
-    replace_chars.clear();
-
-    new_tab_chars.extend((0..len).map(|_| TextPlace { part: TextPart::Char(' '), ..item }));
-    new_tab_chars
 }
 
 /// Adds spacing to a line, and returns the initial amount of

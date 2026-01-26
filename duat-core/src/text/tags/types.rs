@@ -273,7 +273,6 @@ impl Tag<usize> for Ghost {
         };
 
         self.id = Some(id);
-
         ((byte, RawTag::Ghost(tagger, id)), None)
     }
 
@@ -343,7 +342,22 @@ impl<I: TextRange> Tag<I> for Conceal {
 /// replace the first space of the tab. If it is then followed by more
 /// `ReplaceChar`s, the other spaces of the tab will be replaced.
 #[derive(Debug, Clone, Copy)]
-pub struct ReplaceChar(pub char);
+pub struct ReplaceChar(char);
+
+impl ReplaceChar {
+    #[track_caller]
+    /// Returns a new `ReplaceChar`, which will print a character
+    /// differently
+    ///
+    /// The `char` argument can't be any of a `\t`, a `\n`, or `\r`.
+    pub fn new(char: char) -> Self {
+        assert!(
+            !['\n', '\t', '\r'].contains(&char),
+            "ReplaceChar can't take '\n', '\t' or '\r'"
+        );
+        Self(char)
+    }
+}
 simple_impl_Tag!(tag: ReplaceChar, tagger, RawTag::ReplaceChar(tagger, tag.0), true);
 
 ////////// Layout modification Tags
@@ -480,8 +494,8 @@ pub enum RawTag {
 
     /// Text that shows up on screen, but is ignored otherwise.
     Ghost(Tagger, GhostId),
-
-    /// Replaces a printed character or part of a `\t`
+    /// Replaces a printed character or
+    /// part of a `\t`
     ReplaceChar(Tagger, char),
 
     /// A spawned floating [`Widget`]
@@ -587,14 +601,14 @@ impl RawTag {
     pub(super) fn priority(&self) -> u8 {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
-            Self::PopForm(..) => 2,
+            Self::PopForm(..) => 1,
             Self::MainCaret(..) | Self::ExtraCaret(..) => 4,
             Self::StartConceal(..) | Self::StartToggle(..) | Self::ReplaceChar(..) => 3,
             Self::Spacer(..)
             | Self::EndConceal(..)
             | Self::EndToggle(..)
             | Self::SpawnedWidget(..) => 0,
-            Self::Ghost(..) => 1,
+            Self::Ghost(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }

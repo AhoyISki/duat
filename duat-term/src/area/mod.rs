@@ -23,6 +23,7 @@ use duat_core::{
     },
 };
 use iter::{PrintedPlace, print_iter, rev_print_iter};
+use unicode_width::UnicodeWidthChar;
 
 pub use self::print_info::PrintInfo;
 use crate::{
@@ -281,7 +282,7 @@ impl RawArea for Area {
             .inspect(self.id, |_, layout| layout.max_value())
             .ok_or_else(|| txt!("This Area was already deleted"))?;
 
-        let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts, |_| true);
+        let iter = iter::print_iter(text, TwoPoints::default(), max.x, opts);
 
         let mut max_x = 0;
         let mut max_y = 0;
@@ -382,14 +383,14 @@ impl RawArea for Area {
         let coords = self.layouts.coords_of(self.id, true)?;
         let points = self.start_points(pa, text, opts);
 
-        let mut prev_line = rev_print_iter(text, points, coords.width(), opts, |_| true)
+        let mut prev_line = rev_print_iter(text, points, coords.width(), opts)
             .find_map(|(place, item)| place.wrap.then_some(item.line()));
 
         let mut printed_lines = Vec::new();
         let mut has_wrapped = false;
         let mut y = coords.tl.y;
 
-        for (place, item) in print_iter(text, points, coords.width(), opts, |_| true) {
+        for (place, item) in print_iter(text, points, coords.width(), opts) {
             if y == coords.br.y {
                 break;
             }
@@ -443,7 +444,7 @@ impl RawArea for Area {
         let mut vcol = 0;
 
         let points = line_start.to_two_points_before();
-        let (wcol, point) = print_iter(text, points, cap, opts, vpoint_filter)
+        let (wcol, point) = print_iter(text, points, cap, opts)
             .find_map(|(PrintedPlace { len, x, wrap }, item)| {
                 wraps += wrap as usize;
 
@@ -499,7 +500,7 @@ impl RawArea for Area {
             let mut last = (0, 0, line_start);
             let mut last_valid = last;
 
-            let (vcol, wcol, point) = print_iter(text, points, cap, opts, vpoint_filter)
+            let (vcol, wcol, point) = print_iter(text, points, cap, opts)
                 .find_map(|(PrintedPlace { x, len, wrap }, item)| {
                     wraps += (wrap && item.char() > point.char()) as i32;
                     if let Some((p, char)) = item.as_real_char() {
@@ -528,7 +529,7 @@ impl RawArea for Area {
             let mut just_wrapped = false;
             let mut last_valid = None;
 
-            let mut iter = rev_print_iter(text, end_points, cap, opts, vpoint_filter);
+            let mut iter = rev_print_iter(text, end_points, cap, opts);
             let wcol_and_p = iter.find_map(|(PrintedPlace { x, len, wrap }, item)| {
                 if let Some((p, _)) = item.as_real_char() {
                     // max(1) because it could be a '\n'
@@ -557,7 +558,7 @@ impl RawArea for Area {
                 VPoint::new(point, ccol, vcol, vcol, wcol, desired_col)
             } else if let Some((wcol, point)) = last_valid {
                 let points = point.to_two_points_before();
-                let (ccol, vcol) = rev_print_iter(text, points, cap, opts, vpoint_filter)
+                let (ccol, vcol) = rev_print_iter(text, points, cap, opts)
                     .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
                     .fold((0, 0), |(ccol, vcol), (place, item)| {
                         (ccol + item.is_real() as u16, vcol + place.len as u16)
@@ -668,7 +669,7 @@ impl RawArea for Area {
         };
 
         let mut row = coords.tl.y;
-        for (place, item) in print_iter(text, s_points, coords.width(), opts, |_| true) {
+        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
             row += place.wrap as u32;
 
             if row > coords.br.y {
@@ -720,7 +721,7 @@ impl RawArea for Area {
 
         let mut row = coords.tl.y;
         let mut backup = None;
-        for (place, item) in print_iter(text, s_points, coords.width(), opts, |_| true) {
+        for (place, item) in print_iter(text, s_points, coords.width(), opts) {
             if item.part.is_tag() {
                 continue;
             }
@@ -869,7 +870,7 @@ pub fn print_text(
 
         let lines = Lines::new(coords);
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
-        let iter = print_iter(text, s_points, width, opts, |_| true);
+        let iter = print_iter(text, s_points, width, opts);
 
         (lines, iter, x_shift, max.x)
     };
@@ -887,8 +888,11 @@ pub fn print_text(
     let tl_y = lines.coords().tl.y;
     let mut y = tl_y;
     let mut cursor = None;
-    let mut spawns_for_next: Vec<SpawnId> = Vec::new();
     let mut last_len = 0;
+
+    // For specific Tags
+    let mut spawns_for_next: Vec<SpawnId> = Vec::new();
+    let mut replace_chars: Vec<char> = Vec::new();
 
     for (place, item) in iter {
         let (painter, lines) = (&mut painter, &mut lines);
@@ -934,21 +938,41 @@ pub fn print_text(
                     if style_was_set && let Some(style) = painter.relative_style() {
                         print_style(lines, style);
                     }
+
+                    let mut bytes = [0; 4];
+
                     match char {
                         '\t' => {
-                            let truncated_start = x_shift.saturating_sub(x);
+                            let mut truncated_start = x_shift.saturating_sub(x);
                             let truncated_end =
                                 (x + len).saturating_sub(lines.coords().width() + x_shift);
-                            let tab_len = len - (truncated_start + truncated_end);
+                            let mut tab_len = len - (truncated_start + truncated_end);
+
+                            for char in replace_chars.drain(..) {
+                                let len = UnicodeWidthChar::width(char).unwrap_or(0) as u32;
+
+                                if tab_len >= len && truncated_start == 0 {
+                                    tab_len -= len;
+                                    char.encode_utf8(&mut bytes);
+                                    lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                                } else {
+                                    let spaces = len.saturating_sub(truncated_start);
+                                    lines.write_all(&SPACES[..spaces as usize]).unwrap();
+                                    tab_len -= spaces;
+                                    truncated_start = truncated_start.saturating_sub(len);
+                                }
+                            }
+
                             lines.write_all(&SPACES[..tab_len as usize]).unwrap()
                         }
-                        '\n' if len == 1 => lines.write_all(b" ").unwrap(),
-                        '\n' | '\r' => {}
-                        char => {
-                            let mut bytes = [0; 4];
-                            char.encode_utf8(&mut bytes);
-                            lines.write_all(&bytes[..char.len_utf8()]).unwrap();
-                        }
+                        char => match replace_chars.drain(..).next().unwrap_or(char) {
+                            '\n' if len == 1 => lines.write_all(b" ").unwrap(),
+                            '\n' | '\r' => {}
+                            char => {
+                                char.encode_utf8(&mut bytes);
+                                lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                            }
+                        },
                     }
                 }
 
@@ -1019,10 +1043,8 @@ pub fn print_text(
             }
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
-            TextPart::ReplaceChar(..) => unreachable!(),
-            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {
-                todo!("Toggles have not been implemented yet.")
-            }
+            TextPart::ReplaceChar(char) => replace_chars.push(char),
+            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
         }
     }
 
@@ -1045,7 +1067,7 @@ fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPo
     let mut vcol = 0;
 
     let points = range.start.to_two_points_before();
-    let wcol = print_iter(text, points, cap, opts, vpoint_filter)
+    let wcol = print_iter(text, points, cap, opts)
         .find_map(|(place, item)| {
             if let Some((lhs, _)) = item.as_real_char()
                 && lhs == point
@@ -1065,8 +1087,4 @@ fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPo
         wcol,
         wcol,
     )
-}
-
-fn vpoint_filter(place: &TextPlace) -> bool {
-    !matches!(place.part, TextPart::ReplaceChar(_)) && place.ghost.is_none()
 }

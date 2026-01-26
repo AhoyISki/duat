@@ -47,7 +47,7 @@ mod types;
 /// for example, holding a reference to the [`Bytes`] of the [`Text`]
 ///
 /// [`Bytes`]: super::Bytes
-pub struct Tags<'a>(&'a mut InnerTags);
+pub struct Tags<'t>(&'t mut InnerTags);
 
 impl Tags<'_> {
     /// Inserts a [`Tag`] at the given position
@@ -858,6 +858,7 @@ mod ids {
 
     /// The id of a toggleable
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[doc(hidden)]
     pub struct ToggleId(u16);
 
     impl ToggleId {

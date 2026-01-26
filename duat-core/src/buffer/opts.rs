@@ -111,7 +111,7 @@ pub struct BufferOpts {
     pub extra_word_chars: &'static [char],
     /// Indent string
     ///
-    /// The default is `Some("│   ")`.
+    /// The default is `Some("│")`.
     ///
     /// The indent lines will be printed with the `replace.indent`
     /// [`Form`].
@@ -261,7 +261,7 @@ impl Default for BufferOpts {
             scrolloff: ScrollOff { x: 3, y: 3 },
             force_scrolloff: false,
             extra_word_chars: &[],
-            indent_str: Some("▏"),
+            indent_str: Some("│"),
             indent_str_on_empty: false,
             indent_tab_str: None,
             space_char: None,

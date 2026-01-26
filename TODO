@@ -14,6 +14,8 @@ FOR NEXT UPDATE:
     [x] Space replacements.
     [x] New line replacements.
 [x] Get rid of the print_iter api.
+[ ] Do the libloading hacks.
+[ ] Strs improvement.
 
 KNOWN BUGS:
  HIGH PRIORITY:

@@ -97,7 +97,7 @@ impl<'t> FwdIter<'t> {
     }
 
     /// The [`Text`] that's being iterated over
-    pub fn text(&self) -> &'t Text {
+    pub fn text(&self) -> &Text {
         self.text
     }
 
@@ -564,16 +564,16 @@ impl TextPart {
     #[inline]
     pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm(_, id, prio) => TextPart::PushForm(id, prio),
-            RawTag::PopForm(_, id) => TextPart::PopForm(id),
-            RawTag::MainCaret(_) => TextPart::MainCaret,
-            RawTag::ExtraCaret(_) => TextPart::ExtraCaret,
-            RawTag::Spacer(_) => TextPart::Spacer,
-            RawTag::ReplaceChar(_, char) => TextPart::ReplaceChar(char),
-            RawTag::StartToggle(_, id) => TextPart::ToggleStart(id),
-            RawTag::EndToggle(_, id) => TextPart::ToggleEnd(id),
-            RawTag::ConcealUntil(_) => TextPart::ResetState,
-            RawTag::SpawnedWidget(_, id) => TextPart::SpawnedWidget(id),
+            RawTag::PushForm(_, id, prio) => Self::PushForm(id, prio),
+            RawTag::PopForm(_, id) => Self::PopForm(id),
+            RawTag::MainCaret(_) => Self::MainCaret,
+            RawTag::ExtraCaret(_) => Self::ExtraCaret,
+            RawTag::Spacer(_) => Self::Spacer,
+            RawTag::ReplaceChar(_, char) => Self::ReplaceChar(char),
+            RawTag::StartToggle(_, id) => Self::ToggleStart(id),
+            RawTag::EndToggle(_, id) => Self::ToggleEnd(id),
+            RawTag::ConcealUntil(_) => Self::ResetState,
+            RawTag::SpawnedWidget(_, id) => Self::SpawnedWidget(id),
             RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Ghost(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }

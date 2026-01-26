@@ -430,7 +430,6 @@ impl Bytes {
     ///
     /// Will panic if the number `l` is greater than the number of
     /// lines on the text
-    #[inline(always)]
     #[track_caller]
     pub fn line_range(&self, l: usize) -> Range<Point> {
         assert!(

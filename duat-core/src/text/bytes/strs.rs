@@ -2,7 +2,7 @@ use std::{ops::Range, sync::LazyLock};
 
 use crate::text::{Bytes, Slices, TextRange};
 
-/// An [`Iterator`] over the [`&str`]s in a [`Text`]
+/// A slice over the two `&str`s of a [`Bytes`] 
 ///
 /// [`&str`]: str
 /// [`Text`]: crate::text::Text
