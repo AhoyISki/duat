@@ -19,7 +19,7 @@ use std::{
 };
 
 use bincode::{BorrowDecode, Decode, Encode};
-use gapbuf::GapBuffer;
+use gap_buf::GapBuffer;
 
 use super::{Point, Text};
 use crate::{
@@ -32,7 +32,7 @@ use crate::{
 };
 
 /// The history of edits, contains all moments
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct History {
     // Moments in regard to undoing/redoing
     new_moment: Moment,
@@ -49,6 +49,20 @@ pub struct History {
 }
 
 impl History {
+    /// Returns a new `History`
+    #[allow(clippy::new_without_default)]
+    pub const fn new() -> Self {
+        Self {
+            new_moment: Moment::new(),
+            undo_redo_moments: Vec::new(),
+            cur_moment: 0,
+            new_tracked_moment: Moment::new(),
+            tracked_moments: Vec::new(),
+            track_id: TrackId(0),
+            saved_moment: None,
+        }
+    }
+
     /// Adds a [`Change`] to the [`History`]
     pub fn apply_change(
         &mut self,
@@ -244,6 +258,16 @@ impl Clone for History {
 pub struct Moment {
     changes: GapBuffer<Change<'static, String>>,
     shift_state: (usize, [i32; 3]),
+}
+
+impl Moment {
+    /// Returns a new `Moment`
+    const fn new() -> Self {
+        Self {
+            changes: GapBuffer::new(),
+            shift_state: (0, [0; 3]),
+        }
+    }
 }
 
 impl<Context> Decode<Context> for Moment {
@@ -997,7 +1021,7 @@ impl<'b> RangesToUpdate<'b> {
         let mut has_changed = false;
         for range in visible {
             let range = range.to_range(self.buf_len);
-            has_changed |= ranges.remove_on(range).next().is_some();
+            has_changed |= ranges.remove_on(range).count() > 0;
         }
         has_changed
     }
@@ -1024,7 +1048,7 @@ impl<'b> RangesToUpdate<'b> {
         let mut has_changed = false;
         for range in visible {
             let range = range.to_range(self.buf_len);
-            has_changed |= ranges.remove_intersecting(range).next().is_some();
+            has_changed |= ranges.remove_intersecting(range).count() > 0;
         }
         has_changed
     }
@@ -1155,6 +1179,15 @@ impl<'b> RangesToUpdate<'b> {
                     .map(|_| range)
             })
             .collect()
+    }
+}
+
+impl<'b> std::fmt::Debug for RangesToUpdate<'b> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RangesToUpdate")
+            .field("ranges", &*self.ranges.lock().unwrap())
+            .field("buf_len", &self.buf_len)
+            .finish_non_exhaustive()
     }
 }
 

@@ -9,7 +9,7 @@
 //! traversal.
 use std::ops::Range;
 
-use gapbuf::{GapBuffer, gap_buffer};
+use gap_buf::{GapBuffer, gap_buffer};
 
 use crate::utils::merging_range_by_guess_and_lazy_shift;
 
@@ -42,7 +42,7 @@ impl Ranges {
     }
 
     /// Returns a new empty [`Ranges`]
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
             list: GapBuffer::new(),
             from: 0,
@@ -199,7 +199,7 @@ impl Ranges {
 
         self.list
             .splice(m_range, split_off.into_iter().flatten())
-            .filter_map(|r| (!r.is_empty()).then_some(r.start as usize..r.end as usize))
+            .map(|r| r.start as usize..r.end as usize)
     }
 
     /// Removes all [`Range`]s that intersect with the given one,
@@ -236,7 +236,9 @@ impl Ranges {
         }
 
         self.list
-            .drain(m_range)
+            .extract_if(m_range, move |range| {
+                range.start != within.end && range.end != within.start
+            })
             .map(|range| range.start as usize..range.end as usize)
     }
 
@@ -369,14 +371,14 @@ impl Ranges {
         );
 
         let (s0, s1) = self.list.range(m_range.clone()).as_slices();
-        s0.iter().chain(s1).enumerate().map(move |(i, range)| {
+        s0.iter().chain(s1).enumerate().filter_map(move |(i, r)| {
             let range = if i + m_range.start >= self.from {
-                range.start + self.shift..range.end + self.shift
+                (r.start + self.shift) as usize..(r.end + self.shift) as usize
             } else {
-                range.clone()
+                r.start as usize..r.end as usize
             };
 
-            range.start as usize..range.end as usize
+            (range.start != within.end && range.end != within.start).then_some(range)
         })
     }
 
@@ -411,7 +413,7 @@ impl IntoIterator for Ranges {
 }
 
 pub struct IntoIter {
-    iter: std::iter::Enumerate<gapbuf::IntoIter<Range<i32>>>,
+    iter: std::iter::Enumerate<gap_buf::IntoIter<Range<i32>>>,
     from: usize,
     shift: i32,
 }

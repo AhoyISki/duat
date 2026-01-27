@@ -45,12 +45,33 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, OnceLock, RwLock},
+    sync::{LazyLock, Mutex, OnceLock, RwLock},
 };
 
 pub use shellexpand::full as expand_path;
 
 use crate::text::{Text, txt};
+
+/// A struct for lazy memoization, meant to be kept as a `static`
+pub struct Memoized<K: std::hash::Hash + std::cmp::Eq, V>(LazyLock<Mutex<HashMap<K, V>>>);
+
+impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Memoized<K, V> {
+    /// Returns a new `Memoized`, for quick memoization
+    pub const fn new() -> Self {
+        Self(LazyLock::new(Mutex::default))
+    }
+
+    /// Gets a key, or inserts a new one with a given function
+    pub fn get_or_insert_with(&self, k: K, f: impl FnOnce() -> V) -> V {
+        self.0.lock().unwrap().entry(k).or_insert_with(f).clone()
+    }
+}
+
+impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Default for Memoized<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Takes a type and generates an appropriate name for it
 ///

@@ -20,7 +20,6 @@ while_let_on_iterator = "allow"
 unit_arg = "allow"
 
 [dependencies]
-gapbuf = "0.1.4"
 dirs-next = "2.0.0"
 bincode = "=2.0.1"
 lender = { version = "0.4.2", default-features = false }
@@ -30,6 +29,7 @@ log = "0.4.0"
 regex-syntax = "0.8.8"
 thread-amount = "0.3.0"
 shellexpand = "3.1.1"
+gap-buf = "0.1.0"
 
 [dependencies.regex-cursor]
 version = "0.1.5"

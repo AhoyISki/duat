@@ -239,10 +239,10 @@ impl IncSearcher for SearchFwd {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search(pat)
-                    .from_caret_excl()
-                    .next()
-                    .or_else(|| c.search(pat).to_caret().next())
+                c.search(pat).from_caret_excl().next().or_else(|| {
+                    context::info!("search wrapped around buffer");
+                    c.search(pat).to_caret().next()
+                })
             } {
                 c.move_to(range)
             }
@@ -264,10 +264,10 @@ impl IncSearcher for SearchRev {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search(pat)
-                    .to_caret()
-                    .next_back()
-                    .or_else(|| c.search(pat).from_caret_excl().next_back())
+                c.search(pat).to_caret().next_back().or_else(|| {
+                    context::info!("search wrapped around buffer");
+                    c.search(pat).from_caret_excl().next_back()
+                })
             } {
                 c.move_to(range)
             }
@@ -289,10 +289,10 @@ impl IncSearcher for ExtendFwd {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search(pat)
-                    .from_caret_excl()
-                    .next()
-                    .or_else(|| c.search(pat).to_caret().next())
+                c.search(pat).from_caret_excl().next().or_else(|| {
+                    context::info!("search wrapped around buffer");
+                    c.search(pat).to_caret().next()
+                })
             } {
                 c.set_anchor_if_needed();
                 c.move_to(range)
@@ -315,10 +315,10 @@ impl IncSearcher for ExtendRev {
     fn search(&mut self, pa: &mut Pass, pat: &str, handle: Handle<Buffer>) {
         handle.edit_all(pa, |mut c| {
             if let Some(range) = {
-                c.search(pat)
-                    .to_caret()
-                    .next_back()
-                    .or_else(|| c.search(pat).from_caret_excl().next_back())
+                c.search(pat).to_caret().next_back().or_else(|| {
+                    context::info!("search wrapped around buffer");
+                    c.search(pat).from_caret_excl().next_back()
+                })
             } {
                 c.set_anchor_if_needed();
                 c.move_to(range)

@@ -44,6 +44,7 @@ pub struct FwdIter<'t> {
 impl<'t> FwdIter<'t> {
     /// Returns a new forward [`Iterator`] over the [`TextPlace`]s in
     /// the [`Text`]
+    #[track_caller]
     pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
         let point = real.min(text.len());
@@ -224,6 +225,7 @@ pub struct RevIter<'t> {
 impl<'t> RevIter<'t> {
     /// Returns a new reverse [`Iterator`] over the [`TextPlace`]s in
     /// the [`Text`]
+    #[track_caller]
     pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
         let point = real.min(text.len());

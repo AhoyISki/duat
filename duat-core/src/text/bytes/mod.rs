@@ -3,7 +3,7 @@ use std::{
     str::Utf8Error,
 };
 
-use gapbuf::GapBuffer;
+use gap_buf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
 pub use crate::text::bytes::strs::Strs;

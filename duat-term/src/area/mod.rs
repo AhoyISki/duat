@@ -383,6 +383,10 @@ impl RawArea for Area {
         let coords = self.layouts.coords_of(self.id, true)?;
         let points = self.start_points(pa, text, opts);
 
+        if coords.height() == 0 || coords.width() == 0 {
+            return Some(Vec::new());
+        }
+
         let mut prev_line = rev_print_iter(text, points, coords.width(), opts)
             .find_map(|(place, item)| place.wrap.then_some(item.line()));
 
@@ -424,15 +428,13 @@ impl RawArea for Area {
 
         let cap = coords.width();
 
+        if by == 0 {
+            return calculate_vpoint(text, point, cap, opts);
+        }
+
         let desired_col = match desired_col {
             Some(desired_col) => desired_col as u16,
-            None => {
-                let vpoint = calculate_vpoint(text, point, cap, opts);
-                if by == 0 {
-                    return vpoint;
-                }
-                vpoint.desired_visual_col() as u16
-            }
+            None => calculate_vpoint(text, point, cap, opts).desired_visual_col() as u16,
         };
 
         let line_start = {
@@ -650,6 +652,7 @@ impl RawArea for Area {
         points: TwoPoints,
         opts: PrintOpts,
     ) -> Option<ui::Coord> {
+        self.layouts.update(self.id);
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return None;
@@ -696,6 +699,7 @@ impl RawArea for Area {
         coord: ui::Coord,
         opts: PrintOpts,
     ) -> Option<TwoPointsPlace> {
+        self.layouts.update(self.id);
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return None;
@@ -745,11 +749,11 @@ impl RawArea for Area {
     }
 
     fn start_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints {
-        if !self.layouts.update(self.id) {
+        self.layouts.update(self.id);
+        let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
-        }
-        let coords = self.layouts.coords_of(self.id, false).unwrap();
+        };
 
         let mut info = self.layouts.get_info_of(self.id).unwrap();
         let start_points = info.start_points(coords, text, opts);
@@ -759,6 +763,7 @@ impl RawArea for Area {
     }
 
     fn end_points(&self, _: UiPass, text: &Text, opts: PrintOpts) -> TwoPoints {
+        self.layouts.update(self.id);
         let Some(coords) = self.layouts.coords_of(self.id, false) else {
             context::warn!("This Area was already deleted");
             return Default::default();
@@ -791,11 +796,11 @@ pub fn print_text(
         Extra,
     }
 
-    let (mut lines, iter) = {
-        if coords.width() == 0 || coords.height() == 0 {
-            return None;
-        }
+    if coords.width() == 0 || coords.height() == 0 {
+        return None;
+    }
 
+    let (mut lines, iter) = {
         let lines = Lines::new(coords);
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
         let iter = print_iter(text, s_points, width, opts);
@@ -814,31 +819,40 @@ pub fn print_text(
     let mut observed_spawns = Vec::new();
     let mut style_was_set = false;
     let mut replace_chars: Vec<char> = Vec::new();
-    let (mut inlay, mut wrapped_on_nl) = (None, false);
+    let (mut inlay, mut final_inlay) = (None, None);
 
-    let end_line = |lines: &mut Lines, painter: &mut Painter, y, last_len, inlay, wrapped_on_nl| {
+    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, inlay| {
         let mut default = painter.get_default();
         default.style.foreground_color = None;
         default.style.underline_color = None;
         default.style.attributes = Attributes::from(Attribute::Reset);
         print_style(lines, default.style);
 
-        let coords = Coords::new(Coord::new(last_len, y), Coord::new(max.x, y + 1));
-        if wrapped_on_nl
-            && let Some(inlay) = inlay
-            && let Some((inlay_lines, observed_spawns)) = print_text(
-                (inlay, opts, painter),
-                (coords, max),
-                (is_active, s_points, x_shift),
-                start_line,
-                end_line,
-                print_spacer,
-            )
+        let coords = Coords::new(
+            Coord::new(coords.tl.x + last_x, 0),
+            Coord::new(coords.br.x, 1),
+        );
+        let s_points = TwoPoints::default();
+
+        if let Some(inlay) = inlay
+            && let Some((inlay_lines, observed_spawns)) = {
+                painter.prepare_for_inlay();
+                let ret = print_text(
+                    (inlay, opts, painter),
+                    (coords, max),
+                    (is_active, s_points, x_shift),
+                    start_line,
+                    end_line,
+                    print_spacer,
+                );
+                painter.return_from_inlay();
+                ret
+            }
         {
             lines.add_inlay(inlay_lines);
             Some(observed_spawns).into_iter().flatten()
         } else {
-            end_line(lines, last_len, max.x);
+            end_line(lines, last_x, max.x);
             None.into_iter().flatten()
         }
     };
@@ -854,7 +868,7 @@ pub fn print_text(
                 break;
             }
             if y > lines.coords().tl.y {
-                let new_spawns = end_line(lines, painter, y, last_x, inlay.take(), wrapped_on_nl);
+                let new_spawns = end_line(lines, painter, last_x, final_inlay.take());
                 observed_spawns.extend(new_spawns);
             }
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
@@ -927,7 +941,11 @@ pub fn print_text(
                     }
                 }
 
-                wrapped_on_nl = char == '\n';
+                if char == '\n'
+                    && let Some(inlay) = inlay.take()
+                {
+                    final_inlay = Some(inlay);
+                }
 
                 if let Some(cursor) = cursor.take() {
                     match cursor {
@@ -1002,11 +1020,11 @@ pub fn print_text(
         }
     }
 
-    let new_spawns = end_line(&mut lines, painter, y, last_x, inlay.take(), wrapped_on_nl);
+    let new_spawns = end_line(&mut lines, painter, last_x, final_inlay.or(inlay));
     observed_spawns.extend(new_spawns);
 
     for _ in 0..lines.coords().br.y - y {
-        let new_spawns = end_line(&mut lines, painter, y, last_x, inlay.take(), wrapped_on_nl);
+        let new_spawns = end_line(&mut lines, painter, 0, None);
         observed_spawns.extend(new_spawns);
     }
 

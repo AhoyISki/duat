@@ -307,6 +307,7 @@ impl Text {
     /// This method is useful if you want to iterator reversibly
     /// right after a certain point, thus including the character
     /// of said point.
+    #[track_caller]
     pub fn points_after(&self, tp: TwoPoints) -> Option<TwoPoints> {
         self.iter_fwd(tp)
             .filter_map(|item| item.part.as_char().map(|_| item.points()))
@@ -569,6 +570,7 @@ impl Text {
     /// A forward iterator of the [chars and tags] of the [`Text`]
     ///
     /// [chars and tags]: Part
+    #[track_caller]
     pub fn iter_fwd(&self, at: TwoPoints) -> FwdIter<'_> {
         FwdIter::new_at(self, at)
     }

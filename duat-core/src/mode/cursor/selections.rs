@@ -14,7 +14,7 @@
 //! [`Cursor`]: super::Cursor
 use std::sync::Mutex;
 
-use gapbuf::{GapBuffer, gap_buffer};
+use gap_buf::{GapBuffer, gap_buffer};
 
 pub use self::cursor::{Selection, VPoint};
 use crate::{
@@ -63,11 +63,11 @@ impl Selections {
     }
 
     /// Returns a new empty `Selections`
-    pub(crate) fn new_empty() -> Self {
+    pub(crate) const fn new_empty() -> Self {
         Self {
             buf: GapBuffer::new(),
             main_i: 0,
-            shift: Mutex::default(),
+            shift: Mutex::new(Shift { from: 0, by: [0; 3] }),
         }
     }
 

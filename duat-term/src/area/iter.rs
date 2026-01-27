@@ -172,6 +172,8 @@ where
                     if line.is_empty() {
                         return None;
                     } else {
+                        initial_printed_x = first_printed_x + wrapped_indent;
+                        space_line(spacers, &mut line, cap, x);
                         break;
                     }
                 };

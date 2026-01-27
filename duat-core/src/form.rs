@@ -1225,12 +1225,8 @@ impl Palette {
             inner,
             mask_i,
             default,
-            forms: Vec::new(),
-            set_fg: true,
-            set_bg: true,
-            set_ul: true,
-            reset_attrs: false,
-            prev_style: None,
+            parts: PainterParts::default(),
+            main_parts: None,
         }
     }
 }
@@ -1413,12 +1409,8 @@ pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     mask_i: usize,
     default: Form,
-    forms: Vec<(Form, FormId, u8)>,
-    set_fg: bool,
-    set_bg: bool,
-    set_ul: bool,
-    reset_attrs: bool,
-    prev_style: Option<ContentStyle>,
+    parts: PainterParts,
+    main_parts: Option<PainterParts>,
 }
 
 impl Painter {
@@ -1441,13 +1433,13 @@ impl Painter {
             .unwrap_or(Form::new().0);
 
         let gt = |(.., p): &&(_, _, u8)| *p > prio;
-        let i = self.forms.len() - self.forms.iter().rev().take_while(gt).count();
-        self.forms.insert(i, (form, id, prio));
+        let i = self.parts.forms.len() - self.parts.forms.iter().rev().take_while(gt).count();
+        self.parts.forms.insert(i, (form, id, prio));
 
-        self.set_fg |= form.fg().is_some();
-        self.set_bg |= form.bg().is_some();
-        self.set_ul |= form.ul().is_some();
-        self.reset_attrs |= form.attrs().has(Attribute::Reset);
+        self.parts.set_fg |= form.fg().is_some();
+        self.parts.set_bg |= form.bg().is_some();
+        self.parts.set_ul |= form.ul().is_some();
+        self.parts.reset_attrs |= form.attrs().has(Attribute::Reset);
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
@@ -1457,14 +1449,14 @@ impl Painter {
         let mask = &self.inner.masks[self.mask_i].1;
         let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
 
-        let mut applied_forms = self.forms.iter().enumerate();
+        let mut applied_forms = self.parts.forms.iter().enumerate();
         if let Some((i, &(form, ..))) = applied_forms.rfind(|(_, (_, lhs, _))| *lhs == id) {
-            self.forms.remove(i);
+            self.parts.forms.remove(i);
 
-            self.set_fg |= form.fg().is_some();
-            self.set_bg |= form.bg().is_some();
-            self.set_ul |= form.ul().is_some();
-            self.reset_attrs |= !form.attrs().is_empty();
+            self.parts.set_fg |= form.fg().is_some();
+            self.parts.set_bg |= form.bg().is_some();
+            self.parts.set_ul |= form.ul().is_some();
+            self.parts.reset_attrs |= !form.attrs().is_empty();
         };
     }
 
@@ -1475,7 +1467,7 @@ impl Painter {
     /// [`ResetState`]: crate::text::TextPart::ResetState
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
-        self.forms.clear();
+        self.parts.forms.clear();
         self.absolute_style()
     }
 
@@ -1487,7 +1479,7 @@ impl Painter {
     pub fn absolute_style(&self) -> ContentStyle {
         let mut style = self.default.style;
 
-        for &(form, ..) in &self.forms {
+        for &(form, ..) in &self.parts.forms {
             style.foreground_color = form.fg().or(style.foreground_color);
             style.background_color = form.bg().or(style.background_color);
             style.underline_color = form.ul().or(style.underline_color);
@@ -1517,32 +1509,35 @@ impl Painter {
         let abs_style = self.absolute_style();
         let mut style = abs_style;
 
-        if style.attributes.has(Attribute::Reset) || self.reset_attrs {
+        if style.attributes.has(Attribute::Reset) || self.parts.reset_attrs {
             style.attributes.set(Attribute::Reset);
         // Only when we are certain that all forms have been
         // printed, can we cull unnecessary colors for efficiency
         // (this happens most of the time).
         } else {
             style.foreground_color = self
+                .parts
                 .set_fg
                 .then_some(style.foreground_color.unwrap_or(Color::Reset))
-                .filter(|fg| Some(*fg) != self.prev_style.and_then(|s| s.foreground_color));
+                .filter(|fg| Some(*fg) != self.parts.prev_style.and_then(|s| s.foreground_color));
             style.background_color = self
+                .parts
                 .set_bg
                 .then_some(style.background_color.unwrap_or(Color::Reset))
-                .filter(|bg| Some(*bg) != self.prev_style.and_then(|s| s.background_color));
+                .filter(|bg| Some(*bg) != self.parts.prev_style.and_then(|s| s.background_color));
             style.underline_color = self
+                .parts
                 .set_ul
                 .then_some(style.underline_color.unwrap_or(Color::Reset))
-                .filter(|ul| Some(*ul) != self.prev_style.and_then(|s| s.underline_color));
+                .filter(|ul| Some(*ul) != self.parts.prev_style.and_then(|s| s.underline_color));
         }
 
-        self.set_fg = false;
-        self.set_bg = false;
-        self.set_ul = false;
-        self.reset_attrs = false;
+        self.parts.set_fg = false;
+        self.parts.set_bg = false;
+        self.parts.set_ul = false;
+        self.parts.reset_attrs = false;
 
-        if let Some(prev_style) = self.prev_style.replace(abs_style) {
+        if let Some(prev_style) = self.parts.prev_style.replace(abs_style) {
             (style != prev_style && style != Default::default()).then_some(style)
         } else {
             Some(style)
@@ -1555,11 +1550,11 @@ impl Painter {
     /// [`relative_style`]: Self::relative_style
     /// [`absolute_style`]: Self::absolute_style
     pub fn reset_prev_style(&mut self) {
-        self.prev_style = None;
-        self.set_fg = true;
-        self.set_bg = true;
-        self.set_ul = true;
-        self.reset_attrs = true;
+        self.parts.prev_style = None;
+        self.parts.set_fg = true;
+        self.parts.set_bg = true;
+        self.parts.set_ul = true;
+        self.parts.reset_attrs = true;
     }
 
     /// Applies the `"caret.main"` [`Form`]
@@ -1586,6 +1581,27 @@ impl Painter {
         self.remove(E_CAR_ID);
     }
 
+    /// Prepares this `Painter` to print an [`Inlay`] text
+    ///
+    /// [`Inlay`]: crate::text::TextPart::Inlay
+    pub fn prepare_for_inlay(&mut self) {
+        self.main_parts = Some(std::mem::take(&mut self.parts));
+    }
+
+    /// Prepares this `Painter` to print an [`Inlay`] text
+    ///
+    /// [`Inlay`]: crate::text::TextPart::Inlay
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`prepare_for_inlay`] wasn't called first.
+    ///
+    /// [`prepare_for_inlay`]: Self::prepare_for_inlay
+    #[track_caller]
+    pub fn return_from_inlay(&mut self) {
+        self.parts = self.main_parts.take().unwrap();
+    }
+
     /// The [`Form`] "caret.extra", and its shape.
     pub fn main_cursor(&self) -> Option<CursorShape> {
         self.inner.main_cursor
@@ -1599,6 +1615,28 @@ impl Painter {
     /// The `"default"` form's [`Form`]
     pub fn get_default(&self) -> Form {
         self.default
+    }
+}
+
+struct PainterParts {
+    forms: Vec<(Form, FormId, u8)>,
+    set_fg: bool,
+    set_bg: bool,
+    set_ul: bool,
+    reset_attrs: bool,
+    prev_style: Option<ContentStyle>,
+}
+
+impl Default for PainterParts {
+    fn default() -> Self {
+        Self {
+            forms: Vec::new(),
+            set_fg: true,
+            set_bg: true,
+            set_ul: true,
+            reset_attrs: true,
+            prev_style: None,
+        }
     }
 }
 

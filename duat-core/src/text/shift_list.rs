@@ -3,7 +3,7 @@ use std::{
     ops::RangeBounds,
 };
 
-use gapbuf::GapBuffer;
+use gap_buf::GapBuffer;
 
 use crate::utils::{binary_search_by_key_and_index, get_range};
 
