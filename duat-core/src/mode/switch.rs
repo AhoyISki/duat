@@ -236,7 +236,7 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
 
     hook::trigger(pa, KeySentTo::<M>((key_event, handle.clone())));
     hook::trigger(pa, KeySent(key_event));
-
+    
     let mode_and_before_exit = MODE_AND_BEFORE_EXIT.write(pa);
     if mode_and_before_exit.is_none() {
         *mode_and_before_exit = Some((mode, before_exit));

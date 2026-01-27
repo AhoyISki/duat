@@ -481,15 +481,13 @@ impl RawArea for Area {
 
         let cap = coords.width();
 
+        if by == 0 {
+            return calculate_vpoint(text, point, cap, opts);
+        }
+
         let desired_col = match desired_col {
             Some(desired_col) => desired_col as u16,
-            None => {
-                let vpoint = calculate_vpoint(text, point, cap, opts);
-                if by == 0 {
-                    return vpoint;
-                }
-                vpoint.desired_wrapped_col() as u16
-            }
+            None => calculate_vpoint(text, point, cap, opts).desired_wrapped_col() as u16,
         };
 
         if by > 0 {
