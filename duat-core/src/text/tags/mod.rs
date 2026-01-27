@@ -19,7 +19,7 @@ pub use self::{
     types::{
         Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
-        ReplaceChar, Spacer, SpawnTag, Tag,
+        Spacer, SpawnTag, SwapChar, Tag,
     },
 };
 use crate::{
@@ -325,7 +325,7 @@ impl InnerTags {
                     }
                 }
                 ConcealUntil(_) => unreachable!(),
-                RawTag::Ghost(_, id) => {
+                RawTag::Ghost(_, id) | RawTag::Inlay(_, id) => {
                     self.ghosts
                         .extend(other.ghosts.iter().find(|(l, _)| l == &id).cloned());
                     self.insert_raw((b, tag), None, false);
@@ -334,7 +334,7 @@ impl InnerTags {
                 RawTag::MainCaret(_)
                 | RawTag::ExtraCaret(_)
                 | RawTag::Spacer(_)
-                | RawTag::ReplaceChar(..)
+                | RawTag::SwapChar(..)
                 | SpawnedWidget(..) => {
                     self.insert_raw((b, tag), None, false);
                 }
@@ -367,8 +367,8 @@ impl InnerTags {
                     return false;
                 };
 
-                let removed = (b > within.start as i32 || !tag.is_end())
-                    && (b < within.end as i32 || !tag.is_start());
+                let removed = (b > within.start as i32 || tag.is_start())
+                    && (b < within.end as i32 || tag.is_end());
 
                 if !removed {
                     if b == within.start as i32 {
@@ -519,8 +519,7 @@ impl InnerTags {
         if old.end > old.start {
             if new_end == old.start {
                 self.remove_inner(old.start..old.end + 1, |(b, tag)| {
-                    (b > old.start as i32 || tag.is_start())
-                        && (b < old.end as i32 || !tag.is_start())
+                    (b > old.start as i32 || tag.is_start()) && (b < old.end as i32 || tag.is_end())
                 });
             } else {
                 self.remove_inner(old.start + 1..old.end, |_| true);
@@ -720,7 +719,7 @@ impl PartialEq for InnerTags {
                     l_id == r_id && l_prio == r_prio && l_b == r_b
                 }
                 (PopForm(_, lhs), PopForm(_, rhs)) => lhs == rhs && l_b == r_b,
-                (Ghost(_, lhs), Ghost(_, rhs)) => {
+                (Ghost(_, lhs), Ghost(_, rhs)) | (Inlay(_, lhs), Inlay(_, rhs)) => {
                     let self_ghost = self
                         .ghosts
                         .iter()

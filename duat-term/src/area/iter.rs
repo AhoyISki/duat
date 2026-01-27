@@ -30,12 +30,12 @@ pub struct PrintedPlace {
 ///
 /// This function expects that `cap` has been validated, and that the
 /// iterator starts in the visual start of the line.
-pub fn print_iter(
-    text: &Text,
+pub fn print_iter<'t>(
+    text: &'t Text,
     points: TwoPoints,
     width: u32,
     opts: PrintOpts,
-) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + '_ {
+) -> impl Iterator<Item = (PrintedPlace, TextPlace<'t>)> + 't {
     let start_points = text.visual_line_start(points, 0);
     let cap = opts.wrap_width(width).unwrap_or(width);
     let max_indent = if opts.indent_wraps { cap } else { 0 };
@@ -83,12 +83,12 @@ pub fn print_iter(
     )
 }
 
-pub fn rev_print_iter(
-    text: &Text,
+pub fn rev_print_iter<'t>(
+    text: &'t Text,
     points: TwoPoints,
     cap: u32,
     opts: PrintOpts,
-) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + '_ {
+) -> impl Iterator<Item = (PrintedPlace, TextPlace<'t>)> + 't {
     let mut iter = text.iter_rev(points);
 
     let mut returns = Vec::new();
@@ -121,13 +121,16 @@ pub fn rev_print_iter(
 }
 
 #[inline(always)]
-fn inner_iter(
-    iter: impl Iterator<Item = TextPlace>,
+fn inner_iter<'t, 'i>(
+    iter: impl Iterator<Item = TextPlace<'t>>,
     (mut x, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
     mut replace_chars: Vec<char>,
-) -> impl Iterator<Item = (PrintedPlace, TextPlace)> {
+) -> impl Iterator<Item = (PrintedPlace, TextPlace<'t>)>
+where
+    't: 'i,
+{
     let max_indent = if opts.indent_wraps { cap } else { 0 };
 
     // Line return variables.
@@ -287,12 +290,12 @@ pub fn is_starting_points(text: &Text, points: TwoPoints, width: u32, opts: Prin
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
-fn _words(
-    iter: impl Iterator<Item = TextPlace> + Clone,
+fn _words<'t, 'i>(
+    iter: impl Iterator<Item = TextPlace<'t>> + Clone + 'i,
     (mut total_len, mut spacers): (u32, usize),
     (mut indent, mut on_indent, mut wrapped_indent): (u32, bool, u32),
     (cap, opts): (u32, PrintOpts),
-) -> impl Iterator<Item = (PrintedPlace, TextPlace)> + Clone {
+) -> impl Iterator<Item = (PrintedPlace, TextPlace<'t>)> + Clone {
     let max_indent = if opts.indent_wraps { cap } else { 0 };
 
     // Line return variables.
@@ -390,7 +393,7 @@ fn _words(
 }
 
 #[inline(always)]
-fn len_from(char: char, start: u32, opts: PrintOpts) -> u32 {
+pub fn len_from(char: char, start: u32, opts: PrintOpts) -> u32 {
     match char {
         '\t' => (opts.tabstop_spaces_at(start)).max(1),
         '\n' => 0,
@@ -424,7 +427,7 @@ fn process_part(
             *spacers += 1;
             0
         }
-        TextPart::ReplaceChar(char) => {
+        TextPart::SwapChar(char) => {
             replace_chars.push(char);
             0
         }
@@ -456,7 +459,7 @@ fn process_char(
 
 /// Adds spacing to a line, and returns the initial amount of
 /// space needed
-fn space_line(spacers: usize, line: &mut [(u32, TextPlace)], cap: u32, total_len: u32) {
+pub fn space_line(spacers: usize, line: &mut [(u32, TextPlace)], cap: u32, total_len: u32) {
     if spacers == 0 {
         return;
     }

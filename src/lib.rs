@@ -605,7 +605,7 @@ pub mod prelude {
         setup_duat,
         state::*,
         text::{
-            self, Conceal, Ghost, Point, RegexHaystack, ReplaceChar, Spacer, SpawnTag, Tagger,
+            self, Conceal, Ghost, Point, RegexHaystack, SwapChar, Spacer, SpawnTag, Tagger,
             Text, txt,
         },
         ui::{self, Area, Widget},

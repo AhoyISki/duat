@@ -5,13 +5,13 @@
 //! this is defined separately is that one may wish to replace the
 //! default implementor of these opts, in order to make them more
 //! compatible with other settings in Duat.
-use std::ops::Range;
+use std::{ops::Range, sync::LazyLock};
 
 use duat_core::{
     buffer::{BufferOpts, BufferParts, BufferTracker, PerBuffer},
     form,
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{FormTag, ReplaceChar, Tagger, Tags},
+    text::{FormTag, SwapChar, Tagger, Tags},
 };
 
 struct BufferOptsParser {
@@ -34,7 +34,6 @@ pub fn enable_parser() {
     })
     .grouped("DefaultOptsParser");
 
-    let replace_tagger = Tagger::new();
     let cur_line_tagger = Tagger::new();
 
     hook::add::<BufferUpdated>(move |pa, handle| {
@@ -54,7 +53,7 @@ pub fn enable_parser() {
             hightlight_current_line(&mut parts, cur_line_tagger);
         }
 
-        replace(parts, parser.opts, replace_tagger, printed_line_ranges);
+        replace(parts, parser.opts, printed_line_ranges);
     })
     .grouped("DefaultOptsParser");
 
@@ -76,7 +75,13 @@ fn hightlight_current_line(_parts: &mut BufferParts, _tagger: Tagger) {
     // parts.tags.insert(tagger, line_range, cur_line_form);
 }
 
-fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, lines: Vec<Range<usize>>) {
+fn replace(mut parts: BufferParts, opts: BufferOpts, lines: Vec<Range<usize>>) {
+    let (spc_tagger, nl_tagger) = {
+        static SPC_TAGGER: LazyLock<Tagger> = Tagger::new_static();
+        static NL_TAGGER: LazyLock<Tagger> = Tagger::new_static();
+        (*SPC_TAGGER, *NL_TAGGER)
+    };
+
     // Early return if nothing needs to be done.
     if opts.indent_str.is_none()
         && opts.space_char.is_none()
@@ -118,19 +123,20 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, lines: Vec<
                     continue;
                 };
 
-                tags.insert(tagger, byte, ReplaceChar::new(rep));
+                tags.insert(spc_tagger, byte, SwapChar::new(rep));
             } else {
                 for rep in tab_str.chars() {
-                    tags.insert(tagger, byte, ReplaceChar::new(rep));
+                    tags.insert(spc_tagger, byte, SwapChar::new(rep));
                 }
             }
         }
 
-        tags.insert(tagger, range, form);
+        tags.insert(spc_tagger, range, form);
     };
 
     for range in parts.ranges_to_update.select_from(lines.iter().cloned()) {
-        parts.tags.remove_excl(tagger, range.start..=range.end);
+        parts.tags.remove(spc_tagger, range.start..range.end);
+        parts.tags.remove_excl(nl_tagger, range.start..=range.end);
 
         let mut indent_byte = Some(range.start);
         let mut line_is_empty = true;
@@ -150,8 +156,8 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, lines: Vec<
                         .unwrap_or((opts.new_line_char, nl_form));
 
                     if nl_char != ' ' {
-                        parts.tags.insert(tagger, byte..byte + 1, nl_form);
-                        parts.tags.insert(tagger, byte, ReplaceChar::new(nl_char));
+                        parts.tags.insert(nl_tagger, byte..byte + 1, nl_form);
+                        parts.tags.insert(nl_tagger, byte, SwapChar::new(nl_char));
                     }
 
                     if let Some(indent_byte) = indent_byte.take()
@@ -162,11 +168,13 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, lines: Vec<
                         && let Some(char) = opts.space_char_trailing.or(opts.space_char)
                     {
                         let range = first..byte;
-                        parts.tags.insert(tagger, range, space_form_trailing);
+                        parts.tags.insert(spc_tagger, range, space_form_trailing);
                         for byte in first..byte {
-                            parts.tags.insert(tagger, byte, ReplaceChar::new(char));
+                            parts.tags.insert(spc_tagger, byte, SwapChar::new(char));
                         }
                     }
+
+                    line_is_empty = true;
                 }
                 _ => {
                     let first_space_byte = first_space_byte.take();
@@ -177,15 +185,13 @@ fn replace(mut parts: BufferParts, opts: BufferOpts, tagger: Tagger, lines: Vec<
                     } else if let Some(first) = first_space_byte
                         && let Some(char) = opts.space_char
                     {
-                        parts.tags.insert(tagger, first..byte, space_form);
+                        parts.tags.insert(spc_tagger, first..byte, space_form);
                         for byte in first..byte {
-                            parts.tags.insert(tagger, byte, ReplaceChar::new(char));
+                            parts.tags.insert(spc_tagger, byte, SwapChar::new(char));
                         }
                     }
                 }
             }
-
-            line_is_empty = char == '\n';
         }
     }
 

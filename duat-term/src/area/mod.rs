@@ -130,7 +130,7 @@ impl Area {
     }
 
     /// Prints the `Text`
-    fn print(&self, text: &Text, opts: PrintOpts, painter: Painter) {
+    fn print(&self, text: &Text, opts: PrintOpts, mut painter: Painter) {
         let Some(coords) = self.layouts.coords_of(self.id, true) else {
             context::warn!("This Area was already deleted");
             return;
@@ -156,7 +156,7 @@ impl Area {
         let is_active = self.id == self.layouts.get_active_id();
 
         let Some((lines, observed_spawns)) = print_text(
-            (text, opts, painter),
+            (text, opts, &mut painter),
             (coords, max),
             (is_active, s_points, x_shift),
             |lines, len| lines.write_all(&SPACES[..len as usize]).unwrap(),
@@ -776,6 +776,271 @@ impl RawArea for Area {
     }
 }
 
+/// The [`Text`] printing function
+#[allow(clippy::type_complexity)]
+pub fn print_text(
+    (text, opts, painter): (&Text, PrintOpts, &mut Painter),
+    (coords, max): (Coords, Coord),
+    (is_active, s_points, x_shift): (bool, TwoPoints, u32),
+    start_line: fn(&mut Lines, u32),
+    end_line: fn(&mut Lines, u32, u32),
+    print_spacer: fn(&mut Lines, u32),
+) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
+    enum Cursor {
+        Main,
+        Extra,
+    }
+
+    let (mut lines, iter) = {
+        if coords.width() == 0 || coords.height() == 0 {
+            return None;
+        }
+
+        let lines = Lines::new(coords);
+        let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
+        let iter = print_iter(text, s_points, width, opts);
+
+        (lines, iter)
+    };
+
+    // The y here represents the bottom of the current row of cells.
+    let tl_y = lines.coords().tl.y;
+    let mut y = tl_y;
+    let mut cursor = None;
+    let mut last_x = 0;
+
+    // For specific Tags
+    let mut spawns_for_next: Vec<SpawnId> = Vec::new();
+    let mut observed_spawns = Vec::new();
+    let mut style_was_set = false;
+    let mut replace_chars: Vec<char> = Vec::new();
+    let (mut inlay, mut wrapped_on_nl) = (None, false);
+
+    let end_line = |lines: &mut Lines, painter: &mut Painter, y, last_len, inlay, wrapped_on_nl| {
+        let mut default = painter.get_default();
+        default.style.foreground_color = None;
+        default.style.underline_color = None;
+        default.style.attributes = Attributes::from(Attribute::Reset);
+        print_style(lines, default.style);
+
+        let coords = Coords::new(Coord::new(last_len, y), Coord::new(max.x, y + 1));
+        if wrapped_on_nl
+            && let Some(inlay) = inlay
+            && let Some((inlay_lines, observed_spawns)) = print_text(
+                (inlay, opts, painter),
+                (coords, max),
+                (is_active, s_points, x_shift),
+                start_line,
+                end_line,
+                print_spacer,
+            )
+        {
+            lines.add_inlay(inlay_lines);
+            Some(observed_spawns).into_iter().flatten()
+        } else {
+            end_line(lines, last_len, max.x);
+            None.into_iter().flatten()
+        }
+    };
+
+    for (place, item) in iter {
+        let lines = &mut lines;
+
+        let PrintedPlace { x, len, wrap } = place;
+        let TextPlace { part, .. } = item;
+
+        if wrap {
+            if y == lines.coords().br.y {
+                break;
+            }
+            if y > lines.coords().tl.y {
+                let new_spawns = end_line(lines, painter, y, last_x, inlay.take(), wrapped_on_nl);
+                observed_spawns.extend(new_spawns);
+            }
+            let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
+            if initial_space > 0 {
+                let mut default_style = painter.get_default().style;
+                default_style.attributes.set(Attribute::Reset);
+                print_style(lines, default_style);
+                start_line(lines, initial_space);
+            }
+            y += 1;
+
+            // Resetting space to prevent erroneous printing.
+            painter.reset_prev_style();
+            style_was_set = true;
+            last_x = initial_space;
+        }
+
+        let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
+
+        match part {
+            TextPart::Char(char) if is_contained => {
+                if replace_chars.is_empty()
+                    && let Some(str) = get_control_str(char)
+                {
+                    painter.apply(CONTROL_CHAR_ID, 100);
+                    if style_was_set && let Some(style) = painter.relative_style() {
+                        print_style(lines, style);
+                    }
+                    lines.write_all(str.as_bytes()).unwrap();
+                    painter.remove(CONTROL_CHAR_ID)
+                } else {
+                    if style_was_set && let Some(style) = painter.relative_style() {
+                        print_style(lines, style);
+                    }
+
+                    let mut bytes = [0; 4];
+
+                    match char {
+                        '\t' => {
+                            let mut truncated_start = x_shift.saturating_sub(x);
+                            let truncated_end =
+                                (x + len).saturating_sub(lines.coords().width() + x_shift);
+                            let mut tab_len = len - (truncated_start + truncated_end);
+
+                            for char in replace_chars.drain(..) {
+                                let len = UnicodeWidthChar::width(char).unwrap_or(0) as u32;
+
+                                if tab_len >= len && truncated_start == 0 {
+                                    tab_len -= len;
+                                    char.encode_utf8(&mut bytes);
+                                    lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                                } else {
+                                    let spaces = len.saturating_sub(truncated_start);
+                                    lines.write_all(&SPACES[..spaces as usize]).unwrap();
+                                    tab_len -= spaces;
+                                    truncated_start = truncated_start.saturating_sub(len);
+                                }
+                            }
+
+                            lines.write_all(&SPACES[..tab_len as usize]).unwrap()
+                        }
+                        char => match replace_chars.drain(..).next().unwrap_or(char) {
+                            '\n' if len == 1 => lines.write_all(b" ").unwrap(),
+                            '\n' | '\r' => {}
+                            char => {
+                                char.encode_utf8(&mut bytes);
+                                lines.write_all(&bytes[..char.len_utf8()]).unwrap();
+                            }
+                        },
+                    }
+                }
+
+                wrapped_on_nl = char == '\n';
+
+                if let Some(cursor) = cursor.take() {
+                    match cursor {
+                        Cursor::Main => painter.remove_main_caret(),
+                        Cursor::Extra => painter.remove_extra_caret(),
+                    }
+                    if let Some(style) = painter.relative_style() {
+                        print_style(lines, style)
+                    }
+                }
+                for id in spawns_for_next.drain(..) {
+                    observed_spawns.push((
+                        id,
+                        Coord::new(lines.coords().tl.x + x - x_shift, y - 1),
+                        len,
+                    ));
+                }
+
+                last_x = x + len - x_shift;
+                style_was_set = false;
+            }
+            TextPart::Char(_) => {
+                match cursor.take() {
+                    Some(Cursor::Main) => painter.remove_main_caret(),
+                    Some(Cursor::Extra) => painter.remove_extra_caret(),
+                    None => {}
+                }
+                spawns_for_next.clear();
+            }
+            TextPart::PushForm(id, prio) => {
+                painter.apply(id, prio);
+                style_was_set = true;
+            }
+            TextPart::PopForm(id) => {
+                painter.remove(id);
+                style_was_set = true;
+            }
+            TextPart::MainCaret => {
+                if let Some(shape) = painter.main_cursor()
+                    && is_active
+                {
+                    lines.show_real_cursor();
+                    queue!(lines, shape, cursor::SavePosition).unwrap();
+                } else {
+                    cursor = Some(Cursor::Main);
+                    lines.hide_real_cursor();
+                    painter.apply_main_cursor();
+                    style_was_set = true;
+                }
+            }
+            TextPart::ExtraCaret => {
+                cursor = Some(Cursor::Extra);
+                painter.apply_extra_cursor();
+                style_was_set = true;
+            }
+            TextPart::Spacer => {
+                let truncated_start = x_shift.saturating_sub(x).min(len);
+                let truncated_end = (x + len)
+                    .saturating_sub(lines.coords().width().saturating_sub(x_shift))
+                    .min(len);
+                let spacer_len = len - (truncated_start + truncated_end);
+                print_spacer(lines, spacer_len);
+                last_x = (x + len)
+                    .saturating_sub(x_shift)
+                    .min(lines.coords().width());
+            }
+            TextPart::ResetState => print_style(lines, painter.reset()),
+            TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
+            TextPart::SwapChar(char) => replace_chars.push(char),
+            TextPart::Inlay(text) => inlay = Some(text),
+            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
+        }
+    }
+
+    let new_spawns = end_line(&mut lines, painter, y, last_x, inlay.take(), wrapped_on_nl);
+    observed_spawns.extend(new_spawns);
+
+    for _ in 0..lines.coords().br.y - y {
+        let new_spawns = end_line(&mut lines, painter, y, last_x, inlay.take(), wrapped_on_nl);
+        observed_spawns.extend(new_spawns);
+    }
+
+    Some((lines, observed_spawns))
+}
+
+fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
+    let range = text.line_range(point.line());
+
+    let mut vcol = 0;
+
+    let points = range.start.to_two_points_before();
+    let wcol = print_iter(text, points, cap, opts)
+        .find_map(|(place, item)| {
+            if let Some((lhs, _)) = item.as_real_char()
+                && lhs == point
+            {
+                return Some(place.x as u16);
+            }
+            vcol += place.len as u16;
+            None
+        })
+        .unwrap_or(0);
+
+    VPoint::new(
+        point,
+        (point.char() - range.start.char()) as u16,
+        vcol,
+        vcol,
+        wcol,
+        wcol,
+    )
+}
+
 const fn get_control_str(char: char) -> Option<&'static str> {
     match char {
         '\0' => Some("^@"),
@@ -843,246 +1108,4 @@ const fn get_control_str(char: char) -> Option<&'static str> {
     }
 }
 
-/// The [`Text`] printing function
-#[allow(clippy::type_complexity)]
-pub fn print_text(
-    (text, opts, mut painter): (&Text, PrintOpts, Painter),
-    (coords, max): (Coords, Coord),
-    (is_active, s_points, x_shift): (bool, TwoPoints, u32),
-    start_line: fn(&mut Lines, u32),
-    end_line: fn(&mut Lines, u32, u32),
-    print_spacer: fn(&mut Lines, u32),
-) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
-    fn print_end_style(lines: &mut Lines, painter: &Painter) {
-        let mut default = painter.get_default();
-        default.style.foreground_color = None;
-        default.style.underline_color = None;
-        default.style.attributes = Attributes::from(Attribute::Reset);
-        print_style(lines, default.style);
-    }
-
-    let (mut lines, iter, x_shift, max_x) = {
-        if coords.width() == 0 || coords.height() == 0 {
-            return None;
-        }
-
-        let lines = Lines::new(coords);
-        let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
-        let iter = print_iter(text, s_points, width, opts);
-
-        (lines, iter, x_shift, max.x)
-    };
-
-    let mut observed_spawns = Vec::new();
-
-    let mut style_was_set = false;
-
-    enum Cursor {
-        Main,
-        Extra,
-    }
-
-    // The y here represents the bottom of the current row of cells.
-    let tl_y = lines.coords().tl.y;
-    let mut y = tl_y;
-    let mut cursor = None;
-    let mut last_len = 0;
-
-    // For specific Tags
-    let mut spawns_for_next: Vec<SpawnId> = Vec::new();
-    let mut replace_chars: Vec<char> = Vec::new();
-
-    for (place, item) in iter {
-        let (painter, lines) = (&mut painter, &mut lines);
-
-        let PrintedPlace { x, len, wrap } = place;
-        let TextPlace { part, .. } = item;
-
-        if wrap {
-            if y == lines.coords().br.y {
-                break;
-            }
-            if y > lines.coords().tl.y {
-                print_end_style(lines, painter);
-                end_line(lines, last_len, max_x);
-            }
-            let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
-            if initial_space > 0 {
-                let mut default_style = painter.get_default().style;
-                default_style.attributes.set(Attribute::Reset);
-                print_style(lines, default_style);
-                start_line(lines, initial_space);
-            }
-            y += 1;
-
-            // Resetting space to prevent erroneous printing.
-            painter.reset_prev_style();
-            style_was_set = true;
-            last_len = initial_space;
-        }
-
-        let is_contained = x + len > x_shift && x < x_shift + lines.coords().width();
-
-        match part {
-            TextPart::Char(char) if is_contained => {
-                if let Some(str) = get_control_str(char) {
-                    painter.apply(CONTROL_CHAR_ID, 100);
-                    if style_was_set && let Some(style) = painter.relative_style() {
-                        print_style(lines, style);
-                    }
-                    lines.write_all(str.as_bytes()).unwrap();
-                    painter.remove(CONTROL_CHAR_ID)
-                } else {
-                    if style_was_set && let Some(style) = painter.relative_style() {
-                        print_style(lines, style);
-                    }
-
-                    let mut bytes = [0; 4];
-
-                    match char {
-                        '\t' => {
-                            let mut truncated_start = x_shift.saturating_sub(x);
-                            let truncated_end =
-                                (x + len).saturating_sub(lines.coords().width() + x_shift);
-                            let mut tab_len = len - (truncated_start + truncated_end);
-
-                            for char in replace_chars.drain(..) {
-                                let len = UnicodeWidthChar::width(char).unwrap_or(0) as u32;
-
-                                if tab_len >= len && truncated_start == 0 {
-                                    tab_len -= len;
-                                    char.encode_utf8(&mut bytes);
-                                    lines.write_all(&bytes[..char.len_utf8()]).unwrap();
-                                } else {
-                                    let spaces = len.saturating_sub(truncated_start);
-                                    lines.write_all(&SPACES[..spaces as usize]).unwrap();
-                                    tab_len -= spaces;
-                                    truncated_start = truncated_start.saturating_sub(len);
-                                }
-                            }
-
-                            lines.write_all(&SPACES[..tab_len as usize]).unwrap()
-                        }
-                        char => match replace_chars.drain(..).next().unwrap_or(char) {
-                            '\n' if len == 1 => lines.write_all(b" ").unwrap(),
-                            '\n' | '\r' => {}
-                            char => {
-                                char.encode_utf8(&mut bytes);
-                                lines.write_all(&bytes[..char.len_utf8()]).unwrap();
-                            }
-                        },
-                    }
-                }
-
-                if let Some(cursor) = cursor.take() {
-                    match cursor {
-                        Cursor::Main => painter.remove_main_caret(),
-                        Cursor::Extra => painter.remove_extra_caret(),
-                    }
-                    if let Some(style) = painter.relative_style() {
-                        print_style(lines, style)
-                    }
-                }
-                for id in spawns_for_next.drain(..) {
-                    observed_spawns.push((
-                        id,
-                        Coord::new(lines.coords().tl.x + x - x_shift, y - 1),
-                        len,
-                    ));
-                }
-
-                last_len = x + len - x_shift;
-                style_was_set = false;
-            }
-            TextPart::Char(_) => {
-                match cursor.take() {
-                    Some(Cursor::Main) => painter.remove_main_caret(),
-                    Some(Cursor::Extra) => painter.remove_extra_caret(),
-                    None => {}
-                }
-                spawns_for_next.clear();
-            }
-            TextPart::PushForm(id, prio) => {
-                painter.apply(id, prio);
-                style_was_set = true;
-            }
-            TextPart::PopForm(id) => {
-                painter.remove(id);
-                style_was_set = true;
-            }
-            TextPart::MainCaret => {
-                if let Some(shape) = painter.main_cursor()
-                    && is_active
-                {
-                    lines.show_real_cursor();
-                    queue!(lines, shape, cursor::SavePosition).unwrap();
-                } else {
-                    cursor = Some(Cursor::Main);
-                    lines.hide_real_cursor();
-                    painter.apply_main_cursor();
-                    style_was_set = true;
-                }
-            }
-            TextPart::ExtraCaret => {
-                cursor = Some(Cursor::Extra);
-                painter.apply_extra_cursor();
-                style_was_set = true;
-            }
-            TextPart::Spacer => {
-                let truncated_start = x_shift.saturating_sub(x).min(len);
-                let truncated_end = (x + len)
-                    .saturating_sub(lines.coords().width().saturating_sub(x_shift))
-                    .min(len);
-                let spacer_len = len - (truncated_start + truncated_end);
-                print_spacer(lines, spacer_len);
-                last_len = (x + len)
-                    .saturating_sub(x_shift)
-                    .min(lines.coords().width());
-            }
-            TextPart::ResetState => print_style(lines, painter.reset()),
-            TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
-            TextPart::ReplaceChar(char) => replace_chars.push(char),
-            TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
-        }
-    }
-
-    print_end_style(&mut lines, &painter);
-    end_line(&mut lines, last_len, max_x);
-
-    for _ in 0..lines.coords().br.y - y {
-        print_end_style(&mut lines, &painter);
-        end_line(&mut lines, 0, max_x);
-    }
-
-    Some((lines, observed_spawns))
-}
-
 const SPACES: &[u8] = &[b' '; 3000];
-
-fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
-    let range = text.line_range(point.line());
-
-    let mut vcol = 0;
-
-    let points = range.start.to_two_points_before();
-    let wcol = print_iter(text, points, cap, opts)
-        .find_map(|(place, item)| {
-            if let Some((lhs, _)) = item.as_real_char()
-                && lhs == point
-            {
-                return Some(place.x as u16);
-            }
-            vcol += place.len as u16;
-            None
-        })
-        .unwrap_or(0);
-
-    VPoint::new(
-        point,
-        (point.char() - range.start.char()) as u16,
-        vcol,
-        vcol,
-        wcol,
-        wcol,
-    )
-}

@@ -1060,22 +1060,22 @@ impl Frame {
         }
 
         let corners = [
-            (above && right).then_some((
-                Coord::new(coords.br.x, coords.tl.y - 1),
-                [Side::Above, Side::Right],
-            )),
-            (below && right).then_some((
-                Coord::new(coords.br.x, coords.br.y),
-                [Side::Below, Side::Right],
-            )),
-            (below && left).then_some((
-                Coord::new(coords.tl.x - 1, coords.br.y),
-                [Side::Below, Side::Left],
-            )),
-            (above && left).then_some((
-                Coord::new(coords.tl.x - 1, coords.tl.y - 1),
-                [Side::Above, Side::Left],
-            )),
+            (above && right).then_some((Coord::new(coords.br.x, coords.tl.y - 1), [
+                Side::Above,
+                Side::Right,
+            ])),
+            (below && right).then_some((Coord::new(coords.br.x, coords.br.y), [
+                Side::Below,
+                Side::Right,
+            ])),
+            (below && left).then_some((Coord::new(coords.tl.x - 1, coords.br.y), [
+                Side::Below,
+                Side::Left,
+            ])),
+            (above && left).then_some((Coord::new(coords.tl.x - 1, coords.tl.y - 1), [
+                Side::Above,
+                Side::Left,
+            ])),
         ];
 
         for (coord, sides) in corners.into_iter().flatten() {
@@ -1128,8 +1128,8 @@ impl Frame {
                 }
             };
 
-            if let Some((lines, _)) = print_text(
-                (&text, opts, duat_core::form::painter_with_mask("title")),
+            if let Some((lines, ..)) = print_text(
+                (&text, opts, &mut duat_core::form::painter_with_mask("title")),
                 (coords, max),
                 (false, TwoPoints::default(), 0),
                 print_space,

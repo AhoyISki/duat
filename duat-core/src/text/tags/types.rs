@@ -228,16 +228,44 @@ pub struct Ghost {
     text: Arc<Text>,
     id: Option<GhostId>,
     is_new: bool,
+    is_inlay: bool,
 }
 
 impl Ghost {
     /// Returns a new `Ghost`, which can be inserted on [`Text`]
+    #[track_caller]
     pub fn new(value: impl Into<Text>) -> Self {
+        let text = value.into();
+
+        assert!(
+            text.0.tags.ghosts.is_empty(),
+            "Can't place Ghosts inside of Ghosts"
+        );
+
         Self {
-            text: Arc::new(Into::<Text>::into(value).without_last_nl()),
+            text: Arc::new(text.without_last_nl()),
             id: None,
             is_new: false,
+            is_inlay: false,
         }
+    }
+
+    /// Returns a new "inlay" type `Ghost`
+    ///
+    /// This `Ghost` type, instead of being printed in the same byte
+    /// that it was placed, will instead be printed at the end of the
+    /// line where it was placed. Inlay text will also never be
+    /// wrapped, if it is too long, it will simply be truncated when
+    /// printed.
+    ///
+    /// You can use this to place text on the right border of lines,
+    /// without interrupting the flow of other things.
+    ///
+    /// Note that earlier positioned inlay `Ghost`s are printed before
+    /// latter ones, when those are placed on the same line.
+    #[track_caller]
+    pub fn inlay(value: impl Into<Text>) -> Self {
+        Self { is_inlay: true, ..Self::new(value) }
     }
 
     /// The [`Text`] of this `Ghost`
@@ -273,7 +301,11 @@ impl Tag<usize> for Ghost {
         };
 
         self.id = Some(id);
-        ((byte, RawTag::Ghost(tagger, id)), None)
+        if self.is_inlay {
+            ((byte, RawTag::Inlay(tagger, id)), None)
+        } else {
+            ((byte, RawTag::Ghost(tagger, id)), None)
+        }
     }
 
     fn on_insertion(self, tags: &mut super::InnerTags) {
@@ -331,7 +363,7 @@ impl<I: TextRange> Tag<I> for Conceal {
     }
 }
 
-/// [`Tag`]: Replaces the next printed character
+/// [`Tag`]: Swaps the next printed character
 ///
 /// If this `Tag` is placed in the nth byte, then the character at the
 /// nth byte will be replaced when being printed. This is capable of
@@ -340,25 +372,25 @@ impl<I: TextRange> Tag<I> for Conceal {
 ///
 /// However, if the character at the nth byte is a `\t`, this tag will
 /// replace the first space of the tab. If it is then followed by more
-/// `ReplaceChar`s, the other spaces of the tab will be replaced.
+/// `SwapChar`s, the other spaces of the tab will be replaced.
 #[derive(Debug, Clone, Copy)]
-pub struct ReplaceChar(char);
+pub struct SwapChar(char);
 
-impl ReplaceChar {
+impl SwapChar {
     #[track_caller]
-    /// Returns a new `ReplaceChar`, which will print a character
+    /// Returns a new `SwapChar`, which will print a character
     /// differently
     ///
-    /// The `char` argument can't be any of a `\t`, a `\n`, or `\r`.
+    /// The replacement `char` can't be a control character
     pub fn new(char: char) -> Self {
         assert!(
-            !['\n', '\t', '\r'].contains(&char),
-            "ReplaceChar can't take '\n', '\t' or '\r'"
+            !char.is_control(),
+            "The replacement char can't be a control character"
         );
         Self(char)
     }
 }
-simple_impl_Tag!(tag: ReplaceChar, tagger, RawTag::ReplaceChar(tagger, tag.0), true);
+simple_impl_Tag!(tag: SwapChar, tagger, RawTag::SwapChar(tagger, tag.0), true);
 
 ////////// Layout modification Tags
 
@@ -494,9 +526,11 @@ pub enum RawTag {
 
     /// Text that shows up on screen, but is ignored otherwise.
     Ghost(Tagger, GhostId),
+    /// Text that shows up on screen, after the end of the line.
+    Inlay(Tagger, GhostId),
     /// Replaces a printed character or
     /// part of a `\t`
-    ReplaceChar(Tagger, char),
+    SwapChar(Tagger, char),
 
     /// A spawned floating [`Widget`]
     SpawnedWidget(Tagger, SpawnId),
@@ -557,7 +591,7 @@ impl RawTag {
     pub fn is_meta(&self) -> bool {
         matches!(
             self,
-            Self::StartConceal(_) | Self::EndConceal(_) | Self::Ghost(..) | Self::ReplaceChar(..)
+            Self::StartConceal(_) | Self::EndConceal(_) | Self::Ghost(..) | Self::SwapChar(..)
         )
     }
 
@@ -586,7 +620,8 @@ impl RawTag {
             | Self::StartConceal(tagger)
             | Self::EndConceal(tagger)
             | Self::Ghost(tagger, _)
-            | Self::ReplaceChar(tagger, _)
+            | Self::Inlay(tagger, _)
+            | Self::SwapChar(tagger, _)
             | Self::StartToggle(tagger, _)
             | Self::EndToggle(tagger, _)
             | Self::SpawnedWidget(tagger, _) => Some(*tagger),
@@ -603,12 +638,12 @@ impl RawTag {
             Self::PushForm(.., priority) => *priority + 5,
             Self::PopForm(..) => 1,
             Self::MainCaret(..) | Self::ExtraCaret(..) => 4,
-            Self::StartConceal(..) | Self::StartToggle(..) | Self::ReplaceChar(..) => 3,
-            Self::Spacer(..)
-            | Self::EndConceal(..)
-            | Self::EndToggle(..)
-            | Self::SpawnedWidget(..) => 0,
-            Self::Ghost(..) => 2,
+            Self::StartConceal(..)
+            | Self::StartToggle(..)
+            | Self::SwapChar(..)
+            | Self::SpawnedWidget(..) => 3,
+            Self::Spacer(..) | Self::EndConceal(..) | Self::EndToggle(..) => 0,
+            Self::Ghost(..) | Self::Inlay(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
@@ -626,7 +661,7 @@ impl PartialEq for RawTag {
             (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
             (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
             (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
-            (Self::ReplaceChar(l_tagger, l_char), Self::ReplaceChar(r_tagger, r_char)) => {
+            (Self::SwapChar(l_tagger, l_char), Self::SwapChar(r_tagger, r_char)) => {
                 l_tagger == r_tagger && l_char == r_char
             }
             (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
@@ -697,7 +732,8 @@ impl std::fmt::Debug for RawTag {
             Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
             Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
             Self::Ghost(tagger, id) => write!(f, "Ghost({tagger:?}, {id:?})"),
-            Self::ReplaceChar(tagger, char) => write!(f, "ReplaceChar({tagger:?}, {char:?})"),
+            Self::Inlay(tagger, id) => write!(f, "Inlay({tagger:?}, {id:?})"),
+            Self::SwapChar(tagger, char) => write!(f, "SwapChar({tagger:?}, {char:?})"),
             Self::StartToggle(tagger, id) => write!(f, "ToggleStart({tagger:?}), {id:?})"),
             Self::EndToggle(tagger, id) => write!(f, "ToggleEnd({tagger:?}, {id:?})"),
             Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),

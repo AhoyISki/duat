@@ -91,7 +91,7 @@ pub use crate::text::{
     iter::{FwdIter, RevIter, TextPart, TextPlace},
     search::{Matches, RegexHaystack, RegexPattern},
     tags::{
-        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, ReplaceChar, Spacer,
+        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, SwapChar, Spacer,
         SpawnTag, Tag, Tagger, Tags, ToggleId,
     },
     utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},

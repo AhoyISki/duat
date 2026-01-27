@@ -21,7 +21,7 @@ use super::{
     Point, SpawnId, Text, ToggleId,
     tags::{self, RawTag},
 };
-use crate::text::TwoPoints;
+use crate::text::{TwoPoints, tags::InnerTags};
 
 /// An [`Iterator`] over the [`TextPart`]s of the [`Text`].
 ///
@@ -153,7 +153,7 @@ impl<'t> FwdIter<'t> {
             RawTag::MainCaret(_)
             | RawTag::ExtraCaret(_)
             | RawTag::Spacer(_)
-            | RawTag::ReplaceChar(..)
+            | RawTag::SwapChar(..)
             | RawTag::SpawnedWidget(..)
                 if b < self.init_point.byte() => {}
             _ => return false,
@@ -163,8 +163,8 @@ impl<'t> FwdIter<'t> {
     }
 }
 
-impl Iterator for FwdIter<'_> {
-    type Item = TextPlace;
+impl<'t> Iterator for FwdIter<'t> {
+    type Item = TextPlace<'t>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -178,7 +178,8 @@ impl Iterator for FwdIter<'_> {
             if self.handle_meta_tag(&tag, b) {
                 self.next()
             } else {
-                Some(TextPlace::new(self.points(), TextPart::from_raw(tag)))
+                let tags = &self.text.0.tags;
+                Some(TextPlace::new(self.points(), TextPart::from_raw(tags, tag)))
             }
         } else if let Some(char) = self.chars.next() {
             let points = self.points();
@@ -324,7 +325,7 @@ impl<'t> RevIter<'t> {
             RawTag::MainCaret(_)
             | RawTag::ExtraCaret(_)
             | RawTag::Spacer(_)
-            | RawTag::ReplaceChar(..)
+            | RawTag::SwapChar(..)
             | RawTag::SpawnedWidget(..)
                 if b > self.init_point.byte() => {}
             _ => return false,
@@ -334,8 +335,8 @@ impl<'t> RevIter<'t> {
     }
 }
 
-impl Iterator for RevIter<'_> {
-    type Item = TextPlace;
+impl<'t> Iterator for RevIter<'t> {
+    type Item = TextPlace<'t>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -349,7 +350,8 @@ impl Iterator for RevIter<'_> {
             if self.handled_meta_tag(&tag, b) {
                 self.next()
             } else {
-                Some(TextPlace::new(self.points(), TextPart::from_raw(tag)))
+                let tags = &self.text.0.tags;
+                Some(TextPlace::new(self.points(), TextPart::from_raw(tags, tag)))
             }
         } else if let Some(char) = self.chars.next() {
             self.point = self.point.rev(char);
@@ -401,7 +403,7 @@ fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
 /// [`Ghost`]: super::Ghost
 /// [`Tag`]: super::Tag
 #[derive(Debug, Clone, Copy)]
-pub struct TextPlace {
+pub struct TextPlace<'t> {
     /// The real [`Point`]
     pub real: Point,
     /// The [`Point`] in a [`Ghost`]
@@ -417,13 +419,13 @@ pub struct TextPlace {
     /// A [`TextPart`], which will either be a `char` or a [`Tag`];
     ///
     /// [`Tag`]: super::Tag
-    pub part: TextPart,
+    pub part: TextPart<'t>,
 }
 
-impl TextPlace {
+impl<'t> TextPlace<'t> {
     /// Returns a new [`TextPlace`]
     #[inline]
-    const fn new(points: TwoPoints, part: TextPart) -> Self {
+    const fn new(points: TwoPoints, part: TextPart<'t>) -> Self {
         let TwoPoints { real, ghost } = points;
         Self { real, ghost, part }
     }
@@ -498,7 +500,7 @@ use crate::form::FormId;
 /// [`ResetState`]: Part::ResetState
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[doc(hidden)]
-pub enum TextPart {
+pub enum TextPart<'t> {
     /// A printed `char`, can be real or a [`Ghost`]
     ///
     /// [`Ghost`]: super::Ghost
@@ -530,7 +532,7 @@ pub enum TextPart {
     /// [`Spacer`]: super::Spacer
     Spacer,
     /// Replaces the next character, or the next space of a tab
-    ReplaceChar(char),
+    SwapChar(char),
     /// Starts a toggleable region for the given [`ToggleId`]
     ///
     /// Not yet implemented
@@ -543,6 +545,9 @@ pub enum TextPart {
     ///
     /// [`Widget`]: crate::ui::Widget
     SpawnedWidget(SpawnId),
+
+    /// An inlay [`Text`]
+    Inlay(&'t Text),
 
     /// Resets all [`FormId`]s, [`ToggleId`]s and alignments
     ///
@@ -559,21 +564,22 @@ pub enum TextPart {
     ResetState,
 }
 
-impl TextPart {
+impl<'t> TextPart<'t> {
     /// Returns a new [`TextPart`] from a [`RawTag`]
     #[inline]
-    pub(super) fn from_raw(value: RawTag) -> Self {
+    pub(super) fn from_raw(tags: &'t InnerTags, value: RawTag) -> Self {
         match value {
             RawTag::PushForm(_, id, prio) => Self::PushForm(id, prio),
             RawTag::PopForm(_, id) => Self::PopForm(id),
             RawTag::MainCaret(_) => Self::MainCaret,
             RawTag::ExtraCaret(_) => Self::ExtraCaret,
             RawTag::Spacer(_) => Self::Spacer,
-            RawTag::ReplaceChar(_, char) => Self::ReplaceChar(char),
+            RawTag::SwapChar(_, char) => Self::SwapChar(char),
             RawTag::StartToggle(_, id) => Self::ToggleStart(id),
             RawTag::EndToggle(_, id) => Self::ToggleEnd(id),
             RawTag::ConcealUntil(_) => Self::ResetState,
             RawTag::SpawnedWidget(_, id) => Self::SpawnedWidget(id),
+            RawTag::Inlay(_, id) => Self::Inlay(tags.get_ghost(id).unwrap()),
             RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Ghost(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }
