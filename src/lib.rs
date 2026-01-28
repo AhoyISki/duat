@@ -21,7 +21,7 @@ use duat_core::{
     data::Pass,
     hook::{self, BufferClosed, BufferOpened},
 };
-use gapbuf::GapBuffer;
+use gap_buf::GapBuffer;
 
 static TRACKER: BufferTracker = BufferTracker::new();
 static PARSERS: PerBuffer<Parser> = PerBuffer::new();

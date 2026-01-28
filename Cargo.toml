@@ -12,4 +12,4 @@ edition = "2024"
 
 [dependencies]
 duat-core = "0.8.0"
-gapbuf = "0.1.4"
+gap-buf = "0.1.0"
