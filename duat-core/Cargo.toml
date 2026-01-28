@@ -22,7 +22,6 @@ unit_arg = "allow"
 [dependencies]
 dirs-next = "2.0.0"
 bincode = "=2.0.1"
-lender = { version = "0.4.2", default-features = false }
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 format-like = "0.4.0"
 log = "0.4.0"

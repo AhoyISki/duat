@@ -16,6 +16,8 @@ FOR NEXT UPDATE:
 [x] Get rid of the print_iter api.
 [ ] Do the libloading hacks.
 [ ] Strs improvement.
+[ ] Switch from the Records system to lines based one.
+[x] Get rid of Lender entirely.
 
 KNOWN BUGS:
  HIGH PRIORITY:

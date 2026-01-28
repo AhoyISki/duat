@@ -8,10 +8,7 @@
 use std::{
     cell::Cell,
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
-    rc::Rc,
 };
-
-use lender::{Lender, Lending};
 
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
@@ -85,22 +82,22 @@ macro_rules! sel_mut {
 /// [`replace`]: Cursor::replace
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
-pub struct Cursor<'c, W: Widget + ?Sized = crate::buffer::Buffer> {
-    selections: &'c mut Vec<Option<ModSelection>>,
+pub struct Cursor<'w, W: Widget + ?Sized = crate::buffer::Buffer> {
+    selections: &'w mut Vec<Option<ModSelection>>,
     sels_i: usize,
     initial: Selection,
-    widget: &'c mut W,
-    area: &'c Area,
-    next_i: Option<Rc<Cell<usize>>>,
+    widget: &'w mut W,
+    area: &'w Area,
+    next_i: Option<&'w Cell<usize>>,
 }
 
-impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
+impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
-        selections: &'c mut Vec<Option<ModSelection>>,
+        selections: &'w mut Vec<Option<ModSelection>>,
         sels_i: usize,
-        (widget, area): (&'c mut W, &'c Area),
-        next_i: Option<Rc<Cell<usize>>>,
+        (widget, area): (&'w mut W, &'w Area),
+        next_i: Option<&'w Cell<usize>>,
     ) -> Self {
         let initial = selections[sels_i].as_ref().unwrap().selection.clone();
         Self {
@@ -428,7 +425,7 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
             self.selections,
             sels_i,
             (self.widget, self.area),
-            self.next_i.clone(),
+            self.next_i,
         )
     }
 
@@ -842,86 +839,42 @@ impl<'c, R: RegexPattern> DoubleEndedIterator for CursorMatches<'c, R> {
     }
 }
 
-/// An [`Iterator`] overf all [`Cursor`]s
-pub struct Cursors<'c, W: Widget + ?Sized> {
-    current: Vec<Option<ModSelection>>,
-    next_i: Rc<Cell<usize>>,
-    widget: &'c mut W,
-    area: &'c Area,
-}
+/// Does an action on every [`Cursor`]
+pub(crate) fn on_each_cursor<W: Widget + ?Sized>(
+    widget: &mut W,
+    area: &Area,
+    mut func: impl FnMut(Cursor<W>),
+) {
+    let mut current = Vec::new();
+    let mut next_i = Cell::new(0);
 
-impl<'c, W: Widget + ?Sized> Cursors<'c, W> {
-    /// Creates a new [`Cursors`]
-    pub(crate) fn new(next_i: usize, widget: &'c mut W, area: &'c Area) -> Self {
-        Self {
-            current: Vec::new(),
-            next_i: Rc::new(Cell::new(next_i)),
-            widget,
-            area,
-        }
-    }
-}
+    while let Some((sel, was_main)) = widget.text_mut().selections_mut().remove(next_i.get()) {
+        current.push(Some(ModSelection::new(sel, next_i.get(), was_main)));
 
-impl<'a, 'lend, W: Widget + ?Sized> Lending<'lend> for Cursors<'a, W> {
-    type Lend = Cursor<'lend, W>;
-}
+        func(Cursor::new(&mut current, 0, (widget, area), Some(&next_i)));
 
-impl<'a, W: Widget + ?Sized> Lender for Cursors<'a, W> {
-    fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
-        reinsert_selections(
-            self.current.drain(..).flatten(),
-            self.widget,
-            Some(&self.next_i),
-        );
-
-        let current_i = self.next_i.get();
-        let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
-        self.current
-            .push(Some(ModSelection::new(selection, current_i, was_main)));
-
-        Some(Cursor::new(
-            &mut self.current,
-            0,
-            (self.widget, self.area),
-            Some(self.next_i.clone()),
-        ))
-    }
-}
-
-impl<'a, W: Widget + ?Sized> Drop for Cursors<'a, W> {
-    fn drop(&mut self) {
-        reinsert_selections(
-            self.current.drain(..).flatten(),
-            self.widget,
-            Some(&self.next_i),
-        );
+        reinsert_selections(current.drain(..).flatten(), widget, Some(next_i.get_mut()));
     }
 }
 
 /// Reinsert edited [`Selections`]
 #[inline]
 pub(crate) fn reinsert_selections(
-    selections: impl Iterator<Item = ModSelection>,
+    mod_sels: impl Iterator<Item = ModSelection>,
     widget: &mut (impl Widget + ?Sized),
-    next_i: Option<&Cell<usize>>,
+    mut next_i: Option<&mut usize>,
 ) {
-    for mod_sel in selections {
+    for mod_sel in mod_sels {
         let ([inserted_i, selections_taken], last_selection_overhangs) = widget
             .text_mut()
             .selections_mut()
             .insert(mod_sel.index, mod_sel.selection, mod_sel.was_main);
 
-        if let Some(next_i) = next_i
-            && inserted_i <= next_i.get()
+        if let Some(next_i) = next_i.as_mut()
+            && inserted_i <= **next_i
         {
             let go_to_next = !last_selection_overhangs as usize;
-            next_i.set(
-                next_i
-                    .get()
-                    .saturating_sub(selections_taken)
-                    .max(inserted_i)
-                    + go_to_next,
-            )
+            **next_i = next_i.saturating_sub(selections_taken).max(inserted_i) + go_to_next;
         }
     }
 }

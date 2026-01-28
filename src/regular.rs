@@ -1,10 +1,7 @@
 use std::sync::Mutex;
 
 use duat_base::modes::{IncSearch, RunCommands, SearchFwd};
-use duat_core::{
-    lender::Lender,
-    mode::{ctrl, shift},
-};
+use duat_core::mode::{ctrl, shift};
 #[cfg(feature = "treesitter")]
 use duat_treesitter::TsHandle;
 
@@ -74,32 +71,37 @@ impl mode::Mode for Regular {
 
             // Text Removal
             event!(Backspace) => {
-                let major_removal = handle.edit_iter(pa, |mut cursors| {
-                    cursors.any(|mut c| {
-                        c.anchor().is_some()
-                            || (c.move_hor(-1) != 0
-                                && c.set_anchor_if_needed()
-                                && c.selection().chars().any(|c| c == '\n'))
-                    })
+                let mut major_removal = false;
+                handle.edit_all(pa, |mut c| {
+                    if c.anchor().is_some()
+                        || (c.move_hor(-1) != 0
+                            && c.set_anchor_if_needed()
+                            && c.selection().chars().any(|c| c == '\n'))
+                    {
+                        major_removal = true;
+                    }
                 });
+
                 if !matches!(*last_code, Some(Backspace)) || major_removal {
                     handle.write(pa).text_mut().new_moment();
                 }
+
                 handle.edit_all(pa, |mut c| {
                     c.replace("");
                     c.unset_anchor();
                 })
             }
             event!(Delete) => {
-                let major_removal = handle.edit_iter(pa, |mut cursors| {
-                    cursors.any(|mut c| {
-                        c.set_anchor_if_needed();
-                        c.selection().chars().any(|c| c == '\n')
-                    })
+                let mut major_removal = false;
+                handle.edit_all(pa, |mut c| {
+                    c.set_anchor_if_needed();
+                    major_removal |= c.selection().chars().any(|c| c == '\n');
                 });
+
                 if !matches!(*last_code, Some(Delete)) || major_removal {
                     handle.write(pa).text_mut().new_moment();
                 }
+
                 handle.edit_all(pa, |mut c| {
                     c.replace("");
                     c.unset_anchor();

@@ -12,7 +12,6 @@ use std::{any::TypeId, sync::Mutex};
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
-pub use lender;
 
 pub use self::ranges::Ranges;
 

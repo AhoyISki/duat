@@ -7,12 +7,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use lender::Lender;
-
 use crate::{
     context,
     data::{Pass, RwData, WriteableTuple},
-    mode::{Cursor, Cursors, ModSelection, Selection, Selections},
+    mode::{Cursor, ModSelection, Selection, Selections},
     opts::PrintOpts,
     text::{Text, TextMut, TextParts, TwoPoints, txt},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
@@ -437,28 +435,6 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.edit_nth(pa, len.saturating_sub(1), edit)
     }
 
-    /// A [`Lender`] over all [`Cursor`]s of the [`Text`]
-    ///
-    /// This lets you easily iterate over all [`Selection`]s, without
-    /// having to worry about insertion affecting the order at which
-    /// they are edited (like what repeated calls to [`edit_nth`]
-    /// would do)
-    ///
-    /// Note however that you can't use a [`Lender`] (also known as a
-    /// lending iterator) in a `for` loop, but you should be able
-    /// to just `while let Some(e) = editors.next() {}` or
-    /// `handle.edit_iter().for_each(|_| {})` instead.
-    ///
-    /// Just like all other `edit` methods, this one will populate the
-    /// [`Selections`], so if there are no [`Selection`]s, it will
-    /// create one at [`Point::default`].
-    ///
-    /// [`edit_nth`]: Self::edit_nth
-    /// [`Point::default`]: crate::text::Point::default
-    pub fn edit_iter<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursors<'_, W>) -> Ret) -> Ret {
-        edit(self.get_iter(pa))
-    }
-
     /// A shortcut for iterating over all selections
     ///
     /// This is the equivalent of calling:
@@ -475,14 +451,9 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
     pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(Cursor<W>)) {
-        self.get_iter(pa).for_each(edit);
-    }
-
-    fn get_iter<'a>(&'a self, pa: &'a mut Pass) -> Cursors<'a, W> {
         let (widget, area) = self.write_with_area(pa);
         widget.text_mut().selections_mut().populate();
-
-        Cursors::new(0, widget, area)
+        crate::mode::on_each_cursor(widget, area, edit);
     }
 
     ////////// Area functions
