@@ -721,7 +721,8 @@ impl BufferTracker {
             );
 
             let range = change.added_range();
-            ranges_lock.add(range.start.byte()..range.end.byte());
+            ranges_lock.add(range.start.byte()..range.end.byte().max(range.start.byte() + 1));
+            crate::context::debug!("{:#?}", *ranges_lock);
         }
         drop(ranges_lock);
 
