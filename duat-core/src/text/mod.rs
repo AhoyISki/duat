@@ -91,8 +91,8 @@ pub use crate::text::{
     iter::{FwdIter, RevIter, TextPart, TextPlace},
     search::{Matches, RegexHaystack, RegexPattern},
     tags::{
-        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, SwapChar, Spacer,
-        SpawnTag, Tag, Tagger, Tags, ToggleId,
+        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, Spacer, SpawnTag,
+        SwapChar, Tag, Tagger, Tags, ToggleId,
     },
     utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
 };
@@ -253,8 +253,9 @@ impl Text {
 
     /// Gets the indentation level on the current line
     #[track_caller]
-    pub fn indent(&self, p: Point, opts: PrintOpts) -> usize {
-        self.chars_fwd(self.line_range(p.line()))
+    pub fn indent(&self, p: impl TextIndex, opts: PrintOpts) -> usize {
+        let point = self.point_at_byte(p.to_byte_index());
+        self.chars_fwd(self.line_range(point.line()))
             .unwrap()
             .take_while(|&(_, char)| char == ' ' || char == '\t')
             .fold(0, |sum, (_, char)| {

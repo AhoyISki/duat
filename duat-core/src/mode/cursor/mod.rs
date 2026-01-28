@@ -589,7 +589,8 @@ impl<'c, W: Widget + ?Sized> Cursor<'c, W> {
     }
 
     /// Gets the indentation level on the given [`Point`]
-    pub fn indent_on(&self, p: Point) -> usize {
+    #[track_caller]
+    pub fn indent_on(&self, p: impl TextIndex) -> usize {
         self.widget.text().indent(p, self.opts())
     }
 

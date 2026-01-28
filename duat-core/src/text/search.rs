@@ -47,6 +47,7 @@ pub struct Matches<'m, R> {
     dfas: &'static DFAs,
     fwd_input: Input<SearchBytes<'m>>,
     rev_input: Input<SearchBytes<'m>>,
+    rev_match: Option<Range<usize>>,
     _ghost: PhantomData<R>,
 }
 
@@ -119,6 +120,7 @@ impl<'m, R: RegexPattern> DoubleEndedIterator for Matches<'m, R> {
         };
 
         let (fwd_input, rev_input) = (&mut self.fwd_input, &mut self.rev_input);
+
         let h_start = try_search_rev(&self.dfas.rev_dfa, &mut rev_cache, fwd_input)
             .ok()
             .flatten()?
@@ -137,9 +139,16 @@ impl<'m, R: RegexPattern> DoubleEndedIterator for Matches<'m, R> {
 
         fwd_input.set_end(h_start);
 
+        // To not repeatedly match the same empty thing over and over.
         if h_start == h_end {
-            fwd_input.set_end(h_start.checked_sub(1)?);
+            if self.rev_match == Some(self.b_start + h_start..self.b_start + h_end) {
+                return None;
+            } else if h_start > 0 {
+                fwd_input.set_end(h_start - 1);
+            }
         }
+
+        self.rev_match = Some(self.b_start + h_start..self.b_start + h_end);
 
         Some(R::get_match(
             self.b_start + h_start..self.b_start + h_end,
@@ -237,6 +246,7 @@ impl<'b> RegexHaystack<'b> for Text {
             dfas,
             fwd_input: Input::new(SearchBytes(haystack, 0)),
             rev_input: Input::new(SearchBytes(haystack, 0)),
+            rev_match: None,
             _ghost: PhantomData,
         })
     }
@@ -257,6 +267,7 @@ impl<'b> RegexHaystack<'b> for Bytes {
             dfas,
             fwd_input: Input::new(SearchBytes(haystack, 0)),
             rev_input: Input::new(SearchBytes(haystack, 0)),
+            rev_match: None,
             _ghost: PhantomData,
         })
     }
@@ -277,6 +288,7 @@ impl<'b> RegexHaystack<'b> for Strs<'b> {
             dfas,
             fwd_input: Input::new(SearchBytes(haystack, 0)),
             rev_input: Input::new(SearchBytes(haystack, 0)),
+            rev_match: None,
             _ghost: PhantomData,
         })
     }
@@ -297,6 +309,7 @@ impl<'s, S: std::ops::Deref<Target = str>> RegexHaystack<'s> for S {
             dfas,
             fwd_input: Input::new(SearchBytes(haystack, 0)),
             rev_input: Input::new(SearchBytes(haystack, 0)),
+            rev_match: None,
             _ghost: PhantomData,
         })
     }

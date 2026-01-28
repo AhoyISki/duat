@@ -11,8 +11,7 @@ use duat_core::{
     buffer::{BufferOpts, BufferParts, BufferTracker, PerBuffer},
     form,
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{FormTag, Ghost, Spacer, SwapChar, Tagger, Tags, txt},
-    utils::Memoized,
+    text::{FormTag, SwapChar, Tagger, Tags},
 };
 
 struct BufferOptsParser {
@@ -47,12 +46,6 @@ pub fn enable_parser() {
         {
             return;
         }
-
-        let indent_text = {
-            static TEXTS: Memoized<&str, Ghost> = Memoized::new();
-            opts.indent_str
-                .map(|str| TEXTS.get_or_insert_with(str, || Ghost::inlay(txt!("{Spacer}{str}"))))
-        };
 
         let space_form = form::id_of!("replace.space").to_tag(90);
         let space_form_trailing = form::id_of!("replace.space.trailing").to_tag(90);
@@ -95,6 +88,12 @@ pub fn enable_parser() {
 
             tags.insert(spc_tagger, range, form);
         };
+
+        let ranges_to_update = parts.ranges_to_update.select_from(lines.iter().cloned());
+
+        if ranges_to_update.is_empty() {
+            return;
+        }
 
         for range in parts.ranges_to_update.select_from(lines.iter().cloned()) {
             parts.tags.remove(spc_tagger, range.start..range.end);

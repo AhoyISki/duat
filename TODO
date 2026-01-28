@@ -100,4 +100,3 @@ FUTURE UPDATES:
 
 PERFORMANCE IDEAS:
 [ ] Try not iterating over every character in scroll_vertically.
-

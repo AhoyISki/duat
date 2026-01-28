@@ -4,7 +4,6 @@ use std::{
 };
 
 use gap_buf::GapBuffer;
-use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
 pub use crate::text::bytes::strs::Strs;
 use crate::{
@@ -190,36 +189,7 @@ impl Bytes {
             }
         };
 
-        // If the gap is outside of the range, we can just iterate through it
-        // regularly
-        let (fwd_i, rev_i) = (start.line(), end.line());
-        if let Some(str) = self.get_contiguous(start..end) {
-            let lines = [str.lines(), "".lines()];
-            Lines::new(lines, None, fwd_i, rev_i)
-        // If the gap is within the range, but on a line split, we
-        // can just iterate through two sets of lines.
-        } else if end.byte() > start.byte() && self.buf[self.buf.gap() - 1] == b'\n' {
-            let [s0, s1] = self.strs_inner(start.byte()..end.byte()).unwrap();
-            let lines = [s0.lines(), s1.lines()];
-            Lines::new(lines, None, fwd_i, rev_i)
-            // Otherwise, the line that was split will need to be
-            // allocated and returned separately.
-        } else {
-            let [s0, s1] = self.strs_inner(start.byte()..end.byte()).unwrap();
-
-            let (before, split0) = match s0.rsplit_once('\n') {
-                Some((before, split)) => (before, split),
-                None => ("", s0),
-            };
-            let (after, split1) = match s1.split_once('\n') {
-                Some((split, after)) => (after, split),
-                None => ("", s1),
-            };
-
-            let lines = [before.lines(), after.lines()];
-            let split_line = Some(split0.to_string() + split1);
-            Lines::new(lines, split_line, fwd_i, rev_i)
-        }
+        Lines::new(self, start.byte(), end.byte())
     }
 
     /// Returns the two `&str`s in the byte range.
@@ -594,79 +564,92 @@ impl Bytes {
 /// return it as an `&str`, a new [`String`] needs to be allocated,
 /// which will be owned by the [`Lines`], hence the [`Lender`] trait.
 pub struct Lines<'b> {
-    lines: [std::str::Lines<'b>; 2],
-    split_line: Option<String>,
-    fwd_i: usize,
-    rev_i: usize,
-    split_line_used: bool,
+    bytes: &'b Bytes,
+    fwd_b: usize,
+    rev_b: usize,
 }
 
 impl<'b> Lines<'b> {
-    fn new(
-        lines: [std::str::Lines<'b>; 2],
-        split_line: Option<String>,
-        fwd_i: usize,
-        rev_i: usize,
-    ) -> Self {
-        Self {
-            lines,
-            split_line,
-            fwd_i,
-            rev_i,
-            split_line_used: false,
+    fn new(bytes: &'b Bytes, fwd_b: usize, rev_b: usize) -> Self {
+        Self { bytes, fwd_b, rev_b }
+    }
+}
+
+impl<'b> Iterator for Lines<'b> {
+    type Item = Strs<'b>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let [s0, s1] = {
+            let (s0, s1) = self.bytes.buf.as_slices();
+            [
+                &s0[self.fwd_b.min(s0.len())..],
+                &s1[self.fwd_b.saturating_sub(s0.len())..],
+            ]
+        };
+
+        let fwd_b = s0
+            .iter()
+            .chain(s1.iter())
+            .position(|b| *b == b'\n')
+            .unwrap_or(self.bytes.len().byte());
+
+        if fwd_b > self.fwd_b && fwd_b < self.rev_b {
+            let range = (self.fwd_b, fwd_b);
+            self.fwd_b = fwd_b;
+            Some(Strs::new(self.bytes, range, unsafe {
+                [
+                    std::str::from_utf8_unchecked(&s0[..fwd_b.min(s0.len())]),
+                    std::str::from_utf8_unchecked(&s1[..fwd_b.saturating_sub(s0.len())]),
+                ]
+            }))
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.rev_b - self.fwd_b, Some(self.rev_b - self.fwd_b))
+    }
+}
+
+impl DoubleEndedIterator for Lines<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let [s0, s1] = {
+            let (s0, s1) = self.bytes.buf.as_slices();
+            [
+                &s0[..self.rev_b.min(s0.len())],
+                &s1[..self.rev_b.saturating_sub(s0.len())],
+            ]
+        };
+
+        let rev_b = {
+            let mut count = 0;
+            self.rev_b
+                - s0.iter()
+                    .chain(s1.iter())
+                    .take_while(|byte| {
+                        count += (**byte == b'\n') as usize;
+                        count < 2
+                    })
+                    .count()
+        };
+
+        if rev_b < self.rev_b && rev_b > self.fwd_b {
+            let range = (rev_b, self.rev_b);
+            self.rev_b = rev_b;
+            Some(Strs::new(self.bytes, range, unsafe {
+                [
+                    std::str::from_utf8_unchecked(&s0[rev_b.min(s0.len())..]),
+                    std::str::from_utf8_unchecked(&s1[rev_b.saturating_sub(s0.len())..]),
+                ]
+            }))
+        } else {
+            None
         }
     }
 }
 
-impl<'b, 'text> Lending<'b> for Lines<'text> {
-    type Lend = (usize, &'b str);
-}
-
-impl<'b> Lender for Lines<'b> {
-    fn next(&mut self) -> Option<lender::Lend<'_, Self>> {
-        self.lines[0]
-            .next()
-            .or_else(|| {
-                if self.split_line_used {
-                    None
-                } else {
-                    self.split_line_used = true;
-                    self.split_line.as_deref()
-                }
-            })
-            .or_else(|| self.lines[1].next())
-            .map(|line| {
-                self.fwd_i += 1;
-                (self.fwd_i - 1, line)
-            })
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.rev_i - self.fwd_i, Some(self.rev_i - self.fwd_i))
-    }
-}
-
-impl<'b> DoubleEndedLender for Lines<'b> {
-    fn next_back(&mut self) -> Option<lender::Lend<'_, Self>> {
-        self.lines[1]
-            .next_back()
-            .or_else(|| {
-                if self.split_line_used {
-                    None
-                } else {
-                    self.split_line_used = true;
-                    self.split_line.as_deref()
-                }
-            })
-            .or_else(|| self.lines[0].next_back())
-            .map(|line| {
-                self.rev_i -= 1;
-                (self.rev_i, line)
-            })
-    }
-}
-
-impl<'b> ExactSizeLender for Lines<'b> {}
+impl ExactSizeIterator for Lines<'_> {}
 
 /// An [`Iterator`] over the bytes in a [`Text`]
 ///

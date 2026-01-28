@@ -2,7 +2,7 @@ use std::{ops::Range, sync::LazyLock};
 
 use crate::text::{Bytes, Slices, TextRange};
 
-/// A slice over the two `&str`s of a [`Bytes`] 
+/// A slice over the two `&str`s of a [`Bytes`].
 ///
 /// [`&str`]: str
 /// [`Text`]: crate::text::Text
@@ -14,12 +14,12 @@ pub struct Strs<'b> {
 }
 
 impl<'b> Strs<'b> {
-    /// Returns a new `Strs`
+    /// Returns a new `Strs`.
     pub(super) fn new(bytes: &'b Bytes, range: (usize, usize), arr: [&'b str; 2]) -> Self {
         Self { bytes, range, arr }
     }
 
-    /// A subslice of the [`Strs`]
+    /// A subslice of the [`Strs`].
     ///
     /// Note that this `TextRange` is relative to the whole [`Bytes`]
     /// struct, not just this [`Strs`]. This method also clips the
@@ -83,7 +83,7 @@ impl<'b> Strs<'b> {
     }
 
     /// Returns two `&[u8]` representing a [`TextRange`] from the
-    /// slice
+    /// slice.
     ///
     /// Note that this `TextRange` is relative to the whole [`Bytes`]
     /// struct, not just this [`Strs`]. This method is also not
@@ -100,12 +100,12 @@ impl<'b> Strs<'b> {
         Slices([s0.iter(), s1.iter()])
     }
 
-    /// Converts this [`Iterator`] into an array of its two parts
+    /// Converts this [`Iterator`] into an array of its two parts.
     pub fn to_array(&self) -> [&'b str; 2] {
         self.arr
     }
 
-    /// Returns and [`Iterator`] over the [`char`]s of both [`&str`]s
+    /// Returns and [`Iterator`] over the [`char`]s of both [`&str`]s.
     ///
     /// [`&str`]: str
     pub fn chars(self) -> impl DoubleEndedIterator<Item = char> + 'b {
@@ -114,7 +114,7 @@ impl<'b> Strs<'b> {
     }
 
     /// Returns an [`Iterator`] over the [`char`]s and their indices
-    /// from both [`&str`]s
+    /// from both [`&str`]s.
     ///
     /// [`&str`]: str
     pub fn char_indices(self) -> impl DoubleEndedIterator<Item = (usize, char)> + 'b {
@@ -132,7 +132,7 @@ impl<'b> Strs<'b> {
         self.range.0..self.range.1
     }
 
-    /// The underlying [`Bytes`] struct
+    /// The underlying [`Bytes`] struct.
     ///
     /// You can use this method to essentially get a [`Strs`] that
     /// encompasses the whole range, since [`Bytes`] implements
@@ -142,10 +142,21 @@ impl<'b> Strs<'b> {
     pub fn bytes(&self) -> &Bytes {
         self.bytes
     }
+
+    /// The lenght of this `Strs`, in bytes.
+    pub fn len(&self) -> usize {
+        self.range.1 - self.range.0
+    }
+
+	/// Wether the len of this `Strs` is equal to 0.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl Strs<'static> {
-    /// An empty `Strs`, useful in some circumstances
+    /// An empty `Strs`, useful in some circumstances.
     pub fn empty() -> Self {
         Self {
             bytes: &*EMPTY_BYTES,
