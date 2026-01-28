@@ -45,7 +45,7 @@ pub struct SessionCfg {
 }
 
 impl SessionCfg {
-    pub fn new(clipb: &'static Mutex<Clipboard>, buffer_opts: BufferOpts) -> Self {
+    pub fn new(clipb: &'static Clipboard, buffer_opts: BufferOpts) -> Self {
         crate::clipboard::set_clipboard(clipb);
         BUFFER_OPTS.set(buffer_opts).unwrap();
 

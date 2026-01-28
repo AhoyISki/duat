@@ -118,33 +118,21 @@ pub mod clipboard {
     //! Clipboard interaction for Duat
     //!
     //! Just a regular clipboard, no image functionality.
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::OnceLock;
 
     /// A clipboard for Duat, can be platform based, or local
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
-    #[allow(private_interfaces)]
-    pub enum Clipboard {
-        #[cfg(target_os = "android")]
-        Platform,
-        #[cfg(not(target_os = "android"))]
-        Platform(arboard::Clipboard, &'static ClipboardFunctions),
-        Local(String),
+    #[derive(Clone, Copy)]
+    pub struct Clipboard {
+        /// The function to get the text of the clipboard
+        pub get_text: fn() -> Option<String>,
+        /// The function to set the text of the clipboard
+        pub set_text: fn(String),
     }
 
-    impl Default for Clipboard {
-        fn default() -> Self {
-            #[cfg(not(target_os = "android"))]
-            match arboard::Clipboard::new() {
-                Ok(clipb) => Self::Platform(clipb, ClipboardFunctions::new()),
-                Err(_) => Self::Local(String::new()),
-            }
-
-            #[cfg(target_os = "android")]
-            Self::Platform
-        }
-    }
-
-    static CLIPB: OnceLock<&'static Mutex<Clipboard>> = OnceLock::new();
+    static CLIPB: OnceLock<&Clipboard> = OnceLock::new();
 
     /// Gets a [`String`] from the clipboard
     ///
@@ -153,50 +141,15 @@ pub mod clipboard {
     ///
     /// Or if there is no clipboard I guess
     pub fn get_text() -> Option<String> {
-        let mut clipb = CLIPB.get().unwrap().lock().unwrap();
-        match &mut *clipb {
-            #[cfg(target_os = "android")]
-            Clipboard::Platform => clipboard::get_text()
-                .map_err(|err| crate::context::error!("{err}"))
-                .ok(),
-            #[cfg(not(target_os = "android"))]
-            Clipboard::Platform(clipb, fns) => (fns.get_text)(clipb),
-            Clipboard::Local(clipb) => Some(clipb.clone()).filter(String::is_empty),
-        }
+        (CLIPB.get().unwrap().get_text)()
     }
 
     /// Sets a [`String`] to the clipboard
     pub fn set_text(text: impl std::fmt::Display) {
-        let mut clipb = CLIPB.get().unwrap().lock().unwrap();
-        match &mut *clipb {
-            #[cfg(target_os = "android")]
-            Clipboard::Platform => {
-                if let Err(err) = clipboard::set_text(text.to_string()) {
-                    crate::context::error!("{err}");
-                }
-            }
-            #[cfg(not(target_os = "android"))]
-            Clipboard::Platform(clipb, fns) => (fns.set_text)(clipb, text.to_string()),
-            Clipboard::Local(clipb) => *clipb = text.to_string(),
-        }
+        (CLIPB.get().unwrap().set_text)(text.to_string())
     }
 
-    #[cfg(not(target_os = "android"))]
-    struct ClipboardFunctions {
-        get_text: fn(&mut arboard::Clipboard) -> Option<String>,
-        set_text: fn(&mut arboard::Clipboard, String),
-    }
-
-    impl ClipboardFunctions {
-        fn new() -> &'static Self {
-            &Self {
-                get_text: |clipb| clipb.get_text().ok(),
-                set_text: |clipb, text| clipb.set_text(text).unwrap(),
-            }
-        }
-    }
-
-    pub(crate) fn set_clipboard(clipb: &'static Mutex<Clipboard>) {
+    pub(crate) fn set_clipboard(clipb: &'static Clipboard) {
         CLIPB.set(clipb).map_err(|_| {}).expect("Setup ran twice");
     }
 }

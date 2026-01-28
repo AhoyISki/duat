@@ -32,28 +32,29 @@ duatmode =  "0.8.1"
 duat-treesitter = { version = "0.4.0", optional = true }
 duat-match-pairs = { version = "0.3.0", optional = true }
 
-# Will become optional if Rust ever gets binary only dependencies.
-# Or once downloading is predominantly through package managers.
-# Cli dependencies
-[dependencies.clap]
-version = "4.5.53"
-features = ["derive"]
+# App dependencies
+clap = { version = "4.5.53", features = ["derive"], optional = true }
+convert_case = { version = "0.10.0", optional = true }
+libloading = { version = "0.9.0", optional = true }
+notify = { version = "8.2.0", optional = true }
 
-[dependencies.libloading]
-version = "0.9.0"
+[target.'cfg(not(target_os = "android"))'.dependencies.arboard]
+version = "3.6.1"
+default-features = false
+features = ["wayland-data-control"]
+optional = true
 
-[dependencies.notify]
-version = "8.2.0"
-
-[dependencies.convert_case]
-version = "0.10.0"
+[target.'cfg(target_os = "android")'.dependencies.android_clipboard]
+version = "0.1.0"
+optional = true
 
 [features]
-default = ["term-ui", "treesitter"]
+default = ["term-ui", "treesitter", "app"]
 term-ui = ["dep:duat-term"]
 deadlocks = ["duat-core/deadlocks"]
 git-deps = []
 treesitter = ["dep:duat-treesitter", "dep:duat-match-pairs"]
+app = ["dep:clap", "dep:convert_case", "dep:libloading", "dep:notify", "dep:arboard", "dep:android_clipboard"]
 
 [[bin]]
 name = "duat"

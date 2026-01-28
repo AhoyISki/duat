@@ -22,7 +22,7 @@ use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode::*, Watcher};
 
 static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
-static CLIPBOARD: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
+static CLIPBOARD: LazyLock<Clipboard> = LazyLock::new(get_clipboard);
 
 #[derive(Clone, Debug, clap::Parser)]
 #[command(version, about)]
@@ -651,3 +651,47 @@ type UiImplementation = duat_term::Ui;
 
 #[cfg(not(feature = "term-ui"))]
 compile_error!("No Ui was chosen to compile Duat with");
+
+#[cfg(not(target_os = "android"))]
+fn get_clipboard() -> Clipboard {
+    use std::sync::OnceLock;
+
+    enum ClipboardType {
+        Platform(arboard::Clipboard),
+        Local(Option<String>),
+    }
+
+    static CLIPBOARD: OnceLock<Mutex<ClipboardType>> = OnceLock::new();
+
+    _ = CLIPBOARD.set(Mutex::new(match arboard::Clipboard::new() {
+        Ok(clipb) => ClipboardType::Platform(clipb),
+        Err(_) => ClipboardType::Local(None),
+    }));
+
+    duat_core::clipboard::Clipboard {
+        get_text: || match &mut *CLIPBOARD.get().unwrap().lock().unwrap() {
+            ClipboardType::Platform(clipb) => clipb.get_text().ok(),
+            ClipboardType::Local(text) => text.clone(),
+        },
+        set_text: |text| match &mut *CLIPBOARD.get().unwrap().lock().unwrap() {
+            ClipboardType::Platform(clipb) => clipb.set_text(text).unwrap(),
+            ClipboardType::Local(old) => *old = Some(text),
+        },
+    }
+}
+
+#[cfg(target_os = "android")]
+fn get_clipboard() -> Clipboard {
+    duat_core::clipboard::Clipboard {
+        get_text: || {
+            android_clipboard::get_text()
+                .map_err(|err| crate::context::error!("{err}"))
+                .ok()
+        },
+        set_text: |text| {
+            if let Err(err) = android_clipboard::set_text(text.to_string()) {
+                crate::context::error!("{err}");
+            }
+        },
+    }
+}

@@ -309,7 +309,7 @@ pub fn run_duat(
 pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadEvent>);
 /// Items that will live for the duration of Duat
 #[doc(hidden)]
-pub type MetaStatics = (Ui, &'static Mutex<Clipboard>);
+pub type MetaStatics = (Ui, &'static Clipboard);
 /// Initial setup items
 #[doc(hidden)]
 pub type Initials = (

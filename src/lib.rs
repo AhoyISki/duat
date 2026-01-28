@@ -309,11 +309,7 @@
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 
-pub use duat_core::{
-    Plugin, Plugins, buffer, clipboard, cmd, context, data,
-    lender::{self, DoubleEndedLender, ExactSizeLender, Lender},
-    text, ui, utils,
-};
+pub use duat_core::{Plugin, Plugins, buffer, clipboard, cmd, context, data, text, ui, utils};
 
 pub mod opts;
 mod regular;
@@ -583,7 +579,7 @@ pub mod prelude {
 
     use crate::setup::ALREADY_PLUGGED;
     pub use crate::{
-        Lender, Plugin, Plugins,
+        Plugin, Plugins,
         buffer::{Buffer, BufferTracker},
         clipboard, cmd,
         context::{self, Handle},
@@ -605,8 +601,8 @@ pub mod prelude {
         setup_duat,
         state::*,
         text::{
-            self, Conceal, Ghost, Point, RegexHaystack, SwapChar, Spacer, SpawnTag, Tagger,
-            Text, txt,
+            self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, SwapChar, Tagger, Text,
+            txt,
         },
         ui::{self, Area, Widget},
         widgets::*,

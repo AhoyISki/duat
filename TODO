@@ -18,6 +18,7 @@ FOR NEXT UPDATE:
 [ ] Strs improvement.
 [ ] Switch from the Records system to lines based one.
 [x] Get rid of Lender entirely.
+[x] Lean up the dependency tree.
 
 KNOWN BUGS:
  HIGH PRIORITY:
