@@ -367,8 +367,8 @@ impl InnerTags {
                     return false;
                 };
 
-                let removed = (b > within.start as i32 || tag.is_start())
-                    && (b < within.end as i32 || tag.is_end());
+                let removed = (b > within.start as i32 || !tag.is_end())
+                    && (b < within.end as i32 || !tag.is_start());
 
                 if !removed {
                     if b == within.start as i32 {
@@ -517,14 +517,43 @@ impl InnerTags {
 
         // Old length removal.
         if old.end > old.start {
-            if new_end == old.start {
-                self.remove_inner(old.start..old.end + 1, |(b, tag)| {
-                    (b > old.start as i32 || tag.is_start()) && (b < old.end as i32 || tag.is_end())
-                });
-            } else {
-                self.remove_inner(old.start + 1..old.end, |_| true);
-            }
+            // First, get rid of all ranges that start and/or end in the old
+            // range.
+            // old.start + 1 because we don't want to ge rid of bounds that merely
+            // coincide with the edges.
+            self.remove_inner(old.start + 1..old.end, |_| true);
             self.extents.remove(old.start + 1..old.end, |_| true);
+
+            // If the range becomes empty, we should remove the remaining pairs
+            if new.end == old.start
+                && let Ok(s_i) = self.list.find_by_key(old.start as i32, |(b, _)| b)
+            {
+                let mut to_remove: Vec<usize> = Vec::new();
+                let mut starts = Vec::new();
+                let mut iter = self.list.iter_fwd(s_i..);
+
+                while let Some((i, (b, tag))) = iter.next()
+                    && b <= old.end as i32
+                {
+                    if tag.is_start() {
+                        starts.push((i, tag));
+                    } else if tag.is_end()
+                        && let Some(s_i) = starts.iter().rposition(|(_, s)| s.ends_with(&tag))
+                    {
+                        let (s_i, _) = starts.remove(s_i);
+                        let rm_i = to_remove.iter().take_while(|j| **j < s_i).count();
+                        to_remove.insert(rm_i, s_i);
+                        let rm_i = to_remove.iter().take_while(|j| **j < i).count();
+                        to_remove.insert(rm_i, i)
+                    }
+                }
+
+                for i in to_remove.into_iter().rev() {
+                    self.list.remove(i);
+                    self.bounds.remove_if_represented(i);
+                    self.bounds.shift_by(i, [-1, 0]);
+                }
+            }
         }
 
         let shift = new.len() as i32 - old.len() as i32;
@@ -634,7 +663,7 @@ impl InnerTags {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::Ghost(_, id) => {
                 let (_, text) = self.ghosts.iter().find(|(lhs, _)| *lhs == id)?;
-                Some(p.map_or(text.len(), |p| p + text.len()))
+                Some(p.map_or(text.last_point(), |p| p + text.last_point()))
             }
             _ => p,
         })

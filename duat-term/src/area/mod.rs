@@ -1,7 +1,13 @@
 mod iter;
 mod print_info;
 
-use std::{io::Write, sync::Arc};
+use std::{
+    io::Write,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use crossterm::{
     cursor, queue,

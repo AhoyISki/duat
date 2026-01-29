@@ -386,14 +386,6 @@ impl Text {
         self.0.selections.apply_change(guess_i, change)
     }
 
-    fn without_last_nl(mut self) -> Self {
-        if let Some((_, '\n')) = { self.chars_rev(..).unwrap().next() } {
-            let change = Change::remove_last_nl(self.len());
-            self.apply_change(0, change);
-        }
-        self
-    }
-
     /// Inserts a `Text` into this `Text`, in a specific [`Point`]
     pub fn insert_text(&mut self, p: impl TextIndex, text: &Text) {
         let b = p.to_byte_index().min(self.last_point().byte());
@@ -573,7 +565,7 @@ impl Text {
     /// [chars and tags]: Part
     #[track_caller]
     pub fn iter_fwd(&self, at: TwoPoints) -> FwdIter<'_> {
-        FwdIter::new_at(self, at)
+        FwdIter::new_at(self, at, false)
     }
 
     /// A reverse iterator of the [chars and tags] of the [`Text`]

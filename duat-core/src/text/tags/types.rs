@@ -243,7 +243,7 @@ impl Ghost {
         );
 
         Self {
-            text: Arc::new(text.without_last_nl()),
+            text: Arc::new(text),
             id: None,
             is_new: false,
             is_inlay: false,

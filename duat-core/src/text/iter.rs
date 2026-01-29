@@ -45,9 +45,13 @@ impl<'t> FwdIter<'t> {
     /// Returns a new forward [`Iterator`] over the [`TextPlace`]s in
     /// the [`Text`]
     #[track_caller]
-    pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
+    pub(super) fn new_at(text: &'t Text, points: TwoPoints, is_ghost: bool) -> Self {
         let TwoPoints { real, ghost } = points;
-        let point = real.min(text.len());
+        let point = real.min(if is_ghost {
+            text.last_point()
+        } else {
+            text.len()
+        });
 
         // The second usize argument of ghost is the "distance traversed".
         // When iterating over this starting point, the Tags iterator will
@@ -67,7 +71,7 @@ impl<'t> FwdIter<'t> {
             text,
             point,
             init_point: point,
-            chars: buf_chars_fwd(text, point.byte()),
+            chars: buf_chars_fwd(text, point.byte(), is_ghost),
             tags: text.tags_fwd(point.byte(), None),
             conceals: 0,
 
@@ -115,8 +119,8 @@ impl<'t> FwdIter<'t> {
                 let text = self.text.get_ghost(*id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
-                    if ghost.byte() >= *dist + text.len().byte() {
-                        *dist += text.len().byte();
+                    if ghost.byte() >= *dist + text.last_point().byte() {
+                        *dist += text.last_point().byte();
                         return true;
                     }
                     (text.point_at_byte(ghost.byte() - *dist), *ghost)
@@ -124,7 +128,7 @@ impl<'t> FwdIter<'t> {
                     (Point::default(), Point::default())
                 };
 
-                let iter = text.iter_fwd(this_ghost.to_two_points_before());
+                let iter = FwdIter::new_at(text, this_ghost.to_two_points_before(), true);
                 let point = std::mem::replace(&mut self.point, this_ghost);
                 let init_point = std::mem::replace(&mut self.init_point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
@@ -143,12 +147,12 @@ impl<'t> FwdIter<'t> {
                     // longer valid.
                     self.ghost.take_if(|_| self.point.byte() < b);
                     self.point = self.point.max(self.text.point_at_byte(b));
-                    self.chars = buf_chars_fwd(self.text, self.point.byte());
+                    self.chars = buf_chars_fwd(self.text, self.point.byte(), false);
                 }
             }
             RawTag::ConcealUntil(b) => {
                 let point = self.text.point_at_byte(*b as usize);
-                *self = FwdIter::new_at(self.text, point.to_two_points_before());
+                *self = FwdIter::new_at(self.text, point.to_two_points_before(), false);
                 return false;
             }
             RawTag::MainCaret(_)
@@ -286,16 +290,16 @@ impl<'t> RevIter<'t> {
                 let text = self.text.get_ghost(*id).unwrap();
 
                 let (ghost_b, this_ghost) = if let Some((offset, dist)) = &mut self.ghost {
-                    if *dist - text.len().byte() >= offset.byte() {
-                        *dist -= text.len().byte();
+                    if *dist - text.last_point().byte() >= offset.byte() {
+                        *dist -= text.last_point().byte();
                         return true;
                     }
                     (
-                        text.point_at_byte(offset.byte() + text.len().byte() - *dist),
+                        text.point_at_byte(offset.byte() + text.last_point().byte() - *dist),
                         *offset,
                     )
                 } else {
-                    let this = text.len();
+                    let this = text.last_point();
                     let points = self.text.ghost_max_points_at(b);
                     (this, points.ghost.unwrap())
                 };
@@ -377,9 +381,9 @@ impl<'t> Iterator for RevIter<'t> {
     }
 }
 
-fn buf_chars_fwd(text: &Text, b: usize) -> FwdChars<'_> {
+fn buf_chars_fwd(text: &Text, b: usize, minus_last_nl: bool) -> FwdChars<'_> {
     let [s0, s1] = text
-        .slices(b..)
+        .slices(b..text.len().byte() - minus_last_nl as usize)
         .to_array()
         .map(|s| unsafe { std::str::from_utf8_unchecked(s) });
     s0.chars().chain(s1.chars())

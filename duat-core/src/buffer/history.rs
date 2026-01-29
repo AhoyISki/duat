@@ -496,17 +496,6 @@ impl<'h> Change<'h> {
             _ghost: PhantomData,
         }
     }
-
-    pub(crate) fn remove_last_nl(len: Point) -> Change<'static> {
-        Change {
-            start: len.rev('\n').as_signed(),
-            added: "",
-            taken: "\n",
-            added_end: len.rev('\n').as_signed(),
-            taken_end: len.as_signed(),
-            _ghost: PhantomData,
-        }
-    }
 }
 
 impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
@@ -721,8 +710,7 @@ impl BufferTracker {
             );
 
             let range = change.added_range();
-            ranges_lock.add(range.start.byte()..range.end.byte().max(range.start.byte() + 1));
-            crate::context::debug!("{:#?}", *ranges_lock);
+            ranges_lock.add(range.start.byte()..range.end.byte());
         }
         drop(ranges_lock);
 
@@ -1084,10 +1072,9 @@ impl<'b> RangesToUpdate<'b> {
     /// [`Handle::printed_line_ranges`]: crate::context::Handle::printed_line_ranges
     /// [`intersecting`]: Self::intersecting
     /// [`select_from`]: Self::select_from
-    pub fn cutoff(&self, visible: impl IntoIterator<Item = impl TextRange>) -> Vec<Range<usize>> {
+    pub fn cutoff(&self, list: impl IntoIterator<Item = impl TextRange>) -> Vec<Range<usize>> {
         let ranges = self.ranges.lock().unwrap();
-        visible
-            .into_iter()
+        list.into_iter()
             .flat_map(|range| ranges.iter_over(range.to_range(self.buf_len)))
             .collect()
     }
@@ -1115,7 +1102,7 @@ impl<'b> RangesToUpdate<'b> {
     /// [`select_from`]: Self::select_from
     pub fn intersecting(
         &self,
-        visible: impl IntoIterator<Item = impl TextRange>,
+        list: impl IntoIterator<Item = impl TextRange>,
     ) -> Vec<Range<usize>> {
         let ranges = self.ranges.lock().unwrap();
         let mut intersecting = Vec::new();
@@ -1123,7 +1110,7 @@ impl<'b> RangesToUpdate<'b> {
         // There will almost never be more than 50 or so ranges in here, so
         // it's ok to be a little inefficient.
         // Feel free to optimize this if you wish to.
-        for range in visible {
+        for range in list {
             for range in ranges.iter_intersecting(range.to_range(self.buf_len)) {
                 if !intersecting.contains(&range) {
                     intersecting.push(range);
@@ -1162,16 +1149,12 @@ impl<'b> RangesToUpdate<'b> {
     /// [`Handle::printed_line_ranges`]: crate::context::Handle::printed_line_ranges
     /// [`cutoff`]: Self::cutoff
     /// [`intersecting`]: Self::intersecting
-    pub fn select_from(
-        &self,
-        visible: impl IntoIterator<Item = impl TextRange>,
-    ) -> Vec<Range<usize>> {
+    pub fn select_from(&self, list: impl IntoIterator<Item = impl TextRange>) -> Vec<Range<usize>> {
         let ranges = self.ranges.lock().unwrap();
         // There will almost never be more than 50 or so ranges in here, so
         // it's ok to be a little inefficient.
         // Feel free to optimize this if you wish to.
-        visible
-            .into_iter()
+        list.into_iter()
             .filter_map(|range| {
                 let range = range.to_range(self.buf_len);
                 ranges

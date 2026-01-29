@@ -918,7 +918,12 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 .unwrap_or(main.caret().byte());
             let prefix = text.strs(start..main.caret().byte()).unwrap();
 
-            prefix != self.orig_prefix.as_str()
+            prefix
+                != self
+                    .current
+                    .as_ref()
+                    .map(|(str, _)| str.as_str())
+                    .unwrap_or(&self.orig_prefix)
         });
 
         word_has_changed || self.provider.has_changed()

@@ -709,7 +709,7 @@ impl FormId {
 
 impl std::fmt::Debug for FormId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FormId({})", name_of(*self))
+        write!(f, "FormId({}: {})", self.0, name_of(*self))
     }
 }
 
