@@ -8,6 +8,7 @@ FOR NEXT UPDATE:
 [ ] Remove Widget argument from Modes.
 [ ] Add registers possibly.
 [x] ReplaceChar Tags!
+[x] Inlay tags!
 [ ] BufferOpts.
   [ ] BufferOptsParser.
     [ ] Indent lines.

@@ -340,16 +340,8 @@ impl Moment {
             }
         }
 
-        let change = &self.changes[m_range.start];
-        let new_from = if change.added_str() != change.taken_str() {
-            m_range.start + 1
-        } else {
-            self.changes.remove(m_range.start);
-            m_range.start
-        };
-
-        if new_from < self.changes.len() {
-            self.shift_state = (new_from, add(shift, new_shift));
+        if m_range.start + 1 < self.changes.len() {
+            self.shift_state = (m_range.start + 1, add(shift, new_shift));
         } else {
             self.shift_state = (0, [0; 3]);
         }

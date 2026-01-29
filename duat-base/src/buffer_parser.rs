@@ -203,8 +203,8 @@ fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
 
     let cur_line_form = form::id_of!("current_line").to_tag(50);
 
-    parts
-        .tags
-        .insert(tagger, line_range.start, CUR_LINE_INLAY.clone());
-    parts.tags.insert(tagger, line_range, cur_line_form);
+    // parts
+    //     .tags
+    //     .insert(tagger, line_range.start, CUR_LINE_INLAY.clone());
+    // parts.tags.insert(tagger, line_range, cur_line_form);
 }
