@@ -1,6 +1,6 @@
 use std::{ops::Range, sync::LazyLock};
 
-use crate::text::{Bytes, Slices, TextRange};
+use crate::text::{Bytes, Point, Slices, TextRange};
 
 /// A slice over the two `&str`s of a [`Bytes`].
 ///
@@ -43,24 +43,10 @@ impl<'b> Strs<'b> {
     /// # let text = Text::new();
     /// let bytes = text.bytes();
     ///
-    /// for char in bytes.strs(p0..p1).unwrap().chars() {
+    /// for char in bytes.strs(p0..p1).chars() {
     ///     todo!();
     /// }
     /// ```
-    ///
-    /// Do note that you should avoid iterators like [`str::lines`],
-    /// as they will separate the line that is partially owned by each
-    /// [`&str`]:
-    ///
-    /// ```rust
-    /// let broken_up_line = [
-    ///     "This is line 1, business as usual.\nThis is line 2, but it",
-    ///     "is broken into two separate strings.\nSo 4 lines would be counted, instead of 3",
-    /// ];
-    /// ```
-    ///
-    /// This is one way that the inner [`GapBuffer`] could be set up,
-    /// where one of the lines is split among the two slices.
     ///
     /// If you wish to iterate over the lines, see [`Bytes::lines`].
     ///
@@ -127,9 +113,17 @@ impl<'b> Strs<'b> {
             )
     }
 
-    /// A [`Range<usize>`] of the byte indices of this `Strs`.
+    /// A [`Range<usize>`] of the bytes on this `Strs`.
     pub fn byte_range(&self) -> Range<usize> {
         self.range.0..self.range.1
+    }
+
+    /// A [`Range<Point>`] of the bytes on this `Strs`.
+    ///
+    /// If you just care about the byte indices (most likely), check
+    /// out [`Strs::byte_range`] isntead.
+    pub fn range(&self) -> Range<Point> {
+        self.bytes.point_at_byte(self.range.0)..self.bytes.point_at_byte(self.range.1)
     }
 
     /// The underlying [`Bytes`] struct.
@@ -148,7 +142,7 @@ impl<'b> Strs<'b> {
         self.range.1 - self.range.0
     }
 
-	/// Wether the len of this `Strs` is equal to 0.
+    /// Wether the len of this `Strs` is equal to 0.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0

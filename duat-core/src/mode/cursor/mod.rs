@@ -491,7 +491,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     #[track_caller]
     pub fn matches_pat<R: RegexPattern>(&self, pat: R) -> bool {
         let range = sel!(self).byte_range(self.widget.text());
-        match self.widget.text().strs(range).unwrap().matches_pat(pat) {
+        match self.widget.text().strs(range).matches_pat(pat) {
             Ok(result) => result,
             Err(err) => panic!("{err}"),
         }
@@ -548,14 +548,28 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs<'_> {
         let range = sel!(self).byte_range(self.text());
-        self.text().strs(range).unwrap()
+        self.text().strs(range)
     }
 
     /// Returns the [`Strs`] for the given [`TextRange`]
     ///
-    /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
+    /// # Panics
+    ///
+    /// Panics if the range doesn't start and end in valid utf8
+    /// boundaries. If you'd like to handle that scenario, check out
+    /// [`Cursor::try_strs`].
+    #[track_caller]
+    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
         self.widget.text().strs(range)
+    }
+
+    /// Returns the [`Strs`] for the given [`TextRange`]
+    ///
+    /// It will return [`None`] if the range does not start or end in
+    /// valid utf8 boundaries. If you expect the value to alway be
+    /// `Some`, consider [`Cursor::strs`] isntead.
+    pub fn try_strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
+        self.widget.text().try_strs(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]
@@ -573,22 +587,19 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         self.widget.text().lines(self.range())
     }
 
-    /// An [`Iterator`] over the lines in a given [range]
-    ///
-    /// [range]: TextRange
-    pub fn lines_on(&self, range: impl TextRange) -> Lines<'_> {
-        self.widget.text().lines(range)
-    }
-
     /// Gets the current level of indentation
     pub fn indent(&self) -> usize {
-        self.widget.text().indent(self.caret(), self.opts())
+        self.widget.text().indent(self.caret().line(), self.opts())
     }
 
-    /// Gets the indentation level on the given [`Point`]
+    /// Gets the indentation level on a given line
+    ///
+    /// This is the total "amount of spaces", that is, how many `' '`
+    /// character equivalents are here. This depends on your
+    /// [`PrintOpts`] because of the `tabstop` field.
     #[track_caller]
-    pub fn indent_on(&self, p: impl TextIndex) -> usize {
-        self.widget.text().indent(p, self.opts())
+    pub fn indent_on(&self, line: usize) -> usize {
+        self.widget.text().indent(line, self.opts())
     }
 
     ////////// Selection queries

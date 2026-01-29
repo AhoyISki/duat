@@ -18,7 +18,7 @@ use super::{Change, Tagger, Text};
 use crate::{
     buffer::PathKind,
     form::FormId,
-    text::{FormTag, Ghost, SwapChar, Spacer},
+    text::{FormTag, Ghost, Spacer, SwapChar},
 };
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -108,7 +108,7 @@ impl Builder {
     pub fn build_no_double_nl(self) -> Text {
         let mut text = self.build();
         if let Some(last_last_byte) = text.len().byte().checked_sub(2)
-            && let Some(strs) = text.strs(last_last_byte..)
+            && let Some(strs) = text.try_strs(last_last_byte..)
             && strs == "\n\n"
         {
             text.replace_range(last_last_byte..last_last_byte + 1, "");

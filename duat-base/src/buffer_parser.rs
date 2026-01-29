@@ -11,7 +11,7 @@ use duat_core::{
     buffer::{BufferOpts, BufferParts, BufferTracker, PerBuffer},
     form,
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{FormTag, Ghost, Spacer, SwapChar, Tagger, Tags, txt},
+    text::{FormTag, Ghost, Point, Spacer, SwapChar, Tagger, Tags, txt},
 };
 
 struct BufferOptsParser {
@@ -130,6 +130,15 @@ fn replace_chars(
         return;
     }
 
+    let mut empty_lines: Vec<Range<Point>> = parts
+        .bytes
+        .lines(..ranges_to_update[0].start)
+        .rev()
+        .map_while(|line| (line == "\n").then(|| line.range()))
+        .collect();
+
+    empty_lines.reverse();
+
     for range in parts.ranges_to_update.select_from(lines.iter().cloned()) {
         parts.tags.remove(spc_tagger, range.start..range.end);
         parts.tags.remove_excl(nl_tagger, range.start..range.end);
@@ -138,7 +147,7 @@ fn replace_chars(
         let mut line_is_empty = true;
         let mut first_space_byte = None;
 
-        for (byte, char) in parts.bytes.chars_fwd(range).unwrap() {
+        for (byte, char) in parts.bytes.chars_fwd(range.clone()).unwrap() {
             match char {
                 ' ' => _ = first_space_byte.get_or_insert(byte),
                 '\t' if indent_byte.is_some() => {}
@@ -170,6 +179,10 @@ fn replace_chars(
                         }
                     }
 
+                    if line_is_empty {
+                        empty_lines.push(parts.bytes.strs(range.clone()).range());
+                    }
+
                     line_is_empty = true;
                 }
                 _ => {
@@ -191,20 +204,43 @@ fn replace_chars(
         }
     }
 
+    empty_lines.extend(
+        parts
+            .bytes
+            .lines(ranges_to_update.last().unwrap().end..)
+            .map_while(|line| (line == "\n").then(|| line.range())),
+    );
+
     parts.ranges_to_update.update_on(lines);
+
+    let Some(first) = empty_lines.first().cloned() else {
+        return;
+    };
+
+    let prev_indent = first
+        .start
+        .line()
+        .checked_sub(1)
+        .map(|line| parts.bytes.indent(line, opts.to_print_opts()));
+
+    
+
+    for (i, line_range) in empty_lines.into_iter().enumerate() {
+        parts.tags.remove(spc_tagger, line_range.start);
+    }
 }
 
 fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
     static CUR_LINE_INLAY: LazyLock<Ghost> =
-        LazyLock::new(|| Ghost::inlay(txt!("[current_line]{Spacer}")));
+        LazyLock::new(|| Ghost::inlay(txt!("[current_line] {Spacer}")));
 
     let caret = parts.selections.main().caret();
     let line_range = parts.bytes.line_range(caret.line());
 
     let cur_line_form = form::id_of!("current_line").to_tag(50);
 
-    // parts
-    //     .tags
-    //     .insert(tagger, line_range.start, CUR_LINE_INLAY.clone());
-    // parts.tags.insert(tagger, line_range, cur_line_form);
+    parts
+        .tags
+        .insert(tagger, line_range.start, CUR_LINE_INLAY.clone());
+    parts.tags.insert(tagger, line_range, cur_line_form);
 }

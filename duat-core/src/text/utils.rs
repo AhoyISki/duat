@@ -299,7 +299,7 @@ impl TextIndex for usize {
 /// [ranges]: std::range
 /// [`RangeBounds<usize>`]: std::ops::RangeBounds
 /// [`RangeBounds<Point>`]: std::ops::RangeBounds
-pub trait TextRange: Clone {
+pub trait TextRange: Clone + std::fmt::Debug {
     /// A "forward facing range"
     ///
     /// If given a single [`usize`]/[`Point`], acts like [`RangeFrom`]

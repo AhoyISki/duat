@@ -88,12 +88,11 @@ impl Bytes {
 
     /// A subslice of the [`Bytes`]
     ///
-    /// Note that this `TextRange` is relative to the whole [`Bytes`]
-    /// struct, not just this [`Strs`]. This method also clips the
-    /// ranges so they fit into the range of these `Strs`.
+    /// # Panics
     ///
-    /// It will return [`None`] if the range does not start or end in
-    /// valid utf8 boundaries.
+    /// Panics if the range doesn't start and end in valid utf8
+    /// boundaries. If you'd like to handle that scenario, check out
+    /// [`Bytes::try_strs`].
     ///
     /// # Note
     ///
@@ -135,7 +134,62 @@ impl Bytes {
     /// [`Text`]: super::Text
     /// [range]: TextRange
     /// [`strs`]: Self::strs
-    pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
+    #[track_caller]
+    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
+        let Some(strs) = self.try_strs(range.clone()) else {
+            panic!("{range:?} doesn't correspond to a valid utf8 boundary")
+        };
+
+        strs
+    }
+
+    /// Tries to get a subslice of the [`Bytes`]
+    ///
+    /// It will return [`None`] if the range does not start or end in
+    /// valid utf8 boundaries. If you expect the value to alway be
+    /// `Some`, consider [`Bytes::strs`] isntead.
+    ///
+    /// # Note
+    ///
+    /// The reason why this function returns two strings is that the
+    /// contents of the text are stored in a [`GapBuffer`], which
+    /// works with two strings.
+    ///
+    /// If you want to iterate over them, you can do the following:
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # use duat::prelude::*;
+    /// # let (p0, p1) = (Point::default(), Point::default());
+    /// # let text = Text::new();
+    /// let bytes = text.bytes();
+    ///
+    /// for char in bytes.strs(p0..p1).unwrap().chars() {
+    ///     todo!();
+    /// }
+    /// ```
+    ///
+    /// Do note that you should avoid iterators like [`str::lines`],
+    /// as they will separate the line that is partially owned by each
+    /// [`&str`]:
+    ///
+    /// ```rust
+    /// let broken_up_line = [
+    ///     "This is line 1, business as usual.\nThis is line 2, but it",
+    ///     "is broken into two separate strings.\nSo 4 lines would be counted, instead of 3",
+    /// ];
+    /// ```
+    ///
+    /// This is one way that the inner [`GapBuffer`] could be set up,
+    /// where one of the lines is split among the two slices.
+    ///
+    /// If you wish to iterate over the lines, see [`Bytes::lines`].
+    ///
+    /// [`&str`]: str
+    /// [`Text`]: super::Text
+    /// [range]: TextRange
+    /// [`strs`]: Self::strs
+    pub fn try_strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
         let range = range.to_range(self.len().byte());
 
         Some(Strs::new(
@@ -443,7 +497,7 @@ impl Bytes {
         range: impl TextRange,
     ) -> Option<impl Iterator<Item = (usize, char)> + '_> {
         let mut range = range.to_range(self.len().byte());
-        Some(self.strs(range.clone())?.chars().map(move |char| {
+        Some(self.try_strs(range.clone())?.chars().map(move |char| {
             let byte = range.start;
             range.start += char.len_utf8();
             (byte, char)
@@ -461,23 +515,35 @@ impl Bytes {
         range: impl TextRange,
     ) -> Option<impl Iterator<Item = (usize, char)> + '_> {
         let mut range = range.to_range(self.len().byte());
-        Some(self.strs(range.clone())?.chars().rev().map(move |char| {
-            range.end -= char.len_utf8();
-            (range.end, char)
-        }))
+        Some(
+            self.try_strs(range.clone())?
+                .chars()
+                .rev()
+                .map(move |char| {
+                    range.end -= char.len_utf8();
+                    (range.end, char)
+                }),
+        )
     }
 
-    /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, opts: PrintOpts) -> usize {
-        let range = self.line_range(p.line());
-        self.chars_fwd(range.start..)
+    /// Gets the indentation level on a given line
+    ///
+    /// This is the total "amount of spaces", that is, how many `' '`
+    /// character equivalents are here. This depends on your
+    /// [`PrintOpts`] because of the `tabstop` field.
+    #[track_caller]
+    pub fn indent(&self, line: usize, opts: PrintOpts) -> usize {
+        let point = self.point_at_line(line);
+        self.chars_fwd(self.line_range(point.line()))
             .unwrap()
-            .map_while(|(_, c)| match c {
-                ' ' => Some(1),
-                '\t' => Some(opts.tabstop as usize),
-                _ => None,
+            .take_while(|&(_, char)| char == ' ' || char == '\t')
+            .fold(0, |sum, (_, char)| {
+                if char == ' ' {
+                    sum + 1
+                } else {
+                    sum + opts.tabstop as usize - (opts.tabstop as usize % sum)
+                }
             })
-            .sum()
     }
 
     ////////// Modification functions

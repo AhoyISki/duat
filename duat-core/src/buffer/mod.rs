@@ -542,7 +542,7 @@ impl Handle {
 
         printed_lines
             .iter()
-            .map(|range| buffer.text.strs(range.clone()).unwrap())
+            .map(|range| buffer.text.strs(range.clone()))
             .collect()
     }
 

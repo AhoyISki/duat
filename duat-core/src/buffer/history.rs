@@ -403,7 +403,7 @@ impl Change<'static, String> {
             }
         };
 
-        let taken = text.strs(range.clone()).unwrap().to_string();
+        let taken = text.strs(range.clone()).to_string();
         let added_end = add(range.start.as_signed(), Point::len_of(&added).as_signed());
         Change {
             start: range.start.as_signed(),

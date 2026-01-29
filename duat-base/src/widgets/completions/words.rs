@@ -48,9 +48,7 @@ impl CompletionsProvider for WordCompletions {
         prefix: &str,
         _: bool,
     ) -> CompletionsList<Self> {
-        let suffix = text
-            .strs(text.search(r"\A\w*").range(caret..).next().unwrap())
-            .unwrap();
+        let suffix = text.strs(text.search(r"\A\w*").range(caret..).next().unwrap());
 
         let mut entries: Vec<_> = BUFFER_WORDS
             .lock()
@@ -103,7 +101,7 @@ pub(super) fn track_words() {
         let mut words = BUFFER_WORDS.lock().unwrap();
         let buffer = handle.read(pa);
         for range in buffer.text().search(r"\w{3,}") {
-            let word = buffer.text().strs(range).unwrap().to_string();
+            let word = buffer.text().strs(range).to_string();
             let info = words
                 .entry(word)
                 .or_insert_with(|| WordInfo { source: buffer.name(), count: 0 });
@@ -135,7 +133,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
                 .range(..change.start())
                 .next_back()
         {
-            parts.bytes.strs(text_range).unwrap()
+            parts.bytes.strs(text_range)
         } else {
             Strs::empty()
         };
@@ -147,7 +145,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
                 .range(change.added_end()..)
                 .next()
         {
-            format!("{prefix}{word}{}", parts.bytes.strs(text_range).unwrap())
+            format!("{prefix}{word}{}", parts.bytes.strs(text_range))
         } else {
             format!("{prefix}{word}")
         }

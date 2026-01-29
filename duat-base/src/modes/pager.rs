@@ -243,7 +243,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
                 let err = txt!(
                     "[a]{:?}, \"{}\"[prompt.colon]:[] {}",
                     range,
-                    text.strs(range).unwrap(),
+                    text.strs(range),
                     err.kind()
                 );
 

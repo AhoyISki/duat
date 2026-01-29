@@ -566,7 +566,7 @@ impl PromptMode for RunCommands {
             .any(|(_, char)| char.is_whitespace());
 
         let new_completion = if is_parameter {
-            let call = &text.strs(..main.caret()).unwrap().to_string();
+            let call = &text.strs(..main.caret()).to_string();
             let Some(parameters) = cmd::last_parsed_parameters(pa, call) else {
                 self.0 = None;
                 Completions::close(pa);
