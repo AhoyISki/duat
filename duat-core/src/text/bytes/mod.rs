@@ -897,7 +897,7 @@ impl From<&std::path::Path> for Bytes {
 impl std::fmt::Debug for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Bytes")
-            .field("buf", &self.strs_inner(..))
+            .field("buf", &self.strs(..).to_array())
             .field("records", &self.records)
             .finish()
     }

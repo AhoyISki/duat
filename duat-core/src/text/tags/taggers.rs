@@ -249,7 +249,7 @@ impl Shiftable for i32 {
     }
 }
 
-static TAGGER_COUNT: AtomicU16 = AtomicU16::new(3);
+static TAGGER_COUNT: AtomicU16 = AtomicU16::new(2);
 
 /// A struct that lets one add and remove [`Tag`]s to a [`Text`]
 ///
@@ -330,14 +330,9 @@ impl Tagger {
         Self(0)
     }
 
-    /// A [`Tagger`] specifically for selections
-    pub(in crate::text) const fn for_selections() -> Self {
-        Self(1)
-    }
-
     /// A [`Tagger`] specifically for remaps
     pub(crate) const fn for_alias() -> Self {
-        Self(2)
+        Self(1)
     }
 }
 

@@ -619,12 +619,9 @@ impl Node {
         }
 
         let print_info = self.handle.area().get_print_info(pa);
-        let (widget, area) = self.handle.write_with_area(pa);
-        let opts = widget.print_opts();
-        widget.text_mut().add_selection_tags(area, opts);
 
         if print_info != PrintInfo::default() {
-            widget.text_mut().update_bounds();
+            self.handle.text_mut(pa).update_bounds();
         }
 
         let widgets_to_spawn = self.handle.text_mut(pa).get_widget_spawns();
@@ -633,8 +630,6 @@ impl Node {
         }
 
         (self.print)(pa);
-
-        self.handle.text_mut(pa).remove_selection_tags();
     }
 
     /// What to do when focusing

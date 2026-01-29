@@ -155,11 +155,7 @@ impl<'t> FwdIter<'t> {
                 *self = FwdIter::new_at(self.text, point.to_two_points_before(), false);
                 return false;
             }
-            RawTag::MainCaret(_)
-            | RawTag::ExtraCaret(_)
-            | RawTag::Spacer(_)
-            | RawTag::SwapChar(..)
-            | RawTag::SpawnedWidget(..)
+            RawTag::Spacer(_) | RawTag::SwapChar(..) | RawTag::SpawnedWidget(..)
                 if b < self.init_point.byte() => {}
             _ => return false,
         }
@@ -328,11 +324,7 @@ impl<'t> RevIter<'t> {
                 *self = RevIter::new_at(self.text, point.to_two_points_before());
                 return false;
             }
-            RawTag::MainCaret(_)
-            | RawTag::ExtraCaret(_)
-            | RawTag::Spacer(_)
-            | RawTag::SwapChar(..)
-            | RawTag::SpawnedWidget(..)
+            RawTag::Spacer(_) | RawTag::SwapChar(..) | RawTag::SpawnedWidget(..)
                 if b > self.init_point.byte() => {}
             _ => return false,
         }
@@ -521,18 +513,6 @@ pub enum TextPart<'t> {
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
     PopForm(FormId),
-    /// Place the main `caret` or the `"MainCaret"` [`Form`] to
-    /// the [`Painter`]
-    ///
-    /// [`Form`]: crate::form::Form
-    /// [`Painter`]: crate::form::Painter
-    MainCaret,
-    /// Place the extra `caret` or the `"ExtraCaret"` [`Form`] to
-    /// the [`Painter`]
-    ///
-    /// [`Form`]: crate::form::Form
-    /// [`Painter`]: crate::form::Painter
-    ExtraCaret,
     /// Add a [`Spacer`]
     ///
     /// [`Spacer`]: super::Spacer
@@ -577,8 +557,6 @@ impl<'t> TextPart<'t> {
         match value {
             RawTag::PushForm(_, id, prio) => Self::PushForm(id, prio),
             RawTag::PopForm(_, id) => Self::PopForm(id),
-            RawTag::MainCaret(_) => Self::MainCaret,
-            RawTag::ExtraCaret(_) => Self::ExtraCaret,
             RawTag::Spacer(_) => Self::Spacer,
             RawTag::SwapChar(_, char) => Self::SwapChar(char),
             RawTag::StartToggle(_, id) => Self::ToggleStart(id),

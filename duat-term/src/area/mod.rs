@@ -168,7 +168,6 @@ impl Area {
                         .write_all(&SPACES[..(lines.coords().width() - len) as usize])
                         .unwrap();
                 }
-                lines.flush().unwrap();
             },
             |lines, spacer_len| lines.write_all(&SPACES[..spacer_len as usize]).unwrap(),
         ) else {
@@ -792,26 +791,55 @@ pub fn print_text(
     print_spacer: fn(&mut Lines, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
     enum Cursor {
-        Main,
-        Extra,
+        Main(bool, bool),
+        Extra(bool, bool),
     }
 
     if coords.width() == 0 || coords.height() == 0 {
         return None;
     }
 
-    let (mut lines, iter) = {
+    let (mut lines, iter, mut next_cursor_end) = {
         let lines = Lines::new(coords);
         let width = opts.wrap_width(coords.width()).unwrap_or(coords.width());
         let iter = print_iter(text, s_points, width, opts);
+        let mut selections = iter_selections(text, s_points.real).peekable();
 
-        (lines, iter)
+        let next_c = move |lines: &mut Lines, painter: &mut Painter, real, ghost: Option<_>| {
+            let mut last_found = None;
+            while let Some(sel) =
+                selections.next_if(|(p, ..)| (*p == real && ghost.is_none()) || *p < real)
+            {
+                last_found = Some(sel)
+            }
+
+            match last_found {
+                Some((_, true, is_caret, starts_range)) => {
+                    if let Some(shape) = painter.main_cursor()
+                        && is_active
+                    {
+                        lines.show_real_cursor();
+                        queue!(lines, shape, cursor::SavePosition).unwrap();
+                    }
+
+                    lines.hide_real_cursor();
+                    painter.apply_main_selection(is_caret, starts_range == Some(true));
+                    Some(Cursor::Main(is_caret, starts_range == Some(false)))
+                }
+                Some((_, false, is_caret, starts_range)) => {
+                    painter.apply_extra_selection(is_caret, starts_range == Some(true));
+                    Some(Cursor::Extra(is_caret, starts_range == Some(false)))
+                }
+                None => None,
+            }
+        };
+
+        (lines, iter, next_c)
     };
 
     // The y here represents the bottom of the current row of cells.
     let tl_y = lines.coords().tl.y;
     let mut y = tl_y;
-    let mut cursor = None;
     let mut last_x = 0;
 
     // For specific Tags
@@ -819,9 +847,15 @@ pub fn print_text(
     let mut observed_spawns = Vec::new();
     let mut style_was_set = false;
     let mut replace_chars: Vec<char> = Vec::new();
-    let (mut inlay, mut final_inlay) = (None, None);
+    let (mut cur_inlays, mut inlays) = (Vec::new(), Vec::new());
 
-    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, inlay| {
+    let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, inlays: &mut Vec<_>| {
+        let move_fwd = |lines: &mut Lines, len| {
+            if len > 0 {
+                write!(lines, "\x1b[{len}C").unwrap()
+            }
+        };
+
         let mut default = painter.get_default();
         default.style.foreground_color = None;
         default.style.underline_color = None;
@@ -832,43 +866,52 @@ pub fn print_text(
             Coord::new(coords.tl.x + last_x, 0),
             Coord::new(coords.br.x, 1),
         );
-        let s_points = TwoPoints::default();
+        end_line(lines, last_x, max.x);
 
-        if let Some(inlay) = inlay
-            && let Some((inlay_lines, observed_spawns)) = {
+        let mut observed_spawns = Vec::new();
+
+        for inlay in inlays.drain(..) {
+            if let Some((inlay_lines, obs_spawns)) = {
                 painter.prepare_for_inlay();
                 let ret = print_text(
                     (inlay, opts, painter),
                     (coords, max),
-                    (is_active, s_points, x_shift),
-                    start_line,
-                    end_line,
-                    print_spacer,
+                    (is_active, TwoPoints::default(), x_shift),
+                    move_fwd,
+                    |lines, len, _| {
+                        let len = lines.coords().width() - len;
+                        if len > 0 {
+                            write!(lines, "\x1b[{len}C").unwrap()
+                        }
+                    },
+                    move_fwd,
                 );
                 painter.return_from_inlay();
                 ret
+            } {
+                write!(lines, "\x1b[{}D", coords.width()).unwrap();
+
+                lines.add_inlay(inlay_lines);
+                observed_spawns.extend(obs_spawns);
             }
-        {
-            lines.add_inlay(inlay_lines);
-            Some(observed_spawns).into_iter().flatten()
-        } else {
-            end_line(lines, last_x, max.x);
-            None.into_iter().flatten()
         }
+
+        lines.flush().unwrap();
+        observed_spawns
     };
 
     for (place, item) in iter {
         let lines = &mut lines;
 
         let PrintedPlace { x, len, wrap } = place;
-        let TextPlace { part, .. } = item;
+        let TextPlace { part, real, ghost } = item;
 
         if wrap {
             if y == lines.coords().br.y {
                 break;
             }
             if y > lines.coords().tl.y {
-                let new_spawns = end_line(lines, painter, last_x, final_inlay.take());
+                let new_spawns = end_line(lines, painter, last_x, &mut inlays);
                 observed_spawns.extend(new_spawns);
             }
             let initial_space = x.saturating_sub(x_shift).min(lines.coords().width());
@@ -890,6 +933,9 @@ pub fn print_text(
 
         match part {
             TextPart::Char(char) if is_contained => {
+                let cursor_style = next_cursor_end(lines, painter, real, ghost);
+                style_was_set |= cursor_style.is_some();
+
                 if replace_chars.is_empty()
                     && let Some(str) = get_control_str(char)
                 {
@@ -941,21 +987,24 @@ pub fn print_text(
                     }
                 }
 
-                if char == '\n'
-                    && let Some(inlay) = inlay.take()
-                {
-                    final_inlay = Some(inlay);
+                if char == '\n' && !cur_inlays.is_empty() {
+                    inlays = std::mem::take(&mut cur_inlays);
                 }
 
-                if let Some(cursor) = cursor.take() {
+                if let Some(cursor) = cursor_style {
                     match cursor {
-                        Cursor::Main => painter.remove_main_caret(),
-                        Cursor::Extra => painter.remove_extra_caret(),
+                        Cursor::Main(is_caret, end_range) => {
+                            painter.remove_main_selection(is_caret, end_range)
+                        }
+                        Cursor::Extra(is_caret, end_range) => {
+                            painter.remove_extra_selection(is_caret, end_range)
+                        }
                     }
                     if let Some(style) = painter.relative_style() {
                         print_style(lines, style)
                     }
                 }
+
                 for id in spawns_for_next.drain(..) {
                     observed_spawns.push((
                         id,
@@ -968,9 +1017,16 @@ pub fn print_text(
                 style_was_set = false;
             }
             TextPart::Char(_) => {
-                match cursor.take() {
-                    Some(Cursor::Main) => painter.remove_main_caret(),
-                    Some(Cursor::Extra) => painter.remove_extra_caret(),
+                let cursor_style = next_cursor_end(lines, painter, real, ghost);
+                style_was_set |= cursor_style.is_some();
+
+                match cursor_style {
+                    Some(Cursor::Main(is_caret, end_range)) => {
+                        painter.remove_main_selection(is_caret, end_range)
+                    }
+                    Some(Cursor::Extra(is_caret, end_range)) => {
+                        painter.remove_extra_selection(is_caret, end_range)
+                    }
                     None => {}
                 }
                 spawns_for_next.clear();
@@ -981,24 +1037,6 @@ pub fn print_text(
             }
             TextPart::PopForm(id) => {
                 painter.remove(id);
-                style_was_set = true;
-            }
-            TextPart::MainCaret => {
-                if let Some(shape) = painter.main_cursor()
-                    && is_active
-                {
-                    lines.show_real_cursor();
-                    queue!(lines, shape, cursor::SavePosition).unwrap();
-                } else {
-                    cursor = Some(Cursor::Main);
-                    lines.hide_real_cursor();
-                    painter.apply_main_cursor();
-                    style_was_set = true;
-                }
-            }
-            TextPart::ExtraCaret => {
-                cursor = Some(Cursor::Extra);
-                painter.apply_extra_cursor();
                 style_was_set = true;
             }
             TextPart::Spacer => {
@@ -1015,16 +1053,16 @@ pub fn print_text(
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
             TextPart::SwapChar(char) => replace_chars.push(char),
-            TextPart::Inlay(text) => inlay = Some(text),
+            TextPart::Inlay(inlay) => cur_inlays.push(inlay),
             TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
         }
     }
 
-    let new_spawns = end_line(&mut lines, painter, last_x, final_inlay.or(inlay));
+    let new_spawns = end_line(&mut lines, painter, last_x, &mut inlays);
     observed_spawns.extend(new_spawns);
 
     for _ in 0..lines.coords().br.y - y {
-        let new_spawns = end_line(&mut lines, painter, 0, None);
+        let new_spawns = end_line(&mut lines, painter, 0, &mut Vec::new());
         observed_spawns.extend(new_spawns);
     }
 
@@ -1127,3 +1165,27 @@ const fn get_control_str(char: char) -> Option<&'static str> {
 }
 
 const SPACES: &[u8] = &[b' '; 3000];
+
+fn iter_selections(
+    text: &Text,
+    from: Point,
+) -> impl Iterator<Item = (Point, bool, bool, Option<bool>)> {
+    text.selections()
+        .iter_within(from..)
+        .flat_map(|(_, sel, is_main)| {
+            if let Some(anchor) = sel.anchor()
+                && anchor != sel.caret()
+            {
+                let caret_is_start = sel.caret() < anchor;
+                let start = sel.caret().min(anchor);
+                let end = sel.caret().max(anchor);
+                [
+                    Some((start, is_main, caret_is_start, Some(true))),
+                    Some((end, is_main, !caret_is_start, Some(false))),
+                ]
+            } else {
+                [Some((sel.caret(), is_main, true, None)), None]
+            }
+        })
+        .flatten()
+}

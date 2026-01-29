@@ -12,6 +12,7 @@ use duat_core::{
     form,
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
     text::{FormTag, Ghost, Point, Spacer, SwapChar, Tagger, Tags, txt},
+    utils::Memoized,
 };
 
 struct BufferOptsParser {
@@ -34,7 +35,7 @@ pub fn enable_parser() {
     })
     .grouped("DefaultOptsParser");
 
-    let replace_taggers = [Tagger::new(), Tagger::new()];
+    let replace_taggers = [Tagger::new(), Tagger::new(), Tagger::new()];
     let cur_line_tagger = Tagger::new();
 
     hook::add::<BufferUpdated>(move |pa, handle| {
@@ -54,7 +55,7 @@ pub fn enable_parser() {
             hightlight_current_line(&mut parts, cur_line_tagger);
         }
 
-        replace_chars(parts, parser.opts, printed_line_ranges, replace_taggers);
+        replace_chars(parts, printed_line_ranges, replace_taggers);
     })
     .grouped("DefaultOptsParser");
 
@@ -64,13 +65,9 @@ pub fn enable_parser() {
     .grouped("DefaultOptsParser");
 }
 
-fn replace_chars(
-    mut parts: BufferParts,
-    opts: BufferOpts,
-    lines: Vec<Range<usize>>,
-    taggers: [Tagger; 2],
-) {
-    let [spc_tagger, nl_tagger] = taggers;
+fn replace_chars(mut parts: BufferParts, lines: Vec<Range<usize>>, taggers: [Tagger; 3]) {
+    let [spc_tagger, nl_tagger, empty_spc_tagger] = taggers;
+    let opts = parts.opts;
 
     // Early return if nothing needs to be done.
     if opts.indent_str.is_none()
@@ -92,9 +89,12 @@ fn replace_chars(
     let nl_form_empty = form::id_of!("replace.new_line.empty").to_tag(90);
     let nl_form_trailing = form::id_of!("replace.new_line.trailing").to_tag(90);
 
-    parts
-        .ranges_to_update
-        .add_ranges(parts.changes.map(|change| change.line_range(parts.bytes)));
+    parts.ranges_to_update.add_ranges(
+        parts
+            .changes
+            .clone()
+            .map(|change| change.line_range(parts.bytes)),
+    );
 
     let replace_indents = |tags: &mut Tags, range: Range<usize>, form: FormTag| {
         let mut replacements = opts.indent_str.into_iter().flat_map(|str| {
@@ -131,10 +131,17 @@ fn replace_chars(
     }
 
     let mut empty_lines: Vec<Range<Point>> = parts
-        .bytes
-        .lines(..ranges_to_update[0].start)
-        .rev()
-        .map_while(|line| (line == "\n").then(|| line.range()))
+        .opts
+        .indent_str_on_empty
+        .then(|| {
+            parts
+                .bytes
+                .lines(..ranges_to_update[0].start)
+                .rev()
+                .map_while(|line| (line == "\n").then(|| line.range()))
+        })
+        .into_iter()
+        .flatten()
         .collect();
 
     empty_lines.reverse();
@@ -142,6 +149,9 @@ fn replace_chars(
     for range in parts.ranges_to_update.select_from(lines.iter().cloned()) {
         parts.tags.remove(spc_tagger, range.start..range.end);
         parts.tags.remove_excl(nl_tagger, range.start..range.end);
+        parts
+            .tags
+            .remove_excl(empty_spc_tagger, range.start..range.end);
 
         let mut indent_byte = Some(range.start);
         let mut line_is_empty = true;
@@ -179,11 +189,12 @@ fn replace_chars(
                         }
                     }
 
-                    if line_is_empty {
+                    if line_is_empty && parts.opts.indent_str_on_empty {
                         empty_lines.push(parts.bytes.strs(range.clone()).range());
                     }
 
                     line_is_empty = true;
+                    continue;
                 }
                 _ => {
                     let first_space_byte = first_space_byte.take();
@@ -201,33 +212,106 @@ fn replace_chars(
                     }
                 }
             }
+
+            line_is_empty = false;
         }
     }
 
-    empty_lines.extend(
-        parts
-            .bytes
-            .lines(ranges_to_update.last().unwrap().end..)
-            .map_while(|line| (line == "\n").then(|| line.range())),
-    );
+    if parts.opts.indent_str_on_empty {
+        empty_lines.extend(
+            parts
+                .bytes
+                .lines(ranges_to_update.last().unwrap().end..)
+                .map_while(|line| (line == "\n").then(|| line.range())),
+        );
+    }
 
     parts.ranges_to_update.update_on(lines);
 
+    duat_core::context::debug!("{empty_lines:#?}");
+
+    indent_empty_lines(parts, empty_lines, empty_spc_tagger);
+}
+
+fn indent_empty_lines(mut parts: BufferParts, empty_lines: Vec<Range<Point>>, tagger: Tagger) {
+    static INDENT_INLAYS: Memoized<(&str, usize), Ghost> = Memoized::new();
+
+    let indent_form_empty = form::id_of!("replace.indent.empty").to_tag(90);
     let Some(first) = empty_lines.first().cloned() else {
         return;
     };
 
-    let prev_indent = first
+    let mut prev_indent = first
         .start
         .line()
         .checked_sub(1)
-        .map(|line| parts.bytes.indent(line, opts.to_print_opts()));
+        .map(|line| parts.bytes.indent(line, parts.opts.to_print_opts()))
+        .unwrap_or(0);
 
-    
+    let mut prev_line = 0;
+    let mut eq_indent_range = 0..0;
 
-    for (i, line_range) in empty_lines.into_iter().enumerate() {
-        parts.tags.remove(spc_tagger, line_range.start);
+    let indent_lines = |tags: &mut Tags, eq_indent_range: Range<usize>, common_indent: usize| {
+        if common_indent > 0
+            && let Some(indent_str) = parts.opts.indent_str
+            && let Some(char) = indent_str.chars().next()
+        {
+            let inlay = INDENT_INLAYS.get_or_insert_with((indent_str, common_indent), || {
+                let len = indent_str.chars().count();
+                let inlay = Ghost::inlay(txt!(
+                    "{indent_form_empty}{}",
+                    indent_str
+                        .chars()
+                        .chain((0..parts.opts.tabstop as usize - len).map(|_| ' '))
+                        .cycle()
+                        .take(common_indent)
+                        .skip(1)
+                        .collect::<String>(),
+                ));
+                duat_core::context::debug!("for {common_indent}: {inlay:#?}");
+                inlay
+            });
+
+            for idx in eq_indent_range.clone() {
+                let range = empty_lines[idx].clone();
+
+                tags.insert(tagger, range.start, SwapChar::new(char));
+                tags.insert(tagger, range.start, inlay.clone());
+                tags.insert(tagger, range, indent_form_empty);
+            }
+        }
+    };
+
+    for (idx, line_range) in empty_lines.iter().cloned().enumerate() {
+        parts.tags.remove_excl(tagger, line_range.clone());
+
+        let line = line_range.start.line();
+
+        if line > 0 && line - 1 != prev_line {
+            let indent = parts.bytes.indent(line - 1, parts.opts.to_print_opts());
+            let common_indent = indent.min(prev_indent);
+
+            indent_lines(&mut parts.tags, eq_indent_range.clone(), common_indent);
+
+            eq_indent_range.start = idx;
+            prev_indent = indent;
+        }
+
+        eq_indent_range.end = idx + 1;
+        prev_line = line;
     }
+
+    let common_indent = if prev_line + 1 < parts.bytes.len().line() {
+        prev_indent.min(
+            parts
+                .bytes
+                .indent(prev_line + 1, parts.opts.to_print_opts()),
+        )
+    } else {
+        prev_indent
+    };
+
+    indent_lines(&mut parts.tags, eq_indent_range, common_indent);
 }
 
 fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {

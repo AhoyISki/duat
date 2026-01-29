@@ -91,8 +91,8 @@ pub use crate::text::{
     iter::{FwdIter, RevIter, TextPart, TextPlace},
     search::{Matches, RegexHaystack, RegexPattern},
     tags::{
-        Conceal, ExtraCaret, FormTag, Ghost, GhostId, MainCaret, RawTag, Spacer, SpawnTag,
-        SwapChar, Tag, Tagger, Tags, ToggleId,
+        Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, SwapChar, Tag, Tagger, Tags,
+        ToggleId,
     },
     utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
 };
@@ -100,14 +100,12 @@ use crate::{
     buffer::{Change, History},
     context::Handle,
     data::Pass,
-    form,
     mode::{Selection, Selections},
-    opts::PrintOpts,
     text::{
         tags::{FwdTags, InnerTags, RevTags},
         utils::implPartialEq,
     },
-    ui::{Area, SpawnId, Widget},
+    ui::{SpawnId, Widget},
 };
 
 mod builder;
@@ -445,7 +443,7 @@ impl Text {
 
     /// Inserts a [`Tag`] at the given position
     pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.tags.insert(tagger, idx, tag, false)
+        self.0.tags.insert_inner(tagger, idx, tag, false)
     }
 
     /// Like [`insert_tag`], but does it after other [`Tag`]s with the
@@ -453,7 +451,7 @@ impl Text {
     ///
     /// [`insert_tag`]: Self::insert_tag
     pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.tags.insert(tagger, idx, tag, true)
+        self.0.tags.insert_inner(tagger, idx, tag, true)
     }
 
     /// Removes the [`Tag`]s of a [`Tagger`] from a region
@@ -903,48 +901,6 @@ impl<'t> TextMut<'t> {
     /// exist
     pub fn selections_mut(self) -> &'t mut Selections {
         &mut self.text.0.selections
-    }
-
-    /// Removes the tags for all the selections, used before they are
-    /// expected to move
-    pub(crate) fn add_selection_tags(&mut self, area: &Area, opts: PrintOpts) {
-        let within = (self.0.selections.len() >= 500).then(|| {
-            let start = area.start_points(self, opts);
-            let end = area.end_points(self, opts);
-            (start.real, end.real)
-        });
-
-        let mut add_selection = |selection: &Selection, bytes: &mut Bytes, is_main: bool| {
-            let (caret, selection) = selection.tag_bytes(bytes);
-
-            let key = Tagger::for_selections();
-            let form = if is_main {
-                self.text.0.tags.insert(key, caret, MainCaret, false);
-                form::M_SEL_ID
-            } else {
-                self.text.0.tags.insert(key, caret, ExtraCaret, false);
-                form::E_SEL_ID
-            };
-
-            if let Some(range) = selection {
-                self.text.0.tags.insert(key, range, form.to_tag(95), false);
-            }
-        };
-
-        if let Some((start, end)) = within {
-            for (_, selection, is_main) in self.text.0.selections.iter_within(start..end) {
-                add_selection(selection, &mut self.text.0.bytes, is_main);
-            }
-        } else {
-            for (selection, is_main) in self.text.0.selections.iter() {
-                add_selection(selection, &mut self.text.0.bytes, is_main);
-            }
-        }
-    }
-
-    /// Removes the [`Tag`]s for all [`Selection`]s
-    pub(crate) fn remove_selection_tags(&mut self) {
-        self.remove_tags(Tagger::for_selections(), ..);
     }
 
     /// Adds a record for the given byte index

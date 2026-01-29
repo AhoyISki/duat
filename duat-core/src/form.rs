@@ -1559,26 +1559,46 @@ impl Painter {
 
     /// Applies the `"caret.main"` [`Form`]
     #[inline(always)]
-    pub fn apply_main_cursor(&mut self) {
-        self.apply(M_CAR_ID, 100);
+    pub fn apply_main_selection(&mut self, is_caret: bool, start_range: bool) {
+        if is_caret {
+            self.apply(M_CAR_ID, 100);
+        }
+        if start_range {
+            self.apply(M_SEL_ID, 95);
+        }
     }
 
     /// Removes the `"caret.main"` [`Form`]
     #[inline(always)]
-    pub fn remove_main_caret(&mut self) {
-        self.remove(M_CAR_ID);
+    pub fn remove_main_selection(&mut self, is_caret: bool, end_range: bool) {
+        if is_caret {
+            self.remove(M_CAR_ID);
+        }
+        if end_range {
+            self.remove(M_SEL_ID);
+        }
     }
 
     /// Applies the `"caret.extra"` [`Form`]
     #[inline(always)]
-    pub fn apply_extra_cursor(&mut self) {
-        self.apply(E_CAR_ID, 100);
+    pub fn apply_extra_selection(&mut self, is_caret: bool, start_range: bool) {
+        if is_caret {
+            self.apply(E_CAR_ID, 100);
+        }
+        if start_range {
+            self.apply(E_SEL_ID, 95);
+        }
     }
 
     /// Removes the `"caret.extra"` [`Form`]
     #[inline(always)]
-    pub fn remove_extra_caret(&mut self) {
-        self.remove(E_CAR_ID);
+    pub fn remove_extra_selection(&mut self, is_caret: bool, end_range: bool) {
+        if is_caret {
+            self.remove(E_CAR_ID);
+        }
+        if end_range {
+            self.remove(E_SEL_ID);
+        }
     }
 
     /// Prepares this `Painter` to print an [`Inlay`] text

@@ -24,7 +24,7 @@ use gap_buf::GapBuffer;
 use super::{Point, Text};
 use crate::{
     Ranges,
-    buffer::{Buffer, BufferId},
+    buffer::{Buffer, BufferId, BufferOpts},
     mode::Selections,
     text::{Bytes, Tags, TextRange},
     ui::Widget,
@@ -718,6 +718,7 @@ impl BufferTracker {
                 buf_len: parts.bytes.len().byte(),
                 _ghost: PhantomData,
             },
+            opts: &buf.opts
         })
     }
 
@@ -774,6 +775,8 @@ pub struct BufferParts<'b> {
     ///
     /// [`Handle<Buffer>`]: crate::context::Handle
     pub ranges_to_update: RangesToUpdate<'b>,
+    /// The [`BufferOpts`] of the `Buffer` in question
+    pub opts: &'b BufferOpts
 }
 
 /// If `lhs` contains the start of `rhs`

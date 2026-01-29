@@ -68,9 +68,8 @@ macro_rules! simple_impl_Tag {
 ///
 /// Currently, these are the [`Tag`]s in Duat:
 ///
-/// - [`FormTag`]: Applies a [`Form`] on a [range];
-/// - [`MainCaret`] and [`ExtraCaret`]: Place `caret`s on the
-///   [`Text`]. Can be an actual `caret` or just a temporary [`Form`];
+/// - [`FormTag`]: Applies a [`Form`] on a [range]; [`Text`]. Can be
+///   an actual `caret` or just a temporary [`Form`];
 /// - [`Spacer`]: Lets you put arbitrary equally sized spaces on a
 ///   line;
 /// - [`Ghost`]: Places "ghost [`Text`]" on the [`Text`]. This is
@@ -147,36 +146,6 @@ impl<I: TextRange> Tag<I> for FormTag {
         }
     }
 }
-
-/// [`Tag`]: Places the main caret on the [`Text`]
-///
-/// You shouldn't have to use this most of the time, since the
-/// [`Text`] can come equipped with [`Selections`], which manage that
-/// automatically for you.
-///
-/// [`Selections`]: crate::mode::Selections
-#[derive(Debug, Clone, Copy)]
-pub struct MainCaret;
-simple_impl_Tag!(tag: MainCaret, tagger, RawTag::MainCaret(tagger), false);
-
-/// [`Tag`]: Places an extra Caret on the [`Text`]
-///
-/// How the extra cursor gets inserted is [Ui] dependant, for
-/// example, a terminal can't show more than one cursor, so in
-/// [`duat-term`], it defaults to showing the `"caret.extra"`
-/// [`Form`], but in other platforms, it could show an actual cursor.
-///
-/// You shouldn't have to use this most of the time, since the
-/// [`Text`] can come equipped with [`Selections`], which manage that
-/// automatically for you.
-///
-/// [`Selections`]: crate::mode::Selections
-/// [Ui]: crate::ui::traits::RawUi
-/// [`duat-term`]: https://crates.io/crates/duat-term
-/// [`Form`]: crate::form::Form
-#[derive(Debug, Clone, Copy)]
-pub struct ExtraCaret;
-simple_impl_Tag!(tag: ExtraCaret, tagger, RawTag::ExtraCaret(tagger), false);
 
 ////////// Meta Tags
 
@@ -496,11 +465,6 @@ pub enum RawTag {
     /// one.
     PopForm(Tagger, FormId),
 
-    /// Places the main cursor.
-    MainCaret(Tagger),
-    /// Places an extra cursor.
-    ExtraCaret(Tagger),
-
     /// A spacer for the current screen line, replaces alignment.
     Spacer(Tagger),
 
@@ -614,8 +578,6 @@ impl RawTag {
         match self {
             Self::PushForm(tagger, ..)
             | Self::PopForm(tagger, _)
-            | Self::MainCaret(tagger)
-            | Self::ExtraCaret(tagger)
             | Self::Spacer(tagger)
             | Self::StartConceal(tagger)
             | Self::EndConceal(tagger)
@@ -637,7 +599,6 @@ impl RawTag {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
             Self::PopForm(..) => 1,
-            Self::MainCaret(..) | Self::ExtraCaret(..) => 4,
             Self::StartConceal(..)
             | Self::StartToggle(..)
             | Self::SwapChar(..)
@@ -658,8 +619,6 @@ impl PartialEq for RawTag {
             (Self::PopForm(l_tagger, l_id), Self::PopForm(r_tagger, r_id)) => {
                 l_tagger == r_tagger && l_id == r_id
             }
-            (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
-            (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
             (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
             (Self::SwapChar(l_tagger, l_char), Self::SwapChar(r_tagger, r_char)) => {
                 l_tagger == r_tagger && l_char == r_char
@@ -692,9 +651,7 @@ impl PartialOrd for RawTag {
             (PopForm(l_tagger, l_id), PopForm(r_tagger, r_id)) => {
                 l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
             }
-            (RawTag::MainCaret(l_tagger), RawTag::MainCaret(r_tagger))
-            | (RawTag::ExtraCaret(l_tagger), RawTag::ExtraCaret(r_tagger))
-            | (RawTag::Spacer(l_tagger), RawTag::Spacer(r_tagger))
+            (RawTag::Spacer(l_tagger), RawTag::Spacer(r_tagger))
             | (StartConceal(l_tagger), StartConceal(r_tagger))
             | (EndConceal(l_tagger), EndConceal(r_tagger)) => l_tagger.cmp(r_tagger),
             (ConcealUntil(l_byte), ConcealUntil(r_byte)) => l_byte.cmp(r_byte),
@@ -725,8 +682,6 @@ impl std::fmt::Debug for RawTag {
                 write!(f, "PushForm({tagger:?}, {}, {prio})", id.name())
             }
             Self::PopForm(tagger, id) => write!(f, "PopForm({tagger:?}, {})", id.name()),
-            Self::MainCaret(tagger) => write!(f, "MainCaret({tagger:?})"),
-            Self::ExtraCaret(tagger) => write!(f, "ExtraCaret({tagger:?})"),
             Self::Spacer(tagger) => write!(f, "Spacer({tagger:?})"),
             Self::StartConceal(tagger) => write!(f, "StartConceal({tagger:?})"),
             Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),

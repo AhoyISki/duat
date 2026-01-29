@@ -204,7 +204,7 @@ pub struct StartOpts {
     /// Wether to copy the indentation string of `opts.indent_str` on
     /// empty lines.
     ///
-    /// The default is `false`
+    /// The default is `true`
     ///
     /// This will always copy whichever line has the smallest ammount
     /// of indentation.
@@ -458,7 +458,7 @@ impl Default for StartOpts {
             force_scrolloff: false,
             extra_word_chars: &[],
             indent_str: Some("│"),
-            indent_str_on_empty: false,
+            indent_str_on_empty: true,
             indent_tab_str: None,
             space_char: None,
             space_char_trailing: None,

@@ -12,15 +12,13 @@ use std::{
     sync::Arc,
 };
 
+use RawTag::*;
+
 use self::{bounds::Bounds, taggers::TaggerExtents, types::Toggle};
 pub use self::{
     ids::*,
     taggers::Tagger,
-    types::{
-        Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
-        RawTag::{self, *},
-        Spacer, SpawnTag, SwapChar, Tag,
-    },
+    types::{Conceal, FormTag, Ghost, RawTag, Spacer, SpawnTag, SwapChar, Tag},
 };
 use crate::{
     context::Handle,
@@ -66,7 +64,7 @@ impl Tags<'_> {
     /// When the `Tag` doesn't return an id, it will return `Some(())`
     /// if the `Tag` was successfully added, and `None` otherwise.
     pub fn insert<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.insert(tagger, idx, tag, false)
+        self.0.insert_inner(tagger, idx, tag, false)
     }
 
     /// Same as [`insert`], but does it after other [`Tags`] of the
@@ -74,7 +72,7 @@ impl Tags<'_> {
     ///
     /// [`insert`]: Self::insert
     pub fn insert_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
-        self.0.insert(tagger, idx, tag, true)
+        self.0.insert_inner(tagger, idx, tag, true)
     }
 
     /// Removes the [`Tag`]s of a [tagger] from a region
@@ -227,7 +225,7 @@ impl InnerTags {
     ///
     /// [`TextIndex`]: super::TextIndex
     /// [`TextRange`]: super::TextRange
-    pub fn insert<T, Idx>(&mut self, tagger: Tagger, idx: Idx, mut tag: T, after: bool)
+    pub(crate) fn insert_inner<T, Idx>(&mut self, tagger: Tagger, idx: Idx, mut tag: T, after: bool)
     where
         T: Tag<Idx>,
     {
@@ -331,11 +329,7 @@ impl InnerTags {
                     self.insert_raw((b, tag), None, false);
                 }
                 StartToggle(..) | EndToggle(..) => todo!(),
-                RawTag::MainCaret(_)
-                | RawTag::ExtraCaret(_)
-                | RawTag::Spacer(_)
-                | RawTag::SwapChar(..)
-                | SpawnedWidget(..) => {
+                RawTag::Spacer(_) | RawTag::SwapChar(..) | SpawnedWidget(..) => {
                     self.insert_raw((b, tag), None, false);
                 }
             };
@@ -759,9 +753,7 @@ impl PartialEq for InnerTags {
                         .find_map(|(id, arc)| (rhs == *id).then_some(arc.as_ref()));
                     self_ghost == other_ghost && l_b == r_b
                 }
-                (MainCaret(_), MainCaret(_))
-                | (ExtraCaret(_), ExtraCaret(_))
-                | (Spacer(_), Spacer(_))
+                (Spacer(_), Spacer(_))
                 | (StartConceal(_), StartConceal(_))
                 | (EndConceal(_), EndConceal(_))
                 | (StartToggle(..), StartToggle(..))

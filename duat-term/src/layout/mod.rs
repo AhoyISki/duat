@@ -1122,19 +1122,20 @@ impl Frame {
         let opts = PrintOpts { wrap_lines: true, ..PrintOpts::default() };
 
         for (coords, text) in texts.into_iter().flatten() {
-            let print_space = |lines: &mut Lines, len| {
+            let move_fwd = |lines: &mut Lines, len| {
                 if len > 0 {
                     write!(lines, "\x1b[{len}C").unwrap()
                 }
             };
 
+            let painter = &mut duat_core::form::painter_with_mask("title");
             if let Some((lines, ..)) = print_text(
-                (&text, opts, &mut duat_core::form::painter_with_mask("title")),
+                (&text, opts, painter),
                 (coords, max),
                 (false, TwoPoints::default(), 0),
-                print_space,
-                |lines, _, _| _ = lines.flush(),
-                print_space,
+                move_fwd,
+                |_, _, _| {},
+                move_fwd,
             ) {
                 for y in coords.tl.y..coords.br.y {
                     let (line, _) = lines.on(y).unwrap();

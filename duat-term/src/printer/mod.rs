@@ -520,7 +520,6 @@ impl Lines {
 
     pub fn add_inlay(&mut self, lines: Lines) {
         self.bytes.extend(lines.bytes);
-        self.flush().unwrap();
     }
 
     /// Show the real cursor, making the main cursor [`CursorShape`]

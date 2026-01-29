@@ -718,22 +718,6 @@ mod cursor {
             self.start_point()..self.end_point_excl()
         }
 
-        pub(crate) fn tag_bytes(&self, bytes: &Bytes) -> (usize, Option<Range<usize>>) {
-            let caret = self.caret().byte();
-            if let Some(anchor) = self.anchor() {
-                match anchor.byte().cmp(&caret) {
-                    Ordering::Less => (caret, Some(anchor.byte()..caret)),
-                    Ordering::Equal => (caret, None),
-                    Ordering::Greater => {
-                        let end = anchor.byte() + bytes.char_at(anchor).unwrap().len_utf8();
-                        (caret, Some(caret..end))
-                    }
-                }
-            } else {
-                (caret, None)
-            }
-        }
-
         ////////// VPoint functions
 
         /// Sets both the desired visual column, as well as the
