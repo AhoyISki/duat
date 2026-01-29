@@ -119,7 +119,7 @@ impl PrintInfo {
 
         if by > 0 {
             let line_start = print_iter(text, s_points, coords.width(), opts)
-                .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
+                .filter_map(|(place, item)| place.wrap.then_some(item.points()))
                 .take(by as usize + 1)
                 .last()
                 .unwrap_or_default();
@@ -135,7 +135,7 @@ impl PrintInfo {
         } else {
             self.s_points = Some(
                 rev_print_iter(text, s_points, coords.width(), opts)
-                    .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
+                    .filter_map(|(place, item)| place.wrap.then_some(item.points()))
                     .nth(by.unsigned_abs() as usize - 1)
                     .unwrap_or_default(),
             );
@@ -156,7 +156,7 @@ impl PrintInfo {
         let cap = opts.wrap_width(coords.width()).unwrap_or(coords.width());
 
         let line_start = rev_print_iter(text, points, cap, opts)
-            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
+            .filter_map(|(place, item)| place.wrap.then_some(item.points()))
             .next()
             .unwrap_or_default();
 
@@ -192,15 +192,8 @@ impl PrintInfo {
 
         let mut below_dist = 0;
         let mut total_dist = 0;
-        let mut wrapped_char = false;
         let mut iter = rev_print_iter(text, after, cap, opts)
-            .filter_map(|(caret, item)| {
-                wrapped_char |= caret.wrap;
-                (item.part.is_char() && wrapped_char).then(|| {
-                    wrapped_char = false;
-                    item.points()
-                })
-            })
+            .filter_map(|(place, item)| place.wrap.then_some(item.points()))
             .inspect(|points| {
                 total_dist += 1;
                 below_dist += (*points >= s_points) as u32;
@@ -249,7 +242,7 @@ impl PrintInfo {
                 .unwrap_or((TwoPoints::default(), 0, 0));
 
             let max_shift = print_iter(text, points, width, opts)
-                .take_while(|(caret, item)| !caret.wrap || item.points() == points)
+                .take_while(|(place, item)| !place.wrap || item.points() == points)
                 .last()
                 .map(|(PrintedPlace { x, len, .. }, _)| x + len)
                 .unwrap_or(0);
@@ -279,8 +272,9 @@ impl PrintInfo {
             .unwrap_or_else(|| text.len_points());
 
         let mut lines_traversed: u32 = 0;
+
         let points = rev_print_iter(text, after, cap.unwrap_or(coords.width()), opts)
-            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
+            .filter_map(|(place, item)| place.wrap.then_some(item.points()))
             .inspect(|_| lines_traversed += 1)
             .nth(
                 self.vert_dist
@@ -304,7 +298,7 @@ impl PrintInfo {
 
 fn max_s_points(text: &Text, opts: PrintOpts, height: u32, cap: u32) -> TwoPoints {
     rev_print_iter(text, text.len_points(), cap, opts)
-        .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
+        .filter_map(|(place, item)| place.wrap.then_some(item.points()))
         .nth(if opts.allow_overscroll {
             opts.scrolloff.y.saturating_sub(1) as usize
         } else {

@@ -55,6 +55,7 @@ pub fn print_iter<'t>(
             let len = process_part(item, x, opts, indent, &mut spacers, &mut replace_chars);
 
             x += len;
+
             if x > cap && opts.wrap_lines {
                 spacers = 0;
 
@@ -71,6 +72,10 @@ pub fn print_iter<'t>(
                     x = wrapped_indent + len;
                 }
             }
+        }
+
+        if x == cap {
+            x = indent;
         }
     }
 
@@ -94,8 +99,17 @@ pub fn rev_print_iter<'t>(
     let mut returns = Vec::new();
     let mut items = Vec::new();
 
+    let mut discard_first_empty_wrap = {
+        let mut went_through_non_empty = false;
+        move |(mut place, item): (PrintedPlace, _)| {
+            went_through_non_empty |= place.len > 0;
+            place.wrap &= went_through_non_empty;
+            (place, item)
+        }
+    };
+
     std::iter::from_fn(move || {
-        if let Some(next) = returns.pop() {
+        if let Some(next) = returns.pop().map(&mut discard_first_empty_wrap) {
             Some(next)
         } else {
             let iter = loop {
@@ -115,7 +129,7 @@ pub fn rev_print_iter<'t>(
             let reps = Vec::new();
             returns.extend(inner_iter(iter, (0, 0), (0, true, 0), (cap, opts), reps));
 
-            returns.pop()
+            returns.pop().map(&mut discard_first_empty_wrap)
         }
     })
 }
@@ -135,31 +149,23 @@ where
 
     // Line return variables.
     let (mut line, mut leftover_nl) = (Vec::<(u32, TextPlace)>::new(), None);
-    let (mut printed_x, mut i, mut has_wrapped) = (0, 0, false);
+    let (mut printed_x, mut i) = (0, 0);
 
     let mut iter = iter.peekable();
 
-    let mut initial_printed_x = 0;
-    let mut first_printed_x = x * (x < cap || !opts.wrap_lines) as u32;
-
+    let mut initial_printed_x = x;
     std::iter::from_fn(move || {
         loop {
             // Emptying the line, most next calls should come here.
             if let Some(&(len, item)) = line.get(i) {
-                let wrap = !has_wrapped && (len > 0 || item.part.is_char());
-                if wrap {
-                    printed_x = initial_printed_x;
-                }
-                let caret = PrintedPlace { x: printed_x, len, wrap };
+                let caret = PrintedPlace { x: printed_x, len, wrap: i == 0 };
                 i += 1;
                 printed_x += len;
-                has_wrapped |= wrap;
                 break Some((caret, item));
             }
 
             line.clear();
             i = 0;
-            has_wrapped = false;
 
             // Emptying a leftover '\n', which may come after the end of a line.
             if let Some((x, item)) = leftover_nl.take() {
@@ -172,7 +178,7 @@ where
                     if line.is_empty() {
                         return None;
                     } else {
-                        initial_printed_x = first_printed_x + wrapped_indent;
+                        printed_x = initial_printed_x.max(wrapped_indent);
                         space_line(spacers, &mut line, cap, x);
                         break;
                     }
@@ -191,7 +197,7 @@ where
                 {
                     replace_chars.clear();
 
-                    initial_printed_x = first_printed_x + wrapped_indent;
+                    printed_x = initial_printed_x.max(wrapped_indent);
                     space_line(spacers, &mut line, cap, x);
                     spacers = 0;
 
@@ -236,7 +242,7 @@ where
                 }
             }
 
-            first_printed_x = 0;
+            initial_printed_x = 0;
         }
     })
 }
@@ -348,7 +354,7 @@ fn _words<'t, 'i>(
                 total_len += len;
 
                 if let TextPart::Char(char) = item.part
-                    && ((total_len > cap && opts.wrap_lines) || char == '\n')
+                    && ((total_len >= cap && opts.wrap_lines) || char == '\n')
                 {
                     new_x = first_x + wrapped_indent;
                     space_line(spacers, &mut line, cap, total_len);

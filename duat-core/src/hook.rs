@@ -754,6 +754,14 @@ impl PartialEq<Handle> for BufferUpdated {
 /// you to hightlight the current cursor line. Since this makes use of
 /// disruptive `Tag`s, it is best to do this only during the printing
 /// process, then get rid of said tags.
+///
+/// # Warning
+///
+/// Any changes done to the [`Buffer`] or [`Area`] from this hook will
+/// _not_ be checked in order for a reprint. This is to avoid
+/// repeatedly printing over and over again.
+///
+/// [`Area`]: crate::ui::Area
 pub struct BufferPrinted(pub(crate) Handle);
 
 impl Hookable for BufferPrinted {

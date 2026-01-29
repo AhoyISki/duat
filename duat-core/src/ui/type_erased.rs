@@ -316,15 +316,6 @@ impl RwArea {
         self.0.read(pa)
     }
 
-    /// Mutable access to an [`Area`]
-    ///
-    /// You should use this if you want "prolonged" access to the
-    /// `Area`'s methods, without necessarily bringing a [`Pass`]
-    /// with you.
-    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Area {
-        self.0.write(pa)
-    }
-
     /// Attempt to read this as a specific implementation of
     /// [`RawArea`]
     ///
@@ -341,6 +332,15 @@ impl RwArea {
             let ptr = Box::as_ref(&self.0.read(pa).inner) as *const dyn std::any::Any;
             unsafe { (ptr as *const A).as_ref().unwrap() }
         })
+    }
+
+    /// Mutable access to an [`Area`]
+    ///
+    /// You should use this if you want "prolonged" access to the
+    /// `Area`'s methods, without necessarily bringing a [`Pass`]
+    /// with you.
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Area {
+        self.0.write(pa)
     }
 
     /// Attempt to write this as a specific implementation of

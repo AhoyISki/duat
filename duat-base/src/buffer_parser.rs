@@ -228,8 +228,6 @@ fn replace_chars(mut parts: BufferParts, lines: Vec<Range<usize>>, taggers: [Tag
 
     parts.ranges_to_update.update_on(lines);
 
-    duat_core::context::debug!("{empty_lines:#?}");
-
     indent_empty_lines(parts, empty_lines, empty_spc_tagger);
 }
 
@@ -258,7 +256,7 @@ fn indent_empty_lines(mut parts: BufferParts, empty_lines: Vec<Range<Point>>, ta
         {
             let inlay = INDENT_INLAYS.get_or_insert_with((indent_str, common_indent), || {
                 let len = indent_str.chars().count();
-                let inlay = Ghost::inlay(txt!(
+                Ghost::inlay(txt!(
                     "{indent_form_empty}{}",
                     indent_str
                         .chars()
@@ -267,9 +265,7 @@ fn indent_empty_lines(mut parts: BufferParts, empty_lines: Vec<Range<Point>>, ta
                         .take(common_indent)
                         .skip(1)
                         .collect::<String>(),
-                ));
-                duat_core::context::debug!("for {common_indent}: {inlay:#?}");
-                inlay
+                ))
             });
 
             for idx in eq_indent_range.clone() {

@@ -479,7 +479,7 @@ pub trait Widget: Send + 'static {
 pub(crate) struct Node {
     handle: Handle<dyn Widget>,
     update: Arc<dyn Fn(&mut Pass) + Send + Sync>,
-    print: Arc<dyn Fn(&mut Pass) + Send + Sync>,
+    print: Arc<dyn Fn(&mut Pass, &Handle<dyn Widget>) + Send + Sync>,
     on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
     on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
     on_mouse_event: Arc<dyn Fn(&mut Pass, UiMouseEvent) + Send + Sync>,
@@ -507,7 +507,7 @@ impl Node {
                 let handle = handle.clone();
                 let buf_handle = handle.try_downcast();
 
-                move |pa| {
+                move |pa, orig_handle| {
                     let painter =
                         form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
 
@@ -515,8 +515,10 @@ impl Node {
                         .area
                         .print(pa, handle.text(pa), handle.opts(pa), painter);
 
-                    if let Some(buf_handle) = buf_handle.as_ref() {
-                        hook::trigger(pa, BufferPrinted(buf_handle.clone()));
+                    if let Some(buf_handle) = buf_handle.clone() {
+                        hook::trigger(pa, BufferPrinted(buf_handle));
+                        orig_handle.declare_as_read();
+                        orig_handle.area().0.declare_as_read();
                     }
                 }
             }),
@@ -619,17 +621,18 @@ impl Node {
         }
 
         let print_info = self.handle.area().get_print_info(pa);
+        let (widget, _) = self.handle.write_with_area(pa);
 
         if print_info != PrintInfo::default() {
-            self.handle.text_mut(pa).update_bounds();
+            widget.text_mut().update_bounds();
         }
 
-        let widgets_to_spawn = self.handle.text_mut(pa).get_widget_spawns();
+        let widgets_to_spawn = widget.text_mut().get_widget_spawns();
         for spawn in widgets_to_spawn {
             spawn(pa, win, self.handle.clone());
         }
 
-        (self.print)(pa);
+        (self.print)(pa, &self.handle);
     }
 
     /// What to do when focusing

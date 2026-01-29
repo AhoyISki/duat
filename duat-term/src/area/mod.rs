@@ -386,11 +386,11 @@ impl RawArea for Area {
             return Some(Vec::new());
         }
 
-        let mut prev_line = rev_print_iter(text, points, coords.width(), opts)
-            .find_map(|(place, item)| place.wrap.then_some(item.line()));
+        let mut prev_point = rev_print_iter(text, points, coords.width(), opts)
+            .find_map(|(place, item)| place.wrap.then_some(item.points()))
+            .map(|points| points.real.line());
 
         let mut printed_lines = Vec::new();
-        let mut has_wrapped = false;
         let mut y = coords.tl.y;
 
         for (place, item) in print_iter(text, points, coords.width(), opts) {
@@ -399,12 +399,10 @@ impl RawArea for Area {
             }
             y += place.wrap as u32;
 
-            has_wrapped |= place.wrap;
-            if has_wrapped && item.part.is_char() {
-                has_wrapped = false;
+            if place.wrap {
                 let number = item.line();
-                let is_wrapped = prev_line.is_some_and(|ll| ll == number);
-                prev_line = Some(number);
+                let is_wrapped = prev_point.is_some_and(|ll| ll == number);
+                prev_point = Some(number);
                 printed_lines.push(PrintedLine { number, is_wrapped });
             }
         }
