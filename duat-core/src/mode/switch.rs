@@ -232,11 +232,11 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
         (mode.downcast().unwrap(), before_exit)
     };
 
-    mode.send_key(pa, key_event, handle.clone());
+    catch_panic(|| mode.send_key(pa, key_event, handle.clone()));
 
     hook::trigger(pa, KeySentTo::<M>((key_event, handle.clone())));
     hook::trigger(pa, KeySent(key_event));
-    
+
     let mode_and_before_exit = MODE_AND_BEFORE_EXIT.write(pa);
     if mode_and_before_exit.is_none() {
         *mode_and_before_exit = Some((mode, before_exit));

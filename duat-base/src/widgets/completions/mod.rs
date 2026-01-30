@@ -724,7 +724,7 @@ impl<P: CompletionsProvider> InnerProvider<P> {
             .get_start(text, main_caret)
             .unwrap_or(main_caret.byte());
 
-        let orig_prefix = text.strs(start..main_caret.byte()).to_string();
+        let orig_prefix = text[start..main_caret.byte()].to_string();
 
         let completions = provider.completions(text, main_caret, &orig_prefix, false);
 
@@ -782,11 +782,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
 
         let start = self.provider.get_start(text, caret).unwrap_or(caret.byte());
 
-        let Some(prefix) = text
-            .try_strs(start..caret.byte())
-            .as_ref()
-            .map(Strs::to_string)
-        else {
+        let Some(prefix) = text.get(start..caret.byte()).map(Strs::to_string) else {
             panic!("Failed to get prefix from {:?}", start..caret.byte());
         };
 
@@ -920,7 +916,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 .provider
                 .get_start(text, main.caret())
                 .unwrap_or(main.caret().byte());
-            let prefix = text.strs(start..main.caret().byte());
+            let prefix = &text[start..main.caret().byte()];
 
             prefix
                 != self
@@ -1105,7 +1101,7 @@ mod fixed {
             let yet_to_be_typed: Vec<_> = self
                 .list
                 .iter()
-                .filter(|word| !text.strs(..caret).contains_pat(**word).unwrap())
+                .filter(|word| !text[..caret].contains_pat(**word).unwrap())
                 .collect();
 
             if yet_to_be_typed.len() < self.list.len() && self.only_one {

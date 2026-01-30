@@ -373,7 +373,7 @@ impl Text {
         let b = p.to_byte_index().min(self.last_point().byte());
         let cap = text.last_point().byte();
 
-        let added_str = text.0.bytes.strs(..cap).to_string();
+        let added_str = text.0.bytes[..cap].to_string();
         let point = self.point_at_byte(b);
         let change = Change::str_insert(&added_str, point);
         self.apply_change(0, change);
@@ -410,7 +410,7 @@ impl Text {
     // NOTE: Inherent because I don't want this to implement Display
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        let [s0, s1] = self.strs(..).to_array();
+        let [s0, s1] = self.to_array();
         if !s1.is_empty() {
             s0.to_string() + s1.strip_suffix('\n').unwrap_or(s1)
         } else {

@@ -24,18 +24,34 @@ macro_rules! implPartialEq {
 pub(super) use implPartialEq;
 
 macro_rules! implTextRange {
-    ($range:ident, $r:ident, $sb:expr, $eb:expr, $sp:expr, $ep:expr) => {
+    ($range:ident, $r:ident, $max:ident, $sb:expr, $eb:expr, $sp:expr, $ep:expr) => {
         impl TextRange for $range<usize> {
+            #[track_caller]
             fn to_range(self, max: usize) -> Range<usize> {
+                let $max = max;
                 let $r = self;
-                max.min($sb)..max.min($eb)
+                $crate::utils::get_range($sb..$eb, max)
+            }
+
+            fn try_to_range(self, max: usize) -> Option<Range<usize>> {
+                let $max = max;
+                let $r = self;
+                $crate::utils::try_get_range($sb..$eb, max)
             }
         }
 
         impl TextRange for $range<Point> {
+            #[track_caller]
             fn to_range(self, max: usize) -> Range<usize> {
+                let $max = max;
                 let $r = self;
-                max.min($sp)..max.min($ep)
+                $crate::utils::get_range($sp..$ep, max)
+            }
+
+            fn try_to_range(self, max: usize) -> Option<Range<usize>> {
+                let $max = max;
+                let $r = self;
+                $crate::utils::try_get_range($sp..$ep, max)
             }
         }
     };
@@ -44,12 +60,14 @@ macro_rules! implTextRange {
 macro_rules! implTextRangeOrIndex {
     ($range:ident) => {
         impl TextRangeOrIndex for $range<usize> {
+            #[track_caller]
             fn to_range(self, max: usize) -> Range<usize> {
                 TextRange::to_range(self, max)
             }
         }
 
         impl TextRangeOrIndex for $range<Point> {
+            #[track_caller]
             fn to_range(self, max: usize) -> Range<usize> {
                 TextRange::to_range(self, max)
             }
@@ -299,29 +317,40 @@ impl TextIndex for usize {
 /// [ranges]: std::range
 /// [`RangeBounds<usize>`]: std::ops::RangeBounds
 /// [`RangeBounds<Point>`]: std::ops::RangeBounds
+#[doc(hidden)]
 pub trait TextRange: Clone + std::fmt::Debug {
-    /// A "forward facing range"
+    /// A "forward facing range".
     ///
     /// If given a single [`usize`]/[`Point`], acts like [`RangeFrom`]
     fn to_range(self, max: usize) -> Range<usize>;
+
+    /// Tries to get a "forward facing range".
+    ///
+    /// If given a single [`usize`]/[`Point`], acts like [`RangeFrom`]
+    fn try_to_range(self, max: usize) -> Option<Range<usize>>;
 }
 
-implTextRange!(Range, r, r.start, r.end, r.start.byte(), r.end.byte());
+implTextRange!(Range, r, _max, r.start, r.end, r.start.byte(), r.end.byte());
 implTextRange!(
     RangeInclusive,
     r,
+    _max,
     *r.start(),
     r.end() + 1,
     r.start().byte(),
     r.end().byte() + 1
 );
-implTextRange!(RangeTo, r, 0, r.end, 0, r.end.byte());
-implTextRange!(RangeToInclusive, r, 0, r.end, 0, r.end.byte());
-implTextRange!(RangeFrom, r, r.start, MAX, r.start.byte(), MAX);
+implTextRange!(RangeTo, r, _max, 0, r.end, 0, r.end.byte());
+implTextRange!(RangeToInclusive, r, _max, 0, r.end, 0, r.end.byte());
+implTextRange!(RangeFrom, r, max, r.start, max, r.start.byte(), max);
 
 impl TextRange for RangeFull {
     fn to_range(self, max: usize) -> Range<usize> {
         0..max
+    }
+
+    fn try_to_range(self, max: usize) -> Option<Range<usize>> {
+        Some(0..max)
     }
 }
 
@@ -345,14 +374,16 @@ pub trait TextRangeOrIndex {
 }
 
 impl TextRangeOrIndex for usize {
+    #[track_caller]
     fn to_range(self, max: usize) -> Range<usize> {
-        max.min(self)..max.min(self + 1)
+        crate::utils::get_range(self..self + 1, max)
     }
 }
 
 impl TextRangeOrIndex for Point {
+    #[track_caller]
     fn to_range(self, max: usize) -> Range<usize> {
-        max.min(self.byte())..max.min(self.byte() + 1)
+        crate::utils::get_range(self.byte()..self.byte() + 1, max)
     }
 }
 
@@ -461,8 +492,6 @@ impl Ord for TwoPoints {
         }
     }
 }
-
-const MAX: usize = usize::MAX;
 
 /// Given a first byte, determines how many bytes are in this
 /// UTF-8 character

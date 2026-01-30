@@ -518,7 +518,7 @@ impl Handle {
     /// out [`Handle::printed_line_numbers`].
     ///
     /// [concealed]: crate::text::Conceal
-    pub fn printed_lines<'b>(&'b self, pa: &'b Pass) -> Vec<Strs<'b>> {
+    pub fn printed_lines<'b>(&'b self, pa: &'b Pass) -> Vec<&'b Strs> {
         let buffer = self.read(pa);
         let mut cpi = buffer.reset_print_info_if_needed(self.area().read(pa));
         let cpi = cpi.as_mut().unwrap();
@@ -542,7 +542,7 @@ impl Handle {
 
         printed_lines
             .iter()
-            .map(|range| buffer.text.strs(range.clone()))
+            .map(|range| &buffer.text[range.clone()])
             .collect()
     }
 
@@ -561,7 +561,7 @@ impl Handle {
     /// This is just like [`Handle::printed_lines`], but excludes
     /// _every_ section that was concealed or is not visible on
     /// screen.
-    pub fn visible_lines<'b>(&'b self, _: &'b Pass) -> Vec<Strs<'b>> {
+    pub fn visible_lines<'b>(&'b self, _: &'b Pass) -> Vec<&'b Strs> {
         todo!();
     }
 }

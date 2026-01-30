@@ -491,7 +491,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     #[track_caller]
     pub fn matches_pat<R: RegexPattern>(&self, pat: R) -> bool {
         let range = sel!(self).byte_range(self.widget.text());
-        match self.widget.text().strs(range).matches_pat(pat) {
+        match self.widget.text()[range].matches_pat(pat) {
             Ok(result) => result,
             Err(err) => panic!("{err}"),
         }
@@ -546,9 +546,9 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// empty.
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn selection(&self) -> Strs<'_> {
+    pub fn selection(&self) -> &Strs {
         let range = sel!(self).byte_range(self.text());
-        self.text().strs(range)
+        &self.text()[range]
     }
 
     /// Returns the [`Strs`] for the given [`TextRange`]
@@ -559,8 +559,8 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// boundaries. If you'd like to handle that scenario, check out
     /// [`Cursor::try_strs`].
     #[track_caller]
-    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
-        self.widget.text().strs(range)
+    pub fn strs(&self, range: impl TextRange) -> &Strs {
+        &self.widget.text()[range]
     }
 
     /// Returns the [`Strs`] for the given [`TextRange`]
@@ -568,8 +568,8 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// It will return [`None`] if the range does not start or end in
     /// valid utf8 boundaries. If you expect the value to alway be
     /// `Some`, consider [`Cursor::strs`] isntead.
-    pub fn try_strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
-        self.widget.text().try_strs(range)
+    pub fn try_strs(&self, range: impl TextRange) -> Option<&Strs> {
+        self.widget.text().get(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]

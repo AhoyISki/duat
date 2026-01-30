@@ -403,7 +403,7 @@ impl Change<'static, String> {
             }
         };
 
-        let taken = text.strs(range.clone()).to_string();
+        let taken = text[range.clone()].to_string();
         let added_end = add(range.start.as_signed(), Point::len_of(&added).as_signed());
         Change {
             start: range.start.as_signed(),
@@ -718,7 +718,7 @@ impl BufferTracker {
                 buf_len: parts.bytes.len().byte(),
                 _ghost: PhantomData,
             },
-            opts: &buf.opts
+            opts: &buf.opts,
         })
     }
 
@@ -776,7 +776,7 @@ pub struct BufferParts<'b> {
     /// [`Handle<Buffer>`]: crate::context::Handle
     pub ranges_to_update: RangesToUpdate<'b>,
     /// The [`BufferOpts`] of the `Buffer` in question
-    pub opts: &'b BufferOpts
+    pub opts: &'b BufferOpts,
 }
 
 /// If `lhs` contains the start of `rhs`
@@ -968,6 +968,7 @@ impl<'b> RangesToUpdate<'b> {
     /// [`Handle::printed_line_ranges`]: crate::context::Handle::printed_line_ranges
     /// [`intersecting`]: Self::intersecting
     /// [`select_from`]: Self::select_from
+    #[track_caller]
     pub fn add_ranges(&self, to_add: impl IntoIterator<Item = impl TextRange>) -> bool {
         let mut ranges = self.ranges.lock().unwrap();
         let mut has_changed = false;
@@ -1004,7 +1005,7 @@ impl<'b> RangesToUpdate<'b> {
         let mut ranges = self.ranges.lock().unwrap();
         let mut has_changed = false;
         for range in visible {
-            let range = range.to_range(self.buf_len);
+            let range = range.to_range(u32::MAX as usize);
             has_changed |= ranges.remove_on(range).count() > 0;
         }
         has_changed
@@ -1031,7 +1032,7 @@ impl<'b> RangesToUpdate<'b> {
         let mut ranges = self.ranges.lock().unwrap();
         let mut has_changed = false;
         for range in visible {
-            let range = range.to_range(self.buf_len);
+            let range = range.to_range(u32::MAX as usize);
             has_changed |= ranges.remove_intersecting(range).count() > 0;
         }
         has_changed
@@ -1070,7 +1071,7 @@ impl<'b> RangesToUpdate<'b> {
     pub fn cutoff(&self, list: impl IntoIterator<Item = impl TextRange>) -> Vec<Range<usize>> {
         let ranges = self.ranges.lock().unwrap();
         list.into_iter()
-            .flat_map(|range| ranges.iter_over(range.to_range(self.buf_len)))
+            .flat_map(|range| ranges.iter_over(range.to_range(u32::MAX as usize)))
             .collect()
     }
 
@@ -1106,7 +1107,7 @@ impl<'b> RangesToUpdate<'b> {
         // it's ok to be a little inefficient.
         // Feel free to optimize this if you wish to.
         for range in list {
-            for range in ranges.iter_intersecting(range.to_range(self.buf_len)) {
+            for range in ranges.iter_intersecting(range.to_range(u32::MAX as usize)) {
                 if !intersecting.contains(&range) {
                     intersecting.push(range);
                 }
@@ -1151,7 +1152,7 @@ impl<'b> RangesToUpdate<'b> {
         // Feel free to optimize this if you wish to.
         list.into_iter()
             .filter_map(|range| {
-                let range = range.to_range(self.buf_len);
+                let range = range.to_range(u32::MAX as usize);
                 ranges
                     .iter_intersecting(range.clone())
                     .next()

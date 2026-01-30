@@ -197,13 +197,7 @@ impl Selections {
         range: impl TextRange,
     ) -> impl Iterator<Item = (usize, &Selection, bool)> {
         let shift = *self.shift.lock().unwrap();
-
-        let range = if let Some(last) = self.buf.len().checked_sub(1) {
-            range.to_range(self.buf[last].end_point_excl().byte())
-        } else {
-            // If there are no Selections, this value doesn't really matter.
-            0..0
-        };
+        let range = range.to_range(u32::MAX as usize);
 
         let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),

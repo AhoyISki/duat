@@ -29,7 +29,7 @@ use regex_cursor::{
 };
 
 use super::TextRange;
-use crate::text::{Bytes, Strs, Text};
+use crate::text::Strs;
 
 /// An [`Iterator`] over the matches returned by a search on a
 /// [haystack]
@@ -231,56 +231,14 @@ pub trait RegexHaystack<'h> {
     }
 }
 
-impl<'b> RegexHaystack<'b> for Text {
+impl<'b> RegexHaystack<'b> for Strs {
     fn try_search<R: RegexPattern>(
         &'b self,
         pat: R,
     ) -> Result<Matches<'b, R>, Box<regex_syntax::Error>> {
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = self.slices(..).to_array();
-
-        Ok(Matches {
-            haystack,
-            b_start: 0,
-            dfas,
-            fwd_input: Input::new(SearchBytes(haystack, 0)),
-            rev_input: Input::new(SearchBytes(haystack, 0)),
-            rev_match: None,
-            _ghost: PhantomData,
-        })
-    }
-}
-
-impl<'b> RegexHaystack<'b> for Bytes {
-    fn try_search<R: RegexPattern>(
-        &'b self,
-        pat: R,
-    ) -> Result<Matches<'b, R>, Box<regex_syntax::Error>> {
-        let dfas = dfas_from_pat(pat)?;
-
-        let haystack = self.slices(..).to_array();
-
-        Ok(Matches {
-            haystack,
-            b_start: 0,
-            dfas,
-            fwd_input: Input::new(SearchBytes(haystack, 0)),
-            rev_input: Input::new(SearchBytes(haystack, 0)),
-            rev_match: None,
-            _ghost: PhantomData,
-        })
-    }
-}
-
-impl<'b> RegexHaystack<'b> for Strs<'b> {
-    fn try_search<R: RegexPattern>(
-        &'b self,
-        pat: R,
-    ) -> Result<Matches<'b, R>, Box<regex_syntax::Error>> {
-        let dfas = dfas_from_pat(pat)?;
-
-        let haystack = self.slices(self.byte_range()).to_array();
+        let haystack = self.to_array().map(str::as_bytes);
 
         Ok(Matches {
             haystack,

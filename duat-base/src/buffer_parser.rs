@@ -30,10 +30,8 @@ pub fn enable_parser() {
     })
     .grouped("DefaultOptsParser");
 
-    hook::add::<BufferClosed>(|pa, handle| {
-        PARSERS.unregister(pa, handle);
-    })
-    .grouped("DefaultOptsParser");
+    hook::add::<BufferClosed>(|pa, handle| _ = PARSERS.unregister(pa, handle))
+        .grouped("DefaultOptsParser");
 
     let replace_taggers = [Tagger::new(), Tagger::new(), Tagger::new()];
     let cur_line_tagger = Tagger::new();
@@ -190,7 +188,7 @@ fn replace_chars(mut parts: BufferParts, lines: Vec<Range<usize>>, taggers: [Tag
                     }
 
                     if line_is_empty && parts.opts.indent_str_on_empty {
-                        empty_lines.push(parts.bytes.strs(range.clone()).range());
+                        empty_lines.push(parts.bytes[range.clone()].range());
                     }
 
                     line_is_empty = true;

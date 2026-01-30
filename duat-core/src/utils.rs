@@ -212,6 +212,30 @@ pub fn plugin_dir(plugin: &str) -> Result<PathBuf, Text> {
 }
 
 /// Convenience function for the bounds of a range
+///
+/// Non panicking version of [`get_range`]
+pub fn try_get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Option<Range<usize>> {
+    let start = match range.start_bound() {
+        std::ops::Bound::Included(start) => *start,
+        std::ops::Bound::Excluded(start) => *start + 1,
+        std::ops::Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        std::ops::Bound::Included(end) => *end + 1,
+        std::ops::Bound::Excluded(end) => *end,
+        std::ops::Bound::Unbounded => max,
+    };
+
+    if start > max || end > max || start > end {
+        None
+    } else {
+        Some(start..end)
+    }
+}
+
+/// Convenience function for the bounds of a range
+///
+/// Panicking version of [`try_get_range`]
 #[track_caller]
 pub fn get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Range<usize> {
     let start = match range.start_bound() {

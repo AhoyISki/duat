@@ -8,6 +8,13 @@
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
 
+// This is because of the weird Strs pointer trickery that I'm doing,
+// usize _must_ be u64
+#[cfg(target_pointer_width = "16")]
+compile_error!("This crate does not support 16-bit systems.");
+#[cfg(target_pointer_width = "32")]
+compile_error!("This crate does not support 32-bit systems.");
+
 use std::{any::TypeId, sync::Mutex};
 
 #[allow(unused_imports)]

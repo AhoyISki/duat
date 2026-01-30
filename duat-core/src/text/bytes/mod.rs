@@ -1,5 +1,5 @@
 use std::{
-    ops::{ControlFlow, Range, RangeBounds},
+    ops::{ControlFlow, Range},
     str::Utf8Error,
 };
 
@@ -29,7 +29,12 @@ impl Bytes {
     ///
     /// Not intended for public use, it is necessary in duat
     #[doc(hidden)]
+    #[track_caller]
     pub(crate) fn new(string: &str) -> Self {
+        assert!(
+            string.len() <= u32::MAX as usize,
+            "For now, you can't have a Text larger than u32::MAX"
+        );
         let buf = GapBuffer::from_iter(string.bytes());
 
         let len = buf.len();
@@ -69,13 +74,13 @@ impl Bytes {
         (s0 == b"\n" && s1 == b"") || (s0 == b"" && s1 == b"\n")
     }
 
-    /// The `char` at the [`Point`]'b position
+    /// The `char` at the [`Point`]'s position
     pub fn char_at(&self, p: impl TextIndex) -> Option<char> {
         if p.to_byte_index() >= self.len().byte() {
             return None;
         }
 
-        let [s0, s1] = self.strs_inner(..).unwrap();
+        let [s0, s1] = self.to_array();
         Some(if p.to_byte_index() < s0.len() {
             s0[p.to_byte_index()..].chars().next().unwrap()
         } else {
@@ -84,143 +89,6 @@ impl Bytes {
                 .next()
                 .unwrap_or_else(|| panic!("{self:#?}"))
         })
-    }
-
-    /// A subslice of the [`Bytes`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if the range doesn't start and end in valid utf8
-    /// boundaries. If you'd like to handle that scenario, check out
-    /// [`Bytes::try_strs`].
-    ///
-    /// # Note
-    ///
-    /// The reason why this function returns two strings is that the
-    /// contents of the text are stored in a [`GapBuffer`], which
-    /// works with two strings.
-    ///
-    /// If you want to iterate over them, you can do the following:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// # let (p0, p1) = (Point::default(), Point::default());
-    /// # let text = Text::new();
-    /// let bytes = text.bytes();
-    ///
-    /// for char in bytes.strs(p0..p1).unwrap().chars() {
-    ///     todo!();
-    /// }
-    /// ```
-    ///
-    /// Do note that you should avoid iterators like [`str::lines`],
-    /// as they will separate the line that is partially owned by each
-    /// [`&str`]:
-    ///
-    /// ```rust
-    /// let broken_up_line = [
-    ///     "This is line 1, business as usual.\nThis is line 2, but it",
-    ///     "is broken into two separate strings.\nSo 4 lines would be counted, instead of 3",
-    /// ];
-    /// ```
-    ///
-    /// This is one way that the inner [`GapBuffer`] could be set up,
-    /// where one of the lines is split among the two slices.
-    ///
-    /// If you wish to iterate over the lines, see [`Bytes::lines`].
-    ///
-    /// [`&str`]: str
-    /// [`Text`]: super::Text
-    /// [range]: TextRange
-    /// [`strs`]: Self::strs
-    #[track_caller]
-    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
-        let Some(strs) = self.try_strs(range.clone()) else {
-            panic!("{range:?} doesn't correspond to a valid utf8 boundary")
-        };
-
-        strs
-    }
-
-    /// Tries to get a subslice of the [`Bytes`]
-    ///
-    /// It will return [`None`] if the range does not start or end in
-    /// valid utf8 boundaries. If you expect the value to alway be
-    /// `Some`, consider [`Bytes::strs`] isntead.
-    ///
-    /// # Note
-    ///
-    /// The reason why this function returns two strings is that the
-    /// contents of the text are stored in a [`GapBuffer`], which
-    /// works with two strings.
-    ///
-    /// If you want to iterate over them, you can do the following:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// # let (p0, p1) = (Point::default(), Point::default());
-    /// # let text = Text::new();
-    /// let bytes = text.bytes();
-    ///
-    /// for char in bytes.strs(p0..p1).unwrap().chars() {
-    ///     todo!();
-    /// }
-    /// ```
-    ///
-    /// Do note that you should avoid iterators like [`str::lines`],
-    /// as they will separate the line that is partially owned by each
-    /// [`&str`]:
-    ///
-    /// ```rust
-    /// let broken_up_line = [
-    ///     "This is line 1, business as usual.\nThis is line 2, but it",
-    ///     "is broken into two separate strings.\nSo 4 lines would be counted, instead of 3",
-    /// ];
-    /// ```
-    ///
-    /// This is one way that the inner [`GapBuffer`] could be set up,
-    /// where one of the lines is split among the two slices.
-    ///
-    /// If you wish to iterate over the lines, see [`Bytes::lines`].
-    ///
-    /// [`&str`]: str
-    /// [`Text`]: super::Text
-    /// [range]: TextRange
-    /// [`strs`]: Self::strs
-    pub fn try_strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
-        let range = range.to_range(self.len().byte());
-
-        Some(Strs::new(
-            self,
-            (range.start, range.end),
-            self.strs_inner(range)?,
-        ))
-    }
-
-    /// An [`Iterator`] over the bytes in a given _byte_ range
-    ///
-    /// Unlike [`strs`], this function works with _byte_ ranges, not
-    /// [`TextRange`]s. That'b because [`Strs`] is supposed to return
-    /// valid UTF-8 strings, which need to have valid character
-    /// terminations, so they should be indexed by a character range,
-    /// not a byte range.
-    ///
-    /// Since buffers is based on `[u8]`s, not `str`s, it doesn't have
-    /// the same restrictions, so a byte range can be used instead.
-    ///
-    /// If the range is fully or partially out of bounds, one or both
-    /// of the slices might be empty.
-    ///
-    /// [`strs`]: Self::strs
-    #[track_caller]
-    pub fn slices(&self, range: impl TextRange) -> Slices<'_> {
-        let (s0, s1) = self
-            .buf
-            .range(range.to_range(self.len().byte()))
-            .as_slices();
-        Slices([s0.iter(), s1.iter()])
     }
 
     /// Returns an iterator over the lines in a given range
@@ -246,34 +114,6 @@ impl Bytes {
         Lines::new(self, start.byte(), end.byte())
     }
 
-    /// Returns the two `&str`s in the byte range.
-    #[track_caller]
-    fn strs_inner(&self, range: impl RangeBounds<usize>) -> Option<[&str; 2]> {
-        let range = crate::utils::get_range(range, self.len().byte());
-        use std::str::from_utf8_unchecked;
-
-        let (s0, s1) = self.buf.as_slices();
-
-        // Check if the slices match utf8 boundaries.
-        if s0.first().is_some_and(|b| utf8_char_width(*b) == 0)
-            || s1.first().is_some_and(|b| utf8_char_width(*b) == 0)
-            || self
-                .buf
-                .get(range.end)
-                .is_some_and(|b| utf8_char_width(*b) == 0)
-        {
-            return None;
-        }
-
-        Some(unsafe {
-            let r0 = range.start.min(s0.len())..range.end.min(s0.len());
-            let r1 = range.start.saturating_sub(s0.len()).min(s1.len())
-                ..range.end.saturating_sub(s0.len()).min(s1.len());
-
-            [from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1])]
-        })
-    }
-
     /// The [`Point`] corresponding to the byte position, 0 indexed
     ///
     /// If the byte position would fall in between two characters
@@ -296,7 +136,7 @@ impl Bytes {
         let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(b, |[b, ..]| b);
 
         let found = if b >= c_b {
-            let [s0, s1] = self.strs_inner(c_b..).unwrap();
+            let [s0, s1] = self[c_b..].to_array();
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -309,8 +149,8 @@ impl Bytes {
                 .last()
         } else {
             let mut c_len = 0;
-            self.strs_inner(..c_b)
-                .unwrap()
+            self[..c_b]
+                .to_array()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
@@ -347,7 +187,7 @@ impl Bytes {
         let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(c, |[_, c, _]| c);
 
         let found = if c >= c_c {
-            let [s0, s1] = self.strs_inner(c_b..).unwrap();
+            let [s0, s1] = self[c_b..].to_array();
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -360,8 +200,8 @@ impl Bytes {
                 .last()
         } else {
             let mut c_len = 0;
-            self.strs_inner(..c_b)
-                .unwrap()
+            self[..c_b]
+                .to_array()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
@@ -400,9 +240,8 @@ impl Bytes {
 
         let (c_b, c_c, mut c_l) = {
             let [b, c, l] = self.records.closest_to_by_key(l, |[.., l]| l);
-            let (b, c) = self
-                .strs_inner(..b)
-                .unwrap()
+            let (b, c) = self[..b]
+                .to_array()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
@@ -412,7 +251,7 @@ impl Bytes {
         };
 
         let found = if l >= c_l {
-            let [s0, s1] = self.strs_inner(c_b..).unwrap();
+            let [s0, s1] = self[c_b..].to_array();
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -424,8 +263,8 @@ impl Bytes {
                 .find(|&(.., rhs)| l == rhs)
         } else {
             let mut c_len = 0;
-            self.strs_inner(..c_b)
-                .unwrap()
+            self[..c_b]
+                .to_array()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
@@ -497,7 +336,7 @@ impl Bytes {
         range: impl TextRange,
     ) -> Option<impl Iterator<Item = (usize, char)> + '_> {
         let mut range = range.to_range(self.len().byte());
-        Some(self.try_strs(range.clone())?.chars().map(move |char| {
+        Some(self.get(range.clone())?.chars().map(move |char| {
             let byte = range.start;
             range.start += char.len_utf8();
             (byte, char)
@@ -515,15 +354,10 @@ impl Bytes {
         range: impl TextRange,
     ) -> Option<impl Iterator<Item = (usize, char)> + '_> {
         let mut range = range.to_range(self.len().byte());
-        Some(
-            self.try_strs(range.clone())?
-                .chars()
-                .rev()
-                .map(move |char| {
-                    range.end -= char.len_utf8();
-                    (range.end, char)
-                }),
-        )
+        Some(self.get(range.clone())?.chars().rev().map(move |char| {
+            range.end -= char.len_utf8();
+            (range.end, char)
+        }))
     }
 
     /// Gets the indentation level on a given line
@@ -548,31 +382,18 @@ impl Bytes {
 
     ////////// Modification functions
 
-    /// Replaces a [`TextRange`] with a `&str`
-    ///
-    /// If you want to apply a [`Change`] to the `Bytes` this way, you
-    /// can use [`Change::taken_range`] as the `TextRange`, and
-    /// [`Change::added_str`] as the replacement text.
-    pub fn replace_range(&mut self, range: impl TextRange, new: impl AsRef<str>) {
-        let edit = new.as_ref();
-        let range = range.to_range(self.len().byte());
-
-        let start = self.point_at_byte(range.start);
-        let taken_len = self.point_at_byte(range.end) - start;
-        let added_len = Point::len_of(edit);
-
-        self.buf.splice(range, edit.bytes());
-
-        let start_rec = [start.byte(), start.char(), start.line()];
-        let old_len = [taken_len.byte(), taken_len.char(), taken_len.line()];
-        let new_len = [added_len.byte(), added_len.char(), added_len.line()];
-
-        self.records.transform(start_rec, old_len, new_len);
-        self.records.insert(start_rec);
-    }
-
     /// Applies a [`Change`] to the [`GapBuffer`] within
+    #[track_caller]
     pub(crate) fn apply_change(&mut self, change: Change<&str>) {
+        assert!(
+            self.len().byte() + change.added_str().len() - change.taken_str().len()
+                <= u32::MAX as usize,
+            "For now, you can't have a Text larger than u32::MAX"
+        );
+
+        assert_utf8_boundary(self, change.start().byte());
+        assert_utf8_boundary(self, change.taken_end().byte());
+
         let edit = change.added_str();
         let start = change.start();
 
@@ -611,7 +432,7 @@ impl Bytes {
     /// [`&str`]: str
     pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
         let range = range.to_range(self.len().byte());
-        let [s0, s1] = self.strs_inner(..).unwrap();
+        let [s0, s1] = self.to_array();
 
         if range.end <= self.buf.gap() {
             s0.get(range)
@@ -619,6 +440,14 @@ impl Bytes {
             let gap = self.buf.gap();
             s1.get(range.start.checked_sub(gap)?..range.end.checked_sub(gap)?)
         }
+    }
+}
+
+impl std::ops::Deref for Bytes {
+    type Target = Strs;
+
+    fn deref(&self) -> &Self::Target {
+        Strs::new(self, 0, self.len().byte() as u32)
     }
 }
 
@@ -642,7 +471,7 @@ impl<'b> Lines<'b> {
 }
 
 impl<'b> Iterator for Lines<'b> {
-    type Item = Strs<'b>;
+    type Item = &'b Strs;
 
     fn next(&mut self) -> Option<Self::Item> {
         let [s0, s1] = {
@@ -660,14 +489,10 @@ impl<'b> Iterator for Lines<'b> {
             .unwrap_or(self.bytes.len().byte());
 
         if fwd_b > self.fwd_b && fwd_b < self.rev_b {
-            let range = (self.fwd_b, fwd_b);
+            let start = self.fwd_b as u32;
+            let len = fwd_b as u32 - start;
             self.fwd_b = fwd_b;
-            Some(Strs::new(self.bytes, range, unsafe {
-                [
-                    std::str::from_utf8_unchecked(&s0[..fwd_b.min(s0.len())]),
-                    std::str::from_utf8_unchecked(&s1[..fwd_b.saturating_sub(s0.len())]),
-                ]
-            }))
+            Some(Strs::new(self.bytes, start, len))
         } else {
             None
         }
@@ -701,14 +526,10 @@ impl DoubleEndedIterator for Lines<'_> {
         };
 
         if rev_b < self.rev_b && rev_b > self.fwd_b {
-            let range = (rev_b, self.rev_b);
+            let start = rev_b as u32;
+            let len = self.rev_b as u32 - start;
             self.rev_b = rev_b;
-            Some(Strs::new(self.bytes, range, unsafe {
-                [
-                    std::str::from_utf8_unchecked(&s0[rev_b.min(s0.len())..]),
-                    std::str::from_utf8_unchecked(&s1[rev_b.saturating_sub(s0.len())..]),
-                ]
-            }))
+            Some(Strs::new(self.bytes, start, len))
         } else {
             None
         }
@@ -823,26 +644,26 @@ implPartialEq!(bytes: Bytes, other: Bytes, {
     (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.iter().chain(l_s1).eq(r_s0.iter().chain(r_s1))
 });
 implPartialEq!(bytes: Bytes, other: &str, {
-    let [s0, s1] = bytes.strs_inner(..).unwrap();
+    let [s0, s1] = bytes.to_array();
     other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
 });
 implPartialEq!(bytes: Bytes, other: String, bytes == &&other.as_str());
 implPartialEq!(str: &str, other: Bytes, other == *str);
 implPartialEq!(string: String, other: Bytes, other == *string);
 
-impl Eq for Strs<'_> {}
-implPartialEq!(strs: Strs<'_>, other: Strs<'_>, {
+impl Eq for &Strs {}
+implPartialEq!(strs: &Strs, other: &Strs, {
     let [l_s0, l_s1] = strs.to_array();
     let [r_s0, r_s1] = other.to_array();
     (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.bytes().chain(l_s1.bytes()).eq(r_s0.bytes().chain(r_s1.bytes()))
 });
-implPartialEq!(strs: Strs<'_>, other: &str, {
+implPartialEq!(strs: &Strs, other: &str, {
     let [s0, s1] = strs.to_array();
     other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
 });
-implPartialEq!(strs: Strs<'_>, other: String, strs == &&other.as_str());
-implPartialEq!(str: &str, other: Strs<'_>, other == *str);
-implPartialEq!(string: String, other: Strs<'_>, other == *string);
+implPartialEq!(strs: &Strs, other: String, strs == &&other.as_str());
+implPartialEq!(str: &str, other: &Strs, other == *str);
+implPartialEq!(string: String, other: &Strs, other == *string);
 
 /// Implements [`From<$T>`] for [`Bytes`] where `$T: ToString`
 macro_rules! implFromToString {
@@ -897,8 +718,36 @@ impl From<&std::path::Path> for Bytes {
 impl std::fmt::Debug for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Bytes")
-            .field("buf", &self.strs(..).to_array())
+            .field("buf", &self[..].to_array())
             .field("records", &self.records)
             .finish()
     }
+}
+
+fn assert_utf8_boundary(bytes: &Bytes, idx: usize) {
+    assert!(
+        bytes.buf.get(idx).is_none_or(|b| utf8_char_width(*b) != 0),
+        "byte index {} is not a valid char boundary; it is inside '{}'",
+        idx,
+        {
+            let (n, len) = bytes
+                .buf
+                .range(..idx)
+                .iter()
+                .rev()
+                .enumerate()
+                .find_map(|(i, &b)| (utf8_char_width(b) != 0).then_some((i, utf8_char_width(b))))
+                .unwrap();
+
+            String::from_utf8(
+                bytes
+                    .buf
+                    .range(idx - (n + 1)..idx - (n + 1) + len)
+                    .iter()
+                    .copied()
+                    .collect(),
+            )
+            .unwrap()
+        }
+    );
 }
