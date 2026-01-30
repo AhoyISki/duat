@@ -163,10 +163,12 @@ impl Area {
             |lines, len, max_x| {
                 if lines.coords().br.x == max_x {
                     lines.write_all(b"\x1b[0K").unwrap();
+                    false
                 } else {
                     lines
                         .write_all(&SPACES[..(lines.coords().width() - len) as usize])
                         .unwrap();
+                    true
                 }
             },
             |lines, spacer_len| lines.write_all(&SPACES[..spacer_len as usize]).unwrap(),
@@ -785,7 +787,7 @@ pub fn print_text(
     (coords, max): (Coords, Coord),
     (is_active, s_points, x_shift): (bool, TwoPoints, u32),
     start_line: fn(&mut Lines, u32),
-    end_line: fn(&mut Lines, u32, u32),
+    end_line: fn(&mut Lines, u32, u32) -> bool,
     print_spacer: fn(&mut Lines, u32),
 ) -> Option<(Lines, Vec<(SpawnId, Coord, u32)>)> {
     enum Cursor {
@@ -864,8 +866,8 @@ pub fn print_text(
             Coord::new(coords.tl.x + last_x, 0),
             Coord::new(coords.br.x, 1),
         );
-        end_line(lines, last_x, max.x);
 
+        let mut moved_fwd_on_end = end_line(lines, last_x, max.x);
         let mut observed_spawns = Vec::new();
 
         for inlay in inlays.drain(..) {
@@ -881,13 +883,17 @@ pub fn print_text(
                         if len > 0 {
                             write!(lines, "\x1b[{len}C").unwrap()
                         }
+                        true
                     },
                     move_fwd,
                 );
                 painter.return_from_inlay();
                 ret
             } {
-                write!(lines, "\x1b[{}D", coords.width()).unwrap();
+                if moved_fwd_on_end {
+                    write!(lines, "\x1b[{}D", coords.width()).unwrap();
+                }
+                moved_fwd_on_end = true;
 
                 lines.add_inlay(inlay_lines);
                 observed_spawns.extend(obs_spawns);
@@ -1038,6 +1044,10 @@ pub fn print_text(
                 style_was_set = true;
             }
             TextPart::Spacer => {
+                if style_was_set && let Some(style) = painter.relative_style() {
+                    print_style(lines, style);
+                }
+                style_was_set = false;
                 let truncated_start = x_shift.saturating_sub(x).min(len);
                 let truncated_end = (x + len)
                     .saturating_sub(lines.coords().width().saturating_sub(x_shift))

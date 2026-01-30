@@ -1134,7 +1134,7 @@ impl Frame {
                 (coords, max),
                 (false, TwoPoints::default(), 0),
                 move_fwd,
-                |_, _, _| {},
+                |_, _, _| false,
                 move_fwd,
             ) {
                 for y in coords.tl.y..coords.br.y {

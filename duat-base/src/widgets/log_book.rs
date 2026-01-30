@@ -246,7 +246,7 @@ fn default_fmt(show_source: bool, rec: Record) -> Option<Text> {
 
     builder.push(txt!("[log_book.bracket][] {}", rec.text().clone(),));
 
-    if show_source {
+    if show_source && rec.level() != Info {
         builder.push(txt!(
             "{Spacer}([log_book.location]{}[log_book.bracket])",
             rec.location()
