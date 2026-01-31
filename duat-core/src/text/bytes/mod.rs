@@ -1,11 +1,8 @@
-use std::{
-    ops::{ControlFlow, Range},
-    str::Utf8Error,
-};
+use std::str::Utf8Error;
 
 use gap_buf::GapBuffer;
 
-pub use crate::text::bytes::strs::Strs;
+pub use crate::text::bytes::strs::{Lines, Strs};
 use crate::{
     buffer::Change,
     opts::PrintOpts,
@@ -89,29 +86,6 @@ impl Bytes {
                 .next()
                 .unwrap_or_else(|| panic!("{self:#?}"))
         })
-    }
-
-    /// Returns an iterator over the lines in a given range
-    ///
-    /// The lines are inclusive, that is, it will iterate over the
-    /// whole line, not just the parts within the range.
-    ///
-    /// [range]: TextRange
-    #[track_caller]
-    pub fn lines(&self, range: impl TextRange) -> Lines<'_> {
-        let range = range.to_range(self.len().byte());
-        let start = self.point_at_line(self.point_at_byte(range.start).line());
-        let end = {
-            let end = self.point_at_byte(range.end);
-            let line_start = self.point_at_line(end.line());
-            if line_start == end {
-                end
-            } else {
-                self.point_at_line((end.line() + 1).min(self.len().line()))
-            }
-        };
-
-        Lines::new(self, start.byte(), end.byte())
     }
 
     /// The [`Point`] corresponding to the byte position, 0 indexed
@@ -283,34 +257,23 @@ impl Bytes {
             .unwrap_or(self.len())
     }
 
-    /// The start and end [`Point`]s for the `l`th line
-    ///
-    /// If `l == number_of_lines`, these points will be the same.
-    ///
-    /// The second number _includes_ the `\n` at the end of the line.
+    /// The [`Strs`] for the `n`th line
     ///
     /// # Panics
     ///
-    /// Will panic if the number `l` is greater than the number of
-    /// lines on the text
+    /// Panics if `n >= self.len().line()`
     #[track_caller]
-    pub fn line_range(&self, l: usize) -> Range<Point> {
+    pub fn line(&self, n: usize) -> &Strs {
         assert!(
-            l <= self.len().line(),
-            "line out of bounds: the len is {}, but the line is {l}",
+            n < self.len().line(),
+            "line out of bounds: the len is {}, but the line is {n}",
             self.len().line()
         );
 
-        let start = self.point_at_line(l);
-        let (ControlFlow::Continue(end) | ControlFlow::Break(end)) = self
-            .chars_fwd(start..)
-            .unwrap()
-            .try_fold(start, |end, (_, char)| match end.line() == start.line() {
-                true => ControlFlow::Continue(end.fwd(char)),
-                false => ControlFlow::Break(end),
-            });
+        let start = self.point_at_line(n).byte();
+        let len = self[start..].chars().take_while(|&char| char != '\n').count();
 
-        start..end
+        &self[start..start + (len + 1)]
     }
 
     /// The last [`Point`] associated with a `char`
@@ -368,10 +331,10 @@ impl Bytes {
     #[track_caller]
     pub fn indent(&self, line: usize, opts: PrintOpts) -> usize {
         let point = self.point_at_line(line);
-        self.chars_fwd(self.line_range(point.line()))
-            .unwrap()
-            .take_while(|&(_, char)| char == ' ' || char == '\t')
-            .fold(0, |sum, (_, char)| {
+        self.line(point.line())
+            .chars()
+            .take_while(|&char| char == ' ' || char == '\t')
+            .fold(0, |sum, char| {
                 if char == ' ' {
                     sum + 1
                 } else {
@@ -450,93 +413,6 @@ impl std::ops::Deref for Bytes {
         Strs::new(self, 0, self.len().byte() as u32)
     }
 }
-
-/// A [`Lender`] over the lines on [`Bytes`]
-///
-/// The reason for this being a [`Lender`], rather than a regular
-/// [`Iterator`] is because the [`Bytes`] use a [`GapBuffer`] within,
-/// which means that any line may be split in two. In order to still
-/// return it as an `&str`, a new [`String`] needs to be allocated,
-/// which will be owned by the [`Lines`], hence the [`Lender`] trait.
-pub struct Lines<'b> {
-    bytes: &'b Bytes,
-    fwd_b: usize,
-    rev_b: usize,
-}
-
-impl<'b> Lines<'b> {
-    fn new(bytes: &'b Bytes, fwd_b: usize, rev_b: usize) -> Self {
-        Self { bytes, fwd_b, rev_b }
-    }
-}
-
-impl<'b> Iterator for Lines<'b> {
-    type Item = &'b Strs;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let [s0, s1] = {
-            let (s0, s1) = self.bytes.buf.as_slices();
-            [
-                &s0[self.fwd_b.min(s0.len())..],
-                &s1[self.fwd_b.saturating_sub(s0.len())..],
-            ]
-        };
-
-        let fwd_b = s0
-            .iter()
-            .chain(s1.iter())
-            .position(|b| *b == b'\n')
-            .unwrap_or(self.bytes.len().byte());
-
-        if fwd_b > self.fwd_b && fwd_b < self.rev_b {
-            let start = self.fwd_b as u32;
-            let len = fwd_b as u32 - start;
-            self.fwd_b = fwd_b;
-            Some(Strs::new(self.bytes, start, len))
-        } else {
-            None
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.rev_b - self.fwd_b, Some(self.rev_b - self.fwd_b))
-    }
-}
-
-impl DoubleEndedIterator for Lines<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let [s0, s1] = {
-            let (s0, s1) = self.bytes.buf.as_slices();
-            [
-                &s0[..self.rev_b.min(s0.len())],
-                &s1[..self.rev_b.saturating_sub(s0.len())],
-            ]
-        };
-
-        let rev_b = {
-            let mut count = 0;
-            self.rev_b
-                - s0.iter()
-                    .chain(s1.iter())
-                    .take_while(|byte| {
-                        count += (**byte == b'\n') as usize;
-                        count < 2
-                    })
-                    .count()
-        };
-
-        if rev_b < self.rev_b && rev_b > self.fwd_b {
-            let start = rev_b as u32;
-            let len = self.rev_b as u32 - start;
-            self.rev_b = rev_b;
-            Some(Strs::new(self.bytes, start, len))
-        } else {
-            None
-        }
-    }
-}
-
-impl ExactSizeIterator for Lines<'_> {}
 
 /// An [`Iterator`] over the bytes in a [`Text`]
 ///

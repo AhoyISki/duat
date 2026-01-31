@@ -535,7 +535,7 @@ impl Handle {
                         last.as_mut()
                             .is_none_or(|num| std::mem::replace(num, line.number) < line.number)
                     })
-                    .map(|line| buffer.text.line_range(line.number))
+                    .map(|line| buffer.text.line(line.number).range())
                     .collect(),
             )
         };

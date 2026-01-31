@@ -457,7 +457,7 @@ impl Default for StartOpts {
             scrolloff: ScrollOff { x: 3, y: 3 },
             force_scrolloff: false,
             extra_word_chars: &[],
-            indent_str: Some("│"),
+            indent_str: Some("▎"),
             indent_str_on_empty: true,
             indent_tab_str: None,
             space_char: None,

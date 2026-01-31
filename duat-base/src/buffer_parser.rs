@@ -11,7 +11,7 @@ use duat_core::{
     buffer::{BufferOpts, BufferParts, BufferTracker, PerBuffer},
     form,
     hook::{self, BufferClosed, BufferOpened, BufferPrinted, BufferUpdated},
-    text::{FormTag, Ghost, Point, Spacer, SwapChar, Tagger, Tags, txt},
+    text::{FormTag, Ghost, Point, RegexHaystack, Spacer, SwapChar, Tagger, Tags, txt},
     utils::Memoized,
 };
 
@@ -132,11 +132,10 @@ fn replace_chars(mut parts: BufferParts, lines: Vec<Range<usize>>, taggers: [Tag
         .opts
         .indent_str_on_empty
         .then(|| {
-            parts
-                .bytes
-                .lines(..ranges_to_update[0].start)
+            parts.bytes[..ranges_to_update[0].start]
+                .lines()
                 .rev()
-                .map_while(|line| (line == "\n").then(|| line.range()))
+                .map_while(|line| line.is_empty_line().then(|| line.range()))
         })
         .into_iter()
         .flatten()
@@ -217,10 +216,9 @@ fn replace_chars(mut parts: BufferParts, lines: Vec<Range<usize>>, taggers: [Tag
 
     if parts.opts.indent_str_on_empty {
         empty_lines.extend(
-            parts
-                .bytes
-                .lines(ranges_to_update.last().unwrap().end..)
-                .map_while(|line| (line == "\n").then(|| line.range())),
+            parts.bytes[ranges_to_update.last().unwrap().end..]
+                .lines()
+                .map_while(|line| line.is_empty_line().then(|| line.range())),
         );
     }
 
@@ -232,22 +230,40 @@ fn replace_chars(mut parts: BufferParts, lines: Vec<Range<usize>>, taggers: [Tag
 fn indent_empty_lines(mut parts: BufferParts, empty_lines: Vec<Range<Point>>, tagger: Tagger) {
     static INDENT_INLAYS: Memoized<(&str, usize), Ghost> = Memoized::new();
 
-    let indent_form_empty = form::id_of!("replace.indent.empty").to_tag(90);
-    let Some(first) = empty_lines.first().cloned() else {
+    if empty_lines.is_empty() {
         return;
-    };
+    }
 
-    let mut prev_indent = first
-        .start
-        .line()
-        .checked_sub(1)
-        .map(|line| parts.bytes.indent(line, parts.opts.to_print_opts()))
-        .unwrap_or(0);
+    let indent_form_empty = form::id_of!("replace.indent.empty").to_tag(90);
+    let popts = parts.opts.to_print_opts();
 
-    let mut prev_line = 0;
-    let mut eq_indent_range = 0..0;
+    let mut eq_indent_range = 0..1;
 
-    let indent_lines = |tags: &mut Tags, eq_indent_range: Range<usize>, common_indent: usize| {
+    let indent_lines = |tags: &mut Tags, eq_indent_range: Range<usize>| {
+        let indent_start_lnum = empty_lines[eq_indent_range.start].start.line();
+        let indent_end_lnum = empty_lines[eq_indent_range.end - 1].start.line();
+
+        if indent_start_lnum == 0 {
+            return;
+        }
+
+        let indent_before = parts.bytes.indent(indent_start_lnum - 1, popts);
+        let indent_after = if indent_end_lnum < parts.bytes.len().line() - 1 {
+            parts.bytes.indent(indent_end_lnum + 1, popts)
+        } else {
+            0
+        };
+
+        let line_after = parts.bytes.line(indent_end_lnum + 1);
+
+        let common_indent = if line_after.search(r"^\s*(\}|\)|\]|end)").next().is_some()
+            && indent_after >= indent_before
+        {
+            indent_before + parts.opts.tabstop as usize
+        } else {
+            indent_after.min(indent_before)
+        };
+
         if common_indent > 0
             && let Some(indent_str) = parts.opts.indent_str
             && let Some(char) = indent_str.chars().next()
@@ -279,33 +295,20 @@ fn indent_empty_lines(mut parts: BufferParts, empty_lines: Vec<Range<Point>>, ta
     for (idx, line_range) in empty_lines.iter().cloned().enumerate() {
         parts.tags.remove_excl(tagger, line_range.clone());
 
-        let line = line_range.start.line();
+        let lnum = line_range.start.line();
+        let indent_end_lnum = empty_lines[eq_indent_range.end - 1].start.line();
 
-        if line > 0 && line - 1 != prev_line {
-            let indent = parts.bytes.indent(line - 1, parts.opts.to_print_opts());
-            let common_indent = indent.min(prev_indent);
-
-            indent_lines(&mut parts.tags, eq_indent_range.clone(), common_indent);
+        // The lines aren't sequential, so indent the last sequence.
+        if lnum - 1 != indent_end_lnum {
+            indent_lines(&mut parts.tags, eq_indent_range.clone());
 
             eq_indent_range.start = idx;
-            prev_indent = indent;
         }
 
         eq_indent_range.end = idx + 1;
-        prev_line = line;
     }
 
-    let common_indent = if prev_line + 1 < parts.bytes.len().line() {
-        prev_indent.min(
-            parts
-                .bytes
-                .indent(prev_line + 1, parts.opts.to_print_opts()),
-        )
-    } else {
-        prev_indent
-    };
-
-    indent_lines(&mut parts.tags, eq_indent_range, common_indent);
+    indent_lines(&mut parts.tags, eq_indent_range);
 }
 
 fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
@@ -313,7 +316,7 @@ fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
         LazyLock::new(|| Ghost::inlay(txt!("[current_line] {Spacer}")));
 
     let caret = parts.selections.main().caret();
-    let line_range = parts.bytes.line_range(caret.line());
+    let line_range = parts.bytes.line(caret.line()).byte_range();
 
     let cur_line_form = form::id_of!("current_line").to_tag(50);
 

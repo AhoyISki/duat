@@ -153,7 +153,7 @@ impl mode::Mode for Regular {
                 handle.edit_all(pa, |mut c| {
                     prev.push((c.range(), c.anchor_is_start()));
                     if c.anchor().is_none() {
-                        let range = c.text().line_range(c.caret().line());
+                        let range = c.text().line(c.caret().line()).byte_range();
                         c.move_to(range);
                     }
                 });

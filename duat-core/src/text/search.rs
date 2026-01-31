@@ -57,6 +57,14 @@ impl<'m, R> Matches<'m, R> {
     /// This _will_ reset the [`Iterator`], if it was returning
     /// [`None`] before, it might start returning [`Some`] again if
     /// the pattern exists in the specified [`Range`]
+    ///
+    /// # Note
+    ///
+    /// There is a crucial difference between
+    /// `text.search(pat).range(...)` and `text[...].search(pat)`, in
+    /// that the latter will return matches relative to the `...`
+    /// range, while the former will return matches relative to the
+    /// start of the `text`.
     pub fn range(self, range: impl TextRange) -> Self {
         let [s0, s1] = self.haystack;
         let range = range.to_range(s0.len() + s1.len());

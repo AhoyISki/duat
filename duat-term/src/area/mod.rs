@@ -1078,11 +1078,11 @@ pub fn print_text(
 }
 
 fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
-    let range = text.line_range(point.line());
+    let start = text.point_at_line(point.line());
 
     let mut vcol = 0;
 
-    let points = range.start.to_two_points_before();
+    let points = start.to_two_points_before();
     let wcol = print_iter(text, points, cap, opts)
         .find_map(|(place, item)| {
             if let Some((lhs, _)) = item.as_real_char()
@@ -1097,7 +1097,7 @@ fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPo
 
     VPoint::new(
         point,
-        (point.char() - range.start.char()) as u16,
+        (point.char() - start.char()) as u16,
         vcol,
         vcol,
         wcol,

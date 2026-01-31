@@ -511,17 +511,17 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     /// starts at the beginning of line 1, and ends at the end of line
     /// 5.
     ///
-    /// > [!NOTE]
-    /// >
-    /// > This end of this range will come _after_ the last `\n`,
-    /// > which means that, in that example, said point would have a
-    /// > [`Point::line`] value equal to 6, _not_ 5, since it
-    /// > represents both the end of line 5, and the beginning of line
-    /// > 6.
+    /// # Note
+    ///
+    /// This end of this range will come _after_ the last `\n`,
+    /// which means that, in that example, said point would have a
+    /// [`Point::line`] value equal to 6, _not_ 5, since it
+    /// represents both the end of line 5, and the beginning of line
+    /// 6.
     pub fn line_range(&self, bytes: &Bytes) -> Range<Point> {
         let start = bytes.point_at_line(self.start[2] as usize);
-        let end_range = bytes.line_range(self.added_end[2] as usize);
-        start..end_range.end
+        let end_line = bytes.line(self.added_end[2] as usize);
+        start..end_line.range().end
     }
 
     /// The [`Point`] at the start of the change

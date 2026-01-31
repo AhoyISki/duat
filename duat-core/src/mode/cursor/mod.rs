@@ -14,7 +14,7 @@ pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
     buffer::{Buffer, BufferId, Change},
     opts::PrintOpts,
-    text::{Lines, Matches, Point, RegexHaystack, RegexPattern, Strs, Text, TextIndex, TextRange},
+    text::{Matches, Point, RegexHaystack, RegexPattern, Strs, Text, TextIndex, TextRange},
     ui::{Area, Widget},
 };
 
@@ -320,7 +320,8 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let range = self
             .text()
-            .line_range(line.min(self.text().last_point().line()));
+            .line(line.min(self.text().last_point().line()))
+            .range();
         let byte = self
             .text()
             .chars_fwd(range.clone())
@@ -580,11 +581,6 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// Returns the position of the last [`char`] if there is one
     pub fn last_point(&self) -> Point {
         self.text().last_point()
-    }
-
-    /// An [`Iterator`] over the lines the `Cursor`'s range
-    pub fn lines(&self) -> Lines<'_> {
-        self.widget.text().lines(self.range())
     }
 
     /// Gets the current level of indentation

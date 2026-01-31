@@ -9,7 +9,7 @@ use crate::text::{Bytes, Point, Slices, TextRange};
 // I need it to be like this so it is a wide pointer, which can be
 // turned into a reference that can be used for indexing and std::ops::Deref.
 #[repr(transparent)]
-pub struct Strs([Bytes]);
+pub struct Strs(StrsDST);
 
 impl Strs {
     /// Returns a new `Strs`.
@@ -110,6 +110,21 @@ impl Strs {
         }]
     }
 
+    /// Returns an iterator over the lines in a given range
+    ///
+    /// The lines are inclusive, that is, it will iterate over the
+    /// whole line, not just the parts within the range.
+    ///
+    /// [range]: TextRange
+    pub fn lines(&self) -> Lines<'_> {
+        let formed = FormedStrs::new(self);
+        Lines::new(
+            formed.bytes,
+            formed.start as usize,
+            (formed.start + formed.len) as usize,
+        )
+    }
+
     /// Returns and [`Iterator`] over the [`char`]s of both [`&str`]s.
     ///
     /// [`&str`]: str
@@ -152,6 +167,23 @@ impl Strs {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Wether this is an empty line or not
+    ///
+    /// An empty line is either `\n` or `\r\n`. If you want to check
+    /// wether a line is just whitespace, you can do this:
+    ///
+    /// ```
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    ///
+    /// fn is_whitespace(line: &Strs) -> bool {
+    ///     line.chars().all(|char| char.is_whitespace())
+    /// }
+    /// ```
+    pub fn is_empty_line(&self) -> bool {
+        self == "\n" || self == "\r\n"
+    }
 }
 
 impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
@@ -172,34 +204,17 @@ impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
     }
 }
 
-/// A deconstructed internal representation of an [`Strs`],
-/// useful for not doing a bunch of unsafe operations.
-struct FormedStrs<'b> {
-    bytes: &'b Bytes,
-    start: u32,
-    len: u32,
-}
-
-impl<'b> FormedStrs<'b> {
-    fn new(strs: &'b Strs) -> Self {
-        let ptr = strs as *const Strs as *const [Bytes];
-        // Safety: Since the len was created by the inverted operation, this
-        // should be fine.
-        let [start, len] = unsafe { std::mem::transmute::<usize, [u32; 2]>(ptr.len()) };
-
-        Self {
-            // Safety: When creating the Strs, a valid Bytes was at the address.
-            bytes: unsafe { &*(ptr as *const Bytes) },
-            start,
-            len,
-        }
-    }
-}
-
 impl std::fmt::Display for Strs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let [s0, s1] = self.to_array();
         write!(f, "{s0}{s1}")
+    }
+}
+
+impl std::fmt::Debug for Strs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let [s0, s1] = self.to_array();
+        write!(f, "{:?}", format!("{s0}{s1}").as_str())
     }
 }
 
@@ -232,3 +247,127 @@ pub const fn utf8_char_width(b: u8) -> usize {
     ];
     UTF8_CHAR_WIDTH[b as usize] as usize
 }
+
+/// An [`Iterator`] over the lines on an [`Strs`]
+pub struct Lines<'b> {
+    bytes: &'b Bytes,
+    start: usize,
+    end: usize,
+    finger_back: usize,
+}
+
+impl<'b> Lines<'b> {
+    fn new(bytes: &'b Bytes, start: usize, end: usize) -> Self {
+        Self { bytes, start, end, finger_back: end }
+    }
+
+    fn next_match_back(&mut self) -> Option<usize> {
+        let range = self.start..self.finger_back;
+        let (s0, s1) = self.bytes.buf.range(range).as_slices();
+
+        let pos = s0.iter().chain(s1.iter()).rev().position(|b| *b == b'\n');
+        match pos {
+            Some(pos) => {
+                self.finger_back -= pos + 1;
+                Some(self.finger_back)
+            }
+            None => {
+                self.finger_back = self.start;
+                None
+            }
+        }
+    }
+}
+
+impl<'b> Iterator for Lines<'b> {
+    type Item = &'b Strs;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.start == self.end {
+            return None;
+        }
+
+        let range = self.start..self.finger_back;
+        let (s0, s1) = self.bytes.buf.range(range.clone()).as_slices();
+
+        Some(match s0.iter().chain(s1.iter()).position(|b| *b == b'\n') {
+            Some(pos) => {
+                let line = Strs::new(self.bytes, self.start as u32, pos as u32 + 1);
+                self.start += pos + 1;
+                line
+            }
+            None => {
+                let len = self.end - self.start;
+                let line = Strs::new(self.bytes, self.start as u32, len as u32);
+                self.start = self.end;
+                line
+            }
+        })
+    }
+
+    fn last(mut self) -> Option<Self::Item> {
+        self.next_back()
+    }
+}
+
+impl DoubleEndedIterator for Lines<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.start == self.end {
+            return None;
+        }
+
+        Some(match self.next_match_back() {
+            Some(start) => {
+                if start + 1 == self.end {
+                    let start = match self.next_match_back() {
+                        Some(start) => start + 1,
+                        None => self.start,
+                    };
+                    let len = self.end - start;
+                    let line = Strs::new(self.bytes, start as u32, len as u32);
+                    self.end = start;
+                    line
+                } else {
+                    let len = self.end - (start + 1);
+                    let line = Strs::new(self.bytes, start as u32 + 1, len as u32);
+                    self.end = start + 1;
+                    line
+                }
+            }
+            None => {
+                let len = self.end - self.start;
+                self.end = self.start;
+                Strs::new(self.bytes, self.start as u32, len as u32)
+            }
+        })
+    }
+}
+
+impl std::iter::FusedIterator for Lines<'_> {}
+
+/// A deconstructed internal representation of an [`Strs`],
+/// useful for not doing a bunch of unsafe operations.
+struct FormedStrs<'b> {
+    bytes: &'b Bytes,
+    start: u32,
+    len: u32,
+}
+
+impl<'b> FormedStrs<'b> {
+    fn new(strs: &'b Strs) -> Self {
+        let ptr = strs as *const Strs as *const [Bytes];
+        // Safety: Since the len was created by the inverted operation, this
+        // should be fine.
+        let [start, len] = unsafe { std::mem::transmute::<usize, [u32; 2]>(ptr.len()) };
+
+        Self {
+            // Safety: When creating the Strs, a valid Bytes was at the address.
+            bytes: unsafe { &*(ptr as *const Bytes) },
+            start,
+            len,
+        }
+    }
+}
+
+#[repr(transparent)]
+struct StrsDST([Bytes]);
