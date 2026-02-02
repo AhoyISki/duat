@@ -30,6 +30,7 @@ pub struct PrintedPlace {
 ///
 /// This function expects that `cap` has been validated, and that the
 /// iterator starts in the visual start of the line.
+#[inline(never)]
 pub fn print_iter<'t>(
     text: &'t Text,
     points: TwoPoints,
@@ -88,6 +89,7 @@ pub fn print_iter<'t>(
     )
 }
 
+#[inline(never)]
 pub fn rev_print_iter<'t>(
     text: &'t Text,
     points: TwoPoints,
@@ -150,10 +152,9 @@ where
     // Line return variables.
     let (mut line, mut leftover_nl) = (Vec::<(u32, TextPlace)>::new(), None);
     let (mut printed_x, mut i) = (0, 0);
-
     let mut iter = iter.peekable();
-
     let mut initial_printed_x = x;
+
     std::iter::from_fn(move || {
         loop {
             // Emptying the line, most next calls should come here.
@@ -184,6 +185,8 @@ where
                     }
                 };
 
+                let mut next = || _ = unsafe { iter.next().unwrap_unchecked() };
+
                 let old_indent = indent;
                 let indent = (&mut indent, &mut on_indent);
                 let len = process_part(item, x, opts, indent, &mut spacers, &mut replace_chars);
@@ -204,7 +207,8 @@ where
                     let leftover = x.saturating_sub(cap);
                     wrapped_indent = match char {
                         '\t' if leftover > 0 => {
-                            line.push((len - leftover, iter.next().unwrap()));
+                            line.push((len - leftover, item));
+                            next();
                             if old_indent + leftover < max_indent && opts.indent_wraps {
                                 old_indent + leftover
                             } else {
@@ -215,17 +219,19 @@ where
                             if len > 0 && must_wrap {
                                 let position = old_indent
                                     * (old_indent < max_indent && opts.indent_wraps) as u32;
-                                leftover_nl = Some((position, iter.next().unwrap()))
+                                leftover_nl = Some((position, item))
                             } else {
-                                line.push((len, iter.next().unwrap()))
+                                line.push((len, item));
                             }
+                            next();
                             0
                         }
                         _ => {
                             // At this point, the only logical course of action is to wrap on
                             // every character.
                             if cap == 0 && !line.iter().any(|(_, item)| item.part.is_char()) {
-                                line.push((len, iter.next().unwrap()));
+                                line.push((len, item));
+                                next();
                             }
 
                             old_indent * (old_indent < max_indent && opts.indent_wraps) as u32
@@ -238,7 +244,8 @@ where
                     if item.part.is_char() {
                         replace_chars.clear();
                     }
-                    line.push((len, iter.next().unwrap()));
+                    line.push((len, item));
+                    next();
                 }
             }
 

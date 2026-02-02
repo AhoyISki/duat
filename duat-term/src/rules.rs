@@ -152,7 +152,7 @@ impl SepChar {
 
 impl Default for SepChar {
     fn default() -> Self {
-        Self::Uniform('│')
+        Self::Uniform(' ')
     }
 }
 

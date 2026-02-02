@@ -21,7 +21,7 @@ const MIN_FOR_RANGE: usize = 16;
 /// A struct to keep better track of very long [`RawTag`] ranges
 #[derive(Debug, Clone)]
 pub struct Bounds {
-    list: ShiftList<([i32; 2], RawTag, RangeId)>,
+    pub list: ShiftList<([i32; 2], RawTag, RangeId)>,
     ranges_to_update: Ranges,
     min_len: usize,
 }

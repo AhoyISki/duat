@@ -723,10 +723,6 @@ impl RawArea for Area {
         let mut row = coords.tl.y;
         let mut backup = None;
         for (place, item) in print_iter(text, s_points, coords.width(), opts) {
-            if item.part.is_tag() {
-                continue;
-            }
-
             row += place.wrap as u32;
 
             if row > coord.y as u32 + 1 {
@@ -847,7 +843,7 @@ pub fn print_text(
     let mut observed_spawns = Vec::new();
     let mut style_was_set = false;
     let mut replace_chars: Vec<char> = Vec::new();
-    let (mut cur_inlays, mut inlays) = (Vec::new(), Vec::new());
+    let mut inlays = Vec::new();
 
     let end_line = |lines: &mut Lines, painter: &mut Painter, last_x, inlays: &mut Vec<_>| {
         let move_fwd = |lines: &mut Lines, len| {
@@ -991,10 +987,6 @@ pub fn print_text(
                     }
                 }
 
-                if char == '\n' && !cur_inlays.is_empty() {
-                    inlays = std::mem::take(&mut cur_inlays);
-                }
-
                 if let Some(cursor) = cursor_style {
                     match cursor {
                         Cursor::Main(is_caret, end_range) => {
@@ -1061,7 +1053,7 @@ pub fn print_text(
             TextPart::ResetState => print_style(lines, painter.reset()),
             TextPart::SpawnedWidget(id) => spawns_for_next.push(id),
             TextPart::SwapChar(char) => replace_chars.push(char),
-            TextPart::Inlay(inlay) => cur_inlays.push(inlay),
+            TextPart::Inlay(inlay) => inlays.push(inlay),
             TextPart::ToggleStart(_) | TextPart::ToggleEnd(_) => {}
         }
     }

@@ -130,6 +130,7 @@ pub struct FormTag(pub FormId, pub u8);
 impl<I: TextRange> Tag<I> for FormTag {
     const IS_META: bool = false;
 
+	#[track_caller]
     fn get_raw(
         &mut self,
         _: &super::InnerTags,

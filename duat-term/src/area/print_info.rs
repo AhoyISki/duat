@@ -70,7 +70,7 @@ impl PrintInfo {
         self.prev_coords = coords;
 
         iter.find_map(|(PrintedPlace { wrap, .. }, item)| {
-            y += (wrap && item.part.is_char()) as u32;
+            y += wrap as u32;
             (y > coords.height()).then_some(item.points())
         })
         .unwrap_or_else(|| text.len_points())

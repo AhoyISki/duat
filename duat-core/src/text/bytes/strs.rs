@@ -1,6 +1,9 @@
 use std::{ops::Range, sync::LazyLock};
 
-use crate::text::{Bytes, Point, Slices, TextRange};
+use crate::{
+    opts::PrintOpts,
+    text::{Bytes, Point, Slices, TextRange},
+};
 
 /// The [`&str`] equivalent for [`Bytes`]
 ///
@@ -155,6 +158,26 @@ impl Strs {
         let range = self.byte_range();
 
         formed.bytes.point_at_byte(range.start)..formed.bytes.point_at_byte(range.end)
+    }
+
+    /// Gets the indentation level of this `Strs`
+    ///
+    /// This assumes that it is a line in the [`Bytes`], ending with `\n` or `\r\n`.
+    ///
+    /// This is the total "amount of spaces", that is, how many `' '`
+    /// character equivalents are here. This depends on your
+    /// [`PrintOpts`] because of the `tabstop` field.
+    #[track_caller]
+    pub fn indent(&self, opts: PrintOpts) -> usize {
+        self.chars()
+            .take_while(|&char| char == ' ' || char == '\t')
+            .fold(0, |sum, char| {
+                if char == ' ' {
+                    sum + 1
+                } else {
+                    sum + opts.tabstop as usize - (opts.tabstop as usize % sum)
+                }
+            })
     }
 
     /// The lenght of this `Strs`, in bytes.

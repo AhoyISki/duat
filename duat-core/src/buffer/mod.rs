@@ -300,7 +300,12 @@ impl Buffer {
             text: std::mem::take(&mut self.text),
             layout_order: self.layout_order,
             history: std::mem::replace(&mut self.history, History::new()),
-            cached_print_info: Mutex::new(self.cached_print_info.lock().unwrap().take()),
+            cached_print_info: Mutex::new(
+                self.cached_print_info
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .take(),
+            ),
             opts: BufferOpts::default(),
             prev_opts: Mutex::default(),
         }

@@ -442,6 +442,7 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
+    #[track_caller]
     pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
         self.0.tags.insert_inner(tagger, idx, tag, false)
     }

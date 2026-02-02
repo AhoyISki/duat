@@ -63,6 +63,7 @@ impl Tags<'_> {
     ///
     /// When the `Tag` doesn't return an id, it will return `Some(())`
     /// if the `Tag` was successfully added, and `None` otherwise.
+    #[track_caller]
     pub fn insert<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
         self.0.insert_inner(tagger, idx, tag, false)
     }
@@ -71,6 +72,7 @@ impl Tags<'_> {
     /// same priority
     ///
     /// [`insert`]: Self::insert
+    #[track_caller]
     pub fn insert_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
         self.0.insert_inner(tagger, idx, tag, true)
     }
@@ -225,6 +227,7 @@ impl InnerTags {
     ///
     /// [`TextIndex`]: super::TextIndex
     /// [`TextRange`]: super::TextRange
+    #[track_caller]
     pub(crate) fn insert_inner<T, Idx>(&mut self, tagger: Tagger, idx: Idx, mut tag: T, after: bool)
     where
         T: Tag<Idx>,

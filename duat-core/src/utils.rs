@@ -62,8 +62,16 @@ impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Memoized<K, V> {
     }
 
     /// Gets a key, or inserts a new one with a given function
-    pub fn get_or_insert_with(&self, k: K, f: impl FnOnce() -> V) -> V {
-        self.0.lock().unwrap().entry(k).or_insert_with(f).clone()
+    pub fn get_or_insert_with<Q>(&self, key: &Q, f: impl FnOnce() -> V) -> V
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: std::hash::Hash + Eq + Clone + Into<K>,
+    {
+        let mut map = self.0.lock().unwrap_or_else(|err| err.into_inner());
+        match map.get(key) {
+            Some(value) => value.clone(),
+            None => map.entry(key.clone().into()).or_insert(f()).clone(),
+        }
     }
 }
 
