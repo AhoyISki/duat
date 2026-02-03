@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4a60245c.js";
+            window.path_to_searchindex_js = "../searchindex-316ef29a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -210,9 +210,9 @@ fn setup() {
         opts.wrap_lines = true;
         opts.wrapping_cap = Some(80);
     });
-    
+
     form::set("caret.main", Form::yellow());
-    
+
     cmd::add("set-rel-lines", |pa: &amp;mut Pass| {
         let handles: Vec&lt;_&gt; = context::windows()
             .handles(pa)
@@ -222,10 +222,10 @@ fn setup() {
         for handle in handles {
             handle.write(pa).relative = true;
         }
-        
+
         Ok(Some(txt!("Lines were set to [a]relative")))
     });
-    
+
     map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }</code></pre>
 <p>The exceptions to this are the <code>map</code>, <code>alias</code> and <code>plug</code> functions and the
@@ -252,8 +252,6 @@ fn setup() {
         // Indent wrapped lines.
         opts.indent_wraps = true;
         opts.tabstop = 4;
-        // Wether to print new lines as space characters.
-        opts.print_new_line = true;
         // Minimum cursor distance from the top and bottom edges.
         opts.scrolloff.x = 3;
         // Minimum cursor distance from the left and right edges.
@@ -261,10 +259,6 @@ fn setup() {
         opts.extra_word_chars = &amp;[];
         // Forces scrolloff at the end of a line.
         opts.force_scrolloff = false;
-        // Wether to allow showing ghosts (When LSP eventually comes, for example).
-        opts.show_ghosts = true;
-        // Allow scrolling until the Buffer shows only scrolloff.y lines.
-        opts.allow_overscroll = false;
         
         // General settings:
         // Place the bottom widgets on the top of the screen.
@@ -361,9 +355,11 @@ alongside the <code>form</code> module, are imported by the prelude:</p>
 use duat::prelude::*;
 
 fn setup() {
+    let color1 = Color::new("#575279");
+    let color2 = Color::new("#faf4ed");
     // Setting by Form
     form::set("punctuation.bracket", Form::red());
-    form::set("default", Form::with("#575279").on("#faf4ed"));
+    form::set("default", Form::with(color1).on(color2));
     form::set("matched_pair", Form::blue().underlined()); 
     
     // Setting by reference
