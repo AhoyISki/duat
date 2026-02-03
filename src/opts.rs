@@ -1,4 +1,4 @@
-//! General options for Duat
+//! General options for Duat.
 //!
 //! These options apply _globally_ and mostly serve as convenience
 //! methods to modify Duat's behavior. If you wish to apply them on a
@@ -65,9 +65,9 @@ use crate::widgets::NotificationsOpts;
 pub(crate) static OPTS: LazyLock<Mutex<StartOpts>> = LazyLock::new(Mutex::default);
 pub(crate) static STATUSLINE_FMT: StatusLineFn = Mutex::new(None);
 
-/// General options to set when starting Duat
+/// General options to set when starting Duat.
 pub struct StartOpts {
-    /// Highlights the current line
+    /// Highlights the current line.
     ///
     /// The default is `true`
     ///
@@ -75,15 +75,15 @@ pub struct StartOpts {
     ///
     /// [`Form`]: crate::form::Form
     pub highlight_current_line: bool,
-    /// Enables wrapping of lines
+    /// Enables wrapping of lines.
     ///
     /// The default is `true`
     pub wrap_lines: bool,
-    /// Wrap on word boundaries, rather than on any character
+    /// Wrap on word boundaries, rather than on any character.
     ///
     /// The default is `false`.
     pub wrap_on_word: bool,
-    /// Where to start wrapping
+    /// Where to start wrapping.
     ///
     /// The default is `None`
     ///
@@ -96,7 +96,7 @@ pub struct StartOpts {
     /// than it, then wrapping will take place slightly outside the
     /// screen as a concequence.
     pub wrapping_cap: Option<u32>,
-    /// Whether to indent wrapped lines or not
+    /// Whether to indent wrapped lines or not.
     ///
     /// In [`Buffer`]s, the default is `true`.
     ///
@@ -116,7 +116,7 @@ pub struct StartOpts {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub indent_wraps: bool,
-    /// How long tabs should be on screen
+    /// How long tabs should be on screen.
     ///
     /// In [`Buffer`]s, the default is `4`
     ///
@@ -126,13 +126,13 @@ pub struct StartOpts {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub tabstop: u8,
-    /// How much space to keep between the cursor and edges
+    /// How much space to keep between the cursor and edges.
     ///
     /// In [`Buffer`]s, the default is `ScrollOff { x: 3, y: 3 }`
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub scrolloff: ScrollOff,
-    /// Whether to limit scrolloff at the end of lines
+    /// Whether to limit scrolloff at the end of lines.
     ///
     /// In [`Buffer`]s, the default is `false`
     ///
@@ -142,7 +142,7 @@ pub struct StartOpts {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub force_scrolloff: bool,
-    /// Extra characters to be considered part of a word
+    /// Extra characters to be considered part of a word.
     ///
     /// The default is `&[]`.
     ///
@@ -155,7 +155,7 @@ pub struct StartOpts {
     ///
     /// [`\w`]: https://www.unicode.org/reports/tr18/#word
     pub extra_word_chars: &'static [char],
-    /// Indent string
+    /// Indent string.
     ///
     /// The default is `Some("│")`.
     ///
@@ -210,7 +210,7 @@ pub struct StartOpts {
     /// of indentation.
     pub indent_str_on_empty: bool,
     /// An indent string, just like `opts.indent_str`, but only for
-    /// `\t`s
+    /// `\t`s.
     ///
     /// The default is `None`
     ///
@@ -221,7 +221,7 @@ pub struct StartOpts {
     /// `replace.indent.tab` form. If this is `None`, then
     /// `opts.indent_str` will be used instead.
     pub indent_tab_str: Option<&'static str>,
-    /// A character to be printed in place of the space
+    /// A character to be printed in place of the space.
     ///
     /// The default is `None`
     ///
@@ -232,7 +232,7 @@ pub struct StartOpts {
     ///
     /// [`Form`]: crate::form::Form
     pub space_char: Option<char>,
-    /// A character to be printed on trailing whitespace
+    /// A character to be printed on trailing whitespace.
     ///
     /// The default is `None`
     ///
@@ -243,7 +243,7 @@ pub struct StartOpts {
     ///
     /// [`Form`]: crate::form::Form
     pub space_char_trailing: Option<char>,
-    /// Which `char` should be printed in new lines
+    /// Which `char` should be printed in new lines.
     ///
     /// The default is `' '` (space character)
     ///
@@ -253,7 +253,7 @@ pub struct StartOpts {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`Form`]: crate::form::Form
     pub new_line_char: char,
-    /// A character to be printed on the new line on empty strings
+    /// A character to be printed on the new line on empty strings.
     ///
     /// The default is `None`
     ///
@@ -262,7 +262,7 @@ pub struct StartOpts {
     ///
     /// If it is `None`, it will be the same as `opts.new_line_char`.
     pub new_line_char_on_empty: Option<char>,
-    /// A character to be printed on trailing new lines
+    /// A character to be printed on trailing new lines.
     ///
     /// The default is `None`
     ///
@@ -271,7 +271,7 @@ pub struct StartOpts {
     ///
     /// [`Form`]: crate::form::Form
     pub new_line_trailing: Option<char>,
-    /// Options concerning the [`duatmode`] [`Mode`]s
+    /// Options concerning the [`duatmode`] [`Mode`]s.
     ///
     /// `duatmode` is the default key arrangement of Duat. These
     /// options tweak the behavior of this arrangement.
@@ -280,7 +280,7 @@ pub struct StartOpts {
     /// vim one, or a helix one), and these options may not apply to
     /// those.
     pub duatmode: DuatModeOpts,
-    /// Makes the [`FooterWidgets`] take up one line instead of two
+    /// Makes the [`FooterWidgets`] take up one line instead of two.
     ///
     /// Normally, the [`StatusLine`] is placed in one line and the
     /// [`PromptLine`] and [`Notifications`] are placed on another.
@@ -306,7 +306,7 @@ pub struct StartOpts {
     /// [`Widget`]: crate::widgets::Widget
     /// [`opts::fmt_status`]: fmt_status
     pub one_line_footer: bool,
-    /// Place the [`FooterWidgets`]s on top of the screen
+    /// Place the [`FooterWidgets`]s on top of the screen.
     ///
     /// Normally, the [`StatusLine`], [`PromptLine`] and
     /// [`Notifications`] [`Widget`]s are placed at the bottom of
@@ -318,7 +318,7 @@ pub struct StartOpts {
     /// [`Notifications`]: crate::widgets::Notifications
     /// [`Widget`]: crate::ui::Widget
     pub footer_on_top: bool,
-    /// A [`KeyEvent`] to show the [`WhichKey`] widget
+    /// A [`KeyEvent`] to show the [`WhichKey`] widget.
     ///
     /// If [`None`] is given, the help key functionality will be
     /// disabled entirely, though the `WhichKey` widget will
@@ -329,14 +329,14 @@ pub struct StartOpts {
     /// [`WhichKey`]: crate::widgets::WhichKey
     /// [removing]: crate::hook::remove
     pub help_key: Option<KeyEvent>,
-    /// Options for the [`LineNumbers`]s widget
+    /// Options for the [`LineNumbers`]s widget.
     ///
     /// Do note that, at the moment, these options only apply to newly
     /// opened `LineNumbers`s, not to those that already exist.
     ///
     /// [`LineNumbers`]: crate::widgets::LineNumbers
     pub line_numbers: LineNumbersOpts,
-    /// Options for the [`Notifications`] widget
+    /// Options for the [`Notifications`] widget.
     ///
     /// The main purpose of these options is to modify how messages
     /// get displayed in the `Widget`, here's how you can do that:
@@ -382,7 +382,7 @@ pub struct StartOpts {
     /// [`Notifications`]: crate::widgets::Notifications
     /// [`LogBook`]: crate::widgets::LogBook
     pub notifications: NotificationsOpts,
-    /// Changes the [`WhichKey`] widget
+    /// Changes the [`WhichKey`] widget.
     ///
     /// This is the [`Widget`] that shows available bindings, as well
     /// as any possible remappings to those bindings, whenever you
@@ -391,7 +391,7 @@ pub struct StartOpts {
     /// [`WhichKey`]: crate::widgets::WhichKey
     /// [`Widget`]: crate::widgets::Widget
     pub whichkey: WhichKeyOpts,
-    /// Options for the [`LogBook`] widget
+    /// Options for the [`LogBook`] widget.
     ///
     /// You can open the `LogBook` by calling the `"logs"` command,
     /// which will also focus on the `Widget`.
@@ -477,7 +477,7 @@ impl Default for StartOpts {
     }
 }
 
-/// Changes global options for Duat
+/// Changes global options for Duat.
 ///
 /// Most of these options concern the [`Buffer`] widget, which is the
 /// primary [`Widget`] of Duat. But there are also options for the
@@ -538,7 +538,7 @@ pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
     *OPTS.lock().unwrap() = opts;
 }
 
-/// Reformat the [`StatusLine`] using the [`status!`] macro
+/// Reformat the [`StatusLine`] using the [`status!`] macro.
 ///
 /// The `status!` macro is very convenient for showing information
 /// about Duat, but most importantly to show information about
@@ -733,7 +733,7 @@ pub fn fmt_status(set_fn: impl FnMut(&mut Pass) -> StatusLineFmt + Send + 'stati
     *STATUSLINE_FMT.lock().unwrap() = Some(Box::new(set_fn));
 }
 
-/// Options for the [`WhichKey`] widget
+/// Options for the [`WhichKey`] widget.
 ///
 /// These options concern the formatting and on which [`Mode`]s the
 /// help should show up:
@@ -758,7 +758,7 @@ pub struct WhichKeyOpts {
     >,
     pub(crate) disabled_modes: Vec<TypeId>,
     pub(crate) always_shown_modes: Vec<TypeId>,
-    /// Where to place the [`Widget`]
+    /// Where to place the [`Widget`].
     ///
     /// Normally, this is [`Orientation::VerRightBelow`]. Since it's
     /// placed "inside" of the parent `Widget`, this normally places
@@ -782,7 +782,7 @@ impl Default for WhichKeyOpts {
 }
 
 impl WhichKeyOpts {
-    /// How to format the `WhichKey` widget
+    /// How to format the `WhichKey` widget.
     ///
     /// This function returns an [`Option<(Text, Text)>`]. The first
     /// [`Text`] is used for the keys, the second `Text` is used for
@@ -799,7 +799,7 @@ impl WhichKeyOpts {
         self.fmt_getter = Some(Box::new(move || Box::new(fmt.clone())))
     }
 
-    /// Disable hints for the given [`Mode`]
+    /// Disable hints for the given [`Mode`].
     ///
     /// The hints will still show up if you press the [help key]. By
     /// default, `WhichKey` is disabled for `duatmode`'s [`Insert`]
@@ -818,7 +818,7 @@ impl WhichKeyOpts {
         self.disabled_modes.push(TypeId::of::<M>());
     }
 
-    /// Makes the [`WhichKey`] permanently visible on this [`Mode`]
+    /// Makes the [`WhichKey`] permanently visible on this [`Mode`].
     ///
     /// This is useful for `Mode`s where the keys don't form
     /// sequences, but you'd still want them shown to the user. By
@@ -835,7 +835,7 @@ impl WhichKeyOpts {
         self.always_shown_modes.push(TypeId::of::<M>());
     }
 
-    /// Makes the [`WhichKey`] show up normally on this [`Mode`]
+    /// Makes the [`WhichKey`] show up normally on this [`Mode`].
     ///
     /// This function just removes this `Mode` from the [disabled] and
     /// [always shown] lists. By calling it, the [`WhichKey`]s widget

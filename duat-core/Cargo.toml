@@ -23,7 +23,7 @@ unit_arg = "allow"
 dirs-next = "2.0.0"
 bincode = "=2.0.1"
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
-format-like = "0.6.0"
+format-like = "0.7.0"
 log = "0.4.0"
 regex-syntax = "0.8.8"
 thread-amount = "0.3.0"

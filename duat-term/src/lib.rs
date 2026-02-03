@@ -18,12 +18,12 @@ use crossterm::{
     cursor,
     event::{self, Event as CtEvent, poll as ct_poll, read as ct_read},
     execute, queue,
-    style::ContentStyle,
+    style::{ContentStyle, Color},
     terminal::{self, ClearType},
 };
 use duat_core::{
     context::DuatSender,
-    form::{self, Color},
+    form,
     session::UiMouseEvent,
     ui::{
         self,

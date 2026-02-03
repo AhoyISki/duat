@@ -138,7 +138,6 @@ impl Strs {
     /// Returns an [`Iterator`] over the [`char`]s and their indices.
     pub fn char_indices(&self) -> impl DoubleEndedIterator<Item = (usize, char)> {
         let [s0, s1] = self.to_array();
-
         s0.char_indices()
             .chain(s1.char_indices().map(move |(b, c)| (b + s0.len(), c)))
     }

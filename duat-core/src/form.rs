@@ -1,9 +1,9 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::{OnceLock, RwLock, RwLockReadGuard};
+use std::sync::{Mutex, OnceLock, RwLock, RwLockReadGuard};
 
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
-pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
+pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color as CtColor};
 
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
@@ -29,6 +29,7 @@ pub trait ColorScheme: Send + Sync + 'static {
     fn name(&self) -> &'static str;
 }
 
+static COLORS: Mutex<Vec<CtColor>> = Mutex::new(Vec::new());
 static SENDER: OnceLock<DuatSender> = OnceLock::new();
 static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("default", Form::new().0, Normal),
@@ -53,7 +54,9 @@ mod global {
         sync::{LazyLock, Mutex, OnceLock},
     };
 
-    use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
+    use super::{
+        BASE_FORMS, BuiltForm, ColorScheme, CtColor, CursorShape, Form, FormId, Painter, Palette,
+    };
     #[doc(inline)]
     pub use crate::{
         __id_of__ as id_of, __set_many__ as set_many, __set_many_weak__ as set_many_weak,
@@ -663,6 +666,120 @@ mod global {
         Form(Form),
         Ref(String),
     }
+
+    /// A color value for use in [`Form`]s
+    #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct Color(u16);
+
+    impl Color {
+        /// Returns a new `Color` for use in [`Form`]s
+        ///
+        /// This function accepts two color formats:
+        ///
+        /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+        /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+        ///   {hue}, {sat} and {lit} can either be a number from
+        ///   `0..255`, or a percentage, followed by `'%'`, e.g. `"hsl
+        ///   234 50% 42"`.
+        #[track_caller]
+        pub fn new(value: &str) -> Self {
+            let mut colors = super::COLORS.lock().unwrap();
+            colors.push(match super::str_to_color(value) {
+                Ok(color) => color,
+                Err(err) => panic!("{}", err),
+            });
+
+            Color(colors.len() as u16 - 1)
+        }
+
+        /// Creates a new `Color` that has the same value as another
+        ///
+        /// If you change this one, [`Form`]s making use of the other
+        /// one will not be changed.
+        pub fn copy(&self) -> Self {
+            let mut colors = super::COLORS.lock().unwrap();
+            colors.extend_from_within(self.0 as usize..=self.0 as usize);
+
+            Color(colors.len() as u16 - 1)
+        }
+
+        /// Sets the value of this `Color` to a new one
+        ///
+        /// This will change every [`Form`] that makes use of this
+        /// color, letting you quickly make adjustments to all `Form`
+        /// colors.
+        ///
+        /// This function accepts two color formats:
+        ///
+        /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+        /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+        ///   {hue}, {sat} and {lit} can either be a number from
+        ///   `0..255`, or a percentage, followed by `'%'`, e.g. `"hsl
+        ///   234 50% 42"`.
+        #[track_caller]
+        pub fn set(&self, value: &str) {
+            let color = match super::str_to_color(value) {
+                Ok(color) => color,
+                Err(err) => panic!("{}", err),
+            };
+
+            super::COLORS.lock().unwrap()[self.0 as usize] = color;
+
+            let mut palette = PALETTE.get().unwrap().0.write().unwrap();
+
+            for (_, form, _) in &mut palette.forms {
+                if form.fg == Some(*self) {
+                    form.style.foreground_color = Some(color);
+                }
+                if form.bg == Some(*self) {
+                    form.style.background_color = Some(color);
+                }
+                if form.ul == Some(*self) {
+                    form.style.underline_color = Some(color);
+                }
+            }
+        }
+
+        /// Sets this `Color`'s value to an interpolation of `self`
+        /// and `other`
+        ///
+        /// It interpolates `(lhs * self + rhs * other) / (lhs + rhs)`
+        pub fn interpolate(&self, lhs: u8, rhs: u8, other: Color) {
+            let mut colors = super::COLORS.lock().unwrap();
+
+            let CtColor::Rgb { r: r0, g: g0, b: b0 } = colors[self.0 as usize] else {
+                unreachable!("You can't set a color to a non rgb value");
+            };
+            let CtColor::Rgb { r: r1, g: g1, b: b1 } = colors[other.0 as usize] else {
+                unreachable!("You can't set a color to a non rgb value");
+            };
+
+            colors[self.0 as usize] = CtColor::Rgb {
+                r: (lhs * r0 + rhs * r1) / (lhs + rhs),
+                g: (lhs * g0 + rhs * g1) / (lhs + rhs),
+                b: (lhs * b0 + rhs * b1) / (lhs + rhs),
+            };
+
+            let mut palette = PALETTE.get().unwrap().0.write().unwrap();
+
+            for (_, form, _) in &mut palette.forms {
+                if form.fg == Some(*self) {
+                    form.style.foreground_color = Some(colors[self.0 as usize]);
+                }
+                if form.bg == Some(*self) {
+                    form.style.background_color = Some(colors[self.0 as usize]);
+                }
+                if form.ul == Some(*self) {
+                    form.style.underline_color = Some(colors[self.0 as usize]);
+                }
+            }
+        }
+
+        /// The underlying value of this `Color`
+        pub fn as_u16(&self) -> u16 {
+            self.0
+        }
+    }
 }
 
 /// An identifier of a [`Form`]
@@ -718,7 +835,7 @@ macro_rules! mimic_method_new {
     (#[$attr:meta] $method:ident $attrib:expr) => {
         /// New [`Form`] with the
         #[$attr]
-        /// attribute
+        /// attribute.
         pub const fn $method() -> BuiltForm {
             let mut built = Form::new();
             built.0.style.attributes = built.0.style.attributes.with($attrib);
@@ -728,25 +845,27 @@ macro_rules! mimic_method_new {
     (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
         /// New [`Form`] with a
         #[$attr]
-        /// foreground
+        /// foreground.
         pub const fn $fg() -> BuiltForm {
             let mut built = Form::new();
             built.0.style.foreground_color = Some($color);
+            built.0.fg = None;
             built
         }
 
         /// New [`Form`] with a
         #[$attr]
-        /// background
+        /// background.
         pub const fn $bg() -> BuiltForm {
             let mut built = Form::new();
             built.0.style.background_color = Some($color);
+            built.0.bg = None;
             built
         }
 
         /// New [`Form`] with a
         #[$attr]
-        /// underlining
+        /// underlining.
         ///
         /// Do note that this feature may not be supported in all `Ui`s,
         /// for example, various terminals don't support this feature,
@@ -757,6 +876,7 @@ macro_rules! mimic_method_new {
         pub const fn $ul() -> BuiltForm {
             let mut built = Form::new();
             built.0.style.underline_color = Some($color);
+            built.0.ul = None;
             built
         }
     };
@@ -766,7 +886,7 @@ macro_rules! mimic_method_mod {
     (#[$attr:meta] $method:ident $attrib:expr) => {
         /// Applies the
         #[$attr]
-        /// attribute to this [`Form`]
+        /// attribute to this [`Form`].
         pub const fn $method(mut self) -> Self {
             self.0.style.attributes = self.0.style.attributes.with($attrib);
             self
@@ -775,20 +895,26 @@ macro_rules! mimic_method_mod {
     (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
         /// Turns the foreground of this [`Form`]
         #[$attr]
+        /// .
         pub const fn $fg(mut self) -> Self {
             self.0.style.foreground_color = Some($color);
+            self.0.fg = None;
             self
         }
 
         /// Turns the background of this [`Form`]
         #[$attr]
+        /// .
         pub const fn $bg(mut self) -> Self {
             self.0.style.background_color = Some($color);
+            self.0.bg = None;
             self
         }
 
         /// Turns the underlining of this [`Form`]
         #[$attr]
+        /// .
+        ///
         /// Do note that this feature may not be supported in all `Ui`s,
         /// for example, various terminals don't support this feature,
         /// since it is a part of the kitty protocol, and hasn't been
@@ -797,6 +923,7 @@ macro_rules! mimic_method_mod {
         /// `Ui`: crate::ui::traits::RawUi
         pub const fn $ul(mut self) -> Self {
             self.0.style.underline_color = Some($color);
+            self.0.ul = None;
             self
         }
     };
@@ -806,6 +933,9 @@ macro_rules! mimic_method_mod {
 pub struct Form {
     /// The actual [style](ContentStyle) that is applied
     pub style: ContentStyle,
+    fg: Option<Color>,
+    bg: Option<Color>,
+    ul: Option<Color>,
 }
 
 #[rustfmt::skip]
@@ -819,32 +949,32 @@ impl Form {
     mimic_method_new!(/**underdashed*/ underdashed Attribute::Underdashed);
     mimic_method_new!(/**reverse*/ reverse Attribute::Reverse);
     mimic_method_new!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
-    mimic_method_new!(/**black*/ black on_black underline_black Color::Black);
-    mimic_method_new!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey Color::DarkGrey);
-    mimic_method_new!(/**red*/ red on_red underline_red Color::Red);
-    mimic_method_new!(/**dark_red*/ dark_red on_dark_red underline_dark_red Color::DarkRed);
-    mimic_method_new!(/**green*/ green on_green underline_green Color::Green);
+    mimic_method_new!(/**black*/ black on_black underline_black CtColor::Black);
+    mimic_method_new!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey CtColor::DarkGrey);
+    mimic_method_new!(/**red*/ red on_red underline_red CtColor::Red);
+    mimic_method_new!(/**dark_red*/ dark_red on_dark_red underline_dark_red CtColor::DarkRed);
+    mimic_method_new!(/**green*/ green on_green underline_green CtColor::Green);
     mimic_method_new!(
-        /**dark_green*/ dark_green on_dark_green underline_dark_green Color::DarkGreen
+        /**dark_green*/ dark_green on_dark_green underline_dark_green CtColor::DarkGreen
     );
-    mimic_method_new!(/**yellow*/ yellow on_yellow underline_yellow Color::Yellow);
+    mimic_method_new!(/**yellow*/ yellow on_yellow underline_yellow CtColor::Yellow);
     mimic_method_new!(
-        /**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow Color::DarkYellow
+        /**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow CtColor::DarkYellow
     );
-    mimic_method_new!(/**blue*/ blue on_blue underline_blue Color::Blue);
-    mimic_method_new!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue Color::DarkBlue);
-    mimic_method_new!(/**magenta*/ magenta on_magenta underline_magenta Color::Magenta);
+    mimic_method_new!(/**blue*/ blue on_blue underline_blue CtColor::Blue);
+    mimic_method_new!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue CtColor::DarkBlue);
+    mimic_method_new!(/**magenta*/ magenta on_magenta underline_magenta CtColor::Magenta);
     mimic_method_new!(
-        /**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta Color::DarkMagenta
+        /**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta CtColor::DarkMagenta
     );
-    mimic_method_new!(/**cyan*/ cyan on_cyan underline_cyan Color::Cyan);
-    mimic_method_new!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan Color::DarkCyan);
-    mimic_method_new!(/**white*/ white on_white underline_white Color::White);
-    mimic_method_new!(/**grey*/ grey on_grey underline_grey Color::Grey);
+    mimic_method_new!(/**cyan*/ cyan on_cyan underline_cyan CtColor::Cyan);
+    mimic_method_new!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan CtColor::DarkCyan);
+    mimic_method_new!(/**white*/ white on_white underline_white CtColor::White);
+    mimic_method_new!(/**grey*/ grey on_grey underline_grey CtColor::Grey);
 }
 
 impl Form {
-    /// Returns a new [`Form`] with a default style
+    /// Returns a new [`Form`] with a default style.
     ///
     /// This method actually returns [`BuiltForm`]
     #[allow(clippy::new_ret_no_self)]
@@ -855,10 +985,10 @@ impl Form {
             underline_color: None,
             attributes: Attributes::none(),
         };
-        BuiltForm(Self { style })
+        BuiltForm(Self { style, fg: None, bg: None, ul: None })
     }
 
-    /// Returns a new [`Form`] with the [`Reset`] attribute
+    /// Returns a new [`Form`] with the [`Reset`] attribute.
     ///
     /// In Duat, the [`Reset`] attribute should remove only other
     /// [`Attribute`]s, not any of the colors in use.
@@ -870,82 +1000,65 @@ impl Form {
         built
     }
 
-    /// New [`Form`] with a colored foreground
+    /// New `Form` with a colored foreground.
     ///
-    /// This function accepts three color formats:
-    ///
-    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
-    /// - Three rgb values, like `"rgb 123 456 789"`;
-    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
-    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
-    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
-    pub const fn with(str: &str) -> BuiltForm {
+    /// This color is derived from a [`Color`] struct, which is
+    /// created via [`Color::new`], or set via [`Color::set`], letting
+    /// you change the color of every `Form` that uses the same color.
+    pub fn with(color: Color) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.foreground_color = match str_to_color(str) {
-            Ok(color) => Some(color),
-            Err(err) => panic!("{}", err),
-        };
+        built.0.style.foreground_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
         built
     }
 
-    /// New [`Form`] with a colored background
+    /// New `Form` with a colored background.
     ///
-    /// This function accepts three color formats:
-    ///
-    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
-    /// - Three rgb values, like `"rgb 123 456 789"`;
-    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
-    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
-    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
-    pub const fn on(str: &str) -> BuiltForm {
+    /// This color is derived from a [`Color`] struct, which is
+    /// created via [`Color::new`], or set via [`Color::set`], letting
+    /// you change the color of every `Form` that uses the same color.
+    pub fn on(color: Color) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.background_color = match str_to_color(str) {
-            Ok(color) => Some(color),
-            Err(err) => panic!("{}", err),
-        };
+        built.0.style.background_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
         built
     }
 
-    /// New [`Form`] with a colored underlining
+    /// New `Form` with a colored underline..
     ///
-    /// This function accepts three color formats:
+    /// Note that this doesn't actually make the underline show up, it
+    /// merely colors one that is set via a command like
+    /// [`Form::underlined`].
     ///
-    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
-    /// - Three rgb values, like `"rgb 123 456 789"`;
-    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
-    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
-    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
-    pub const fn underline(str: &str) -> BuiltForm {
+    /// This color is derived from a [`Color`] struct, which is
+    /// created via [`Color::new`], or set via [`Color::set`], letting
+    /// you change the color of every `Form` that uses the same color.
+    pub fn underline(color: Color) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.underline_color = match str_to_color(str) {
-            Ok(color) => Some(color),
-            Err(err) => panic!("{}", err),
-        };
+        built.0.style.underline_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
         built
     }
 
-    /// The foreground color
-    pub const fn fg(&self) -> Option<Color> {
+    /// The foreground color.
+    const fn fg(&self) -> Option<CtColor> {
         self.style.foreground_color
     }
 
-    /// The background color
-    pub const fn bg(&self) -> Option<Color> {
+    /// The background color.
+    const fn bg(&self) -> Option<CtColor> {
         self.style.background_color
     }
 
-    /// The foreground color
-    pub const fn ul(&self) -> Option<Color> {
+    /// The foreground color.
+    const fn ul(&self) -> Option<CtColor> {
         self.style.underline_color
     }
 
-    /// The attributes
-    pub const fn attrs(&self) -> Attributes {
+    /// The attributes.
+    const fn attrs(&self) -> Attributes {
         self.style.attributes
     }
 }
 
-/// A convenience struct for [`Form`]s
+/// A convenience struct for [`Form`]s.
 ///
 /// This struct exists in order to have [`Form`] methods be
 /// initializers, while [`BuiltForm`] methods consume and return a
@@ -968,32 +1081,32 @@ impl BuiltForm {
     mimic_method_mod!(/**reverse*/ reverse Attribute::Reverse);
     mimic_method_mod!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
     mimic_method_mod!(/**overlined*/ overlined Attribute::OverLined);
-    mimic_method_mod!(/**black*/ black on_black underline_black Color::Black);
-    mimic_method_mod!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey Color::DarkGrey);
-    mimic_method_mod!(/**red*/ red on_red underline_red Color::Red);
-    mimic_method_mod!(/**dark_red*/ dark_red on_dark_red underline_dark_red Color::DarkRed);
-    mimic_method_mod!(/**green*/ green on_green underline_green Color::Green);
+    mimic_method_mod!(/**black*/ black on_black underline_black CtColor::Black);
+    mimic_method_mod!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey CtColor::DarkGrey);
+    mimic_method_mod!(/**red*/ red on_red underline_red CtColor::Red);
+    mimic_method_mod!(/**dark_red*/ dark_red on_dark_red underline_dark_red CtColor::DarkRed);
+    mimic_method_mod!(/**green*/ green on_green underline_green CtColor::Green);
     mimic_method_mod!(
-        /**dark_green*/ dark_green on_dark_green underline_dark_green Color::DarkGreen
+        /**dark_green*/ dark_green on_dark_green underline_dark_green CtColor::DarkGreen
     );
-    mimic_method_mod!(/**yellow*/ yellow on_yellow underline_yellow Color::Yellow);
+    mimic_method_mod!(/**yellow*/ yellow on_yellow underline_yellow CtColor::Yellow);
     mimic_method_mod!(
-        /**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow Color::DarkYellow
+        /**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow CtColor::DarkYellow
     );
-    mimic_method_mod!(/**blue*/ blue on_blue underline_blue Color::Blue);
-    mimic_method_mod!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue Color::DarkBlue);
-    mimic_method_mod!(/**magenta*/ magenta on_magenta underline_magenta Color::Magenta);
+    mimic_method_mod!(/**blue*/ blue on_blue underline_blue CtColor::Blue);
+    mimic_method_mod!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue CtColor::DarkBlue);
+    mimic_method_mod!(/**magenta*/ magenta on_magenta underline_magenta CtColor::Magenta);
     mimic_method_mod!(
-        /**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta Color::DarkMagenta
+        /**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta CtColor::DarkMagenta
     );
-    mimic_method_mod!(/**cyan*/ cyan on_cyan underline_cyan Color::Cyan);
-    mimic_method_mod!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan Color::DarkCyan);
-    mimic_method_mod!(/**white*/ white on_white underline_white Color::White);
-    mimic_method_mod!(/**grey*/ grey on_grey underline_grey Color::Grey);
+    mimic_method_mod!(/**cyan*/ cyan on_cyan underline_cyan CtColor::Cyan);
+    mimic_method_mod!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan CtColor::DarkCyan);
+    mimic_method_mod!(/**white*/ white on_white underline_white CtColor::White);
+    mimic_method_mod!(/**grey*/ grey on_grey underline_grey CtColor::Grey);
 }
 
 impl BuiltForm {
-    /// Adds the [`Reset`] attribute to this [`Form`]
+    /// Adds the [`Reset`] attribute to this [`Form`].
     ///
     /// In Duat, the [`Reset`] attribute should remove only other
     /// [`Attribute`]s, not any of the colors in use.
@@ -1004,54 +1117,40 @@ impl BuiltForm {
         self
     }
 
-    /// Colors the foreground of this [`Form`]
+    /// New `Form` with a colored foreground.
     ///
-    /// This function accepts three color formats:
-    ///
-    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
-    /// - Three rgb values, like `"rgb 123 456 789"`;
-    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
-    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
-    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
-    pub const fn with(mut self, str: &str) -> Self {
-        self.0.style.foreground_color = match str_to_color(str) {
-            Ok(color) => Some(color),
-            Err(err) => panic!("{}", err),
-        };
+    /// This color is derived from a [`Color`] struct, which is
+    /// created via [`Color::new`], or set via [`Color::set`], letting
+    /// you change the color of every `Form` that uses the same color.
+    pub fn with(mut self, color: Color) -> Self {
+        self.0.style.foreground_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
         self
     }
 
-    /// Colors the background of this [`Form`]
+    /// New `Form` with a colored underline.
     ///
-    /// This function accepts three color formats:
+    /// Note that this doesn't actually make the underline show up, it
+    /// merely colors one that is set via a command like
+    /// [`Form::underlined`].
     ///
-    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
-    /// - Three rgb values, like `"rgb 123 456 789"`;
-    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
-    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
-    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
-    pub const fn on(mut self, str: &str) -> Self {
-        self.0.style.background_color = match str_to_color(str) {
-            Ok(color) => Some(color),
-            Err(err) => panic!("{}", err),
-        };
+    /// This color is derived from a [`Color`] struct, which is
+    /// created via [`Color::new`], or set via [`Color::set`], letting
+    /// you change the color of every `Form` that uses the same color.
+    pub fn on(mut self, color: Color) -> Self {
+        self.0.style.background_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
         self
     }
 
     /// Colors the underlining of this [`Form`]
     ///
-    /// This function accepts three color formats:
+    /// This function accepts two color formats:
     ///
     /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
-    /// - Three rgb values, like `"rgb 123 456 789"`;
     /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
     ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
     ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
-    pub const fn underline(mut self, str: &str) -> Self {
-        self.0.style.underline_color = match str_to_color(str) {
-            Ok(color) => Some(color),
-            Err(err) => panic!("{}", err),
-        };
+    pub fn underline(mut self, color: Color) -> Self {
+        self.0.style.underline_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
         self
     }
 }
@@ -1075,21 +1174,6 @@ impl From<BuiltForm> for Form {
         value.0
     }
 }
-
-/// The [`FormId`] of `"default"`
-pub const DEFAULT_ID: FormId = FormId(0);
-/// The [`FormId`] of `"accent"`
-pub const ACCENT_ID: FormId = FormId(1);
-/// The [`FormId`] of `"caret.main"`
-pub const M_CAR_ID: FormId = FormId(2);
-/// The [`FormId`] of `"caret.extra"`
-pub const E_CAR_ID: FormId = FormId(3);
-/// The [`FormId`] of `"slection.main"`
-pub const M_SEL_ID: FormId = FormId(4);
-/// The [`FormId`] of `"selection.extra"`
-pub const E_SEL_ID: FormId = FormId(5);
-/// The [`FormId`] of `"character.control"`
-pub const CONTROL_CHAR_ID: FormId = FormId(7);
 
 /// The list of forms to be used when rendering.
 ///
@@ -1518,17 +1602,17 @@ impl Painter {
             style.foreground_color = self
                 .parts
                 .set_fg
-                .then_some(style.foreground_color.unwrap_or(Color::Reset))
+                .then_some(style.foreground_color.unwrap_or(CtColor::Reset))
                 .filter(|fg| Some(*fg) != self.parts.prev_style.and_then(|s| s.foreground_color));
             style.background_color = self
                 .parts
                 .set_bg
-                .then_some(style.background_color.unwrap_or(Color::Reset))
+                .then_some(style.background_color.unwrap_or(CtColor::Reset))
                 .filter(|bg| Some(*bg) != self.parts.prev_style.and_then(|s| s.background_color));
             style.underline_color = self
                 .parts
                 .set_ul
-                .then_some(style.underline_color.unwrap_or(Color::Reset))
+                .then_some(style.underline_color.unwrap_or(CtColor::Reset))
                 .filter(|ul| Some(*ul) != self.parts.prev_style.and_then(|s| s.underline_color));
         }
 
@@ -1719,7 +1803,7 @@ fn position_and_form(
 }
 
 /// Converts a string to a color, supporst hex, RGB and HSL
-const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
+const fn str_to_color(str: &str) -> std::result::Result<CtColor, &'static str> {
     const fn strip_prefix<'a>(prefix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = prefix.as_bytes();
 
@@ -1787,28 +1871,8 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
         let g = (total >> 8) as u8;
         let b = total as u8;
 
-        Ok(Color::Rgb { r, g, b })
-        // Expects "rgb {red} {green} {blue}"
-    } else if let Some(mut rgb) = strip_prefix("rgb ", str) {
-        let mut values = [0, 0, 0];
-        let mut i = 0;
-
-        while i < values.len() {
-            if let Some((cut, rest)) = split_space(rgb) {
-                rgb = rest;
-                values[i] = match u8::from_str_radix(cut, 10) {
-                    Ok(value) => value,
-                    Err(_) => return Err("Rgb format value could not be parsed"),
-                }
-            } else {
-                return Err("Missing value in rgb format");
-            }
-            i += 1;
-        }
-
-        let [r, g, b] = values;
-        Ok(Color::Rgb { r, g, b })
-        // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
+        Ok(CtColor::Rgb { r, g, b })
+    // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
     } else if let Some(mut hsl) = strip_prefix("hsl ", str) {
         let mut values = [0.0, 0.0, 0.0];
         let mut i = 0;
@@ -1849,7 +1913,7 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
         let r = (0.5 + r * 255.0) as u8;
         let g = (0.5 + g * 255.0) as u8;
         let b = (0.5 + b * 255.0) as u8;
-        Ok(Color::Rgb { r, g, b })
+        Ok(CtColor::Rgb { r, g, b })
     } else {
         Err("Color format was not recognized")
     }
@@ -1857,12 +1921,12 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
 
 impl std::fmt::Debug for Form {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct DebugColor(Option<Color>);
+        struct DebugColor(Option<CtColor>);
         impl std::fmt::Debug for DebugColor {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self.0 {
-                    Some(Color::Rgb { r, g, b }) => write!(f, "Some(Rgb({r}, {g}, {b}))"),
-                    Some(Color::AnsiValue(ansi)) => write!(f, "Some(Ansi({ansi}))"),
+                    Some(CtColor::Rgb { r, g, b }) => write!(f, "Some(Rgb({r}, {g}, {b}))"),
+                    Some(CtColor::AnsiValue(ansi)) => write!(f, "Some(Ansi({ansi}))"),
                     Some(color) => write!(f, "Some({color:?})"),
                     None => f.write_str("None"),
                 }
@@ -1952,3 +2016,18 @@ impl std::fmt::Debug for FormType {
         }
     }
 }
+
+/// The [`FormId`] of `"default"`
+pub const DEFAULT_ID: FormId = FormId(0);
+/// The [`FormId`] of `"accent"`
+pub const ACCENT_ID: FormId = FormId(1);
+/// The [`FormId`] of `"caret.main"`
+pub const M_CAR_ID: FormId = FormId(2);
+/// The [`FormId`] of `"caret.extra"`
+pub const E_CAR_ID: FormId = FormId(3);
+/// The [`FormId`] of `"slection.main"`
+pub const M_SEL_ID: FormId = FormId(4);
+/// The [`FormId`] of `"selection.extra"`
+pub const E_SEL_ID: FormId = FormId(5);
+/// The [`FormId`] of `"character.control"`
+pub const CONTROL_CHAR_ID: FormId = FormId(7);

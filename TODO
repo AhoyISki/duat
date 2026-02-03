@@ -1,23 +1,26 @@
 FOR NEXT UPDATE:
 [ ] Start work on duat-lsp.
 [ ] `z` and `q` keys for duatmode.
-[ ] Augment forms.
-  [ ] Add the Color struct.
-  [ ] Add copying and interpolation.
-  [ ] Remove generics.
+[x] Make the 'e' and 'v' traverse words and spaces.
+[x] Augment forms.
+  [x] Add the Color struct.
+  [x] Add copying and interpolation.
+  [/] Remove generics.
 [ ] Remove Widget argument from Modes.
 [ ] Add registers possibly.
 [x] ReplaceChar Tags!
 [x] Inlay tags!
-[ ] BufferOpts.
-  [ ] BufferOptsParser.
-    [ ] Indent lines.
+[x] BufferOpts.
+  [x] BufferOptsParser.
+    [x] Indent lines.
     [x] Space replacements.
     [x] New line replacements.
 [x] Get rid of the print_iter api.
 [ ] Do the libloading hacks.
 [ ] Strs improvement.
-[ ] Switch from the Records system to lines based one.
+  [ ] More fundamental functions.
+  [ ] Better search functionality.
+[ ] Use a lines based system for large enough text.
 [x] Get rid of Lender entirely.
 [x] Lean up the dependency tree.
 
