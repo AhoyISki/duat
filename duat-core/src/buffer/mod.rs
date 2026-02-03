@@ -196,7 +196,6 @@ impl Buffer {
     ///
     /// After calling this, `self.cached_print_info` is guaranteed to
     /// be [`Some`]
-    #[track_caller]
     fn reset_print_info_if_needed<'b>(
         &'b self,
         area: &Area,

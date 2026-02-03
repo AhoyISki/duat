@@ -94,8 +94,6 @@ fn setup() {
         // Indent wrapped lines.
         opts.indent_wraps = true;
         opts.tabstop = 4;
-        // Wether to print new lines as space characters.
-        opts.print_new_line = true;
         // Minimum cursor distance from the top and bottom edges.
         opts.scrolloff.x = 3;
         // Minimum cursor distance from the left and right edges.
@@ -103,10 +101,6 @@ fn setup() {
         opts.extra_word_chars = &[];
         // Forces scrolloff at the end of a line.
         opts.force_scrolloff = false;
-        // Wether to allow showing ghosts (When LSP eventually comes, for example).
-        opts.show_ghosts = true;
-        // Allow scrolling until the Buffer shows only scrolloff.y lines.
-        opts.allow_overscroll = false;
         
         // General settings:
         // Place the bottom widgets on the top of the screen.

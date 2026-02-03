@@ -271,7 +271,10 @@ impl Bytes {
         );
 
         let start = self.point_at_line(n).byte();
-        let len = self[start..].chars().take_while(|&char| char != '\n').count();
+        let len: usize = self[start..]
+            .chars()
+            .map_while(|char| (char != '\n').then_some(char.len_utf8()))
+            .sum();
 
         &self[start..start + (len + 1)]
     }
@@ -600,6 +603,7 @@ impl std::fmt::Debug for Bytes {
     }
 }
 
+#[track_caller]
 fn assert_utf8_boundary(bytes: &Bytes, idx: usize) {
     assert!(
         bytes.buf.get(idx).is_none_or(|b| utf8_char_width(*b) != 0),
