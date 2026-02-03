@@ -19,14 +19,16 @@ struct BufferOptsParser {
     opts: BufferOpts,
 }
 
-static TRACKER: BufferTracker = BufferTracker::new();
+static REPLACEMENT_TRACKER: BufferTracker = BufferTracker::new();
+static INDENT_TRACKER: BufferTracker = BufferTracker::new();
 static PARSERS: PerBuffer<BufferOptsParser> = PerBuffer::new();
 
 pub fn enable_parser() {
     hook::add::<BufferOpened>(|pa, handle| {
         let opts_parser = BufferOptsParser { opts: handle.read(pa).opts };
         PARSERS.register(pa, handle, opts_parser);
-        TRACKER.register_buffer(handle.write(pa));
+        REPLACEMENT_TRACKER.register_buffer(handle.write(pa));
+        INDENT_TRACKER.register_buffer(handle.write(pa));
     })
     .grouped("DefaultOptsParser");
 
@@ -41,28 +43,20 @@ pub fn enable_parser() {
         let printed_line_ranges = handle.printed_line_ranges(pa);
         let (parser, buffer) = PARSERS.write(pa, handle).unwrap();
 
-        let opts_have_changed = buffer.opts != parser.opts;
+        let opts_changed = buffer.opts != parser.opts;
         parser.opts = buffer.opts;
 
-        let mut parts = TRACKER.parts(buffer).unwrap();
-
-        if opts_have_changed {
-            parts.ranges_to_update.add_ranges([..]);
-        }
+        let mut parts = REPLACEMENT_TRACKER.parts(buffer).unwrap();
 
         if parser.opts.highlight_current_line {
             hightlight_current_line(&mut parts, cur_line_tagger);
         }
 
-        let lines_to_update = parts.ranges_to_update.select_from(printed_line_ranges);
-        if lines_to_update.is_empty() {
-            return;
-        }
+        let taggers = [nl_tagger, space_tagger];
+        replace_chars(parts, &printed_line_ranges, taggers, opts_changed);
 
-        show_indents(&mut parts, &lines_to_update, indent_tagger);
-        replace_chars(&mut parts, &lines_to_update, [nl_tagger, space_tagger]);
-
-        parts.ranges_to_update.update_on(lines_to_update);
+        let parts = INDENT_TRACKER.parts(buffer).unwrap();
+        show_indents(parts, &printed_line_ranges, indent_tagger, opts_changed);
     })
     .grouped("DefaultOptsParser");
 
@@ -87,7 +81,28 @@ fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
     parts.tags.insert(tagger, line_range, cur_line_form);
 }
 
-fn replace_chars(parts: &mut BufferParts, line_ranges: &[Range<usize>], taggers: [Tagger; 2]) {
+fn replace_chars(
+    mut parts: BufferParts,
+    ranges: &[Range<usize>],
+    taggers: [Tagger; 2],
+    opts_changed: bool,
+) {
+    if opts_changed {
+        parts.ranges_to_update.add_ranges([..]);
+    } else {
+        parts.ranges_to_update.add_ranges(
+            parts
+                .changes
+                .clone()
+                .map(|change| change.line_range(parts.bytes)),
+        );
+    }
+
+    let lines_to_update = parts.ranges_to_update.select_from(ranges.iter().cloned());
+    if lines_to_update.is_empty() {
+        return;
+    }
+
     let [nl_tagger, space_tagger] = taggers;
 
     let space_form = form::id_of!("replace.space").to_tag(90);
@@ -99,7 +114,7 @@ fn replace_chars(parts: &mut BufferParts, line_ranges: &[Range<usize>], taggers:
 
     let opts = parts.opts;
 
-    for range in line_ranges.iter().cloned() {
+    for range in lines_to_update.iter().cloned() {
         parts.tags.remove(space_tagger, range.start..range.end);
         parts.tags.remove_excl(nl_tagger, range.start..range.end);
 
@@ -117,7 +132,7 @@ fn replace_chars(parts: &mut BufferParts, line_ranges: &[Range<usize>], taggers:
                         .and_then(|char| space_start.and(Some((char, nl_form_trailing))))
                         .or(opts
                             .new_line_on_empty
-                            .and_then(|char| (byte == 0).then_some((char, nl_form_empty))))
+                            .and_then(|char| (byte == line_start).then_some((char, nl_form_empty))))
                         .unwrap_or((opts.new_line_char, nl_form));
 
                     if nl_char != ' ' {
@@ -161,11 +176,34 @@ fn replace_chars(parts: &mut BufferParts, line_ranges: &[Range<usize>], taggers:
             }
         }
     }
+
+    parts.ranges_to_update.update_on(lines_to_update);
 }
 
-fn show_indents(parts: &mut BufferParts, line_ranges: &[Range<usize>], tagger: Tagger) {
+fn show_indents(
+    mut parts: BufferParts,
+    ranges: &[Range<usize>],
+    tagger: Tagger,
+    opts_changed: bool,
+) {
+    if opts_changed {
+        parts.ranges_to_update.add_ranges([..]);
+    } else {
+        parts.ranges_to_update.add_ranges(
+            parts
+                .changes
+                .clone()
+                .map(|change| change.line_range(parts.bytes)),
+        );
+    }
+
+    let lines_to_update = parts.ranges_to_update.select_from(ranges.iter().cloned());
+    if lines_to_update.is_empty() {
+        return;
+    }
+
     let popts = parts.opts.to_print_opts();
-    let sequences = line_ranges
+    let sequences = lines_to_update
         .iter()
         .fold(Vec::<Vec<&Strs>>::new(), |mut seqs, range| {
             if let Some(seq) = seqs.last_mut()
@@ -186,31 +224,31 @@ fn show_indents(parts: &mut BufferParts, line_ranges: &[Range<usize>], tagger: T
     };
 
     for seq in sequences {
-        let first_line_range = seq[0].byte_range();
+        let prev_unindented = {
+            parts.bytes[..seq[0].byte_range().start]
+                .lines()
+                .rev()
+                .find_map(|line| {
+                    (!line.chars().next().unwrap().is_ascii_whitespace())
+                        .then_some(line.byte_range())
+                })
+                .unwrap_or(0..0)
+        };
 
-        let prev_unindented = parts.bytes[..first_line_range.start]
-            .lines()
-            .rev()
-            .find_map(|line| {
-                (!line.chars().next().unwrap().is_ascii_whitespace()).then_some(line.byte_range())
-            })
-            .unwrap_or(0..0);
+        let next_unindented = {
+            parts.bytes[seq.last().unwrap().byte_range().end..]
+                .lines()
+                .find_map(|line| {
+                    (!line.chars().next().unwrap().is_ascii_whitespace())
+                        .then_some(line.byte_range())
+                })
+                .unwrap_or(parts.bytes.len().byte()..parts.bytes.len().byte())
+        };
 
         let mut state = IndentState::new(parts.opts.indent_str, parts.opts.tabstop);
         let mut empty_lines = Vec::new();
 
-        for line in parts.bytes[prev_unindented.end..first_line_range.start].lines() {
-            if line.is_empty_line() {
-                empty_lines.push(line);
-            } else {
-                let indent = line.indent(popts);
-                state.truncate(indent);
-                empty_lines.clear();
-                state.increment(indent);
-            }
-        }
-
-        for line in seq.iter().copied() {
+        for line in parts.bytes[prev_unindented.end..next_unindented.end].lines() {
             if line.is_empty_line() {
                 empty_lines.push(line);
             } else {
@@ -219,28 +257,17 @@ fn show_indents(parts: &mut BufferParts, line_ranges: &[Range<usize>], tagger: T
 
                 set_capped(&mut state, line, indent);
                 for line in empty_lines.drain(..) {
-                    state.indent_line(line, &mut parts.tags, tagger);
+                    state.indent_line(line, &mut parts.tags, tagger, parts.opts);
                 }
                 state.capped = false;
 
                 state.increment(indent);
-                state.indent_line(line, &mut parts.tags, tagger);
+                state.indent_line(line, &mut parts.tags, tagger, parts.opts);
             }
         }
 
-        if !empty_lines.is_empty()
-            && let Some(next_non_empty) = parts.bytes[seq.last().unwrap().byte_range().end..]
-                .lines()
-                .find(|line| !line.is_empty_line())
-        {
-            let indent = next_non_empty.indent(popts);
-            state.truncate(indent);
-
-            set_capped(&mut state, next_non_empty, indent);
-            for line in empty_lines.drain(..) {
-                state.indent_line(line, &mut parts.tags, tagger);
-            }
-        }
+        let updated_range = prev_unindented.end..next_unindented.end;
+        parts.ranges_to_update.update_on([updated_range]);
     }
 }
 
@@ -279,7 +306,7 @@ impl IndentState {
         }
     }
 
-    fn indent_line(&self, line: &Strs, tags: &mut Tags, tagger: Tagger) {
+    fn indent_line(&self, line: &Strs, tags: &mut Tags, tagger: Tagger, opts: &BufferOpts) {
         static INLAYS: Memoized<IndentState, Ghost> = Memoized::new();
 
         let range = line.byte_range();
@@ -333,14 +360,20 @@ impl IndentState {
                     .take(*len)
             });
 
-            for ((byte, _), char) in line.char_indices().zip(chars) {
-                if let Some(char) = char {
-                    tags.insert(tagger, range.start + byte, SwapChar::new(char));
+            let nl_char = opts.new_line_trailing.unwrap_or(opts.new_line_char);
+
+            let mut end = 0;
+
+            for ((byte, char), replacement) in line.char_indices().zip(chars) {
+                if char != '\n' || nl_char == ' ' {
+                    end += 1;
+                    if let Some(char) = replacement {
+                        tags.insert(tagger, range.start + byte, SwapChar::new(char));
+                    }
                 }
             }
 
-            let total: usize = self.list.iter().copied().sum();
-            tags.insert(tagger, range.start..range.start + total, indent_form)
+            tags.insert(tagger, range.start..range.start + end, indent_form)
         }
     }
 }

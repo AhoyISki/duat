@@ -673,8 +673,9 @@ impl PartialEq<Handle> for BufferReloaded {
 ///     let tagger = Tagger::new();
 ///     let tag = form::id_of!("non_ascii_char").to_tag(50);
 ///
-///     let highlight_non_ascii = move |tags: &mut Tags, bytes: &Bytes, range| {
-///         for (b, char) in bytes.strs(range).unwrap().char_indices() {
+///     let hl_non_ascii = move |tags: &mut Tags, bytes: &Bytes, range: Range<Point>| {
+///         for (b, char) in bytes[range.clone()].char_indices() {
+///             let b = b + range.start.byte();
 ///             if !char.is_ascii() {
 ///                 tags.insert(tagger, b..b + char.len_utf8(), tag);
 ///             }
@@ -686,7 +687,7 @@ impl PartialEq<Handle> for BufferReloaded {
 ///
 ///         let mut parts = handle.text_parts(pa);
 ///         let range = Point::default()..parts.bytes.len();
-///         highlight_non_ascii(&mut parts.tags, parts.bytes, range);
+///         hl_non_ascii(&mut parts.tags, parts.bytes, range);
 ///     });
 ///
 ///     hook::add::<BufferUpdated>(move |pa, handle| {
@@ -694,7 +695,7 @@ impl PartialEq<Handle> for BufferReloaded {
 ///
 ///         for change in parts.changes {
 ///             parts.tags.remove(tagger, change.added_range());
-///             highlight_non_ascii(&mut parts.tags, parts.bytes, change.added_range())
+///             hl_non_ascii(&mut parts.tags, parts.bytes, change.added_range())
 ///         }
 ///     });
 /// }

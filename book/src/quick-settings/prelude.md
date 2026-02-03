@@ -44,9 +44,9 @@ fn setup() {
         opts.wrap_lines = true;
         opts.wrapping_cap = Some(80);
     });
-    
+
     form::set("caret.main", Form::yellow());
-    
+
     cmd::add("set-rel-lines", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows()
             .handles(pa)
@@ -56,10 +56,10 @@ fn setup() {
         for handle in handles {
             handle.write(pa).relative = true;
         }
-        
+
         Ok(Some(txt!("Lines were set to [a]relative")))
     });
-    
+
     map::<Insert>("jk", "<Esc>:w<Enter>");
 }
 ```
@@ -204,9 +204,11 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
+    let color1 = Color::new("#575279");
+    let color2 = Color::new("#faf4ed");
     // Setting by Form
     form::set("punctuation.bracket", Form::red());
-    form::set("default", Form::with("#575279").on("#faf4ed"));
+    form::set("default", Form::with(color1).on(color2));
     form::set("matched_pair", Form::blue().underlined()); 
     
     // Setting by reference

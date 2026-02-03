@@ -585,7 +585,7 @@ pub mod prelude {
         context::{self, Handle},
         cursor,
         data::{self, Pass, RwData},
-        form::{self, CursorShape, Form},
+        form::{self, Color, CursorShape, Form},
         hook::{
             self, BufferClosed, BufferOpened, BufferPrinted, BufferReloaded, BufferSaved,
             BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged,
@@ -601,8 +601,8 @@ pub mod prelude {
         setup_duat,
         state::*,
         text::{
-            self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, SwapChar, Tagger, Text,
-            txt,
+            self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Strs, SwapChar, Tagger,
+            Text, txt,
         },
         ui::{self, Area, Widget},
         widgets::*,

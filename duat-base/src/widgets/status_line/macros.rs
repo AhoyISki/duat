@@ -43,7 +43,7 @@
 ///
 /// fn powerline_main_txt(buffer: &Buffer, area: &Area) -> Text {
 ///     let selections = buffer.selections();
-///     let opts = buffer.get_print_opts();
+///     let opts = buffer.print_opts();
 ///     let v_caret = selections
 ///         .get_main()
 ///         .unwrap()

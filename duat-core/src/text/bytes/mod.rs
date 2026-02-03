@@ -271,10 +271,12 @@ impl Bytes {
         );
 
         let start = self.point_at_line(n).byte();
-        let len: usize = self[start..]
-            .chars()
-            .map_while(|char| (char != '\n').then_some(char.len_utf8()))
-            .sum();
+        let len = self[start..]
+            .to_array()
+            .into_iter()
+            .flat_map(str::bytes)
+            .take_while(|&byte| byte != b'\n')
+            .count();
 
         &self[start..start + (len + 1)]
     }

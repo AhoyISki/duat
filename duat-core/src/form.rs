@@ -232,7 +232,8 @@ mod global {
     /// # let (tx, rx) = duat_core::context::duat_channel();
     /// # duat_core::context::set_sender(tx);
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
-    /// form::set("caret.main", Form::black().on("rgb 240 210 200"));
+    /// let color = Color::new("#456321");
+    /// form::set("caret.main", Form::black().on(color));
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main

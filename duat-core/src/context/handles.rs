@@ -437,16 +437,6 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// A shortcut for iterating over all selections
     ///
-    /// This is the equivalent of calling:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// # use duat::prelude::*;
-    /// # fn test(pa: &mut Pass, handle: Handle) {
-    /// handle.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
-    /// # }
-    /// ```
-    ///
     /// But it can't return a value, and is meant to reduce the
     /// indentation that will inevitably come from using the
     /// equivalent long form call.

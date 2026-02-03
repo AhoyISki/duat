@@ -36,11 +36,11 @@ impl Plugin for HighlightMatches {
                 .unwrap_or(range.start);
 
             let mut parts = handle.text_parts(pa);
-            let pat = parts.bytes.strs(start..range.end);
+            let pat = &parts.bytes[start..range.end];
             let form_id = form::id_of!("same_word");
-            
+
             for range in lines.into_iter().flat_map(|r| parts.bytes.search(r"\w+").range(r)) {
-                if parts.bytes.strs(range.clone()) == pat {
+                if &parts.bytes[range.clone()] == pat {
                     parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }
             }

@@ -468,17 +468,16 @@ macro_rules! doc_duat {
                     clipboard, cmd,
                     context::{self, Handle},
                     data::{self, Pass},
-                    form::{self, CursorShape, Form},
+                    form::{self, Color, CursorShape, Form},
                     hook::{
                         self, BufferOpened, BufferSaved, BufferUpdated, ColorSchemeSet,
                         ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat,
                         FormSet, Hookable, KeySent, KeySentTo, ModeSwitched, UnfocusedFrom,
                         UnfocusedFromDuat, WidgetOpened, WindowOpened,
                     },
-                    lender::{Lender, DoubleEndedLender, ExactSizeLender},
                     text::{
-                        self, Builder, Conceal, Ghost, Spacer, SpawnTag, Tagger, Text, txt, Point,
-                        TextMut
+                        self, Builder, Conceal, Ghost, Spacer, SpawnTag, Strs, Tagger, Text, txt,
+                        Point, TextMut
                     },
                     ui::{self, Area, Widget},
                 };
