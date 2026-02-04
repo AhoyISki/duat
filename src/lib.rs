@@ -23,6 +23,7 @@
 //! [`RwData<Buffer>`]: duat_core::data::RwData
 //! [hook]: duat_core::hook
 //! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
+pub use prefixes::AutoPrefix;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -33,8 +34,11 @@ use duat_core::{
     buffer::Buffer,
     context::Handle,
     data::{Pass, RwData},
+    mode::Cursor,
 };
 use regex::RegexSet;
+
+mod prefixes;
 
 pub trait FileType {
     fn filetype(&self) -> Option<&'static str>;
@@ -43,6 +47,12 @@ pub trait FileType {
 impl FileType for Buffer {
     fn filetype(&self) -> Option<&'static str> {
         PathBuf::from(self.path_set()?).filetype()
+    }
+}
+
+impl FileType for Cursor<'_> {
+    fn filetype(&self) -> Option<&'static str> {
+        self.widget().filetype()
     }
 }
 
