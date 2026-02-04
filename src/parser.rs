@@ -12,9 +12,8 @@ use duat_core::{
     data::Pass,
     form::{self, FormId},
     hook::{self, BufferUpdated},
-    lender::Lender,
     opts::PrintOpts,
-    text::{Bytes, Point, RegexHaystack, Tagger},
+    text::{Bytes, Point, Tagger},
 };
 use duat_filetype::{FileType, PassFileType};
 use tree_sitter::{
@@ -312,7 +311,7 @@ impl Parser {
                         .captures
                         .iter()
                         .find(|cap| cn[cap.index as usize] == "injection.language")?;
-                    Some(parts.bytes.strs(cap.node.byte_range()).unwrap().to_string())
+                    Some(parts.bytes[cap.node.byte_range()].to_string())
                 })
         };
 
@@ -432,14 +431,19 @@ impl Parser {
     }
 
     /// The expected level of indentation on a given [`Point`]
-    pub fn indent_on<'a>(&'a self, p: Point, bytes: &Bytes, opts: PrintOpts) -> Option<usize> {
-        let (_, tree) = self.trees.intersecting(p.byte()..p.byte() + 1).next()?;
+    pub fn indent_on<'a>(&'a self, lnum: usize, bytes: &Bytes, opts: PrintOpts) -> Option<usize> {
+        let line_range = bytes.line(lnum).range();
+
+        let (_, tree) = self
+            .trees
+            .intersecting(line_range.start.byte()..line_range.end.byte())
+            .next()?;
         let ts_tree = tree.ts_tree.as_ref()?;
 
         if let Some(indent) = self
             .injections
             .iter()
-            .find_map(|injection| injection.indent_on(p, bytes, opts))
+            .find_map(|injection| injection.indent_on(lnum, bytes, opts))
         {
             return Some(indent);
         }
@@ -447,23 +451,21 @@ impl Parser {
         let (.., Queries { indents, .. }) = self.lang_parts;
 
         let root = ts_tree.root_node();
-        let start = bytes.point_at_line(p.line());
-        let first_line = bytes
-            .point_at_byte(tree.region.iter().next().unwrap().start)
-            .line();
+        let first_line_point = bytes.point_at_byte(tree.region.iter().next().unwrap().start);
 
         // The query could be empty.
         if indents.pattern_count() == 0 {
             return None;
         }
 
+        let mut cursor = QueryCursor::new();
+        let buf = TsBuf(bytes);
+
         // TODO: Don't reparse python, apparently.
 
         type Captures<'a> = HashMap<&'a str, HashMap<usize, HashMap<&'a str, Option<&'a str>>>>;
         let mut caps = HashMap::new();
         let q = {
-            let mut cursor = QueryCursor::new();
-            let buf = TsBuf(bytes);
             cursor
                 .matches(indents, root, buf)
                 .for_each(|qm: &QueryMatch| {
@@ -504,41 +506,44 @@ impl Parser {
         };
 
         // The first non indent character of this line.
-        let indented_start_byte = bytes
-            .chars_fwd(start..)
-            .unwrap()
-            .take_while(|(_, char)| *char != '\n')
-            .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
+        let indented_start_column = bytes[line_range.start..]
+            .chars()
+            .take_while(|char| *char != '\n')
+            .position(|char| !char.is_whitespace());
 
-        let mut opt_node = if let Some(indented_start_byte) = indented_start_byte {
-            Some(descendant_in(root, indented_start_byte))
+        let mut opt_node = if let Some(column) = indented_start_column {
+            Some(descendant_in(root, lnum, column))
         // If the line is empty, look behind for another.
         } else {
+            let is_not_ws = |(_, char): &(_, char)| !char.is_ascii_whitespace();
+
             // Find last previous empty line.
-            let mut lines = bytes.lines(..start).rev();
-            let Some((prev_l, line)) = lines
-                .find(|(_, line)| !(line.matches_pat(r"^\s*$").unwrap()))
-                .filter(|(l, _)| *l >= first_line)
+            let mut lines = bytes[..line_range.start].lines().rev();
+            let Some(line) = lines
+                .find(|line| !line.chars().all(|char| char.is_whitespace()))
+                .filter(|line| line.range().start.line() >= first_line_point.line())
             else {
                 // If there is no previous non empty line, align to 0.
                 return Some(0);
             };
-            let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
 
-            let prev_range = bytes.line_range(prev_l);
-            let mut node = descendant_in(root, prev_range.end.byte() - (trail + 1));
+            let prev_lnum = line.range().start.line();
+            let (last_non_whitespace_col, _) =
+                line.chars().enumerate().filter(is_not_ws).last().unwrap();
+
+            let mut node = descendant_in(root, prev_lnum, last_non_whitespace_col);
             if node.kind().contains("comment") {
                 // Unless the whole line is a comment, try to find the last node
                 // before the comment.
                 // This technically fails if there are multiple block comments.
-                let first_node = descendant_in(root, prev_range.start.byte());
+                let first_node = descendant_in(root, prev_lnum, 0);
                 if first_node.id() != node.id() {
-                    node = descendant_in(root, node.start_byte() - 1)
+                    node = descendant_in(root, prev_lnum, node.start_position().column - 1)
                 }
             }
 
             Some(if q(&caps, node, &["end"]) {
-                descendant_in(root, start.byte())
+                descendant_in(root, lnum, 0)
             } else {
                 node
             })
@@ -550,7 +555,7 @@ impl Parser {
 
         let tab = opts.tabstop as i32;
         let mut indent = if root.start_byte() != 0 {
-            bytes.indent(bytes.point_at_byte(root.start_byte()), opts) as i32
+            bytes.indent(root.start_position().row, opts) as i32
         } else {
             0
         };
@@ -562,7 +567,7 @@ impl Parser {
 
             // If a node is not an indent and is marked as auto or ignore, act
             // accordingly.
-            if !q(&caps, node, &["begin"]) && s_line < p.line() && p.line() <= e_line {
+            if !q(&caps, node, &["begin"]) && s_line < lnum && lnum <= e_line {
                 if !q(&caps, node, &["align"]) && q(&caps, node, &["auto"]) {
                     return None;
                 } else if q(&caps, node, &["ignore"]) {
@@ -575,8 +580,8 @@ impl Parser {
             let mut is_processed = false;
 
             if should_process
-                && ((s_line == p.line() && q(&caps, node, &["branch"]))
-                    || (s_line != p.line() && q(&caps, node, &["dedent"])))
+                && ((s_line == lnum && q(&caps, node, &["branch"]))
+                    || (s_line != lnum && q(&caps, node, &["dedent"])))
             {
                 indent -= tab;
                 is_processed = true;
@@ -588,7 +593,7 @@ impl Parser {
             if should_process
                 && q(&caps, node, &["begin"])
                 && (s_line != e_line || is_in_err || q(&caps, node, &["begin", "immediate"]))
-                && (s_line != p.line() || q(&caps, node, &["begin", "start_at_same_line"]))
+                && (s_line != lnum || q(&caps, node, &["begin", "start_at_same_line"]))
             {
                 is_processed = true;
                 indent += tab;
@@ -608,8 +613,8 @@ impl Parser {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
-                    let range = bytes.line_range(child.start_position().row);
-                    let range = child.range().start_byte..range.end.byte();
+                    let range = bytes.line(child.start_position().row).byte_range();
+                    let range = child.range().start_byte..range.end;
 
                     let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
                         line.split_whitespace().any(|w| w != delim)
@@ -627,7 +632,7 @@ impl Parser {
             if should_process
                 && q(&caps, node, &["align"])
                 && (s_line != e_line || is_in_err)
-                && s_line != p.line()
+                && s_line != lnum
             {
                 let props = &caps["align"][&node.id()];
                 let (o_delim_node, o_is_last_in_line) = props
@@ -650,7 +655,7 @@ impl Parser {
                         indent += tab;
                         // If the aligned node ended before the current line, its @align
                         // shouldn't affect it.
-                        if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
+                        if c_is_last_in_line && c_s_line.is_some_and(|l| l < lnum) {
                             indent = (indent - tab).max(0);
                         }
                         false
@@ -659,7 +664,7 @@ impl Parser {
                         && let Some(c_s_line) = c_s_line
                         // If the aligned node ended before the current line, its @align
                         // shouldn't affect it.
-                        && (o_s_line != c_s_line && c_s_line < p.line())
+                        && (o_s_line != c_s_line && c_s_line < lnum)
                     {
                         indent = (indent - tab).max(0);
                         false
@@ -673,7 +678,7 @@ impl Parser {
                     // indentation may be needed to avoid clashes. This is the case in
                     // some function parameters, for example.
                     let avoid_last_matching_next = c_s_line
-                        .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == p.line())
+                        .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == lnum)
                         && props.contains_key("avoid_last_matching_next");
                     if avoid_last_matching_next {
                         indent += tab;
@@ -798,17 +803,20 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TsPoint {
 #[track_caller]
 fn apply_changes(parts: &BufferParts<'_>, parser: &mut Parser) {
     for change in parts.changes.clone() {
-        let start = parts.bytes.point_at_line(change.start().line());
-        let end = parts.bytes.line_range(change.added_end().line()).end;
-        parts.ranges_to_update.add_ranges([start..end]);
+        parts
+            .ranges_to_update
+            .add_ranges([change.line_range(parts.bytes)]);
         let edit = input_edit(change, parts.bytes);
         parser.edit(&edit);
     }
 }
 
 #[track_caller]
-fn descendant_in(node: Node, byte: usize) -> Node {
-    node.descendant_for_byte_range(byte, byte + 1).unwrap()
+fn descendant_in(node: Node, line: usize, column: usize) -> Node {
+    let start = TsPoint::new(line, column);
+    let end = TsPoint { column: start.column + 1, ..start };
+
+    node.descendant_for_point_range(start, end).unwrap()
 }
 
 fn parser_fn<'a>(bytes: &'a Bytes) -> impl FnMut(usize, TsPoint) -> &'a [u8] {

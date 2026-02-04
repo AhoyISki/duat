@@ -39,6 +39,7 @@ use duat_core::{
     data::Pass,
     form::{self, Form},
     text::{Builder, Text, txt},
+    ui::Widget,
 };
 use tree_sitter::{Language, Node, Query};
 
@@ -289,16 +290,16 @@ impl TsHandle for Handle {
             .enumerate()
             .take(range.end)
             .skip(range.start)
-            .map(|(_, (sel, _))| sel.caret().byte())
+            .map(|(_, (sel, _))| sel.caret().line())
             .collect();
 
         let (parser, buffer) = parser::sync_parse(pa, self)?;
 
         carets
             .into_iter()
-            .map(|byte| {
+            .map(|lnum| {
                 let bytes = buffer.bytes();
-                parser.indent_on(bytes.point_at_byte(byte), bytes, buffer.opts)
+                parser.indent_on(lnum, bytes, buffer.print_opts())
             })
             .collect()
     }

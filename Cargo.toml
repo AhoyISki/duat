@@ -13,7 +13,7 @@ include = ["src/*", "queries/*", "build.rs"]
 
 [dependencies]
 duat-core = "0.8.0"
-duat-filetype = "0.3.3"
+duat-filetype = "0.4.0"
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.26.3"
@@ -21,4 +21,4 @@ tree-sitter-language = "0.1.6"
 indoc = "2.0.7"
 libloading = "0.9.0"
 include_dir = "0.7.4"
-gapbuf = "0.1.4"
+gap-buf = "0.1.0"
