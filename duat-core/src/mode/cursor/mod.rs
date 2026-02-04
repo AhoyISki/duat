@@ -1,4 +1,4 @@
-//! A helper struct for [`Mode`]s with [`Selections`]
+//! A helper struct for [`Mode`]s with [`Selections`].
 //!
 //! This struct can edit [`Text`] in a declarative way, freeing the
 //! [`Mode`]s from worrying about synchronization of the
@@ -18,7 +18,7 @@ use crate::{
     ui::{Area, Widget},
 };
 
-/// The [`Selection`] and [`Selections`] structs
+/// The [`Selection`] and [`Selections`] structs.
 mod selections;
 
 macro_rules! sel {
@@ -38,7 +38,7 @@ macro_rules! sel_mut {
     }};
 }
 
-/// A selection that can edit [`Text`], but can't alter selections
+/// A selection that can edit [`Text`], but can't alter selections.
 ///
 /// This struct will be used only inside functions passed to the
 /// [`edit_*`] family of methods from the [`Handle`].
@@ -92,7 +92,7 @@ pub struct Cursor<'w, W: Widget + ?Sized = crate::buffer::Buffer> {
 }
 
 impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
-    /// Returns a new instance of [`Cursor`]
+    /// Returns a new instance of [`Cursor`].
     pub(crate) fn new(
         selections: &'w mut Vec<Option<ModSelection>>,
         sels_i: usize,
@@ -112,7 +112,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     ////////// Text editing
 
-    /// Replaces the entire selection with new text
+    /// Replaces the entire selection with new text.
     ///
     /// If there is a selection, then it is treated as _inclusive_,
     /// therefore, a selection where `caret == anchor` will remove the
@@ -152,7 +152,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         }
     }
 
-    /// Inserts new text directly behind the `caret`
+    /// Inserts new text directly behind the `caret`.
     ///
     /// If the `anchor` is ahead of the `caret`, it will move forwards
     /// by the number of chars in the new text.
@@ -180,7 +180,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         }
     }
 
-    /// Appends new text directly after the `caret`
+    /// Appends new text directly after the `caret`.
     ///
     /// If the `anchor` is ahead of the `caret`, it will move forwards
     /// by the number of chars in the new text.
@@ -208,7 +208,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         }
     }
 
-    /// Edits the buffer with a [`Change`]
+    /// Edits the buffer with a [`Change`].
     fn edit(&mut self, change: Change<'static, String>) {
         let mut text = self.widget.text_mut();
         let (change_i, selections_taken) =
@@ -227,7 +227,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     ////////// Movement functions
 
-    /// Moves the selection horizontally. May cause vertical movement
+    /// Moves the selection horizontally. May cause vertical movement.
     ///
     /// Returns the distance traveled, in character indices
     #[track_caller]
@@ -242,7 +242,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         moved
     }
 
-    /// Moves the selection vertically. May cause horizontal movement
+    /// Moves the selection vertically. May cause horizontal movement.
     ///
     /// Returns `true` if the caret actually moved at all.
     #[track_caller]
@@ -260,7 +260,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     }
 
     /// Moves the selection vertically a number of wrapped lines. May
-    /// cause horizontal movement
+    /// cause horizontal movement.
     ///
     /// Returns `true` if the caret actually moved at all.
     #[track_caller]
@@ -281,7 +281,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         moved
     }
 
-    /// Moves the selection to a [`Point`] or a [range] of [`Point`]s
+    /// Moves the selection to a [`Point`] or a [range] of [`Point`]s.
     ///
     /// If you give it just a [`Point`], it will move the caret,
     /// without affecting the anchor. If you give it a [range] of
@@ -306,13 +306,13 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     }
 
     /// Moves the selection to [`Point::default`], i.c., the start of
-    /// the [`Text`]
+    /// the [`Text`].
     #[track_caller]
     pub fn move_to_start(&mut self) {
         sel_mut!(self).move_to(Point::default(), self.widget.text());
     }
 
-    /// Moves the selection to a `line` and a `column`
+    /// Moves the selection to a `line` and a `column`.
     ///
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
@@ -332,7 +332,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         self.move_to(byte.unwrap_or(range.end.byte() - 1));
     }
 
-    /// Moves to a column on the current line
+    /// Moves to a column on the current line.
     #[track_caller]
     pub fn move_to_col(&mut self, col: usize) {
         let line = self.text().point_at_line(self.caret().line()).line();
@@ -340,17 +340,17 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     }
 
     /// Returns and takes the anchor of the [`Selection`], if there
-    /// was one
+    /// was one.
     pub fn unset_anchor(&mut self) -> Option<Point> {
         sel_mut!(self).unset_anchor()
     }
 
-    /// Sets the `anchor` to the current `caret`
+    /// Sets the `anchor` to the current `caret`.
     pub fn set_anchor(&mut self) {
         sel_mut!(self).set_anchor()
     }
 
-    /// Sets the `anchor` if it was not already set
+    /// Sets the `anchor` if it was not already set.
     ///
     /// Returns `true` if the anchor was set by this command.
     pub fn set_anchor_if_needed(&mut self) -> bool {
@@ -362,13 +362,13 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         }
     }
 
-    /// Swaps the position of the `caret` and `anchor`
+    /// Swaps the position of the `caret` and `anchor`.
     pub fn swap_ends(&mut self) {
         sel_mut!(self).swap_ends();
     }
 
     /// Sets the caret of the [`Selection`] on the start of the
-    /// selection
+    /// selection.
     ///
     /// Returns `true` if a swap occurred
     pub fn set_caret_on_start(&mut self) -> bool {
@@ -383,7 +383,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     }
 
     /// Sets the caret of the [`Selection`] on the end of the
-    /// selection
+    /// selection.
     ///
     /// Returns `true` if a swap occurred
     pub fn set_caret_on_end(&mut self) -> bool {
@@ -399,12 +399,12 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     ////////// Selection meta manipulation
 
-    /// Resets the [`Selection`] to how it was before being modified
+    /// Resets the [`Selection`] to how it was before being modified.
     pub fn reset(&mut self) {
         *sel_mut!(self) = self.initial.clone();
     }
 
-    /// Copies the current [`Selection`] in place
+    /// Copies the current [`Selection`] in place.
     ///
     /// This will leave an additional [`Selection`] with the current
     /// selection. Do note that normal intersection rules apply, so if
@@ -430,7 +430,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         )
     }
 
-    /// Destroys the current [`Selection`]
+    /// Destroys the current [`Selection`].
     ///
     /// Will not destroy it if it is the last [`Selection`] left
     ///
@@ -452,7 +452,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         self.selections[self.sels_i] = None;
     }
 
-    /// Sets the "desired visual column"
+    /// Sets the "desired visual column".
     ///
     /// The desired visual column determines at what point in a line
     /// the caret will be placed when moving [up and down] through
@@ -470,7 +470,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     ////////// Iteration functions
 
-    /// Iterates over the [`char`]s
+    /// Iterates over the [`char`]s.
     ///
     /// Each [`char`] will be accompanied by a byte index, which is
     /// the position where said character starts, e.g. `0` for the
@@ -479,7 +479,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         self.widget.text().chars_fwd(self.caret()..).unwrap()
     }
 
-    /// Iterates over the [`char`]s, in reverse
+    /// Iterates over the [`char`]s, in reverse.
     ///
     /// Each [`char`] will be accompanied by a byte index, which is
     /// the position where said character starts, e.g. `0` for the
@@ -488,7 +488,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         self.widget.text().chars_rev(..self.caret()).unwrap()
     }
 
-    /// Wether the current selection matches a regex pattern
+    /// Wether the current selection matches a regex pattern.
     #[track_caller]
     pub fn matches_pat<R: RegexPattern>(&self, pat: R) -> bool {
         let range = sel!(self).byte_range(self.widget.text());
@@ -498,7 +498,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         }
     }
 
-    /// Returns an [`Iterator`] over the matches of a [`RegexPattern`]
+    /// Returns an [`Iterator`] over the matches of a [`RegexPattern`].
     ///
     /// This `Iterator` normally covers the entire range of the
     /// [`Text`], however, there are methods that you can use to
@@ -525,17 +525,17 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     ////////// Text queries
 
-    /// Returns the [`char`] in the `caret`
+    /// Returns the [`char`] in the `caret`.
     pub fn char(&self) -> char {
         self.text().char_at(sel!(self).caret()).unwrap()
     }
 
-    /// Returns the [`char`] at a given [`Point`]
+    /// Returns the [`char`] at a given [`Point`].
     pub fn char_at(&self, i: impl TextIndex) -> Option<char> {
         self.text().char_at(i)
     }
 
-    /// Returns the [`Selection`]'s selection
+    /// Returns the [`Selection`]'s selection.
     ///
     /// The reason why this return value is `IntoIter<&str, 2>` is
     /// because the [`Text`] utilizes an underlying [`GapBuffer`]
@@ -546,13 +546,13 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// within one of these chunks, the other `&str` will just be
     /// empty.
     ///
-    /// [`GapBuffer`]: gapbuf::GapBuffer
+    /// [`GapBuffer`]: gap_buf::GapBuffer
     pub fn selection(&self) -> &Strs {
         let range = sel!(self).byte_range(self.text());
         &self.text()[range]
     }
 
-    /// Returns the [`Strs`] for the given [`TextRange`]
+    /// Returns the [`Strs`] for the given [`TextRange`].
     ///
     /// # Panics
     ///
@@ -564,7 +564,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         &self.widget.text()[range]
     }
 
-    /// Returns the [`Strs`] for the given [`TextRange`]
+    /// Returns the [`Strs`] for the given [`TextRange`].
     ///
     /// It will return [`None`] if the range does not start or end in
     /// valid utf8 boundaries. If you expect the value to alway be
@@ -573,22 +573,22 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         self.widget.text().get(range)
     }
 
-    /// Returns the length of the [`Text`], in [`Point`]
+    /// Returns the length of the [`Text`], in [`Point`].
     pub fn len(&self) -> Point {
         self.text().len()
     }
 
-    /// Returns the position of the last [`char`] if there is one
+    /// Returns the position of the last [`char`] if there is one.
     pub fn last_point(&self) -> Point {
         self.text().last_point()
     }
 
-    /// Gets the current level of indentation
+    /// Gets the current level of indentation.
     pub fn indent(&self) -> usize {
         self.widget.text().indent(self.caret().line(), self.opts())
     }
 
-    /// Gets the indentation level on a given line
+    /// Gets the indentation level on a given line.
     ///
     /// This is the total "amount of spaces", that is, how many `' '`
     /// character equivalents are here. This depends on your
@@ -600,30 +600,30 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     ////////// Selection queries
 
-    /// Returns the `caret`
+    /// Returns the `caret`.
     pub fn caret(&self) -> Point {
         sel!(self).caret()
     }
 
-    /// Returns the `anchor`
+    /// Returns the `anchor`.
     pub fn anchor(&self) -> Option<Point> {
         sel!(self).anchor()
     }
 
-    /// The [`Point`] range of the [`Selection`]
+    /// The [`Point`] range of the [`Selection`].
     ///
     /// This is an _inclusive_ range (not Rust's [`RangeInclusive`]
     /// however), this means that, even if there is no anchor, the
     /// lenght of this range will always be at least 1.
     ///
-    /// If you want an exclusive range, see [`Cursor::range_excl`]
+    /// If you want an exclusive range, see [`Cursor::range_excl`].
     ///
     /// [`RangeInclusive`]: std::ops::RangeInclusive
     pub fn range(&self) -> Range<Point> {
         sel!(self).point_range(self.text())
     }
 
-    /// An exclusive [`Point`] range of the [`Selection`]
+    /// An exclusive [`Point`] range of the [`Selection`].
     ///
     /// If you wish for an inclusive range, whose length is always
     /// greater than or equal to 1, see [`RangeInclusive`].
@@ -631,45 +631,50 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         sel!(self).point_range_excl()
     }
 
-    /// The [`VPoint`] range of the [`Selection`]
+    /// The [`VPoint`] range of the [`Selection`].
     ///
     /// Use only if you need the things that the [`VPoint`] provides,
-    /// in order to preven extraneous calculations
+    /// in order to preven extraneous calculations.
     pub fn v_caret(&self) -> VPoint {
         sel!(self).v_caret(self.widget.text(), self.area, self.widget.print_opts())
     }
 
-    /// The [`VPoint`] of the anchor, if it exists
+    /// The [`VPoint`] of the anchor, if it exists.
     ///
     /// Use only if you need the things that the [`VPoint`] provides,
-    /// in order to preven extraneous calculations
+    /// in order to preven extraneous calculations.
     pub fn v_anchor(&self) -> Option<VPoint> {
         sel!(self).v_anchor(self.widget.text(), self.area, self.widget.print_opts())
     }
 
-    /// Returns `true` if the `anchor` exists before the `caret`
+    /// Returns `true` if the `anchor` exists before the `caret`.
     pub fn anchor_is_start(&self) -> bool {
         self.anchor().is_none_or(|anchor| anchor <= self.caret())
     }
 
-    /// Whether or not this is the main [`Selection`]
+    /// Whether or not this is the main [`Selection`].
     pub fn is_main(&self) -> bool {
         self.selections[self.sels_i].as_ref().unwrap().was_main
     }
 
-    /// The [`Text`] of the [`Widget`]
+    /// The [`Text`] of the [`Widget`].
     pub fn text(&self) -> &Text {
         self.widget.text()
     }
 
-    /// The [`PrintOpts`] in use
+    /// The [`PrintOpts`] in use.
     pub fn opts(&self) -> PrintOpts {
         self.widget.print_opts()
+    }
+
+	/// The [`Widget`] being modified.
+    pub fn widget(&self) -> &W {
+        self.widget
     }
 }
 
 impl Cursor<'_, Buffer> {
-    /// A unique identifier for this [`Buffer`]
+    /// A unique identifier for this [`Buffer`].
     ///
     /// This is more robust than identifying it by its path or name,
     /// or even [`PathKind`], since those could change, but this
@@ -689,7 +694,7 @@ impl<'a, W: Widget + ?Sized> std::fmt::Debug for Cursor<'a, W> {
     }
 }
 
-/// An [`Iterator`] over the matches of a [`RegexPattern`]
+/// An [`Iterator`] over the matches of a [`RegexPattern`].
 ///
 /// This `Iterator` comes from searching from a [`Cursor`]. Because of
 /// that, it has methods for added convenience of search. The methods
@@ -709,7 +714,7 @@ pub struct CursorMatches<'c, R: RegexPattern> {
 }
 
 impl<'c, R: RegexPattern> CursorMatches<'c, R> {
-    /// Changes the [`TextRange`] to search on
+    /// Changes the [`TextRange`] to search on.
     ///
     /// This _will_ reset the [`Iterator`], if it was returning
     /// [`None`] before, it might start returning [`Some`] again if
@@ -722,7 +727,7 @@ impl<'c, R: RegexPattern> CursorMatches<'c, R> {
     }
 
     /// Searches over a range from the start of the caret to the end
-    /// of the [`Text`]
+    /// of the [`Text`].
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
@@ -747,7 +752,7 @@ impl<'c, R: RegexPattern> CursorMatches<'c, R> {
     }
 
     /// Searches over a range from the end of the caret to the end
-    /// of the [`Text`]
+    /// of the [`Text`].
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
@@ -780,7 +785,7 @@ impl<'c, R: RegexPattern> CursorMatches<'c, R> {
     }
 
     /// Searches over a range from the start of the [`Text`] to the
-    /// start of the caret's char
+    /// start of the caret's char.
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
@@ -805,7 +810,7 @@ impl<'c, R: RegexPattern> CursorMatches<'c, R> {
     }
 
     /// Searches over a range from the start of the [`Text`] to the
-    /// end of the caret's char
+    /// end of the caret's char.
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
@@ -846,7 +851,7 @@ impl<'c, R: RegexPattern> DoubleEndedIterator for CursorMatches<'c, R> {
     }
 }
 
-/// Does an action on every [`Cursor`]
+/// Does an action on every [`Cursor`].
 pub(crate) fn on_each_cursor<W: Widget + ?Sized>(
     widget: &mut W,
     area: &Area,
@@ -864,7 +869,7 @@ pub(crate) fn on_each_cursor<W: Widget + ?Sized>(
     }
 }
 
-/// Reinsert edited [`Selections`]
+/// Reinsert edited [`Selections`].
 #[inline]
 pub(crate) fn reinsert_selections(
     mod_sels: impl Iterator<Item = ModSelection>,
@@ -886,7 +891,7 @@ pub(crate) fn reinsert_selections(
     }
 }
 
-/// A struct representing the temporary state of a [`Selection`] in a
+/// A struct representing the temporary state of a [`Selection`] in a.
 /// [`Cursor`]
 #[derive(Clone, Debug)]
 pub(crate) struct ModSelection {
@@ -897,7 +902,7 @@ pub(crate) struct ModSelection {
 }
 
 impl ModSelection {
-    /// Returns a new `ModSelection`
+    /// Returns a new `ModSelection`.
     pub(crate) fn new(selection: Selection, index: usize, was_main: bool) -> Self {
         Self {
             selection,
@@ -908,7 +913,7 @@ impl ModSelection {
     }
 }
 
-/// A position that a [`Cursor`] can move to
+/// A position that a [`Cursor`] can move to.
 ///
 /// This will come either in the form of [`Point`]s or byte indices
 /// (in the form of `usize`). It can be a single value, like

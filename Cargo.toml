@@ -27,7 +27,7 @@ duat-term = { version = "0.8.1", optional = true }
 
 # Default plugins
 duat-base = "0.8.1"
-duat-filetype = "0.3.3"
+duat-filetype = "0.4.0"
 duatmode =  "0.8.1"
 duat-treesitter = { version = "0.4.0", optional = true }
 duat-match-pairs = { version = "0.3.0", optional = true }

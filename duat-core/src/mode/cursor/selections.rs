@@ -35,17 +35,9 @@ use crate::{
 /// handle a large number of [`Selection`]s in an efficient manner,
 /// although you can interact with them separately.
 ///
-/// A [`Text`] will keep itself in check with regards to its
-/// [`Selections`], that is, it will automatically remove and add the
-/// [`MainCaret`] and [`ExtraCaret`] [tags] when the `Selections`
-/// are altered. If it fails to do that, report it as a bug.
-///
 /// [`Handle`]: crate::context::Handle
 /// [`edit_`]: crate::context::Handle::edit_all
 /// [`Text`]: crate::text::Text
-/// [`MainCaret`]: crate::text::MainCaret
-/// [`ExtraCaret`]: crate::text::ExtraCaret
-/// [tags]: crate::text::Tag
 pub struct Selections {
     buf: GapBuffer<Selection>,
     main_i: usize,

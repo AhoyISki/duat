@@ -218,6 +218,8 @@ pub struct BufferOpts {
     /// `replace.new_line.empty` [`Form`].
     ///
     /// If it is `None`, it will be the same as `opts.new_line_char`.
+    ///
+    /// [`Form`]: crate::form::Form
     pub new_line_on_empty: Option<char>,
     /// A character to be printed on trailing new lines
     ///

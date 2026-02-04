@@ -152,7 +152,7 @@ impl PrintOpts {
     /// change.
     ///
     /// The lack of need to customize this is reflected in
-    /// [`Widget::get_print_opts`], which calls this function by
+    /// [`Widget::print_opts`], which calls this function by
     /// default. However, in a [`Buffer`], you'll probably want to
     /// look at the options below.
     ///
@@ -180,7 +180,7 @@ impl PrintOpts {
     /// [default `PrintInfo`]: crate::ui::traits::RawArea::PrintInfo
     /// [`RawArea`]: crate::ui::traits::RawArea
     /// [`Text`]: crate::text::Text
-    /// [`Widget::get_print_opts`]: crate::ui::Widget::get_print_opts
+    /// [`Widget::print_opts`]: crate::ui::Widget::print_opts
     pub const fn new() -> Self {
         Self {
             wrap_lines: false,

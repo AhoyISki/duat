@@ -316,9 +316,9 @@ mod regular;
 mod setup;
 
 pub mod cursor {
-    //! Functions to alter the [`Cursors`] of Duat
+    //! Functions to alter the [`Selection`]s of Duat
     //!
-    //! [`Cursors`]: duat_core::mode::Cursors
+    //! [`Selection`]: duat_core::mode::Selection
     pub use duat_core::form::{
         extra_cursor as get_extra, id_of, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,

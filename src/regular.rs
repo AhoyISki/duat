@@ -64,7 +64,7 @@ impl mode::Mode for Regular {
                 if let Some(indents) = handle.ts_get_indentations(pa, ..) {
                     let mut indents = indents.into_iter();
                     handle.edit_all(pa, |mut c| {
-                        duatmode::reindent(&mut c, indents.next().unwrap());
+                        duatmode::reindent(c.indent(), indents.next().unwrap(), &mut c);
                     });
                 }
             }

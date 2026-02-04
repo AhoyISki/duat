@@ -75,7 +75,7 @@
 //! used on the [`Buffer`] widget and other textbox-like [`Widget`]s.
 //!
 //! [Spacers]: Spacer
-//! [gap buffers]: gapbuf::GapBuffer
+//! [gap buffers]: gap_buf::GapBuffer
 //! [colored]: crate::form::Form
 //! [ghost text]: Ghost
 //! [Ui]: crate::ui::traits::RawUi
@@ -545,7 +545,7 @@ impl Text {
 
     /// A forward iterator of the [chars and tags] of the [`Text`]
     ///
-    /// [chars and tags]: Part
+    /// [chars and tags]: TextPart
     #[track_caller]
     pub fn iter_fwd(&self, at: TwoPoints) -> FwdIter<'_> {
         FwdIter::new_at(self, at, false)
@@ -553,7 +553,7 @@ impl Text {
 
     /// A reverse iterator of the [chars and tags] of the [`Text`]
     ///
-    /// [chars and tags]: Part
+    /// [chars and tags]: TextPart
     pub fn iter_rev(&self, at: TwoPoints) -> RevIter<'_> {
         RevIter::new_at(self, at)
     }

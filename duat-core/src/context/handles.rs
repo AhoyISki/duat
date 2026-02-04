@@ -341,8 +341,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [destroyed]
     ///
     /// If you want to edit on the main selection, see [`edit_main`],
-    /// if you want to edit on many [`Selection`]s, see
-    /// [`edit_iter`].
+    /// if you want to edit on all [`Selection`]s, see [`edit_all`].
     ///
     /// Just like all other `edit` methods, this one will populate the
     /// [`Selections`], so if there are no [`Selection`]s, it will
@@ -350,7 +349,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// [destroyed]: Cursor::destroy
     /// [`edit_main`]: Self::edit_main
-    /// [`edit_iter`]: Self::edit_iter
+    /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
     pub fn edit_nth<Ret>(
         &self,
@@ -392,7 +391,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     ///
     /// If you want to edit on the `nth` selection, see [`edit_nth`],
     /// same for [`edit_last`], if you want to edit on many
-    /// [`Selection`]s, see [`edit_iter`].
+    /// [`Selection`]s, see [`edit_all`].
     ///
     /// Just like all other `edit` methods, this one will populate the
     /// [`Selections`], so if there are no [`Selection`]s, it will
@@ -401,7 +400,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [destroyed]: Cursor::destroy
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_last`]: Self::edit_last
-    /// [`edit_iter`]: Self::edit_iter
+    /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
     pub fn edit_main<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W>) -> Ret) -> Ret {
         self.edit_nth(
@@ -418,8 +417,8 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [destroyed]
     ///
     /// If you want to edit on the `nth` selection, see [`edit_nth`],
-    /// same for [`edit_main`], if you want to edit on many
-    /// [`Selection`]s, see [`edit_iter`].
+    /// same for [`edit_main`], if you want to edit on all
+    /// [`Selection`]s, see [`edit_all`].
     ///
     /// Just like all other `edit` methods, this one will populate the
     /// [`Selections`], so if there are no [`Selection`]s, it will
@@ -428,7 +427,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [destroyed]: Cursor::destroy
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_main`]: Self::edit_main
-    /// [`edit_iter`]: Self::edit_iter
+    /// [`edit_all`]: Self::edit_all
     /// [`Point::default`]: crate::text::Point::default
     pub fn edit_last<Ret>(&self, pa: &mut Pass, edit: impl FnOnce(Cursor<W>) -> Ret) -> Ret {
         let len = self.widget.read(pa).text().selections().len();

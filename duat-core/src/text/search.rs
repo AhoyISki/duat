@@ -34,9 +34,9 @@ use crate::text::Strs;
 /// An [`Iterator`] over the matches returned by a search on a
 /// [haystack]
 ///
-/// This is most commonly used with the [`Strs`] and [`Bytes`]
-/// structs, although it is also available with `&str` and any type
-/// implementing [`Deref<Target = str>`]
+/// This is most commonly used with the [`Strs`] structs, although it
+/// is also available with `&str` and any type implementing
+/// [`Deref<Target = str>`]
 ///
 /// [haystack]: RegexHaystack
 /// [`Deref<Target = str>`]: std::ops::Deref
@@ -169,7 +169,7 @@ impl<'m, R: RegexPattern> DoubleEndedIterator for Matches<'m, R> {
 ///
 /// This type is used to create the [`Matches`] [`Iterator`], a useful
 /// and configurable iterator over the matches in the `Haystack`,
-/// primarily on the [`Bytes`] type.
+/// primarily on the [`Strs`] type.
 pub trait RegexHaystack<'h> {
     /// An [`Iterator`] over the matches for a given [`RegexPattern`]
     ///
@@ -250,7 +250,7 @@ impl<'b> RegexHaystack<'b> for Strs {
 
         Ok(Matches {
             haystack,
-            b_start: self.byte_range().start,
+            b_start: 0,
             dfas,
             fwd_input: Input::new(SearchBytes(haystack, 0)),
             rev_input: Input::new(SearchBytes(haystack, 0)),

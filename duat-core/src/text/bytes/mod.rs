@@ -443,26 +443,6 @@ impl<'b> Slices<'b> {
         let [s0, s1] = self.0.map(|arr| arr.as_slice());
         Ok([str::from_utf8(s0)?, str::from_utf8(s1)?].join(""))
     }
-
-    /// Treats the inner slices as `&str`s and iterates over their
-    /// characters
-    ///
-    /// You will want to use this function iff you don't want to check
-    /// for character boundaries at the edges (very rarely). Otherwise
-    /// [`bytes.strs({byte_range}).chars()`] instead.
-    ///
-    /// # Safety
-    ///
-    /// You must ensure that the `Slices` were acquired from valid
-    /// byte ranges which coincide with character terminations. If you
-    /// are unsure of that, you should use [`Strs::chars`] instead.
-    ///
-    /// [`bytes.strs({byte_range}).chars()`]: Bytes::strs
-    pub unsafe fn chars_unchecked(self) -> impl Iterator<Item = char> {
-        self.0
-            .into_iter()
-            .flat_map(|iter| unsafe { str::from_utf8_unchecked(iter.as_slice()) }.chars())
-    }
 }
 
 impl<'b> Iterator for Slices<'b> {

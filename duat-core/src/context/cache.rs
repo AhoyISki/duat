@@ -6,8 +6,8 @@
 //!
 //! One example for where this is used is the [Ui], which has
 //! information about how much a given buffer should be scrolled when
-//! opening it in Duat. Another example is [`Cursors`], which stores a
-//! list of open [`Cursor`]s, to start the buffer on.
+//! opening it in Duat. Another example is [`Selections`], which
+//! stores a list of open [`Cursor`]s, to start the buffer on.
 //!
 //! Plugins are able to cache any type that implements [`Encode`]
 //! and [`Decode`]. Duat provides these traits from the [`bincode`]
@@ -24,7 +24,7 @@
 //! ```
 //!
 //! [Ui]: crate::ui::traits::RawUi
-//! [`Cursors`]: crate::mode::Cursors
+//! [`Selections`]: crate::mode::Selections
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Point`]: crate::text::Point
 use std::{

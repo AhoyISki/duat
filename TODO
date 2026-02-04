@@ -2,6 +2,7 @@ FOR NEXT UPDATE:
 [ ] Start work on duat-lsp.
 [ ] `z` and `q` keys for duatmode.
 [x] Make the 'e' and 'v' traverse words and spaces.
+[x] Add autocommenting.
 [x] Augment forms.
   [x] Add the Color struct.
   [x] Add copying and interpolation.
@@ -29,10 +30,7 @@ KNOWN BUGS:
   [ ] Get rid of Text::selections_mut.
   [ ] Modification of Text in BufferUpdated hook should be disallowed.
   [ ] Indentation is inefficient.
-  [ ] Scrolling is bugged on Logs (???).
   [ ] Some strange slowdowns on Buffer switching and reindentation.
-  [ ] There are still problems with the Tags struct.
-             
  LOW PRIORITY:
   [ ] Selections struct that holds a reference to the Bytes.
     [ ] Also make the Bytes-less version inaccessible.
@@ -45,20 +43,17 @@ KNOWN BUGS:
 
 FUTURE UPDATES:
 [ ] An API like search but for chars.
-[ ] Strs QOL.
 [ ] Hover to reveal full shell expansion.
 [ ] Add a little button next to tree-sitter injections to download them.
 [ ] File tracking.
 [ ] Add a HandleMut or something like that.
-[ ] Add a simplified TOML based configuration, in systems where people don't want to have to install cargo.
+[ ] Add a simplified KDL based configuration, in systems where people don't want to have to install cargo.
 [ ] Named StatusParts.
 [ ] Flags parameter macro.
 [ ] An Align Tag?
 [ ] Stop eagerly merging Selections.
 [ ] Get started on a Vim mode.
 [ ] Create a fun lil' spinner.
-[ ] OptsParser for the Buffer.
-[ ] Named colors.
 [ ] Turn the History into a tree.
 [ ] Remove requirement of Clone on Modes.
 [ ] Get rid of Widget::needs_update?

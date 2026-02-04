@@ -12,4 +12,4 @@ keywords = ["editor", "text", "plugin", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
-duat = "0.8.0"
+duat = { version = "0.8.0", default-features = false }

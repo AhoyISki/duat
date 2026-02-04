@@ -135,11 +135,12 @@ impl Point {
     /// Returns the byte (relative to the beginning of the buffer)
     /// of self. Indexed at 0
     ///
-    /// You can use byte indices to index the [`Text`] or [`Bytes`]
-    /// with the [`Bytes::point_at_byte`] function.
+    /// You can use byte indices to index the [`Text`], [`Bytes`], or
+    /// [`Strs`] with the [`Bytes::point_at_byte`] function.
     ///
     /// [`Text`]: super::Text
     /// [`Bytes`]: super::Bytes
+    /// [`Strs`]: super::Strs
     /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
     pub const fn byte(&self) -> usize {
         self.byte as usize
@@ -148,16 +149,9 @@ impl Point {
     /// Returns the char index (relative to the beginning of the
     /// buffer). Indexed at 0
     ///
-    /// This is the primary value used when indexing the [`Text`] and
-    /// [`Bytes`]. That is, the [`Bytes::point_at_byte`],
-    /// [`Bytes::strs`], and most other [`Bytes`] functions rely
-    /// on a character indices (or [`Point`]s) for indexing a
-    /// [`Text`].
-    ///
     /// [`Text`]: super::Text
     /// [`Bytes`]: super::Bytes
     /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
-    /// [`Bytes::strs`]: super::Bytes::strs
     pub const fn char(&self) -> usize {
         self.char as usize
     }

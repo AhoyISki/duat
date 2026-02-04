@@ -38,7 +38,7 @@
 //! down through your whole text editor, even down to printing text,
 //! which I also find really simple with my system.
 //!
-//! [`GapBuffer`]: gapbuf::GapBuffer
+//! [`GapBuffer`]: gap_buf::GapBuffer
 //! [`Change`]: crate::buffer::Change
 use std::{
     any::TypeId,

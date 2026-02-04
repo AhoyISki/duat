@@ -43,12 +43,9 @@ impl Strs {
     /// [`str`] type, only differing in the fact that its maximum
     /// lenght is [`u32::MAX`], not [`usize::MAX`].
     ///
-    /// If you wish to iterate over the lines, see [`Bytes::lines`].
-    ///
     /// [`&str`]: str
-    /// [`Text`]: super::Text
+    /// [`Text`]: crate::text::Text
     /// [range]: TextRange
-    /// [`strs`]: Self::strs
     /// [`&str::get`]: str::get
     pub fn get(&self, range: impl TextRange) -> Option<&Strs> {
         let formed = FormedStrs::new(self);

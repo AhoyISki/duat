@@ -106,6 +106,7 @@ impl Tags<'_> {
     /// [range]: RangeBounds
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    /// [tagger]: Tagger
     pub fn remove(&mut self, tagger: Tagger, from: impl TextRangeOrIndex) {
         let range = from.to_range(self.0.len_bytes() + 1);
         self.0.remove_from(tagger, range)
