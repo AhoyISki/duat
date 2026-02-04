@@ -5,9 +5,9 @@ use duat_core::{
     buffer::Buffer,
     context::Handle,
     data::Pass,
-    lender::Lender,
     mode::{self, Cursor, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
 };
+use duat_filetype::AutoPrefix;
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
 
@@ -70,7 +70,7 @@ impl Mode for Insert {
                             let indent = indents.next().unwrap();
                             if opts.indent_chars.contains(&'\t')
                                 && is_ts_indent
-                                && reindent(&mut c, indent)
+                                && reindent(c.indent(), indent, &mut c)
                             {
                                 return;
                             }
@@ -89,7 +89,7 @@ impl Mode for Insert {
                         let indent = indents.next().unwrap();
                         if (opts.indent_chars.contains(&'\t') || char_col <= c.indent())
                             && is_ts_indent
-                            && reindent(&mut c, indent)
+                            && reindent(c.indent(), indent, &mut c)
                         {
                             return;
                         }
@@ -111,7 +111,7 @@ impl Mode for Insert {
                             let has_reindented = (opts.indent_chars.contains(&'\t')
                                 || char_col <= c.indent())
                                 && is_ts_indent
-                                && reindent(&mut c, indent);
+                                && reindent(c.indent(), indent, &mut c);
 
                             do_scroll &= !has_reindented
                         });
@@ -136,7 +136,7 @@ impl Mode for Insert {
                             if opts.indent_chars.contains(&char)
                                 && c.indent() == c.v_caret().char_col() - 1
                             {
-                                reindent(&mut c, indent);
+                                reindent(c.indent(), indent, &mut c);
                             }
                         })
                     }
@@ -144,12 +144,34 @@ impl Mode for Insert {
             }
 
             event!(Enter) => {
-                handle.edit_all(pa, |mut c| insert_str(&mut c, '\n', 1, &mut insert_events));
-                if opts.indent_chars.contains(&'\n') {
-                    let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
-                    if is_ts_indent || opts.auto_indent {
-                        handle.edit_all(pa, |mut c| _ = reindent(&mut c, indents.next().unwrap()));
+                handle.edit_all(pa, |mut c| {
+                    let (caret, anchor) = (c.caret(), c.anchor());
+                    remove_trailing_before_cursor(&mut c);
+                    if let Some(anchor) = anchor {
+                        c.set_anchor();
+                        if anchor < caret {
+                            c.move_to(anchor);
+                        } else {
+                            c.move_hor(anchor.byte() as i32 - caret.byte() as i32);
+                        }
+                        c.swap_ends();
                     }
+
+                    insert_str(&mut c, '\n', 1, &mut insert_events)
+                });
+                if opts.indent_chars.contains(&'\n') {
+                    handle.edit_all(pa, |mut c| {
+                        if c.add_comment() {
+                            c.insert(' ');
+                            c.move_hor(1);
+                        }
+                    });
+                    let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
+                    handle.edit_all(pa, |mut c| {
+                        if is_ts_indent || opts.auto_indent {
+                            _ = reindent(0, indents.next().unwrap(), &mut c)
+                        }
+                    });
                 }
             }
             event!(Backspace) => handle.edit_all(pa, |mut c| {
@@ -207,7 +229,7 @@ impl Mode for Insert {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
                 if key_event.modifiers == KeyMod::NONE {
                     c.unset_anchor();
-                    remove_empty_line(&mut c);
+                    remove_trailing_before_cursor(&mut c);
                 }
                 move_ver(&mut c, 1, &mut insert_events);
             }),
@@ -215,7 +237,7 @@ impl Mode for Insert {
                 set_anchor_if_needed(key_event.modifiers == KeyMod::SHIFT, &mut c);
                 if key_event.modifiers == KeyMod::NONE {
                     c.unset_anchor();
-                    remove_empty_line(&mut c);
+                    remove_trailing_before_cursor(&mut c);
                 }
                 move_ver(&mut c, -1, &mut insert_events);
             }),
@@ -289,7 +311,7 @@ pub(crate) fn repeat_last_insert(pa: &mut Pass, handle: &Handle) {
     for event in insert_events.iter() {
         match event {
             InsertEvent::MoveHor(hor) => handle.edit_all(pa, |mut c| _ = c.move_hor(*hor)),
-            InsertEvent::MoveVer(ver) => handle.edit_all(pa, |mut c| c.move_ver_wrapped(*ver)),
+            InsertEvent::MoveVer(ver) => handle.edit_all(pa, |mut c| _ = c.move_ver_wrapped(*ver)),
             InsertEvent::Delete(del) => handle.edit_all(pa, |mut c| {
                 c.set_anchor();
                 c.move_hor(*del as i32 - 1);
@@ -308,7 +330,9 @@ pub(crate) fn repeat_last_insert(pa: &mut Pass, handle: &Handle) {
             InsertEvent::Reindent => {
                 let (mut indents, is_ts_indent) = crate::indents(pa, handle);
                 if is_ts_indent {
-                    handle.edit_all(pa, |mut c| _ = reindent(&mut c, indents.next().unwrap()))
+                    handle.edit_all(pa, |mut c| {
+                        reindent(c.indent(), indents.next().unwrap(), &mut c);
+                    })
                 }
             }
         }
@@ -327,17 +351,21 @@ enum InsertEvent {
     Reindent,
 }
 
-/// removes an empty line
-fn remove_empty_line(c: &mut Cursor) {
-    let mut lines = c.lines_on(c.caret()..);
-    let (_, line) = lines.next().unwrap();
-    if !line.chars().all(char::is_whitespace) || line.is_empty() {
+/// Removes an empty line, expects a movent down or up after.
+fn remove_trailing_before_cursor(c: &mut Cursor) {
+    let Some(line) = c.text()[..c.caret()].lines().next_back() else {
+        return;
+    };
+    let chars_count = line.chars().rev().take_while(|char| *char == ' ').count();
+
+    if chars_count == 0 {
         return;
     }
-    let chars_count = line.chars().count();
 
     let dvcol = c.v_caret().desired_visual_col();
-    c.move_to_col(0);
+    let col = c.v_caret().char_col();
+
+    c.move_to_col(col - chars_count);
     c.set_anchor();
     c.move_hor(chars_count as i32 - 1);
 
@@ -412,10 +440,9 @@ fn move_ver(c: &mut Cursor, ver: i32, insert_events: &mut Vec<InsertEvent>) {
 }
 
 /// Reindents a [`Cursor`]'s line by a certain amount
-pub fn reindent(c: &mut Cursor, new_indent: usize) -> bool {
-    let old_indent = c.indent();
+pub fn reindent(old_indent: usize, new_indent: usize, c: &mut Cursor) -> bool {
     let old_col = c.v_caret().char_col();
-    let anchor_existed = c.anchor().is_some();
+    let (caret, anchor) = (c.caret(), c.anchor());
 
     let indent_diff = new_indent as i32 - old_indent as i32;
 
@@ -432,20 +459,20 @@ pub fn reindent(c: &mut Cursor, new_indent: usize) -> bool {
     c.set_caret_on_start();
     c.unset_anchor();
 
-    if anchor_existed {
-        c.set_anchor();
-        if old_col < old_indent {
-            c.move_hor(old_col as i32);
-        } else {
-            c.move_hor(old_col as i32 + indent_diff);
-        }
-        c.swap_ends();
-    }
-
     if old_col < old_indent {
         c.move_hor(old_col as i32);
     } else {
         c.move_hor(old_col as i32 + indent_diff);
+    }
+
+    if let Some(anchor) = anchor {
+        c.set_anchor();
+        if anchor < caret {
+            c.move_to(anchor);
+        } else {
+            c.move_hor(anchor.byte() as i32 - caret.byte() as i32);
+        }
+        c.swap_ends();
     }
 
     indent_diff != 0

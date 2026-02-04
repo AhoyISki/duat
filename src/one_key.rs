@@ -115,7 +115,7 @@ fn match_goto(
         }
         event!('i') => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
-            let range = c.search("(^|\n)[ \t]*").to_caret().next_back();
+            let range = c.search("(\\A|\n)[ \t]*").to_caret().next_back();
             if let Some(range) = range {
                 c.move_to(range.end);
 

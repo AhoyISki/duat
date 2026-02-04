@@ -73,7 +73,7 @@
 //!
 //! `w`, `e`
 //! Inside/around `word`s and `WORD`s.
-//! 
+//!
 //!
 //! `s`\
 //! Inside/around sentences.
@@ -232,7 +232,7 @@
 //!
 //! `<a-q>`\
 //! Replays the recorded macro.
-//! 
+//!
 //! `<a-Q>`\
 //! Starts/stops recording a macro.
 //!
@@ -462,11 +462,7 @@
 //! [`opts`]: https://docs.rs/duat/latest/duat/opts
 //! [word chars]: duat_core::opts::PrintOpts::extra_word_chars
 //! [tab mode]: TabMode
-use std::{
-    collections::HashMap,
-    ops::Range,
-    sync::{LazyLock, Mutex},
-};
+use std::sync::Mutex;
 
 use crate::normal::Brackets;
 pub use crate::{
@@ -486,10 +482,9 @@ use duat_core::{
     context::Handle,
     data::Pass,
     form, hook,
-    lender::Lender,
     mode::{self, Cursor, KeyEvent, alt, event},
     opts::PrintOpts,
-    text::Point,
+    utils::Memoized,
 };
 use duat_treesitter::TsHandle;
 pub use parameter::{add_to_param, duat_param, duat_param_txt, take_param};
@@ -575,9 +570,10 @@ pub mod opts {
     use duat_core::{
         mode::{self, KeyCode, KeyEvent},
         text::txt,
+        utils::Memoized,
     };
 
-    use crate::{Insert, Memoized, escaped_regex, insert::TabMode, normal::Brackets};
+    use crate::{Insert, escaped_regex, insert::TabMode, normal::Brackets};
 
     pub(crate) static INSERT_TABS: AtomicBool = AtomicBool::new(false);
     pub(crate) static DUATMODE_OPTS: Mutex<DuatModeOpts> = Mutex::new(DuatModeOpts::new());
@@ -667,7 +663,7 @@ pub mod opts {
             );
 
             self.brackets =
-                BRACKETS.get_or_insert_with(brackets.clone(), || Brackets(brackets.leak()));
+                BRACKETS.get_or_insert_with(&brackets, || Brackets(brackets.clone().leak()));
         }
     }
 
@@ -861,7 +857,7 @@ impl<'o> Object<'o> {
     fn new(key_event: KeyEvent, opts: PrintOpts, brackets: Brackets) -> Option<Self> {
         static BRACKET_PATS: Memoized<Brackets, [Regexes; 2]> = Memoized::new();
         let bound_patterns = |brackets: Brackets| {
-            BRACKET_PATS.get_or_insert_with(brackets, || {
+            BRACKET_PATS.get_or_insert_with(&brackets, || {
                 let (s_pat, e_pat): (String, String) = brackets
                     .iter()
                     .enumerate()
@@ -928,7 +924,7 @@ impl<'o> Object<'o> {
             }),
             event!('w') => Some({
                 static WORD_PATS: Memoized<&'static [char], [Regexes; 2]> = Memoized::new();
-                let [ahead, behind] = WORD_PATS.get_or_insert_with(opts.extra_word_chars, || {
+                let [ahead, behind] = WORD_PATS.get_or_insert_with(&opts.extra_word_chars, || {
                     let cat = opts.word_chars_regex();
                     [
                         Regexes::new(format!("\\A({cat}+|[^{cat} \t\n]+)\\s*").leak(), r"\s*"),
@@ -951,7 +947,7 @@ impl<'o> Object<'o> {
             event!('i') => Some(Self::Indent),
             event!(mode::KeyCode::Char(char)) if !char.is_alphanumeric() => Some(Self::OneBound({
                 static BOUNDS: Memoized<char, Regexes> = Memoized::new();
-                BOUNDS.get_or_insert_with(char, || Regexes::simple(char.to_string().leak()))
+                BOUNDS.get_or_insert_with(&char, || Regexes::simple(char.to_string().leak()))
             })),
             _ => None,
         }
@@ -1000,19 +996,18 @@ impl<'o> Object<'o> {
                 let indent = c.indent();
                 let mut point = c.text().point_at_line(c.caret().line());
 
-                while c.indent_on(point) >= indent && point.line() < c.text().len().line() {
+                while c.indent_on(point.line()) >= indent && point.line() < c.text().len().line() {
                     point = c.text().point_at_line(point.line() + 1)
                 }
 
                 return Some(if is_inside {
                     point.byte()
                 } else {
-                    c.text()
-                        .lines(point..)
-                        .find(|(_, line)| line.chars().any(|c| !c.is_ascii_whitespace()))
-                        .map(|(num, _)| c.text().point_at_line(num))
-                        .unwrap_or(c.text().len())
-                        .byte()
+                    c.text()[point..]
+                        .lines()
+                        .find(|line| line.chars().any(|c| !c.is_ascii_whitespace()))
+                        .map(|line| line.byte_range().start)
+                        .unwrap_or(c.text().len().byte())
                 });
             }
         };
@@ -1071,7 +1066,7 @@ impl<'o> Object<'o> {
 
                 while let Some(prev_line) = point.line().checked_sub(1) {
                     let prev = c.text().point_at_line(prev_line);
-                    if c.indent_on(prev) < indent {
+                    if c.indent_on(prev.line()) < indent {
                         break;
                     }
                     point = c.text().point_at_line(point.line() - 1)
@@ -1080,14 +1075,13 @@ impl<'o> Object<'o> {
                 return Some(if is_inside {
                     point.byte()
                 } else {
-                    c.text()
-                        .lines(..point)
+                    c.text()[..point]
+                        .lines()
                         .rev()
-                        .take_while(|(_, line)| line.chars().all(|c| c.is_ascii_whitespace()))
+                        .take_while(|line| line.chars().all(|c| c.is_ascii_whitespace()))
                         .last()
-                        .map(|(num, _)| c.text().point_at_line(num))
-                        .unwrap_or(point)
-                        .byte()
+                        .map(|line| line.byte_range().start)
+                        .unwrap_or(point.byte())
                 });
             }
         };
@@ -1105,7 +1099,7 @@ impl<'o> Object<'o> {
 
 fn escaped_regex(str: impl ToString) -> &'static str {
     static ESCAPED: Memoized<String, &str> = Memoized::new();
-    ESCAPED.get_or_insert_with(str.to_string(), || escaped_str(str).leak())
+    ESCAPED.get_or_insert_with(&str.to_string(), || escaped_str(str).leak())
 }
 
 fn escaped_str(str: impl ToString) -> String {
@@ -1120,40 +1114,30 @@ fn escaped_str(str: impl ToString) -> String {
     escaped
 }
 
-struct Memoized<K: std::hash::Hash + std::cmp::Eq, V>(LazyLock<Mutex<HashMap<K, V>>>);
-
-impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Memoized<K, V> {
-    const fn new() -> Self {
-        Self(LazyLock::new(Mutex::default))
-    }
-
-    fn get_or_insert_with(&self, k: K, f: impl FnOnce() -> V) -> V {
-        self.0.lock().unwrap().entry(k).or_insert_with(f).clone()
-    }
-}
-
 static SEARCH: Mutex<String> = Mutex::new(String::new());
 
 fn indents(pa: &mut Pass, handle: &Handle) -> (std::vec::IntoIter<usize>, bool) {
-    fn prev_non_empty_line_points(c: &mut Cursor<Buffer>) -> Option<Range<Point>> {
+    fn prev_non_empty_line(c: &mut Cursor<Buffer>) -> Option<usize> {
         let line_start = c.text().point_at_line(c.caret().line());
-        let mut lines = c.lines_on(..line_start).rev();
-        let prev = lines
-            .find_map(|(n, l): (usize, &str)| l.chars().any(|c| !c.is_whitespace()).then_some(n));
-        prev.map(|n| c.text().line_range(n))
+
+        c.text()[..line_start]
+            .lines()
+            .rev()
+            .enumerate()
+            .find(|(_, line)| line.chars().any(|c| !c.is_whitespace()))
+            .map(|(i, _)| c.caret().line() - (i + 1))
     }
 
     if let Some(indents) = handle.ts_get_indentations(pa, ..) {
         (indents.into_iter(), true)
     } else {
-        let indents: Vec<_> = handle.edit_iter(pa, |iter| {
-            iter.map_into_iter(|mut c| {
-                let prev_non_empty = prev_non_empty_line_points(&mut c);
-                prev_non_empty
-                    .map(|range| c.indent_on(range.start))
-                    .unwrap_or(0)
-            })
-            .collect()
+        let mut indents = Vec::new();
+        handle.edit_all(pa, |mut c| {
+            indents.push(
+                prev_non_empty_line(&mut c)
+                    .map(|line| c.indent_on(line))
+                    .unwrap_or(0),
+            )
         });
 
         (indents.into_iter(), false)

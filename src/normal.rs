@@ -8,16 +8,17 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     hook::{self, KeyTyped},
-    lender::Lender,
     mode::{self, Bindings, KeyEvent, KeyMod, Mode, VPoint, alt, ctrl, event, shift},
     opts::PrintOpts,
     text::{Strs, txt},
 };
+use duat_filetype::AutoPrefix;
 use duat_jump_list::{BufferJumps, JumpListId};
 
 use crate::{
     Category, Object, SEARCH, SelType, edit_or_destroy_all, escaped_regex, escaped_str,
     inc_searchers::{KeepMatching, Select, Split},
+    insert::reindent,
     one_key::OneKey,
     opts::INSERT_TABS,
     select_to_end_of_line, set_anchor_if_needed,
@@ -238,12 +239,12 @@ impl Mode for Normal {
 
         use mode::KeyCode::*;
 
-        let p_opts = handle.opts(pa);
+        let popts = handle.opts(pa);
         let opts = crate::opts::get();
 
         let do_match_on_spot = |[c0, c1]: [_; 2], alt_word, moved| {
             use Category::*;
-            let (cat0, cat1) = (Category::of(c0, p_opts), Category::of(c1, p_opts));
+            let (cat0, cat1) = (Category::of(c0, popts), Category::of(c1, popts));
             !matches!(
                 (cat0, cat1, alt_word, moved),
                 (Word, Word, ..)
@@ -293,19 +294,23 @@ impl Mode for Normal {
                 let caret = c.caret();
                 c.move_to_col(usize::MAX);
                 c.insert("\n");
-                if key_event.modifiers != KeyMod::NONE {
-                    c.move_to(caret);
-                } else {
+                if key_event.modifiers == KeyMod::NONE {
                     c.move_hor(1);
+                } else {
+                    c.move_to(caret);
                 }
             });
 
             if key_event.modifiers == KeyMod::NONE {
+                handle.edit_all(pa, |mut c| {
+                    if c.add_comment() {
+                        c.insert(' ');
+                        c.move_hor(1);
+                    }
+                });
                 let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
                 if is_ts_indent {
-                    handle.edit_all(pa, |mut c| {
-                        crate::insert::reindent(&mut c, indents.next().unwrap());
-                    });
+                    handle.edit_all(pa, |mut c| _ = reindent(0, indents.next().unwrap(), &mut c));
                 }
             }
         };
@@ -321,11 +326,15 @@ impl Mode for Normal {
             });
 
             if key_event.modifiers == KeyMod::NONE {
+                handle.edit_all(pa, |mut c| {
+                    if c.add_comment() {
+                        c.insert(' ');
+                        c.move_hor(1);
+                    }
+                });
                 let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
                 if is_ts_indent {
-                    handle.edit_all(pa, |mut c| {
-                        crate::insert::reindent(&mut c, indents.next().unwrap());
-                    });
+                    handle.edit_all(pa, |mut c| _ = reindent(0, indents.next().unwrap(), &mut c));
                 }
             }
         };
@@ -384,7 +393,7 @@ impl Mode for Normal {
                     'k' | 'K' => -(param as i32),
                     _ => unreachable!(),
                 };
-                if c.move_ver(param) == 0 {
+                if !c.move_ver(param) {
                     c.reset();
                     return;
                 }
@@ -411,7 +420,7 @@ impl Mode for Normal {
                     c.move_to(if move_to_match { p1 } else { p0 });
 
                     let range = c
-                        .search(word_or_space(alt, p_opts))
+                        .search(word_or_space(alt, false, popts))
                         .from_caret()
                         .nth(param - 1);
                     if let Some(range) = range {
@@ -435,7 +444,7 @@ impl Mode for Normal {
                     }
 
                     let range = c
-                        .search(word_or_space(alt, p_opts))
+                        .search(word_or_space(alt, true, popts))
                         .to_caret()
                         .nth_back(param - 1);
                     if let Some(range) = range {
@@ -450,7 +459,7 @@ impl Mode for Normal {
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
                 if let Some(range) = {
-                    c.search(word_or_space(alt, p_opts))
+                    c.search(word_or_space(alt, false, popts))
                         .from_caret()
                         .nth(param - 1)
                 } {
@@ -462,7 +471,7 @@ impl Mode for Normal {
                 let alt = char == 'V';
                 set_anchor_if_needed(true, &mut c);
                 if let Some(range) = {
-                    c.search(word_or_space(alt, p_opts))
+                    c.search(word_or_space(alt, true, popts))
                         .to_caret()
                         .rev()
                         .nth(param - 1)
@@ -540,7 +549,7 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let mut i = 0;
-                    let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
+                    let object = Object::new(key_event, popts, opts.brackets).unwrap();
 
                     set_anchor_if_needed(char == 'M', c);
 
@@ -568,7 +577,7 @@ impl Mode for Normal {
                 let failed = &mut failed;
                 edit_or_destroy_all(pa, &handle, failed, |c| {
                     let mut i = 0;
-                    let object = Object::new(key_event, p_opts, opts.brackets).unwrap();
+                    let object = Object::new(key_event, popts, opts.brackets).unwrap();
 
                     set_anchor_if_needed(char == 'M', c);
 
@@ -603,7 +612,7 @@ impl Mode for Normal {
                     let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
                     if is_ts_indent {
                         handle.edit_all(pa, |mut c| {
-                            crate::insert::reindent(&mut c, indents.next().unwrap());
+                            reindent(c.indent(), indents.next().unwrap(), &mut c);
                         });
                     }
                 }
@@ -670,7 +679,7 @@ impl Mode for Normal {
                             let (mut indents, is_ts_indent) = crate::indents(pa, &handle);
                             if is_ts_indent {
                                 handle.edit_all(pa, |mut c| {
-                                    crate::insert::reindent(&mut c, indents.next().unwrap());
+                                    reindent(c.indent(), indents.next().unwrap(), &mut c);
                                 })
                             }
                         }
@@ -718,16 +727,14 @@ impl Mode for Normal {
                 if handle.selections(pa).len() == 1 {
                     return;
                 }
-                let last_sel = handle.edit_iter(pa, |mut iter| {
-                    let mut last_sel = iter.next().map(|c| c.selection().to_string());
 
-                    while let Some(mut c) = iter.next() {
-                        let selection = c.selection().to_string();
+                let mut last_sel = None;
+
+                handle.edit_all(pa, |mut c| {
+                    if let Some(last_sel) = last_sel.replace(c.selection().to_string()) {
                         c.set_anchor_if_needed();
-                        c.replace(last_sel.replace(selection).unwrap());
+                        c.replace(last_sel);
                     }
-
-                    last_sel
                 });
 
                 handle.edit_nth(pa, 0, |mut c| c.replace(last_sel.unwrap()));
@@ -841,9 +848,9 @@ impl Mode for Normal {
                         if processed_lines.contains(&line) {
                             continue;
                         }
-                        let s_range = c.text().line_range(line);
+                        let s_range = c.text().line(line).byte_range();
                         c.move_to(s_range.start);
-                        let range = c.caret()..s_range.end;
+                        let range = c.caret().byte()..s_range.end;
                         let Some(s_range) = c.search(&find).range(range).next() else {
                             continue;
                         };
@@ -1006,7 +1013,7 @@ impl Mode for Normal {
                     let lines_diff = v_anchor.map(|vp| vp.line().abs_diff(v_caret.line()) as i32);
                     let mut lines = mult * (lines_diff.unwrap_or(0) + 1);
 
-                    while c.move_ver(lines) == lines {
+                    while c.move_ver(lines) {
                         c.move_to_col(v_caret.visual_col());
                         if let Some(v_anchor) = v_anchor {
                             c.swap_ends();
@@ -1205,7 +1212,7 @@ impl Default for Normal {
 pub(crate) struct Brackets(pub(crate) &'static [[&'static str; 2]]);
 
 impl Brackets {
-    pub(crate) fn bounds_matching(&self, bound: Strs) -> Option<[&'static str; 2]> {
+    pub(crate) fn bounds_matching(&self, bound: &Strs) -> Option<[&'static str; 2]> {
         self.0
             .iter()
             .find(|bs| bs.contains(&escaped_regex(bound)))
@@ -1233,9 +1240,13 @@ fn no_nl_pair(iter: impl Iterator<Item = (usize, char)>) -> Option<[(usize, char
     None
 }
 
-fn word_or_space(alt_word: bool, opts: PrintOpts) -> String {
+fn word_or_space(alt_word: bool, backwards: bool, opts: PrintOpts) -> String {
     if alt_word {
-        "[^ \t\n]+|[ \t]+".to_string()
+        if backwards {
+            "[^ \t\n]+[ \t]*".to_string()
+        } else {
+            "[ \t]*[^ \t\n]+".to_string()
+        }
     } else {
         let cat = opts.word_chars_regex();
         format!("[{cat}]+|[^{cat} \t\n]+|[ \t]+")
