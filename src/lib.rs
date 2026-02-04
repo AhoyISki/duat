@@ -227,7 +227,7 @@ impl MatchPairsRef<'_> {
             .collect();
 
         'selections: for (c_range, is_main) in selections {
-            let str: Vec<u8> = handle.text(pa).bytes().slices(c_range.clone()).collect();
+            let str: Vec<u8> = handle.text(pa).slices(c_range.clone()).collect();
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.ts_and_reg.iter().position(ends(&str)) {
@@ -273,11 +273,7 @@ impl MatchPairsRef<'_> {
                 ranges
             } else if let Some(escaped) = escaped {
                 if str == delims[0] {
-                    let mut iter = handle
-                        .text(pa)
-                        .bytes()
-                        .search(escaped)
-                        .range(c_range.start..);
+                    let mut iter = handle.text(pa).search(escaped).range(c_range.start..);
                     let mut bounds = 0;
 
                     loop {
@@ -290,7 +286,7 @@ impl MatchPairsRef<'_> {
                         }
                     }
                 } else {
-                    let mut iter = handle.text(pa).bytes().search(escaped).range(..c_range.end);
+                    let mut iter = handle.text(pa).search(escaped).range(..c_range.end);
                     let mut bounds = 0;
 
                     loop {
