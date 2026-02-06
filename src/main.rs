@@ -467,83 +467,6 @@ fn decide_on_new_config(
     Ok(false)
 }
 
-mod cargo {
-    use std::{path::Path, process::Command};
-
-    use duat_core::context;
-
-    /// Build the config crate
-    pub fn build(
-        crate_dir: &'static Path,
-        profile: &str,
-        print: bool,
-    ) -> Result<std::process::ExitStatus, std::io::Error> {
-        let manifest_path = crate_dir.join("Cargo.toml");
-
-        let mut cargo = Command::new("cargo");
-        cargo
-            .args(["build", "--profile", profile, "--manifest-path"])
-            .arg(manifest_path);
-
-        #[cfg(feature = "deadlocks")]
-        cargo.args(["--features", "deadlocks"]);
-
-        exec_cargo(cargo, print)
-    }
-
-    /// Clean the config crate
-    pub fn clean(
-        crate_dir: &'static Path,
-        print: bool,
-    ) -> Result<std::process::ExitStatus, std::io::Error> {
-        let mut cargo = Command::new("cargo");
-        cargo
-            .args(["clean", "--manifest-path"])
-            .arg(crate_dir.join("Cargo.toml"));
-
-        exec_cargo(cargo, print)
-    }
-
-    /// Updates the config crate
-    pub fn update(
-        crate_dir: &'static Path,
-        print: bool,
-    ) -> Result<std::process::ExitStatus, std::io::Error> {
-        let mut cargo = Command::new("cargo");
-        cargo
-            .args(["update", "--manifest-path"])
-            .arg(crate_dir.join("Cargo.toml"));
-
-        exec_cargo(cargo, print)
-    }
-
-    fn exec_cargo(
-        mut cargo: Command,
-        print: bool,
-    ) -> Result<std::process::ExitStatus, std::io::Error> {
-        if print {
-            cargo.status()
-        } else {
-            cargo.output().map(|out| {
-                #[cfg(target_os = "windows")]
-                if out.stderr.ends_with(b"Access is denied. (os error 5)\n") {
-                    context::error!("Failed to reload config crate");
-                    context::info!("On [a]Windows[], close other instances of Duat to reload");
-                } else {
-                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
-                }
-
-                #[cfg(not(target_os = "windows"))]
-                if !out.status.success() {
-                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
-                }
-
-                out.status
-            })
-        }
-    }
-}
-
 /// Recursively attempts to remove every element in a path
 ///
 /// Doesn't give up upon failing to remove some individual item.
@@ -695,3 +618,86 @@ fn get_clipboard() -> Clipboard {
         },
     }
 }
+
+mod cargo {
+    use std::{path::Path, process::Command};
+
+    use duat_core::context;
+
+    /// Build the config crate
+    pub fn build(
+        crate_dir: &'static Path,
+        profile: &str,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        let manifest_path = crate_dir.join("Cargo.toml");
+
+        let mut cargo = Command::new("cargo");
+        cargo
+            .args(["build", "--profile", profile, "--manifest-path"])
+            .arg(manifest_path);
+
+        #[cfg(feature = "deadlocks")]
+        cargo.args(["--features", "deadlocks"]);
+
+        exec_cargo(cargo, print)
+    }
+
+    /// Clean the config crate
+    pub fn clean(
+        crate_dir: &'static Path,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        let mut cargo = Command::new("cargo");
+        cargo
+            .args(["clean", "--manifest-path"])
+            .arg(crate_dir.join("Cargo.toml"));
+
+        exec_cargo(cargo, print)
+    }
+
+    /// Updates the config crate
+    pub fn update(
+        crate_dir: &'static Path,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        let mut cargo = Command::new("cargo");
+        cargo
+            .args(["update", "--manifest-path"])
+            .arg(crate_dir.join("Cargo.toml"));
+
+        exec_cargo(cargo, print)
+    }
+
+    fn exec_cargo(
+        mut cargo: Command,
+        print: bool,
+    ) -> Result<std::process::ExitStatus, std::io::Error> {
+        if print {
+            cargo.status()
+        } else {
+            cargo.output().map(|out| {
+                #[cfg(target_os = "windows")]
+                if out.stderr.ends_with(b"Access is denied. (os error 5)\n") {
+                    context::error!("Failed to reload config crate");
+                    context::info!("On [a]Windows[], close other instances of Duat to reload");
+                } else {
+                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
+                }
+
+                #[cfg(not(target_os = "windows"))]
+                if !out.status.success() {
+                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
+                }
+
+                out.status
+            })
+        }
+    }
+}
+
+// Thread local storage has to be a nop in apple, since it completely
+// prevents dlclose from doing anything.
+#[cfg(target_vendor = "apple")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn _tlv_atexit(_dtor: unsafe extern "C" fn(*mut u8), _arg: *mut u8) {}
