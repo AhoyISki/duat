@@ -17,7 +17,7 @@ FOR NEXT UPDATE:
     [x] Space replacements.
     [x] New line replacements.
 [x] Get rid of the print_iter api.
-[ ] Do the libloading hacks.
+[x] Do the libloading hacks.
 [ ] Strs improvement.
   [ ] More fundamental functions.
   [ ] Better search functionality.

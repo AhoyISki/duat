@@ -518,10 +518,15 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     /// [`Point::line`] value equal to 6, _not_ 5, since it
     /// represents both the end of line 5, and the beginning of line
     /// 6.
+    #[track_caller]
     pub fn line_range(&self, bytes: &Bytes) -> Range<Point> {
         let start = bytes.point_at_line(self.start[2] as usize);
-        let end_line = bytes.line(self.added_end[2] as usize);
-        start..end_line.range().end
+        if self.added_end[2] as usize == bytes.len().line() {
+            start..bytes.len()
+        } else {
+            let end_line = bytes.line(self.added_end[2] as usize);
+            start..end_line.range().end
+        }
     }
 
     /// The [`Point`] at the start of the change

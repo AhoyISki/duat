@@ -19,6 +19,8 @@ lto = "off"
 [dependencies.duat]
 git = "https://github.com/AhoyISki/duat"
 version = "0.8.0"
+default-features = false
+features = ["treesitter"]
 
 # Plugin to add the catppuccin colorschemes, optional
 [dependencies.duat-catppuccin]

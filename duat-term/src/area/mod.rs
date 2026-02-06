@@ -396,7 +396,7 @@ impl RawArea for Area {
         let mut y = coords.tl.y;
 
         for (place, item) in print_iter(text, points, coords.width(), opts) {
-            if y == coords.br.y {
+            if y == coords.br.y || item.line() == text.len().line() {
                 break;
             }
             y += place.wrap as u32;

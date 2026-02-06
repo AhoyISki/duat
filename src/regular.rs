@@ -57,7 +57,7 @@ impl mode::Mode for Regular {
                     c.move_hor(1);
 
                     #[cfg(not(feature = "treesitter"))]
-                    c.insert(' '.repeat(indent));
+                    c.insert(" ".repeat(indent));
                 });
 
                 #[cfg(feature = "treesitter")]
