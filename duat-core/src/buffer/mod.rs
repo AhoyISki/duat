@@ -37,7 +37,7 @@ use crate::{
     mode::{Cursor, MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Bytes, Point, Strs, Text, TextMut, TextState, txt},
+    text::{Bytes, Point, Strs, Text, TextMut, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
@@ -212,7 +212,7 @@ impl Buffer {
         if opts_changed
             || cached_print_info.as_ref().is_none_or(|cpi| {
                 self.text
-                    .text_state()
+                    .version()
                     .has_structurally_changed_since(cpi.text_state)
                     || area.get_print_info() != cpi.area_print_info
                     || area.top_left() != cpi.coords.0
@@ -229,12 +229,12 @@ impl Buffer {
                 printed_line_numbers,
                 printed_line_ranges: None,
                 _visible_line_ranges: None,
-                text_state: self.text.text_state(),
+                text_state: self.text.version(),
                 area_print_info: area.get_print_info(),
                 coords: (area.top_left(), area.bottom_right()),
             });
         } else {
-            cached_print_info.as_mut().unwrap().text_state = self.text.text_state();
+            cached_print_info.as_mut().unwrap().text_state = self.text.version();
         };
 
         cached_print_info
@@ -756,7 +756,7 @@ struct CachedPrintInfo {
     printed_line_numbers: Vec<PrintedLine>,
     printed_line_ranges: Option<Vec<Range<Point>>>,
     _visible_line_ranges: Option<Vec<Range<Point>>>,
-    text_state: TextState,
+    text_state: TextVersion,
     area_print_info: PrintInfo,
     coords: (Coord, Coord),
 }

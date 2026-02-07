@@ -351,7 +351,7 @@ impl Text {
         );
         let change = Change::new(edit, start..end, self);
 
-        self.0.bytes.bytes_state += 1;
+        self.0.bytes.version += 1;
         self.apply_change(0, change.as_ref());
     }
 
@@ -654,13 +654,17 @@ impl Text {
     /// additions/removals, giving you information about wether this
     /// `Text` has changed, when comparing this to previous
     /// [`TextState`]s of the same `Text`.
-    pub fn text_state(&self) -> TextState {
-        let (tags_state, meta_tags_state) = self.0.tags.states();
+    ///
+    /// This _does_ also include things like undoing and redoing. This
+    /// is done to keep track of all changes that took place, even to
+    /// previously extant states of the text.
+    pub fn version(&self) -> TextVersion {
+        let (tags, meta_tags) = self.0.tags.states();
 
-        TextState {
-            bytes_state: self.0.bytes.bytes_state,
-            tags_state,
-            meta_tags_state,
+        TextVersion {
+            bytes: self.0.bytes.version,
+            tags,
+            meta_tags,
         }
     }
 }
@@ -705,7 +709,7 @@ impl<'t> TextMut<'t> {
         );
         let change = Change::new(edit, start..end, self);
 
-        self.text.0.bytes.bytes_state += 1;
+        self.text.0.bytes.version += 1;
         self.text.apply_change(0, change.as_ref());
         self.history.as_mut().map(|h| h.apply_change(None, change));
     }
@@ -716,7 +720,7 @@ impl<'t> TextMut<'t> {
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> (Option<usize>, usize) {
-        self.text.0.bytes.bytes_state += 1;
+        self.text.0.bytes.version += 1;
         let selections_taken = self
             .text
             .apply_change(guess_i.unwrap_or(0), change.as_ref());
@@ -868,7 +872,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_backwards()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes.bytes_state += 1;
+            self.text.0.bytes.version += 1;
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -879,7 +883,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_forward()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes.bytes_state += 1;
+            self.text.0.bytes.version += 1;
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -955,24 +959,35 @@ pub struct TextParts<'a> {
 /// Note that this is a [`Text`] agnostic struct, comparing the
 /// `TextState`s from two different `Text`s is pointless.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TextState {
-    bytes_state: u64,
-    tags_state: u64,
-    meta_tags_state: u64,
+pub struct TextVersion {
+    /// The current version of the [`Bytes`]
+    ///
+    /// Any change to the `Bytes`, even undoing, will incur a version
+    /// increment.
+    pub bytes: u64,
+    /// the current version of [`Tags`]
+    ///
+    /// Any change to the `Tags`, be it addition or removal of
+    /// [`Tag`]s, will incur a version increment.
+    pub tags: u64,
+    /// The current version of meta [`Tag`]s
+    ///
+    /// Meta tags are those that can change what is even shown on the
+    /// screen, all else being equal. Any addition or removal of meta
+    /// `Tag`s will incur a version increment.
+    pub meta_tags: u64,
 }
 
-impl TextState {
+impl TextVersion {
     /// Wether there have been _any_ changes to the [`Text`] since
     /// this previous instance
     pub fn has_changed_since(&self, other: Self) -> bool {
-        self.bytes_state > other.bytes_state
-            || self.tags_state > other.tags_state
-            || self.meta_tags_state > other.meta_tags_state
+        self.bytes > other.bytes || self.tags > other.tags || self.meta_tags > other.meta_tags
     }
 
     /// Wether the [`Bytes`] have changed since this previous instance
     pub fn bytes_have_changed_since(&self, other: Self) -> bool {
-        self.bytes_state > other.bytes_state
+        self.bytes > other.bytes
     }
 
     /// Wether the [`Tags`] have changed since this previous instance
@@ -984,7 +999,7 @@ impl TextState {
     ///
     /// [replace a range]: Text::replace_range
     pub fn tags_have_changed_since(&self, other: Self) -> bool {
-        self.tags_state > other.tags_state
+        self.tags > other.tags
     }
 
     /// Wether this [`Text`] has "structurally changed" since this
@@ -999,7 +1014,7 @@ impl TextState {
     /// These `Tag`s are called "meta tags" internally, since they
     /// change the very structure of what `Text` has been printed.
     pub fn has_structurally_changed_since(&self, other: Self) -> bool {
-        self.bytes_state > other.bytes_state || self.meta_tags_state > other.meta_tags_state
+        self.bytes > other.bytes || self.meta_tags > other.meta_tags
     }
 }
 

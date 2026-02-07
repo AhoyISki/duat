@@ -1,4 +1,4 @@
-//! Utilities for hooks in Duat
+//! Utilities for hooks in Duat.
 //!
 //! In Duat, hooks are handled through the [`Hookable`] trait. This
 //! trait contains the [`Hookable::Input`] associated type, which is
@@ -34,7 +34,7 @@
 //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
 //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
 //! - [`BufferClosed`] triggers on every buffer upon closing Duat.
-//! - [`BufferReloaded`] triggers on every buffer upon reloading Duat.
+//! - [`BufferUnloaded`] triggers on every buffer upon reloading Duat.
 //! - [`BufferUpdated`] triggers whenever a buffer changes.
 //! - [`BufferPrinted`] triggers after a buffer has been printed.
 //! - [`BufferSwitched`] triggers when switching the active buffer.
@@ -188,7 +188,7 @@ use crate::{
     utils::catch_panic,
 };
 
-/// Hook functions
+/// Hook functions.
 mod global {
     use std::sync::{
         LazyLock,
@@ -196,11 +196,11 @@ mod global {
     };
 
     use super::{Hookable, InnerGroupId, InnerHooks};
-    use crate::data::Pass;
+    use crate::{data::Pass, hook::Callback};
 
     static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 
-    /// A [`GroupId`] that can be used in order to remove hooks
+    /// A [`GroupId`] that can be used in order to remove hooks.
     ///
     /// When [adding grouped hooks], you can either use strings or a
     /// [`GroupId`]. You should use strings for publicly removable
@@ -218,7 +218,7 @@ mod global {
             Self(HOOK_GROUPS.fetch_add(1, Ordering::Relaxed))
         }
 
-        /// Remove all hooks that belong to this [`GroupId`]
+        /// Remove all hooks that belong to this [`GroupId`].
         ///
         /// This can be used in order to have hooks remove themselves,
         /// for example.
@@ -226,13 +226,13 @@ mod global {
             remove(self)
         }
 
-        /// Returns `true` if this `GroupId` has any hooks
+        /// Returns `true` if this `GroupId` has any hooks.
         pub fn has_hooks(self) -> bool {
             group_exists(self)
         }
     }
 
-    /// A struct used in order to specify more options for [hook]s
+    /// A struct used in order to specify more options for [hook]s.
     ///
     /// You can set three options currently:
     ///
@@ -249,10 +249,9 @@ mod global {
     /// [`Handle`]: crate::context::Handle
     /// [removed]: remove
     pub struct HookBuilder<H: Hookable> {
-        callback: Option<Box<dyn FnMut(&mut Pass, H::Input<'_>) + 'static>>,
+        callback: Option<Callback<H>>,
         group: Option<InnerGroupId>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send>>,
-        once: bool,
     }
 
     impl<H: Hookable> HookBuilder<H> {
@@ -273,19 +272,7 @@ mod global {
             self
         }
 
-        /// Calls this hook only once
-        ///
-        /// This makes it so the hook will only be called once. Note
-        /// that, if the hook is removed via [`hook::remove`] before
-        /// being called, then it never will be.
-        ///
-        /// [`hook::remove`]: super::remove
-        pub fn once(mut self) -> Self {
-            self.once = true;
-            self
-        }
-
-        /// Filter when this hook will be called
+        /// Filter when this hook will be called.
         ///
         /// This is mostly for convenience's sake, since you _could_
         /// just add a check inside of the callback itself.
@@ -307,40 +294,84 @@ mod global {
 
     impl<H: Hookable> Drop for HookBuilder<H> {
         fn drop(&mut self) {
-            HOOKS.add::<H>(
+            HOOKS.add(
                 self.callback.take().unwrap(),
                 self.group.take(),
                 self.filter.take(),
-                self.once,
             )
         }
     }
 
     /// Adds a hook, which will be called whenever the [`Hookable`] is
-    /// triggered
+    /// triggered.
     ///
     /// [`hook::add`] will return a [`HookBuilder`], which is a struct
     /// that can be used to further modify the behaviour of the hook,
     /// and will add said hook when [`Drop`]ped.
     ///
-    /// For example, [`HookBuilder::grouped`] will group this hook
-    /// with others of the same group, while [`HookBuilder::once`]
-    /// will make it so the hook is only called one time.
+    /// You can call [`HookBuilder::grouped`], which will group this
+    /// hook with others of the same group, allowing for
+    /// [`hook::remove`] to remove many hooks a once.
+    ///
+    /// You can also call [`HookBuilder::filter`], which lets you
+    /// filter when your function is actually called, based on the
+    /// input arguments of `H`.
+    ///
+    /// If you want to call a function only once, check out
+    /// [`hook::add_once`], which takes an [`FnOnce`] as input, rather
+    /// than an [`FnMut`].
     ///
     /// [`hook::add`]: add
+    /// [`hook::add_once`]: add_once
+    /// [`hook::remove`]: remove
     #[inline(never)]
     pub fn add<H: Hookable>(
         f: impl FnMut(&mut Pass, H::Input<'_>) + Send + 'static,
     ) -> HookBuilder<H> {
         HookBuilder {
-            callback: Some(Box::new(f)),
+            callback: Some(Callback::FnMut(Box::new(f))),
             group: None,
-            once: false,
             filter: None,
         }
     }
 
-    /// Removes a [hook] group
+    /// Adds a hook, which will be called once when the [`Hookable`]
+    /// is triggered.
+    ///
+    /// This is in contrast to [`hook::add`], whose function is called
+    /// every time the `Hookable` is triggered, the function passed to
+    /// `add_once` will only be triggered one time.
+    ///
+    /// [`hook::add`] will return a [`HookBuilder`], which is a struct
+    /// that can be used to further modify the behaviour of the hook,
+    /// and will add said hook when [`Drop`]ped.
+    ///
+    /// You can call [`HookBuilder::grouped`], which will group this
+    /// hook with others of the same group, allowing for
+    /// [`hook::remove`] to remove many hooks a once.
+    ///
+    /// You can also call [`HookBuilder::filter`], which lets you
+    /// filter when your function is actually called, based on the
+    /// input arguments of `H`. This is especially useful with
+    /// `add_once`, since it prevents the function from being called
+    /// once with the wrong arguments (e.g., it was meant for a
+    /// specific [`Buffer`], but the trigger happened first on another).
+    ///
+    /// [`hook::add`]: add
+    /// [`hook::remove`]: remove
+    /// [`Buffer`]: crate::buffer::Buffer
+    #[inline(never)]
+    pub fn add_once<H: Hookable>(
+        f: impl FnOnce(&mut Pass, H::Input<'_>) + Send + 'static,
+    ) -> HookBuilder<H> {
+        HookBuilder {
+            callback: Some(Callback::FnOnce(Some(Box::new(f)))),
+            group: None,
+            filter: None,
+        }
+    }
+
+    /// Removes a [hook] group.
     ///
     /// The hook can either be a string type, or a [`GroupId`].
     ///
@@ -349,12 +380,12 @@ mod global {
         HOOKS.remove(group.into());
     }
 
-    /// Triggers a hooks for a [`Hookable`] struct
+    /// Triggers a hooks for a [`Hookable`] struct.
     pub fn trigger<H: Hookable>(pa: &mut Pass, hookable: H) -> H {
         HOOKS.trigger(pa, hookable)
     }
 
-    /// Checks if a give group exists
+    /// Checks if a give group exists.
     ///
     /// The hook can either be a string type, or a [`GroupId`].
     ///
@@ -369,7 +400,7 @@ mod global {
 }
 
 /// A group can either be created through a name or through a
-/// [`GroupId`]
+/// [`GroupId`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[doc(hidden)]
 pub enum InnerGroupId {
@@ -389,7 +420,7 @@ impl<S: ToString> From<S> for InnerGroupId {
     }
 }
 
-/// [`Hookable`]: Triggers when Duat opens or reloads
+/// [`Hookable`]: Triggers when Duat opens or reloads.
 ///
 /// This trigger will also happen after a few other initial setups of
 /// Duat.
@@ -403,7 +434,7 @@ impl Hookable for ConfigLoaded {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
-/// [`Hookable`]: Triggers when Duat closes or has to reload
+/// [`Hookable`]: Triggers when Duat closes or has to reload.
 ///
 /// There are no arguments
 pub struct ConfigUnloaded(pub(crate) ());
@@ -414,7 +445,7 @@ impl Hookable for ConfigUnloaded {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
-/// [`Hookable`]: Triggers when Duat closes
+/// [`Hookable`]: Triggers when Duat closes.
 ///
 /// There are no arguments
 pub struct ExitedDuat(pub(crate) ());
@@ -425,7 +456,7 @@ impl Hookable for ExitedDuat {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
-/// [`Hookable`]: Triggers when Duat is refocused
+/// [`Hookable`]: Triggers when Duat is refocused.
 ///
 /// # Arguments
 ///
@@ -438,7 +469,7 @@ impl Hookable for FocusedOnDuat {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
-/// [`Hookable`]: Triggers when Duat is unfocused
+/// [`Hookable`]: Triggers when Duat is unfocused.
 ///
 /// # Arguments
 ///
@@ -451,7 +482,7 @@ impl Hookable for UnfocusedFromDuat {
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
 }
 
-/// [`Hookable`]: Triggers when a [`Widget`] is created
+/// [`Hookable`]: Triggers when a [`Widget`] is created.
 ///
 /// # Arguments
 ///
@@ -520,10 +551,10 @@ impl<W: Widget> Hookable for WidgetOpened<W> {
     }
 }
 
-/// An alias for [`WidgetOpened<Buffer>`]
+/// An alias for [`WidgetOpened<Buffer>`].
 pub type BufferOpened = WidgetOpened<Buffer>;
 
-/// [`Hookable`]: Triggers when a new window is opened
+/// [`Hookable`]: Triggers when a new window is opened.
 ///
 /// # Arguments
 ///
@@ -601,7 +632,7 @@ impl Hookable for WindowOpened {
     }
 }
 
-/// [`Hookable`]: Triggers before closing a [`Buffer`]
+/// [`Hookable`]: Triggers before closing a [`Buffer`].
 ///
 /// # Arguments
 ///
@@ -622,7 +653,7 @@ impl PartialEq<Handle> for BufferClosed {
     }
 }
 
-/// [`Hookable`]: Triggers before reloading a [`Buffer`]
+/// [`Hookable`]: Triggers before unloading a [`Buffer`].
 ///
 /// # Arguments
 ///
@@ -630,9 +661,9 @@ impl PartialEq<Handle> for BufferClosed {
 ///
 /// This will not trigger upon closing Duat. For that, see
 /// [`BufferClosed`].
-pub struct BufferReloaded(pub(crate) Handle);
+pub struct BufferUnloaded(pub(crate) Handle);
 
-impl Hookable for BufferReloaded {
+impl Hookable for BufferUnloaded {
     type Input<'h> = &'h Handle;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -640,13 +671,13 @@ impl Hookable for BufferReloaded {
     }
 }
 
-impl PartialEq<Handle> for BufferReloaded {
+impl PartialEq<Handle> for BufferUnloaded {
     fn eq(&self, other: &Handle) -> bool {
         self.0 == *other
     }
 }
 
-/// [`Hookable`]: Triggers when a [`Buffer`] updates
+/// [`Hookable`]: Triggers when a [`Buffer`] updates.
 ///
 /// This is triggered after a batch of writing calls to the `Buffer`,
 /// once per frame. This can happen after typing a key, calling a
@@ -746,7 +777,7 @@ impl PartialEq<Handle> for BufferUpdated {
     }
 }
 
-/// [`Hookable`]: Triggers after a [`Buffer`] is printed
+/// [`Hookable`]: Triggers after a [`Buffer`] is printed.
 ///
 /// The primary purpose of this `Widget` is to do cleanup on temporary
 /// changes made during a `BufferUpdated` triggering.
@@ -773,7 +804,7 @@ impl Hookable for BufferPrinted {
     }
 }
 
-/// [`Hookable`]: Triggers whenever the active [`Buffer`] changes
+/// [`Hookable`]: Triggers whenever the active [`Buffer`] changes.
 ///
 /// # Arguments
 ///
@@ -791,7 +822,7 @@ impl Hookable for BufferSwitched {
     }
 }
 
-/// [`Hookable`]: Triggers when the [`Widget`] is focused
+/// [`Hookable`]: Triggers when the [`Widget`] is focused.
 ///
 /// # Arguments
 ///
@@ -828,7 +859,7 @@ impl<W1: Widget, W2: Widget + ?Sized, W3: Widget + ?Sized> PartialEq<(Handle<W2>
     }
 }
 
-/// [`Hookable`]: Triggers when the [`Widget`] is unfocused
+/// [`Hookable`]: Triggers when the [`Widget`] is unfocused.
 ///
 /// # Arguments
 ///
@@ -858,7 +889,7 @@ impl<W1: Widget, W2: Widget + ?Sized, W3: Widget + ?Sized> PartialEq<(Handle<W2>
     }
 }
 
-/// [`Hookable`]: Triggers when focus changes between two [`Widget`]s
+/// [`Hookable`]: Triggers when focus changes between two [`Widget`]s.
 ///
 /// # Arguments
 ///
@@ -877,7 +908,7 @@ impl Hookable for FocusChanged {
     }
 }
 
-/// [`Hookable`]: Triggers when the [`Mode`] is changed
+/// [`Hookable`]: Triggers when the [`Mode`] is changed.
 ///
 /// # Arguments
 ///
@@ -893,7 +924,7 @@ impl Hookable for ModeSwitched {
     }
 }
 
-/// [`Hookable`]: Triggers whenever a [key] is sent
+/// [`Hookable`]: Triggers whenever a [key] is sent.
 ///
 /// [`KeyEvent`]s are "sent" when you type [unmapped] keys _or_ with
 /// the keys that were mapped, this is in contrast with [`KeyTyped`],
@@ -919,7 +950,7 @@ impl Hookable for KeySent {
     }
 }
 
-/// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
+/// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`].
 ///
 /// # Arguments
 ///
@@ -937,7 +968,7 @@ impl<M: Mode> Hookable for KeySentTo<M> {
     }
 }
 
-/// [`Hookable`]: Triggers whenever a [key] is typed
+/// [`Hookable`]: Triggers whenever a [key] is typed.
 ///
 /// [`KeyEvent`]s are "typed" when typing keys _or_ when calling the
 /// [`mode::type_keys`] function, this is in contrast with
@@ -963,7 +994,13 @@ impl Hookable for KeyTyped {
     }
 }
 
-/// [`Hookable`]: Triggers on every [`MouseEvent`]
+impl PartialEq<KeyEvent> for KeyTyped {
+    fn eq(&self, other: &KeyEvent) -> bool {
+        self.0 == *other
+    }
+}
+
+/// [`Hookable`]: Triggers on every [`MouseEvent`].
 ///
 /// # Arguments
 ///
@@ -997,7 +1034,7 @@ impl<W: Widget> PartialEq<Handle<W>> for OnMouseEvent {
     }
 }
 
-/// [`Hookable`]: Triggers whenever a [`Form`] is set
+/// [`Hookable`]: Triggers whenever a [`Form`] is set.
 ///
 /// This can be a creation or alteration of a `Form`.
 /// If the `Form` is a reference to another, the reference's
@@ -1018,7 +1055,7 @@ impl Hookable for FormSet {
     }
 }
 
-/// [`Hookable`]: Triggers when a [`ColorScheme`] is set
+/// [`Hookable`]: Triggers when a [`ColorScheme`] is set.
 ///
 /// Since [`Form`]s are set asynchronously, this may happen before the
 /// `ColorScheme` is done with its changes.
@@ -1038,7 +1075,7 @@ impl Hookable for ColorSchemeSet {
     }
 }
 
-/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`]
+/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`].
 ///
 /// Only triggers if the buffer was actually updated.
 ///
@@ -1057,7 +1094,7 @@ impl Hookable for BufferSaved {
     }
 }
 
-/// A hookable struct, for hooks taking [`Hookable::Input`]
+/// A hookable struct, for hooks taking [`Hookable::Input`].
 ///
 /// Through this trait, Duat allows for custom hookable structs. With
 /// these structs, plugin creators can create their own custom hooks,
@@ -1070,7 +1107,7 @@ impl Hookable for BufferSaved {
 pub trait Hookable: Sized + 'static {
     /// The arguments that are passed to each hook.
     type Input<'h>;
-    /// How to get the arguments from the [`Hookable`]
+    /// How to get the arguments from the [`Hookable`].
     ///
     /// This function is triggered once on every call that was added
     /// via [`hook::add`]. So if three hooks were added to
@@ -1109,7 +1146,7 @@ pub trait Hookable: Sized + 'static {
     fn get_input<'h>(&'h mut self, pa: &mut Pass) -> Self::Input<'h>;
 }
 
-/// Where all hooks of Duat are stored
+/// Where all hooks of Duat are stored.
 #[derive(Clone, Copy)]
 struct InnerHooks {
     types: &'static Mutex<HashMap<TypeId, Box<dyn HookHolder>>>,
@@ -1120,10 +1157,9 @@ impl InnerHooks {
     /// Adds a hook for a [`Hookable`]
     fn add<H: Hookable>(
         &self,
-        callback: Box<dyn FnMut(&mut Pass, H::Input<'_>) + 'static>,
+        callback: Callback<H>,
         group: Option<InnerGroupId>,
         filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
-        once: bool,
     ) {
         let mut map = self.types.lock().unwrap();
 
@@ -1141,25 +1177,15 @@ impl InnerHooks {
             };
 
             let mut hooks = hooks_of.0.borrow_mut();
-            hooks.push(Hook {
-                callback: Box::leak(Box::new(RefCell::new(callback))),
-                group,
-                filter,
-                once,
-            });
+            hooks.push(Hook { callback, group, filter });
         } else {
-            let hooks_of = HooksOf::<H>(RefCell::new(vec![Hook {
-                callback: Box::leak(Box::new(RefCell::new(callback))),
-                group,
-                filter,
-                once,
-            }]));
+            let hooks_of = HooksOf::<H>(RefCell::new(vec![Hook { callback, group, filter }]));
 
             map.insert(TypeId::of::<H>(), Box::new(hooks_of));
         }
     }
 
-    /// Removes hooks with said group
+    /// Removes hooks with said group.
     fn remove(&self, group_id: InnerGroupId) {
         self.groups.lock().unwrap().retain(|g| *g != group_id);
         let map = self.types.lock().unwrap();
@@ -1168,7 +1194,7 @@ impl InnerHooks {
         }
     }
 
-    /// Triggers hooks with args of the [`Hookable`]
+    /// Triggers hooks with args of the [`Hookable`].
     fn trigger<H: Hookable>(&self, pa: &mut Pass, mut hookable: H) -> H {
         let holder = self.types.lock().unwrap().remove(&TypeId::of::<H>());
 
@@ -1190,9 +1216,17 @@ impl InnerHooks {
             }
 
             let input = hookable.get_input(pa);
-            catch_panic(|| hook.callback.borrow_mut()(pa, input));
 
-            !hook.once
+            match &mut hook.callback {
+                Callback::FnMut(fn_mut) => {
+                    catch_panic(|| fn_mut(pa, input));
+                    true
+                }
+                Callback::FnOnce(fn_once) => {
+                    catch_panic(|| fn_once.take().unwrap()(pa, input));
+                    false
+                }
+            }
         });
 
         let mut types = self.types.lock().unwrap();
@@ -1219,7 +1253,7 @@ impl InnerHooks {
         hookable
     }
 
-    /// Checks if a hook group exists
+    /// Checks if a hook group exists.
     fn group_exists(&self, group: InnerGroupId) -> bool {
         self.groups.lock().unwrap().contains(&group)
     }
@@ -1237,13 +1271,13 @@ impl Default for InnerHooks {
 unsafe impl Send for InnerHooks {}
 unsafe impl Sync for InnerHooks {}
 
-/// An intermediary trait, meant for group removal
+/// An intermediary trait, meant for group removal.
 trait HookHolder {
     /// Remove the given group from hooks of this holder
     fn remove(&self, group_id: &InnerGroupId);
 }
 
-/// An intermediary struct, meant to hold the hooks of a [`Hookable`]
+/// An intermediary struct, meant to hold the hooks of a [`Hookable`].
 struct HooksOf<H: Hookable>(RefCell<Vec<Hook<H>>>);
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
@@ -1254,8 +1288,12 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 }
 
 struct Hook<H: Hookable> {
-    callback: &'static RefCell<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>)>,
+    callback: Callback<H>,
     group: Option<InnerGroupId>,
     filter: Option<Box<dyn Fn(&H) -> bool + Send + 'static>>,
-    once: bool,
+}
+
+enum Callback<H: Hookable> {
+    FnMut(Box<dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>)>),
+    FnOnce(Option<Box<dyn FnOnce(&mut Pass, <H as Hookable>::Input<'_>)>>),
 }

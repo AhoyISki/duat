@@ -115,20 +115,18 @@ impl WhichKey {
             area.set_width(size.x).unwrap();
         }
 
-        hook::add::<KeyTyped>({
+        hook::add_once::<KeyTyped>({
             let keys_handle = keys_handle.clone();
             let descs_handle = descs_handle.clone();
             move |pa, _| {
                 _ = keys_handle.close(pa);
                 _ = descs_handle.close(pa);
             }
-        })
-        .once();
-        hook::add::<FocusChanged>(move |pa, _| {
+        });
+        hook::add_once::<FocusChanged>(move |pa, _| {
             _ = keys_handle.close(pa);
             _ = descs_handle.close(pa);
-        })
-        .once();
+        });
     }
 }
 

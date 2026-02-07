@@ -18,7 +18,7 @@ mod strs;
 pub struct Bytes {
     buf: GapBuffer<u8>,
     records: Records,
-    pub(super) bytes_state: u64,
+    pub(super) version: u64,
 }
 
 impl Bytes {
@@ -40,7 +40,7 @@ impl Bytes {
         Self {
             buf,
             records: Records::new([len, chars, lines]),
-            bytes_state: 0,
+            version: 0,
         }
     }
 

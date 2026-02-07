@@ -399,7 +399,7 @@ pub mod hook {
     //! - [`BufferOpened`] is an alias for [`WidgetOpened<Buffer>`].
     //! - [`BufferSaved`] triggers after the [`Buffer`] is written.
     //! - [`BufferClosed`] triggers when closing a `Buffer`.
-    //! - [`BufferReloaded`] triggers on all buffers upon reloading.
+    //! - [`BufferUnloaded`] triggers on all buffers upon reloading.
     //! - [`BufferUpdated`] triggers whenever a buffer changes.
     //! - [`BufferPrinted`] triggers after a buffer has been printed.
     //! - [`BufferSwitched`] triggers when switching buffers.
@@ -587,7 +587,7 @@ pub mod prelude {
         data::{self, Pass, RwData},
         form::{self, Color, CursorShape, Form},
         hook::{
-            self, BufferClosed, BufferOpened, BufferPrinted, BufferReloaded, BufferSaved,
+            self, BufferClosed, BufferOpened, BufferPrinted, BufferUnloaded, BufferSaved,
             BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged,
             FocusedOnDuat, FormSet, Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched,
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened,

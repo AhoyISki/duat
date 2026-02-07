@@ -24,7 +24,7 @@ use crate::{
     data::Pass,
     form,
     hook::{
-        self, BufferClosed, BufferReloaded, ConfigLoaded, ConfigUnloaded, ExitedDuat,
+        self, BufferClosed, BufferUnloaded, ConfigLoaded, ConfigUnloaded, ExitedDuat,
         FocusedOnDuat, UnfocusedFromDuat,
     },
     mode::{self},
@@ -173,6 +173,7 @@ impl Session {
             unreachable!("Somebody forgot to set a default mode, I'm looking at you, duat!");
         };
 
+        let mut unload_instant = None;
         let mut reload_requested = false;
         let mut reprint_screen = false;
 
@@ -277,26 +278,35 @@ impl Session {
                         }
                     },
                     DuatEvent::ReloadSucceeded => {
-                        hook::trigger(pa, ConfigUnloaded(()));
-                        context::order_reload_or_quit();
-                        context::logs().clear();
-                        wait_for_threads_to_end();
+                        let already_called = unload_instant.is_some();
+                        let instant = unload_instant.get_or_insert_with(std::time::Instant::now);
+                        if !already_called {
+                            hook::trigger(pa, ConfigUnloaded(()));
 
-                        for handle in context::windows().buffers(pa) {
-                            hook::trigger(pa, BufferReloaded(handle));
+                            for handle in context::windows().buffers(pa) {
+                                hook::trigger(pa, BufferUnloaded(handle));
+                            }
                         }
 
-                        let ui = self.ui;
-                        let buffers = self.take_files(pa);
-                        ui.unload();
-                        return buffers;
+                        if thread_amount::thread_amount().unwrap().get() <= 7 {
+                            context::logs().clear();
+                            let ui = self.ui;
+                            let buffers = self.take_files(pa);
+                            ui.unload();
+                            return buffers;
+                        } else if instant.elapsed() > Duration::from_secs(5) {
+                            self.ui.unload();
+                            return Vec::new();
+                        } else {
+                            context::sender().send_reload_succeeded();
+                        }
                     }
                     DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
                         hook::trigger(pa, ConfigUnloaded(()));
-                        context::order_reload_or_quit();
 
                         for handle in context::windows().buffers(pa) {
+                            hook::trigger(pa, BufferUnloaded(handle.clone()));
                             hook::trigger(pa, BufferClosed(handle));
                         }
 
@@ -445,12 +455,4 @@ pub struct ReloadEvent {
     pub clean: bool,
     pub update: bool,
     pub profile: String,
-}
-
-fn wait_for_threads_to_end() {
-    let mut count = thread_amount::thread_amount().unwrap();
-    while count.get() > 7 {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        count = thread_amount::thread_amount().unwrap();
-    }
 }

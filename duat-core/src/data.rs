@@ -50,9 +50,8 @@ use std::{
     marker::PhantomData,
     sync::{
         Arc, LazyLock, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
     },
-    time::Duration,
 };
 
 use crate::ui::Widget;
@@ -757,38 +756,6 @@ impl<Data: Default + 'static> BulkDataWriter<Data> {
             }
             map(data)
         })
-    }
-}
-
-/// A checking struct that periodically returns `true`
-pub struct PeriodicChecker(Arc<AtomicBool>);
-
-impl PeriodicChecker {
-    /// Returns a new [`PeriodicChecker`]
-    pub fn new(duration: Duration) -> Self {
-        let has_elapsed = Arc::new(AtomicBool::new(false));
-        std::thread::spawn({
-            let has_elapsed = has_elapsed.clone();
-            move || {
-                while !crate::context::will_reload_or_quit() {
-                    std::thread::sleep(duration);
-                    has_elapsed.store(true, Ordering::Relaxed);
-                }
-            }
-        });
-
-        Self(has_elapsed)
-    }
-
-    /// Checks if the requested [`Duration`] has elapsed
-    pub fn check(&self) -> bool {
-        self.0.fetch_and(false, Ordering::Relaxed)
-    }
-}
-
-impl Default for PeriodicChecker {
-    fn default() -> Self {
-        Self::new(Duration::from_secs(1))
     }
 }
 

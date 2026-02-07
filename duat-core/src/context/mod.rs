@@ -30,7 +30,7 @@ mod global {
         path::PathBuf,
         sync::{
             LazyLock, Mutex, OnceLock,
-            atomic::{AtomicBool, AtomicUsize, Ordering},
+            atomic::{AtomicUsize, Ordering},
             mpsc,
         },
     };
@@ -46,8 +46,6 @@ mod global {
 
     static WINDOWS: OnceLock<&Windows> = OnceLock::new();
     static MODE_NAME: LazyLock<RwData<&str>> = LazyLock::new(RwData::default);
-
-    static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
     static SENDER: OnceLock<DuatSender> = OnceLock::new();
     static NEW_EVENT_COUNT: OnceLock<&'static AtomicUsize> = OnceLock::new();
@@ -82,11 +80,6 @@ mod global {
         if WINDOWS.set(Box::leak(Box::new(windows))).is_err() {
             panic!("Setup ran twice");
         }
-    }
-
-    /// Orders to quit Duat
-    pub(crate) fn order_reload_or_quit() {
-        WILL_RELOAD_OR_QUIT.store(true, Ordering::SeqCst);
     }
 
     /// Wether Duat has received new events that need to be handled
@@ -247,13 +240,6 @@ mod global {
     /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop
     pub(crate) fn sender() -> DuatSender {
         SENDER.get().unwrap().clone()
-    }
-
-    ////////// Functions for synchronization
-
-    /// Returns `true` if Duat is about to reload
-    pub fn will_reload_or_quit() -> bool {
-        WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
     }
 }
 

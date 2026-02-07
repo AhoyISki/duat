@@ -30,7 +30,7 @@ use duat_term::VertRule;
 
 use crate::{
     form,
-    hook::{self, BufferClosed, BufferReloaded, WindowOpened},
+    hook::{self, BufferClosed, BufferUnloaded, WindowOpened},
     mode,
     opts::{OPTS, STATUSLINE_FMT},
     prelude::BufferSaved,
@@ -44,6 +44,13 @@ pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         context::log_panic(panic_info);
+        use std::io::Write;
+        let mut log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("log")
+            .unwrap();
+        write!(log, "{panic_info}").unwrap();
         let backtrace = std::backtrace::Backtrace::capture();
         *PANIC_INFO.lock().unwrap() = Some(format!("{panic_info}\n{backtrace}"))
     }));
@@ -114,7 +121,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
     // Cache hooks
 
-    hook::add::<BufferReloaded>(|pa, handle| {
+    hook::add::<BufferUnloaded>(|pa, handle| {
         let buffer = handle.write(pa);
 
         let path = buffer.path();

@@ -1,5 +1,10 @@
 FOR NEXT UPDATE:
 [ ] Start work on duat-lsp.
+  [x] Start process comunications.
+  [ ] Send messages back and forth.
+  [ ] Send changes.
+  [ ] Receive and process semantic tokens.
+  [ ] Highlight references.
 [ ] `z` and `q` keys for duatmode.
 [x] Make the 'e' and 'v' traverse words and spaces.
 [x] Add autocommenting.
@@ -25,6 +30,7 @@ FOR NEXT UPDATE:
 [x] Get rid of Lender entirely.
 [x] Lean up the dependency tree.
 [ ] Make Bytes private 🤯.
+[ ] Make Inlay text much more powerful.
 
 KNOWN BUGS:
  HIGH PRIORITY:
