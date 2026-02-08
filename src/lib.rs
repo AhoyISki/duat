@@ -71,13 +71,13 @@ impl Jump {
         match self {
             Jump::Single(range) => {
                 buf.selections().len() == 1
-                    && buf.selections().main().byte_range(buf.bytes()) == *range
+                    && buf.selections().main().byte_range(buf.text()) == *range
             }
             Jump::Multiple(ranges, main_i) => {
                 buf.selections().len() == ranges.len()
                     && buf.selections().iter().zip(ranges.iter()).enumerate().all(
                         |(i, ((sel, is_main), range))| {
-                            sel.byte_range(buf.bytes()) == *range && ((i == *main_i) == is_main)
+                            sel.byte_range(buf.text()) == *range && ((i == *main_i) == is_main)
                         },
                     )
             }
@@ -280,7 +280,7 @@ impl BufferJumps for Handle {
                 match jump {
                     Jump::Single(sel) => {
                         if selections.len() == 1
-                            && selections.main().byte_range(buffer.bytes()) == *sel
+                            && selections.main().byte_range(buffer.text()) == *sel
                         {
                             return None;
                         }
@@ -291,7 +291,7 @@ impl BufferJumps for Handle {
                             && sels
                                 .iter()
                                 .zip(selections.iter())
-                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(buffer.bytes()))
+                                .all(|(lhs, (rhs, _))| *lhs == rhs.byte_range(buffer.text()))
                         {
                             return None;
                         }
@@ -305,7 +305,7 @@ impl BufferJumps for Handle {
 
         if selections.len() == 1 {
             list.push_back(Saved::Jump(
-                Jump::Single(selections.main().byte_range(buffer.bytes())),
+                Jump::Single(selections.main().byte_range(buffer.text())),
                 jump_id,
             ));
             *cur += 1;
@@ -314,7 +314,7 @@ impl BufferJumps for Handle {
                 Jump::Multiple(
                     selections
                         .iter()
-                        .map(|(sel, _)| sel.byte_range(buffer.bytes()))
+                        .map(|(sel, _)| sel.byte_range(buffer.text()))
                         .collect(),
                     selections.main_index(),
                 ),
