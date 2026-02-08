@@ -8,7 +8,7 @@ use std::sync::Once;
 use duat_core::{
     context::{self, Handle},
     data::Pass,
-    form,
+    form::{self, Form},
     hook::{self, FocusChanged, KeyTyped},
     mode::{self, Description, MouseEvent, MouseEventKind},
     text::{Text, TextMut, txt},
@@ -33,7 +33,10 @@ impl WhichKey {
     ) {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            form::set("default.WhichKeyDescriptions", "default.WhichKey");
+            form::set(
+                "default.WhichKeyDescriptions",
+                Form::mimic("default.WhichKey"),
+            );
         });
 
         let mut keys_builder = Text::builder();

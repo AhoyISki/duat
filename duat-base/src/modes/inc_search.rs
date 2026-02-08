@@ -13,7 +13,8 @@ use duat_core::{
     buffer::Buffer,
     context::{self, Handle},
     data::Pass,
-    form, hook,
+    form::{self, Form},
+    hook,
     text::{Tagger, Text, txt},
     ui::{PrintInfo, RwArea},
 };
@@ -72,10 +73,10 @@ impl<I: IncSearcher> IncSearch<I> {
     pub fn new(inc: I) -> Prompt {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            form::set_weak("regex.error", "accent.error");
-            form::set_weak("regex.operator", "operator");
-            form::set_weak("regex.class", "constant");
-            form::set_weak("regex.bracket", "punctuation.bracket");
+            form::set_weak("regex.error", Form::mimic("accent.error"));
+            form::set_weak("regex.operator", Form::mimic("operator"));
+            form::set_weak("regex.class", Form::mimic("constant"));
+            form::set_weak("regex.bracket", Form::mimic("punctuation.bracket"));
         });
         Prompt::new(Self { inc, orig: None, prev: String::new() })
     }

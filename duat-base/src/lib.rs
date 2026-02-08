@@ -147,40 +147,40 @@ impl Plugin for DuatBase {
         buffer_parser::enable_parser();
 
         // Setup for the LineNumbers
-        form::set_weak("linenum.main", Form::yellow());
-        form::set_weak("linenum.wrapped", Form::cyan().italic());
+        form::set_weak("linenum.main", Form::new().yellow());
+        form::set_weak("linenum.wrapped", Form::new().cyan().italic());
 
         // Setup for the StatusLine
-        form::set_weak("buffer", Form::yellow().italic());
-        form::set_weak("selections", Form::dark_blue());
-        form::set_weak("coord", "contant");
-        form::set_weak("separator", "punctuation.delimiter");
-        form::set_weak("mode", Form::green());
-        form::set_weak("default.StatusLine", Form::on_dark_grey());
+        form::set_weak("buffer", Form::new().yellow().italic());
+        form::set_weak("selections", Form::new().dark_blue());
+        form::set_weak("coord", Form::mimic("contant"));
+        form::set_weak("separator", Form::mimic("punctuation.delimiter"));
+        form::set_weak("mode", Form::new().green());
+        form::set_weak("default.StatusLine", Form::new().on_dark_grey());
 
         // Setup for the LogBook
-        form::set_weak("default.LogBook", Form::on_dark_grey());
-        form::set_weak("log_book.error", "default.error");
-        form::set_weak("log_book.warn", "default.warn");
-        form::set_weak("log_book.info", "default.info");
-        form::set_weak("log_book.debug", "default.debug");
-        form::set_weak("log_book.colon", "prompt.colon");
-        form::set_weak("log_book.bracket", "punctuation.bracket");
-        form::set_weak("log_book.target", "module");
+        form::set_weak("default.LogBook", Form::new().on_dark_grey());
+        form::set_weak("log_book.error", Form::mimic("default.error"));
+        form::set_weak("log_book.warn", Form::mimic("default.warn"));
+        form::set_weak("log_book.info", Form::mimic("default.info"));
+        form::set_weak("log_book.debug", Form::mimic("default.debug"));
+        form::set_weak("log_book.colon", Form::mimic("prompt.colon"));
+        form::set_weak("log_book.bracket", Form::mimic("punctuation.bracket"));
+        form::set_weak("log_book.target", Form::mimic("module"));
 
         // Setup for the PromptLine
-        form::set_weak("prompt.preview", "comment");
+        form::set_weak("prompt.preview", Form::mimic("comment"));
 
         // Setup for Completions
-        form::set_weak("default.Completions", Form::on_dark_grey());
-        form::set_weak("selected.Completions", Form::black().on_grey());
+        form::set_weak("default.Completions", Form::new().on_dark_grey());
+        form::set_weak("selected.Completions", Form::new().black().on_grey());
 
         // Setup for WhichKey
-        form::set_weak("key", "const");
-        form::set_weak("key.mod", "punctuation.bracket");
-        form::set_weak("key.angle", "punctuation.bracket");
-        form::set_weak("key.special", Form::yellow());
-        form::set_weak("remap", Form::italic());
+        form::set_weak("key", Form::mimic("const"));
+        form::set_weak("key.mod", Form::mimic("punctuation.bracket"));
+        form::set_weak("key.angle", Form::mimic("punctuation.bracket"));
+        form::set_weak("key.special", Form::new().yellow());
+        form::set_weak("remap", Form::new().italic());
 
         cmd::add("logs", |pa: &mut Pass| {
             mode::set(pa, Pager::<LogBook>::new());

@@ -35,7 +35,7 @@ use duat_core::{
     cmd,
     context::{self, Handle},
     data::Pass,
-    form,
+    form::{self, Form},
     mode::{self, KeyEvent, event, shift},
     text::{Ghost, Tagger, Text, txt},
     ui::{RwArea, Widget},
@@ -508,10 +508,10 @@ impl RunCommands {
     fn call_once() {
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            form::set_weak("caller.info", "accent.info");
-            form::set_weak("caller.error", "accent.error");
-            form::set_weak("param.info", "default.info");
-            form::set_weak("param.error", "default.error");
+            form::set_weak("caller.info", Form::mimic("accent.info"));
+            form::set_weak("caller.error", Form::mimic("accent.error"));
+            form::set_weak("param.info", Form::mimic("default.info"));
+            form::set_weak("param.error", Form::mimic("default.error"));
         });
     }
 }

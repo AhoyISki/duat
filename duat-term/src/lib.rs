@@ -23,7 +23,7 @@ use crossterm::{
 };
 use duat_core::{
     context::DuatSender,
-    form,
+    form::{self, Form},
     session::UiMouseEvent,
     ui::{
         self,
@@ -135,8 +135,8 @@ impl RawUi for Ui {
     fn open(&self, duat_tx: DuatSender) {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
 
-        form::set_weak("rule.upper", "default.VertRule");
-        form::set_weak("rule.lower", "default.VertRule");
+        form::set_weak("rule.upper", Form::mimic("default.VertRule"));
+        form::set_weak("rule.lower", Form::mimic("default.VertRule"));
 
         let term_rx = self.mt.lock().unwrap().rx.take().unwrap();
         let term_tx = self.mt.lock().unwrap().tx.clone();

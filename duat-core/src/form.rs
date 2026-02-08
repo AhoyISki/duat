@@ -1,7 +1,7 @@
 //! Utilities for stylizing the text of Duat
 use std::sync::{Mutex, OnceLock, RwLock, RwLockReadGuard};
 
-use FormType::*;
+use FormKind::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color as CtColor};
 
@@ -16,14 +16,8 @@ use crate::{
 
 /// Lists of [`Form`]s to be applied by a name
 pub trait ColorScheme: Send + Sync + 'static {
-    /// Applies the [`Form`]s
-    ///
-    /// # Note
-    ///
-    /// This can technically do anything, mostly because one might
-    /// want to do a bunch of `if`s and `else`s in order to get to a
-    /// finalized [`ColorScheme`].
-    fn apply(&self);
+    /// The list of [`Form`]s alongside their names
+    fn list_of_forms(&self) -> Vec<(&'static str, Form)>;
 
     /// The name of this [`ColorScheme`], shouldn't be altered
     fn name(&self) -> &'static str;
@@ -31,19 +25,27 @@ pub trait ColorScheme: Send + Sync + 'static {
 
 static COLORS: Mutex<Vec<CtColor>> = Mutex::new(Vec::new());
 static SENDER: OnceLock<DuatSender> = OnceLock::new();
-static BASE_FORMS: &[(&str, Form, FormType)] = &[
-    ("default", Form::new().0, Normal),
-    ("accent", Form::bold().0, Normal),
-    ("caret.main", Form::reverse().0, Normal),
-    ("caret.extra", Form::reverse().0, Ref(2)),
-    ("selection.main", Form::white().on_dark_grey().0, Normal),
-    ("selection.extra", Form::white().on_grey().0, Ref(5)),
-    ("cloak", Form::grey().on_black().0, Normal),
-    ("character.control", Form::grey().0, Normal),
-    ("param.path", Form::yellow().0, Normal),
-    ("param.path.open", Form::yellow().0, Ref(8)),
-    ("param.path.exists", Form::yellow().underlined().0, Normal),
-    ("replace", Form::grey().0, Normal),
+static BASE_FORMS: &[(&str, Form)] = &[
+    ("default", Form::new()),
+    ("accent", Form::new().bold()),
+    ("caret.main", Form::new().reverse()),
+    ("caret.extra", Form {
+        kind: Ref(2, default_style()),
+        ..Form::new().reverse()
+    }),
+    ("selection.main", Form::new().white().on_dark_grey()),
+    ("selection.extra", Form::new().white().on_grey()),
+    ("cloak", Form::new().grey().on_black()),
+    ("character.control", Form::new().grey()),
+    ("param.path", Form::new().yellow()),
+    ("param.path.exists", Form {
+        kind: Ref(8, ContentStyle {
+            attributes: Attributes::none().with(Attribute::Underlined),
+            ..default_style()
+        }),
+        ..Form::new().yellow().underlined()
+    }),
+    ("replace", Form::new().grey()),
 ];
 
 /// The functions that will be exposed for public use.
@@ -54,65 +56,18 @@ mod global {
         sync::{LazyLock, Mutex, OnceLock},
     };
 
-    use super::{
-        BASE_FORMS, BuiltForm, ColorScheme, CtColor, CursorShape, Form, FormId, Painter, Palette,
-    };
+    use super::{BASE_FORMS, ColorScheme, CtColor, CursorShape, Form, FormId, Painter, Palette};
     #[doc(inline)]
-    pub use crate::{
-        __id_of__ as id_of, __set_many__ as set_many, __set_many_weak__ as set_many_weak,
-    };
+    pub use crate::__id_of__ as id_of;
     use crate::{
         context,
+        form::FormKind,
         hook::{self, ColorSchemeSet},
     };
 
     static PALETTE: OnceLock<&'static Palette> = OnceLock::new();
     static FORMS: OnceLock<&'static Mutex<Vec<&str>>> = OnceLock::new();
     static COLORSCHEMES: LazyLock<Mutex<Vec<Box<dyn ColorScheme>>>> = LazyLock::new(Mutex::default);
-
-    /// Either a [`Form`] or the name of a form
-    ///
-    /// Note that the referenced form does not need to exist for
-    /// [`form::set`] or [`form::set_weak`] to work properly. In that
-    /// case, a new form with that name will be created, as well as
-    /// any of its inherited parents (separated by `"."`).
-    ///
-    /// [`form::set`]: set
-    /// [`form::set_weak`]: set_weak
-    #[doc(hidden)]
-    pub trait FormFmt {
-        /// The kind of [`Form`] that this type represents
-        fn kind(&self) -> Kind;
-    }
-    impl FormFmt for Form {
-        fn kind(&self) -> Kind {
-            Kind::Form(*self)
-        }
-    }
-
-    impl FormFmt for BuiltForm {
-        fn kind(&self) -> Kind {
-            Kind::Form(self.0)
-        }
-    }
-
-    impl FormFmt for &str {
-        fn kind(&self) -> Kind {
-            Kind::Ref(self.to_string())
-        }
-    }
-
-    impl FormFmt for &mut str {
-        fn kind(&self) -> Kind {
-            Kind::Ref(self.to_string())
-        }
-    }
-
-    impl FormFmt for String {
-        fn kind(&self) -> Kind {
-            Kind::Ref(self.clone())
-        }
-    }
 
     /// Sets the [`Form`] by the name of `name`
     ///
@@ -138,19 +93,19 @@ mod global {
     /// function.
     ///
     /// [`form::set_weak`]: set_weak
-    pub fn set(name: impl ToString, form: impl FormFmt) -> FormId {
+    pub fn set(name: impl ToString, form: Form) -> FormId {
         let name = name.to_string();
         let cloned_name = name.clone();
 
-        match form.kind() {
-            Kind::Form(form) => PALETTE.get().unwrap().set_form(cloned_name, form),
-            Kind::Ref(refed) => PALETTE.get().unwrap().set_ref(cloned_name, refed),
+        match form.kind {
+            FormKind::Normal => PALETTE.get().unwrap().set_form(cloned_name, form),
+            FormKind::Ref(refed, style) => {
+                PALETTE.get().unwrap().set_ref(cloned_name, refed, style)
+            }
+            _ => unreachable!(),
         };
 
         let mut forms = FORMS.get().unwrap().lock().unwrap();
-        if let Kind::Ref(refed) = form.kind() {
-            position_of_name(&mut forms, refed);
-        }
         FormId(position_of_name(&mut forms, name) as u16)
     }
 
@@ -181,29 +136,28 @@ mod global {
     /// ```
     ///
     /// [`form::set`]: set
-    pub fn set_weak(name: impl ToString, form: impl FormFmt) -> FormId {
+    pub fn set_weak(name: impl ToString, form: Form) -> FormId {
         let name = name.to_string();
         let cloned_name = name.clone();
 
-        match form.kind() {
-            Kind::Form(form) => PALETTE.get().unwrap().set_weak_form(cloned_name, form),
-            Kind::Ref(refed) => PALETTE.get().unwrap().set_weak_ref(cloned_name, refed),
+        match form.kind {
+            FormKind::Normal => PALETTE.get().unwrap().set_weak_form(cloned_name, form),
+            FormKind::Ref(refed, style) => {
+                PALETTE
+                    .get()
+                    .unwrap()
+                    .set_weak_ref(cloned_name, refed, style)
+            }
+            _ => unreachable!(),
         };
 
         let mut forms = FORMS.get().unwrap().lock().unwrap();
-        if let Kind::Ref(refed) = form.kind() {
-            position_of_name(&mut forms, refed);
-        }
         FormId(position_of_name(&mut forms, name) as u16)
     }
 
     /// Returns a [`Form`], given a [`FormId`].
     pub fn from_id(id: FormId) -> Form {
-        PALETTE
-            .get()
-            .unwrap()
-            .form_from_id(id)
-            .unwrap_or(Form::new().0)
+        PALETTE.get().unwrap().form_from_id(id).unwrap_or_default()
     }
 
     /// The current main cursor, with the `"caret.main"` [`Form`]
@@ -458,7 +412,7 @@ mod global {
     #[doc(hidden)]
     macro_rules! __id_of__ {
         ($form:expr) => {{
-            use $crate::form::{_set_many, DEFAULT_ID, FormId};
+            use $crate::form::{DEFAULT_ID, FormId, set_many};
 
             static mut WAS_SET: bool = false;
             static mut ID: FormId = DEFAULT_ID;
@@ -466,7 +420,7 @@ mod global {
                 unsafe { ID }
             } else {
                 let name = $form.to_string();
-                let id = _set_many(true, vec![(name, None)])[0];
+                let id = set_many(vec![(name, None)])[0];
                 unsafe {
                     ID = id;
                     WAS_SET = true;
@@ -484,7 +438,7 @@ mod global {
     /// issue (usually with something like a [`HashMap`]).
     pub fn id_of_non_static(name: impl ToString) -> FormId {
         let name = name.to_string();
-        _set_many(true, vec![(name, None)])[0]
+        set_many(vec![(name, None)])[0]
     }
 
     /// Non static version of [`id_of!`], for many [`Form`]s
@@ -494,16 +448,13 @@ mod global {
     /// case, you should try to find a way to memoize around this
     /// issue (usually with something like a [`HashMap`]).
     pub fn ids_of_non_static(names: impl IntoIterator<Item = impl ToString>) -> Vec<FormId> {
-        let names: Vec<(String, Option<Kind>)> =
-            names.into_iter().map(|n| (n.to_string(), None)).collect();
-        _set_many(true, names)
+        set_many(names.into_iter().map(|n| (n.to_string(), None)).collect())
     }
 
     /// Sets a bunch of [`Form`]s
     #[doc(hidden)]
-    pub fn _set_many<S: AsRef<str> + Send + Sync + 'static>(
-        weak: bool,
-        sets: Vec<(S, Option<Kind>)>,
+    pub fn set_many<S: AsRef<str> + Send + Sync + 'static>(
+        sets: Vec<(S, Option<Form>)>,
     ) -> Vec<FormId> {
         let mut ids = Vec::new();
         let mut forms = FORMS.get().unwrap().lock().unwrap();
@@ -511,7 +462,7 @@ mod global {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
 
-        PALETTE.get().unwrap().set_many(weak, &sets);
+        PALETTE.get().unwrap().set_many(&sets);
 
         ids
     }
@@ -546,51 +497,17 @@ mod global {
         let name = name.to_string();
         let colorschemes = COLORSCHEMES.lock().unwrap();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
-            cs.apply();
+            let forms = cs
+                .list_of_forms()
+                .into_iter()
+                .map(|(name, form)| (name, Some(form)))
+                .collect();
+            set_many(forms);
             let name = cs.name();
             context::queue(move |pa| _ = hook::trigger(pa, ColorSchemeSet(name)));
         } else {
             context::error!("The colorscheme [a]{name}[] was not found");
         }
-    }
-
-    /// Calls [`form::set`] on each tuple in the list
-    ///
-    /// This macro should primarily be used by colorschemes. If you
-    /// want to call a weak version of this macro (most useful for
-    /// other types of [`Plugin`]), then see [`set_many_weak!`].
-    ///
-    /// [`Plugin`]: crate::Plugin
-    /// [`form::set`]: set
-    #[macro_export]
-    #[doc(hidden)]
-    macro_rules! __set_many__ {
-        ($(($name:literal, $form:expr)),+ $(,)?) => {{
-            use $crate::form::FormFmt;
-            $crate::form::_set_many(false, vec![$( ($name, Some($form.kind())) ),+]);
-        }}
-    }
-
-    /// Calls [`form::set_weak`] on each tuple in the list
-    ///
-    /// This macro should be used when defining default colors in
-    /// [`Plugin`]s that are _not_ colorscheme [`Plugin`]s. This makes
-    /// it so the set [`Form`]s don't overrule the choices of the end
-    /// user, who might have called [`form::set`] or
-    /// [`form::set_colorscheme`] by the point that the [`Plugin`] is
-    /// added.
-    ///
-    /// [`Plugin`]: crate::Plugin
-    /// [`form::set_weak`]: set_weak
-    /// [`form::set`]: set
-    /// [`form::set_colorscheme`]: set_colorscheme
-    #[macro_export]
-    #[doc(hidden)]
-    macro_rules! __set_many_weak__ {
-        ($(($name:literal, $form:expr)),+ $(,)?) => {{
-            use $crate::form::FormFmt;
-            $crate::form::_set_many(true, vec![$( ($name, Some($form.kind())) ),+]);
-        }}
     }
 
     /// Wether or not a specific [`Form`] has been set
@@ -620,7 +537,7 @@ mod global {
             *id
         } else {
             let name = format!("default.{type_name}");
-            let id = _set_many(true, vec![(name, None)])[0];
+            let id = set_many(vec![(name, None)])[0];
             ids.insert(type_id, id);
             id
         }
@@ -659,13 +576,6 @@ mod global {
     pub fn set_initial((forms, palette): (&'static Mutex<Vec<&'static str>>, &'static Palette)) {
         FORMS.set(forms).expect("Forms setup ran twice");
         PALETTE.set(palette).expect("Forms setup ran twice");
-    }
-
-    /// A kind of [`Form`]
-    #[doc(hidden)]
-    pub enum Kind {
-        Form(Form),
-        Ref(String),
     }
 
     /// A color value for use in [`Form`]s
@@ -728,7 +638,7 @@ mod global {
 
             let mut palette = PALETTE.get().unwrap().0.write().unwrap();
 
-            for (_, form, _) in &mut palette.forms {
+            for (_, form) in &mut palette.forms {
                 if form.fg == Some(*self) {
                     form.style.foreground_color = Some(color);
                 }
@@ -763,7 +673,7 @@ mod global {
 
             let mut palette = PALETTE.get().unwrap().0.write().unwrap();
 
-            for (_, form, _) in &mut palette.forms {
+            for (_, form) in &mut palette.forms {
                 if form.fg == Some(*self) {
                     form.style.foreground_color = Some(colors[self.0 as usize]);
                 }
@@ -832,36 +742,33 @@ impl std::fmt::Debug for FormId {
 }
 
 /// Mimics [`ContentStyle`] methods for the [`Form`] type
-macro_rules! mimic_method_new {
+macro_rules! mimic_method {
     (#[$attr:meta] $method:ident $attrib:expr) => {
         /// New [`Form`] with the
         #[$attr]
         /// attribute.
-        pub const fn $method() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.attributes = built.0.style.attributes.with($attrib);
-            built
+        pub const fn $method(mut self) -> Form {
+            self.style.attributes = self.style.attributes.with($attrib);
+            self
         }
     };
     (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
         /// New [`Form`] with a
         #[$attr]
         /// foreground.
-        pub const fn $fg() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.foreground_color = Some($color);
-            built.0.fg = None;
-            built
+        pub const fn $fg(mut self) -> Form {
+            self.style.foreground_color = Some($color);
+            self.fg = None;
+            self
         }
 
         /// New [`Form`] with a
         #[$attr]
         /// background.
-        pub const fn $bg() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.background_color = Some($color);
-            built.0.bg = None;
-            built
+        pub const fn $bg(mut self) -> Form {
+            self.style.background_color = Some($color);
+            self.bg = None;
+            self
         }
 
         /// New [`Form`] with a
@@ -874,142 +781,133 @@ macro_rules! mimic_method_new {
         /// universally accepted yet.
         ///
         /// `Ui`: crate::ui::traits::RawUi
-        pub const fn $ul() -> BuiltForm {
-            let mut built = Form::new();
-            built.0.style.underline_color = Some($color);
-            built.0.ul = None;
-            built
-        }
-    };
-}
-
-macro_rules! mimic_method_mod {
-    (#[$attr:meta] $method:ident $attrib:expr) => {
-        /// Applies the
-        #[$attr]
-        /// attribute to this [`Form`].
-        pub const fn $method(mut self) -> Self {
-            self.0.style.attributes = self.0.style.attributes.with($attrib);
-            self
-        }
-    };
-    (#[$attr:meta] $fg:ident $bg:ident $ul:ident $color:expr) => {
-        /// Turns the foreground of this [`Form`]
-        #[$attr]
-        /// .
-        pub const fn $fg(mut self) -> Self {
-            self.0.style.foreground_color = Some($color);
-            self.0.fg = None;
-            self
-        }
-
-        /// Turns the background of this [`Form`]
-        #[$attr]
-        /// .
-        pub const fn $bg(mut self) -> Self {
-            self.0.style.background_color = Some($color);
-            self.0.bg = None;
-            self
-        }
-
-        /// Turns the underlining of this [`Form`]
-        #[$attr]
-        /// .
-        ///
-        /// Do note that this feature may not be supported in all `Ui`s,
-        /// for example, various terminals don't support this feature,
-        /// since it is a part of the kitty protocol, and hasn't been
-        /// universally accepted yet.
-        ///
-        /// `Ui`: crate::ui::traits::RawUi
-        pub const fn $ul(mut self) -> Self {
-            self.0.style.underline_color = Some($color);
-            self.0.ul = None;
+        pub const fn $ul(mut self) -> Form {
+            self.style.underline_color = Some($color);
+            self.ul = None;
             self
         }
     };
 }
+
 /// A style for text.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy)]
 pub struct Form {
     /// The actual [style](ContentStyle) that is applied
     pub style: ContentStyle,
     fg: Option<Color>,
     bg: Option<Color>,
     ul: Option<Color>,
+    kind: FormKind,
 }
 
 #[rustfmt::skip]
 impl Form {
-    mimic_method_new!(/**bold*/ bold Attribute::Bold);
-    mimic_method_new!(/**dim*/ dim Attribute::Dim);
-    mimic_method_new!(/**italic*/ italic Attribute::Italic);
-    mimic_method_new!(/**underlined*/ underlined Attribute::Underlined);
-    mimic_method_new!(/**double_underlined*/ double_underlined Attribute::DoubleUnderlined);
-    mimic_method_new!(/**undercurled*/ undercurled Attribute::Undercurled);
-    mimic_method_new!(/**underdashed*/ underdashed Attribute::Underdashed);
-    mimic_method_new!(/**reverse*/ reverse Attribute::Reverse);
-    mimic_method_new!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
-    mimic_method_new!(/**black*/ black on_black underline_black CtColor::Black);
-    mimic_method_new!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey CtColor::DarkGrey);
-    mimic_method_new!(/**red*/ red on_red underline_red CtColor::Red);
-    mimic_method_new!(/**dark_red*/ dark_red on_dark_red underline_dark_red CtColor::DarkRed);
-    mimic_method_new!(/**green*/ green on_green underline_green CtColor::Green);
-    mimic_method_new!(
+    mimic_method!(/**bold*/ bold Attribute::Bold);
+    mimic_method!(/**dim*/ dim Attribute::Dim);
+    mimic_method!(/**italic*/ italic Attribute::Italic);
+    mimic_method!(/**underlined*/ underlined Attribute::Underlined);
+    mimic_method!(/**double_underlined*/ double_underlined Attribute::DoubleUnderlined);
+    mimic_method!(/**undercurled*/ undercurled Attribute::Undercurled);
+    mimic_method!(/**underdashed*/ underdashed Attribute::Underdashed);
+    mimic_method!(/**reverse*/ reverse Attribute::Reverse);
+    mimic_method!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
+    mimic_method!(/**black*/ black on_black underline_black CtColor::Black);
+    mimic_method!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey CtColor::DarkGrey);
+    mimic_method!(/**red*/ red on_red underline_red CtColor::Red);
+    mimic_method!(/**dark_red*/ dark_red on_dark_red underline_dark_red CtColor::DarkRed);
+    mimic_method!(/**green*/ green on_green underline_green CtColor::Green);
+    mimic_method!(
         /**dark_green*/ dark_green on_dark_green underline_dark_green CtColor::DarkGreen
     );
-    mimic_method_new!(/**yellow*/ yellow on_yellow underline_yellow CtColor::Yellow);
-    mimic_method_new!(
+    mimic_method!(/**yellow*/ yellow on_yellow underline_yellow CtColor::Yellow);
+    mimic_method!(
         /**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow CtColor::DarkYellow
     );
-    mimic_method_new!(/**blue*/ blue on_blue underline_blue CtColor::Blue);
-    mimic_method_new!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue CtColor::DarkBlue);
-    mimic_method_new!(/**magenta*/ magenta on_magenta underline_magenta CtColor::Magenta);
-    mimic_method_new!(
+    mimic_method!(/**blue*/ blue on_blue underline_blue CtColor::Blue);
+    mimic_method!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue CtColor::DarkBlue);
+    mimic_method!(/**magenta*/ magenta on_magenta underline_magenta CtColor::Magenta);
+    mimic_method!(
         /**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta CtColor::DarkMagenta
     );
-    mimic_method_new!(/**cyan*/ cyan on_cyan underline_cyan CtColor::Cyan);
-    mimic_method_new!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan CtColor::DarkCyan);
-    mimic_method_new!(/**white*/ white on_white underline_white CtColor::White);
-    mimic_method_new!(/**grey*/ grey on_grey underline_grey CtColor::Grey);
+    mimic_method!(/**cyan*/ cyan on_cyan underline_cyan CtColor::Cyan);
+    mimic_method!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan CtColor::DarkCyan);
+    mimic_method!(/**white*/ white on_white underline_white CtColor::White);
+    mimic_method!(/**grey*/ grey on_grey underline_grey CtColor::Grey);
 }
 
 impl Form {
-    /// Returns a new [`Form`] with a default style.
-    ///
-    /// This method actually returns [`BuiltForm`]
-    #[allow(clippy::new_ret_no_self)]
-    pub const fn new() -> BuiltForm {
-        let style = ContentStyle {
-            foreground_color: None,
-            background_color: None,
-            underline_color: None,
-            attributes: Attributes::none(),
-        };
-        BuiltForm(Self { style, fg: None, bg: None, ul: None })
+    /// Returns a new `Form` with a default style.
+    pub const fn new() -> Form {
+        Self {
+            style: default_style(),
+            fg: None,
+            bg: None,
+            ul: None,
+            kind: FormKind::Normal,
+        }
     }
 
-    /// Returns a new [`Form`] with the [`Reset`] attribute.
+    /// A `Form` value, from the name of the form.
+    pub fn of(form_name: impl AsRef<str>) -> Form {
+        let mut form = from_id(id_of_non_static(form_name.as_ref()));
+        form.kind = FormKind::Normal;
+        form
+    }
+
+    /// A `Form` that mimics another.
+    ///
+    /// This is useful if you want `Form`s to automatically change if
+    /// the mimicked one does.
+    ///
+    /// Normally, this is done automatically. For example, if you
+    /// define a `Form` "foo.bar.baz" through [`form::id_of!`], or
+    /// within the [`txt!`] macro, then that `Form` will be set to
+    /// "mimic" "foo.bar". That is, if "foo.bar" changes, so will
+    /// "foo.bar.baz".
+    ///
+    /// This function lets you manually do that.
+    pub fn mimic(form_name: impl AsRef<str>) -> Form {
+        let id = id_of_non_static(form_name.as_ref());
+        let mut form = from_id(id);
+        form.kind = FormKind::Ref(id.0, default_style());
+        form
+    }
+
+    /// Sets the [`Reset`] attribute.
     ///
     /// In Duat, the [`Reset`] attribute should remove only other
     /// [`Attribute`]s, not any of the colors in use.
     ///
     /// [`Reset`]: Attribute::Reset
-    pub const fn reset() -> BuiltForm {
-        let mut built = Form::new();
-        built.0.style.attributes = built.0.style.attributes.with(Attribute::Reset);
-        built
+    pub const fn reset(mut self) -> Form {
+        self.style.attributes = self.style.attributes.with(Attribute::Reset);
+
+        if let FormKind::Ref(_, style) = &mut self.kind {
+            style.attributes = style.attributes.with(Attribute::Reset);
+        }
+
+        self
     }
 
-    /// New `Form` with a colored foreground.
+    /// Sets the color of the foreground.
     ///
     /// This color is derived from a [`Color`] struct, which is
     /// created via [`Color::new`], or set via [`Color::set`], letting
     /// you change the color of every `Form` that uses the same color.
-    pub fn with(color: Color) -> BuiltForm {
-        let mut built = Form::new();
-        built.0.style.foreground_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
-        built
+    ///
+    /// If this `Form` was created via [`Form::mimic`], then the other
+    /// attributes will change as the mimicked color does, but the
+    /// foreground won't.
+    pub fn with(mut self, color: Color) -> Form {
+        let color_value = COLORS.lock().unwrap()[color.as_u16() as usize];
+        self.style.foreground_color = Some(color_value);
+        self.fg = Some(color);
+
+        if let FormKind::Ref(_, style) = &mut self.kind {
+            style.foreground_color = Some(color_value);
+        }
+
+        self
     }
 
     /// New `Form` with a colored background.
@@ -1017,10 +915,20 @@ impl Form {
     /// This color is derived from a [`Color`] struct, which is
     /// created via [`Color::new`], or set via [`Color::set`], letting
     /// you change the color of every `Form` that uses the same color.
-    pub fn on(color: Color) -> BuiltForm {
-        let mut built = Form::new();
-        built.0.style.background_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
-        built
+    ///
+    /// If this `Form` was created via [`Form::mimic`], then the other
+    /// attributes will change as the mimicked color does, but the
+    /// background won't.
+    pub fn on(mut self, color: Color) -> Form {
+        let color_value = COLORS.lock().unwrap()[color.as_u16() as usize];
+        self.style.background_color = Some(color_value);
+        self.bg = Some(color);
+
+        if let FormKind::Ref(_, style) = &mut self.kind {
+            style.background_color = Some(color_value);
+        }
+
+        self
     }
 
     /// New `Form` with a colored underline..
@@ -1032,10 +940,20 @@ impl Form {
     /// This color is derived from a [`Color`] struct, which is
     /// created via [`Color::new`], or set via [`Color::set`], letting
     /// you change the color of every `Form` that uses the same color.
-    pub fn underline(color: Color) -> BuiltForm {
-        let mut built = Form::new();
-        built.0.style.underline_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
-        built
+    ///
+    /// If this `Form` was created via [`Form::mimic`], then the other
+    /// attributes will change as the mimicked color does, but the
+    /// underline color won't.
+    pub fn underline(mut self, color: Color) -> Form {
+        let color_value = COLORS.lock().unwrap()[color.as_u16() as usize];
+        self.style.underline_color = Some(color_value);
+        self.ul = Some(color);
+
+        if let FormKind::Ref(_, style) = &mut self.kind {
+            style.underline_color = Some(color_value);
+        }
+
+        self
     }
 
     /// The foreground color.
@@ -1059,122 +977,16 @@ impl Form {
     }
 }
 
-/// A convenience struct for [`Form`]s.
-///
-/// This struct exists in order to have [`Form`] methods be
-/// initializers, while [`BuiltForm`] methods consume and return a
-/// [`BuiltForm`]s
-///
-/// This is their only difference, everywhere else, they are
-/// functionally identical.
-#[derive(Clone, Copy, Debug)]
-pub struct BuiltForm(Form);
-
-#[rustfmt::skip]
-impl BuiltForm {
-    mimic_method_mod!(/**bold*/ bold Attribute::Bold);
-    mimic_method_mod!(/**dim*/ dim Attribute::Dim);
-    mimic_method_mod!(/**italic*/ italic Attribute::Italic);
-    mimic_method_mod!(/**underlined*/ underlined Attribute::Underlined);
-    mimic_method_mod!(/**double_underlined*/ double_underlined Attribute::DoubleUnderlined);
-    mimic_method_mod!(/**undercurled*/ undercurled Attribute::Undercurled);
-    mimic_method_mod!(/**underdashed*/ underdashed Attribute::Underdashed);
-    mimic_method_mod!(/**reverse*/ reverse Attribute::Reverse);
-    mimic_method_mod!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
-    mimic_method_mod!(/**overlined*/ overlined Attribute::OverLined);
-    mimic_method_mod!(/**black*/ black on_black underline_black CtColor::Black);
-    mimic_method_mod!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey CtColor::DarkGrey);
-    mimic_method_mod!(/**red*/ red on_red underline_red CtColor::Red);
-    mimic_method_mod!(/**dark_red*/ dark_red on_dark_red underline_dark_red CtColor::DarkRed);
-    mimic_method_mod!(/**green*/ green on_green underline_green CtColor::Green);
-    mimic_method_mod!(
-        /**dark_green*/ dark_green on_dark_green underline_dark_green CtColor::DarkGreen
-    );
-    mimic_method_mod!(/**yellow*/ yellow on_yellow underline_yellow CtColor::Yellow);
-    mimic_method_mod!(
-        /**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow CtColor::DarkYellow
-    );
-    mimic_method_mod!(/**blue*/ blue on_blue underline_blue CtColor::Blue);
-    mimic_method_mod!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue CtColor::DarkBlue);
-    mimic_method_mod!(/**magenta*/ magenta on_magenta underline_magenta CtColor::Magenta);
-    mimic_method_mod!(
-        /**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta CtColor::DarkMagenta
-    );
-    mimic_method_mod!(/**cyan*/ cyan on_cyan underline_cyan CtColor::Cyan);
-    mimic_method_mod!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan CtColor::DarkCyan);
-    mimic_method_mod!(/**white*/ white on_white underline_white CtColor::White);
-    mimic_method_mod!(/**grey*/ grey on_grey underline_grey CtColor::Grey);
-}
-
-impl BuiltForm {
-    /// Adds the [`Reset`] attribute to this [`Form`].
-    ///
-    /// In Duat, the [`Reset`] attribute should remove only other
-    /// [`Attribute`]s, not any of the colors in use.
-    ///
-    /// [`Reset`]: Attribute::Reset
-    pub const fn reset(mut self) -> BuiltForm {
-        self.0.style.attributes = self.0.style.attributes.with(Attribute::Reset);
-        self
-    }
-
-    /// New `Form` with a colored foreground.
-    ///
-    /// This color is derived from a [`Color`] struct, which is
-    /// created via [`Color::new`], or set via [`Color::set`], letting
-    /// you change the color of every `Form` that uses the same color.
-    pub fn with(mut self, color: Color) -> Self {
-        self.0.style.foreground_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
-        self
-    }
-
-    /// New `Form` with a colored underline.
-    ///
-    /// Note that this doesn't actually make the underline show up, it
-    /// merely colors one that is set via a command like
-    /// [`Form::underlined`].
-    ///
-    /// This color is derived from a [`Color`] struct, which is
-    /// created via [`Color::new`], or set via [`Color::set`], letting
-    /// you change the color of every `Form` that uses the same color.
-    pub fn on(mut self, color: Color) -> Self {
-        self.0.style.background_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
-        self
-    }
-
-    /// Colors the underlining of this [`Form`]
-    ///
-    /// This function accepts two color formats:
-    ///
-    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
-    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
-    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
-    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
-    pub fn underline(mut self, color: Color) -> Self {
-        self.0.style.underline_color = Some(COLORS.lock().unwrap()[color.as_u16() as usize]);
-        self
+impl PartialEq for Form {
+    fn eq(&self, other: &Self) -> bool {
+        self.style == other.style
+            && self.fg == other.fg
+            && self.bg == other.bg
+            && self.ul == other.ul
     }
 }
 
-impl std::ops::Deref for BuiltForm {
-    type Target = Form;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for BuiltForm {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl From<BuiltForm> for Form {
-    fn from(value: BuiltForm) -> Self {
-        value.0
-    }
-}
+impl Eq for Form {}
 
 /// The list of forms to be used when rendering.
 ///
@@ -1211,28 +1023,33 @@ impl Palette {
     }
 
     /// Makes a [`Form`] reference another
-    fn set_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
-        let (name, refed) = (name.as_ref(), refed.as_ref());
-        self.0.write().unwrap().set_ref(name, refed);
+    fn set_ref(&self, name: impl AsRef<str>, refed: u16, override_style: ContentStyle) {
+        let name = name.as_ref();
+        self.0.write().unwrap().set_ref(name, refed, override_style);
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
-        let (name, refed) = (name.as_ref(), refed.as_ref());
-        self.0.write().unwrap().set_weak_ref(name, refed);
+    fn set_weak_ref(&self, name: impl AsRef<str>, refed: u16, override_style: ContentStyle) {
+        let name = name.as_ref();
+        let mut inner_palette = self.0.write().unwrap();
+        inner_palette.set_weak_ref(name, refed, override_style);
     }
 
     /// Sets many [`Form`]s
-    fn set_many<S: AsRef<str>>(&self, weak: bool, sets: &[(S, Option<self::global::Kind>)]) {
+    fn set_many<S: AsRef<str>>(&self, sets: &[(S, Option<Form>)]) {
         let mut inner = self.0.write().unwrap();
-        for (name, kind) in sets {
-            match (weak, kind) {
-                (false, Some(Kind::Form(form))) => inner.set_form(name.as_ref(), *form),
-                (false, Some(Kind::Ref(refed))) => inner.set_ref(name.as_ref(), refed),
-                (true, Some(Kind::Form(form))) => inner.set_weak_form(name.as_ref(), *form),
-                (true, Some(Kind::Ref(refed))) => inner.set_weak_ref(name.as_ref(), refed),
-                (_, None) => {
-                    position_and_form(&mut inner.forms, name);
+        for (name, form) in sets {
+            let Some(form) = *form else {
+                position_and_form(&mut inner.forms, name);
+                continue;
+            };
+
+            match form.kind {
+                FormKind::Normal => inner.set_form(name.as_ref(), form),
+                FormKind::Ref(refed, style) => inner.set_ref(name.as_ref(), refed, style),
+                FormKind::Weakest => inner.set_weak_form(name.as_ref(), form),
+                FormKind::WeakestRef(refed, style) => {
+                    inner.set_weak_ref(name.as_ref(), refed, style)
                 }
             }
         }
@@ -1241,7 +1058,7 @@ impl Palette {
     /// Returns a form, given a [`FormId`].
     fn form_from_id(&self, id: FormId) -> Option<Form> {
         let inner = self.0.read().unwrap();
-        inner.forms.get(id.0 as usize).map(|(_, form, _)| *form)
+        inner.forms.get(id.0 as usize).map(|(_, form)| *form)
     }
 
     /// The [`Form`] and [`CursorShape`] of the main cursor
@@ -1303,8 +1120,8 @@ impl Palette {
                 Some(i) => *i as usize,
                 None => default_id.0 as usize,
             })
-            .map(|(_, f, _)| *f)
-            .unwrap_or(Form::new().0);
+            .map(|(_, f)| *f)
+            .unwrap_or(Form::new());
 
         Painter {
             inner,
@@ -1319,7 +1136,7 @@ impl Palette {
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
-    forms: Vec<(&'static str, Form, FormType)>,
+    forms: Vec<(&'static str, Form)>,
     masks: Vec<(&'static str, Vec<u16>)>,
 }
 
@@ -1329,7 +1146,6 @@ impl InnerPalette {
         let (i, _) = position_and_form(&mut self.forms, name);
 
         self.forms[i].1 = form;
-        self.forms[i].2 = FormType::Normal;
 
         for refed in refs_of(self, i) {
             self.forms[refed].1 = form;
@@ -1349,10 +1165,10 @@ impl InnerPalette {
     fn set_weak_form(&mut self, name: &str, form: Form) {
         let (i, _) = position_and_form(&mut self.forms, name);
 
-        let (_, f, f_ty) = &mut self.forms[i];
-        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
+        let (_, f) = &mut self.forms[i];
+        if let FormKind::Weakest | FormKind::WeakestRef(..) = f.kind {
             *f = form;
-            *f_ty = FormType::Normal;
+            f.kind = FormKind::Normal;
 
             if let Some(sender) = SENDER.get() {
                 sender.send(DuatEvent::FormChange);
@@ -1366,8 +1182,8 @@ impl InnerPalette {
     }
 
     /// Makes a [`Form`] reference another
-    fn set_ref(&mut self, name: &str, refed: &str) {
-        let (refed, form) = position_and_form(&mut self.forms, refed);
+    fn set_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) {
+        let (_, form) = self.forms[refed as usize];
         let (i, _) = position_and_form(&mut self.forms, name);
 
         self.forms[i].1 = form;
@@ -1376,10 +1192,10 @@ impl InnerPalette {
         }
 
         // If it would be circular, we just don't reference anything.
-        if would_be_circular(self, i, refed) {
-            self.forms[i].2 = FormType::Normal;
+        if would_be_circular(self, i, refed as usize) {
+            self.forms[i].1.kind = FormKind::Normal;
         } else {
-            self.forms[i].2 = FormType::Ref(refed);
+            self.forms[i].1.kind = FormKind::Ref(refed, override_style);
         }
 
         if let Some(sender) = SENDER.get() {
@@ -1392,16 +1208,16 @@ impl InnerPalette {
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&mut self, name: &str, refed: &str) {
-        let (refed, form) = position_and_form(&mut self.forms, refed);
+    fn set_weak_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) {
+        let (_, form) = self.forms[refed as usize];
         let (i, _) = position_and_form(&mut self.forms, name);
 
         // For weak refs, no checks are done, since a form is only set if it
         // doesn't exist, and for there to be refs to it, it must exist.
-        let (_, f, f_ty) = &mut self.forms[i];
-        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
+        let (_, f) = &mut self.forms[i];
+        if let FormKind::Weakest | FormKind::WeakestRef(..) = f.kind {
             *f = form;
-            *f_ty = FormType::WeakestRef(refed);
+            f.kind = FormKind::WeakestRef(refed, override_style);
 
             if let Some(sender) = SENDER.get() {
                 sender.send(DuatEvent::FormChange);
@@ -1512,10 +1328,8 @@ impl Painter {
         let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
 
         let forms = &self.inner.forms;
-        let form = forms
-            .get(id.0 as usize)
-            .map(|(_, f, _)| *f)
-            .unwrap_or(Form::new().0);
+        // SAFETY: When you create a form, it gets indexed, and never becomes unindexed, so this should be fine.
+        let form = unsafe { forms.get(id.0 as usize).map(|(_, f)| *f).unwrap_unchecked() };
 
         let gt = |(.., p): &&(_, _, u8)| *p > prio;
         let i = self.parts.forms.len() - self.parts.forms.iter().rev().take_while(gt).count();
@@ -1752,20 +1566,21 @@ pub(crate) fn set_sender(sender: DuatSender) {
 }
 
 /// An enum that helps in the modification of forms
-#[derive(Clone)]
-enum FormType {
+#[derive(Default, Clone, Copy)]
+enum FormKind {
+    #[default]
     Normal,
-    Ref(usize),
+    Ref(u16, ContentStyle),
     Weakest,
-    WeakestRef(usize),
+    WeakestRef(u16, ContentStyle),
 }
 
 /// The position of each form that eventually references the `n`th
 fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<usize> {
     let mut refs = Vec::new();
-    for (i, (.., f_ty)) in inner.forms.iter().enumerate() {
-        if let FormType::Ref(ref_id) | FormType::WeakestRef(ref_id) = f_ty
-            && *ref_id == refed
+    for (i, (_, form)) in inner.forms.iter().enumerate() {
+        if let FormKind::Ref(id, _) | FormKind::WeakestRef(id, _) = form.kind
+            && id as usize == refed
         {
             refs.push(i);
             refs.extend(refs_of(inner, i));
@@ -1776,30 +1591,30 @@ fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<usize> {
 
 /// If form references would eventually lead to a loop
 fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool {
-    if let (.., FormType::Ref(refed_ref) | FormType::WeakestRef(refed_ref)) = inner.forms[refed] {
-        match refed_ref == referee {
+    if let FormKind::Ref(id, _) | FormKind::WeakestRef(id, _) = inner.forms[refed].1.kind {
+        match id as usize == referee {
             true => true,
-            false => would_be_circular(inner, referee, refed_ref),
+            false => would_be_circular(inner, referee, id as usize),
         }
     } else {
         false
     }
 }
 
-fn position_and_form(
-    forms: &mut Vec<(&str, Form, FormType)>,
-    name: impl AsRef<str>,
-) -> (usize, Form) {
+fn position_and_form(forms: &mut Vec<(&str, Form)>, name: impl AsRef<str>) -> (usize, Form) {
     let name = name.as_ref();
-    if let Some((i, (_, form, _))) = forms.iter().enumerate().find(|(_, (lhs, ..))| *lhs == name) {
+    if let Some((i, (_, form))) = forms.iter().enumerate().find(|(_, (lhs, _))| *lhs == name) {
         (i, *form)
     } else if let Some((refed, _)) = name.rsplit_once('.') {
-        let (i, form) = position_and_form(forms, refed);
-        forms.push((name.to_string().leak(), form, FormType::WeakestRef(i)));
+        let (i, mut form) = position_and_form(forms, refed);
+        form.kind = FormKind::WeakestRef(i as u16, default_style());
+        forms.push((name.to_string().leak(), form));
         (forms.len() - 1, form)
     } else {
-        forms.push((name.to_string().leak(), Form::new().0, FormType::Weakest));
-        (forms.len() - 1, Form::new().0)
+        let mut form = Form::new();
+        form.kind = FormKind::Weakest;
+        forms.push((name.to_string().leak(), form));
+        (forms.len() - 1, form)
     }
 }
 
@@ -1920,6 +1735,16 @@ const fn str_to_color(str: &str) -> std::result::Result<CtColor, &'static str> {
     }
 }
 
+/// Returns the default [`ContentStyle`].
+const fn default_style() -> ContentStyle {
+    ContentStyle {
+        foreground_color: None,
+        background_color: None,
+        underline_color: None,
+        attributes: Attributes::none(),
+    }
+}
+
 impl std::fmt::Debug for Form {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         struct DebugColor(Option<CtColor>);
@@ -1966,15 +1791,15 @@ impl std::fmt::Debug for Form {
 
 impl std::fmt::Debug for InnerPalette {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct DebugForms<'a>(&'a [(&'static str, Form, FormType)]);
+        struct DebugForms<'a>(&'a [(&'static str, Form)]);
         impl std::fmt::Debug for DebugForms<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if f.alternate() {
                     f.write_str("[\n")?;
                     let max = self.0.len().ilog10() as usize + 3;
-                    for (n, (name, form, ty)) in self.0.iter().enumerate() {
+                    for (n, (name, form)) in self.0.iter().enumerate() {
                         let num = format!("{n}:");
-                        writeln!(f, "{num:<max$}({name}, {ty:?}, {form:#?})")?;
+                        writeln!(f, "{num:<max$}({name}, {form:#?})")?;
                     }
                     f.write_str("]")
                 } else {
@@ -2007,13 +1832,13 @@ impl std::fmt::Debug for InnerPalette {
     }
 }
 
-impl std::fmt::Debug for FormType {
+impl std::fmt::Debug for FormKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Normal => write!(f, "Normal"),
-            Self::Ref(refed) => write!(f, "Ref({refed})"),
+            Self::Ref(refed, _) => write!(f, "Ref({refed})"),
             Self::Weakest => write!(f, "Weakest"),
-            Self::WeakestRef(refed) => write!(f, "WeakestRef({refed})"),
+            Self::WeakestRef(refed, _) => write!(f, "WeakestRef({refed})"),
         }
     }
 }
