@@ -26,8 +26,7 @@ use crate::{
     Ranges,
     buffer::{Buffer, BufferId, BufferOpts},
     mode::Selections,
-    text::{Bytes, Tags, TextRange},
-    ui::Widget,
+    text::{Strs, Tags, TextRange},
     utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
 };
 
@@ -396,7 +395,9 @@ impl Change<'static, String> {
         let added = {
             let edit = edit.to_string();
             // A '\n' must be kept at the end, no matter what.
-            if (range.start == text.len() || range.end == text.len()) && !edit.ends_with('\n') {
+            if (range.start == text.end_point() || range.end == text.end_point())
+                && !edit.ends_with('\n')
+            {
                 edit + "\n"
             } else {
                 edit
@@ -519,12 +520,13 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     /// represents both the end of line 5, and the beginning of line
     /// 6.
     #[track_caller]
-    pub fn line_range(&self, bytes: &Bytes) -> Range<Point> {
-        let start = bytes.point_at_line(self.start[2] as usize);
-        if self.added_end[2] as usize == bytes.len().line() {
-            start..bytes.len()
+    pub fn line_range(&self, strs: &Strs) -> Range<Point> {
+        let full = strs.full();
+        let start = full.point_at_coords(self.start[2] as usize, 0);
+        if self.added_end[2] as usize == full.end_point().line() {
+            start..full.end_point()
         } else {
-            let end_line = bytes.line(self.added_end[2] as usize);
+            let end_line = full.line(self.added_end[2] as usize);
             start..end_line.range().end
         }
     }
@@ -714,13 +716,13 @@ impl BufferTracker {
         let parts = buf.text.parts();
 
         Some(BufferParts {
-            bytes: parts.bytes,
+            strs: parts.strs,
             tags: parts.tags,
             selections: parts.selections,
             changes,
             ranges_to_update: RangesToUpdate {
                 ranges: ranges.clone(),
-                buf_len: parts.bytes.len().byte(),
+                buf_len: parts.strs.len(),
                 _ghost: PhantomData,
             },
             opts: &buf.opts,
@@ -737,7 +739,7 @@ impl BufferTracker {
         if !tracked.iter().any(|(id, ..)| *id == buf.buffer_id()) {
             let track_id = buf.history.get_latest_track_id();
 
-            let ranges = Arc::new(Mutex::new(Ranges::new(0..buf.text().len().byte())));
+            let ranges = Arc::new(Mutex::new(Ranges::new(0..buf.text().len())));
             tracked.push((buf.buffer_id(), track_id, ranges));
         }
     }
@@ -756,8 +758,8 @@ impl Default for BufferTracker {
 ///
 /// [`TextParts`]: crate::text::TextParts
 pub struct BufferParts<'b> {
-    /// The [`Bytes`] of the [`Buffer`]
-    pub bytes: &'b Bytes,
+    /// The [`Strs`] of the whole [`Text`] of the [`Buffer`]
+    pub strs: &'b Strs,
     /// The [`Tags`] of the [`Buffer`]
     ///
     /// This, unlike [`Bytes`], allows mutation in the form of

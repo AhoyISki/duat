@@ -14,7 +14,6 @@ use crate::{
             KeyCode::{self, *},
             KeyEvent, event,
         },
-        ui::Widget,
     },
     widgets::Buffer,
 };

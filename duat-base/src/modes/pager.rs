@@ -170,7 +170,7 @@ impl<W: Widget> PromptMode for PagerSearch<W> {
 
         let mut parts = widget.text_mut().parts();
 
-        match parts.bytes.try_search(text.to_string()) {
+        match parts.strs.try_search(text.to_string()) {
             Ok(matches) => {
                 area.set_print_info(self.orig.clone());
                 parts.tags.remove(*PAGER_TAGGER, ..);

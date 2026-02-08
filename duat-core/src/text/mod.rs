@@ -1,4 +1,4 @@
-//! The primary data structure in Duat
+//! The primary data structure in Duat.
 //!
 //! This struct is responsible for all of the text that will be
 //! printed to the screen, as well as any modifications on it.
@@ -87,9 +87,9 @@
 pub use crate::__txt__ as txt;
 pub use crate::text::{
     builder::{AsBuilderPart, Builder, BuilderPart},
-    bytes::{Bytes, Lines, Slices, Strs},
     iter::{FwdIter, RevIter, TextPart, TextPlace},
     search::{Matches, RegexHaystack, RegexPattern},
+    strs::{Lines, Slices, Strs},
     tags::{
         Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, SwapChar, Tag, Tagger, Tags,
         ToggleId,
@@ -102,6 +102,7 @@ use crate::{
     data::Pass,
     mode::{Selection, Selections},
     text::{
+        strs::Bytes,
         tags::{FwdTags, InnerTags, RevTags},
         utils::implPartialEq,
     },
@@ -109,15 +110,15 @@ use crate::{
 };
 
 mod builder;
-mod bytes;
 mod iter;
-mod records;
+mod line_ranges;
 mod search;
 mod shift_list;
+mod strs;
 mod tags;
 mod utils;
 
-/// The text of a given [`Widget`]
+/// The text of a given [`Widget`].
 ///
 /// The [`Text`] is the backbone of Duat. It is the thing responsible
 /// for everything that shows up on screen.
@@ -140,33 +141,35 @@ struct InnerText {
 impl Text {
     ////////// Creation and Destruction of Text
 
-    /// Returns a new empty [`Text`]
+    /// Returns a new empty [`Text`].
     pub fn new() -> Self {
-        Self::from_parts(Bytes::default(), Selections::new_empty())
+        Self::from_parts(String::new(), Selections::new_empty())
     }
 
-    /// Returns a new empty [`Text`] with [`Selections`] enabled
+    /// Returns a new empty [`Text`] with [`Selections`] enabled.
     pub fn with_default_main_selection() -> Self {
-        Self::from_parts(Bytes::default(), Selections::new(Selection::default()))
+        Self::from_parts(String::new(), Selections::new(Selection::default()))
     }
 
-    /// Creates a [`Text`] from [`Bytes`]
-    pub(crate) fn from_parts(mut bytes: Bytes, mut selections: Selections) -> Self {
+    /// Creates a [`Text`] from [`Bytes`].
+    pub(crate) fn from_parts(buffer: String, mut selections: Selections) -> Self {
+        let mut bytes = Bytes::new(&buffer);
+
         if bytes.slices(..).next_back().is_none_or(|b| b != b'\n') {
-            let end = bytes.len();
+            let end = bytes.end_point();
             bytes.apply_change(Change::str_insert("\n", end));
         }
-        let tags = InnerTags::new(bytes.len().byte());
+        let tags = InnerTags::new(bytes.len());
 
         let selections = if selections.iter().any(|(sel, _)| {
             [Some(sel.caret()), sel.anchor()]
                 .into_iter()
                 .flatten()
-                .any(|point| point >= bytes.len())
+                .any(|point| point >= bytes.end_point())
         }) {
             Selections::new(Selection::default())
         } else {
-            selections.correct_all(&mut bytes);
+            selections.correct_all(&bytes);
             selections
         };
 
@@ -195,6 +198,21 @@ impl Text {
 
     ////////// Querying functions
 
+    /// Whether or not there are any characters in the [`Text`],
+    /// besides the final `b'\n'`
+    ///
+    /// # Note
+    ///
+    /// This does not check for tags, so with a [`Ghost`],
+    /// there could actually be a "string" of characters on the
+    /// [`Text`], it just wouldn't be considered real "text". If you
+    /// want to check for the `InnerTags`'b possible emptyness as
+    /// well, see [`Text::is_empty_empty`].
+    pub fn is_empty(&self) -> bool {
+        let [s0, s1] = self.to_array();
+        (s0 == "\n" && s1.is_empty()) || (s0.is_empty() && s1 == "\n")
+    }
+
     /// Whether the [`Bytes`] and `InnerTags` are empty
     ///
     /// This ignores the last `'\n'` in the [`Text`], since it is
@@ -206,15 +224,6 @@ impl Text {
     /// [`is_empty`]: Bytes::is_empty
     pub fn is_empty_empty(&self) -> bool {
         self.0.bytes.is_empty() && self.0.tags.is_empty()
-    }
-
-    /// The inner bytes of the [`Text`]
-    ///
-    /// Note that, since [`Text`] has an implementation of
-    /// [`std::ops::Deref<Target = Bytes>`], you mostly don't need
-    /// to call this method.
-    pub fn bytes(&self) -> &Bytes {
-        &self.0.bytes
     }
 
     /// The parts that make up a [`Text`]
@@ -229,7 +238,7 @@ impl Text {
     /// [`&mut Bytes`]: Bytes
     pub fn parts(&mut self) -> TextParts<'_> {
         TextParts {
-            bytes: &self.0.bytes,
+            strs: &self.0.bytes,
             tags: self.0.tags.tags(),
             selections: &self.0.selections,
         }
@@ -258,7 +267,7 @@ impl Text {
     /// position.
     ///
     /// [points]: TwoPoints
-    /// [point]: Bytes::point_at_byte
+    /// [point]: Strs::point_at_byte
     #[track_caller]
     pub fn ghost_max_points_at(&self, b: usize) -> TwoPoints {
         let point = self.point_at_byte(b);
@@ -272,13 +281,13 @@ impl Text {
     /// The [points] at the end of the text
     ///
     /// This will essentially return the [last point] of the text,
-    /// alongside the last possible [`Point`] of any
-    /// [`Ghost`] at the end of the text.
+    /// alongside the last possible [`Point`] of any [`Ghost`] at the
+    /// end of the text.
     ///
     /// [points]: TwoPoints
-    /// [last point]: Bytes::len
+    /// [last point]: Strs::len
     pub fn len_points(&self) -> TwoPoints {
-        self.ghost_max_points_at(self.len().byte())
+        self.ghost_max_points_at(self.len())
     }
 
     /// Points visually after the [`TwoPoints`]
@@ -344,14 +353,14 @@ impl Text {
     ///
     /// [range]: TextRange
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
-        let range = range.to_range(self.len().byte());
+        let range = range.to_range(self.len());
         let (start, end) = (
             self.point_at_byte(range.start),
             self.point_at_byte(range.end),
         );
         let change = Change::new(edit, start..end, self);
 
-        self.0.bytes.version += 1;
+        self.0.bytes.increment_version();
         self.apply_change(0, change.as_ref());
     }
 
@@ -403,20 +412,6 @@ impl Text {
     }
 
     ////////// Writing functions
-
-    /// Clones the inner [`Bytes`] as a [`String`]
-    ///
-    /// This function will also cut out a final '\n' from the string.
-    // NOTE: Inherent because I don't want this to implement Display
-    #[allow(clippy::inherent_to_string)]
-    pub fn to_string(&self) -> String {
-        let [s0, s1] = self.to_array();
-        if !s1.is_empty() {
-            s0.to_string() + s1.strip_suffix('\n').unwrap_or(s1)
-        } else {
-            s0.strip_suffix('\n').unwrap_or(s0).to_string()
-        }
-    }
 
     /// Writes the contents of this `Text` to a [writer]
     ///
@@ -485,7 +480,7 @@ impl Text {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
     pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.len().byte() + 1);
+        let range = range.to_range(self.len() + 1);
         self.0.tags.remove_from(tagger, range)
     }
 
@@ -501,7 +496,7 @@ impl Text {
     ///
     /// [`remove_tags`]: Self::remove_tags
     pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.len().byte() + 1);
+        let range = range.to_range(self.len() + 1);
         self.0.tags.remove_from_excl(tagger, range)
     }
 
@@ -517,7 +512,7 @@ impl Text {
         from: impl TextRangeOrIndex,
         filter: impl FnMut(usize, RawTag) -> bool,
     ) {
-        let range = from.to_range(self.len().byte() + 1);
+        let range = from.to_range(self.len() + 1);
         self.0.tags.remove_from_if(tagger, range, filter)
     }
 
@@ -529,7 +524,7 @@ impl Text {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn clear_tags(&mut self) {
-        self.0.tags = InnerTags::new(self.0.bytes.len().byte());
+        self.0.tags = InnerTags::new(self.0.bytes.len());
     }
 
     /////////// Internal synchronization functions
@@ -659,10 +654,10 @@ impl Text {
     /// is done to keep track of all changes that took place, even to
     /// previously extant states of the text.
     pub fn version(&self) -> TextVersion {
-        let (tags, meta_tags) = self.0.tags.states();
+        let (tags, meta_tags) = self.0.tags.versions();
 
         TextVersion {
-            bytes: self.0.bytes.version,
+            bytes: self.0.bytes.get_version(),
             tags,
             meta_tags,
         }
@@ -670,10 +665,10 @@ impl Text {
 }
 
 impl std::ops::Deref for Text {
-    type Target = Bytes;
+    type Target = Strs;
 
     fn deref(&self) -> &Self::Target {
-        self.bytes()
+        &self.0.bytes
     }
 }
 
@@ -702,14 +697,14 @@ impl<'t> TextMut<'t> {
     ///
     /// [range]: TextRange
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
-        let range = range.to_range(self.len().byte());
+        let range = range.to_range(self.len());
         let (start, end) = (
             self.point_at_byte(range.start),
             self.point_at_byte(range.end),
         );
         let change = Change::new(edit, start..end, self);
 
-        self.text.0.bytes.version += 1;
+        self.text.0.bytes.increment_version();
         self.text.apply_change(0, change.as_ref());
         self.history.as_mut().map(|h| h.apply_change(None, change));
     }
@@ -720,7 +715,7 @@ impl<'t> TextMut<'t> {
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> (Option<usize>, usize) {
-        self.text.0.bytes.version += 1;
+        self.text.0.bytes.increment_version();
         let selections_taken = self
             .text
             .apply_change(guess_i.unwrap_or(0), change.as_ref());
@@ -788,7 +783,7 @@ impl<'t> TextMut<'t> {
     /// [`Buffer`]: crate::buffer::Buffer
     /// [`BufferUpdated`]: crate::hook::BufferUpdated
     pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.len().byte() + 1);
+        let range = range.to_range(self.len() + 1);
         self.text.remove_tags(tagger, range)
     }
 
@@ -804,7 +799,7 @@ impl<'t> TextMut<'t> {
     ///
     /// [`remove_tags`]: Self::remove_tags
     pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
-        let range = range.to_range(self.len().byte() + 1);
+        let range = range.to_range(self.len() + 1);
         self.text.remove_tags_excl(tagger, range)
     }
 
@@ -820,7 +815,7 @@ impl<'t> TextMut<'t> {
         from: impl TextRangeOrIndex,
         filter: impl FnMut(usize, RawTag) -> bool,
     ) {
-        let range = from.to_range(self.len().byte() + 1);
+        let range = from.to_range(self.len() + 1);
         self.text.remove_tags_if(tagger, range, filter)
     }
 
@@ -872,7 +867,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_backwards()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes.version += 1;
+            self.text.0.bytes.increment_version();
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -883,7 +878,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_forward()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes.version += 1;
+            self.text.0.bytes.increment_version();
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -907,12 +902,6 @@ impl<'t> TextMut<'t> {
     pub fn selections_mut(self) -> &'t mut Selections {
         &mut self.text.0.selections
     }
-
-    /// Adds a record for the given byte index
-    pub(crate) fn add_record_for(&mut self, point: Point) {
-        let record = [point.byte(), point.char(), point.line()];
-        self.text.0.bytes.add_record(record);
-    }
 }
 
 impl<'t> std::ops::Deref for TextMut<'t> {
@@ -923,16 +912,16 @@ impl<'t> std::ops::Deref for TextMut<'t> {
     }
 }
 
-impl AsRef<Bytes> for Text {
-    fn as_ref(&self) -> &Bytes {
-        self.bytes()
+impl AsRef<Strs> for Text {
+    fn as_ref(&self) -> &Strs {
+        &self.0.bytes
     }
 }
 
 /// The Parts that make up a [`Text`]
 pub struct TextParts<'a> {
-    /// The [`Bytes`] of the [`Text`]
-    pub bytes: &'a Bytes,
+    /// The [`Strs`] of the whole [`Text`]
+    pub strs: &'a Strs,
     /// The [`Tags`] of the [`Text`]
     ///
     /// This, unlike [`Bytes`], allows mutation in the form of
@@ -986,7 +975,7 @@ impl TextVersion {
     }
 
     /// Wether the [`Bytes`] have changed since this previous instance
-    pub fn bytes_have_changed_since(&self, other: Self) -> bool {
+    pub fn strs_have_changed_since(&self, other: Self) -> bool {
         self.bytes > other.bytes
     }
 
@@ -1026,9 +1015,9 @@ impl Default for Text {
     }
 }
 
-impl<T: Into<Bytes>> From<T> for Text {
+impl<T: ToString> From<T> for Text {
     fn from(value: T) -> Self {
-        Self::from_parts(value.into(), Selections::new_empty())
+        Self::from_parts(value.to_string(), Selections::new_empty())
     }
 }
 
@@ -1045,7 +1034,7 @@ impl Clone for Text {
     fn clone(&self) -> Self {
         let mut text = Self(self.0.clone());
         if text.slices(..).next_back().is_none_or(|b| b != b'\n') {
-            let end = text.len();
+            let end = text.end_point();
             text.apply_change(0, Change::str_insert("\n", end));
         }
 

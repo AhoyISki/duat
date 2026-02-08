@@ -50,7 +50,7 @@ impl<'t> FwdIter<'t> {
         let point = real.min(if is_ghost {
             text.last_point()
         } else {
-            text.len()
+            text.end_point()
         });
 
         // The second usize argument of ghost is the "distance traversed".
@@ -228,7 +228,7 @@ impl<'t> RevIter<'t> {
     #[track_caller]
     pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
-        let point = real.min(text.len());
+        let point = real.min(text.end_point());
 
         let ghost = ghost.and_then(|offset| {
             let points = text.ghost_max_points_at(real.byte());
@@ -375,7 +375,7 @@ impl<'t> Iterator for RevIter<'t> {
 
 fn buf_chars_fwd(text: &Text, b: usize, minus_last_nl: bool) -> FwdChars<'_> {
     let [s0, s1] = text
-        .slices(b..text.len().byte() - minus_last_nl as usize)
+        .slices(b..text.len() - minus_last_nl as usize)
         .to_array()
         .map(|s| unsafe { std::str::from_utf8_unchecked(s) });
     s0.chars().chain(s1.chars())

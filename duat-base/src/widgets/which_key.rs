@@ -74,7 +74,7 @@ impl WhichKey {
         }
 
         if let Some(height) = specs.height.as_mut() {
-            *height = keys.text().len().line().min(*height as usize) as f32;
+            *height = keys.text().end_point().line().min(*height as usize) as f32;
         }
 
         let keys_handle = context::current_buffer(pa)

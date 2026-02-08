@@ -186,7 +186,7 @@ use crate::{
     mode,
     session::DuatEvent,
     text::{Text, txt},
-    ui::{Node, Widget},
+    ui::Node,
     utils::catch_panic,
 };
 
@@ -235,7 +235,7 @@ pub(crate) fn add_session_commands() {
         match has_written {
             true => Ok(Some(txt!(
                 "Wrote [a]{}[] bytes to [buffer]{name}",
-                handle.text(pa).len().byte()
+                handle.text(pa).len()
             ))),
             false => Ok(Some(txt!("Nothing to be written"))),
         }
@@ -273,7 +273,7 @@ pub(crate) fn add_session_commands() {
             match has_written {
                 true => Ok(Some(txt!(
                     "Closed [buffer]{name}[], writing [a]{}[] bytes",
-                    handle.text(pa).len().byte()
+                    handle.text(pa).len()
                 ))),
                 false => Ok(Some(txt!("Closed [buffer]{name}[]"))),
             }

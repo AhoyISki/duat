@@ -1,9 +1,25 @@
+//! The equivalent of [`&str`] for Duat.
+//!
+//! This module defines the [`Strs`] struct, which is a type that,
+//! much like `str`, only shows up as `&Strs`. This is the only avenue
+//! of direct interaction that the end user will get in regards to the
+//! bytes of the [`Text`].
+//!
+//! The [`Strs`] are backed by an [`StrsBuf`] struct, which owns the
+//! allocation of the [`GapBuffer`] of the utf-8 text.
+//!
+//! [`Text`]: super::Text
+//! [`StrsBuf`]:
 use std::{ops::Range, sync::LazyLock};
+
+pub use bytes::{Bytes, Slices};
 
 use crate::{
     opts::PrintOpts,
-    text::{Bytes, Point, Slices, TextRange},
+    text::{Point, TextIndex, TextRange, strs::bytes::assert_utf8_boundary},
 };
+
+mod bytes;
 
 /// The [`&str`] equivalent for [`Bytes`]
 ///
@@ -26,6 +42,270 @@ impl Strs {
         // quasi wide pointer, where the metadata is size-like, but encodes
         // two values instead of one.
         unsafe { &*(ptr as *const Self) }
+    }
+
+    ////////// Querying functions
+
+    /// The [`Point`] at the end of the `Strs`.
+    ///
+    /// This is the equivalent of `strs.range().start`.
+    pub fn start_point(&self) -> Point {
+        let formed = FormedStrs::new(self);
+
+        let slices = unsafe {
+            let (s0, s1) = formed.bytes.buf.as_slices();
+            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+        };
+        formed
+            .bytes
+            .line_ranges
+            .point_by_key(formed.start as usize, |[b, _]| b, slices)
+            .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+    }
+
+    /// The [`Point`] at the end of the `Strs`.
+    ///
+    /// This is the equivalent of `strs.range().end`.
+    pub fn end_point(&self) -> Point {
+        let formed = FormedStrs::new(self);
+        let byte = formed.start as usize + formed.len as usize;
+
+        let slices = unsafe {
+            let (s0, s1) = formed.bytes.buf.as_slices();
+            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+        };
+        formed
+            .bytes
+            .line_ranges
+            .point_by_key(byte, |[b, _]| b, slices)
+            .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+    }
+
+    /// The `char` at a given position.
+    ///
+    /// This position can either be a [`Point`] or a byte index. Will
+    /// return [`None`] if the position is greater than or equal to
+    /// `self.len()` or if it is not located in a utf8 character
+    /// boundary.
+    #[track_caller]
+    pub fn char_at(&self, p: impl TextIndex) -> Option<char> {
+        let formed = FormedStrs::new(self);
+        let range = formed
+            .bytes
+            .buf
+            .range(formed.start as usize..formed.start as usize + formed.len as usize);
+
+        if range
+            .get(p.to_byte_index())
+            .is_none_or(|b| utf8_char_width(*b) == 0)
+        {
+            return None;
+        }
+
+        let [s0, s1] = self.to_array();
+        Some(if p.to_byte_index() < s0.len() {
+            s0[p.to_byte_index()..].chars().next().unwrap()
+        } else {
+            s1[p.to_byte_index() - s0.len()..]
+                .chars()
+                .next()
+                .unwrap_or_else(|| panic!("{self:#?}"))
+        })
+    }
+
+    /// The [`Point`] corresponding to the byte position, 0 indexed.
+    ///
+    /// If the byte position would fall in between two characters
+    /// (because the first one comprises more than one byte), the
+    /// first character is chosen as the [`Point`] where the byte is
+    /// located.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `b` is greater than the length of the text
+    #[inline(always)]
+    #[track_caller]
+    pub fn point_at_byte(&self, byte: usize) -> Point {
+        assert!(
+            byte <= self.len(),
+            "byte out of bounds: the len is {}, but the byte is {byte}",
+            self.len()
+        );
+
+        let formed = FormedStrs::new(self);
+
+        if byte == self.len() {
+            self.end_point()
+        } else {
+            let slices = unsafe {
+                let (s0, s1) = formed.bytes.buf.as_slices();
+                [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+            };
+            formed
+                .bytes
+                .line_ranges
+                .point_by_key(byte + formed.start as usize, |[b, _]| b, slices)
+                .unwrap()
+        }
+    }
+
+    /// The [`Point`] associated with the `c`th char.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `c` is greater than the number of chars in the
+    /// text.
+    #[inline(always)]
+    #[track_caller]
+    pub fn point_at_char(&self, char: usize) -> Point {
+        let end_point = self.end_point();
+        assert!(
+            char <= end_point.char(),
+            "char out of bounds: the len is {}, but the char is {char}",
+            end_point.char()
+        );
+
+        let formed = FormedStrs::new(self);
+
+        if char == end_point.char() {
+            end_point
+        } else {
+            let slices = unsafe {
+                let (s0, s1) = formed.bytes.buf.as_slices();
+                [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+            };
+
+            let start = formed
+                .bytes
+                .line_ranges
+                .point_by_key(formed.start as usize, |[b, _]| b, slices)
+                .unwrap();
+
+            formed
+                .bytes
+                .line_ranges
+                .point_by_key(start.char() + char, |[_, c]| c, slices)
+                .unwrap()
+        }
+    }
+
+    /// The [`Point`] where the `l`th line starts, 0 indexed.
+    ///
+    /// If `l == number_of_lines`, returns the last point of the
+    /// `Strs`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the number `l` is greater than the number of
+    /// lines on the text
+    #[inline(always)]
+    #[track_caller]
+    pub fn point_at_coords(&self, line: usize, column: usize) -> Point {
+        let end_point = self.end_point();
+        assert!(
+            line <= end_point.line(),
+            "line out of bounds: the len is {}, but the line is {line}",
+            end_point.line()
+        );
+
+        let formed = FormedStrs::new(self);
+
+        if line == 0 {
+            self.point_at_byte(formed.start as usize)
+        } else if line == end_point.line() {
+            end_point
+        } else {
+            let slices = unsafe {
+                let (s0, s1) = formed.bytes.buf.as_slices();
+                [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+            };
+            let line = {
+                let start = self.point_at_byte(formed.start as usize);
+                start.line() + line
+            };
+
+            let line_start = formed
+                .bytes
+                .line_ranges
+                .point_at_coords(line, column, slices);
+            let Some(point) = line_start else {
+                let line_start = formed
+                    .bytes
+                    .line_ranges
+                    .point_at_coords(line, 0, slices)
+                    .unwrap();
+                let next_line_start = if line + 1 == end_point.line() {
+                    end_point
+                } else {
+                    formed
+                        .bytes
+                        .line_ranges
+                        .point_at_coords(line + 1, 0, slices)
+                        .unwrap()
+                };
+
+                panic!(
+                    "column out of bounds: the len is {}, but the column is {column}",
+                    next_line_start.char() - line_start.char()
+                );
+            };
+
+            point
+        }
+    }
+
+    /// The `Strs` for the `n`th line
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n >= self.len().line()`
+    #[track_caller]
+    pub fn line(&self, n: usize) -> &Strs {
+        let end_point = self.end_point();
+        assert!(
+            n < end_point.line(),
+            "line out of bounds: the len is {}, but the line is {n}",
+            end_point.line()
+        );
+
+        let start = self.point_at_coords(n, 0);
+        let end = if n + 1 == end_point.line() {
+            end_point
+        } else {
+            self.point_at_coords(n + 1, 0)
+        };
+
+        &self[start..end]
+    }
+
+    /// Returns an `Strs` for the whole [`Text`] that this one belongs
+    /// to.
+    ///
+    /// You should use this function if you want to create an api that
+    /// requires the whole [`Strs`] to be used as an argument. You can
+    /// accept any [`Strs`], then just transform it to the full one
+    /// using this function.
+    ///
+    /// If this [`Strs`] is from [`Strs::empty`], then this will
+    /// return itself.
+    ///
+    /// [`Text`]: super::Text
+    pub fn full(&self) -> &Strs {
+        FormedStrs::new(self).bytes
+    }
+
+    /// The last [`Point`] associated with a `char`
+    ///
+    /// This function takes into account the whole [`Text`], not just
+    /// the parts contained in the `Strs`. And since a `Text` can't be
+    /// empty, it will always return a [`Point`] associated with the
+    /// `\n` character.
+    ///
+    /// [`len`]: Self::len
+    /// [`Text`]: crate::text::Text
+    pub fn last_point(&self) -> Point {
+        let formed = FormedStrs::new(self);
+        formed.bytes.end_point().rev('\n')
     }
 
     /// Tries to get a subslice of the [`Bytes`]
@@ -158,7 +438,8 @@ impl Strs {
 
     /// Gets the indentation level of this `Strs`
     ///
-    /// This assumes that it is a line in the [`Bytes`], ending with `\n` or `\r\n`.
+    /// This assumes that it is a line in the [`Bytes`], ending with
+    /// `\n` or `\r\n`.
     ///
     /// This is the total "amount of spaces", that is, how many `' '`
     /// character equivalents are here. This depends on your
@@ -212,8 +493,8 @@ impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
         let formed = FormedStrs::new(self);
         let range = index.to_range(formed.len as usize);
 
-        super::assert_utf8_boundary(formed.bytes, range.start);
-        super::assert_utf8_boundary(formed.bytes, range.end);
+        assert_utf8_boundary(formed.bytes, range.start);
+        assert_utf8_boundary(formed.bytes, range.end);
 
         Self::new(
             formed.bytes,

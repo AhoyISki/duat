@@ -5,7 +5,7 @@ use crate::{
     ranges::Ranges,
     text::{
         RawTag,
-        shift_list::{Shift, ShiftList, Shiftable},
+        shift_list::{ShiftList, Shiftable},
     },
 };
 
@@ -339,16 +339,6 @@ impl Shiftable for ([i32; 2], RawTag, RangeId) {
 
     fn shift(self, by: Self::Shift) -> Self {
         ([self.0[0] + by[0], self.0[1] + by[1]], self.1, self.2)
-    }
-}
-
-impl Shift for [i32; 2] {
-    fn neg(self) -> Self {
-        [-self[0], -self[1]]
-    }
-
-    fn add(self, other: Self) -> Self {
-        [self[0] + other[0], self[1] + other[1]]
     }
 }
 

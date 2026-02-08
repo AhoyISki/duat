@@ -1,0 +1,296 @@
+use std::str::Utf8Error;
+
+use gap_buf::GapBuffer;
+
+pub use crate::text::strs::Strs;
+use crate::{
+    buffer::Change,
+    text::{line_ranges::LineRanges, utils::implPartialEq},
+};
+
+/// The bytes of a [`Text`], encoded in UTF-8
+///
+/// [`Text`]: super::Text
+#[derive(Default, Clone)]
+pub struct Bytes {
+    pub(super) buf: GapBuffer<u8>,
+    pub(super) line_ranges: LineRanges,
+    version: u64,
+}
+
+impl Bytes {
+    /// Returns a new instance of [`Bytes`]
+    ///
+    /// Not intended for public use, it is necessary in duat
+    #[doc(hidden)]
+    #[track_caller]
+    pub(crate) fn new(string: &str) -> Self {
+        assert!(
+            string.len() <= u32::MAX as usize,
+            "For now, you can't have a Text larger than u32::MAX"
+        );
+        let buf = GapBuffer::from_iter(string.bytes());
+
+        let slices = unsafe {
+            let (s0, s1) = buf.as_slices();
+            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+        };
+
+        let records = LineRanges::new(slices);
+
+        Self { buf, line_ranges: records, version: 0 }
+    }
+
+    ////////// Modification functions
+
+    /// Applies a [`Change`] to the [`GapBuffer`] within
+    #[track_caller]
+    pub(crate) fn apply_change(&mut self, change: Change<&str>) {
+        assert!(
+            self.len() + change.added_str().len() - change.taken_str().len() <= u32::MAX as usize,
+            "For now, you can't have a Text larger than u32::MAX"
+        );
+
+        assert_utf8_boundary(self, change.start().byte());
+        assert_utf8_boundary(self, change.taken_end().byte());
+
+        let edit = change.added_str();
+        let start = change.start();
+
+        let range = start.byte()..change.taken_end().byte();
+        self.buf.splice(range, edit.bytes());
+
+        let start_rec = [start.byte(), start.char(), start.line()];
+        let old_len = [
+            change.taken_end().byte() - start.byte(),
+            change.taken_end().char() - start.char(),
+            change.taken_end().line() - start.line(),
+        ];
+        let new_len = [
+            change.added_end().byte() - start.byte(),
+            change.added_end().char() - start.char(),
+            change.added_end().line() - start.line(),
+        ];
+
+        let array = unsafe {
+            let (s0, s1) = self.buf.as_slices();
+            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+        };
+
+        self.line_ranges
+            .transform(start_rec, old_len, new_len, array);
+    }
+
+    /// Increment the version of the `Bytes` by 1
+    pub fn increment_version(&mut self) {
+        self.version += 1;
+    }
+
+    /// Get the current version of the `Bytes`
+    pub fn get_version(&self) -> u64 {
+        self.version
+    }
+}
+
+impl std::ops::Deref for Bytes {
+    type Target = Strs;
+
+    fn deref(&self) -> &Self::Target {
+        Strs::new(self, 0, self.buf.len() as u32)
+    }
+}
+
+/// An [`Iterator`] over the bytes in a [`Text`]
+///
+/// [`Text`]: super::Text
+#[derive(Clone)]
+pub struct Slices<'b>(pub(super) [std::slice::Iter<'b, u8>; 2]);
+
+impl<'b> Slices<'b> {
+    /// Converts this [`Iterator`] into an array of its two parts
+    pub fn to_array(&self) -> [&'b [u8]; 2] {
+        self.0.clone().map(|iter| iter.as_slice())
+    }
+
+    /// Tries to create a [`String`] out of the two buffers
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the bounds of the slices
+    /// don't correspond to utf8 character boundaries, or if the gap
+    /// within these slices doesn't correspond to a utf8 character
+    /// boundary.
+    pub fn try_to_string(self) -> Result<String, Utf8Error> {
+        let [s0, s1] = self.0.map(|arr| arr.as_slice());
+        Ok([str::from_utf8(s0)?, str::from_utf8(s1)?].join(""))
+    }
+}
+
+impl<'b> Iterator for Slices<'b> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0[0].next().or_else(|| self.0[1].next()).copied()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (l0, u0) = self.0[0].size_hint();
+        let (l1, u1) = self.0[1].size_hint();
+        (l0 + l1, Some(u0.unwrap() + u1.unwrap()))
+    }
+}
+
+impl<'b> ExactSizeIterator for Slices<'b> {}
+
+impl<'b> DoubleEndedIterator for Slices<'b> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.0[1]
+            .next_back()
+            .or_else(|| self.0[0].next_back())
+            .copied()
+    }
+}
+
+/// Given a first byte, determines how many bytes are in this UTF-8
+/// character.
+#[must_use]
+#[inline]
+pub const fn utf8_char_width(b: u8) -> usize {
+    // https://tools.ietf.org/html/rfc3629
+    const UTF8_CHAR_WIDTH: &[u8; 256] = &[
+        // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
+        0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
+        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
+        4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
+    ];
+    UTF8_CHAR_WIDTH[b as usize] as usize
+}
+
+impl Eq for Bytes {}
+implPartialEq!(bytes: Bytes, other: Bytes, {
+    let (l_s0, l_s1) = bytes.buf.as_slices();
+    let (r_s0, r_s1) = other.buf.as_slices();
+    (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.iter().chain(l_s1).eq(r_s0.iter().chain(r_s1))
+});
+implPartialEq!(bytes: Bytes, other: &str, {
+    let [s0, s1] = bytes.to_array();
+    other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+});
+implPartialEq!(bytes: Bytes, other: String, bytes == &&other.as_str());
+implPartialEq!(str: &str, other: Bytes, other == *str);
+implPartialEq!(string: String, other: Bytes, other == *string);
+
+impl Eq for &Strs {}
+implPartialEq!(strs: &Strs, other: &Strs, {
+    let [l_s0, l_s1] = strs.to_array();
+    let [r_s0, r_s1] = other.to_array();
+    (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.bytes().chain(l_s1.bytes()).eq(r_s0.bytes().chain(r_s1.bytes()))
+});
+implPartialEq!(strs: &Strs, other: &str, {
+    let [s0, s1] = strs.to_array();
+    other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+});
+implPartialEq!(strs: &Strs, other: String, strs == &&other.as_str());
+implPartialEq!(str: &str, other: &Strs, other == *str);
+implPartialEq!(string: String, other: &Strs, other == *string);
+
+/// Implements [`From<$T>`] for [`Bytes`] where `$T: ToString`
+macro_rules! implFromToString {
+    ($T:ty) => {
+        impl From<$T> for Bytes {
+            fn from(value: $T) -> Self {
+                let string = <$T as ToString>::to_string(&value);
+                Bytes::new(&string)
+            }
+        }
+    };
+}
+
+implFromToString!(u8);
+implFromToString!(u16);
+implFromToString!(u32);
+implFromToString!(u64);
+implFromToString!(u128);
+implFromToString!(usize);
+implFromToString!(i8);
+implFromToString!(i16);
+implFromToString!(i32);
+implFromToString!(i64);
+implFromToString!(i128);
+implFromToString!(isize);
+implFromToString!(f32);
+implFromToString!(f64);
+implFromToString!(char);
+implFromToString!(&str);
+implFromToString!(String);
+implFromToString!(Box<str>);
+implFromToString!(std::rc::Rc<str>);
+implFromToString!(std::sync::Arc<str>);
+implFromToString!(std::borrow::Cow<'_, str>);
+implFromToString!(std::io::Error);
+implFromToString!(Box<dyn std::error::Error>);
+
+impl From<std::path::PathBuf> for Bytes {
+    fn from(value: std::path::PathBuf) -> Self {
+        let value = value.to_string_lossy();
+        Self::from(value)
+    }
+}
+
+impl From<&std::path::Path> for Bytes {
+    fn from(value: &std::path::Path) -> Self {
+        let value = value.to_string_lossy();
+        Self::from(value)
+    }
+}
+
+impl std::fmt::Debug for Bytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bytes")
+            .field("buf", &self[..].to_array())
+            .field("records", &self.line_ranges)
+            .finish()
+    }
+}
+
+#[track_caller]
+pub fn assert_utf8_boundary(bytes: &Bytes, idx: usize) {
+    assert!(
+        bytes.buf.get(idx).is_none_or(|b| utf8_char_width(*b) != 0),
+        "byte index {} is not a valid char boundary; it is inside '{}'",
+        idx,
+        {
+            let (n, len) = bytes
+                .buf
+                .range(..idx)
+                .iter()
+                .rev()
+                .enumerate()
+                .find_map(|(i, &b)| (utf8_char_width(b) != 0).then_some((i, utf8_char_width(b))))
+                .unwrap();
+
+            String::from_utf8(
+                bytes
+                    .buf
+                    .range(idx - (n + 1)..idx - (n + 1) + len)
+                    .iter()
+                    .copied()
+                    .collect(),
+            )
+            .unwrap()
+        }
+    );
+}

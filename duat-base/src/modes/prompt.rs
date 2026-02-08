@@ -343,7 +343,7 @@ impl mode::Mode for Prompt {
         if !text.is_empty() {
             let mut history = HISTORY.lock().unwrap();
             if let Some((_, ty_history)) = history.iter_mut().find(|(ty, _)| *ty == self.ty) {
-                if ty_history.last().is_none_or(|last| last != text.bytes()) {
+                if ty_history.last().is_none_or(|last| last != &text) {
                     ty_history.push(text.to_string());
                 }
             } else {
@@ -560,10 +560,10 @@ impl PromptMode for RunCommands {
             return;
         };
 
-        let is_parameter = text
-            .chars_rev(..main.caret())
-            .unwrap()
-            .any(|(_, char)| char.is_whitespace());
+        let is_parameter = text[..main.caret()]
+            .chars()
+            .rev()
+            .any(|char| char.is_whitespace());
 
         let new_completion = if is_parameter {
             let call = text[..main.caret()].to_string();

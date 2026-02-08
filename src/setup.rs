@@ -23,7 +23,7 @@ use duat_core::{
     hook::{BufferOpened, KeyTyped, ModeSwitched},
     session::{ReloadEvent, ReloadedBuffer, SessionCfg},
     text::txt,
-    ui::{DynSpawnSpecs, Orientation, Ui, Widget},
+    ui::{DynSpawnSpecs, Orientation, Ui},
 };
 use duat_filetype::FileType;
 use duat_term::VertRule;

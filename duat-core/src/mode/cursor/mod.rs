@@ -235,11 +235,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         if by == 0 {
             return 0;
         }
-        let moved = sel_mut!(self).move_hor(by, self.widget.text());
-        if moved != 0 {
-            self.widget.text_mut().add_record_for(sel!(self).caret());
-        }
-        moved
+        sel_mut!(self).move_hor(by, self.widget.text())
     }
 
     /// Moves the selection vertically. May cause horizontal movement.
@@ -250,13 +246,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         if by == 0 {
             return false;
         }
-        let moved =
-            sel_mut!(self).move_ver(by, self.widget.text(), self.area, self.widget.print_opts());
-
-        if moved {
-            self.widget.text_mut().add_record_for(sel!(self).caret());
-        }
-        moved
+        sel_mut!(self).move_ver(by, self.widget.text(), self.area, self.widget.print_opts())
     }
 
     /// Moves the selection vertically a number of wrapped lines. May
@@ -268,17 +258,12 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         if count == 0 {
             return false;
         }
-        let moved = sel_mut!(self).move_ver_wrapped(
+        sel_mut!(self).move_ver_wrapped(
             count,
             self.widget.text(),
             self.area,
             self.widget.print_opts(),
-        );
-
-        if moved {
-            self.widget.text_mut().add_record_for(sel!(self).caret());
-        }
-        moved
+        )
     }
 
     /// Moves the selection to a [`Point`] or a [range] of [`Point`]s.
@@ -297,12 +282,6 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     #[track_caller]
     pub fn move_to(&mut self, point_or_points: impl CaretOrRange) {
         point_or_points.move_to(self);
-        for point in [Some(sel!(self).caret()), sel!(self).anchor()]
-            .into_iter()
-            .flatten()
-        {
-            self.widget.text_mut().add_record_for(point);
-        }
     }
 
     /// Moves the selection to [`Point::default`], i.c., the start of
@@ -317,26 +296,15 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     #[track_caller]
-    pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let range = self
-            .text()
-            .line(line.min(self.text().last_point().line()))
-            .range();
-        let byte = self
-            .text()
-            .chars_fwd(range.clone())
-            .unwrap()
-            .map(|(byte, _)| byte)
-            .take(col + 1)
-            .last();
-        self.move_to(byte.unwrap_or(range.end.byte() - 1));
+    pub fn move_to_coords(&mut self, line: usize, column: usize) {
+        let point = self.text().point_at_coords(line, column);
+        self.move_to(point);
     }
 
     /// Moves to a column on the current line.
     #[track_caller]
-    pub fn move_to_col(&mut self, col: usize) {
-        let line = self.text().point_at_line(self.caret().line()).line();
-        self.move_to_coords(line, col);
+    pub fn move_to_col(&mut self, column: usize) {
+        self.move_to_coords(self.caret().line(), column);
     }
 
     /// Returns and takes the anchor of the [`Selection`], if there
@@ -470,24 +438,6 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     ////////// Iteration functions
 
-    /// Iterates over the [`char`]s.
-    ///
-    /// Each [`char`] will be accompanied by a byte index, which is
-    /// the position where said character starts, e.g. `0` for the
-    /// first character
-    pub fn chars_fwd(&self) -> impl Iterator<Item = (usize, char)> + '_ {
-        self.widget.text().chars_fwd(self.caret()..).unwrap()
-    }
-
-    /// Iterates over the [`char`]s, in reverse.
-    ///
-    /// Each [`char`] will be accompanied by a byte index, which is
-    /// the position where said character starts, e.g. `0` for the
-    /// first character
-    pub fn chars_rev(&self) -> impl Iterator<Item = (usize, char)> {
-        self.widget.text().chars_rev(..self.caret()).unwrap()
-    }
-
     /// Wether the current selection matches a regex pattern.
     #[track_caller]
     pub fn matches_pat<R: RegexPattern>(&self, pat: R) -> bool {
@@ -498,7 +448,8 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         }
     }
 
-    /// Returns an [`Iterator`] over the matches of a [`RegexPattern`].
+    /// Returns an [`Iterator`] over the matches of a
+    /// [`RegexPattern`].
     ///
     /// This `Iterator` normally covers the entire range of the
     /// [`Text`], however, there are methods that you can use to
@@ -517,7 +468,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         let text = self.widget.text();
         let caret = self.caret();
         CursorMatches {
-            text_byte_len: text.len().byte(),
+            text_byte_len: text.len(),
             caret_range: caret.byte()..caret.fwd(self.char()).byte(),
             matches: text.search(pat),
         }
@@ -575,7 +526,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     /// Returns the length of the [`Text`], in [`Point`].
     pub fn len(&self) -> Point {
-        self.text().len()
+        self.text().end_point()
     }
 
     /// Returns the position of the last [`char`] if there is one.
@@ -585,7 +536,10 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
 
     /// Gets the current level of indentation.
     pub fn indent(&self) -> usize {
-        self.widget.text().indent(self.caret().line(), self.opts())
+        self.widget
+            .text()
+            .line(self.caret().line())
+            .indent(self.opts())
     }
 
     /// Gets the indentation level on a given line.
@@ -595,7 +549,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
     /// [`PrintOpts`] because of the `tabstop` field.
     #[track_caller]
     pub fn indent_on(&self, line: usize) -> usize {
-        self.widget.text().indent(line, self.opts())
+        self.widget.text().line(line).indent(self.opts())
     }
 
     ////////// Selection queries
@@ -667,7 +621,7 @@ impl<'w, W: Widget + ?Sized> Cursor<'w, W> {
         self.widget.print_opts()
     }
 
-	/// The [`Widget`] being modified.
+    /// The [`Widget`] being modified.
     pub fn widget(&self) -> &W {
         self.widget
     }
@@ -963,7 +917,7 @@ impl<Idx: TextIndex> CaretOrRange for Range<Idx> {
         if range.start < range.end {
             cursor.set_anchor();
             sel_mut!(cursor).move_to(range.end, cursor.widget.text());
-            if range.end < cursor.widget.text().len().byte() {
+            if range.end < cursor.widget.text().len() {
                 cursor.move_hor(-1);
             }
         } else {
@@ -992,7 +946,7 @@ impl<Idx: TextIndex> CaretOrRange for RangeFrom<Idx> {
     fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         let start = self.start.to_byte_index();
         sel_mut!(cursor).move_to(start, cursor.widget.text());
-        if start < cursor.text().len().byte() {
+        if start < cursor.text().len() {
             cursor.set_anchor();
             sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
             cursor.move_hor(-1);
@@ -1033,9 +987,7 @@ impl CaretOrRange for RangeFull {
     #[track_caller]
     fn move_to<W: Widget + ?Sized>(self, cursor: &mut Cursor<'_, W>) {
         cursor.move_to_start();
-        if cursor.text().len() > Point::default() {
-            cursor.set_anchor();
-            sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
-        }
+        cursor.set_anchor();
+        sel_mut!(cursor).move_to(cursor.widget.text().len(), cursor.widget.text());
     }
 }

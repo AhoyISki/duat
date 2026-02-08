@@ -19,7 +19,7 @@ use gap_buf::{GapBuffer, gap_buffer};
 pub use self::cursor::{Selection, VPoint};
 use crate::{
     buffer::Change,
-    text::{Bytes, Point, TextRange},
+    text::{Point, Strs, TextRange},
     utils::{add_shifts, merging_range_by_guess_and_lazy_shift},
 };
 
@@ -105,9 +105,9 @@ impl Selections {
 
     /// Corrects all [`Selection`]s, so that they no longer reference
     /// outdated data
-    pub(crate) fn correct_all(&mut self, bytes: &mut Bytes) {
+    pub(crate) fn correct_all(&mut self, strs: &Strs) {
         for selection in &mut self.buf {
-            selection.correct(bytes)
+            selection.correct(strs)
         }
     }
 
@@ -427,7 +427,7 @@ mod cursor {
     use crate::{
         buffer::Change,
         opts::PrintOpts,
-        text::{Bytes, Point, Text, TextIndex},
+        text::{Point, Strs, Text, TextIndex},
         ui::Area,
     };
 
@@ -470,7 +470,7 @@ mod cursor {
                 return;
             }
             *self.caret.get_mut().unwrap() =
-                LazyVPoint::Unknown(text.point_at_byte(byte.min(text.len().byte() - 1)));
+                LazyVPoint::Unknown(text.point_at_byte(byte.min(text.len() - 1)));
         }
 
         /// Internal horizontal movement function
@@ -495,15 +495,16 @@ mod cursor {
                 text.last_point()
             } else if by.abs() < 500 {
                 if by > 0 {
-                    text.chars_fwd(caret.point()..)
-                        .unwrap()
+                    text[caret.point()..]
+                        .chars()
                         .take(by as usize)
-                        .fold(caret.point(), |point, (_, char)| point.fwd(char))
+                        .fold(caret.point(), |point, char| point.fwd(char))
                 } else {
-                    text.chars_rev(..caret.point())
-                        .unwrap()
+                    text[..caret.point()]
+                        .chars()
+                        .rev()
                         .take(by.unsigned_abs())
-                        .fold(caret.point(), |point, (_, char)| point.rev(char))
+                        .fold(caret.point(), |point, char| point.rev(char))
                 }
             } else {
                 text.point_at_char(target_char)
@@ -597,17 +598,13 @@ mod cursor {
 
         /// Corrects this [`Selection`], so that it no longer assumes
         /// to be in the correct position
-        pub(crate) fn correct(&mut self, bytes: &mut Bytes) {
+        pub(crate) fn correct(&mut self, strs: &Strs) {
             let mut caret = self.caret.lock().unwrap();
-            *caret = LazyVPoint::Unknown(bytes.point_at_byte(caret.point().byte()));
-            let point = caret.point();
-            bytes.add_record([point.byte(), point.char(), point.line()]);
+            *caret = LazyVPoint::Unknown(strs.point_at_byte(caret.point().byte()));
 
             let mut anchor = self.anchor.lock().unwrap();
             if let Some(anchor) = &mut *anchor {
-                *anchor = LazyVPoint::Unknown(bytes.point_at_byte(anchor.point().byte()));
-                let point = anchor.point();
-                bytes.add_record([point.byte(), point.char(), point.line()]);
+                *anchor = LazyVPoint::Unknown(strs.point_at_byte(anchor.point().byte()));
             }
         }
 
@@ -662,8 +659,8 @@ mod cursor {
         /// the [`Text`], know that this range will be truncated to
         /// not include the last `\n`, since it is not allowed to be
         /// removed.
-        pub fn byte_range(&self, bytes: &Bytes) -> Range<usize> {
-            self.start_point().byte()..self.end_point(bytes).byte()
+        pub fn byte_range(&self, text: &Text) -> Range<usize> {
+            self.start_point().byte()..self.end_point(text).byte()
         }
 
         /// The starting [`Point`] of this [`Selection`]
@@ -676,9 +673,9 @@ mod cursor {
         }
 
         /// The ending [`Point`] of this [`Selection`]
-        pub fn end_point(&self, bytes: &Bytes) -> Point {
+        pub fn end_point(&self, text: &Text) -> Point {
             self.end_point_excl()
-                .fwd(bytes.char_at(self.end_point_excl()).unwrap())
+                .fwd(text.char_at(self.end_point_excl()).unwrap())
         }
 
         pub(super) fn end_point_excl(&self) -> Point {
@@ -693,8 +690,8 @@ mod cursor {
         ///
         /// If `anchor` isn't set, returns a range that contains only
         /// the `caret`'s current `char`.
-        pub fn point_range(&self, bytes: &Bytes) -> Range<Point> {
-            self.start_point()..self.end_point(bytes)
+        pub fn point_range(&self, text: &Text) -> Range<Point> {
+            self.start_point()..self.end_point(text)
         }
 
         /// Returns an exclusive range between `caret` and `anchor`

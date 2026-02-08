@@ -19,7 +19,6 @@ use duat_core::{
     data::Pass,
     hook::{self, BufferOpened, BufferUpdated},
     text::{Point, RegexHaystack, Spacer, Strs, Text, txt},
-    ui::Widget,
 };
 
 use crate::widgets::completions::{
@@ -128,24 +127,24 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
     let surrounded = |match_r: Range<usize>, word: &str, change_str: &str, change: &Change| {
         let prefix = if match_r.start == 0
             && let Some(text_range) = parts
-                .bytes
+                .strs
                 .search(r"\w+\z")
                 .range(..change.start())
                 .next_back()
         {
-            &parts.bytes[text_range]
+            &parts.strs[text_range]
         } else {
             Strs::empty()
         };
 
         if match_r.end == change_str.len()
             && let Some(text_range) = parts
-                .bytes
+                .strs
                 .search(r"\A\w+")
                 .range(change.added_end()..)
                 .next()
         {
-            format!("{prefix}{word}{}", &parts.bytes[text_range])
+            format!("{prefix}{word}{}", &parts.strs[text_range])
         } else {
             format!("{prefix}{word}")
         }

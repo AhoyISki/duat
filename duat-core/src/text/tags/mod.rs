@@ -197,8 +197,8 @@ pub struct InnerTags {
     pub(super) spawn_fns: SpawnFns,
     bounds: Bounds,
     extents: TaggerExtents,
-    tags_state: u64,
-    meta_tags_state: u64,
+    tags_verssion: u64,
+    meta_tags_version: u64,
 }
 
 impl InnerTags {
@@ -217,8 +217,8 @@ impl InnerTags {
             spawn_fns: SpawnFns(Vec::new()),
             bounds: Bounds::new(max),
             extents: TaggerExtents::new(max),
-            tags_state: 0,
-            meta_tags_state: 0,
+            tags_verssion: 0,
+            meta_tags_version: 0,
         }
     }
 
@@ -238,8 +238,8 @@ impl InnerTags {
 
         if inserted {
             tag.on_insertion(self);
-            self.meta_tags_state += T::IS_META as u64;
-            self.tags_state += 1;
+            self.meta_tags_version += T::IS_META as u64;
+            self.tags_verssion += 1;
         }
     }
 
@@ -470,8 +470,8 @@ impl InnerTags {
             return;
         };
 
-        self.meta_tags_state += meta_tags_changed as u64;
-        self.tags_state += tags_changed as u64;
+        self.meta_tags_version += meta_tags_changed as u64;
+        self.tags_verssion += tags_changed as u64;
 
         self.list
             .extract_if_while(last.., |i, (_, tag)| {
@@ -638,12 +638,12 @@ impl InnerTags {
 
     ////////// Querying functions
 
-    /// The state of the `InnerTags`
+    /// The version of the `InnerTags`
     ///
-    /// First element is the `tags_state`, second is the
-    /// `meta_tags_state`
-    pub(super) fn states(&self) -> (u64, u64) {
-        (self.tags_state, self.meta_tags_state)
+    /// First element is the `tags_version`, second is the
+    /// `meta_tags_version`
+    pub(super) fn versions(&self) -> (u64, u64) {
+        (self.tags_verssion, self.meta_tags_version)
     }
 
     /// Returns true if there are no [`RawTag`]s
@@ -690,8 +690,8 @@ impl Clone for InnerTags {
             spawn_fns: SpawnFns(Vec::new()),
             bounds: self.bounds.clone(),
             extents: self.extents.clone(),
-            tags_state: self.tags_state,
-            meta_tags_state: self.tags_state,
+            tags_verssion: self.tags_verssion,
+            meta_tags_version: self.tags_verssion,
         }
     }
 }

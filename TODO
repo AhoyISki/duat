@@ -26,7 +26,7 @@ FOR NEXT UPDATE:
 [ ] Strs improvement.
   [ ] More fundamental functions.
   [ ] Better search functionality.
-[ ] Use a lines based system for large enough text.
+[x] Use a lines based system for large enough text.
 [x] Get rid of Lender entirely.
 [x] Lean up the dependency tree.
 [ ] Make Bytes private 🤯.

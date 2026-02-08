@@ -71,7 +71,7 @@ fn hightlight_current_line(parts: &mut BufferParts, tagger: Tagger) {
         LazyLock::new(|| Ghost::inlay(txt!("[current_line] {Spacer}")));
 
     let caret = parts.selections.main().caret();
-    let line_range = parts.bytes.line(caret.line()).byte_range();
+    let line_range = parts.strs.line(caret.line()).byte_range();
 
     let cur_line_form = form::id_of!("current_line").to_tag(50);
 
@@ -94,7 +94,7 @@ fn replace_chars(
             parts
                 .changes
                 .clone()
-                .map(|change| change.line_range(parts.bytes)),
+                .map(|change| change.line_range(parts.strs)),
         );
     }
 
@@ -118,7 +118,7 @@ fn replace_chars(
         parts.tags.remove(space_tagger, range.start..range.end);
         parts.tags.remove_excl(nl_tagger, range.start..range.end);
 
-        let line = &parts.bytes[range.clone()];
+        let line = &parts.strs[range.clone()];
         let line_start = line.byte_range().start;
 
         let mut space_start = None;
@@ -145,7 +145,7 @@ fn replace_chars(
                         && let Some(char) = opts.space_char_trailing
                         && char != ' '
                     {
-                        for (b, char) in parts.bytes[start..=byte].char_indices() {
+                        for (b, char) in parts.strs[start..=byte].char_indices() {
                             let b = start + b;
                             if char == ' '
                                 && let Some(char) = opts.space_char
@@ -193,7 +193,7 @@ fn show_indents(
             parts
                 .changes
                 .clone()
-                .map(|change| change.line_range(parts.bytes)),
+                .map(|change| change.line_range(parts.strs)),
         );
     }
 
@@ -209,9 +209,9 @@ fn show_indents(
             if let Some(seq) = seqs.last_mut()
                 && seq.last().unwrap().byte_range().end == range.start
             {
-                seq.push(&parts.bytes[range.clone()]);
+                seq.push(&parts.strs[range.clone()]);
             } else {
-                seqs.push(vec![&parts.bytes[range.clone()]]);
+                seqs.push(vec![&parts.strs[range.clone()]]);
             }
             seqs
         });
@@ -225,7 +225,7 @@ fn show_indents(
 
     for seq in sequences {
         let prev_unindented = {
-            parts.bytes[..seq[0].byte_range().start]
+            parts.strs[..seq[0].byte_range().start]
                 .lines()
                 .rev()
                 .find_map(|line| {
@@ -236,19 +236,19 @@ fn show_indents(
         };
 
         let next_unindented = {
-            parts.bytes[seq.last().unwrap().byte_range().end..]
+            parts.strs[seq.last().unwrap().byte_range().end..]
                 .lines()
                 .find_map(|line| {
                     (!line.chars().next().unwrap().is_ascii_whitespace())
                         .then_some(line.byte_range())
                 })
-                .unwrap_or(parts.bytes.len().byte()..parts.bytes.len().byte())
+                .unwrap_or(parts.strs.len()..parts.strs.len())
         };
 
         let mut state = IndentState::new(parts.opts.indent_str, parts.opts.tabstop);
         let mut empty_lines = Vec::new();
 
-        for line in parts.bytes[prev_unindented.end..next_unindented.end].lines() {
+        for line in parts.strs[prev_unindented.end..next_unindented.end].lines() {
             if line.is_empty_line() {
                 empty_lines.push(line);
             } else {

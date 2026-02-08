@@ -183,7 +183,7 @@ impl PrintInfo {
             return;
         }
 
-        let points = text.ghost_max_points_at(p.min(text.len()).byte());
+        let points = text.ghost_max_points_at(p.byte().min(text.len()));
         let after = text
             .points_after(points)
             .unwrap_or_else(|| text.len_points());
@@ -227,7 +227,7 @@ impl PrintInfo {
         }
 
         let (max_shift, caret_start, caret_end) = {
-            let points = text.ghost_max_points_at(p.min(text.len()).byte());
+            let points = text.ghost_max_points_at(p.byte().min(text.len()));
             let after = text
                 .points_after(points)
                 .unwrap_or_else(|| text.len_points());
@@ -266,7 +266,7 @@ impl PrintInfo {
     fn set_first_start(&mut self, coords: Coords, text: &Text, opts: PrintOpts) -> TwoPoints {
         let cap = opts.wrap_width(coords.width());
 
-        let points = text.ghost_max_points_at(self.prev_main.min(text.len()).byte());
+        let points = text.ghost_max_points_at(self.prev_main.byte().min(text.len()));
         let after = text
             .points_after(points)
             .unwrap_or_else(|| text.len_points());

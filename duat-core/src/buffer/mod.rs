@@ -37,14 +37,14 @@ use crate::{
     mode::{Cursor, MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Bytes, Point, Strs, Text, TextMut, TextVersion, txt},
+    text::{Point, Strs, Text, TextMut, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
 mod history;
 mod opts;
 
-/// The widget that is used to print and edit buffers
+/// The widget that is used to print and edit buffers.
 pub struct Buffer {
     id: BufferId,
     path: PathKind,
@@ -61,7 +61,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    /// Returns a new [`Buffer`], private for now
+    /// Returns a new [`Buffer`], private for now.
     pub(crate) fn new(path: Option<PathBuf>, opts: BufferOpts) -> Self {
         let (text, path) = match path {
             Some(path) => {
@@ -73,7 +73,7 @@ impl Buffer {
                         let selection = cache::load(path).unwrap_or_default();
                         Selections::new(selection)
                     };
-                    let text = Text::from_parts(Bytes::new(&buffer), selections);
+                    let text = Text::from_parts(buffer, selections);
                     (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
@@ -242,7 +242,7 @@ impl Buffer {
 
     ////////// General querying functions
 
-    /// A unique identifier for this [`Buffer`]
+    /// A unique identifier for this `Buffer`.
     ///
     /// This is more robust than identifying it by its path or name,
     /// or event [`PathKind`], since those could change, but this
@@ -251,43 +251,54 @@ impl Buffer {
         self.id
     }
 
-    /// The [`Bytes`] of the [`Buffer`]'s [`Text`]
-    pub fn bytes(&self) -> &Bytes {
-        self.text.bytes()
+    /// The [`Text`] of this `Buffer`
+    ///
+    /// This is the same as [`Widget::text`], but doesn't need the
+    /// [`Widget`] trait to be in scope.
+    pub fn text(&self) -> &Text {
+        &self.text
+    }
+
+    /// The mutable [`TextMut`] of this `Buffer`
+    ///
+    /// This is the same as [`Widget::text_mut`], but doesn't need the
+    /// [`Widget`] trait to be in scope.
+    pub fn text_mut(&mut self) -> TextMut<'_> {
+        self.text.as_mut()
     }
 
     /// The number of bytes in the buffer.
     pub fn len_bytes(&self) -> usize {
-        self.text.len().byte()
+        self.text.len()
     }
 
     /// The number of [`char`]s in the buffer.
     pub fn len_chars(&self) -> usize {
-        self.text.len().char()
+        self.text.len()
     }
 
     /// The number of lines in the buffer.
     pub fn len_lines(&self) -> usize {
-        self.text.len().line()
+        self.text.len()
     }
 
-    /// The [`Selections`] that are used on the [`Text`]
+    /// The [`Selections`] that are used on the [`Text`].
     pub fn selections(&self) -> &Selections {
         self.text.selections()
     }
 
-    /// A mutable reference to the [`Selections`]
+    /// A mutable reference to the [`Selections`].
     pub fn selections_mut(&mut self) -> &mut Selections {
         self.text.selections_mut()
     }
 
-    /// Whether o not the [`Buffer`] exists or not
+    /// Whether o not the [`Buffer`] exists or not.
     pub fn exists(&self) -> bool {
         self.path_set()
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
-    /// Prepare this `Buffer` for reloading
+    /// Prepare this `Buffer` for reloading.
     ///
     /// This works by creating a new [`Buffer`], which will take
     /// ownership of a stripped down version of this one's [`Text`]
@@ -400,12 +411,12 @@ impl Widget for Buffer {
 }
 
 impl Handle {
-    /// Writes the buffer to the current [`PathBuf`], if one was set
+    /// Writes the buffer to the current [`PathBuf`], if one was set.
     pub fn save(&self, pa: &mut Pass) -> Result<bool, Text> {
         self.save_quit(pa, false)
     }
 
-    /// Saves and quits, resulting in no config reload
+    /// Saves and quits, resulting in no config reload.
     ///
     /// Returns `Ok(true)` if it saved, `Ok(false)` if that wasn't
     /// necessary, and `Err` if there was some problem.
@@ -430,7 +441,7 @@ impl Handle {
         }
     }
 
-    /// Writes the buffer to the given [`Path`]
+    /// Writes the buffer to the given [`Path`].
     ///
     /// [`Path`]: std::path::Path
     pub fn save_to(
@@ -441,7 +452,7 @@ impl Handle {
         self.save_quit_to(pa, path, false)
     }
 
-    /// Writes the buffer to the given [`Path`]
+    /// Writes the buffer to the given [`Path`].
     ///
     /// [`Path`]: std::path::Path
     pub(crate) fn save_quit_to(
@@ -469,7 +480,7 @@ impl Handle {
         }
     }
 
-    /// Returns the list of printed line numbers
+    /// Returns the list of printed line numbers.
     ///
     /// These are returned as a `usize`, showing the index of the line
     /// in the buffer, and a `bool`, which is `true` when the line is
@@ -487,7 +498,7 @@ impl Handle {
     }
 
     /// The printed [`Range<Point>`], from the top of the screen to
-    /// the bottom
+    /// the bottom.
     ///
     /// Do note that this includes all concealed lines and parts that
     /// are out of screen. If you want only to include partially
@@ -501,7 +512,7 @@ impl Handle {
         cpi.as_ref().unwrap().range.clone()
     }
 
-    /// Returns the list of printed lines
+    /// Returns the list of printed lines.
     ///
     /// These are returned as [`Strs`], which is a known subsection of
     /// a [`Bytes`] struct, from the [`Text`].
@@ -551,7 +562,7 @@ impl Handle {
     }
 
     /// A list of [`Range<usize>`]s for the byte ranges of each
-    /// printed line
+    /// printed line.
     ///
     /// This is just a shorthand for calling [`Handle::printed_lines`]
     /// and mapping each one via [`Strs::byte_range`].
@@ -560,7 +571,7 @@ impl Handle {
         lines.into_iter().map(|line| line.byte_range()).collect()
     }
 
-    /// Only the visible parts of printed lines
+    /// Only the visible parts of printed lines.
     ///
     /// This is just like [`Handle::printed_lines`], but excludes
     /// _every_ section that was concealed or is not visible on
@@ -570,15 +581,15 @@ impl Handle {
     }
 }
 
-/// Represents the presence or absence of a path
+/// Represents the presence or absence of a path.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PathKind {
     /// A [`PathBuf`] that has been defined and points to a real
-    /// buffer
+    /// buffer.
     SetExists(PathBuf),
-    /// A [`PathBuf`] that has been defined but isn't a real buffer
+    /// A [`PathBuf`] that has been defined but isn't a real buffer.
     SetAbsent(PathBuf),
-    /// A [`PathBuf`] that has not been defined
+    /// A [`PathBuf`] that has not been defined.
     ///
     /// The number within represents a specific [`Buffer`], and when
     /// printed to, for example, the [`StatusLine`], would show up as
@@ -589,7 +600,7 @@ pub enum PathKind {
 }
 
 impl PathKind {
-    /// Returns a new unset [`PathBuf`]
+    /// Returns a new unset [`PathBuf`].
     pub(crate) fn new_unset() -> PathKind {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
@@ -598,7 +609,7 @@ impl PathKind {
     }
 
     /// Returns a [`PathBuf`] if `self` is [`SetExists`] or
-    /// [`SetAbsent`]
+    /// [`SetAbsent`].
     ///
     /// [`SetExists`]: PathKind::SetExists
     /// [`SetAbsent`]: PathKind::SetAbsent
@@ -677,7 +688,7 @@ impl PathKind {
         }
     }
 
-    /// A [`Text`] from the full path of this [`PathKind`]
+    /// A [`Text`] from the full path of this [`PathKind`].
     ///
     /// # Formatting
     ///
@@ -699,13 +710,12 @@ impl PathKind {
         }
     }
 
-    /// A [`Text`] from the name of this `PathKind`
+    /// A [`Text`] from the name of this `PathKind`.
     ///
     /// The name of a [`Buffer`] widget is the same as the path, but
     /// it strips away the current directory. If it can't, it will
-    /// try to strip away the home directory, replacing it with
-    /// `"~"`. If that also fails, it will just show the full
-    /// path.
+    /// try to strip away the home directory, replacing it with `"~"`.
+    /// If that also fails, it will just show the full path.
     ///
     /// # Formatting
     ///
@@ -766,7 +776,7 @@ mod buffer_id {
 
     static COUNT: AtomicUsize = AtomicUsize::new(0);
 
-    /// A unique identifier for a [`Buffer`]
+    /// A unique identifier for a [`Buffer`].
     ///
     /// [`Buffer`]: super::Buffer
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -774,14 +784,15 @@ mod buffer_id {
 
     impl BufferId {
         /// Returns a new `BufferId`, uniquely identifying a
-        /// [`Buffer`]
+        /// [`Buffer`].
         ///
         /// [`Buffer`]: super::Buffer
         pub(super) fn new() -> Self {
             Self(COUNT.fetch_add(1, Ordering::Relaxed))
         }
 
-        /// Sets the minimum `BufferId`, in order to prevent conflicts
+        /// Sets the minimum `BufferId`, in order to prevent
+        /// conflicts.
         pub(crate) fn set_min(buffer_ids: impl Iterator<Item = BufferId>) {
             COUNT.store(
                 buffer_ids.map(|buf_id| buf_id.0).max().unwrap_or(0) + 1,
@@ -791,7 +802,7 @@ mod buffer_id {
     }
 }
 
-/// A struct to associate one `T` to each [`Buffer`]
+/// A struct to associate one `T` to each [`Buffer`].
 ///
 /// This is very useful to implement the "parser pattern", where you
 /// have one parser per `Buffer`, acting on changes that take place on
@@ -799,7 +810,7 @@ mod buffer_id {
 pub struct PerBuffer<T: 'static>(LazyLock<RwData<HashMap<BufferId, T>>>);
 
 impl<T: 'static> PerBuffer<T> {
-    /// Returns a new mapping of [`Buffer`]s to a type `T`
+    /// Returns a new mapping of [`Buffer`]s to a type `T`.
     ///
     /// Since this function is `const`, you can conveniently place it
     /// in a `static` variable, in order to record one `T` for every
@@ -823,7 +834,7 @@ impl<T: 'static> PerBuffer<T> {
         Self(LazyLock::new(RwData::default))
     }
 
-    /// Register a [`Buffer`] with an initial value of `T`
+    /// Register a [`Buffer`] with an initial value of `T`.
     ///
     /// If there was a previous version of `T` assoiated with the
     /// `Buffer`, then the new `T` will replace that old version.
@@ -846,7 +857,7 @@ impl<T: 'static> PerBuffer<T> {
         (entry.into_mut(), buf)
     }
 
-    /// Unregisters a [`Buffer`]
+    /// Unregisters a [`Buffer`].
     ///
     /// This will remove the `Buffer` from the list, making future
     /// calls to [`Self::write`] return [`None`]. You should consider
@@ -860,7 +871,7 @@ impl<T: 'static> PerBuffer<T> {
         self.0.write(pa).remove(&buf_id)
     }
 
-    /// Gets a reference to the `T` associated with a [`Buffer`]
+    /// Gets a reference to the `T` associated with a [`Buffer`].
     ///
     /// This function lets you bipass the normal requirement of a
     /// [`Pass`] in order to acquire a `T` associated with any given
@@ -903,7 +914,7 @@ impl<T: 'static> PerBuffer<T> {
     }
 
     /// Gets a mutable reference to the `T` associated with a
-    /// [`Buffer`]
+    /// [`Buffer`].
     ///
     /// This function lets you bipass the normal requirement of a
     /// [`Pass`] in order to acquire a `T` associated with any given
@@ -935,7 +946,7 @@ impl<T: 'static> PerBuffer<T> {
         list.get_mut(&buffer.buffer_id())
     }
 
-    /// Writes to the [`Buffer`] and the `T` at the same time
+    /// Writes to the [`Buffer`] and the `T` at the same time.
     ///
     /// Will return [`None`] if the `Buffer` in question wasn't
     /// [registered] or was [unregistered].
@@ -951,7 +962,7 @@ impl<T: 'static> PerBuffer<T> {
         Some((list.get_mut(&buffer.buffer_id())?, buffer))
     }
 
-    /// Writes to the [`Buffer`] and a tuple of [writeable] types
+    /// Writes to the [`Buffer`] and a tuple of [writeable] types.
     ///
     /// This is an extension to the [`Pass::write_many`] method,
     /// allowing you to write to many [`RwData`]-like structs at once.
@@ -974,7 +985,7 @@ impl<T: 'static> PerBuffer<T> {
     }
 
     /// Tries to write to a bunch of [`Buffer`]s and their respective
-    /// `T`s
+    /// `T`s.
     ///
     /// Returns [`None`] if any two [`Handle`]s point to the same
     /// `Buffer`, or if any of the `Buffers` weren't [registered] or
@@ -1000,7 +1011,7 @@ impl<T: 'static> PerBuffer<T> {
         list.try_into().ok()
     }
 
-    /// Fusion of [`write_many`] and [`write_with`]
+    /// Fusion of [`write_many`] and [`write_with`].
     ///
     /// Returns [`None`] if any two structs point to the same
     /// [`RwData`]-like struct, or if any of the `Buffers` weren't
@@ -1037,7 +1048,7 @@ impl<T: 'static> Default for PerBuffer<T> {
 }
 
 /// An item that identifies that you are [writing] or [reading] from
-/// an [`RwData<Buffer>`]
+/// an [`RwData<Buffer>`].
 ///
 /// This trait is used exclusively by the [`PerBuffer`] struct, which
 /// can bipass the usual requirements that [`Pass`]es need to be used

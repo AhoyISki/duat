@@ -396,7 +396,7 @@ impl RawArea for Area {
         let mut y = coords.tl.y;
 
         for (place, item) in print_iter(text, points, coords.width(), opts) {
-            if y == coords.br.y || item.line() == text.len().line() {
+            if y == coords.br.y || item.line() == text.end_point().line() {
                 break;
             }
             y += place.wrap as u32;
@@ -438,7 +438,7 @@ impl RawArea for Area {
 
         let line_start = {
             let target = point.line().saturating_add_signed(by as isize);
-            text.point_at_line(target.min(text.last_point().line()))
+            text.point_at_coords(target.min(text.last_point().line()), 0)
         };
 
         let mut wraps = 0;
@@ -492,7 +492,7 @@ impl RawArea for Area {
         };
 
         if by > 0 {
-            let line_start = text.point_at_line(point.line());
+            let line_start = text.point_at_coords(point.line(), 0);
             let points = line_start.to_two_points_after();
 
             let mut vcol = 0;
@@ -1070,7 +1070,7 @@ pub fn print_text(
 }
 
 fn calculate_vpoint(text: &Text, point: Point, cap: u32, opts: PrintOpts) -> VPoint {
-    let start = text.point_at_line(point.line());
+    let start = text.point_at_coords(point.line(), 0);
 
     let mut vcol = 0;
 

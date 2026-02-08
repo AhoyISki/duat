@@ -63,7 +63,7 @@ impl LineNumbers {
 
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&self, pa: &Pass) -> f32 {
-        let len = self.buffer.read(pa).text().len().line();
+        let len = self.buffer.read(pa).text().end_point().line();
         len.ilog10() as f32
     }
 
@@ -108,7 +108,7 @@ impl LineNumbers {
                 builder.push(Spacer);
             }
 
-			builder.push("\n");
+            builder.push("\n");
             builder.push(form::DEFAULT_ID);
         }
 
@@ -143,7 +143,7 @@ impl Widget for LineNumbers {
                 .points
                 .and_then(|tpp| lines.get(tpp.points().real.line()))
                 .map(|line| line.number)
-                .unwrap_or(handle.text(pa).len().line())
+                .unwrap_or(handle.text(pa).end_point().line())
         };
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {

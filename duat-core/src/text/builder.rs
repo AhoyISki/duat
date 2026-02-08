@@ -107,7 +107,7 @@ impl Builder {
     /// into account.
     pub fn build_no_double_nl(self) -> Text {
         let mut text = self.build();
-        if let Some(last_last_byte) = text.len().byte().checked_sub(2)
+        if let Some(last_last_byte) = text.len().checked_sub(2)
             && let Some(strs) = text.get(last_last_byte..)
             && strs == "\n\n"
         {
