@@ -13,7 +13,7 @@ use duat_core::{
     form::{self, FormId},
     hook::{self, BufferUpdated},
     opts::PrintOpts,
-    text::{Bytes, Point, Tagger},
+    text::{Point, Strs, Tagger},
 };
 use duat_filetype::{FileType, PassFileType};
 use tree_sitter::{
@@ -91,7 +91,7 @@ pub(crate) fn add_parser_hook() {
         };
 
         if let Some(lang_parts) = lang_parts_of(filetype, handle) {
-            let len_bytes = handle.text(pa).len().byte();
+            let len_bytes = handle.text(pa).len();
 
             let mut parser = TsParser::new();
             parser.set_language(lang_parts.1).unwrap();
@@ -124,6 +124,7 @@ pub struct Parser {
 
 impl Parser {
     /// Returns the root [`Node`] of the tree sitter `Parser`
+    #[track_caller]
     pub fn root_node(&self) -> Node<'_> {
         let tree = self.trees.iter().next().unwrap();
         tree.ts_tree.as_ref().unwrap().root_node()
@@ -136,6 +137,14 @@ impl Parser {
         start: Option<Instant>,
         handle: &Handle,
     ) -> bool {
+        // To parse something, in case there are no visible ranges.
+        let visible_ranges = if visible_ranges.is_empty() {
+            #[allow(clippy::single_range_in_vec_init)]
+            &[0..1]
+        } else {
+            visible_ranges
+        };
+
         let mut parsed_at_least_one_region = false;
 
         for range in visible_ranges.iter() {
@@ -147,7 +156,7 @@ impl Parser {
         }
 
         if parsed_at_least_one_region {
-            self.ranges_to_inject.add(0..parts.bytes.len().byte());
+            self.ranges_to_inject.add(0..parts.strs.len());
         }
 
         let ranges_to_inject = visible_ranges
@@ -191,8 +200,8 @@ impl Parser {
         let ts_range = |range: Range<usize>| TsRange {
             start_byte: range.start,
             end_byte: range.end,
-            start_point: ts_point(parts.bytes.point_at_byte(range.start), parts.bytes),
-            end_point: ts_point(parts.bytes.point_at_byte(range.end), parts.bytes),
+            start_point: ts_point(parts.strs.point_at_byte(range.start), parts.strs),
+            end_point: ts_point(parts.strs.point_at_byte(range.end), parts.strs),
         };
 
         let mut parsed_at_least_one_region = false;
@@ -213,7 +222,7 @@ impl Parser {
             }
 
             let Some(new_ts_tree) = self.parser.parse_with_options(
-                &mut parser_fn(parts.bytes),
+                &mut parser_fn(parts.strs),
                 tree.ts_tree.as_ref(),
                 Some(ParseOptions::new().progress_callback(&mut callback)),
             ) else {
@@ -246,7 +255,7 @@ impl Parser {
     }
 
     fn highlight(&self, range: Range<usize>, parts: &mut BufferParts) {
-        let buf = TsBuf(parts.bytes);
+        let buf = TsBuf(parts.strs);
 
         let tagger = ts_tagger();
         let (.., Queries { highlights, .. }) = &self.lang_parts;
@@ -294,7 +303,7 @@ impl Parser {
                 range.start.min(inj_range.start)..range.end.max(inj_range.end)
             });
 
-        let buf = TsBuf(parts.bytes);
+        let buf = TsBuf(parts.strs);
         let (.., Queries { injections, .. }) = self.lang_parts;
 
         let cn = injections.capture_names();
@@ -311,7 +320,7 @@ impl Parser {
                         .captures
                         .iter()
                         .find(|cap| cn[cap.index as usize] == "injection.language")?;
-                    Some(parts.bytes[cap.node.byte_range()].to_string())
+                    Some(parts.strs[cap.node.byte_range()].to_string())
                 })
         };
 
@@ -371,7 +380,7 @@ impl Parser {
                         trees: Trees::new([Ranges::new(cap_range.clone())]),
                         lang_parts,
                         forms: forms_from_lang_parts(lang_parts),
-                        ranges_to_inject: Ranges::new(0..parts.bytes.len().byte()),
+                        ranges_to_inject: Ranges::new(0..parts.strs.len()),
                         injections: Vec::new(),
                         is_parsing: false,
                     });
@@ -431,8 +440,8 @@ impl Parser {
     }
 
     /// The expected level of indentation on a given [`Point`]
-    pub fn indent_on<'a>(&'a self, lnum: usize, bytes: &Bytes, opts: PrintOpts) -> Option<usize> {
-        let line_range = bytes.line(lnum).range();
+    pub fn indent_on<'a>(&'a self, lnum: usize, strs: &Strs, opts: PrintOpts) -> Option<usize> {
+        let line_range = strs.line(lnum).range();
 
         let (_, tree) = self
             .trees
@@ -443,7 +452,7 @@ impl Parser {
         if let Some(indent) = self
             .injections
             .iter()
-            .find_map(|injection| injection.indent_on(lnum, bytes, opts))
+            .find_map(|injection| injection.indent_on(lnum, strs, opts))
         {
             return Some(indent);
         }
@@ -451,7 +460,7 @@ impl Parser {
         let (.., Queries { indents, .. }) = self.lang_parts;
 
         let root = ts_tree.root_node();
-        let first_line_point = bytes.point_at_byte(tree.region.iter().next().unwrap().start);
+        let first_line_point = strs.point_at_byte(tree.region.iter().next().unwrap().start);
 
         // The query could be empty.
         if indents.pattern_count() == 0 {
@@ -459,7 +468,7 @@ impl Parser {
         }
 
         let mut cursor = QueryCursor::new();
-        let buf = TsBuf(bytes);
+        let buf = TsBuf(strs);
 
         // TODO: Don't reparse python, apparently.
 
@@ -506,7 +515,7 @@ impl Parser {
         };
 
         // The first non indent character of this line.
-        let indented_start_column = bytes[line_range.start..]
+        let indented_start_column = strs[line_range.start..]
             .chars()
             .take_while(|char| *char != '\n')
             .position(|char| !char.is_whitespace());
@@ -518,7 +527,7 @@ impl Parser {
             let is_not_ws = |(_, char): &(_, char)| !char.is_ascii_whitespace();
 
             // Find last previous empty line.
-            let mut lines = bytes[..line_range.start].lines().rev();
+            let mut lines = strs[..line_range.start].lines().rev();
             let Some(line) = lines
                 .find(|line| !line.chars().all(|char| char.is_whitespace()))
                 .filter(|line| line.range().start.line() >= first_line_point.line())
@@ -555,7 +564,7 @@ impl Parser {
 
         let tab = opts.tabstop as i32;
         let mut indent = if root.start_byte() != 0 {
-            bytes.indent(root.start_position().row, opts) as i32
+            strs.line(root.start_position().row).indent(opts) as i32
         } else {
             0
         };
@@ -613,15 +622,10 @@ impl Parser {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
-                    let range = bytes.line(child.start_position().row).byte_range();
-                    let range = child.range().start_byte..range.end;
+                    let line_range = strs.line(child.start_position().row).byte_range();
+                    let range = child.range().end_byte..line_range.end;
 
-                    let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
-                        line.split_whitespace().any(|w| w != delim)
-                    } else {
-                        let line = bytes.slices(range).try_to_string().unwrap();
-                        line.split_whitespace().any(|w| w != delim)
-                    };
+                    let is_last_in_line = strs[range].chars().all(|char| char.is_whitespace());
 
                     (child, is_last_in_line)
                 });
@@ -740,12 +744,12 @@ fn ts_tagger() -> Tagger {
     *TAGGER
 }
 
-fn input_edit(change: Change<&str>, bytes: &Bytes) -> InputEdit {
+fn input_edit(change: Change<&str>, strs: &Strs) -> InputEdit {
     let start = change.start();
     let added = change.added_end();
     let taken = change.taken_end();
 
-    let ts_start = ts_point(start, bytes);
+    let ts_start = ts_point(start, strs);
     let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_str());
     let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_str());
 
@@ -782,9 +786,9 @@ fn get_visible_ranges(printed_lines: &[Range<usize>]) -> Vec<Range<usize>> {
     ranges_to_parse
 }
 
-fn ts_point(point: Point, bytes: &Bytes) -> TsPoint {
-    let strs = bytes.slices(..point.byte());
-    let iter = strs.into_iter().rev();
+fn ts_point(point: Point, strs: &Strs) -> TsPoint {
+    let slices = strs.slices(..point.byte());
+    let iter = slices.into_iter().flat_map(|s| s.iter().copied()).rev();
     let col = iter.take_while(|&b| b != b'\n').count();
 
     TsPoint::new(point.line(), col)
@@ -805,8 +809,8 @@ fn apply_changes(parts: &BufferParts<'_>, parser: &mut Parser) {
     for change in parts.changes.clone() {
         parts
             .ranges_to_update
-            .add_ranges([change.line_range(parts.bytes)]);
-        let edit = input_edit(change, parts.bytes);
+            .add_ranges([change.line_range(parts.strs)]);
+        let edit = input_edit(change, parts.strs);
         parser.edit(&edit);
     }
 }
@@ -819,8 +823,8 @@ fn descendant_in(node: Node, line: usize, column: usize) -> Node {
     node.descendant_for_point_range(start, end).unwrap()
 }
 
-fn parser_fn<'a>(bytes: &'a Bytes) -> impl FnMut(usize, TsPoint) -> &'a [u8] {
-    let [s0, s1] = bytes.slices(..).to_array();
+fn parser_fn<'a>(strs: &'a Strs) -> impl FnMut(usize, TsPoint) -> &'a [u8] {
+    let [s0, s1] = strs.slices(..);
     |byte, _point| {
         if byte < s0.len() {
             &s0[byte..]
@@ -868,14 +872,14 @@ fn forms_from_lang_parts(
 }
 
 #[derive(Clone, Copy)]
-struct TsBuf<'a>(&'a Bytes);
+struct TsBuf<'a>(&'a Strs);
 
 impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
     type I = std::array::IntoIter<&'a [u8], 2>;
 
     fn text(&mut self, node: tree_sitter::Node) -> Self::I {
         let range = node.range();
-        let buffers = self.0.slices(range.start_byte..range.end_byte);
-        buffers.to_array().into_iter()
+        let slices = self.0.slices(range.start_byte..range.end_byte);
+        slices.into_iter()
     }
 }

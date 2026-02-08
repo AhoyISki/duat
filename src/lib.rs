@@ -107,46 +107,50 @@ impl duat_core::Plugin for TreeSitter {
             }
         }
 
-        form::set_many_weak!(
-            ("variable", Form::white()),
-            ("variable.builtin", Form::dark_yellow()),
-            ("constant", Form::grey()),
-            ("constant.builtin", Form::dark_yellow()),
-            ("module", Form::blue().italic()),
-            ("label", Form::green()),
-            ("string", Form::green()),
-            ("character", Form::dark_yellow()),
-            ("boolean", Form::dark_yellow()),
-            ("number", Form::dark_yellow()),
-            ("type", Form::yellow().italic()),
-            ("type.builtin", Form::yellow().reset()),
-            ("attribute", Form::green()),
-            ("property", Form::green()),
-            ("function", Form::blue().reset()),
-            ("constructor", Form::dark_yellow().reset()),
-            ("operator", Form::cyan()),
-            ("keyword", Form::magenta()),
-            ("punctuation.bracket", Form::grey()),
-            ("punctuation.delimiter", Form::grey()),
-            ("comment", Form::grey()),
-            ("comment.documentation", Form::grey().bold()),
-            ("markup.strong", Form::bold()),
-            ("markup.italic", Form::italic()),
-            ("markup.strikethrough", Form::crossed_out()),
-            ("markup.underline", Form::underlined()),
-            ("markup.heading", Form::blue().bold()),
-            ("markup.math", Form::yellow()),
-            ("markup.quote", Form::grey().italic()),
-            ("markup.link", Form::blue().underlined()),
-            ("markup.raw", Form::cyan()),
-            ("markup.list", Form::yellow()),
-            ("markup.list.checked", Form::green()),
-            ("markup.list.unchecked", Form::grey()),
-            ("diff.plus", Form::red()),
-            ("diff.delta", Form::blue()),
-            ("diff.minus", Form::green()),
-            ("node.field", "variable.member"),
-        );
+        let forms = [
+            ("variable", Form::new().white()),
+            ("variable.builtin", Form::new().dark_yellow()),
+            ("constant", Form::new().grey()),
+            ("constant.builtin", Form::new().dark_yellow()),
+            ("module", Form::new().blue().italic()),
+            ("label", Form::new().green()),
+            ("string", Form::new().green()),
+            ("character", Form::new().dark_yellow()),
+            ("boolean", Form::new().dark_yellow()),
+            ("number", Form::new().dark_yellow()),
+            ("type", Form::new().yellow().italic()),
+            ("type.builtin", Form::new().yellow().reset()),
+            ("attribute", Form::new().green()),
+            ("property", Form::new().green()),
+            ("function", Form::new().blue().reset()),
+            ("constructor", Form::new().dark_yellow().reset()),
+            ("operator", Form::new().cyan()),
+            ("keyword", Form::new().magenta()),
+            ("punctuation.bracket", Form::new().grey()),
+            ("punctuation.delimiter", Form::new().grey()),
+            ("comment", Form::new().grey()),
+            ("comment.documentation", Form::new().grey().bold()),
+            ("markup.strong", Form::new().bold()),
+            ("markup.italic", Form::new().italic()),
+            ("markup.strikethrough", Form::new().crossed_out()),
+            ("markup.underline", Form::new().underlined()),
+            ("markup.heading", Form::new().blue().bold()),
+            ("markup.math", Form::new().yellow()),
+            ("markup.quote", Form::new().grey().italic()),
+            ("markup.link", Form::new().blue().underlined()),
+            ("markup.raw", Form::new().cyan()),
+            ("markup.list", Form::new().yellow()),
+            ("markup.list.checked", Form::new().green()),
+            ("markup.list.unchecked", Form::new().grey()),
+            ("diff.plus", Form::new().red()),
+            ("diff.delta", Form::new().blue()),
+            ("diff.minus", Form::new().green()),
+            ("node.field", Form::mimic("variable.member")),
+        ];
+
+        for (name, form) in forms {
+            form::set_weak(name, form);
+        }
 
         parser::add_parser_hook();
     }
@@ -298,8 +302,8 @@ impl TsHandle for Handle {
         carets
             .into_iter()
             .map(|lnum| {
-                let bytes = buffer.bytes();
-                parser.indent_on(lnum, bytes, buffer.print_opts())
+                let text = buffer.text();
+                parser.indent_on(lnum, text, buffer.print_opts())
             })
             .collect()
     }

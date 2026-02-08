@@ -1,9 +1,9 @@
-use duat_core::text::Bytes;
+use duat_core::text::Strs;
 use tree_sitter::{Node, TreeCursor};
 
 #[allow(unused)]
 pub struct Cursor<'a> {
-    bytes: &'a Bytes,
+    strs: &'a Strs,
     cursor: TreeCursor<'a>,
 }
 
