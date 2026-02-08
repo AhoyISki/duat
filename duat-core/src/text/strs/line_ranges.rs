@@ -9,8 +9,10 @@
 //!
 //! [`Text`]: super::Text
 //! [`InnerTags`]: super::InnerTags
-use super::shift_list::{Shift, ShiftList, Shiftable};
-use crate::text::Point;
+use crate::text::{
+    Point,
+    shift_list::{Shift, ShiftList, Shiftable},
+};
 
 /// The records of a [`Text`] or [`InnerTags`].
 ///

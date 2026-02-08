@@ -1,30 +1,39 @@
-//! The equivalent of [`&str`] for Duat.
+//! The equivalent of [`str`] for Duat.
 //!
 //! This module defines the [`Strs`] struct, which is a type that,
 //! much like `str`, only shows up as `&Strs`. This is the only avenue
 //! of direct interaction that the end user will get in regards to the
 //! bytes of the [`Text`].
 //!
-//! The [`Strs`] are backed by an [`StrsBuf`] struct, which owns the
+//! The `Strs` are backed by an [`StrsBuf`] struct, which owns the
 //! allocation of the [`GapBuffer`] of the utf-8 text.
 //!
 //! [`Text`]: super::Text
-//! [`StrsBuf`]:
+//! [`StrsBuf`]: buf::StrsBuf
+//! [`GapBuffer`]: gap_buf::GapBuffer
 use std::{ops::Range, sync::LazyLock};
 
-pub use bytes::{Bytes, Slices};
+pub use buf::{StrsBuf, Slices};
 
 use crate::{
     opts::PrintOpts,
-    text::{Point, TextIndex, TextRange, strs::bytes::assert_utf8_boundary},
+    text::{Point, TextIndex, TextRange, strs::buf::assert_utf8_boundary},
 };
 
-mod bytes;
+mod buf;
+mod line_ranges;
 
-/// The [`&str`] equivalent for [`Bytes`]
+/// The [`str`] equivalent for Duat.
 ///
-/// [`&str`]: str
-/// [`Text`]: crate::text::Text
+/// Due to Duat's use of a [gap buffer] to represent the [`Text`],
+/// this struct doesn't represent just one slice like a `&str` does.
+/// Instead, it represents two slices (either being possibly empty).
+///
+/// This is done by making use of a custom dynamically sized type,
+/// allowing for near identical utilization.
+///
+/// [gap buffer]: https://en.wikipedia.org/wiki/Gap_buffer
+/// [`Text`]: super::Text
 // I need it to be like this so it is a wide pointer, which can be
 // turned into a reference that can be used for indexing and std::ops::Deref.
 #[repr(transparent)]
@@ -32,11 +41,11 @@ pub struct Strs(StrsDST);
 
 impl Strs {
     /// Returns a new `Strs`.
-    pub(super) fn new(bytes: &Bytes, start: u32, len: u32) -> &Self {
+    pub(super) fn new(bytes: &StrsBuf, start: u32, len: u32) -> &Self {
         // Safety: Since the ordering of fields shouldn't change, this should
         // be fine.
         let start_and_len = unsafe { std::mem::transmute::<[u32; 2], usize>([start, len]) };
-        let ptr = std::ptr::slice_from_raw_parts(bytes as *const Bytes, start_and_len);
+        let ptr = std::ptr::slice_from_raw_parts(bytes as *const StrsBuf, start_and_len);
 
         // Safety: Since the address is valid, this should be converted to a
         // quasi wide pointer, where the metadata is size-like, but encodes
@@ -51,16 +60,19 @@ impl Strs {
     /// This is the equivalent of `strs.range().start`.
     pub fn start_point(&self) -> Point {
         let formed = FormedStrs::new(self);
-
-        let slices = unsafe {
-            let (s0, s1) = formed.bytes.buf.as_slices();
-            [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
-        };
-        formed
-            .bytes
-            .line_ranges
-            .point_by_key(formed.start as usize, |[b, _]| b, slices)
-            .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+        if formed.start == 0 {
+            Point::default()
+        } else {
+            let slices = unsafe {
+                let (s0, s1) = formed.bytes.buf.as_slices();
+                [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
+            };
+            formed
+                .bytes
+                .line_ranges
+                .point_by_key(formed.start as usize, |[b, _]| b, slices)
+                .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+        }
     }
 
     /// The [`Point`] at the end of the `Strs`.
@@ -68,17 +80,22 @@ impl Strs {
     /// This is the equivalent of `strs.range().end`.
     pub fn end_point(&self) -> Point {
         let formed = FormedStrs::new(self);
-        let byte = formed.start as usize + formed.len as usize;
 
         let slices = unsafe {
             let (s0, s1) = formed.bytes.buf.as_slices();
             [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
         };
-        formed
-            .bytes
-            .line_ranges
-            .point_by_key(byte, |[b, _]| b, slices)
-            .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+
+        let byte = formed.start as usize + formed.len as usize;
+        if byte == formed.bytes.buf.len() {
+            formed.bytes.line_ranges.max(slices)
+        } else {
+            formed
+                .bytes
+                .line_ranges
+                .point_by_key(byte, |[b, _]| b, slices)
+                .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+        }
     }
 
     /// The `char` at a given position.
@@ -122,7 +139,7 @@ impl Strs {
     ///
     /// # Panics
     ///
-    /// Will panic if `b` is greater than the length of the text
+    /// Will panic if `b` is greater than the length of the text.
     #[inline(always)]
     #[track_caller]
     pub fn point_at_byte(&self, byte: usize) -> Point {
@@ -197,7 +214,7 @@ impl Strs {
     /// # Panics
     ///
     /// Will panic if the number `l` is greater than the number of
-    /// lines on the text
+    /// lines on the text.
     #[inline(always)]
     #[track_caller]
     pub fn point_at_coords(&self, line: usize, column: usize) -> Point {
@@ -254,7 +271,7 @@ impl Strs {
         }
     }
 
-    /// The `Strs` for the `n`th line
+    /// The `Strs` for the `n`th line.
     ///
     /// # Panics
     ///
@@ -282,11 +299,11 @@ impl Strs {
     /// to.
     ///
     /// You should use this function if you want to create an api that
-    /// requires the whole [`Strs`] to be used as an argument. You can
-    /// accept any [`Strs`], then just transform it to the full one
+    /// requires the whole `Strs` to be used as an argument. You can
+    /// accept any `Strs`, then just transform it to the full one
     /// using this function.
     ///
-    /// If this [`Strs`] is from [`Strs::empty`], then this will
+    /// If this `Strs` is from `Strs::empty`, then this will
     /// return itself.
     ///
     /// [`Text`]: super::Text
@@ -308,15 +325,15 @@ impl Strs {
         formed.bytes.end_point().rev('\n')
     }
 
-    /// Tries to get a subslice of the [`Bytes`]
+    /// Tries to get a subslice of the `Strs`
     ///
     /// It will return [`None`] if the range does not start or end in
     /// valid utf8 boundaries. If you expect the value to alway be
     /// `Some`, consider using the index operator (`[]`) instead.
     ///
     /// This method is conceptually similar to [`&str::get`], but the
-    /// reference is to an [`Strs`] struct. This struct points to a
-    /// subslice of the [`Bytes`]s, which is actually two slices,
+    /// reference is to an `Strs` struct. This struct points to a
+    /// subslice of the `Strs`s, which is actually two slices,
     /// given the internal gap buffer representation.
     ///
     /// This type is supposed to act nearly identically with the
@@ -438,7 +455,7 @@ impl Strs {
 
     /// Gets the indentation level of this `Strs`
     ///
-    /// This assumes that it is a line in the [`Bytes`], ending with
+    /// This assumes that it is a line in the `Strs`, ending with
     /// `\n` or `\r\n`.
     ///
     /// This is the total "amount of spaces", that is, how many `' '`
@@ -518,7 +535,7 @@ impl std::fmt::Debug for Strs {
     }
 }
 
-static EMPTY_BYTES: LazyLock<Bytes> = LazyLock::new(Bytes::default);
+static EMPTY_BYTES: LazyLock<StrsBuf> = LazyLock::new(StrsBuf::default);
 
 /// Given a first byte, determines how many bytes are in this UTF-8
 /// character.
@@ -550,14 +567,14 @@ pub const fn utf8_char_width(b: u8) -> usize {
 
 /// An [`Iterator`] over the lines on an [`Strs`]
 pub struct Lines<'b> {
-    bytes: &'b Bytes,
+    bytes: &'b StrsBuf,
     start: usize,
     end: usize,
     finger_back: usize,
 }
 
 impl<'b> Lines<'b> {
-    fn new(bytes: &'b Bytes, start: usize, end: usize) -> Self {
+    fn new(bytes: &'b StrsBuf, start: usize, end: usize) -> Self {
         Self { bytes, start, end, finger_back: end }
     }
 
@@ -648,21 +665,21 @@ impl std::iter::FusedIterator for Lines<'_> {}
 /// A deconstructed internal representation of an [`Strs`],
 /// useful for not doing a bunch of unsafe operations.
 struct FormedStrs<'b> {
-    bytes: &'b Bytes,
+    bytes: &'b StrsBuf,
     start: u32,
     len: u32,
 }
 
 impl<'b> FormedStrs<'b> {
     fn new(strs: &'b Strs) -> Self {
-        let ptr = strs as *const Strs as *const [Bytes];
+        let ptr = strs as *const Strs as *const [StrsBuf];
         // Safety: Since the len was created by the inverted operation, this
         // should be fine.
         let [start, len] = unsafe { std::mem::transmute::<usize, [u32; 2]>(ptr.len()) };
 
         Self {
-            // Safety: When creating the Strs, a valid Bytes was at the address.
-            bytes: unsafe { &*(ptr as *const Bytes) },
+            // Safety: When creating the Strs, a valid StrsBuf was at the address.
+            bytes: unsafe { &*(ptr as *const StrsBuf) },
             start,
             len,
         }
@@ -670,4 +687,4 @@ impl<'b> FormedStrs<'b> {
 }
 
 #[repr(transparent)]
-struct StrsDST([Bytes]);
+struct StrsDST([StrsBuf]);

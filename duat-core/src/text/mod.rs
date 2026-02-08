@@ -102,7 +102,7 @@ use crate::{
     data::Pass,
     mode::{Selection, Selections},
     text::{
-        strs::Bytes,
+        strs::StrsBuf,
         tags::{FwdTags, InnerTags, RevTags},
         utils::implPartialEq,
     },
@@ -111,7 +111,6 @@ use crate::{
 
 mod builder;
 mod iter;
-mod line_ranges;
 mod search;
 mod shift_list;
 mod strs;
@@ -123,7 +122,7 @@ mod utils;
 /// The [`Text`] is the backbone of Duat. It is the thing responsible
 /// for everything that shows up on screen.
 ///
-/// You can build a [`Text`] manually, by using [`Text::new`], or with
+/// You can build a `Text` manually, by using [`Text::new`], or with
 /// some convenience, by using the [`txt!`] macro, making use of a
 /// [`Builder`].
 ///
@@ -132,7 +131,7 @@ pub struct Text(Box<InnerText>);
 
 #[derive(Clone)]
 struct InnerText {
-    bytes: Bytes,
+    bytes: StrsBuf,
     tags: InnerTags,
     selections: Selections,
     has_unsaved_changes: bool,
@@ -141,7 +140,7 @@ struct InnerText {
 impl Text {
     ////////// Creation and Destruction of Text
 
-    /// Returns a new empty [`Text`].
+    /// Returns a new empty `Text`.
     pub fn new() -> Self {
         Self::from_parts(String::new(), Selections::new_empty())
     }
@@ -151,9 +150,9 @@ impl Text {
         Self::from_parts(String::new(), Selections::new(Selection::default()))
     }
 
-    /// Creates a [`Text`] from [`Bytes`].
+    /// Creates a `Text` from a [`String`]
     pub(crate) fn from_parts(buffer: String, mut selections: Selections) -> Self {
-        let mut bytes = Bytes::new(&buffer);
+        let mut bytes = StrsBuf::new(&buffer);
 
         if bytes.slices(..).next_back().is_none_or(|b| b != b'\n') {
             let end = bytes.end_point();
@@ -213,15 +212,15 @@ impl Text {
         (s0 == "\n" && s1.is_empty()) || (s0.is_empty() && s1 == "\n")
     }
 
-    /// Whether the [`Bytes`] and `InnerTags` are empty
+    /// Whether the [`Strs`] and `InnerTags` are empty
     ///
     /// This ignores the last `'\n'` in the [`Text`], since it is
     /// always there no matter what.
     ///
-    /// If you only want to check for the [`Bytes`], ignoring possible
+    /// If you only want to check for the [`Strs`], ignoring possible
     /// [`Ghost`]s, see [`is_empty`].
     ///
-    /// [`is_empty`]: Bytes::is_empty
+    /// [`is_empty`]: Strs::is_empty
     pub fn is_empty_empty(&self) -> bool {
         self.0.bytes.is_empty() && self.0.tags.is_empty()
     }
@@ -231,11 +230,10 @@ impl Text {
     /// This function is used when you want to [insert]/[remove]
     /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
     /// [`Tags`]), while still being able to read from the
-    /// [`Bytes`] and [`Selections`].
+    /// [`Strs`] and [`Selections`].
     ///
     /// [insert]: Tags::insert
     /// [remove]: Tags::remove
-    /// [`&mut Bytes`]: Bytes
     pub fn parts(&mut self) -> TextParts<'_> {
         TextParts {
             strs: &self.0.bytes,
@@ -648,7 +646,7 @@ impl Text {
     /// This struct tracks all [`Change`]s and [`Tag`]
     /// additions/removals, giving you information about wether this
     /// `Text` has changed, when comparing this to previous
-    /// [`TextState`]s of the same `Text`.
+    /// [`TextVersion`]s of the same `Text`.
     ///
     /// This _does_ also include things like undoing and redoing. This
     /// is done to keep track of all changes that took place, even to
@@ -731,11 +729,10 @@ impl<'t> TextMut<'t> {
     /// This function is used when you want to [insert]/[remove]
     /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
     /// [`Tags`]), while still being able to read from the
-    /// [`Bytes`] and [`Selections`].
+    /// [`Strs`] and [`Selections`].
     ///
     /// [insert]: Tags::insert
     /// [remove]: Tags::remove
-    /// [`&mut Bytes`]: Bytes
     pub fn parts(self) -> TextParts<'t> {
         self.text.parts()
     }
@@ -924,8 +921,8 @@ pub struct TextParts<'a> {
     pub strs: &'a Strs,
     /// The [`Tags`] of the [`Text`]
     ///
-    /// This, unlike [`Bytes`], allows mutation in the form of
-    /// [adding] and [removing] [`Tag`]s.
+    /// This, unlike the previous field, allows mutation in the form
+    /// of [adding] and [removing] [`Tag`]s.
     ///
     /// [adding]: Tags::insert
     /// [removing]: Tags::remove
@@ -946,12 +943,12 @@ pub struct TextParts<'a> {
 /// certain properties of the `Text` have changed.
 ///
 /// Note that this is a [`Text`] agnostic struct, comparing the
-/// `TextState`s from two different `Text`s is pointless.
+/// `TextVersion`s from two different `Text`s is pointless.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TextVersion {
-    /// The current version of the [`Bytes`]
+    /// The current version of the [`Strs`]
     ///
-    /// Any change to the `Bytes`, even undoing, will incur a version
+    /// Any change to the `Strs`, even undoing, will incur a version
     /// increment.
     pub bytes: u64,
     /// the current version of [`Tags`]
@@ -974,7 +971,7 @@ impl TextVersion {
         self.bytes > other.bytes || self.tags > other.tags || self.meta_tags > other.meta_tags
     }
 
-    /// Wether the [`Bytes`] have changed since this previous instance
+    /// Wether the [`Strs`] have changed since this previous instance
     pub fn strs_have_changed_since(&self, other: Self) -> bool {
         self.bytes > other.bytes
     }
@@ -996,7 +993,7 @@ impl TextVersion {
     ///
     /// A `Text` has structurally changed when printing it from the
     /// same point could result in a different characters being
-    /// printed. This not only happens when the [`Bytes`] change, but
+    /// printed. This not only happens when the [`Strs`] change, but
     /// also with certain [`Tag`]s, like [`Ghost`] and [`Conceal`],
     /// which also add and remove characters to be printed.
     ///

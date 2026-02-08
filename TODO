@@ -29,7 +29,7 @@ FOR NEXT UPDATE:
 [x] Use a lines based system for large enough text.
 [x] Get rid of Lender entirely.
 [x] Lean up the dependency tree.
-[ ] Make Bytes private 🤯.
+[x] Make Bytes private 🤯.
 [ ] Make Inlay text much more powerful.
 
 KNOWN BUGS:

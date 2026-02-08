@@ -1,16 +1,16 @@
-//! The functions for iteration of [`Text`]s
+//! The functions for iteration of [`Text`]s.
 //!
 //! These functions will iterate over the text, reverse or forwards,
 //! keeping track of characters and [`Tag`]s, sending them in order,
 //! while also hiding the existance of certain "meta" tags, namely the
 //! [ghost] and [concealment] tags. This allows for a seemless
 //! iteration which is especially useful for printing, as the printer
-//! only needs to care about [`char`]s and [`Tag`]s, most of which are
-//! just [`Form`] changing [`Tag`]s
+//! only needs to care about [`char`]s and `Tag`s, most of which are
+//! just [`Form`] changing `Tag`s
 //!
 //! [`Tag`]: super::Tag
 //! [ghost]: super::Ghost
-//! [concealment]: super::StartConceal
+//! [concealment]: super::Conceal
 //! [`Form`]: crate::form::Form
 use std::{
     iter::{Chain, Rev},
@@ -25,7 +25,7 @@ use crate::text::{TwoPoints, tags::InnerTags};
 
 /// An [`Iterator`] over the [`TextPart`]s of the [`Text`].
 ///
-/// This is useful for both printing and measurement of [`Text`], and
+/// This is useful for both printing and measurement of `Text`, and
 /// can incorporate string replacements as part of its design.
 #[derive(Clone)]
 pub struct FwdIter<'t> {
@@ -43,7 +43,7 @@ pub struct FwdIter<'t> {
 
 impl<'t> FwdIter<'t> {
     /// Returns a new forward [`Iterator`] over the [`TextPlace`]s in
-    /// the [`Text`]
+    /// the [`Text`].
     #[track_caller]
     pub(super) fn new_at(text: &'t Text, points: TwoPoints, is_ghost: bool) -> Self {
         let TwoPoints { real, ghost } = points;
@@ -82,7 +82,7 @@ impl<'t> FwdIter<'t> {
 
     ////////// Querying functions
 
-    /// Wether the [`Iterator`] is on a [`Ghost`]
+    /// Wether the [`Iterator`] is on a [`Ghost`].
     ///
     /// [`Ghost`]: super::Ghost
     #[inline(always)]
@@ -91,7 +91,7 @@ impl<'t> FwdIter<'t> {
     }
 
     /// Returns the current real and ghost [`Point`]s of the
-    /// [`Iterator`]
+    /// [`Iterator`].
     #[inline(always)]
     pub fn points(&self) -> TwoPoints {
         if let Some(MainIter { point, .. }) = self.main_iter.as_ref() {
@@ -101,12 +101,12 @@ impl<'t> FwdIter<'t> {
         }
     }
 
-    /// The [`Text`] that's being iterated over
+    /// The [`Text`] that's being iterated over.
     pub fn text(&self) -> &Text {
         self.text
     }
 
-    /// Handles special [`Tag`]s and [`Tag`] exceptions
+    /// Handles meta [`Tag`]s.
     ///
     /// [`Tag`]: super::Tag
     #[inline(always)]
@@ -224,7 +224,7 @@ pub struct RevIter<'t> {
 
 impl<'t> RevIter<'t> {
     /// Returns a new reverse [`Iterator`] over the [`TextPlace`]s in
-    /// the [`Text`]
+    /// the [`Text`].
     #[track_caller]
     pub(super) fn new_at(text: &'t Text, points: TwoPoints) -> Self {
         let TwoPoints { real, ghost } = points;
@@ -250,7 +250,7 @@ impl<'t> RevIter<'t> {
 
     ////////// Querying functions
 
-    /// Returns the current real and ghost [`Point`]s
+    /// Returns the current real and ghost [`Point`]s.
     pub fn points(&self) -> TwoPoints {
         if let Some(MainIter { point, .. }) = self.main_iter.as_ref() {
             TwoPoints::new(*point, self.point)
@@ -261,19 +261,19 @@ impl<'t> RevIter<'t> {
         }
     }
 
-    /// The [`Text`] that's being iterated over
+    /// The [`Text`] that's being iterated over.
     pub fn text(&self) -> &'t Text {
         self.text
     }
 
-    /// Wether the [`Iterator`] is on a [`Ghost`]
+    /// Wether the [`Iterator`] is on a [`Ghost`].
     ///
     /// [`Ghost`]: super::Ghost
     pub fn is_on_ghost(&self) -> bool {
         self.main_iter.is_some()
     }
 
-    /// Handles special [`Tag`]s and [`Tag`] exceptions
+    /// Handles meta [`Tag`]s.
     ///
     /// [`Tag`]: super::Tag
     #[inline]
@@ -389,30 +389,30 @@ fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
     s1.chars().rev().chain(s0.chars().rev())
 }
 
-/// An element of a [`Text`]
+/// An element of a [`Text`].
 ///
 /// This struct is comprised of three parts:
 ///
-/// - A real [`Point`], representing a position on the real [`Text`];
-/// - A ghost [`Point`], which is a position in a [`Ghost`], [`None`]
-///   if not in a [`Ghost`];
+/// - A real [`Point`], representing a position on the real `Text`;
+/// - A ghost `Point`, which is a position in a [`Ghost`], [`None`]
+///   if not in a `Ghost`;
 /// - A [`TextPart`], which will either be a `char` or a [`Tag`];
 ///
 /// [`Ghost`]: super::Ghost
 /// [`Tag`]: super::Tag
 #[derive(Debug, Clone, Copy)]
 pub struct TextPlace<'t> {
-    /// The real [`Point`]
+    /// The real [`Point`].
     pub real: Point,
-    /// The [`Point`] in a [`Ghost`]
+    /// The [`Point`] in a [`Ghost`].
     ///
-    /// If there are multiple [`Ghost`]s in the same character, this
-    /// [`Point`] will point to a sum of the previous [`Text`]'s
-    /// [lengths] plus the position on this specific [`Ghost`], so
-    /// every [`Point`] should point to a specific position in a char.
+    /// If there are multiple `Ghost`s in the same character, this
+    /// `Point` will point to a sum of the previous [`Text`]'s
+    /// [lengths] plus the position on this specific `Ghost`, so
+    /// every `Point` should point to a specific position in a char.
     ///
     /// [`Ghost`]: super::Ghost
-    /// [lengths]: super::Bytes::len
+    /// [lengths]: super::Strs::len
     pub ghost: Option<Point>,
     /// A [`TextPart`], which will either be a `char` or a [`Tag`];
     ///
@@ -421,21 +421,21 @@ pub struct TextPlace<'t> {
 }
 
 impl<'t> TextPlace<'t> {
-    /// Returns a new [`TextPlace`]
+    /// Returns a new [`TextPlace`].
     #[inline]
     const fn new(points: TwoPoints, part: TextPart<'t>) -> Self {
         let TwoPoints { real, ghost } = points;
         Self { real, ghost, part }
     }
 
-    /// Whether this [`TextPlace`] is in a [`Ghost`]
+    /// Whether this [`TextPlace`] is in a [`Ghost`].
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn is_real(&self) -> bool {
         self.ghost.is_none()
     }
 
-    /// Returns the real position, if not on a [`Ghost`]
+    /// Returns the real position, if not on a [`Ghost`].
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn as_real_char(self) -> Option<(Point, char)> {
@@ -449,22 +449,22 @@ impl<'t> TextPlace<'t> {
         }
     }
 
-    /// The real [byte](Point::byte)
+    /// The real [byte](Point::byte).
     pub const fn byte(&self) -> usize {
         self.real.byte()
     }
 
-    /// The real [char](Point::char)
+    /// The real [char](Point::char).
     pub const fn char(&self) -> usize {
         self.real.char()
     }
 
-    /// The real [line](Point::line)
+    /// The real [line](Point::line).
     pub const fn line(&self) -> usize {
         self.real.line()
     }
 
-    /// The real and ghost [`Point`]s, can be used as [`TwoPoints`]
+    /// The real and ghost [`Point`]s, can be used as [`TwoPoints`].
     pub const fn points(&self) -> TwoPoints {
         if let Some(ghost) = self.ghost {
             TwoPoints::new(self.real, ghost)
@@ -499,49 +499,45 @@ use crate::form::FormId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[doc(hidden)]
 pub enum TextPart<'t> {
-    /// A printed `char`, can be real or a [`Ghost`]
+    /// A printed `char`, can be real or a [`Ghost`].
     ///
     /// [`Ghost`]: super::Ghost
     Char(char),
-    /// Push a [`Form`] to the [`Painter`]
+    /// Push a [`Form`] to the [`Painter`].
     ///
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
     PushForm(FormId, u8),
-    /// Pop a [`Form`] from the [`Painter`]
+    /// Pop a [`Form`] from the [`Painter`].
     ///
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
     PopForm(FormId),
-    /// Add a [`Spacer`]
+    /// Add a [`Spacer`].
     ///
     /// [`Spacer`]: super::Spacer
     Spacer,
-    /// Replaces the next character, or the next space of a tab
+    /// Replaces the next character, or the next space of a tab.
     SwapChar(char),
-    /// Starts a toggleable region for the given [`ToggleId`]
-    ///
-    /// Not yet implemented
+    /// Starts a toggleable region for the given [`ToggleId`].
     ToggleStart(ToggleId),
-    /// Ends a toggleable region for the given [`ToggleId`]
-    ///
-    /// Not yet implemented
+    /// Ends a toggleable region for the given [`ToggleId`].
     ToggleEnd(ToggleId),
-    /// A spawned [`Widget`]
+    /// A spawned [`Widget`].
     ///
     /// [`Widget`]: crate::ui::Widget
     SpawnedWidget(SpawnId),
 
-    /// An inlay [`Text`]
+    /// An inlay [`Text`].
     Inlay(&'t Text),
 
-    /// Resets all [`FormId`]s, [`ToggleId`]s and alignments
+    /// Resets all [`FormId`]s, [`ToggleId`]s and alignments.
     ///
     /// Used when a [`Conceal`] covers a large region, which Duat
     /// optimizes by just not iterating over the [`TextPart`]s within.
     /// This could skip some [`Tag`]s, so this variant serves the
     /// purpose of terminating or initiating in place of skipped
-    /// [`Tag`]s
+    /// [`Tag`]s.
     ///
     /// This variant does not actually represent any [`Tag`].
     ///
@@ -551,7 +547,7 @@ pub enum TextPart<'t> {
 }
 
 impl<'t> TextPart<'t> {
-    /// Returns a new [`TextPart`] from a [`RawTag`]
+    /// Returns a new [`TextPart`] from a [`RawTag`].
     #[inline]
     pub(super) fn from_raw(tags: &'t InnerTags, value: RawTag) -> Self {
         match value {
@@ -570,26 +566,26 @@ impl<'t> TextPart<'t> {
         }
     }
 
-    /// Returns `true` if the part is [`Char`]
+    /// Returns `true` if the part is [`Char`].
     ///
-    /// [`Char`]: Part::Char
+    /// [`Char`]: TextPart::Char
     #[must_use]
     #[inline]
     pub const fn is_char(&self) -> bool {
         matches!(self, TextPart::Char(_))
     }
 
-    /// Returns `true` if the part is not [`Char`]
+    /// Returns `true` if the part is not [`Char`].
     ///
-    /// [`Char`]: Part::Char
+    /// [`Char`]: TextPart::Char
     #[inline]
     pub const fn is_tag(&self) -> bool {
         !self.is_char()
     }
 
-    /// Returns [`Some`] if the part is [`Char`]
+    /// Returns [`Some`] if the part is [`Char`].
     ///
-    /// [`Char`]: Part::Char
+    /// [`Char`]: TextPart::Char
     #[inline]
     pub const fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self {

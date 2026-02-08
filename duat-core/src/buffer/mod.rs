@@ -514,8 +514,8 @@ impl Handle {
 
     /// Returns the list of printed lines.
     ///
-    /// These are returned as [`Strs`], which is a known subsection of
-    /// a [`Bytes`] struct, from the [`Text`].
+    /// These are returned as [`Strs`], which are duat's equivalent of
+    /// [`str`] for the [`Text`] struct.
     ///
     /// Note that this function returns all portions of printed lines,
     /// not just those that are visible. This means that it will also

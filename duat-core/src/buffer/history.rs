@@ -405,7 +405,7 @@ impl Change<'static, String> {
         };
 
         let taken = text[range.clone()].to_string();
-        let added_end = add(range.start.as_signed(), Point::len_of(&added).as_signed());
+        let added_end = add(range.start.as_signed(), Point::end_point_of(&added).as_signed());
         Change {
             start: range.start.as_signed(),
             added,
@@ -460,8 +460,8 @@ impl Change<'static, String> {
         } else {
             panic!("Changes chosen that don't interact");
         }
-        self.added_end = add(self.start, Point::len_of(&self.added).as_signed());
-        self.taken_end = add(self.start, Point::len_of(&self.taken).as_signed());
+        self.added_end = add(self.start, Point::end_point_of(&self.added).as_signed());
+        self.taken_end = add(self.start, Point::end_point_of(&self.taken).as_signed());
     }
 }
 
@@ -484,7 +484,7 @@ impl<'h> Change<'h> {
             start: start.as_signed(),
             added: added_str,
             taken: "",
-            added_end: (start + Point::len_of(added_str)).as_signed(),
+            added_end: (start + Point::end_point_of(added_str)).as_signed(),
             taken_end: start.as_signed(),
             _ghost: PhantomData,
         }
@@ -632,7 +632,7 @@ impl<'de, Context> BorrowDecode<'de, Context> for Change<'static, String> {
 /// This struct is capable of tracking all the [`Change`]s that happen
 /// to any `Buffer`. That happens through the
 /// [`BufferTracker::parts`] method, which gives a
-/// [`BufferParts`] struct, including the `Buffer`'s [`Bytes`],
+/// [`BufferParts`] struct, including the `Buffer`'s [`Strs`],
 /// [`Tags`], [`Selections`], as well as an [`ExactSizeIterator`] over
 /// the `Change`s that took place since the last call to this
 /// function, and a [`RangesToUpdate`] associated with the [`Buffer`]
@@ -666,14 +666,14 @@ impl BufferTracker {
 
     /// Gets the [`BufferParts`] of a [`Buffer`]
     ///
-    /// This struct consists of the normal [`TextParts`], ([`Bytes`],
+    /// This struct consists of the normal [`TextParts`], ([`Strs`],
     /// [`Tags`], [`Selections`]), but it also includes an
     /// [`Iterator`] over all the [`Change`]s that took place since
     /// the last time this function was called by this tracker on this
     /// `Buffer`.
     ///
     /// It is intended for borrowing the `Tags` mutably, whilst
-    /// reading from the `Bytes`, `Selections` and the `Change`s that
+    /// reading from the `Strs`, `Selections` and the `Change`s that
     /// took place.
     ///
     /// Returns [`None`] when calling this function on a [`Buffer`]
@@ -762,7 +762,7 @@ pub struct BufferParts<'b> {
     pub strs: &'b Strs,
     /// The [`Tags`] of the [`Buffer`]
     ///
-    /// This, unlike [`Bytes`], allows mutation in the form of
+    /// This, unlike [`Strs`], allows mutation in the form of
     /// [adding] and [removing] [`Tag`]s.
     ///
     /// [adding]: Tags::insert
@@ -829,7 +829,7 @@ impl<'h> Changes<'h> {
     /// be the `&str` that was _added_ after the `Change`, and
     /// [`Change::added_str`] will be the `&str` that was taken.
     ///
-    /// This method can be useful if you want to modify a [`Bytes`] in
+    /// This method can be useful if you want to modify a [`Strs`] in
     /// order to check out what it used to look like.
     pub fn undone(self) -> Self {
         Self {

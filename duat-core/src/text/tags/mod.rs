@@ -42,9 +42,9 @@ mod types;
 /// for another instance.
 ///
 /// This is very useful if you want to be able to add [`Tag`]s while,
-/// for example, holding a reference to the [`Bytes`] of the [`Text`]
+/// for example, holding a reference to the [`Strs`] of the [`Text`]
 ///
-/// [`Bytes`]: super::Bytes
+/// [`Strs`]: super::Strs
 pub struct Tags<'t>(&'t mut InnerTags);
 
 impl Tags<'_> {
@@ -159,13 +159,12 @@ impl Tags<'_> {
 
     /// The lenght of this `Tags` struct
     ///
-    /// This number is always identical to calling
-    /// [`bytes.len().byte()`] from the [`Bytes`] of the same
-    /// [`Text`], or calling `text.len().bytes()` from the `Text`
-    /// itself.
+    /// This number is always identical to calling [`Strs::len`] from
+    /// the [`Strs`] of the same [`Text`], or calling `Text::len`
+    /// from the `Text` itself.
     ///
-    /// [`bytes.len().byte()`]: super::Bytes::len
-    /// [`Bytes`]: super::Bytes
+    /// [`Strs::len`]: super::Strs::len
+    /// [`Strs`]: super::Strs
     pub fn len_bytes(&self) -> usize {
         self.0.len_bytes()
     }

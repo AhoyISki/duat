@@ -1,25 +1,39 @@
+//! The equivalent of [`String`] for Duat.
+//!
+//! You can't access this struct directly from Duat's API. This is
+//! because it should only be modified alongside a [`Text`], which
+//! would prevent the desynchronization of state with the
+//! [`InnerTags`].
+//!
+//! Instead, you're only ever meant to access this through the
+//! [`Strs`] struct, which is duat's equivalent of [`str`].
+//!
+//! [`Text`]: crate::text::Text
+//! [`InnerTags`]: crate::text::InnerTags
 use std::str::Utf8Error;
 
 use gap_buf::GapBuffer;
 
-pub use crate::text::strs::Strs;
 use crate::{
     buffer::Change,
-    text::{line_ranges::LineRanges, utils::implPartialEq},
+    text::{
+        strs::{Strs, line_ranges::LineRanges},
+        utils::implPartialEq,
+    },
 };
 
 /// The bytes of a [`Text`], encoded in UTF-8
 ///
-/// [`Text`]: super::Text
+/// [`Text`]: crate::text::Text
 #[derive(Default, Clone)]
-pub struct Bytes {
+pub struct StrsBuf {
     pub(super) buf: GapBuffer<u8>,
     pub(super) line_ranges: LineRanges,
     version: u64,
 }
 
-impl Bytes {
-    /// Returns a new instance of [`Bytes`]
+impl StrsBuf {
+    /// Returns a new instance of [`StrsBuf`]
     ///
     /// Not intended for public use, it is necessary in duat
     #[doc(hidden)]
@@ -81,18 +95,18 @@ impl Bytes {
             .transform(start_rec, old_len, new_len, array);
     }
 
-    /// Increment the version of the `Bytes` by 1
+    /// Increment the version of the `StrsBuf` by 1
     pub fn increment_version(&mut self) {
         self.version += 1;
     }
 
-    /// Get the current version of the `Bytes`
+    /// Get the current version of the `StrsBuf`
     pub fn get_version(&self) -> u64 {
         self.version
     }
 }
 
-impl std::ops::Deref for Bytes {
+impl std::ops::Deref for StrsBuf {
     type Target = Strs;
 
     fn deref(&self) -> &Self::Target {
@@ -102,7 +116,7 @@ impl std::ops::Deref for Bytes {
 
 /// An [`Iterator`] over the bytes in a [`Text`]
 ///
-/// [`Text`]: super::Text
+/// [`Text`]: crate::text::Text
 #[derive(Clone)]
 pub struct Slices<'b>(pub(super) [std::slice::Iter<'b, u8>; 2]);
 
@@ -179,19 +193,19 @@ pub const fn utf8_char_width(b: u8) -> usize {
     UTF8_CHAR_WIDTH[b as usize] as usize
 }
 
-impl Eq for Bytes {}
-implPartialEq!(bytes: Bytes, other: Bytes, {
+impl Eq for StrsBuf {}
+implPartialEq!(bytes: StrsBuf, other: StrsBuf, {
     let (l_s0, l_s1) = bytes.buf.as_slices();
     let (r_s0, r_s1) = other.buf.as_slices();
     (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.iter().chain(l_s1).eq(r_s0.iter().chain(r_s1))
 });
-implPartialEq!(bytes: Bytes, other: &str, {
+implPartialEq!(bytes: StrsBuf, other: &str, {
     let [s0, s1] = bytes.to_array();
     other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
 });
-implPartialEq!(bytes: Bytes, other: String, bytes == &&other.as_str());
-implPartialEq!(str: &str, other: Bytes, other == *str);
-implPartialEq!(string: String, other: Bytes, other == *string);
+implPartialEq!(bytes: StrsBuf, other: String, bytes == &&other.as_str());
+implPartialEq!(str: &str, other: StrsBuf, other == *str);
+implPartialEq!(string: String, other: StrsBuf, other == *string);
 
 impl Eq for &Strs {}
 implPartialEq!(strs: &Strs, other: &Strs, {
@@ -207,13 +221,13 @@ implPartialEq!(strs: &Strs, other: String, strs == &&other.as_str());
 implPartialEq!(str: &str, other: &Strs, other == *str);
 implPartialEq!(string: String, other: &Strs, other == *string);
 
-/// Implements [`From<$T>`] for [`Bytes`] where `$T: ToString`
+/// Implements [`From<$T>`] for [`StrsBuf`] where `$T: ToString`
 macro_rules! implFromToString {
     ($T:ty) => {
-        impl From<$T> for Bytes {
+        impl From<$T> for StrsBuf {
             fn from(value: $T) -> Self {
                 let string = <$T as ToString>::to_string(&value);
-                Bytes::new(&string)
+                StrsBuf::new(&string)
             }
         }
     };
@@ -243,23 +257,23 @@ implFromToString!(std::borrow::Cow<'_, str>);
 implFromToString!(std::io::Error);
 implFromToString!(Box<dyn std::error::Error>);
 
-impl From<std::path::PathBuf> for Bytes {
+impl From<std::path::PathBuf> for StrsBuf {
     fn from(value: std::path::PathBuf) -> Self {
         let value = value.to_string_lossy();
         Self::from(value)
     }
 }
 
-impl From<&std::path::Path> for Bytes {
+impl From<&std::path::Path> for StrsBuf {
     fn from(value: &std::path::Path) -> Self {
         let value = value.to_string_lossy();
         Self::from(value)
     }
 }
 
-impl std::fmt::Debug for Bytes {
+impl std::fmt::Debug for StrsBuf {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Bytes")
+        f.debug_struct("StrsBuf")
             .field("buf", &self[..].to_array())
             .field("records", &self.line_ranges)
             .finish()
@@ -267,7 +281,7 @@ impl std::fmt::Debug for Bytes {
 }
 
 #[track_caller]
-pub fn assert_utf8_boundary(bytes: &Bytes, idx: usize) {
+pub fn assert_utf8_boundary(bytes: &StrsBuf, idx: usize) {
     assert!(
         bytes.buf.get(idx).is_none_or(|b| utf8_char_width(*b) != 0),
         "byte index {} is not a valid char boundary; it is inside '{}'",

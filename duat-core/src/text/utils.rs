@@ -1,4 +1,4 @@
-//! Convenience operations for the [`Text`]
+//! Convenience operations for the [`Text`].
 //!
 //! These include the [`Point`] struct and traits that are meant to
 //! take many kinds of inputs, like the [`TwoPoints`], which is meant
@@ -75,7 +75,10 @@ macro_rules! implTextRangeOrIndex {
     };
 }
 
-/// A position in [`Text`]
+/// A position in [`Text`].
+///
+/// This position is composed of a byte index, a character index, and
+/// a line index, all from the start of the `Text`.
 ///
 /// [`Text`]: super::Text
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
@@ -86,19 +89,19 @@ pub struct Point {
 }
 
 impl Point {
-    /// Returns a new `Point`, at the first byte
+    /// Returns a new `Point`, at the first byte.
     pub const fn new() -> Self {
         Point { byte: 0, char: 0, line: 0 }
     }
 
-    /// A `Point` from raw indices
+    /// A `Point` from raw indices.
     pub const fn from_raw(b: usize, c: usize, l: usize) -> Self {
         let (b, c, l) = (b as u32, c as u32, l as u32);
         Self { byte: b, char: c, line: l }
     }
 
     /// Returns a new [`TwoPoints`] that includes the [`Ghost`]s in
-    /// the same byte, if there is one
+    /// the same byte, if there is one.
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn to_two_points_before(self) -> TwoPoints {
@@ -106,7 +109,7 @@ impl Point {
     }
 
     /// Returns a new [`TwoPoints`] that skips the [`Ghost`]s in the
-    /// same byte, if there is one
+    /// same byte, if there is one.
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn to_two_points_after(self) -> TwoPoints {
@@ -115,15 +118,15 @@ impl Point {
 
     ////////// Querying functions
 
-    /// The len [`Point`] of a [`&str`]
+    /// The len [`Point`] of a [`&str`].
     ///
-    /// This is the equivalent of [`Text::len`], but for types
+    /// This is the equivalent of [`Strs::end_point`], but for types
     /// other than [`Text`]
     ///
     /// [`&str`]: str
-    /// [`Text::len`]: super::Bytes::len
+    /// [`Strs::end_point`]: super::Strs::end_point
     /// [`Text`]: super::Text
-    pub fn len_of(str: impl AsRef<str>) -> Self {
+    pub fn end_point_of(str: impl AsRef<str>) -> Self {
         let str = str.as_ref();
         Self {
             byte: str.len() as u32,
@@ -133,42 +136,31 @@ impl Point {
     }
 
     /// Returns the byte (relative to the beginning of the buffer)
-    /// of self. Indexed at 0
+    /// of self. Indexed at 0.
     ///
-    /// You can use byte indices to index the [`Text`], [`Bytes`], or
-    /// [`Strs`] with the [`Bytes::point_at_byte`] function.
+    /// You can use byte indices to index the [`Text`], [`Strs`], or
+    /// [`Tags`] with the [`Strs::point_at_byte`] function.
     ///
     /// [`Text`]: super::Text
-    /// [`Bytes`]: super::Bytes
     /// [`Strs`]: super::Strs
-    /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
+    /// [`Tags`]: super::Tags
+    /// [`Strs::point_at_byte`]: super::Strs::point_at_byte
     pub const fn byte(&self) -> usize {
         self.byte as usize
     }
 
     /// Returns the char index (relative to the beginning of the
-    /// buffer). Indexed at 0
-    ///
-    /// [`Text`]: super::Text
-    /// [`Bytes`]: super::Bytes
-    /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
+    /// buffer). Indexed at 0.
     pub const fn char(&self) -> usize {
         self.char as usize
     }
 
-    /// Returns the line. Indexed at 0
-    ///
-    /// You can use byte indices to index the [`Text`] or [`Bytes`]
-    /// with the [`Bytes::point_at_line`] function.
-    ///
-    /// [`Text`]: super::Text
-    /// [`Bytes`]: super::Bytes
-    /// [`Bytes::point_at_line`]: super::Bytes::point_at_line
+    /// Returns the line. Indexed at 0.
     pub const fn line(&self) -> usize {
         self.line as usize
     }
 
-    /// Checked [`Point`] subtraction
+    /// Checked [`Point`] subtraction.
     pub fn checked_sub(self, rhs: Point) -> Option<Point> {
         Some(Self {
             byte: self.byte.checked_sub(rhs.byte)?,
@@ -179,7 +171,7 @@ impl Point {
 
     ////////// Shifting functions
 
-    /// Moves a [`Point`] forward by one character
+    /// Moves a [`Point`] forward by one character.
     #[inline(always)]
     pub(crate) const fn fwd(self, char: char) -> Self {
         Self {
@@ -189,7 +181,7 @@ impl Point {
         }
     }
 
-    /// Moves a [`Point`] in reverse by one character
+    /// Moves a [`Point`] in reverse by one character.
     #[inline(always)]
     pub(crate) const fn rev(self, char: char) -> Self {
         Self {
@@ -199,7 +191,7 @@ impl Point {
         }
     }
 
-    /// Shifts the [`Point`] by a "signed point"
+    /// Shifts the [`Point`] by a "signed point".
     ///
     /// This assumes that no overflow is going to happen
     pub(crate) const fn shift_by(self, [b, c, l]: [i32; 3]) -> Self {
@@ -210,7 +202,7 @@ impl Point {
         }
     }
 
-    /// Returns a signed representation of this [`Point`]
+    /// Returns a signed representation of this [`Point`].
     ///
     /// In this representation, the indices 0, 1 and 2 are the byte,
     /// char and line, respectively.
@@ -271,7 +263,7 @@ impl std::ops::SubAssign for Point {
     }
 }
 
-/// A [`Point`] or a `usize`, representing a byte index
+/// A [`Point`] or a `usize`, representing a byte index.
 ///
 /// In Duat, [`Point`]s are _usually_ just "thin wrappers" around a
 /// byte index, useful for getting other information about a place in
@@ -300,7 +292,7 @@ impl TextIndex for usize {
     }
 }
 
-/// Ranges that can be used to index the [`Text`]
+/// Ranges that can be used to index the [`Text`].
 ///
 /// All of the [ranges] in [`std`] that implement either
 /// [`RangeBounds<usize>`] or [`RangeBounds<Point>`] should work as an
@@ -348,7 +340,7 @@ impl TextRange for RangeFull {
     }
 }
 
-/// Either a [`TextRange`], a [`usize`] or a [`Point`]
+/// Either a [`TextRange`], a [`usize`] or a [`Point`].
 ///
 /// In all cases, they represent a byte index from the start of the
 /// [`Text`]
@@ -394,7 +386,7 @@ implTextRangeOrIndex!(RangeToInclusive);
 implTextRangeOrIndex!(RangeFrom);
 
 /// A struct used to exactly pinpoint a position in [`Text`], used
-/// when printing
+/// when printing.
 ///
 /// This struct has two inner components, a `real` [`Point`], and a
 /// `ghost` [`Option<Point>`]. The second component is used whenever
@@ -411,11 +403,11 @@ implTextRangeOrIndex!(RangeFrom);
 /// [`Ghost`]: super::Ghost
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, Hash)]
 pub struct TwoPoints {
-    /// The real `Point` in the [`Text`]
+    /// The real `Point` in the [`Text`].
     ///
     /// [`Text`]: super::Text
     pub real: Point,
-    /// A possible point in a [`Ghost`]
+    /// A possible point in a [`Ghost`].
     ///
     /// A value of [`None`] means that this is either at the end of
     /// the ghosts at a byte (i.e. this `TwoPoints` represents a real
@@ -437,7 +429,7 @@ pub struct TwoPoints {
 }
 
 impl TwoPoints {
-    /// Returns a fully qualified `TwoPoints`
+    /// Returns a fully qualified `TwoPoints`.
     ///
     /// This will include a precise `real` [`Point`] as well as a
     /// precise `ghost` [`Point`].
@@ -450,7 +442,7 @@ impl TwoPoints {
     }
 
     /// Returns a new `TwoPoints` that will include the [`Ghost`]
-    /// before the real [`Point`]
+    /// before the real [`Point`].
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn new_before_ghost(real: Point) -> Self {
@@ -458,7 +450,7 @@ impl TwoPoints {
     }
 
     /// Returns a new `TwoPoints` that will exclude the [`Ghost`]
-    /// before the real [`Point`]
+    /// before the real [`Point`].
     ///
     /// [`Ghost`]: super::Ghost
     pub const fn new_after_ghost(real: Point) -> Self {
@@ -488,7 +480,7 @@ impl Ord for TwoPoints {
 }
 
 /// Given a first byte, determines how many bytes are in this
-/// UTF-8 character
+/// UTF-8 character.
 #[inline]
 pub const fn utf8_char_width(b: u8) -> u32 {
     // https://tools.ietf.org/html/rfc3629

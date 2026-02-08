@@ -242,7 +242,6 @@ mod global {
     ///   called, by giving a struct for which  `H` implements
     ///   [`PartialEq`]. An example is the [`FocusedOn`] hook, which
     ///   accepts [`Handle`]s and [`Handle`] pairs.
-    /// - [`HookBuilder::once`]: Calls the hook only once.
     ///
     /// [hook]: crate::hook
     /// [`FocusedOn`]: super::FocusedOn
@@ -695,7 +694,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 /// # duat_core::doc_duat!(duat);
 /// use duat::{
 ///     prelude::*,
-///     text::{Bytes, Tags},
+///     text::{Strs, Tags},
 /// };
 ///
 /// static TRACKER: BufferTracker = BufferTracker::new();
@@ -704,8 +703,8 @@ impl PartialEq<Handle> for BufferUnloaded {
 ///     let tagger = Tagger::new();
 ///     let tag = form::id_of!("non_ascii_char").to_tag(50);
 ///
-///     let hl_non_ascii = move |tags: &mut Tags, bytes: &Bytes, range: Range<Point>| {
-///         for (b, char) in bytes[range.clone()].char_indices() {
+///     let hl_non_ascii = move |tags: &mut Tags, strs: &Strs, range: Range<Point>| {
+///         for (b, char) in strs[range.clone()].char_indices() {
 ///             let b = b + range.start.byte();
 ///             if !char.is_ascii() {
 ///                 tags.insert(tagger, b..b + char.len_utf8(), tag);
@@ -717,8 +716,8 @@ impl PartialEq<Handle> for BufferUnloaded {
 ///         TRACKER.register_buffer(handle.write(pa));
 ///
 ///         let mut parts = handle.text_parts(pa);
-///         let range = Point::default()..parts.bytes.len();
-///         hl_non_ascii(&mut parts.tags, parts.bytes, range);
+///         let range = Point::default()..parts.strs.end_point();
+///         hl_non_ascii(&mut parts.tags, parts.strs, range);
 ///     });
 ///
 ///     hook::add::<BufferUpdated>(move |pa, handle| {
@@ -726,7 +725,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 ///
 ///         for change in parts.changes {
 ///             parts.tags.remove(tagger, change.added_range());
-///             hl_non_ascii(&mut parts.tags, parts.bytes, change.added_range())
+///             hl_non_ascii(&mut parts.tags, parts.strs, change.added_range())
 ///         }
 ///     });
 /// }
@@ -736,7 +735,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 /// [`Buffer`], telling you about every new [`Change`] that took place
 /// since the last call to [`BufferTracker::parts`]. The
 /// `BufferTracker::parts` function works much like [`Text::parts`],
-/// by separating the [`Bytes`], [`Tags`] and [`Selections`], letting
+/// by separating the [`Strs`], [`Tags`] and [`Selections`], letting
 /// you modify the tags, without permitting further edits to the
 /// `Text`.
 ///
@@ -753,7 +752,7 @@ impl PartialEq<Handle> for BufferUnloaded {
 /// [`Change`]: crate::buffer::Change
 /// [`Cursor`]: crate::mode::Cursor
 /// [`Tag`]: crate::text::Tag
-/// [`Bytes`]: crate::text::Bytes
+/// [`Strs`]: crate::text::Strs
 /// [`Tags`]: crate::text::Tags
 /// [`Selections`]: crate::mode::Selections
 /// [`Text`]: crate::text::Text

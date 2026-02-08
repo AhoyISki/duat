@@ -1,4 +1,4 @@
-//! Widget handles for Duat
+//! Widget handles for Duat.
 //!
 //! These are used pretty much everywhere, and are essentially just an
 //! [`RwData<W>`] conjoined with an [`Area`].
@@ -16,7 +16,7 @@ use crate::{
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
 };
 
-/// A handle to a [`Widget`] in Duat
+/// A handle to a [`Widget`] in Duat.
 ///
 /// The [`Handle`] lets you do all sorts of edits on a [`Widget`]. You
 /// can, for example, make use of the [`Selection`]s in its [`Text`]
@@ -161,7 +161,7 @@ pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer> {
 }
 
 impl<W: Widget + ?Sized> Handle<W> {
-    /// Returns a new instance of a [`Handle<W, U>`]
+    /// Returns a new instance of a [`Handle<W, U>`].
     pub(crate) fn new(
         widget: RwData<W>,
         area: RwArea,
@@ -183,7 +183,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 impl<W: Widget + ?Sized> Handle<W> {
     ////////// Read and write access functions
 
-    /// Reads from the [`Widget`], making use of a [`Pass`]
+    /// Reads from the [`Widget`], making use of a [`Pass`].
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -199,12 +199,12 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.widget.read(pa)
     }
 
-    /// Tries to read as a concrete [`Widget`] implementor
+    /// Tries to read as a concrete [`Widget`] implementor.
     pub fn read_as<'a, W2: Widget>(&'a self, pa: &'a Pass) -> Option<&'a W2> {
         self.widget.read_as(pa)
     }
 
-    /// Declares the [`Widget`] within as read
+    /// Declares the [`Widget`] within as read.
     ///
     /// Same as calling `handle.widget().declare_as_read()`. You
     /// should use this function if you want to signal to others that
@@ -214,7 +214,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.widget.declare_as_read();
     }
 
-    /// Writes to the [`Widget`], making use of a [`Pass`]
+    /// Writes to the [`Widget`], making use of a [`Pass`].
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -231,7 +231,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// Writes to the [`Widget`] and [`Area`], making use of a
-    /// [`Pass`]
+    /// [`Pass`].
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -247,7 +247,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         pa.write_many((&self.widget, &self.area.0))
     }
 
-    /// The same as [`RwData::write_then`]
+    /// The same as [`RwData::write_then`].
     ///
     /// This lets you write to a [`Widget`] and other [`RwData`]-like
     /// structs within said `Widget` at the same time.
@@ -259,7 +259,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.widget.write_then(pa, tup_fn)
     }
 
-    /// Declares the [`Widget`] within as written
+    /// Declares the [`Widget`] within as written.
     ///
     /// Same as calling `handle.widget().declare_written()`. You
     /// should use this function if you want to signal to others that
@@ -269,7 +269,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.widget.declare_written();
     }
 
-    /// Tries to downcast from `dyn Widget` to a concrete [`Widget`]
+    /// Tries to downcast from `dyn Widget` to a concrete [`Widget`].
     pub fn try_downcast<W2: Widget>(&self) -> Option<Handle<W2>> {
         Some(Handle {
             widget: self.widget.try_downcast()?,
@@ -284,31 +284,31 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     ////////// Refined access functions
 
-    /// A shared reference to the [`Text`] of the [`Widget`]
+    /// A shared reference to the [`Text`] of the [`Widget`].
     ///
     /// This is the same as calling `handle.read(pa).text()`.
     pub fn text<'p>(&'p self, pa: &'p Pass) -> &'p Text {
         self.read(pa).text()
     }
 
-    /// A mutable reference to the [`Text`] of the [`Widget`]
+    /// A mutable reference to the [`Text`] of the [`Widget`].
     ///
     /// This is the same as calling `handle.write(pa).text_mut()`.
     pub fn text_mut<'p>(&'p self, pa: &'p mut Pass) -> TextMut<'p> {
         self.write(pa).text_mut()
     }
 
-    /// The [`TextParts`] of the [`Widget`]
+    /// The [`TextParts`] of the [`Widget`].
     ///
     /// You can use this in order to get a shared reference to the
-    /// [`Bytes`] and [`Selections`], while maintaining a mutable
+    /// [`Strs`] and [`Selections`], while maintaining a mutable
     /// reference to the [`Tags`] of the [`Text`], letting you place
     /// [`Tag`]s while still reading other information from the
-    /// [`Widget`]
+    /// [`Widget`].
     ///
     /// This is the same as calling `handle.text_mut().parts()`.
     ///
-    /// [`Bytes`]: crate::text::Bytes
+    /// [`Strs`]: crate::text::Strs
     /// [`Tags`]: crate::text::Tags
     /// [`Tag`]: crate::text::Tag
     pub fn text_parts<'p>(&'p self, pa: &'p mut Pass) -> TextParts<'p> {
@@ -316,7 +316,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// A shared reference to the [`Selections`] of the [`Widget`]'s
-    /// [`Text`]
+    /// [`Text`].
     ///
     /// This is the same as calling `handle.read(pa).selections()`.
     pub fn selections<'p>(&'p self, pa: &'p Pass) -> &'p Selections {
@@ -324,7 +324,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// A mutable reference to the [`Selections`] of the [`Widget`]'s
-    /// [`Text`]
+    /// [`Text`].
     ///
     /// This is the same as calling
     /// `handle.write(pa).selections_mut()`.
@@ -334,11 +334,11 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     ////////// Selection Editing functions
 
-    /// Edits the nth [`Selection`] in the [`Text`]
+    /// Edits the nth [`Selection`] in the [`Text`].
     ///
     /// Once dropped, the [`Selection`] in this [`Cursor`] will be
     /// added back to the list of [`Selection`]s, unless it is
-    /// [destroyed]
+    /// [destroyed].
     ///
     /// If you want to edit on the main selection, see [`edit_main`],
     /// if you want to edit on all [`Selection`]s, see [`edit_all`].
@@ -383,18 +383,18 @@ impl<W: Widget + ?Sized> Handle<W> {
         ret
     }
 
-    /// Edits the main [`Selection`] in the [`Text`]
+    /// Edits the main [`Selection`] in the [`Text`].
     ///
-    /// Once dropped, the [`Selection`] in this [`Cursor`] will be
-    /// added back to the list of [`Selection`]s, unless it is
-    /// [destroyed]
+    /// Once dropped, the `Selection` in this [`Cursor`] will be
+    /// added back to the list of `Selection`s, unless it is
+    /// [destroyed].
     ///
     /// If you want to edit on the `nth` selection, see [`edit_nth`],
     /// same for [`edit_last`], if you want to edit on many
-    /// [`Selection`]s, see [`edit_all`].
+    /// `Selection`s, see [`edit_all`].
     ///
     /// Just like all other `edit` methods, this one will populate the
-    /// [`Selections`], so if there are no [`Selection`]s, it will
+    /// `Selections`, so if there are no `Selection`s, it will
     /// create one at [`Point::default`].
     ///
     /// [destroyed]: Cursor::destroy
@@ -410,18 +410,18 @@ impl<W: Widget + ?Sized> Handle<W> {
         )
     }
 
-    /// Edits the last [`Selection`] in the [`Text`]
+    /// Edits the last [`Selection`] in the [`Text`].
     ///
-    /// Once dropped, the [`Selection`] in this [`Cursor`] will be
-    /// added back to the list of [`Selection`]s, unless it is
-    /// [destroyed]
+    /// Once dropped, the `Selection` in this [`Cursor`] will be
+    /// added back to the list of `Selection`s, unless it is
+    /// [destroyed].
     ///
     /// If you want to edit on the `nth` selection, see [`edit_nth`],
     /// same for [`edit_main`], if you want to edit on all
-    /// [`Selection`]s, see [`edit_all`].
+    /// `Selection`s, see [`edit_all`].
     ///
     /// Just like all other `edit` methods, this one will populate the
-    /// [`Selections`], so if there are no [`Selection`]s, it will
+    /// `Selections`, so if there are no `Selection`s, it will
     /// create one at [`Point::default`].
     ///
     /// [destroyed]: Cursor::destroy
@@ -434,7 +434,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.edit_nth(pa, len.saturating_sub(1), edit)
     }
 
-    /// A shortcut for iterating over all selections
+    /// A shortcut for iterating over all selections.
     ///
     /// But it can't return a value, and is meant to reduce the
     /// indentation that will inevitably come from using the
@@ -447,7 +447,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     ////////// Area functions
 
-    /// Scrolls the [`Text`] veritcally by an amount
+    /// Scrolls the [`Text`] veritcally by an amount.
     ///
     /// If [`PrintOpts.allow_overscroll`] is set, then the [`Text`]
     /// will be allowed to scroll beyond the last line, up until
@@ -460,7 +460,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.widget.declare_written();
     }
 
-    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
+    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`].
     ///
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
@@ -471,14 +471,14 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.widget.declare_written();
     }
 
-    /// The start points that should be printed
+    /// The start points that should be printed.
     pub fn start_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
         self.area
             .start_points(pa, widget.text(), widget.print_opts())
     }
 
-    /// The end points that should be printed
+    /// The end points that should be printed.
     pub fn end_points(&self, pa: &Pass) -> TwoPoints {
         let widget = self.widget.read(pa);
         self.area.end_points(pa, widget.text(), widget.print_opts())
@@ -486,7 +486,7 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     ////////// Querying functions
 
-    /// This [`Handle`]'s [`Widget`]
+    /// This [`Handle`]'s [`Widget`].
     pub fn widget(&self) -> &RwData<W> {
         &self.widget
     }
@@ -496,10 +496,10 @@ impl<W: Widget + ?Sized> Handle<W> {
         &self.area
     }
 
-    /// Gets this [`Handle`]'s mask
+    /// Gets this [`Handle`]'s mask.
     ///
     /// This mask is going to be used to map [`Form`]s to other
-    /// [`Form`]s when printing. To see more about how masks work, see
+    /// `Form`s when printing. To see more about how masks work, see
     /// [`form::enable_mask`].
     ///
     /// [`Form`]: crate::form::Form
@@ -508,10 +508,10 @@ impl<W: Widget + ?Sized> Handle<W> {
         &self.mask
     }
 
-    /// Sets this [`Handle`]'s mask, returning the previous one
+    /// Sets this [`Handle`]'s mask, returning the previous one.
     ///
     /// This mask is going to be used to map [`Form`]s to other
-    /// [`Form`]s when printing. To see more about how masks work, see
+    /// `Form`s when printing. To see more about how masks work, see
     /// [`form::enable_mask`].
     ///
     /// [`Form`]: crate::form::Form
@@ -522,7 +522,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the
-    /// last [`read`] or [`write`]
+    /// last [`read`] or `write`.
     ///
     /// Do note that this *DOES NOT* mean that the value inside has
     /// actually been changed, it just means a mutable reference was
@@ -546,17 +546,17 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// Wether the [`RwData`] within and another point to the same
-    /// value
+    /// value.
     pub fn ptr_eq<T: ?Sized>(&self, other: &RwData<T>) -> bool {
         self.widget.ptr_eq(other)
     }
 
-    /// The [`Widget`]'s [`PrintOpts`]
+    /// The [`Widget`]'s [`PrintOpts`].
     pub fn opts(&self, pa: &Pass) -> PrintOpts {
         self.widget.read(pa).print_opts()
     }
 
-    /// Request that this [`Handle`] be updated
+    /// Request that this [`Handle`] be updated.
     ///
     /// You can use this to request updates from other threads.
     pub fn request_update(&self) {
@@ -566,12 +566,12 @@ impl<W: Widget + ?Sized> Handle<W> {
     ////////// Related Handles
 
     /// Returns the [`Handle`] this one was pushed to, if it was
-    /// pushed to another
+    /// pushed to another.
     ///
     /// Will return [`Some`] if this `self` was created by calling
     /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
     /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
-    /// on the master's [`Text`]
+    /// on the master's [`Text`].
     ///
     /// [spawned]: crate::text::SpawnTag
     pub fn master(&self) -> Result<&Handle<dyn Widget>, Text> {
@@ -582,12 +582,12 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// Returns the [`Handle<Buffer>`] this one was pushed to, if it
-    /// was pushed to one
+    /// was pushed to one.
     ///
     /// Will return [`Some`] if this `self` was created by calling
     /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
     /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
-    /// on the master's [`Text`]
+    /// on the master's [`Text`].
     ///
     /// [spawned]: crate::text::SpawnTag
     pub fn buffer(&self) -> Result<Handle, Text> {
@@ -598,7 +598,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 
     /// Reads related [`Widget`]s of type `W2`, as well as its
-    /// [`Area`]
+    /// [`Area`].
     ///
     /// This can also be done by calling [`Handle::get_related`], and
     /// [`Handle::read`], but this function should generally be
@@ -617,7 +617,7 @@ impl<W: Widget + ?Sized> Handle<W> {
             }))
     }
 
-    /// Gets related [`Handle`]s of type [`Widget`]
+    /// Gets related [`Handle`]s of type [`Widget`].
     ///
     /// If you are doing this just to read the [`Widget`] and
     /// [`Area`], consider using [`Handle::read_related`].
@@ -637,14 +637,14 @@ impl<W: Widget + ?Sized> Handle<W> {
             )
     }
 
-    /// Raw access to the related widgets
+    /// Raw access to the related widgets.
     pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>> {
         &self.related.0
     }
 
     ////////// Other methods
 
-    /// Pushes a [`Widget`] around this one
+    /// Pushes a [`Widget`] around this one.
     ///
     /// This `Widget` will be placed internally, i.e., around the
     /// [`Area`] of `self`. This is in contrast to
@@ -697,7 +697,7 @@ impl<W: Widget + ?Sized> Handle<W> {
             .unwrap()
     }
 
-    /// Pushes a [`Widget`] around the "cluster master" of this one
+    /// Pushes a [`Widget`] around the "cluster master" of this one.
     ///
     /// A cluster master is the collection of every `Widget` that was
     /// pushed around a central one with [`PushSpecs::cluster`] set to
@@ -756,7 +756,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         }
     }
 
-    /// Spawns a floating [`Widget`]
+    /// Spawns a floating [`Widget`].
     pub fn spawn_widget<SW: Widget>(
         &self,
         pa: &mut Pass,
@@ -766,7 +766,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         context::windows().spawn_on_widget(pa, (&self.area, specs), widget)
     }
 
-    /// Closes this `Handle`, removing the [`Widget`] from the
+    /// Closes this `Handle`, removing the [`Widget`] from the.
     /// [`Window`]
     ///
     /// [`Window`]: crate::ui::Window
@@ -774,19 +774,19 @@ impl<W: Widget + ?Sized> Handle<W> {
         context::windows().close(pa, self)
     }
 
-    /// Wether this `Handle` was already closed
+    /// Wether this `Handle` was already closed.
     pub fn is_closed(&self, pa: &Pass) -> bool {
         *self.is_closed.read(pa)
     }
 
-    /// Declares that this `Handle` has been closed
+    /// Declares that this `Handle` has been closed.
     pub(crate) fn declare_closed(&self, pa: &mut Pass) {
         *self.is_closed.write(pa) = true;
     }
 }
 
 impl<W: Widget> Handle<W> {
-    /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`]
+    /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`].
     pub fn to_dyn(&self) -> Handle<dyn Widget> {
         Handle {
             widget: self.widget.to_dyn_widget(),
@@ -842,19 +842,19 @@ impl<W: Widget + ?Sized> std::fmt::Debug for Handle<W> {
 #[derive(Clone)]
 struct RelatedWidgets(RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>);
 
-/// What relation this [`Widget`] has to its parent
+/// What relation this [`Widget`] has to its parent.
 #[derive(Clone, Copy, Debug)]
 pub enum WidgetRelation {
-    /// The main widget of the cluster, most commonly a [`Buffer`]
+    /// The main widget of the cluster, most commonly a [`Buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     Main,
     /// A [`Widget`] that was pushed around the main `Widget`, e.g.
-    /// [`LineNumbers`]
+    /// [`LineNumbers`].
     ///
     /// [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
     Pushed,
-    /// A [`Widget`] that was spawned on the `Widget`, e.g. completion
+    /// A [`Widget`] that was spawned on the `Widget`, e.g. completion.
     /// lists
     Spawned,
 }
