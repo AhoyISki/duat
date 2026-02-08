@@ -94,11 +94,11 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
         if text == self.prev {
             return text;
         } else {
-            let prev = std::mem::replace(&mut self.prev, text.to_string());
+            let prev = std::mem::replace(&mut self.prev, text.to_string_no_last_nl());
             hook::trigger(pa, SearchUpdated((prev, self.prev.clone())));
         }
 
-        let pat = text.to_string();
+        let pat = text.to_string_no_last_nl();
 
         match regex_syntax::parse(&pat) {
             Ok(_) => {
@@ -107,7 +107,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
                 *buffer.selections_mut() = orig_selections.clone();
 
                 let ast = regex_syntax::ast::parse::Parser::new()
-                    .parse(&text.to_string())
+                    .parse(&text.to_string_no_last_nl())
                     .unwrap();
 
                 crate::tag_from_ast(*TAGGER, &mut text, &ast);
@@ -144,7 +144,7 @@ impl<I: IncSearcher> PromptMode for IncSearch<I> {
 
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
         if !text.is_empty() {
-            let pat = text.to_string();
+            let pat = text.to_string_no_last_nl();
             if let Err(err) = regex_syntax::parse(&pat) {
                 let regex_syntax::Error::Parse(err) = err else {
                     unreachable!("As far as I can tell, regex_syntax has goofed up");

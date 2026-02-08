@@ -150,7 +150,7 @@ impl Text {
         Self::from_parts(String::new(), Selections::new(Selection::default()))
     }
 
-    /// Creates a `Text` from a [`String`]
+    /// Creates a `Text` from a [`String`].
     pub(crate) fn from_parts(buffer: String, mut selections: Selections) -> Self {
         let mut buf = StrsBuf::new(&buffer);
 
@@ -180,7 +180,7 @@ impl Text {
         }))
     }
 
-    /// Returns a [`Builder`] for [`Text`]
+    /// Returns a [`Builder`] for [`Text`].
     ///
     /// This builder can be used to iteratively create text, by
     /// assuming that the user wants no* [`Tag`] overlap, and that
@@ -198,7 +198,7 @@ impl Text {
     ////////// Querying functions
 
     /// Whether or not there are any characters in the [`Text`],
-    /// besides the final `b'\n'`
+    /// besides the final `b'\n'`.
     ///
     /// # Note
     ///
@@ -212,7 +212,7 @@ impl Text {
         (s0 == "\n" && s1.is_empty()) || (s0.is_empty() && s1 == "\n")
     }
 
-    /// Whether the [`Strs`] and `InnerTags` are empty
+    /// Whether the [`Strs`] and `InnerTags` are empty.
     ///
     /// This ignores the last `'\n'` in the [`Text`], since it is
     /// always there no matter what.
@@ -225,7 +225,7 @@ impl Text {
         self.0.buf.is_empty() && self.0.tags.is_empty()
     }
 
-    /// The parts that make up a [`Text`]
+    /// The parts that make up a [`Text`].
     ///
     /// This function is used when you want to [insert]/[remove]
     /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
@@ -242,7 +242,7 @@ impl Text {
         }
     }
 
-    /// Returns the [`TextMut`] for this `Text`
+    /// Returns the [`TextMut`] for this `Text`.
     ///
     /// This function is used by [`Widget::text_mut`], since that
     /// function is not supposed to allow the user to swap the
@@ -258,7 +258,7 @@ impl Text {
 
     ////////// Tag related query functions
 
-    /// The maximum [points] in the `at`th byte
+    /// The maximum [points] in the `at`th byte.
     ///
     /// This point is essentially the [point] at that byte, plus the
     /// last possible [`Point`] of any [`Ghost`]s in that
@@ -276,7 +276,7 @@ impl Text {
         }
     }
 
-    /// The [points] at the end of the text
+    /// The [points] at the end of the text.
     ///
     /// This will essentially return the [last point] of the text,
     /// alongside the last possible [`Point`] of any [`Ghost`] at the
@@ -288,7 +288,7 @@ impl Text {
         self.ghost_max_points_at(self.len())
     }
 
-    /// Points visually after the [`TwoPoints`]
+    /// Points visually after the [`TwoPoints`].
     ///
     /// If the [`TwoPoints`] in question is concealed, treats the
     /// next visible character as the first character, and returns
@@ -305,7 +305,7 @@ impl Text {
             .nth(1)
     }
 
-    /// The visual start of the line
+    /// The visual start of the line.
     ///
     /// This point is defined not by where the line actually begins,
     /// but by where the last '\n' was located. For example, if
@@ -342,7 +342,7 @@ impl Text {
 
     ////////// Modification functions
 
-    /// Replaces a [range] in the `Text`
+    /// Replaces a [range] in the `Text`.
     ///
     /// # [`TextRange`] behavior:
     ///
@@ -363,7 +363,7 @@ impl Text {
     }
 
     /// Merges `String`s with the body of text, given a range to
-    /// replace
+    /// replace.
     fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         self.0.buf.apply_change(change);
         self.0.tags.transform(
@@ -375,7 +375,7 @@ impl Text {
         self.0.selections.apply_change(guess_i, change)
     }
 
-    /// Inserts a `Text` into this `Text`, in a specific [`Point`]
+    /// Inserts a `Text` into this `Text`, in a specific [`Point`].
     pub fn insert_text(&mut self, p: impl TextIndex, text: &Text) {
         let b = p.to_byte_index().min(self.last_point().byte());
         let cap = text.last_point().byte();
@@ -411,7 +411,7 @@ impl Text {
 
     ////////// Writing functions
 
-    /// Writes the contents of this `Text` to a [writer]
+    /// Writes the contents of this `Text` to a [writer].
     ///
     /// [writer]: std::io::Write
     pub fn save_on(&mut self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
@@ -421,7 +421,7 @@ impl Text {
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
-    /// Wether or not the content has changed since the last [save]
+    /// Wether or not the content has changed since the last [save].
     ///
     /// Returns `true` only if the actual buf of the [`Text`] have
     /// been changed, ignoring [`Tag`]s and all the other things,
@@ -434,21 +434,21 @@ impl Text {
 
     ////////// Tag addition/deletion functions
 
-    /// Inserts a [`Tag`] at the given position
+    /// Inserts a [`Tag`] at the given position.
     #[track_caller]
     pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
         self.0.tags.insert_inner(tagger, idx, tag, false)
     }
 
     /// Like [`insert_tag`], but does it after other [`Tag`]s with the
-    /// same priority
+    /// same priority.
     ///
     /// [`insert_tag`]: Self::insert_tag
     pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
         self.0.tags.insert_inner(tagger, idx, tag, true)
     }
 
-    /// Removes the [`Tag`]s of a [`Tagger`] from a region
+    /// Removes the [`Tag`]s of a [`Tagger`] from a region.
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are implementing a
@@ -483,7 +483,7 @@ impl Text {
     }
 
     /// Just like [`Text::remove_tags`] but excludes ends on the start
-    /// and starts on the end
+    /// and starts on the end.
     ///
     /// In the regular [`remove_tags`] function, if you remove from a
     /// range `x..y`, tag ranges that end in `x` or start in `y -
@@ -498,7 +498,7 @@ impl Text {
         self.0.tags.remove_from_excl(tagger, range)
     }
 
-    /// Like [`Text::remove_tags`], but removes base on a predicate
+    /// Like [`Text::remove_tags`], but removes base on a predicate.
     ///
     /// If the function returns `true`, then the tag is removed. Note
     /// that every [`RawTag`] in here is guaranteed to have the same
@@ -514,7 +514,7 @@ impl Text {
         self.0.tags.remove_from_if(tagger, range, filter)
     }
 
-    /// Removes all [`Tag`]s
+    /// Removes all [`Tag`]s.
     ///
     /// Refrain from using this function on [`Buffer`]s, as there may
     /// be other [`Tag`] providers, and you should avoid messing
@@ -527,7 +527,7 @@ impl Text {
 
     /////////// Internal synchronization functions
 
-    /// Prepares the `Text` for reloading, to be used on [`Buffer`]s
+    /// Prepares the `Text` for reloading, to be used on [`Buffer`]s.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub(crate) fn prepare_for_reloading(&mut self) {
@@ -536,7 +536,7 @@ impl Text {
 
     /////////// Iterator methods
 
-    /// A forward iterator of the [chars and tags] of the [`Text`]
+    /// A forward iterator of the [chars and tags] of the [`Text`].
     ///
     /// [chars and tags]: TextPart
     #[track_caller]
@@ -551,10 +551,10 @@ impl Text {
         RevIter::new_at(self, at)
     }
 
-    /// A forward iterator over the [`Tag`]s of the [`Text`]
+    /// A forward iterator over the [`Tag`]s of the [`Text`].
     ///
     /// This iterator will consider some [`Tag`]s before `b`, since
-    /// their ranges may overlap with `b`
+    /// their ranges may overlap with `b`.
     ///
     /// The amount of tags to look for behind depeds on the internal
     /// `min_len` factor. You can override by providing a lookaround,
@@ -569,7 +569,7 @@ impl Text {
         self.0.tags.fwd_at(b, lookaround)
     }
 
-    /// An reverse iterator over the [`Tag`]s of the [`Text`]
+    /// An reverse iterator over the [`Tag`]s of the [`Text`].
     ///
     /// This iterator will consider some `Tag`s ahead of `b`, since
     /// their ranges may overlap with `b`.
@@ -587,7 +587,7 @@ impl Text {
         self.0.tags.rev_at(b, lookaround)
     }
 
-    /// A forward [`Iterator`] over the [`RawTag`]s
+    /// A forward [`Iterator`] over the [`RawTag`]s.
     ///
     /// This [`Iterator`] does not take into account [`Tag`] ranges
     /// that intersect with the starting point, unlike
@@ -596,7 +596,7 @@ impl Text {
         self.0.tags.raw_fwd_at(b)
     }
 
-    /// A reverse [`Iterator`] over the [`RawTag`]s
+    /// A reverse [`Iterator`] over the [`RawTag`]s.
     ///
     /// This [`Iterator`] does not take into account [`Tag`] ranges
     /// that intersect with the starting point, unlike
@@ -605,18 +605,18 @@ impl Text {
         self.0.tags.raw_rev_at(b)
     }
 
-    /// The [`Selections`] printed to this `Text`, if they exist
+    /// The [`Selections`] printed to this `Text`, if they exist.
     pub fn selections(&self) -> &Selections {
         &self.0.selections
     }
 
     /// A mut reference to this `Text`'s [`Selections`] if they
-    /// exist
+    /// exist.
     pub fn selections_mut(&mut self) -> &mut Selections {
         &mut self.0.selections
     }
 
-    /// Gets the main [`Selection`], if there is one
+    /// Gets the main [`Selection`], if there is one.
     ///
     /// If you want a method that doesn't return an [`Option`] (for
     /// convenience), see [`Text::main_sel`].
@@ -624,7 +624,7 @@ impl Text {
         self.0.selections.get_main()
     }
 
-    /// Gets the main [`Selection`]
+    /// Gets the main [`Selection`].
     ///
     /// # Panics
     ///
@@ -640,8 +640,23 @@ impl Text {
         self.0.tags.get_spawned_ids()
     }
 
+    /// Returns a [`String`], but without the `\n` at the end of the
+    /// `Text`.
+    ///
+    /// Normally, when you call `Text::to_string`, (which is actually
+    /// [deref'd] into [`Strs::to_string`]), it will also include the
+    /// last `\n` character, which is always a part of the `Text` no
+    /// matter what. This function doesn't do that.
+    ///
+    /// [deref'd]: https://doc.rust-lang.org/std/ops/trait.Deref.html
+    pub fn to_string_no_last_nl(&self) -> String {
+        let mut string = self.to_string();
+        string.pop();
+        string
+    }
+
     /// A struct representing how many changes took place since the
-    /// creation of this [`Text`]
+    /// creation of this `Text`
     ///
     /// This struct tracks all [`Change`]s and [`Tag`]
     /// additions/removals, giving you information about wether this
@@ -671,7 +686,7 @@ impl std::ops::Deref for Text {
 }
 
 /// A struct that allows for [`Text`] modifications from the
-/// [`Widget::text_mut`] function
+/// [`Widget::text_mut`] function.
 ///
 /// It is pretty much identical to `&mut Text`, the difference is that
 /// you can't reassign it to a new [`Text`]. This is done in order to
@@ -686,7 +701,7 @@ pub struct TextMut<'t> {
 }
 
 impl<'t> TextMut<'t> {
-    /// Replaces a [range] in the `Text`
+    /// Replaces a [range] in the `Text`.
     ///
     /// # [`TextRange`] behavior:
     ///
@@ -707,7 +722,7 @@ impl<'t> TextMut<'t> {
         self.history.as_mut().map(|h| h.apply_change(None, change));
     }
 
-    /// Applies a [`Change`] to the `Text`
+    /// Applies a [`Change`] to the `Text`.
     pub(crate) fn apply_change(
         &mut self,
         guess_i: Option<usize>,
@@ -724,7 +739,7 @@ impl<'t> TextMut<'t> {
 
     ////////// Functions for Tag modifications
 
-    /// The parts that make up a [`Text`]
+    /// The parts that make up a [`Text`].
     ///
     /// This function is used when you want to [insert]/[remove]
     /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
@@ -737,20 +752,20 @@ impl<'t> TextMut<'t> {
         self.text.parts()
     }
 
-    /// Inserts a [`Tag`] at the given position
+    /// Inserts a [`Tag`] at the given position.
     pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
         self.text.insert_tag(tagger, idx, tag)
     }
 
     /// Like [`insert_tag`], but does it after other [`Tag`]s with the
-    /// same priority
+    /// same priority.
     ///
     /// [`insert_tag`]: Self::insert_tag
     pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
         self.text.insert_tag_after(tagger, idx, tag)
     }
 
-    /// Removes the [`Tag`]s of a [`Tagger`] from a region
+    /// Removes the [`Tag`]s of a [`Tagger`] from a region.
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are implementing a
@@ -785,7 +800,7 @@ impl<'t> TextMut<'t> {
     }
 
     /// Just like [`TextMut::remove_tags`] but excludes ends on the
-    /// start and starts on the end
+    /// start and starts on the end.
     ///
     /// In the regular [`remove_tags`] function, if you remove from a
     /// range `x..y`, tag ranges that end in `x` or start in `y -
@@ -800,7 +815,8 @@ impl<'t> TextMut<'t> {
         self.text.remove_tags_excl(tagger, range)
     }
 
-    /// Like [`TextMut::remove_tags`], but removes base on a predicate
+    /// Like [`TextMut::remove_tags`], but removes base on a
+    /// predicate.
     ///
     /// If the function returns `true`, then the tag is removed. Note
     /// that every [`RawTag`] in here is guaranteed to have the same
@@ -816,7 +832,7 @@ impl<'t> TextMut<'t> {
         self.text.remove_tags_if(tagger, range, filter)
     }
 
-    /// Removes all [`Tag`]s
+    /// Removes all [`Tag`]s.
     ///
     /// Refrain from using this function on [`Buffer`]s, as there may
     /// be other [`Tag`] providers, and you should avoid messing
@@ -830,7 +846,7 @@ impl<'t> TextMut<'t> {
     ////////// Internal methods
 
     /// Updates bounds, so that [`Tag`] ranges can visibly cross the
-    /// screen
+    /// screen.
     ///
     /// This is used in order to allow for very long [`Tag`] ranges
     /// (say, a [`Form`] being applied on the range `3..999`) to show
@@ -843,7 +859,7 @@ impl<'t> TextMut<'t> {
     }
 
     /// Functions to add  all [`Widget`]s that were spawned in this
-    /// `Text`
+    /// `Text`.
     ///
     /// This function should only be called right before printing,
     /// where it is "known" that `Widget`s can no longer get rid of
@@ -858,7 +874,7 @@ impl<'t> TextMut<'t> {
 
     ////////// History functions
 
-    /// Undoes the last moment, if there was one
+    /// Undoes the last moment, if there was one.
     pub fn undo(&mut self) {
         if let Some(history) = &mut self.history
             && let Some((changes, saved_moment)) = history.move_backwards()
@@ -869,7 +885,7 @@ impl<'t> TextMut<'t> {
         }
     }
 
-    /// Redoes the last moment in the history, if there is one
+    /// Redoes the last moment in the history, if there is one.
     pub fn redo(&mut self) {
         if let Some(history) = &mut self.history
             && let Some((changes, saved_moment)) = history.move_forward()
@@ -880,14 +896,14 @@ impl<'t> TextMut<'t> {
         }
     }
 
-    /// Finishes the current moment and adds a new one to the history
+    /// Finishes the current moment and adds a new one to the history.
     pub fn new_moment(&mut self) {
         if let Some(h) = &mut self.history {
             h.new_moment()
         }
     }
 
-    /// Attaches a history to this `TextMut`
+    /// Attaches a history to this `TextMut`.
     pub(crate) fn attach_history(&mut self, history: &'t mut History) {
         self.history = Some(history);
     }
@@ -895,7 +911,7 @@ impl<'t> TextMut<'t> {
     ////////// Selections functions
 
     /// A mut reference to this `Text`'s [`Selections`] if they
-    /// exist
+    /// exist.
     pub fn selections_mut(self) -> &'t mut Selections {
         &mut self.text.0.selections
     }
@@ -915,11 +931,11 @@ impl AsRef<Strs> for Text {
     }
 }
 
-/// The Parts that make up a [`Text`]
+/// The Parts that make up a [`Text`].
 pub struct TextParts<'a> {
-    /// The [`Strs`] of the whole [`Text`]
+    /// The [`Strs`] of the whole [`Text`].
     pub strs: &'a Strs,
-    /// The [`Tags`] of the [`Text`]
+    /// The [`Tags`] of the [`Text`].
     ///
     /// This, unlike the previous field, allows mutation in the form
     /// of [adding] and [removing] [`Tag`]s.
@@ -927,7 +943,7 @@ pub struct TextParts<'a> {
     /// [adding]: Tags::insert
     /// [removing]: Tags::remove
     pub tags: Tags<'a>,
-    /// The [`Selections`] of the [`Text`]
+    /// The [`Selections`] of the [`Text`].
     ///
     /// For most [`Widget`]s, there should be no [`Selection`], since
     /// they are just visual.
@@ -936,7 +952,7 @@ pub struct TextParts<'a> {
     pub selections: &'a Selections,
 }
 
-/// A representation of how many changes took place in a [`Text`]
+/// A representation of how many changes took place in a [`Text`].
 ///
 /// The purpose of this struct is merely to be compared with
 /// previously acquired instances of itself, to just quickly check if
@@ -946,17 +962,17 @@ pub struct TextParts<'a> {
 /// `TextVersion`s from two different `Text`s is pointless.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TextVersion {
-    /// The current version of the [`Strs`]
+    /// The current version of the [`Strs`].
     ///
     /// Any change to the `Strs`, even undoing, will incur a version
     /// increment.
     pub strs: u64,
-    /// the current version of [`Tags`]
+    /// the current version of [`Tags`].
     ///
     /// Any change to the `Tags`, be it addition or removal of
     /// [`Tag`]s, will incur a version increment.
     pub tags: u64,
-    /// The current version of meta [`Tag`]s
+    /// The current version of meta [`Tag`]s.
     ///
     /// Meta tags are those that can change what is even shown on the
     /// screen, all else being equal. Any addition or removal of meta
@@ -966,17 +982,17 @@ pub struct TextVersion {
 
 impl TextVersion {
     /// Wether there have been _any_ changes to the [`Text`] since
-    /// this previous instance
+    /// this previous instance.
     pub fn has_changed_since(&self, other: Self) -> bool {
         self.strs > other.strs || self.tags > other.tags || self.meta_tags > other.meta_tags
     }
 
-    /// Wether the [`Strs`] have changed since this previous instance
+    /// Wether the [`Strs`] have changed since this previous instance.
     pub fn strs_have_changed_since(&self, other: Self) -> bool {
         self.strs > other.strs
     }
 
-    /// Wether the [`Tags`] have changed since this previous instance
+    /// Wether the [`Tags`] have changed since this previous instance.
     ///
     /// Note that this only tracks if [`Tag`]s have been
     /// added/removed. So if, for example, you [replace a range] where
@@ -989,7 +1005,7 @@ impl TextVersion {
     }
 
     /// Wether this [`Text`] has "structurally changed" since this
-    /// previous instance
+    /// previous instance.
     ///
     /// A `Text` has structurally changed when printing it from the
     /// same point could result in a different characters being

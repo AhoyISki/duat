@@ -608,7 +608,7 @@ pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
 ///         "[coord]{}[separator]|[coord]{}[separator]/[coord]{}",
 ///         main_col(buffer, area) - 1,
 ///         main_line(buffer) - 1,
-///         buffer.text().len().line()
+///         buffer.text().end_point().line()
 ///     )
 /// }
 ///
@@ -631,7 +631,7 @@ pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
 ///     "{mode}{Spacer}{name_txt} {sels_txt} [coord]{}[separator]|[coord]{}[separator]/[coord]{}",
 ///     |buf: &Buffer, area: &Area| main_col(buf, area) - 1,
 ///     |buf: &Buffer| main_line(buf) - 1,
-///     |buf: &Buffer| buf.text().len().line()
+///     |buf: &Buffer| buf.text().end_point().line()
 /// );
 /// # }
 /// ```
@@ -681,7 +681,7 @@ pub fn set(set_fn: impl FnOnce(&mut StartOpts)) {
 /// fn buf_percent(text: &Text, main: &Selection) -> Text {
 ///     // The caret is the part of the cursor that moves, as opposed to the anchor.
 ///     let caret = main.caret();
-///     txt!("[coord]{}%", (100 * caret.line()) / text.len().line())
+///     txt!("[coord]{}%", (100 * caret.line()) / text.end_point().line())
 /// }
 ///
 /// fn setup() {

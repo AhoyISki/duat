@@ -91,7 +91,7 @@
 //!         _ => cursor::unset(),
 //!     });
 //!
-//!     form::set("mode", Form::dark_magenta());
+//!     form::set("mode", Form::new().dark_magenta());
 //! }
 //! ```
 //!

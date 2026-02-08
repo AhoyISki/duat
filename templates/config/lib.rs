@@ -14,8 +14,8 @@ fn setup() {
     plug(duat_catppuccin::Catppuccin::new());
 
     // You can also set Forms to reference other Forms.
-    form::set("caret.main.OneKey", "caret.main.Normal");
-    form::set("caret.extra.OneKey", "caret.extra.Normal");
+    form::set("caret.main.OneKey", Form::mimic("caret.main.Normal"));
+    form::set("caret.extra.OneKey", Form::mimic("caret.extra.Normal"));
     // Disables the cursor's shape.
     cursor::unset();
 
