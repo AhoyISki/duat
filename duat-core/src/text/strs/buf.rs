@@ -10,8 +10,6 @@
 //!
 //! [`Text`]: crate::text::Text
 //! [`InnerTags`]: crate::text::InnerTags
-use std::str::Utf8Error;
-
 use gap_buf::GapBuffer;
 
 use crate::{
@@ -111,57 +109,6 @@ impl std::ops::Deref for StrsBuf {
 
     fn deref(&self) -> &Self::Target {
         Strs::new(self, 0, self.buf.len() as u32)
-    }
-}
-
-/// An [`Iterator`] over the bytes in a [`Text`]
-///
-/// [`Text`]: crate::text::Text
-#[derive(Clone)]
-pub struct Slices<'b>(pub(super) [std::slice::Iter<'b, u8>; 2]);
-
-impl<'b> Slices<'b> {
-    /// Converts this [`Iterator`] into an array of its two parts
-    pub fn to_array(&self) -> [&'b [u8]; 2] {
-        self.0.clone().map(|iter| iter.as_slice())
-    }
-
-    /// Tries to create a [`String`] out of the two buffers
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the bounds of the slices
-    /// don't correspond to utf8 character boundaries, or if the gap
-    /// within these slices doesn't correspond to a utf8 character
-    /// boundary.
-    pub fn try_to_string(self) -> Result<String, Utf8Error> {
-        let [s0, s1] = self.0.map(|arr| arr.as_slice());
-        Ok([str::from_utf8(s0)?, str::from_utf8(s1)?].join(""))
-    }
-}
-
-impl<'b> Iterator for Slices<'b> {
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0[0].next().or_else(|| self.0[1].next()).copied()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let (l0, u0) = self.0[0].size_hint();
-        let (l1, u1) = self.0[1].size_hint();
-        (l0 + l1, Some(u0.unwrap() + u1.unwrap()))
-    }
-}
-
-impl<'b> ExactSizeIterator for Slices<'b> {}
-
-impl<'b> DoubleEndedIterator for Slices<'b> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.0[1]
-            .next_back()
-            .or_else(|| self.0[0].next_back())
-            .copied()
     }
 }
 

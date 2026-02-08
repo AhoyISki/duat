@@ -89,7 +89,7 @@ pub use crate::text::{
     builder::{AsBuilderPart, Builder, BuilderPart},
     iter::{FwdIter, RevIter, TextPart, TextPlace},
     search::{Matches, RegexHaystack, RegexPattern},
-    strs::{Lines, Slices, Strs},
+    strs::{Lines, Strs},
     tags::{
         Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, SwapChar, Tag, Tagger, Tags,
         ToggleId,
@@ -131,7 +131,7 @@ pub struct Text(Box<InnerText>);
 
 #[derive(Clone)]
 struct InnerText {
-    bytes: StrsBuf,
+    buf: StrsBuf,
     tags: InnerTags,
     selections: Selections,
     has_unsaved_changes: bool,
@@ -152,28 +152,28 @@ impl Text {
 
     /// Creates a `Text` from a [`String`]
     pub(crate) fn from_parts(buffer: String, mut selections: Selections) -> Self {
-        let mut bytes = StrsBuf::new(&buffer);
+        let mut buf = StrsBuf::new(&buffer);
 
-        if bytes.slices(..).next_back().is_none_or(|b| b != b'\n') {
-            let end = bytes.end_point();
-            bytes.apply_change(Change::str_insert("\n", end));
+        if buf.bytes().next_back().is_none_or(|b| b != b'\n') {
+            let end = buf.end_point();
+            buf.apply_change(Change::str_insert("\n", end));
         }
-        let tags = InnerTags::new(bytes.len());
+        let tags = InnerTags::new(buf.len());
 
         let selections = if selections.iter().any(|(sel, _)| {
             [Some(sel.caret()), sel.anchor()]
                 .into_iter()
                 .flatten()
-                .any(|point| point >= bytes.end_point())
+                .any(|point| point >= buf.end_point())
         }) {
             Selections::new(Selection::default())
         } else {
-            selections.correct_all(&bytes);
+            selections.correct_all(&buf);
             selections
         };
 
         Self(Box::new(InnerText {
-            bytes,
+            buf,
             tags,
             selections,
             has_unsaved_changes: false,
@@ -222,7 +222,7 @@ impl Text {
     ///
     /// [`is_empty`]: Strs::is_empty
     pub fn is_empty_empty(&self) -> bool {
-        self.0.bytes.is_empty() && self.0.tags.is_empty()
+        self.0.buf.is_empty() && self.0.tags.is_empty()
     }
 
     /// The parts that make up a [`Text`]
@@ -236,7 +236,7 @@ impl Text {
     /// [remove]: Tags::remove
     pub fn parts(&mut self) -> TextParts<'_> {
         TextParts {
-            strs: &self.0.bytes,
+            strs: &self.0.buf,
             tags: self.0.tags.tags(),
             selections: &self.0.selections,
         }
@@ -358,14 +358,14 @@ impl Text {
         );
         let change = Change::new(edit, start..end, self);
 
-        self.0.bytes.increment_version();
+        self.0.buf.increment_version();
         self.apply_change(0, change.as_ref());
     }
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
     fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
-        self.0.bytes.apply_change(change);
+        self.0.buf.apply_change(change);
         self.0.tags.transform(
             change.start().byte()..change.taken_end().byte(),
             change.added_end().byte(),
@@ -380,7 +380,7 @@ impl Text {
         let b = p.to_byte_index().min(self.last_point().byte());
         let cap = text.last_point().byte();
 
-        let added_str = text.0.bytes[..cap].to_string();
+        let added_str = text.0.buf[..cap].to_string();
         let point = self.point_at_byte(b);
         let change = Change::str_insert(&added_str, point);
         self.apply_change(0, change);
@@ -417,13 +417,13 @@ impl Text {
     pub fn save_on(&mut self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
         self.0.has_unsaved_changes = false;
 
-        let [s0, s1] = self.0.bytes.slices(..).to_array();
+        let [s0, s1] = self.0.buf.slices(..);
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
     /// Wether or not the content has changed since the last [save]
     ///
-    /// Returns `true` only if the actual bytes of the [`Text`] have
+    /// Returns `true` only if the actual buf of the [`Text`] have
     /// been changed, ignoring [`Tag`]s and all the other things,
     /// since those are not written to the filesystem.
     ///
@@ -522,7 +522,7 @@ impl Text {
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn clear_tags(&mut self) {
-        self.0.tags = InnerTags::new(self.0.bytes.len());
+        self.0.tags = InnerTags::new(self.0.buf.len());
     }
 
     /////////// Internal synchronization functions
@@ -655,7 +655,7 @@ impl Text {
         let (tags, meta_tags) = self.0.tags.versions();
 
         TextVersion {
-            bytes: self.0.bytes.get_version(),
+            strs: self.0.buf.get_version(),
             tags,
             meta_tags,
         }
@@ -666,7 +666,7 @@ impl std::ops::Deref for Text {
     type Target = Strs;
 
     fn deref(&self) -> &Self::Target {
-        &self.0.bytes
+        &self.0.buf
     }
 }
 
@@ -702,7 +702,7 @@ impl<'t> TextMut<'t> {
         );
         let change = Change::new(edit, start..end, self);
 
-        self.text.0.bytes.increment_version();
+        self.text.0.buf.increment_version();
         self.text.apply_change(0, change.as_ref());
         self.history.as_mut().map(|h| h.apply_change(None, change));
     }
@@ -713,7 +713,7 @@ impl<'t> TextMut<'t> {
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> (Option<usize>, usize) {
-        self.text.0.bytes.increment_version();
+        self.text.0.buf.increment_version();
         let selections_taken = self
             .text
             .apply_change(guess_i.unwrap_or(0), change.as_ref());
@@ -864,7 +864,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_backwards()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes.increment_version();
+            self.text.0.buf.increment_version();
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -875,7 +875,7 @@ impl<'t> TextMut<'t> {
             && let Some((changes, saved_moment)) = history.move_forward()
         {
             self.text.apply_and_process_changes(changes);
-            self.text.0.bytes.increment_version();
+            self.text.0.buf.increment_version();
             self.text.0.has_unsaved_changes = !saved_moment;
         }
     }
@@ -911,7 +911,7 @@ impl<'t> std::ops::Deref for TextMut<'t> {
 
 impl AsRef<Strs> for Text {
     fn as_ref(&self) -> &Strs {
-        &self.0.bytes
+        &self.0.buf
     }
 }
 
@@ -950,7 +950,7 @@ pub struct TextVersion {
     ///
     /// Any change to the `Strs`, even undoing, will incur a version
     /// increment.
-    pub bytes: u64,
+    pub strs: u64,
     /// the current version of [`Tags`]
     ///
     /// Any change to the `Tags`, be it addition or removal of
@@ -968,12 +968,12 @@ impl TextVersion {
     /// Wether there have been _any_ changes to the [`Text`] since
     /// this previous instance
     pub fn has_changed_since(&self, other: Self) -> bool {
-        self.bytes > other.bytes || self.tags > other.tags || self.meta_tags > other.meta_tags
+        self.strs > other.strs || self.tags > other.tags || self.meta_tags > other.meta_tags
     }
 
     /// Wether the [`Strs`] have changed since this previous instance
     pub fn strs_have_changed_since(&self, other: Self) -> bool {
-        self.bytes > other.bytes
+        self.strs > other.strs
     }
 
     /// Wether the [`Tags`] have changed since this previous instance
@@ -1000,7 +1000,7 @@ impl TextVersion {
     /// These `Tag`s are called "meta tags" internally, since they
     /// change the very structure of what `Text` has been printed.
     pub fn has_structurally_changed_since(&self, other: Self) -> bool {
-        self.bytes > other.bytes || self.meta_tags > other.meta_tags
+        self.strs > other.strs || self.meta_tags > other.meta_tags
     }
 }
 
@@ -1021,7 +1021,7 @@ impl<T: ToString> From<T> for Text {
 impl std::fmt::Debug for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Text")
-            .field("bytes", &self.0.bytes)
+            .field("buf", &self.0.buf)
             .field("tags", &self.0.tags)
             .finish_non_exhaustive()
     }
@@ -1030,7 +1030,7 @@ impl std::fmt::Debug for Text {
 impl Clone for Text {
     fn clone(&self) -> Self {
         let mut text = Self(self.0.clone());
-        if text.slices(..).next_back().is_none_or(|b| b != b'\n') {
+        if text.bytes().next_back().is_none_or(|b| b != b'\n') {
             let end = text.end_point();
             text.apply_change(0, Change::str_insert("\n", end));
         }
@@ -1041,18 +1041,18 @@ impl Clone for Text {
 
 impl Eq for Text {}
 implPartialEq!(text: Text, other: Text,
-    text.0.bytes == other.0.bytes && text.0.tags == other.0.tags
+    text.0.buf == other.0.buf && text.0.tags == other.0.tags
 );
-implPartialEq!(text: Text, other: &str, text.0.bytes == *other);
-implPartialEq!(text: Text, other: String, text.0.bytes == *other);
-implPartialEq!(str: &str, text: Text, text.0.bytes == **str);
-implPartialEq!(str: String, text: Text, text.0.bytes == **str);
+implPartialEq!(text: Text, other: &str, text.0.buf == *other);
+implPartialEq!(text: Text, other: String, text.0.buf == *other);
+implPartialEq!(str: &str, text: Text, text.0.buf == **str);
+implPartialEq!(str: String, text: Text, text.0.buf == **str);
 
 impl Eq for TextMut<'_> {}
 implPartialEq!(text_mut: TextMut<'_>, other: TextMut<'_>, text_mut.text == other.text);
 implPartialEq!(text_mut: TextMut<'_>, other: Text, text_mut.text == other);
-implPartialEq!(text_mut: TextMut<'_>, other: &str, text_mut.text.0.bytes == *other);
-implPartialEq!(text_mut: TextMut<'_>, other: String, text_mut.text.0.bytes == *other);
+implPartialEq!(text_mut: TextMut<'_>, other: &str, text_mut.text.0.buf == *other);
+implPartialEq!(text_mut: TextMut<'_>, other: String, text_mut.text.0.buf == *other);
 implPartialEq!(text: Text, other: TextMut<'_>, *text == other.text);
-implPartialEq!(str: &str, text_mut: TextMut<'_>, text_mut.text.0.bytes == **str);
-implPartialEq!(str: String, text_mut: TextMut<'_>, text_mut.text.0.bytes == **str);
+implPartialEq!(str: &str, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);
+implPartialEq!(str: String, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);

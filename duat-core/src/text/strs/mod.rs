@@ -13,7 +13,7 @@
 //! [`GapBuffer`]: gap_buf::GapBuffer
 use std::{ops::Range, sync::LazyLock};
 
-pub use buf::{StrsBuf, Slices};
+pub use buf::StrsBuf;
 
 use crate::{
     opts::PrintOpts,
@@ -382,7 +382,7 @@ impl Strs {
     /// Returns a struct of two `&[u8]` representing a [`TextRange`]
     /// from the slice.
     #[track_caller]
-    pub fn slices(&self, range: impl TextRange) -> Slices<'_> {
+    pub fn slices(&self, range: impl TextRange) -> [&[u8]; 2] {
         let formed = FormedStrs::new(self);
         let range = {
             let range = range.to_range(formed.len as usize);
@@ -390,8 +390,7 @@ impl Strs {
         };
 
         let (s0, s1) = formed.bytes.buf.range(range).as_slices();
-
-        Slices([s0.iter(), s1.iter()])
+        [s0, s1]
     }
 
     /// Converts this `Strs` into an array of its two parts.
@@ -422,9 +421,16 @@ impl Strs {
         )
     }
 
-    /// Returns and [`Iterator`] over the [`char`]s of both [`&str`]s.
+    /// Returns and [`Iterator`] over the [bytes] of this `Strs`
     ///
-    /// [`&str`]: str
+    /// [bytes]: u8
+    pub fn bytes(&self) -> impl DoubleEndedIterator<Item = u8> {
+        self.slices(..)
+            .into_iter()
+            .flat_map(|slice| slice.iter().copied())
+    }
+
+    /// Returns and [`Iterator`] over the [`char`]s of this `Strs`
     pub fn chars(&self) -> impl DoubleEndedIterator<Item = char> {
         self.to_array().into_iter().flat_map(str::chars)
     }

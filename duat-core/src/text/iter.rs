@@ -376,7 +376,6 @@ impl<'t> Iterator for RevIter<'t> {
 fn buf_chars_fwd(text: &Text, b: usize, minus_last_nl: bool) -> FwdChars<'_> {
     let [s0, s1] = text
         .slices(b..text.len() - minus_last_nl as usize)
-        .to_array()
         .map(|s| unsafe { std::str::from_utf8_unchecked(s) });
     s0.chars().chain(s1.chars())
 }
@@ -384,7 +383,6 @@ fn buf_chars_fwd(text: &Text, b: usize, minus_last_nl: bool) -> FwdChars<'_> {
 fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
     let [s0, s1] = text
         .slices(..b)
-        .to_array()
         .map(|s| unsafe { std::str::from_utf8_unchecked(s) });
     s1.chars().rev().chain(s0.chars().rev())
 }
@@ -394,8 +392,8 @@ fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
 /// This struct is comprised of three parts:
 ///
 /// - A real [`Point`], representing a position on the real `Text`;
-/// - A ghost `Point`, which is a position in a [`Ghost`], [`None`]
-///   if not in a `Ghost`;
+/// - A ghost `Point`, which is a position in a [`Ghost`], [`None`] if
+///   not in a `Ghost`;
 /// - A [`TextPart`], which will either be a `char` or a [`Tag`];
 ///
 /// [`Ghost`]: super::Ghost
