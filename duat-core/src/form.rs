@@ -639,14 +639,26 @@ mod global {
             let mut palette = PALETTE.get().unwrap().0.write().unwrap();
 
             for (_, form) in &mut palette.forms {
-                if form.fg == Some(*self) {
-                    form.style.foreground_color = Some(color);
-                }
-                if form.bg == Some(*self) {
-                    form.style.background_color = Some(color);
-                }
-                if form.ul == Some(*self) {
-                    form.style.underline_color = Some(color);
+                let override_style =
+                    if let FormKind::Ref(_, stl) | FormKind::WeakestRef(_, stl) = &mut form.kind {
+                        Some(stl)
+                    } else {
+                        None
+                    };
+
+                for style in [Some(&mut form.style), override_style]
+                    .into_iter()
+                    .flatten()
+                {
+                    if form.fg == Some(*self) {
+                        style.foreground_color = Some(color);
+                    }
+                    if form.bg == Some(*self) {
+                        style.background_color = Some(color);
+                    }
+                    if form.ul == Some(*self) {
+                        style.underline_color = Some(color);
+                    }
                 }
             }
         }
@@ -1147,8 +1159,8 @@ impl InnerPalette {
 
         self.forms[i].1 = form;
 
-        for refed in refs_of(self, i) {
-            self.forms[refed].1 = form;
+        for (referee, _) in refs_of(self, i) {
+            self.forms[referee].1 = form;
         }
 
         if let Some(sender) = SENDER.get() {
@@ -1173,8 +1185,8 @@ impl InnerPalette {
             if let Some(sender) = SENDER.get() {
                 sender.send(DuatEvent::FormChange);
             }
-            for refed in refs_of(self, i) {
-                self.forms[refed].1 = form;
+            for (referee, _) in refs_of(self, i) {
+                self.forms[referee].1 = form;
             }
 
             mask_form(name, i, self);
@@ -1187,8 +1199,19 @@ impl InnerPalette {
         let (i, _) = position_and_form(&mut self.forms, name);
 
         self.forms[i].1 = form;
-        for refed in refs_of(self, i) {
-            self.forms[refed].1 = form;
+        for (referee, override_style) in refs_of(self, i) {
+            let referee = &mut self.forms[referee].1;
+            referee.style = form.style;
+            referee.style.attributes.extend(override_style.attributes);
+            if let Some(color) = override_style.foreground_color {
+                referee.style.foreground_color = Some(color);
+            }
+            if let Some(color) = override_style.background_color {
+                referee.style.background_color = Some(color);
+            }
+            if let Some(color) = override_style.underline_color {
+                referee.style.underline_color = Some(color);
+            }
         }
 
         // If it would be circular, we just don't reference anything.
@@ -1222,8 +1245,19 @@ impl InnerPalette {
             if let Some(sender) = SENDER.get() {
                 sender.send(DuatEvent::FormChange);
             }
-            for refed in refs_of(self, i) {
-                self.forms[refed].1 = form;
+            for (referee, override_style) in refs_of(self, i) {
+                let referee = &mut self.forms[referee].1;
+                referee.style = form.style;
+                referee.style.attributes.extend(override_style.attributes);
+                if let Some(color) = override_style.foreground_color {
+                    referee.style.foreground_color = Some(color);
+                }
+                if let Some(color) = override_style.background_color {
+                    referee.style.background_color = Some(color);
+                }
+                if let Some(color) = override_style.underline_color {
+                    referee.style.underline_color = Some(color);
+                }
             }
 
             mask_form(name, i, self);
@@ -1328,7 +1362,8 @@ impl Painter {
         let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
 
         let forms = &self.inner.forms;
-        // SAFETY: When you create a form, it gets indexed, and never becomes unindexed, so this should be fine.
+        // SAFETY: When you create a form, it gets indexed, and never becomes
+        // unindexed, so this should be fine.
         let form = unsafe { forms.get(id.0 as usize).map(|(_, f)| *f).unwrap_unchecked() };
 
         let gt = |(.., p): &&(_, _, u8)| *p > prio;
@@ -1576,13 +1611,13 @@ enum FormKind {
 }
 
 /// The position of each form that eventually references the `n`th
-fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<usize> {
+fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<(usize, ContentStyle)> {
     let mut refs = Vec::new();
     for (i, (_, form)) in inner.forms.iter().enumerate() {
-        if let FormKind::Ref(id, _) | FormKind::WeakestRef(id, _) = form.kind
+        if let FormKind::Ref(id, style) | FormKind::WeakestRef(id, style) = form.kind
             && id as usize == refed
         {
-            refs.push(i);
+            refs.push((i, style));
             refs.extend(refs_of(inner, i));
         }
     }

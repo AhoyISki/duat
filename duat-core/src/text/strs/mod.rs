@@ -245,12 +245,10 @@ impl Strs {
                 .bytes
                 .line_ranges
                 .point_at_coords(line, column, slices);
-            let Some(point) = line_start else {
-                let line_start = formed
-                    .bytes
-                    .line_ranges
-                    .point_at_coords(line, 0, slices)
-                    .unwrap();
+            
+            if let Some(point) = line_start {
+                point
+            } else {
                 let next_line_start = if line + 1 == end_point.line() {
                     end_point
                 } else {
@@ -260,14 +258,8 @@ impl Strs {
                         .point_at_coords(line + 1, 0, slices)
                         .unwrap()
                 };
-
-                panic!(
-                    "column out of bounds: the len is {}, but the column is {column}",
-                    next_line_start.char() - line_start.char()
-                );
-            };
-
-            point
+                next_line_start.rev('\n')
+            }
         }
     }
 
