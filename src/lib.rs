@@ -92,7 +92,6 @@ use duat_core::{
     form,
     hook::{self, BufferUpdated},
     text::{Point, RegexHaystack, Tagger},
-    ui::Widget,
 };
 use duat_filetype::FileType;
 use duat_treesitter::TsHandle;
@@ -223,11 +222,11 @@ impl MatchPairsRef<'_> {
         let selections: Vec<_> = buffer
             .selections()
             .iter_within(range)
-            .map(|(_, sel, is_main)| (sel.byte_range(buffer.bytes()), is_main))
+            .map(|(_, sel, is_main)| (sel.byte_range(buffer.text()), is_main))
             .collect();
 
         'selections: for (c_range, is_main) in selections {
-            let str: Vec<u8> = handle.text(pa).slices(c_range.clone()).collect();
+            let str: Vec<u8> = handle.text(pa)[c_range.clone()].bytes().collect();
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.ts_and_reg.iter().position(ends(&str)) {
