@@ -340,10 +340,10 @@ impl Mode for Normal {
         };
         let delete_selections = |pa: &mut Pass| {
             handle.edit_all(pa, |mut c| {
-                let prev_char = c.chars_rev().next();
+                let prev_char = c.text()[..c.caret()].chars().next_back();
                 if c.range().end == c.len()
                     && c.selection() == "\n"
-                    && let Some((_, '\n')) = prev_char
+                    && let Some('\n') = prev_char
                 {
                     c.set_anchor();
                     c.move_hor(-1);
@@ -415,9 +415,12 @@ impl Mode for Normal {
             ////////// Object selection keys
             event!(char @ ('w' | 'e')) => handle.edit_all(pa, |mut c| {
                 let alt = char == 'e';
-                if let Some([(p0, c0), (p1, c1)]) = no_nl_pair(c.chars_fwd()) {
-                    let move_to_match = do_match_on_spot([c0, c1], alt, p0 != c.caret().byte());
-                    c.move_to(if move_to_match { p1 } else { p0 });
+                let iter = c.text()[c.caret()..]
+                    .char_indices()
+                    .map(|(b, char)| (b + c.caret().byte(), char));
+                if let Some([(b0, c0), (b1, c1)]) = no_nl_pair(iter) {
+                    let move_to_match = do_match_on_spot([c0, c1], alt, b0 != c.caret().byte());
+                    c.move_to(if move_to_match { b1 } else { b0 });
 
                     let range = c
                         .search(word_or_space(alt, false, popts))
@@ -433,12 +436,12 @@ impl Mode for Normal {
                 let init = {
                     let iter = [(c.caret().byte(), c.char())]
                         .into_iter()
-                        .chain(c.chars_rev());
+                        .chain(c.text()[..c.caret()].char_indices().rev());
                     no_nl_pair(iter)
                 };
-                if let Some([(p1, c1), (_, c0)]) = init {
-                    let moved = p1 != c.caret().byte();
-                    c.move_to(p1);
+                if let Some([(b1, c1), (_, c0)]) = init {
+                    let moved = b1 != c.caret().byte();
+                    c.move_to(b1);
                     if !do_match_on_spot([c1, c0], alt, moved) {
                         c.move_hor(1);
                     }
@@ -473,8 +476,7 @@ impl Mode for Normal {
                 if let Some(range) = {
                     c.search(word_or_space(alt, true, popts))
                         .to_caret()
-                        .rev()
-                        .nth(param - 1)
+                        .nth_back(param - 1)
                 } {
                     c.move_to(range.start);
                 }
@@ -949,9 +951,11 @@ impl Mode for Normal {
                     let appended = if char == 'p' {
                         c.set_caret_on_end();
                         if paste.ends_with('\n') {
-                            let (p, _) =
-                                c.chars_fwd().find(|(_, c)| *c == '\n').unwrap_or_default();
-                            c.move_to(p);
+                            let (b, _) = c.text()[c.caret()..]
+                                .char_indices()
+                                .find(|(_, char)| *char == '\n')
+                                .unwrap_or_default();
+                            c.move_to(c.caret().byte() + b);
                             c.append(&paste);
                         } else {
                             c.append(&paste)

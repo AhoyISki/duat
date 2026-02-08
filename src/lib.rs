@@ -762,11 +762,19 @@ fn select_to_end_of_line(set_anchor: bool, mut c: Cursor) {
     set_anchor_if_needed(set_anchor, &mut c);
     c.set_desired_vcol(usize::MAX);
     let pre_nl = match c.char() {
-        '\n' => c.chars_rev().take_while(|(_, char)| *char != '\n').next(),
-        _ => c.chars_fwd().take_while(|(_, char)| *char != '\n').last(),
+        '\n' => c.text()[..c.caret()]
+            .char_indices()
+            .rev()
+            .map_while(|(b, char)| (char != '\n').then_some(b + c.caret().byte()))
+            .next(),
+        _ => c.text()[..c.caret()]
+            .char_indices()
+            .rev()
+            .map_while(|(b, char)| (char != '\n').then_some(c.caret().byte() - b))
+            .last(),
     };
-    if let Some((p, _)) = pre_nl {
-        c.move_to(p);
+    if let Some(b) = pre_nl {
+        c.move_to(b);
     }
 }
 
@@ -994,10 +1002,12 @@ impl<'o> Object<'o> {
             }
             Object::Indent => {
                 let indent = c.indent();
-                let mut point = c.text().point_at_line(c.caret().line());
+                let mut point = c.text().point_at_coords(c.caret().line(), 0);
 
-                while c.indent_on(point.line()) >= indent && point.line() < c.text().len().line() {
-                    point = c.text().point_at_line(point.line() + 1)
+                while c.indent_on(point.line()) >= indent
+                    && point.line() < c.text().end_point().line()
+                {
+                    point = c.text().point_at_coords(point.line() + 1, 0)
                 }
 
                 return Some(if is_inside {
@@ -1007,7 +1017,7 @@ impl<'o> Object<'o> {
                         .lines()
                         .find(|line| line.chars().any(|c| !c.is_ascii_whitespace()))
                         .map(|line| line.byte_range().start)
-                        .unwrap_or(c.text().len().byte())
+                        .unwrap_or(c.text().len())
                 });
             }
         };
@@ -1062,14 +1072,14 @@ impl<'o> Object<'o> {
             }
             Object::Indent => {
                 let indent = c.indent();
-                let mut point = c.text().point_at_line(c.caret().line());
+                let mut point = c.text().point_at_coords(c.caret().line(), 0);
 
                 while let Some(prev_line) = point.line().checked_sub(1) {
-                    let prev = c.text().point_at_line(prev_line);
+                    let prev = c.text().point_at_coords(prev_line, 0);
                     if c.indent_on(prev.line()) < indent {
                         break;
                     }
-                    point = c.text().point_at_line(point.line() - 1)
+                    point = c.text().point_at_coords(point.line() - 1, 0)
                 }
 
                 return Some(if is_inside {
@@ -1118,7 +1128,7 @@ static SEARCH: Mutex<String> = Mutex::new(String::new());
 
 fn indents(pa: &mut Pass, handle: &Handle) -> (std::vec::IntoIter<usize>, bool) {
     fn prev_non_empty_line(c: &mut Cursor<Buffer>) -> Option<usize> {
-        let line_start = c.text().point_at_line(c.caret().line());
+        let line_start = c.text().point_at_coords(c.caret().line(), 0);
 
         c.text()[..line_start]
             .lines()
