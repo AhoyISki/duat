@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-316ef29a.js";
+            window.path_to_searchindex_js = "searchindex-03621dbd.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -195,7 +195,7 @@ pub struct HighlightMatches;
 
 impl Plugin for HighlightMatches {
     fn plug(self, _: &amp;Plugins) {
-        form::set_weak("same_word", Form::underlined());
+        form::set_weak("same_word", Form::new().underlined());
         let tagger = Tagger::new();
 
         hook::add::&lt;BufferUpdated&gt;(move |pa, handle| {
@@ -213,11 +213,11 @@ impl Plugin for HighlightMatches {
                 .unwrap_or(range.start);
 
             let mut parts = handle.text_parts(pa);
-            let pat = &amp;parts.bytes[start..range.end];
+            let pat = &amp;parts.strs[start..range.end];
             let form_id = form::id_of!("same_word");
 
-            for range in lines.into_iter().flat_map(|r| parts.bytes.search(r"\w+").range(r)) {
-                if &amp;parts.bytes[range.clone()] == pat {
+            for range in lines.into_iter().flat_map(|r| parts.strs.search(r"\w+").range(r)) {
+                if &amp;parts.strs[range.clone()] == pat {
                     parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }
             }

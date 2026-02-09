@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-316ef29a.js";
+            window.path_to_searchindex_js = "searchindex-03621dbd.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-74f781a9.js"></script>
@@ -193,7 +193,7 @@ pub struct HighlightMatches;
 
 impl Plugin for HighlightMatches {
     fn plug(self, _: &amp;Plugins) {
-        form::set_weak("same_word", Form::underlined());
+        form::set_weak("same_word", Form::new().underlined());
         let tagger = Tagger::new();
 
         hook::add::&lt;BufferUpdated&gt;(move |pa, handle| {
@@ -211,11 +211,11 @@ impl Plugin for HighlightMatches {
                 .unwrap_or(range.start);
 
             let mut parts = handle.text_parts(pa);
-            let pat = &amp;parts.bytes[start..range.end];
+            let pat = &amp;parts.strs[start..range.end];
             let form_id = form::id_of!("same_word");
 
-            for range in lines.into_iter().flat_map(|r| parts.bytes.search(r"\w+").range(r)) {
-                if &amp;parts.bytes[range.clone()] == pat {
+            for range in lines.into_iter().flat_map(|r| parts.strs.search(r"\w+").range(r)) {
+                if &amp;parts.strs[range.clone()] == pat {
                     parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }
             }
@@ -580,7 +580,7 @@ fn setup() {
         opts.wrapping_cap = Some(80);
     });
 
-    form::set("caret.main", Form::yellow());
+    form::set("caret.main", Form::new().yellow());
 
     cmd::add("set-rel-lines", |pa: &amp;mut Pass| {
         let handles: Vec&lt;_&gt; = context::windows()
@@ -727,12 +727,12 @@ fn setup() {
     let color1 = Color::new("#575279");
     let color2 = Color::new("#faf4ed");
     // Setting by Form
-    form::set("punctuation.bracket", Form::red());
-    form::set("default", Form::with(color1).on(color2));
-    form::set("matched_pair", Form::blue().underlined()); 
-    
+    form::set("punctuation.bracket", Form::new().red());
+    form::set("default", Form::new().with(color1).on(color2));
+    form::set("matched_pair", Form::new().blue().underlined());
+
     // Setting by reference
-    form::set("accent.debug", "default.debug");
+    form::set("accent.debug", Form::mimic("default.debug"));
 }</code></pre>
 <p>The main function that you will use from this module is <code>form::set</code>. This
 function sets the form on the left to the value on the right. This value can be
@@ -769,7 +769,7 @@ use duat::prelude::*;
 fn setup() {
     // Adds four colorschemes, "catppuccin-latte" among them.
     plug(duat_catppuccin::Catppuccin::default());
-    
+
     form::set_colorscheme("catppuccin-latte");
 }</code></pre>
 <h3 id="form-inheritance"><a class="header" href="#form-inheritance"><code>Form</code> inheritance</a></h3>
@@ -793,27 +793,32 @@ that situation, not whatever <code>f0.f1.f2</code> was set to.</p>
 end?</p>
 <pre><code class="language-rust"><span class="boring">use duat::prelude::*;
 </span><span class="boring">fn test() {
-</span>form::set("parent", Form::green());
-form::set("parent.child.granchild", Form::blue()); 
-form::set("grandparent.parent.child", "parent.child");
-form::set("parent", Form::red());
+</span>form::set("parent", Form::new().green());
+form::set("parent.child.granchild", Form::new().blue());
+form::set("grandparent.parent.child", Form::mimic("parent.child"));
+form::set("parent", Form::new().red());
 <span class="boring">}</span></code></pre>
 <details>
 <summary>See results</summary>
 <ul>
-<li>“parent”: <code>Form::red()</code>.</li>
-<li>“parent.child”: <code>Form::red()</code>.</li>
-<li>“parent.child.grandchild”: <code>Form::blue()</code>.</li>
-<li>“grandparent.parent.child”: <code>Form::red()</code>.</li>
+<li>“parent”: <code>Form::new().red()</code>.</li>
+<li>“parent.child”: <code>Form::new().red()</code>.</li>
+<li>“parent.child.grandchild”: <code>Form::new().blue()</code>.</li>
+<li>“grandparent.parent.child”: <code>Form::new().red()</code>.</li>
 </ul>
 </details>
 <h3 id="masks"><a class="header" href="#masks">Masks</a></h3>
-<p>A mask is essentially the opposite of the inheritance concept. Instead of the longer form inheriting from the shorter forms, the shorter forms will be mapped for longer ones.</p>
+<p>A mask is essentially the opposite of the inheritance concept. Instead of the
+longer form inheriting from the shorter forms, the shorter forms will be mapped
+for longer ones.</p>
 <p>It works like this: Say I have a <code>File</code> widget, and in it, there are instances
 of the <code>function</code> form, used to highlight function identifiers. If there is a
 <code>function.error</code> form, and I tell the <code>File</code> to use the <code>error</code> mask, instead
 of using the <code>function</code> form, Duat will use <code>function.error</code>.</p>
-<p>In duat, by default there are four masks: <code>error</code>, <code>warning</code>, <code>info</code>, and <code>inactive</code>. The first three are used primarily to show color coded notifications. The last one is unused, but you can use it to change how unfocused buffers should be displayed.</p>
+<p>In duat, by default there are four masks: <code>error</code>, <code>warning</code>, <code>info</code>, and
+<code>inactive</code>. The first three are used primarily to show color coded
+notifications. The last one is unused, but you can use it to change how
+unfocused buffers should be displayed.</p>
 <p>You can also add more masks through <code>form::enable_mask</code>. If you want to learn
 more about masks and how to use them, you should check out the <a href="quick-settings/masks.html">masks
 chapter</a></p>
@@ -1428,33 +1433,33 @@ hook::add::&lt;BufferOpened&gt;(|pa: &amp;mut Pass, handle: &amp;Handle&lt;Buffe
     // This function will mutably borrow the `Pass`, preventing other 
     // uses of it, thus following Rust's mutability XOR aliasing rule.
     let buf_mut: &amp;mut Buffer = handle.write(pa);
-    
+
     // Given the mutable reference, you can change the `Buffer`.
     buf_mut.opts.wrap_lines = false;
     buf_mut.opts.tabstop = 2;
-    
+
     // This function will immutably borrow the `Pass`, which means you
     // can do other immutable borrows, letting you have as many
     // immutable references as you want.
     // Note that all function available from an immutable borrow are also
     // available with a mutable one.
     let buf: &amp;Buffer = handle.read(pa);
-    
+
     // The `Buffer` may not have any filetype if it can't be inferred.
     let Some(filetype) = buf.filetype() else {
         return;
     };
-    
+
     // Calling this now would cause a compile time error, since you would
     // have reused a mutable reference (`&amp;mut Buffer`) after getting another
     // one (`&amp;Buffer`).
     // buf_mut.opts.scrolloff.y = 5;
-    
+
     // The context module will have all the types representing duat's state
     // This function retrieves `Handle`s to all `Buffer`s in duat.
     let mut other_buffers = context::buffers(pa);
     other_buffers.retain(|other| other != handle);
-    
+
     if other_buffers.iter().all(|other| other.filetype(pa) != Some(filetype)) {
         context::info!("Opened the first buffer of filetype [a]{filetype}");
         context::info!("The buffer is called [a]{}", buf.name());
@@ -1701,20 +1706,25 @@ does takea <code>Pass</code>, that function will be called and will update the v
 before returning the `&amp;mut T.</p>
 <p>This makes it possible to update a value from another thread:</p>
 <pre><code class="language-rust">use duat::{data::BulkDataWriter, prelude::*};
-use std::time::Duration;
+use std::{sync::atomic::{AtomicBool, Ordering}, time::Duration};
 
 // You will mostly want this type to be a static variable
 static DATA: BulkDataWriter&lt;Duration&gt; = BulkDataWriter::new();
+static QUITTING: AtomicBool = AtomicBool::new(false);
 
 fn setup() {
     std::thread::spawn(|| {
         let one_sec = Duration::from_secs(1);
-        while !context::will_reload_or_quit() {
+        while !QUITTING.load(Ordering::Relaxed) {
             std::thread::sleep(one_sec);
             DATA.mutate(move |value| *value += one_sec);
         }
     });
-    
+
+    hook::add::&lt;ConfigUnloaded&gt;(|_, _| {
+        QUITTING.store(true, Ordering::Relaxed);
+    });
+
     cmd::add("uptime", |pa: &amp;mut Pass| {
         context::info!("The uptime is {:?}", DATA.write(pa));
         Ok(None)
@@ -1823,7 +1833,7 @@ struct OnIdle(Handle);
 impl Hookable for OnIdle {
     // The Input type is the value available when calling `hook::add`
     type Input&lt;'h&gt; = &amp;'h Handle;
-    
+
     fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
         &amp;self.0
     }
@@ -1833,28 +1843,30 @@ impl Hookable for OnIdle {
 </span><span class="boring">
 </span><span class="boring">impl Hookable for OnIdle {
 </span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
-</span><span class="boring">    
+</span><span class="boring">
 </span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
 </span><span class="boring">        &amp;self.0
 </span><span class="boring">    }
 </span><span class="boring">}
 </span>use duat::prelude::*;
 use std::{
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
+static QUITTING: AtomicBool = AtomicBool::new(false);
 
 fn setup_hook() {
     // Start counting as soon as the user stops typing.
     hook::add::&lt;KeyTyped&gt;(|pa, _| COUNTER.store(0, Ordering::Relaxed));
-    
+    hook::add::&lt;ConfigUnloaded&gt;(|_, _| QUITTING.store(true, Ordering::Relaxed));
+
     std::thread::spawn(|| {
-        while !context::will_reload_or_quit() {
+        while !QUITTING.load(Ordering::Relaxed) {
             std::thread::sleep(Duration::from_secs(1));
             let elapsed = COUNTER.fetch_add(1, Ordering::Relaxed);
-            
+
             // Every 60 seconds, trigger an `OnIdle` event
             if elapsed + 1 == 60 {
                 // We have to queue it, since this is being
@@ -1872,7 +1884,7 @@ fn setup_hook() {
 </span><span class="boring">
 </span><span class="boring">impl Hookable for OnIdle {
 </span><span class="boring">    type Input&lt;'h&gt; = &amp;'h Handle;
-</span><span class="boring">    
+</span><span class="boring">
 </span><span class="boring">    fn get_input&lt;'h&gt;(&amp;'h mut self, _: &amp;mut Pass) -&gt; Self::Input&lt;'h&gt; {
 </span><span class="boring">        &amp;self.0
 </span><span class="boring">    }
@@ -1884,16 +1896,16 @@ use duat::prelude::*;
 fn setup() {
     // This would be called from a `Plugin::plug` function
     setup_hook();
-    
+
     hook::add::&lt;OnIdle&gt;(|pa, _| {
         let mut saved = 0;
-        
+
         for handle in context::buffers(pa) {
             if let Ok(true) = handle.save(pa) {
                 saved += 1;
             }
         }
-        
+
         if saved &gt; 0 {
             context::info!("Saved [a]{saved}[] buffers from idling");
         }
