@@ -101,7 +101,7 @@ fn setup() {
         _ => cursor::unset(),
     });
 
-    form::set("mode", Form::dark_magenta());
+    form::set("mode", Form::new().dark_magenta());
 }
 ```
 
@@ -280,29 +280,29 @@ That’s why I decided to create Duat.
 idk, cool sounding word that I got from Spelunky 2.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG6m1ltwhkOSaG087RLYAP_0FG67O2DEuZqJGG7LjLZSpECNcYWSGgmRkdWF0ZTAuOC4xgmlkdWF0X2Jhc2VlMC44LjGCaWR1YXRfY29yZWUwLjguMIJwZHVhdF9tYXRjaF9wYWlyc2UwLjMuMIJvZHVhdF90cmVlc2l0dGVyZTAuNC4wgmhkdWF0bW9kZWUwLjguMQ
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG02xJjvhSzT0G5l4Zr4U-N_YG0Y3PJfXG382Gy6X1eMsirhRYWSGgmRkdWF0ZTAuOC4zgmlkdWF0X2Jhc2VlMC44LjGCaWR1YXRfY29yZWUwLjguMYJwZHVhdF9tYXRjaF9wYWlyc2UwLjMuMIJvZHVhdF90cmVlc2l0dGVyZTAuNC4wgmhkdWF0bW9kZWUwLjguMQ
  [__link0]: https://www.rust-lang.org/tools/install
- [__link1]: https://docs.rs/duat/0.8.1/duat/?search=mode::map
- [__link10]: https://docs.rs/duat_core/0.8.0/duat_core/?search=buffer::BufferTracker
- [__link11]: https://docs.rs/duat/0.8.1/duat/?search=prelude::Buffer
- [__link12]: https://docs.rs/duat_core/0.8.0/duat_core/?search=text::txt
- [__link13]: https://docs.rs/duat/0.8.1/duat/?search=prelude::Form
- [__link14]: https://docs.rs/duat_core/0.8.0/duat_core/?search=text::Spacer
+ [__link1]: https://docs.rs/duat/0.8.3/duat/?search=mode::map
+ [__link10]: https://docs.rs/duat_core/0.8.1/duat_core/?search=buffer::BufferTracker
+ [__link11]: https://docs.rs/duat/0.8.3/duat/?search=prelude::Buffer
+ [__link12]: https://docs.rs/duat_core/0.8.1/duat_core/?search=text::txt
+ [__link13]: https://docs.rs/duat/0.8.3/duat/?search=prelude::Form
+ [__link14]: https://docs.rs/duat_core/0.8.1/duat_core/?search=text::Spacer
  [__link15]: https://doc.rust-lang.org/stable/std/macro.format.html
  [__link16]: https://github.com/AhoyISki/duat-catppuccin
  [__link17]: https://catppuccin.com
- [__link18]: https://docs.rs/duat/0.8.1/duat/?search=prelude::Form
+ [__link18]: https://docs.rs/duat/0.8.3/duat/?search=prelude::Form
  [__link19]: https://crates.io/crates/duatmode/0.8.1
- [__link2]: https://docs.rs/duat/0.8.1/duat/opts/index.html
+ [__link2]: https://docs.rs/duat/0.8.3/duat/opts/index.html
  [__link20]: https://crates.io/crates/duat_treesitter/0.4.0
  [__link21]: https://tree-sitter.github.io/tree-sitter
  [__link22]: https://crates.io/crates/duat_match_pairs/0.3.0
  [__link23]: https://crates.io/crates/duat_base/0.8.1
  [__link24]: ./TODO
- [__link3]: https://docs.rs/duat/0.8.1/duat/?search=hook::add
- [__link4]: https://docs.rs/duat/0.8.1/duat/?search=hook::ModeSwitched
- [__link5]: https://docs.rs/duat/0.8.1/duat/?search=form::set
- [__link6]: https://docs.rs/duat/0.8.1/duat/?search=form::Form
- [__link7]: https://docs.rs/duat/0.8.1/duat/?search=prelude::cmd
- [__link8]: https://docs.rs/duat/0.8.1/duat/?search=widgets::Widget
- [__link9]: https://docs.rs/duat/0.8.1/duat/?search=hook::WindowOpened
+ [__link3]: https://docs.rs/duat/0.8.3/duat/?search=hook::add
+ [__link4]: https://docs.rs/duat/0.8.3/duat/?search=hook::ModeSwitched
+ [__link5]: https://docs.rs/duat/0.8.3/duat/?search=form::set
+ [__link6]: https://docs.rs/duat/0.8.3/duat/?search=form::Form
+ [__link7]: https://docs.rs/duat/0.8.3/duat/?search=prelude::cmd
+ [__link8]: https://docs.rs/duat/0.8.3/duat/?search=widgets::Widget
+ [__link9]: https://docs.rs/duat/0.8.3/duat/?search=hook::WindowOpened

@@ -81,11 +81,11 @@ mod global {
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// # use duat_core::form::{self, Form};
     /// // Creates a regular form
-    /// let reg_id = form::set("my_regular_form", Form::red());
+    /// let reg_id = form::set("my_regular_form", Form::new().red());
     /// // Creates a form that references the first
-    /// let ref_id = form::set("my_ref_form", "my_regular_form");
+    /// let ref_id = form::set("my_ref_form", Form::mimic("my_regular_form"));
     /// // Sets both "MyRegularForm" and "MyRefForm" to blue
-    /// form::set("my_regular_form", Form::blue());
+    /// form::set("my_regular_form", Form::new().blue());
     /// ```
     ///
     /// If you are creating a plugin, or another kind of tool for
@@ -126,13 +126,13 @@ mod global {
     /// use duat_core::form::{self, Form};
     ///
     /// // Creates a form "weakly"
-    /// form::set_weak("weak_form", Form::blue().on_white());
+    /// form::set_weak("weak_form", Form::new().blue().on_white());
     ///
     /// // Sets that form "strongly"
-    /// form::set("weak_form", Form::red().on_grey());
+    /// form::set("weak_form", Form::new().red().on_grey());
     ///
     /// // Even if setting the form weakly afterwards, it won't change again.
-    /// form::set_weak("weak_form", Form::blue().underlined());
+    /// form::set_weak("weak_form", Form::new().blue().underlined());
     /// ```
     ///
     /// [`form::set`]: set
@@ -187,7 +187,7 @@ mod global {
     /// # duat_core::context::set_sender(tx);
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// let color = Color::new("#456321");
-    /// form::set("caret.main", Form::black().on(color));
+    /// form::set("caret.main", Form::new().black().on(color));
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -216,7 +216,7 @@ mod global {
     /// # let (tx, rx) = duat_core::context::duat_channel();
     /// # duat_core::context::set_sender(tx);
     /// # duat_core::form::set_initial(duat_core::form::get_initial());
-    /// form::set("caret.extra", Form::black().on_cyan());
+    /// form::set("caret.extra", Form::new().black().on_cyan());
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -314,10 +314,10 @@ mod global {
     /// let mut text = Text::new();
     ///
     /// // Assume that a Form with the given name exists
-    /// form::set("my_form", Form::red().on_blue());
+    /// form::set("my_form", Form::new().red().on_blue());
     ///
     /// // If I create a second Form like this one, they are separate
-    /// form::set("my_form.suffix", Form::undercurled());
+    /// form::set("my_form.suffix", Form::new().undercurled());
     ///
     /// text = txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
     ///
@@ -1297,10 +1297,10 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 /// let mut text = Text::new();
 ///
 /// // Assume that a Form with the given name exists
-/// form::set("my_form", Form::red().on_blue());
+/// form::set("my_form", Form::new().red().on_blue());
 ///
 /// // If I create a second Form like this one, they are separate
-/// form::set("my_form.suffix", Form::undercurled());
+/// form::set("my_form.suffix", Form::new().undercurled());
 ///
 /// text = txt!("[my_form]This text is red on blue[], [my_form.suffix]undercurled");
 ///

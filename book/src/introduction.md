@@ -18,7 +18,7 @@ pub struct HighlightMatches;
 
 impl Plugin for HighlightMatches {
     fn plug(self, _: &Plugins) {
-        form::set_weak("same_word", Form::underlined());
+        form::set_weak("same_word", Form::new().underlined());
         let tagger = Tagger::new();
 
         hook::add::<BufferUpdated>(move |pa, handle| {
@@ -36,11 +36,11 @@ impl Plugin for HighlightMatches {
                 .unwrap_or(range.start);
 
             let mut parts = handle.text_parts(pa);
-            let pat = &parts.bytes[start..range.end];
+            let pat = &parts.strs[start..range.end];
             let form_id = form::id_of!("same_word");
 
-            for range in lines.into_iter().flat_map(|r| parts.bytes.search(r"\w+").range(r)) {
-                if &parts.bytes[range.clone()] == pat {
+            for range in lines.into_iter().flat_map(|r| parts.strs.search(r"\w+").range(r)) {
+                if &parts.strs[range.clone()] == pat {
                     parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }
             }

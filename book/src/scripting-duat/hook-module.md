@@ -72,7 +72,7 @@ struct OnIdle(Handle);
 impl Hookable for OnIdle {
     // The Input type is the value available when calling `hook::add`
     type Input<'h> = &'h Handle;
-    
+
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         &self.0
     }
@@ -83,31 +83,33 @@ Then, you decide when to `trigger` said hook:
 
 ```rust
 # struct OnIdle(Handle);
-# 
+#
 # impl Hookable for OnIdle {
 #     type Input<'h> = &'h Handle;
-#     
+#
 #     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
 #         &self.0
 #     }
 # }
 use duat::prelude::*;
 use std::{
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
+static QUITTING: AtomicBool = AtomicBool::new(false);
 
 fn setup_hook() {
     // Start counting as soon as the user stops typing.
     hook::add::<KeyTyped>(|pa, _| COUNTER.store(0, Ordering::Relaxed));
-    
+    hook::add::<ConfigUnloaded>(|_, _| QUITTING.store(true, Ordering::Relaxed));
+
     std::thread::spawn(|| {
-        while !context::will_reload_or_quit() {
+        while !QUITTING.load(Ordering::Relaxed) {
             std::thread::sleep(Duration::from_secs(1));
             let elapsed = COUNTER.fetch_add(1, Ordering::Relaxed);
-            
+
             // Every 60 seconds, trigger an `OnIdle` event
             if elapsed + 1 == 60 {
                 // We have to queue it, since this is being
@@ -126,10 +128,10 @@ Then, the user can just add their own hooks, which will be called accordingly:
 
 ```rust
 # struct OnIdle(Handle);
-# 
+#
 # impl Hookable for OnIdle {
 #     type Input<'h> = &'h Handle;
-#     
+#
 #     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
 #         &self.0
 #     }
@@ -141,16 +143,16 @@ use duat::prelude::*;
 fn setup() {
     // This would be called from a `Plugin::plug` function
     setup_hook();
-    
+
     hook::add::<OnIdle>(|pa, _| {
         let mut saved = 0;
-        
+
         for handle in context::buffers(pa) {
             if let Ok(true) = handle.save(pa) {
                 saved += 1;
             }
         }
-        
+
         if saved > 0 {
             context::info!("Saved [a]{saved}[] buffers from idling");
         }

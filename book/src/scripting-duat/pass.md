@@ -20,33 +20,33 @@ hook::add::<BufferOpened>(|pa: &mut Pass, handle: &Handle<Buffer>| {
     // This function will mutably borrow the `Pass`, preventing other 
     // uses of it, thus following Rust's mutability XOR aliasing rule.
     let buf_mut: &mut Buffer = handle.write(pa);
-    
+
     // Given the mutable reference, you can change the `Buffer`.
     buf_mut.opts.wrap_lines = false;
     buf_mut.opts.tabstop = 2;
-    
+
     // This function will immutably borrow the `Pass`, which means you
     // can do other immutable borrows, letting you have as many
     // immutable references as you want.
     // Note that all function available from an immutable borrow are also
     // available with a mutable one.
     let buf: &Buffer = handle.read(pa);
-    
+
     // The `Buffer` may not have any filetype if it can't be inferred.
     let Some(filetype) = buf.filetype() else {
         return;
     };
-    
+
     // Calling this now would cause a compile time error, since you would
     // have reused a mutable reference (`&mut Buffer`) after getting another
     // one (`&Buffer`).
     // buf_mut.opts.scrolloff.y = 5;
-    
+
     // The context module will have all the types representing duat's state
     // This function retrieves `Handle`s to all `Buffer`s in duat.
     let mut other_buffers = context::buffers(pa);
     other_buffers.retain(|other| other != handle);
-    
+
     if other_buffers.iter().all(|other| other.filetype(pa) != Some(filetype)) {
         context::info!("Opened the first buffer of filetype [a]{filetype}");
         context::info!("The buffer is called [a]{}", buf.name());
@@ -342,20 +342,25 @@ This makes it possible to update a value from another thread:
 
 ```rust
 use duat::{data::BulkDataWriter, prelude::*};
-use std::time::Duration;
+use std::{sync::atomic::{AtomicBool, Ordering}, time::Duration};
 
 // You will mostly want this type to be a static variable
 static DATA: BulkDataWriter<Duration> = BulkDataWriter::new();
+static QUITTING: AtomicBool = AtomicBool::new(false);
 
 fn setup() {
     std::thread::spawn(|| {
         let one_sec = Duration::from_secs(1);
-        while !context::will_reload_or_quit() {
+        while !QUITTING.load(Ordering::Relaxed) {
             std::thread::sleep(one_sec);
             DATA.mutate(move |value| *value += one_sec);
         }
     });
-    
+
+    hook::add::<ConfigUnloaded>(|_, _| {
+        QUITTING.store(true, Ordering::Relaxed);
+    });
+
     cmd::add("uptime", |pa: &mut Pass| {
         context::info!("The uptime is {:?}", DATA.write(pa));
         Ok(None)

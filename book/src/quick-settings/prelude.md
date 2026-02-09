@@ -45,7 +45,7 @@ fn setup() {
         opts.wrapping_cap = Some(80);
     });
 
-    form::set("caret.main", Form::yellow());
+    form::set("caret.main", Form::new().yellow());
 
     cmd::add("set-rel-lines", |pa: &mut Pass| {
         let handles: Vec<_> = context::windows()
@@ -207,12 +207,12 @@ fn setup() {
     let color1 = Color::new("#575279");
     let color2 = Color::new("#faf4ed");
     // Setting by Form
-    form::set("punctuation.bracket", Form::red());
-    form::set("default", Form::with(color1).on(color2));
-    form::set("matched_pair", Form::blue().underlined()); 
-    
+    form::set("punctuation.bracket", Form::new().red());
+    form::set("default", Form::new().with(color1).on(color2));
+    form::set("matched_pair", Form::new().blue().underlined());
+
     // Setting by reference
-    form::set("accent.debug", "default.debug");
+    form::set("accent.debug", Form::mimic("default.debug"));
 }
 ```
 
@@ -257,7 +257,7 @@ use duat::prelude::*;
 fn setup() {
     // Adds four colorschemes, "catppuccin-latte" among them.
     plug(duat_catppuccin::Catppuccin::default());
-    
+
     form::set_colorscheme("catppuccin-latte");
 }
 ```
@@ -289,35 +289,40 @@ end?
 ```rust
 # use duat::prelude::*;
 # fn test() {
-form::set("parent", Form::green());
-form::set("parent.child.granchild", Form::blue()); 
-form::set("grandparent.parent.child", "parent.child");
-form::set("parent", Form::red());
+form::set("parent", Form::new().green());
+form::set("parent.child.granchild", Form::new().blue());
+form::set("grandparent.parent.child", Form::mimic("parent.child"));
+form::set("parent", Form::new().red());
 # }
 ```
 
 <details>
 <summary>See results</summary>
-  
-- "parent": `Form::red()`.
-- "parent.child": `Form::red()`. 
-- "parent.child.grandchild": `Form::blue()`.
-- "grandparent.parent.child": `Form::red()`.
+
+- "parent": `Form::new().red()`.
+- "parent.child": `Form::new().red()`.
+- "parent.child.grandchild": `Form::new().blue()`.
+- "grandparent.parent.child": `Form::new().red()`.
 
 </details>
 
 ### Masks
 
-A mask is essentially the opposite of the inheritance concept. Instead of the longer form inheriting from the shorter forms, the shorter forms will be mapped for longer ones.
+A mask is essentially the opposite of the inheritance concept. Instead of the
+longer form inheriting from the shorter forms, the shorter forms will be mapped
+for longer ones.
 
-It works like this: Say I have a `File` widget, and in it, there are instances 
-of the `function` form, used to highlight function identifiers. If there is a 
- `function.error` form, and I tell the `File` to use the `error` mask, instead 
+It works like this: Say I have a `File` widget, and in it, there are instances
+of the `function` form, used to highlight function identifiers. If there is a
+ `function.error` form, and I tell the `File` to use the `error` mask, instead
 of using the `function` form, Duat will use `function.error`.
 
-In duat, by default there are four masks: `error`, `warning`, `info`, and `inactive`. The first three are used primarily to show color coded notifications. The last one is unused, but you can use it to change how unfocused buffers should be displayed.
+In duat, by default there are four masks: `error`, `warning`, `info`, and
+`inactive`. The first three are used primarily to show color coded
+notifications. The last one is unused, but you can use it to change how
+unfocused buffers should be displayed.
 
-You can also add more masks through `form::enable_mask`. If you want to learn 
+You can also add more masks through `form::enable_mask`. If you want to learn
 more about masks and how to use them, you should check out the [masks 
 chapter](masks.md)
 
