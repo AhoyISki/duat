@@ -29,6 +29,7 @@ regex-syntax = "0.8.8"
 thread-amount = "0.3.0"
 shellexpand = "3.1.1"
 gap-buf = "0.1.0"
+notify-types = "2.1.0"
 
 [dependencies.regex-cursor]
 version = "0.1.5"

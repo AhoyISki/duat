@@ -28,6 +28,7 @@ use crate::{
         FocusedOnDuat, UnfocusedFromDuat,
     },
     mode::{self},
+    notify::NotifyFns,
     text::TwoPoints,
     ui::{
         Coord, Ui, Windows,
@@ -45,8 +46,13 @@ pub struct SessionCfg {
 }
 
 impl SessionCfg {
-    pub fn new(clipb: &'static Clipboard, buffer_opts: BufferOpts) -> Self {
+    pub fn new(
+        clipb: &'static Clipboard,
+        notify_fns: &'static NotifyFns,
+        buffer_opts: BufferOpts,
+    ) -> Self {
         crate::clipboard::set_clipboard(clipb);
+        crate::notify::set_notify_fns(notify_fns);
         BUFFER_OPTS.set(buffer_opts).unwrap();
 
         SessionCfg {
@@ -286,9 +292,16 @@ impl Session {
                             for handle in context::windows().buffers(pa) {
                                 hook::trigger(pa, BufferUnloaded(handle));
                             }
+                            
+                            crate::notify::remove_all_watchers();
                         }
 
-                        if thread_amount::thread_amount().unwrap().get() <= 7 {
+                        if thread_amount::thread_amount().unwrap().get() <= 7
+                            || !already_called && {
+                                std::thread::sleep(Duration::from_millis(10));
+                                thread_amount::thread_amount().unwrap().get() <= 7
+                            }
+                        {
                             context::logs().clear();
                             let ui = self.ui;
                             let buffers = self.take_files(pa);

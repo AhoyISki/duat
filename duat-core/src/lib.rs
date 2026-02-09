@@ -161,6 +161,236 @@ pub mod clipboard {
     }
 }
 
+pub mod notify {
+    //! File watching utility for Duat.
+    //!
+    //! Provides a simplified interface over the [`notify`] crate.
+    //!
+    //! [`notify`]: https://crates.io/crates/notify
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+        sync::{
+            LazyLock, Mutex, OnceLock,
+            atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
+        },
+        time::Duration,
+    };
+
+    use notify_types::event::{AccessKind, AccessMode, Event, EventKind};
+    pub use notify_types::*;
+
+    static WATCHERS_DISABLED: AtomicBool = AtomicBool::new(false);
+    static WATCHER_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static NOTIFY_FNS: OnceLock<&NotifyFns> = OnceLock::new();
+    static DUAT_WRITES: LazyLock<Mutex<HashMap<PathBuf, usize>>> = LazyLock::new(Mutex::default);
+
+    /// Wether an event came from Duat or not.
+    ///
+    /// This is only ever [`FromDuat::Yes`] if the event is a write
+    /// event resulting from [`Handle::<Buffer>::save`].
+    ///
+    /// This can be useful if you want to sort events based on
+    /// external or internal factors. For example, duat makes use of
+    /// this in order to calculate file diffs only if the file was
+    /// modified from outside of duat.
+    ///
+    /// [`Handle::<Buffer>::save`]: crate::context::Handle::save
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum FromDuat {
+        /// The event came from Duat, more specifically, it cam from a
+        /// function like [`Handle::<Buffer>::save`].
+        ///
+        /// Another thing to note is that this will only be this value
+        /// if _all_ the paths were written by Duat. If this is not
+        /// the case, then it will be [`FromDuat::No`]. This usually
+        /// isn't an issue, since the vast majority of events emmit
+        /// only one path, but it is something to keep in mind.
+        ///
+        /// [`Handle::<Buffer>::save`]: crate::context::Handle::save
+        Yes,
+        /// The event didn't come from Duat.
+        ///
+        /// Note that, even if the event actually came from Duat,
+        /// unless it is a write event, it will always be set to this.
+        No,
+    }
+
+    /// Functions for watching [`Path`]s.
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    #[doc(hidden)]
+    #[derive(Debug)]
+    pub struct NotifyFns {
+        /// Spawn a new [`Watcher`], returning a unique identifier for
+        /// it.
+        pub spawn_watcher: fn(WatcherCallback) -> std::io::Result<usize>,
+        /// Watch a [`Path`] non recursively.
+        ///
+        /// The `usize` here is supposed to represent a unique
+        /// [`Watcher`], previously returned by `spawn_watcher`.
+        pub watch_path: fn(usize, &Path) -> std::io::Result<()>,
+        /// Watch a [`Path`] recursively.
+        ///
+        /// The `usize` here is supposed to represent a unique
+        /// [`Watcher`], previously returned by `spawn_watcher`.
+        pub watch_path_recursive: fn(usize, &Path) -> std::io::Result<()>,
+        /// Unwatch a [`Path`].
+        ///
+        /// The `usize` here is supposed to represent a unique
+        /// [`Watcher`], previously returned by `spawn_watcher`.
+        pub unwatch_path: fn(usize, &Path) -> std::io::Result<()>,
+        /// Unwatch all [`Path`]s.
+        ///
+        /// The `usize` here is supposed to represent a unique
+        /// [`Watcher`], previously returned by `spawn_watcher`.
+        pub unwatch_all: fn(usize),
+        /// Remove all [`Watcher`]s.
+        ///
+        /// This function is executed right as Duat is about to quit
+        /// or reload.
+        pub remove_all_watchers: fn(),
+    }
+
+    /// A [`Path`] watcher.
+    ///
+    /// If this struct is [`drop`]ped, the `Path`s it was watching
+    /// will no longer be watched by it.
+    pub struct Watcher(usize);
+
+    impl Watcher {
+        /// Spawn a new `Watcher`, with a callback function
+        ///
+        /// You can add paths to watch through [`Watcher::watch`] and
+        /// [`Watcher::watch_recursive`].
+        pub fn new(
+            mut callback: impl FnMut(std::io::Result<Event>, FromDuat) + Send + 'static,
+        ) -> std::io::Result<Self> {
+            if WATCHERS_DISABLED.load(Relaxed) {
+                return Err(std::io::Error::other(
+                    "Since Duat is poised to reload, no new Watchers are allowed to be created",
+                ));
+            }
+
+            let callback = WatcherCallback {
+                callback: Box::new(move |event| {
+                    use FromDuat::*;
+                    let from_duat = if let Ok(Event {
+                        kind: EventKind::Access(AccessKind::Close(AccessMode::Write)),
+                        paths,
+                        ..
+                    }) = &event
+                        && !paths.is_empty()
+                    {
+                        let mut duat_writes = DUAT_WRITES.lock().unwrap();
+                        let mut all_are_from_duat = true;
+
+                        for path in paths {
+                            if let Some(count) = duat_writes.get_mut(path)
+                                && *count > 0
+                            {
+                                *count -= 1;
+                            } else {
+                                all_are_from_duat = false;
+                            }
+                        }
+                        
+                        if all_are_from_duat { Yes } else { No }
+                    } else {
+                        No
+                    };
+
+                    callback(event, from_duat);
+                }),
+                drop: || _ = WATCHER_COUNT.fetch_sub(1, Relaxed),
+            };
+
+            match (NOTIFY_FNS.get().unwrap().spawn_watcher)(callback) {
+                Ok(id) => {
+                    WATCHER_COUNT.fetch_add(1, Relaxed);
+                    Ok(Self(id))
+                }
+                Err(err) => Err(err),
+            }
+        }
+
+        /// Watch a [`Path`] non-recursively.
+        pub fn watch(&self, path: &Path) -> std::io::Result<()> {
+            (NOTIFY_FNS.get().unwrap().watch_path)(self.0, path)
+        }
+
+        /// Watch a [`Path`] recursively.
+        pub fn watch_recursive(&self, path: &Path) -> std::io::Result<()> {
+            (NOTIFY_FNS.get().unwrap().watch_path_recursive)(self.0, path)
+        }
+
+        /// Stop watching a [`Path`].
+        pub fn unwatch(&self, path: &Path) -> std::io::Result<()> {
+            (NOTIFY_FNS.get().unwrap().unwatch_path)(self.0, path)
+        }
+    }
+
+    impl Drop for Watcher {
+        fn drop(&mut self) {
+            (NOTIFY_FNS.get().unwrap().unwatch_all)(self.0)
+        }
+    }
+
+    /// A callback for Watcher events.
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    #[doc(hidden)]
+    pub struct WatcherCallback {
+        callback: Box<dyn FnMut(std::io::Result<Event>) + Send + 'static>,
+        // This is required, so the WATCHER_COUNT is from the loaded config, not the duat
+        // executable.
+        drop: fn(),
+    }
+
+    impl WatcherCallback {
+        /// Calls the callback.
+        pub fn call(&mut self, event: std::io::Result<Event>) {
+            (self.callback)(event)
+        }
+    }
+
+    impl Drop for WatcherCallback {
+        fn drop(&mut self) {
+            (self.drop)();
+        }
+    }
+
+    /// Declares that the next write event actually came from Duat,
+    /// for a given path.
+    pub(crate) fn set_next_write_as_from_duat(path: PathBuf) {
+        *DUAT_WRITES.lock().unwrap().entry(path).or_insert(0) += 1;
+    }
+
+    /// Declares that the next write event didn't come from Duat,
+    /// for a given path.
+    pub(crate) fn unset_next_write_as_from_duat(path: PathBuf) {
+        let mut duat_writes = DUAT_WRITES.lock().unwrap();
+        let count = duat_writes.entry(path).or_insert(0);
+        *count = count.saturating_sub(1);
+    }
+    /// Sets the functions for file watching.
+    pub(crate) fn set_notify_fns(notify_fns: &'static NotifyFns) {
+        NOTIFY_FNS.set(notify_fns).expect("Setup ran twice");
+    }
+
+    /// Removes all [`Watcher`]s.
+    pub(crate) fn remove_all_watchers() {
+        WATCHERS_DISABLED.store(true, Relaxed);
+        (NOTIFY_FNS.get().unwrap().remove_all_watchers)();
+
+        let mut watcher_count = WATCHER_COUNT.load(Relaxed);
+        while watcher_count > 0 {
+            watcher_count = WATCHER_COUNT.load(Relaxed);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
 ////////// Text Builder macros (for pub/private bending)
 #[doc(hidden)]
 pub mod private_exports {

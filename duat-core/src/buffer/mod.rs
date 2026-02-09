@@ -426,9 +426,24 @@ impl Handle {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &buf.path {
             let path = path.clone();
             if buf.text.has_unsaved_changes() {
-                buf.text
-                    .save_on(std::io::BufWriter::new(fs::File::create(&path)?))
-                    .inspect(|_| buf.path = PathKind::SetExists(path.clone()))?;
+                crate::notify::set_next_write_as_from_duat(path.clone());
+
+                let file = match std::fs::File::create(&path) {
+                    Ok(file) => file,
+                    Err(err) => {
+                        crate::notify::unset_next_write_as_from_duat(path.clone());
+                        return Err(err.into());
+                    }
+                };
+
+                if let Err(err) = buf
+                    .text
+                    .save_on(std::io::BufWriter::new(file))
+                    .inspect(|_| buf.path = PathKind::SetExists(path.clone()))
+                {
+                    crate::notify::unset_next_write_as_from_duat(path.clone());
+                    return Err(err.into());
+                }
 
                 hook::trigger(pa, BufferSaved((self.clone(), quit)));
 

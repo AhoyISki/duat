@@ -7,7 +7,7 @@
 use std::{
     any::TypeId,
     path::Path,
-    sync::{Mutex, mpsc::Sender},
+    sync::{LazyLock, Mutex, mpsc::Sender},
 };
 
 use duat_base::{
@@ -21,6 +21,7 @@ use duat_core::{
     data::Pass,
     form::Palette,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
+    notify::{FromDuat, NotifyFns, Watcher},
     session::{ReloadEvent, ReloadedBuffer, SessionCfg},
     text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui},
@@ -42,16 +43,56 @@ pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
 pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>) {
+    static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
+        Watcher::new(|event, from_duat| {
+            use dissimilar::Chunk::*;
+            use duat_core::notify::event::*;
+
+            if let (Ok(Event { kind, paths, .. }), FromDuat::No) = (event, from_duat)
+                && let EventKind::Access(AccessKind::Close(AccessMode::Write)) = kind
+            {
+                context::queue(move |pa| {
+                    for path in paths {
+                        if let Ok(handle) = context::get_buffer_by_path(pa, &path)
+                            && let Ok(new_string) = std::fs::read_to_string(path)
+                        {
+                            let old_string = handle.text(pa).to_string();
+                            let diffs = dissimilar::diff(&old_string, &new_string);
+                            if diffs.is_empty() {
+                                return;
+                            }
+
+                            context::info!("{} reloaded.", handle.read(pa).name_txt());
+
+                            let mut text = handle.text_mut(pa);
+                            text.new_moment();
+
+                            let mut start_byte = 0;
+
+                            for diff in diffs {
+                                match diff {
+                                    Equal(eq) => start_byte += eq.len(),
+                                    Delete(del) => {
+                                        text.replace_range(start_byte..start_byte + del.len(), "")
+                                    }
+                                    Insert(ins) => {
+                                        text.replace_range(start_byte..start_byte, ins);
+                                        start_byte += ins.len();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        })
+        .unwrap()
+    });
+
     std::panic::set_hook(Box::new(move |panic_info| {
         context::log_panic(panic_info);
-        use std::io::Write;
-        let mut log = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("log")
-            .unwrap();
-        write!(log, "{panic_info}").unwrap();
         let backtrace = std::backtrace::Backtrace::capture();
+        duat_core::log_to_file!("{panic_info:#?}");
         *PANIC_INFO.lock().unwrap() = Some(format!("{panic_info}\n{backtrace}"))
     }));
 
@@ -240,6 +281,15 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
     })
     .grouped("ReloadOnWrite");
 
+    hook::add::<BufferOpened>(|pa, handle| {
+        if let Some(path) = handle.read(pa).path_set()
+            && let Err(err) = BUFFER_WATCHER.watch(&std::path::PathBuf::from(path))
+        {
+            context::debug!("{err}");
+        }
+    })
+    .grouped("AutomaticBufferReloading");
+
     form::enable_mask("error");
     form::enable_mask("warn");
     form::enable_mask("info");
@@ -263,7 +313,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
 #[doc(hidden)]
 pub fn run_duat(
-    (ui, clipb): MetaStatics,
+    (ui, clipb, notify_fns): MetaStatics,
     buffers: Vec<Vec<ReloadedBuffer>>,
     duat_rx: DuatReceiver,
     reload_tx: Option<Sender<ReloadEvent>>,
@@ -293,7 +343,7 @@ pub fn run_duat(
         }
     };
 
-    let opts = SessionCfg::new(clipb, default_buffer_opts);
+    let opts = SessionCfg::new(clipb, notify_fns, default_buffer_opts);
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
     match opts
@@ -316,7 +366,7 @@ pub fn run_duat(
 pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadEvent>);
 /// Items that will live for the duration of Duat
 #[doc(hidden)]
-pub type MetaStatics = (Ui, &'static Clipboard);
+pub type MetaStatics = (Ui, &'static Clipboard, &'static NotifyFns);
 /// Initial setup items
 #[doc(hidden)]
 pub type Initials = (

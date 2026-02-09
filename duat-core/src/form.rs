@@ -1159,8 +1159,8 @@ impl InnerPalette {
 
         self.forms[i].1 = form;
 
-        for (referee, _) in refs_of(self, i) {
-            self.forms[referee].1 = form;
+        for (referee, override_style) in refs_of(self, i) {
+            mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
         }
 
         if let Some(sender) = SENDER.get() {
@@ -1185,8 +1185,8 @@ impl InnerPalette {
             if let Some(sender) = SENDER.get() {
                 sender.send(DuatEvent::FormChange);
             }
-            for (referee, _) in refs_of(self, i) {
-                self.forms[referee].1 = form;
+            for (referee, override_style) in refs_of(self, i) {
+                mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
             }
 
             mask_form(name, i, self);
@@ -1200,18 +1200,7 @@ impl InnerPalette {
 
         self.forms[i].1 = form;
         for (referee, override_style) in refs_of(self, i) {
-            let referee = &mut self.forms[referee].1;
-            referee.style = form.style;
-            referee.style.attributes.extend(override_style.attributes);
-            if let Some(color) = override_style.foreground_color {
-                referee.style.foreground_color = Some(color);
-            }
-            if let Some(color) = override_style.background_color {
-                referee.style.background_color = Some(color);
-            }
-            if let Some(color) = override_style.underline_color {
-                referee.style.underline_color = Some(color);
-            }
+            mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
         }
 
         // If it would be circular, we just don't reference anything.
@@ -1246,22 +1235,25 @@ impl InnerPalette {
                 sender.send(DuatEvent::FormChange);
             }
             for (referee, override_style) in refs_of(self, i) {
-                let referee = &mut self.forms[referee].1;
-                referee.style = form.style;
-                referee.style.attributes.extend(override_style.attributes);
-                if let Some(color) = override_style.foreground_color {
-                    referee.style.foreground_color = Some(color);
-                }
-                if let Some(color) = override_style.background_color {
-                    referee.style.background_color = Some(color);
-                }
-                if let Some(color) = override_style.underline_color {
-                    referee.style.underline_color = Some(color);
-                }
+                mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
             }
 
             mask_form(name, i, self);
         }
+    }
+}
+
+fn mimic_form_to_referee(referee: &mut Form, form: Form, override_style: ContentStyle) {
+    referee.style = form.style;
+    referee.style.attributes.extend(override_style.attributes);
+    if let Some(color) = override_style.foreground_color {
+        referee.style.foreground_color = Some(color);
+    }
+    if let Some(color) = override_style.background_color {
+        referee.style.background_color = Some(color);
+    }
+    if let Some(color) = override_style.underline_color {
+        referee.style.underline_color = Some(color);
     }
 }
 

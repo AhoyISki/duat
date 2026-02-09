@@ -923,7 +923,7 @@ pub fn print_text(
             }
             y += 1;
 
-            // Resetting space to prevent erroneous printing.
+            // Resetting painter to prevent erroneous printing.
             painter.reset_prev_style();
             style_was_set = true;
             last_x = initial_space;
@@ -940,7 +940,7 @@ pub fn print_text(
                     && let Some(str) = get_control_str(char)
                 {
                     painter.apply(CONTROL_CHAR_ID, 100);
-                    if style_was_set && let Some(style) = painter.relative_style() {
+                    if let Some(style) = painter.relative_style() {
                         print_style(lines, style);
                     }
                     lines.write_all(str.as_bytes()).unwrap();

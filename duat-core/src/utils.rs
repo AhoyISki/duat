@@ -1,4 +1,4 @@
-//! General utility functions for Duat
+//! General utility functions for Duat.
 //!
 //! This module contains a bunch of functions which are mostly useful
 //! within Duat, but I have found use for them in some of my plugins,
@@ -52,7 +52,7 @@ pub use shellexpand::full as expand_path;
 
 use crate::text::{Text, txt};
 
-/// A struct for lazy memoization, meant to be kept as a `static`
+/// A struct for lazy memoization, meant to be kept as a `static`.
 pub struct Memoized<K: std::hash::Hash + std::cmp::Eq, V>(LazyLock<Mutex<HashMap<K, V>>>);
 
 impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Memoized<K, V> {
@@ -81,7 +81,7 @@ impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Default for Memoized
     }
 }
 
-/// Takes a type and generates an appropriate name for it
+/// Takes a type and generates an appropriate name for it.
 ///
 /// Use this function if you need a name of a type to be
 /// referrable by string, such as by commands or by the
@@ -133,7 +133,7 @@ pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
     duat_name_inner(TypeId::of::<T>(), std::any::type_name::<T>())
 }
 
-/// Returns the source crate of a given type
+/// Returns the source crate of a given type.
 pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     fn src_crate_inner(type_id: TypeId, type_name: &'static str) -> &'static str {
         static CRATES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
@@ -153,15 +153,16 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     src_crate_inner(TypeId::of::<T>(), std::any::type_name::<T>())
 }
 
-/// The path for the crate that was loaded
+/// The path for the crate that was loaded.
 static CRATE_DIR: OnceLock<Option<&Path>> = OnceLock::new();
-/// The profile that was loaded
+/// The profile that was loaded.
 static PROFILE: OnceLock<&str> = OnceLock::new();
 
-/// Sets the crate directory
+/// Sets the crate directory.
 ///
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
+#[track_caller]
 pub fn set_crate_dir_and_profile(dir: Option<&'static Path>, profile: &'static str) {
     CRATE_DIR
         .set(dir)
@@ -169,7 +170,8 @@ pub fn set_crate_dir_and_profile(dir: Option<&'static Path>, profile: &'static s
     PROFILE.set(profile).expect("Profile set multiple times.");
 }
 
-/// The path for the config crate of Duat
+/// The path for the config crate of Duat.
+#[track_caller]
 pub fn crate_dir() -> Result<&'static Path, Text> {
     CRATE_DIR
         .get()
@@ -177,7 +179,7 @@ pub fn crate_dir() -> Result<&'static Path, Text> {
         .ok_or_else(|| txt!("Config directory is [a]undefined"))
 }
 
-/// The Profile that is currently loaded
+/// The Profile that is currently loaded.
 ///
 /// This is only valid inside of the loaded configuration's `run`
 /// function, not in the metastatic Ui.
@@ -185,7 +187,7 @@ pub fn profile() -> &'static str {
     PROFILE.get().expect("Profile not set yet")
 }
 
-/// The path for a plugin's auxiliary buffers
+/// The path for a plugin's auxiliary buffers.
 ///
 /// If you want to store something in a more permanent basis, and also
 /// possibly allow for the user to modify some buffers (e.g. a TOML
@@ -219,9 +221,9 @@ pub fn plugin_dir(plugin: &str) -> Result<PathBuf, Text> {
     Ok(plugin_dir)
 }
 
-/// Convenience function for the bounds of a range
+/// Convenience function for the bounds of a range.
 ///
-/// Non panicking version of [`get_range`]
+/// Non panicking version of [`get_range`].
 pub fn try_get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Option<Range<usize>> {
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,
@@ -241,9 +243,9 @@ pub fn try_get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Op
     }
 }
 
-/// Convenience function for the bounds of a range
+/// Convenience function for the bounds of a range.
 ///
-/// Panicking version of [`try_get_range`]
+/// Panicking version of [`try_get_range`].
 #[track_caller]
 pub fn get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Range<usize> {
     let start = match range.start_bound() {
@@ -271,7 +273,7 @@ pub fn get_range(range: impl std::ops::RangeBounds<usize>, max: usize) -> Range<
     start..end
 }
 
-/// Adds two shifts together
+/// Adds two shifts together.
 pub fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
     let b = lhs[0] + rhs[0];
     let c = lhs[1] + rhs[1];
@@ -280,7 +282,7 @@ pub fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
 }
 
 /// Allows binary searching with an initial guess and displaced
-/// entries
+/// entries.
 ///
 /// This function essentially looks at a list of entries and with a
 /// starting shift position, shifts them by an amount, before
@@ -337,7 +339,7 @@ pub fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug,
 }
 
 /// A binary search that takes into account the index of the element
-/// in order to extract the key
+/// in order to extract the key.
 ///
 /// In Duat, this is used for searching in ordered lists where the
 /// elements after a certain index are shifted by some amount, while
@@ -372,7 +374,7 @@ where
     Err(left)
 }
 
-/// A function to catch panics
+/// A function to catch panics.
 ///
 /// Used in duat-core in order to prevent sudden panics from just
 /// crashing the program, which would be bad for the end user I think.
@@ -384,7 +386,23 @@ pub fn catch_panic<R>(f: impl FnOnce() -> R) -> Option<R> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).ok()
 }
 
-/// Macro used internally for doc tests in duat-core
+/// Log something to a log file, when things are panicking in a way
+/// that exits Duat.
+#[macro_export]
+macro_rules! log_to_file {
+    ($($tokens:tt)*) => {{
+        use std::io::Write;
+        let mut log = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("log")
+            .unwrap();
+
+        writeln!(log, $($tokens)*).unwrap();
+    }};
+}
+
+/// Macro used internally for doc tests in duat-core.
 #[doc(hidden)]
 #[rustfmt::skip]
 #[macro_export]

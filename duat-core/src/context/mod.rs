@@ -27,7 +27,7 @@ mod log;
 
 mod global {
     use std::{
-        path::PathBuf,
+        path::{Path, PathBuf},
         sync::{
             LazyLock, Mutex, OnceLock,
             atomic::{AtomicUsize, Ordering},
@@ -159,6 +159,15 @@ mod global {
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn get_buffer(pa: &Pass, name: impl ToString) -> Result<Handle, Text> {
         let (.., handle) = windows().named_buffer_entry(pa, &name.to_string())?;
+
+        Ok(handle)
+    }
+
+    /// Returns a [`Handle`] for a [`Buffer`] with the given [`Path`]
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn get_buffer_by_path(pa: &Pass, path: &Path) -> Result<Handle, Text> {
+        let (.., handle) = windows().path_buffer_entry(pa, path)?;
 
         Ok(handle)
     }

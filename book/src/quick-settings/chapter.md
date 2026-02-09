@@ -14,4 +14,3 @@ later on to help you better understand duat.
 
 
 [rust book]: https://doc.rust-lang.org/book/
-

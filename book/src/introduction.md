@@ -1,14 +1,14 @@
 # The Duat Text Editor
 
-Duat is a text editor that is built and _configured_ in the Rust programming 
-language. It is meant to be very modular in its design, while still having 
+Duat is a text editor that is built and _configured_ in the Rust programming
+language. It is meant to be very modular in its design, while still having
 great defaults for anyone used to TUI and modal text editors.
 
 Despite having a rather complex language as its configuration language of choice,
 one of the goals of Duat is to have relatively straightforward configuration,
 and easy pluginability.
 
-As a motivating example, here's a small plugin, which highlights matches to the 
+As a motivating example, here's a small plugin, which highlights matches to the
 word underthe cursor:
 
 ```rust

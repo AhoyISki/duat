@@ -1,8 +1,10 @@
 //! The runner for Duat
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::{
         LazyLock, Mutex,
+        atomic::AtomicBool,
         mpsc::{self},
     },
     time::Instant,
@@ -16,13 +18,15 @@ use duat::{
 use duat_core::{
     clipboard::Clipboard,
     context::{self, DuatReceiver, DuatSender},
+    notify::{NotifyFns, WatcherCallback},
     session::{ReloadEvent, ReloadedBuffer},
 };
 use libloading::{Library, Symbol};
-use notify::{Event, EventKind, RecursiveMode::*, Watcher};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode::*, Watcher};
 
 static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
 static CLIPBOARD: LazyLock<Clipboard> = LazyLock::new(get_clipboard);
+static NOTIFY_FNS: LazyLock<NotifyFns> = LazyLock::new(get_notify_fns);
 
 #[derive(Clone, Debug, clap::Parser)]
 #[command(version, about)]
@@ -123,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             pre_setup(ui, None, None);
             run_duat(
-                (ui, &CLIPBOARD),
+                (ui, &CLIPBOARD, &NOTIFY_FNS),
                 get_files(args, Path::new(""), "")?,
                 duat_rx,
                 None,
@@ -232,15 +236,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Initialize now in order to prevent thread activation after the
             // thread counter hook sets in.
             let clipb = &*CLIPBOARD;
+            let notify_fns = &*NOTIFY_FNS;
             s.spawn(|| {
                 if let Some(run_duat) = running_duat_fn.take() {
                     let initials = (logs.clone(), forms_init, (crate_dir, profile));
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
-                    run_duat(initials, (ui, clipb), buffers, channel)
+                    run_duat(initials, (ui, clipb, notify_fns), buffers, channel)
                 } else {
                     context::error!("No config at [a]{crate_dir}[], loading default");
                     pre_setup(ui, None, None);
-                    run_duat((ui, clipb), buffers, duat_rx, Some(reload_tx))
+                    run_duat((ui, clipb, notify_fns), buffers, duat_rx, Some(reload_tx))
                 }
             })
             .join()
@@ -616,6 +621,69 @@ fn get_clipboard() -> Clipboard {
                 crate::context::error!("{err}");
             }
         },
+    }
+}
+
+fn get_notify_fns() -> NotifyFns {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+
+    use notify::{Error, ErrorKind};
+
+    static WATCHER_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static WATCHERS: LazyLock<Mutex<HashMap<usize, RecommendedWatcher>>> =
+        LazyLock::new(Mutex::default);
+
+    fn convert<T>(result: Result<T, Error>) -> std::io::Result<T> {
+        match result {
+            Ok(ok) => Ok(ok),
+            Err(err) => Err(match err.kind {
+                ErrorKind::Generic(err) => std::io::Error::other(err),
+                ErrorKind::Io(err) => err,
+                ErrorKind::PathNotFound => std::io::Error::new(std::io::ErrorKind::NotFound, err),
+                ErrorKind::WatchNotFound => {
+                    std::io::Error::other("Attempted to remove path that wasn't being watched.")
+                }
+                ErrorKind::MaxFilesWatch => {
+                    std::io::Error::other("Reached maximum number of files to watch.")
+                }
+                ErrorKind::InvalidConfig(_) => unreachable!(),
+            }),
+        }
+    }
+
+	/// A wrapper to implement the [`notify::EventHandler`] trait.
+    struct WatcherCallbackWrapper(WatcherCallback);
+
+    impl notify::EventHandler for WatcherCallbackWrapper {
+        fn handle_event(&mut self, result: notify::Result<Event>) {
+            self.0.call(convert(result));
+        }
+    }
+
+    NotifyFns {
+        spawn_watcher: |callback| {
+            let watcher = convert(notify::recommended_watcher(WatcherCallbackWrapper(
+                callback,
+            )))?;
+
+            let id = WATCHER_COUNT.fetch_add(1, Relaxed);
+            WATCHERS.lock().unwrap().insert(id, watcher);
+            Ok(id)
+        },
+        watch_path: |id, path| {
+            let mut watchers = WATCHERS.lock().unwrap();
+            convert(watchers.get_mut(&id).unwrap().watch(path, NonRecursive))
+        },
+        watch_path_recursive: |id, path| {
+            let mut watchers = WATCHERS.lock().unwrap();
+            convert(watchers.get_mut(&id).unwrap().watch(path, Recursive))
+        },
+        unwatch_path: |id, path| {
+            let mut watchers = WATCHERS.lock().unwrap();
+            convert(watchers.get_mut(&id).unwrap().unwatch(path))
+        },
+        unwatch_all: |id| _ = WATCHERS.lock().unwrap().remove(&id),
+        remove_all_watchers: || WATCHERS.lock().unwrap().clear(),
     }
 }
 
