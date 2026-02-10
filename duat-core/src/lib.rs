@@ -424,7 +424,8 @@ pub mod process {
     #[doc(hidden)]
     #[derive(Debug)]
     pub struct ProcessFns {
-        /// Spawn a [`PersistentChild`], which can outlive this config reload.
+        /// Spawn a [`PersistentChild`], which can outlive this config
+        /// reload.
         pub spawn: fn(&mut Command) -> std::io::Result<PersistentChild>,
         /// Get a [`Child`] that was stored with `store_child`, even
         /// in a previous reload cycle.
@@ -434,12 +435,6 @@ pub mod process {
         pub store_child: fn(String, PersistentChild) -> Option<PersistentChild>,
         /// Interrupt all [`PersistentChild`]ren.
         pub interrupt_all: fn(),
-    }
-
-    /// Spawn a new `PersistentChild`, which can be reused in
-    /// future config reloads.
-    pub fn spawn(command: &mut Command) -> std::io::Result<PersistentChild> {
-        (PROCESS_FNS.get().unwrap().spawn)(command)
     }
 
     /// Behaves nearly identically to a regular [`Child`], except the
@@ -511,6 +506,12 @@ pub mod process {
         pub stderr: Option<InterruptReader<ChildStderr>>,
     }
 
+    /// Spawn a new `PersistentChild`, which can be reused in
+    /// future config reloads.
+    pub fn spawn(command: &mut Command) -> std::io::Result<PersistentChild> {
+        (PROCESS_FNS.get().unwrap().spawn)(command)
+    }
+
     /// Get a [`Child`] process that might have been spawned in a
     /// previous reload cycle.
     ///
@@ -527,7 +528,7 @@ pub mod process {
     /// this, and this type should not be publicly available. If the
     /// type is renamed in between reload cycles, the child will
     /// become an inaccessible zombie.
-    pub fn get_child<KeyType: 'static>(keyname: impl ToString) -> Option<PersistentChild> {
+    pub fn get<KeyType: 'static>(keyname: impl ToString) -> Option<PersistentChild> {
         let key = format!(
             "{}{}",
             keyname.to_string(),
@@ -536,22 +537,8 @@ pub mod process {
         (PROCESS_FNS.get().unwrap().get_child)(key)
     }
 
-    /// Store a [`PersistentChild`] process for retrieval on a future
-    /// reload.
-    ///
-    /// In order to store the `Child`, you must provide a type and a
-    /// name. The type is provided in order to prevent others from
-    /// accessing this child (it's not fully safe, but it takes effort
-    /// to break this), while the name is used to identify this
-    /// specific `Child`.
-    ///
-    /// For the type, you should create a new type specifically for
-    /// this, and this type should not be publicly available. If the
-    /// type is renamed in between reload cycles, the child will
-    /// become an inaccessible zombie.
-    ///
-    /// Returns [`Some`] if there was already a `PersistentChild` in
-    /// storage with the same key.
+    /// A combination of the [`spawn`] ang [`get`] commands, letting
+    /// you "lazyly" spawn processes.
     ///
     /// # Examples
     ///
@@ -559,32 +546,32 @@ pub mod process {
     /// # duat_core::doc_duat!(duat);
     /// # fn do_stuff_with_line(string: String) {}
     /// use std::{
+    ///     io::BufRead,
     ///     mem,
     ///     process::{Command, Stdio},
     /// };
     ///
     /// use duat::{
     ///     prelude::*,
-    ///     process::{PersistentChild, get_child, is_interrupt, store_child},
+    ///     process::{self, is_interrupt},
     /// };
     ///
     /// // Private key for processes.
-    /// struct ProcessKey;
+    /// struct Key;
     /// struct PluginWithProcesses;
     ///
     /// impl Plugin for PluginWithProcesses {
-    ///     fn plug(_: &Plugins) {
+    ///     fn plug(self, _: &Plugins) {
     ///         let pname = "process1";
-    ///         let child = if let Some(child) = get_child::<ProcessKey>(pname) {
-    ///             child
-    ///         } else {
-    ///             PersistentChild::spawn(
-    ///                 Command::new("your-command-name")
-    ///                     .stdin(Stdio::piped())
-    ///                     .stdout(Stdio::piped())
-    ///                     .stderr(Stdio::piped()),
-    ///             )
-    ///         };
+    ///         let mut child = process::get_or_spawn::<Key>(pname, || {
+    ///             let mut command = Command::new("your-command-name");
+    ///             command
+    ///                 .stdin(Stdio::piped())
+    ///                 .stdout(Stdio::piped())
+    ///                 .stderr(Stdio::piped());
+    ///             command
+    ///         })
+    ///         .unwrap();
     ///
     ///         let mut stdout = child.stdout.take().unwrap();
     ///         let join_stdout = std::thread::spawn(move || {
@@ -607,18 +594,50 @@ pub mod process {
     ///             stderr
     ///         });
     ///
-    ///         hook::add::<ConfigUnloaded>(move |_, _| {
+    ///         hook::add_once::<ConfigUnloaded>(move |_, _| {
     ///             let stdout = join_stdout.join().unwrap();
     ///             let stderr = join_stderr.join().unwrap();
     ///
     ///             child.stdout = Some(stdout);
     ///             child.stderr = Some(stderr);
-    ///             store_child::<ProcessKey>(pname, child);
+    ///             process::store::<Key>(pname, child);
     ///         });
     ///     }
     /// }
     /// ```
-    pub fn store_child<KeyType: 'static>(
+    pub fn get_or_spawn<KeyType: 'static>(
+        keyname: impl ToString,
+        spawn: impl FnOnce() -> Command,
+    ) -> std::io::Result<PersistentChild> {
+        let key = format!(
+            "{}{}",
+            keyname.to_string(),
+            std::any::type_name::<KeyType>()
+        );
+        let process_fns = PROCESS_FNS.get().unwrap();
+        match (process_fns.get_child)(key) {
+            Some(child) => Ok(child),
+            None => (process_fns.spawn)(&mut spawn()),
+        }
+    }
+
+    /// Store a [`PersistentChild`] process for retrieval on a future
+    /// reload.
+    ///
+    /// In order to store the `Child`, you must provide a type and a
+    /// name. The type is provided in order to prevent others from
+    /// accessing this child (it's not fully safe, but it takes effort
+    /// to break this), while the name is used to identify this
+    /// specific `Child`.
+    ///
+    /// For the type, you should create a new type specifically for
+    /// this, and this type should not be publicly available. If the
+    /// type is renamed in between reload cycles, the child will
+    /// become an inaccessible zombie.
+    ///
+    /// Returns [`Some`] if there was already a `PersistentChild` in
+    /// storage with the same key.
+    pub fn store<KeyType: 'static>(
         keyname: impl ToString,
         child: PersistentChild,
     ) -> Option<PersistentChild> {
