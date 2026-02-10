@@ -4,7 +4,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         LazyLock, Mutex,
-        atomic::AtomicBool,
         mpsc::{self},
     },
     time::Instant,
@@ -16,17 +15,23 @@ use duat::{
     utils::crate_dir,
 };
 use duat_core::{
-    clipboard::Clipboard,
+    MetaFunctions,
+    clipboard::ClipboardFns,
     context::{self, DuatReceiver, DuatSender},
     notify::{NotifyFns, WatcherCallback},
+    process::{PersistentChild, ProcessFns},
     session::{ReloadEvent, ReloadedBuffer},
 };
+use interrupt_read::Interruptor;
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode::*, Watcher};
 
 static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
-static CLIPBOARD: LazyLock<Clipboard> = LazyLock::new(get_clipboard);
-static NOTIFY_FNS: LazyLock<NotifyFns> = LazyLock::new(get_notify_fns);
+static META_FUNCTIONS: LazyLock<MetaFunctions> = LazyLock::new(|| MetaFunctions {
+    clipboard_fns: get_clipboard_fns(),
+    notify_fns: get_notify_fns(),
+    process_fns: get_process_fns(),
+});
 
 #[derive(Clone, Debug, clap::Parser)]
 #[command(version, about)]
@@ -235,17 +240,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (buffers, duat_rx) = std::thread::scope(|s| {
             // Initialize now in order to prevent thread activation after the
             // thread counter hook sets in.
-            let clipb = &*CLIPBOARD;
-            let notify_fns = &*NOTIFY_FNS;
+            let meta_functions = &*META_FUNCTIONS;
             s.spawn(|| {
                 if let Some(run_duat) = running_duat_fn.take() {
                     let initials = (logs.clone(), forms_init, (crate_dir, profile));
                     let channel = (duat_tx, duat_rx, reload_tx.clone());
-                    run_duat(initials, (ui, clipb, notify_fns), buffers, channel)
+                    run_duat(initials, (ui, meta_functions), buffers, channel)
                 } else {
                     context::error!("No config at [a]{crate_dir}[], loading default");
                     pre_setup(ui, None, None);
-                    run_duat((ui, clipb, notify_fns), buffers, duat_rx, Some(reload_tx))
+                    run_duat((ui, meta_functions), buffers, duat_rx, Some(reload_tx))
                 }
             })
             .join()
@@ -581,7 +585,7 @@ type UiImplementation = duat_term::Ui;
 compile_error!("No Ui was chosen to compile Duat with");
 
 #[cfg(not(target_os = "android"))]
-fn get_clipboard() -> Clipboard {
+fn get_clipboard_fns() -> ClipboardFns {
     use std::sync::OnceLock;
 
     enum ClipboardType {
@@ -593,10 +597,13 @@ fn get_clipboard() -> Clipboard {
 
     _ = CLIPBOARD.set(Mutex::new(match arboard::Clipboard::new() {
         Ok(clipb) => ClipboardType::Platform(clipb),
-        Err(_) => ClipboardType::Local(None),
+        Err(err) => {
+            context::error!("{err}");
+            ClipboardType::Local(None)
+        }
     }));
 
-    duat_core::clipboard::Clipboard {
+    duat_core::clipboard::ClipboardFns {
         get_text: || match &mut *CLIPBOARD.get().unwrap().lock().unwrap() {
             ClipboardType::Platform(clipb) => clipb.get_text().ok(),
             ClipboardType::Local(text) => text.clone(),
@@ -609,8 +616,8 @@ fn get_clipboard() -> Clipboard {
 }
 
 #[cfg(target_os = "android")]
-fn get_clipboard() -> Clipboard {
-    duat_core::clipboard::Clipboard {
+fn get_clipboard() -> ClipboardFns {
+    duat_core::clipboard::ClipboardFns {
         get_text: || {
             android_clipboard::get_text()
                 .map_err(|err| crate::context::error!("{err}"))
@@ -651,7 +658,7 @@ fn get_notify_fns() -> NotifyFns {
         }
     }
 
-	/// A wrapper to implement the [`notify::EventHandler`] trait.
+    /// A wrapper to implement the [`notify::EventHandler`] trait.
     struct WatcherCallbackWrapper(WatcherCallback);
 
     impl notify::EventHandler for WatcherCallbackWrapper {
@@ -684,6 +691,43 @@ fn get_notify_fns() -> NotifyFns {
         },
         unwatch_all: |id| _ = WATCHERS.lock().unwrap().remove(&id),
         remove_all_watchers: || WATCHERS.lock().unwrap().clear(),
+    }
+}
+
+pub fn get_process_fns() -> ProcessFns {
+    use std::io::BufWriter;
+
+    static PROCESSES: LazyLock<Mutex<HashMap<String, PersistentChild>>> =
+        LazyLock::new(Mutex::default);
+    static INTERRUPTORS: Mutex<Vec<Interruptor>> = Mutex::new(Vec::new());
+
+    ProcessFns {
+        spawn: |command| {
+            let mut child = command.spawn()?;
+            let mut interruptors = INTERRUPTORS.lock().unwrap();
+
+            let stdin = child.stdin.take().map(BufWriter::new);
+            let stdout = child.stdout.take().map(|stdout| {
+                let (stdout, interruptor) = interrupt_read::pair(stdout);
+                interruptors.push(interruptor);
+                stdout
+            });
+            let stderr = child.stderr.take().map(|stderr| {
+                let (stdout, interruptor) = interrupt_read::pair(stderr);
+                interruptors.push(interruptor);
+                stdout
+            });
+
+            Ok(PersistentChild { child, stdin, stdout, stderr })
+        },
+        get_child: |key| PROCESSES.lock().unwrap().remove(&key),
+        store_child: |key, child| PROCESSES.lock().unwrap().insert(key, child),
+        interrupt_all: || {
+            INTERRUPTORS
+                .lock()
+                .unwrap()
+                .retain(|interruptor| interruptor.interrupt().is_ok())
+        },
     }
 }
 

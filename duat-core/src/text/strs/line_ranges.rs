@@ -198,11 +198,11 @@ impl LineRanges {
                 if l == line && col == column {
                     Some(Point::from_raw(b, c, l))
                 } else {
-                    l += (char == '\n') as usize;
                     b += char.len_utf8();
                     c += 1;
+                    l += (char == '\n') as usize;
                     col += 1;
-                    col *= (char == '\n') as usize;
+                    col *= (char != '\n') as usize;
                     None
                 }
             })

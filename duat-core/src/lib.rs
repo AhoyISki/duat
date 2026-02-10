@@ -37,7 +37,7 @@ pub mod text;
 pub mod ui;
 pub mod utils;
 
-/// A plugin for Duat
+/// A plugin for Duat.
 ///
 /// Plugins should mostly follow the builder pattern, but you can use
 /// fields if you wish to. When calling [`Plugin::plug`], the plugin's
@@ -83,11 +83,11 @@ pub trait Plugin: 'static {
 static PLUGINS: Plugins = Plugins(Mutex::new(Vec::new()));
 
 /// A struct for [`Plugin`]s to declare dependencies on other
-/// [`Plugin`]s
+/// [`Plugin`]s.
 pub struct Plugins(Mutex<Vec<(PluginFn, TypeId)>>);
 
 impl Plugins {
-    /// Returnss a new instance of [`Plugins`]
+    /// Returnss a new instance of [`Plugins`].
     ///
     /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
@@ -95,7 +95,7 @@ impl Plugins {
         &PLUGINS
     }
 
-    /// Require that a [`Plugin`] be added
+    /// Require that a [`Plugin`] be added.
     ///
     /// This plugin may have already been added, or it might be added
     /// by this call.
@@ -121,43 +121,57 @@ impl Plugins {
 unsafe impl Send for Plugins {}
 unsafe impl Sync for Plugins {}
 
+/// Functions defined in the application loading the config.
+///
+/// **FOR USE BY THE DUAT EXECUTABLE ONLY**
+#[doc(hidden)]
+pub struct MetaFunctions {
+    /// Cliboard functions.
+    pub clipboard_fns: clipboard::ClipboardFns,
+    /// File watching functions.
+    pub notify_fns: notify::NotifyFns,
+    /// Persistent process spawning functions.
+    pub process_fns: process::ProcessFns,
+}
+
 pub mod clipboard {
-    //! Clipboard interaction for Duat
+    //! Clipboard interaction for Duat.
     //!
     //! Just a regular clipboard, no image functionality.
     use std::sync::OnceLock;
 
     /// A clipboard for Duat, can be platform based, or local
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
     #[derive(Clone, Copy)]
-    pub struct Clipboard {
-        /// The function to get the text of the clipboard
+    pub struct ClipboardFns {
+        /// The function to get the text of the clipboard.
         pub get_text: fn() -> Option<String>,
-        /// The function to set the text of the clipboard
+        /// The function to set the text of the clipboard.
         pub set_text: fn(String),
     }
 
-    static CLIPB: OnceLock<&Clipboard> = OnceLock::new();
+    static CLIPBOARD_FNS: OnceLock<&ClipboardFns> = OnceLock::new();
 
-    /// Gets a [`String`] from the clipboard
+    /// Gets a [`String`] from the clipboard.
     ///
     /// This can fail if the clipboard does not contain UTF-8 encoded
     /// text.
-    ///
-    /// Or if there is no clipboard I guess
     pub fn get_text() -> Option<String> {
-        (CLIPB.get().unwrap().get_text)()
+        (CLIPBOARD_FNS.get().unwrap().get_text)()
     }
 
-    /// Sets a [`String`] to the clipboard
+    /// Sets a [`String`] to the clipboard.
     pub fn set_text(text: impl std::fmt::Display) {
-        (CLIPB.get().unwrap().set_text)(text.to_string())
+        (CLIPBOARD_FNS.get().unwrap().set_text)(text.to_string())
     }
 
-    pub(crate) fn set_clipboard(clipb: &'static Clipboard) {
-        CLIPB.set(clipb).map_err(|_| {}).expect("Setup ran twice");
+    pub(crate) fn set_clipboard(clipb: &'static ClipboardFns) {
+        CLIPBOARD_FNS
+            .set(clipb)
+            .map_err(|_| {})
+            .expect("Setup ran twice");
     }
 }
 
@@ -218,7 +232,7 @@ pub mod notify {
 
     /// Functions for watching [`Path`]s.
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
     #[derive(Debug)]
     pub struct NotifyFns {
@@ -294,7 +308,7 @@ pub mod notify {
                                 all_are_from_duat = false;
                             }
                         }
-                        
+
                         if all_are_from_duat { Yes } else { No }
                     } else {
                         No
@@ -338,7 +352,7 @@ pub mod notify {
 
     /// A callback for Watcher events.
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
     pub struct WatcherCallback {
         callback: Box<dyn FnMut(std::io::Result<Event>) + Send + 'static>,
@@ -388,6 +402,257 @@ pub mod notify {
             watcher_count = WATCHER_COUNT.load(Relaxed);
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+}
+
+pub mod process {
+    //! Utilities for spawning processes that should outlive the
+    //! config.
+    use std::{
+        io::{BufWriter, Error},
+        process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
+        sync::OnceLock,
+    };
+
+    pub use interrupt_read::InterruptReader;
+
+    static PROCESS_FNS: OnceLock<&ProcessFns> = OnceLock::new();
+
+    /// Functions for spawning persistent processes
+    ///
+    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
+    #[doc(hidden)]
+    #[derive(Debug)]
+    pub struct ProcessFns {
+        /// Spawn a [`PersistentChild`], which can outlive this config reload.
+        pub spawn: fn(&mut Command) -> std::io::Result<PersistentChild>,
+        /// Get a [`Child`] that was stored with `store_child`, even
+        /// in a previous reload cycle.
+        pub get_child: fn(String) -> Option<PersistentChild>,
+        /// Store a [`Child`], so that it can be loaded with the same
+        /// key, in a future reload cycle.
+        pub store_child: fn(String, PersistentChild) -> Option<PersistentChild>,
+        /// Interrupt all [`PersistentChild`]ren.
+        pub interrupt_all: fn(),
+    }
+
+    /// Spawn a new `PersistentChild`, which can be reused in
+    /// future config reloads.
+    pub fn spawn(command: &mut Command) -> std::io::Result<PersistentChild> {
+        (PROCESS_FNS.get().unwrap().spawn)(command)
+    }
+
+    /// Behaves nearly identically to a regular [`Child`], except the
+    /// `stdin` pipe is wrapped in a [`BufWriter`] and the `stdout`
+    /// and `stderr` pipes are wrapped in an /// [`InterruptReader`].
+    ///
+    /// The [`InterruptReader`] is similar to a [`BufReader`] in the
+    /// fact that it buffers the input bytes. However, it also comes
+    /// with the ability to be interrupted from another thread.
+    ///
+    /// In Duat, this will be done right before the [`ConfigUnloaded`]
+    /// hook is triggered, signaling that Duat is about to quit/unload
+    /// the config. This will also make it so [`context::will_unload`]
+    /// starts returning `true`, which can be used to stop other
+    /// threads on a loop.
+    ///
+    /// When you're doing your reading loop from the `stdout` and
+    /// `stderr`, you should add a check if the return type is
+    /// `Err(err) if is_interrupt(&err)` in order to check for that
+    /// possibility.
+    ///
+    /// The [`is_interrupt`] function just checks if the error was
+    /// sent because of the aforementioned reason.
+    ///
+    /// If the error is of that type, it is _your_ responsability to
+    /// `break` the reading loop and terminate the thread, so duat can
+    /// properly reload (duat won't reload until you do so.).
+    ///
+    /// [`BufReader`]: std::io::BufReader
+    /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
+    /// [`context::will_unload`]: crate::context::will_unload
+    pub struct PersistentChild {
+        /// The [`Child`] that was spawned.
+        ///
+        /// It is guaranteed that `stdin`, `stdout` and `stderr` will
+        /// be [`None`], since those will have been moved to the
+        /// `PersistentChild`'s version of them.
+        pub child: Child,
+        /// The handle to a [`Child`]'s standard input, buffered so
+        /// you don't have to worry about unwrapping and dealing with
+        /// yet to be flushed bytes inbetween reloads
+        ///
+        /// If you wish to reuse the stdin and are running a writing
+        /// loop using the `loop` keyword, try to use `while
+        /// !context::will_unload()` instead, alongside a timeout
+        /// function for receiving the data that will be sent.
+        pub stdin: Option<BufWriter<ChildStdin>>,
+        /// A handle to the [`Child`]'s `stdout`, with buffering and
+        /// the ability to be interrupted through the
+        /// [`ConfigUnloaded`] hook.
+        ///
+        /// You should check if the reading was interrupted with
+        /// [`is_interrupt`]. If that is the case, you should end your
+        /// reading loop, as Duat is about to reload the
+        /// configuration.
+        ///
+        /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
+        pub stdout: Option<InterruptReader<ChildStdout>>,
+        /// A handle to the [`Child`]'s `stderr`, with buffering and
+        /// the ability to be interrupted through the
+        /// [`ConfigUnloaded`] hook.
+        ///
+        /// You should check if the reading was interrupted with
+        /// [`is_interrupt`]. If that is the case, you should end your
+        /// reading loop, as Duat is about to reload the
+        /// configuration.
+        ///
+        /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
+        pub stderr: Option<InterruptReader<ChildStderr>>,
+    }
+
+    /// Get a [`Child`] process that might have been spawned in a
+    /// previous reload cycle.
+    ///
+    /// This function is useful if you want to access spawned
+    /// processes that outlive the presently loaded configuration.
+    ///
+    /// In order to get the `Child`, you must provide a type and a
+    /// name. The type is provided in order to prevent others from
+    /// accessing this child (it's not fully safe, but it takes effort
+    /// to break this), while the name is used to identify this
+    /// specific `Child`.
+    ///
+    /// For the type, you should create a new type specifically for
+    /// this, and this type should not be publicly available. If the
+    /// type is renamed in between reload cycles, the child will
+    /// become an inaccessible zombie.
+    pub fn get_child<KeyType: 'static>(keyname: impl ToString) -> Option<PersistentChild> {
+        let key = format!(
+            "{}{}",
+            keyname.to_string(),
+            std::any::type_name::<KeyType>()
+        );
+        (PROCESS_FNS.get().unwrap().get_child)(key)
+    }
+
+    /// Store a [`PersistentChild`] process for retrieval on a future
+    /// reload.
+    ///
+    /// In order to store the `Child`, you must provide a type and a
+    /// name. The type is provided in order to prevent others from
+    /// accessing this child (it's not fully safe, but it takes effort
+    /// to break this), while the name is used to identify this
+    /// specific `Child`.
+    ///
+    /// For the type, you should create a new type specifically for
+    /// this, and this type should not be publicly available. If the
+    /// type is renamed in between reload cycles, the child will
+    /// become an inaccessible zombie.
+    ///
+    /// Returns [`Some`] if there was already a `PersistentChild` in
+    /// storage with the same key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// # fn do_stuff_with_line(string: String) {}
+    /// use std::{
+    ///     mem,
+    ///     process::{Command, Stdio},
+    /// };
+    ///
+    /// use duat::{
+    ///     prelude::*,
+    ///     process::{PersistentChild, get_child, is_interrupt, store_child},
+    /// };
+    ///
+    /// // Private key for processes.
+    /// struct ProcessKey;
+    /// struct PluginWithProcesses;
+    ///
+    /// impl Plugin for PluginWithProcesses {
+    ///     fn plug(_: &Plugins) {
+    ///         let pname = "process1";
+    ///         let child = if let Some(child) = get_child::<ProcessKey>(pname) {
+    ///             child
+    ///         } else {
+    ///             PersistentChild::spawn(
+    ///                 Command::new("your-command-name")
+    ///                     .stdin(Stdio::piped())
+    ///                     .stdout(Stdio::piped())
+    ///                     .stderr(Stdio::piped()),
+    ///             )
+    ///         };
+    ///
+    ///         let mut stdout = child.stdout.take().unwrap();
+    ///         let join_stdout = std::thread::spawn(move || {
+    ///             let mut line = String::new();
+    ///             loop {
+    ///                 match stdout.read_line(&mut line) {
+    ///                     // The Child has exited.
+    ///                     Ok(0) => break stdout,
+    ///                     Ok(_) => do_stuff_with_line(mem::take(&mut line)),
+    ///                     // Duat is about to reload.
+    ///                     Err(err) if is_interrupt(&err) => break stdout,
+    ///                     Err(err) => context::error!("{err}"),
+    ///                 }
+    ///             }
+    ///         });
+    ///
+    ///         let mut stderr = child.stderr.take().unwrap();
+    ///         let join_stderr = std::thread::spawn(move || {
+    ///             // Similar thing as above...
+    ///             stderr
+    ///         });
+    ///
+    ///         hook::add::<ConfigUnloaded>(move |_, _| {
+    ///             let stdout = join_stdout.join().unwrap();
+    ///             let stderr = join_stderr.join().unwrap();
+    ///
+    ///             child.stdout = Some(stdout);
+    ///             child.stderr = Some(stderr);
+    ///             store_child::<ProcessKey>(pname, child);
+    ///         });
+    ///     }
+    /// }
+    /// ```
+    pub fn store_child<KeyType: 'static>(
+        keyname: impl ToString,
+        child: PersistentChild,
+    ) -> Option<PersistentChild> {
+        let key = format!(
+            "{}{}",
+            keyname.to_string(),
+            std::any::type_name::<KeyType>()
+        );
+        (PROCESS_FNS.get().unwrap().store_child)(key, child)
+    }
+
+    /// Wether the [`std::io::Error`] in question is an interruption
+    /// triggered right before [`ConfigUnloaded`].
+    ///
+    /// You should use this as a second condition to end reading
+    /// loops, so you're able to restart them on the next reloading of
+    /// the config crate.
+    pub fn is_interrupt(err: &Error) -> bool {
+        interrupt_read::is_interrupt(err) && crate::context::will_unload()
+    }
+
+    /// Interrupts all [`Interruptor`]s
+    ///
+    /// This is supposed to be done after
+    /// [`context::declare_will_unload`] is called.
+    ///
+    /// [`context::declare_will_unload`]: crate::context::declare_will_unload
+    pub(crate) fn interrupt_all() {
+        (PROCESS_FNS.get().unwrap().interrupt_all)()
+    }
+
+    /// Sets the [`ProcessFns`].
+    pub(crate) fn set_process_fns(process_fns: &'static ProcessFns) {
+        PROCESS_FNS.set(process_fns).expect("Setup ran twice");
     }
 }
 

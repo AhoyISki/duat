@@ -1,12 +1,8 @@
-//! Access to widgets and other other parts of the state of Duat
-//!
-//! This module lets you access and mutate some things:
-//!
-//! # Buffers
+//! Access the state of Duat.
 use std::{
     any::TypeId,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering::Relaxed},
         mpsc,
     },
 };
@@ -30,7 +26,7 @@ mod global {
         path::{Path, PathBuf},
         sync::{
             LazyLock, Mutex, OnceLock,
-            atomic::{AtomicUsize, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
             mpsc,
         },
     };
@@ -49,9 +45,10 @@ mod global {
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
     static SENDER: OnceLock<DuatSender> = OnceLock::new();
     static NEW_EVENT_COUNT: OnceLock<&'static AtomicUsize> = OnceLock::new();
+    static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
 
     /// Queues a function to be done on the main thread with a
-    /// [`Pass`]
+    /// [`Pass`].
     ///
     /// You can use this whenever you don't have access to a `Pass`,
     /// in order to execute an action on the main thread, gaining
@@ -65,7 +62,7 @@ mod global {
 
     ////////// Internal setters meant to be called internally
 
-    /// Attempts to set the current [`Handle`]
+    /// Attempts to set the current [`Handle`].
     ///
     /// Fails if said [`Handle`] was already deleted.
     #[track_caller]
@@ -75,14 +72,14 @@ mod global {
         }
     }
 
-    /// Sets the [`Window`]s for Duat
+    /// Sets the [`Window`]s for Duat.
     pub(crate) fn set_windows(windows: Windows) {
         if WINDOWS.set(Box::leak(Box::new(windows))).is_err() {
             panic!("Setup ran twice");
         }
     }
 
-    /// Wether Duat has received new events that need to be handled
+    /// Wether Duat has received new events that need to be handled.
     ///
     /// Events can be anything, from a [key press], a [refocus], or
     /// even a [queued function].
@@ -100,9 +97,9 @@ mod global {
         NEW_EVENT_COUNT.get().unwrap().load(Ordering::SeqCst) > 0
     }
 
-    /// A channel for [`DuatEvent`]s
+    /// A channel for [`DuatEvent`]s.
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
     #[doc(hidden)]
     pub fn duat_channel() -> (DuatSender, DuatReceiver) {
         static NEW_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -114,9 +111,9 @@ mod global {
         )
     }
 
-    /// Sets the sender for [`DuatEvent`]s
+    /// Sets the sender for [`DuatEvent`]s.
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
     #[doc(hidden)]
     pub fn set_sender(sender: DuatSender) {
         NEW_EVENT_COUNT.set(sender.1).expect("setup ran twice");
@@ -126,18 +123,18 @@ mod global {
     ////////// Widget Handle getters
 
     /// Returns a "fixed" [`Handle`] for the currently active
-    /// [`Buffer`]
+    /// [`Buffer`].
     ///
     /// This `Handle` will always point to the same `Buffer`,
     /// even when it is not active. If you want a `Handle` that
-    /// always points to the current Buffer, see dyn_buffer
+    /// always points to the current Buffer, see [`dynamic_buffer`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn current_buffer(pa: &Pass) -> Handle {
         windows().current_buffer(pa).read(pa).clone()
     }
 
-    /// Returns a "dynamic" [`Handle`] for the active [`Buffer`]
+    /// Returns a "dynamic" [`Handle`] for the active [`Buffer`].
     ///
     /// This `Handle` will change to point to the current `Buffer`,
     /// whenever the user swicthes which `Buffer` is active. If you
@@ -154,7 +151,7 @@ mod global {
         }
     }
 
-    /// Returns a [`Handle`] for a [`Buffer`] with the given name
+    /// Returns a [`Handle`] for a [`Buffer`] with the given name.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn get_buffer(pa: &Pass, name: impl ToString) -> Result<Handle, Text> {
@@ -163,7 +160,7 @@ mod global {
         Ok(handle)
     }
 
-    /// Returns a [`Handle`] for a [`Buffer`] with the given [`Path`]
+    /// Returns a [`Handle`] for a [`Buffer`] with the given [`Path`].
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn get_buffer_by_path(pa: &Pass, path: &Path) -> Result<Handle, Text> {
@@ -172,7 +169,7 @@ mod global {
         Ok(handle)
     }
 
-    /// Returns the current active [`Handle`]
+    /// Returns the current active [`Handle`].
     ///
     /// Unlike [`current_buffer`], this function will return a
     /// [`Handle<dyn Widget>`], which means it could be any
@@ -190,31 +187,31 @@ mod global {
 
     ////////// Other getters
 
-    /// The [`Window`]s of Duat
+    /// The [`Window`]s of Duat.
     ///
-    /// This struct gives you reading access to every [`Window`] in
+    /// This struct gives you reading access to every `Window` in
     /// Duat with [`Windows::get`], you also get access to every
-    /// [`Handle<dyn Widget>`], including every [`Handle<Buffer>`],
-    /// through the [`Windows::handles`], [`Window::handles`] and
-    /// [`Window::buffers`] function
+    /// [`Handle<dyn Widget>`], including every `Handle<Buffer>`,
+    /// through the [`Windows::handles`]  and [`Window::buffers`]
+    /// function.
     pub fn windows() -> &'static Windows {
         WINDOWS.get().unwrap()
     }
 
-    /// A list of all open [`Buffer`]'s [`Handle`]s
+    /// A list of all open [`Buffer`]'s [`Handle`]s.
     ///
     /// [`Buffer`]: crate::buffer::Buffer
     pub fn buffers(pa: &Pass) -> Vec<Handle> {
         windows().buffers(pa)
     }
 
-    /// The current [`Window`]
+    /// The current [`Window`].
     ///
     /// You can iterate through all [`Handle<Buffer>`]s and
-    /// [`Handle<dyn Widget>`] with [`Window::buffers`] and
+    /// `Handle<dyn Widget>` with [`Window::buffers`] and
     /// [`Window::handles`] respectively.
     ///
-    /// If you wish to access other [`Window`]s, you can use
+    /// If you wish to access other `Window`s, you can use
     /// `context::windows().get(pa, n)` to get the `n`th `Window`.
     /// The current window number can be found with
     /// [`context::current_win_index`]
@@ -225,19 +222,19 @@ mod global {
         WINDOWS.get().unwrap().get(pa, win).unwrap()
     }
 
-    /// The index of the currently active window
+    /// The index of the currently active window.
     pub fn current_win_index(pa: &Pass) -> usize {
         windows().current_window(pa)
     }
 
-    /// The name of the current [`Mode`]
+    /// The name of the current [`Mode`].
     ///
     /// [`Mode`]: crate::mode::Mode
     pub fn mode_name() -> RwData<&'static str> {
         MODE_NAME.clone()
     }
 
-    /// The current directory
+    /// The current directory.
     pub fn current_dir() -> PathBuf {
         CUR_DIR
             .get_or_init(|| Mutex::new(std::env::current_dir().unwrap()))
@@ -246,80 +243,99 @@ mod global {
             .clone()
     }
 
-    /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop
+    /// Wether Duat is in the process of unloading or quitting.
+    ///
+    /// You should make use of this function in order to halt spawned
+    /// threads, as Duat will stall untill all spawned threads are
+    /// dropped or joined.
+    ///
+    /// This function will be set to true right before the
+    /// [`ConfigUnloaded`] hook is triggered.
+    ///
+    /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
+    pub fn will_unload() -> bool {
+        WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
+    }
+
+    /// Declares that Duat will reload or quit.
+    pub(crate) fn declare_will_unload() {
+        WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed)
+    }
+
+    /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop.
     pub(crate) fn sender() -> DuatSender {
         SENDER.get().unwrap().clone()
     }
 }
 
-/// A sender of [`DuatEvent`]s
+/// A sender of [`DuatEvent`]s.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct DuatSender(mpsc::Sender<DuatEvent>, &'static AtomicUsize);
 
 impl DuatSender {
-    /// Sends a [`KeyEvent`]
+    /// Sends a [`KeyEvent`].
     pub fn send_key(&self, key: KeyEvent) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::KeyEventSent(key)).unwrap();
     }
 
-    /// Sends a [`MouseEvent`]
+    /// Sends an [`UiMouseEvent`].
     pub fn send_mouse(&self, mouse: UiMouseEvent) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::MouseEventSent(mouse)).unwrap();
     }
 
-    /// Sends a notice that the app has resized
+    /// Sends a notice that the app has resized.
     pub fn send_resize(&self) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::Resized).unwrap();
     }
 
-    /// Triggers the [`FocusedOnDuat`] [`hook`]
+    /// Triggers the [`FocusedOnDuat`] [`hook`].
     ///
     /// [`FocusedOnDuat`]: crate::hook::FocusedOnDuat
     /// [`hook`]: crate::hook
     pub fn send_focused(&self) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::FocusedOnDuat).unwrap();
     }
 
-    /// Triggers the [`UnfocusedFromDuat`] [`hook`]
+    /// Triggers the [`UnfocusedFromDuat`] [`hook`].
     ///
     /// [`UnfocusedFromDuat`]: crate::hook::UnfocusedFromDuat
     /// [`hook`]: crate::hook
     pub fn send_unfocused(&self) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::UnfocusedFromDuat).unwrap();
     }
 
-    /// Informs `duat-core` that a reload was successful
+    /// Informs `duat-core` that a reload was successful.
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
     #[doc(hidden)]
     pub fn send_reload_succeeded(&self) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::ReloadSucceeded).unwrap();
     }
 
-    /// Informs `duat-core` that a reload failed
+    /// Informs `duat-core` that a reload failed.
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
     #[doc(hidden)]
     pub fn send_reload_failed(&self) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::ReloadFailed).unwrap();
     }
 
-    /// Sends any [`DuatEvent`]
+    /// Sends any [`DuatEvent`].
     pub(crate) fn send(&self, event: DuatEvent) {
-        self.1.fetch_add(1, Ordering::Relaxed);
+        self.1.fetch_add(1, Relaxed);
         self.0.send(event).unwrap();
     }
 }
 
-/// A receiver for [`DuatEvent`]s
+/// A receiver for [`DuatEvent`]s.
 #[doc(hidden)]
 pub struct DuatReceiver(mpsc::Receiver<DuatEvent>, &'static AtomicUsize);
 
@@ -327,12 +343,12 @@ impl DuatReceiver {
     pub(crate) fn recv_timeout(&self, timeout: std::time::Duration) -> Option<DuatEvent> {
         self.0
             .recv_timeout(timeout)
-            .inspect(|_| _ = self.1.fetch_sub(1, Ordering::Relaxed))
+            .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
             .ok()
     }
 }
 
-/// A "dynamic" [`Handle`] wrapper for [`Buffer`]s
+/// A "dynamic" [`Handle`] wrapper for [`Buffer`]s.
 ///
 /// This `Handle` wrapper will always point to the presently active
 /// `Buffer`. It can also detect when that `Buffer` has been changed
@@ -344,7 +360,7 @@ pub struct DynBuffer {
 
 impl DynBuffer {
     /// Wether the [`Buffer`] pointed to has changed or swapped with
-    /// another
+    /// another.
     pub fn has_changed(&self, pa: &Pass) -> bool {
         if self.cur_buffer.has_changed() {
             true
@@ -353,7 +369,7 @@ impl DynBuffer {
         }
     }
 
-    /// Swaps the [`DynBuffer`] to the currently active [`Buffer`]
+    /// Swaps the [`DynBuffer`] to the currently active [`Buffer`].
     pub fn swap_to_current(&mut self) {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
@@ -363,12 +379,12 @@ impl DynBuffer {
         }
     }
 
-    /// Reads the presently active [`Buffer`]
+    /// Reads the presently active [`Buffer`].
     pub fn read<'a>(&'a mut self, pa: &'a Pass) -> &'a Buffer {
         self.saved_buffer.read(pa).read(pa)
     }
 
-    /// The [`Handle<Buffer>`] currently being pointed to
+    /// The [`Handle<Buffer>`] currently being pointed to.
     pub fn handle(&self) -> &Handle {
         // SAFETY: Since this struct uses deep Cloning, no mutable
         // references to the RwData exist.
@@ -376,7 +392,7 @@ impl DynBuffer {
         self.saved_buffer.read(INTERNAL_PASS)
     }
 
-    /// Simulates a [`read`] without actually reading
+    /// Simulates a [`read`] without actually reading.
     ///
     /// This is useful if you want to tell Duat that you don't want
     /// [`has_changed`] to return `true`, but you don't have a
@@ -397,7 +413,7 @@ impl DynBuffer {
 
     ////////// Writing functions
 
-    /// Reads the presently active [`Buffer`]
+    /// Reads the presently active [`Buffer`].
     pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Buffer {
         // SAFETY: Because I already got a &mut Pass, the RwData can't be
         // accessed anyways.
@@ -407,7 +423,7 @@ impl DynBuffer {
     }
 
     /// Writes to the [`Buffer`] and [`Area`], making use of a
-    /// [`Pass`]
+    /// [`Pass`].
     ///
     /// [`Area`]: crate::ui::Area
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut Buffer, &'a mut Area) {
@@ -418,7 +434,7 @@ impl DynBuffer {
         self.saved_buffer.read(INTERNAL_PASS).write_with_area(pa)
     }
 
-    /// Simulates a [`write`] without actually writing
+    /// Simulates a [`write`] without actually writing.
     ///
     /// This is useful if you want to tell Duat that you want
     /// [`has_changed`] to return `true`, but you don't have a
@@ -435,7 +451,7 @@ impl DynBuffer {
 }
 
 impl Clone for DynBuffer {
-    /// Returns a _deep cloned_ duplicate of the value
+    /// Returns a _deep cloned_ duplicate of the value.
     ///
     /// In this case, what this means is that the clone and `self`
     /// will have different internal pointers for the current
@@ -455,36 +471,35 @@ impl Clone for DynBuffer {
     }
 }
 
-/// The current [`Widget`]
+/// The current [`Widget`].
 pub(crate) struct CurWidgetNode(RwData<Node>);
 
 impl CurWidgetNode {
-    /// The [`Widget`]'s [`TypeId`]
+    /// The [`Widget`]'s [`TypeId`].
     pub fn type_id(&self, pa: &Pass) -> TypeId {
         self.0.read(pa).widget().type_id()
     }
 
-    /// Reads the [`Widget`] and its [`Area`]
+    /// Reads the [`Widget`] and its [`Area`].
     pub fn _read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget, &Area) -> R) -> R {
         let node = self.0.read(pa);
         f(node.handle().read(pa), node.area().read(pa))
     }
 
-    /// Reads the [`Widget`] as `W` and its
-    /// [`Area`]
+    /// Reads the [`Widget`] as `W` and its [`Area`].
     pub fn _read_as<W: Widget, R>(&self, pa: &Pass, f: impl FnOnce(&W, &Area) -> R) -> Option<R> {
         let node = self.0.read(pa);
         Some(f(node.read_as(pa)?, node.area().read(pa)))
     }
 
-    /// Mutates the [`RwData<dyn Widget>`], its
-    /// [`Area`], and related [`Widget`]s
+    /// Mutates the [`RwData<dyn Widget>`], its [`Area`], and related
+    /// [`Widget`]s.
     pub(crate) fn mutate_data<R>(&self, pa: &Pass, f: impl FnOnce(&Handle<dyn Widget>) -> R) -> R {
         f(self.0.read(pa).handle())
     }
 
-    /// Mutates the [`RwData<dyn Widget>`] as `W`, its
-    /// [`Area`], and related [`Widget`]s
+    /// Mutates the [`RwData<dyn Widget>`] as `W`, its [`Area`], and
+    /// related [`Widget`]s.
     pub(crate) fn mutate_data_as<W: Widget, R>(
         &self,
         pa: &Pass,
@@ -494,7 +509,7 @@ impl CurWidgetNode {
         Some(f(&inner.try_downcast()?))
     }
 
-    /// The inner [`Node`]
+    /// The inner [`Node`].
     pub(crate) fn node(&self, pa: &Pass) -> Node {
         self.0.read(pa).clone()
     }

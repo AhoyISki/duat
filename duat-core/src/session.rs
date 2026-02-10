@@ -16,9 +16,8 @@ use std::{
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
 use crate::{
-    Plugins,
+    MetaFunctions, Plugins,
     buffer::{Buffer, BufferOpts},
-    clipboard::Clipboard,
     cmd,
     context::{self, DuatReceiver, sender},
     data::Pass,
@@ -28,7 +27,6 @@ use crate::{
         FocusedOnDuat, UnfocusedFromDuat,
     },
     mode::{self},
-    notify::NotifyFns,
     text::TwoPoints,
     ui::{
         Coord, Ui, Windows,
@@ -46,13 +44,11 @@ pub struct SessionCfg {
 }
 
 impl SessionCfg {
-    pub fn new(
-        clipb: &'static Clipboard,
-        notify_fns: &'static NotifyFns,
-        buffer_opts: BufferOpts,
-    ) -> Self {
-        crate::clipboard::set_clipboard(clipb);
+    pub fn new(meta_functions: &'static MetaFunctions, buffer_opts: BufferOpts) -> Self {
+        let MetaFunctions { clipboard_fns, notify_fns, process_fns } = meta_functions;
+        crate::clipboard::set_clipboard(clipboard_fns);
         crate::notify::set_notify_fns(notify_fns);
+        crate::process::set_process_fns(process_fns);
         BUFFER_OPTS.set(buffer_opts).unwrap();
 
         SessionCfg {
@@ -287,12 +283,14 @@ impl Session {
                         let already_called = unload_instant.is_some();
                         let instant = unload_instant.get_or_insert_with(std::time::Instant::now);
                         if !already_called {
+                            context::declare_will_unload();
+                            crate::process::interrupt_all();
                             hook::trigger(pa, ConfigUnloaded(()));
 
                             for handle in context::windows().buffers(pa) {
                                 hook::trigger(pa, BufferUnloaded(handle));
                             }
-                            
+
                             crate::notify::remove_all_watchers();
                         }
 
@@ -316,6 +314,8 @@ impl Session {
                     }
                     DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
+                        context::declare_will_unload();
+                        crate::process::interrupt_all();
                         hook::trigger(pa, ConfigUnloaded(()));
 
                         for handle in context::windows().buffers(pa) {

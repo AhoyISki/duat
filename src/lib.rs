@@ -309,7 +309,9 @@
 //! [`Buffer`]: crate::prelude::Buffer
 //! [this guide]: https://code.visualstudio.com/docs/cpp/config-mingw
 
-pub use duat_core::{Plugin, Plugins, buffer, clipboard, cmd, context, data, text, ui, utils};
+pub use duat_core::{
+    Plugin, Plugins, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils,
+};
 
 pub mod opts;
 mod regular;
@@ -581,13 +583,13 @@ pub mod prelude {
     pub use crate::{
         Plugin, Plugins,
         buffer::{Buffer, BufferTracker},
-        clipboard, cmd,
+        cmd,
         context::{self, Handle},
         cursor,
         data::{self, Pass, RwData},
         form::{self, Color, CursorShape, Form},
         hook::{
-            self, BufferClosed, BufferOpened, BufferPrinted, BufferUnloaded, BufferSaved,
+            self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferUnloaded,
             BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged,
             FocusedOnDuat, FormSet, Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched,
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened,
@@ -598,7 +600,7 @@ pub mod prelude {
             User, alias, alt, ctrl, event, map, shift,
         },
         opts::{self, ScrollOff},
-        setup_duat,
+        process, setup_duat,
         state::*,
         text::{
             self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Strs, SwapChar, Tagger,

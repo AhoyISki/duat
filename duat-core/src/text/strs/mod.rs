@@ -241,12 +241,12 @@ impl Strs {
                 start.line() + line
             };
 
-            let line_start = formed
+            let point = formed
                 .bytes
                 .line_ranges
                 .point_at_coords(line, column, slices);
-            
-            if let Some(point) = line_start {
+
+            if let Some(point) = point {
                 point
             } else {
                 let next_line_start = if line + 1 == end_point.line() {

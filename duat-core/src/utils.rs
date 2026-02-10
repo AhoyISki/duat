@@ -410,6 +410,8 @@ macro_rules! doc_duat {
     ($duat:ident) => {
         #[allow(unused, missing_docs)]
         mod $duat {
+            pub use $crate::{clipboard, notify, process};
+            
             pub struct StartOpts {
                 pub wrap_lines: bool,
                 pub wrap_on_word: bool,
@@ -483,7 +485,7 @@ macro_rules! doc_duat {
                 pub use $crate::{
                     Plugin, Plugins,
                     buffer::{Buffer, BufferTracker},
-                    clipboard, cmd,
+                    cmd,
                     context::{self, Handle},
                     data::{self, Pass},
                     form::{self, Color, CursorShape, Form},

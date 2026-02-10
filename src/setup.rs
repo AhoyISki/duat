@@ -15,13 +15,13 @@ use duat_base::{
     widgets::{FooterWidgets, LogBook, WhichKey, status},
 };
 use duat_core::{
+    MetaFunctions,
     buffer::{BufferOpts, History},
-    clipboard::Clipboard,
     context::{self, DuatReceiver, DuatSender, Logs, cache},
     data::Pass,
     form::Palette,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
-    notify::{FromDuat, NotifyFns, Watcher},
+    notify::{FromDuat, Watcher},
     session::{ReloadEvent, ReloadedBuffer, SessionCfg},
     text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui},
@@ -313,7 +313,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
 
 #[doc(hidden)]
 pub fn run_duat(
-    (ui, clipb, notify_fns): MetaStatics,
+    (ui, meta_functions): MetaStatics,
     buffers: Vec<Vec<ReloadedBuffer>>,
     duat_rx: DuatReceiver,
     reload_tx: Option<Sender<ReloadEvent>>,
@@ -343,7 +343,7 @@ pub fn run_duat(
         }
     };
 
-    let opts = SessionCfg::new(clipb, notify_fns, default_buffer_opts);
+    let opts = SessionCfg::new(meta_functions, default_buffer_opts);
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
     match opts
@@ -366,7 +366,7 @@ pub fn run_duat(
 pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadEvent>);
 /// Items that will live for the duration of Duat
 #[doc(hidden)]
-pub type MetaStatics = (Ui, &'static Clipboard, &'static NotifyFns);
+pub type MetaStatics = (Ui, &'static MetaFunctions);
 /// Initial setup items
 #[doc(hidden)]
 pub type Initials = (
