@@ -56,8 +56,8 @@ impl ServerBridge {
         let (server_tx, server_rx) = mpsc::channel();
 
         let stdin = BufWriter::new(child.stdin.take().expect("Couldn't take stdin"));
-        let stdout = BufReader::new(child.stdout.take().expect("Couldn't take stdin"));
-        let mut stderr = BufReader::new(child.stderr.take().expect("Couldn't take stdin"));
+        let stdout = BufReader::new(child.stdout.take().expect("Couldn't take stdout"));
+        let mut stderr = BufReader::new(child.stderr.take().expect("Couldn't take stderr"));
 
         let stderr_handle = std::thread::spawn({
             let server_name = server_name.to_string();
