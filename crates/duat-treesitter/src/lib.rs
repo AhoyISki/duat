@@ -82,7 +82,7 @@ impl duat_core::Plugin for TreeSitter {
             Ok(())
         }
 
-        static QUERIES: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/queries");
+        static QUERIES: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/../../treesitter-queries");
 
         let Ok(plugin_dir) = duat_core::utils::plugin_dir("duat-treesitter") else {
             context::error!("No local directory, queries aren't installed");

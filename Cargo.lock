@@ -129,6 +129,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
+name = "bstr"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
 name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -330,11 +340,11 @@ dependencies = [
  "dissimilar",
  "duat-base",
  "duat-core",
- "duat-filetype 0.4.0",
+ "duat-filetype",
  "duat-match-pairs",
  "duat-term",
  "duat-treesitter",
- "duatmode 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "duatmode",
  "interrupt-read",
  "libloading",
  "log",
@@ -346,7 +356,7 @@ name = "duat-base"
 version = "0.8.1"
 dependencies = [
  "duat-core",
- "duat-filetype 0.4.0",
+ "duat-filetype",
  "duat-term",
  "format-like",
  "regex-syntax",
@@ -372,17 +382,6 @@ dependencies = [
 
 [[package]]
 name = "duat-filetype"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c925b74cd14357ef9bf6070b6b6c48c56e0ccf7a89a25b9fe03570a876f3fdf6"
-dependencies = [
- "dirs-next",
- "duat-core",
- "regex",
-]
-
-[[package]]
-name = "duat-filetype"
 version = "0.4.0"
 dependencies = [
  "dirs-next",
@@ -399,11 +398,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "duat-lsp"
+version = "0.1.0"
+dependencies = [
+ "duat-core",
+ "globset",
+ "jsonrpc-lite",
+ "lsp-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "duat-match-pairs"
 version = "0.3.0"
 dependencies = [
  "duat-core",
- "duat-filetype 0.3.3",
+ "duat-filetype",
  "duat-treesitter",
 ]
 
@@ -422,7 +433,7 @@ name = "duat-treesitter"
 version = "0.4.0"
 dependencies = [
  "duat-core",
- "duat-filetype 0.4.0",
+ "duat-filetype",
  "gap-buf",
  "include_dir",
  "indoc",
@@ -438,19 +449,7 @@ version = "0.8.1"
 dependencies = [
  "duat-base",
  "duat-core",
- "duat-filetype 0.4.0",
- "duat-jump-list",
- "duat-treesitter",
-]
-
-[[package]]
-name = "duatmode"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af41420eab6a0def31a15e3d5abf3ba858ded5f6593e5d51892183473e968748"
-dependencies = [
- "duat-base",
- "duat-core",
+ "duat-filetype",
  "duat-jump-list",
  "duat-treesitter",
 ]
@@ -490,6 +489,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
+name = "fluent-uri"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17c704e9dbe1ddd863da1e6ff3567795087b1eb201ce80d8fa81162e1516500d"
+dependencies = [
+ "bitflags 1.3.2",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -504,6 +512,8 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 [[package]]
 name = "format-like"
 version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b99a82ec90f90ea96a475418f3adf720efa24239b6226072d12f07608f361b8"
 dependencies = [
  "litrs",
 ]
@@ -542,6 +552,18 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
+]
+
+[[package]]
+name = "globset"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52dfc19153a48bde0cbd630453615c8151bce3a5adfac7a0aebfbf0a1e1f57e3"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -669,6 +691,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
 
 [[package]]
+name = "jsonrpc-lite"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00f1066a393f8bd9aefd2ed69a0a2bc39d1b6d2fdf55d00acb27f4242b403839"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kasuari"
 version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -751,6 +783,19 @@ name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+
+[[package]]
+name = "lsp-types"
+version = "0.97.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53353550a17c04ac46c585feb189c2db82154fc84b79c7a66c96c2c644f66071"
+dependencies = [
+ "bitflags 1.3.2",
+ "fluent-uri",
+ "serde",
+ "serde_json",
+ "serde_repr",
+]
 
 [[package]]
 name = "mach2"
@@ -1105,6 +1150,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
@@ -1139,6 +1185,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_repr"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "175ee3e80ae9982737ca543e96133087cbd9a485eecc3bc4de9c1a37b47ea59c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

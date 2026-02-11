@@ -601,9 +601,6 @@ mod cargo {
             .args(["build", "--profile", profile, "--manifest-path"])
             .arg(manifest_path);
 
-        #[cfg(feature = "deadlocks")]
-        cargo.args(["--features", "deadlocks"]);
-
         exec_cargo(cargo, print)
     }
 

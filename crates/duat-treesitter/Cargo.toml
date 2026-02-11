@@ -9,11 +9,11 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["tree-sitter", "duat", "plugin"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["src/*", "queries/*", "build.rs"]
+include = ["src/*", "../../treesitter-queries/*"]
 
 [dependencies]
-duat-core = "0.8.0"
-duat-filetype = "0.4.0"
+duat-core = { version = "0.8.0", path = "../duat-core" }
+duat-filetype = { version = "0.4.0", path = "../duat-filetype" }
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.26.3"

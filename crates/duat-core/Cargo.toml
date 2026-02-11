@@ -36,9 +36,3 @@ interrupt-read = "0.6.0"
 version = "0.1.5"
 default-features = false
 features = ["perf-inline"]
-
-[features]
-# NOTE: Features meant for testing only by myself.
-default = []
-wack = []
-deadlocks = []
