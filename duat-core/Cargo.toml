@@ -30,7 +30,7 @@ thread-amount = "0.3.0"
 shellexpand = "3.1.1"
 gap-buf = "0.1.0"
 notify-types = "2.1.0"
-interrupt-read = "0.5.0"
+interrupt-read = "0.6.0"
 
 [dependencies.regex-cursor]
 version = "0.1.5"

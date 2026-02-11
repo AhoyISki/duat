@@ -294,10 +294,15 @@ impl Session {
                             crate::notify::remove_all_watchers();
                         }
 
-                        if thread_amount::thread_amount().unwrap().get() <= 7
+                        let threads = || {
+                            thread_amount::thread_amount().unwrap().get()
+                                - crate::process::reader_thread_count()
+                        };
+
+                        if threads() <= 7
                             || !already_called && {
                                 std::thread::sleep(Duration::from_millis(10));
-                                thread_amount::thread_amount().unwrap().get() <= 7
+                                threads() <= 7
                             }
                         {
                             context::logs().clear();

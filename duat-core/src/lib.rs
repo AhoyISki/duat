@@ -435,6 +435,8 @@ pub mod process {
         pub store_child: fn(String, PersistentChild) -> Option<PersistentChild>,
         /// Interrupt all [`PersistentChild`]ren.
         pub interrupt_all: fn(),
+        /// How many reader threads are currently spawned.
+        pub reader_thread_count: fn() -> usize
     }
 
     /// Behaves nearly identically to a regular [`Child`], except the
@@ -672,6 +674,11 @@ pub mod process {
     /// Sets the [`ProcessFns`].
     pub(crate) fn set_process_fns(process_fns: &'static ProcessFns) {
         PROCESS_FNS.set(process_fns).expect("Setup ran twice");
+    }
+
+	/// How many reader threads are still running.
+    pub(crate) fn reader_thread_count() -> usize {
+        (PROCESS_FNS.get().unwrap().reader_thread_count)()
     }
 }
 

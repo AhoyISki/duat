@@ -132,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             pre_setup(ui, None, None);
             run_duat(
-                (ui, &CLIPBOARD, &NOTIFY_FNS),
+                (ui, &META_FUNCTIONS),
                 get_files(args, Path::new(""), "")?,
                 duat_rx,
                 None,
@@ -694,28 +694,32 @@ fn get_notify_fns() -> NotifyFns {
     }
 }
 
-pub fn get_process_fns() -> ProcessFns {
+fn get_process_fns() -> ProcessFns {
     use std::io::BufWriter;
 
     static PROCESSES: LazyLock<Mutex<HashMap<String, PersistentChild>>> =
         LazyLock::new(Mutex::default);
     static INTERRUPTORS: Mutex<Vec<Interruptor>> = Mutex::new(Vec::new());
+    static READER_THREADS: Mutex<Vec<Box<dyn Fn() -> bool + Send>>> = Mutex::new(Vec::new());
 
     ProcessFns {
         spawn: |command| {
             let mut child = command.spawn()?;
             let mut interruptors = INTERRUPTORS.lock().unwrap();
+            let mut reader_threads = READER_THREADS.lock().unwrap();
 
             let stdin = child.stdin.take().map(BufWriter::new);
             let stdout = child.stdout.take().map(|stdout| {
                 let (stdout, interruptor) = interrupt_read::pair(stdout);
                 interruptors.push(interruptor);
+                reader_threads.push(Box::new(stdout.is_reading_fn()));
                 stdout
             });
             let stderr = child.stderr.take().map(|stderr| {
-                let (stdout, interruptor) = interrupt_read::pair(stderr);
+                let (stderr, interruptor) = interrupt_read::pair(stderr);
                 interruptors.push(interruptor);
-                stdout
+                reader_threads.push(Box::new(stderr.is_reading_fn()));
+                stderr
             });
 
             Ok(PersistentChild { child, stdin, stdout, stderr })
@@ -727,6 +731,15 @@ pub fn get_process_fns() -> ProcessFns {
                 .lock()
                 .unwrap()
                 .retain(|interruptor| interruptor.interrupt().is_ok())
+        },
+        reader_thread_count: || {
+            let mut count = 0;
+            READER_THREADS.lock().unwrap().retain(|is_reading| {
+                let is_reading = is_reading();
+                count += is_reading as usize;
+                is_reading
+            });
+            count
         },
     }
 }
