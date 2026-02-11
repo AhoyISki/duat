@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufRead, Write},
     sync::{
         Arc, Mutex,
         mpsc::{self, Sender},
@@ -11,6 +11,7 @@ use duat_core::{
     context,
     data::Pass,
     hook::{self, ConfigUnloaded},
+    process::is_interrupt,
     text::{Text, txt},
 };
 use jsonrpc_lite::{Id, JsonRpc};
@@ -39,25 +40,32 @@ impl ServerBridge {
     ) -> Result<Self, Text> {
         use std::io::ErrorKind;
 
-        let mut child = std::process::Command::new(cmd)
-            .args(args)
-            .envs(env.iter().copied())
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|err| match err.kind() {
-                ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                    txt!("{err}: [a]{cmd}")
-                }
-                _ => txt!("{err}"),
-            })?;
+        struct Key;
+
+        let mut initialized = true;
+        let mut child = duat_core::process::get_or_spawn::<Key>("rust-analyzer", || {
+            initialized = false;
+            let mut command = std::process::Command::new(cmd);
+            command
+                .args(args)
+                .envs(env.iter().copied())
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            command
+        })
+        .map_err(|err| match err.kind() {
+            ErrorKind::NotFound | ErrorKind::PermissionDenied => {
+                txt!("{err}: [a]{cmd}")
+            }
+            _ => txt!("{err}"),
+        })?;
 
         let (server_tx, server_rx) = mpsc::channel();
 
-        let stdin = BufWriter::new(child.stdin.take().expect("Couldn't take stdin"));
-        let stdout = BufReader::new(child.stdout.take().expect("Couldn't take stdout"));
-        let mut stderr = BufReader::new(child.stderr.take().expect("Couldn't take stderr"));
+        let mut stdin = child.stdin.take().expect("Couldn't take stdin");
+        let mut stdout = child.stdout.take().expect("Couldn't take stdout");
+        let mut stderr = child.stderr.take().expect("Couldn't take stderr");
 
         let stderr_handle = std::thread::spawn({
             let server_name = server_name.to_string();
@@ -65,13 +73,12 @@ impl ServerBridge {
                 let mut line = String::new();
                 loop {
                     match stderr.read_line(&mut line) {
-                        Ok(0) => {
-                            break;
-                        }
+                        Ok(0) => break stderr,
                         Ok(_) => {
                             context::debug!("[log.bracket]([]{server_name}[log.bracket])[]{line}");
                             line.clear();
                         }
+                        Err(err) if is_interrupt(&err) => break stderr,
                         Err(err) => context::error!("{err}"),
                     }
                 }
@@ -86,59 +93,44 @@ impl ServerBridge {
         let stdout_handle = std::thread::spawn({
             let callbacks = server_bridge.callbacks.clone();
             move || {
-                if let Err(err) = stdout_loop(callbacks, stdout) {
+                if let Err(err) = stdout_loop(callbacks, &mut stdout)
+                    && !is_interrupt(&err)
+                {
                     context::error!("{err}");
                 }
+                stdout
             }
         });
 
         let stdin_handle = std::thread::spawn(move || {
-            if let Err(err) = stdin_loop(server_rx, stdin) {
+            if let Err(err) = stdin_loop(server_rx, &mut stdin) {
                 context::error!("{err}");
             }
+            stdin
         });
 
-        server_bridge.send_request::<Initialize>(get_initialize_params(), {
-            let server_bridge = server_bridge.clone();
-            move |pa, response| {
-                context::debug!("{response:#?}");
-                server_bridge.send_notification::<Initialized>(InitializedParams {});
-
-                let handle = context::current_buffer(pa);
-                let text = handle.text(pa);
-                server_bridge.send_notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {
-                    text_document: TextDocumentItem {
-                        uri: "file:///home/mateus/.config/duat/src/lib.rs"
-                            .parse()
-                            .unwrap(),
-                        language_id: "rust".to_string(),
-                        version: text.version().strs as i32,
-                        text: text.to_string(),
-                    },
-                });
-            }
-        });
+        if !initialized {
+            send_initialize_request(&server_bridge);
+        }
 
         hook::add_once::<ConfigUnloaded>({
             let server_bridge = server_bridge.clone();
             move |_, _| {
-                server_bridge.send_request::<Shutdown>((), {
-                    let server_bridge = server_bridge.clone();
-                    move |_, _| {
-                        server_bridge.send_notification::<Exit>(());
-                        if let Err(err) = child.wait() {
-                            context::error!("Failed to close language server: {err}");
-                        }
-                        drop(child);
-                        server_bridge
-                            .server_tx
-                            .send(ServerMessage::ExitReceiver)
-                            .unwrap();
-                        for join_handle in [stderr_handle, stdout_handle, stdin_handle] {
-                            join_handle.join().unwrap();
-                        }
-                    }
-                });
+                server_bridge
+                    .server_tx
+                    .send(ServerMessage::ExitReceiver)
+                    .unwrap();
+                if context::will_quit() {
+                    server_bridge.send_request::<Shutdown>((), {
+                        let server_bridge = server_bridge.clone();
+                        move |_, _| server_bridge.send_notification::<Exit>(())
+                    });
+                } else {
+                    child.stdin = Some(stdin_handle.join().unwrap());
+                    child.stdout = Some(stdout_handle.join().unwrap());
+                    child.stderr = Some(stderr_handle.join().unwrap());
+                    _ = duat_core::process::store::<Key>("rust-analyzer", child);
+                }
             }
         });
 
@@ -205,9 +197,32 @@ impl ServerBridge {
     }
 }
 
+fn send_initialize_request(server_bridge: &ServerBridge) {
+    server_bridge.send_request::<Initialize>(get_initialize_params(), {
+        let server_bridge = server_bridge.clone();
+        move |pa, response| {
+            context::debug!("{response:#?}");
+            server_bridge.send_notification::<Initialized>(InitializedParams {});
+
+            let handle = context::current_buffer(pa);
+            let text = handle.text(pa);
+            server_bridge.send_notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: "file:///home/mateus/.config/duat/src/lib.rs"
+                        .parse()
+                        .unwrap(),
+                    language_id: "rust".to_string(),
+                    version: text.version().strs as i32,
+                    text: text.to_string(),
+                },
+            });
+        }
+    });
+}
+
 fn stdin_loop(
     server_rx: mpsc::Receiver<ServerMessage>,
-    mut stdin: impl Write,
+    stdin: &mut impl Write,
 ) -> std::io::Result<()> {
     for server_message in server_rx {
         let content = serde_json::to_string(&match server_message {
@@ -226,7 +241,7 @@ fn stdin_loop(
     Ok(())
 }
 
-fn stdout_loop(callbacks: Callbacks, mut stdout: impl BufRead) -> std::io::Result<()> {
+fn stdout_loop(callbacks: Callbacks, stdout: &mut impl BufRead) -> std::io::Result<()> {
     use std::io::Error;
     loop {
         let content_len = {
@@ -272,7 +287,8 @@ fn stdout_loop(callbacks: Callbacks, mut stdout: impl BufRead) -> std::io::Resul
                 let mut callbacks = callbacks.lock().unwrap_or_else(|err| err.into_inner());
                 match content {
                     JsonRpc::Request(_) => {
-                        context::debug!("Is request: {content:#?}");
+                        // context::debug!("Is request:
+                        // {content:#?}");
                     }
                     JsonRpc::Notification(_) => {}
                     JsonRpc::Success(_) => {
@@ -466,7 +482,7 @@ fn get_initialize_params() -> InitializeParams {
                         ]),
                     }),
                     context_support: Some(true),
-                    insert_text_mode: Some(InsertTextMode::AS_IS),
+                    insert_text_mode: None,
                     // Don't get it tbh.
                     completion_list: None,
                 }),
