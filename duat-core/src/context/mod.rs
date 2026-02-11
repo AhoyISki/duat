@@ -45,7 +45,8 @@ mod global {
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
     static SENDER: OnceLock<DuatSender> = OnceLock::new();
     static NEW_EVENT_COUNT: OnceLock<&'static AtomicUsize> = OnceLock::new();
-    static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
+    static WILL_UNLOAD: AtomicBool = AtomicBool::new(false);
+    static WILL_QUIT: AtomicBool = AtomicBool::new(false);
 
     /// Queues a function to be done on the main thread with a
     /// [`Pass`].
@@ -243,7 +244,7 @@ mod global {
             .clone()
     }
 
-    /// Wether Duat is in the process of unloading or quitting.
+    /// Wether Duat is in the process of unloading.
     ///
     /// You should make use of this function in order to halt spawned
     /// threads, as Duat will stall untill all spawned threads are
@@ -254,12 +255,30 @@ mod global {
     ///
     /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
     pub fn will_unload() -> bool {
-        WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
+        WILL_UNLOAD.load(Ordering::Relaxed)
+    }
+
+    /// Wether Duat is in the process of unloading.
+    ///
+    /// You should make use of this function in order to gracefully
+    /// terminate child processes.
+    ///
+    /// This function will be set to true right before the
+    /// [`ConfigUnloaded`] hook is triggered.
+    ///
+    /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
+    pub fn will_quit() -> bool {
+        WILL_QUIT.load(Ordering::Relaxed)
     }
 
     /// Declares that Duat will reload or quit.
     pub(crate) fn declare_will_unload() {
-        WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed)
+        WILL_UNLOAD.store(true, Ordering::Relaxed)
+    }
+
+    /// Declares that Duat will reload or quit.
+    pub(crate) fn declare_will_quit() {
+        WILL_QUIT.store(true, Ordering::Relaxed)
     }
 
     /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop.

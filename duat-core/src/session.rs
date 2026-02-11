@@ -320,6 +320,7 @@ impl Session {
                     DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
                         context::declare_will_unload();
+                        context::declare_will_quit();
                         crate::process::interrupt_all();
                         hook::trigger(pa, ConfigUnloaded(()));
 

@@ -33,7 +33,7 @@ FOR NEXT UPDATE:
 [ ] Make Inlay text much more powerful.
 [x] File watching.
 [x] File tracking.
-[ ] Persistent process spawning.
+[x] Persistent process spawning.
 
 KNOWN BUGS:
  HIGH PRIORITY:
