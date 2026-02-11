@@ -27,6 +27,7 @@ use duat_core::{
     ui::{DynSpawnSpecs, Orientation, Ui},
 };
 use duat_filetype::FileType;
+#[cfg(feature = "term-ui")]
 use duat_term::VertRule;
 
 use crate::{
@@ -42,7 +43,11 @@ static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
 #[doc(hidden)]
-pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>) {
+pub fn pre_setup(
+    #[allow(unused_variables)] ui: Ui,
+    initials: Option<Initials>,
+    duat_tx: Option<DuatSender>,
+) {
     static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
         Watcher::new(|event, from_duat| {
             use dissimilar::Chunk::*;
@@ -89,6 +94,12 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
         .unwrap()
     });
 
+    // Check this in here, in order to not give warnings to crates that
+    // depend on duat without this feature.
+    if !cfg!(feature = "term-ui") {
+        panic!("No ui for running Duat has been chosen!");
+    }
+
     std::panic::set_hook(Box::new(move |panic_info| {
         context::log_panic(panic_info);
         let backtrace = std::backtrace::Backtrace::capture();
@@ -112,6 +123,7 @@ pub fn pre_setup(ui: Ui, initials: Option<Initials>, duat_tx: Option<DuatSender>
     // Layout hooks
 
     hook::add::<BufferOpened>(|pa, handle| {
+        #[cfg(feature = "term-ui")]
         VertRule::builder().push_on(pa, handle);
         OPTS.lock().unwrap().line_numbers.push_on(pa, handle);
     })
@@ -371,6 +383,6 @@ pub type MetaStatics = (Ui, &'static MetaFunctions);
 #[doc(hidden)]
 pub type Initials = (
     Logs,
-    (&'static Mutex<Vec<&'static str>>, &'static Palette),
+    (&'static Mutex<Vec<std::sync::Arc<str>>>, &'static Palette),
     (&'static Path, &'static str),
 );

@@ -14,15 +14,6 @@ use crate::{
     text::FormTag,
 };
 
-/// Lists of [`Form`]s to be applied by a name
-pub trait ColorScheme: Send + Sync + 'static {
-    /// The list of [`Form`]s alongside their names
-    fn list_of_forms(&self) -> Vec<(&'static str, Form)>;
-
-    /// The name of this [`ColorScheme`], shouldn't be altered
-    fn name(&self) -> &'static str;
-}
-
 static COLORS: Mutex<Vec<CtColor>> = Mutex::new(Vec::new());
 static SENDER: OnceLock<DuatSender> = OnceLock::new();
 static BASE_FORMS: &[(&str, Form)] = &[
@@ -53,10 +44,10 @@ mod global {
     use std::{
         any::TypeId,
         collections::HashMap,
-        sync::{LazyLock, Mutex, OnceLock},
+        sync::{Arc, LazyLock, Mutex, OnceLock},
     };
 
-    use super::{BASE_FORMS, ColorScheme, CtColor, CursorShape, Form, FormId, Painter, Palette};
+    use super::{BASE_FORMS, CtColor, CursorShape, Form, FormId, Painter, Palette};
     #[doc(inline)]
     pub use crate::__id_of__ as id_of;
     use crate::{
@@ -65,9 +56,10 @@ mod global {
         hook::{self, ColorSchemeSet},
     };
 
-    static PALETTE: OnceLock<&'static Palette> = OnceLock::new();
-    static FORMS: OnceLock<&'static Mutex<Vec<&str>>> = OnceLock::new();
-    static COLORSCHEMES: LazyLock<Mutex<Vec<Box<dyn ColorScheme>>>> = LazyLock::new(Mutex::default);
+    static PALETTE: OnceLock<&Palette> = OnceLock::new();
+    static FORMS: OnceLock<&Mutex<Vec<Arc<str>>>> = OnceLock::new();
+    static COLORSCHEMES: LazyLock<Mutex<HashMap<Arc<str>, ColorschemeFn>>> =
+        LazyLock::new(Mutex::default);
 
     /// Sets the [`Form`] by the name of `name`
     ///
@@ -371,7 +363,7 @@ mod global {
                 }
             }
 
-            inner.masks.push((mask.to_string().leak(), remaps));
+            inner.masks.push((mask.to_string(), remaps));
         }
     }
 
@@ -420,7 +412,7 @@ mod global {
                 unsafe { ID }
             } else {
                 let name = $form.to_string();
-                let id = set_many(vec![(name, None)])[0];
+                let id = set_many([(name, None)])[0];
                 unsafe {
                     ID = id;
                     WAS_SET = true;
@@ -438,7 +430,7 @@ mod global {
     /// issue (usually with something like a [`HashMap`]).
     pub fn id_of_non_static(name: impl ToString) -> FormId {
         let name = name.to_string();
-        set_many(vec![(name, None)])[0]
+        set_many([(name, None)])[0]
     }
 
     /// Non static version of [`id_of!`], for many [`Form`]s
@@ -448,17 +440,18 @@ mod global {
     /// case, you should try to find a way to memoize around this
     /// issue (usually with something like a [`HashMap`]).
     pub fn ids_of_non_static(names: impl IntoIterator<Item = impl ToString>) -> Vec<FormId> {
-        set_many(names.into_iter().map(|n| (n.to_string(), None)).collect())
+        set_many(names.into_iter().map(|n| (n.to_string(), None)))
     }
 
     /// Sets a bunch of [`Form`]s
     #[doc(hidden)]
-    pub fn set_many<S: AsRef<str> + Send + Sync + 'static>(
-        sets: Vec<(S, Option<Form>)>,
+    pub fn set_many<S: AsRef<str>>(
+        sets: impl IntoIterator<Item = (S, Option<Form>)>,
     ) -> Vec<FormId> {
         let mut ids = Vec::new();
         let mut forms = FORMS.get().unwrap().lock().unwrap();
-        for (name, _) in sets.iter() {
+        let sets: Vec<_> = sets.into_iter().collect();
+        for (name, _) in &sets {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
 
@@ -467,24 +460,25 @@ mod global {
         ids
     }
 
-    /// Adds a [`ColorScheme`] to the list of colorschemes
+    /// Adds a colorscheme to the list of colorschemes
     ///
-    /// This [`ColorScheme`] can then be added via
-    /// [`form::set_colorscheme`] or through the command
-    /// `colorscheme`.
+    /// A colorscheme is just a name in the form of a `&'static str`,
+    /// and a list of name/[`Form`] pairs.
     ///
-    /// If a [`ColorScheme`] of the same name was already added, it
-    /// will be overritten.
+    /// This colorscheme can then be applied by calling
+    /// [`set_colorscheme`].
     ///
-    /// [`form::set_colorscheme`]: set_colorscheme
-    pub fn add_colorscheme(cs: impl ColorScheme) {
-        let mut colorschemes = COLORSCHEMES.lock().unwrap();
-        let name = cs.name();
-        if let Some(i) = colorschemes.iter().position(|cs| cs.name() == name) {
-            colorschemes[i] = Box::new(cs);
-        } else {
-            colorschemes.push(Box::new(cs));
-        }
+    /// When you call this function, you will replace any previous
+    /// colorscheme with the same name.
+    pub fn add_colorscheme(
+        name: impl ToString,
+        pairs: impl FnMut() -> Vec<(String, Form)> + Send + 'static,
+    ) {
+        let name = name.to_string();
+        COLORSCHEMES
+            .lock()
+            .unwrap()
+            .insert(Arc::from(name), Box::new(pairs));
     }
 
     /// Applies a [`ColorScheme`]
@@ -495,16 +489,10 @@ mod global {
     /// [`form::add_colorscheme`]: add_colorscheme
     pub fn set_colorscheme(name: &str) {
         let name = name.to_string();
-        let colorschemes = COLORSCHEMES.lock().unwrap();
-        if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
-            let forms = cs
-                .list_of_forms()
-                .into_iter()
-                .map(|(name, form)| (name, Some(form)))
-                .collect();
-            set_many(forms);
-            let name = cs.name();
-            context::queue(move |pa| _ = hook::trigger(pa, ColorSchemeSet(name)));
+        let mut colorschemes = COLORSCHEMES.lock().unwrap();
+        if let Some(pairs) = colorschemes.get_mut(name.as_str()) {
+            set_many(pairs().into_iter().map(|(name, form)| (name, Some(form))));
+            context::queue(move |pa| _ = hook::trigger(pa, ColorSchemeSet(name.to_string())));
         } else {
             context::error!("The colorscheme [a]{name}[] was not found");
         }
@@ -512,21 +500,23 @@ mod global {
 
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
-        FORMS.get().unwrap().lock().unwrap().contains(&name)
+        FORMS
+            .get()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|fname| fname.as_ref() == name)
     }
 
     /// Wether or not a specific [`ColorScheme`] was added
     pub(crate) fn colorscheme_exists(name: &str) -> bool {
-        COLORSCHEMES
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|cs| cs.name() == name)
+        COLORSCHEMES.lock().unwrap().contains_key(name)
     }
 
     /// The name of a form, given a [`FormId`]
-    pub(super) fn name_of(id: FormId) -> &'static str {
-        FORMS.get().unwrap().lock().unwrap()[id.0 as usize]
+    pub(super) fn name_of(id: FormId) -> Arc<str> {
+        FORMS.get().unwrap().lock().unwrap()[id.0 as usize].clone()
     }
 
     fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
@@ -543,16 +533,20 @@ mod global {
         }
     }
 
-    fn position_of_name(names: &mut Vec<&'static str>, name: impl AsRef<str>) -> usize {
+    fn position_of_name(names: &mut Vec<Arc<str>>, name: impl AsRef<str>) -> usize {
         let name = name.as_ref();
-        if let Some((i, _)) = names.iter().enumerate().find(|(_, rhs)| **rhs == name) {
+        if let Some((i, _)) = names
+            .iter()
+            .enumerate()
+            .find(|(_, rhs)| rhs.as_ref() == name)
+        {
             i
         } else if let Some((refed, _)) = name.rsplit_once('.') {
             position_of_name(names, refed);
-            names.push(name.to_string().leak());
+            names.push(name.into());
             names.len() - 1
         } else {
-            names.push(name.to_string().leak());
+            names.push(name.into());
             names.len() - 1
         }
     }
@@ -561,9 +555,9 @@ mod global {
     ///
     /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
-    pub fn get_initial() -> (&'static Mutex<Vec<&'static str>>, &'static Palette) {
+    pub fn get_initial() -> (&'static Mutex<Vec<Arc<str>>>, &'static Palette) {
         let forms = Box::leak(Box::new(Mutex::new(
-            BASE_FORMS.iter().map(|(n, ..)| *n).collect(),
+            BASE_FORMS.iter().map(|(n, ..)| Arc::from(*n)).collect(),
         )));
         let palette = Box::leak(Box::new(Palette::new()));
         (forms, palette)
@@ -573,7 +567,7 @@ mod global {
     ///
     /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
-    pub fn set_initial((forms, palette): (&'static Mutex<Vec<&'static str>>, &'static Palette)) {
+    pub fn set_initial((forms, palette): (&'static Mutex<Vec<Arc<str>>>, &'static Palette)) {
         FORMS.set(forms).expect("Forms setup ran twice");
         PALETTE.set(palette).expect("Forms setup ran twice");
     }
@@ -703,6 +697,8 @@ mod global {
             self.0
         }
     }
+
+    type ColorschemeFn = Box<dyn FnMut() -> Vec<(String, Form)> + Send>;
 }
 
 /// An identifier of a [`Form`]
@@ -742,7 +738,7 @@ impl FormId {
     }
 
     /// The name of this [`FormId`]
-    pub fn name(self) -> &'static str {
+    pub fn name(self) -> std::sync::Arc<str> {
         name_of(self)
     }
 }
@@ -1014,11 +1010,11 @@ impl Palette {
         Self(RwLock::new(InnerPalette {
             main_cursor,
             extra_cursor: main_cursor,
-            forms: BASE_FORMS.to_vec(),
-            masks: vec![(
-                "".to_string().leak(),
-                (0..BASE_FORMS.len() as u16).collect(),
-            )],
+            forms: BASE_FORMS
+                .iter()
+                .map(|(str, form)| (str.to_string(), *form))
+                .collect(),
+            masks: vec![("".to_string(), (0..BASE_FORMS.len() as u16).collect())],
         }))
     }
 
@@ -1148,8 +1144,8 @@ impl Palette {
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
-    forms: Vec<(&'static str, Form)>,
-    masks: Vec<(&'static str, Vec<u16>)>,
+    forms: Vec<(String, Form)>,
+    masks: Vec<(String, Vec<u16>)>,
 }
 
 impl InnerPalette {
@@ -1169,7 +1165,7 @@ impl InnerPalette {
 
         mask_form(name, i, self);
 
-        let form_set = FormSet((self.forms[i].0, FormId(i as u16), form));
+        let form_set = FormSet((self.forms[i].0.clone(), FormId(i as u16), form));
         context::queue(move |pa| _ = hook::trigger(pa, form_set));
     }
 
@@ -1215,7 +1211,7 @@ impl InnerPalette {
         }
 
         mask_form(name, i, self);
-        let form_set = FormSet((self.forms[i].0, FormId(i as u16), form));
+        let form_set = FormSet((self.forms[i].0.clone(), FormId(i as u16), form));
         context::queue(move |pa| _ = hook::trigger(pa, form_set));
     }
 
@@ -1628,19 +1624,19 @@ fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool
     }
 }
 
-fn position_and_form(forms: &mut Vec<(&str, Form)>, name: impl AsRef<str>) -> (usize, Form) {
+fn position_and_form(forms: &mut Vec<(String, Form)>, name: impl AsRef<str>) -> (usize, Form) {
     let name = name.as_ref();
     if let Some((i, (_, form))) = forms.iter().enumerate().find(|(_, (lhs, _))| *lhs == name) {
         (i, *form)
     } else if let Some((refed, _)) = name.rsplit_once('.') {
         let (i, mut form) = position_and_form(forms, refed);
         form.kind = FormKind::WeakestRef(i as u16, default_style());
-        forms.push((name.to_string().leak(), form));
+        forms.push((name.to_string(), form));
         (forms.len() - 1, form)
     } else {
         let mut form = Form::new();
         form.kind = FormKind::Weakest;
-        forms.push((name.to_string().leak(), form));
+        forms.push((name.to_string(), form));
         (forms.len() - 1, form)
     }
 }
@@ -1818,7 +1814,7 @@ impl std::fmt::Debug for Form {
 
 impl std::fmt::Debug for InnerPalette {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct DebugForms<'a>(&'a [(&'static str, Form)]);
+        struct DebugForms<'a>(&'a [(String, Form)]);
         impl std::fmt::Debug for DebugForms<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if f.alternate() {

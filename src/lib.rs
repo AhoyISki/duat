@@ -333,8 +333,8 @@ pub mod form {
     //!
     //! [`Form`]: crate::form::Form
     pub use duat_core::form::{
-        Color, ColorScheme, CursorShape, Form, Palette, add_colorscheme, enable_mask, from_id,
-        id_of, set, set_colorscheme, set_many, set_weak,
+        Color, CursorShape, Form, Palette, add_colorscheme, enable_mask, from_id, id_of, set,
+        set_colorscheme, set_many, set_weak,
     };
 }
 
@@ -693,13 +693,6 @@ pub mod prelude {
         cmd.output().ok()
     }
 }
-
-// This will eventually be a NOT AND to check if any Uis have been
-// chosen at all.
-// Later, I'll also have an XOR checker to make sure only one Ui was
-// chosen.
-#[cfg(not(feature = "term-ui"))]
-compile_error!("No ui has been chosen to compile Duat with.");
 
 /// For testing mdBook examples.
 #[cfg(doctest)]

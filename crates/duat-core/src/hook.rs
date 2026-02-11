@@ -1044,13 +1044,13 @@ impl<W: Widget> PartialEq<Handle<W>> for OnMouseEvent {
 /// - The `Form`'s name.
 /// - Its [`FormId`].
 /// - Its new value.
-pub struct FormSet(pub(crate) (&'static str, FormId, Form));
+pub struct FormSet(pub(crate) (String, FormId, Form));
 
 impl Hookable for FormSet {
-    type Input<'h> = (&'static str, FormId, Form);
+    type Input<'h> = (&'h str, FormId, Form);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (self.0.0, self.0.1, self.0.2)
+        (&self.0.0, self.0.1, self.0.2)
     }
 }
 
@@ -1064,13 +1064,13 @@ impl Hookable for FormSet {
 /// - The name of the `ColorScheme`
 ///
 /// [`ColorScheme`]: crate::form::ColorScheme
-pub struct ColorSchemeSet(pub(crate) &'static str);
+pub struct ColorSchemeSet(pub(crate) String);
 
 impl Hookable for ColorSchemeSet {
-    type Input<'h> = &'static str;
+    type Input<'h> = &'h str;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        self.0
+        &self.0
     }
 }
 
