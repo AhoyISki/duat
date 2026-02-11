@@ -6,6 +6,8 @@ This crate isn’t really meant for public use, since it is used
 only by a select few plugins. Configuration crates and plugins
 should make use of the [duat][__link0] crate.
 
+One thing to note about this “builti-in plugins” thing though, is that the api of `duat` is a superset of `duat-core`’s api, the only reason why this distinction exists is so I can include some other plugins in `duat`’s api, like `duat-base`, duat-treesitter`, and `duat-lsp\`.
+
 
 # Plugin examples
 

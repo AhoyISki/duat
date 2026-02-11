@@ -4,6 +4,8 @@
 //! only by a select few plugins. Configuration crates and plugins
 //! should make use of the [duat] crate.
 //!
+//! One thing to note about this "builti-in plugins" thing though, is that the api of `duat` is a superset of `duat-core`'s api, the only reason why this distinction exists is so I can include some other plugins in `duat`'s api, like `duat-base`, duat-treesitter`, and `duat-lsp`. 
+//!
 //! [duat]: https://crates.io/duat
 #![warn(rustdoc::unescaped_backticks)]
 #![allow(clippy::single_range_in_vec_init)]
