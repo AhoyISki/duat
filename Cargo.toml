@@ -11,6 +11,10 @@ keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 include = ["src/", "templates/*"]
 
+[workspace]
+resolver = "3"
+members = ["duat*"]
+
 [lints.rust]
 missing_docs = "warn"
 

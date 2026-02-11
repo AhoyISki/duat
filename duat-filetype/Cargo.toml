@@ -1,0 +1,20 @@
+[package]
+name = "duat-filetype"
+version = "0.4.0"
+edition = "2024"
+authors = ["AhoyISki"]
+description = "Filetype detection for the File widget from Duat"
+repository = "https://github.com/AhoyISki/duat-filetype"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["duat", "plugin"]
+categories = ["command-line-utilities", "text-editors", "config"]
+
+[dependencies]
+dirs-next = "2.0"
+duat-core = "0.8.0"
+
+[dependencies.regex]
+version = "1.12"
+default-features = false
+features = ["perf", "std"]
