@@ -1013,6 +1013,7 @@ pub fn print_text(
                 style_was_set = false;
             }
             TextPart::Char(_) => {
+                replace_chars.drain(..);
                 let cursor_style = next_cursor_end(lines, painter, real, ghost);
                 style_was_set |= cursor_style.is_some();
 
