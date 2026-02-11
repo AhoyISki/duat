@@ -1,5 +1,0 @@
-[patch."https://github.com/AhoyISki/duat".duat-core]
-path = "../duat/duat-core/"
-
-[patch."https://github.com/AhoyISki/duat-filetype".duat-filetype]
-path = "../duat-filetype/"
