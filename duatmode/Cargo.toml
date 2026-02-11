@@ -1,0 +1,18 @@
+[package]
+name = "duatmode"
+version = "0.8.1"
+authors = ["AhoyISki"]
+description = "The default mode for the Duat text editor"
+repository = "https://github.com/AhoyISki/duat/tree/master/duatmode"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "editing-mode", "text", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+edition = "2024"
+
+[dependencies]
+duat-core = "0.8.0"
+duat-base = "0.8.0"
+duat-jump-list = "0.3.0"
+duat-treesitter = "0.4.0"
+duat-filetype = "0.4.0"

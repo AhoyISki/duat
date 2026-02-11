@@ -75,7 +75,7 @@ pub fn print_iter<'t>(
             }
         }
 
-        if x == cap {
+        if x == cap && opts.wrap_lines {
             x = indent;
         }
     }
