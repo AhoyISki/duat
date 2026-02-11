@@ -161,30 +161,21 @@ This is an indication that your installed version of duat became
 incompatible with that of your config. Rerun the installation
 process and call `duat --reload`.
 
-## Default plugins
+## Builtin plugins
 
-When you install duat, the default config crate will come with
-the following plugins:
+Duat comes with the following built-in plugins, which I will later
+on add the ability to disable:
 
-* [`duat-catppuccin`][__link16] is a just a simple colorscheme plugin, it
-  adds the four flavors from the [catppuccin][__link17] colorscheme. You can
-  pick between the four of them, you can apply its colors to other
-  [`Form`][__link18]s and you can allow or disallow the colorscheme to set
-  the background color.
-
-It also comes with the following built-in plugins, which I will
-later on add the ability to disable:
-
-* [`duatmode`][__link19] is the default mode for editing in Duat. It is
+* [`duatmode`][__link16] is the default mode for editing in Duat. It is
   heavily inspired by the Kakoune text editor in its design, with
   some light differences.
-* [`duat-treesitter`][__link20] brings [tree-sitter][__link21] to Duat in the form of
+* [`duat-treesitter`][__link17] brings [tree-sitter][__link18] to Duat in the form of
   syntax highlighting and indentation calculation, which can be
   used by Modes (such as those from `duat-kak`) in order to give
   better feedback when editing buffers.
-* [`duat-match-pairs`][__link22] adds matched parentheses highlighting to
+* [`duat-match-pairs`][__link19] adds matched parentheses highlighting to
   duat. Has some ntegration with `duat-treesitter`.
-* [`duat-base`][__link23] adds all of the default plugins that you see, like
+* [`duat-base`][__link20] adds all of the default plugins that you see, like
   the line numbers, status line, prompt line, etc.
 
 ### Features
@@ -247,7 +238,7 @@ way:
 * [ ] Create an gui frontend;
 
 An internal (and more detailed) TODO list, which might hard to
-understand, can be found in [TODO][__link24]. This list will is
+understand, can be found in [TODO][__link21]. This list will is
 *not* a comprehensive roadmap, as I will ocasionally remove
 entries from it, particularly those in the `FOR NEXT UPDATE`
 section, when said update comes out.
@@ -280,7 +271,7 @@ That’s why I decided to create Duat.
 idk, cool sounding word that I got from Spelunky 2.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG02xJjvhSzT0G5l4Zr4U-N_YG0Y3PJfXG382Gy6X1eMsirhRYWSGgmRkdWF0ZTAuOC4zgmlkdWF0X2Jhc2VlMC44LjGCaWR1YXRfY29yZWUwLjguMYJwZHVhdF9tYXRjaF9wYWlyc2UwLjMuMIJvZHVhdF90cmVlc2l0dGVyZTAuNC4wgmhkdWF0bW9kZWUwLjguMQ
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEGwQ5C363ExukG2gUmX49WAxBG1qA9VEaMGQBG6awx7gS4DShYWSGgmRkdWF0ZTAuOC4zgmlkdWF0X2Jhc2VlMC44LjGCaWR1YXRfY29yZWUwLjguMYJwZHVhdF9tYXRjaF9wYWlyc2UwLjMuMIJvZHVhdF90cmVlc2l0dGVyZTAuNC4wgmhkdWF0bW9kZWUwLjguMQ
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.8.3/duat/?search=mode::map
  [__link10]: https://docs.rs/duat_core/0.8.1/duat_core/?search=buffer::BufferTracker
@@ -289,16 +280,13 @@ idk, cool sounding word that I got from Spelunky 2.
  [__link13]: https://docs.rs/duat/0.8.3/duat/?search=prelude::Form
  [__link14]: https://docs.rs/duat_core/0.8.1/duat_core/?search=text::Spacer
  [__link15]: https://doc.rust-lang.org/stable/std/macro.format.html
- [__link16]: https://github.com/AhoyISki/duat-catppuccin
- [__link17]: https://catppuccin.com
- [__link18]: https://docs.rs/duat/0.8.3/duat/?search=prelude::Form
- [__link19]: https://crates.io/crates/duatmode/0.8.1
+ [__link16]: https://crates.io/crates/duatmode/0.8.1
+ [__link17]: https://crates.io/crates/duat_treesitter/0.4.0
+ [__link18]: https://tree-sitter.github.io/tree-sitter
+ [__link19]: https://crates.io/crates/duat_match_pairs/0.3.0
  [__link2]: https://docs.rs/duat/0.8.3/duat/opts/index.html
- [__link20]: https://crates.io/crates/duat_treesitter/0.4.0
- [__link21]: https://tree-sitter.github.io/tree-sitter
- [__link22]: https://crates.io/crates/duat_match_pairs/0.3.0
- [__link23]: https://crates.io/crates/duat_base/0.8.1
- [__link24]: ./TODO
+ [__link20]: https://crates.io/crates/duat_base/0.8.1
+ [__link21]: ./TODO
  [__link3]: https://docs.rs/duat/0.8.3/duat/?search=hook::add
  [__link4]: https://docs.rs/duat/0.8.3/duat/?search=hook::ModeSwitched
  [__link5]: https://docs.rs/duat/0.8.3/duat/?search=form::set

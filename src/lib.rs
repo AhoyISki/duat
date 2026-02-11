@@ -154,19 +154,10 @@
 //! incompatible with that of your config. Rerun the installation
 //! process and call `duat --reload`.
 //!
-//! # Default plugins
+//! # Builtin plugins
 //!
-//! When you install duat, the default config crate will come with
-//! the following plugins:
-//!
-//! - [`duat-catppuccin`] is a just a simple colorscheme plugin, it
-//!   adds the four flavors from the [catppuccin] colorscheme. You can
-//!   pick between the four of them, you can apply its colors to other
-//!   [`Form`]s and you can allow or disallow the colorscheme to set
-//!   the background color.
-//!
-//! It also comes with the following built-in plugins, which I will
-//! later on add the ability to disable:
+//! Duat comes with the following built-in plugins, which I will later
+//! on add the ability to disable:
 //!
 //! - [`duatmode`] is the default mode for editing in Duat. It is
 //!   heavily inspired by the Kakoune text editor in its design, with
@@ -294,8 +285,6 @@
 //! [tags]: duat_core::text::Tag
 //! [`duat-kak`]: https://github.com/AhoyISki/duat-kak
 //! [Kakoune]: https://github.com/mawww/kakoune
-//! [`duat-catppuccin`]: https://github.com/AhoyISki/duat-catppuccin
-//! [catppuccin]: https://catppuccin.com
 //! [`Form`]: prelude::Form
 //! [`duat-treesitter`]: duat_treesitter
 //! [`duat-match-pairs`]: duat_match_pairs
@@ -313,6 +302,7 @@ pub use duat_core::{
     Plugin, Plugins, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils,
 };
 
+pub mod colorschemes;
 pub mod opts;
 mod regular;
 mod setup;
@@ -703,17 +693,6 @@ mod book;
 #[cfg(doctest)]
 #[doc(hidden)]
 /// ```rust
-/// # mod duat_catppuccin {
-/// #     use duat::prelude::*;
-/// #     #[derive(Default)]
-/// #     pub struct Catppuccin;
-/// #     impl Catppuccin {
-/// #         pub fn new() -> Self { Self }
-/// #     }
-/// #     impl Plugin for Catppuccin {
-/// #         fn plug(self, _: &duat_core::Plugins) {}
-/// #     }
-/// # }
 #[doc = include_str!("../templates/config/lib.rs")]
 /// ```
 mod config {}
