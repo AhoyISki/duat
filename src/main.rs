@@ -72,6 +72,9 @@ struct Args {
     /// Initializes a fresh configuration
     #[arg(long)]
     init_config: bool,
+    #[arg(long, requires = "init_config")]
+    /// Use github dependencies instead of crates.io
+    git_deps: bool,
     /// Initializes a new Duat Plugin
     #[arg(long, value_name = "NAME", global = true)]
     init_plugin: Option<String>,
@@ -140,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    if decide_on_new_config(args.init_config, crate_dir)? {
+    if decide_on_new_config(args.init_config, args.git_deps, crate_dir)? {
         return Ok(());
     };
 
@@ -425,6 +428,7 @@ fn spawn_reloader(
 /// Returns `true` if Duat shouldn't start.
 fn decide_on_new_config(
     init_config: bool,
+    git_deps: bool,
     crate_dir: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let config_is_empty = match std::fs::read_dir(crate_dir) {
@@ -461,14 +465,14 @@ fn decide_on_new_config(
         std::fs::create_dir_all(crate_dir.join("src"))?;
         std::fs::write(crate_dir.join("src").join("lib.rs"), SRC_LIB_RS)?;
 
-        if !cfg!(feature = "git-deps") {
+        if git_deps {
+            std::fs::write(crate_dir.join("Cargo.toml"), MANIFEST)?;
+        } else {
             let manifest: String = MANIFEST
                 .split_inclusive("\n")
                 .filter(|line| !line.starts_with("git = \""))
                 .collect();
             std::fs::write(crate_dir.join("Cargo.toml"), manifest)?;
-        } else {
-            std::fs::write(crate_dir.join("Cargo.toml"), MANIFEST)?;
         }
     }
 

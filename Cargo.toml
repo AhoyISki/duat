@@ -57,7 +57,6 @@ optional = true
 [features]
 default = ["term-ui", "treesitter", "app"]
 term-ui = ["dep:duat-term"]
-git-deps = []
 treesitter = ["dep:duat-treesitter", "dep:duat-match-pairs"]
 app = ["dep:clap", "dep:convert_case", "dep:libloading", "dep:notify", "dep:arboard", "dep:android_clipboard"]
 

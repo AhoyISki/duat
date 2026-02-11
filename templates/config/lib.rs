@@ -25,7 +25,7 @@ fn setup() {
         opts.line_numbers.main_align = std::fmt::Alignment::Left;
     });
 
-    opts::fmt_status(|pa| {
+    opts::fmt_status(|_| {
         let upper_mode = mode_name().map(|m| m.to_uppercase());
 
         status!("[mode]{upper_mode}{Spacer}{custom_name_txt} {sels_txt} {main_txt}")
