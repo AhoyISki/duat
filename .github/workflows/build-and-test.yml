@@ -32,4 +32,4 @@ jobs:
         run: cargo install --path . --locked
 
       - name: Testing workspace
-        run: cargo test --offline --workspace
+        run: cargo test --locked --workspace
