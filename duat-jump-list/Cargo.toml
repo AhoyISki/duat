@@ -1,0 +1,15 @@
+[package]
+name = "duat-jump-list"
+version = "0.3.0"
+authors = ["AhoyISki"]
+description = "A jump list for Duat, meant to be used by modes"
+repository = "https://github.com/AhoyISki/duat-jump-list"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "editing-mode", "text", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+edition = "2024"
+
+[dependencies]
+duat-core = "0.8.0"
+gap-buf = "0.1.0"
