@@ -1,0 +1,24 @@
+[package]
+name = "duat-treesitter"
+version = "0.4.0"
+edition = "2024"
+authors = ["AhoyISki"]
+description = "Plugin for tree-sitter bindings for Duat"
+repository = "https://github.com/AhoyISki/duat-treesitter"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["tree-sitter", "duat", "plugin"]
+categories = ["command-line-utilities", "text-editors", "config"]
+include = ["src/*", "queries/*", "build.rs"]
+
+[dependencies]
+duat-core = "0.8.0"
+duat-filetype = "0.4.0"
+
+streaming-iterator = "0.1.9"
+tree-sitter = "0.26.3"
+tree-sitter-language = "0.1.6"
+indoc = "2.0.7"
+libloading = "0.9.0"
+include_dir = "0.7.4"
+gap-buf = "0.1.0"
