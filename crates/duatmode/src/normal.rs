@@ -890,7 +890,7 @@ impl Mode for Normal {
                             && let Some(range) = { c.search("\n").from_caret().next() }
                         {
                             c.move_to(range);
-                            c.replace("");
+                            c.replace(" ");
                             c.reset();
                             processed_lines.push(c_range.start.line());
                         }
@@ -906,7 +906,7 @@ impl Mode for Normal {
                             }
 
                             c.move_to(range);
-                            c.replace("");
+                            c.replace(" ");
                             lines_joined += 1;
                             processed_lines.push(c_range.start.line());
                         }
