@@ -51,7 +51,7 @@ impl CompletionsProvider for WordCompletions {
 
         let mut entries: Vec<_> = BUFFER_WORDS
             .lock()
-            .unwrap()
+            .unwrap_or_else(|err| err.into_inner())
             .iter()
             .filter(|&(word, info)| {
                 if let Some(difference) = string_cmp(prefix, word) {

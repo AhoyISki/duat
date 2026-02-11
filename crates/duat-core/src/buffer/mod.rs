@@ -24,10 +24,7 @@ use crossterm::event::{MouseButton, MouseEventKind};
 
 pub use crate::buffer::{
     buffer_id::BufferId,
-    history::{
-        BufferParts, BufferTracker, Change, Changes, FetchedChanges, History, Moment,
-        RangesToUpdate,
-    },
+    history::{BufferParts, BufferTracker, Change, Changes, History, Moment, RangesToUpdate},
     opts::BufferOpts,
 };
 use crate::{
@@ -274,12 +271,12 @@ impl Buffer {
 
     /// The number of [`char`]s in the buffer.
     pub fn len_chars(&self) -> usize {
-        self.text.len()
+        self.text.end_point().char()
     }
 
     /// The number of lines in the buffer.
     pub fn len_lines(&self) -> usize {
-        self.text.len()
+        self.text.end_point().line()
     }
 
     /// The [`Selections`] that are used on the [`Text`].

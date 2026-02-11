@@ -1,4 +1,4 @@
-//! The history for a [`Text`]
+//! The history for a [`Text`].
 //!
 //! The [`History`] is composed of [`Moment`]s, each having a list of
 //! [`Change`]s. Whenever you [`undo`]/[`redo`], you are
@@ -15,7 +15,7 @@ use std::{
     iter::{Chain, Enumerate},
     marker::PhantomData,
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use bincode::{BorrowDecode, Decode, Encode};
@@ -30,50 +30,48 @@ use crate::{
     utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
 };
 
-/// The history of edits, contains all moments
+/// The history of edits, contains all moments.
 #[derive(Debug)]
 pub struct History {
-    // Moments in regard to undoing/redoing
+    // Moments in regard to undoing/redoing.
     new_moment: Moment,
     undo_redo_moments: Vec<Moment>,
     cur_moment: usize,
-    // Moments in regard to BufferTrackers
-    new_tracked_moment: Moment,
-    tracked_moments: Vec<MomentOrTracking>,
-    track_id: TrackId,
-    // The moment where a [`Buffer`] was saved
+    // Moments in regard to BufferTrackers.
+    unread_moments: Vec<UnreadMoment>,
+    // The moment where a [`Buffer`] was saved.
     //
     // [`Buffer`]: crate::buffer::Buffer
     saved_moment: Option<usize>,
 }
 
 impl History {
-    /// Returns a new `History`
+    /// Returns a new `History`.
     #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
         Self {
             new_moment: Moment::new(),
             undo_redo_moments: Vec::new(),
             cur_moment: 0,
-            new_tracked_moment: Moment::new(),
-            tracked_moments: Vec::new(),
-            track_id: TrackId(0),
+            unread_moments: Vec::new(),
             saved_moment: None,
         }
     }
 
-    /// Adds a [`Change`] to the [`History`]
+    /// Adds a [`Change`] to the [`History`].
     pub fn apply_change(
         &mut self,
         guess_i: Option<usize>,
         change: Change<'static, String>,
     ) -> usize {
-        self.new_tracked_moment.add_change(guess_i, change.clone());
+        for unread in self.unread_moments.iter_mut() {
+            unread.add_change(guess_i, change.clone());
+        }
         self.new_moment.add_change(guess_i, change)
     }
 
     /// Declares that the current moment is complete and starts a
-    /// new one
+    /// new one.
     pub fn new_moment(&mut self) {
         if self.new_moment.is_empty() {
             return;
@@ -92,7 +90,7 @@ impl History {
         self.cur_moment += 1;
     }
 
-    /// Redoes the next [`Moment`], returning its [`Change`]s
+    /// Redoes the next [`Moment`], returning its [`Change`]s.
     ///
     /// Applying these [`Change`]s in the order that they're given
     /// will result in a correct redoing.
@@ -109,8 +107,9 @@ impl History {
                 .iter()
                 .enumerate()
                 .map(|(i, change)| {
-                    self.new_tracked_moment
-                        .add_change(Some(i), change.to_string_change());
+                    for unread in self.unread_moments.iter_mut() {
+                        unread.add_change(Some(i), change.to_string_change());
+                    }
                     change
                 });
 
@@ -119,7 +118,7 @@ impl History {
         }
     }
 
-    /// Undoes a [`Moment`], returning its reversed [`Change`]s
+    /// Undoes a [`Moment`], returning its reversed [`Change`]s.
     ///
     /// These [`Change`]s will already be shifted corectly, such that
     /// applying them in sequential order, without further
@@ -133,13 +132,14 @@ impl History {
         } else {
             self.cur_moment -= 1;
 
-            let new_fetched_moment = &mut self.new_tracked_moment;
             let iter = self.undo_redo_moments[self.cur_moment]
                 .iter()
                 .undone()
                 .enumerate()
-                .map(move |(i, change)| {
-                    new_fetched_moment.add_change(Some(i), change.to_string_change());
+                .map(|(i, change)| {
+                    for unread in self.unread_moments.iter_mut() {
+                        unread.add_change(Some(i), change.to_string_change());
+                    }
                     change
                 });
 
@@ -149,88 +149,9 @@ impl History {
     }
 
     /// Declares that the current state of the [`Text`] was saved on
-    /// disk
+    /// disk.
     pub(super) fn declare_saved(&mut self) {
         self.saved_moment = Some(self.cur_moment)
-    }
-
-    fn get_latest_track_id(&mut self) -> TrackId {
-        if !self.new_tracked_moment.is_empty() {
-            let track_id = self.track_id.next();
-            self.tracked_moments.extend([
-                MomentOrTracking::Moment(std::mem::take(&mut self.new_tracked_moment)),
-                MomentOrTracking::Tracking(1, track_id),
-            ]);
-            track_id
-        } else if let Some(m_or_t) = self.tracked_moments.last_mut() {
-            let MomentOrTracking::Tracking(count, track_id) = m_or_t else {
-                panic!("Not supposed to happen dawg");
-            };
-            *count += 1;
-            *track_id
-        } else {
-            let track_id = self.track_id.next();
-            self.tracked_moments
-                .push(MomentOrTracking::Tracking(1, track_id));
-            track_id
-        }
-    }
-
-    fn get_untracked_moments_for(&mut self, track_id: TrackId) -> &[MomentOrTracking] {
-        let mut prev_tracker_i = None;
-        let (i, tracker_count) = self
-            .tracked_moments
-            .iter_mut()
-            .enumerate()
-            .find_map(|(i, m_or_t)| match m_or_t {
-                MomentOrTracking::Tracking(count, id) if *id == track_id => Some((i, count)),
-                MomentOrTracking::Tracking(..) => {
-                    prev_tracker_i = Some(i);
-                    None
-                }
-                _ => None,
-            })
-            .unwrap();
-
-        *tracker_count -= 1;
-
-        if *tracker_count == 0 {
-            if let Some(prev_tracker_i) = prev_tracker_i {
-                self.tracked_moments.remove(i);
-
-                // Since moments pile up very fast on this list, it is best to merge
-                // the future moments of laggard trackers.
-                let moment = self.tracked_moments.drain((prev_tracker_i + 1)..i).fold(
-                    Moment::default(),
-                    |mut moment, m_or_t| {
-                        let MomentOrTracking::Moment(new_moment) = m_or_t else {
-                            unreachable!();
-                        };
-
-                        let (from, shift) = new_moment.shift_state;
-
-                        for (i, mut change) in new_moment.changes.into_iter().enumerate() {
-                            change.shift_by(if i >= from { shift } else { [0; 3] });
-                            moment.add_change(Some(i), change);
-                        }
-
-                        moment
-                    },
-                );
-
-                let new_i = prev_tracker_i + 1;
-                self.tracked_moments
-                    .insert(new_i, MomentOrTracking::Moment(moment));
-
-                &self.tracked_moments[new_i + 1..]
-            } else {
-                // No trackers care about prior changes, so just get rid of them.
-                _ = self.tracked_moments.drain(..i + 1);
-                &self.tracked_moments
-            }
-        } else {
-            &self.tracked_moments[i + 1..]
-        }
     }
 }
 
@@ -240,16 +161,14 @@ impl Clone for History {
             new_moment: self.new_moment.clone(),
             undo_redo_moments: self.undo_redo_moments.clone(),
             cur_moment: self.cur_moment,
-            new_tracked_moment: Moment::default(),
-            tracked_moments: Vec::new(),
-            track_id: TrackId::default(),
+            unread_moments: Vec::new(),
             saved_moment: self.saved_moment,
         }
     }
 }
 
 /// A moment in history, which may contain changes, or may just
-/// contain selections
+/// contain selections.
 ///
 /// It also contains information about how to print the buffer, so
 /// that going back in time is less jarring.
@@ -260,7 +179,7 @@ pub struct Moment {
 }
 
 impl Moment {
-    /// Returns a new `Moment`
+    /// Returns a new `Moment`.
     const fn new() -> Self {
         Self {
             changes: GapBuffer::new(),
@@ -293,7 +212,7 @@ impl Encode for Moment {
 
 impl Moment {
     /// First try to merge this change with as many changes as
-    /// possible, then add it in
+    /// possible, then add it in.
     pub(crate) fn add_change(
         &mut self,
         guess_i: Option<usize>,
@@ -302,7 +221,7 @@ impl Moment {
         let new_shift = change.shift();
         let (from, shift) = self.shift_state;
 
-        // The range of changes that will be drained
+        // The range of changes that will be drained.
         let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.changes, self.changes.len()),
             (guess_i.unwrap_or(0), [change.start(), change.taken_end()]),
@@ -311,7 +230,7 @@ impl Moment {
         );
 
         // If sh_from < c_range.end, I need to shift the changes between the
-        // two, so that they match the shifting of the changes before sh_from
+        // two, so that they match the shifting of the changes before sh_from.
         if from < m_range.end && shift != [0; 3] {
             for change in self.changes.range_mut(from..m_range.end).iter_mut() {
                 change.shift_by(shift);
@@ -349,9 +268,7 @@ impl Moment {
     }
 
     /// An [`ExactSizeIterator`] over the [`Change`]s in this
-    /// [`Moment`]
-    ///
-    /// These `Change`s represent a
+    /// `Moment`.
     pub fn iter(&self) -> Changes<'_> {
         Changes {
             moment: self,
@@ -360,12 +277,12 @@ impl Moment {
         }
     }
 
-    /// Returns the number of [`Change`]s in this [`Moment`]
+    /// Returns the number of [`Change`]s in this `Moment`
     pub fn len(&self) -> usize {
         self.changes.len()
     }
 
-    /// Wether there are any [`Change`]s in this [`Moment`]
+    /// Wether there are any [`Change`]s in this `Moment`
     ///
     /// This can happen when creating a [`Moment::default`].
     #[must_use]
@@ -379,7 +296,7 @@ impl Moment {
 /// If you acquired this `Change` from a [`BufferTracker::parts`]
 /// call, you need not worry about adding it to the ranges that need
 /// to be updated, as that has already been done.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change<'h, S = &'h str> {
     start: [i32; 3],
     added: S,
@@ -405,7 +322,10 @@ impl Change<'static, String> {
         };
 
         let taken = text[range.clone()].to_string();
-        let added_end = add(range.start.as_signed(), Point::end_point_of(&added).as_signed());
+        let added_end = add(
+            range.start.as_signed(),
+            Point::end_point_of(&added).as_signed(),
+        );
         Change {
             start: range.start.as_signed(),
             added,
@@ -583,6 +503,27 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     }
 }
 
+impl<'s, S: std::fmt::Debug> std::fmt::Debug for Change<'s, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct DebugArray([i32; 3]);
+
+        impl std::fmt::Debug for DebugArray {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{:?}", self.0)
+            }
+        }
+
+        f.debug_struct("Change")
+            .field("start", &DebugArray(self.start))
+            .field("added", &self.added)
+            .field("taken", &self.taken)
+            .field("added_end", &DebugArray(self.added_end))
+            .field("taken_end", &DebugArray(self.taken_end))
+            .field("_ghost", &self._ghost)
+            .finish()
+    }
+}
+
 impl Encode for Change<'static, String> {
     fn encode<E: bincode::enc::Encoder>(
         &self,
@@ -651,7 +592,8 @@ impl<'de, Context> BorrowDecode<'de, Context> for Change<'static, String> {
 ///
 /// [`PerBuffer`]: super::PerBuffer
 pub struct BufferTracker {
-    tracked: Mutex<Vec<(BufferId, TrackId, Arc<Mutex<Ranges>>)>>,
+    id: LazyLock<TrackerId>,
+    tracked: Mutex<Vec<(BufferId, Arc<Mutex<Ranges>>)>>,
 }
 
 impl BufferTracker {
@@ -661,7 +603,10 @@ impl BufferTracker {
     /// function is `const`. You can then use the same
     /// `ChangesFetcher` to fetch [`Change`]s from all [`Buffer`]s
     pub const fn new() -> Self {
-        Self { tracked: Mutex::new(Vec::new()) }
+        Self {
+            id: LazyLock::new(TrackerId::new),
+            tracked: Mutex::new(Vec::new()),
+        }
     }
 
     /// Gets the [`BufferParts`] of a [`Buffer`]
@@ -683,35 +628,37 @@ impl BufferTracker {
     /// [`TextParts`]: crate::text::TextParts
     /// [`Tags`]: crate::text::Tags
     /// [`Selections`]: crate::mode::Selections
+    #[track_caller]
     pub fn parts<'b>(&self, buf: &'b mut Buffer) -> Option<BufferParts<'b>> {
         let mut tracked = self.tracked.lock().unwrap();
 
         let buf_id = buf.buffer_id();
 
-        let (_, old_track_id, ranges) = tracked.iter_mut().find(|(id, ..)| *id == buf_id)?;
-        let new_track_id = buf.history.get_latest_track_id();
+        let (_, ranges) = tracked.iter_mut().find(|(id, ..)| *id == buf_id)?;
+        let unread = buf
+            .history
+            .unread_moments
+            .iter_mut()
+            .find(|unread| unread.id == *self.id)
+            .unwrap();
 
-        let untracked_moments = buf.history.get_untracked_moments_for(*old_track_id);
-        *old_track_id = new_track_id;
+        if unread.has_been_read {
+            unread.has_been_read = false;
+            unread.moment = Moment::new();
+        } else {
+            unread.has_been_read = true;
+            
+            let mut ranges_lock = ranges.lock().unwrap_or_else(|err| err.into_inner());
+            for change in unread.moment.iter() {
+                ranges_lock.shift_by(
+                    change.start().byte(),
+                    change.added_end().byte() as i32 - change.taken_end().byte() as i32,
+                );
 
-        let mut iter = untracked_moments.iter();
-
-        let changes = FetchedChanges {
-            current: iter.find_map(MomentOrTracking::as_moment).map(Moment::iter),
-            iter,
-        };
-
-        let mut ranges_lock = ranges.lock().unwrap();
-        for change in changes.clone() {
-            ranges_lock.shift_by(
-                change.start().byte(),
-                change.added_end().byte() as i32 - change.taken_end().byte() as i32,
-            );
-
-            let range = change.added_range();
-            ranges_lock.add(range.start.byte()..range.end.byte());
+                let range = change.added_range();
+                ranges_lock.add(range.start.byte()..range.end.byte());
+            }
         }
-        drop(ranges_lock);
 
         let parts = buf.text.parts();
 
@@ -719,7 +666,7 @@ impl BufferTracker {
             strs: parts.strs,
             tags: parts.tags,
             selections: parts.selections,
-            changes,
+            changes: unread.moment.iter(),
             ranges_to_update: RangesToUpdate {
                 ranges: ranges.clone(),
                 buf_len: parts.strs.len(),
@@ -737,10 +684,13 @@ impl BufferTracker {
         let mut tracked = self.tracked.lock().unwrap();
 
         if !tracked.iter().any(|(id, ..)| *id == buf.buffer_id()) {
-            let track_id = buf.history.get_latest_track_id();
-
+            buf.history.unread_moments.push(UnreadMoment {
+                id: *self.id,
+                moment: Moment::new(),
+                has_been_read: false,
+            });
             let ranges = Arc::new(Mutex::new(Ranges::new(0..buf.text().len())));
-            tracked.push((buf.buffer_id(), track_id, ranges));
+            tracked.push((buf.buffer_id(), ranges));
         }
     }
 }
@@ -758,9 +708,9 @@ impl Default for BufferTracker {
 ///
 /// [`TextParts`]: crate::text::TextParts
 pub struct BufferParts<'b> {
-    /// The [`Strs`] of the whole [`Text`] of the [`Buffer`]
+    /// The [`Strs`] of the whole [`Text`] of the [`Buffer`].
     pub strs: &'b Strs,
-    /// The [`Tags`] of the [`Buffer`]
+    /// The [`Tags`] of the [`Buffer`].
     ///
     /// This, unlike [`Strs`], allows mutation in the form of
     /// [adding] and [removing] [`Tag`]s.
@@ -769,12 +719,12 @@ pub struct BufferParts<'b> {
     /// [removing]: Tags::remove
     /// [`Tag`]: crate::text::Tag
     pub tags: Tags<'b>,
-    /// The [`Selections`] of the [`Buffer`]
+    /// The [`Selections`] of the [`Buffer`].
     pub selections: &'b Selections,
     /// An [`ExactSizeIterator`] of all [`Change`]s that took place
     /// since the last call to [`BufferTracker::parts`]
-    pub changes: FetchedChanges<'b>,
-    /// A list of the ranges that need to be updated
+    pub changes: Changes<'b>,
+    /// A list of the ranges that need to be updated.
     ///
     /// This should be used in conjunction with visible ranges
     /// acquired from a [`Handle<Buffer>`], in order to update only
@@ -782,7 +732,7 @@ pub struct BufferParts<'b> {
     ///
     /// [`Handle<Buffer>`]: crate::context::Handle
     pub ranges_to_update: RangesToUpdate<'b>,
-    /// The [`BufferOpts`] of the `Buffer` in question
+    /// The [`BufferOpts`] of the `Buffer` in question.
     pub opts: &'b BufferOpts,
 }
 
@@ -870,59 +820,6 @@ impl<'h> Iterator for Changes<'h> {
 }
 
 impl<'h> ExactSizeIterator for Changes<'h> {}
-
-/// Changes that took place since a [`BufferTracker`] last called
-/// [`parts`]
-///
-/// This is an [`ExactSizeIterator`] that may comprise multiple
-/// [`Moment`]s (or none at all), and iterates through them in the
-/// order that they came in. Because of that, unlike [`Moment::iter`],
-/// these [`Change`]s will not necessarily be ordered by byte index.
-///
-/// If you want to iterate on the changes multiple times, [cloning] it
-/// is a zero cost operation.
-///
-/// [`parts`]: BufferTracker::parts
-/// [cloning]: Clone::clone
-#[derive(Clone, Debug)]
-pub struct FetchedChanges<'h> {
-    current: Option<Changes<'h>>,
-    iter: std::slice::Iter<'h, MomentOrTracking>,
-}
-
-impl<'h> Iterator for FetchedChanges<'h> {
-    type Item = Change<'h>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.current.as_mut()?.next().or_else(|| {
-            self.current = self
-                .iter
-                .find_map(MomentOrTracking::as_moment)
-                .map(Moment::iter);
-            self.current.as_mut()?.next()
-        })
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.current
-            .clone()
-            .into_iter()
-            .chain(
-                self.iter
-                    .clone()
-                    .filter_map(MomentOrTracking::as_moment)
-                    .map(Moment::iter),
-            )
-            .fold((0, Some(0)), |(low, up), changes| {
-                (
-                    low + changes.size_hint().0,
-                    up.zip(changes.size_hint().1).map(|(l, r)| l + r),
-                )
-            })
-    }
-}
-
-impl<'h> ExactSizeIterator for FetchedChanges<'h> {}
 
 /// A list of [`Range<usize>`]s of byte indices in a [`Buffer`] that
 /// need to be updated
@@ -1178,30 +1075,33 @@ impl<'b> std::fmt::Debug for RangesToUpdate<'b> {
     }
 }
 
-#[derive(Clone, Debug)]
-enum MomentOrTracking {
-    Moment(Moment),
-    Tracking(usize, TrackId),
-}
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+struct TrackerId(usize);
 
-impl MomentOrTracking {
-    #[must_use]
-    fn as_moment(&self) -> Option<&Moment> {
-        if let Self::Moment(v) = self {
-            Some(v)
-        } else {
-            None
-        }
+impl TrackerId {
+    /// Returns a new [`TrackerId`]
+    fn new() -> Self {
+        use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        Self(COUNT.fetch_add(1, Relaxed))
     }
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
-struct TrackId(usize);
+#[derive(Debug)]
+struct UnreadMoment {
+    id: TrackerId,
+    moment: Moment,
+    has_been_read: bool,
+}
 
-impl TrackId {
-    /// Returns the next logical `TrackId`, also updating `self`
-    fn next(&mut self) -> Self {
-        self.0 += 1;
-        *self
+impl UnreadMoment {
+    /// Adds a [`Change`], resetting the [`Moment`] first if
+    /// necessary.
+    fn add_change(&mut self, guess_i: Option<usize>, change: Change<'static, String>) {
+        if self.has_been_read {
+            self.has_been_read = false;
+            self.moment = Moment::new();
+        }
+        self.moment.add_change(guess_i, change);
     }
 }

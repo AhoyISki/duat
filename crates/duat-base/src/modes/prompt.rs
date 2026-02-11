@@ -547,7 +547,7 @@ impl PromptMode for RunCommands {
     }
 
     fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &RwArea) {
-        let call = text.to_string();
+        let call = text.to_string_no_last_nl();
         if !call.is_empty() {
             _ = cmd::call_notify(pa, call);
         }

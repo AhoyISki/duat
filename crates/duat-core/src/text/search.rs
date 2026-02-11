@@ -65,6 +65,7 @@ impl<'m, R> Matches<'m, R> {
     /// that the latter will return matches relative to the `...`
     /// range, while the former will return matches relative to the
     /// start of the `text`.
+    #[track_caller]
     pub fn range(self, range: impl TextRange) -> Self {
         let [s0, s1] = self.haystack;
         let range = range.to_range(s0.len() + s1.len());
