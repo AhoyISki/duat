@@ -397,7 +397,7 @@ impl Mode for Normal {
                     c.reset();
                     return;
                 }
-
+                
                 let v_caret = c.v_caret();
                 if c.char() == '\n'
                     && v_caret.char_col() > 0

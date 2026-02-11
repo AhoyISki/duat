@@ -765,12 +765,11 @@ fn select_to_end_of_line(set_anchor: bool, mut c: Cursor) {
         '\n' => c.text()[..c.caret()]
             .char_indices()
             .rev()
-            .map_while(|(b, char)| (char != '\n').then_some(b + c.caret().byte()))
+            .map_while(|(b, char)| (char != '\n').then_some(b))
             .next(),
-        _ => c.text()[..c.caret()]
+        _ => c.text()[c.caret()..]
             .char_indices()
-            .rev()
-            .map_while(|(b, char)| (char != '\n').then_some(c.caret().byte() - b))
+            .map_while(|(b, char)| (char != '\n').then_some(c.caret().byte() + b))
             .last(),
     };
     if let Some(b) = pre_nl {
