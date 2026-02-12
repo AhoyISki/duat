@@ -390,8 +390,6 @@ impl Mode for Normal {
             event!(char @ ('j' | 'J' | 'k' | 'K')) => handle.edit_all(pa, |mut c| {
                 set_anchor_if_needed(char == 'J' || char == 'K', &mut c);
 
-                std::thread::spawn(|| std::thread::sleep(std::time::Duration::from_secs(100)));
-
                 let param = match char {
                     'j' | 'J' => param as i32,
                     'k' | 'K' => -(param as i32),
