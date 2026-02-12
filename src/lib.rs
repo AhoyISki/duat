@@ -302,7 +302,7 @@ pub use duat_core::{
     Plugin, Plugins, buffer, clipboard, cmd, context, data, notify, process, text, ui, utils,
 };
 
-pub mod colorschemes;
+pub mod colorscheme;
 pub mod opts;
 mod regular;
 mod setup;
@@ -323,8 +323,7 @@ pub mod form {
     //!
     //! [`Form`]: crate::form::Form
     pub use duat_core::form::{
-        Color, CursorShape, Form, Palette, add_colorscheme, enable_mask, from_id, id_of, set,
-        set_colorscheme, set_many, set_weak,
+        Color, CursorShape, Form, Palette, enable_mask, from_id, id_of, set, set_many, set_weak,
     };
 }
 
@@ -529,7 +528,9 @@ pub mod private_exports {
     //! Exports from duat, not meant for direct use.
     pub use duat_core::{context::DuatReceiver, session::ReloadedBuffer, utils::catch_panic};
 
-    pub use crate::setup::{Channels, Initials, MetaStatics, pre_setup, run_duat, get_panic_message};
+    pub use crate::setup::{
+        Channels, Initials, MetaStatics, get_panic_message, pre_setup, run_duat,
+    };
 }
 
 /// Pre and post setup for Duat
@@ -553,7 +554,7 @@ macro_rules! setup_duat {
             buffers: Vec<Vec<ReloadedBuffer>>,
             (duat_tx, duat_rx, reload_tx): Channels,
         ) -> Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String> {
-            let ret = catch_panic( || {
+            let ret = catch_panic(|| {
                 pre_setup(ms.0, Some(initials), Some(duat_tx));
                 catch_panic($setup);
                 run_duat(ms, buffers, duat_rx, Some(reload_tx))
@@ -561,7 +562,7 @@ macro_rules! setup_duat {
 
             match ret.flatten() {
                 Some(result) => result,
-                None => Err(get_panic_message().unwrap())
+                None => Err(get_panic_message().unwrap()),
             }
         }
     };
@@ -580,7 +581,7 @@ pub mod prelude {
     pub use crate::{
         Plugin, Plugins,
         buffer::{Buffer, BufferTracker},
-        cmd,
+        cmd, colorscheme,
         context::{self, Handle},
         cursor,
         data::{self, Pass, RwData},
@@ -597,7 +598,7 @@ pub mod prelude {
             User, alias, alt, ctrl, event, map, shift,
         },
         opts::{self, ScrollOff},
-        process, setup_duat,
+        setup_duat,
         state::*,
         text::{
             self, Conceal, Ghost, Point, RegexHaystack, Spacer, SpawnTag, Strs, SwapChar, Tagger,

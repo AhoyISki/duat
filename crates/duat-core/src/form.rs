@@ -498,6 +498,16 @@ mod global {
         }
     }
 
+    /// Gets all available colorschemes
+    pub fn colorscheme_list() -> Vec<String> {
+        COLORSCHEMES
+            .lock()
+            .unwrap()
+            .keys()
+            .map(|name| name.to_string())
+            .collect()
+    }
+
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
         FORMS

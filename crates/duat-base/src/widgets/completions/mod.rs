@@ -18,7 +18,10 @@ use std::{
 };
 
 use duat_core::{
-    cmd::{CfgOrManifest, Existing, OtherBuffer, Parameter, ReloadOptions, ValidFilePath},
+    cmd::{
+        CfgOrManifest, ColorSchemeArg, Existing, OtherBuffer, Parameter, ReloadOptions,
+        ValidFilePath,
+    },
     context::{self, Handle},
     data::Pass,
     hook::{self, FocusChanged, WidgetOpened},
@@ -92,6 +95,10 @@ pub fn setup_completions() {
             list: vec!["--clean", "--update"],
             only_one: false,
         })
+    });
+
+    Completions::set_for_parameter::<ColorSchemeArg>(50, |_, builder| {
+        builder.with_provider(duat_core::form::colorscheme_list())
     });
 }
 
@@ -995,7 +1002,7 @@ mod fixed {
         CompletionsKind, CompletionsList, CompletionsProvider, completions::string_cmp,
     };
 
-    impl CompletionsProvider for Vec<String> {
+    impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
         type Info = ();
 
         fn default_fmt(entry: &str, _: &Self::Info) -> Text {
@@ -1011,7 +1018,9 @@ mod fixed {
         ) -> CompletionsList<Self> {
             let mut entries: Vec<_> = self
                 .iter()
-                .filter_map(|entry| string_cmp(prefix, entry).map(|_| (entry.clone(), ())))
+                .filter_map(|entry| {
+                    string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
+                })
                 .collect();
 
             entries.sort_by(|(lhs, _), (rhs, _)| {
@@ -1035,7 +1044,7 @@ mod fixed {
         }
     }
 
-    impl<const N: usize> CompletionsProvider for [&'static str; N] {
+    impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S; N] {
         type Info = ();
 
         fn default_fmt(entry: &str, _: &Self::Info) -> Text {
@@ -1051,7 +1060,9 @@ mod fixed {
         ) -> CompletionsList<Self> {
             let mut entries: Vec<_> = self
                 .iter()
-                .filter_map(|entry| string_cmp(prefix, entry).map(|_| (entry.to_string(), ())))
+                .filter_map(|entry| {
+                    string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
+                })
                 .collect();
 
             entries.sort_by(|(lhs, _), (rhs, _)| {
@@ -1079,12 +1090,12 @@ mod fixed {
     ///
     /// This list will show completions for all flags words haven't
     /// been previously typed on the call.
-    pub struct ExhaustiveCompletionsList {
-        pub list: Vec<&'static str>,
+    pub struct ExhaustiveCompletionsList<S: AsRef<str> + Send + 'static> {
+        pub list: Vec<S>,
         pub only_one: bool,
     }
 
-    impl CompletionsProvider for ExhaustiveCompletionsList {
+    impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletionsList<S> {
         type Info = ();
 
         fn default_fmt(entry: &str, _: &Self::Info) -> Text {
@@ -1101,7 +1112,7 @@ mod fixed {
             let yet_to_be_typed: Vec<_> = self
                 .list
                 .iter()
-                .filter(|word| !text[..caret].contains_pat(**word).unwrap())
+                .filter(|word| !text[..caret].contains_pat(word.as_ref()).unwrap())
                 .collect();
 
             if yet_to_be_typed.len() < self.list.len() && self.only_one {
@@ -1113,7 +1124,9 @@ mod fixed {
 
             let mut entries: Vec<_> = yet_to_be_typed
                 .iter()
-                .filter_map(|entry| string_cmp(prefix, entry).map(|_| (entry.to_string(), ())))
+                .filter_map(|entry| {
+                    string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
+                })
                 .collect();
 
             entries.sort_by(|(lhs, _), (rhs, _)| {

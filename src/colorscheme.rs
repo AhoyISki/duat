@@ -2,6 +2,9 @@
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 
 use duat_core::form::{Form, add_colorscheme};
+pub use duat_core::form::{
+    add_colorscheme as add, colorscheme_list as list, set_colorscheme as set,
+};
 
 macro_rules! ColorStruct {
     ({
