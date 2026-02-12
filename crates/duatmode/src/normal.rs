@@ -155,7 +155,9 @@ impl Mode for Normal {
             alt!('t') => (txt!("Select until previous match"), tf.next().unwrap()),
             alt!('T') => (txt!("Extend until previous match"), tf.next().unwrap()),
             alt!('.') => txt!(
-                "Repeats the last [a]'[separator],[a]\"[separator],[a]g[separator],[a]f[separator],[a]t[] [separator]or[] v sequence"
+                "Repeats the last \
+                 [a]'[separator],[a]\"[separator],[a]g[separator],[a]f[separator],[a]t[] \
+                 [separator]or[] v sequence"
             ),
             alt!('l' | 'L') | event!(End) | shift!(End) => txt!("{select} to end of line"),
             alt!('h' | 'H') | event!(Home) | shift!(Home) => txt!("{select} to start of line"),
@@ -388,6 +390,8 @@ impl Mode for Normal {
             event!(char @ ('j' | 'J' | 'k' | 'K')) => handle.edit_all(pa, |mut c| {
                 set_anchor_if_needed(char == 'J' || char == 'K', &mut c);
 
+                std::thread::spawn(|| std::thread::sleep(std::time::Duration::from_secs(100)));
+
                 let param = match char {
                     'j' | 'J' => param as i32,
                     'k' | 'K' => -(param as i32),
@@ -397,7 +401,7 @@ impl Mode for Normal {
                     c.reset();
                     return;
                 }
-                
+
                 let v_caret = c.v_caret();
                 if c.char() == '\n'
                     && v_caret.char_col() > 0

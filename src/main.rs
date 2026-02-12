@@ -10,7 +10,7 @@ use std::{
 
 use duat::{
     prelude::*,
-    private_exports::{Channels, Initials, MetaStatics, pre_setup, run_duat},
+    private_exports::{Channels, Initials, MetaStatics, get_panic_message, pre_setup, run_duat},
     utils::crate_dir,
 };
 use duat_core::{
@@ -131,7 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             pre_setup(ui, None, None);
-            run_duat(
+            let result = run_duat(
                 (ui, &META_FUNCTIONS),
                 get_files(args, Path::new(""), "")?,
                 duat_rx,
@@ -139,6 +139,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             ui.close();
+            match result {
+                Some(Err(msg)) => println!("{msg}"),
+                None => println!("{}", get_panic_message().unwrap()),
+                Some(Ok(_)) => {}
+            }
+            meta::kill_remaining_processes();
             return Ok(());
         }
     };
@@ -224,7 +230,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut reloading_profile: Option<String> = None;
 
-    loop {
+    // For faster exiting, don't try to unload the running lib.
+    // This should also prevent some classes of bugs, given that I'm not
+    // waiting for threads to end before exiting.
+    let lib_guard = loop {
         let running_lib = lib.take();
         let mut running_duat_fn = running_lib.as_ref().and_then(find_run_duat);
 
@@ -237,7 +246,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let (duat_tx, reload_tx) = (duat_tx.clone(), reload_tx.clone());
-        (buffers, duat_rx) = std::thread::scope(|s| {
+        let result = std::thread::scope(|s| {
             // Initialize now in order to prevent thread activation after the
             // thread counter hook sets in.
             let meta_functions = &*META_FUNCTIONS;
@@ -249,28 +258,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     context::error!("No config at [a]{crate_dir}[], loading default");
                     pre_setup(ui, None, None);
-                    run_duat((ui, meta_functions), buffers, duat_rx, Some(reload_tx))
+                    match run_duat((ui, meta_functions), buffers, duat_rx, Some(reload_tx)) {
+                        Some(result) => result,
+                        None => Err(get_panic_message().unwrap()),
+                    }
                 }
             })
             .join()
             .unwrap()
         });
 
-        let Some(running_lib) = running_lib else {
-            break;
+        (buffers, duat_rx) = match result {
+            Ok((buffers, _)) if buffers.is_empty() => break Ok(running_lib.unwrap()),
+            Ok((buffers, duat_rx)) => (buffers, duat_rx),
+            Err(err_msg) => break Err(err_msg),
         };
-        running_lib.close().unwrap();
 
-        if buffers.is_empty() {
-            break;
-        }
+        running_lib.unwrap().close().unwrap();
 
         let (config_path, profile) = config_rx.recv().unwrap();
         lib = unsafe { Library::new(config_path) }.ok();
         reloading_profile = Some(profile);
-    }
+    };
 
     ui.close();
+    if let Err(msg) = lib_guard {
+        println!("{msg}");
+    }
 
     meta::kill_remaining_processes();
 
@@ -579,7 +593,7 @@ type RunFn = fn(
     MetaStatics,
     Vec<Vec<ReloadedBuffer>>,
     Channels,
-) -> (Vec<Vec<ReloadedBuffer>>, DuatReceiver);
+) -> Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>;
 
 #[cfg(feature = "term-ui")]
 type UiImplementation = duat_term::Ui;

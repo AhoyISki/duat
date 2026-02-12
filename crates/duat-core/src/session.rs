@@ -137,13 +137,13 @@ impl Session {
         self,
         duat_rx: DuatReceiver,
         reload_tx: Option<mpsc::Sender<ReloadEvent>>,
-    ) -> Option<(Vec<Vec<ReloadedBuffer>>, DuatReceiver)> {
+    ) -> Option<Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>> {
         match catch_panic(|| self.inner_start(&duat_rx, reload_tx.as_ref())) {
-            Some(ret) => Some((ret, duat_rx)),
+            Some(result) => Some(result.map(|ret| (ret, duat_rx))),
             None => {
                 let pa = unsafe { &mut Pass::new() };
                 for handle in context::windows().buffers(pa) {
-                    let _ = handle.save(pa);
+                    _ = handle.save(pa);
                 }
 
                 None
@@ -156,7 +156,7 @@ impl Session {
         self,
         duat_rx: &DuatReceiver,
         reload_tx: Option<&mpsc::Sender<ReloadEvent>>,
-    ) -> Vec<Vec<ReloadedBuffer>> {
+    ) -> Result<Vec<Vec<ReloadedBuffer>>, String> {
         fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
             context::windows()
                 .iter(pa)
@@ -175,6 +175,7 @@ impl Session {
             unreachable!("Somebody forgot to set a default mode, I'm looking at you, duat!");
         };
 
+        let mut reload_countdown = 1;
         let mut unload_instant = None;
         let mut reload_requested = false;
         let mut reprint_screen = false;
@@ -294,9 +295,11 @@ impl Session {
                             crate::notify::remove_all_watchers();
                         }
 
-                        let threads = || {
-                            thread_amount::thread_amount().unwrap().get()
-                                - crate::process::reader_thread_count()
+                        let mut thread_count = 0;
+                        let mut threads = || {
+                            thread_count = thread_amount::thread_amount().unwrap().get()
+                                - crate::process::reader_thread_count();
+                            thread_count
                         };
 
                         if threads() <= 7
@@ -305,17 +308,30 @@ impl Session {
                                 threads() <= 7
                             }
                         {
-                            context::logs().clear();
                             let ui = self.ui;
                             let buffers = self.take_files(pa);
                             ui.unload();
-                            return buffers;
-                        } else if instant.elapsed() > Duration::from_secs(5) {
-                            self.ui.unload();
-                            return Vec::new();
-                        } else {
-                            context::sender().send_reload_succeeded();
+                            return Ok(buffers);
+                        } else if instant.elapsed() > Duration::from_secs(reload_countdown) {
+                            if reload_countdown == 5 {
+                                for handle in context::buffers(pa) {
+                                    _ = handle.save(pa);
+                                }
+
+                                self.ui.unload();
+                                return Err(format!(
+                                    "Failed to reload because there were {} threads too many, so \
+                                     saved and exited",
+                                    thread_count - 7
+                                ));
+                            }
+                            context::warn!(
+                                "Reloading because there are {} extra threads open",
+                                thread_count - 7
+                            );
+                            reload_countdown += 1;
                         }
+                        context::sender().send_reload_succeeded();
                     }
                     DuatEvent::ReloadFailed => reload_requested = false,
                     DuatEvent::Quit => {
@@ -332,7 +348,7 @@ impl Session {
                         hook::trigger(pa, ExitedDuat(()));
 
                         self.ui.unload();
-                        return Vec::new();
+                        return Ok(Vec::new());
                     }
                 }
             }

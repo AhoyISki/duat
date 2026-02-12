@@ -221,13 +221,6 @@ impl Logs {
         }
     }
 
-    /// Clear the [`Logs`], to be used when reloading Duat.
-    pub(crate) fn clear(&self) {
-        self.list.lock().unwrap().clear();
-        self.cur_state.store(1, Ordering::Relaxed);
-        self.read_state.store(0, Ordering::Relaxed);
-    }
-
     /// Returns an owned valued of a [`SliceIndex`]
     ///
     /// - `&'static Log` for `usize`;
@@ -448,9 +441,11 @@ pub fn log_panic(panic_info: &PanicHookInfo) {
     let (Some(msg), Some(location)) = (panic_info.payload_as_str(), panic_info.location()) else {
         return;
     };
-    LOGS.get().unwrap().list.lock().unwrap().push(Record {
-        text: Box::leak(Box::new(Text::from(msg))),
-        metadata: Metadata::builder().level(Level::Error).build(),
-        location: Location::from_panic_location(location),
-    })
+    if let Some(logs) = LOGS.get() {
+        logs.list.lock().unwrap().push(Record {
+            text: Box::leak(Box::new(Text::from(msg))),
+            metadata: Metadata::builder().level(Level::Error).build(),
+            location: Location::from_panic_location(location),
+        })
+    }
 }

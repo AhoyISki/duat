@@ -42,6 +42,11 @@ use crate::{
 static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
 
+/// Get the last panic message.
+pub fn get_panic_message() -> Option<String> {
+    PANIC_INFO.lock().unwrap().clone()
+}
+
 #[doc(hidden)]
 pub fn pre_setup(
     #[allow(unused_variables)] ui: Ui,
@@ -94,18 +99,24 @@ pub fn pre_setup(
         .unwrap()
     });
 
+    std::panic::set_hook(Box::new(move |panic_info| {
+        use std::backtrace::{Backtrace, BacktraceStatus};
+        context::log_panic(panic_info);
+        let backtrace = Backtrace::capture();
+        *PANIC_INFO.lock().unwrap() = Some(
+            if let BacktraceStatus::Disabled | BacktraceStatus::Unsupported = backtrace.status() {
+                format!("{panic_info}")
+            } else {
+                format!("{panic_info}\n{backtrace}")
+            },
+        )
+    }));
+
     // Check this in here, in order to not give warnings to crates that
     // depend on duat without this feature.
     if !cfg!(feature = "term-ui") {
         panic!("No ui for running Duat has been chosen!");
     }
-
-    std::panic::set_hook(Box::new(move |panic_info| {
-        context::log_panic(panic_info);
-        let backtrace = std::backtrace::Backtrace::capture();
-        duat_core::log_to_file!("{panic_info:#?}");
-        *PANIC_INFO.lock().unwrap() = Some(format!("{panic_info}\n{backtrace}"))
-    }));
 
     if let Some((logs, forms_init, (crate_dir, profile))) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
@@ -326,12 +337,13 @@ pub fn pre_setup(
 }
 
 #[doc(hidden)]
+#[allow(clippy::type_complexity)]
 pub fn run_duat(
     (ui, meta_functions): MetaStatics,
     buffers: Vec<Vec<ReloadedBuffer>>,
     duat_rx: DuatReceiver,
     reload_tx: Option<Sender<ReloadEvent>>,
-) -> (Vec<Vec<ReloadedBuffer>>, DuatReceiver) {
+) -> Option<Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>> {
     ui.load();
 
     let default_buffer_opts = {
@@ -360,17 +372,8 @@ pub fn run_duat(
     let opts = SessionCfg::new(meta_functions, default_buffer_opts);
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
 
-    match opts
-        .build(ui, buffers, already_plugged)
+    opts.build(ui, buffers, already_plugged)
         .start(duat_rx, reload_tx)
-    {
-        Some(ret) => ret,
-        None => {
-            ui.close();
-            println!("{}", PANIC_INFO.lock().unwrap().as_ref().unwrap());
-            std::process::exit(-1);
-        }
-    }
 }
 
 ////////// Types used for startup and reloading

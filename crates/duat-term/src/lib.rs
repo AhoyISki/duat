@@ -18,7 +18,7 @@ use crossterm::{
     cursor,
     event::{self, Event as CtEvent, poll as ct_poll, read as ct_read},
     execute, queue,
-    style::{ContentStyle, Color},
+    style::{Color, ContentStyle},
     terminal::{self, ClearType},
 };
 use duat_core::{
@@ -146,7 +146,7 @@ impl RawUi for Ui {
             // Wait for everything to be setup before doing anything to the
             // terminal, for a less jarring effect.
             let Ok(Event::NewPrinter(mut printer)) = term_rx.recv() else {
-                unreachable!("Failed to load the Ui");
+                return;
             };
 
             terminal::enable_raw_mode().unwrap();
@@ -231,6 +231,8 @@ impl RawUi for Ui {
 
         execute!(
             io::stdout(),
+            // If entering failed for some reason earlier, don't clear the main screen.
+            terminal::EnterAlternateScreen,
             terminal::Clear(ClearType::All),
             terminal::LeaveAlternateScreen,
             cursor::MoveToColumn(0),
