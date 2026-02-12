@@ -258,7 +258,7 @@ fn setup() {
     // Adds four colorschemes, "catppuccin-latte" among them.
     plug(duat_catppuccin::Catppuccin::default());
 
-    form::set_colorscheme("catppuccin-latte");
+    colorscheme::set("catppuccin-latte");
 }
 ```
 

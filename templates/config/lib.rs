@@ -39,7 +39,7 @@ fn setup() {
     // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
 
-    form::set_colorscheme("catppuccin-mocha");
+    colorscheme::set("catppuccin-mocha");
 }
 
 /// A custom function to show the name differently.
