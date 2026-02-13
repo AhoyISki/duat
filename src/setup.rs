@@ -333,7 +333,7 @@ pub fn pre_setup(
     duat_core::Plugins::_new().require::<duatmode::DuatMode>();
     crate::prelude::plug(duat_base::DuatBase);
 
-    crate::colorscheme::add_colorschemes();
+    crate::colorscheme::add_default();
 }
 
 #[doc(hidden)]

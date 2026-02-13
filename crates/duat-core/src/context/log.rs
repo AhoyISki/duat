@@ -20,7 +20,7 @@ use crate::text::Text;
 
 mod macros {
     #[doc(inline)]
-    pub use crate::{__debug__ as debug, __error__ as error, __info__ as info, __warn__ as warn};
+    pub use crate::{debug, error, info, warn};
 
     /// Logs an error to Duat
     ///
@@ -49,8 +49,7 @@ mod macros {
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
-    #[doc(hidden)]
-    macro_rules! __error__ {
+    macro_rules! error {
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Error,
@@ -86,8 +85,7 @@ mod macros {
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
-    #[doc(hidden)]
-    macro_rules! __warn__ {
+    macro_rules! warn {
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Warn,
@@ -123,8 +121,7 @@ mod macros {
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
-    #[doc(hidden)]
-    macro_rules! __info__ {
+    macro_rules! info {
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Info,
@@ -161,8 +158,7 @@ mod macros {
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
-    #[doc(hidden)]
-    macro_rules! __debug__ {
+    macro_rules! debug {
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Debug,

@@ -467,7 +467,7 @@ impl Strs {
                 if char == ' ' {
                     sum + 1
                 } else {
-                    sum + opts.tabstop as usize - (opts.tabstop as usize % sum)
+                    sum + opts.tabstop as usize - (sum % opts.tabstop as usize)
                 }
             })
     }

@@ -323,7 +323,7 @@ pub mod form {
     //!
     //! [`Form`]: crate::form::Form
     pub use duat_core::form::{
-        Color, CursorShape, Form, Palette, enable_mask, from_id, id_of, set, set_many, set_weak,
+        CursorShape, Form, Palette, enable_mask, from_id, id_of, set, set_many, set_weak,
     };
 }
 
@@ -585,7 +585,7 @@ pub mod prelude {
         context::{self, Handle},
         cursor,
         data::{self, Pass, RwData},
-        form::{self, Color, CursorShape, Form},
+        form::{self, CursorShape, Form},
         hook::{
             self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferUnloaded,
             BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged,

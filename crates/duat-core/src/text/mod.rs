@@ -83,19 +83,6 @@
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
-#[doc(inline)]
-pub use crate::__txt__ as txt;
-pub use crate::text::{
-    builder::{AsBuilderPart, Builder, BuilderPart},
-    iter::{FwdIter, RevIter, TextPart, TextPlace},
-    search::{Matches, RegexHaystack, RegexPattern},
-    strs::{Lines, Strs},
-    tags::{
-        Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, SwapChar, Tag, Tagger, Tags,
-        ToggleId,
-    },
-    utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
-};
 use crate::{
     buffer::{Change, History},
     context::Handle,
@@ -107,6 +94,20 @@ use crate::{
         utils::implPartialEq,
     },
     ui::{SpawnId, Widget},
+};
+pub use crate::{
+    text::{
+        builder::{AsBuilderPart, Builder, BuilderPart},
+        iter::{FwdIter, RevIter, TextPart, TextPlace},
+        search::{Matches, RegexHaystack, RegexPattern},
+        strs::{Lines, Strs},
+        tags::{
+            Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, SwapChar, Tag, Tagger,
+            Tags, ToggleId,
+        },
+        utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
+    },
+    txt,
 };
 
 mod builder;
@@ -645,10 +646,11 @@ impl Text {
     ///
     /// Normally, when you call `Text::to_string`, (which is actually
     /// [deref'd] into [`Strs::to_string`]), it will also include the
-    /// last `\n` character, which is always a part of the `Text` no
-    /// matter what. This function doesn't do that.
+    /// last `\n` character, which is always a part of the `Text`
+    /// no matter what. This function doesn't do that.
     ///
     /// [deref'd]: https://doc.rust-lang.org/std/ops/trait.Deref.html
+    /// [`Strs::to_string`]: ToString::to_string
     pub fn to_string_no_last_nl(&self) -> String {
         let mut string = self.to_string();
         string.pop();

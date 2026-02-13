@@ -3,6 +3,7 @@ use duat_core::{Plugin, hook::{self, BufferOpened}};
 use crate::server_bridge::ServerBridge;
 
 mod server_bridge;
+mod config;
 
 pub struct DuatLsp;
 

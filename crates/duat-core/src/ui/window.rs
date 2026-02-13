@@ -10,7 +10,6 @@
 //! with through the [`Pass`] struct, allowing for massively
 //! desynchronized global state accessibility.
 use std::{
-    any::type_name,
     iter::Chain,
     path::Path,
     sync::{Arc, Mutex},
@@ -634,7 +633,10 @@ impl Windows {
                 .chain(list[..cur_win].iter().flat_map(|win| win.nodes(pa)))
                 .find(|node| node.data_is::<W>())
         }
-        .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()))
+        .ok_or(txt!(
+            "No widget of type [a]{}[] found",
+            std::any::type_name::<W>()
+        ))
     }
 
     ////////// Entry iterators

@@ -1054,23 +1054,22 @@ impl Hookable for FormSet {
     }
 }
 
-/// [`Hookable`]: Triggers when a [`ColorScheme`] is set.
+/// [`Hookable`]: Triggers when a colorscheme is set.
 ///
 /// Since [`Form`]s are set asynchronously, this may happen before the
 /// `ColorScheme` is done with its changes.
 ///
 /// # Arguments
 ///
-/// - The name of the `ColorScheme`
-///
-/// [`ColorScheme`]: crate::form::ColorScheme
-pub struct ColorSchemeSet(pub(crate) String);
+/// - The name of the `ColorScheme`.
+/// - The list of form name/form value pairs.
+pub struct ColorSchemeSet(pub(crate) (String, Vec<(String, Form)>));
 
 impl Hookable for ColorSchemeSet {
-    type Input<'h> = &'h str;
+    type Input<'h> = (&'h str, &'h [(String, Form)]);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        &self.0
+        (&self.0.0, &self.0.1)
     }
 }
 

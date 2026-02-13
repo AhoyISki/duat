@@ -488,7 +488,7 @@ macro_rules! doc_duat {
                     cmd,
                     context::{self, Handle},
                     data::{self, Pass},
-                    form::{self, Color, CursorShape, Form},
+                    form::{self, CursorShape, Form},
                     hook::{
                         self, BufferOpened, BufferSaved, BufferUpdated, ColorSchemeSet,
                         ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat,

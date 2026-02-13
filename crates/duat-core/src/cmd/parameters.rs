@@ -802,9 +802,7 @@ impl Parameter for FormName {
 
 implDeref!(FormName, String);
 
-/// Command [`Parameter`]: An existing [`ColorScheme`]'s name
-///
-/// [`ColorScheme`]: crate::form::ColorScheme
+/// Command [`Parameter`]: An existing colorscheme's name
 pub struct ColorSchemeArg(pub String);
 
 impl Parameter for ColorSchemeArg {

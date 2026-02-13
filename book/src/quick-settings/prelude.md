@@ -204,11 +204,9 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    let color1 = Color::new("#575279");
-    let color2 = Color::new("#faf4ed");
     // Setting by Form
     form::set("punctuation.bracket", Form::new().red());
-    form::set("default", Form::new().with(color1).on(color2));
+    form::set("default", Form::new().with("#575279").on("#faf4ed"));
     form::set("matched_pair", Form::new().blue().underlined());
 
     // Setting by reference

@@ -4,7 +4,11 @@
 //! only by a select few plugins. Configuration crates and plugins
 //! should make use of the [duat] crate.
 //!
-//! One thing to note about this "builti-in plugins" thing though, is that the api of `duat` is a superset of `duat-core`'s api, the only reason why this distinction exists is so I can include some other plugins in `duat`'s api, like `duat-base`, duat-treesitter`, and `duat-lsp`. 
+//! One thing to note about this "builti-in plugins" thing though, is
+//! that the api of `duat` is a superset of `duat-core`'s api, the
+//! only reason why this distinction exists is so I can include some
+//! other plugins in `duat`'s api, like `duat-base`, `duat-treesitter`,
+//! and `duat-lsp`.
 //!
 //! [duat]: https://crates.io/duat
 #![warn(rustdoc::unescaped_backticks)]
@@ -438,7 +442,7 @@ pub mod process {
         /// Interrupt all [`PersistentChild`]ren.
         pub interrupt_all: fn(),
         /// How many reader threads are currently spawned.
-        pub reader_thread_count: fn() -> usize
+        pub reader_thread_count: fn() -> usize,
     }
 
     /// Behaves nearly identically to a regular [`Child`], except the
@@ -659,6 +663,8 @@ pub mod process {
     /// You should use this as a second condition to end reading
     /// loops, so you're able to restart them on the next reloading of
     /// the config crate.
+    ///
+    /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
     pub fn is_interrupt(err: &Error) -> bool {
         interrupt_read::is_interrupt(err) && crate::context::will_unload()
     }
@@ -678,7 +684,7 @@ pub mod process {
         PROCESS_FNS.set(process_fns).expect("Setup ran twice");
     }
 
-	/// How many reader threads are still running.
+    /// How many reader threads are still running.
     pub(crate) fn reader_thread_count() -> usize {
         (PROCESS_FNS.get().unwrap().reader_thread_count)()
     }

@@ -357,8 +357,7 @@ impl<D: Display> AsBuilderPart<D, D> for D {
 ///
 /// [`Text`]: super::Text
 #[macro_export]
-#[doc(hidden)]
-macro_rules! __txt__ {
+macro_rules! txt {
     ($($parts:tt)+) => {{
         #[allow(unused_imports)]
         use $crate::{
