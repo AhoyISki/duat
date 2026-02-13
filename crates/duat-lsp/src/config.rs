@@ -13,6 +13,8 @@ pub struct LanguageServerConfig {
     pub args: Vec<String>,
     #[serde(default)]
     pub envs: HashMap<String, String>,
+    // TODO: Investigate what this is about.
+    pub settings_section: Option<String>,
     pub settings: Option<Value>,
     pub experimental: Option<Value>,
     #[serde(default)]
@@ -21,77 +23,56 @@ pub struct LanguageServerConfig {
     pub symbol_names: HashMap<String, String>,
 }
 
-static FILETYPES: LazyLock<Mutex<HashMap<&str, Vec<&str>>>> = LazyLock::new(|| {
-    Mutex::new(HashMap::from_iter([
-        ("c", vec!["clangd"]),
-        ("cpp", vec!["clangd"]),
-        ("objc", vec!["clangd"]),
-        ("closure", vec!["closure-lsp"]),
-        ("cmake", vec!["cmake-language-server"]),
-        ("crystal", vec!["crystalline"]),
-        ("css", vec!["vscode-css-language-server"]),
-        ("less", vec!["vscode-css-language-server"]),
-        ("scss", vec!["vscode-css-language-server"]),
-        ("d", vec!["dls"]),
-        ("di", vec!["dls"]),
-        ("dart", vec!["dart-lsp"]),
-        ("elixir", vec!["elixir-ls"]),
-        ("elm", vec!["elm-language-server"]),
-        ("elvish", vec!["elvish"]),
-        ("erlang", vec!["elp"]),
-        ("fsharp", vec!["fsautocomplete"]),
-        ("go", vec!["gopls"]),
-        ("haskell", vec!["haskell-language-server"]),
-        ("html", vec!["vscode-html-language-server"]),
-        ("java", vec!["jdtls"]),
-        ("javascript", vec!["typescript-language-server"]),
-        ("typescript", vec!["typescript-language-server"]),
-        ("vue", vec!["typescript-language-server"]),
-        ("json", vec!["vscode-json-language-server"]),
-        ("latex", vec!["texlab"]),
-        ("rust", vec!["rust-analyzer"]),
-    ]))
-});
-
 // Configuration for language servers, taken from kak-lsp.
-static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLock::new(|| {
-    let mut table = toml::Table::new();
+static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
 
     // Doing it this way to avoid heavy macro recursion.
     macro_rules! entry {
-        ($lsp:literal { $($tokens:tt)* }) => {
-            table.insert($lsp.to_string(), toml::Value::from(toml::toml! { $($tokens)* }));
+        ([$($language:literal),+], { $($tokens:tt)* }) => {
+            let value = toml::Value::from(toml::toml! { $($tokens)* });
+            $(
+                map.insert($language, value.clone().try_into().unwrap());
+            )*
         }
     }
 
-    entry!("clangd" {
+    entry!(["c", "cpp", "objc"], {
+        [clangd]
         args = ["--log=error"]
         root_globs = ["compile_commands.json", ".clangd", ".git", ".hg"]
     });
 
-    entry!("closure-lsp" {
+    entry!(["closure"], {
+        [closure-lsp]
         root_globs = ["project.clj", ".git", ".hg"]
-        [settings]
+        settings_section = "_"
+        [closure-lsp.settings."_"]
         // See https://clojure-lsp.io/settings/#all-settings
         // source-paths-ignore-regex = ["resources.*", "target.*"]
     });
 
-    entry!("cmake-language-serever" {
+    entry!(["cmake"], {
+        [cmake-language-server]
         root_globs = ["CMakeLists.txt", ".git", ".hg"]
     });
 
-    entry!("crystalline" {
+    entry!(["crystal"], {
+        [crystalline]
         root_globs = ["shard.yml"]
     });
 
-    entry!("vscode-css-language-server" {
+    entry!(["css", "less", "scss"], {
+        [vscode-css-language-server]
         // Documented options see
         // https://github.com/sublimelsp/LSP-css/blob/master/LSP-css.sublime-settings
         root_globs = ["package.json", ".git", ".hg"]
         args = ["--stdio"]
-        [settings]
+        settings_section = "_"
+        [vscode-css-language-server.settings."_"]
         provideFormatter = true
         handledSchemas = ["file"]
+        [vscode-css-language-server.settings]
         css.format.enable = true
         css.validProperties = []
         css.validate = true
@@ -103,27 +84,34 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
         less.validate = true
     });
 
-    entry!("dls" {
+    entry!(["d"], {
+        [dls]
         root_globs = [".git", "dub.sdl", "dub.json"]
     });
 
-    entry!("dart-lsp" {
+    entry!(["dart"], {
+        [dart-lsp]
         root_globs = ["pubspec.yaml", ".git", ".hg"]
         command = "dart"
         args = ["language-server"]
     });
 
-    entry!("elixir-ls" {
+    entry!(["elixir"], {
+        [elixir-ls]
         root_globs = ["mix.exs"]
-        [settings]
+        [elixir-ls.settings]
+        settings_section = "elixirLS"
+        [elixir-ls.settings.elixirLS]
         // See https://github.com/elixir-lsp/elixir-ls/blob/master/apps/language_server/lib/language_server/server.ex
         // dialyzerEnable = true
     });
 
-    entry!("elm-language-server" {
+    entry!(["elm"], {
+        [elm-language-servee]
         root_globs = ["elm.json"]
         args = ["--stdio"]
-        [settings]
+        settings_section = "elmLS"
+        [elm-language-server.settings.elmLS]
         // See https://github.com/elm-tooling/elm-language-server#server-settings
         runtime = "node"
         elmPath = "elm"
@@ -131,25 +119,30 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
         elmTestPath = "elm-test"
     });
 
-    entry!("elvish" {
+    entry!(["elvish"], {
+        [elvish]
         root_globs = [".git", ".hg"]
         args = ["-lsp"]
     });
 
-    entry!("elp" {
+    entry!(["erlang"], {
+        [elp]
         root_globs = ["rebar.config", "erlang.mk", ".git", ".hg"]
         args = [ "server" ]
     });
 
-    entry!("fsautocomplete" {
+    entry!(["fsharp"], {
+        [fsautocomplete]
         root_globs = [".git", ".hg", ".sln", ".fsproj"]
-        [settings]
+        settings_section = "_"
+        [fsautocomplete.settings."_"]
         AutomaticWorkspaceInit = true
     });
 
-    entry!("gopls" {
+    entry!(["go"], {
+        [gopls]
         root_globs = ["Gopkg.toml", "go.mod", ".git", ".hg"]
-        [settings.gopls]
+        [gopls.settings.gopls]
         // See https://github.com/golang/tools/blob/master/gopls/doc/settings.md
         // "build.buildFlags" = []
         hints.assignVariableTypes = true
@@ -162,11 +155,13 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
         usePlaceholders = true
     });
 
-    entry!("haskell-language-server" {
+    entry!(["haskell"], {
+        [haskell-language-server]
         root_globs = ["hie.yaml", "cabal.project", "Setup.hs", "stack.yaml", "*.cabal"]
         command = "haskell-language-server-wrapper"
         args = ["--lsp"]
-        [settings]
+        settings_section = "_"
+        [haskell-language-server.settings."_"]
         // See https://haskell-language-server.readthedocs.io/en/latest/configuration.html
         // haskell.formattingProvider = "ormolu"
         // There now exists also static-ls, which uses less memory, is faster and suited
@@ -179,14 +174,16 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
         // command = "static-ls"
     });
 
-    entry!("vscode-html-language-server" {
+    entry!(["html"], {
+        [vscode-html-language-server]
         // Documented options see
         // https://github.com/sublimelsp/LSP-html/blob/master/LSP-html.sublime-settings
         root_globs = ["package.json", ".git", ".hg"]
         args = ["--stdio"]
-        [settings]
+        settings_section = "_"
+        [vscode-html-language-server.settings."_"]
         provideFormatter = true
-        [settings]
+        [vscode-html-language-server.settings]
         embeddedLanguages.css = true
         embeddedLanguages.javascript = true
         html.autoClosingTags = true
@@ -214,36 +211,14 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
     //     args = [
     //         "-c",
     //         "kak_buffile=%val{buffile}
-    //           %opt{lsp_find_root} lakefile.lean lakefile.toml .git .hg >/dev/null
-    //           exec lake serve
+    //           %opt{lsp_find_root} lakefile.lean lakefile.toml .git .hg
+    // >/dev/null           exec lake serve
     //         "
     //     ]
     // });
 
-    entry!("rust-analyzer" {
-        root_globs = ["Cargo.toml"]
-        single_instance = true
-        [experimental]
-        commands.commands = ["rust-analyzer.runSingle"]
-        hoverActions = true
-        [settings]
-        rust-analyzer.check.command = "clippy"
-        [symbol_kinds]
-        Constant = "const"
-        Enum = "enum"
-        EnumMember = ""
-        Field = ""
-        Function = "fn"
-        Interface = "trait"
-        Method = "fn"
-        Module = "mod"
-        Object = ""
-        Struct = "struct"
-        TypeParameter = "type"
-        Variable = "let"
-    });
-
-    entry!("jdtls" {
+    entry!(["java"], {
+        [jdtls]
         root_globs = ["mvnw", "gradlew", ".git", ".hg"]
         // settings_section = "_"
         // workspace_did_change_configuration_subsection = "settings"
@@ -252,10 +227,12 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
         // "java.format.enabled" = true
     });
 
-    entry!("typescript-language-server" {
+    entry!(["javascript", "typescript"], {
+        [typescript-language-server]
         root_globs = ["package.json", "tsconfig.json", "jsconfig.json", ".git", ".hg"]
         args = ["--stdio"]
-        [settings]
+        settings_section = "_"
+        [typescript-language-server.settings."_"]
         // quotePreference = "double"
         // typescript.format.semicolons = "insert"
     });
@@ -272,17 +249,17 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
     //     args = ["--stdio"]
     //     workaround_eslint = true
     //     [settings]
-    //     codeActionsOnSave = { mode = "all", "source.fixAll.eslint" = true }
-    //     format = { enable = true }
+    //     codeActionsOnSave = { mode = "all", "source.fixAll.eslint" =
+    // true }     format = { enable = true }
     //     quiet = false
     //     rulesCustomizations = []
     //     run = "onType"
     //     validate = "on"
     //     experimental = {}
     //     problems = { shortenToSingleLine = false }
-    //     codeAction.disableRuleComment = { enable = true, location = "separateLine" }
-    //     codeAction.showDocumentation = { enable = false }
-    // });
+    //     codeAction.disableRuleComment = { enable = true, location =
+    // "separateLine" }     codeAction.showDocumentation = { enable =
+    // false } });
     // entry!("tailwindcss-language-server" {
     //     root_globs = ["tailwind.*"]
     //     args = ["--stdio"]
@@ -290,10 +267,12 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
     //     editor = {}
     // });
 
-    entry!("typescript-language-server" {
+    entry!(["vue"], {
+        [typescript-language-server]
         root_globs = ["package.json", "tsconfig.json", "jsconfig.json", ".git", ".hg"]
         args = ["--stdio"]
-        [settings]
+        settings_section = "_"
+        [typescript-language-server.settings."_"]
         plugins = [{
             name = "@vue/typescript-plugin",
             location = "vue-language-server",
@@ -307,10 +286,12 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
     //      editor = {}
     // });
 
-    entry!("vscode-json-language-server" {
+    entry!(["json"], {
+        [vscode-json-language-server]
         root_globs = ["package.json", ".git", ".hg"]
         args = ["--stdio"]
-        [settings]
+        settings_section = "_"
+        [vscode-json-language-server.settings."_"]
         provideFormatter = true
         json.format.enable = true
         json.validate.enable = true
@@ -318,24 +299,25 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
         // The needed URLs you can find at https://www.schemastore.org/json/
         // Configuration see
         // https://github.com/microsoft/vscode/blob/main/extensions/json-language-features/server/README.md#configuration
-        [[settings.json.schemas]]
+        [[vscode-json-language-server.settings."_".json.schemas]]
         fileMatch = ["/package.json"]
         url = "https://json.schemastore.org/package.json"
-        [[settings.json.schemas]]
+        [[vscode-json-language-server.settings."_".json.schemas]]
         fileMatch = ["/.markdownlintrc","/.markdownlint.json","/.markdownlint.jsonc"]
         url = "https://raw.githubusercontent.com/DavidAnson/markdownlint/main/schema/markdownlint-config-schema.json"
-        [[settings.json.schemas]]
+        [[vscode-json-language-server.settings."_".json.schemas]]
         fileMatch = ["/.prettierrc", "/.prettierrc.json"]
         url = "https://json.schemastore.org/prettierrc.json"
-        [[settings.json.schemas]]
+        [[vscode-json-language-server.settings."_".json.schemas]]
         fileMatch = ["/compile_commands.json"]
         url = "https://json.schemastore.org/compile-commands.json"
-        [[settings.json.schemas]]
+        [[vscode-json-language-server.settings."_".json.schemas]]
         fileMatch = ["/tsconfig*.json"]
         url = "https://json.schemastore.org/tsconfig.json"
     });
 
-    entry!("julia-language-server" {
+    entry!(["julia"], {
+        [julia-language-server]
         // Requires Julia package "LanguageServer"
         // Run: `julia --project=@kak-lsp -e 'import Pkg; Pkg.add("LanguageServer")'` to install it
         // Configuration adapted from https://github.com/neovim/nvim-lspconfig/blob/bcebfac7429cd8234960197dca8de1767f3ef5d3/lua/lspconfig/julials.lua
@@ -356,7 +338,7 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
             run(server);
             "#,
         ]
-        [settings]
+        [julia-language-server.settings]
         // See https://github.com/julia-vscode/LanguageServer.jl/blob/master/src/requests/workspace.jl
         // Format options. See https://github.com/julia-vscode/DocumentFormat.jl/blob/master/src/DocumentFormat.jl
         // "julia.format.indent" = 4
@@ -366,9 +348,10 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
         // "julia.lint.run" = true
     });
 
-    entry!("texlab" {
+    entry!(["latex"], {
+        [texlab]
         root_globs = [".git", ".hg"]
-        [settings.texlab]
+        [texlab.settings.texlab]
         // See https://github.com/latex-lsp/texlab/wiki/Configuration
         //
         // Preview configuration for zathura with SyncTeX search.
@@ -396,5 +379,228 @@ static CONFIGS: LazyLock<Mutex<HashMap<String, LanguageServerConfig>>> = LazyLoc
     //     root_globs = [".git", ".hg"]
     // });
 
-    Mutex::new(table.try_into().unwrap())
+    entry!(["lua"], {
+        [lua-language-server]
+        root_globs = [".git", ".hg"]
+        single_instance = false
+        settings_section = "Lua"
+        [lua-language-server.settings.Lua]
+        // See https://github.com/sumneko/vscode-lua/blob/master/setting/schema.json
+        // diagnostics.enable = true
+    });
+
+    entry!(["markdown"], {
+        [marksman]
+        root_globs = [".marksman.toml"]
+        args = ["server"]
+        // [zk]
+        // root_globs = [".zk"]
+        // args = ["lsp"]
+        // [markdown-oxide]
+        // root_globs = ["logseq"]
+    });
+
+    entry!(["mojo"], {
+        [mojo-lsp-server]
+        root_globs = [".git", ".hg"]
+    });
+
+    entry!(["nim"], {
+        [nimlsp]
+        root_globs = ["*.nimble", ".git", ".hg"]
+    });
+
+    entry!(["nix"], {
+        [nil]
+        root_globs = ["flake.nix", "shell.nix", ".git", ".hg"]
+    });
+
+    entry!(["ocaml"], {
+        [ocamllsp]
+        // Often useful to simply do a `touch dune-workspace` in your project root folder if you have problems with root detection
+        root_globs = ["dune-workspace", "dune-project", "Makefile", "opam", "*.opam", "esy.json", ".git", ".hg", "dune"]
+        settings_section = "_"
+        [ocamllsp.settings."_"]
+        // codelens.enable = false
+    });
+
+    entry!(["odin"], {
+        [ols]
+        root_globs = ["ols.json", ".git"]
+    });
+
+	entry!(["php"], {
+        [intelephense]
+        root_globs = [".htaccess", "composer.json"]
+        args = ["--stdio"]
+        settings_section = "intelephense"
+        [intelephense.settings.intelephense]
+        storagePath = "/tmp/intelephense"
+        // [phpactor]
+        // root_globs = ["composer.json", ".phpactor.json", ".phpactor.yml", ".git", ".hg"]
+        // args = ["language-server"]
+    });
+
+    entry!(["protobuf"], {
+        [pls] // https://github.com/lasorda/protobuf-language-server
+        root_globs = [".git", ".hg"]
+    });
+
+    entry!(["purescript"], {
+        [purescript-language-server]
+        root_globs = ["spago.dhall", "spago.yaml", "package.json", ".git", ".hg"]
+        args = ["--stdio"]
+    });
+
+    entry!(["python"], {
+        [pylsp]
+        root_globs = ["pyproject.toml", "setup.py", "poetry.lock", ".git", ".hg"]
+        settings_section = "_"
+        [pylsp.settings."_"]
+        // See https://github.com/python-lsp/python-lsp-server#configuration
+        // pylsp.configurationSources = ["flake8"]
+        pylsp.plugins.jedi_completion.include_params = true
+        // [pyright-langserver]
+        // root_globs = ["pyproject.toml", "setup.py", "poetry.lock", "pyrightconfig.json", ".git", ".hg"]
+        // args = ["--stdio"]
+        // [ruff]
+        // args = ["server", "--quiet"]
+        // root_globs = ["pyproject.toml", "setup.py", "poetry.lock", ".git", ".hg"]
+        // settings_section = "_"
+        // [ruff.settings._.globalSettings]
+        // organizeImports = true
+        // fixAll = true
+    });
+
+    entry!(["r"], {
+        [r-language-server]
+        root_globs = ["DESCRIPTION", ".git", ".hg"]
+        command = "R"
+        args = ["--slave", "-e", "languageserver::run()"]
+    });
+
+	entry!(["racket"], {
+        [racket-language-server]
+        root_globs = ["info.rkt"]
+        command = "racket"
+        args = ["-l", "racket-langserver"]
+	});
+
+	entry!(["reason"], {
+        [ocamllsp]
+        root_globs = ["package.json", "Makefile", ".git", ".hg"]
+	});
+
+	entry!(["ruby"], {
+        [solargraph]
+        root_globs = ["Gemfile"]
+        args = ["stdio"]
+        settings_section = "_"
+        [solargraph.settings."_"]
+        // See https://github.com/castwide/solargraph/blob/master/lib/solargraph/language_server/host.rb
+        // diagnostics = false
+        // [ruby-lsp]
+        // root_globs = ["Gemfile"]
+        // args = ["stdio"]
+	});
+
+    entry!(["rust"], {
+        [rust-analyzer]
+        root_globs = ["Cargo.toml"]
+        single_instance = true
+        [rust-analyzer.experimental]
+        commands.commands = ["rust-analyzer.runSingle"]
+        hoverActions = true
+        [rust-analyzer.settings]
+        rust-analyzer.check.command = "clippy"
+        [rust-analyzer.symbol_kinds]
+        Constant = "const"
+        Enum = "enum"
+        EnumMember = ""
+        Field = ""
+        Function = "fn"
+        Interface = "trait"
+        Method = "fn"
+        Module = "mod"
+        Object = ""
+        Struct = "struct"
+        TypeParameter = "type"
+        Variable = "let"
+    });
+
+    entry!(["scala"], {
+        [metals]
+        root_globs = ["build.sbt", ".scala-build"]
+        args = ["-Dmetals.extensions=false"]
+        settings_section = "metals"
+        [metals.settings.metals]
+        icons = "none"
+        isHttpEnabled = true
+        statusBarProvider = "show-message"
+        compilerOptions = { overrideDefFormat = "ascii" }
+        inlayHints.hintsInPatternMatch.enable = true
+        inlayHints.implicitArguments.enable = true
+        inlayHints.implicitConversions.enable = true
+        inlayHints.inferredTypes.enable = true
+        inlayHints.typeParameters.enable = true
+    });
+
+	entry!(["sh"], {
+        [bash-language-server]
+        root_globs = [".git", ".hg"]
+        args = ["start"]
+	});
+
+	entry!(["svelte"], {
+        [svelteserver]
+        root_globs = ["package.json", "tsconfig.json", "jsconfig.json", ".git", ".hg"]
+        args = ["--stdio"]
+	});
+
+	entry!(["terraform"], {
+        [terraform-ls]
+        root_globs = ["*.tf"]
+        args = ["serve"]
+        [terraform-ls.settings.terraform-ls]
+        // See https://github.com/hashicorp/terraform-ls/blob/main/docs/SETTINGS.md
+        // rootModulePaths = []
+	});
+
+	entry!(["toml"], {
+        [taplo]
+        root_globs = [".git", ".hg"]
+        args = ["lsp", "stdio"]
+	});
+
+	entry!(["typst"], {
+        [tinymist]
+        root_globs = [".git", ".hg"]
+        args = ["lsp"]
+        settings_section = "_"
+        [tinymist.settings."_"]
+        // See https://myriad-dreamin.github.io/tinymist/configurations.html
+        exportPdf = "onDocumentHasTitle"
+        formatterMode = "typstyle"
+        previewFeature = "disable"
+	});
+
+	entry!(["yaml"], {
+        [yaml-language-server]
+        root_globs = [".git", ".hg"]
+        args = ["--stdio"]
+        settings_section = "yaml"
+        [yaml-language-server.settings.yaml]
+        // See https://github.com/redhat-developer/yaml-language-server#language-server-settings
+        // Defaults are at https://github.com/redhat-developer/yaml-language-server/blob/master/src/yamlSettings.ts
+        // format.enable = true
+	});
+
+	entry!(["zig"], {
+        [zls]
+        root_globs = ["build.zig"]
+	});
+
+    Mutex::new(map)
 });
+
+type LspList = HashMap<String, LanguageServerConfig>;
