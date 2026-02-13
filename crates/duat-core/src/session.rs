@@ -302,10 +302,15 @@ impl Session {
                             thread_count
                         };
 
-                        if threads() <= 7
+						#[cfg(not(target_vendor = "apple"))]
+                        const NORMAL_THREAD_COUNT: usize = 7;
+						#[cfg(target_vendor = "apple")]
+                        const NORMAL_THREAD_COUNT: usize = 8;
+
+                        if threads() <= NORMAL_THREAD_COUNT
                             || !already_called && {
                                 std::thread::sleep(Duration::from_millis(10));
-                                threads() <= 7
+                                threads() <= NORMAL_THREAD_COUNT
                             }
                         {
                             let ui = self.ui;
