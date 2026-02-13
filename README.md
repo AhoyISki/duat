@@ -51,13 +51,15 @@ Next, in order to run duat, you should add `~/.cargo/bin/` to your
 
 ```bash
 cargo install duat
+duat --init-config
 ```
 
 That is the recommended version, however, if you wish to install
 the *bleeding edge* version, you can call this instead:
 
 ```bash
-cargo install --git https://github.com/AhoyISki/duat --features git-deps
+cargo install --git https://github.com/AhoyISki/duat
+duat --init-config --git-deps
 ```
 
 ### Configuration
@@ -102,6 +104,7 @@ fn setup() {
     });
 
     form::set("mode", Form::new().dark_magenta());
+    colorscheme::set("catppuccin-mocha");
 }
 ```
 
@@ -271,7 +274,7 @@ That’s why I decided to create Duat.
 idk, cool sounding word that I got from Spelunky 2.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEGwQ5C363ExukG2gUmX49WAxBG1qA9VEaMGQBG6awx7gS4DShYWSGgmRkdWF0ZTAuOC4zgmlkdWF0X2Jhc2VlMC44LjGCaWR1YXRfY29yZWUwLjguMYJwZHVhdF9tYXRjaF9wYWlyc2UwLjMuMIJvZHVhdF90cmVlc2l0dGVyZTAuNC4wgmhkdWF0bW9kZWUwLjguMQ
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG28twsakgeweG89ory0HETUFG8cwEFhxMqC5GzP5sGaT2qvKYXKEG8VXne41ysKwGxnSqiIWE16QG4svijMFpMbFG4hM3eH0mx7uYWSGgmRkdWF0ZTAuOC4zgmlkdWF0X2Jhc2VlMC44LjGCaWR1YXRfY29yZWUwLjguMYJwZHVhdF9tYXRjaF9wYWlyc2UwLjMuMIJvZHVhdF90cmVlc2l0dGVyZTAuNC4wgmhkdWF0bW9kZWUwLjguMQ
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.8.3/duat/?search=mode::map
  [__link10]: https://docs.rs/duat_core/0.8.1/duat_core/?search=buffer::BufferTracker

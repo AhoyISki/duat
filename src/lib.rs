@@ -41,13 +41,15 @@
 //!
 //! ```bash
 //! cargo install duat
+//! duat --init-config
 //! ```
 //!
 //! That is the recommended version, however, if you wish to install
 //! the _bleeding edge_ version, you can call this instead:
 //!
 //! ```bash
-//! cargo install --git https://github.com/AhoyISki/duat --features git-deps
+//! cargo install --git https://github.com/AhoyISki/duat
+//! duat --init-config --git-deps
 //! ```
 //!
 //! ## Configuration
@@ -92,6 +94,7 @@
 //!     });
 //!
 //!     form::set("mode", Form::new().dark_magenta());
+//!     colorscheme::set("catppuccin-mocha");
 //! }
 //! ```
 //!
