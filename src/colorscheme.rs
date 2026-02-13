@@ -113,7 +113,7 @@ macro_rules! add_colorschemes {
                 ])
             ),+ $(,)?
         ],
-        $pairs:expr
+        $pairs:expr $(,)?
     ) => {{
         use $crate::form::Form;
 
@@ -400,4 +400,6 @@ pub(crate) fn add_default() {
             ]
         }
     );
+
+    // Other themes should come in here, created similarly to the one above.
 }
