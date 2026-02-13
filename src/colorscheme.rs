@@ -294,9 +294,9 @@ pub(crate) fn add_default() {
         ],
         |c, has_background| {
             let default = if has_background {
-                Form::new().with(c.text)
-            } else {
                 Form::new().with(c.text).on(c.base)
+            } else {
+                Form::new().with(c.text)
             };
 
             [
