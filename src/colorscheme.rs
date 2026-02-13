@@ -102,7 +102,17 @@ pub use duat_core::form::{
 /// This way, you can use just one function to set the colors of
 /// multiple different variants, and the setup is fairly simple to do.
 ///
+/// # Note
+///
+/// Keep in mind that [`Form`] inheritance by name is an automatic
+/// process. For example, if you expect that all `keyword` forms
+/// should look the same, you don't have to set `keyword.directive`,
+/// `keyword.type`, `keyword.coroutine`, etc., to the same value, if
+/// you just set `keyword` to a `Form`, without setting any of the
+/// others, they will automatically reference it.
+///
 /// [rgb or hsl]: crate::form::Form::with
+/// [`Form`]: crate::form::Form
 #[macro_export]
 macro_rules! add_colorschemes {
     (
@@ -401,5 +411,6 @@ pub(crate) fn add_default() {
         }
     );
 
-    // Other themes should come in here, created similarly to the one above.
+    // Other themes should come in here, created similarly to the one
+    // above.
 }
