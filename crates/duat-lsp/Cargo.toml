@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 duat-core = { version = "0.8.0", path = "../duat-core" }
+duat-filetype = { version = "0.4.0", path = "../duat-filetype" }
 globset = { version = "0.4.18", default-features = false }
 jsonrpc-lite = "0.6.1"
 lsp-types = { version = "0.97.0", features = ["proposed"] }

@@ -354,7 +354,8 @@ mod global {
     /// input arguments of `H`. This is especially useful with
     /// `add_once`, since it prevents the function from being called
     /// once with the wrong arguments (e.g., it was meant for a
-    /// specific [`Buffer`], but the trigger happened first on another).
+    /// specific [`Buffer`], but the trigger happened first on
+    /// another).
     ///
     /// [`hook::add`]: add
     /// [`hook::remove`]: remove
@@ -636,6 +637,16 @@ impl Hookable for WindowOpened {
 /// # Arguments
 ///
 /// - The [`Buffer`]'s [`Handle`].
+///
+/// Note that this does _not_ trigger when reloading the
+/// configuration, since that merely unloads the `Buffer`s. If you
+/// want to handle that scenarion (as well as when bufferes are being
+/// closed, check out [`BufferUnloaded`]
+///
+/// This will also trigger when exiting Duat. You can check if that is
+/// the case with [`context::will_quit`].
+///
+/// [`context::will_quit`]: crate::context::will_quit
 pub struct BufferClosed(pub(crate) Handle);
 
 impl Hookable for BufferClosed {
@@ -658,8 +669,14 @@ impl PartialEq<Handle> for BufferClosed {
 ///
 /// - The [`Buffer`]'s [`Handle`].
 ///
-/// This will not trigger upon closing Duat. For that, see
-/// [`BufferClosed`].
+/// This will also trigger if the `Buffer` is closed, including while
+/// exiting Duat. You can check if that is the case with
+/// [`context::will_quit`].
+///
+/// If you want to handle situations where the `Buffer` is being
+/// closed, not just unloaded, checkout [`BufferClosed`].
+///
+/// [`context::will_quit`]: crate::context::will_quit
 pub struct BufferUnloaded(pub(crate) Handle);
 
 impl Hookable for BufferUnloaded {

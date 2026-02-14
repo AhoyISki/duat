@@ -285,13 +285,13 @@ impl Session {
                         let instant = unload_instant.get_or_insert_with(std::time::Instant::now);
                         if !already_called {
                             context::declare_will_unload();
-                            crate::process::interrupt_all();
-                            hook::trigger(pa, ConfigUnloaded(()));
 
                             for handle in context::windows().buffers(pa) {
                                 hook::trigger(pa, BufferUnloaded(handle));
                             }
 
+                            crate::process::interrupt_all();
+                            hook::trigger(pa, ConfigUnloaded(()));
                             crate::notify::remove_all_watchers();
                         }
 
@@ -342,14 +342,14 @@ impl Session {
                     DuatEvent::Quit => {
                         context::declare_will_unload();
                         context::declare_will_quit();
-                        crate::process::interrupt_all();
-                        hook::trigger(pa, ConfigUnloaded(()));
 
                         for handle in context::windows().buffers(pa) {
                             hook::trigger(pa, BufferUnloaded(handle.clone()));
                             hook::trigger(pa, BufferClosed(handle));
                         }
-
+                        
+                        crate::process::interrupt_all();
+                        hook::trigger(pa, ConfigUnloaded(()));
                         hook::trigger(pa, ExitedDuat(()));
 
                         self.ui.unload();

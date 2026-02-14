@@ -3,28 +3,15 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use serde::Deserialize;
-use serde_json::Value;
+use crate::config::LanguageServerConfig;
 
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LanguageServerConfig {
-    pub command: Option<String>,
-    #[serde(default)]
-    pub args: Vec<String>,
-    #[serde(default)]
-    pub envs: HashMap<String, String>,
-    // TODO: Investigate what this is about.
-    pub settings_section: Option<String>,
-    pub settings: Option<Value>,
-    pub experimental: Option<Value>,
-    #[serde(default)]
-    pub root_globs: Vec<String>,
-    #[serde(default)]
-    pub symbol_names: HashMap<String, String>,
+/// Get the [`LanguageServerConfig`] for a given language
+pub fn get_for(language: &str) -> Option<(HashMap<String, LanguageServerConfig>, bool)> {
+    DEFAULT_CONFIGS.lock().unwrap().get(language).cloned()
 }
 
 // Configuration for language servers, taken from kak-lsp.
-static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
+static DEFAULT_CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLock::new(|| {
     let mut map = HashMap::new();
 
     // Doing it this way to avoid heavy macro recursion.
@@ -32,7 +19,7 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
         ([$($language:literal),+], { $($tokens:tt)* }) => {
             let value = toml::Value::from(toml::toml! { $($tokens)* });
             $(
-                map.insert($language, value.clone().try_into().unwrap());
+                map.insert($language, (value.clone().try_into().unwrap(), false));
             )*
         }
     }
@@ -429,7 +416,7 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
         root_globs = ["ols.json", ".git"]
     });
 
-	entry!(["php"], {
+    entry!(["php"], {
         [intelephense]
         root_globs = [".htaccess", "composer.json"]
         args = ["--stdio"]
@@ -479,19 +466,19 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
         args = ["--slave", "-e", "languageserver::run()"]
     });
 
-	entry!(["racket"], {
+    entry!(["racket"], {
         [racket-language-server]
         root_globs = ["info.rkt"]
         command = "racket"
         args = ["-l", "racket-langserver"]
-	});
+    });
 
-	entry!(["reason"], {
+    entry!(["reason"], {
         [ocamllsp]
         root_globs = ["package.json", "Makefile", ".git", ".hg"]
-	});
+    });
 
-	entry!(["ruby"], {
+    entry!(["ruby"], {
         [solargraph]
         root_globs = ["Gemfile"]
         args = ["stdio"]
@@ -502,7 +489,7 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
         // [ruby-lsp]
         // root_globs = ["Gemfile"]
         // args = ["stdio"]
-	});
+    });
 
     entry!(["rust"], {
         [rust-analyzer]
@@ -545,34 +532,34 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
         inlayHints.typeParameters.enable = true
     });
 
-	entry!(["sh"], {
+    entry!(["sh"], {
         [bash-language-server]
         root_globs = [".git", ".hg"]
         args = ["start"]
-	});
+    });
 
-	entry!(["svelte"], {
+    entry!(["svelte"], {
         [svelteserver]
         root_globs = ["package.json", "tsconfig.json", "jsconfig.json", ".git", ".hg"]
         args = ["--stdio"]
-	});
+    });
 
-	entry!(["terraform"], {
+    entry!(["terraform"], {
         [terraform-ls]
         root_globs = ["*.tf"]
         args = ["serve"]
         [terraform-ls.settings.terraform-ls]
         // See https://github.com/hashicorp/terraform-ls/blob/main/docs/SETTINGS.md
         // rootModulePaths = []
-	});
+    });
 
-	entry!(["toml"], {
+    entry!(["toml"], {
         [taplo]
         root_globs = [".git", ".hg"]
         args = ["lsp", "stdio"]
-	});
+    });
 
-	entry!(["typst"], {
+    entry!(["typst"], {
         [tinymist]
         root_globs = [".git", ".hg"]
         args = ["lsp"]
@@ -582,9 +569,9 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
         exportPdf = "onDocumentHasTitle"
         formatterMode = "typstyle"
         previewFeature = "disable"
-	});
+    });
 
-	entry!(["yaml"], {
+    entry!(["yaml"], {
         [yaml-language-server]
         root_globs = [".git", ".hg"]
         args = ["--stdio"]
@@ -593,12 +580,12 @@ static CONFIGS: LazyLock<Mutex<HashMap<&str, LspList>>> = LazyLock::new(|| {
         // See https://github.com/redhat-developer/yaml-language-server#language-server-settings
         // Defaults are at https://github.com/redhat-developer/yaml-language-server/blob/master/src/yamlSettings.ts
         // format.enable = true
-	});
+    });
 
-	entry!(["zig"], {
+    entry!(["zig"], {
         [zls]
         root_globs = ["build.zig"]
-	});
+    });
 
     Mutex::new(map)
 });

@@ -690,6 +690,17 @@ pub mod process {
     }
 }
 
+pub mod store {
+    //! Utilities for storing items inbetween reloads.
+    use std::any::Any;
+
+    pub struct StoreFns {
+        insert: fn(String, Box<dyn Any + Send>),
+        get_item: fn(String, Box<dyn Any + Send>),
+    }
+
+}
+
 ////////// Text Builder macros (for pub/private bending)
 #[doc(hidden)]
 pub mod private_exports {

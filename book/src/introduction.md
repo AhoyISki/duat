@@ -26,7 +26,7 @@ impl Plugin for HighlightMatches {
 
             handle.text_mut(pa).remove_tags(tagger, ..);
             let caret = handle.text(pa).main_sel().caret();
-            let Some(range) = handle.text(pa).search(r"\A\w+").range(..caret).next_back() else {
+            let Some(range) = handle.text(pa).search(r"\A\w+").range(caret..).next() else {
                 return;
             };
 
@@ -39,7 +39,10 @@ impl Plugin for HighlightMatches {
             let pat = &parts.strs[start..range.end];
             let form_id = form::id_of!("same_word");
 
-            for range in lines.into_iter().flat_map(|r| parts.strs.search(r"\w+").range(r)) {
+            for range in lines
+                .into_iter()
+                .flat_map(|r| parts.strs.search(r"\w+").range(r))
+            {
                 if &parts.strs[range.clone()] == pat {
                     parts.tags.insert(tagger, range, form_id.to_tag(50));
                 }

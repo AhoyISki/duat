@@ -345,6 +345,7 @@ dependencies = [
  "duat-term",
  "duat-treesitter",
  "duatmode",
+ "globset",
  "interrupt-read",
  "libloading",
  "log",
@@ -402,6 +403,7 @@ name = "duat-lsp"
 version = "0.1.0"
 dependencies = [
  "duat-core",
+ "duat-filetype",
  "globset",
  "jsonrpc-lite",
  "lsp-types",
@@ -565,6 +567,7 @@ dependencies = [
  "bstr",
  "regex-automata",
  "regex-syntax",
+ "serde",
 ]
 
 [[package]]
