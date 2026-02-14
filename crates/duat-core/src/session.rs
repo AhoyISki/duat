@@ -45,10 +45,10 @@ pub struct SessionCfg {
 
 impl SessionCfg {
     pub fn new(meta_functions: &'static MetaFunctions, buffer_opts: BufferOpts) -> Self {
-        let MetaFunctions { clipboard_fns, notify_fns, process_fns } = meta_functions;
-        crate::clipboard::set_clipboard(clipboard_fns);
-        crate::notify::set_notify_fns(notify_fns);
-        crate::process::set_process_fns(process_fns);
+        crate::clipboard::set_clipboard(&meta_functions.clipboard_fns);
+        crate::notify::set_notify_fns(&meta_functions.notify_fns);
+        crate::process::set_process_fns(&meta_functions.process_fns);
+        crate::storage::set_storage_fns(&meta_functions.storage_fns);
         BUFFER_OPTS.set(buffer_opts).unwrap();
 
         SessionCfg {
@@ -302,9 +302,9 @@ impl Session {
                             thread_count
                         };
 
-						#[cfg(not(target_vendor = "apple"))]
+                        #[cfg(not(target_vendor = "apple"))]
                         const NORMAL_THREAD_COUNT: usize = 7;
-						#[cfg(target_vendor = "apple")]
+                        #[cfg(target_vendor = "apple")]
                         const NORMAL_THREAD_COUNT: usize = 8;
 
                         if threads() <= NORMAL_THREAD_COUNT
@@ -347,7 +347,7 @@ impl Session {
                             hook::trigger(pa, BufferUnloaded(handle.clone()));
                             hook::trigger(pa, BufferClosed(handle));
                         }
-                        
+
                         crate::process::interrupt_all();
                         hook::trigger(pa, ConfigUnloaded(()));
                         hook::trigger(pa, ExitedDuat(()));

@@ -7,8 +7,8 @@
 //! One thing to note about this "builti-in plugins" thing though, is
 //! that the api of `duat` is a superset of `duat-core`'s api, the
 //! only reason why this distinction exists is so I can include some
-//! other plugins in `duat`'s api, like `duat-base`, `duat-treesitter`,
-//! and `duat-lsp`.
+//! other plugins in `duat`'s api, like `duat-base`,
+//! `duat-treesitter`, and `duat-lsp`.
 //!
 //! [duat]: https://crates.io/duat
 #![warn(rustdoc::unescaped_backticks)]
@@ -138,6 +138,8 @@ pub struct MetaFunctions {
     pub notify_fns: notify::NotifyFns,
     /// Persistent process spawning functions.
     pub process_fns: process::ProcessFns,
+    /// Persistent storage for structs.
+    pub storage_fns: storage::StorageFns
 }
 
 pub mod clipboard {
@@ -536,12 +538,8 @@ pub mod process {
     /// this, and this type should not be publicly available. If the
     /// type is renamed in between reload cycles, the child will
     /// become an inaccessible zombie.
-    pub fn get<KeyType: 'static>(keyname: impl ToString) -> Option<PersistentChild> {
-        let key = format!(
-            "{}{}",
-            keyname.to_string(),
-            std::any::type_name::<KeyType>()
-        );
+    pub fn get<KeyType: 'static>(keyname: impl std::fmt::Display) -> Option<PersistentChild> {
+        let key = format!("{keyname}{}", std::any::type_name::<KeyType>());
         (PROCESS_FNS.get().unwrap().get_child)(key)
     }
 
@@ -679,26 +677,69 @@ pub mod process {
         (PROCESS_FNS.get().unwrap().interrupt_all)()
     }
 
-    /// Sets the [`ProcessFns`].
-    pub(crate) fn set_process_fns(process_fns: &'static ProcessFns) {
-        PROCESS_FNS.set(process_fns).expect("Setup ran twice");
-    }
-
     /// How many reader threads are still running.
     pub(crate) fn reader_thread_count() -> usize {
         (PROCESS_FNS.get().unwrap().reader_thread_count)()
     }
+
+    /// Sets the [`ProcessFns`].
+    pub(crate) fn set_process_fns(process_fns: &'static ProcessFns) {
+        PROCESS_FNS.set(process_fns).expect("Setup ran twice");
+    }
 }
 
-pub mod store {
+pub mod storage {
     //! Utilities for storing items inbetween reloads.
-    use std::any::Any;
+    use std::sync::OnceLock;
 
-    pub struct StoreFns {
-        insert: fn(String, Box<dyn Any + Send>),
-        get_item: fn(String, Box<dyn Any + Send>),
+    use bincode::{Decode, Encode, error::EncodeError};
+
+    static STORAGE_FNS: OnceLock<&StorageFns> = OnceLock::new();
+
+    /// Functions for storing persistent values.
+    ///
+    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
+    #[doc(hidden)]
+    #[derive(Debug)]
+    pub struct StorageFns {
+        /// Insert a new value into permanent storage.
+        pub insert: fn(String, Vec<u8>),
+        /// Get a value from permanent storage.
+        pub get: fn(String) -> Option<Vec<u8>>,
     }
 
+    /// Store a value across reload cycles.
+    ///
+    /// You can use this function if you want to store a value through
+    /// reload cycles, retrieving it after Duat reloads.
+    pub fn store<E: Encode>(key: impl std::fmt::Display, value: E) -> Result<(), EncodeError> {
+        let value = bincode::encode_to_vec(value, bincode::config::standard())?;
+        let key = format!("{key}{}", std::any::type_name::<E>());
+        (STORAGE_FNS.get().unwrap().insert)(key, value);
+        Ok(())
+    }
+
+    /// Retrieve a value that might have been stored on a previous
+    /// reload cycle.
+    ///
+    /// If a value of type `D` was stored with this key through
+    /// [`store`], then this function will return [`Some`] iff:
+    ///
+    /// - The type's name (through [`std::any::type_name`]) hasn't
+    ///   changed.
+    /// - The type's fields also haven't changed.
+    pub fn get<D: Decode<()>>(key: impl std::fmt::Display) -> Option<D> {
+        let key = format!("{key}{}", std::any::type_name::<D>());
+        let value = (STORAGE_FNS.get().unwrap().get)(key)?;
+
+        let (value, _) = bincode::decode_from_slice(&value, bincode::config::standard()).ok()?;
+        Some(value)
+    }
+
+    /// Sets the [`StorageFns`].
+    pub(crate) fn set_storage_fns(storage_fns: &'static StorageFns) {
+        STORAGE_FNS.set(storage_fns).expect("Setup ran twice");
+    }
 }
 
 ////////// Text Builder macros (for pub/private bending)

@@ -9,6 +9,7 @@ use duat_core::{
     context,
     notify::{NotifyFns, WatcherCallback},
     process::ProcessFns,
+    storage::StorageFns,
 };
 use interrupt_read::Interruptor;
 use notify::{
@@ -171,6 +172,15 @@ pub fn get_process_fns() -> ProcessFns {
             });
             count
         },
+    }
+}
+
+pub fn get_storage_fns() -> StorageFns {
+    static STORED: LazyLock<Mutex<HashMap<String, Vec<u8>>>> = LazyLock::new(Mutex::default);
+
+    StorageFns {
+        insert: |key, value| _ = STORED.lock().unwrap().insert(key, value),
+        get: |key| STORED.lock().unwrap().remove(&key),
     }
 }
 
