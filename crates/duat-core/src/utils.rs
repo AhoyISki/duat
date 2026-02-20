@@ -86,13 +86,6 @@ impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Default for Memoized
 /// Use this function if you need a name of a type to be
 /// referrable by string, such as by commands or by the
 /// user.
-///
-/// # NOTE
-///
-/// Any `<Ui>` or `Ui, ` type arguments will be removed from the final
-/// result, since Duat is supposed to have only one [`Ui`] in use.
-///
-/// [`Ui`]: crate::ui::Ui
 pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
     fn duat_name_inner(type_id: TypeId, type_name: &str) -> &'static str {
         static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
@@ -112,16 +105,6 @@ pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
                     if is_type || is_punct || is_dyn {
                         name.push_str(segment);
                     }
-                }
-            }
-
-            while let Some((i, len)) = None
-                .or_else(|| name.find("<Ui>").map(|i| (i, "<Ui>".len())))
-                .or_else(|| name.find("Ui, ").map(|i| (i, "Ui, ".len())))
-                .or_else(|| name.find("::<Ui>").map(|i| (i, "::<Ui>".len())))
-            {
-                unsafe {
-                    name.as_mut_vec().splice(i..(i + len), []);
                 }
             }
 

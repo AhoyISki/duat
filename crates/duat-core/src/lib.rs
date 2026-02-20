@@ -139,7 +139,7 @@ pub struct MetaFunctions {
     /// Persistent process spawning functions.
     pub process_fns: process::ProcessFns,
     /// Persistent storage for structs.
-    pub storage_fns: storage::StorageFns
+    pub storage_fns: storage::StorageFns,
 }
 
 pub mod clipboard {
@@ -435,12 +435,6 @@ pub mod process {
         /// Spawn a [`PersistentChild`], which can outlive this config
         /// reload.
         pub spawn: fn(&mut Command) -> std::io::Result<PersistentChild>,
-        /// Get a [`Child`] that was stored with `store_child`, even
-        /// in a previous reload cycle.
-        pub get_child: fn(String) -> Option<PersistentChild>,
-        /// Store a [`Child`], so that it can be loaded with the same
-        /// key, in a future reload cycle.
-        pub store_child: fn(String, PersistentChild) -> Option<PersistentChild>,
         /// Interrupt all [`PersistentChild`]ren.
         pub interrupt_all: fn(),
         /// How many reader threads are currently spawned.
@@ -692,7 +686,9 @@ pub mod storage {
     //! Utilities for storing items inbetween reloads.
     use std::sync::OnceLock;
 
-    use bincode::{Decode, Encode, error::EncodeError};
+    use bincode::{Decode, Encode, config::standard, error::EncodeError};
+
+    use crate::{process::PersistentChild, utils::duat_name};
 
     static STORAGE_FNS: OnceLock<&StorageFns> = OnceLock::new();
 
@@ -705,17 +701,22 @@ pub mod storage {
         /// Insert a new value into permanent storage.
         pub insert: fn(String, Vec<u8>),
         /// Get a value from permanent storage.
-        pub get: fn(String) -> Option<Vec<u8>>,
+        pub get_if: for<'f> fn(Box<dyn FnMut(&str, &[u8]) -> bool + 'f>) -> Option<Vec<u8>>,
+        /// Get a [`Child`] that was stored with `store_child`, even
+        /// in a previous reload cycle.
+        pub get_child: fn(String) -> Option<PersistentChild>,
+        /// Store a [`Child`], so that it can be loaded with the same
+        /// key, in a future reload cycle.
+        pub store_child: fn(String, PersistentChild) -> Option<PersistentChild>,
     }
 
     /// Store a value across reload cycles.
     ///
     /// You can use this function if you want to store a value through
     /// reload cycles, retrieving it after Duat reloads.
-    pub fn store<E: Encode>(key: impl std::fmt::Display, value: E) -> Result<(), EncodeError> {
-        let value = bincode::encode_to_vec(value, bincode::config::standard())?;
-        let key = format!("{key}{}", std::any::type_name::<E>());
-        (STORAGE_FNS.get().unwrap().insert)(key, value);
+    pub fn store<E: Encode + 'static>(value: E) -> Result<(), EncodeError> {
+        let value = bincode::encode_to_vec(value, standard())?;
+        (STORAGE_FNS.get().unwrap().insert)(duat_name::<E>().to_string(), value);
         Ok(())
     }
 
@@ -728,11 +729,21 @@ pub mod storage {
     /// - The type's name (through [`std::any::type_name`]) hasn't
     ///   changed.
     /// - The type's fields also haven't changed.
-    pub fn get<D: Decode<()>>(key: impl std::fmt::Display) -> Option<D> {
-        let key = format!("{key}{}", std::any::type_name::<D>());
-        let value = (STORAGE_FNS.get().unwrap().get)(key)?;
+    pub fn get_if<D: Decode<()> + 'static>(mut pred: impl FnMut(&D) -> bool) -> Option<D> {
+        let d_name = duat_name::<D>();
 
-        let (value, _) = bincode::decode_from_slice(&value, bincode::config::standard()).ok()?;
+        let value = (STORAGE_FNS.get().unwrap().get_if)(Box::new(move |duat_name, bytes| {
+            if d_name == duat_name
+                && let Some((value, _)) = bincode::decode_from_slice(bytes, standard()).ok()
+                && pred(&value)
+            {
+                true
+            } else {
+                false
+            }
+        }))?;
+
+        let (value, _) = bincode::decode_from_slice(&value, standard()).ok()?;
         Some(value)
     }
 

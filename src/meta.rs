@@ -155,8 +155,6 @@ pub fn get_process_fns() -> ProcessFns {
 
             Ok(PersistentChild { child, stdin, stdout, stderr })
         },
-        get_child: |key| PROCESSES.lock().unwrap().remove(&key),
-        store_child: |key, child| PROCESSES.lock().unwrap().insert(key, child),
         interrupt_all: || {
             INTERRUPTORS
                 .lock()
@@ -181,6 +179,8 @@ pub fn get_storage_fns() -> StorageFns {
     StorageFns {
         insert: |key, value| _ = STORED.lock().unwrap().insert(key, value),
         get: |key| STORED.lock().unwrap().remove(&key),
+        get_child: |key| PROCESSES.lock().unwrap().remove(&key),
+        store_child: |key, child| PROCESSES.lock().unwrap().insert(key, child),
     }
 }
 

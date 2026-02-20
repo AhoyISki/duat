@@ -18,7 +18,7 @@ use duat_core::{
 };
 use jsonrpc_lite::{Id, JsonRpc};
 use lsp_types::{
-    InitializedParams,
+    InitializedParams, ServerCapabilities,
     notification::{Cancel, Exit, Initialized, Notification},
     request::{Initialize, Request, Shutdown},
 };
@@ -41,6 +41,7 @@ impl ServerBridge {
         server_name: &str,
         rootdir: &Path,
         config: &LanguageServerConfig,
+        capabilities: Option<&ServerCapabilities>,
     ) -> Result<Self, Text> {
         use std::io::ErrorKind;
 
