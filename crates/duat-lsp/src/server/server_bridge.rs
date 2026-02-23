@@ -18,7 +18,7 @@ use duat_core::{
 };
 use jsonrpc_lite::{Id, JsonRpc};
 use lsp_types::{
-    InitializedParams, ServerCapabilities,
+    InitializedParams,
     notification::{Cancel, Exit, Initialized, Notification},
     request::{Initialize, Request, Shutdown},
 };
@@ -41,7 +41,6 @@ impl ServerBridge {
         server_name: &str,
         rootdir: &Path,
         config: &LanguageServerConfig,
-        capabilities: Option<&ServerCapabilities>,
     ) -> Result<Self, Text> {
         use std::io::ErrorKind;
 
@@ -137,7 +136,7 @@ impl ServerBridge {
                     child.stdin = Some(stdin_handle.join().unwrap());
                     child.stdout = Some(stdout_handle.join().unwrap());
                     child.stderr = Some(stderr_handle.join().unwrap());
-                    _ = duat_core::process::store::<Key>("rust-analyzer", child);
+                    duat_core::process::store::<Key>("rust-analyzer", child);
                 }
             }
         });

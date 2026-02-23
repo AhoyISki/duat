@@ -435,6 +435,10 @@ pub mod process {
         /// Spawn a [`PersistentChild`], which can outlive this config
         /// reload.
         pub spawn: fn(&mut Command) -> std::io::Result<PersistentChild>,
+        /// Gets a spawned child.
+        pub get_child: fn(String) -> Option<PersistentChild>,
+        /// Store a spawned child.
+        pub store_child: fn(String, PersistentChild),
         /// Interrupt all [`PersistentChild`]ren.
         pub interrupt_all: fn(),
         /// How many reader threads are currently spawned.
@@ -637,10 +641,7 @@ pub mod process {
     ///
     /// Returns [`Some`] if there was already a `PersistentChild` in
     /// storage with the same key.
-    pub fn store<KeyType: 'static>(
-        keyname: impl ToString,
-        child: PersistentChild,
-    ) -> Option<PersistentChild> {
+    pub fn store<KeyType: 'static>(keyname: impl ToString, child: PersistentChild) {
         let key = format!(
             "{}{}",
             keyname.to_string(),
@@ -688,7 +689,7 @@ pub mod storage {
 
     use bincode::{Decode, Encode, config::standard, error::EncodeError};
 
-    use crate::{process::PersistentChild, utils::duat_name};
+    use crate::utils::duat_name;
 
     static STORAGE_FNS: OnceLock<&StorageFns> = OnceLock::new();
 
@@ -702,12 +703,6 @@ pub mod storage {
         pub insert: fn(String, Vec<u8>),
         /// Get a value from permanent storage.
         pub get_if: for<'f> fn(Box<dyn FnMut(&str, &[u8]) -> bool + 'f>) -> Option<Vec<u8>>,
-        /// Get a [`Child`] that was stored with `store_child`, even
-        /// in a previous reload cycle.
-        pub get_child: fn(String) -> Option<PersistentChild>,
-        /// Store a [`Child`], so that it can be loaded with the same
-        /// key, in a future reload cycle.
-        pub store_child: fn(String, PersistentChild) -> Option<PersistentChild>,
     }
 
     /// Store a value across reload cycles.

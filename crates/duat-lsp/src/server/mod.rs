@@ -92,7 +92,11 @@ pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {
 
             Some(server.clone())
         } else {
-            let bridge = match ServerBridge::new(&server_name, &rootdir, &config) {
+            let bridge = match ServerBridge::new(
+                &server_name,
+                &rootdir,
+                &config,
+            ) {
                 Ok(bridge) => bridge,
                 Err(err) if user_provided => {
                     context::error!("{err}");

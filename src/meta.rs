@@ -132,6 +132,8 @@ pub fn get_process_fns() -> ProcessFns {
 
     static INTERRUPTORS: Mutex<Vec<Interruptor>> = Mutex::new(Vec::new());
     static READER_THREADS: Mutex<Vec<Box<dyn Fn() -> bool + Send>>> = Mutex::new(Vec::new());
+    static CHILDREN: LazyLock<Mutex<HashMap<String, PersistentChild>>> =
+        LazyLock::new(Mutex::default);
 
     ProcessFns {
         spawn: |command| {
@@ -170,6 +172,8 @@ pub fn get_process_fns() -> ProcessFns {
             });
             count
         },
+        get_child: |child_name| CHILDREN.lock().unwrap().remove(&child_name),
+        store_child: |child_name, child| _ = CHILDREN.lock().unwrap().insert(child_name, child),
     }
 }
 
@@ -178,9 +182,7 @@ pub fn get_storage_fns() -> StorageFns {
 
     StorageFns {
         insert: |key, value| _ = STORED.lock().unwrap().insert(key, value),
-        get: |key| STORED.lock().unwrap().remove(&key),
-        get_child: |key| PROCESSES.lock().unwrap().remove(&key),
-        store_child: |key, child| PROCESSES.lock().unwrap().insert(key, child),
+        get_if: |_| todo!(),
     }
 }
 
