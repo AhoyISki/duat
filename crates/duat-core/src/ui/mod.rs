@@ -1,4 +1,4 @@
-//! [Ui] structs and functions
+//! [Ui] structs and functions.
 //!
 //! Although there is only a terminal [Ui] implemented at the
 //! moment, Duat is supposed to be Ui agnostic, and I plan to create a
@@ -61,7 +61,7 @@ mod type_erased;
 mod widget;
 mod window;
 
-/// A coordinate on screen
+/// A coordinate on screen.
 ///
 /// An integer value should represent the size of a monospaced font
 /// cell. So, for example, in a terminal, x should represent the top
@@ -82,7 +82,7 @@ pub struct Coord {
 
 impl Coord {
     /// Returns a new `Coord` from an `x` and a `y` values,
-    /// respectively
+    /// respectively.
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
@@ -128,17 +128,17 @@ impl std::ops::Div<f32> for Coord {
     }
 }
 
-/// A dimension on screen, can either be horizontal or vertical
+/// A dimension on screen, can either be horizontal or vertical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
-    /// The horizontal axis
+    /// The horizontal axis.
     Horizontal,
-    /// The vertical axis
+    /// The vertical axis.
     Vertical,
 }
 
 impl Axis {
-    /// The [`Axis`] perpendicular to this one
+    /// The [`Axis`] perpendicular to this one.
     pub fn perp(&self) -> Self {
         match self {
             Axis::Horizontal => Axis::Vertical,
@@ -172,7 +172,7 @@ impl From<PushSpecs> for Axis {
     }
 }
 
-/// Information on how a [`Widget`] should be pushed onto another
+/// Information on how a [`Widget`] should be pushed onto another.
 ///
 /// This information is composed of four parts:
 ///
@@ -216,24 +216,24 @@ impl From<PushSpecs> for Axis {
 /// Since the remaining values are the default.
 #[derive(Clone, Copy, Debug)]
 pub struct PushSpecs {
-    /// Which [`Side`] to push the [`Widget`] to
+    /// Which [`Side`] to push the [`Widget`] to.
     pub side: Side,
-    /// A width (in character cells) for this `Widget`
+    /// A width (in character cells) for this `Widget`.
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
     pub width: Option<f32>,
-    /// A height (in lines) for this `Widget`
+    /// A height (in lines) for this `Widget`.
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
     pub height: Option<f32>,
-    /// Hide this `Widget` by default
+    /// Hide this `Widget` by default.
     ///
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
     pub hidden: bool,
-    /// Cluster this `Widget` when pushing
+    /// Cluster this `Widget` when pushing.
     ///
     /// This makes it so, if the main `Widget` is moved or deleted,
     /// then this one will follow. Useful for things like
@@ -258,10 +258,10 @@ impl Default for PushSpecs {
 }
 
 impl PushSpecs {
-    /// The [`Axis`] where it will be pushed
+    /// The [`Axis`] where it will be pushed.
     ///
-    /// - left/right: [`Axis::Horizontal`]
-    /// - above/below: [`Axis::Vertical`]
+    /// - left/right: [`Axis::Horizontal`].
+    /// - above/below: [`Axis::Vertical`].
     pub const fn axis(&self) -> Axis {
         match self.side {
             Side::Above | Side::Below => Axis::Vertical,
@@ -269,7 +269,7 @@ impl PushSpecs {
         }
     }
 
-    /// Wether this "comes earlier" on the screen
+    /// Wether this "comes earlier" on the screen.
     ///
     /// This returns true if `self.side() == Side::Left || self.side()
     /// == Side::Above`, since that is considered "earlier" on
@@ -278,7 +278,7 @@ impl PushSpecs {
         matches!(self.side, Side::Left | Side::Above)
     }
 
-    /// The constraints on a given [`Axis`]
+    /// The constraints on a given [`Axis`].
     pub fn len_on(&self, axis: Axis) -> Option<f32> {
         match axis {
             Axis::Horizontal => self.width,
@@ -287,7 +287,7 @@ impl PushSpecs {
     }
 }
 
-/// Information about how a [`Widget`] should be spawned dynamically
+/// Information about how a [`Widget`] should be spawned dynamically.
 ///
 /// Dynamically spawned `Widget`s are those that are spawned on
 /// [`Handle`]s or [`Text`]. They are called dynamic because their
@@ -302,26 +302,26 @@ impl PushSpecs {
 /// [`Text`]: crate::text::SpawnTag
 #[derive(Default, Debug, Clone, Copy)]
 pub struct DynSpawnSpecs {
-    /// The orientation to place this [`Widget`] in
+    /// The orientation to place this [`Widget`] in.
     ///
     /// May receive some reworks in the future.
     pub orientation: Orientation,
-    /// A width (in character cells) for this `Widget`
+    /// A width (in character cells) for this `Widget`.
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
     pub width: Option<f32>,
-    /// A height (in lines) for this `Widget`
+    /// A height (in lines) for this `Widget`.
     ///
     /// Note that this may be ignored if it is not possible to
     /// create an area big (or small) enough.
     pub height: Option<f32>,
-    /// Hide this `Widget` by default
+    /// Hide this `Widget` by default.
     ///
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
     pub hidden: bool,
-    /// Put this `Widget` _inside_, rather than outside
+    /// Put this `Widget` _inside_, rather than outside.
     ///
     /// A consequence of this is that no repositioning will ever be
     /// done, since there is no spatial difference between placing the
@@ -332,7 +332,7 @@ pub struct DynSpawnSpecs {
 }
 
 impl DynSpawnSpecs {
-    /// The constraints on a given [`Axis`]
+    /// The constraints on a given [`Axis`].
     pub const fn len_on(&self, axis: Axis) -> Option<f32> {
         match axis {
             Axis::Horizontal => self.width,
@@ -341,7 +341,7 @@ impl DynSpawnSpecs {
     }
 }
 
-/// Information about how a [`Widget`] should be spawned statically
+/// Information about how a [`Widget`] should be spawned statically.
 ///
 /// Statically spawned `Widget`s are those that are placed in a
 /// [`Coord`] on screen via [`Window::spawn`] and don't change
@@ -354,16 +354,16 @@ impl DynSpawnSpecs {
 /// [`Text`]: crate::text::Text
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StaticSpawnSpecs {
-    /// The top left corner where the [`Widget`] will be spawned
+    /// The top left corner where the [`Widget`] will be spawned.
     pub top_left: Coord,
-    /// The size of the [`Widget`], represented by a [`Coord`]
+    /// The size of the [`Widget`], represented by a [`Coord`].
     pub size: Coord,
-    /// Hide this [`Widget`] by default
+    /// Hide this [`Widget`] by default.
     ///
     /// You can call [`Area::hide`] or [`Area::reveal`] to toggle
     /// this property.
     pub hidden: bool,
-    /// Reposition the [`Widget`] in case the [`Window`] resizes
+    /// Reposition the [`Widget`] in case the [`Window`] resizes.
     ///
     /// Normally, this is [`None`], which means no repositioning is
     /// done unless the `Widget` would be clipped by the `Window`, in
@@ -384,7 +384,7 @@ pub struct StaticSpawnSpecs {
 }
 
 impl StaticSpawnSpecs {
-    /// The constraints on a given [`Axis`]
+    /// The constraints on a given [`Axis`].
     pub const fn len_on(&self, axis: Axis) -> f32 {
         match axis {
             Axis::Horizontal => self.size.x,
@@ -408,19 +408,19 @@ impl Default for StaticSpawnSpecs {
 /// another.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
-    /// Put the [`Widget`] above another
+    /// Put the [`Widget`] above another.
     Above,
-    /// Put the [`Widget`] on the right
+    /// Put the [`Widget`] on the right.
     #[default]
     Right,
-    /// Put the [`Widget`] on the left
+    /// Put the [`Widget`] on the left.
     Below,
-    /// Put the [`Widget`] below another
+    /// Put the [`Widget`] below another.
     Left,
 }
 
 impl Side {
-    /// Which [`Axis`] this [`Side`] belongs to
+    /// Which [`Axis`] this [`Side`] belongs to.
     pub fn axis(&self) -> Axis {
         match self {
             Side::Above | Side::Below => Axis::Vertical,
@@ -429,7 +429,7 @@ impl Side {
     }
 }
 
-/// Where to place a spawned [`Widget`]
+/// Where to place a spawned [`Widget`].
 ///
 /// The `Orientation` has 3 components of positioning, which follow
 /// priorities in order to relocate the `Widget` in case there isn't
@@ -481,44 +481,44 @@ impl Side {
 #[derive(Default, Debug, Clone, Copy)]
 pub enum Orientation {
     /// Place the [`Widget`] vertically, prioritizing the left edge
-    /// above
+    /// above.
     VerLeftAbove,
-    /// Place the [`Widget`] vertically, prioritizing centering above
+    /// Place the [`Widget`] vertically, prioritizing centering above.
     VerCenterAbove,
     /// Place the [`Widget`] vertically, prioritizing the right edge
-    /// above
+    /// above.
     VerRightAbove,
     /// Place the [`Widget`] vertically, prioritizing the left edge
-    /// below
+    /// below.
     #[default]
     VerLeftBelow,
-    /// Place the [`Widget`] vertically, prioritizing centering below
+    /// Place the [`Widget`] vertically, prioritizing centering below.
     VerCenterBelow,
     /// Place the [`Widget`] vertically, prioritizing the right edge
-    /// below
+    /// below.
     VerRightBelow,
     /// Place the [`Widget`] horizontally, prioritizing the top edge
-    /// on the left
+    /// on the left.
     HorTopLeft,
     /// Place the [`Widget`] horizontally, prioritizing centering
-    /// on the left
+    /// on the left.
     HorCenterLeft,
     /// Place the [`Widget`] horizontally, prioritizing the right edge
-    /// on the left
+    /// on the left.
     HorBottomLeft,
     /// Place the [`Widget`] horizontally, prioritizing the top edge
-    /// on the right
+    /// on the right.
     HorTopRight,
     /// Place the [`Widget`] horizontally, prioritizing centering
-    /// on the right
+    /// on the right.
     HorCenterRight,
     /// Place the [`Widget`] horizontally, prioritizing the bottom
-    /// edge on the right
+    /// edge on the right.
     HorBottomRight,
 }
 
 impl Orientation {
-    /// The [`Axis`] to which this `Orientation` pushes
+    /// The [`Axis`] to which this `Orientation` pushes.
     pub fn axis(&self) -> Axis {
         match self {
             Orientation::VerLeftAbove
@@ -536,7 +536,7 @@ impl Orientation {
         }
     }
 
-    /// Wether this should prefer being pushed before (left or above)
+    /// Wether this should prefer being pushed before (left or above).
     pub fn prefers_before(&self) -> bool {
         match self {
             Orientation::VerLeftAbove
@@ -555,7 +555,7 @@ impl Orientation {
     }
 }
 
-/// A target for pushing [`Widget`]s to
+/// A target for pushing [`Widget`]s to.
 ///
 /// This can either be a [`Handle`], which will push around a `Widget`
 /// or a [`Window`], which will push around the window.
@@ -701,7 +701,7 @@ impl PushTarget for Window {
     }
 }
 
-/// The id of a spawned [`Widget`]
+/// The id of a spawned [`Widget`].
 ///
 /// [`Widget`]: crate::ui::Widget
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -722,11 +722,11 @@ impl std::fmt::Debug for SpawnId {
     }
 }
 
-/// Information about a line that was printed
+/// Information about a line that was printed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PrintedLine {
-    /// The line's number
+    /// The line's number.
     pub number: usize,
-    /// Wether the line is wrapped
+    /// Wether the line is wrapped.
     pub is_wrapped: bool,
 }

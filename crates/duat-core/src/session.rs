@@ -7,10 +7,7 @@
 //! related to printing or receiving input. This includes interpreting
 //! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
-    any::TypeId,
-    path::PathBuf,
-    sync::{Mutex, OnceLock, mpsc},
-    time::Duration,
+    any::TypeId, collections::HashMap, path::PathBuf, sync::{Mutex, OnceLock, mpsc}, time::Duration
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
@@ -36,6 +33,21 @@ use crate::{
 };
 
 pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
+
+/// A message sent from the parent process.
+#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
+enum MsgFromParent {
+    InitialBuffers(Vec<Vec<ReloadedBuffer>>, HashMap<String, Vec<u8>>),
+    ClipboardContent(Option<String>),
+    ReloadResult(Result<(), String>),
+}
+
+#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
+enum MsgFromChild {
+    SpawnProcess(String, Vec<String>, Vec<(String, String)>),
+    RequestClipboard,
+    StartReloading
+}
 
 /// Configuration for a session of Duat
 #[doc(hidden)]
