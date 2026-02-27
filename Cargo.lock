@@ -382,7 +382,7 @@ dependencies = [
  "crossterm",
  "dirs-next",
  "format-like",
- "gap-buf",
+ "gap-buf 0.2.0",
  "interrupt-read",
  "log",
  "notify-types",
@@ -406,7 +406,7 @@ name = "duat-jump-list"
 version = "0.4.0"
 dependencies = [
  "duat-core",
- "gap-buf",
+ "gap-buf 0.1.0",
 ]
 
 [[package]]
@@ -448,7 +448,7 @@ version = "0.5.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
- "gap-buf",
+ "gap-buf 0.1.0",
  "include_dir",
  "indoc",
  "libloading",
@@ -546,6 +546,15 @@ name = "gap-buf"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a33d7b9df733f179151b9d5a6f33f2da90703ad614cfc559d85623589463e939"
+
+[[package]]
+name = "gap-buf"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb861d85a683f3b54bceff98015d93b2ddbda05a728b088f007649ee9611e484"
+dependencies = [
+ "bincode",
+]
 
 [[package]]
 name = "gethostname"

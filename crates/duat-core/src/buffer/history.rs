@@ -31,7 +31,7 @@ use crate::{
 };
 
 /// The history of edits, contains all moments.
-#[derive(Debug)]
+#[derive(Debug, bincode::Decode, bincode::Encode)]
 pub struct History {
     // Moments in regard to undoing/redoing.
     new_moment: Moment,
@@ -172,7 +172,7 @@ impl Clone for History {
 ///
 /// It also contains information about how to print the buffer, so
 /// that going back in time is less jarring.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, bincode::Decode, bincode::Encode)]
 pub struct Moment {
     changes: GapBuffer<Change<'static, String>>,
     shift_state: (usize, [i32; 3]),
@@ -647,7 +647,7 @@ impl BufferTracker {
             unread.moment = Moment::new();
         } else {
             unread.has_been_read = true;
-            
+
             let mut ranges_lock = ranges.lock().unwrap_or_else(|err| err.into_inner());
             for change in unread.moment.iter() {
                 ranges_lock.shift_by(
@@ -1075,7 +1075,7 @@ impl<'b> std::fmt::Debug for RangesToUpdate<'b> {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, bincode::Decode, bincode::Encode)]
 struct TrackerId(usize);
 
 impl TrackerId {
@@ -1087,7 +1087,7 @@ impl TrackerId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, bincode::Decode, bincode::Encode)]
 struct UnreadMoment {
     id: TrackerId,
     moment: Moment,
