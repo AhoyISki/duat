@@ -148,7 +148,6 @@ macro_rules! add_colorschemes {
 		let mut variant_num = 0;
 		$(
             $crate::colorscheme::add($variant, move || pairs(variant_num));
-			#[allow(unused_assignments)]
             variant_num += 1;
 		)+
     }};
@@ -178,6 +177,7 @@ pub fn has_background() -> bool {
     WITH_BACKGRUND.load(Relaxed)
 }
 
+#[allow(unused_assignments)]
 pub(crate) fn add_default() {
     add_colorschemes!(
         [
