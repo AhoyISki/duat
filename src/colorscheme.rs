@@ -144,10 +144,11 @@ macro_rules! add_colorschemes {
             pairs.map(|(name, form)| (name.to_string(), form)).to_vec()
         }
 
-        #[allow(unused_assignments)]
+        #[allow(unused_variables)]
 		let mut variant_num = 0;
 		$(
             $crate::colorscheme::add($variant, move || pairs(variant_num));
+			#[allow(unused_assignments)]
             variant_num += 1;
 		)+
     }};
