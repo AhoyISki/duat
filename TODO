@@ -35,6 +35,7 @@ FOR NEXT UPDATE:
 [x] File watching.
 [x] File tracking.
 [x] Persistent process spawning.
+[ ] Turn the config into a separate process I guess...
 
 KNOWN BUGS:
  HIGH PRIORITY:
