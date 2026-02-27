@@ -168,7 +168,7 @@ fn possible_separators() -> char {
 }
 
 #[cfg(target_os = "windows")]
-fn possible_separators() -> &[char] {
+fn possible_separators() -> &'static [char] {
     &['/', '\\']
 }
 
