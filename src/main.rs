@@ -470,7 +470,8 @@ fn decide_on_new_config(
 
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
-            let ("y\n" | "Y\n") = input.as_str() else {
+            // I hate windows...
+            let ("y\n" | "Y\n" | "y\r\n" | "Y\r\n") = input.as_str() else {
                 println!("Operation cancelled");
                 return Ok(true);
             };
