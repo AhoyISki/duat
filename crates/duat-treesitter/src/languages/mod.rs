@@ -44,11 +44,16 @@ pub fn get_language(filetype: &str, handle: &Handle) -> Option<Language> {
     let language_path = lib_dir.join(resolve_lib_file(&lang));
 
     if let Ok(lib) = unsafe { Library::new(&language_path) } {
+        duat_core::debug!("Got library");
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
-            let lang_fn = lib
-                .get::<fn() -> Language>(symbol.to_lowercase().as_bytes())
-                .ok()?;
+            let lang_fn = match lib.get::<fn() -> Language>(symbol.to_lowercase().as_bytes()) {
+                Ok(lang_fn) => lang_fn,
+                Err(err) => {
+                    context::error!("{err}");
+                    return None;
+                }
+            };
 
             lang_fn()
         };

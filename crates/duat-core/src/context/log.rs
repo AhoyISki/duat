@@ -44,15 +44,40 @@ mod macros {
     /// will also show up in Duat's [`Logs`]s, but reformatted to be a
     /// [`Text`] instead.
     ///
+    /// # Custom location
+    ///
+    /// You can make use of a custom location by calling this macro
+    /// and surounding the arguments in a `()` pair.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::{context::Location, *};
+    ///
+    /// # fn test() {
+    /// context::error!(
+    ///     ("This is my {}", "error"),
+    ///     Location::new("some_file", 32, 10),
+    /// );
+    /// # }
+    /// ```
+    ///
     /// [`txt!`]: crate::text::txt
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! error {
+        (($($arg:tt)+), $location:expr) => {
+            $crate::__log__!(
+                $crate::context::Level::Error,
+                $location,
+                $($arg)+
+            )
+        };
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Error,
+                $crate::context::Location::from_panic_location(::std::panic::Location::caller()),
                 $($arg)+
             )
         }
@@ -86,9 +111,17 @@ mod macros {
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! warn {
+        (($($arg:tt)+), $location:expr) => {
+            $crate::__log__!(
+                $crate::context::Level::Warn,
+                $location,
+                $($arg)+
+            )
+        };
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Warn,
+                $crate::context::Location::from_panic_location(::std::panic::Location::caller()),
                 $($arg)+
             )
         }
@@ -116,15 +149,40 @@ mod macros {
     /// will also show up in Duat's [`Logs`]s, but reformatted to be a
     /// [`Text`] instead.
     ///
+    /// # Custom location
+    ///
+    /// You can make use of a custom location by calling this macro
+    /// and surounding the arguments in a `()` pair.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::{context::Location, *};
+    ///
+    /// # fn test() {
+    /// context::info!(
+    ///     ("This is my {}", "info"),
+    ///     Location::new("some_file", 32, 10),
+    /// );
+    /// # }
+    /// ```
+    ///
     /// [`txt!`]: crate::text::txt
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! info {
+        (($($arg:tt)+), $location:expr) => {
+            $crate::__log__!(
+                $crate::context::Level::Info,
+                $location,
+                $($arg)+
+            )
+        };
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Info,
+                $crate::context::Location::from_panic_location(::std::panic::Location::caller()),
                 $($arg)+
             )
         }
@@ -153,15 +211,55 @@ mod macros {
     /// will also show up in Duat's [`Logs`]s, but reformatted to be a
     /// [`Text`] instead.
     ///
+    /// # Custom location
+    ///
+    /// You can make use of a custom location by calling this macro
+    /// and surounding the arguments in a `()` pair.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::{context::Location, *};
+    ///
+    /// # fn test() {
+    /// context::warn!(
+    ///     ("This is my {}", "warning"),
+    ///     Location::new("some_file", 32, 10),
+    /// );
+    /// # }
+    /// ```
+    ///
+    /// # Custom location
+    ///
+    /// You can make use of a custom location by calling this macro
+    /// and surounding the arguments in a `()` pair.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::{context::Location, *};
+    ///
+    /// # fn test() {
+    /// let text = txt!("Some custom text I want to debug");
+    /// context::debug!(("text is {text:#?}"), Location::new("some_file", 32, 10));
+    /// # }
+    /// ```
+    ///
     /// [`txt!`]: crate::text::txt
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! debug {
+        (($($arg:tt)+), $location:expr) => {
+            $crate::__log__!(
+                $crate::context::Level::Debug,
+                $location,
+                $($arg)+
+            )
+        };
         ($($arg:tt)+) => {
             $crate::__log__!(
                 $crate::context::Level::Debug,
+                $crate::context::Location::from_panic_location(::std::panic::Location::caller()),
                 $($arg)+
             )
         }
@@ -340,12 +438,11 @@ pub struct Record {
 impl Record {
     /// Creates a new [`Record`]
     #[doc(hidden)]
-    #[track_caller]
-    pub fn new(text: Text, level: Level) -> Self {
+    pub fn new(text: Text, level: Level, location: Location) -> Self {
         Self {
             text: Box::leak(Box::new(text)),
             metadata: log::MetadataBuilder::new().level(level).build(),
-            location: Location::from_panic_location(std::panic::Location::caller()),
+            location,
         }
     }
 
@@ -389,6 +486,23 @@ pub struct Location {
 }
 
 impl Location {
+    /// Returns a new custom `Location`.
+    ///
+    /// You can use this to add a more nuanced location for an error,
+    /// instead of just letting duat pick one automatically.
+    ///
+    /// An example of this is with treesitter query errors, where
+    /// [`std::panic::Location::caller`] would return an error within
+    /// a rust file, but a more appropriate position would be on the
+    /// actual query file.
+    pub fn new(filename: impl ToString, line: u32, col: u32) -> Self {
+        Self {
+            filename: filename.to_string().leak(),
+            line,
+            col,
+        }
+    }
+
     /// Returns a new [`Location`] from a regular panic `Location`
     pub fn from_panic_location(loc: &std::panic::Location) -> Self {
         Self {

@@ -82,7 +82,8 @@ impl duat_core::Plugin for TreeSitter {
             Ok(())
         }
 
-        static QUERIES: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/../../treesitter-queries");
+        static QUERIES: include_dir::Dir =
+            include_dir::include_dir!("$CARGO_MANIFEST_DIR/../../treesitter-queries");
 
         let Ok(plugin_dir) = duat_core::utils::plugin_dir("duat-treesitter") else {
             context::error!("No local directory, queries aren't installed");
@@ -165,6 +166,7 @@ struct Queries<'a> {
     injections: &'a Query,
 }
 
+#[track_caller]
 fn lang_parts_of(lang: &str, handle: &Handle) -> Option<LangParts<'static>> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
     static FAILED_PARTS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
@@ -178,16 +180,20 @@ fn lang_parts_of(lang: &str, handle: &Handle) -> Option<LangParts<'static>> {
     } else {
         let language: &'static Language = Box::leak(Box::new(get_language(lang, handle)?));
 
-        let get_queries = || {
-            let highlights = query_from_path(lang, "highlights", language).ok()?;
-            let indents = query_from_path(lang, "indents", language).ok()?;
-            let injections = query_from_path(lang, "injections", language).ok()?;
-            Some(Queries { highlights, indents, injections })
+        let get_queries = || -> Result<_, QueryFromPathError> {
+            let highlights = query_from_path(lang, "highlights", language)?;
+            let indents = query_from_path(lang, "indents", language)?;
+            let injections = query_from_path(lang, "injections", language)?;
+            Ok(Queries { highlights, indents, injections })
         };
 
-        let Some(queries) = get_queries() else {
-            FAILED_PARTS.lock().unwrap().insert(lang.to_string());
-            return None;
+        let queries = match get_queries() {
+            Ok(queries) => queries,
+            Err(err) => {
+                err.log();
+                FAILED_PARTS.lock().unwrap().insert(lang.to_string());
+                return None;
+            }
         };
 
         let lang: &'static str = lang.to_string().leak();
@@ -202,7 +208,12 @@ fn lang_parts_of(lang: &str, handle: &Handle) -> Option<LangParts<'static>> {
 ///
 /// If the [`Query`] in question does not exist, returns an emtpy
 /// [`Query`] instead.
-fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'static Query, Text> {
+#[track_caller]
+fn query_from_path(
+    name: &str,
+    kind: &str,
+    language: &Language,
+) -> Result<&'static Query, QueryFromPathError> {
     static QUERIES: LazyLock<Mutex<HashMap<PathBuf, &'static Query>>> =
         LazyLock::new(Mutex::default);
 
@@ -246,7 +257,7 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
 
         let query = Box::leak(Box::new(match Query::new(language, &query) {
             Ok(query) => query,
-            Err(err) => return Err(txt!("{err}")),
+            Err(err) => return Err(QueryFromPathError::Query(path, err)),
         }));
 
         queries.insert(path, query);
@@ -315,9 +326,8 @@ fn format_root(node: Node) -> Text {
         let mut first = true;
         for point in [node.start_position(), node.end_position()] {
             builder.push(txt!(
-                "[punctuation.bracket.TreeView][[[coords.TreeView]{}\
-             	 [punctuation.delimiter.TreeView],[] [coords.TreeView]{}\
-             	 [punctuation.bracket.TreeView]]]",
+                "[punctuation.bracket.TreeView][[[coords.TreeView]{}[punctuation.delimiter.\
+                 TreeView],[] [coords.TreeView]{}[punctuation.bracket.TreeView]]]",
                 point.row,
                 point.column
             ));
@@ -376,4 +386,43 @@ fn format_root(node: Node) -> Text {
     format_node(node, 0, 1, &mut builder, None);
 
     builder.build()
+}
+
+enum QueryFromPathError {
+    Text(Text),
+    Query(PathBuf, tree_sitter::QueryError),
+}
+
+impl QueryFromPathError {
+    fn log(self) {
+        match self {
+            QueryFromPathError::Text(text) => duat_core::error!("{text}"),
+            QueryFromPathError::Query(path, query_error) => {
+                use tree_sitter::QueryErrorKind;
+                let kind_msg = match query_error.kind {
+                    QueryErrorKind::Field => "Invalid field name ",
+                    QueryErrorKind::NodeType => "Invalid node type ",
+                    QueryErrorKind::Capture => "Invalid capture name ",
+                    QueryErrorKind::Predicate => "Invalid predicate: ",
+                    QueryErrorKind::Structure => "Impossible pattern:\n",
+                    QueryErrorKind::Syntax => "Invalid syntax:\n",
+                    QueryErrorKind::Language => "",
+                };
+                duat_core::error!(
+                    ("{kind_msg}{query_error.message}"),
+                    context::Location::new(
+                        path.to_string_lossy(),
+                        query_error.row as u32,
+                        query_error.column as u32
+                    )
+                )
+            }
+        };
+    }
+}
+
+impl From<Text> for QueryFromPathError {
+    fn from(value: Text) -> Self {
+        Self::Text(value)
+    }
 }

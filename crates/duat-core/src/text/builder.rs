@@ -379,13 +379,14 @@ macro_rules! txt {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __log__ {
-    ($lvl:expr, $($arg:tt)*) => {{
+    ($lvl:expr, $location:expr, $($arg:tt)*) => {{
         #[allow(unused_must_use)]
         let text = $crate::text::txt!($($arg)*);
 
         $crate::context::logs().push_record($crate::context::Record::new(
             text,
             $lvl,
+            $location
         ));
     }}
 }
