@@ -38,6 +38,7 @@ use crate::{
 /// [`Handle`]: crate::context::Handle
 /// [`edit_`]: crate::context::Handle::edit_all
 /// [`Text`]: crate::text::Text
+#[derive(bincode::Decode, bincode::Encode)]
 pub struct Selections {
     buf: GapBuffer<Selection>,
     main_i: usize,
@@ -989,7 +990,7 @@ impl std::fmt::Debug for Selections {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, bincode::Decode, bincode::Encode)]
 struct Shift {
     from: usize,
     by: [i32; 3],

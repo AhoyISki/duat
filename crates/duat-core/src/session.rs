@@ -7,24 +7,28 @@
 //! related to printing or receiving input. This includes interpreting
 //! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
-    any::TypeId, collections::HashMap, path::PathBuf, sync::{Mutex, OnceLock, mpsc}, time::Duration
+    any::TypeId,
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Mutex, OnceLock, mpsc},
+    time::Duration,
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
 use crate::{
     MetaFunctions, Plugins,
-    buffer::{Buffer, BufferOpts},
+    buffer::{Buffer, BufferOpts, History, PathKind},
     cmd,
-    context::{self, DuatReceiver, sender},
+    context::{self, DuatReceiver, cache, sender},
     data::Pass,
     form,
     hook::{
         self, BufferClosed, BufferUnloaded, ConfigLoaded, ConfigUnloaded, ExitedDuat,
         FocusedOnDuat, UnfocusedFromDuat,
     },
-    mode::{self},
-    text::TwoPoints,
+    mode::{self, Selection, Selections},
+    text::{StrsBuf, TwoPoints},
     ui::{
         Coord, Ui, Windows,
         layout::{Layout, MasterOnLeft},
@@ -35,7 +39,7 @@ use crate::{
 pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 
 /// A message sent from the parent process.
-#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
+#[derive(Debug, bincode::Decode, bincode::Encode)]
 enum MsgFromParent {
     InitialBuffers(Vec<Vec<ReloadedBuffer>>, HashMap<String, Vec<u8>>),
     ClipboardContent(Option<String>),
@@ -46,7 +50,7 @@ enum MsgFromParent {
 enum MsgFromChild {
     SpawnProcess(String, Vec<String>, Vec<(String, String)>),
     RequestClipboard,
-    StartReloading
+    StartReloading,
 }
 
 /// Configuration for a session of Duat
@@ -74,7 +78,6 @@ impl SessionCfg {
         buffers: Vec<Vec<ReloadedBuffer>>,
         already_plugged: Vec<TypeId>,
     ) -> Session {
-        crate::buffer::BufferId::set_min(buffers.iter().flatten().map(|rb| rb.buffer.buffer_id()));
         ui.setup_default_print_info();
 
         let plugins = Plugins::_new();
@@ -106,8 +109,8 @@ impl SessionCfg {
         let mut layout = Some(self.layout);
 
         for mut rel_buffers in buffers.into_iter().map(|rf| rf.into_iter()) {
-            let ReloadedBuffer { mut buffer, is_active } = rel_buffers.next().unwrap();
-            buffer.opts = *BUFFER_OPTS.get().unwrap();
+            let opts = *BUFFER_OPTS.get().unwrap();
+            let (buffer, is_active) = rel_buffers.next().unwrap().into_buffer(opts, 0);
 
             if let Some(layout) = layout.take() {
                 Windows::initialize(pa, buffer, layout, ui);
@@ -118,8 +121,10 @@ impl SessionCfg {
                 }
             }
 
-            for ReloadedBuffer { mut buffer, is_active } in rel_buffers {
-                buffer.opts = *BUFFER_OPTS.get().unwrap();
+            for (i, reloaded_buffer) in rel_buffers.enumerate() {
+                let opts = *BUFFER_OPTS.get().unwrap();
+                let layout_order = i + 1;
+                let (buffer, is_active) = reloaded_buffer.into_buffer(opts, layout_order);
                 let node = context::windows().new_buffer(pa, buffer);
                 if is_active {
                     context::set_current_node(pa, node);
@@ -398,10 +403,7 @@ impl Session {
                     .into_iter()
                     .map(|handle| {
                         let (buffer, area) = handle.write_with_area(pa);
-                        let buffer = buffer.prepare_for_reloading();
-                        let is_active = area.is_active();
-
-                        ReloadedBuffer { buffer, is_active }
+                        ReloadedBuffer::from_buffer(buffer, area.is_active())
                     })
                     .collect()
             })
@@ -480,8 +482,12 @@ pub(crate) enum DuatEvent {
 ///
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
+#[derive(Debug, bincode::Decode, bincode::Encode)]
 pub struct ReloadedBuffer {
-    buffer: Buffer,
+    buf: StrsBuf,
+    selections: Selections,
+    history: History,
+    path_kind: PathKind,
     is_active: bool,
 }
 
@@ -492,10 +498,74 @@ impl ReloadedBuffer {
     /// **MEANT TO BE USED BY THE DUAT EXECUTABLE ONLY**
     #[doc(hidden)]
     pub fn by_args(path: Option<PathBuf>, is_active: bool) -> Result<Self, std::io::Error> {
+        let (buf, selections, path_kind) = if let Some(path) = path {
+            let canon_path = path.canonicalize();
+            if let Ok(path) = &canon_path
+                && let Ok(buffer) = std::fs::read_to_string(path)
+            {
+                let selections = {
+                    let selection = cache::load(path).unwrap_or_default();
+                    Selections::new(selection)
+                };
+                (
+                    StrsBuf::new(buffer),
+                    selections,
+                    PathKind::SetExists(path.clone()),
+                )
+            } else if canon_path.is_err()
+                && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
+            {
+                canon_path.push(path.file_name().unwrap());
+                (
+                    StrsBuf::new("".to_string()),
+                    Selections::new(Selection::default()),
+                    PathKind::SetAbsent(canon_path),
+                )
+            } else {
+                (
+                    StrsBuf::new("".to_string()),
+                    Selections::new(Selection::default()),
+                    PathKind::new_unset(),
+                )
+            }
+        } else {
+            (
+                StrsBuf::new("".to_string()),
+                Selections::new(Selection::default()),
+                PathKind::new_unset(),
+            )
+        };
+
         Ok(Self {
-            buffer: Buffer::new(path, BufferOpts::default()),
+            buf,
+            selections,
+            history: History::default(),
+            path_kind,
             is_active,
         })
+    }
+
+    /// Creates a new `ReloadedBuffer` from an already loaded
+    /// [`Buffer`].
+    pub fn from_buffer(buffer: &mut Buffer, is_active: bool) -> Self {
+        let (buf, selections, history) = buffer.take_reload_parts();
+        Self {
+            buf,
+            selections,
+            history,
+            path_kind: buffer.path_kind(),
+            is_active,
+        }
+    }
+
+    /// Transforms this struct into a new [`Buffer`] and wether or not
+    /// it's active.
+    pub fn into_buffer(self, opts: BufferOpts, layout_order: usize) -> (Buffer, bool) {
+        let Self { buf, selections, history, path_kind, .. } = self;
+        (
+            Buffer::from_raw_parts(buf, selections, history, path_kind, opts, layout_order),
+            self.is_active,
+        )
     }
 }
 
