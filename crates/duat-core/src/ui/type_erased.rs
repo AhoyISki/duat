@@ -23,7 +23,7 @@ use std::{
 };
 
 use crate::{
-    context::{self, DuatSender, cache},
+    context::{self, cache},
     data::{Pass, RwData},
     form::Painter,
     mode::VPoint,
@@ -44,22 +44,6 @@ pub fn ui_is<U: RawUi>() -> bool {
     *CANONICAL_UI.get().unwrap() == TypeId::of::<U>()
 }
 
-/// Sets the canonical type ids for [`RawUi`] related types
-///
-/// *ONLY MEANT FOR USE BY THE DUAT EXECUTABLE*
-///
-/// Calling this outside of the duat executable will cause a panic.
-#[doc(hidden)]
-#[track_caller]
-pub fn config_address_space_ui_setup<U: RawUi>(ui: Ui) {
-    CANONICAL_UI
-        .set(TypeId::of::<U>())
-        .expect("You are not allowed to use this function");
-    CANONICAL_AREA.set(TypeId::of::<U::Area>()).unwrap();
-    let ui = unsafe { (std::ptr::from_ref(ui.ui) as *const U).as_ref().unwrap() };
-    ui.config_address_space_setup();
-}
-
 /// A type erased [`Ui`]
 #[derive(Clone, Copy)]
 pub struct Ui {
@@ -73,31 +57,24 @@ impl Ui {
     ///
     /// Given the [`RawUi::get_once`] function, this should only be
     /// callable _once_.
+    #[track_caller]
     pub fn new<U: RawUi>() -> Self
     where
         U::Area: PartialEq,
     {
-        Ui {
-            ui: U::get_once().expect("Ui was acquired more than once"),
-            fns: UiFunctions::new::<U>(),
-            default_print_info: || PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default()),
+        use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+        static CALLED: AtomicBool = AtomicBool::new(false);
+        if CALLED.fetch_or(true, Relaxed) {
+            panic!("The Ui can only be created once");
+        } else {
+            Ui {
+                ui: Box::leak(Box::new(U::load(UiPass::new()))),
+                fns: UiFunctions::new::<U>(),
+                default_print_info: || {
+                    PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default())
+                },
+            }
         }
-    }
-
-    /// Functions to trigger when the program begins
-    ///
-    /// Will happen on the address space of the Duat application,
-    /// rather than the configuration crate.
-    pub fn open(&self, duat_tx: DuatSender) {
-        (self.fns.open)(self.ui, duat_tx)
-    }
-
-    /// Functions to trigger when the program ends
-    ///
-    /// Will happen on the address space of the Duat application,
-    /// rather than the configuration crate.
-    pub fn close(&self) {
-        (self.fns.close)(self.ui)
     }
 
     /// Initiates and returns a new "master" [`Area`]
@@ -173,14 +150,6 @@ impl Ui {
         (self.fns.print)(self.ui)
     }
 
-    /// Functions to trigger when the program reloads
-    ///
-    /// These will happen inside of the dynamically loaded config
-    /// crate.
-    pub fn load(&self) {
-        (self.fns.load)(self.ui)
-    }
-
     /// Unloads the [`RawUi`]
     ///
     /// Unlike [`RawUi::close`], this will happen both when Duat
@@ -219,8 +188,6 @@ impl Ui {
 }
 
 struct UiFunctions {
-    open: fn(&'static dyn Any, DuatSender),
-    close: fn(&'static dyn Any),
     new_root: fn(&'static dyn Any, Option<&Path>) -> RwArea,
     new_dyn_spawned: fn(&'static dyn Any, Option<&Path>, SpawnId, DynSpawnSpecs, usize) -> RwArea,
     new_static_spawned:
@@ -228,7 +195,6 @@ struct UiFunctions {
     switch_window: fn(&'static dyn Any, win: usize),
     flush_layout: fn(&'static dyn Any),
     print: fn(&'static dyn Any),
-    load: fn(&'static dyn Any),
     unload: fn(&'static dyn Any),
     remove_window: fn(&'static dyn Any, win: usize),
     size: fn(&'static dyn Any) -> Coord,
@@ -237,14 +203,6 @@ struct UiFunctions {
 impl UiFunctions {
     const fn new<U: RawUi>() -> &'static Self {
         &Self {
-            open: |ui, duat_tx| {
-                let ui = ui.downcast_ref::<U>().unwrap();
-                ui.open(duat_tx)
-            },
-            close: |ui| {
-                let ui = ui.downcast_ref::<U>().unwrap();
-                ui.close()
-            },
             new_root: |ui, file_path| {
                 let ui = ui.downcast_ref::<U>().unwrap();
                 RwArea::new::<U>(ui.new_root(get_cache::<U>(file_path)))
@@ -270,10 +228,6 @@ impl UiFunctions {
             print: |ui| {
                 let ui = ui.downcast_ref::<U>().unwrap();
                 ui.print();
-            },
-            load: |ui| {
-                let ui = ui.downcast_ref::<U>().unwrap();
-                ui.load();
             },
             unload: |ui| {
                 let ui = ui.downcast_ref::<U>().unwrap();
