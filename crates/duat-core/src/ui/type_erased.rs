@@ -64,11 +64,12 @@ impl Ui {
     {
         use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
         static CALLED: AtomicBool = AtomicBool::new(false);
+
         if CALLED.fetch_or(true, Relaxed) {
             panic!("The Ui can only be created once");
         } else {
             Ui {
-                ui: Box::leak(Box::new(U::load(UiPass::new()))),
+                ui: Box::leak(Box::new(U::load(crate::context::sender()))),
                 fns: UiFunctions::new::<U>(),
                 default_print_info: || {
                     PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default())

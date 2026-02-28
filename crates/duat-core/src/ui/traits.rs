@@ -19,6 +19,7 @@ use std::process::Command;
 use bincode::{Decode, Encode};
 
 use crate::{
+    context::DuatSender,
     form::Painter,
     mode::VPoint,
     opts::PrintOpts,
@@ -83,7 +84,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// application. This means that any changes on `static` variables
     /// will not be reflected on the config [`Command`], so keep that
     /// in mind.
-    fn run_config(config_command: &mut Command) -> std::io::Result<()>;
+    fn run_config(config_command: &mut Command) -> std::io::Result<std::process::ExitStatus>;
 
     ////////// Configuration address space functions.
 
@@ -93,7 +94,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// of the program. You should make use of this function to do
     /// initialization that takes place _within_ the configuration
     /// crate address space.
-    fn load(_: UiPass) -> Self;
+    fn load(duat_tx: DuatSender) -> Self;
 
     /// Unloads the [`RawUi`]
     ///

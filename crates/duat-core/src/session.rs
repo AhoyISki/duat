@@ -51,6 +51,7 @@ enum MsgFromChild {
     SpawnProcess(String, Vec<String>, Vec<(String, String)>),
     RequestClipboard,
     StartReloading,
+    Panicked(String),
 }
 
 /// Configuration for a session of Duat
