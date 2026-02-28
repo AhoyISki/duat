@@ -6,17 +6,13 @@
 use std::{
     fmt::Debug,
     io::{self, Write},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
-    time::Duration,
+    process::Command,
+    sync::{Arc, Mutex, mpsc},
 };
 
 use crossterm::{
     cursor,
-    event::{self, Event as CtEvent, poll as ct_poll, read as ct_read},
+    event::{self, Event as CtEvent},
     execute, queue,
     style::{Color, ContentStyle},
     terminal::{self, ClearType},
@@ -37,7 +33,6 @@ pub use self::{
     layout::{Frame, FrameStyle},
     printer::{Border, BorderStyle},
     rules::{SepChar, VertRule, VertRuleBuilder},
-    shared_fns::*,
 };
 use crate::layout::Layouts;
 
@@ -46,57 +41,17 @@ mod layout;
 mod printer;
 mod rules;
 
-mod shared_fns {
-    use std::sync::OnceLock;
-
-    use crate::FrameStyle;
-
-    /// Execution address space functions
-    #[derive(Clone, Copy)]
-    pub(super) struct ExecSpaceFns {
-        set_default_frame_style: fn(FrameStyle),
-    }
-
-    impl Default for ExecSpaceFns {
-        fn default() -> Self {
-            Self {
-                set_default_frame_style: crate::layout::set_default_frame_style,
-            }
-        }
-    }
-
-    pub(super) static FNS: OnceLock<ExecSpaceFns> = OnceLock::new();
-
-    /// Sets the default [`FrameStyle`] for all spawned [`Area`]s
-    ///
-    /// By default, it is [`FrameStyle::Regular`], which uses
-    /// characters like `─`, `│` and `┐`.
-    ///
-    /// [`Area`]: crate::Area
-    pub fn set_default_frame_style(frame_style: FrameStyle) {
-        (FNS.get().unwrap().set_default_frame_style)(frame_style)
-    }
-
-    /// Resetting functions, right before reloading.
-    pub(super) fn reset_state() {
-        set_default_frame_style(FrameStyle::Regular);
-    }
-}
-
 /// The [`RawUi`] implementation for `duat-term`
 pub struct Ui {
     mt: Mutex<InnerUi>,
-    fns: shared_fns::ExecSpaceFns,
 }
 
 struct InnerUi {
     windows: Vec<(Area, Arc<Printer>)>,
     layouts: Layouts,
     win: usize,
-    frame: Border,
-    printer_fn: fn() -> Arc<Printer>,
-    rx: Option<mpsc::Receiver<Event>>,
-    tx: mpsc::Sender<Event>,
+    border: Border,
+    term_tx: mpsc::Sender<Event>,
 }
 
 // SAFETY: The Area (the part that is not Send + Sync) is only ever
@@ -106,125 +61,36 @@ unsafe impl Send for InnerUi {}
 impl RawUi for Ui {
     type Area = Area;
 
-    fn get_once() -> Option<&'static Self> {
-        static GOT: AtomicBool = AtomicBool::new(false);
-        let (tx, rx) = mpsc::channel();
-        shared_fns::FNS.set(ExecSpaceFns::default()).ok().unwrap();
-
-        (!GOT.fetch_or(true, Ordering::Relaxed)).then(|| {
-            Box::leak(Box::new(Self {
-                mt: Mutex::new(InnerUi {
-                    windows: Vec::new(),
-                    layouts: Layouts::default(),
-                    win: 0,
-                    frame: Border::default(),
-                    printer_fn: || Arc::new(Printer::new()),
-                    rx: Some(rx),
-                    tx,
-                }),
-                fns: ExecSpaceFns::default(),
-            })) as &'static Self
-        })
-    }
-
-    fn config_address_space_setup(&'static self) {
-        // This is allowed to fail if no_load is set to true.
-        _ = shared_fns::FNS.set(self.fns);
-    }
-
-    fn open(&self, duat_tx: DuatSender) {
+    fn open() {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
 
-        form::set_weak("rule.upper", Form::mimic("default.VertRule"));
-        form::set_weak("rule.lower", Form::mimic("default.VertRule"));
+        terminal::enable_raw_mode().unwrap();
 
-        let term_rx = self.mt.lock().unwrap().rx.take().unwrap();
-        let term_tx = self.mt.lock().unwrap().tx.clone();
+        // Initial terminal setup
+        // Some key chords (like alt+shift+o for some reason) don't work
+        // without this.
+        execute!(
+            io::stdout(),
+            terminal::EnterAlternateScreen,
+            terminal::Clear(ClearType::All),
+            terminal::DisableLineWrap,
+            event::EnableFocusChange,
+            event::EnableMouseCapture
+        )
+        .unwrap();
 
-        let print_thread = std::thread::Builder::new().name("print loop".to_string());
-        let _ = print_thread.spawn(move || {
-            // Wait for everything to be setup before doing anything to the
-            // terminal, for a less jarring effect.
-            let Ok(Event::NewPrinter(mut printer)) = term_rx.recv() else {
-                return;
-            };
-
-            terminal::enable_raw_mode().unwrap();
-
-            // Initial terminal setup
-            // Some key chords (like alt+shift+o for some reason) don't work
-            // without this.
+        if let Ok(true) = terminal::supports_keyboard_enhancement() {
             execute!(
                 io::stdout(),
-                terminal::EnterAlternateScreen,
-                terminal::Clear(ClearType::All),
-                terminal::DisableLineWrap,
-                event::EnableFocusChange,
-                event::EnableMouseCapture
+                PushKeyboardEnhancementFlags(
+                    KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
+                )
             )
             .unwrap();
-
-            if let Ok(true) = terminal::supports_keyboard_enhancement() {
-                execute!(
-                    io::stdout(),
-                    PushKeyboardEnhancementFlags(
-                        KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
-                    )
-                )
-                .unwrap();
-            }
-
-            loop {
-                match term_rx.recv() {
-                    Ok(Event::Print) => printer.print(),
-                    Ok(Event::UpdatePrinter) => printer.update(true, true),
-                    Ok(Event::ClearPrinter) => printer.clear(),
-                    Ok(Event::NewPrinter(new_printer)) => printer = new_printer,
-                    Ok(Event::Quit) => break,
-                    Err(_) => {}
-                }
-            }
-        });
-
-        let _ = std::thread::Builder::new()
-            .name("crossterm".to_string())
-            .spawn(move || {
-                loop {
-                    let Ok(true) = ct_poll(Duration::from_millis(20)) else {
-                        continue;
-                    };
-
-                    match ct_read() {
-                        Ok(CtEvent::Key(key)) => {
-                            if !matches!(key.kind, event::KeyEventKind::Release) {
-                                duat_tx.send_key(key);
-                            }
-                        }
-                        Ok(CtEvent::Resize(..)) => {
-                            term_tx.send(Event::UpdatePrinter).unwrap();
-                            duat_tx.send_resize();
-                        }
-                        Ok(CtEvent::FocusGained) => duat_tx.send_focused(),
-                        Ok(CtEvent::FocusLost) => duat_tx.send_unfocused(),
-                        Ok(CtEvent::Mouse(event)) => duat_tx.send_mouse(UiMouseEvent {
-                            coord: ui::Coord {
-                                x: event.column as f32,
-                                y: event.row as f32,
-                            },
-                            kind: event.kind,
-                            modifiers: event.modifiers,
-                        }),
-                        Err(_) => {}
-                    }
-                }
-            });
+        }
     }
 
-    fn close(&self) {
-        if self.mt.lock().unwrap().tx.send(Event::Quit).is_err() {
-            return;
-        }
-
+    fn close() {
         if let Ok(true) = terminal::supports_keyboard_enhancement() {
             queue!(io::stdout(), event::PopKeyboardEnhancementFlags).unwrap();
         }
@@ -247,18 +113,104 @@ impl RawUi for Ui {
         terminal::disable_raw_mode().unwrap();
     }
 
+    fn run_config(config_command: &mut Command) -> std::io::Result<std::process::ExitStatus> {
+        use std::process::Stdio;
+        config_command
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()?
+            .wait()
+    }
+
+    fn load(duat_tx: DuatSender) -> Self {
+        form::set_weak("rule.upper", Form::mimic("default.VertRule"));
+        form::set_weak("rule.lower", Form::mimic("default.VertRule"));
+
+        let (term_tx, term_rx) = mpsc::channel();
+
+        let print_thread = std::thread::Builder::new().name("print loop".to_string());
+        let _ = print_thread.spawn(move || {
+            // Wait for everything to be setup before doing anything to the
+            // terminal, for a less jarring effect.
+            let Ok(Event::NewPrinter(mut printer)) = term_rx.recv() else {
+                return;
+            };
+
+            for event in term_rx {
+                match event {
+                    Event::Print => printer.print(),
+                    Event::UpdatePrinter => printer.update(true, true),
+                    Event::ClearPrinter => printer.clear(),
+                    Event::NewPrinter(new_printer) => printer = new_printer,
+                }
+            }
+        });
+
+        let _ = std::thread::Builder::new()
+            .name("crossterm".to_string())
+            .spawn({
+                let term_tx = term_tx.clone();
+                move || {
+                    while let Ok(event) = crossterm::event::read() {
+                        match event {
+                            CtEvent::Key(key) => {
+                                if !matches!(key.kind, event::KeyEventKind::Release) {
+                                    duat_tx.send_key(key);
+                                }
+                            }
+                            CtEvent::Resize(..) => {
+                                term_tx.send(Event::UpdatePrinter).unwrap();
+                                duat_tx.send_resize();
+                            }
+                            CtEvent::FocusGained => duat_tx.send_focused(),
+                            CtEvent::FocusLost => duat_tx.send_unfocused(),
+                            CtEvent::Mouse(event) => duat_tx.send_mouse(UiMouseEvent {
+                                coord: ui::Coord {
+                                    x: event.column as f32,
+                                    y: event.row as f32,
+                                },
+                                kind: event.kind,
+                                modifiers: event.modifiers,
+                            }),
+                        }
+                    }
+                }
+            });
+
+        Self {
+            mt: Mutex::new(InnerUi {
+                windows: Vec::new(),
+                layouts: Layouts::default(),
+                win: 0,
+                border: Border::default(),
+                term_tx,
+            }),
+        }
+    }
+
+    fn unload(&self) {
+        let mut ui = self.mt.lock().unwrap();
+        ui.windows = Vec::new();
+        // SAFETY: Ui is not Send + Sync, so this can't be called
+        // from another thread
+        ui.layouts.reset();
+        ui.win = 0;
+        ui.term_tx.send(Event::ClearPrinter).unwrap();
+    }
+
     fn new_root(&self, cache: <Self::Area as RawArea>::Cache) -> Self::Area {
         let mut ui = self.mt.lock().unwrap();
-        let printer = (ui.printer_fn)();
+        let printer = Arc::new(Printer::new());
 
         // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
         // from another thread
-        let main_id = ui.layouts.new_layout(printer.clone(), ui.frame, cache);
+        let main_id = ui.layouts.new_layout(printer.clone(), ui.border, cache);
 
         let root = Area::new(main_id, ui.layouts.clone());
         ui.windows.push((root.clone(), printer.clone()));
         if ui.windows.len() == 1 {
-            ui.tx.send(Event::NewPrinter(printer)).unwrap();
+            ui.term_tx.send(Event::NewPrinter(printer)).unwrap();
         }
 
         root
@@ -295,7 +247,7 @@ impl RawUi for Ui {
         ui.win = win;
         let printer = ui.windows[win].1.clone();
         printer.update(true, true);
-        ui.tx.send(Event::NewPrinter(printer)).unwrap()
+        ui.term_tx.send(Event::NewPrinter(printer)).unwrap()
     }
 
     fn flush_layout(&self) {
@@ -306,26 +258,7 @@ impl RawUi for Ui {
     }
 
     fn print(&self) {
-        self.mt.lock().unwrap().tx.send(Event::Print).unwrap();
-    }
-
-    fn load(&'static self) {
-        // Hook for returning to regular terminal state
-        std::panic::set_hook(Box::new(|info| {
-            self.close();
-            println!("{info}");
-        }));
-    }
-
-    fn unload(&self) {
-        let mut ui = self.mt.lock().unwrap();
-        ui.windows = Vec::new();
-        // SAFETY: Ui is not Send + Sync, so this can't be called
-        // from another thread
-        ui.layouts.reset();
-        ui.win = 0;
-        ui.tx.send(Event::ClearPrinter).unwrap();
-        shared_fns::reset_state();
+        self.mt.lock().unwrap().term_tx.send(Event::Print).unwrap();
     }
 
     fn remove_window(&self, win: usize) {
@@ -360,7 +293,6 @@ enum Event {
     UpdatePrinter,
     ClearPrinter,
     NewPrinter(Arc<Printer>),
-    Quit,
 }
 
 impl Eq for Event {}

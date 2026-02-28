@@ -1495,13 +1495,3 @@ fn recurse_set_hidden(layout: &mut Layout, id: AreaId, hidden: bool) {
 }
 
 static DEFAULT_FRAME_STYLE: Mutex<FrameStyle> = Mutex::new(FrameStyle::Regular);
-
-/// Sets the default [`FrameStyle`] for all spawned [`Area`]s
-///
-/// By default, it is [`FrameStyle::Regular`], which uses characters
-/// like `─`, `│` and `┐`.
-///
-/// [`Area`]: crate::Area
-pub fn set_default_frame_style(frame_style: FrameStyle) {
-    *DEFAULT_FRAME_STYLE.lock().unwrap() = frame_style;
-}
