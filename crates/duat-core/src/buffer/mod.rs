@@ -34,7 +34,7 @@ use crate::{
     mode::{Cursor, MouseEvent, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
-    text::{Point, Strs, Text, TextMut, TextVersion, txt},
+    text::{Point, Strs, StrsBuf, Text, TextMut, TextVersion, txt},
     ui::{Area, Coord, PrintInfo, PrintedLine, Widget},
 };
 
@@ -70,7 +70,7 @@ impl Buffer {
                         let selection = cache::load(path).unwrap_or_default();
                         Selections::new(selection)
                     };
-                    let text = Text::from_parts(buffer, selections);
+                    let text = Text::from_parts(StrsBuf::new(buffer), selections);
                     (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
@@ -99,7 +99,26 @@ impl Buffer {
         }
     }
 
-    ////////// Saving the Buffer
+    /// Returns a new `Buffer` from its reloaded raw parts.
+    pub(crate) fn from_raw_parts(
+        buf: StrsBuf,
+        selections: Selections,
+        history: History,
+        path: PathKind,
+        opts: BufferOpts,
+        layout_order: usize,
+    ) -> Buffer {
+        Self {
+            id: BufferId::new(),
+            path,
+            text: Text::from_parts(buf, selections),
+            layout_order,
+            history,
+            cached_print_info: Mutex::new(None),
+            opts,
+            prev_opts: Mutex::new(opts.to_print_opts()),
+        }
+    }
 
     ////////// Path querying functions
 
@@ -299,23 +318,14 @@ impl Buffer {
     ///
     /// This works by creating a new [`Buffer`], which will take
     /// ownership of a stripped down version of this one's [`Text`]
-    pub(crate) fn prepare_for_reloading(&mut self) -> Self {
+    pub(crate) fn take_reload_parts(&mut self) -> (StrsBuf, Selections, History) {
         self.text.prepare_for_reloading();
-        Self {
-            id: self.id,
-            path: self.path.clone(),
-            text: std::mem::take(&mut self.text),
-            layout_order: self.layout_order,
-            history: std::mem::replace(&mut self.history, History::new()),
-            cached_print_info: Mutex::new(
-                self.cached_print_info
-                    .lock()
-                    .unwrap_or_else(|err| err.into_inner())
-                    .take(),
-            ),
-            opts: BufferOpts::default(),
-            prev_opts: Mutex::default(),
-        }
+        let (strs_buf, selections) = self.text.take_reload_parts();
+        (
+            strs_buf,
+            selections,
+            std::mem::replace(&mut self.history, History::new()),
+        )
     }
 }
 
@@ -594,7 +604,7 @@ impl Handle {
 }
 
 /// Represents the presence or absence of a path.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Decode, bincode::Encode)]
 pub enum PathKind {
     /// A [`PathBuf`] that has been defined and points to a real
     /// buffer.
@@ -801,15 +811,6 @@ mod buffer_id {
         /// [`Buffer`]: super::Buffer
         pub(super) fn new() -> Self {
             Self(COUNT.fetch_add(1, Ordering::Relaxed))
-        }
-
-        /// Sets the minimum `BufferId`, in order to prevent
-        /// conflicts.
-        pub(crate) fn set_min(buffer_ids: impl Iterator<Item = BufferId>) {
-            COUNT.store(
-                buffer_ids.map(|buf_id| buf_id.0).max().unwrap_or(0) + 1,
-                Ordering::Relaxed,
-            );
         }
     }
 }

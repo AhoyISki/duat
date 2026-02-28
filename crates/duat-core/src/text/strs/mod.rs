@@ -13,8 +13,7 @@
 //! [`GapBuffer`]: gap_buf::GapBuffer
 use std::{ops::Range, sync::LazyLock};
 
-pub use buf::StrsBuf;
-
+pub(crate) use crate::text::strs::buf::StrsBuf;
 use crate::{
     opts::PrintOpts,
     text::{Point, TextIndex, TextRange, strs::buf::assert_utf8_boundary},

@@ -18,7 +18,6 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use bincode::{BorrowDecode, Decode, Encode};
 use gap_buf::GapBuffer;
 
 use super::{Point, Text};
@@ -31,7 +30,7 @@ use crate::{
 };
 
 /// The history of edits, contains all moments.
-#[derive(Debug, bincode::Decode, bincode::Encode)]
+#[derive(Default, Debug, bincode::Decode, bincode::Encode)]
 pub struct History {
     // Moments in regard to undoing/redoing.
     new_moment: Moment,
@@ -172,7 +171,7 @@ impl Clone for History {
 ///
 /// It also contains information about how to print the buffer, so
 /// that going back in time is less jarring.
-#[derive(Clone, Default, Debug, bincode::Decode, bincode::Encode)]
+#[derive(Default, Clone, Debug)]
 pub struct Moment {
     changes: GapBuffer<Change<'static, String>>,
     shift_state: (usize, [i32; 3]),
@@ -188,24 +187,34 @@ impl Moment {
     }
 }
 
-impl<Context> Decode<Context> for Moment {
+impl<Context> bincode::Decode<Context> for Moment {
     fn decode<D: bincode::de::Decoder<Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Moment {
-            changes: GapBuffer::from_iter(Vec::<Change<'static, String>>::decode(decoder)?),
-            shift_state: Decode::decode(decoder)?,
+            changes: bincode::Decode::decode(decoder)?,
+            shift_state: bincode::Decode::decode(decoder)?,
         })
     }
 }
 
-impl Encode for Moment {
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for Moment {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Moment {
+            changes: bincode::Decode::decode(decoder)?,
+            shift_state: bincode::Decode::decode(decoder)?,
+        })
+    }
+}
+
+impl bincode::Encode for Moment {
     fn encode<E: bincode::enc::Encoder>(
         &self,
         encoder: &mut E,
     ) -> Result<(), bincode::error::EncodeError> {
-        let changes = self.changes.iter().cloned().collect::<Vec<_>>();
-        changes.encode(encoder)?;
+        self.changes.encode(encoder)?;
         self.shift_state.encode(encoder)
     }
 }
@@ -524,47 +533,47 @@ impl<'s, S: std::fmt::Debug> std::fmt::Debug for Change<'s, S> {
     }
 }
 
-impl Encode for Change<'static, String> {
-    fn encode<E: bincode::enc::Encoder>(
-        &self,
-        encoder: &mut E,
-    ) -> Result<(), bincode::error::EncodeError> {
-        Encode::encode(&self.start, encoder)?;
-        Encode::encode(&self.added, encoder)?;
-        Encode::encode(&self.taken, encoder)?;
-        Encode::encode(&self.added_end, encoder)?;
-        Encode::encode(&self.taken_end, encoder)?;
-        Ok(())
-    }
-}
-
-impl<Context> Decode<Context> for Change<'static, String> {
+impl<Context> bincode::Decode<Context> for Change<'static, String> {
     fn decode<D: bincode::de::Decoder<Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Self {
-            start: Decode::decode(decoder)?,
-            added: Decode::decode(decoder)?,
-            taken: Decode::decode(decoder)?,
-            added_end: Decode::decode(decoder)?,
-            taken_end: Decode::decode(decoder)?,
+            start: bincode::Decode::decode(decoder)?,
+            added: bincode::Decode::decode(decoder)?,
+            taken: bincode::Decode::decode(decoder)?,
+            added_end: bincode::Decode::decode(decoder)?,
+            taken_end: bincode::Decode::decode(decoder)?,
             _ghost: PhantomData,
         })
     }
 }
 
-impl<'de, Context> BorrowDecode<'de, Context> for Change<'static, String> {
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for Change<'static, String> {
     fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Self {
-            start: Decode::decode(decoder)?,
-            added: Decode::decode(decoder)?,
-            taken: Decode::decode(decoder)?,
-            added_end: Decode::decode(decoder)?,
-            taken_end: Decode::decode(decoder)?,
+            start: bincode::Decode::decode(decoder)?,
+            added: bincode::Decode::decode(decoder)?,
+            taken: bincode::Decode::decode(decoder)?,
+            added_end: bincode::Decode::decode(decoder)?,
+            taken_end: bincode::Decode::decode(decoder)?,
             _ghost: PhantomData,
         })
+    }
+}
+
+impl bincode::Encode for Change<'static, String> {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(&self.start, encoder)?;
+        bincode::Encode::encode(&self.added, encoder)?;
+        bincode::Encode::encode(&self.taken, encoder)?;
+        bincode::Encode::encode(&self.added_end, encoder)?;
+        bincode::Encode::encode(&self.taken_end, encoder)?;
+        Ok(())
     }
 }
 

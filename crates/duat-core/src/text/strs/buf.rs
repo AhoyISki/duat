@@ -23,7 +23,7 @@ use crate::{
 /// The bytes of a [`Text`], encoded in UTF-8
 ///
 /// [`Text`]: crate::text::Text
-#[derive(Default, Clone)]
+#[derive(Default, Clone, bincode::Decode, bincode::Encode)]
 pub struct StrsBuf {
     pub(super) buf: GapBuffer<u8>,
     pub(super) line_ranges: LineRanges,
@@ -36,12 +36,12 @@ impl StrsBuf {
     /// Not intended for public use, it is necessary in duat
     #[doc(hidden)]
     #[track_caller]
-    pub(crate) fn new(string: &str) -> Self {
+    pub(crate) fn new(string: String) -> Self {
         assert!(
             string.len() <= u32::MAX as usize,
             "For now, you can't have a Text larger than u32::MAX"
         );
-        let buf = GapBuffer::from_iter(string.bytes());
+        let buf = GapBuffer::from(string.into_bytes());
 
         let slices = unsafe {
             let (s0, s1) = buf.as_slices();
@@ -50,7 +50,14 @@ impl StrsBuf {
 
         let records = LineRanges::new(slices);
 
-        Self { buf, line_ranges: records, version: 0 }
+        let mut buf = Self { buf, line_ranges: records, version: 0 };
+
+        if buf.bytes().next_back().is_none_or(|b| b != b'\n') {
+            let end = buf.end_point();
+            buf.apply_change(Change::str_insert("\n", end));
+        }
+
+        buf
     }
 
     ////////// Modification functions
@@ -173,8 +180,7 @@ macro_rules! implFromToString {
     ($T:ty) => {
         impl From<$T> for StrsBuf {
             fn from(value: $T) -> Self {
-                let string = <$T as ToString>::to_string(&value);
-                StrsBuf::new(&string)
+                StrsBuf::new(<$T as ToString>::to_string(&value))
             }
         }
     };

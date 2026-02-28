@@ -83,13 +83,13 @@
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
+pub(crate) use crate::text::strs::StrsBuf;
 use crate::{
     buffer::{Change, History},
     context::Handle,
     data::Pass,
     mode::{Selection, Selections},
     text::{
-        strs::StrsBuf,
         tags::{FwdTags, InnerTags, RevTags},
         utils::implPartialEq,
     },
@@ -143,22 +143,19 @@ impl Text {
 
     /// Returns a new empty `Text`.
     pub fn new() -> Self {
-        Self::from_parts(String::new(), Selections::new_empty())
+        Self::from_parts(StrsBuf::new(String::new()), Selections::new_empty())
     }
 
     /// Returns a new empty [`Text`] with [`Selections`] enabled.
     pub fn with_default_main_selection() -> Self {
-        Self::from_parts(String::new(), Selections::new(Selection::default()))
+        Self::from_parts(
+            StrsBuf::new(String::new()),
+            Selections::new(Selection::default()),
+        )
     }
 
     /// Creates a `Text` from a [`String`].
-    pub(crate) fn from_parts(buffer: String, mut selections: Selections) -> Self {
-        let mut buf = StrsBuf::new(&buffer);
-
-        if buf.bytes().next_back().is_none_or(|b| b != b'\n') {
-            let end = buf.end_point();
-            buf.apply_change(Change::str_insert("\n", end));
-        }
+    pub(crate) fn from_parts(buf: StrsBuf, mut selections: Selections) -> Self {
         let tags = InnerTags::new(buf.len());
 
         let selections = if selections.iter().any(|(sel, _)| {
@@ -677,6 +674,14 @@ impl Text {
             meta_tags,
         }
     }
+
+    /// Take the reloaded parts off of this `Text`.
+    pub(crate) fn take_reload_parts(&mut self) -> (StrsBuf, Selections) {
+        (
+            std::mem::take(&mut self.0.buf),
+            std::mem::replace(&mut self.0.selections, Selections::new_empty()),
+        )
+    }
 }
 
 impl std::ops::Deref for Text {
@@ -1032,7 +1037,7 @@ impl Default for Text {
 
 impl<T: ToString> From<T> for Text {
     fn from(value: T) -> Self {
-        Self::from_parts(value.to_string(), Selections::new_empty())
+        Self::from_parts(StrsBuf::new(value.to_string()), Selections::new_empty())
     }
 }
 

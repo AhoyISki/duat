@@ -104,7 +104,7 @@ checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
 dependencies = [
  "bincode_derive",
  "serde",
- "unty",
+ "unty 0.0.4",
 ]
 
 [[package]]
@@ -382,7 +382,7 @@ dependencies = [
  "crossterm",
  "dirs-next",
  "format-like",
- "gap-buf 0.2.0",
+ "gap-buf 0.5.0",
  "interrupt-read",
  "log",
  "notify-types",
@@ -549,11 +549,12 @@ checksum = "a33d7b9df733f179151b9d5a6f33f2da90703ad614cfc559d85623589463e939"
 
 [[package]]
 name = "gap-buf"
-version = "0.2.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb861d85a683f3b54bceff98015d93b2ddbda05a728b088f007649ee9611e484"
+checksum = "2ddeca7d1302b9c50877b629a016a6437d5406d2529357e7bc98a8f8f9c7f215"
 dependencies = [
  "bincode",
+ "unty 0.0.5",
 ]
 
 [[package]]
@@ -1431,6 +1432,12 @@ name = "unty"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
+name = "unty"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dbe8d477efbc6c70a1dea1f9f1e0482168983a9147dee6b3a619f666f3aeac6"
 
 [[package]]
 name = "utf8parse"

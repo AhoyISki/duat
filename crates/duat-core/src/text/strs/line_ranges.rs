@@ -228,3 +228,59 @@ impl Shift for [i32; 2] {
         [self[0] + other[0], self[1] + other[1]]
     }
 }
+
+impl<Context> bincode::Decode<Context> for LineRanges {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        let is_some: bool = bincode::Decode::decode(decoder)?;
+
+        Ok(Self(if is_some {
+            Some(ShiftList {
+                buf: bincode::Decode::decode(decoder)?,
+                from: bincode::Decode::decode(decoder)?,
+                shift: bincode::Decode::decode(decoder)?,
+                max: bincode::Decode::decode(decoder)?,
+            })
+        } else {
+            None
+        }))
+    }
+}
+
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for LineRanges {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        let is_some: bool = bincode::Decode::decode(decoder)?;
+
+        Ok(Self(if is_some {
+            Some(ShiftList {
+                buf: bincode::Decode::decode(decoder)?,
+                from: bincode::Decode::decode(decoder)?,
+                shift: bincode::Decode::decode(decoder)?,
+                max: bincode::Decode::decode(decoder)?,
+            })
+        } else {
+            None
+        }))
+    }
+}
+
+impl bincode::Encode for LineRanges {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        match self.0.as_ref() {
+            Some(list) => {
+                bincode::Encode::encode(&true, encoder)?;
+                bincode::Encode::encode(&list.buf, encoder)?;
+                bincode::Encode::encode(&list.from, encoder)?;
+                bincode::Encode::encode(&list.shift, encoder)?;
+                bincode::Encode::encode(&list.max, encoder)
+            }
+            None => bincode::Encode::encode(&false, encoder),
+        }
+    }
+}
