@@ -14,10 +14,11 @@
 //!
 //! [`Area`]: super::Area
 //! [`Ui`]: super::Ui
+use std::process::Command;
+
 use bincode::{Decode, Encode};
 
 use crate::{
-    context::DuatSender,
     form::Painter,
     mode::VPoint,
     opts::PrintOpts,
@@ -40,52 +41,68 @@ use crate::{
 /// - Closing `RawArea`s at will, which should cascading all pushed or
 ///   spawned `RawArea`s
 ///
-/// # Two address spaces
-///
-/// With the `RawUi` and [`RawArea`] traits, there is a dystinction
-/// that can be made between two address spaces. Since the `RawUi` is
-/// the only thing that gets initialized in the Duat runner, rather
-/// than the configuration crate, it uses the address space of Duat,
-/// not the configuration, like every other thing in Duat uses.
-///
-/// There are two main consequences to this:
-///
-/// - `&'static'` references will not match (!).
-/// - [`TypeId`]s will not match.
-///
-/// Which address space is in use is easy to tell however. If calling
-/// a function from the `RawUi` or [`RawArea`] traits, then the
-/// address space of Duat will be used. If calling any other function,
-/// _not inherent_ to these traits, then the address space of the
-/// configuration crate will be used.
-///
 /// [`TypeId`]: std::any::TypeId
 pub trait RawUi: Sized + Send + Sync + 'static {
     /// The [`RawArea`] of this [`RawUi`]
     type Area: RawArea;
 
-    /// Return [`Some`] only on the first call
-    fn get_once() -> Option<&'static Self>;
+    ////////// Application address space functions.
 
-    /// Config crate address space setup
+    /// A function to be executed when opening Duat.
     ///
-    /// THIS IS THE ONLY FUNCTION THAT WILL TAKE PLACE IN THE CONFIG
-    /// CRATE ADRESS SPACE, NOT ON THAT OF THE EXECUTABLE.
+    /// This, alongside [`RawUi::run_config`] and [`RawUi::close`] are
+    /// the only functions that will be executed from the Duat
+    /// application. This means that any changes on `static` variables
+    /// will not be reflected on the config [`Command`], so keep that
+    /// in mind.
+    fn open();
+
+    /// A function to be executed when closing Duat.
     ///
-    /// The purpose of this function is to "share variables" between
-    /// the executable address space and the config address space.
-    /// Remember, this `RawUi` was created in the executable address
-    /// space, so every static variable from the config address space
-    /// is pointing to a different memory address from those of the
-    /// executable address space. So you can use this function to give
-    /// the correct address space for those variables.
-    fn config_address_space_setup(&'static self);
+    /// This, alongside [`RawUi::run_config`] and [`RawUi::open`] are
+    /// the only functions that will be executed from the Duat
+    /// application. This means that any changes on `static` variables
+    /// will not be reflected on the config [`Command`], so keep that
+    /// in mind.
+    fn close();
 
-    /// Functions to trigger when the program begins
-    fn open(&'static self, duat_tx: DuatSender);
+    /// Runs the configuration crate.
+    ///
+    /// This function gives the Ui full power to decide how it will
+    /// deal with input, output, and how to control windows, if it
+    /// requires them.
+    ///
+    /// It will be executed every time the config is recompiled, as
+    /// well as the first time it is executed.
+    ///
+    /// The duat config does not make use of stdin, stdout and stderr,
+    /// so you are free to take them and use them however you please.
+    ///
+    /// This, alongside [`RawUi::open`] and [`RawUi::close`] are the
+    /// only functions that will be executed from the Duat
+    /// application. This means that any changes on `static` variables
+    /// will not be reflected on the config [`Command`], so keep that
+    /// in mind.
+    fn run_config(config_command: &mut Command) -> std::io::Result<()>;
 
-    /// Functions to trigger when the program ends
-    fn close(&'static self);
+    ////////// Configuration address space functions.
+
+    /// Returns a new `Self`
+    ///
+    /// This struct will be kept as a static variable for the duration
+    /// of the program. You should make use of this function to do
+    /// initialization that takes place _within_ the configuration
+    /// crate address space.
+    fn load(_: UiPass) -> Self;
+
+    /// Unloads the [`RawUi`]
+    ///
+    /// Unlike [`RawUi::close`], this will happen both when Duat
+    /// unloads the configuration or when it closes the app.
+    ///
+    /// Both of these things will happen inside of the configuration
+    /// crate's address space.
+    fn unload(&'static self);
 
     /// Initiates and returns a new "master" [`RawArea`]
     ///
@@ -149,21 +166,6 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// are done updating, I think.
     fn print(&'static self);
 
-    /// Functions to trigger when the program reloads
-    ///
-    /// These will happen inside of the dynamically loaded config
-    /// crate.
-    fn load(&'static self);
-
-    /// Unloads the [`RawUi`]
-    ///
-    /// Unlike [`RawUi::close`], this will happen both when Duat
-    /// reloads the configuratio and when it closes the app.
-    ///
-    /// These will happen inside of the dynamically loaded config
-    /// crate.
-    fn unload(&'static self);
-
     /// Removes a window from the [`RawUi`]
     ///
     /// This should keep the current active window consistent. That
@@ -184,26 +186,8 @@ pub trait RawUi: Sized + Send + Sync + 'static {
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
 ///
-/// # Two address spaces
-///
-/// With the `RawUi` and `RawArea` traits, there is a dystinction
-/// that can be made between two address spaces. Since the `RawUi` is
-/// the only thing that gets initialized in the Duat runner, rather
-/// than the configuration crate, it uses the address space of Duat,
-/// not the configuration, like every other thing in Duat uses.
-///
-/// There are two main consequences to this:
-///
-/// - `&'static'` references will not match (!).
-/// - [`TypeId`]s will not match.
-///
-/// Which address space is in use is easy to tell however. If calling
-/// a function from the [`RawUi`] or `RawArea` traits, then the
-/// address space of Duat will be used. If calling any other function,
-/// _not inherent_ to these traits, then the address space of the
-/// configuration crate will be used.
-///
-/// [`TypeId`]: std::any::TypeId
+/// Depending on your application, you may have areas that don't make
+/// use of `Text`, like switches or a button, or a scrollbar.
 pub trait RawArea: Sized + PartialEq + 'static {
     /// Something to be kept between app instances/reloads
     ///
@@ -538,7 +522,7 @@ pub trait RawArea: Sized + PartialEq + 'static {
 pub struct UiPass {}
 
 impl UiPass {
-    pub(super) fn new() -> Self {
+    pub(super) const fn new() -> Self {
         UiPass {}
     }
 }
