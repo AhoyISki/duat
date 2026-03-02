@@ -1,5 +1,5 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::{OnceLock, RwLock, RwLockReadGuard};
+use std::sync::{RwLock, RwLockReadGuard};
 
 use FormKind::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
@@ -8,13 +8,12 @@ pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
-    context::{self, DuatSender},
+    context::{self, sender},
     hook::{self, FormSet},
     session::DuatEvent,
     text::FormTag,
 };
 
-static SENDER: OnceLock<DuatSender> = OnceLock::new();
 static BASE_FORMS: &[(&str, Form)] = &[
     ("default", Form::new()),
     ("accent", Form::new().bold()),
@@ -945,33 +944,25 @@ impl Palette {
     /// Sets the [`CursorShape`] of the main cursor
     fn set_main_cursor(&self, shape: CursorShape) {
         self.0.write().unwrap().main_cursor = Some(shape);
-        if let Some(sender) = SENDER.get() {
-            sender.send(DuatEvent::FormChange);
-        }
+        sender().send(DuatEvent::FormChange);
     }
 
     /// Sets the [`CursorShape`] of extra cursors
     fn set_extra_cursor(&self, shape: CursorShape) {
         self.0.write().unwrap().extra_cursor = Some(shape);
-        if let Some(sender) = SENDER.get() {
-            sender.send(DuatEvent::FormChange);
-        }
+        sender().send(DuatEvent::FormChange);
     }
 
     /// Unsets the [`CursorShape`] of the main cursor
     fn unset_main_cursor(&self) {
         self.0.write().unwrap().main_cursor = None;
-        if let Some(sender) = SENDER.get() {
-            sender.send(DuatEvent::FormChange);
-        }
+        sender().send(DuatEvent::FormChange);
     }
 
     /// Unsets the [`CursorShape`] of the extra cursors
     fn unset_extra_cursor(&self) {
         self.0.write().unwrap().extra_cursor = None;
-        if let Some(sender) = SENDER.get() {
-            sender.send(DuatEvent::FormChange);
-        }
+        sender().send(DuatEvent::FormChange);
     }
 
     /// Returns a [`Painter`]
@@ -1020,9 +1011,7 @@ impl InnerPalette {
             mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
         }
 
-        if let Some(sender) = SENDER.get() {
-            sender.send(DuatEvent::FormChange);
-        }
+        sender().send(DuatEvent::FormChange);
 
         mask_form(name, i, self);
 
@@ -1039,9 +1028,7 @@ impl InnerPalette {
             *f = form;
             f.kind = FormKind::Normal;
 
-            if let Some(sender) = SENDER.get() {
-                sender.send(DuatEvent::FormChange);
-            }
+            sender().send(DuatEvent::FormChange);
             for (referee, override_style) in refs_of(self, i) {
                 mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
             }
@@ -1067,9 +1054,7 @@ impl InnerPalette {
             self.forms[i].1.kind = FormKind::Ref(refed, override_style);
         }
 
-        if let Some(sender) = SENDER.get() {
-            sender.send(DuatEvent::FormChange);
-        }
+        sender().send(DuatEvent::FormChange);
 
         mask_form(name, i, self);
         let form_set = FormSet((self.forms[i].0.clone(), FormId(i as u16), form));
@@ -1088,9 +1073,8 @@ impl InnerPalette {
             *f = form;
             f.kind = FormKind::WeakestRef(refed, override_style);
 
-            if let Some(sender) = SENDER.get() {
-                sender.send(DuatEvent::FormChange);
-            }
+            sender().send(DuatEvent::FormChange);
+
             for (referee, override_style) in refs_of(self, i) {
                 mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
             }
@@ -1441,12 +1425,6 @@ impl Default for PainterParts {
             prev_style: None,
         }
     }
-}
-
-pub(crate) fn set_sender(sender: DuatSender) {
-    SENDER
-        .set(sender)
-        .unwrap_or_else(|_| panic!("Sender set more than once"));
 }
 
 /// An enum that helps in the modification of forms

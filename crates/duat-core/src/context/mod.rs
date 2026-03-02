@@ -42,9 +42,10 @@ mod global {
 
     static WINDOWS: OnceLock<&Windows> = OnceLock::new();
     static MODE_NAME: LazyLock<RwData<&str>> = LazyLock::new(RwData::default);
-    static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
+    static CUR_DIR: LazyLock<Mutex<PathBuf>> =
+        LazyLock::new(|| Mutex::new(std::env::current_dir().unwrap()));
     static SENDER: OnceLock<DuatSender> = OnceLock::new();
-    static NEW_EVENT_COUNT: OnceLock<&'static AtomicUsize> = OnceLock::new();
+    static NEW_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
     static WILL_UNLOAD: AtomicBool = AtomicBool::new(false);
     static WILL_QUIT: AtomicBool = AtomicBool::new(false);
 
@@ -95,30 +96,15 @@ mod global {
     /// [refocus]: crate::hook::FocusedOnDuat
     /// [queued function]: queue
     pub fn has_unhandled_events() -> bool {
-        NEW_EVENT_COUNT.get().unwrap().load(Ordering::SeqCst) > 0
+        NEW_EVENT_COUNT.load(Ordering::SeqCst) > 0
     }
 
-    /// A channel for [`DuatEvent`]s.
-    ///
-    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
-    #[doc(hidden)]
-    pub fn duat_channel() -> (DuatSender, DuatReceiver) {
-        static NEW_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
-
+    /// The only receiver of [`DuatEvent`]s.
+    pub(crate) fn receiver() -> DuatReceiver {
         let (sender, receiver) = mpsc::channel();
-        (
-            DuatSender(sender, &NEW_EVENT_COUNT),
-            DuatReceiver(receiver, &NEW_EVENT_COUNT),
-        )
-    }
+        SENDER.set(DuatSender(sender, &NEW_EVENT_COUNT));
 
-    /// Sets the sender for [`DuatEvent`]s.
-    ///
-    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
-    #[doc(hidden)]
-    pub fn set_sender(sender: DuatSender) {
-        NEW_EVENT_COUNT.set(sender.1).expect("setup ran twice");
-        SENDER.set(sender).expect("setup ran twice");
+        DuatReceiver(receiver, &NEW_EVENT_COUNT)
     }
 
     ////////// Widget Handle getters
@@ -237,11 +223,7 @@ mod global {
 
     /// The current directory.
     pub fn current_dir() -> PathBuf {
-        CUR_DIR
-            .get_or_init(|| Mutex::new(std::env::current_dir().unwrap()))
-            .lock()
-            .unwrap()
-            .clone()
+        CUR_DIR.lock().unwrap().clone()
     }
 
     /// Wether Duat is in the process of unloading.

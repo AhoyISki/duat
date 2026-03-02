@@ -16,7 +16,7 @@ use duat::{
 use duat_core::{
     MetaFunctions,
     context::{self, DuatReceiver, DuatSender},
-    session::{ReloadEvent, ReloadedBuffer},
+    session::{ReloadRequest, ReloadedBuffer},
 };
 use libloading::{Library, Symbol};
 use notify::{Event, EventKind, Watcher};
@@ -380,7 +380,7 @@ fn spawn_config_watcher(
 }
 
 fn spawn_reloader(
-    reload_rx: mpsc::Receiver<ReloadEvent>,
+    reload_rx: mpsc::Receiver<ReloadRequest>,
     config_tx: mpsc::Sender<(PathBuf, String)>,
     duat_tx: DuatSender,
 ) {

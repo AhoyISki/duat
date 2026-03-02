@@ -9,23 +9,22 @@
 use std::{
     any::TypeId,
     collections::HashMap,
-    path::{Path, PathBuf},
-    sync::{Mutex, OnceLock, mpsc},
+    path::PathBuf,
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
+pub use crate::session::ipc::{MsgFromChild, MsgFromParent, ReloadRequest};
 use crate::{
-    MetaFunctions, Plugins,
+    Plugins,
     buffer::{Buffer, BufferOpts, History, PathKind},
-    cmd,
-    context::{self, DuatReceiver, cache, sender},
+    context::{self, cache},
     data::Pass,
-    form,
     hook::{
-        self, BufferClosed, BufferUnloaded, ConfigLoaded, ConfigUnloaded, ExitedDuat,
-        FocusedOnDuat, UnfocusedFromDuat,
+        self, BufferClosed, BufferUnloaded, ConfigLoaded, ConfigUnloaded, FocusedOnDuat,
+        UnfocusedFromDuat,
     },
     mode::{self, Selection, Selections},
     text::{StrsBuf, TwoPoints},
@@ -38,435 +37,241 @@ use crate::{
 
 pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 
-/// A message sent from the parent process.
-#[derive(Debug, bincode::Decode, bincode::Encode)]
-pub enum MsgFromParent {
-    /// The initial state of Duat, including buffers and long lasting
-    /// structs.
-    InitialState {
-        buffers: Vec<Vec<ReloadedBuffer>>,
-        structs: HashMap<String, Vec<u8>>,
-    },
-    /// Content from the clipboard.
-    ///
-    /// This can be [`None`] because it may fail to be retrieved, or
-    /// because there were no changes to it.
-    ClipboardContent(Option<String>),
-    /// The result of a reload request or event.
-    ///
-    /// This should show up either after a reload is requested by the
-    /// child process, or the parent process decides to start
-    /// reloading because of changes to the crate dir.
-    ReloadResult(Result<(), String>),
-}
-
-/// A message sent from the child process.
-#[derive(Debug, bincode::Decode, bincode::Encode)]
-pub enum MsgFromChild {
-    /// The final state, after ending the child process.
-    ///
-    /// This represents a successful exit from the child process, and
-    /// if the `buffers` field is empty, it means we are quitting Duat
-    /// as well.
-    FinalState {
-        buffers: Vec<Vec<ReloadedBuffer>>,
-        structs: HashMap<String, Vec<u8>>,
-    },
-    /// Spawn a new long lasting process.
-    ///
-    /// This process will be spawned by the parent executor, so it
-    /// owns it instead of the child.
-    ///
-    /// IPC between the child and the spawned process will be done
-    /// through local sockets from the [`interprocess`] crate.
-    SpawnProcess {
-        path: String,
-        args: Vec<String>,
-        env: Vec<(String, String)>,
-        identifier: String,
-    },
-    /// Kill a previously spawned long lasting process.
-    KillProcess { identifier: String },
-    /// Request an external update to the clipboard.
-    RequestClipboard,
-    /// Manually set the content of the clipboard.
-    ///
-    /// This is so other processes can read from the clipboard.
-    UpdateClipboard(String),
-    /// Request a reload.
-    ///
-    /// This will tell the parent process to start compiling the crate
-    /// again.
-    RequestReload,
-    /// A panic occurred.
-    ///
-    /// As opposed to [`MsgFromChild::FinalState`], this represents a
-    /// scenario where duat panicked and thus couldn't exit
-    /// succesfully.
-    Panicked(String),
-}
-
-/// Configuration for a session of Duat
+/// Starts running duat.
 #[doc(hidden)]
-pub struct SessionCfg {
-    layout: Box<Mutex<dyn Layout>>,
-}
+#[inline(never)]
+pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
+    log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
 
-impl SessionCfg {
-    pub fn new(meta_functions: &'static MetaFunctions, buffer_opts: BufferOpts) -> Self {
-        log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
+    let mut args = std::env::args();
+    let socket_dir = PathBuf::from(args.next().unwrap());
+    let is_first_time = args.next().unwrap().parse().unwrap();
+    let config_profile = args.next().unwrap();
+    let config_dir = args.next().unwrap();
 
-        crate::clipboard::set_clipboard(&meta_functions.clipboard_fns);
-        crate::notify::set_notify_fns(&meta_functions.notify_fns);
-        crate::process::set_process_fns(&meta_functions.process_fns);
-        crate::storage::set_storage_fns(&meta_functions.storage_fns);
+    crate::utils::set_crate_profile_and_dir(
+        config_profile,
+        (!config_dir.is_empty()).then_some(config_dir),
+    );
+
+    let (mut ipc_tx, mut ipc_rx) = ipc::channel(&socket_dir);
+
+    if catch_panic(|| {
+        let MsgFromParent::InitialState { buffers, structs } = ipc_rx.recv() else {
+            panic!("Initial message should've been `InitialState`");
+        };
+
+        let (ui, already_plugged, buffer_opts) = setup();
         BUFFER_OPTS.set(buffer_opts).unwrap();
+        load_remaining_plugins(already_plugged);
 
-        SessionCfg {
-            layout: Box::new(Mutex::new(MasterOnLeft)),
-        }
-    }
-
-    pub fn build(
-        self,
-        ui: Ui,
-        buffers: Vec<Vec<ReloadedBuffer>>,
-        already_plugged: Vec<TypeId>,
-    ) -> Session {
-        let plugins = Plugins::_new();
-        // SAFETY: The only externally available function for Plugins is to
-        // add more plugins, accessing the plugging functions happens only on
-        // this thread.
-        while let Some((plug, ty)) = {
-            plugins
-                .0
-                .lock()
-                .unwrap()
-                .iter_mut()
-                .find_map(|(f, ty)| f.take().zip(Some(*ty)))
-        } {
-            if !already_plugged.contains(&ty) {
-                catch_panic(|| plug(plugins));
-            }
-        }
-
-        // SAFETY: This function is only called from the main thread in
-        // ../src/setup.rs, and from there, there are no other active
-        // Passs, so this is fine.
+        // SAFETY: this is the first time this is called.
         let pa = unsafe { &mut Pass::new() };
 
-        cmd::add_session_commands();
+        let layout = Box::new(Mutex::new(MasterOnLeft));
+        setup_buffers(pa, buffers, ui, layout);
 
-        let session = Session { ui };
+        let buffers = main_loop(ui, &mut ipc_tx, is_first_time);
 
-        let mut layout = Some(self.layout);
-
-        for mut rel_buffers in buffers.into_iter().map(|rf| rf.into_iter()) {
-            let opts = *BUFFER_OPTS.get().unwrap();
-            let (buffer, is_active) = rel_buffers.next().unwrap().into_buffer(opts, 0);
-
-            if let Some(layout) = layout.take() {
-                Windows::initialize(pa, buffer, layout, ui);
-            } else {
-                let node = context::windows().new_window(pa, buffer);
-                if is_active {
-                    context::set_current_node(pa, node);
-                }
-            }
-
-            for (i, reloaded_buffer) in rel_buffers.enumerate() {
-                let opts = *BUFFER_OPTS.get().unwrap();
-                let layout_order = i + 1;
-                let (buffer, is_active) = reloaded_buffer.into_buffer(opts, layout_order);
-                let node = context::windows().new_buffer(pa, buffer);
-                if is_active {
-                    context::set_current_node(pa, node);
-                }
-            }
+        let result = ipc_tx.send(if buffers.is_empty() {
+            MsgFromChild::FinalState { buffers, structs: HashMap::new() }
+        } else {
+            let structs = crate::storage::get_structs();
+            MsgFromChild::FinalState { buffers, structs }
+        });
+    })
+    .is_none()
+    {
+        let pa = unsafe { &mut Pass::new() };
+        for handle in context::windows().buffers(pa) {
+            _ = handle.save(pa);
         }
-
-        session
     }
 }
 
-/// A session of Duat
-#[doc(hidden)]
-pub struct Session {
-    ui: Ui,
-}
-
-impl Session {
-    /// Creates a new `Session` for Duat.
-    ///
-    /// This should be done before creating the [`Ui`], but after initial setup,
-    #[inline(never)]
-    pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
-        let mut args = std::env::args();
-        let socket_dir = PathBuf::from(args.next().unwrap());
-        let config_profile = args.next().unwrap();
-        let config_dir = args.next().unwrap();
-
-        crate::utils::set_crate_profile_and_dir(
-            config_profile,
-            (!config_dir.is_empty()).then_some(config_dir),
-        );
-
-        let socket_name = if interprocess::
-
-        match catch_panic(|| self.inner_start(&duat_rx, reload_tx.as_ref())) {
-            Some(result) => Some(result.map(|ret| (ret, duat_rx))),
-            None => {
-                let pa = unsafe { &mut Pass::new() };
-                for handle in context::windows().buffers(pa) {
-                    _ = handle.save(pa);
-                }
-
-                None
-            }
-        }
-    }
-
-    /// Real start, wrapped on a `catch_unwind`
-    fn inner_start(
-        self,
-        duat_rx: &DuatReceiver,
-        reload_tx: Option<&mpsc::Sender<ReloadEvent>>,
-    ) -> Result<Vec<Vec<ReloadedBuffer>>, String> {
-        fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
-            context::windows()
-                .iter(pa)
-                .map(|window| window.nodes(pa).cloned().collect())
-                .collect()
-        }
-
-        form::set_sender(sender());
-
-        // SAFETY: No Passes exists at this point in time.
-        let pa = unsafe { &mut Pass::new() };
-
-        hook::trigger(pa, ConfigLoaded(()));
-
-        if mode::reset::<Buffer>(pa).is_none() {
-            unreachable!("Somebody forgot to set a default mode, I'm looking at you, duat!");
-        };
-
-        let mut reload_countdown = 1;
-        let mut unload_instant = None;
-        let mut reload_requested = false;
-        let mut reprint_screen = false;
-
-        self.ui.flush_layout();
-
-        let mut print_screen = {
-            let mut last_win = context::current_win_index(pa);
-            let mut last_win_len = context::windows().len(pa);
-            let mut windows_nodes = get_windows_nodes(pa);
-
-            let correct_window_nodes = |pa: &mut Pass, windows_nodes: &mut Vec<_>| {
-                // Additional Widgets may have been created in the meantime.
-                // DDOS vulnerable I guess.
-                while let Some(new_additions) = context::windows().get_additions(pa) {
-                    self.ui.flush_layout();
-
-                    let cur_win = context::current_win_index(pa);
-                    for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
-                        node.update_and_print(pa, cur_win);
-                    }
-
-                    *windows_nodes = get_windows_nodes(pa);
-                }
-            };
-
-            move |pa: &mut Pass, force: bool| {
-                context::windows().cleanup_despawned(pa);
-                correct_window_nodes(pa, &mut windows_nodes);
-
-                let cur_win = context::current_win_index(pa);
-                let cur_win_len = context::windows().len(pa);
-
-                // When exiting Duat, this will return `None`.
-                let Some(window) = windows_nodes.get(cur_win) else {
-                    return;
-                };
-
-                let mut printed_at_least_one = false;
-
-                for node in window {
-                    let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
-                    if force || windows_changed || node.needs_update(pa) {
-                        node.update_and_print(pa, last_win);
-                        printed_at_least_one = true;
-                    }
-                }
-
-                correct_window_nodes(pa, &mut windows_nodes);
-
-                if printed_at_least_one {
-                    self.ui.print()
-                }
-
-                last_win = cur_win;
-                last_win_len = cur_win_len;
-            }
-        };
-
-        print_screen(pa, true);
-
-        loop {
-            if let Some(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
-                match event {
-                    DuatEvent::KeyEventSent(key_event) => {
-                        mode::send_key_event(pa, key_event);
-                        if mode::keys_were_sent(pa) {
-                            continue;
-                        }
-                    }
-                    DuatEvent::MouseEventSent(mouse_event) => {
-                        context::current_window(pa)
-                            .clone()
-                            .send_mouse_event(pa, mouse_event);
-                    }
-                    DuatEvent::KeyEventsSent(keys) => {
-                        for key in keys {
-                            mode::send_key_event(pa, key)
-                        }
-                        if mode::keys_were_sent(pa) {
-                            continue;
-                        }
-                    }
-                    DuatEvent::QueuedFunction(f) => _ = catch_panic(|| f(pa)),
-                    DuatEvent::Resized | DuatEvent::FormChange => {
-                        reprint_screen = true;
-                        continue;
-                    }
-                    DuatEvent::FocusedOnDuat => {
-                        hook::trigger(pa, FocusedOnDuat(()));
-                    }
-                    DuatEvent::UnfocusedFromDuat => {
-                        hook::trigger(pa, UnfocusedFromDuat(()));
-                    }
-                    DuatEvent::RequestReload(reload) => match (&reload_tx, reload_requested) {
-                        (Some(reload_tx), false) => {
-                            reload_tx.send(reload).unwrap();
-                            reload_requested = true;
-                        }
-                        (Some(_), true) => context::warn!("Waiting for previous reload"),
-                        (None, _) => {
-                            context::error!("Loaded default config, so reloading is not available")
-                        }
-                    },
-                    DuatEvent::ReloadSucceeded => {
-                        let already_called = unload_instant.is_some();
-                        let instant = unload_instant.get_or_insert_with(std::time::Instant::now);
-                        if !already_called {
-                            context::declare_will_unload();
-
-                            for handle in context::windows().buffers(pa) {
-                                hook::trigger(pa, BufferUnloaded(handle));
-                            }
-
-                            crate::process::interrupt_all();
-                            hook::trigger(pa, ConfigUnloaded(()));
-                            crate::notify::remove_all_watchers();
-                        }
-
-                        let mut thread_count = 0;
-                        let mut threads = || {
-                            thread_count = thread_amount::thread_amount().unwrap().get()
-                                - crate::process::reader_thread_count();
-                            thread_count
-                        };
-
-                        #[cfg(not(target_vendor = "apple"))]
-                        const NORMAL_THREAD_COUNT: usize = 7;
-                        #[cfg(target_vendor = "apple")]
-                        const NORMAL_THREAD_COUNT: usize = 8;
-
-                        if threads() <= NORMAL_THREAD_COUNT
-                            || !already_called && {
-                                std::thread::sleep(Duration::from_millis(10));
-                                threads() <= NORMAL_THREAD_COUNT
-                            }
-                        {
-                            let ui = self.ui;
-                            let buffers = self.take_buffers(pa);
-                            ui.unload();
-                            return Ok(buffers);
-                        } else if instant.elapsed() > Duration::from_secs(reload_countdown) {
-                            if reload_countdown == 5 {
-                                for handle in context::buffers(pa) {
-                                    _ = handle.save(pa);
-                                }
-
-                                self.ui.unload();
-                                return Err(format!(
-                                    "Failed to reload because there were {} threads too many, so \
-                                     saved and exited",
-                                    thread_count - 7
-                                ));
-                            }
-                            context::warn!(
-                                "Reloading because there are {} extra threads open",
-                                thread_count - 7
-                            );
-                            reload_countdown += 1;
-                        }
-                        context::sender().send_reload_succeeded();
-                    }
-                    DuatEvent::ReloadFailed => reload_requested = false,
-                    DuatEvent::Quit => {
-                        context::declare_will_unload();
-                        context::declare_will_quit();
-
-                        for handle in context::windows().buffers(pa) {
-                            hook::trigger(pa, BufferUnloaded(handle.clone()));
-                            hook::trigger(pa, BufferClosed(handle));
-                        }
-
-                        crate::process::interrupt_all();
-                        hook::trigger(pa, ConfigUnloaded(()));
-                        hook::trigger(pa, ExitedDuat(()));
-
-                        self.ui.unload();
-                        return Ok(Vec::new());
-                    }
-                }
-            }
-
-            print_screen(pa, reprint_screen);
-            reprint_screen = false;
-        }
-    }
-
-    fn take_buffers(self, pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
-        let buffers =
-            context::windows()
-                .entries(pa)
-                .fold(Vec::new(), |mut file_handles, (win, node)| {
-                    if win >= file_handles.len() {
-                        file_handles.push(Vec::new());
-                    }
-
-                    if let Some(handle) = node.try_downcast::<Buffer>() {
-                        file_handles.last_mut().unwrap().push(handle)
-                    }
-
-                    file_handles
-                });
-
-        buffers
-            .into_iter()
-            .map(|buffers| {
-                buffers
-                    .into_iter()
-                    .map(|handle| {
-                        let (buffer, area) = handle.write_with_area(pa);
-                        ReloadedBuffer::from_buffer(buffer, area.is_active())
-                    })
-                    .collect()
-            })
+/// Real start, wrapped on a `catch_unwind`
+fn main_loop(ui: Ui, ipc_tx: &mut ipc::IpcSender, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
+    fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
+        context::windows()
+            .iter(pa)
+            .map(|window| window.nodes(pa).cloned().collect())
             .collect()
     }
+
+    let duat_rx = context::receiver();
+
+    // SAFETY: No Passes exists at this point in time.
+    let pa = unsafe { &mut Pass::new() };
+
+    hook::trigger(pa, ConfigLoaded(is_first_time));
+
+    if mode::reset::<Buffer>(pa).is_none() {
+        unreachable!("Somebody forgot to set a default mode, I'm looking at you, duat!");
+    };
+
+    let mut reload_requested = false;
+    let mut reprint_screen = false;
+
+    ui.flush_layout();
+
+    let mut print_screen = {
+        let mut last_win = context::current_win_index(pa);
+        let mut last_win_len = context::windows().len(pa);
+        let mut windows_nodes = get_windows_nodes(pa);
+
+        let correct_window_nodes = |pa: &mut Pass, windows_nodes: &mut Vec<_>| {
+            // Additional Widgets may have been created in the meantime.
+            // DDOS vulnerable I guess.
+            while let Some(new_additions) = context::windows().get_additions(pa) {
+                ui.flush_layout();
+
+                let cur_win = context::current_win_index(pa);
+                for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
+                    node.update_and_print(pa, cur_win);
+                }
+
+                *windows_nodes = get_windows_nodes(pa);
+            }
+        };
+
+        move |pa: &mut Pass, force: bool| {
+            context::windows().cleanup_despawned(pa);
+            correct_window_nodes(pa, &mut windows_nodes);
+
+            let cur_win = context::current_win_index(pa);
+            let cur_win_len = context::windows().len(pa);
+
+            // When exiting Duat, this will return `None`.
+            let Some(window) = windows_nodes.get(cur_win) else {
+                return;
+            };
+
+            let mut printed_at_least_one = false;
+
+            for node in window {
+                let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
+                if force || windows_changed || node.needs_update(pa) {
+                    node.update_and_print(pa, last_win);
+                    printed_at_least_one = true;
+                }
+            }
+
+            correct_window_nodes(pa, &mut windows_nodes);
+
+            if printed_at_least_one {
+                ui.print()
+            }
+
+            last_win = cur_win;
+            last_win_len = cur_win_len;
+        }
+    };
+
+    print_screen(pa, true);
+
+    loop {
+        if let Some(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
+            match event {
+                DuatEvent::KeyEventSent(key_event) => {
+                    mode::send_key_event(pa, key_event);
+                    if mode::keys_were_sent(pa) {
+                        continue;
+                    }
+                }
+                DuatEvent::MouseEventSent(mouse_event) => {
+                    context::current_window(pa)
+                        .clone()
+                        .send_mouse_event(pa, mouse_event);
+                }
+                DuatEvent::KeyEventsSent(keys) => {
+                    for key in keys {
+                        mode::send_key_event(pa, key)
+                    }
+                    if mode::keys_were_sent(pa) {
+                        continue;
+                    }
+                }
+                DuatEvent::QueuedFunction(f) => _ = catch_panic(|| f(pa)),
+                DuatEvent::Resized | DuatEvent::FormChange => {
+                    reprint_screen = true;
+                    continue;
+                }
+                DuatEvent::FocusedOnDuat => {
+                    hook::trigger(pa, FocusedOnDuat(()));
+                }
+                DuatEvent::UnfocusedFromDuat => {
+                    hook::trigger(pa, UnfocusedFromDuat(()));
+                }
+                DuatEvent::RequestReload(request) => match reload_requested {
+                    false => {
+                        ipc_tx.send(MsgFromChild::RequestReload(request));
+                        reload_requested = true;
+                    }
+                    true => context::warn!("Waiting for previous reload"),
+                },
+                DuatEvent::ReloadSucceeded => {
+                    context::declare_will_unload();
+
+                    for handle in context::windows().buffers(pa) {
+                        hook::trigger(pa, BufferUnloaded(handle));
+                    }
+
+                    hook::trigger(pa, ConfigUnloaded(false));
+
+                    ui.unload();
+                    return take_buffers(pa);
+                }
+                DuatEvent::ReloadFailed => reload_requested = false,
+                DuatEvent::Quit => {
+                    context::declare_will_unload();
+                    context::declare_will_quit();
+
+                    for handle in context::windows().buffers(pa) {
+                        hook::trigger(pa, BufferUnloaded(handle.clone()));
+                        hook::trigger(pa, BufferClosed(handle));
+                    }
+
+                    hook::trigger(pa, ConfigUnloaded(true));
+
+                    ui.unload();
+                    return Vec::new();
+                }
+            }
+        }
+
+        print_screen(pa, reprint_screen);
+        reprint_screen = false;
+    }
+}
+
+fn take_buffers(pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
+    let buffers =
+        context::windows()
+            .entries(pa)
+            .fold(Vec::new(), |mut file_handles, (win, node)| {
+                if win >= file_handles.len() {
+                    file_handles.push(Vec::new());
+                }
+
+                if let Some(handle) = node.try_downcast::<Buffer>() {
+                    file_handles.last_mut().unwrap().push(handle)
+                }
+
+                file_handles
+            });
+
+    buffers
+        .into_iter()
+        .map(|buffers| {
+            buffers
+                .into_iter()
+                .map(|handle| {
+                    let (buffer, area) = handle.write_with_area(pa);
+                    ReloadedBuffer::from_buffer(buffer, area.is_active())
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Where exactly did the [`TwoPoints`] for a given [`Coord`] match
@@ -527,7 +332,7 @@ pub(crate) enum DuatEvent {
     /// Unfocused from Duat
     UnfocusedFromDuat,
     /// Request a reload of the configuration to the executable
-    RequestReload(ReloadEvent),
+    RequestReload(ipc::ReloadRequest),
     /// A reloading attempt succeeded
     ReloadSucceeded,
     /// A reloading attempt failed
@@ -627,30 +432,191 @@ impl ReloadedBuffer {
     }
 }
 
-/// How Duat should reload
-///
-/// **FOR USE IN THE DUAT EXECUTABLE ONLY**
-#[doc(hidden)]
-pub struct ReloadEvent {
-    pub clean: bool,
-    pub update: bool,
-    pub profile: String,
+fn load_remaining_plugins(already_plugged: Vec<TypeId>) {
+    let plugins = Plugins::_new();
+    // SAFETY: The only externally available function for Plugins is to
+    // add more plugins, accessing the plugging functions happens only on
+    // this thread.
+    while let Some((plug, ty)) = {
+        plugins
+            .0
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find_map(|(f, ty)| f.take().zip(Some(*ty)))
+    } {
+        if !already_plugged.contains(&ty) {
+            catch_panic(|| plug(plugins));
+        }
+    }
 }
 
-fn get_sockets(socket_dir: &Path) -> [interprocess::local_socket::Stream; 2] {
+fn setup_buffers(
+    pa: &mut Pass,
+    buffers: Vec<Vec<ReloadedBuffer>>,
+    ui: Ui,
+    layout: Box<Mutex<dyn Layout>>,
+) {
+    let mut layout = Some(layout);
+
+    for mut window_buffers in buffers.into_iter().map(|rb| rb.into_iter()) {
+        let opts = *BUFFER_OPTS.get().unwrap();
+        let (buffer, is_active) = window_buffers.next().unwrap().into_buffer(opts, 0);
+
+        if let Some(layout) = layout.take() {
+            Windows::initialize(pa, buffer, layout, ui);
+        } else {
+            let node = context::windows().new_window(pa, buffer);
+            if is_active {
+                context::set_current_node(pa, node);
+            }
+        }
+
+        for (i, reloaded_buffer) in window_buffers.enumerate() {
+            let opts = *BUFFER_OPTS.get().unwrap();
+            let layout_order = i + 1;
+            let (buffer, is_active) = reloaded_buffer.into_buffer(opts, layout_order);
+            let node = context::windows().new_buffer(pa, buffer);
+            if is_active {
+                context::set_current_node(pa, node);
+            }
+        }
+    }
+}
+
+mod ipc {
+    /// A message sent from the parent process.
+    #[derive(Debug, bincode::Decode, bincode::Encode)]
+    pub enum MsgFromParent {
+        /// The initial state of Duat, including buffers and long
+        /// lasting structs.
+        InitialState {
+            buffers: Vec<Vec<ReloadedBuffer>>,
+            structs: HashMap<String, Vec<u8>>,
+        },
+        /// Content from the clipboard.
+        ///
+        /// This can be [`None`] because it may fail to be retrieved,
+        /// or because there were no changes to it.
+        ClipboardContent(Option<String>),
+        /// The result of a reload request or event.
+        ///
+        /// This should show up either after a reload is requested by
+        /// the child process, or the parent process decides
+        /// to start reloading because of changes to the crate
+        /// dir.
+        ReloadResult(Result<(), String>),
+        /// The result of trying to spawn a process.
+        // This will become an `std::io::RawOsError` once that feature is stabilized.
+        SpawnResult(Result<String, i32>),
+    }
+
+    /// A message sent from the child process.
+    #[derive(Debug, bincode::Decode, bincode::Encode)]
+    pub enum MsgFromChild {
+        /// The final state, after ending the child process.
+        ///
+        /// This represents a successful exit from the child process,
+        /// and if the `buffers` field is empty, it means we
+        /// are quitting Duat as well.
+        FinalState {
+            buffers: Vec<Vec<ReloadedBuffer>>,
+            structs: HashMap<String, Vec<u8>>,
+        },
+        /// Spawn a new long lasting process.
+        ///
+        /// This process will be spawned by the parent executor, so it
+        /// owns it instead of the child.
+        ///
+        /// IPC between the child and the spawned process will be done
+        /// through local sockets from the [`interprocess`] crate.
+        SpawnProcess(PersistentCommandRequest),
+        /// Kill a previously spawned long lasting process.
+        KillProcess { identifier: String },
+        /// Request an external update to the clipboard.
+        RequestClipboard,
+        /// Manually set the content of the clipboard.
+        ///
+        /// This is so other processes can read from the clipboard.
+        UpdateClipboard(String),
+        /// Request a reload.
+        ///
+        /// This will tell the parent process to start compiling the
+        /// crate again.
+        RequestReload(ReloadRequest),
+        /// A panic occurred.
+        ///
+        /// As opposed to [`MsgFromChild::FinalState`], this
+        /// represents a scenario where duat panicked and thus
+        /// couldn't exit succesfully.
+        Panicked(String),
+    }
+
+    /// How Duat should reload
+    #[doc(hidden)]
+    #[derive(Debug, bincode::Decode, bincode::Encode)]
+    pub struct ReloadRequest {
+        pub clean: bool,
+        pub update: bool,
+        pub profile: String,
+    }
+
+    use std::{collections::HashMap, io::BufReader, path::Path};
+
+    use bincode::{config, decode_from_std_read, encode_into_std_write};
     use interprocess::local_socket::{GenericFilePath, GenericNamespaced, prelude::*};
 
-    let [recv, send] = if GenericNamespaced::is_supported() {
-        [
-        socket_dir.join("0").to_string_lossy().to_ns_name().unwrap(),
-        socket_dir.join("1").to_string_lossy().to_ns_name().unwrap()
-        ]
-    } else {
-        [
-        socket_dir.join("0").to_fs_name().unwrap(),
-        socket_dir.join("1").to_fs_name().unwrap(),
-        ]
-    };
+    use crate::{process::PersistentCommandRequest, session::ReloadedBuffer};
 
-    let recv_stream = 
+    /// Connect to a socket-based ipc channel with the parent process.
+    pub fn channel(socket_dir: &Path) -> (IpcSender, IpcReceiver) {
+        let (send, recv) = (socket_dir.join("0"), socket_dir.join("1"));
+        let [send, recv] = if GenericNamespaced::is_supported() {
+            [
+                send.to_string_lossy()
+                    .to_string()
+                    .to_ns_name::<GenericNamespaced>()
+                    .unwrap(),
+                recv.to_string_lossy()
+                    .to_string()
+                    .to_ns_name::<GenericNamespaced>()
+                    .unwrap(),
+            ]
+        } else {
+            [
+                send.to_fs_name::<GenericFilePath>().unwrap(),
+                recv.to_fs_name::<GenericFilePath>().unwrap(),
+            ]
+        };
+
+        let ipc_rx = IpcReceiver(BufReader::new(LocalSocketStream::connect(recv).unwrap()));
+        let ipc_tx = IpcSender(LocalSocketStream::connect(send).unwrap());
+
+        (ipc_tx, ipc_rx)
+    }
+
+    pub struct IpcSender(LocalSocketStream);
+
+    impl IpcSender {
+        /// Send a message from the child process.
+        #[track_caller]
+        pub fn send(&mut self, msg: MsgFromChild) {
+            if let Err(err) = encode_into_std_write(msg, &mut self.0, config::standard()) {
+                panic!("{err}");
+            }
+        }
+    }
+
+    pub struct IpcReceiver(BufReader<LocalSocketStream>);
+
+    impl IpcReceiver {
+        /// Send a message from the child process.
+        #[track_caller]
+        pub fn recv(&mut self) -> MsgFromParent {
+            match decode_from_std_read(&mut self.0, config::standard()) {
+                Ok(msg) => msg,
+                Err(err) => panic!("{err}"),
+            }
+        }
+    }
 }
