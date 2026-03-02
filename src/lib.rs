@@ -531,9 +531,7 @@ pub mod private_exports {
     //! Exports from duat, not meant for direct use.
     pub use duat_core::{context::DuatReceiver, session::ReloadedBuffer, utils::catch_panic};
 
-    pub use crate::setup::{
-        Channels, Initials, MetaStatics, get_panic_message, pre_setup, run_duat,
-    };
+    pub use crate::setup::{Channels, get_panic_message, pre_setup, run_duat};
 }
 
 /// Pre and post setup for Duat

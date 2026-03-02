@@ -9,7 +9,7 @@
 use std::{
     any::TypeId,
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Mutex, OnceLock, mpsc},
     time::Duration,
 };
@@ -40,17 +40,69 @@ pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 
 /// A message sent from the parent process.
 #[derive(Debug, bincode::Decode, bincode::Encode)]
-enum MsgFromParent {
-    InitialBuffers(Vec<Vec<ReloadedBuffer>>, HashMap<String, Vec<u8>>),
+pub enum MsgFromParent {
+    /// The initial state of Duat, including buffers and long lasting
+    /// structs.
+    InitialState {
+        buffers: Vec<Vec<ReloadedBuffer>>,
+        structs: HashMap<String, Vec<u8>>,
+    },
+    /// Content from the clipboard.
+    ///
+    /// This can be [`None`] because it may fail to be retrieved, or
+    /// because there were no changes to it.
     ClipboardContent(Option<String>),
+    /// The result of a reload request or event.
+    ///
+    /// This should show up either after a reload is requested by the
+    /// child process, or the parent process decides to start
+    /// reloading because of changes to the crate dir.
     ReloadResult(Result<(), String>),
 }
 
-#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
-enum MsgFromChild {
-    SpawnProcess(String, Vec<String>, Vec<(String, String)>),
+/// A message sent from the child process.
+#[derive(Debug, bincode::Decode, bincode::Encode)]
+pub enum MsgFromChild {
+    /// The final state, after ending the child process.
+    ///
+    /// This represents a successful exit from the child process, and
+    /// if the `buffers` field is empty, it means we are quitting Duat
+    /// as well.
+    FinalState {
+        buffers: Vec<Vec<ReloadedBuffer>>,
+        structs: HashMap<String, Vec<u8>>,
+    },
+    /// Spawn a new long lasting process.
+    ///
+    /// This process will be spawned by the parent executor, so it
+    /// owns it instead of the child.
+    ///
+    /// IPC between the child and the spawned process will be done
+    /// through local sockets from the [`interprocess`] crate.
+    SpawnProcess {
+        path: String,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+        identifier: String,
+    },
+    /// Kill a previously spawned long lasting process.
+    KillProcess { identifier: String },
+    /// Request an external update to the clipboard.
     RequestClipboard,
-    StartReloading,
+    /// Manually set the content of the clipboard.
+    ///
+    /// This is so other processes can read from the clipboard.
+    UpdateClipboard(String),
+    /// Request a reload.
+    ///
+    /// This will tell the parent process to start compiling the crate
+    /// again.
+    RequestReload,
+    /// A panic occurred.
+    ///
+    /// As opposed to [`MsgFromChild::FinalState`], this represents a
+    /// scenario where duat panicked and thus couldn't exit
+    /// succesfully.
     Panicked(String),
 }
 
@@ -62,6 +114,8 @@ pub struct SessionCfg {
 
 impl SessionCfg {
     pub fn new(meta_functions: &'static MetaFunctions, buffer_opts: BufferOpts) -> Self {
+        log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
+
         crate::clipboard::set_clipboard(&meta_functions.clipboard_fns);
         crate::notify::set_notify_fns(&meta_functions.notify_fns);
         crate::process::set_process_fns(&meta_functions.process_fns);
@@ -79,8 +133,6 @@ impl SessionCfg {
         buffers: Vec<Vec<ReloadedBuffer>>,
         already_plugged: Vec<TypeId>,
     ) -> Session {
-        ui.setup_default_print_info();
-
         let plugins = Plugins::_new();
         // SAFETY: The only externally available function for Plugins is to
         // add more plugins, accessing the plugging functions happens only on
@@ -144,18 +196,23 @@ pub struct Session {
 }
 
 impl Session {
-    /// Start the application, initiating a read/response loop.
+    /// Creates a new `Session` for Duat.
     ///
-    /// If it returns `Some(list, _)`, where `list` is an empty
-    /// vector, it means Duat must quit. If the vector is not empty,
-    /// each inner `Vec` represents a different window.
-    ///
-    /// This will return [`None`] if Duat panicked midway through.
-    pub fn start(
-        self,
-        duat_rx: DuatReceiver,
-        reload_tx: Option<mpsc::Sender<ReloadEvent>>,
-    ) -> Option<Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>> {
+    /// This should be done before creating the [`Ui`], but after initial setup,
+    #[inline(never)]
+    pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
+        let mut args = std::env::args();
+        let socket_dir = PathBuf::from(args.next().unwrap());
+        let config_profile = args.next().unwrap();
+        let config_dir = args.next().unwrap();
+
+        crate::utils::set_crate_profile_and_dir(
+            config_profile,
+            (!config_dir.is_empty()).then_some(config_dir),
+        );
+
+        let socket_name = if interprocess::
+
         match catch_panic(|| self.inner_start(&duat_rx, reload_tx.as_ref())) {
             Some(result) => Some(result.map(|ret| (ret, duat_rx))),
             None => {
@@ -332,7 +389,7 @@ impl Session {
                             }
                         {
                             let ui = self.ui;
-                            let buffers = self.take_files(pa);
+                            let buffers = self.take_buffers(pa);
                             ui.unload();
                             return Ok(buffers);
                         } else if instant.elapsed() > Duration::from_secs(reload_countdown) {
@@ -381,7 +438,7 @@ impl Session {
         }
     }
 
-    fn take_files(self, pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
+    fn take_buffers(self, pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
         let buffers =
             context::windows()
                 .entries(pa)
@@ -578,4 +635,22 @@ pub struct ReloadEvent {
     pub clean: bool,
     pub update: bool,
     pub profile: String,
+}
+
+fn get_sockets(socket_dir: &Path) -> [interprocess::local_socket::Stream; 2] {
+    use interprocess::local_socket::{GenericFilePath, GenericNamespaced, prelude::*};
+
+    let [recv, send] = if GenericNamespaced::is_supported() {
+        [
+        socket_dir.join("0").to_string_lossy().to_ns_name().unwrap(),
+        socket_dir.join("1").to_string_lossy().to_ns_name().unwrap()
+        ]
+    } else {
+        [
+        socket_dir.join("0").to_fs_name().unwrap(),
+        socket_dir.join("1").to_fs_name().unwrap(),
+        ]
+    };
+
+    let recv_stream = 
 }

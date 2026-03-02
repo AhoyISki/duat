@@ -55,8 +55,13 @@ pub struct Ui {
 impl Ui {
     /// Returns a new type erased [`Ui`]
     ///
-    /// Given the [`RawUi::get_once`] function, this should only be
-    /// callable _once_.
+    /// # Panics
+    ///
+    /// Will panic if this is done more than once per reload cycle, as
+    /// it is only meant to be done whenever duat reloads.
+    ///
+    /// *ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE*
+    #[doc(hidden)]
     #[track_caller]
     pub fn new<U: RawUi>() -> Self
     where
@@ -68,12 +73,14 @@ impl Ui {
         if CALLED.fetch_or(true, Relaxed) {
             panic!("The Ui can only be created once");
         } else {
+            let default_print_info =
+                || PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default());
+                
+            DEFAULT_PRINT_INFO.set(default_print_info).unwrap();
             Ui {
                 ui: Box::leak(Box::new(U::load(crate::context::sender()))),
                 fns: UiFunctions::new::<U>(),
-                default_print_info: || {
-                    PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default())
-                },
+                default_print_info,
             }
         }
     }
@@ -178,13 +185,6 @@ impl Ui {
     /// is also the size of the window.
     pub fn size(&self) -> Coord {
         (self.fns.size)(self.ui)
-    }
-
-    /// Sets the default [`PrintInfo`]
-    pub(crate) fn setup_default_print_info(&self) {
-        DEFAULT_PRINT_INFO
-            .set(self.default_print_info)
-            .expect("PrintInfo was set twice");
     }
 }
 

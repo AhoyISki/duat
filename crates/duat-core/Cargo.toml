@@ -29,8 +29,9 @@ regex-syntax = "0.8.8"
 thread-amount = "0.3.0"
 shellexpand = "3.1.2"
 gap-buf = { version = "0.5.0", features = ["bincode"] }
-notify-types = "2.1.0"
 interrupt-read = "0.6.0"
+interprocess = "2.4.0"
+notify = "8.2.0"
 
 [dependencies.regex-cursor]
 version = "0.1.5"

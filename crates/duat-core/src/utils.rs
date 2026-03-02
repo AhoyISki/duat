@@ -146,11 +146,13 @@ static PROFILE: OnceLock<&str> = OnceLock::new();
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
 #[track_caller]
-pub fn set_crate_dir_and_profile(dir: Option<&'static Path>, profile: &'static str) {
+pub(crate) fn set_crate_profile_and_dir(profile: String, dir: Option<String>) {
     CRATE_DIR
-        .set(dir)
+        .set(dir.map(|dir| Path::new(dir.leak())))
         .expect("Crate directory set multiple times.");
-    PROFILE.set(profile).expect("Profile set multiple times.");
+    PROFILE
+        .set(profile.leak())
+        .expect("Profile set multiple times.");
 }
 
 /// The path for the config crate of Duat.
