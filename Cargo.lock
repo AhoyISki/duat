@@ -397,7 +397,6 @@ dependencies = [
  "regex-cursor",
  "regex-syntax",
  "shellexpand",
- "thread-amount",
 ]
 
 [[package]]
@@ -842,12 +841,6 @@ dependencies = [
  "serde_json",
  "serde_repr",
 ]
-
-[[package]]
-name = "mach2"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
 name = "memchr"
@@ -1372,17 +1365,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "thread-amount"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d0cd809460393bb16352d73cc1d65523ce8e271f9d1698214611ecacaac5414"
-dependencies = [
- "libc",
- "mach2",
- "windows-sys 0.61.2",
 ]
 
 [[package]]

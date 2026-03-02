@@ -40,7 +40,6 @@
 //! - [`BufferSwitched`] triggers when switching the active buffer.
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
-//! - [`ExitedDuat`] triggers after Duat has exited.
 //! - [`FocusedOnDuat`] triggers when Duat gains focus.
 //! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetOpened`] triggers when a [`Widget`] is opened.
@@ -423,37 +422,35 @@ impl<S: ToString> From<S> for InnerGroupId {
 /// [`Hookable`]: Triggers when Duat opens or reloads.
 ///
 /// This trigger will also happen after a few other initial setups of
-/// Duat.
+/// Duat. Notably, it takes place after all [`Buffer`]s are
+/// registered, and their [`BufferOpened`] hooks are triggered.
 ///
-/// There are no arguments
-pub struct ConfigLoaded(pub(crate) ());
+/// # Arguments
+///
+/// - Wether duat has just opened.
+pub struct ConfigLoaded(pub(crate) bool);
 
 impl Hookable for ConfigLoaded {
-    type Input<'h> = ();
+    type Input<'h> = bool;
 
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        self.0
+    }
 }
 
 /// [`Hookable`]: Triggers when Duat closes or has to reload.
 ///
-/// There are no arguments
-pub struct ConfigUnloaded(pub(crate) ());
+/// # Arguments
+///
+/// - Wether duat is in the process of quitting.
+pub struct ConfigUnloaded(pub(crate) bool);
 
 impl Hookable for ConfigUnloaded {
-    type Input<'h> = ();
+    type Input<'h> = bool;
 
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
-}
-
-/// [`Hookable`]: Triggers when Duat closes.
-///
-/// There are no arguments
-pub struct ExitedDuat(pub(crate) ());
-
-impl Hookable for ExitedDuat {
-    type Input<'h> = ();
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        self.0
+    }
 }
 
 /// [`Hookable`]: Triggers when Duat is refocused.

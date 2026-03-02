@@ -34,12 +34,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use bincode::config;
 pub use bincode::{self, Decode, Encode};
 
-use self::bincode::{
-    config::{Configuration, Fixint, LittleEndian, NoLimit},
-    encode_into_std_write,
-};
+use self::bincode::encode_into_std_write;
 use crate::{
     text::{Text, txt},
     utils::{duat_name, src_crate},
@@ -59,7 +57,7 @@ pub fn load<C: Decode<()> + Default + 'static>(path: impl AsRef<Path>) -> Result
         return Ok(C::default());
     }
 
-    let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
+    let config = config::standard();
     bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}"))
 }
 
@@ -73,7 +71,7 @@ pub fn load<C: Decode<()> + Default + 'static>(path: impl AsRef<Path>) -> Result
 pub fn store<C: Encode + 'static>(path: impl AsRef<Path>, cache: C) -> Result<usize, Text> {
     let mut cache_file = cache_file::<C>(path.as_ref(), true)?;
 
-    let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
+    let config = config::standard();
     encode_into_std_write(cache, &mut cache_file, config).map_err(|err| txt!("{err}"))
 }
 

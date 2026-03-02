@@ -20,7 +20,7 @@ use duat_core::{
     data::Pass,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
     notify::{FromDuat, Watcher},
-    session::{ReloadEvent, ReloadedBuffer, SessionCfg},
+    session::{ReloadRequest, ReloadedBuffer, SessionCfg},
     text::txt,
     ui::{DynSpawnSpecs, Orientation},
 };
@@ -325,7 +325,7 @@ pub fn pre_setup() {
 pub fn run_duat(
     buffers: Vec<Vec<ReloadedBuffer>>,
     duat_rx: DuatReceiver,
-    reload_tx: Option<Sender<ReloadEvent>>,
+    reload_tx: Option<Sender<ReloadRequest>>,
 ) -> Option<Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>> {
     let default_buffer_opts = {
         let opts = OPTS.lock().unwrap();
@@ -361,4 +361,4 @@ pub fn run_duat(
 
 /// Channels to send information between the runner and executable
 #[doc(hidden)]
-pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadEvent>);
+pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadRequest>);
