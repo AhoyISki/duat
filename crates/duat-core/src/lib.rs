@@ -199,8 +199,7 @@ pub mod notify {
         time::Duration,
     };
 
-    use notify_types::event::{AccessKind, AccessMode, Event, EventKind};
-    pub use notify_types::*;
+    use notify::event::{AccessKind, AccessMode, Event, EventKind};
 
     static WATCHERS_DISABLED: AtomicBool = AtomicBool::new(false);
     static WATCHER_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -417,14 +416,135 @@ pub mod process {
     //! Utilities for spawning processes that should outlive the
     //! config.
     use std::{
-        io::{BufWriter, Error},
+        collections::HashMap,
+        io::{BufRead, BufReader, BufWriter, Error, ErrorKind, Read},
         process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
-        sync::OnceLock,
+        sync::{LazyLock, Mutex, OnceLock, mpsc},
     };
 
+    use interprocess::local_socket::prelude::*;
     pub use interrupt_read::InterruptReader;
 
     static PROCESS_FNS: OnceLock<&ProcessFns> = OnceLock::new();
+    static PERSISTENT_CHILDREN: LazyLock<Mutex<HashMap<String, PersistentChildEntry>>> =
+        LazyLock::new(Mutex::default);
+
+    #[derive(bincode::Decode, bincode::Encode)]
+    struct StoredPersistentChild {
+        bytes: Vec<u8>,
+        identifier: String,
+    }
+
+    /// An entry for a [`PersistentChild`], which can retrieve the
+    /// buffered bytes, keeping them for the next reload cycle.
+    struct PersistentChildEntry {
+        stdout_rx: mpsc::Receiver<ReaderPair>,
+        stderr_rx: mpsc::Receiver<ReaderPair>,
+    }
+
+    /// A child process that will persist over multiple reload cycles.
+    ///
+    /// This child makes use of [`interprocess`]'s [local sockets] for
+    /// communication. This is because the process will be spawned by
+    /// the duat executor, and communication between it and the config
+    /// child process won't be possible by regular stdio.
+    ///
+    /// Unless you call [`PersistentChild::kill`], duat will assume
+    /// that you want it to be kept alive for future reloads.
+    ///
+    /// # Reloads
+    ///
+    /// When reloading Duat, the stdin, stdout and stderr processes
+    /// are guaranteed to not lose any bytes.
+    ///
+    /// This is only the case, however, if you don't have some sort of
+    /// buffering and/or aren't doing a deserialization attempt with
+    /// said data.
+    ///
+    /// If you want to do deserialization (via [`bincode::Decode`]),
+    /// you will want to use [`PersistentReader::decode_as`]. This
+    /// method will fail to decode if a reload is requested midway
+    /// through reading, but the bytes will be saved for the next
+    /// reload cycle, where you can start decoding again.
+    ///
+    /// [local sockets]: interprocess::local_socket::Stream
+    /// [`storage::store`]: crate::storage::store
+    pub struct PersistentChild {
+        pub stdin: Option<LocalSocketStream>,
+        pub stdout: Option<PersistentReader>,
+        pub stderr: Option<PersistentReader>,
+        identifier: String,
+    }
+
+    /// A pair used for reading and decoding.
+    struct ReaderPair {
+        decode_bytes: Vec<u8>,
+        conn: BufReader<LocalSocketStream>,
+    }
+
+    /// A [`Read`]er which is meant to be used across multiple reload
+    /// cycles.
+    ///
+    /// This reader is _already buffered_, don't wrap it in a
+    /// [`BufReader`], or else you _will lose bytes on reloads_.
+    pub struct PersistentReader {
+        returner: mpsc::Sender<Vec<u8>>,
+        pair: Option<ReaderPair>,
+        pair_tx: mpsc::Sender<ReaderPair>,
+    }
+
+    impl PersistentReader {
+        /// Returns this [`Read`]er (and its bytes) to be retrieved
+        /// later on.
+        pub fn give_back(self) {
+            // The entry may have already been removed.
+            _ = self.pair_tx.send(self.pair.unwrap());
+        }
+    }
+
+    impl Read for PersistentReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let pair = self.pair.as_mut().unwrap();
+            match pair.conn.read(buf) {
+                Ok(bytes) => Ok(bytes),
+                // This means that the equivalent Stream in the parent process was
+                // dropped, which means we're about to reload.
+                Err(err) if err.kind() == ErrorKind::BrokenPipe => {
+                    _ = self.pair_tx.send(self.pair.take().unwrap());
+                    // We loop forever, to abstract away the reloading of Duat in reading
+                    // loops.
+                    loop {
+                        std::thread::park();
+                    }
+                }
+                Err(err) => Err(err),
+            }
+        }
+    }
+
+    impl BufRead for PersistentReader {
+        fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+            let pair = self.pair.as_mut().unwrap();
+            match pair.conn.fill_buf() {
+                Ok(_) => {
+                    let pair = self.pair.as_ref().unwrap();
+                    Ok(pair.conn.buffer())
+                }
+                Err(ref err) if err.kind() == ErrorKind::BrokenPipe => loop {
+                    _ = self.pair_tx.send(self.pair.take().unwrap());
+                    loop {
+                        std::thread::park();
+                    }
+                },
+                Err(err) => Err(err),
+            }
+        }
+
+        fn consume(&mut self, amount: usize) {
+            let pair = self.pair.as_mut().unwrap();
+            pair.conn.consume(amount);
+        }
+    }
 
     /// Functions for spawning persistent processes
     ///

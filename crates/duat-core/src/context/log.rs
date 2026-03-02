@@ -8,7 +8,7 @@
 use std::{
     panic::PanicHookInfo,
     sync::{
-        Mutex, OnceLock,
+        Mutex,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -266,7 +266,15 @@ mod macros {
     }
 }
 
-static LOGS: OnceLock<Logs> = OnceLock::new();
+static LOGS: Logs = {
+    static LIST: Mutex<Vec<Record>> = Mutex::new(Vec::new());
+    static CUR_STATE: AtomicUsize = AtomicUsize::new(0);
+    Logs {
+        list: &LIST,
+        cur_state: &CUR_STATE,
+        read_state: AtomicUsize::new(0),
+    }
+};
 
 /// Notifications for duat
 ///
@@ -278,7 +286,7 @@ static LOGS: OnceLock<Logs> = OnceLock::new();
 /// [`RwData`]: crate::data::RwData
 /// [`Handle`]: super::Handle
 pub fn logs() -> Logs {
-    LOGS.get().unwrap().clone()
+    LOGS.clone()
 }
 
 /// The notifications sent to Duat.
@@ -538,24 +546,15 @@ impl std::fmt::Display for Location {
     }
 }
 
-/// Sets the [`Logs`]. Must use [`Logs`] created in the runner
-/// app
-#[doc(hidden)]
-pub fn set_logs(logs: Logs) {
-    LOGS.set(logs).expect("setup ran twice");
-}
-
 /// Log information about a panic that took place
 #[doc(hidden)]
 pub fn log_panic(panic_info: &PanicHookInfo) {
     let (Some(msg), Some(location)) = (panic_info.payload_as_str(), panic_info.location()) else {
         return;
     };
-    if let Some(logs) = LOGS.get() {
-        logs.list.lock().unwrap().push(Record {
-            text: Box::leak(Box::new(Text::from(msg))),
-            metadata: Metadata::builder().level(Level::Error).build(),
-            location: Location::from_panic_location(location),
-        })
-    }
+    LOGS.list.lock().unwrap().push(Record {
+        text: Box::leak(Box::new(Text::from(msg))),
+        metadata: Metadata::builder().level(Level::Error).build(),
+        location: Location::from_panic_location(location),
+    })
 }

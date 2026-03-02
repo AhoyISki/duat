@@ -106,8 +106,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (duat_tx, mut duat_rx) = duat::context::duat_channel();
     duat_core::context::set_sender(duat_tx.clone());
 
-    let ui = duat_core::ui::Ui::new::<UiImplementation>();
-
     // Assert that the configuration crate actually exists.
     let (crate_dir, profile) = {
         let crate_dir = args

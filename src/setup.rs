@@ -15,16 +15,14 @@ use duat_base::{
     widgets::{FooterWidgets, LogBook, WhichKey, status},
 };
 use duat_core::{
-    MetaFunctions,
     buffer::{BufferOpts, History},
-    context::{self, DuatReceiver, DuatSender, Logs, cache},
+    context::{self, DuatReceiver, DuatSender, cache},
     data::Pass,
-    form::Palette,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
     notify::{FromDuat, Watcher},
     session::{ReloadEvent, ReloadedBuffer, SessionCfg},
     text::txt,
-    ui::{DynSpawnSpecs, Orientation, Ui},
+    ui::{DynSpawnSpecs, Orientation},
 };
 use duat_filetype::FileType;
 #[cfg(feature = "term-ui")]
@@ -48,11 +46,7 @@ pub fn get_panic_message() -> Option<String> {
 }
 
 #[doc(hidden)]
-pub fn pre_setup(
-    #[allow(unused_variables)] ui: Ui,
-    initials: Option<Initials>,
-    duat_tx: Option<DuatSender>,
-) {
+pub fn pre_setup() {
     static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
         Watcher::new(|event, from_duat| {
             use dissimilar::Chunk::*;
@@ -116,13 +110,6 @@ pub fn pre_setup(
     // depend on duat without this feature.
     if !cfg!(feature = "term-ui") {
         panic!("No ui for running Duat has been chosen!");
-    }
-
-    if let Some((logs, forms_init, (crate_dir, profile))) = initials {
-        log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
-        context::set_logs(logs);
-        duat_core::form::set_initial(forms_init);
-        duat_core::utils::set_crate_dir_and_profile(Some(crate_dir), profile);
     }
 
     if let Some(duat_tx) = duat_tx {
@@ -327,9 +314,6 @@ pub fn pre_setup(
         Plugins::_new().require::<duat_match_pairs::MatchPairs>();
     }
 
-    #[cfg(feature = "term-ui")]
-    duat_core::ui::config_address_space_ui_setup::<duat_term::Ui>(ui);
-
     duat_core::Plugins::_new().require::<duatmode::DuatMode>();
     crate::prelude::plug(duat_base::DuatBase);
 
@@ -339,13 +323,10 @@ pub fn pre_setup(
 #[doc(hidden)]
 #[allow(clippy::type_complexity)]
 pub fn run_duat(
-    (ui, meta_functions): MetaStatics,
     buffers: Vec<Vec<ReloadedBuffer>>,
     duat_rx: DuatReceiver,
     reload_tx: Option<Sender<ReloadEvent>>,
 ) -> Option<Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>> {
-    ui.load();
-
     let default_buffer_opts = {
         let opts = OPTS.lock().unwrap();
         BufferOpts {
@@ -381,13 +362,3 @@ pub fn run_duat(
 /// Channels to send information between the runner and executable
 #[doc(hidden)]
 pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadEvent>);
-/// Items that will live for the duration of Duat
-#[doc(hidden)]
-pub type MetaStatics = (Ui, &'static MetaFunctions);
-/// Initial setup items
-#[doc(hidden)]
-pub type Initials = (
-    Logs,
-    (&'static Mutex<Vec<std::sync::Arc<str>>>, &'static Palette),
-    (&'static Path, &'static str),
-);
