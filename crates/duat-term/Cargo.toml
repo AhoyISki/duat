@@ -11,7 +11,7 @@ keywords = ["editor", "terminal", "text", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
-duat-core = { version = "0.8.0", path = "../duat-core" }
+duat-core = { version = "0.9.0", path = "../duat-core" }
 unicode-width = "0.2.2"
 kasuari = "0.4.11"
 
