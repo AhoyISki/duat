@@ -1,6 +1,6 @@
 [package]
 name = "duat-match-pairs"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["AhoyISki"]
 description = "A duat plugin to highlight matched pairs"
 repository = "https://github.com/AhoyISki/duat-match-pairs"

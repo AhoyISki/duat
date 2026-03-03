@@ -10,9 +10,6 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    // You can also set Forms to reference other Forms.
-    form::set("caret.main.OneKey", Form::mimic("caret.main.Normal"));
-    form::set("caret.extra.OneKey", Form::mimic("caret.extra.Normal"));
     // Disables the cursor's shape.
     cursor::unset();
 
