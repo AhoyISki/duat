@@ -27,6 +27,7 @@ use crate::{
         UnfocusedFromDuat,
     },
     mode::{self, Selection, Selections},
+    session::ipc::InitialState,
     text::{StrsBuf, TwoPoints},
     ui::{
         Coord, Ui, Windows,
@@ -54,12 +55,14 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
         (!config_dir.is_empty()).then_some(config_dir),
     );
 
-    let (mut ipc_tx, mut ipc_rx) = ipc::channel(&socket_dir);
+    ipc::initialize_channel(&socket_dir);
 
     if catch_panic(|| {
-        let MsgFromParent::InitialState { buffers, structs } = ipc_rx.recv() else {
-            panic!("Initial message should've been `InitialState`");
-        };
+        let InitialState { buffers, structs, clipb } = ipc::recv_init();
+
+        if let Some(clipboard) = clipb {
+            crate::clipboard::set(clipboard);
+        }
 
         let (ui, already_plugged, buffer_opts) = setup();
         BUFFER_OPTS.set(buffer_opts).unwrap();
@@ -71,9 +74,9 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
         let layout = Box::new(Mutex::new(MasterOnLeft));
         setup_buffers(pa, buffers, ui, layout);
 
-        let buffers = main_loop(ui, &mut ipc_tx, is_first_time);
+        let buffers = main_loop(ui, is_first_time);
 
-        let result = ipc_tx.send(if buffers.is_empty() {
+        let result = ipc::send(if buffers.is_empty() {
             MsgFromChild::FinalState { buffers, structs: HashMap::new() }
         } else {
             let structs = crate::storage::get_structs();
@@ -90,7 +93,7 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
 }
 
 /// Real start, wrapped on a `catch_unwind`
-fn main_loop(ui: Ui, ipc_tx: &mut ipc::IpcSender, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
+fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
     fn get_windows_nodes(pa: &Pass) -> Vec<Vec<crate::ui::Node>> {
         context::windows()
             .iter(pa)
@@ -204,12 +207,12 @@ fn main_loop(ui: Ui, ipc_tx: &mut ipc::IpcSender, is_first_time: bool) -> Vec<Ve
                 }
                 DuatEvent::RequestReload(request) => match reload_requested {
                     false => {
-                        ipc_tx.send(MsgFromChild::RequestReload(request));
+                        ipc::send(MsgFromChild::RequestReload(request));
                         reload_requested = true;
                     }
                     true => context::warn!("Waiting for previous reload"),
                 },
-                DuatEvent::ReloadSucceeded => {
+                DuatEvent::ReloadResult(Ok(())) => {
                     context::declare_will_unload();
 
                     for handle in context::windows().buffers(pa) {
@@ -221,7 +224,10 @@ fn main_loop(ui: Ui, ipc_tx: &mut ipc::IpcSender, is_first_time: bool) -> Vec<Ve
                     ui.unload();
                     return take_buffers(pa);
                 }
-                DuatEvent::ReloadFailed => reload_requested = false,
+                DuatEvent::ReloadResult(Err(err)) => {
+                    reload_requested = false;
+                    context::error!("{err}");
+                }
                 DuatEvent::Quit => {
                     context::declare_will_unload();
                     context::declare_will_quit();
@@ -274,7 +280,7 @@ fn take_buffers(pa: &mut Pass) -> Vec<Vec<ReloadedBuffer>> {
         .collect()
 }
 
-/// Where exactly did the [`TwoPoints`] for a given [`Coord`] match
+/// Where exactly did the [`TwoPoints`] for a given [`Coord`] match.
 ///
 /// It can be either an exact match, that is, the mouse was in the
 /// position of the `TwoPoints`, or it can be on the same line as the
@@ -288,7 +294,7 @@ pub enum TwoPointsPlace {
 }
 
 impl TwoPointsPlace {
-    /// The [`TwoPoints`] that were interacted with
+    /// The [`TwoPoints`] that were interacted with.
     pub fn points(&self) -> TwoPoints {
         match self {
             TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points) => *points,
@@ -297,7 +303,7 @@ impl TwoPointsPlace {
 }
 
 /// A mouse event sent by the [`Ui`], doesn't include [`Text`]
-/// positioning
+/// positioning.
 ///
 /// [`Text`]: crate::text::Text
 #[derive(Debug, Clone, Copy)]
@@ -310,34 +316,32 @@ pub struct UiMouseEvent {
     pub modifiers: KeyModifiers,
 }
 
-/// An event that Duat must handle
+/// An event that Duat must handle.
 #[doc(hidden)]
 pub(crate) enum DuatEvent {
-    /// A [`KeyEvent`] was typed
+    /// A [`KeyEvent`] was typed.
     KeyEventSent(KeyEvent),
-    /// A [`MouseEvent`] was sent
+    /// A [`MouseEvent`] was sent.
     MouseEventSent(UiMouseEvent),
-    /// Multiple [`KeyEvent`]s were sent
+    /// Multiple [`KeyEvent`]s were sent.
     KeyEventsSent(Vec<KeyEvent>),
-    /// A function was queued
+    /// A function was queued.
     QueuedFunction(Box<dyn FnOnce(&mut Pass) + Send>),
-    /// The Screen has resized
+    /// The Screen has resized.
     Resized,
-    /// A [`Form`] was altered, which one it is, doesn't matter
+    /// A [`Form`] was altered, which one it is, doesn't matter.
     ///
     /// [`Form`]: crate::form::Form
     FormChange,
-    /// Focused on Duat
+    /// Focused on Duat.
     FocusedOnDuat,
-    /// Unfocused from Duat
+    /// Unfocused from Duat.
     UnfocusedFromDuat,
-    /// Request a reload of the configuration to the executable
+    /// Request a reload of the configuration to the executable.
     RequestReload(ipc::ReloadRequest),
-    /// A reloading attempt succeeded
-    ReloadSucceeded,
-    /// A reloading attempt failed
-    ReloadFailed,
-    /// Quit Duat
+    /// The result of a reloading event.
+    ReloadResult(Result<(), String>),
+    /// Quit Duat.
     Quit,
 }
 
@@ -485,15 +489,28 @@ fn setup_buffers(
 }
 
 mod ipc {
+    use std::{
+        collections::HashMap,
+        io::BufReader,
+        path::Path,
+        sync::{LazyLock, Mutex, OnceLock, mpsc},
+    };
+
+    use bincode::{config, decode_from_std_read, encode_into_std_write};
+    use interprocess::local_socket::{GenericFilePath, GenericNamespaced, prelude::*};
+
+    use crate::{
+        context,
+        process::PersistentCommandRequest,
+        session::{DuatEvent, ReloadedBuffer},
+    };
+
     /// A message sent from the parent process.
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub enum MsgFromParent {
         /// The initial state of Duat, including buffers and long
         /// lasting structs.
-        InitialState {
-            buffers: Vec<Vec<ReloadedBuffer>>,
-            structs: HashMap<String, Vec<u8>>,
-        },
+        InitialState(InitialState),
         /// Content from the clipboard.
         ///
         /// This can be [`None`] because it may fail to be retrieved,
@@ -552,7 +569,15 @@ mod ipc {
         Panicked(String),
     }
 
-    /// How Duat should reload
+    /// The initial state of the duat child process.
+    #[derive(Debug, bincode::Decode, bincode::Encode)]
+    pub(super) struct InitialState {
+        pub buffers: Vec<Vec<ReloadedBuffer>>,
+        pub structs: HashMap<String, Vec<u8>>,
+        pub clipb: Option<String>,
+    }
+
+    /// A request for reloading duat.
     #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub struct ReloadRequest {
@@ -561,15 +586,39 @@ mod ipc {
         pub profile: String,
     }
 
-    use std::{collections::HashMap, io::BufReader, path::Path};
+    static IPC_TX: OnceLock<Mutex<LocalSocketStream>> = OnceLock::new();
+    static CLIPB_CHANNEL: LazyLock<Channel<Option<String>>> = Channel::lazy();
+    static SPAWN_CHANNEL: LazyLock<Channel<Result<String, i32>>> = Channel::lazy();
+    static INIT_CHANNEL: LazyLock<Channel<InitialState>> = Channel::lazy();
 
-    use bincode::{config, decode_from_std_read, encode_into_std_write};
-    use interprocess::local_socket::{GenericFilePath, GenericNamespaced, prelude::*};
+    /// Send a message from the child process.
+    #[track_caller]
+    pub fn send(msg: MsgFromChild) {
+        let mut tx = IPC_TX.get().unwrap().lock().unwrap();
+        if let Err(err) = encode_into_std_write(msg, &mut *tx, config::standard()) {
+            panic!("{err}");
+        }
+    }
 
-    use crate::{process::PersistentCommandRequest, session::ReloadedBuffer};
+    /// Receive the [`InitialState`] event.
+    ///
+    /// This should be done as Duat is starting.
+    pub fn recv_init() -> InitialState {
+        INIT_CHANNEL.rx.lock().unwrap().recv().unwrap()
+    }
+
+    /// Receive the next clipboard event.
+    pub fn recv_clipboard() -> Option<String> {
+        CLIPB_CHANNEL.rx.lock().unwrap().recv().unwrap()
+    }
+
+    /// Receive the next spawn event.
+    pub fn recv_spawn() -> Result<String, i32> {
+        SPAWN_CHANNEL.rx.lock().unwrap().recv().unwrap()
+    }
 
     /// Connect to a socket-based ipc channel with the parent process.
-    pub fn channel(socket_dir: &Path) -> (IpcSender, IpcReceiver) {
+    pub fn initialize_channel(socket_dir: &Path) {
         let (send, recv) = (socket_dir.join("0"), socket_dir.join("1"));
         let [send, recv] = if GenericNamespaced::is_supported() {
             [
@@ -589,34 +638,55 @@ mod ipc {
             ]
         };
 
-        let ipc_rx = IpcReceiver(BufReader::new(LocalSocketStream::connect(recv).unwrap()));
-        let ipc_tx = IpcSender(LocalSocketStream::connect(send).unwrap());
+        let tx = LocalSocketStream::connect(send).unwrap();
+        let rx = BufReader::new(LocalSocketStream::connect(recv).unwrap());
 
-        (ipc_tx, ipc_rx)
+        std::thread::spawn(move || {
+            match bincode::decode_from_reader(rx, config::standard()).unwrap() {
+                MsgFromParent::InitialState(state) => INIT_CHANNEL.tx.send(state).unwrap(),
+                MsgFromParent::ClipboardContent(content) => CLIPB_CHANNEL.tx.send(content).unwrap(),
+                MsgFromParent::ReloadResult(result) => {
+                    context::sender().send(DuatEvent::ReloadResult(result));
+                }
+                MsgFromParent::SpawnResult(result) => SPAWN_CHANNEL.tx.send(result).unwrap(),
+            };
+        });
+
+        IPC_TX.set(Mutex::new(tx)).ok().unwrap();
     }
 
-    pub struct IpcSender(LocalSocketStream);
+    /// The channel for communication with the parent executor.
+    pub struct IpcChannel {
+        /// Sends [`MsgFromChild`] to the parent process.
+        tx: LocalSocketStream,
+        /// Receives [`MsgFromParent`] from the parent process.
+        rx: BufReader<LocalSocketStream>,
+    }
 
-    impl IpcSender {
+    impl IpcChannel {
         /// Send a message from the child process.
         #[track_caller]
-        pub fn send(&mut self, msg: MsgFromChild) {
-            if let Err(err) = encode_into_std_write(msg, &mut self.0, config::standard()) {
-                panic!("{err}");
+        pub fn recv(&mut self) -> MsgFromParent {
+            match decode_from_std_read(&mut self.rx, config::standard()) {
+                Ok(msg) => msg,
+                Err(err) => panic!("{err}"),
             }
         }
     }
 
-    pub struct IpcReceiver(BufReader<LocalSocketStream>);
+    /// A simple channel to send stuff over.
+    struct Channel<T> {
+        tx: mpsc::Sender<T>,
+        rx: Mutex<mpsc::Receiver<T>>,
+    }
 
-    impl IpcReceiver {
-        /// Send a message from the child process.
-        #[track_caller]
-        pub fn recv(&mut self) -> MsgFromParent {
-            match decode_from_std_read(&mut self.0, config::standard()) {
-                Ok(msg) => msg,
-                Err(err) => panic!("{err}"),
-            }
+    impl<T> Channel<T> {
+        /// Returns a new [`LazyLock<Channel>`]
+        const fn lazy() -> LazyLock<Self> {
+            LazyLock::new(|| {
+                let (tx, rx) = mpsc::channel();
+                Self { tx, rx: Mutex::new(rx) }
+            })
         }
     }
 }

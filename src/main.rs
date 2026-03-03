@@ -25,9 +25,7 @@ mod meta;
 
 static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
 static META_FUNCTIONS: LazyLock<MetaFunctions> = LazyLock::new(|| MetaFunctions {
-    clipboard_fns: meta::get_clipboard_fns(),
     notify_fns: meta::get_notify_fns(),
-    process_fns: meta::get_process_fns(),
     storage_fns: meta::get_storage_fns(),
 });
 
