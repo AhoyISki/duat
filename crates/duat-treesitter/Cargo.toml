@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["tree-sitter", "duat", "plugin"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["src/*", "../../treesitter-queries/*"]
+include = ["src/*", "treesitter-queries/*"]
 
 [dependencies]
 duat-core = { version = "0.9.0", path = "../duat-core" }
