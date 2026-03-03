@@ -44,10 +44,16 @@ mod global {
     static MODE_NAME: LazyLock<RwData<&str>> = LazyLock::new(RwData::default);
     static CUR_DIR: LazyLock<Mutex<PathBuf>> =
         LazyLock::new(|| Mutex::new(std::env::current_dir().unwrap()));
-    static SENDER: OnceLock<DuatSender> = OnceLock::new();
     static NEW_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
     static WILL_UNLOAD: AtomicBool = AtomicBool::new(false);
     static WILL_QUIT: AtomicBool = AtomicBool::new(false);
+    static DUAT_CHANNEL: LazyLock<Mutex<(DuatSender, Option<DuatReceiver>)>> =
+        LazyLock::new(|| {
+            let (sender, receiver) = mpsc::channel();
+            let sender = DuatSender(sender, &NEW_EVENT_COUNT);
+            let receiver = DuatReceiver(receiver, &NEW_EVENT_COUNT);
+            Mutex::new((sender, Some(receiver)))
+        });
 
     /// Queues a function to be done on the main thread with a
     /// [`Pass`].
@@ -101,10 +107,7 @@ mod global {
 
     /// The only receiver of [`DuatEvent`]s.
     pub(crate) fn receiver() -> DuatReceiver {
-        let (sender, receiver) = mpsc::channel();
-        SENDER.set(DuatSender(sender, &NEW_EVENT_COUNT));
-
-        DuatReceiver(receiver, &NEW_EVENT_COUNT)
+        DUAT_CHANNEL.lock().unwrap().1.take().unwrap()
     }
 
     ////////// Widget Handle getters
@@ -265,7 +268,7 @@ mod global {
 
     /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop.
     pub(crate) fn sender() -> DuatSender {
-        SENDER.get().unwrap().clone()
+        DUAT_CHANNEL.lock().unwrap().0.clone()
     }
 }
 
@@ -309,24 +312,6 @@ impl DuatSender {
     pub fn send_unfocused(&self) {
         self.1.fetch_add(1, Relaxed);
         self.0.send(DuatEvent::UnfocusedFromDuat).unwrap();
-    }
-
-    /// Informs `duat-core` that a reload was successful.
-    ///
-    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
-    #[doc(hidden)]
-    pub fn send_reload_succeeded(&self) {
-        self.1.fetch_add(1, Relaxed);
-        self.0.send(DuatEvent::ReloadSucceeded).unwrap();
-    }
-
-    /// Informs `duat-core` that a reload failed.
-    ///
-    /// **ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE**
-    #[doc(hidden)]
-    pub fn send_reload_failed(&self) {
-        self.1.fetch_add(1, Relaxed);
-        self.0.send(DuatEvent::ReloadFailed).unwrap();
     }
 
     /// Sends any [`DuatEvent`].

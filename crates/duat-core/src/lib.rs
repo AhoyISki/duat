@@ -132,8 +132,6 @@ unsafe impl Sync for Plugins {}
 /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
 #[doc(hidden)]
 pub struct MetaFunctions {
-    /// Cliboard functions.
-    pub clipboard_fns: clipboard::ClipboardFns,
     /// File watching functions.
     pub notify_fns: notify::NotifyFns,
     /// Persistent storage for structs.
@@ -144,40 +142,53 @@ pub mod clipboard {
     //! Clipboard interaction for Duat.
     //!
     //! Just a regular clipboard, no image functionality.
-    use std::sync::OnceLock;
+    use std::sync::Mutex;
 
-    /// A clipboard for Duat, can be platform based, or local
-    ///
-    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
-    #[doc(hidden)]
-    #[derive(Clone, Copy)]
-    pub struct ClipboardFns {
-        /// The function to get the text of the clipboard.
-        pub get_text: fn() -> Option<String>,
-        /// The function to set the text of the clipboard.
-        pub set_text: fn(String),
-    }
+    use crate::session::{self, MsgFromChild, MsgFromParent};
 
-    static CLIPBOARD_FNS: OnceLock<&ClipboardFns> = OnceLock::new();
+    static CLIPBOARD: Mutex<Option<String>> = Mutex::new(None);
 
     /// Gets a [`String`] from the clipboard.
     ///
     /// This can fail if the clipboard does not contain UTF-8 encoded
     /// text.
-    pub fn get_text() -> Option<String> {
-        (CLIPBOARD_FNS.get().unwrap().get_text)()
+    pub fn get() -> Option<String> {
+        let content = if cfg!(target_os = "android") {
+            None
+        } else {
+            let mut channel = session::channel();
+            channel.send(MsgFromChild::RequestClipboard);
+            let MsgFromParent::ClipboardContent(content) = channel.recv() else {
+                panic!("Should've received the content of the clipboard.");
+            };
+            content
+        };
+
+        let mut clipboard = CLIPBOARD.lock().unwrap();
+
+        if let Some(content) = content {
+            *clipboard = Some(content);
+        }
+
+        clipboard.clone()
     }
 
-    /// Sets a [`String`] to the clipboard.
-    pub fn set_text(text: impl std::fmt::Display) {
-        (CLIPBOARD_FNS.get().unwrap().set_text)(text.to_string())
+    /// Sets the content of the clipboard.
+    pub fn set(content: impl std::fmt::Display) {
+        let content = content.to_string();
+        *CLIPBOARD.lock().unwrap() = Some(content.clone());
+
+        #[cfg(not(target_os = "android"))]
+        {
+            session::channel().send(MsgFromChild::UpdateClipboard(content));
+        }
     }
 
-    pub(crate) fn set_clipboard(clipb: &'static ClipboardFns) {
-        CLIPBOARD_FNS
-            .set(clipb)
-            .map_err(|_| {})
-            .expect("Setup ran twice");
+    /// Sets the content of the clipboard without changing the system
+    /// clipboard.
+    pub fn set_local(content: impl std::fmt::Display) {
+        let content = content.to_string();
+        *CLIPBOARD.lock().unwrap() = Some(content.clone());
     }
 }
 
@@ -424,6 +435,8 @@ pub mod process {
     use interprocess::local_socket::prelude::*;
     pub use interrupt_read::InterruptReader;
 
+    use crate::session::{self, MsgFromChild, MsgFromParent};
+
     static PERSISTENT_CHILDREN: LazyLock<Mutex<HashMap<String, PersistentChildEntry>>> =
         LazyLock::new(Mutex::default);
 
@@ -595,14 +608,21 @@ pub mod process {
             .map(|(k, v)| (encode(k), v.map(encode)))
             .collect();
 
-        let spawn_request = PersistentCommandRequest {
+        let mut channel = session::channel();
+        channel.send(MsgFromChild::SpawnProcess(PersistentCommandRequest {
             identifier: identifier.to_string(),
             program: encode(command.get_program()),
             args,
             envs,
+        }));
+        let MsgFromParent::SpawnResult(result) = channel.recv() else {
+            panic!("Should've received the result of a command spawn.");
         };
 
-        todo!();
+        match result {
+            Ok(identifier) => todo!(),
+            Err(err) => Err(std::io::Error::from_raw_os_error(err)),
+        }
     }
 
     /// A request to spawn a new [`PersistentChild`] process.

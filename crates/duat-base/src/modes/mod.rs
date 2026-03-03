@@ -71,7 +71,7 @@ pub fn copy_selections(pa: &mut Pass, handle: &Handle<Buffer>) {
     let mut copies: Vec<String> = Vec::new();
     handle.edit_all(pa, |c| copies.push(c.selection().to_string()));
     if copies.len() == 1 && !copies.first().unwrap().is_empty() {
-        duat_core::clipboard::set_text(copies.first().unwrap());
+        duat_core::clipboard::set(copies.first().unwrap());
     }
     *CLIPBOARD.lock().unwrap() = copies
 }
@@ -85,7 +85,7 @@ pub fn copy_selections(pa: &mut Pass, handle: &Handle<Buffer>) {
 pub fn paste_strings() -> Vec<String> {
     static SYSTEM_CLIPB: Mutex<Option<String>> = Mutex::new(None);
 
-    let paste = duat_core::clipboard::get_text();
+    let paste = duat_core::clipboard::get();
 
     let mut sys_clipb = SYSTEM_CLIPB.lock().unwrap();
 
