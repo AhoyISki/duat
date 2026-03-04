@@ -16,7 +16,6 @@ use std::{
 
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
 
-pub use crate::session::ipc::{MsgFromChild, MsgFromParent, ReloadRequest};
 use crate::{
     Plugins,
     buffer::{Buffer, BufferOpts, History, PathKind},
@@ -27,7 +26,7 @@ use crate::{
         UnfocusedFromDuat,
     },
     mode::{self, Selection, Selections},
-    session::ipc::InitialState,
+    session::ipc::{InitialState, MsgFromChild},
     text::{StrsBuf, TwoPoints},
     ui::{
         Coord, Ui, Windows,
@@ -59,7 +58,8 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
 
     if catch_panic(|| {
         let InitialState { buffers, structs, clipb } = ipc::recv_init();
-
+        
+        crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
             crate::clipboard::set(clipboard);
         }
@@ -76,7 +76,7 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
 
         let buffers = main_loop(ui, is_first_time);
 
-        let result = ipc::send(if buffers.is_empty() {
+        ipc::send(if buffers.is_empty() {
             MsgFromChild::FinalState { buffers, structs: HashMap::new() }
         } else {
             let structs = crate::storage::get_structs();
@@ -488,7 +488,7 @@ fn setup_buffers(
     }
 }
 
-mod ipc {
+pub mod ipc {
     use std::{
         collections::HashMap,
         io::BufReader,
@@ -503,9 +503,11 @@ mod ipc {
         context,
         process::PersistentCommandRequest,
         session::{DuatEvent, ReloadedBuffer},
+        storage::MaybeTypedValues,
     };
 
     /// A message sent from the parent process.
+    #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub enum MsgFromParent {
         /// The initial state of Duat, including buffers and long
@@ -524,11 +526,15 @@ mod ipc {
         /// dir.
         ReloadResult(Result<(), String>),
         /// The result of trying to spawn a process.
-        // This will become an `std::io::RawOsError` once that feature is stabilized.
+        // The i32 will become an `std::io::RawOsError` once that feature is stabilized.
         SpawnResult(Result<String, i32>),
+        /// The result of trying to kill a process.
+        // The i32 will become an `std::io::RawOsError` once that feature is stabilized.
+        KillResult(Result<(), i32>),
     }
 
     /// A message sent from the child process.
+    #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub enum MsgFromChild {
         /// The final state, after ending the child process.
@@ -538,7 +544,7 @@ mod ipc {
         /// are quitting Duat as well.
         FinalState {
             buffers: Vec<Vec<ReloadedBuffer>>,
-            structs: HashMap<String, Vec<u8>>,
+            structs: HashMap<String, MaybeTypedValues>,
         },
         /// Spawn a new long lasting process.
         ///
@@ -570,10 +576,11 @@ mod ipc {
     }
 
     /// The initial state of the duat child process.
+    #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
-    pub(super) struct InitialState {
+    pub struct InitialState {
         pub buffers: Vec<Vec<ReloadedBuffer>>,
-        pub structs: HashMap<String, Vec<u8>>,
+        pub structs: HashMap<String, MaybeTypedValues>,
         pub clipb: Option<String>,
     }
 
@@ -589,11 +596,12 @@ mod ipc {
     static IPC_TX: OnceLock<Mutex<LocalSocketStream>> = OnceLock::new();
     static CLIPB_CHANNEL: LazyLock<Channel<Option<String>>> = Channel::lazy();
     static SPAWN_CHANNEL: LazyLock<Channel<Result<String, i32>>> = Channel::lazy();
+    static KILL_CHANNEL: LazyLock<Channel<Result<(), i32>>> = Channel::lazy();
     static INIT_CHANNEL: LazyLock<Channel<InitialState>> = Channel::lazy();
 
     /// Send a message from the child process.
     #[track_caller]
-    pub fn send(msg: MsgFromChild) {
+    pub(crate) fn send(msg: MsgFromChild) {
         let mut tx = IPC_TX.get().unwrap().lock().unwrap();
         if let Err(err) = encode_into_std_write(msg, &mut *tx, config::standard()) {
             panic!("{err}");
@@ -603,18 +611,25 @@ mod ipc {
     /// Receive the [`InitialState`] event.
     ///
     /// This should be done as Duat is starting.
-    pub fn recv_init() -> InitialState {
+    pub(crate) fn recv_init() -> InitialState {
         INIT_CHANNEL.rx.lock().unwrap().recv().unwrap()
     }
 
     /// Receive the next clipboard event.
-    pub fn recv_clipboard() -> Option<String> {
+    pub(crate) fn recv_clipboard() -> Option<String> {
         CLIPB_CHANNEL.rx.lock().unwrap().recv().unwrap()
     }
 
     /// Receive the next spawn event.
-    pub fn recv_spawn() -> Result<String, i32> {
+    pub(crate) fn recv_spawn() -> Result<String, i32> {
         SPAWN_CHANNEL.rx.lock().unwrap().recv().unwrap()
+    }
+
+    /// Receive the next [`Child`] kill event.
+    ///
+    /// [`Child`]: std::process::Child
+    pub(crate) fn recv_kill() -> Result<(), i32> {
+        KILL_CHANNEL.rx.lock().unwrap().recv().unwrap()
     }
 
     /// Connect to a socket-based ipc channel with the parent process.
@@ -639,39 +654,21 @@ mod ipc {
         };
 
         let tx = LocalSocketStream::connect(send).unwrap();
-        let rx = BufReader::new(LocalSocketStream::connect(recv).unwrap());
+        let mut rx = BufReader::new(LocalSocketStream::connect(recv).unwrap());
 
         std::thread::spawn(move || {
-            match bincode::decode_from_reader(rx, config::standard()).unwrap() {
+            match decode_from_std_read(&mut rx, config::standard()).unwrap() {
                 MsgFromParent::InitialState(state) => INIT_CHANNEL.tx.send(state).unwrap(),
                 MsgFromParent::ClipboardContent(content) => CLIPB_CHANNEL.tx.send(content).unwrap(),
                 MsgFromParent::ReloadResult(result) => {
                     context::sender().send(DuatEvent::ReloadResult(result));
                 }
                 MsgFromParent::SpawnResult(result) => SPAWN_CHANNEL.tx.send(result).unwrap(),
+                MsgFromParent::KillResult(result) => KILL_CHANNEL.tx.send(result).unwrap(),
             };
         });
 
         IPC_TX.set(Mutex::new(tx)).ok().unwrap();
-    }
-
-    /// The channel for communication with the parent executor.
-    pub struct IpcChannel {
-        /// Sends [`MsgFromChild`] to the parent process.
-        tx: LocalSocketStream,
-        /// Receives [`MsgFromParent`] from the parent process.
-        rx: BufReader<LocalSocketStream>,
-    }
-
-    impl IpcChannel {
-        /// Send a message from the child process.
-        #[track_caller]
-        pub fn recv(&mut self) -> MsgFromParent {
-            match decode_from_std_read(&mut self.rx, config::standard()) {
-                Ok(msg) => msg,
-                Err(err) => panic!("{err}"),
-            }
-        }
     }
 
     /// A simple channel to send stuff over.

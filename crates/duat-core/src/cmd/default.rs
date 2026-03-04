@@ -9,7 +9,7 @@ use crate::{
     context::{self, Handle, sender},
     data::Pass,
     mode,
-    session::DuatEvent,
+    session::{self, DuatEvent},
     txt,
     ui::Node,
 };
@@ -279,7 +279,7 @@ pub fn add_defalt_commands() {
     add(
         "reload",
         |_: &mut Pass, opts: ReloadOptions, profile: Option<String>| {
-            sender().send(DuatEvent::RequestReload(crate::session::ReloadRequest {
+            sender().send(DuatEvent::RequestReload(session::ipc::ReloadRequest {
                 clean: opts.clean,
                 update: opts.update,
                 profile: profile.unwrap_or(crate::utils::profile().to_string()),
@@ -329,7 +329,7 @@ pub fn add_defalt_commands() {
                 }
             };
 
-            let buffer = Buffer::new(pk.as_path(), *crate::session::BUFFER_OPTS.get().unwrap());
+            let buffer = Buffer::new(pk.as_path(), *session::BUFFER_OPTS.get().unwrap());
             let node = windows.new_buffer(pa, buffer);
             mode::reset_to(pa, node.handle());
 
@@ -380,7 +380,7 @@ pub fn add_defalt_commands() {
                 }
             };
 
-            let buffer_opts = *crate::session::BUFFER_OPTS.get().unwrap();
+            let buffer_opts = *session::BUFFER_OPTS.get().unwrap();
             windows.open_or_move_to_new_window(pa, pk.clone(), buffer_opts);
 
             Ok(msg.or_else(|| Some(txt!("Opened {pk} on new window"))))
