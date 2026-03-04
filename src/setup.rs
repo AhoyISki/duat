@@ -7,7 +7,7 @@
 use std::{
     any::TypeId,
     path::Path,
-    sync::{LazyLock, Mutex, mpsc::Sender},
+    sync::{LazyLock, Mutex},
 };
 
 use duat_base::{
@@ -16,13 +16,12 @@ use duat_base::{
 };
 use duat_core::{
     buffer::{BufferOpts, History},
-    context::{self, DuatReceiver, DuatSender, cache},
+    context::{self, cache},
     data::Pass,
     hook::{BufferOpened, KeyTyped, ModeSwitched},
     notify::{FromDuat, Watcher},
-    session::{ReloadRequest, ReloadedBuffer, SessionCfg},
     text::txt,
-    ui::{DynSpawnSpecs, Orientation},
+    ui::{DynSpawnSpecs, Orientation, Ui},
 };
 use duat_filetype::FileType;
 #[cfg(feature = "term-ui")]
@@ -46,7 +45,7 @@ pub fn get_panic_message() -> Option<String> {
 }
 
 #[doc(hidden)]
-pub fn pre_setup() {
+pub fn pre_setup() -> Ui {
     static BUFFER_WATCHER: LazyLock<Watcher> = LazyLock::new(|| {
         Watcher::new(|event, from_duat| {
             use dissimilar::Chunk::*;
@@ -110,10 +109,6 @@ pub fn pre_setup() {
     // depend on duat without this feature.
     if !cfg!(feature = "term-ui") {
         panic!("No ui for running Duat has been chosen!");
-    }
-
-    if let Some(duat_tx) = duat_tx {
-        duat_core::context::set_sender(duat_tx);
     }
 
     mode::set_default(Pager::<LogBook>::new());
@@ -318,15 +313,13 @@ pub fn pre_setup() {
     crate::prelude::plug(duat_base::DuatBase);
 
     crate::colorscheme::add_default();
+
+    #[cfg(feature = "term-ui")]
+    duat_core::ui::Ui::new::<duat_term::Ui>()
 }
 
 #[doc(hidden)]
-#[allow(clippy::type_complexity)]
-pub fn run_duat(
-    buffers: Vec<Vec<ReloadedBuffer>>,
-    duat_rx: DuatReceiver,
-    reload_tx: Option<Sender<ReloadRequest>>,
-) -> Option<Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>> {
+pub fn post_setup() -> (Vec<TypeId>, BufferOpts) {
     let default_buffer_opts = {
         let opts = OPTS.lock().unwrap();
         BufferOpts {
@@ -350,15 +343,6 @@ pub fn run_duat(
         }
     };
 
-    let opts = SessionCfg::new(meta_functions, default_buffer_opts);
     let already_plugged = std::mem::take(&mut *ALREADY_PLUGGED.lock().unwrap());
-
-    opts.build(ui, buffers, already_plugged)
-        .start(duat_rx, reload_tx)
+    (already_plugged, default_buffer_opts)
 }
-
-////////// Types used for startup and reloading
-
-/// Channels to send information between the runner and executable
-#[doc(hidden)]
-pub type Channels = (DuatSender, DuatReceiver, Sender<ReloadRequest>);

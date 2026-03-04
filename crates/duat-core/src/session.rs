@@ -230,7 +230,6 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                 }
                 DuatEvent::Quit => {
                     context::declare_will_unload();
-                    context::declare_will_quit();
 
                     for handle in context::windows().buffers(pa) {
                         hook::trigger(pa, BufferUnloaded(handle.clone()));
@@ -556,7 +555,8 @@ pub mod ipc {
         SpawnProcess(PersistentCommandRequest),
         /// Kill a previously spawned long lasting process.
         KillProcess(String),
-        /// Request that the parent executor stop writing to a process.
+        /// Request that the parent executor stop writing to a
+        /// process.
         InterruptWrites(String),
         /// Request an external update to the clipboard.
         RequestClipboard,
@@ -655,7 +655,7 @@ pub mod ipc {
             };
         });
 
-        SOCKET_DIR.set(socket_dir.to_path_buf().leak());
+        SOCKET_DIR.set(socket_dir.to_path_buf().leak()).unwrap();
         IPC_TX.set(Mutex::new(tx)).ok().unwrap();
     }
 

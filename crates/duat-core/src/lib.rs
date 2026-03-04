@@ -199,9 +199,9 @@ pub mod notify {
             LazyLock, Mutex, OnceLock,
             atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
         },
-        time::Duration,
     };
 
+    pub use notify::event;
     use notify::event::{AccessKind, AccessMode, Event, EventKind};
 
     static WATCHERS_DISABLED: AtomicBool = AtomicBool::new(false);
@@ -397,22 +397,6 @@ pub mod notify {
         let count = duat_writes.entry(path).or_insert(0);
         *count = count.saturating_sub(1);
     }
-    /// Sets the functions for file watching.
-    pub(crate) fn set_notify_fns(notify_fns: &'static NotifyFns) {
-        NOTIFY_FNS.set(notify_fns).expect("Setup ran twice");
-    }
-
-    /// Removes all [`Watcher`]s.
-    pub(crate) fn remove_all_watchers() {
-        WATCHERS_DISABLED.store(true, Relaxed);
-        (NOTIFY_FNS.get().unwrap().remove_all_watchers)();
-
-        let mut watcher_count = WATCHER_COUNT.load(Relaxed);
-        while watcher_count > 0 {
-            watcher_count = WATCHER_COUNT.load(Relaxed);
-            std::thread::sleep(Duration::from_millis(5));
-        }
-    }
 }
 
 pub mod process {
@@ -563,6 +547,15 @@ pub mod process {
         /// [killed]: PersistentChild::kill
         pub fn get_stderr(&self) -> Option<PersistentReader> {
             self.stderr.lock().unwrap().take()
+        }
+
+        /// A unique identifier for this `PersistentChild`.
+        ///
+        /// This identifier is given when spawning the process, and is
+        /// a string so you can deterministically retrieve it on
+        /// future reloads.
+        pub fn id(&self) -> &str {
+            &self.id
         }
 
         /// Kill the [`Child`] process.

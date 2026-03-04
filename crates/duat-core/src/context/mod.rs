@@ -46,7 +46,6 @@ mod global {
         LazyLock::new(|| Mutex::new(std::env::current_dir().unwrap()));
     static NEW_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
     static WILL_UNLOAD: AtomicBool = AtomicBool::new(false);
-    static WILL_QUIT: AtomicBool = AtomicBool::new(false);
     static DUAT_CHANNEL: LazyLock<Mutex<(DuatSender, Option<DuatReceiver>)>> =
         LazyLock::new(|| {
             let (sender, receiver) = mpsc::channel();
@@ -242,28 +241,9 @@ mod global {
     pub fn will_unload() -> bool {
         WILL_UNLOAD.load(Ordering::Relaxed)
     }
-
-    /// Wether Duat is in the process of unloading.
-    ///
-    /// You should make use of this function in order to gracefully
-    /// terminate child processes.
-    ///
-    /// This function will be set to true right before the
-    /// [`ConfigUnloaded`] hook is triggered.
-    ///
-    /// [`ConfigUnloaded`]: crate::hook::ConfigUnloaded
-    pub fn will_quit() -> bool {
-        WILL_QUIT.load(Ordering::Relaxed)
-    }
-
     /// Declares that Duat will reload or quit.
     pub(crate) fn declare_will_unload() {
         WILL_UNLOAD.store(true, Ordering::Relaxed)
-    }
-
-    /// Declares that Duat will reload or quit.
-    pub(crate) fn declare_will_quit() {
-        WILL_QUIT.store(true, Ordering::Relaxed)
     }
 
     /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop.

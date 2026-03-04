@@ -4,9 +4,9 @@
 //! [`RawUi`]'s API, in order to figure out what should be included
 //! and what shouldn't.
 use std::{
+    ffi::OsString,
     fmt::Debug,
     io::{self, Write},
-    process::Command,
     sync::{Arc, Mutex, mpsc},
 };
 
@@ -61,7 +61,7 @@ unsafe impl Send for InnerUi {}
 impl RawUi for Ui {
     type Area = Area;
 
-    fn open() {
+    fn open() -> Vec<OsString> {
         use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
 
         terminal::enable_raw_mode().unwrap();
@@ -88,6 +88,8 @@ impl RawUi for Ui {
             )
             .unwrap();
         }
+
+        Vec::new()
     }
 
     fn close() {
@@ -111,16 +113,6 @@ impl RawUi for Ui {
         .unwrap();
 
         terminal::disable_raw_mode().unwrap();
-    }
-
-    fn run_config(config_command: &mut Command) -> std::io::Result<std::process::ExitStatus> {
-        use std::process::Stdio;
-        config_command
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()?
-            .wait()
     }
 
     fn load(duat_tx: DuatSender) -> Self {
