@@ -49,7 +49,6 @@ pub fn ui_is<U: RawUi>() -> bool {
 pub struct Ui {
     ui: &'static (dyn Any + Send + Sync),
     fns: &'static UiFunctions,
-    default_print_info: fn() -> PrintInfo,
 }
 
 impl Ui {
@@ -73,14 +72,13 @@ impl Ui {
         if CALLED.fetch_or(true, Relaxed) {
             panic!("The Ui can only be created once");
         } else {
-            let default_print_info =
-                || PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default());
-                
-            DEFAULT_PRINT_INFO.set(default_print_info).unwrap();
+            DEFAULT_PRINT_INFO
+                .set(|| PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default()))
+                .unwrap();
+            
             Ui {
                 ui: Box::leak(Box::new(U::load(crate::context::sender()))),
                 fns: UiFunctions::new::<U>(),
-                default_print_info,
             }
         }
     }

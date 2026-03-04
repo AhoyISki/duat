@@ -134,8 +134,6 @@ unsafe impl Sync for Plugins {}
 pub struct MetaFunctions {
     /// File watching functions.
     pub notify_fns: notify::NotifyFns,
-    /// Persistent storage for structs.
-    pub storage_fns: storage::StorageFns,
 }
 
 pub mod clipboard {
@@ -144,7 +142,7 @@ pub mod clipboard {
     //! Just a regular clipboard, no image functionality.
     use std::sync::Mutex;
 
-    use crate::session::{self, MsgFromChild, MsgFromParent};
+    use crate::session::{self, ipc::MsgFromChild};
 
     static CLIPBOARD: Mutex<Option<String>> = Mutex::new(None);
 
@@ -156,12 +154,8 @@ pub mod clipboard {
         let content = if cfg!(target_os = "android") {
             None
         } else {
-            let mut channel = session::channel();
-            channel.send(MsgFromChild::RequestClipboard);
-            let MsgFromParent::ClipboardContent(content) = channel.recv() else {
-                panic!("Should've received the content of the clipboard.");
-            };
-            content
+            session::ipc::send(MsgFromChild::RequestClipboard);
+            session::ipc::recv_clipboard()
         };
 
         let mut clipboard = CLIPBOARD.lock().unwrap();
@@ -180,7 +174,7 @@ pub mod clipboard {
 
         #[cfg(not(target_os = "android"))]
         {
-            session::channel().send(MsgFromChild::UpdateClipboard(content));
+            session::ipc::send(MsgFromChild::UpdateClipboard(content));
         }
     }
 
@@ -435,7 +429,7 @@ pub mod process {
     use interprocess::local_socket::prelude::*;
     pub use interrupt_read::InterruptReader;
 
-    use crate::session::{self, MsgFromChild, MsgFromParent};
+    use crate::session::{self, ipc::MsgFromChild};
 
     static PERSISTENT_CHILDREN: LazyLock<Mutex<HashMap<String, PersistentChildEntry>>> =
         LazyLock::new(Mutex::default);
@@ -456,6 +450,19 @@ pub mod process {
     ///
     /// Unless you call [`PersistentChild::kill`], duat will assume
     /// that you want it to be kept alive for future reloads.
+    ///
+    /// # Later retrieval
+    ///
+    /// If you want to retrieve this `PersistentChild` on a future
+    /// reload cycle. You will need to store it by calling
+    /// [`storage::store`], from duat's [`storage`] module.
+    ///
+    /// Since this struct implements [`bincode::Decode`] and
+    /// [`bincode::Encode`], it can be stored and retrieved, even if
+    /// it is part of another struct.
+    ///
+    /// If you don't call `storage::store`, it is assumed that you no
+    /// longer need the process, and it will be killed.
     ///
     /// # Reloads
     ///
@@ -506,8 +513,40 @@ pub mod process {
         ///
         /// [killed]: PersistentChild::kill
         pub stdout: Option<PersistentReader>,
+        /// The standard error of the [`Child`].
+        ///
+        /// This reader is already buffered, so you don't need to wrap
+        /// it in a [`BufReader`] to use it efficiently.
+        ///
+        /// In order to use this correctly, you must follow one of
+        /// three scenarios:
+        ///
+        /// - A reading loop that never stops. This is the most common
+        ///   usecase.
+        /// - If you are going to stop, make sure that the reader is
+        ///   dropped or that you have called
+        ///   [`PersistentReader::give_back`]. This is to ensure that
+        ///   any unread bytes are stored correctly when reloading
+        ///   Duat.
+        /// - If the child has been [killed], then you don't need to
+        ///   do anything in particular.
+        ///
+        /// [killed]: PersistentChild::kill
         pub stderr: Option<PersistentReader>,
         identifier: String,
+    }
+
+    impl PersistentChild {
+        /// Kill the [`Child`] process.
+        pub fn kill(self) -> std::io::Result<()> {
+            let identifier = self.identifier.clone();
+            session::ipc::send(MsgFromChild::KillProcess { identifier });
+            session::ipc::recv_kill().map_err(|err| std::io::Error::from_raw_os_error(err))
+        }
+    }
+
+    impl Drop for PersistentChild {
+        fn drop(&mut self) {}
     }
 
     /// A pair used for reading and decoding.
@@ -567,9 +606,7 @@ pub mod process {
                 }
                 Err(ref err) if err.kind() == ErrorKind::BrokenPipe => loop {
                     _ = self.pair_tx.send(self.pair.take().unwrap());
-                    loop {
-                        std::thread::park();
-                    }
+                    std::thread::park();
                 },
                 Err(err) => Err(err),
             }
@@ -608,18 +645,14 @@ pub mod process {
             .map(|(k, v)| (encode(k), v.map(encode)))
             .collect();
 
-        let mut channel = session::channel();
-        channel.send(MsgFromChild::SpawnProcess(PersistentCommandRequest {
+        session::ipc::send(MsgFromChild::SpawnProcess(PersistentCommandRequest {
             identifier: identifier.to_string(),
             program: encode(command.get_program()),
             args,
             envs,
         }));
-        let MsgFromParent::SpawnResult(result) = channel.recv() else {
-            panic!("Should've received the result of a command spawn.");
-        };
 
-        match result {
+        match session::ipc::recv_spawn() {
             Ok(identifier) => todo!(),
             Err(err) => Err(std::io::Error::from_raw_os_error(err)),
         }
@@ -697,34 +730,59 @@ pub mod process {
 
 pub mod storage {
     //! Utilities for storing items inbetween reloads.
-    use std::sync::OnceLock;
+    use std::{
+        collections::{HashMap, hash_map::Entry},
+        sync::Mutex,
+    };
 
-    use bincode::{Decode, Encode, config::standard, error::EncodeError};
+    use bincode::{BorrowDecode, Decode, Encode, config, error::EncodeError};
 
-    use crate::utils::duat_name;
+    use crate::{context, data::Pass};
 
-    static STORAGE_FNS: OnceLock<&StorageFns> = OnceLock::new();
-
-    /// Functions for storing persistent values.
-    ///
-    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
-    #[doc(hidden)]
-    #[derive(Debug)]
-    pub struct StorageFns {
-        /// Insert a new value into permanent storage.
-        pub insert: fn(String, Vec<u8>),
-        /// Get a value from permanent storage.
-        pub get_if: for<'f> fn(Box<dyn FnMut(&str, &[u8]) -> bool + 'f>) -> Option<Vec<u8>>,
-    }
+    static STORED: Mutex<Option<HashMap<String, MaybeTypedValues>>> = Mutex::new(None);
 
     /// Store a value across reload cycles.
     ///
     /// You can use this function if you want to store a value through
     /// reload cycles, retrieving it after Duat reloads.
-    pub fn store<E: Encode + 'static>(value: E) -> Result<(), EncodeError> {
-        let value = bincode::encode_to_vec(value, standard())?;
-        (STORAGE_FNS.get().unwrap().insert)(duat_name::<E>().to_string(), value);
-        Ok(())
+    ///
+    /// The [`Pass`] argument is used here to ensure that you're doing
+    /// this from the main thread, since storing from other threads
+    /// could result in the object not _actually_ being stored, if
+    /// this function is called in the very small time interval
+    /// inbetween duat taking the stored objects out and unloading the
+    /// config.
+    pub fn store<E>(_: &Pass, value: E)
+    where
+        E: Encode + Send + 'static,
+    {
+        let key = std::any::type_name_of_val(&value).to_string();
+
+        let mut stored = STORED.lock().unwrap();
+        let stored = stored.as_mut().unwrap();
+
+        match stored.entry(key) {
+            Entry::Occupied(mut occupied_entry) => match occupied_entry.get_mut() {
+                MaybeTypedValues::NotTyped(list_of_bytes) => {
+                    let list = std::mem::take(list_of_bytes);
+                    let values = list
+                        .into_iter()
+                        .map(|bytes| MaybeDecoded::<E>::Encoded(bytes))
+                        .chain([MaybeDecoded::Decoded(value)])
+                        .collect();
+
+                    *occupied_entry.get_mut() = MaybeTypedValues::typed(values);
+                }
+                MaybeTypedValues::Typed(typed, _) => {
+                    let list: &mut Vec<MaybeDecoded<E>> = typed.downcast_mut().unwrap();
+                    list.push(MaybeDecoded::Decoded(value));
+                }
+            },
+            Entry::Vacant(vacant_entry) => {
+                let values = vec![MaybeDecoded::Decoded(value)];
+                vacant_entry.insert(MaybeTypedValues::typed(values));
+            }
+        }
     }
 
     /// Retrieve a value that might have been stored on a previous
@@ -736,27 +794,162 @@ pub mod storage {
     /// - The type's name (through [`std::any::type_name`]) hasn't
     ///   changed.
     /// - The type's fields also haven't changed.
-    pub fn get_if<D: Decode<()> + 'static>(mut pred: impl FnMut(&D) -> bool) -> Option<D> {
-        let d_name = duat_name::<D>();
+    pub fn get_if<D>(mut pred: impl FnMut(&D) -> bool) -> Option<D>
+    where
+        D: Decode<()> + Encode + Send + 'static,
+    {
+        let key = std::any::type_name::<D>();
 
-        let value = (STORAGE_FNS.get().unwrap().get_if)(Box::new(move |duat_name, bytes| {
-            if d_name == duat_name
-                && let Some((value, _)) = bincode::decode_from_slice(bytes, standard()).ok()
-                && pred(&value)
-            {
-                true
-            } else {
-                false
+        let mut stored = STORED.lock().unwrap();
+        let stored = stored.as_mut().unwrap();
+
+        let entry = stored.get_mut(key)?;
+
+        let values: &mut Vec<MaybeDecoded<D>> = match entry {
+            MaybeTypedValues::NotTyped(list_of_bytes) => {
+                let list = std::mem::take(list_of_bytes);
+                let values = list
+                    .into_iter()
+                    .map(|bytes| MaybeDecoded::<D>::Encoded(bytes))
+                    .collect();
+
+                *entry = MaybeTypedValues::typed(values);
+                let MaybeTypedValues::Typed(values, _) = entry else {
+                    unreachable!();
+                };
+
+                values.downcast_mut().unwrap()
             }
-        }))?;
+            MaybeTypedValues::Typed(values, _) => values.downcast_mut().unwrap(),
+        };
 
-        let (value, _) = bincode::decode_from_slice(&value, standard()).ok()?;
+        let extracted = values
+            .extract_if(.., |maybe_decoded| {
+                let value = match maybe_decoded {
+                    MaybeDecoded::Encoded(items) => {
+                        let value = match bincode::decode_from_slice(items, config::standard()) {
+                            Ok((value, _)) => value,
+                            Err(err) => {
+                                context::error!("{err}");
+                                return false;
+                            }
+                        };
+
+                        *maybe_decoded = MaybeDecoded::Decoded(value);
+                        let MaybeDecoded::Decoded(value) = maybe_decoded else {
+                            unreachable!()
+                        };
+
+                        value
+                    }
+                    MaybeDecoded::Decoded(value) => value,
+                };
+
+                pred(value)
+            })
+            .next()?;
+
+        let MaybeDecoded::Decoded(value) = extracted else {
+            unreachable!();
+        };
+
         Some(value)
     }
 
-    /// Sets the [`StorageFns`].
-    pub(crate) fn set_storage_fns(storage_fns: &'static StorageFns) {
-        STORAGE_FNS.set(storage_fns).expect("Setup ran twice");
+    /// Take the stored structs for retrieval on a future reload.
+    pub(crate) fn get_structs() -> HashMap<String, MaybeTypedValues> {
+        STORED.lock().unwrap().take().unwrap()
+    }
+
+    /// Set the initial list of stored structs.
+    pub(crate) fn set_structs(structs: HashMap<String, MaybeTypedValues>) {
+        *STORED.lock().unwrap() = Some(structs);
+    }
+
+    /// A possibly typed list of stored values.
+    #[doc(hidden)]
+    pub enum MaybeTypedValues {
+        NotTyped(Vec<Vec<u8>>),
+        Typed(
+            Box<dyn std::any::Any + Send>,
+            fn(&(dyn std::any::Any + Send)) -> Vec<Vec<u8>>,
+        ),
+    }
+
+    impl MaybeTypedValues {
+        fn typed<E: Encode + Send + 'static>(values: Vec<MaybeDecoded<E>>) -> Self {
+            Self::Typed(Box::new(values), |values| {
+                let values: &Vec<MaybeDecoded<E>> = values.downcast_ref().unwrap();
+                values
+                    .iter()
+                    .filter_map(|value| bincode::encode_to_vec(value, config::standard()).ok())
+                    .collect()
+            })
+        }
+    }
+
+    impl std::fmt::Debug for MaybeTypedValues {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::NotTyped(arg0) => f.debug_tuple("NotTyped").field(arg0).finish(),
+                Self::Typed(..) => f.debug_tuple("Typed").finish_non_exhaustive(),
+            }
+        }
+    }
+
+    impl<Context> Decode<Context> for MaybeTypedValues {
+        fn decode<D: bincode::de::Decoder<Context = Context>>(
+            decoder: &mut D,
+        ) -> Result<Self, bincode::error::DecodeError> {
+            Ok(Self::NotTyped(Decode::decode(decoder)?))
+        }
+    }
+
+    impl<'de, Context> BorrowDecode<'de, Context> for MaybeTypedValues {
+        fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
+            decoder: &mut D,
+        ) -> Result<Self, bincode::error::DecodeError> {
+            Ok(Self::NotTyped(Decode::decode(decoder)?))
+        }
+    }
+
+    impl Encode for MaybeTypedValues {
+        fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+            match self {
+                MaybeTypedValues::NotTyped(list_of_bytes) => {
+                    Encode::encode(&list_of_bytes, encoder)
+                }
+                MaybeTypedValues::Typed(any, get_list_of_bytes) => {
+                    Encode::encode(&get_list_of_bytes(any.as_ref()), encoder)
+                }
+            }
+        }
+    }
+
+    /// A struct that might or might not have already been decoded.
+    enum MaybeDecoded<T> {
+        Encoded(Vec<u8>),
+        Decoded(T),
+    }
+
+    impl<T: bincode::Decode<()>> bincode::Decode<()> for MaybeDecoded<T> {
+        fn decode<D: bincode::de::Decoder<Context = ()>>(
+            decoder: &mut D,
+        ) -> Result<Self, bincode::error::DecodeError> {
+            Ok(MaybeDecoded::Encoded(bincode::Decode::decode(decoder)?))
+        }
+    }
+
+    impl<T: bincode::Encode> bincode::Encode for MaybeDecoded<T> {
+        fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+            match self {
+                MaybeDecoded::Encoded(bytes) => bincode::Encode::encode(bytes, encoder),
+                MaybeDecoded::Decoded(value) => {
+                    let bytes = bincode::encode_to_vec(value, config::standard())?;
+                    bincode::Encode::encode(&bytes, encoder)
+                }
+            }
+        }
     }
 }
 

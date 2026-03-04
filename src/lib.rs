@@ -589,7 +589,7 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, BufferClosed, BufferOpened, BufferPrinted, BufferSaved, BufferUnloaded,
-            BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged,
+            BufferUpdated, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, FocusChanged,
             FocusedOnDuat, FormSet, Hookable, KeySent, KeySentTo, KeyTyped, ModeSwitched,
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetOpened,
             WindowOpened,
