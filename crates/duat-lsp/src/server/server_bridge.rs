@@ -13,7 +13,8 @@ use duat_core::{
     context,
     data::Pass,
     hook::{self, ConfigUnloaded},
-    process::is_interrupt,
+    process::PersistentChild,
+    storage,
     text::{Text, txt},
 };
 use jsonrpc_lite::{Id, JsonRpc};
@@ -29,9 +30,9 @@ use crate::config::LanguageServerConfig;
 /// Communication abstraction for communication with language servers.
 #[derive(Clone)]
 pub struct ServerBridge {
-    server_tx: Sender<ServerMessage>,
+    server_tx: Sender<JsonRpcFn>,
     callbacks: Callbacks,
-    initialize_backlog: Arc<Mutex<Option<Vec<ServerMessage>>>>,
+    initialize_backlog: Arc<Mutex<Option<Vec<JsonRpcFn>>>>,
 }
 
 impl ServerBridge {
@@ -44,9 +45,7 @@ impl ServerBridge {
     ) -> Result<Self, Text> {
         use std::io::ErrorKind;
 
-        struct Key;
-
-        let command = config.command.as_deref().unwrap_or(server_name);
+        let cmd_name = config.command.as_deref().unwrap_or(server_name);
 
         let identifier = if config.is_single_instance {
             server_name.to_string()
@@ -55,31 +54,36 @@ impl ServerBridge {
         };
 
         let mut already_initialized = true;
-        let mut child = duat_core::process::get_or_spawn::<Key>(identifier, || {
-            let mut command = std::process::Command::new(command);
-            already_initialized = false;
-            command
-                .args(&config.args)
-                .envs(&config.envs)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped());
-            command
-        })
-        .map_err(|err| match err.kind() {
-            ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                txt!("{err}: [a]{command}")
+        let mut child = match storage::get_if(|child: &PersistentChild| child.id() == identifier) {
+            Some(child) => child,
+            None => {
+                let mut command = std::process::Command::new(cmd_name);
+                already_initialized = false;
+                command
+                    .args(&config.args)
+                    .envs(&config.envs)
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped());
+
+                duat_core::process::spawn_persistent(identifier, &mut command).map_err(|err| {
+                    match err.kind() {
+                        ErrorKind::NotFound | ErrorKind::PermissionDenied => {
+                            txt!("{err}: [a]{cmd_name}")
+                        }
+                        _ => txt!("{err}"),
+                    }
+                })?
             }
-            _ => txt!("{err}"),
-        })?;
+        };
 
         let (server_tx, server_rx) = mpsc::channel();
 
         let mut stdin = child.stdin.take().expect("Couldn't take stdin");
-        let mut stdout = child.stdout.take().expect("Couldn't take stdout");
-        let mut stderr = child.stderr.take().expect("Couldn't take stderr");
+        let mut stdout = child.get_stdout().expect("Couldn't take stdout");
+        let mut stderr = child.get_stderr().expect("Couldn't take stderr");
 
-        let stderr_handle = std::thread::spawn({
+        std::thread::spawn({
             let server_name = server_name.to_string();
             move || {
                 let mut line = String::new();
@@ -90,7 +94,6 @@ impl ServerBridge {
                             context::debug!("[log.bracket]([]{server_name}[log.bracket])[]{line}");
                             line.clear();
                         }
-                        Err(err) if is_interrupt(&err) => break stderr,
                         Err(err) => context::error!("{err}"),
                     }
                 }
@@ -103,19 +106,16 @@ impl ServerBridge {
             initialize_backlog: Arc::new(Mutex::new((!already_initialized).then_some(Vec::new()))),
         };
 
-        let stdout_handle = std::thread::spawn({
+        std::thread::spawn({
             let callbacks = server_bridge.callbacks.clone();
             move || {
-                if let Err(err) = stdout_loop(callbacks, &mut stdout)
-                    && !is_interrupt(&err)
-                {
+                if let Err(err) = stdout_loop(callbacks, &mut stdout) {
                     context::error!("{err}");
                 }
-                stdout
             }
         });
 
-        let stdin_handle = std::thread::spawn(move || {
+        std::thread::spawn(move || {
             if let Err(err) = stdin_loop(server_rx, &mut stdin) {
                 context::error!("{err}");
             }
@@ -124,19 +124,12 @@ impl ServerBridge {
 
         hook::add_once::<ConfigUnloaded>({
             let server_bridge = server_bridge.clone();
-            move |_, _| {
-                server_bridge
-                    .server_tx
-                    .send(ServerMessage::ExitReceiver)
-                    .unwrap();
-                if context::will_quit() {
+            move |pa, is_quitting| {
+                if is_quitting {
                     server_bridge.send_request::<Shutdown>((), |_, _| {});
                     server_bridge.send_notification::<Exit>(())
                 } else {
-                    child.stdin = Some(stdin_handle.join().unwrap());
-                    child.stdout = Some(stdout_handle.join().unwrap());
-                    child.stderr = Some(stderr_handle.join().unwrap());
-                    duat_core::process::store::<Key>("rust-analyzer", child);
+                    storage::store(pa, child);
                 }
             }
         });
@@ -151,7 +144,7 @@ impl ServerBridge {
         params: R::Params,
         callback: impl FnOnce(&mut Pass, R::Result) + Send + 'static,
     ) {
-        let message = ServerMessage::JsonRpcFn(Box::new(move || {
+        let message = Box::new(move || {
             let params = serde_json::to_value(params).map_err(|err| {
                 std::io::Error::other(format!("Failed to parse parameters: {err}"))
             })?;
@@ -161,7 +154,7 @@ impl ServerBridge {
                 R::METHOD,
                 params,
             ))
-        }));
+        });
 
         if TypeId::of::<R>() != TypeId::of::<Initialize>()
             && let Some(backlog) = self.initialize_backlog.lock().unwrap().as_mut()
@@ -186,13 +179,13 @@ impl ServerBridge {
     }
 
     pub fn cancel<R: Request>(&self) {
-        let message = ServerMessage::JsonRpcFn(Box::new(move || {
+        let message = Box::new(move || {
             Ok(JsonRpc::request_with_params(
                 Id::Num(0),
                 Cancel::METHOD,
                 serde_json::to_value(method_id(R::METHOD).unwrap())?,
             ))
-        }));
+        });
 
         if let Some(backlog) = self.initialize_backlog.lock().unwrap().as_mut() {
             backlog.push(message);
@@ -203,13 +196,13 @@ impl ServerBridge {
 
     /// Sends a notification alongside its parameters.
     pub fn send_notification<N: Notification>(&self, params: N::Params) {
-        let message = ServerMessage::JsonRpcFn(Box::new(move || {
+        let message = Box::new(move || {
             let params = serde_json::to_value(params).map_err(|err| {
                 std::io::Error::other(format!("Failed to parse parameters: {err}"))
             })?;
 
             Ok(JsonRpc::notification_with_params(N::METHOD, params))
-        }));
+        });
 
         if let Some(backlog) = self.initialize_backlog.lock().unwrap().as_mut() {
             backlog.push(message);
@@ -224,12 +217,12 @@ impl ServerBridge {
     /// This will send the backlogged messages to the server.
     pub fn declare_initialized(&self) {
         self.server_tx
-            .send(ServerMessage::JsonRpcFn(Box::new(move || {
+            .send(Box::new(move || {
                 Ok(JsonRpc::notification_with_params(
                     Initialized::METHOD,
                     serde_json::to_value(InitializedParams {}).unwrap(),
                 ))
-            })))
+            }))
             .unwrap();
 
         let backlog = self.initialize_backlog.lock().unwrap().take();
@@ -244,15 +237,9 @@ impl ServerBridge {
     }
 }
 
-fn stdin_loop(
-    server_rx: mpsc::Receiver<ServerMessage>,
-    stdin: &mut impl Write,
-) -> std::io::Result<()> {
-    for server_message in server_rx {
-        let content = serde_json::to_string(&match server_message {
-            ServerMessage::JsonRpcFn(jsonrpc_fn) => jsonrpc_fn()?,
-            ServerMessage::ExitReceiver => return Ok(()),
-        })?;
+fn stdin_loop(server_rx: mpsc::Receiver<JsonRpcFn>, stdin: &mut impl Write) -> std::io::Result<()> {
+    for jsonrpc_fn in server_rx {
+        let content = serde_json::to_string(&jsonrpc_fn()?)?;
 
         write!(stdin, "Content-Length: {}\r\n\r\n{content}", content.len())?;
         stdin.flush()?;
@@ -400,9 +387,5 @@ fn method_id(method_name: &str) -> Option<Id> {
     }
 }
 
-enum ServerMessage {
-    JsonRpcFn(Box<dyn FnOnce() -> std::io::Result<JsonRpc> + Send>),
-    ExitReceiver,
-}
-
+type JsonRpcFn = Box<dyn FnOnce() -> std::io::Result<JsonRpc> + Send>;
 type Callbacks = Arc<Mutex<HashMap<Id, Box<dyn FnOnce(&mut Pass, Value) + Send + 'static>>>>;

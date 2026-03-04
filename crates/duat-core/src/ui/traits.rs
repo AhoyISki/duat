@@ -14,7 +14,7 @@
 //!
 //! [`Area`]: super::Area
 //! [`Ui`]: super::Ui
-use std::process::Command;
+use std::ffi::OsString;
 
 use bincode::{Decode, Encode};
 
@@ -51,40 +51,24 @@ pub trait RawUi: Sized + Send + Sync + 'static {
 
     /// A function to be executed when opening Duat.
     ///
-    /// This, alongside [`RawUi::run_config`] and [`RawUi::close`] are
-    /// the only functions that will be executed from the Duat
-    /// application. This means that any changes on `static` variables
-    /// will not be reflected on the config [`Command`], so keep that
-    /// in mind.
-    fn open();
+    /// This, alongside [`RawUi::close`] is the only functions that
+    /// will be executed from the Duat application. This means
+    /// that any changes on `static` variables will not be
+    /// reflected on the config [`Command`], so keep that in mind.
+    ///
+    /// You can additionally provide a list of extra arguments to be
+    /// passed to the child process. Duat makes use of the first
+    /// four arguments, but after that, you can put in whatever you
+    /// want.
+    fn open() -> Vec<OsString>;
 
     /// A function to be executed when closing Duat.
     ///
-    /// This, alongside [`RawUi::run_config`] and [`RawUi::open`] are
-    /// the only functions that will be executed from the Duat
-    /// application. This means that any changes on `static` variables
-    /// will not be reflected on the config [`Command`], so keep that
-    /// in mind.
+    /// This, alongside [`RawUi::open`] is the only functions that
+    /// will be executed from the Duat application. This means
+    /// that any changes on `static` variables will not be
+    /// reflected on the config [`Command`], so keep that in mind.
     fn close();
-
-    /// Runs the configuration crate.
-    ///
-    /// This function gives the Ui full power to decide how it will
-    /// deal with input, output, and how to control windows, if it
-    /// requires them.
-    ///
-    /// It will be executed every time the config is recompiled, as
-    /// well as the first time it is executed.
-    ///
-    /// The duat config does not make use of stdin, stdout and stderr,
-    /// so you are free to take them and use them however you please.
-    ///
-    /// This, alongside [`RawUi::open`] and [`RawUi::close`] are the
-    /// only functions that will be executed from the Duat
-    /// application. This means that any changes on `static` variables
-    /// will not be reflected on the config [`Command`], so keep that
-    /// in mind.
-    fn run_config(config_command: &mut Command) -> std::io::Result<std::process::ExitStatus>;
 
     ////////// Configuration address space functions.
 

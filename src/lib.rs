@@ -529,9 +529,13 @@ pub mod widgets {
 #[doc(hidden)]
 pub mod private_exports {
     //! Exports from duat, not meant for direct use.
-    pub use duat_core::{context::DuatReceiver, session::ReloadedBuffer, utils::catch_panic};
+    pub use duat_core::{
+        context::DuatReceiver,
+        session::{ReloadedBuffer, start},
+        utils::catch_panic,
+    };
 
-    pub use crate::setup::{Channels, get_panic_message, pre_setup, run_duat};
+    pub use crate::setup::{get_panic_message, post_setup, pre_setup};
 }
 
 /// Pre and post setup for Duat
@@ -541,24 +545,20 @@ pub mod private_exports {
 #[macro_export]
 macro_rules! setup_duat {
     ($setup:expr) => {
-        use std::sync::Mutex;
-
+        use ::std::sync::Mutex;
         use $crate::{
             prelude::{Buffer, Text, context::Logs, form::Palette},
             private_exports::*,
         };
 
-        #[unsafe(no_mangle)]
-        fn run(
-            initials: Initials,
-            ms: MetaStatics,
-            buffers: Vec<Vec<ReloadedBuffer>>,
-            (duat_tx, duat_rx, reload_tx): Channels,
-        ) -> Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String> {
+        fn main() -> Result<(), Box<dyn ::std::error::Error>> {
             let ret = catch_panic(|| {
-                pre_setup(ms.0, Some(initials), Some(duat_tx));
-                catch_panic($setup);
-                run_duat(ms, buffers, duat_rx, Some(reload_tx))
+                start(|| {
+                    let ui = pre_setup();
+                    catch_panic($setup);
+                    let (already_plugged, buffer_opts) = post_setup();
+                    (ui, already_plugged, buffer_opts)
+                })
             });
 
             match ret.flatten() {

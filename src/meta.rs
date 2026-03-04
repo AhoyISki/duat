@@ -48,6 +48,7 @@ pub fn get_clipboard_fns() -> ClipboardFns {
         },
     }
 }
+
 #[cfg(target_os = "android")]
 fn get_clipboard() -> ClipboardFns {
     duat_core::clipboard::ClipboardFns {
