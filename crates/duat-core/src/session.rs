@@ -54,11 +54,11 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
         (!config_dir.is_empty()).then_some(config_dir),
     );
 
-    ipc::initialize_channel(&socket_dir);
+    ipc::initialize_main_channel(&socket_dir);
 
     if catch_panic(|| {
         let InitialState { buffers, structs, clipb } = ipc::recv_init();
-        
+
         crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
             crate::clipboard::set(clipboard);
@@ -491,13 +491,13 @@ fn setup_buffers(
 pub mod ipc {
     use std::{
         collections::HashMap,
-        io::BufReader,
-        path::Path,
+        io::{BufReader, Chain, Cursor, Read},
+        path::{Path, PathBuf},
         sync::{LazyLock, Mutex, OnceLock, mpsc},
     };
 
     use bincode::{config, decode_from_std_read, encode_into_std_write};
-    use interprocess::local_socket::{GenericFilePath, GenericNamespaced, prelude::*};
+    use interprocess::local_socket::{GenericFilePath, GenericNamespaced, Name, prelude::*};
 
     use crate::{
         context,
@@ -555,7 +555,9 @@ pub mod ipc {
         /// through local sockets from the [`interprocess`] crate.
         SpawnProcess(PersistentCommandRequest),
         /// Kill a previously spawned long lasting process.
-        KillProcess { identifier: String },
+        KillProcess(String),
+        /// Request that the parent executor stop writing to a process.
+        InterruptWrites(String),
         /// Request an external update to the clipboard.
         RequestClipboard,
         /// Manually set the content of the clipboard.
@@ -593,6 +595,7 @@ pub mod ipc {
         pub profile: String,
     }
 
+    static SOCKET_DIR: OnceLock<&Path> = OnceLock::new();
     static IPC_TX: OnceLock<Mutex<LocalSocketStream>> = OnceLock::new();
     static CLIPB_CHANNEL: LazyLock<Channel<Option<String>>> = Channel::lazy();
     static SPAWN_CHANNEL: LazyLock<Channel<Result<String, i32>>> = Channel::lazy();
@@ -633,28 +636,12 @@ pub mod ipc {
     }
 
     /// Connect to a socket-based ipc channel with the parent process.
-    pub fn initialize_channel(socket_dir: &Path) {
-        let (send, recv) = (socket_dir.join("0"), socket_dir.join("1"));
-        let [send, recv] = if GenericNamespaced::is_supported() {
-            [
-                send.to_string_lossy()
-                    .to_string()
-                    .to_ns_name::<GenericNamespaced>()
-                    .unwrap(),
-                recv.to_string_lossy()
-                    .to_string()
-                    .to_ns_name::<GenericNamespaced>()
-                    .unwrap(),
-            ]
-        } else {
-            [
-                send.to_fs_name::<GenericFilePath>().unwrap(),
-                recv.to_fs_name::<GenericFilePath>().unwrap(),
-            ]
-        };
+    pub fn initialize_main_channel(socket_dir: &Path) {
+        let stdin = get_name(socket_dir.join("0"));
+        let stdout = get_name(socket_dir.join("1"));
 
-        let tx = LocalSocketStream::connect(send).unwrap();
-        let mut rx = BufReader::new(LocalSocketStream::connect(recv).unwrap());
+        let tx = LocalSocketStream::connect(stdin).unwrap();
+        let mut rx = BufReader::new(LocalSocketStream::connect(stdout).unwrap());
 
         std::thread::spawn(move || {
             match decode_from_std_read(&mut rx, config::standard()).unwrap() {
@@ -668,7 +655,43 @@ pub mod ipc {
             };
         });
 
+        SOCKET_DIR.set(socket_dir.to_path_buf().leak());
         IPC_TX.set(Mutex::new(tx)).ok().unwrap();
+    }
+
+    /// Connect to a [`PersistentChild`] channel.
+    ///
+    /// [`PersistentChild`]: crate::process::PersistentChild
+    pub(crate) fn connect_process_channel(
+        identifier: &str,
+        stdout_bytes: Vec<u8>,
+        stderr_bytes: Vec<u8>,
+    ) -> std::io::Result<(LocalSocketStream, [IpcReader; 2])> {
+        let socket_dir = SOCKET_DIR.get().unwrap().join("proc").join(identifier);
+
+        let stdin = LocalSocketStream::connect(get_name(socket_dir.join("0")))?;
+        let stdout = BufReader::new(
+            Cursor::new(stdout_bytes)
+                .chain(LocalSocketStream::connect(get_name(socket_dir.join("1")))?),
+        );
+        let stderr = BufReader::new(
+            Cursor::new(stderr_bytes)
+                .chain(LocalSocketStream::connect(get_name(socket_dir.join("2")))?),
+        );
+
+        Ok((stdin, [stdout, stderr]))
+    }
+
+    /// Get the name of a [`LocalSocketStream`]
+    fn get_name(path: PathBuf) -> Name<'static> {
+        if GenericNamespaced::is_supported() {
+            path.to_string_lossy()
+                .to_string()
+                .to_ns_name::<GenericNamespaced>()
+                .unwrap()
+        } else {
+            path.to_fs_name::<GenericFilePath>().unwrap()
+        }
     }
 
     /// A simple channel to send stuff over.
@@ -686,4 +709,7 @@ pub mod ipc {
             })
         }
     }
+
+    /// A stream of bytes, including possibly missed ones.
+    pub type IpcReader = BufReader<Chain<Cursor<Vec<u8>>, LocalSocketStream>>;
 }

@@ -419,27 +419,20 @@ pub mod process {
     //! Utilities for spawning processes that should outlive the
     //! config.
     use std::{
-        collections::HashMap,
         ffi::{OsStr, OsString},
-        io::{BufRead, BufReader, ErrorKind, Read},
+        io::{BufRead, ErrorKind, Read},
         process::{Child, Command, Stdio},
-        sync::{LazyLock, Mutex, mpsc},
+        sync::{Mutex, mpsc},
     };
 
+    use bincode::{Decode, Encode, config, error::DecodeError};
     use interprocess::local_socket::prelude::*;
     pub use interrupt_read::InterruptReader;
 
-    use crate::session::{self, ipc::MsgFromChild};
-
-    static PERSISTENT_CHILDREN: LazyLock<Mutex<HashMap<String, PersistentChildEntry>>> =
-        LazyLock::new(Mutex::default);
-
-    /// An entry for a [`PersistentChild`], which can retrieve the
-    /// buffered bytes, keeping them for the next reload cycle.
-    struct PersistentChildEntry {
-        stdout_rx: mpsc::Receiver<ReaderPair>,
-        stderr_rx: mpsc::Receiver<ReaderPair>,
-    }
+    use crate::session::{
+        self,
+        ipc::{IpcReader, MsgFromChild},
+    };
 
     /// A child process that will persist over multiple reload cycles.
     ///
@@ -455,16 +448,18 @@ pub mod process {
     ///
     /// If you want to retrieve this `PersistentChild` on a future
     /// reload cycle. You will need to store it by calling
-    /// [`storage::store`], from duat's [`storage`] module.
+    /// [`storage::store`], from duat's [`storage`] module. You can
+    /// only do this once, trying it again will (logically) cause a
+    /// panic.
     ///
-    /// Since this struct implements [`bincode::Decode`] and
-    /// [`bincode::Encode`], it can be stored and retrieved, even if
+    /// Since this struct implements [`Decode`] and
+    /// [`Encode`], it can be stored and retrieved, even if
     /// it is part of another struct.
     ///
     /// If you don't call `storage::store`, it is assumed that you no
     /// longer need the process, and it will be killed.
     ///
-    /// # Reloads
+    /// # Unread bytes
     ///
     /// When reloading Duat, the stdin, stdout and stderr processes
     /// are guaranteed to not lose any bytes.
@@ -473,14 +468,15 @@ pub mod process {
     /// buffering and/or aren't doing a deserialization attempt with
     /// said data.
     ///
-    /// If you want to do deserialization (via [`bincode::Decode`]),
-    /// you will want to use [`PersistentReader::decode_as`]. This
-    /// method will fail to decode if a reload is requested midway
-    /// through reading, but the bytes will be saved for the next
-    /// reload cycle, where you can start decoding again.
+    /// If you want to do deserialization (via [`Decode`]),
+    /// you will want to use [`PersistentReader::decode_bytes_as`].
+    /// This method will fail to decode if a reload is requested
+    /// midway through reading, but the bytes will be saved for
+    /// the next reload cycle, where you can start decoding again.
     ///
     /// [local sockets]: interprocess::local_socket::Stream
     /// [`storage::store`]: crate::storage::store
+    /// [`storage`]: crate::storage
     pub struct PersistentChild {
         /// The standard input of the [`Child`].
         ///
@@ -493,6 +489,36 @@ pub mod process {
         ///
         /// This means that no buffering would be done anyways
         pub stdin: Option<LocalSocketStream>,
+        stdout: Mutex<Option<PersistentReader>>,
+        stderr: Mutex<Option<PersistentReader>>,
+        stdout_rx: mpsc::Receiver<ReaderPair>,
+        stderr_rx: mpsc::Receiver<ReaderPair>,
+        id: String,
+    }
+
+    impl PersistentChild {
+        fn new(id: String, stdout_bytes: Vec<u8>, stderr_bytes: Vec<u8>) -> Self {
+            let (stdin, [stdout, stderr]) =
+                session::ipc::connect_process_channel(&id, stdout_bytes, stderr_bytes).unwrap();
+            let (stdout_tx, stdout_rx) = mpsc::channel();
+            let (stderr_tx, stderr_rx) = mpsc::channel();
+
+            Self {
+                stdin: Some(stdin),
+                stdout: Mutex::new(Some(PersistentReader {
+                    pair: Some(ReaderPair { decode_bytes: Vec::new(), conn: stdout }),
+                    pair_tx: stdout_tx,
+                })),
+                stderr: Mutex::new(Some(PersistentReader {
+                    pair: Some(ReaderPair { decode_bytes: Vec::new(), conn: stderr }),
+                    pair_tx: stderr_tx,
+                })),
+                stdout_rx,
+                stderr_rx,
+                id,
+            }
+        }
+
         /// The standard output of the [`Child`].
         ///
         /// This reader is already buffered, so you don't need to wrap
@@ -512,7 +538,10 @@ pub mod process {
         ///   do anything in particular.
         ///
         /// [killed]: PersistentChild::kill
-        pub stdout: Option<PersistentReader>,
+        pub fn get_stdout(&self) -> Option<PersistentReader> {
+            self.stdout.lock().unwrap().take()
+        }
+
         /// The standard error of the [`Child`].
         ///
         /// This reader is already buffered, so you don't need to wrap
@@ -532,16 +561,76 @@ pub mod process {
         ///   do anything in particular.
         ///
         /// [killed]: PersistentChild::kill
-        pub stderr: Option<PersistentReader>,
-        identifier: String,
-    }
+        pub fn get_stderr(&self) -> Option<PersistentReader> {
+            self.stderr.lock().unwrap().take()
+        }
 
-    impl PersistentChild {
         /// Kill the [`Child`] process.
         pub fn kill(self) -> std::io::Result<()> {
-            let identifier = self.identifier.clone();
-            session::ipc::send(MsgFromChild::KillProcess { identifier });
-            session::ipc::recv_kill().map_err(|err| std::io::Error::from_raw_os_error(err))
+            session::ipc::send(MsgFromChild::KillProcess(self.id.clone()));
+            session::ipc::recv_kill().map_err(std::io::Error::from_raw_os_error)
+        }
+    }
+
+    impl<Context> Decode<Context> for PersistentChild {
+        fn decode<D: bincode::de::Decoder<Context = Context>>(
+            decoder: &mut D,
+        ) -> Result<Self, DecodeError> {
+            let stored = StoredPersistentChild::decode(decoder)?;
+            Ok(Self::new(
+                stored.id,
+                stored.stdout_bytes,
+                stored.stderr_bytes,
+            ))
+        }
+    }
+
+    impl Encode for PersistentChild {
+        /// Encodes the `PersistentChild`
+        ///
+        /// This can only be done once, trying to do it again will
+        /// result in a panic.
+        #[track_caller]
+        fn encode<E: bincode::enc::Encoder>(
+            &self,
+            encoder: &mut E,
+        ) -> Result<(), bincode::error::EncodeError> {
+            session::ipc::send(MsgFromChild::InterruptWrites(self.id.clone()));
+
+            let (stdout, stderr) = (
+                self.stdout.lock().unwrap().take(),
+                self.stderr.lock().unwrap().take(),
+            );
+
+            let (stdout_bytes, stderr_bytes) = match (stdout, stderr) {
+                (None, None) => {
+                    let stdout_bytes = self.stdout_rx.recv().unwrap().consume();
+                    let stderr_bytes = self.stderr_rx.recv().unwrap().consume();
+                    (stdout_bytes, stderr_bytes)
+                }
+                (None, Some(mut stderr)) => {
+                    let stdout_bytes = self.stdout_rx.recv().unwrap().consume();
+                    let stderr_bytes = stderr.pair.take().unwrap().consume();
+                    (stdout_bytes, stderr_bytes)
+                }
+                (Some(mut stdout), None) => {
+                    let stdout_bytes = stdout.pair.take().unwrap().consume();
+                    let stderr_bytes = self.stderr_rx.recv().unwrap().consume();
+                    (stderr_bytes, stdout_bytes)
+                }
+                (Some(mut stdout), Some(mut stderr)) => {
+                    let stdout_bytes = stdout.pair.take().unwrap().consume();
+                    let stderr_bytes = stderr.pair.take().unwrap().consume();
+                    (stderr_bytes, stdout_bytes)
+                }
+            };
+
+            StoredPersistentChild {
+                id: self.id.clone(),
+                stdout_bytes,
+                stderr_bytes,
+            }
+            .encode(encoder)
         }
     }
 
@@ -552,7 +641,15 @@ pub mod process {
     /// A pair used for reading and decoding.
     struct ReaderPair {
         decode_bytes: Vec<u8>,
-        conn: BufReader<LocalSocketStream>,
+        conn: IpcReader,
+    }
+
+    impl ReaderPair {
+        /// Consumes the reader, returning all unread bytes.
+        fn consume(mut self) -> Vec<u8> {
+            _ = self.conn.read_exact(&mut self.decode_bytes);
+            self.decode_bytes
+        }
     }
 
     /// A [`Read`]er which is meant to be used across multiple reload
@@ -566,6 +663,39 @@ pub mod process {
     }
 
     impl PersistentReader {
+        /// Attempts to decode the bytes as a type.
+        pub fn decode_bytes_as<D: Decode<()>>(&mut self) -> Result<D, DecodeError> {
+            struct RepeatReader<'p>(&'p mut PersistentReader);
+
+            impl<'p> Read for RepeatReader<'p> {
+                fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                    let reader = &mut self.0;
+                    let pair = reader.pair.as_mut().unwrap();
+
+                    match pair.conn.read(buf) {
+                        Ok(bytes) => {
+                            pair.decode_bytes.extend_from_slice(buf);
+                            Ok(bytes)
+                        }
+                        Err(err) if err.kind() == ErrorKind::BrokenPipe => {
+                            _ = reader.pair_tx.send(reader.pair.take().unwrap());
+                            // We loop forever, to abstract away the reloading of Duat in reading
+                            // loops.
+                            loop {
+                                std::thread::park();
+                            }
+                        }
+                        Err(err) => Err(err),
+                    }
+                }
+            }
+
+            let value = bincode::decode_from_std_read(&mut RepeatReader(self), config::standard())?;
+            self.pair.as_mut().unwrap().decode_bytes.clear();
+
+            Ok(value)
+        }
+
         /// Returns this [`Read`]er (and its bytes) to be retrieved
         /// later on.
         ///
@@ -620,8 +750,10 @@ pub mod process {
 
     impl Drop for PersistentReader {
         fn drop(&mut self) {
-            // The entry may have already been removed.
-            _ = self.pair_tx.send(self.pair.take().unwrap());
+            if let Some(pair) = self.pair.take() {
+                // The entry may have already been removed.
+                _ = self.pair_tx.send(pair);
+            }
         }
     }
 
@@ -632,37 +764,38 @@ pub mod process {
     /// stdio. This is because stdin, stdout and stderr are
     /// reserved for use by the [`Ui`] implementation, so something
     /// like [`Stdio::inherit`] would interfere with that.
+    ///
+    /// [`Ui`]: crate::ui::Ui
     pub fn spawn_persistent(
-        identifier: impl ToString,
+        id: impl ToString,
         command: &mut Command,
     ) -> std::io::Result<PersistentChild> {
         let encode = |value: &OsStr| value.as_encoded_bytes().to_vec();
 
-        let args = command.get_args().into_iter().map(encode).collect();
+        let args = command.get_args().map(encode).collect();
         let envs = command
             .get_envs()
-            .into_iter()
             .map(|(k, v)| (encode(k), v.map(encode)))
             .collect();
 
         session::ipc::send(MsgFromChild::SpawnProcess(PersistentCommandRequest {
-            identifier: identifier.to_string(),
+            id: id.to_string(),
             program: encode(command.get_program()),
             args,
             envs,
         }));
 
         match session::ipc::recv_spawn() {
-            Ok(identifier) => todo!(),
+            Ok(id) => Ok(PersistentChild::new(id, Vec::new(), Vec::new())),
             Err(err) => Err(std::io::Error::from_raw_os_error(err)),
         }
     }
 
     /// A request to spawn a new [`PersistentChild`] process.
     #[doc(hidden)]
-    #[derive(bincode::Decode, bincode::Encode)]
+    #[derive(Decode, Encode)]
     pub struct PersistentCommandRequest {
-        identifier: String,
+        id: String,
         program: Vec<u8>,
         args: Vec<Vec<u8>>,
         envs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
@@ -671,7 +804,7 @@ pub mod process {
     impl PersistentCommandRequest {
         /// Spawn the [`Command`].
         ///
-        /// Returns the identifier of this command, as well as the
+        /// Returns the id of this command, as well as the
         /// [`Child`] that was spawned.
         ///
         /// This should only be done in the Duat executable.
@@ -693,7 +826,7 @@ pub mod process {
                 .spawn()
                 .map_err(|err| err.raw_os_error().unwrap())?;
 
-            Ok((self.identifier, child))
+            Ok((self.id, child))
         }
     }
 
@@ -702,7 +835,7 @@ pub mod process {
             let decode = |value: Vec<u8>| unsafe { OsString::from_encoded_bytes_unchecked(value) };
 
             f.debug_struct("PersistentCommandRequest")
-                .field("identifier", &self.identifier)
+                .field("id", &self.id)
                 .field("program", &decode(self.program.clone()))
                 .field(
                     "args",
@@ -721,10 +854,13 @@ pub mod process {
         }
     }
 
-    #[derive(bincode::Decode, bincode::Encode)]
+    /// A stored [`PersistentChild`]
+    #[doc(hidden)]
+    #[derive(Decode, Encode)]
     struct StoredPersistentChild {
-        identifier: String,
-        bytes: Vec<u8>,
+        id: String,
+        stdout_bytes: Vec<u8>,
+        stderr_bytes: Vec<u8>,
     }
 }
 
@@ -932,21 +1068,21 @@ pub mod storage {
         Decoded(T),
     }
 
-    impl<T: bincode::Decode<()>> bincode::Decode<()> for MaybeDecoded<T> {
+    impl<T: Decode<()>> Decode<()> for MaybeDecoded<T> {
         fn decode<D: bincode::de::Decoder<Context = ()>>(
             decoder: &mut D,
         ) -> Result<Self, bincode::error::DecodeError> {
-            Ok(MaybeDecoded::Encoded(bincode::Decode::decode(decoder)?))
+            Ok(MaybeDecoded::Encoded(Decode::decode(decoder)?))
         }
     }
 
-    impl<T: bincode::Encode> bincode::Encode for MaybeDecoded<T> {
+    impl<T: Encode> Encode for MaybeDecoded<T> {
         fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
             match self {
-                MaybeDecoded::Encoded(bytes) => bincode::Encode::encode(bytes, encoder),
+                MaybeDecoded::Encoded(bytes) => Encode::encode(bytes, encoder),
                 MaybeDecoded::Decoded(value) => {
                     let bytes = bincode::encode_to_vec(value, config::standard())?;
-                    bincode::Encode::encode(&bytes, encoder)
+                    Encode::encode(&bytes, encoder)
                 }
             }
         }
