@@ -72,10 +72,12 @@ impl Ui {
         if CALLED.fetch_or(true, Relaxed) {
             panic!("The Ui can only be created once");
         } else {
+            CANONICAL_UI.set(TypeId::of::<U>()).unwrap();
+            CANONICAL_AREA.set(TypeId::of::<U::Area>()).unwrap();
             DEFAULT_PRINT_INFO
                 .set(|| PrintInfo::new::<U>(<U::Area as RawArea>::PrintInfo::default()))
                 .unwrap();
-            
+
             Ui {
                 ui: Box::leak(Box::new(U::load(crate::context::sender()))),
                 fns: UiFunctions::new::<U>(),

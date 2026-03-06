@@ -295,6 +295,7 @@ impl DuatSender {
     }
 
     /// Sends any [`DuatEvent`].
+    #[track_caller]
     pub(crate) fn send(&self, event: DuatEvent) {
         self.1.fetch_add(1, Relaxed);
         self.0.send(event).unwrap();

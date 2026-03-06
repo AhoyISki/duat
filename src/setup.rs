@@ -95,11 +95,13 @@ pub fn pre_setup() -> Ui {
     std::panic::set_hook(Box::new(move |panic_info| {
         use std::backtrace::{Backtrace, BacktraceStatus};
         context::log_panic(panic_info);
-        let backtrace = Backtrace::capture();
+        let backtrace = Backtrace::force_capture();
         *PANIC_INFO.lock().unwrap() = Some(
             if let BacktraceStatus::Disabled | BacktraceStatus::Unsupported = backtrace.status() {
+                duat_core::log_to_file!("{panic_info}");
                 format!("{panic_info}")
             } else {
+                duat_core::log_to_file!("{panic_info}\n{backtrace}");
                 format!("{panic_info}\n{backtrace}")
             },
         )

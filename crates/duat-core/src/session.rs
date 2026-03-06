@@ -45,21 +45,21 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
 
     let mut args = std::env::args().skip(1);
     let socket_dir = PathBuf::from(args.next().unwrap());
-    let is_first_time: bool = args.next().unwrap().parse().unwrap();
     let config_profile = args.next().unwrap();
-    let config_dir = args.next().unwrap();
+    let crate_dir = args.next().unwrap();
+    let is_first_time: bool = args.next().unwrap().parse().unwrap();
+    let failed_to_load = args.next().unwrap().parse().unwrap();
+    let just_compiled = args.next().unwrap().parse().unwrap();
 
     crate::utils::set_crate_profile_and_dir(
         config_profile.clone(),
-        (config_dir != "--").then_some(config_dir),
+        (crate_dir != "--").then_some(crate_dir),
     );
 
     ipc::initialize_main_channel(&socket_dir);
-    println!("initialized ipc channel");
 
     if catch_panic(|| {
         let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
-        println!("received initial state");
 
         crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
@@ -81,9 +81,14 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
             context::info!("[a]{config_profile}[] reloaded in [a]{time:?}");
         } else if !is_first_time {
             context::info!("[a]{config_profile}[] reloaded");
+        } else if failed_to_load {
+            context::info!("Compiled [a]{config_profile}[] profile");
+        } else if just_compiled {
+            context::info!("Compiled [a]{config_profile}[] profile");
         }
 
         let buffers = main_loop(ui, is_first_time);
+        crate::log_to_file!("finished main loop");
 
         ipc::send(if buffers.is_empty() {
             let structs = HashMap::new();
@@ -92,6 +97,7 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
             let structs = crate::storage::get_structs();
             MsgFromChild::FinalState(ipc::FinalState { buffers, structs })
         });
+        crate::log_to_file!("succesfully sent message");
     })
     .is_none()
     {
@@ -232,8 +238,9 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
                     hook::trigger(pa, ConfigUnloaded(false));
 
+                    let buffers = take_buffers(pa);
                     ui.unload();
-                    return take_buffers(pa);
+                    return buffers;
                 }
                 DuatEvent::ReloadResult(Err(err)) => {
                     reload_requested = false;
