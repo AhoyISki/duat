@@ -68,6 +68,9 @@ path = "bin/main.rs"
 name = "duat"
 path = "src/lib.rs"
 
+[profile.release]
+panic = "abort"
+
 [profile.lto-optimized]
 codegen-units = 1
 lto = true

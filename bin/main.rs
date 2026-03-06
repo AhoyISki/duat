@@ -10,7 +10,7 @@ use std::{
 use duat::ui::traits::RawUi;
 use duat::{
     private_exports::{get_panic_message, post_setup, pre_setup, start},
-    utils::{catch_panic, crate_dir},
+    utils::catch_panic,
 };
 use duat_core::{
     context::{self},
@@ -82,11 +82,14 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(execute_as_config) = std::env::args().nth(5)
-        && execute_as_config == "--execute-as-config"
+    if let Some(crate_dir) = std::env::args().nth(4)
+        && crate_dir == "--"
     {
         let ret = catch_panic(|| {
             start(|| {
+                if std::env::args().nth(6).unwrap() == "true" {
+                    context::error!("Failed to load config crate, loading default");
+                }
                 let ui = pre_setup();
                 let (already_plugged, opts) = post_setup();
                 (ui, already_plugged, opts)
@@ -98,6 +101,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None => return Err(get_panic_message().unwrap())?,
         };
     }
+
+    std::panic::set_hook(Box::new(|panic_info| {
+        use std::backtrace::{Backtrace, BacktraceStatus};
+        let backtrace = Backtrace::capture();
+        if let BacktraceStatus::Disabled | BacktraceStatus::Unsupported = backtrace.status() {
+            duat_core::log_to_file!("{panic_info}")
+        } else {
+            duat_core::log_to_file!("{panic_info}\n{backtrace}")
+        }
+    }));
 
     let args = <Args as clap::Parser>::parse();
     let socket_dir = std::env::temp_dir()
@@ -122,17 +135,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(crate_dir) = crate_dir {
             (crate_dir, profile)
         } else {
-            if args.no_load {
-                context::info!("Opened with the default configuration");
-            } else {
-                context::error!("Failed to find config crate, loading default");
-            }
+            let failed_to_load = if args.no_load { "false" } else { "true" };
 
             let extra_args = UiImpl::open();
 
             let mut child = std::process::Command::new(std::env::current_exe()?)
                 .arg(&socket_dir)
-                .args(["true", &profile, "--", "--execute-as-config"])
+                .args([&profile, "--", "true", failed_to_load, "false"])
                 .args(extra_args)
                 .spawn()?;
 
@@ -194,20 +203,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .join(resolve_config());
 
-    if args.reload || matches!(exe_path.try_exists(), Ok(false) | Err(_)) {
+    let just_compiled = if args.reload || matches!(exe_path.try_exists(), Ok(false) | Err(_)) {
         if let Ok(status) = cargo::build(crate_dir, &profile, true)
             && status.success()
         {
-            context::info!("Compiled [a]{profile}[] profile");
+            "true"
         } else {
             return Ok(());
         }
-    }
+    } else {
+        "false"
+    };
 
     // The watcher is returned as to not be dropped.
     let (config_tx, config_rx) = mpsc::channel();
 
-    ipc::start(&socket_dir, config_tx.clone())?;
+    ipc::start(crate_dir, &socket_dir, config_tx.clone())?;
 
     std::thread::spawn(move || {
         UiImpl::open();
@@ -223,6 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let extra_args = UiImpl::open();
 
+    let mut first_time = "true";
     let mut initial_state = Some(InitialState {
         buffers: get_buffers(args, crate_dir, &profile)?,
         structs: HashMap::new(),
@@ -231,27 +243,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let error = loop {
-        let child = [&exe_path, &std::env::current_exe().unwrap()]
-            .into_iter()
-            .find_map(|path| {
-                let result = std::process::Command::new(path)
-                    .arg(&socket_dir)
-                    .args(["true", &profile])
-                    .arg(crate_dir)
-                    .arg("--execute-as-config")
-                    .args(extra_args.clone())
-                    .spawn();
-                match result {
-                    Ok(child) => {
-                        println!("executed {path:?}");
-                        Some(child)
-                    }
-                    Err(err) => {
-                        println!("{path:?}: {err}");
-                        None
-                    }
-                }
-            });
+        let child = [
+            (&exe_path, "false"),
+            (&std::env::current_exe().unwrap(), "true"),
+        ]
+        .into_iter()
+        .find_map(|(path, failed_to_load)| {
+            std::process::Command::new(path)
+                .arg(&socket_dir)
+                .arg(&profile)
+                .arg(crate_dir)
+                .args([first_time, failed_to_load, just_compiled])
+                .args(extra_args.clone())
+                .spawn()
+                .ok()
+        });
 
         ipc::send(MsgFromParent::InitialState(initial_state.take().unwrap())).unwrap();
 
@@ -261,12 +267,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         child.wait()?;
 
-        let final_state = ipc::recv_final();
+        duat_core::log_to_file!("child exited");
 
+        let final_state = ipc::recv_final();
         if final_state.buffers.is_empty() {
             break None;
         }
 
+        first_time = "false";
         initial_state = Some(InitialState {
             buffers: final_state.buffers,
             structs: final_state.structs,
@@ -336,7 +344,7 @@ fn get_buffers(
 
 fn spawn_config_watcher(
     config_tx: mpsc::Sender<(PathBuf, String)>,
-    crate_dir: &'static std::path::Path,
+    crate_dir: &'static Path,
 ) -> Result<notify::RecommendedWatcher, Box<dyn std::error::Error>> {
     let target_dir = crate_dir.join("target");
     std::fs::create_dir_all(&target_dir)?;
@@ -370,10 +378,13 @@ fn spawn_config_watcher(
     Ok(watcher)
 }
 
-fn try_reload(config_tx: &mpsc::Sender<(PathBuf, String)>, request: ReloadRequest) {
+fn try_reload(
+    crate_dir: &'static Path,
+    config_tx: &mpsc::Sender<(PathBuf, String)>,
+    request: ReloadRequest,
+) {
     *RELOAD_INSTANT.lock().unwrap() = Some(SystemTime::now());
 
-    let crate_dir = crate_dir().unwrap();
     if (request.clean || request.update)
         && let Some(cache_dir) = dirs_next::cache_dir()
     {
@@ -618,11 +629,6 @@ mod cargo {
                     context::error!("Failed to reload config crate");
                     context::info!("On [a]Windows[], close other instances of Duat to reload");
                 } else {
-                    context::error!("{}", String::from_utf8_lossy(&out.stderr));
-                }
-
-                #[cfg(not(target_os = "windows"))]
-                if !out.status.success() {
                     context::error!("{}", String::from_utf8_lossy(&out.stderr));
                 }
 

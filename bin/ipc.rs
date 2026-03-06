@@ -45,7 +45,11 @@ pub fn recv_final() -> FinalState {
     FINAL_CHANNEL.rx.lock().unwrap().recv().unwrap()
 }
 
-pub fn start(socket_dir: &Path, config_tx: mpsc::Sender<(PathBuf, String)>) -> std::io::Result<()> {
+pub fn start(
+    crate_dir: &'static Path,
+    socket_dir: &Path,
+    config_tx: mpsc::Sender<(PathBuf, String)>,
+) -> std::io::Result<()> {
     let child_input_listener = ListenerOptions::new()
         .name(get_name(socket_dir.join("0"))?)
         .create_sync()?;
@@ -67,7 +71,10 @@ pub fn start(socket_dir: &Path, config_tx: mpsc::Sender<(PathBuf, String)>) -> s
 
             while let Ok(msg) = bincode::decode_from_std_read(&mut conn, config::standard()) {
                 match msg {
-                    MsgFromChild::FinalState(state) => FINAL_CHANNEL.tx.send(state).unwrap(),
+                    MsgFromChild::FinalState(state) => {
+                        duat_core::log_to_file!("Received final state");
+                        FINAL_CHANNEL.tx.send(state).unwrap()
+                    }
                     MsgFromChild::SpawnProcess(request) => todo!(),
                     MsgFromChild::KillProcess(id) => todo!(),
                     MsgFromChild::InterruptWrites(id) => todo!(),
@@ -75,7 +82,9 @@ pub fn start(socket_dir: &Path, config_tx: mpsc::Sender<(PathBuf, String)>) -> s
                         send(MsgFromParent::ClipboardContent(get_clipboard())).unwrap();
                     }
                     MsgFromChild::UpdateClipboard(content) => set_clipboard(content),
-                    MsgFromChild::RequestReload(request) => super::try_reload(&config_tx, request),
+                    MsgFromChild::RequestReload(request) => {
+                        super::try_reload(crate_dir, &config_tx, request)
+                    }
                     MsgFromChild::Panicked(msg) => {
                         UiImpl::close();
                         println!("{msg}");
