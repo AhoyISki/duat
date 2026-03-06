@@ -1,33 +1,29 @@
 //! The runner for Duat
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
-    sync::{
-        LazyLock, Mutex,
-        mpsc::{self},
-    },
-    time::Instant,
+    sync::{Mutex, mpsc},
+    time::SystemTime,
 };
 
+#[cfg(feature = "term-ui")]
+use duat::ui::traits::RawUi;
 use duat::{
-    prelude::*,
-    private_exports::{Channels, Initials, MetaStatics, get_panic_message, pre_setup, run_duat},
-    utils::crate_dir,
+    private_exports::{get_panic_message, post_setup, pre_setup, start},
+    utils::{catch_panic, crate_dir},
 };
 use duat_core::{
-    MetaFunctions,
-    context::{self, DuatReceiver, DuatSender},
-    session::{ReloadRequest, ReloadedBuffer},
+    context::{self},
+    session::{
+        ReloadedBuffer,
+        ipc::{InitialState, MsgFromParent, ReloadRequest},
+    },
 };
-use libloading::{Library, Symbol};
 use notify::{Event, EventKind, Watcher};
 
-mod meta;
+mod ipc;
 
-static RELOAD_INSTANT: Mutex<Option<Instant>> = Mutex::new(None);
-static META_FUNCTIONS: LazyLock<MetaFunctions> = LazyLock::new(|| MetaFunctions {
-    notify_fns: meta::get_notify_fns(),
-    storage_fns: meta::get_storage_fns(),
-});
+static RELOAD_INSTANT: Mutex<Option<SystemTime>> = Mutex::new(None);
 
 #[derive(Clone, Debug, clap::Parser)]
 #[command(version, about)]
@@ -86,26 +82,34 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(execute_as_config) = std::env::args().nth(4)
+        && execute_as_config == "--execute-as-config"
+    {
+        let ret = catch_panic(|| {
+            start(|| {
+                let ui = pre_setup();
+                let (already_plugged, opts) = post_setup();
+                (ui, already_plugged, opts)
+            })
+        });
+
+        match ret {
+            Some(()) => return Ok(()),
+            None => return Err(get_panic_message().unwrap())?,
+        };
+    }
+
     let args = <Args as clap::Parser>::parse();
+    let socket_dir = std::env::temp_dir()
+        .join("duat")
+        .join(std::process::id().to_string());
 
     if let Some(name) = args.init_plugin.clone() {
         return init_plugin(args, name);
     }
 
-    // Initializers for access to static variables across two different
-    // "duat-core instances"
-    let logs = duat_core::context::Logs::new();
-    log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
-    context::set_logs(logs.clone());
-
-    let forms_init = duat_core::form::get_initial();
-    duat_core::form::set_initial(forms_init);
-
-    let (duat_tx, mut duat_rx) = duat::context::duat_channel();
-    duat_core::context::set_sender(duat_tx.clone());
-
     // Assert that the configuration crate actually exists.
-    let (crate_dir, profile) = {
+    let (crate_dir, mut profile) = {
         let crate_dir = args
             .load
             .clone()
@@ -113,46 +117,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .or_else(|| Some(config_dir()?.join("duat").leak() as &'static Path))
             .filter(|_| !args.no_load);
 
-        let profile: &'static str = args.profile.clone().leak();
-        duat_core::utils::set_crate_dir_and_profile(crate_dir, profile);
+        let profile = args.profile.clone();
 
         if let Some(crate_dir) = crate_dir {
             (crate_dir, profile)
         } else {
-            ui.open(duat_tx);
-
             if args.no_load {
                 context::info!("Opened with the default configuration");
             } else {
                 context::error!("Failed to find config crate, loading default");
             }
 
-            pre_setup(ui, None, None);
-            let result = run_duat(
-                (ui, &META_FUNCTIONS),
-                get_files(args, Path::new(""), "")?,
-                duat_rx,
-                None,
-            );
+            let extra_args = UiImpl::open();
 
-            ui.close();
-            match result {
-                Some(Err(msg)) => println!("{msg}"),
-                None => println!("{}", get_panic_message().unwrap()),
-                Some(Ok(_)) => {}
-            }
-            meta::kill_remaining_processes();
+            let mut child = std::process::Command::new(std::env::current_exe()?)
+                .arg(&socket_dir)
+                .args(["true", &profile, "", "--execute-as-config"])
+                .args(extra_args)
+                .spawn()?;
+
+            child.wait()?;
+
+            let buffers = get_buffers(args, Path::new(""), "")?;
+            ipc::send(MsgFromParent::InitialState(InitialState {
+                buffers,
+                structs: HashMap::new(),
+                clipb: ipc::get_clipboard(),
+                reload_start: None,
+            }))?;
+
+            ipc::kill_remaining_processes();
+            UiImpl::close();
+
             return Ok(());
         }
     };
 
     if decide_on_new_config(args.init_config, args.git_deps, crate_dir)? {
         return Ok(());
-    };
-
-    let profile_dir = match profile {
-        "dev" => "debug",
-        profile => profile,
     };
 
     if (args.clean || args.update)
@@ -179,119 +181,105 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut buffers = get_files(args.clone(), crate_dir, profile)?;
+    let buffers = get_buffers(args.clone(), crate_dir, &profile)?;
     if buffers.is_empty() {
         return Ok(());
     }
 
-    let mut lib = {
-        let libconfig_path = crate_dir
-            .join("target")
-            .join(profile_dir)
-            .join(resolve_config_file());
+    let mut exe_path = crate_dir
+        .join("target")
+        .join(match profile.as_str() {
+            "dev" => "debug",
+            profile => profile,
+        })
+        .join(resolve_config());
 
-        if args.reload || matches!(libconfig_path.try_exists(), Ok(false) | Err(_)) {
-            if let Ok(status) = cargo::build(crate_dir, profile, true)
-                && status.success()
-            {
-                context::info!("Compiled [a]{profile}[] profile");
-            } else {
-                return Ok(());
-            }
+    if args.reload || matches!(exe_path.try_exists(), Ok(false) | Err(_)) {
+        if let Ok(status) = cargo::build(crate_dir, &profile, true)
+            && status.success()
+        {
+            context::info!("Compiled [a]{profile}[] profile");
+        } else {
+            return Ok(());
         }
-
-        Some(unsafe { Library::new(libconfig_path)? })
-    };
+    }
 
     // The watcher is returned as to not be dropped.
     let (config_tx, config_rx) = mpsc::channel();
-    let (reload_tx, reload_rx) = mpsc::channel();
 
-    std::thread::spawn({
-        let duat_tx = duat_tx.clone();
-        move || {
-            ui.open(duat_tx.clone());
+    ipc::start(&socket_dir, config_tx.clone())?;
 
-            let _watcher = match spawn_config_watcher(config_tx.clone(), duat_tx.clone(), crate_dir)
-            {
-                Ok(_watcher) => Some(std::mem::ManuallyDrop::new(_watcher)),
-                Err(err) => {
-                    context::error!("Failed to spawn watcher, [a]reloading disabled[]: {err}");
-                    None
-                }
-            };
+    std::thread::spawn(move || {
+        UiImpl::open();
 
-            spawn_reloader(reload_rx, config_tx, duat_tx);
-        }
+        let _watcher = match spawn_config_watcher(config_tx, crate_dir) {
+            Ok(_watcher) => Some(std::mem::ManuallyDrop::new(_watcher)),
+            Err(err) => {
+                context::error!("Failed to spawn watcher, [a]reloading disabled[]: {err}");
+                None
+            }
+        };
     });
 
-    let mut reloading_profile: Option<String> = None;
+    let extra_args = UiImpl::open();
 
-    // For faster exiting, don't try to unload the running lib.
-    // This should also prevent some classes of bugs, given that I'm not
-    // waiting for threads to end before exiting.
-    let lib_guard = loop {
-        let running_lib = lib.take();
-        let mut running_duat_fn = running_lib.as_ref().and_then(find_run_duat);
+    let mut initial_state = Some(InitialState {
+        buffers: get_buffers(args, Path::new(""), "")?,
+        structs: HashMap::new(),
+        clipb: ipc::get_clipboard(),
+        reload_start: None,
+    });
 
-        if let Some(profile) = reloading_profile {
-            let time = match RELOAD_INSTANT.lock().unwrap().take() {
-                Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
-                None => Text::default(),
-            };
-            context::info!("[a]{profile}[] profile reloaded{time}");
-        }
+    let error = loop {
+        let child = [&exe_path, &std::env::current_exe().unwrap()]
+            .into_iter()
+            .find_map(|path| {
+                std::process::Command::new(path)
+                    .arg(&socket_dir)
+                    .args(["true", &profile, "", "--execute-as-config"])
+                    .args(extra_args.clone())
+                    .spawn()
+                    .ok()
+            });
 
-        let (duat_tx, reload_tx) = (duat_tx.clone(), reload_tx.clone());
-        let result = std::thread::scope(|s| {
-            // Initialize now in order to prevent thread activation after the
-            // thread counter hook sets in.
-            let meta_functions = &*META_FUNCTIONS;
-            s.spawn(|| {
-                if let Some(run_duat) = running_duat_fn.take() {
-                    let initials = (logs.clone(), forms_init, (crate_dir, profile));
-                    let channel = (duat_tx, duat_rx, reload_tx.clone());
-                    run_duat(initials, (ui, meta_functions), buffers, channel)
-                } else {
-                    context::error!("No config at [a]{crate_dir}[], loading default");
-                    pre_setup(ui, None, None);
-                    match run_duat((ui, meta_functions), buffers, duat_rx, Some(reload_tx)) {
-                        Some(result) => result,
-                        None => Err(get_panic_message().unwrap()),
-                    }
-                }
-            })
-            .join()
-            .unwrap()
-        });
+        ipc::send(MsgFromParent::InitialState(initial_state.take().unwrap())).unwrap();
 
-        (buffers, duat_rx) = match result {
-            Ok((buffers, _)) if buffers.is_empty() => break Ok(running_lib.unwrap()),
-            Ok((buffers, duat_rx)) => (buffers, duat_rx),
-            Err(err_msg) => break Err(err_msg),
+        let Some(mut child) = child else {
+            break Some("Failed to load any config");
         };
 
-        running_lib.unwrap().close().unwrap();
+        child.wait()?;
 
-        let (config_path, profile) = config_rx.recv().unwrap();
-        lib = unsafe { Library::new(config_path) }.ok();
-        reloading_profile = Some(profile);
+        let final_state = ipc::recv_final();
+
+        if final_state.buffers.is_empty() {
+            break None;
+        }
+
+        initial_state = Some(InitialState {
+            buffers: final_state.buffers,
+            structs: final_state.structs,
+            clipb: ipc::get_clipboard(),
+            reload_start: RELOAD_INSTANT.lock().unwrap().take(),
+        });
+
+        (exe_path, profile) = config_rx.recv().unwrap();
     };
 
-    ui.close();
-    if let Err(msg) = lib_guard {
-        println!("{msg}");
-    }
+    ipc::kill_remaining_processes();
+    UiImpl::close();
 
-    meta::kill_remaining_processes();
+    if let Some(error) = error {
+        println!("{error}");
+    }
 
     Ok(())
 }
 
-fn get_files(
+fn get_buffers(
     args: Args,
     crate_dir: &'static Path,
-    profile: &'static str,
+    profile: &str,
 ) -> Result<Vec<Vec<ReloadedBuffer>>, Box<dyn std::error::Error>> {
     let buffers = (move || -> Result<Vec<ReloadedBuffer>, std::io::Error> {
         let mut buffers = Vec::new();
@@ -337,7 +325,6 @@ fn get_files(
 
 fn spawn_config_watcher(
     config_tx: mpsc::Sender<(PathBuf, String)>,
-    duat_tx: DuatSender,
     crate_dir: &'static std::path::Path,
 ) -> Result<notify::RecommendedWatcher, Box<dyn std::error::Error>> {
     let target_dir = crate_dir.join("target");
@@ -346,7 +333,7 @@ fn spawn_config_watcher(
     let mut watcher = notify::recommended_watcher({
         move |res| {
             if let Ok(Event { kind: EventKind::Create(_), paths, .. }) = res
-                && let Some(out_path) = paths.iter().find(|p| p.ends_with(resolve_config_file()))
+                && let Some(out_path) = paths.iter().find(|p| p.ends_with(resolve_config()))
                 && let Some(parent) = out_path.parent()
                 && let Some(grand_parent) = parent.parent()
                 && grand_parent.ends_with("target")
@@ -362,12 +349,7 @@ fn spawn_config_watcher(
                 };
 
                 config_tx.send((out_path.clone(), profile)).unwrap();
-                // On Windows, we need to unReloadResult before reloading
-                // This means that this event should be sent as "reload" is
-                // called, not here.
-                if !cfg!(target_os = "windows") {
-                    duat_tx.send_reload_succeeded();
-                }
+                ipc::send(MsgFromParent::ReloadResult(Ok(()))).unwrap();
             }
         }
     })?;
@@ -377,61 +359,49 @@ fn spawn_config_watcher(
     Ok(watcher)
 }
 
-fn spawn_reloader(
-    reload_rx: mpsc::Receiver<ReloadRequest>,
-    config_tx: mpsc::Sender<(PathBuf, String)>,
-    duat_tx: DuatSender,
-) {
-    std::thread::Builder::new()
-        .name("reload".to_string())
-        .spawn(move || {
-            while let Ok(reload) = reload_rx.recv() {
-                *RELOAD_INSTANT.lock().unwrap() = Some(Instant::now());
+fn try_reload(config_tx: &mpsc::Sender<(PathBuf, String)>, request: ReloadRequest) {
+    *RELOAD_INSTANT.lock().unwrap() = Some(SystemTime::now());
 
-                let crate_dir = crate_dir().unwrap();
-                if (reload.clean || reload.update)
-                    && let Some(cache_dir) = dirs_next::cache_dir()
-                {
-                    clear_path(&cache_dir.join("duat").join("cache"));
-                }
+    let crate_dir = crate_dir().unwrap();
+    if (request.clean || request.update)
+        && let Some(cache_dir) = dirs_next::cache_dir()
+    {
+        clear_path(&cache_dir.join("duat").join("cache"));
+    }
 
-                let result: Result<std::process::ExitStatus, std::io::Error> = (|| {
-                    if reload.clean {
-                        cargo::clean(crate_dir, false)?;
-                    }
-                    if reload.update {
-                        cargo::update(crate_dir, false)?;
-                    }
-                    cargo::build(crate_dir, &reload.profile, false)
-                })();
+    let result: Result<std::process::ExitStatus, std::io::Error> = (|| {
+        if request.clean {
+            cargo::clean(crate_dir, false)?;
+        }
+        if request.update {
+            cargo::update(crate_dir, false)?;
+        }
+        cargo::build(crate_dir, &request.profile, false)
+    })();
 
-                match result {
-                    Err(err) => {
-                        *RELOAD_INSTANT.lock().unwrap() = None;
-                        context::error!("{err}");
-                        duat_tx.send_reload_failed();
-                    }
-                    Ok(status) => {
-                        if status.success() {
-                            config_tx
-                                .send((
-                                    crate_dir
-                                        .join("target")
-                                        .join(&reload.profile)
-                                        .join(resolve_config_file()),
-                                    reload.profile.to_string(),
-                                ))
-                                .unwrap();
-                            duat_tx.send_reload_succeeded();
-                        } else {
-                            *RELOAD_INSTANT.lock().unwrap() = None;
-                            duat_tx.send_reload_failed();
-                        }
-                    }
-                }
+    match result {
+        Err(err) => {
+            *RELOAD_INSTANT.lock().unwrap() = None;
+            ipc::send(MsgFromParent::ReloadResult(Err(err.to_string()))).unwrap();
+        }
+        Ok(status) => {
+            if status.success() {
+                config_tx
+                    .send((
+                        crate_dir
+                            .join("target")
+                            .join(&request.profile)
+                            .join(resolve_config()),
+                        request.profile.to_string(),
+                    ))
+                    .unwrap();
+                ipc::send(MsgFromParent::ReloadResult(Ok(()))).unwrap();
+            } else {
+                *RELOAD_INSTANT.lock().unwrap() = None;
+                ipc::send(MsgFromParent::ReloadResult(Err("cargo failed".to_string()))).unwrap();
             }
-        })
-        .unwrap();
+        }
+    }
 }
 
 /// Decide if a new config is necessary
@@ -511,23 +481,14 @@ fn clear_path(path: &Path) {
     }
 }
 
-fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
-    unsafe { lib.get::<RunFn>(b"run").ok() }
-}
-
-#[cfg(target_os = "macos")]
-const fn resolve_config_file() -> &'static str {
-    "libconfig.dylib"
-}
-
 #[cfg(target_os = "windows")]
-const fn resolve_config_file() -> &'static str {
-    "config.dll"
+const fn resolve_config() -> &'static str {
+    "config.exe"
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-const fn resolve_config_file() -> &'static str {
-    "libconfig.so"
+#[cfg(not(any(target_os = "windows")))]
+const fn resolve_config() -> &'static str {
+    "libconfig"
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -585,19 +546,6 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
     println!("Created a plugin crate at {kebab_name}");
     Ok(())
 }
-
-type RunFn = fn(
-    Initials,
-    MetaStatics,
-    Vec<Vec<ReloadedBuffer>>,
-    Channels,
-) -> Result<(Vec<Vec<ReloadedBuffer>>, DuatReceiver), String>;
-
-#[cfg(feature = "term-ui")]
-type UiImplementation = duat_term::Ui;
-
-#[cfg(not(feature = "term-ui"))]
-compile_error!("No Ui was chosen to compile Duat with");
 
 mod cargo {
     use std::{path::Path, process::Command};
@@ -673,8 +621,8 @@ mod cargo {
     }
 }
 
-// Thread local storage has to be a nop in apple, since it completely
-// prevents dlclose from doing anything.
-#[cfg(target_vendor = "apple")]
-#[unsafe(no_mangle)]
-unsafe extern "C" fn _tlv_atexit(_dtor: unsafe extern "C" fn(*mut u8), _arg: *mut u8) {}
+#[cfg(feature = "term-ui")]
+type UiImpl = duat_term::Ui;
+
+#[cfg(not(feature = "term-ui"))]
+compile_error!("No Ui was chosen to compile Duat with");

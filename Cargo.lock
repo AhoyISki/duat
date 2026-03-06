@@ -365,8 +365,6 @@ dependencies = [
  "globset",
  "interprocess",
  "interrupt-read",
- "libloading",
- "log",
  "notify",
 ]
 

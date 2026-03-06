@@ -215,16 +215,6 @@ impl Clone for Logs {
 }
 
 impl Logs {
-    /// Creates a new [`Logs`]
-    #[doc(hidden)]
-    pub fn new() -> Self {
-        Self {
-            list: Box::leak(Box::default()),
-            cur_state: Box::leak(Box::new(AtomicUsize::new(1))),
-            read_state: AtomicUsize::new(0),
-        }
-    }
-
     /// Returns an owned valued of a [`SliceIndex`]
     ///
     /// - `&'static Log` for `usize`;

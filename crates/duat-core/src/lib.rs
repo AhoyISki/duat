@@ -126,16 +126,7 @@ impl Plugins {
 // SAFETY: The !Send functions are only accessed from the main thread
 unsafe impl Send for Plugins {}
 unsafe impl Sync for Plugins {}
-
-/// Functions defined in the application loading the config.
-///
-/// **FOR USE BY THE DUAT EXECUTABLE ONLY**
-#[doc(hidden)]
-pub struct MetaFunctions {
-    /// File watching functions.
-    pub notify_fns: notify::NotifyFns,
-}
-
+    
 pub mod clipboard {
     //! Clipboard interaction for Duat.
     //!

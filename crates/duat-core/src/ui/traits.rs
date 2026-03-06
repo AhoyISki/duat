@@ -58,7 +58,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     ///
     /// You can additionally provide a list of extra arguments to be
     /// passed to the child process. Duat makes use of the first
-    /// four arguments, but after that, you can put in whatever you
+    /// five arguments, but after that, you can put in whatever you
     /// want.
     fn open() -> Vec<OsString>;
 

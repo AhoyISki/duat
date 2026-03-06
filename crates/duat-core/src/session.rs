@@ -45,19 +45,19 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
 
     let mut args = std::env::args();
     let socket_dir = PathBuf::from(args.next().unwrap());
-    let is_first_time = args.next().unwrap().parse().unwrap();
+    let is_first_time: bool = args.next().unwrap().parse().unwrap();
     let config_profile = args.next().unwrap();
     let config_dir = args.next().unwrap();
 
     crate::utils::set_crate_profile_and_dir(
-        config_profile,
+        config_profile.clone(),
         (!config_dir.is_empty()).then_some(config_dir),
     );
 
     ipc::initialize_main_channel(&socket_dir);
 
     if catch_panic(|| {
-        let InitialState { buffers, structs, clipb } = ipc::recv_init();
+        let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
 
         crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
@@ -74,17 +74,26 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
         let layout = Box::new(Mutex::new(MasterOnLeft));
         setup_buffers(pa, buffers, ui, layout);
 
+        if let Some(reload_start) = reload_start {
+            let time = reload_start.elapsed().unwrap();
+            context::info!("[a]{config_profile}[] reloaded in [a]{time:?}");
+        } else if !is_first_time {
+            context::info!("[a]{config_profile}[] reloaded");
+        }
+
         let buffers = main_loop(ui, is_first_time);
 
         ipc::send(if buffers.is_empty() {
-            MsgFromChild::FinalState { buffers, structs: HashMap::new() }
+            let structs = HashMap::new();
+            MsgFromChild::FinalState(ipc::FinalState { buffers, structs })
         } else {
             let structs = crate::storage::get_structs();
-            MsgFromChild::FinalState { buffers, structs }
+            MsgFromChild::FinalState(ipc::FinalState { buffers, structs })
         });
     })
     .is_none()
     {
+        // SAFETY: All other Passes have been destroyed at this point.
         let pa = unsafe { &mut Pass::new() };
         for handle in context::windows().buffers(pa) {
             _ = handle.save(pa);
@@ -316,7 +325,6 @@ pub struct UiMouseEvent {
 }
 
 /// An event that Duat must handle.
-#[doc(hidden)]
 pub(crate) enum DuatEvent {
     /// A [`KeyEvent`] was typed.
     KeyEventSent(KeyEvent),
@@ -487,12 +495,23 @@ fn setup_buffers(
     }
 }
 
+#[doc(hidden)]
 pub mod ipc {
+    //! Everything related to IPC.
+    //!
+    //! This includes the interprocess communication that needs to
+    //! take place between the duat executor and the duat config, as
+    //! well as the communication of [`PersistentChild`]ren, since
+    //! those are spawned in the parent, and communication would have
+    //! to go through them first.
+    //!
+    //! [`PersistentChild`]: crate::process::PersistentChild
     use std::{
         collections::HashMap,
         io::{BufReader, Chain, Cursor, Read},
         path::{Path, PathBuf},
         sync::{LazyLock, Mutex, OnceLock, mpsc},
+        time::SystemTime,
     };
 
     use bincode::{config, decode_from_std_read, encode_into_std_write};
@@ -506,7 +525,6 @@ pub mod ipc {
     };
 
     /// A message sent from the parent process.
-    #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub enum MsgFromParent {
         /// The initial state of Duat, including buffers and long
@@ -533,7 +551,6 @@ pub mod ipc {
     }
 
     /// A message sent from the child process.
-    #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub enum MsgFromChild {
         /// The final state, after ending the child process.
@@ -541,10 +558,7 @@ pub mod ipc {
         /// This represents a successful exit from the child process,
         /// and if the `buffers` field is empty, it means we
         /// are quitting Duat as well.
-        FinalState {
-            buffers: Vec<Vec<ReloadedBuffer>>,
-            structs: HashMap<String, MaybeTypedValues>,
-        },
+        FinalState(FinalState),
         /// Spawn a new long lasting process.
         ///
         /// This process will be spawned by the parent executor, so it
@@ -578,16 +592,22 @@ pub mod ipc {
     }
 
     /// The initial state of the duat child process.
-    #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub struct InitialState {
         pub buffers: Vec<Vec<ReloadedBuffer>>,
         pub structs: HashMap<String, MaybeTypedValues>,
         pub clipb: Option<String>,
+        pub reload_start: Option<SystemTime>,
+    }
+
+    /// The final state of the duat child process.
+    #[derive(Debug, bincode::Decode, bincode::Encode)]
+    pub struct FinalState {
+        pub buffers: Vec<Vec<ReloadedBuffer>>,
+        pub structs: HashMap<String, MaybeTypedValues>,
     }
 
     /// A request for reloading duat.
-    #[doc(hidden)]
     #[derive(Debug, bincode::Decode, bincode::Encode)]
     pub struct ReloadRequest {
         pub clean: bool,
