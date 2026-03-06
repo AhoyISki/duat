@@ -43,7 +43,7 @@ pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
     log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
 
-    let mut args = std::env::args();
+    let mut args = std::env::args().skip(1);
     let socket_dir = PathBuf::from(args.next().unwrap());
     let is_first_time: bool = args.next().unwrap().parse().unwrap();
     let config_profile = args.next().unwrap();
@@ -51,13 +51,15 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
 
     crate::utils::set_crate_profile_and_dir(
         config_profile.clone(),
-        (!config_dir.is_empty()).then_some(config_dir),
+        (config_dir != "--").then_some(config_dir),
     );
 
     ipc::initialize_main_channel(&socket_dir);
+    println!("initialized ipc channel");
 
     if catch_panic(|| {
         let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
+        println!("received initial state");
 
         crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
@@ -616,7 +618,7 @@ pub mod ipc {
     }
 
     static SOCKET_DIR: OnceLock<&Path> = OnceLock::new();
-    static IPC_TX: OnceLock<Mutex<LocalSocketStream>> = OnceLock::new();
+    static CHILD_OUTPUT: OnceLock<Mutex<LocalSocketStream>> = OnceLock::new();
     static CLIPB_CHANNEL: LazyLock<Channel<Option<String>>> = Channel::lazy();
     static SPAWN_CHANNEL: LazyLock<Channel<Result<String, i32>>> = Channel::lazy();
     static KILL_CHANNEL: LazyLock<Channel<Result<(), i32>>> = Channel::lazy();
@@ -625,7 +627,7 @@ pub mod ipc {
     /// Send a message from the child process.
     #[track_caller]
     pub(crate) fn send(msg: MsgFromChild) {
-        let mut tx = IPC_TX.get().unwrap().lock().unwrap();
+        let mut tx = CHILD_OUTPUT.get().unwrap().lock().unwrap();
         if let Err(err) = encode_into_std_write(msg, &mut *tx, config::standard()) {
             panic!("{err}");
         }
@@ -657,26 +659,31 @@ pub mod ipc {
 
     /// Connect to a socket-based ipc channel with the parent process.
     pub fn initialize_main_channel(socket_dir: &Path) {
-        let stdin = get_name(socket_dir.join("0"));
-        let stdout = get_name(socket_dir.join("1"));
+        let child_input = get_name(socket_dir.join("0"));
+        let child_output = get_name(socket_dir.join("1"));
 
-        let tx = LocalSocketStream::connect(stdin).unwrap();
-        let mut rx = BufReader::new(LocalSocketStream::connect(stdout).unwrap());
+        let mut child_input = BufReader::new(LocalSocketStream::connect(child_input).unwrap());
+        let child_output = LocalSocketStream::connect(child_output).unwrap();
 
         std::thread::spawn(move || {
-            match decode_from_std_read(&mut rx, config::standard()).unwrap() {
-                MsgFromParent::InitialState(state) => INIT_CHANNEL.tx.send(state).unwrap(),
-                MsgFromParent::ClipboardContent(content) => CLIPB_CHANNEL.tx.send(content).unwrap(),
-                MsgFromParent::ReloadResult(result) => {
-                    context::sender().send(DuatEvent::ReloadResult(result));
+            while let Ok(msg) = decode_from_std_read(&mut child_input, config::standard()) {
+                match msg {
+                    MsgFromParent::InitialState(state) => INIT_CHANNEL.tx.send(state).unwrap(),
+                    MsgFromParent::ClipboardContent(content) => {
+                        crate::log_to_file!("received content");
+                        CLIPB_CHANNEL.tx.send(content).unwrap()
+                    }
+                    MsgFromParent::ReloadResult(result) => {
+                        context::sender().send(DuatEvent::ReloadResult(result));
+                    }
+                    MsgFromParent::SpawnResult(result) => SPAWN_CHANNEL.tx.send(result).unwrap(),
+                    MsgFromParent::KillResult(result) => KILL_CHANNEL.tx.send(result).unwrap(),
                 }
-                MsgFromParent::SpawnResult(result) => SPAWN_CHANNEL.tx.send(result).unwrap(),
-                MsgFromParent::KillResult(result) => KILL_CHANNEL.tx.send(result).unwrap(),
-            };
+            }
         });
 
         SOCKET_DIR.set(socket_dir.to_path_buf().leak()).unwrap();
-        IPC_TX.set(Mutex::new(tx)).ok().unwrap();
+        CHILD_OUTPUT.set(Mutex::new(child_output)).ok().unwrap();
     }
 
     /// Connect to a [`PersistentChild`] channel.

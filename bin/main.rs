@@ -30,7 +30,7 @@ static RELOAD_INSTANT: Mutex<Option<SystemTime>> = Mutex::new(None);
 struct Args {
     /// Buffers to open
     buffers: Vec<PathBuf>,
-    /// Open the config's src/lib.rs
+    /// Open the config's src/main.rs
     #[arg(long)]
     cfg: bool,
     /// Open the config's Cargo.toml
@@ -82,7 +82,7 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(execute_as_config) = std::env::args().nth(4)
+    if let Some(execute_as_config) = std::env::args().nth(5)
         && execute_as_config == "--execute-as-config"
     {
         let ret = catch_panic(|| {
@@ -132,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let mut child = std::process::Command::new(std::env::current_exe()?)
                 .arg(&socket_dir)
-                .args(["true", &profile, "", "--execute-as-config"])
+                .args(["true", &profile, "--", "--execute-as-config"])
                 .args(extra_args)
                 .spawn()?;
 
@@ -224,7 +224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let extra_args = UiImpl::open();
 
     let mut initial_state = Some(InitialState {
-        buffers: get_buffers(args, Path::new(""), "")?,
+        buffers: get_buffers(args, crate_dir, &profile)?,
         structs: HashMap::new(),
         clipb: ipc::get_clipboard(),
         reload_start: None,
@@ -234,12 +234,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let child = [&exe_path, &std::env::current_exe().unwrap()]
             .into_iter()
             .find_map(|path| {
-                std::process::Command::new(path)
+                let result = std::process::Command::new(path)
                     .arg(&socket_dir)
-                    .args(["true", &profile, "", "--execute-as-config"])
+                    .args(["true", &profile])
+                    .arg(crate_dir)
+                    .arg("--execute-as-config")
                     .args(extra_args.clone())
-                    .spawn()
-                    .ok()
+                    .spawn();
+                match result {
+                    Ok(child) => {
+                        println!("executed {path:?}");
+                        Some(child)
+                    }
+                    Err(err) => {
+                        println!("{path:?}: {err}");
+                        None
+                    }
+                }
             });
 
         ipc::send(MsgFromParent::InitialState(initial_state.take().unwrap())).unwrap();
@@ -286,7 +297,7 @@ fn get_buffers(
 
         for buffer in args
             .cfg
-            .then(|| crate_dir.join("src").join("lib.rs"))
+            .then(|| crate_dir.join("src").join("main.rs"))
             .into_iter()
             .chain(args.cfg_manifest.then(|| crate_dir.join("Cargo.toml")))
             .chain(args.buffers)
@@ -418,7 +429,7 @@ fn decide_on_new_config(
     };
 
     if init_config || config_is_empty {
-        const SRC_LIB_RS: &str = include_str!("../templates/config/lib.rs");
+        const SRC_LIB_RS: &str = include_str!("../templates/config/main.rs");
         const MANIFEST: &str = include_str!("../templates/config/Cargo_.toml");
 
         if config_is_empty ^ init_config {
@@ -445,7 +456,7 @@ fn decide_on_new_config(
 
         clear_path(crate_dir);
         std::fs::create_dir_all(crate_dir.join("src"))?;
-        std::fs::write(crate_dir.join("src").join("lib.rs"), SRC_LIB_RS)?;
+        std::fs::write(crate_dir.join("src").join("main.rs"), SRC_LIB_RS)?;
 
         if git_deps {
             std::fs::write(crate_dir.join("Cargo.toml"), MANIFEST)?;
@@ -483,12 +494,12 @@ fn clear_path(path: &Path) {
 
 #[cfg(target_os = "windows")]
 const fn resolve_config() -> &'static str {
-    "config.exe"
+    "duat.exe"
 }
 
 #[cfg(not(any(target_os = "windows")))]
 const fn resolve_config() -> &'static str {
-    "libconfig"
+    "duat"
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -542,7 +553,7 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
 
     std::fs::write(plugin_dir.join("Cargo.toml"), toml)?;
     std::fs::write(plugin_dir.join("README.md"), readme)?;
-    std::fs::write(plugin_dir.join("src").join("lib.rs"), lib)?;
+    std::fs::write(plugin_dir.join("src").join("main.rs"), lib)?;
     println!("Created a plugin crate at {kebab_name}");
     Ok(())
 }

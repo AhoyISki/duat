@@ -126,7 +126,7 @@ impl Plugins {
 // SAFETY: The !Send functions are only accessed from the main thread
 unsafe impl Send for Plugins {}
 unsafe impl Sync for Plugins {}
-    
+
 pub mod clipboard {
     //! Clipboard interaction for Duat.
     //!
@@ -187,7 +187,7 @@ pub mod notify {
         collections::HashMap,
         path::{Path, PathBuf},
         sync::{
-            LazyLock, Mutex, OnceLock,
+            LazyLock, Mutex,
             atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
         },
     };
@@ -197,7 +197,6 @@ pub mod notify {
 
     static WATCHERS_DISABLED: AtomicBool = AtomicBool::new(false);
     static WATCHER_COUNT: AtomicUsize = AtomicUsize::new(0);
-    static NOTIFY_FNS: OnceLock<&NotifyFns> = OnceLock::new();
     static DUAT_WRITES: LazyLock<Mutex<HashMap<PathBuf, usize>>> = LazyLock::new(Mutex::default);
 
     /// Wether an event came from Duat or not.
@@ -229,42 +228,6 @@ pub mod notify {
         /// Note that, even if the event actually came from Duat,
         /// unless it is a write event, it will always be set to this.
         No,
-    }
-
-    /// Functions for watching [`Path`]s.
-    ///
-    /// **FOR USE BY THE DUAT EXECUTABLE ONLY**
-    #[doc(hidden)]
-    #[derive(Debug)]
-    pub struct NotifyFns {
-        /// Spawn a new [`Watcher`], returning a unique identifier for
-        /// it.
-        pub spawn_watcher: fn(WatcherCallback) -> std::io::Result<usize>,
-        /// Watch a [`Path`] non recursively.
-        ///
-        /// The `usize` here is supposed to represent a unique
-        /// [`Watcher`], previously returned by `spawn_watcher`.
-        pub watch_path: fn(usize, &Path) -> std::io::Result<()>,
-        /// Watch a [`Path`] recursively.
-        ///
-        /// The `usize` here is supposed to represent a unique
-        /// [`Watcher`], previously returned by `spawn_watcher`.
-        pub watch_path_recursive: fn(usize, &Path) -> std::io::Result<()>,
-        /// Unwatch a [`Path`].
-        ///
-        /// The `usize` here is supposed to represent a unique
-        /// [`Watcher`], previously returned by `spawn_watcher`.
-        pub unwatch_path: fn(usize, &Path) -> std::io::Result<()>,
-        /// Unwatch all [`Path`]s.
-        ///
-        /// The `usize` here is supposed to represent a unique
-        /// [`Watcher`], previously returned by `spawn_watcher`.
-        pub unwatch_all: fn(usize),
-        /// Remove all [`Watcher`]s.
-        ///
-        /// This function is executed right as Duat is about to quit
-        /// or reload.
-        pub remove_all_watchers: fn(),
     }
 
     /// A [`Path`] watcher.
@@ -320,35 +283,35 @@ pub mod notify {
                 drop: || _ = WATCHER_COUNT.fetch_sub(1, Relaxed),
             };
 
-            match (NOTIFY_FNS.get().unwrap().spawn_watcher)(callback) {
-                Ok(id) => {
-                    WATCHER_COUNT.fetch_add(1, Relaxed);
-                    Ok(Self(id))
-                }
-                Err(err) => Err(err),
-            }
+            Ok(Self(0))
+
+            // match (NOTIFY_FNS.get().unwrap().
+            // spawn_watcher)(callback) {     Ok(id) => {
+            //         WATCHER_COUNT.fetch_add(1, Relaxed);
+            //         Ok(Self(id))
+            //     }
+            //     Err(err) => Err(err),
+            // }
         }
 
         /// Watch a [`Path`] non-recursively.
         pub fn watch(&self, path: &Path) -> std::io::Result<()> {
-            (NOTIFY_FNS.get().unwrap().watch_path)(self.0, path)
+            Ok(())
         }
 
         /// Watch a [`Path`] recursively.
         pub fn watch_recursive(&self, path: &Path) -> std::io::Result<()> {
-            (NOTIFY_FNS.get().unwrap().watch_path_recursive)(self.0, path)
+            Ok(())
         }
 
         /// Stop watching a [`Path`].
         pub fn unwatch(&self, path: &Path) -> std::io::Result<()> {
-            (NOTIFY_FNS.get().unwrap().unwatch_path)(self.0, path)
+            Ok(())
         }
     }
 
     impl Drop for Watcher {
-        fn drop(&mut self) {
-            (NOTIFY_FNS.get().unwrap().unwatch_all)(self.0)
-        }
+        fn drop(&mut self) {}
     }
 
     /// A callback for Watcher events.

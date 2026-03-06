@@ -341,6 +341,7 @@ impl Mode for Normal {
             }
         };
         let delete_selections = |pa: &mut Pass| {
+            duat_core::context::debug!("pressed d or c");
             handle.edit_all(pa, |mut c| {
                 let prev_char = c.text()[..c.caret()].chars().next_back();
                 if c.range().end == c.len()

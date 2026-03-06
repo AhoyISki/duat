@@ -545,25 +545,21 @@ pub mod private_exports {
 #[macro_export]
 macro_rules! setup_duat {
     ($setup:expr) => {
-        use ::std::sync::Mutex;
-        use $crate::{
-            prelude::{Buffer, Text, context::Logs, form::Palette},
-            private_exports::*,
-        };
+        use $crate::{prelude::Buffer, private_exports::*};
 
         fn main() -> Result<(), Box<dyn ::std::error::Error>> {
             let ret = catch_panic(|| {
                 start(|| {
                     let ui = pre_setup();
-                    catch_panic($setup);
+                    catch_panic(setup);
                     let (already_plugged, buffer_opts) = post_setup();
                     (ui, already_plugged, buffer_opts)
                 })
             });
 
-            match ret.flatten() {
-                Some(result) => result,
-                None => Err(get_panic_message().unwrap()),
+            match ret {
+                Some(()) => Ok(()),
+                None => Err(get_panic_message().unwrap())?,
             }
         }
     };
