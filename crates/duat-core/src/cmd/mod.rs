@@ -913,7 +913,7 @@ macro_rules! implCmdFn {
             #[allow(non_snake_case)]
             fn call(&mut self, pa: &mut Pass, mut args: Args) -> CmdResult {
                 $(
-                    let ($param, _) = $param::new(pa, &mut args)?;
+                    let ($param, _) = $param::from_args(pa, &mut args)?;
                 )+
 
                 self(pa, $($param),+)

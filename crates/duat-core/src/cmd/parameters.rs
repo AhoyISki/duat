@@ -63,7 +63,7 @@ pub trait Parameter: Sized + 'static {
     ///
     /// Since parameters shouldn't mutate data, pa is just a regular
     /// shared reference.
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text>;
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text>;
 
     /// A short descriptive name
     ///
@@ -103,7 +103,7 @@ pub enum Flag<S: AsRef<str> = String> {
 }
 
 impl Parameter for Flag {
-    fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let arg = args.next()?;
         if !arg.is_quoted {
             if let Some(word) = arg.strip_prefix("--") {
@@ -206,7 +206,7 @@ impl<S: AsRef<str>> Flag<S> {
 pub struct Flags(pub Vec<Flag>);
 
 impl Parameter for Flags {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let mut list = Vec::new();
 
         while let Ok(flag) = args.next_as(pa) {
@@ -283,7 +283,7 @@ pub enum Scope {
 }
 
 impl Parameter for Scope {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         if let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa) {
             if flag.is_word("global") {
                 Ok((Scope::Global, form))
@@ -307,7 +307,7 @@ impl<P: Parameter> Parameter for Option<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         match args.next_as::<P>(pa) {
             Ok(arg) => Ok((Some(arg), None)),
             Err(err) if args.is_forming_param => Err(err),
@@ -327,7 +327,7 @@ impl<P: Parameter> Parameter for Vec<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let mut returns = Vec::new();
 
         loop {
@@ -351,7 +351,7 @@ impl<const N: usize, P: Parameter> Parameter for [P; N] {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         use std::mem::MaybeUninit;
         let mut returns = [const { MaybeUninit::uninit() }; N];
 
@@ -389,7 +389,7 @@ impl<const MIN: usize, const MAX: usize, P: Parameter> Parameter for Between<MIN
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let mut returns = Vec::new();
 
         for _ in 0..MAX {
@@ -436,7 +436,7 @@ impl<const MIN: usize, const MAX: usize, P> std::ops::DerefMut for Between<MIN, 
 }
 
 impl Parameter for String {
-    fn new(_: &Pass, args: &mut Args) -> Result<(String, Option<FormId>), Text> {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(String, Option<FormId>), Text> {
         Ok((args.next()?.to_string(), None))
     }
 
@@ -451,7 +451,7 @@ impl Parameter for String {
 pub struct Remainder(pub String);
 
 impl Parameter for Remainder {
-    fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let remainder: String = std::iter::from_fn(|| args.next().ok().map(|arg| arg.value))
             .collect::<Vec<&str>>()
             .join(" ");
@@ -469,7 +469,7 @@ impl Parameter for Remainder {
 implDeref!(Remainder, String);
 
 impl Parameter for Handle {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let buffer_name = args.next()?.value;
         if let Some(handle) = crate::context::windows()
             .buffers(pa)
@@ -494,7 +494,7 @@ impl Parameter for Handle {
 pub struct OtherBuffer(pub Handle);
 
 impl Parameter for OtherBuffer {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let handle = args.next_as::<Handle>(pa)?;
         let cur_handle = crate::context::current_buffer(pa);
         if cur_handle == handle {
@@ -519,7 +519,7 @@ implDeref!(OtherBuffer, Handle);
 pub struct ValidFilePath(pub PathBuf, bool);
 
 impl Parameter for ValidFilePath {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let path = PathBuf::from(
             shellexpand::full(args.next()?.value)
                 .map_err(|err| txt!("{err}"))?
@@ -587,7 +587,7 @@ pub enum PathOrBufferOrCfg {
 }
 
 impl Parameter for PathOrBufferOrCfg {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         struct DropGuard;
         impl Drop for DropGuard {
             fn drop(&mut self) {
@@ -631,7 +631,7 @@ static ONLY_EXISTING: AtomicBool = AtomicBool::new(false);
 pub struct Existing;
 
 impl Parameter for Existing {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let initial = args.clone();
         let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa) else {
             return Ok((Self, None));
@@ -663,7 +663,7 @@ pub enum CfgOrManifest {
 }
 
 impl Parameter for CfgOrManifest {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         if let Ok((flag, form)) = args.next_as_with_form::<Flag>(pa)
             && let Some(ret) = match flag.as_word()?.as_str() {
                 "cfg" => Some((Self::Cfg, form)),
@@ -691,7 +691,7 @@ impl Parameter for CfgOrManifest {
 pub struct F32PercentOfU8(pub f32);
 
 impl Parameter for F32PercentOfU8 {
-    fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let arg = args.next()?;
         if let Some(percentage) = arg.strip_suffix("%") {
             let percentage: u8 = percentage
@@ -718,7 +718,7 @@ impl Parameter for F32PercentOfU8 {
 implDeref!(F32PercentOfU8, f32);
 
 impl Parameter for Color {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         const fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
             t = if t < 0.0 { t + 1.0 } else { t };
             t = if t > 1.0 { t - 1.0 } else { t };
@@ -781,7 +781,7 @@ impl Parameter for Color {
 pub struct FormName(pub String);
 
 impl Parameter for FormName {
-    fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let arg = args.next()?.value;
         if !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '.') {
             return Err(txt!(
@@ -806,7 +806,7 @@ implDeref!(FormName, String);
 pub struct ColorSchemeArg(pub String);
 
 impl Parameter for ColorSchemeArg {
-    fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let scheme = args.next()?.value;
         if crate::form::colorscheme_exists(scheme) {
             Ok((ColorSchemeArg(scheme.to_string()), None))
@@ -831,7 +831,7 @@ pub struct ReloadOptions {
 }
 
 impl Parameter for ReloadOptions {
-    fn new(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+    fn from_args(pa: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
         let flags = args.next_as::<Flags>(pa)?;
 
         if flags
@@ -945,7 +945,7 @@ impl<'arg> Args<'arg> {
         );
 
         self.has_to_start_param = true;
-        let ret = P::new(pa, self);
+        let ret = P::from_args(pa, self);
         if ret.is_ok() {
             self.is_forming_param = false;
         } else {
@@ -1099,7 +1099,7 @@ impl<'a> Iterator for ArgsIter<'a> {
 macro_rules! parse_impl {
     ($t:ty, $static_list:expr) => {
         impl Parameter for $t {
-            fn new(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
+            fn from_args(_: &Pass, args: &mut Args) -> Result<(Self, Option<FormId>), Text> {
                 let arg = args.next()?;
                 let arg = arg.parse().map_err(|_| {
                     txt!(
