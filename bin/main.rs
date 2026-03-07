@@ -102,10 +102,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::panic::set_hook(Box::new(|panic_info| {
         use std::backtrace::{Backtrace, BacktraceStatus};
         let backtrace = Backtrace::capture();
+        UiImpl::close();
         if let BacktraceStatus::Disabled | BacktraceStatus::Unsupported = backtrace.status() {
-            duat_core::log_to_file!("{panic_info}")
+            println!("{panic_info}")
         } else {
-            duat_core::log_to_file!("{panic_info}\n{backtrace}")
+            println!("{panic_info}\n{backtrace}")
         }
     }));
 
