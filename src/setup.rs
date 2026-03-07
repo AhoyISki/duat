@@ -36,13 +36,7 @@ use crate::{
 };
 
 // Setup statics.
-static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
 pub static ALREADY_PLUGGED: Mutex<Vec<TypeId>> = Mutex::new(Vec::new());
-
-/// Get the last panic message.
-pub fn get_panic_message() -> Option<String> {
-    PANIC_INFO.lock().unwrap().clone()
-}
 
 #[doc(hidden)]
 pub fn pre_setup() -> Ui {
@@ -65,7 +59,7 @@ pub fn pre_setup() -> Ui {
                                 return;
                             }
 
-                            context::info!("{} reloaded.", handle.read(pa).name_txt());
+                            context::info!("{} reloaded", handle.read(pa).name_txt());
 
                             let mut text = handle.text_mut(pa);
                             text.new_moment();
@@ -91,19 +85,6 @@ pub fn pre_setup() -> Ui {
         })
         .unwrap()
     });
-
-    std::panic::set_hook(Box::new(move |panic_info| {
-        use std::backtrace::{Backtrace, BacktraceStatus};
-        context::log_panic(panic_info);
-        let backtrace = Backtrace::capture();
-        *PANIC_INFO.lock().unwrap() = Some(
-            if let BacktraceStatus::Disabled | BacktraceStatus::Unsupported = backtrace.status() {
-                format!("{panic_info}")
-            } else {
-                format!("{panic_info}\n{backtrace}")
-            },
-        )
-    }));
 
     // Check this in here, in order to not give warnings to crates that
     // depend on duat without this feature.

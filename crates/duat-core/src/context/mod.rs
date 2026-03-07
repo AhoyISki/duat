@@ -187,6 +187,11 @@ mod global {
         WINDOWS.get().unwrap()
     }
 
+	/// Try to get the [`Windows`].
+    pub(crate) fn get_windows() -> Option<&'static Windows> {
+        WINDOWS.get().cloned()
+    }
+
     /// A list of all open [`Buffer`]'s [`Handle`]s.
     ///
     /// [`Buffer`]: crate::buffer::Buffer

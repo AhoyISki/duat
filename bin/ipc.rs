@@ -19,10 +19,15 @@ use crate::UiImpl;
 pub use crate::ipc::clipboard::*;
 
 static CHILD_INPUT: OnceLock<Mutex<ChildInput>> = OnceLock::new();
-static FINAL_CHANNEL: LazyLock<Channel<FinalState>> = LazyLock::new(|| {
+static P_OR_F_CHANNEL: LazyLock<Channel<PanicOrFinal>> = LazyLock::new(|| {
     let (tx, rx) = mpsc::channel();
     Channel { tx, rx: Mutex::new(rx) }
 });
+
+pub enum PanicOrFinal {
+    Final(FinalState),
+    Panic(String),
+}
 
 /// Send a message to the child.
 pub fn send(msg: MsgFromParent) -> std::io::Result<()> {
@@ -46,8 +51,8 @@ pub fn send(msg: MsgFromParent) -> std::io::Result<()> {
 }
 
 /// Receive the [`FinalState`] event.
-pub fn recv_final() -> FinalState {
-    FINAL_CHANNEL.rx.lock().unwrap().recv().unwrap()
+pub fn recv_final() -> PanicOrFinal {
+    P_OR_F_CHANNEL.rx.lock().unwrap().recv().unwrap()
 }
 
 pub fn start(
@@ -75,7 +80,9 @@ pub fn start(
             let mut conn = BufReader::with_capacity(256 * 1024, conn.unwrap());
             while let Ok(msg) = bincode::decode_from_std_read(&mut conn, config::standard()) {
                 match msg {
-                    MsgFromChild::FinalState(state) => FINAL_CHANNEL.tx.send(state).unwrap(),
+                    MsgFromChild::FinalState(state) => {
+                        P_OR_F_CHANNEL.tx.send(PanicOrFinal::Final(state)).unwrap();
+                    }
                     MsgFromChild::SpawnProcess(request) => todo!(),
                     MsgFromChild::KillProcess(id) => todo!(),
                     MsgFromChild::InterruptWrites(id) => todo!(),
@@ -87,9 +94,7 @@ pub fn start(
                         super::try_reload(crate_dir, &config_tx, request)
                     }
                     MsgFromChild::Panicked(msg) => {
-                        UiImpl::close();
-                        println!("{msg}");
-                        std::process::exit(1);
+                        P_OR_F_CHANNEL.tx.send(PanicOrFinal::Panic(msg)).unwrap();
                     }
                 }
             }

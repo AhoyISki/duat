@@ -535,7 +535,7 @@ pub mod private_exports {
         utils::catch_panic,
     };
 
-    pub use crate::setup::{get_panic_message, post_setup, pre_setup};
+    pub use crate::setup::{post_setup, pre_setup};
 }
 
 /// Pre and post setup for Duat
@@ -547,20 +547,13 @@ macro_rules! setup_duat {
     ($setup:expr) => {
         use $crate::{prelude::Buffer, private_exports::*};
 
-        fn main() -> Result<(), Box<dyn ::std::error::Error>> {
-            let ret = catch_panic(|| {
-                start(|| {
-                    let ui = pre_setup();
-                    catch_panic(setup);
-                    let (already_plugged, buffer_opts) = post_setup();
-                    (ui, already_plugged, buffer_opts)
-                })
-            });
-
-            match ret {
-                Some(()) => Ok(()),
-                None => Err(get_panic_message().unwrap())?,
-            }
+        fn main() -> Result<(), std::io::Error> {
+            start(|| {
+                let ui = pre_setup();
+                catch_panic(setup);
+                let (already_plugged, buffer_opts) = post_setup();
+                (ui, already_plugged, buffer_opts)
+            })
         }
     };
 }
