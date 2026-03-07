@@ -241,12 +241,8 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     reprint_screen = true;
                     continue;
                 }
-                DuatEvent::FocusedOnDuat => {
-                    hook::trigger(pa, FocusedOnDuat(()));
-                }
-                DuatEvent::UnfocusedFromDuat => {
-                    hook::trigger(pa, UnfocusedFromDuat(()));
-                }
+                DuatEvent::FocusedOnDuat => _ = hook::trigger(pa, FocusedOnDuat(())),
+                DuatEvent::UnfocusedFromDuat => _ = hook::trigger(pa, UnfocusedFromDuat(())),
                 DuatEvent::RequestReload(request) => match reload_requested {
                     false => {
                         ipc::send(MsgFromChild::RequestReload(request));

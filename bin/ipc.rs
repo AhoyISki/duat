@@ -7,15 +7,11 @@ use std::{
 };
 
 use duat::context::cache::bincode::{self, config};
-use duat_core::{
-    session::ipc::{FinalState, MsgFromChild, MsgFromParent},
-    ui::traits::RawUi,
-};
+use duat_core::session::ipc::{FinalState, MsgFromChild, MsgFromParent};
 use interprocess::local_socket::{
     GenericFilePath, GenericNamespaced, ListenerOptions, Name, prelude::*,
 };
 
-use crate::UiImpl;
 pub use crate::ipc::clipboard::*;
 
 static CHILD_INPUT: OnceLock<Mutex<ChildInput>> = OnceLock::new();
