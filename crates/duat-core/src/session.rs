@@ -106,6 +106,8 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
 
         let buffers = main_loop(ui, is_first_time);
 
+        crate::process::wait_for_writers();
+
         ipc::send(if buffers.is_empty() {
             let structs = HashMap::new();
             MsgFromChild::FinalState(ipc::FinalState { buffers, structs })
@@ -549,7 +551,7 @@ pub mod ipc {
 
     use crate::{
         context,
-        process::PersistentCommandRequest,
+        process::PersistentSpawnRequest,
         session::{DuatEvent, ReloadedBuffer},
         storage::MaybeTypedValues,
     };
@@ -578,6 +580,7 @@ pub mod ipc {
         /// The result of trying to kill a process.
         // The i32 will become an `std::io::RawOsError` once that feature is stabilized.
         KillResult(Result<(), i32>),
+        ChildIoError(String, i32),
     }
 
     /// A message sent from the child process.
@@ -596,7 +599,7 @@ pub mod ipc {
         ///
         /// IPC between the child and the spawned process will be done
         /// through local sockets from the [`interprocess`] crate.
-        SpawnProcess(PersistentCommandRequest),
+        SpawnProcess(PersistentSpawnRequest),
         /// Kill a previously spawned long lasting process.
         KillProcess(String),
         /// Request that the parent executor stop writing to a
@@ -708,6 +711,9 @@ pub mod ipc {
                     }
                     MsgFromParent::SpawnResult(result) => SPAWN_CHANNEL.tx.send(result).unwrap(),
                     MsgFromParent::KillResult(result) => KILL_CHANNEL.tx.send(result).unwrap(),
+                    MsgFromParent::ChildIoError(id, err) => {
+                        context::error!("[a]{id}[]: {}", std::io::Error::from_raw_os_error(err));
+                    }
                 }
             }
         });
