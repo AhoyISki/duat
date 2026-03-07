@@ -517,20 +517,6 @@ mod global {
         }
     }
 
-    fn position_of_name(names: &mut Vec<&'static str>, name: impl AsRef<str>) -> usize {
-        let name = name.as_ref();
-        if let Some((i, _)) = names.iter().enumerate().find(|(_, rhs)| **rhs == name) {
-            i
-        } else if let Some((refed, _)) = name.rsplit_once('.') {
-            position_of_name(names, refed);
-            names.push(name.to_string().leak());
-            names.len() - 1
-        } else {
-            names.push(name.to_string().leak());
-            names.len() - 1
-        }
-    }
-
     type ColorschemeFn = Box<dyn FnMut() -> Vec<(String, Form)> + Send>;
 }
 

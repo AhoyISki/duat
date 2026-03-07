@@ -186,17 +186,15 @@ pub mod notify {
     use std::{
         collections::HashMap,
         path::{Path, PathBuf},
-        sync::{
-            LazyLock, Mutex,
-            atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
-        },
+        sync::{LazyLock, Mutex},
     };
 
     pub use notify::event;
-    use notify::event::{AccessKind, AccessMode, Event, EventKind};
+    use notify::{
+        Config, RecommendedWatcher, RecursiveMode, Watcher as NWatcher,
+        event::{AccessKind, AccessMode, Event, EventKind},
+    };
 
-    static WATCHERS_DISABLED: AtomicBool = AtomicBool::new(false);
-    static WATCHER_COUNT: AtomicUsize = AtomicUsize::new(0);
     static DUAT_WRITES: LazyLock<Mutex<HashMap<PathBuf, usize>>> = LazyLock::new(Mutex::default);
 
     /// Wether an event came from Duat or not.
@@ -234,7 +232,7 @@ pub mod notify {
     ///
     /// If this struct is [`drop`]ped, the `Path`s it was watching
     /// will no longer be watched by it.
-    pub struct Watcher(usize);
+    pub struct Watcher(Mutex<RecommendedWatcher>);
 
     impl Watcher {
         /// Spawn a new `Watcher`, with a callback function
@@ -242,16 +240,10 @@ pub mod notify {
         /// You can add paths to watch through [`Watcher::watch`] and
         /// [`Watcher::watch_recursive`].
         pub fn new(
-            mut callback: impl FnMut(std::io::Result<Event>, FromDuat) + Send + 'static,
-        ) -> std::io::Result<Self> {
-            if WATCHERS_DISABLED.load(Relaxed) {
-                return Err(std::io::Error::other(
-                    "Since Duat is poised to reload, no new Watchers are allowed to be created",
-                ));
-            }
-
-            let callback = WatcherCallback {
-                callback: Box::new(move |event| {
+            mut callback: impl FnMut(notify::Result<Event>, FromDuat) + Send + 'static,
+        ) -> notify::Result<Self> {
+            Ok(Self(Mutex::new(RecommendedWatcher::new(
+                move |event| {
                     use FromDuat::*;
                     let from_duat = if let Ok(Event {
                         kind: EventKind::Access(AccessKind::Close(AccessMode::Write)),
@@ -279,34 +271,27 @@ pub mod notify {
                     };
 
                     callback(event, from_duat);
-                }),
-                drop: || _ = WATCHER_COUNT.fetch_sub(1, Relaxed),
-            };
-
-            Ok(Self(0))
-
-            // match (NOTIFY_FNS.get().unwrap().
-            // spawn_watcher)(callback) {     Ok(id) => {
-            //         WATCHER_COUNT.fetch_add(1, Relaxed);
-            //         Ok(Self(id))
-            //     }
-            //     Err(err) => Err(err),
-            // }
+                },
+                Config::default(),
+            )?)))
         }
 
         /// Watch a [`Path`] non-recursively.
-        pub fn watch(&self, path: &Path) -> std::io::Result<()> {
-            Ok(())
+        pub fn watch(&self, path: &Path) -> notify::Result<()> {
+            self.0
+                .lock()
+                .unwrap()
+                .watch(path, RecursiveMode::NonRecursive)
         }
 
         /// Watch a [`Path`] recursively.
-        pub fn watch_recursive(&self, path: &Path) -> std::io::Result<()> {
-            Ok(())
+        pub fn watch_recursive(&self, path: &Path) -> notify::Result<()> {
+            self.0.lock().unwrap().watch(path, RecursiveMode::Recursive)
         }
 
         /// Stop watching a [`Path`].
-        pub fn unwatch(&self, path: &Path) -> std::io::Result<()> {
-            Ok(())
+        pub fn unwatch(&self, path: &Path) -> notify::Result<()> {
+            self.0.lock().unwrap().unwatch(path)
         }
     }
 
