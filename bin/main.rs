@@ -6,12 +6,9 @@ use std::{
     time::SystemTime,
 };
 
+use duat::private_exports::{post_setup, pre_setup, start};
 #[cfg(feature = "term-ui")]
 use duat::ui::traits::RawUi;
-use duat::{
-    private_exports::{get_panic_message, post_setup, pre_setup, start},
-    utils::catch_panic,
-};
 use duat_core::{
     context::{self},
     session::{
@@ -85,18 +82,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(crate_dir) = std::env::args().nth(4)
         && crate_dir == "--"
     {
-        let ret = catch_panic(|| {
-            start(|| {
-                let ui = pre_setup();
-                let (already_plugged, opts) = post_setup();
-                (ui, already_plugged, opts)
-            })
-        });
-
-        match ret {
-            Some(()) => return Ok(()),
-            None => return Err(get_panic_message().unwrap())?,
-        };
+        return Ok(start(|| {
+            let ui = pre_setup();
+            let (already_plugged, opts) = post_setup();
+            (ui, already_plugged, opts)
+        })?);
     }
 
     std::panic::set_hook(Box::new(|panic_info| {
@@ -259,12 +249,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ipc::send(MsgFromParent::InitialState(initial_state.take().unwrap())).unwrap();
 
         let Some(mut child) = child else {
-            break Some("Failed to load any config");
+            break Some("Failed to load any config".to_string());
         };
 
         child.wait()?;
 
-        let final_state = ipc::recv_final();
+        let final_state = match ipc::recv_final() {
+            ipc::PanicOrFinal::Final(final_state) => final_state,
+            ipc::PanicOrFinal::Panic(panic) => break Some(panic),
+        };
         if final_state.buffers.is_empty() {
             break None;
         }

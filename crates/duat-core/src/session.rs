@@ -40,7 +40,9 @@ pub(crate) static BUFFER_OPTS: OnceLock<BufferOpts> = OnceLock::new();
 /// Starts running duat.
 #[doc(hidden)]
 #[inline(never)]
-pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
+pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()> {
+    static PANIC_INFO: Mutex<Option<String>> = Mutex::new(None);
+
     log::set_logger(Box::leak(Box::new(context::logs()))).unwrap();
 
     let mut args = std::env::args().skip(1);
@@ -57,6 +59,21 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
     );
 
     ipc::initialize_main_channel(&socket_dir);
+
+    std::panic::set_hook(Box::new(|panic_info| {
+        use std::backtrace::{Backtrace, BacktraceStatus};
+
+        context::log_panic(panic_info);
+
+        let backtrace = Backtrace::capture();
+        *PANIC_INFO.lock().unwrap() = Some(
+            if let BacktraceStatus::Disabled | BacktraceStatus::Unsupported = backtrace.status() {
+                format!("{panic_info}")
+            } else {
+                format!("{panic_info}\n{backtrace}")
+            },
+        )
+    }));
 
     if catch_panic(|| {
         let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
@@ -100,10 +117,20 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
     .is_none()
     {
         // SAFETY: All other Passes have been destroyed at this point.
-        let pa = unsafe { &mut Pass::new() };
-        for handle in context::windows().buffers(pa) {
-            _ = handle.save(pa);
+        if let Some(windows) = context::get_windows() {
+            let pa = unsafe { &mut Pass::new() };
+            for handle in windows.buffers(pa) {
+                _ = handle.save(pa);
+            }
         }
+
+        if let Some(msg) = PANIC_INFO.lock().unwrap().take() {
+            ipc::send(MsgFromChild::Panicked(msg));
+        }
+
+        Err(std::io::Error::other("Duat panicked"))
+    } else {
+        Ok(())
     }
 }
 
