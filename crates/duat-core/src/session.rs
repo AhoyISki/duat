@@ -515,7 +515,7 @@ pub mod ipc {
     //! [`PersistentChild`]: crate::process::PersistentChild
     use std::{
         collections::HashMap,
-        io::{BufReader, Chain, Cursor, Read},
+        io::{BufReader, BufWriter, Chain, Cursor, Read, Write},
         path::{Path, PathBuf},
         sync::{LazyLock, Mutex, OnceLock, mpsc},
         time::SystemTime,
@@ -623,7 +623,7 @@ pub mod ipc {
     }
 
     static SOCKET_DIR: OnceLock<&Path> = OnceLock::new();
-    static CHILD_OUTPUT: OnceLock<Mutex<LocalSocketStream>> = OnceLock::new();
+    static CHILD_OUTPUT: OnceLock<Mutex<BufWriter<LocalSocketStream>>> = OnceLock::new();
     static CLIPB_CHANNEL: LazyLock<Channel<Option<String>>> = Channel::lazy();
     static SPAWN_CHANNEL: LazyLock<Channel<Result<String, i32>>> = Channel::lazy();
     static KILL_CHANNEL: LazyLock<Channel<Result<(), i32>>> = Channel::lazy();
@@ -632,10 +632,11 @@ pub mod ipc {
     /// Send a message from the child process.
     #[track_caller]
     pub(crate) fn send(msg: MsgFromChild) {
-        let mut tx = CHILD_OUTPUT.get().unwrap().lock().unwrap();
-        if let Err(err) = encode_into_std_write(msg, &mut *tx, config::standard()) {
+        let mut child_output = CHILD_OUTPUT.get().unwrap().lock().unwrap();
+        if let Err(err) = encode_into_std_write(msg, &mut *child_output, config::standard()) {
             panic!("{err}");
         }
+        child_output.flush().unwrap();
     }
 
     /// Receive the [`InitialState`] event.
@@ -664,12 +665,12 @@ pub mod ipc {
 
     /// Connect to a socket-based ipc channel with the parent process.
     pub fn initialize_main_channel(socket_dir: &Path) {
+        const BUF_CAP: usize = 256 * 1024;
         let child_input_name = get_name(socket_dir.join("0"));
-        let child_output = LocalSocketStream::connect(get_name(socket_dir.join("1"))).unwrap();
 
         std::thread::spawn(move || {
             let mut child_input = BufReader::with_capacity(
-                256 * 1024,
+                BUF_CAP,
                 LocalSocketStream::connect(child_input_name).unwrap(),
             );
 
@@ -689,7 +690,13 @@ pub mod ipc {
         });
 
         SOCKET_DIR.set(socket_dir.to_path_buf().leak()).unwrap();
-        CHILD_OUTPUT.set(Mutex::new(child_output)).ok().unwrap();
+        CHILD_OUTPUT
+            .set(Mutex::new(BufWriter::with_capacity(
+                BUF_CAP,
+                LocalSocketStream::connect(get_name(socket_dir.join("1"))).unwrap(),
+            )))
+            .ok()
+            .unwrap();
     }
 
     /// Connect to a [`PersistentChild`] channel.
