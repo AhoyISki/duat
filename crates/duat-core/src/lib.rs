@@ -343,12 +343,20 @@ pub mod process {
     //! config.
     use std::{
         ffi::{OsStr, OsString},
-        io::{BufRead, ErrorKind, Read},
+        io::{BufRead, BufWriter, ErrorKind, Read, Write},
         process::{Child, Command, Stdio},
-        sync::{Mutex, mpsc},
+        sync::{
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+            mpsc,
+        },
+        time::Duration,
     };
 
-    use bincode::{Decode, Encode, config, error::DecodeError};
+    use bincode::{
+        Decode, Encode, config,
+        error::{DecodeError, EncodeError},
+    };
     use interprocess::local_socket::prelude::*;
     pub use interrupt_read::InterruptReader;
 
@@ -357,6 +365,39 @@ pub mod process {
         ipc::{IpcReader, MsgFromChild},
     };
 
+    /// Spawn a new `PersistentChild`, which can be reused in
+    /// future config reloads.
+    ///
+    /// The command will forcibly make use of [`Stdio::piped`] for all
+    /// stdio. This is because stdin, stdout and stderr are
+    /// reserved for use by the [`Ui`] implementation, so something
+    /// like [`Stdio::inherit`] would interfere with that.
+    ///
+    /// [`Ui`]: crate::ui::Ui
+    pub fn spawn_persistent(
+        id: impl ToString,
+        command: &mut Command,
+    ) -> std::io::Result<PersistentChild> {
+        let encode = |value: &OsStr| value.as_encoded_bytes().to_vec();
+
+        let args = command.get_args().map(encode).collect();
+        let envs = command
+            .get_envs()
+            .map(|(k, v)| (encode(k), v.map(encode)))
+            .collect();
+
+        session::ipc::send(MsgFromChild::SpawnProcess(PersistentCommandRequest {
+            id: id.to_string(),
+            program: encode(command.get_program()),
+            args,
+            envs,
+        }));
+
+        match session::ipc::recv_spawn() {
+            Ok(id) => Ok(PersistentChild::new(id, Vec::new(), Vec::new())),
+            Err(err) => Err(std::io::Error::from_raw_os_error(err)),
+        }
+    }
     /// A child process that will persist over multiple reload cycles.
     ///
     /// This child makes use of [`interprocess`]'s [local sockets] for
@@ -403,15 +444,11 @@ pub mod process {
     pub struct PersistentChild {
         /// The standard input of the [`Child`].
         ///
-        /// Note that, unlike `stdout` and `stderr`, `stdin` is not
-        /// buffered, and so it is prone to loss of data. The
-        /// reasoning for this is that, afaik, at least in rust, most
-        /// people send bytes to stdin by serializing a struct into a
-        /// slice of bytes, then writing the whole struct at once,
-        /// which is immediately followed by a flush.
-        ///
-        /// This means that no buffering would be done anyways
-        pub stdin: Option<LocalSocketStream>,
+        /// This struct will send the bytes to an ipc enabled
+        /// [`LocalSocketStream`], which will in turn be sent to the
+        /// process indirectly, since said process is owned by the
+        /// parent executor, not the child.
+        pub stdin: Option<BufWriter<LocalSocketStream>>,
         stdout: Mutex<Option<PersistentReader>>,
         stderr: Mutex<Option<PersistentReader>>,
         stdout_rx: mpsc::Receiver<ReaderPair>,
@@ -427,7 +464,7 @@ pub mod process {
             let (stderr_tx, stderr_rx) = mpsc::channel();
 
             Self {
-                stdin: Some(stdin),
+                stdin: Some(BufWriter::new(stdin)),
                 stdout: Mutex::new(Some(PersistentReader {
                     pair: Some(ReaderPair { decode_bytes: Vec::new(), conn: stdout }),
                     pair_tx: stdout_tx,
@@ -460,7 +497,13 @@ pub mod process {
         /// - If the child has been [killed], then you don't need to
         ///   do anything in particular.
         ///
+        /// For decoding [`bincode::Decode`] types, you should make
+        /// use of the [`PersistentReader::decode_bytes_as`] function,
+        /// since that one is not prone to losses if it is interrupted
+        /// by a reload.
+        ///
         /// [killed]: PersistentChild::kill
+        /// [`BufReader`]: std::io::BufReader
         pub fn get_stdout(&self) -> Option<PersistentReader> {
             self.stdout.lock().unwrap().take()
         }
@@ -484,6 +527,7 @@ pub mod process {
         ///   do anything in particular.
         ///
         /// [killed]: PersistentChild::kill
+        /// [`BufReader`]: std::io::BufReader
         pub fn get_stderr(&self) -> Option<PersistentReader> {
             self.stderr.lock().unwrap().take()
         }
@@ -689,37 +733,81 @@ pub mod process {
         }
     }
 
-    /// Spawn a new `PersistentChild`, which can be reused in
-    /// future config reloads.
+    /// A [`Write`]r "lock" for a [`PersistentChild`].
     ///
-    /// The command will forcibly make use of [`Stdio::piped`] for all
-    /// stdio. This is because stdin, stdout and stderr are
-    /// reserved for use by the [`Ui`] implementation, so something
-    /// like [`Stdio::inherit`] would interfere with that.
+    /// This struct will send bytes to the `stdin` of a
+    /// `PersistentChild`. This is done indirectly through a
+    /// [`LocalSocketStream`], since the child process doesn't have
+    /// direct access to the stdin of the child, as it belongs to the
+    /// parent process.
     ///
-    /// [`Ui`]: crate::ui::Ui
-    pub fn spawn_persistent(
-        id: impl ToString,
-        command: &mut Command,
-    ) -> std::io::Result<PersistentChild> {
-        let encode = |value: &OsStr| value.as_encoded_bytes().to_vec();
+    /// This writer is more of a "writer lock" over the actual inner
+    /// writer. This is because of reloads.
+    ///
+    /// When duat reloads, the child process is finished. This could
+    /// prematurely end `write` calls of separate threads, leading to
+    /// the loss, duplication, or corruption of data.
+    ///
+    /// That's why this struct has the [`PersistentWriter::on_writer`]
+    /// method. This method will give you mutable access to the writer
+    /// while preventing duat from reloading.
+    ///
+    /// You should make use of it in order to "confirm" that a value
+    /// has actually been written. Any confirmation outside of this
+    /// method can't be trusted.
+    pub struct PersistentWriter(RawPersistentWriter);
 
-        let args = command.get_args().map(encode).collect();
-        let envs = command
-            .get_envs()
-            .map(|(k, v)| (encode(k), v.map(encode)))
-            .collect();
+    impl PersistentWriter {
+        /// Calls a function on the inner [`Write`]r.
+        ///
+        /// This will also prevent Duat from reloading, allowing for
+        /// lossless and duplicationless data sending.
+        #[track_caller]
+        pub fn on_writer<R>(
+            &mut self,
+            f: impl FnOnce(&mut RawPersistentWriter) -> std::io::Result<R>,
+        ) -> std::io::Result<R> {
+            use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 
-        session::ipc::send(MsgFromChild::SpawnProcess(PersistentCommandRequest {
-            id: id.to_string(),
-            program: encode(command.get_program()),
-            args,
-            envs,
-        }));
+            WRITERS_WRITING.fetch_add(1, Ordering::Acquire);
+            let result = catch_unwind(AssertUnwindSafe(move || f(&mut self.0)));
+            WRITERS_WRITING.fetch_sub(1, Ordering::Release);
 
-        match session::ipc::recv_spawn() {
-            Ok(id) => Ok(PersistentChild::new(id, Vec::new(), Vec::new())),
-            Err(err) => Err(std::io::Error::from_raw_os_error(err)),
+            match result {
+                Ok(result) => result,
+                Err(panic) => resume_unwind(panic),
+            }
+        }
+    }
+
+    /// The writer from [`PersistentWriter::on_writer`].
+    ///
+    /// This struct is basically just a wrapper over a
+    /// [`BufWriter<LocalSocketStream>`], but it also comes with the
+    /// [`encode_as_bytes`] method, which lets you encode a value as
+    /// bytes in a more convenient, less prone to error way, than
+    /// using [`bincode`] by itself.
+    ///
+    /// [`encode_as_bytes`]: RawPersistentWriter::encode_as_bytes
+    pub struct RawPersistentWriter(BufWriter<LocalSocketStream>);
+
+    impl RawPersistentWriter {
+        /// Encode the value as bytes, in a duat compatible way.
+        ///
+        /// Note that you have to call [`Write::flush`] in order to
+        /// actually send the data.
+        pub fn encode_as_bytes(&mut self, value: impl Encode) -> Result<usize, EncodeError> {
+            bincode::encode_into_std_write(value, &mut self.0, config::standard())
+        }
+    }
+
+    impl Write for RawPersistentWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.0.flush()
         }
     }
 
@@ -786,13 +874,21 @@ pub mod process {
         }
     }
 
-    /// A stored [`PersistentChild`]
-    #[doc(hidden)]
+    /// A stored [`PersistentChild`].
     #[derive(Decode, Encode)]
     struct StoredPersistentChild {
         id: String,
         stdout_bytes: Vec<u8>,
         stderr_bytes: Vec<u8>,
+    }
+
+    static WRITERS_WRITING: AtomicUsize = AtomicUsize::new(0);
+
+    /// Wait for a [`PersistentChild`] writers to be done writing.
+    pub(crate) fn wait_for_writers() {
+        while WRITERS_WRITING.load(Ordering::Relaxed) > 0 {
+            std::thread::sleep(Duration::from_millis(1));
+        }
     }
 }
 
