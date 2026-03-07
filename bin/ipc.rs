@@ -67,14 +67,10 @@ pub fn start(
 
     std::thread::spawn(move || {
         for conn in child_output_listener.incoming() {
-            let mut conn = BufReader::new(conn.unwrap());
-
+            let mut conn = BufReader::with_capacity(256 * 1024, conn.unwrap());
             while let Ok(msg) = bincode::decode_from_std_read(&mut conn, config::standard()) {
                 match msg {
-                    MsgFromChild::FinalState(state) => {
-                        duat_core::log_to_file!("Received final state");
-                        FINAL_CHANNEL.tx.send(state).unwrap()
-                    }
+                    MsgFromChild::FinalState(state) => FINAL_CHANNEL.tx.send(state).unwrap(),
                     MsgFromChild::SpawnProcess(request) => todo!(),
                     MsgFromChild::KillProcess(id) => todo!(),
                     MsgFromChild::InterruptWrites(id) => todo!(),

@@ -50,12 +50,13 @@ mod global {
     pub use crate::__id_of__ as id_of;
     use crate::{
         context,
-        form::FormKind,
+        form::{BASE_FORMS, FormKind},
         hook::{self, ColorSchemeSet},
     };
 
     static PALETTE: LazyLock<Palette> = LazyLock::new(Palette::new);
-    static FORMS: Mutex<Vec<Arc<str>>> = Mutex::new(Vec::new());
+    static FORMS: LazyLock<Mutex<Vec<&'static str>>> =
+        LazyLock::new(|| Mutex::new(BASE_FORMS.iter().map(|(name, _)| *name).collect()));
     static COLORSCHEMES: LazyLock<Mutex<HashMap<Arc<str>, ColorschemeFn>>> =
         LazyLock::new(Mutex::default);
 
@@ -505,11 +506,7 @@ mod global {
 
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
-        FORMS
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|fname| fname.as_ref() == name)
+        FORMS.lock().unwrap().contains(&name)
     }
 
     /// Wether or not a specific [`ColorScheme`] was added
@@ -518,8 +515,8 @@ mod global {
     }
 
     /// The name of a form, given a [`FormId`]
-    pub(super) fn name_of(id: FormId) -> Arc<str> {
-        FORMS.lock().unwrap()[id.0 as usize].clone()
+    pub(super) fn name_of(id: FormId) -> &'static str {
+        FORMS.lock().unwrap()[id.0 as usize]
     }
 
     fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
@@ -536,20 +533,16 @@ mod global {
         }
     }
 
-    fn position_of_name(names: &mut Vec<Arc<str>>, name: impl AsRef<str>) -> usize {
+    fn position_of_name(names: &mut Vec<&'static str>, name: impl AsRef<str>) -> usize {
         let name = name.as_ref();
-        if let Some((i, _)) = names
-            .iter()
-            .enumerate()
-            .find(|(_, rhs)| rhs.as_ref() == name)
-        {
+        if let Some((i, _)) = names.iter().enumerate().find(|(_, rhs)| **rhs == name) {
             i
         } else if let Some((refed, _)) = name.rsplit_once('.') {
             position_of_name(names, refed);
-            names.push(name.into());
+            names.push(name.to_string().leak());
             names.len() - 1
         } else {
-            names.push(name.into());
+            names.push(name.to_string().leak());
             names.len() - 1
         }
     }
@@ -594,7 +587,7 @@ impl FormId {
     }
 
     /// The name of this [`FormId`]
-    pub fn name(self) -> std::sync::Arc<str> {
+    pub fn name(self) -> &'static str {
         name_of(self)
     }
 }

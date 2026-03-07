@@ -87,9 +87,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let ret = catch_panic(|| {
             start(|| {
-                if std::env::args().nth(6).unwrap() == "true" {
-                    context::error!("Failed to load config crate, loading default");
-                }
                 let ui = pre_setup();
                 let (already_plugged, opts) = post_setup();
                 (ui, already_plugged, opts)
@@ -136,7 +133,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (crate_dir, profile)
         } else {
             let failed_to_load = if args.no_load { "false" } else { "true" };
-
             let extra_args = UiImpl::open();
 
             let mut child = std::process::Command::new(std::env::current_exe()?)
@@ -266,8 +262,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         child.wait()?;
-
-        duat_core::log_to_file!("child exited");
 
         let final_state = ipc::recv_final();
         if final_state.buffers.is_empty() {
@@ -571,8 +565,6 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
 
 mod cargo {
     use std::{path::Path, process::Command};
-
-    use duat_core::context;
 
     /// Build the config crate
     pub fn build(

@@ -82,13 +82,12 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
         } else if !is_first_time {
             context::info!("[a]{config_profile}[] reloaded");
         } else if failed_to_load {
-            context::info!("Compiled [a]{config_profile}[] profile");
+            context::error!("Failed to load config crate, loading default");
         } else if just_compiled {
             context::info!("Compiled [a]{config_profile}[] profile");
         }
 
         let buffers = main_loop(ui, is_first_time);
-        crate::log_to_file!("finished main loop");
 
         ipc::send(if buffers.is_empty() {
             let structs = HashMap::new();
@@ -97,7 +96,6 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) {
             let structs = crate::storage::get_structs();
             MsgFromChild::FinalState(ipc::FinalState { buffers, structs })
         });
-        crate::log_to_file!("succesfully sent message");
     })
     .is_none()
     {
@@ -666,18 +664,19 @@ pub mod ipc {
 
     /// Connect to a socket-based ipc channel with the parent process.
     pub fn initialize_main_channel(socket_dir: &Path) {
-        let child_input = get_name(socket_dir.join("0"));
-        let child_output = get_name(socket_dir.join("1"));
-
-        let mut child_input = BufReader::new(LocalSocketStream::connect(child_input).unwrap());
-        let child_output = LocalSocketStream::connect(child_output).unwrap();
+        let child_input_name = get_name(socket_dir.join("0"));
+        let child_output = LocalSocketStream::connect(get_name(socket_dir.join("1"))).unwrap();
 
         std::thread::spawn(move || {
+            let mut child_input = BufReader::with_capacity(
+                256 * 1024,
+                LocalSocketStream::connect(child_input_name).unwrap(),
+            );
+
             while let Ok(msg) = decode_from_std_read(&mut child_input, config::standard()) {
                 match msg {
                     MsgFromParent::InitialState(state) => INIT_CHANNEL.tx.send(state).unwrap(),
                     MsgFromParent::ClipboardContent(content) => {
-                        crate::log_to_file!("received content");
                         CLIPB_CHANNEL.tx.send(content).unwrap()
                     }
                     MsgFromParent::ReloadResult(result) => {

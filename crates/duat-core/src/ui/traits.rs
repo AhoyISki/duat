@@ -60,7 +60,7 @@ pub trait RawUi: Sized + Send + Sync + 'static {
     /// passed to the child process. Duat makes use of the first
     /// six arguments, but after that, you can put in whatever you
     /// want. (Note, you should call something like
-    /// `std::env::args().skip(8)`, since the first argument will be
+    /// `std::env::args().skip(7)`, since the first argument will be
     /// the path of the executed config).
     fn open() -> Vec<OsString>;
 
