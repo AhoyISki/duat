@@ -101,9 +101,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }));
 
     let args = <Args as clap::Parser>::parse();
-    let socket_dir = std::env::temp_dir()
+    let socket_dir: &'static Path = std::env::temp_dir()
         .join("duat")
-        .join(std::process::id().to_string());
+        .join(std::process::id().to_string())
+        .leak();
 
     if let Some(name) = args.init_plugin.clone() {
         return init_plugin(args, name);
@@ -127,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let extra_args = UiImpl::open();
 
             let mut child = std::process::Command::new(std::env::current_exe()?)
-                .arg(&socket_dir)
+                .arg(socket_dir)
                 .args([&profile, "--", "true", failed_to_load, "false"])
                 .args(extra_args)
                 .spawn()?;
@@ -205,7 +206,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The watcher is returned as to not be dropped.
     let (config_tx, config_rx) = mpsc::channel();
 
-    ipc::start(crate_dir, &socket_dir, config_tx.clone())?;
+    ipc::start(crate_dir, socket_dir, config_tx.clone())?;
 
     std::thread::spawn(move || {
         UiImpl::open();
@@ -237,7 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .find_map(|(path, failed_to_load)| {
             std::process::Command::new(path)
-                .arg(&socket_dir)
+                .arg(socket_dir)
                 .arg(&profile)
                 .arg(crate_dir)
                 .args([first_time, failed_to_load, just_compiled])

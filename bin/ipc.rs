@@ -1,13 +1,20 @@
 use std::{
     collections::HashMap,
-    io::{BufReader, BufWriter, Write},
+    io::{BufReader, BufWriter, ErrorKind, Read, Write},
     path::{Path, PathBuf},
     process::Child,
-    sync::{LazyLock, Mutex, OnceLock, mpsc},
+    sync::{
+        Arc, LazyLock, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering::Relaxed},
+        mpsc,
+    },
 };
 
 use duat::context::cache::bincode::{self, config};
-use duat_core::session::ipc::{FinalState, MsgFromChild, MsgFromParent};
+use duat_core::{
+    process::PersistentSpawnRequest,
+    session::ipc::{FinalState, MsgFromChild, MsgFromParent},
+};
 use interprocess::local_socket::{
     GenericFilePath, GenericNamespaced, ListenerOptions, Name, prelude::*,
 };
@@ -53,15 +60,11 @@ pub fn recv_final() -> PanicOrFinal {
 
 pub fn start(
     crate_dir: &'static Path,
-    socket_dir: &Path,
+    socket_dir: &'static Path,
     config_tx: mpsc::Sender<(PathBuf, String)>,
 ) -> std::io::Result<()> {
-    let child_input_listener = ListenerOptions::new()
-        .name(get_name(socket_dir.join("0"))?)
-        .create_sync()?;
-    let child_output_listener = ListenerOptions::new()
-        .name(get_name(socket_dir.join("1"))?)
-        .create_sync()?;
+    let child_input_listener = listener(socket_dir.join("0"))?;
+    let child_output_listener = listener(socket_dir.join("1"))?;
 
     CHILD_INPUT
         .set(Mutex::new(ChildInput {
@@ -79,9 +82,19 @@ pub fn start(
                     MsgFromChild::FinalState(state) => {
                         P_OR_F_CHANNEL.tx.send(PanicOrFinal::Final(state)).unwrap();
                     }
-                    MsgFromChild::SpawnProcess(request) => todo!(),
-                    MsgFromChild::KillProcess(id) => todo!(),
-                    MsgFromChild::InterruptWrites(id) => todo!(),
+                    MsgFromChild::SpawnProcess(request) => spawn_persistent(socket_dir, request),
+                    MsgFromChild::KillProcess(id) => {
+                        if let Some(mut process) = PROCESSES.lock().unwrap().remove(&id) {
+                            _ = process.child.kill();
+                        }
+                    }
+                    MsgFromChild::InterruptWrites(id) => {
+                        let processes = PROCESSES.lock().unwrap();
+                        if let Some(process) = processes.get(&id) {
+                            process.interrupted_stdout.store(true, Relaxed);
+                            process.interrupted_stderr.store(true, Relaxed);
+                        }
+                    }
                     MsgFromChild::RequestClipboard => {
                         send(MsgFromParent::ClipboardContent(get_clipboard())).unwrap();
                     }
@@ -98,6 +111,96 @@ pub fn start(
     });
 
     Ok(())
+}
+
+fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) {
+    fn read_output(
+        mut listener: LocalSocketListener,
+        mut reader: impl Read + Send + 'static,
+        id: &str,
+        interrupted: &Arc<AtomicBool>,
+    ) {
+        let id = id.to_string();
+        let interrupted = interrupted.clone();
+        std::thread::spawn(move || {
+            let mut buf = Vec::with_capacity(8 * 1024);
+            let mut conn: Option<LocalSocketStream> = None;
+            loop {
+                let num_bytes = match reader.read(&mut buf) {
+                    Ok(0) => return,
+                    Ok(num_bytes) => num_bytes,
+                    Err(err) => {
+                        send(MsgFromParent::ChildIoError(
+                            id.clone(),
+                            err.raw_os_error().unwrap(),
+                        ))
+                        .unwrap();
+                        continue;
+                    }
+                };
+
+                loop {
+                    if let Some(conn) = conn.as_mut()
+                        && !interrupted.fetch_and(false, Relaxed)
+                        && let Ok(_) = conn.write_all(&buf[..num_bytes])
+                    {
+                        break;
+                    } else {
+                        conn = Some(listener.next().unwrap().unwrap());
+                    }
+                }
+            }
+        });
+    }
+
+    let mut children = PROCESSES.lock().unwrap();
+    match request.spawn() {
+        Ok((id, mut child)) => {
+            let stdin_listener = listener(socket_dir.join(&id).join("0")).unwrap();
+            let interrupted_stdout = Arc::new(AtomicBool::new(false));
+            let stdout_listener = listener(socket_dir.join(&id).join("1")).unwrap();
+            let interrupted_stderr = Arc::new(AtomicBool::new(false));
+            let stderr_listener = listener(socket_dir.join(&id).join("2")).unwrap();
+
+            let mut stdin = child.stdin.take().unwrap();
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+
+            std::thread::spawn({
+                let id = id.clone();
+                move || {
+                    let mut buf = Vec::with_capacity(8 * 1024);
+                    for conn in stdin_listener.incoming() {
+                        let mut conn = conn.unwrap();
+                        while let Ok(num_bytes) = conn.read(&mut buf) {
+                            if let Err(err) = stdin.write_all(&buf[..num_bytes]) {
+                                if err.kind() == ErrorKind::BrokenPipe {
+                                    return;
+                                } else {
+                                    send(MsgFromParent::ChildIoError(
+                                        id.clone(),
+                                        err.raw_os_error().unwrap(),
+                                    ))
+                                    .unwrap()
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            read_output(stdout_listener, stdout, &id, &interrupted_stdout);
+            read_output(stderr_listener, stderr, &id, &interrupted_stderr);
+
+            children.insert(id.clone(), Process {
+                child,
+                interrupted_stdout,
+                interrupted_stderr,
+            });
+            send(MsgFromParent::SpawnResult(Ok(id))).unwrap()
+        }
+        Err(err) => send(MsgFromParent::SpawnResult(Err(err))).unwrap(),
+    }
 }
 
 /// Get the name of a [`LocalSocketStream`]
@@ -166,10 +269,20 @@ mod clipboard {
 
 /// Kills all remaining processes.
 pub fn kill_remaining_processes() {
-    for (_, mut child) in PROCESSES.lock().unwrap().drain() {
-        _ = child.kill();
+    for (_, mut process) in PROCESSES.lock().unwrap().drain() {
+        _ = process.child.kill();
     }
 }
 
-static PROCESSES: LazyLock<Mutex<HashMap<String, Child>>> = LazyLock::new(Mutex::default);
+fn listener(path: PathBuf) -> std::io::Result<LocalSocketListener> {
+    ListenerOptions::new().name(get_name(path)?).create_sync()
+}
+
+static PROCESSES: LazyLock<Mutex<HashMap<String, Process>>> = LazyLock::new(Mutex::default);
 const BUF_CAP: usize = 256 * 1024;
+
+struct Process {
+    child: Child,
+    interrupted_stdout: Arc<AtomicBool>,
+    interrupted_stderr: Arc<AtomicBool>,
+}

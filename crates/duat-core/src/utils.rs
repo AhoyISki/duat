@@ -369,8 +369,6 @@ where
 /// panics.
 pub fn catch_panic<R>(f: impl FnOnce() -> R) -> Option<R> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).ok()
-
-        
 }
 
 /// Log something to a log file, when things are panicking in a way

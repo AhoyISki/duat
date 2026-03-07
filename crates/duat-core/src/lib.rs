@@ -386,7 +386,7 @@ pub mod process {
             .map(|(k, v)| (encode(k), v.map(encode)))
             .collect();
 
-        session::ipc::send(MsgFromChild::SpawnProcess(PersistentCommandRequest {
+        session::ipc::send(MsgFromChild::SpawnProcess(PersistentSpawnRequest {
             id: id.to_string(),
             program: encode(command.get_program()),
             args,
@@ -814,14 +814,14 @@ pub mod process {
     /// A request to spawn a new [`PersistentChild`] process.
     #[doc(hidden)]
     #[derive(Decode, Encode)]
-    pub struct PersistentCommandRequest {
+    pub struct PersistentSpawnRequest {
         id: String,
         program: Vec<u8>,
         args: Vec<Vec<u8>>,
         envs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
     }
 
-    impl PersistentCommandRequest {
+    impl PersistentSpawnRequest {
         /// Spawn the [`Command`].
         ///
         /// Returns the id of this command, as well as the
@@ -850,11 +850,11 @@ pub mod process {
         }
     }
 
-    impl std::fmt::Debug for PersistentCommandRequest {
+    impl std::fmt::Debug for PersistentSpawnRequest {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let decode = |value: Vec<u8>| unsafe { OsString::from_encoded_bytes_unchecked(value) };
 
-            f.debug_struct("PersistentCommandRequest")
+            f.debug_struct("PersistentSpawnRequest")
                 .field("id", &self.id)
                 .field("program", &decode(self.program.clone()))
                 .field(
