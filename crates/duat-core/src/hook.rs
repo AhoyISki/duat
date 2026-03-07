@@ -1058,13 +1058,13 @@ impl<W: Widget> PartialEq<Handle<W>> for OnMouseEvent {
 /// - The `Form`'s name.
 /// - Its [`FormId`].
 /// - Its new value.
-pub struct FormSet(pub(crate) (String, FormId, Form));
+pub struct FormSet(pub(crate) (&'static str, FormId, Form));
 
 impl Hookable for FormSet {
-    type Input<'h> = (&'h str, FormId, Form);
+    type Input<'h> = (&'static str, FormId, Form);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, self.0.1, self.0.2)
+        (self.0.0, self.0.1, self.0.2)
     }
 }
 
