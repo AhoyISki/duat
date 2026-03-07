@@ -268,7 +268,7 @@ mod macros {
 
 static LOGS: Logs = {
     static LIST: Mutex<Vec<Record>> = Mutex::new(Vec::new());
-    static CUR_STATE: AtomicUsize = AtomicUsize::new(0);
+    static CUR_STATE: AtomicUsize = AtomicUsize::new(1);
     Logs {
         list: &LIST,
         cur_state: &CUR_STATE,
