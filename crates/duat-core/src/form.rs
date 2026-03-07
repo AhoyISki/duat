@@ -50,13 +50,11 @@ mod global {
     pub use crate::__id_of__ as id_of;
     use crate::{
         context,
-        form::{BASE_FORMS, FormKind},
+        form::FormKind,
         hook::{self, ColorSchemeSet},
     };
 
     static PALETTE: LazyLock<Palette> = LazyLock::new(Palette::new);
-    static FORMS: LazyLock<Mutex<Vec<&'static str>>> =
-        LazyLock::new(|| Mutex::new(BASE_FORMS.iter().map(|(name, _)| *name).collect()));
     static COLORSCHEMES: LazyLock<Mutex<HashMap<Arc<str>, ColorschemeFn>>> =
         LazyLock::new(Mutex::default);
 
@@ -92,10 +90,7 @@ mod global {
             FormKind::Normal => PALETTE.set_form(cloned_name, form),
             FormKind::Ref(refed, style) => PALETTE.set_ref(cloned_name, refed, style),
             _ => unreachable!(),
-        };
-
-        let mut forms = FORMS.lock().unwrap();
-        FormId(position_of_name(&mut forms, name) as u16)
+        }
     }
 
     /// Sets a form, "weakly"
@@ -133,10 +128,7 @@ mod global {
             FormKind::Normal => PALETTE.set_weak_form(cloned_name, form),
             FormKind::Ref(refed, style) => PALETTE.set_weak_ref(cloned_name, refed, style),
             _ => unreachable!(),
-        };
-
-        let mut forms = FORMS.lock().unwrap();
-        FormId(position_of_name(&mut forms, name) as u16)
+        }
     }
 
     /// Returns a [`Form`], given a [`FormId`].
@@ -354,7 +346,7 @@ mod global {
                 }
             }
 
-            inner.masks.push((mask.to_string(), remaps));
+            inner.masks.push((mask.to_string().leak(), remaps));
         }
     }
 
@@ -439,16 +431,7 @@ mod global {
     pub fn set_many<S: AsRef<str>>(
         sets: impl IntoIterator<Item = (S, Option<Form>)>,
     ) -> Vec<FormId> {
-        let mut ids = Vec::new();
-        let mut forms = FORMS.lock().unwrap();
-        let sets: Vec<_> = sets.into_iter().collect();
-        for (name, _) in &sets {
-            ids.push(FormId(position_of_name(&mut forms, name) as u16));
-        }
-
-        PALETTE.set_many(&sets);
-
-        ids
+        PALETTE.set_many(&Vec::from_iter(sets))
     }
 
     /// Adds a colorscheme to the list of colorschemes
@@ -506,7 +489,8 @@ mod global {
 
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
-        FORMS.lock().unwrap().contains(&name)
+        let palette = PALETTE.0.read().unwrap();
+        palette.forms.iter().any(|(n, _)| *n == name)
     }
 
     /// Wether or not a specific [`ColorScheme`] was added
@@ -516,7 +500,7 @@ mod global {
 
     /// The name of a form, given a [`FormId`]
     pub(super) fn name_of(id: FormId) -> &'static str {
-        FORMS.lock().unwrap()[id.0 as usize]
+        PALETTE.0.read().unwrap().forms[id.0 as usize].0
     }
 
     fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
@@ -863,57 +847,64 @@ impl Palette {
         Self(RwLock::new(InnerPalette {
             main_cursor,
             extra_cursor: main_cursor,
-            forms: BASE_FORMS
-                .iter()
-                .map(|(str, form)| (str.to_string(), *form))
-                .collect(),
-            masks: vec![("".to_string(), (0..BASE_FORMS.len() as u16).collect())],
+            forms: BASE_FORMS.iter().map(|(str, form)| (*str, *form)).collect(),
+            masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
         }))
     }
 
     /// Sets a [`Form`]
-    fn set_form(&self, name: impl AsRef<str>, form: Form) {
+    fn set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
         let name = name.as_ref();
-        self.0.write().unwrap().set_form(name, form);
+        self.0.write().unwrap().set_form(name, form)
     }
 
     /// Sets a [`Form`] "weakly"
-    fn set_weak_form(&self, name: impl AsRef<str>, form: Form) {
+    fn set_weak_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
         let name = name.as_ref();
-        self.0.write().unwrap().set_weak_form(name, form);
+        self.0.write().unwrap().set_weak_form(name, form)
     }
 
     /// Makes a [`Form`] reference another
-    fn set_ref(&self, name: impl AsRef<str>, refed: u16, override_style: ContentStyle) {
+    fn set_ref(&self, name: impl AsRef<str>, refed: u16, override_style: ContentStyle) -> FormId {
         let name = name.as_ref();
-        self.0.write().unwrap().set_ref(name, refed, override_style);
+        self.0.write().unwrap().set_ref(name, refed, override_style)
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&self, name: impl AsRef<str>, refed: u16, override_style: ContentStyle) {
+    fn set_weak_ref(
+        &self,
+        name: impl AsRef<str>,
+        refed: u16,
+        override_style: ContentStyle,
+    ) -> FormId {
         let name = name.as_ref();
         let mut inner_palette = self.0.write().unwrap();
-        inner_palette.set_weak_ref(name, refed, override_style);
+        inner_palette.set_weak_ref(name, refed, override_style)
     }
 
     /// Sets many [`Form`]s
-    fn set_many<S: AsRef<str>>(&self, sets: &[(S, Option<Form>)]) {
+    fn set_many<S: AsRef<str>>(&self, sets: &[(S, Option<Form>)]) -> Vec<FormId> {
         let mut inner = self.0.write().unwrap();
+        let mut ids = Vec::new();
+
         for (name, form) in sets {
             let Some(form) = *form else {
-                position_and_form(&mut inner.forms, name);
+                let (idx, _) = position_and_form(&mut inner.forms, name);
+                ids.push(FormId(idx as u16));
                 continue;
             };
 
-            match form.kind {
+            ids.push(match form.kind {
                 FormKind::Normal => inner.set_form(name.as_ref(), form),
                 FormKind::Ref(refed, style) => inner.set_ref(name.as_ref(), refed, style),
                 FormKind::Weakest => inner.set_weak_form(name.as_ref(), form),
                 FormKind::WeakestRef(refed, style) => {
                     inner.set_weak_ref(name.as_ref(), refed, style)
                 }
-            }
+            });
         }
+
+        ids
     }
 
     /// Returns a form, given a [`FormId`].
@@ -989,91 +980,99 @@ impl Palette {
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
-    forms: Vec<(String, Form)>,
-    masks: Vec<(String, Vec<u16>)>,
+    forms: Vec<(&'static str, Form)>,
+    masks: Vec<(&'static str, Vec<u16>)>,
 }
 
 impl InnerPalette {
     /// Sets a [`Form`]
-    fn set_form(&mut self, name: &str, form: Form) {
-        let (i, _) = position_and_form(&mut self.forms, name);
+    fn set_form(&mut self, name: &str, form: Form) -> FormId {
+        let (idx, _) = position_and_form(&mut self.forms, name);
 
-        self.forms[i].1 = form;
+        self.forms[idx].1 = form;
 
-        for (referee, override_style) in refs_of(self, i) {
+        for (referee, override_style) in refs_of(self, idx) {
             mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
         }
 
         sender().send(DuatEvent::FormChange);
 
-        mask_form(name, i, self);
+        mask_form(name, idx, self);
 
-        let form_set = FormSet((self.forms[i].0.clone(), FormId(i as u16), form));
+        let form_set = FormSet((self.forms[idx].0, FormId(idx as u16), form));
         context::queue(move |pa| _ = hook::trigger(pa, form_set));
+
+        FormId(idx as u16)
     }
 
     /// Sets a [`Form`] "weakly"
-    fn set_weak_form(&mut self, name: &str, form: Form) {
-        let (i, _) = position_and_form(&mut self.forms, name);
+    fn set_weak_form(&mut self, name: &str, form: Form) -> FormId {
+        let (idx, _) = position_and_form(&mut self.forms, name);
 
-        let (_, f) = &mut self.forms[i];
+        let (_, f) = &mut self.forms[idx];
         if let FormKind::Weakest | FormKind::WeakestRef(..) = f.kind {
             *f = form;
             f.kind = FormKind::Normal;
 
             sender().send(DuatEvent::FormChange);
-            for (referee, override_style) in refs_of(self, i) {
+            for (referee, override_style) in refs_of(self, idx) {
                 mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
             }
 
-            mask_form(name, i, self);
+            mask_form(name, idx, self);
         }
+
+        FormId(idx as u16)
     }
 
     /// Makes a [`Form`] reference another
-    fn set_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) {
+    fn set_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) -> FormId {
         let (_, form) = self.forms[refed as usize];
-        let (i, _) = position_and_form(&mut self.forms, name);
+        let (idx, _) = position_and_form(&mut self.forms, name);
 
-        self.forms[i].1 = form;
-        for (referee, override_style) in refs_of(self, i) {
+        self.forms[idx].1 = form;
+        for (referee, override_style) in refs_of(self, idx) {
             mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
         }
 
         // If it would be circular, we just don't reference anything.
-        if would_be_circular(self, i, refed as usize) {
-            self.forms[i].1.kind = FormKind::Normal;
+        if would_be_circular(self, idx, refed as usize) {
+            self.forms[idx].1.kind = FormKind::Normal;
         } else {
-            self.forms[i].1.kind = FormKind::Ref(refed, override_style);
+            self.forms[idx].1.kind = FormKind::Ref(refed, override_style);
         }
 
         sender().send(DuatEvent::FormChange);
 
-        mask_form(name, i, self);
-        let form_set = FormSet((self.forms[i].0.clone(), FormId(i as u16), form));
+        mask_form(name, idx, self);
+        let form_set = FormSet((self.forms[idx].0, FormId(idx as u16), form));
         context::queue(move |pa| _ = hook::trigger(pa, form_set));
+
+        FormId(idx as u16)
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) {
+    fn set_weak_ref(&mut self, name: &str, refed: u16, override_style: ContentStyle) -> FormId {
         let (_, form) = self.forms[refed as usize];
-        let (i, _) = position_and_form(&mut self.forms, name);
+        let (idx, _) = position_and_form(&mut self.forms, name);
 
         // For weak refs, no checks are done, since a form is only set if it
         // doesn't exist, and for there to be refs to it, it must exist.
-        let (_, f) = &mut self.forms[i];
+        let (_, f) = &mut self.forms[idx];
         if let FormKind::Weakest | FormKind::WeakestRef(..) = f.kind {
             *f = form;
             f.kind = FormKind::WeakestRef(refed, override_style);
 
             sender().send(DuatEvent::FormChange);
 
-            for (referee, override_style) in refs_of(self, i) {
+            for (referee, override_style) in refs_of(self, idx) {
                 mimic_form_to_referee(&mut self.forms[referee].1, form, override_style);
             }
 
-            mask_form(name, i, self);
+            mask_form(name, idx, self);
         }
+
+        FormId(idx as u16)
     }
 }
 
@@ -1456,19 +1455,22 @@ fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool
     }
 }
 
-fn position_and_form(forms: &mut Vec<(String, Form)>, name: impl AsRef<str>) -> (usize, Form) {
+fn position_and_form(
+    forms: &mut Vec<(&'static str, Form)>,
+    name: impl AsRef<str>,
+) -> (usize, Form) {
     let name = name.as_ref();
     if let Some((i, (_, form))) = forms.iter().enumerate().find(|(_, (lhs, _))| *lhs == name) {
         (i, *form)
     } else if let Some((refed, _)) = name.rsplit_once('.') {
         let (i, mut form) = position_and_form(forms, refed);
         form.kind = FormKind::WeakestRef(i as u16, default_style());
-        forms.push((name.to_string(), form));
+        forms.push((name.to_string().leak(), form));
         (forms.len() - 1, form)
     } else {
         let mut form = Form::new();
         form.kind = FormKind::Weakest;
-        forms.push((name.to_string(), form));
+        forms.push((name.to_string().leak(), form));
         (forms.len() - 1, form)
     }
 }
@@ -1646,7 +1648,7 @@ impl std::fmt::Debug for Form {
 
 impl std::fmt::Debug for InnerPalette {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct DebugForms<'a>(&'a [(String, Form)]);
+        struct DebugForms<'a>(&'a [(&'static str, Form)]);
         impl std::fmt::Debug for DebugForms<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if f.alternate() {
