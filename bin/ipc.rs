@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::BufReader,
+    io::{BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     process::Child,
     sync::{LazyLock, Mutex, OnceLock, mpsc},
@@ -28,13 +28,18 @@ static FINAL_CHANNEL: LazyLock<Channel<FinalState>> = LazyLock::new(|| {
 pub fn send(msg: MsgFromParent) -> std::io::Result<()> {
     let mut channel = CHILD_INPUT.get().unwrap().lock().unwrap();
     if let Some(stream) = channel.stream.as_mut()
-        && let Ok(_) = bincode::encode_into_std_write(&msg, stream, config::standard())
+        && let Some(_) = (|| {
+            bincode::encode_into_std_write(&msg, stream, config::standard()).ok()?;
+            stream.flush().ok()
+        })()
     {
         Ok(())
     } else {
         channel.stream = None;
-        let mut stream = channel.listener.next().unwrap()?;
+        let mut stream =
+            BufWriter::with_capacity(BUF_CAP, channel.listener.next().unwrap().unwrap());
         bincode::encode_into_std_write(msg, &mut stream, config::standard()).unwrap();
+        stream.flush().unwrap();
         channel.stream = Some(stream);
         Ok(())
     }
@@ -107,7 +112,7 @@ fn get_name(path: PathBuf) -> std::io::Result<Name<'static>> {
 
 struct ChildInput {
     listener: LocalSocketListener,
-    stream: Option<LocalSocketStream>,
+    stream: Option<BufWriter<LocalSocketStream>>,
 }
 
 /// A simple channel to send stuff over.
@@ -166,3 +171,4 @@ pub fn kill_remaining_processes() {
 }
 
 static PROCESSES: LazyLock<Mutex<HashMap<String, Child>>> = LazyLock::new(Mutex::default);
+const BUF_CAP: usize = 256 * 1024;
