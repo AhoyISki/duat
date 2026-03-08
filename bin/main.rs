@@ -547,13 +547,13 @@ fn init_plugin(args: Args, name: String) -> Result<(), Box<dyn std::error::Error
         .replace("PluginName", &pascal_name)
         .replace("{repository_url}", &repo);
 
-    let lib = PLUGIN_LIB
+    let main = PLUGIN_LIB
         .replace("plugin_name", &snake_name)
         .replace("PluginName", &pascal_name);
 
     std::fs::write(plugin_dir.join("Cargo.toml"), toml)?;
     std::fs::write(plugin_dir.join("README.md"), readme)?;
-    std::fs::write(plugin_dir.join("src").join("main.rs"), lib)?;
+    std::fs::write(plugin_dir.join("src").join("main.rs"), main)?;
     println!("Created a plugin crate at {kebab_name}");
     Ok(())
 }

@@ -346,7 +346,7 @@ pub mod process {
         io::{BufRead, BufWriter, Read, Write},
         process::{Child, Command, Stdio},
         sync::{
-            Mutex, OnceLock,
+            Mutex,
             atomic::{AtomicUsize, Ordering},
             mpsc,
         },
