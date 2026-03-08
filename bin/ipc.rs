@@ -18,7 +18,7 @@ use interprocess::local_socket::{
 use crate::UiImpl;
 pub use crate::ipc::clipboard::*;
 
-static STDIN: OnceLock<Mutex<IpcChannel>> = OnceLock::new();
+static CHILD_INPUT: OnceLock<Mutex<ChildInput>> = OnceLock::new();
 static FINAL_CHANNEL: LazyLock<Channel<FinalState>> = LazyLock::new(|| {
     let (tx, rx) = mpsc::channel();
     Channel { tx, rx: Mutex::new(rx) }
@@ -26,7 +26,7 @@ static FINAL_CHANNEL: LazyLock<Channel<FinalState>> = LazyLock::new(|| {
 
 /// Send a message to the child.
 pub fn send(msg: MsgFromParent) -> std::io::Result<()> {
-    let mut channel = STDIN.get().unwrap().lock().unwrap();
+    let mut channel = CHILD_INPUT.get().unwrap().lock().unwrap();
     if let Some(stream) = channel.stream.as_mut()
         && let Ok(_) = bincode::encode_into_std_write(&msg, stream, config::standard())
     {
@@ -46,38 +46,41 @@ pub fn recv_final() -> FinalState {
 }
 
 pub fn start(socket_dir: &Path, config_tx: mpsc::Sender<(PathBuf, String)>) -> std::io::Result<()> {
-    let stdin_listener = ListenerOptions::new()
+    let child_input_listener = ListenerOptions::new()
         .name(get_name(socket_dir.join("0"))?)
         .create_sync()?;
-    let stdout_listener = ListenerOptions::new()
+    let child_output_listener = ListenerOptions::new()
         .name(get_name(socket_dir.join("1"))?)
         .create_sync()?;
 
-    STDIN
-        .set(Mutex::new(IpcChannel {
-            listener: stdin_listener,
+    CHILD_INPUT
+        .set(Mutex::new(ChildInput {
+            listener: child_input_listener,
             stream: None,
         }))
         .ok()
         .unwrap();
 
     std::thread::spawn(move || {
-        for conn in stdout_listener.incoming() {
+        for conn in child_output_listener.incoming() {
             let mut conn = BufReader::new(conn.unwrap());
-            match bincode::decode_from_std_read(&mut conn, config::standard()).unwrap() {
-                MsgFromChild::FinalState(state) => FINAL_CHANNEL.tx.send(state).unwrap(),
-                MsgFromChild::SpawnProcess(request) => todo!(),
-                MsgFromChild::KillProcess(id) => todo!(),
-                MsgFromChild::InterruptWrites(id) => todo!(),
-                MsgFromChild::RequestClipboard => {
-                    send(MsgFromParent::ClipboardContent(get_clipboard())).unwrap();
-                }
-                MsgFromChild::UpdateClipboard(content) => set_clipboard(content),
-                MsgFromChild::RequestReload(request) => super::try_reload(&config_tx, request),
-                MsgFromChild::Panicked(msg) => {
-                    UiImpl::close();
-                    println!("{msg}");
-                    std::process::exit(1);
+
+            while let Ok(msg) = bincode::decode_from_std_read(&mut conn, config::standard()) {
+                match msg {
+                    MsgFromChild::FinalState(state) => FINAL_CHANNEL.tx.send(state).unwrap(),
+                    MsgFromChild::SpawnProcess(request) => todo!(),
+                    MsgFromChild::KillProcess(id) => todo!(),
+                    MsgFromChild::InterruptWrites(id) => todo!(),
+                    MsgFromChild::RequestClipboard => {
+                        send(MsgFromParent::ClipboardContent(get_clipboard())).unwrap();
+                    }
+                    MsgFromChild::UpdateClipboard(content) => set_clipboard(content),
+                    MsgFromChild::RequestReload(request) => super::try_reload(&config_tx, request),
+                    MsgFromChild::Panicked(msg) => {
+                        UiImpl::close();
+                        println!("{msg}");
+                        std::process::exit(1);
+                    }
                 }
             }
         }
@@ -97,7 +100,7 @@ fn get_name(path: PathBuf) -> std::io::Result<Name<'static>> {
     }
 }
 
-struct IpcChannel {
+struct ChildInput {
     listener: LocalSocketListener,
     stream: Option<LocalSocketStream>,
 }
