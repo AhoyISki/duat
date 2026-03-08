@@ -162,6 +162,9 @@ pub fn start(
 }
 
 fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+    static PROC_ID: AtomicUsize = AtomicUsize::new(0);
+
     fn read_output(
         stream: Arc<Mutex<Option<LocalSocketStream>>>,
         mut reader: impl Read + Send + 'static,
@@ -208,8 +211,10 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
 
     let mut processes = PROCESSES.lock().unwrap();
     match request.spawn() {
-        Ok((id, caller, mut child)) => {
-            let proc_dir = socket_dir.join(format!("proc{id}"));
+        Ok((caller, mut child)) => {
+            let proc_id = PROC_ID.fetch_add(1, Relaxed);
+
+            let proc_dir = socket_dir.join(format!("proc{proc_id}"));
             let stdin_listener = listener(proc_dir.join("0")).unwrap();
             let stdout_listener = listener(proc_dir.join("1")).unwrap();
             let stderr_listener = listener(proc_dir.join("2")).unwrap();
@@ -218,7 +223,7 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
 
-            send(MsgFromParent::SpawnResult(Ok(id))).unwrap();
+            send(MsgFromParent::SpawnResult(Ok(proc_id))).unwrap();
 
             std::thread::spawn({
                 let caller = caller.clone();
@@ -234,7 +239,7 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
                                     return;
                                 } else {
                                     send(MsgFromParent::ChildIoError(
-                                        id,
+                                        proc_id,
                                         caller.clone(),
                                         err.raw_os_error().unwrap(),
                                     ))
@@ -249,10 +254,10 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
             let stdout_stream = Arc::new(Mutex::new(stdout_listener.accept().ok()));
             let stderr_stream = Arc::new(Mutex::new(stderr_listener.accept().ok()));
 
-            read_output(stdout_stream.clone(), stdout, id, &caller);
-            read_output(stderr_stream.clone(), stderr, id, &caller);
+            read_output(stdout_stream.clone(), stdout, proc_id, &caller);
+            read_output(stderr_stream.clone(), stderr, proc_id, &caller);
 
-            processes.insert(id, Process {
+            processes.insert(proc_id, Process {
                 child,
                 stdout_conn: Arc::new(Connector {
                     listener: stdout_listener,
@@ -266,11 +271,6 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
         }
         Err(err) => send(MsgFromParent::SpawnResult(Err(err))).unwrap(),
     }
-}
-
-pub fn get_proc_id() -> usize {
-    let processes = PROCESSES.lock().unwrap();
-    processes.keys().map(|key| *key + 1).max().unwrap_or(0)
 }
 
 /// Get the name of a [`LocalSocketStream`]
