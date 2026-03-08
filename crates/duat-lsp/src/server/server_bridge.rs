@@ -13,7 +13,7 @@ use duat_core::{
     context,
     data::Pass,
     hook::{self, ConfigUnloaded},
-    process::PersistentChild,
+    process::{PersistentChild, PersistentWriter},
     storage,
     text::{Text, txt},
 };
@@ -47,14 +47,8 @@ impl ServerBridge {
 
         let cmd_name = config.command.as_deref().unwrap_or(server_name);
 
-        let identifier = if config.is_single_instance {
-            server_name.to_string()
-        } else {
-            format!("{server_name}{}", rootdir.to_str().unwrap())
-        };
-
         let mut already_initialized = true;
-        let mut child = match storage::get_if(|child: &PersistentChild| child.id() == identifier) {
+        let mut child = match storage::get_if(|child: &PersistentChild| todo!()) {
             Some(child) => child,
             None => {
                 let mut command = std::process::Command::new(cmd_name);
@@ -66,7 +60,7 @@ impl ServerBridge {
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped());
 
-                duat_core::process::spawn_persistent(identifier, &mut command).map_err(|err| {
+                duat_core::process::spawn_persistent(&mut command).map_err(|err| {
                     match err.kind() {
                         ErrorKind::NotFound | ErrorKind::PermissionDenied => {
                             txt!("{err}: [a]{cmd_name}")
@@ -79,9 +73,9 @@ impl ServerBridge {
 
         let (server_tx, server_rx) = mpsc::channel();
 
-        let mut stdin = child.stdin.take().expect("Couldn't take stdin");
-        let mut stdout = child.get_stdout().expect("Couldn't take stdout");
-        let mut stderr = child.get_stderr().expect("Couldn't take stderr");
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = child.get_stdout().unwrap();
+        let mut stderr = child.get_stderr().unwrap();
 
         std::thread::spawn({
             let server_name = server_name.to_string();
@@ -119,6 +113,7 @@ impl ServerBridge {
             if let Err(err) = stdin_loop(server_rx, &mut stdin) {
                 context::error!("{err}");
             }
+            context::debug!("left stdin loop");
             stdin
         });
 
@@ -237,12 +232,16 @@ impl ServerBridge {
     }
 }
 
-fn stdin_loop(server_rx: mpsc::Receiver<JsonRpcFn>, stdin: &mut impl Write) -> std::io::Result<()> {
+fn stdin_loop(
+    server_rx: mpsc::Receiver<JsonRpcFn>,
+    stdin: &mut PersistentWriter,
+) -> std::io::Result<()> {
     for jsonrpc_fn in server_rx {
         let content = serde_json::to_string(&jsonrpc_fn()?)?;
-
-        write!(stdin, "Content-Length: {}\r\n\r\n{content}", content.len())?;
-        stdin.flush()?;
+        stdin.on_writer(|writer| {
+            write!(writer, "Content-Length: {}\r\n\r\n{content}", content.len())?;
+            writer.flush()
+        })?;
     }
 
     Ok(())
@@ -293,10 +292,12 @@ fn stdout_loop(callbacks: Callbacks, stdout: &mut impl BufRead) -> std::io::Resu
             Ok(content) => {
                 let mut callbacks = callbacks.lock().unwrap_or_else(|err| err.into_inner());
                 match content {
-                    JsonRpc::Request(_) => {
+                    JsonRpc::Request(content) => {
                         context::debug!("Server requested: {content:#?}");
                     }
-                    JsonRpc::Notification(_) => {}
+                    JsonRpc::Notification(content) => {
+                        context::debug!("Server notified: {content:#?}");
+                    }
                     JsonRpc::Success(_) => {
                         if let Some(id) = content.get_id()
                             && let Some(callback) = callbacks.remove(&id)
@@ -305,7 +306,7 @@ fn stdout_loop(callbacks: Callbacks, stdout: &mut impl BufRead) -> std::io::Resu
                             context::queue(move |pa| callback(pa, value));
                         }
                     }
-                    JsonRpc::Error(_) => {
+                    JsonRpc::Error(content) => {
                         context::error!("LSP: {content:#?}");
                         continue;
                     }

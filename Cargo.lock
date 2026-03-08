@@ -364,7 +364,6 @@ dependencies = [
  "duatmode",
  "globset",
  "interprocess",
- "interrupt-read",
  "notify",
 ]
 
@@ -418,6 +417,7 @@ dependencies = [
 name = "duat-lsp"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "duat-core",
  "duat-filetype",
  "globset",
