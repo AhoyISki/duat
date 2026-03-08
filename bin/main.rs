@@ -141,7 +141,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 structs: HashMap::new(),
                 clipb: ipc::get_clipboard(),
                 reload_start: None,
-                proc_id: ipc::get_proc_id(),
             }))?;
 
             ipc::kill_remaining_processes();
@@ -229,7 +228,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         structs: HashMap::new(),
         clipb: ipc::get_clipboard(),
         reload_start: None,
-        proc_id: ipc::get_proc_id(),
     });
 
     let error = loop {
@@ -271,7 +269,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             structs: final_state.structs,
             clipb: ipc::get_clipboard(),
             reload_start: RELOAD_INSTANT.lock().unwrap().take(),
-            proc_id: ipc::get_proc_id(),
         });
 
         (exe_path, profile) = config_rx.recv().unwrap();

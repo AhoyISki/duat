@@ -75,15 +75,8 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
     }));
 
     if catch_panic(|| {
-        let InitialState {
-            buffers,
-            structs,
-            clipb,
-            reload_start,
-            proc_id,
-        } = ipc::recv_init();
+        let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
 
-		crate::process::set_proc_id(proc_id);
         crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
             crate::clipboard::set(clipboard);
@@ -636,7 +629,6 @@ pub mod ipc {
         pub structs: HashMap<String, MaybeTypedValues>,
         pub clipb: Option<String>,
         pub reload_start: Option<SystemTime>,
-        pub proc_id: usize,
     }
 
     /// The final state of the duat child process.

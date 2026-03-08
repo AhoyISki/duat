@@ -383,10 +383,7 @@ pub mod process {
             .map(|(k, v)| (encode(k), v.map(encode)))
             .collect();
 
-        let id = PROC_ID.get().unwrap().fetch_add(1, Ordering::Relaxed);
-
         session::ipc::send(MsgFromChild::SpawnProcess(PersistentSpawnRequest {
-            id,
             program: encode(command.get_program()),
             args,
             envs,
@@ -807,7 +804,6 @@ pub mod process {
     #[doc(hidden)]
     #[derive(Decode, Encode)]
     pub struct PersistentSpawnRequest {
-        id: usize,
         program: Vec<u8>,
         args: Vec<Vec<u8>>,
         envs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
@@ -821,7 +817,7 @@ pub mod process {
         ///
         /// This should only be done in the Duat executable.
         // This will become `std::io::RawOsError` once that is stable.
-        pub fn spawn(self) -> Result<(usize, String, Child), i32> {
+        pub fn spawn(self) -> Result<(String, Child), i32> {
             let decode = |value: Vec<u8>| unsafe { OsString::from_encoded_bytes_unchecked(value) };
 
             let caller = decode(self.program.clone()).to_string_lossy().to_string();
@@ -840,7 +836,7 @@ pub mod process {
                 .spawn()
                 .map_err(|err| err.raw_os_error().unwrap())?;
 
-            Ok((self.id, caller, child))
+            Ok((caller, child))
         }
     }
 
@@ -849,7 +845,6 @@ pub mod process {
             let decode = |value: Vec<u8>| unsafe { OsString::from_encoded_bytes_unchecked(value) };
 
             f.debug_struct("PersistentSpawnRequest")
-                .field("id", &self.id)
                 .field("program", &decode(self.program.clone()))
                 .field(
                     "args",
@@ -874,11 +869,6 @@ pub mod process {
         id: usize,
         stdout_bytes: Vec<u8>,
         stderr_bytes: Vec<u8>,
-    }
-
-    /// Sets the next process id.
-    pub(crate) fn set_proc_id(id: usize) {
-        PROC_ID.set(AtomicUsize::new(id)).unwrap()
     }
 
     /// Wait for a [`PersistentChild`] writers to be done writing.
