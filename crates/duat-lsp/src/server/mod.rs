@@ -60,6 +60,7 @@ impl Server {
         self.bridge.send_request::<Initialize>(params, {
             let server = self.clone();
             move |_, response| {
+                context::debug!("received {response:#?}");
                 server.bridge.declare_initialized();
 
                 let mut inner = server.inner.lock().unwrap();

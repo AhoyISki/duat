@@ -17,6 +17,7 @@ mod server;
 pub struct DuatLsp;
 
 impl Plugin for DuatLsp {
+    #[inline(never)]
     fn plug(self, _: &duat_core::Plugins) {
         hook::add::<BufferOpened>(|pa, handle| {
             if let Some(filetype) = handle.filetype(pa)

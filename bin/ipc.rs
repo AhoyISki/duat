@@ -3,11 +3,7 @@ use std::{
     io::{BufReader, BufWriter, ErrorKind, Read, Write},
     path::{Path, PathBuf},
     process::Child,
-    sync::{
-        Arc, LazyLock, Mutex, OnceLock,
-        atomic::{AtomicBool, Ordering::Relaxed},
-        mpsc,
-    },
+    sync::{Arc, LazyLock, Mutex, OnceLock, mpsc},
 };
 
 use duat::context::cache::bincode::{self, config};
@@ -20,6 +16,48 @@ use interprocess::local_socket::{
 };
 
 pub use crate::ipc::clipboard::*;
+
+#[cfg(not(target_os = "android"))]
+mod clipboard {
+    use std::sync::{LazyLock, Mutex};
+
+    enum ClipboardType {
+        Platform(arboard::Clipboard),
+        Local(Option<String>),
+    }
+
+    static CLIPBOARD: LazyLock<Mutex<ClipboardType>> = LazyLock::new(|| {
+        Mutex::new(match arboard::Clipboard::new() {
+            Ok(clipb) => ClipboardType::Platform(clipb),
+            Err(_) => ClipboardType::Local(None),
+        })
+    });
+
+    pub fn get_clipboard() -> Option<String> {
+        match &mut *CLIPBOARD.lock().unwrap() {
+            ClipboardType::Platform(clipb) => clipb.get_text().ok(),
+            ClipboardType::Local(text) => text.clone(),
+        }
+    }
+
+    pub fn set_clipboard(text: String) {
+        match &mut *CLIPBOARD.lock().unwrap() {
+            ClipboardType::Platform(clipb) => clipb.set_text(text).unwrap(),
+            ClipboardType::Local(old) => *old = Some(text),
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+mod clipboard {
+    pub fn get_clipboard() -> Option<String> {
+        android_clipboard::get_text().ok()
+    }
+
+    pub fn set_clipboard(text: String) {
+        _ = android_clipboard::set_text(text.to_string());
+    }
+}
 
 static CHILD_INPUT: OnceLock<Mutex<ChildInput>> = OnceLock::new();
 static P_OR_F_CHANNEL: LazyLock<Channel<PanicOrFinal>> = LazyLock::new(|| {
@@ -90,9 +128,19 @@ pub fn start(
                     }
                     MsgFromChild::InterruptWrites(id) => {
                         let processes = PROCESSES.lock().unwrap();
-                        if let Some(process) = processes.get(&id) {
-                            process.interrupted_stdout.store(true, Relaxed);
-                            process.interrupted_stderr.store(true, Relaxed);
+                        let Some(process) = processes.get(&id) else {
+                            continue;
+                        };
+
+                        for conn in [process.stdout_conn.clone(), process.stderr_conn.clone()] {
+                            *conn.stream.lock().unwrap() = None;
+                            std::thread::spawn(move || {
+                                let mut stream = conn.stream.lock().unwrap();
+
+                                if let Ok(new_stream) = conn.listener.accept() {
+                                    *stream = Some(new_stream);
+                                };
+                            });
                         }
                     }
                     MsgFromChild::RequestClipboard => {
@@ -115,23 +163,22 @@ pub fn start(
 
 fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) {
     fn read_output(
-        mut listener: LocalSocketListener,
+        stream: Arc<Mutex<Option<LocalSocketStream>>>,
         mut reader: impl Read + Send + 'static,
-        id: &str,
-        interrupted: &Arc<AtomicBool>,
+        id: usize,
+        caller: &str,
     ) {
-        let id = id.to_string();
-        let interrupted = interrupted.clone();
+        let caller = caller.to_string();
         std::thread::spawn(move || {
-            let mut buf = Vec::with_capacity(8 * 1024);
-            let mut conn: Option<LocalSocketStream> = None;
+            let mut buf = vec![0; 8 * 1024];
             loop {
                 let num_bytes = match reader.read(&mut buf) {
                     Ok(0) => return,
                     Ok(num_bytes) => num_bytes,
                     Err(err) => {
                         send(MsgFromParent::ChildIoError(
-                            id.clone(),
+                            id,
+                            caller.clone(),
                             err.raw_os_error().unwrap(),
                         ))
                         .unwrap();
@@ -139,46 +186,56 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
                     }
                 };
 
-                loop {
-                    if let Some(conn) = conn.as_mut()
-                        && !interrupted.fetch_and(false, Relaxed)
-                        && let Ok(_) = conn.write_all(&buf[..num_bytes])
-                    {
-                        break;
-                    } else {
-                        conn = Some(listener.next().unwrap().unwrap());
-                    }
-                }
+                let mut stream = stream.lock().unwrap();
+                // This being None means the Listener failed to connect.
+                let Some(stream) = stream.as_mut() else {
+                    send(MsgFromParent::ChildIoError(
+                        id,
+                        caller.clone(),
+                        std::io::Error::from(ErrorKind::BrokenPipe)
+                            .raw_os_error()
+                            .unwrap(),
+                    ))
+                    .unwrap();
+                    break;
+                };
+
+                // This isn't supposed to fail.
+                _ = stream.write_all(&buf[..num_bytes]);
             }
         });
     }
 
-    let mut children = PROCESSES.lock().unwrap();
+    let mut processes = PROCESSES.lock().unwrap();
     match request.spawn() {
-        Ok((id, mut child)) => {
-            let stdin_listener = listener(socket_dir.join(&id).join("0")).unwrap();
-            let interrupted_stdout = Arc::new(AtomicBool::new(false));
-            let stdout_listener = listener(socket_dir.join(&id).join("1")).unwrap();
-            let interrupted_stderr = Arc::new(AtomicBool::new(false));
-            let stderr_listener = listener(socket_dir.join(&id).join("2")).unwrap();
+        Ok((id, caller, mut child)) => {
+            let proc_dir = socket_dir.join(format!("proc{id}"));
+            let stdin_listener = listener(proc_dir.join("0")).unwrap();
+            let stdout_listener = listener(proc_dir.join("1")).unwrap();
+            let stderr_listener = listener(proc_dir.join("2")).unwrap();
 
             let mut stdin = child.stdin.take().unwrap();
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
 
+            send(MsgFromParent::SpawnResult(Ok(id))).unwrap();
+
             std::thread::spawn({
-                let id = id.clone();
+                let caller = caller.clone();
                 move || {
-                    let mut buf = Vec::with_capacity(8 * 1024);
+                    let mut buf = vec![0; 8 * 1024];
                     for conn in stdin_listener.incoming() {
                         let mut conn = conn.unwrap();
-                        while let Ok(num_bytes) = conn.read(&mut buf) {
+                        while let Ok(num_bytes) = conn.read(&mut buf)
+                            && num_bytes > 0
+                        {
                             if let Err(err) = stdin.write_all(&buf[..num_bytes]) {
                                 if err.kind() == ErrorKind::BrokenPipe {
                                     return;
                                 } else {
                                     send(MsgFromParent::ChildIoError(
-                                        id.clone(),
+                                        id,
+                                        caller.clone(),
                                         err.raw_os_error().unwrap(),
                                     ))
                                     .unwrap()
@@ -189,18 +246,31 @@ fn spawn_persistent(socket_dir: &'static Path, request: PersistentSpawnRequest) 
                 }
             });
 
-            read_output(stdout_listener, stdout, &id, &interrupted_stdout);
-            read_output(stderr_listener, stderr, &id, &interrupted_stderr);
+            let stdout_stream = Arc::new(Mutex::new(stdout_listener.accept().ok()));
+            let stderr_stream = Arc::new(Mutex::new(stderr_listener.accept().ok()));
 
-            children.insert(id.clone(), Process {
+            read_output(stdout_stream.clone(), stdout, id, &caller);
+            read_output(stderr_stream.clone(), stderr, id, &caller);
+
+            processes.insert(id, Process {
                 child,
-                interrupted_stdout,
-                interrupted_stderr,
+                stdout_conn: Arc::new(Connector {
+                    listener: stdout_listener,
+                    stream: stdout_stream,
+                }),
+                stderr_conn: Arc::new(Connector {
+                    listener: stderr_listener,
+                    stream: stderr_stream,
+                }),
             });
-            send(MsgFromParent::SpawnResult(Ok(id))).unwrap()
         }
         Err(err) => send(MsgFromParent::SpawnResult(Err(err))).unwrap(),
     }
+}
+
+pub fn get_proc_id() -> usize {
+    let processes = PROCESSES.lock().unwrap();
+    processes.keys().map(|key| *key + 1).max().unwrap_or(0)
 }
 
 /// Get the name of a [`LocalSocketStream`]
@@ -225,48 +295,6 @@ struct Channel<T> {
     rx: Mutex<mpsc::Receiver<T>>,
 }
 
-#[cfg(not(target_os = "android"))]
-mod clipboard {
-    use std::sync::{LazyLock, Mutex};
-
-    enum ClipboardType {
-        Platform(arboard::Clipboard),
-        Local(Option<String>),
-    }
-
-    static CLIPBOARD: LazyLock<Mutex<ClipboardType>> = LazyLock::new(|| {
-        Mutex::new(match arboard::Clipboard::new() {
-            Ok(clipb) => ClipboardType::Platform(clipb),
-            Err(_) => ClipboardType::Local(None),
-        })
-    });
-
-    pub fn get_clipboard() -> Option<String> {
-        match &mut *CLIPBOARD.lock().unwrap() {
-            ClipboardType::Platform(clipb) => clipb.get_text().ok(),
-            ClipboardType::Local(text) => text.clone(),
-        }
-    }
-
-    pub fn set_clipboard(text: String) {
-        match &mut *CLIPBOARD.lock().unwrap() {
-            ClipboardType::Platform(clipb) => clipb.set_text(text).unwrap(),
-            ClipboardType::Local(old) => *old = Some(text),
-        }
-    }
-}
-
-#[cfg(target_os = "android")]
-mod clipboard {
-    pub fn get_clipboard() -> Option<String> {
-        android_clipboard::get_text().ok()
-    }
-
-    pub fn set_clipboard(text: String) {
-        _ = android_clipboard::set_text(text.to_string());
-    }
-}
-
 /// Kills all remaining processes.
 pub fn kill_remaining_processes() {
     for (_, mut process) in PROCESSES.lock().unwrap().drain() {
@@ -278,11 +306,16 @@ fn listener(path: PathBuf) -> std::io::Result<LocalSocketListener> {
     ListenerOptions::new().name(get_name(path)?).create_sync()
 }
 
-static PROCESSES: LazyLock<Mutex<HashMap<String, Process>>> = LazyLock::new(Mutex::default);
+static PROCESSES: LazyLock<Mutex<HashMap<usize, Process>>> = LazyLock::new(Mutex::default);
 const BUF_CAP: usize = 256 * 1024;
 
 struct Process {
     child: Child,
-    interrupted_stdout: Arc<AtomicBool>,
-    interrupted_stderr: Arc<AtomicBool>,
+    stdout_conn: Arc<Connector>,
+    stderr_conn: Arc<Connector>,
+}
+
+struct Connector {
+    listener: LocalSocketListener,
+    stream: Arc<Mutex<Option<LocalSocketStream>>>,
 }

@@ -8,7 +8,6 @@
 //! input, updating every widget, updating parsers, mapping keys, etc.
 use std::{
     any::TypeId,
-    collections::HashMap,
     path::PathBuf,
     sync::{Mutex, OnceLock},
     time::Duration,
@@ -76,8 +75,15 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
     }));
 
     if catch_panic(|| {
-        let InitialState { buffers, structs, clipb, reload_start } = ipc::recv_init();
+        let InitialState {
+            buffers,
+            structs,
+            clipb,
+            reload_start,
+            proc_id,
+        } = ipc::recv_init();
 
+		crate::process::set_proc_id(proc_id);
         crate::storage::set_structs(structs);
         if let Some(clipboard) = clipb {
             crate::clipboard::set(clipboard);
@@ -105,16 +111,15 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
         }
 
         let buffers = main_loop(ui, is_first_time);
-
+        let structs = crate::storage::get_structs();
+        context::debug!("got structs");
         crate::process::wait_for_writers();
+        context::debug!("writers gone");
 
-        ipc::send(if buffers.is_empty() {
-            let structs = HashMap::new();
-            MsgFromChild::FinalState(ipc::FinalState { buffers, structs })
-        } else {
-            let structs = crate::storage::get_structs();
-            MsgFromChild::FinalState(ipc::FinalState { buffers, structs })
-        });
+        ipc::send(MsgFromChild::FinalState(ipc::FinalState {
+            buffers,
+            structs,
+        }));
     })
     .is_none()
     {
@@ -576,11 +581,11 @@ pub mod ipc {
         ReloadResult(Result<(), String>),
         /// The result of trying to spawn a process.
         // The i32 will become an `std::io::RawOsError` once that feature is stabilized.
-        SpawnResult(Result<String, i32>),
+        SpawnResult(Result<usize, i32>),
         /// The result of trying to kill a process.
         // The i32 will become an `std::io::RawOsError` once that feature is stabilized.
         KillResult(Result<(), i32>),
-        ChildIoError(String, i32),
+        ChildIoError(usize, String, i32),
     }
 
     /// A message sent from the child process.
@@ -601,10 +606,10 @@ pub mod ipc {
         /// through local sockets from the [`interprocess`] crate.
         SpawnProcess(PersistentSpawnRequest),
         /// Kill a previously spawned long lasting process.
-        KillProcess(String),
+        KillProcess(usize),
         /// Request that the parent executor stop writing to a
         /// process.
-        InterruptWrites(String),
+        InterruptWrites(usize),
         /// Request an external update to the clipboard.
         RequestClipboard,
         /// Manually set the content of the clipboard.
@@ -631,6 +636,7 @@ pub mod ipc {
         pub structs: HashMap<String, MaybeTypedValues>,
         pub clipb: Option<String>,
         pub reload_start: Option<SystemTime>,
+        pub proc_id: usize,
     }
 
     /// The final state of the duat child process.
@@ -651,7 +657,7 @@ pub mod ipc {
     static SOCKET_DIR: OnceLock<&Path> = OnceLock::new();
     static CHILD_OUTPUT: OnceLock<Mutex<BufWriter<LocalSocketStream>>> = OnceLock::new();
     static CLIPB_CHANNEL: LazyLock<Channel<Option<String>>> = Channel::lazy();
-    static SPAWN_CHANNEL: LazyLock<Channel<Result<String, i32>>> = Channel::lazy();
+    static SPAWN_CHANNEL: LazyLock<Channel<Result<usize, i32>>> = Channel::lazy();
     static KILL_CHANNEL: LazyLock<Channel<Result<(), i32>>> = Channel::lazy();
     static INIT_CHANNEL: LazyLock<Channel<InitialState>> = Channel::lazy();
 
@@ -678,7 +684,7 @@ pub mod ipc {
     }
 
     /// Receive the next spawn event.
-    pub(crate) fn recv_spawn() -> Result<String, i32> {
+    pub(crate) fn recv_spawn() -> Result<usize, i32> {
         SPAWN_CHANNEL.rx.lock().unwrap().recv().unwrap()
     }
 
@@ -711,8 +717,11 @@ pub mod ipc {
                     }
                     MsgFromParent::SpawnResult(result) => SPAWN_CHANNEL.tx.send(result).unwrap(),
                     MsgFromParent::KillResult(result) => KILL_CHANNEL.tx.send(result).unwrap(),
-                    MsgFromParent::ChildIoError(id, err) => {
-                        context::error!("[a]{id}[]: {}", std::io::Error::from_raw_os_error(err));
+                    MsgFromParent::ChildIoError(id, caller, err) => {
+                        context::error!(
+                            "[a]proc{id} ({caller})[]: {}",
+                            std::io::Error::from_raw_os_error(err)
+                        );
                     }
                 }
             }
@@ -732,20 +741,20 @@ pub mod ipc {
     ///
     /// [`PersistentChild`]: crate::process::PersistentChild
     pub(crate) fn connect_process_channel(
-        identifier: &str,
+        id: usize,
         stdout_bytes: Vec<u8>,
         stderr_bytes: Vec<u8>,
-    ) -> std::io::Result<(LocalSocketStream, [IpcReader; 2])> {
-        let socket_dir = SOCKET_DIR.get().unwrap().join("proc").join(identifier);
+    ) -> std::io::Result<(LocalSocketStream, [ProcessReader; 2])> {
+        let proc_dir = SOCKET_DIR.get().unwrap().join(format!("proc{id}"));
 
-        let stdin = LocalSocketStream::connect(get_name(socket_dir.join("0")))?;
+        let stdin = LocalSocketStream::connect(get_name(proc_dir.join("0")))?;
         let stdout = BufReader::new(
             Cursor::new(stdout_bytes)
-                .chain(LocalSocketStream::connect(get_name(socket_dir.join("1")))?),
+                .chain(LocalSocketStream::connect(get_name(proc_dir.join("1")))?),
         );
         let stderr = BufReader::new(
             Cursor::new(stderr_bytes)
-                .chain(LocalSocketStream::connect(get_name(socket_dir.join("2")))?),
+                .chain(LocalSocketStream::connect(get_name(proc_dir.join("2")))?),
         );
 
         Ok((stdin, [stdout, stderr]))
@@ -780,5 +789,5 @@ pub mod ipc {
     }
 
     /// A stream of bytes, including possibly missed ones.
-    pub type IpcReader = BufReader<Chain<Cursor<Vec<u8>>, LocalSocketStream>>;
+    pub type ProcessReader = BufReader<Chain<Cursor<Vec<u8>>, LocalSocketStream>>;
 }

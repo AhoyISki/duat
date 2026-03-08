@@ -343,10 +343,10 @@ pub mod process {
     //! config.
     use std::{
         ffi::{OsStr, OsString},
-        io::{BufRead, BufWriter, ErrorKind, Read, Write},
+        io::{BufRead, BufWriter, Read, Write},
         process::{Child, Command, Stdio},
         sync::{
-            Mutex,
+            Mutex, OnceLock,
             atomic::{AtomicUsize, Ordering},
             mpsc,
         },
@@ -362,7 +362,7 @@ pub mod process {
 
     use crate::session::{
         self,
-        ipc::{IpcReader, MsgFromChild},
+        ipc::{MsgFromChild, ProcessReader},
     };
 
     /// Spawn a new `PersistentChild`, which can be reused in
@@ -374,10 +374,7 @@ pub mod process {
     /// like [`Stdio::inherit`] would interfere with that.
     ///
     /// [`Ui`]: crate::ui::Ui
-    pub fn spawn_persistent(
-        id: impl ToString,
-        command: &mut Command,
-    ) -> std::io::Result<PersistentChild> {
+    pub fn spawn_persistent(command: &mut Command) -> std::io::Result<PersistentChild> {
         let encode = |value: &OsStr| value.as_encoded_bytes().to_vec();
 
         let args = command.get_args().map(encode).collect();
@@ -386,15 +383,20 @@ pub mod process {
             .map(|(k, v)| (encode(k), v.map(encode)))
             .collect();
 
+        let id = PROC_ID.get().unwrap().fetch_add(1, Ordering::Relaxed);
+
         session::ipc::send(MsgFromChild::SpawnProcess(PersistentSpawnRequest {
-            id: id.to_string(),
+            id,
             program: encode(command.get_program()),
             args,
             envs,
         }));
 
         match session::ipc::recv_spawn() {
-            Ok(id) => Ok(PersistentChild::new(id, Vec::new(), Vec::new())),
+            Ok(id) => {
+                crate::debug!("Successfully spawned {id}");
+                Ok(PersistentChild::new(id, Vec::new(), Vec::new()))
+            }
             Err(err) => Err(std::io::Error::from_raw_os_error(err)),
         }
     }
@@ -448,23 +450,23 @@ pub mod process {
         /// [`LocalSocketStream`], which will in turn be sent to the
         /// process indirectly, since said process is owned by the
         /// parent executor, not the child.
-        pub stdin: Option<BufWriter<LocalSocketStream>>,
+        pub stdin: Option<PersistentWriter>,
         stdout: Mutex<Option<PersistentReader>>,
         stderr: Mutex<Option<PersistentReader>>,
         stdout_rx: mpsc::Receiver<ReaderPair>,
         stderr_rx: mpsc::Receiver<ReaderPair>,
-        id: String,
+        id: usize,
     }
 
     impl PersistentChild {
-        fn new(id: String, stdout_bytes: Vec<u8>, stderr_bytes: Vec<u8>) -> Self {
+        fn new(id: usize, stdout_bytes: Vec<u8>, stderr_bytes: Vec<u8>) -> Self {
             let (stdin, [stdout, stderr]) =
-                session::ipc::connect_process_channel(&id, stdout_bytes, stderr_bytes).unwrap();
+                session::ipc::connect_process_channel(id, stdout_bytes, stderr_bytes).unwrap();
             let (stdout_tx, stdout_rx) = mpsc::channel();
             let (stderr_tx, stderr_rx) = mpsc::channel();
 
             Self {
-                stdin: Some(BufWriter::new(stdin)),
+                stdin: Some(PersistentWriter(RawPersistentWriter(BufWriter::new(stdin)))),
                 stdout: Mutex::new(Some(PersistentReader {
                     pair: Some(ReaderPair { decode_bytes: Vec::new(), conn: stdout }),
                     pair_tx: stdout_tx,
@@ -532,18 +534,9 @@ pub mod process {
             self.stderr.lock().unwrap().take()
         }
 
-        /// A unique identifier for this `PersistentChild`.
-        ///
-        /// This identifier is given when spawning the process, and is
-        /// a string so you can deterministically retrieve it on
-        /// future reloads.
-        pub fn id(&self) -> &str {
-            &self.id
-        }
-
         /// Kill the [`Child`] process.
         pub fn kill(self) -> std::io::Result<()> {
-            session::ipc::send(MsgFromChild::KillProcess(self.id.clone()));
+            session::ipc::send(MsgFromChild::KillProcess(self.id));
             session::ipc::recv_kill().map_err(std::io::Error::from_raw_os_error)
         }
     }
@@ -571,7 +564,7 @@ pub mod process {
             &self,
             encoder: &mut E,
         ) -> Result<(), bincode::error::EncodeError> {
-            session::ipc::send(MsgFromChild::InterruptWrites(self.id.clone()));
+            session::ipc::send(MsgFromChild::InterruptWrites(self.id));
 
             let (stdout, stderr) = (
                 self.stdout.lock().unwrap().take(),
@@ -601,12 +594,7 @@ pub mod process {
                 }
             };
 
-            StoredPersistentChild {
-                id: self.id.clone(),
-                stdout_bytes,
-                stderr_bytes,
-            }
-            .encode(encoder)
+            StoredPersistentChild { id: self.id, stdout_bytes, stderr_bytes }.encode(encoder)
         }
     }
 
@@ -617,13 +605,13 @@ pub mod process {
     /// A pair used for reading and decoding.
     struct ReaderPair {
         decode_bytes: Vec<u8>,
-        conn: IpcReader,
+        conn: ProcessReader,
     }
 
     impl ReaderPair {
         /// Consumes the reader, returning all unread bytes.
         fn consume(mut self) -> Vec<u8> {
-            _ = self.conn.read_exact(&mut self.decode_bytes);
+            _ = self.conn.read_to_end(&mut self.decode_bytes);
             self.decode_bytes
         }
     }
@@ -649,17 +637,17 @@ pub mod process {
                     let pair = reader.pair.as_mut().unwrap();
 
                     match pair.conn.read(buf) {
-                        Ok(bytes) => {
-                            pair.decode_bytes.extend_from_slice(buf);
-                            Ok(bytes)
-                        }
-                        Err(err) if err.kind() == ErrorKind::BrokenPipe => {
+                        Ok(0) => {
                             _ = reader.pair_tx.send(reader.pair.take().unwrap());
                             // We loop forever, to abstract away the reloading of Duat in reading
                             // loops.
                             loop {
                                 std::thread::park();
                             }
+                        }
+                        Ok(num_bytes) => {
+                            pair.decode_bytes.extend_from_slice(&buf[..num_bytes]);
+                            Ok(num_bytes)
                         }
                         Err(err) => Err(err),
                     }
@@ -686,10 +674,9 @@ pub mod process {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let pair = self.pair.as_mut().unwrap();
             match pair.conn.read(buf) {
-                Ok(bytes) => Ok(bytes),
                 // This means that the equivalent Stream in the parent process was
                 // dropped, which means we're about to reload.
-                Err(err) if err.kind() == ErrorKind::BrokenPipe => {
+                Ok(0) => {
                     _ = self.pair_tx.send(self.pair.take().unwrap());
                     // We loop forever, to abstract away the reloading of Duat in reading
                     // loops.
@@ -697,6 +684,7 @@ pub mod process {
                         std::thread::park();
                     }
                 }
+                Ok(bytes) => Ok(bytes),
                 Err(err) => Err(err),
             }
         }
@@ -706,14 +694,18 @@ pub mod process {
         fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
             let pair = self.pair.as_mut().unwrap();
             match pair.conn.fill_buf() {
+                Ok([]) => {
+                    _ = self.pair_tx.send(self.pair.take().unwrap());
+                    // We loop forever, to abstract away the reloading of Duat in reading
+                    // loops.
+                    loop {
+                        std::thread::park();
+                    }
+                }
                 Ok(_) => {
                     let pair = self.pair.as_ref().unwrap();
                     Ok(pair.conn.buffer())
                 }
-                Err(ref err) if err.kind() == ErrorKind::BrokenPipe => loop {
-                    _ = self.pair_tx.send(self.pair.take().unwrap());
-                    std::thread::park();
-                },
                 Err(err) => Err(err),
             }
         }
@@ -815,7 +807,7 @@ pub mod process {
     #[doc(hidden)]
     #[derive(Decode, Encode)]
     pub struct PersistentSpawnRequest {
-        id: String,
+        id: usize,
         program: Vec<u8>,
         args: Vec<Vec<u8>>,
         envs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
@@ -829,8 +821,10 @@ pub mod process {
         ///
         /// This should only be done in the Duat executable.
         // This will become `std::io::RawOsError` once that is stable.
-        pub fn spawn(self) -> Result<(String, Child), i32> {
+        pub fn spawn(self) -> Result<(usize, String, Child), i32> {
             let decode = |value: Vec<u8>| unsafe { OsString::from_encoded_bytes_unchecked(value) };
+
+            let caller = decode(self.program.clone()).to_string_lossy().to_string();
 
             let child = Command::new(decode(self.program))
                 .args(self.args.into_iter().map(decode))
@@ -846,7 +840,7 @@ pub mod process {
                 .spawn()
                 .map_err(|err| err.raw_os_error().unwrap())?;
 
-            Ok((self.id, child))
+            Ok((self.id, caller, child))
         }
     }
 
@@ -877,12 +871,15 @@ pub mod process {
     /// A stored [`PersistentChild`].
     #[derive(Decode, Encode)]
     struct StoredPersistentChild {
-        id: String,
+        id: usize,
         stdout_bytes: Vec<u8>,
         stderr_bytes: Vec<u8>,
     }
 
-    static WRITERS_WRITING: AtomicUsize = AtomicUsize::new(0);
+    /// Sets the next process id.
+    pub(crate) fn set_proc_id(id: usize) {
+        PROC_ID.set(AtomicUsize::new(id)).unwrap()
+    }
 
     /// Wait for a [`PersistentChild`] writers to be done writing.
     pub(crate) fn wait_for_writers() {
@@ -890,18 +887,22 @@ pub mod process {
             std::thread::sleep(Duration::from_millis(1));
         }
     }
+
+    static WRITERS_WRITING: AtomicUsize = AtomicUsize::new(0);
+    static PROC_ID: OnceLock<AtomicUsize> = OnceLock::new();
 }
 
 pub mod storage {
     //! Utilities for storing items inbetween reloads.
     use std::{
         collections::{HashMap, hash_map::Entry},
+        io::Cursor,
         sync::Mutex,
     };
 
     use bincode::{BorrowDecode, Decode, Encode, config, error::EncodeError};
 
-    use crate::{context, data::Pass};
+    use crate::data::Pass;
 
     static STORED: Mutex<Option<HashMap<String, MaybeTypedValues>>> = Mutex::new(None);
 
@@ -916,68 +917,86 @@ pub mod storage {
     /// this function is called in the very small time interval
     /// inbetween duat taking the stored objects out and unloading the
     /// config.
-    pub fn store<E>(_: &Pass, value: E)
+    pub fn store<E>(_: &Pass, value: E) -> Result<(), EncodeError>
     where
         E: Encode + Send + 'static,
     {
         let key = std::any::type_name_of_val(&value).to_string();
 
-        let mut stored = STORED.lock().unwrap();
-        let stored = stored.as_mut().unwrap();
+        let mut stored_guard = STORED.lock().unwrap_or_else(|err| err.into_inner());
+        let stored = stored_guard.as_mut().unwrap();
 
-        match stored.entry(key) {
+        match stored.entry(key.clone()) {
             Entry::Occupied(mut occupied_entry) => match occupied_entry.get_mut() {
                 MaybeTypedValues::NotTyped(list_of_bytes) => {
-                    let list = std::mem::take(list_of_bytes);
-                    let values = list
-                        .into_iter()
-                        .map(|bytes| MaybeDecoded::<E>::Encoded(bytes))
-                        .chain([MaybeDecoded::Decoded(value)])
-                        .collect();
-
-                    *occupied_entry.get_mut() = MaybeTypedValues::typed(values);
+                    let mut encoded = std::mem::take(list_of_bytes);
+                    bincode::encode_into_std_write(value, &mut encoded, config::standard())?;
+                    occupied_entry.insert(MaybeTypedValues::typed(PartiallyDecodedValues::<E> {
+                        encoded: Mutex::new(Cursor::new(encoded)),
+                        decoded: Vec::new(),
+                    }));
                 }
                 MaybeTypedValues::Typed(typed, _) => {
-                    let list: &mut Vec<MaybeDecoded<E>> = typed.downcast_mut().unwrap();
-                    list.push(MaybeDecoded::Decoded(value));
+                    let values: &mut PartiallyDecodedValues<E> = typed.downcast_mut().unwrap();
+                    bincode::encode_into_std_write(
+                        value,
+                        encoded(&values.encoded).get_mut(),
+                        config::standard(),
+                    )?;
                 }
             },
             Entry::Vacant(vacant_entry) => {
-                let values = vec![MaybeDecoded::Decoded(value)];
-                vacant_entry.insert(MaybeTypedValues::typed(values));
+                let mut encoded = Vec::new();
+                bincode::encode_into_std_write(value, &mut encoded, config::standard())?;
+                vacant_entry.insert(MaybeTypedValues::typed(PartiallyDecodedValues::<E> {
+                    encoded: Mutex::new(Cursor::new(encoded)),
+                    decoded: Vec::new(),
+                }));
             }
-        }
+        };
+
+        Ok(())
     }
 
     /// Retrieve a value that might have been stored on a previous
     /// reload cycle.
     ///
-    /// If a value of type `D` was stored with this key through
-    /// [`store`], then this function will return [`Some`] iff:
+    /// This will call the predicate on each stored value of type `D`
+    /// (not including those stored as fields in structs), and will
+    /// extract the value if the predicate returns `true`.
     ///
-    /// - The type's name (through [`std::any::type_name`]) hasn't
-    ///   changed.
-    /// - The type's fields also haven't changed.
+    /// If the layout of the type has changed inbetween reloads, all
+    /// values of said type will be discarded.
+    ///
+    /// # Note
+    ///
+    /// This function relies on the name of the stored type. This is
+    /// because more reliable indicators (like [`TypeId`]) can't be
+    /// relied to be the same inbetween reloads, while a `&str` can.
+    ///
+    /// This does mean however, that changing the path of a type will
+    /// immediately invalidade the stored values, so you should avoid
+    /// doing that.
+    ///
+    /// [`TypeId`]: std::any::TypeId
     pub fn get_if<D>(mut pred: impl FnMut(&D) -> bool) -> Option<D>
     where
         D: Decode<()> + Encode + Send + 'static,
     {
         let key = std::any::type_name::<D>();
 
-        let mut stored = STORED.lock().unwrap();
-        let stored = stored.as_mut().unwrap();
+        let mut stored_guard = STORED.lock().unwrap_or_else(|err| err.into_inner());
+        let stored = stored_guard.as_mut().unwrap();
 
         let entry = stored.get_mut(key)?;
 
-        let values: &mut Vec<MaybeDecoded<D>> = match entry {
+        let values: &mut PartiallyDecodedValues<D> = match entry {
             MaybeTypedValues::NotTyped(list_of_bytes) => {
-                let list = std::mem::take(list_of_bytes);
-                let values = list
-                    .into_iter()
-                    .map(|bytes| MaybeDecoded::<D>::Encoded(bytes))
-                    .collect();
+                *entry = MaybeTypedValues::typed(PartiallyDecodedValues::<D> {
+                    encoded: Mutex::new(Cursor::new(std::mem::take(list_of_bytes))),
+                    decoded: Vec::new(),
+                });
 
-                *entry = MaybeTypedValues::typed(values);
                 let MaybeTypedValues::Typed(values, _) = entry else {
                     unreachable!();
                 };
@@ -987,67 +1006,79 @@ pub mod storage {
             MaybeTypedValues::Typed(values, _) => values.downcast_mut().unwrap(),
         };
 
-        let extracted = values
-            .extract_if(.., |maybe_decoded| {
-                let value = match maybe_decoded {
-                    MaybeDecoded::Encoded(items) => {
-                        let value = match bincode::decode_from_slice(items, config::standard()) {
-                            Ok((value, _)) => value,
-                            Err(err) => {
-                                context::error!("{err}");
-                                return false;
-                            }
-                        };
-
-                        *maybe_decoded = MaybeDecoded::Decoded(value);
-                        let MaybeDecoded::Decoded(value) = maybe_decoded else {
-                            unreachable!()
-                        };
-
-                        value
+        if let Some(value) = values.decoded.extract_if(.., |value| pred(value)).next() {
+            Some(value)
+        } else {
+            let mut encoded = encoded(&values.encoded);
+            let iter = std::iter::from_fn(|| {
+                loop {
+                    if let Ok(value) =
+                        bincode::decode_from_std_read(&mut *encoded, config::standard())
+                    {
+                        break Some(value);
                     }
-                    MaybeDecoded::Decoded(value) => value,
-                };
+                }
+            });
 
-                pred(value)
-            })
-            .next()?;
+            for value in iter {
+                if pred(&value) {
+                    return Some(value);
+                } else {
+                    values.decoded.push(value);
+                }
+            }
 
-        let MaybeDecoded::Decoded(value) = extracted else {
-            unreachable!();
-        };
-
-        Some(value)
+            None
+        }
     }
 
     /// Take the stored structs for retrieval on a future reload.
     pub(crate) fn get_structs() -> HashMap<String, MaybeTypedValues> {
-        STORED.lock().unwrap().take().unwrap()
-    }
+        let mut stored_guard = STORED.lock().unwrap_or_else(|err| err.into_inner());
+        let mut stored = stored_guard.take().unwrap();
+        stored.retain(|_, maybe_typed| {
+            if let MaybeTypedValues::Typed(values, to_bytes) = maybe_typed {
+                let values = to_bytes(values.as_mut());
+                if values.is_empty() {
+                    false
+                } else {
+                    *maybe_typed = MaybeTypedValues::NotTyped(values);
+                    true
+                }
+            } else {
+                true
+            }
+        });
 
-    /// Set the initial list of stored structs.
-    pub(crate) fn set_structs(structs: HashMap<String, MaybeTypedValues>) {
-        *STORED.lock().unwrap() = Some(structs);
+        stored
     }
 
     /// A possibly typed list of stored values.
     #[doc(hidden)]
     pub enum MaybeTypedValues {
-        NotTyped(Vec<Vec<u8>>),
+        NotTyped(Vec<u8>),
         Typed(
             Box<dyn std::any::Any + Send>,
-            fn(&(dyn std::any::Any + Send)) -> Vec<Vec<u8>>,
+            fn(&(dyn std::any::Any + Send)) -> Vec<u8>,
         ),
     }
 
     impl MaybeTypedValues {
-        fn typed<E: Encode + Send + 'static>(values: Vec<MaybeDecoded<E>>) -> Self {
+        fn typed<E: Encode + Send + 'static>(values: PartiallyDecodedValues<E>) -> Self {
             Self::Typed(Box::new(values), |values| {
-                let values: &Vec<MaybeDecoded<E>> = values.downcast_ref().unwrap();
-                values
-                    .iter()
-                    .filter_map(|value| bincode::encode_to_vec(value, config::standard()).ok())
-                    .collect()
+                let values: &PartiallyDecodedValues<E> = values.downcast_ref().unwrap();
+                let mut encoded = encoded(&values.encoded);
+
+                for value in values.decoded.iter() {
+                    _ = bincode::encode_into_std_write(
+                        value,
+                        encoded.get_mut(),
+                        config::standard(),
+                    );
+                }
+
+                let position = encoded.position();
+                encoded.get_ref()[position as usize..].to_vec()
             })
         }
     }
@@ -1090,30 +1121,19 @@ pub mod storage {
         }
     }
 
-    /// A struct that might or might not have already been decoded.
-    enum MaybeDecoded<T> {
-        Encoded(Vec<u8>),
-        Decoded(T),
+    struct PartiallyDecodedValues<T> {
+        encoded: Mutex<Cursor<Vec<u8>>>,
+        decoded: Vec<T>,
     }
 
-    impl<T: Decode<()>> Decode<()> for MaybeDecoded<T> {
-        fn decode<D: bincode::de::Decoder<Context = ()>>(
-            decoder: &mut D,
-        ) -> Result<Self, bincode::error::DecodeError> {
-            Ok(MaybeDecoded::Encoded(Decode::decode(decoder)?))
-        }
+    /// Set the initial list of stored structs.
+    pub(crate) fn set_structs(structs: HashMap<String, MaybeTypedValues>) {
+        *STORED.lock().unwrap() = Some(structs);
     }
 
-    impl<T: Encode> Encode for MaybeDecoded<T> {
-        fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
-            match self {
-                MaybeDecoded::Encoded(bytes) => Encode::encode(bytes, encoder),
-                MaybeDecoded::Decoded(value) => {
-                    let bytes = bincode::encode_to_vec(value, config::standard())?;
-                    Encode::encode(&bytes, encoder)
-                }
-            }
-        }
+    /// Get the encoded [`Cursor`] bytes.
+    fn encoded(encoded: &Mutex<Cursor<Vec<u8>>>) -> std::sync::MutexGuard<'_, Cursor<Vec<u8>>> {
+        encoded.lock().unwrap_or_else(|err| err.into_inner())
     }
 }
 
