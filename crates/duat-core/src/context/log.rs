@@ -67,7 +67,7 @@ mod macros {
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! error {
-        (($($arg:tt)+), $location:expr) => {
+        (($($arg:tt)+), $location:expr $(,)?) => {
             $crate::__log__!(
                 $crate::context::Level::Error,
                 $location,
@@ -105,13 +105,30 @@ mod macros {
     /// will also show up in Duat's [`Logs`]s, but reformatted to be a
     /// [`Text`] instead.
     ///
+    /// # Custom location
+    ///
+    /// You can make use of a custom location by calling this macro
+    /// and surounding the arguments in a `()` pair.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::{context::Location, *};
+    ///
+    /// # fn test() {
+    /// context::warn!(
+    ///     ("This is my {}", "warning"),
+    ///     Location::new("some_file", 32, 10),
+    /// );
+    /// # }
+    /// ```
+    ///
     /// [`txt!`]: crate::text::txt
     /// [`Record`]: super::Record
     /// [`Logs`]: super::Logs
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! warn {
-        (($($arg:tt)+), $location:expr) => {
+        (($($arg:tt)+), $location:expr $(,)?) => {
             $crate::__log__!(
                 $crate::context::Level::Warn,
                 $location,
@@ -172,7 +189,7 @@ mod macros {
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! info {
-        (($($arg:tt)+), $location:expr) => {
+        (($($arg:tt)+), $location:expr $(,)?) => {
             $crate::__log__!(
                 $crate::context::Level::Info,
                 $location,
@@ -221,23 +238,6 @@ mod macros {
     /// use duat::prelude::{context::Location, *};
     ///
     /// # fn test() {
-    /// context::warn!(
-    ///     ("This is my {}", "warning"),
-    ///     Location::new("some_file", 32, 10),
-    /// );
-    /// # }
-    /// ```
-    ///
-    /// # Custom location
-    ///
-    /// You can make use of a custom location by calling this macro
-    /// and surounding the arguments in a `()` pair.
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// use duat::prelude::{context::Location, *};
-    ///
-    /// # fn test() {
     /// let text = txt!("Some custom text I want to debug");
     /// context::debug!(("text is {text:#?}"), Location::new("some_file", 32, 10));
     /// # }
@@ -249,7 +249,7 @@ mod macros {
     /// [`Text`]: crate::text::Text
     #[macro_export]
     macro_rules! debug {
-        (($($arg:tt)+), $location:expr) => {
+        (($($arg:tt)+), $location:expr $(,)?) => {
             $crate::__log__!(
                 $crate::context::Level::Debug,
                 $location,

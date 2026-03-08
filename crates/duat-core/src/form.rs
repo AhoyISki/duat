@@ -65,9 +65,6 @@ mod global {
     /// reference another form by its name:
     ///
     /// ```rust
-    /// # let (tx, rx) = duat_core::context::duat_channel();
-    /// # duat_core::context::set_sender(tx);
-    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// # use duat_core::form::{self, Form};
     /// // Creates a regular form
     /// let reg_id = form::set("my_regular_form", Form::new().red());
@@ -104,9 +101,6 @@ mod global {
     /// [`form::set`] are called:
     ///
     /// ```rust
-    /// # let (tx, rx) = duat_core::context::duat_channel();
-    /// # duat_core::context::set_sender(tx);
-    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// use duat_core::form::{self, Form};
     ///
     /// // Creates a form "weakly"
@@ -159,9 +153,6 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form};
-    /// # let (tx, rx) = duat_core::context::duat_channel();
-    /// # duat_core::context::set_sender(tx);
-    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// form::set("caret.main", Form::new().black().on("#456321"));
     /// ```
     ///
@@ -188,9 +179,6 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form};
-    /// # let (tx, rx) = duat_core::context::duat_channel();
-    /// # duat_core::context::set_sender(tx);
-    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// form::set("caret.extra", Form::new().black().on_cyan());
     /// ```
     ///
@@ -281,9 +269,6 @@ mod global {
     ///
     /// ```rust
     /// # duat_core::doc_duat!(duat);
-    /// # let (tx, rx) = duat_core::context::duat_channel();
-    /// # duat_core::context::set_sender(tx);
-    /// # duat_core::form::set_initial(duat_core::form::get_initial());
     /// use duat::prelude::*;
     ///
     /// let mut text = Text::new();
@@ -1100,9 +1085,6 @@ fn mask_form(name: &str, form_i: usize, inner: &mut InnerPalette) {
 ///
 /// ```rust
 /// # duat_core::doc_duat!(duat);
-/// # let (tx, rx) = duat_core::context::duat_channel();
-/// # duat_core::context::set_sender(tx);
-/// # duat_core::form::set_initial(duat_core::form::get_initial());
 /// use duat::prelude::*;
 ///
 /// let mut text = Text::new();

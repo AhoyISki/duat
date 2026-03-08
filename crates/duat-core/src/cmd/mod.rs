@@ -144,9 +144,6 @@
 //!
 //! ```rust
 //! # duat_core::doc_duat!(duat);
-//! # let (tx, rx) = duat_core::context::duat_channel();
-//! # duat_core::context::set_sender(tx);
-//! # duat_core::form::set_initial(duat_core::form::get_initial());
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //!

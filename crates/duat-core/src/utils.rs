@@ -476,8 +476,8 @@ macro_rules! doc_duat {
                     form::{self, CursorShape, Form},
                     hook::{
                         self, BufferOpened, BufferSaved, BufferUpdated, ColorSchemeSet,
-                        ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusChanged, FocusedOnDuat,
-                        FormSet, Hookable, KeySent, KeySentTo, ModeSwitched, UnfocusedFrom,
+                        ConfigLoaded, ConfigUnloaded, FocusChanged, FocusedOnDuat, FormSet,
+                        Hookable, KeySent, KeySentTo, ModeSwitched, UnfocusedFrom,
                         UnfocusedFromDuat, WidgetOpened, WindowOpened,
                     },
                     text::{

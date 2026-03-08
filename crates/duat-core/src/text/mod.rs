@@ -60,7 +60,6 @@
 //! functions:
 //!
 //! ```rust
-//! # duat_core::form::set_initial(duat_core::form::get_initial());
 //! # duat_core::doc_duat!(duat);
 //! use duat::prelude::*;
 //!

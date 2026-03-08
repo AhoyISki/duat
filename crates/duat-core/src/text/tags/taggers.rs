@@ -263,7 +263,6 @@ static TAGGER_COUNT: AtomicU16 = AtomicU16::new(2);
 /// interfere with eachother's work:
 ///
 /// ```rust
-/// # duat_core::form::set_initial(duat_core::form::get_initial());
 /// # duat_core::doc_duat!(duat);
 /// # use duat::prelude::*;
 /// let mut text = txt!("This is text with no tags in it");

@@ -879,7 +879,6 @@ pub mod process {
     }
 
     static WRITERS_WRITING: AtomicUsize = AtomicUsize::new(0);
-    static PROC_ID: OnceLock<AtomicUsize> = OnceLock::new();
 }
 
 pub mod storage {
