@@ -691,7 +691,7 @@ mod book;
 #[cfg(doctest)]
 #[doc(hidden)]
 /// ```rust
-#[doc = include_str!("../templates/config/lib.rs")]
+#[doc = include_str!("../templates/config/main.rs")]
 /// ```
 mod config {}
 
