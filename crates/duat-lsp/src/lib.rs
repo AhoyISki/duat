@@ -4,7 +4,7 @@ use duat_core::{
     Plugin,
     buffer::{BufferTracker, PerBuffer},
     context,
-    hook::{self, BufferOpened, BufferUnloaded, BufferUpdated},
+    hook::{self, BufferClosed, BufferOpened, BufferUpdated},
 };
 use duat_filetype::PassFileType;
 use lsp_types::{
@@ -48,16 +48,20 @@ impl Plugin for DuatLsp {
 
                 let text = handle.text(pa);
 
-                server::on_all_servers(|server| {
-                    server.send_notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {
-                        text_document: TextDocumentItem {
-                            uri: uri.clone(),
-                            language_id: filetype.to_string(),
-                            version: text.version().strs as i32,
-                            text: text.to_string(),
-                        },
+                if !handle.read(pa).was_reloaded() {
+                    server::on_all_servers(|server| {
+                        server.send_notification::<DidOpenTextDocument>(
+                            DidOpenTextDocumentParams {
+                                text_document: TextDocumentItem {
+                                    uri: uri.clone(),
+                                    language_id: filetype.to_string(),
+                                    version: text.version().strs as i32,
+                                    text: text.to_string(),
+                                },
+                            },
+                        );
                     });
-                });
+                }
 
                 TRACKER.register_buffer(handle.write(pa));
                 SERVERS.register(pa, handle, BufferInfo { uri, servers });
@@ -105,7 +109,7 @@ impl Plugin for DuatLsp {
             }
         });
 
-        hook::add::<BufferUnloaded>(|pa, handle| {
+        hook::add::<BufferClosed>(|pa, handle| {
             if let Some(path) = handle.read(pa).path_kind().as_path()
                 && let Some(uri) = file_uri(&path)
             {

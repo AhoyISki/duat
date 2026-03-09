@@ -271,7 +271,6 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     context::declare_will_unload();
 
                     for handle in context::windows().buffers(pa) {
-                        hook::trigger(pa, BufferUnloaded(handle.clone()));
                         hook::trigger(pa, BufferClosed(handle));
                     }
 
@@ -393,6 +392,7 @@ pub struct ReloadedBuffer {
     history: History,
     path_kind: PathKind,
     is_active: bool,
+    was_reloaded: bool,
 }
 
 impl ReloadedBuffer {
@@ -446,6 +446,7 @@ impl ReloadedBuffer {
             history: History::default(),
             path_kind,
             is_active,
+            was_reloaded: false,
         })
     }
 
@@ -459,15 +460,23 @@ impl ReloadedBuffer {
             history,
             path_kind: buffer.path_kind(),
             is_active,
+            was_reloaded: true,
         }
     }
 
     /// Transforms this struct into a new [`Buffer`] and wether or not
     /// it's active.
     pub fn into_buffer(self, opts: BufferOpts, layout_order: usize) -> (Buffer, bool) {
-        let Self { buf, selections, history, path_kind, .. } = self;
         (
-            Buffer::from_raw_parts(buf, selections, history, path_kind, opts, layout_order),
+            Buffer::from_raw_parts(
+                self.buf,
+                self.selections,
+                self.history,
+                self.path_kind,
+                opts,
+                layout_order,
+                self.was_reloaded,
+            ),
             self.is_active,
         )
     }

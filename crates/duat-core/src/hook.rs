@@ -635,13 +635,11 @@ impl Hookable for WindowOpened {
 ///
 /// - The [`Buffer`]'s [`Handle`].
 ///
-/// Note that this does _not_ trigger when reloading the
-/// configuration, since that merely unloads the `Buffer`s. If you
-/// want to handle that scenarion (as well as when bufferes are being
-/// closed, check out [`BufferUnloaded`]
+/// This will be triggered whenever a `Buffer` is closed. Note that
+/// this does not count when a `Buffer` is closed in order to be
+/// reopened in a reloaded config.
 ///
-/// This will also trigger when exiting Duat. You can check if that is
-/// the case with [`context::will_quit`].
+/// If you want to handle that scenario, check out [`BufferUnloaded`].
 ///
 /// [`context::will_quit`]: crate::context::will_quit
 pub struct BufferClosed(pub(crate) Handle);
@@ -664,16 +662,13 @@ impl PartialEq<Handle> for BufferClosed {
 ///
 /// # Arguments
 ///
-/// - The [`Buffer`]'s [`Handle`].
+/// - The `Buffer`'s [`Handle`].
 ///
-/// This will also trigger if the `Buffer` is closed, including while
-/// exiting Duat. You can check if that is the case with
-/// [`context::will_quit`].
+/// This will happen before reloading Duat, on every `Buffer` that is
+/// open at that point.
 ///
-/// If you want to handle situations where the `Buffer` is being
-/// closed, not just unloaded, checkout [`BufferClosed`].
-///
-/// [`context::will_quit`]: crate::context::will_quit
+/// If you want to handle the closure of buffers, see the hook for
+/// [`BufferClosed`].
 pub struct BufferUnloaded(pub(crate) Handle);
 
 impl Hookable for BufferUnloaded {

@@ -55,6 +55,7 @@ pub struct Buffer {
     /// be printed specifically.
     pub opts: BufferOpts,
     prev_opts: Mutex<PrintOpts>,
+    was_reloaded: bool,
 }
 
 impl Buffer {
@@ -96,6 +97,7 @@ impl Buffer {
             cached_print_info: Mutex::new(None),
             opts,
             prev_opts: Mutex::new(opts.to_print_opts()),
+            was_reloaded: false,
         }
     }
 
@@ -107,6 +109,7 @@ impl Buffer {
         path: PathKind,
         opts: BufferOpts,
         layout_order: usize,
+        was_reloaded: bool,
     ) -> Buffer {
         Self {
             id: BufferId::new(),
@@ -117,6 +120,7 @@ impl Buffer {
             cached_print_info: Mutex::new(None),
             opts,
             prev_opts: Mutex::new(opts.to_print_opts()),
+            was_reloaded,
         }
     }
 
@@ -312,6 +316,15 @@ impl Buffer {
     pub fn exists(&self) -> bool {
         self.path_set()
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
+    }
+
+    /// Wether this buffer came from a previous reload cycle.
+    ///
+    /// You should use this function to decide on things that persist
+    /// across reload cycles (i.e. the [`crate::process`] and
+    /// [`crate::storage`] modules).
+    pub fn was_reloaded(&self) -> bool {
+        self.was_reloaded
     }
 
     /// Prepare this `Buffer` for reloading.
