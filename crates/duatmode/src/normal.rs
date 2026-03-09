@@ -1253,9 +1253,12 @@ fn word_or_space(alt_word: bool, backwards: bool, opts: PrintOpts) -> String {
         } else {
             "[ \t]*[^ \t\n]+".to_string()
         }
+    } else if backwards {
+        let cat = opts.word_chars_regex();
+        format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*")
     } else {
         let cat = opts.word_chars_regex();
-        format!("[{cat}]+|[^{cat} \t\n]+|[ \t]+")
+        format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)")
     }
 }
 
