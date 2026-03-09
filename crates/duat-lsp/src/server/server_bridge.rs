@@ -2,7 +2,6 @@ use std::{
     any::TypeId,
     collections::HashMap,
     io::{BufRead, Write},
-    path::Path,
     sync::{
         Arc, Mutex,
         mpsc::{self, Sender},
@@ -12,16 +11,18 @@ use std::{
 use duat_core::{
     context,
     data::Pass,
-    hook::{self, ConfigUnloaded},
     process::{PersistentChild, PersistentWriter},
-    storage,
+    storage::{
+        self,
+        bincode::{Decode, Encode},
+    },
     text::{Text, txt},
 };
 use jsonrpc_lite::{Id, JsonRpc};
 use lsp_types::{
     InitializedParams,
-    notification::{Cancel, Exit, Initialized, Notification},
-    request::{Initialize, Request, Shutdown},
+    notification::{Cancel, Initialized, Notification},
+    request::{Initialize, Request},
 };
 use serde_json::Value;
 
@@ -30,6 +31,8 @@ use crate::config::LanguageServerConfig;
 /// Communication abstraction for communication with language servers.
 #[derive(Clone)]
 pub struct ServerBridge {
+    name: String,
+    child: Arc<Mutex<PersistentChild>>,
     server_tx: Sender<JsonRpcFn>,
     callbacks: Callbacks,
     initialize_backlog: Arc<Mutex<Option<Vec<JsonRpcFn>>>>,
@@ -38,39 +41,31 @@ pub struct ServerBridge {
 impl ServerBridge {
     /// Returns a new server bridge, there will be one for each server
     /// that is active on each `Buffer`.
-    pub fn new(
-        server_name: &str,
-        rootdir: &Path,
-        config: &LanguageServerConfig,
-    ) -> Result<Self, Text> {
+    pub fn new(server_name: String, config: &LanguageServerConfig) -> Result<Self, Text> {
         use std::io::ErrorKind;
 
-        let cmd_name = config.command.as_deref().unwrap_or(server_name);
+        let child = {
+            let cmd_name = config.command.as_deref().unwrap_or(&server_name);
+            let mut command = std::process::Command::new(cmd_name);
+            command
+                .args(&config.args)
+                .envs(&config.envs)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
 
-        let mut already_initialized = true;
-        let mut child = match storage::get_if(|child: &PersistentChild| todo!()) {
-            Some(child) => child,
-            None => {
-                let mut command = std::process::Command::new(cmd_name);
-                already_initialized = false;
-                command
-                    .args(&config.args)
-                    .envs(&config.envs)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped());
-
-                duat_core::process::spawn_persistent(&mut command).map_err(|err| {
-                    match err.kind() {
-                        ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                            txt!("{err}: [a]{cmd_name}")
-                        }
-                        _ => txt!("{err}"),
-                    }
-                })?
-            }
+            duat_core::process::spawn_persistent(&mut command).map_err(|err| match err.kind() {
+                ErrorKind::NotFound | ErrorKind::PermissionDenied => {
+                    txt!("{err}: [a]{cmd_name}")
+                }
+                _ => txt!("{err}"),
+            })?
         };
 
+        Ok(Self::from_parts(server_name.to_string(), child, true))
+    }
+
+    fn from_parts(name: String, mut child: PersistentChild, is_initializing: bool) -> Self {
         let (server_tx, server_rx) = mpsc::channel();
 
         let mut stdin = child.stdin.take().unwrap();
@@ -78,7 +73,7 @@ impl ServerBridge {
         let mut stderr = child.get_stderr().unwrap();
 
         std::thread::spawn({
-            let server_name = server_name.to_string();
+            let server_name = name.clone();
             move || {
                 let mut line = String::new();
                 loop {
@@ -95,9 +90,11 @@ impl ServerBridge {
         });
 
         let server_bridge = Self {
+            name,
+            child: Arc::new(Mutex::new(child)),
             server_tx,
             callbacks: Callbacks::default(),
-            initialize_backlog: Arc::new(Mutex::new((!already_initialized).then_some(Vec::new()))),
+            initialize_backlog: Arc::new(Mutex::new(is_initializing.then_some(Vec::new()))),
         };
 
         std::thread::spawn({
@@ -113,23 +110,10 @@ impl ServerBridge {
             if let Err(err) = stdin_loop(server_rx, &mut stdin) {
                 context::error!("{err}");
             }
-            context::debug!("left stdin loop");
             stdin
         });
 
-        hook::add_once::<ConfigUnloaded>({
-            let server_bridge = server_bridge.clone();
-            move |pa, is_quitting| {
-                if is_quitting {
-                    server_bridge.send_request::<Shutdown>((), |_, _| {});
-                    server_bridge.send_notification::<Exit>(())
-                } else {
-                    storage::store(pa, child);
-                }
-            }
-        });
-
-        Ok(server_bridge)
+        server_bridge
     }
 
     /// Sends a request alongside its parameters.
@@ -229,6 +213,33 @@ impl ServerBridge {
     /// Wether the underlying server was already initialized.
     pub fn is_initialized(&self) -> bool {
         self.initialize_backlog.lock().unwrap().is_none()
+    }
+
+    /// The name of the server.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl<Context> Decode<Context> for ServerBridge {
+    fn decode<D: storage::bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, storage::bincode::error::DecodeError> {
+        let server_name = Decode::decode(decoder)?;
+        let child = Decode::decode(decoder)?;
+        Ok(Self::from_parts(server_name, child, false))
+    }
+}
+
+storage::bincode::impl_borrow_decode!(ServerBridge);
+
+impl Encode for ServerBridge {
+    fn encode<E: storage::bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), storage::bincode::error::EncodeError> {
+        self.name.encode(encoder)?;
+        self.child.lock().unwrap().encode(encoder)
     }
 }
 

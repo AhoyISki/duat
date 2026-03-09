@@ -390,10 +390,7 @@ pub mod process {
         }));
 
         match session::ipc::recv_spawn() {
-            Ok(id) => {
-                crate::debug!("Successfully spawned {id}");
-                Ok(PersistentChild::new(id, Vec::new(), Vec::new()))
-            }
+            Ok(id) => Ok(PersistentChild::new(id, Vec::new(), Vec::new())),
             Err(err) => Err(std::io::Error::from_raw_os_error(err)),
         }
     }
@@ -889,6 +886,7 @@ pub mod storage {
         sync::Mutex,
     };
 
+    pub use bincode;
     use bincode::{BorrowDecode, Decode, Encode, config, error::EncodeError};
 
     use crate::data::Pass;

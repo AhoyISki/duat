@@ -35,7 +35,7 @@ FOR NEXT UPDATE:
 [x] File watching.
 [x] File tracking.
 [x] Persistent process spawning.
-[ ] Turn the config into a separate process I guess...
+[x] Turn the config into a separate process I guess...
 
 KNOWN BUGS:
  HIGH PRIORITY:
@@ -54,6 +54,7 @@ KNOWN BUGS:
   [ ] Locking a Mutex on every Change is surely slow.
 
 FUTURE UPDATES:
+[ ] Cleanup of cache API.
 [ ] An API like search but for chars.
 [ ] Hover to reveal full shell expansion.
 [ ] Add a little button next to tree-sitter injections to download them.
