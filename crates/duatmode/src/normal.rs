@@ -1255,10 +1255,10 @@ fn word_or_space(alt_word: bool, backwards: bool, opts: PrintOpts) -> String {
         }
     } else if backwards {
         let cat = opts.word_chars_regex();
-        format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*")
+        format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+")
     } else {
         let cat = opts.word_chars_regex();
-        format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)")
+        format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)|[ \t]+")
     }
 }
 
