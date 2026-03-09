@@ -138,9 +138,19 @@ pub fn pre_setup() -> Ui {
     .grouped("FooterWidgets");
 
     hook::add::<WindowOpened>(|pa, window| {
+        use duat_core::ui::Side::*;
         let opts = OPTS.lock().unwrap();
 
-        let log_book = opts.logs;
+        let mut log_book = opts.logs;
+        let too_tall = log_book.height > window.height();
+        let too_wide = log_book.width > window.width();
+        log_book.hidden =  match (log_book.side, too_tall, too_wide) {
+            (Above | Below, true, _) => true,
+            (Above | Below, false, _) => log_book.hidden,
+            (Right | Left, _, true) => true,
+            (Right | Left, _, false) => log_book.hidden,
+        };
+                
         drop(opts);
         log_book.push_on(pa, window);
     })

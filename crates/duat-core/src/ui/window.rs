@@ -1,4 +1,4 @@
-//! The [`Window`]s of Duat
+//! The [`Window`]s of Duat.
 //!
 //! In Duat, there is a [`Windows`] struct (accessible via
 //! [`context::windows`]), which holds [`Window`]s. Each `Window`
@@ -27,14 +27,14 @@ use crate::{
     ui::{Coord, DynSpawnSpecs, PushSpecs, RwArea, SpawnId, StaticSpawnSpecs, Ui},
 };
 
-/// A list of all [`Window`]s in Duat
+/// A list of all [`Window`]s in Duat.
 pub struct Windows {
     inner: RwData<InnerWindows>,
     spawns_to_remove: Mutex<Vec<SpawnId>>,
     ui: Ui,
 }
 
-/// Inner holder of [`Window`]s
+/// Inner holder of [`Window`]s.
 struct InnerWindows {
     layout: Box<Mutex<dyn Layout>>,
     list: Vec<Window>,
@@ -47,7 +47,7 @@ struct InnerWindows {
 
 impl Windows {
     /// Initializes the `Windows`, returning a [`Node`] for the first
-    /// [`Buffer`]
+    /// [`Buffer`].
     pub(crate) fn initialize(
         pa: &mut Pass,
         buffer: Buffer,
@@ -81,7 +81,7 @@ impl Windows {
     ////////// Functions for new Widgets
 
     /// Creates a new list of [`Window`]s, with a main one
-    /// initialiazed
+    /// initialiazed.
     pub(crate) fn new_window(&self, pa: &mut Pass, buffer: Buffer) -> Node {
         let win = self.inner.read(pa).list.len();
         let new_additions = self.inner.read(pa).new_additions.clone();
@@ -99,7 +99,7 @@ impl Windows {
         node
     }
 
-    /// Push a [`Widget`] to [`Handle`]
+    /// Push a [`Widget`] to [`Handle`].
     pub(crate) fn push_widget<W: Widget>(
         &self,
         pa: &mut Pass,
@@ -112,7 +112,7 @@ impl Windows {
             .try_downcast()
     }
 
-    /// Spawn a [`Widget`] on a [`Handle`]
+    /// Spawn a [`Widget`] on a [`Handle`].
     ///
     /// Can fail if the `Handle` in question was already removed.
     pub(crate) fn spawn_on_widget<W: Widget>(
@@ -172,7 +172,7 @@ impl Windows {
         node.handle().try_downcast()
     }
 
-    /// Spawns a [`Widget`] on [`Text`]
+    /// Spawns a [`Widget`] on [`Text`].
     pub(crate) fn spawn_on_text<W: Widget>(
         &self,
         pa: &mut Pass,
@@ -200,6 +200,7 @@ impl Windows {
         node.handle().try_downcast().unwrap()
     }
 
+    /// Spawn a static floating `Widget`.
     fn spawn_static<W: Widget>(
         &self,
         pa: &mut Pass,
@@ -226,7 +227,7 @@ impl Windows {
         node.handle().try_downcast()
     }
 
-    /// Pushes a [`Buffer`] to the buffer's parent
+    /// Pushes a [`Buffer`] to the buffer's parent.
     ///
     /// This function will push to the edge of `self.buffers_parent`
     /// This is an area, usually in the center, that contains all
@@ -247,9 +248,11 @@ impl Windows {
         }
     }
 
-    /// Pushes a [`Widget`] to the [`Window`]s
+    /// Pushes a [`Widget`] to the [`Window`]s.
     ///
     /// May return [`None`] if the [`Area`] was already deleted.
+    ///
+    /// [`Area`]: crate::ui::Area
     fn push<W: Widget>(
         &self,
         pa: &mut Pass,
@@ -318,7 +321,7 @@ impl Windows {
 
     ////////// Existing Widget manipulation
 
-    /// Closes a [`Handle`], removing it from the ui
+    /// Closes a [`Handle`], removing it from the ui.
     pub(crate) fn close<W: Widget + ?Sized>(
         &self,
         pa: &mut Pass,
@@ -395,7 +398,7 @@ impl Windows {
         Ok(())
     }
 
-    /// Swaps two [`Handle`]'s positions
+    /// Swaps two [`Handle`]'s positions.
     pub(crate) fn swap<W1: Widget + ?Sized, W2: Widget + ?Sized>(
         &self,
         pa: &mut Pass,
@@ -442,7 +445,7 @@ impl Windows {
     }
 
     /// Opens a new [`Buffer`] on a new [`Window`], or moves it there,
-    /// if it is already open
+    /// if it is already open.
     pub(crate) fn open_or_move_to_new_window(
         &self,
         pa: &mut Pass,
@@ -511,7 +514,7 @@ impl Windows {
         node
     }
 
-    /// Sets the current active [`Handle`]
+    /// Sets the current active [`Handle`].
     #[track_caller]
     pub(crate) fn set_current_node(&self, pa: &mut Pass, node: Node) -> Result<(), Text> {
         // SAFETY: This Pass is only used when I'm already reborrowing a &mut
@@ -538,7 +541,7 @@ impl Windows {
 
     ////////// Spawned Widget cleanup
 
-    /// Adds a [`SpawnId`] to be removed when a [`Pass`] is available
+    /// Adds a [`SpawnId`] to be removed when a [`Pass`] is available.
     pub(crate) fn queue_close_spawned(&self, id: SpawnId) {
         let mut spawns_to_remove = self.spawns_to_remove.lock().unwrap();
         if !spawns_to_remove.contains(&id) {
@@ -547,7 +550,7 @@ impl Windows {
     }
 
     /// Removes all [`SpawnId`]'s [`Widget`]s which were queued for
-    /// closure
+    /// closure.
     pub(crate) fn cleanup_despawned(&self, pa: &mut Pass) {
         let spawns_to_remove = std::mem::take(&mut *self.spawns_to_remove.lock().unwrap());
         for id in spawns_to_remove {
@@ -563,7 +566,7 @@ impl Windows {
 
     ////////// Entry lookup
 
-    /// An entry for a [`Handle`]
+    /// An entry for a [`Handle`].
     pub(crate) fn handle_window<W: Widget + ?Sized>(
         &self,
         pa: &Pass,
@@ -574,7 +577,7 @@ impl Windows {
             .ok_or_else(|| txt!("The Handle was already closed"))
     }
 
-    /// An entry for a buffer with the given name
+    /// An entry for a buffer with the given name.
     pub(crate) fn buffer_entry(&self, pa: &Pass, pk: PathKind) -> Result<(usize, Handle), Text> {
         self.entries(pa)
             .find_map(|(win, node)| {
@@ -584,7 +587,7 @@ impl Windows {
             .ok_or_else(|| txt!("Buffer {pk} not found"))
     }
 
-    /// An entry for a buffer with the given name
+    /// An entry for a buffer with the given name.
     pub(crate) fn named_buffer_entry(
         &self,
         pa: &Pass,
@@ -598,7 +601,7 @@ impl Windows {
             .ok_or_else(|| txt!("Buffer [buffer]{name}[] not found"))
     }
 
-    /// An entry for a buffer with the given name
+    /// An entry for a buffer with the given name.
     pub(crate) fn path_buffer_entry(
         &self,
         pa: &Pass,
@@ -614,7 +617,7 @@ impl Windows {
             .ok_or_else(|| txt!("Buffer [buffer]{path}[] not found"))
     }
 
-    /// An entry for a widget of a specific type
+    /// An entry for a widget of a specific type.
     ///
     /// Returns the index of the window, the index of the [`Widget`],
     /// and the [`Widget`]'s [`Node`]
@@ -641,7 +644,7 @@ impl Windows {
 
     ////////// Entry iterators
 
-    /// Iterates over all widget entries, with window indices
+    /// Iterates over all widget entries, with window indices.
     pub(crate) fn entries<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = (usize, &'a Node)> {
         self.inner
             .read(pa)
@@ -658,7 +661,7 @@ impl Windows {
             })
     }
 
-    /// Iterates around a specific widget, going forwards
+    /// Iterates around a specific widget, going forwards.
     pub(crate) fn iter_around<'a>(
         &'a self,
         pa: &'a Pass,
@@ -692,7 +695,7 @@ impl Windows {
             )
     }
 
-    /// Iterates around a specific widget, going backwards
+    /// Iterates around a specific widget, going backwards.
     pub(crate) fn iter_around_rev<'a>(
         &'a self,
         pa: &'a Pass,
@@ -729,7 +732,7 @@ impl Windows {
 
     ////////// Buffer switching
 
-    /// Jumps around in the buffer history
+    /// Jumps around in the buffer history.
     ///
     /// This will jump forwards if `number` is positive, backwards
     /// otherwise.
@@ -742,9 +745,10 @@ impl Windows {
         }
     }
 
-    /// Jumps to the last buffer
+    /// Jumps to the last buffer.
     ///
-    /// Calling this repeatedly
+    /// Calling this repeatedly will switch you through the [`Buffer`]
+    /// switch history.
     pub fn last_switched_buffer(&self, pa: &mut Pass) -> Result<Handle, Text> {
         let current = self.inner.read(pa).cur_buffer.read(pa).clone();
         if let Some(handle) = self.inner.write(pa).buffer_history.last(current) {
@@ -757,7 +761,7 @@ impl Windows {
 
     ////////// Querying functions
 
-    /// The bottom right [`Coord`] on the screen
+    /// The bottom right [`Coord`] on the screen.
     ///
     /// Since the top left coord is `Coord { x: 0.0, y: 0.0 }`, this
     /// is also the size of the window.
@@ -765,24 +769,24 @@ impl Windows {
         self.ui.size()
     }
 
-    /// The number of open [`Window`]s
+    /// The number of open [`Window`]s.
     ///
     /// Should never be 0, as that is not a valid state of affairs.
     pub fn len(&self, pa: &Pass) -> usize {
         self.inner.read(pa).list.len()
     }
 
-    /// get's the `win`th [`Window`]
+    /// get's the `win`th [`Window`].
     pub fn get<'a>(&'a self, pa: &'a Pass, win: usize) -> Option<&'a Window> {
         self.inner.read(pa).list.get(win)
     }
 
-    /// Iterates through every [`Window`]
+    /// Iterates through every [`Window`].
     pub fn iter<'a>(&'a self, pa: &'a Pass) -> std::slice::Iter<'a, Window> {
         self.inner.read(pa).list.iter()
     }
 
-    /// Returns an [`Iterator`] over the [`Handle`]s of Duat
+    /// Returns an [`Iterator`] over the [`Handle`]s of Duat.
     pub fn handles<'a>(&'a self, pa: &'a Pass) -> impl Iterator<Item = Handle<dyn Widget>> + 'a {
         self.inner
             .read(pa)
@@ -791,7 +795,7 @@ impl Windows {
             .flat_map(|w| w.nodes(pa).map(|n| n.handle().clone()))
     }
 
-    /// Returns an [`Iterator`] over the [`Handle`]s of Duat
+    /// Returns an [`Iterator`] over the [`Handle`]s of Duat.
     pub fn handles_of<W: Widget>(&self, pa: &Pass) -> Vec<Handle<W>> {
         self.inner
             .read(pa)
@@ -801,7 +805,7 @@ impl Windows {
             .collect()
     }
 
-    /// Iterates over all [`Handle<Buffer>`]s in Duat
+    /// Iterates over all [`Handle<Buffer>`]s in Duat.
     pub fn buffers(&self, pa: &Pass) -> Vec<Handle> {
         self.inner
             .read(pa)
@@ -811,28 +815,28 @@ impl Windows {
             .collect()
     }
 
-    /// The index of the currently active [`Window`]
+    /// The index of the currently active [`Window`].
     pub fn current_window(&self, pa: &Pass) -> usize {
         self.inner.read(pa).cur_win
     }
 
-    /// The [`RwData`] that points to the currently active [`Buffer`]
+    /// The [`RwData`] that points to the currently active [`Buffer`].
     pub(crate) fn current_buffer<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Handle> {
         &self.inner.read(pa).cur_buffer
     }
 
-    /// The [`RwData`] that points to the currently active [`Widget`]
+    /// The [`RwData`] that points to the currently active [`Widget`].
     pub(crate) fn current_widget<'a>(&'a self, pa: &'a Pass) -> &'a RwData<Node> {
         &self.inner.read(pa).cur_widget
     }
 
-    /// Gets the new additions to the [`Windows`]
+    /// Gets the new additions to the [`Windows`].
     pub(crate) fn get_additions(&self, pa: &mut Pass) -> Option<Vec<(usize, Node)>> {
         self.inner.write(pa).new_additions.lock().unwrap().take()
     }
 }
 
-/// A region containing [`Handle`]s
+/// A region containing [`Handle`]s.
 ///
 /// This is like a browser tab, it can contain any number of regular
 /// and spawned [`Handle`]s.
@@ -849,7 +853,7 @@ struct InnerWindow {
 }
 
 impl Window {
-    /// Returns a new instance of [`Window`]
+    /// Returns a new instance of [`Window`].
     fn new<W: Widget>(
         index: usize,
         pa: &mut Pass,
@@ -886,7 +890,7 @@ impl Window {
         (window, node)
     }
 
-    /// Returns a new [`Window`] from raw elements
+    /// Returns a new [`Window`] from raw elements.
     pub(crate) fn new_from_raw(
         pa: &mut Pass,
         index: usize,
@@ -910,7 +914,7 @@ impl Window {
 
     ////////// Widget addition/removal
 
-    /// Pushes a [`Widget`] around the "buffer area" of a `Window`
+    /// Pushes a [`Widget`] around the "buffer area" of a `Window`.
     ///
     /// When you push a `Widget`, it is placed on an edge of the
     /// area, and a new parent area may be created to hold both
@@ -960,7 +964,7 @@ impl Window {
             .unwrap()
     }
 
-    /// Pushes a [`Widget`] to the edges of a `Window`
+    /// Pushes a [`Widget`] to the edges of a `Window`.
     ///
     /// When you push a `Widget`, it is placed on an edge of the
     /// area, and a new parent area may be created to hold both
@@ -1010,7 +1014,7 @@ impl Window {
             .unwrap()
     }
 
-    /// Spawns a new static [`Widget`] on this `Window`
+    /// Spawns a new static [`Widget`] on this `Window`.
     ///
     /// This `Widget`, unlike all other kinds, does not follow changes
     /// in the layout by the resizing or closure of other `Widget`s.
@@ -1030,7 +1034,7 @@ impl Window {
             .unwrap()
     }
 
-    /// Adds a [`Widget`] to the list of widgets of this [`Window`]
+    /// Adds a [`Widget`] to the list of widgets of this `Window`.
     fn add(&self, pa: &mut Pass, node: Node, parent: Option<RwArea>, location: Location) {
         match location {
             Location::OnBuffers => {
@@ -1060,7 +1064,7 @@ impl Window {
             .push((inner.index, node.clone()));
     }
 
-    /// Closes the [`Handle`] and all related ones
+    /// Closes the [`Handle`] and all related ones.
     ///
     /// Returns `true` if this `Window` is supposed to be removed.
     fn close<W: Widget + ?Sized>(&self, pa: &mut Pass, handle: &Handle<W>) -> bool {
@@ -1142,7 +1146,7 @@ impl Window {
         }
     }
 
-    /// Takes all [`Node`]s related to a given [`Node`]
+    /// Takes all [`Node`]s related to a given `Node`.
     fn take_with_related_nodes<W: Widget + ?Sized>(
         &self,
         pa: &mut Pass,
@@ -1160,14 +1164,14 @@ impl Window {
             .collect()
     }
 
-    /// Inserts [`Buffer`] nodes orderly
+    /// Inserts [`Buffer`] nodes orderly.
     fn insert_nodes(&self, pa: &mut Pass, nodes: Vec<Node>) {
         self.0.write(pa).nodes.extend(nodes);
     }
 
     ////////// Querying functions
 
-    /// An [`Iterator`] over the [`Node`]s in a [`Window`]
+    /// An [`Iterator`] over the [`Node`]s in a `Window`.
     pub(crate) fn nodes<'a>(&'a self, pa: &'a Pass) -> Nodes<'a> {
         let inner = self.0.read(pa);
 
@@ -1180,7 +1184,7 @@ impl Window {
         }
     }
 
-    /// An [`Iterator`] over all [`Handle`]s in a `Window`
+    /// An [`Iterator`] over all [`Handle`]s in a `Window`.
     ///
     /// Each `Handle` takes care of one [`Widget`], if you want to see
     /// which one exactly is being used, you can use the
@@ -1192,7 +1196,7 @@ impl Window {
         self.nodes(pa).map(|node| node.handle())
     }
 
-    /// The [`Buffer`]s in a single `Window`
+    /// The [`Buffer`]s in a single `Window`.
     ///
     /// They will be ordered by where the `"next-buffer"` [command]
     /// focus on. This usually follows the order by which they were
@@ -1244,10 +1248,20 @@ impl Window {
         }
     }
 
-    /// How many [`Widget`]s are in this [`Window`]
+    /// How many [`Widget`]s are in this `Window`.
     pub(crate) fn len_widgets(&self, pa: &Pass) -> usize {
         let inner = self.0.read(pa);
         inner.nodes.len() + inner.spawned.len()
+    }
+
+    /// The width of the `Window`.
+    pub fn width(&self) -> f32 {
+        crate::context::windows().ui.size().x
+    }
+
+    /// The height of the `Window`.
+    pub fn height(&self) -> f32 {
+        crate::context::windows().ui.size().y
     }
 }
 
