@@ -1,15 +1,12 @@
 [package]
 # Don't change the package's name. Duat depends on it.
-name = "config"
+name = "duat"
 version = "1.0.0"
 edition = "2024"
 # Please don't post your configuration crate to crates.io.
 # If you want to keep it somewhere, try a repository website,
 # like github or gitlab
 publish = false
-
-[lib]
-crate-type = ["dylib"]
 
 [profile.release]
 split-debuginfo = "unpacked"
