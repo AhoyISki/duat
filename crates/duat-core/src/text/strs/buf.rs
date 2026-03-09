@@ -106,7 +106,7 @@ impl StrsBuf {
     }
 
     /// Get the current version of the `StrsBuf`
-    pub fn get_version(&self) -> u64 {
+    pub fn version(&self) -> u64 {
         self.version
     }
 }

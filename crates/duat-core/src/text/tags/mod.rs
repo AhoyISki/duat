@@ -641,7 +641,7 @@ impl InnerTags {
     ///
     /// First element is the `tags_version`, second is the
     /// `meta_tags_version`
-    pub(super) fn versions(&self) -> (u64, u64) {
+    pub(crate) fn versions(&self) -> (u64, u64) {
         (self.tags_verssion, self.meta_tags_version)
     }
 

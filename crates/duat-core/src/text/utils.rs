@@ -23,6 +23,8 @@ macro_rules! implPartialEq {
 
 pub(super) use implPartialEq;
 
+use crate::text::Strs;
+
 macro_rules! implTextRange {
     ($range:ident, $r:ident, $max:ident, $sb:expr, $eb:expr, $sp:expr, $ep:expr) => {
         impl TextRange for $range<usize> {
@@ -158,6 +160,21 @@ impl Point {
     /// Returns the line. Indexed at 0.
     pub const fn line(&self) -> usize {
         self.line as usize
+    }
+
+    /// Returns the number of bytes between this `Point` and the start
+    /// of the line.
+    pub fn byte_col(&self, strs: &Strs) -> usize {
+        self.byte() - strs.point_at_coords(self.line(), 0).byte()
+    }
+
+    /// Returns the numbers of utf8 characters between this `Point`
+    /// and the start of the line.
+    ///
+    /// Note that this counts `characters`, which may not align with a
+    /// human conception of what a charcter is.
+    pub fn char_col(&self, strs: &Strs) -> usize {
+        self.char() - strs.point_at_coords(self.line(), 0).char()
     }
 
     /// Checked [`Point`] subtraction.

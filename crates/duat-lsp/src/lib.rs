@@ -1,20 +1,33 @@
 use std::path::Path;
 
 use duat_core::{
-    Plugin, context,
-    hook::{self, BufferOpened, BufferUnloaded},
+    Plugin,
+    buffer::{BufferTracker, PerBuffer},
+    context,
+    hook::{self, BufferOpened, BufferUnloaded, BufferUpdated},
 };
 use duat_filetype::PassFileType;
 use lsp_types::{
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, TextDocumentIdentifier,
-    TextDocumentItem, Uri,
-    notification::{DidCloseTextDocument, DidOpenTextDocument},
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Uri,
+    VersionedTextDocumentIdentifier,
+    notification::{DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument},
 };
+
+use crate::server::Server;
 
 mod config;
 mod server;
 
 pub struct DuatLsp;
+
+struct BufferInfo {
+    uri: Uri,
+    servers: Vec<Server>,
+}
+
+static SERVERS: PerBuffer<BufferInfo> = PerBuffer::new();
+static TRACKER: BufferTracker = BufferTracker::new();
 
 impl Plugin for DuatLsp {
     #[inline(never)]
@@ -29,7 +42,9 @@ impl Plugin for DuatLsp {
                     );
                     return;
                 };
-                if let Some(_servers) = server::get_servers_for(&path) {}
+                let Some(servers) = server::get_servers_for(&path) else {
+                    return;
+                };
 
                 let text = handle.text(pa);
 
@@ -43,6 +58,49 @@ impl Plugin for DuatLsp {
                         },
                     });
                 });
+
+                TRACKER.register_buffer(handle.write(pa));
+                SERVERS.register(pa, handle, BufferInfo { uri, servers });
+            }
+        });
+
+        hook::add::<BufferUpdated>(|pa, handle| {
+            if let Some((info, buffer)) = SERVERS.write(pa, handle)
+                && let Some(parts) = TRACKER.parts(buffer)
+            {
+                for server in &info.servers {
+                    let bytes = server.position_encoding().num_bytes();
+
+                    let notification = DidChangeTextDocumentParams {
+                        text_document: VersionedTextDocumentIdentifier {
+                            uri: info.uri.clone(),
+                            version: parts.version().strs as i32,
+                        },
+                        content_changes: parts
+                            .changes
+                            .clone()
+                            .map(|change| {
+                                let (start, end) = (change.start(), change.taken_end());
+
+                                TextDocumentContentChangeEvent {
+                                    range: Some(lsp_types::Range {
+                                        start: lsp_types::Position {
+                                            line: start.line() as u32,
+                                            character: (start.byte_col(parts.strs) / bytes) as u32,
+                                        },
+                                        end: lsp_types::Position {
+                                            line: end.line() as u32,
+                                            character: (end.byte_col(parts.strs) / bytes) as u32,
+                                        },
+                                    }),
+                                    range_length: None,
+                                    text: change.added_str().to_string(),
+                                }
+                            })
+                            .collect(),
+                    };
+                    server.send_notification::<DidChangeTextDocument>(notification);
+                }
             }
         });
 

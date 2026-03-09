@@ -668,7 +668,7 @@ impl Text {
         let (tags, meta_tags) = self.0.tags.versions();
 
         TextVersion {
-            strs: self.0.buf.get_version(),
+            strs: self.0.buf.version(),
             tags,
             meta_tags,
         }
@@ -956,6 +956,29 @@ pub struct TextParts<'a> {
     ///
     /// [`Widget`]: crate::ui::Widget
     pub selections: &'a Selections,
+}
+
+impl<'a> TextParts<'a> {
+    /// A struct representing how many changes took place since the
+    /// creation of this `Text`
+    ///
+    /// This struct tracks all [`Change`]s and [`Tag`]
+    /// additions/removals, giving you information about wether this
+    /// `Text` has changed, when comparing this to previous
+    /// [`TextVersion`]s of the same `Text`.
+    ///
+    /// This _does_ also include things like undoing and redoing. This
+    /// is done to keep track of all changes that took place, even to
+    /// previously extant states of the text.
+    pub fn version(&self) -> TextVersion {
+        let (tags, meta_tags) = self.tags.versions();
+
+        TextVersion {
+            strs: self.strs.version(),
+            tags,
+            meta_tags,
+        }
+    }
 }
 
 /// A representation of how many changes took place in a [`Text`].

@@ -63,6 +63,22 @@ impl Server {
         self.bridge.send_notification::<N>(params);
     }
 
+	/// The encoding used for positioning by this `Server`
+    pub fn position_encoding(&self) -> Encoding {
+        let inner = self.inner.lock().unwrap();
+        match inner
+            .capabilities
+            .as_ref()
+            .and_then(|cap| cap.position_encoding.as_ref())
+            .map(|enc| enc.as_str())
+        {
+            Some("utf-8") | None => Encoding::Utf8,
+            Some("utf-16") => Encoding::Utf16,
+            Some("utf-32") => Encoding::Utf32,
+            Some(_) => unreachable!(),
+        }
+    }
+
     /// Sends the initialization requests for a given [`Path`]
     fn send_initialize_request(&self, path: PathBuf) {
         let inner = self.inner.lock().unwrap();
@@ -226,5 +242,23 @@ impl Encode for ServerParts {
         self.offset_encoding.encode(encoder)?;
         self.roots.encode(encoder)?;
         self.bridge.encode(encoder)
+    }
+}
+
+/// An encoding for text positions.
+pub enum Encoding {
+    Utf8,
+    Utf16,
+    Utf32,
+}
+
+impl Encoding {
+    /// The number of bytes occupied by a single code point.
+    pub fn num_bytes(&self) -> usize {
+        match self {
+            Encoding::Utf8 => 1,
+            Encoding::Utf16 => 2,
+            Encoding::Utf32 => 4,
+        }
     }
 }

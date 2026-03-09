@@ -25,7 +25,7 @@ use crate::{
     Ranges,
     buffer::{Buffer, BufferId, BufferOpts},
     mode::Selections,
-    text::{Strs, Tags, TextRange},
+    text::{Strs, Tags, TextRange, TextVersion},
     utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
 };
 
@@ -743,6 +743,29 @@ pub struct BufferParts<'b> {
     pub ranges_to_update: RangesToUpdate<'b>,
     /// The [`BufferOpts`] of the `Buffer` in question.
     pub opts: &'b BufferOpts,
+}
+
+impl<'b> BufferParts<'b> {
+    /// A struct representing how many changes took place since the
+    /// creation of this `Text`
+    ///
+    /// This struct tracks all [`Change`]s and [`Tag`]
+    /// additions/removals, giving you information about wether this
+    /// `Text` has changed, when comparing this to previous
+    /// [`TextVersion`]s of the same `Text`.
+    ///
+    /// This _does_ also include things like undoing and redoing. This
+    /// is done to keep track of all changes that took place, even to
+    /// previously extant states of the text.
+    pub fn version(&self) -> TextVersion {
+        let (tags, meta_tags) = self.tags.versions();
+
+        TextVersion {
+            strs: self.strs.version(),
+            tags,
+            meta_tags,
+        }
+    }
 }
 
 /// If `lhs` contains the start of `rhs`

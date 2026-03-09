@@ -63,14 +63,14 @@ impl Strs {
             Point::default()
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.bytes.buf.as_slices();
+                let (s0, s1) = formed.buf.buf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
             formed
-                .bytes
+                .buf
                 .line_ranges
                 .point_by_key(formed.start as usize, |[b, _]| b, slices)
-                .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+                .unwrap_or_else(|| formed.buf.line_ranges.max(slices))
         }
     }
 
@@ -81,19 +81,19 @@ impl Strs {
         let formed = FormedStrs::new(self);
 
         let slices = unsafe {
-            let (s0, s1) = formed.bytes.buf.as_slices();
+            let (s0, s1) = formed.buf.buf.as_slices();
             [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
         };
 
         let byte = formed.start as usize + formed.len as usize;
-        if byte == formed.bytes.buf.len() {
-            formed.bytes.line_ranges.max(slices)
+        if byte == formed.buf.buf.len() {
+            formed.buf.line_ranges.max(slices)
         } else {
             formed
-                .bytes
+                .buf
                 .line_ranges
                 .point_by_key(byte, |[b, _]| b, slices)
-                .unwrap_or_else(|| formed.bytes.line_ranges.max(slices))
+                .unwrap_or_else(|| formed.buf.line_ranges.max(slices))
         }
     }
 
@@ -107,7 +107,7 @@ impl Strs {
     pub fn char_at(&self, p: impl TextIndex) -> Option<char> {
         let formed = FormedStrs::new(self);
         let range = formed
-            .bytes
+            .buf
             .buf
             .range(formed.start as usize..formed.start as usize + formed.len as usize);
 
@@ -154,11 +154,11 @@ impl Strs {
             self.end_point()
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.bytes.buf.as_slices();
+                let (s0, s1) = formed.buf.buf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
             formed
-                .bytes
+                .buf
                 .line_ranges
                 .point_by_key(byte + formed.start as usize, |[b, _]| b, slices)
                 .unwrap()
@@ -187,18 +187,18 @@ impl Strs {
             end_point
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.bytes.buf.as_slices();
+                let (s0, s1) = formed.buf.buf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
 
             let start = formed
-                .bytes
+                .buf
                 .line_ranges
                 .point_by_key(formed.start as usize, |[b, _]| b, slices)
                 .unwrap();
 
             formed
-                .bytes
+                .buf
                 .line_ranges
                 .point_by_key(start.char() + char, |[_, c]| c, slices)
                 .unwrap()
@@ -232,7 +232,7 @@ impl Strs {
             end_point
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.bytes.buf.as_slices();
+                let (s0, s1) = formed.buf.buf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
             let line = {
@@ -240,10 +240,7 @@ impl Strs {
                 start.line() + line
             };
 
-            let point = formed
-                .bytes
-                .line_ranges
-                .point_at_coords(line, column, slices);
+            let point = formed.buf.line_ranges.point_at_coords(line, column, slices);
 
             if let Some(point) = point {
                 point
@@ -252,7 +249,7 @@ impl Strs {
                     end_point
                 } else {
                     formed
-                        .bytes
+                        .buf
                         .line_ranges
                         .point_at_coords(line + 1, 0, slices)
                         .unwrap()
@@ -299,7 +296,7 @@ impl Strs {
     ///
     /// [`Text`]: super::Text
     pub fn full(&self) -> &Strs {
-        FormedStrs::new(self).bytes
+        FormedStrs::new(self).buf
     }
 
     /// The last [`Point`] associated with a `char`
@@ -313,7 +310,7 @@ impl Strs {
     /// [`Text`]: crate::text::Text
     pub fn last_point(&self) -> Point {
         let formed = FormedStrs::new(self);
-        formed.bytes.end_point().rev('\n')
+        formed.buf.end_point().rev('\n')
     }
 
     /// Tries to get a subslice of the `Strs`
@@ -342,13 +339,13 @@ impl Strs {
             range.start + formed.start as usize..range.end + formed.start as usize
         };
 
-        let (s0, s1) = formed.bytes.buf.range(range.clone()).as_slices();
+        let (s0, s1) = formed.buf.buf.range(range.clone()).as_slices();
 
         // Check if the slices match utf8 boundaries.
         if s0.first().is_some_and(|b| utf8_char_width(*b) == 0)
             || s1.first().is_some_and(|b| utf8_char_width(*b) == 0)
             || formed
-                .bytes
+                .buf
                 .buf
                 .get(range.end)
                 .is_some_and(|b| utf8_char_width(*b) == 0)
@@ -357,7 +354,7 @@ impl Strs {
         }
 
         Some(Strs::new(
-            formed.bytes,
+            formed.buf,
             range.start as u32,
             range.len() as u32,
         ))
@@ -380,7 +377,7 @@ impl Strs {
             range.start + formed.start as usize..range.end + formed.start as usize
         };
 
-        let (s0, s1) = formed.bytes.buf.range(range).as_slices();
+        let (s0, s1) = formed.buf.buf.range(range).as_slices();
         [s0, s1]
     }
 
@@ -389,7 +386,7 @@ impl Strs {
         let formed = FormedStrs::new(self);
         let range = formed.start as usize..(formed.start + formed.len) as usize;
 
-        let (s0, s1) = formed.bytes.buf.range(range).as_slices();
+        let (s0, s1) = formed.buf.buf.range(range).as_slices();
 
         // Safety: The creation of a &Strs necessitates a valid utf8 range.
         [unsafe { std::str::from_utf8_unchecked(s0) }, unsafe {
@@ -406,7 +403,7 @@ impl Strs {
     pub fn lines(&self) -> Lines<'_> {
         let formed = FormedStrs::new(self);
         Lines::new(
-            formed.bytes,
+            formed.buf,
             formed.start as usize,
             (formed.start + formed.len) as usize,
         )
@@ -447,7 +444,7 @@ impl Strs {
         let formed = FormedStrs::new(self);
         let range = self.byte_range();
 
-        formed.bytes.point_at_byte(range.start)..formed.bytes.point_at_byte(range.end)
+        formed.buf.point_at_byte(range.start)..formed.buf.point_at_byte(range.end)
     }
 
     /// Gets the indentation level of this `Strs`
@@ -498,6 +495,15 @@ impl Strs {
     pub fn is_empty_line(&self) -> bool {
         self == "\n" || self == "\r\n"
     }
+
+    /// Get the current version of the `StrsBuf`
+    ///
+    /// This version is irrespective of undos/redos, that is, an undo
+    /// will also bump the version number up. You can use this for
+    /// communicating version changes, such as with an LSP.
+    pub fn version(&self) -> u64 {
+        FormedStrs::new(self).buf.version()
+    }
 }
 
 impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
@@ -507,11 +513,11 @@ impl<Idx: TextRange> std::ops::Index<Idx> for Strs {
         let formed = FormedStrs::new(self);
         let range = index.to_range(formed.len as usize);
 
-        assert_utf8_boundary(formed.bytes, range.start);
-        assert_utf8_boundary(formed.bytes, range.end);
+        assert_utf8_boundary(formed.buf, range.start);
+        assert_utf8_boundary(formed.buf, range.end);
 
         Self::new(
-            formed.bytes,
+            formed.buf,
             range.start as u32 + formed.start,
             range.len() as u32,
         )
@@ -662,7 +668,7 @@ impl std::iter::FusedIterator for Lines<'_> {}
 /// A deconstructed internal representation of an [`Strs`],
 /// useful for not doing a bunch of unsafe operations.
 struct FormedStrs<'b> {
-    bytes: &'b StrsBuf,
+    buf: &'b StrsBuf,
     start: u32,
     len: u32,
 }
@@ -676,7 +682,7 @@ impl<'b> FormedStrs<'b> {
 
         Self {
             // Safety: When creating the Strs, a valid StrsBuf was at the address.
-            bytes: unsafe { &*(ptr as *const StrsBuf) },
+            buf: unsafe { &*(ptr as *const StrsBuf) },
             start,
             len,
         }
