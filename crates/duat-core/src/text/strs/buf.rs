@@ -25,7 +25,7 @@ use crate::{
 /// [`Text`]: crate::text::Text
 #[derive(Default, Clone, bincode::Decode, bincode::Encode)]
 pub struct StrsBuf {
-    pub(super) buf: GapBuffer<u8>,
+    pub(super) gapbuf: GapBuffer<u8>,
     pub(super) line_ranges: LineRanges,
     version: u64,
 }
@@ -50,7 +50,7 @@ impl StrsBuf {
 
         let records = LineRanges::new(slices);
 
-        let mut buf = Self { buf, line_ranges: records, version: 0 };
+        let mut buf = Self { gapbuf: buf, line_ranges: records, version: 0 };
 
         if buf.bytes().next_back().is_none_or(|b| b != b'\n') {
             let end = buf.end_point();
@@ -77,7 +77,7 @@ impl StrsBuf {
         let start = change.start();
 
         let range = start.byte()..change.taken_end().byte();
-        self.buf.splice(range, edit.bytes());
+        self.gapbuf.splice(range, edit.bytes());
 
         let start_rec = [start.byte(), start.char(), start.line()];
         let old_len = [
@@ -92,7 +92,7 @@ impl StrsBuf {
         ];
 
         let array = unsafe {
-            let (s0, s1) = self.buf.as_slices();
+            let (s0, s1) = self.gapbuf.as_slices();
             [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
         };
 
@@ -115,7 +115,7 @@ impl std::ops::Deref for StrsBuf {
     type Target = Strs;
 
     fn deref(&self) -> &Self::Target {
-        Strs::new(self, 0, self.buf.len() as u32)
+        Strs::new(self, 0, self.gapbuf.len() as u32)
     }
 }
 
@@ -149,8 +149,8 @@ pub const fn utf8_char_width(b: u8) -> usize {
 
 impl Eq for StrsBuf {}
 implPartialEq!(bytes: StrsBuf, other: StrsBuf, {
-    let (l_s0, l_s1) = bytes.buf.as_slices();
-    let (r_s0, r_s1) = other.buf.as_slices();
+    let (l_s0, l_s1) = bytes.gapbuf.as_slices();
+    let (r_s0, r_s1) = other.gapbuf.as_slices();
     (l_s0.len() + l_s1.len() == r_s0.len() + r_s1.len()) && l_s0.iter().chain(l_s1).eq(r_s0.iter().chain(r_s1))
 });
 implPartialEq!(bytes: StrsBuf, other: &str, {
@@ -236,12 +236,12 @@ impl std::fmt::Debug for StrsBuf {
 #[track_caller]
 pub fn assert_utf8_boundary(bytes: &StrsBuf, idx: usize) {
     assert!(
-        bytes.buf.get(idx).is_none_or(|b| utf8_char_width(*b) != 0),
+        bytes.gapbuf.get(idx).is_none_or(|b| utf8_char_width(*b) != 0),
         "byte index {} is not a valid char boundary; it is inside '{}'",
         idx,
         {
             let (n, len) = bytes
-                .buf
+                .gapbuf
                 .range(..idx)
                 .iter()
                 .rev()
@@ -251,7 +251,7 @@ pub fn assert_utf8_boundary(bytes: &StrsBuf, idx: usize) {
 
             String::from_utf8(
                 bytes
-                    .buf
+                    .gapbuf
                     .range(idx - (n + 1)..idx - (n + 1) + len)
                     .iter()
                     .copied()

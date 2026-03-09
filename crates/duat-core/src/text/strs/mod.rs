@@ -63,7 +63,7 @@ impl Strs {
             Point::default()
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.buf.buf.as_slices();
+                let (s0, s1) = formed.buf.gapbuf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
             formed
@@ -81,12 +81,12 @@ impl Strs {
         let formed = FormedStrs::new(self);
 
         let slices = unsafe {
-            let (s0, s1) = formed.buf.buf.as_slices();
+            let (s0, s1) = formed.buf.gapbuf.as_slices();
             [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
         };
 
         let byte = formed.start as usize + formed.len as usize;
-        if byte == formed.buf.buf.len() {
+        if byte == formed.buf.gapbuf.len() {
             formed.buf.line_ranges.max(slices)
         } else {
             formed
@@ -108,7 +108,7 @@ impl Strs {
         let formed = FormedStrs::new(self);
         let range = formed
             .buf
-            .buf
+            .gapbuf
             .range(formed.start as usize..formed.start as usize + formed.len as usize);
 
         if range
@@ -154,7 +154,7 @@ impl Strs {
             self.end_point()
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.buf.buf.as_slices();
+                let (s0, s1) = formed.buf.gapbuf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
             formed
@@ -187,7 +187,7 @@ impl Strs {
             end_point
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.buf.buf.as_slices();
+                let (s0, s1) = formed.buf.gapbuf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
 
@@ -226,13 +226,11 @@ impl Strs {
 
         let formed = FormedStrs::new(self);
 
-        if line == 0 {
-            self.point_at_byte(formed.start as usize)
-        } else if line == end_point.line() {
+        if line == end_point.line() {
             end_point
         } else {
             let slices = unsafe {
-                let (s0, s1) = formed.buf.buf.as_slices();
+                let (s0, s1) = formed.buf.gapbuf.as_slices();
                 [str::from_utf8_unchecked(s0), str::from_utf8_unchecked(s1)]
             };
             let line = {
@@ -339,14 +337,14 @@ impl Strs {
             range.start + formed.start as usize..range.end + formed.start as usize
         };
 
-        let (s0, s1) = formed.buf.buf.range(range.clone()).as_slices();
+        let (s0, s1) = formed.buf.gapbuf.range(range.clone()).as_slices();
 
         // Check if the slices match utf8 boundaries.
         if s0.first().is_some_and(|b| utf8_char_width(*b) == 0)
             || s1.first().is_some_and(|b| utf8_char_width(*b) == 0)
             || formed
                 .buf
-                .buf
+                .gapbuf
                 .get(range.end)
                 .is_some_and(|b| utf8_char_width(*b) == 0)
         {
@@ -377,7 +375,7 @@ impl Strs {
             range.start + formed.start as usize..range.end + formed.start as usize
         };
 
-        let (s0, s1) = formed.buf.buf.range(range).as_slices();
+        let (s0, s1) = formed.buf.gapbuf.range(range).as_slices();
         [s0, s1]
     }
 
@@ -386,7 +384,7 @@ impl Strs {
         let formed = FormedStrs::new(self);
         let range = formed.start as usize..(formed.start + formed.len) as usize;
 
-        let (s0, s1) = formed.buf.buf.range(range).as_slices();
+        let (s0, s1) = formed.buf.gapbuf.range(range).as_slices();
 
         // Safety: The creation of a &Strs necessitates a valid utf8 range.
         [unsafe { std::str::from_utf8_unchecked(s0) }, unsafe {
@@ -570,7 +568,7 @@ pub const fn utf8_char_width(b: u8) -> usize {
 
 /// An [`Iterator`] over the lines on an [`Strs`]
 pub struct Lines<'b> {
-    bytes: &'b StrsBuf,
+    buf: &'b StrsBuf,
     start: usize,
     end: usize,
     finger_back: usize,
@@ -578,12 +576,12 @@ pub struct Lines<'b> {
 
 impl<'b> Lines<'b> {
     fn new(bytes: &'b StrsBuf, start: usize, end: usize) -> Self {
-        Self { bytes, start, end, finger_back: end }
+        Self { buf: bytes, start, end, finger_back: end }
     }
 
     fn next_match_back(&mut self) -> Option<usize> {
         let range = self.start..self.finger_back;
-        let (s0, s1) = self.bytes.buf.range(range).as_slices();
+        let (s0, s1) = self.buf.gapbuf.range(range).as_slices();
 
         let pos = s0.iter().chain(s1.iter()).rev().position(|b| *b == b'\n');
         match pos {
@@ -608,17 +606,17 @@ impl<'b> Iterator for Lines<'b> {
         }
 
         let range = self.start..self.finger_back;
-        let (s0, s1) = self.bytes.buf.range(range.clone()).as_slices();
+        let (s0, s1) = self.buf.gapbuf.range(range.clone()).as_slices();
 
         Some(match s0.iter().chain(s1.iter()).position(|b| *b == b'\n') {
             Some(pos) => {
-                let line = Strs::new(self.bytes, self.start as u32, pos as u32 + 1);
+                let line = Strs::new(self.buf, self.start as u32, pos as u32 + 1);
                 self.start += pos + 1;
                 line
             }
             None => {
                 let len = self.end - self.start;
-                let line = Strs::new(self.bytes, self.start as u32, len as u32);
+                let line = Strs::new(self.buf, self.start as u32, len as u32);
                 self.start = self.end;
                 line
             }
@@ -644,12 +642,12 @@ impl DoubleEndedIterator for Lines<'_> {
                         None => self.start,
                     };
                     let len = self.end - start;
-                    let line = Strs::new(self.bytes, start as u32, len as u32);
+                    let line = Strs::new(self.buf, start as u32, len as u32);
                     self.end = start;
                     line
                 } else {
                     let len = self.end - (start + 1);
-                    let line = Strs::new(self.bytes, start as u32 + 1, len as u32);
+                    let line = Strs::new(self.buf, start as u32 + 1, len as u32);
                     self.end = start + 1;
                     line
                 }
@@ -657,7 +655,7 @@ impl DoubleEndedIterator for Lines<'_> {
             None => {
                 let len = self.end - self.start;
                 self.end = self.start;
-                Strs::new(self.bytes, self.start as u32, len as u32)
+                Strs::new(self.buf, self.start as u32, len as u32)
             }
         })
     }

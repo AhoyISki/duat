@@ -67,6 +67,7 @@ impl Plugin for DuatLsp {
         hook::add::<BufferUpdated>(|pa, handle| {
             if let Some((info, buffer)) = SERVERS.write(pa, handle)
                 && let Some(parts) = TRACKER.parts(buffer)
+                && parts.changes.len() > 0
             {
                 for server in &info.servers {
                     let bytes = server.position_encoding().num_bytes();
