@@ -1,5 +1,5 @@
 use duat_core::{
-    context::cache::{Decode, Encode},
+    context::{self, cache::{Decode, Encode}},
     opts::PrintOpts,
     text::{Point, Text, TwoPoints},
 };
@@ -28,8 +28,6 @@ impl PrintInfo {
         text: &Text,
         opts: PrintOpts,
     ) -> TwoPoints {
-        self.prev_main = self.prev_main.min(text.last_point());
-
         let points = if let Some(s_points) = self.s_points
             && s_points <= text.len_points()
             && coords.width() == self.prev_coords.width()
@@ -50,8 +48,6 @@ impl PrintInfo {
 
     /// The ending [`TwoPoints`] of the [`PrintInfo`]
     pub(super) fn end_points(&mut self, coords: Coords, text: &Text, opts: PrintOpts) -> TwoPoints {
-        self.prev_main = self.prev_main.min(text.last_point());
-
         let points = if let Some(s_points) = self.s_points
             && coords.width() == self.prev_coords.width()
             && coords.height() == self.prev_coords.height()
@@ -83,8 +79,6 @@ impl PrintInfo {
 
     /// Scrolls around a given [`Point`]
     pub(super) fn scroll_around(&mut self, p: Point, coords: Coords, text: &Text, opts: PrintOpts) {
-        self.prev_main = self.prev_main.min(text.last_point());
-
         if coords.width() > 0 && coords.height() > 0 {
             if let Some(s_points) = self.s_points
                 && coords.width() == self.prev_coords.width()
@@ -104,8 +98,6 @@ impl PrintInfo {
 
     /// Scrolls vertically
     pub(super) fn scroll_ver(&mut self, by: i32, coords: Coords, text: &Text, opts: PrintOpts) {
-        self.prev_main = self.prev_main.min(text.last_point());
-
         let s_points = if let Some(s_points) = self.s_points
             && coords.width() == self.prev_coords.width()
             && coords.height() == self.prev_coords.height()
@@ -151,8 +143,6 @@ impl PrintInfo {
         text: &Text,
         opts: PrintOpts,
     ) {
-        self.prev_main = self.prev_main.min(text.last_point());
-
         let cap = opts.wrap_width(coords.width()).unwrap_or(coords.width());
 
         let line_start = rev_print_iter(text, points, cap, opts)
