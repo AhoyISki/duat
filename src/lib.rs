@@ -635,7 +635,8 @@ pub mod prelude {
             );
         } else {
             already_plugged.push(TypeId::of::<P>());
-            plugin.plug(Plugins::_new());
+            drop(already_plugged);
+            crate::utils::catch_panic(|| plugin.plug(Plugins::_new()));
         }
     }
 

@@ -734,9 +734,9 @@ checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
 
 [[package]]
 name = "jsonrpc-lite"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00f1066a393f8bd9aefd2ed69a0a2bc39d1b6d2fdf55d00acb27f4242b403839"
+checksum = "a3b61c092f08bd647681816f1c69730973ca62dbc996ef44a73c8f8d11d0af64"
 dependencies = [
  "serde",
  "serde_json",

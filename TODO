@@ -1,8 +1,8 @@
 FOR NEXT UPDATE:
 [ ] Start work on duat-lsp.
   [x] Start process comunications.
-  [ ] Send messages back and forth.
-  [ ] Send changes.
+  [x] Send messages back and forth.
+  [x] Send changes.
   [ ] Receive and process semantic tokens.
   [ ] Highlight references.
 [ ] `z` and `q` keys for duatmode.

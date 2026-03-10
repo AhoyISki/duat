@@ -26,7 +26,8 @@ use lsp_types::{
 };
 use serde_json::Value;
 
-use crate::config::LanguageServerConfig;
+pub use crate::server::bridge::id::BridgeId;
+use crate::{config::LanguageServerConfig, server::requests::handle_request};
 
 /// Communication abstraction for communication with language servers.
 #[derive(Clone)]
@@ -36,6 +37,7 @@ pub struct ServerBridge {
     server_tx: Sender<JsonRpcFn>,
     callbacks: Callbacks,
     initialize_backlog: Arc<Mutex<Option<Vec<JsonRpcFn>>>>,
+    bridge_id: BridgeId,
 }
 
 impl ServerBridge {
@@ -95,12 +97,13 @@ impl ServerBridge {
             server_tx,
             callbacks: Callbacks::default(),
             initialize_backlog: Arc::new(Mutex::new(is_initializing.then_some(Vec::new()))),
+            bridge_id: BridgeId::new(),
         };
 
         std::thread::spawn({
-            let callbacks = server_bridge.callbacks.clone();
+            let server_bridge = server_bridge.clone();
             move || {
-                if let Err(err) = stdout_loop(callbacks, &mut stdout) {
+                if let Err(err) = stdout_loop(server_bridge, &mut stdout) {
                     context::error!("{err}");
                 }
             }
@@ -219,6 +222,11 @@ impl ServerBridge {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    /// A unique for a [`ServerBridge`].
+    pub fn id(&self) -> BridgeId {
+        self.bridge_id
+    }
 }
 
 impl<Context> Decode<Context> for ServerBridge {
@@ -243,6 +251,12 @@ impl Encode for ServerBridge {
     }
 }
 
+impl std::hash::Hash for ServerBridge {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bridge_id.hash(state);
+    }
+}
+
 fn stdin_loop(
     server_rx: mpsc::Receiver<JsonRpcFn>,
     stdin: &mut PersistentWriter,
@@ -258,7 +272,7 @@ fn stdin_loop(
     Ok(())
 }
 
-fn stdout_loop(callbacks: Callbacks, stdout: &mut impl BufRead) -> std::io::Result<()> {
+fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::io::Result<()> {
     use std::io::Error;
     loop {
         let content_len = {
@@ -301,13 +315,17 @@ fn stdout_loop(callbacks: Callbacks, stdout: &mut impl BufRead) -> std::io::Resu
 
         match serde_json::from_str::<JsonRpc>(&msg) {
             Ok(content) => {
-                let mut callbacks = callbacks.lock().unwrap_or_else(|err| err.into_inner());
+                let mut callbacks = server_bridge
+                    .callbacks
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner());
+
                 match content {
-                    JsonRpc::Request(content) => {
-                        context::debug!("Server requested: {content:#?}");
-                    }
-                    JsonRpc::Notification(content) => {
-                        context::debug!("Server notified: {content:#?}");
+                    JsonRpc::Request(request) => handle_request(&server_bridge, request),
+                    JsonRpc::Notification(notif) => {
+                        if !notif.method.ends_with("progress") {
+                            context::debug!("Server notified: {notif:#?}");
+                        }
                     }
                     JsonRpc::Success(_) => {
                         if let Some(id) = content.get_id()
@@ -401,3 +419,21 @@ fn method_id(method_name: &str) -> Option<Id> {
 
 type JsonRpcFn = Box<dyn FnOnce() -> std::io::Result<JsonRpc> + Send>;
 type Callbacks = Arc<Mutex<HashMap<Id, Box<dyn FnOnce(&mut Pass, Value) + Send + 'static>>>>;
+
+mod id {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+
+    /// A unique identifier for a [`ServerBridge`].
+    ///
+    /// [`ServerBridge`]: super::ServerBridge
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct BridgeId(usize);
+
+    impl BridgeId {
+        /// Returns a new unique `BridgeId`.
+        pub(super) fn new() -> Self {
+            static BRIDGE_ID: AtomicUsize = AtomicUsize::new(0);
+            Self(BRIDGE_ID.fetch_add(1, Relaxed))
+        }
+    }
+}

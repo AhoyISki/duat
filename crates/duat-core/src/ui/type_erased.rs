@@ -500,8 +500,8 @@ impl RwArea {
 
     /// Stores the cache of the [`Area`], given a path to associate
     /// with this cache
-    pub fn store_cache(&self, pa: &Pass, path: &str) -> Result<(), Text> {
-        (self.0.read(pa).fns.store_cache)(self.0.read(pa), path)
+    pub fn store_cache(&self, pa: &Pass, path: impl AsRef<Path>) -> Result<(), Text> {
+        (self.0.read(pa).fns.store_cache)(self.0.read(pa), path.as_ref())
     }
 
     /// The top left [`Coord`] of this `Area`
@@ -752,8 +752,8 @@ impl Area {
 
     /// Stores the cache of the `Area`, given a path to associate
     /// with this cache
-    pub fn store_cache(&mut self, path: &str) -> Result<(), Text> {
-        (self.fns.store_cache)(self, path)
+    pub fn store_cache(&mut self, path: impl AsRef<Path>) -> Result<(), Text> {
+        (self.fns.store_cache)(self, path.as_ref())
     }
 
     /// The top left [`Coord`] of this `Area`
@@ -842,7 +842,7 @@ struct AreaFunctions {
     has_changed: fn(&Area) -> bool,
     is_master_of: fn(&Area, &Area) -> bool,
     get_cluster_master: fn(&Area) -> Option<RwArea>,
-    store_cache: fn(&Area, &str) -> Result<(), Text>,
+    store_cache: fn(&Area, &Path) -> Result<(), Text>,
     eq: fn(&Area, &Area) -> bool,
     top_left: fn(&Area) -> Coord,
     bottom_right: fn(&Area) -> Coord,

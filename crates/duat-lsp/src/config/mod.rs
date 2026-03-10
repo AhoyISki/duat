@@ -16,7 +16,7 @@ use serde_json::Value;
 mod languages;
 pub use languages::get_for;
 
-use crate::file_uri;
+use crate::path_to_uri;
 
 /// Configuration settings for each server.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -130,7 +130,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
         #[allow(deprecated)]
         root_path: Some(rootdir.to_str().unwrap().to_string()),
         #[allow(deprecated)]
-        root_uri: Some(file_uri(&rootdir).unwrap()),
+        root_uri: Some(path_to_uri(&rootdir).unwrap()),
         initialization_options: None,
         capabilities: ClientCapabilities {
             workspace: Some(WorkspaceClientCapabilities {
@@ -460,7 +460,7 @@ pub fn get_initialize_params(path: &Path, config: &LanguageServerConfig) -> Init
         },
         trace: Some(TraceValue::Off),
         workspace_folders: Some(vec![WorkspaceFolder {
-            uri: file_uri(&rootdir).unwrap(),
+            uri: path_to_uri(&rootdir).unwrap(),
             name: rootdir.to_str().unwrap().to_string(),
         }]),
         client_info: Some(ClientInfo {

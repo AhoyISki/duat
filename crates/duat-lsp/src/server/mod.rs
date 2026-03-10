@@ -20,10 +20,11 @@ use lsp_types::{
 
 use crate::{
     config::{self, LanguageServerConfig, get_initialize_params},
-    server::server_bridge::ServerBridge,
+    server::bridge::ServerBridge,
 };
 
-mod server_bridge;
+mod bridge;
+mod requests;
 
 static SERVERS: Mutex<Vec<Server>> = Mutex::new(Vec::new());
 

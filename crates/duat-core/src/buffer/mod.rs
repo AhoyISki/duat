@@ -129,7 +129,7 @@ impl Buffer {
     /// The full path of the buffer.
     ///
     /// If there is no set path, returns `"*scratch buffer*#{id}"`.
-    pub fn path(&self) -> String {
+    pub fn path(&self) -> PathBuf {
         self.path.path()
     }
 
@@ -137,7 +137,7 @@ impl Buffer {
     ///
     /// Returns [`None`] if the path has not been set yet, i.e., if
     /// the buffer is a scratch buffer.
-    pub fn path_set(&self) -> Option<String> {
+    pub fn path_set(&self) -> Option<PathBuf> {
         self.path.path_set()
     }
 
@@ -658,25 +658,19 @@ impl PathKind {
     /// The full path of the buffer.
     ///
     /// If there is no set path, returns `"*scratch buffer*#{id}"`.
-    pub fn path(&self) -> String {
+    pub fn path(&self) -> PathBuf {
         match self {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                path.to_string_lossy().to_string()
-            }
-            PathKind::NotSet(id) => {
-                format!("*scratch buffer*#{id}")
-            }
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => path.clone(),
+            PathKind::NotSet(id) => PathBuf::from(format!("*scratch buffer*#{id}")),
         }
     }
 
     /// The full path of the buffer.
     ///
     /// Returns [`None`] if the path has not been set yet.
-    pub fn path_set(&self) -> Option<String> {
+    pub fn path_set(&self) -> Option<PathBuf> {
         match self {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                Some(path.to_string_lossy().to_string())
-            }
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => Some(path.clone()),
             PathKind::NotSet(_) => None,
         }
     }
