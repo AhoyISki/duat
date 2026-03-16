@@ -281,7 +281,7 @@ pub fn pre_setup() -> Ui {
         if let Some(path) = handle.read(pa).path_set()
             && let Err(err) = BUFFER_WATCHER.watch(&path)
         {
-            context::debug!("{err}");
+            context::warn!("{err}");
         }
     })
     .grouped("AutomaticBufferReloading");

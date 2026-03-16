@@ -7,10 +7,14 @@ use duat_core::{context, notify::Watcher};
 use globset::{Glob, GlobMatcher};
 use lsp_types::{
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
-    FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensParams, SemanticTokensResult,
-    TextDocumentIdentifier, WatchKind, WorkDoneProgressParams,
+    FileEvent, GlobPattern, OneOf, PartialResultParams, SemanticTokensDeltaParams,
+    SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, WatchKind,
+    WorkDoneProgressParams,
     notification::{DidChangeWatchedFiles, Notification},
-    request::{RegisterCapability, Request, SemanticTokensFullRequest, SemanticTokensRefresh},
+    request::{
+        RegisterCapability, Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest,
+        SemanticTokensRefresh,
+    },
 };
 
 use crate::{parser::Parser, server::bridge::ServerBridge};
@@ -119,50 +123,121 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
             }
         }
         SemanticTokensRefresh::METHOD => {
+            use lsp_types::SemanticTokensServerCapabilities::*;
             let bridge = bridge.clone();
+
             context::queue(move |pa| {
+                let server_id = bridge.id();
                 for handle in context::buffers(pa) {
                     let Some((parser, buffer)) = Parser::write_for(pa, &handle) else {
                         continue;
                     };
 
                     if !parser
-                        .servers()
+                        .servers
                         .iter()
                         .any(|server| server.bridge.id() == bridge.id())
                     {
                         continue;
                     }
 
-                    bridge.send_request::<SemanticTokensFullRequest>(
-                        SemanticTokensParams {
-                            work_done_progress_params: WorkDoneProgressParams {
-                                work_done_token: None,
-                            },
-                            partial_result_params: PartialResultParams {
-                                partial_result_token: None,
-                            },
-                            text_document: TextDocumentIdentifier {
-                                uri: crate::path_to_uri(&buffer.path()).unwrap(),
-                            },
-                        },
-                        |pa, result| {
-                            let Some(result) = result else {
-                                return;
-                            };
+                    let work_done_progress_params =
+                        WorkDoneProgressParams { work_done_token: None };
+                    let partial_result_params = PartialResultParams { partial_result_token: None };
+                    let text_document = TextDocumentIdentifier {
+                        uri: crate::path_to_uri(&buffer.path()).unwrap(),
+                    };
 
-                            match result {
-                                SemanticTokensResult::Tokens(semantic_tokens) => {}
-                                SemanticTokensResult::Partial(semantic_tokens_partial_result) => {
-                                    todo!()
+                    if let Some(result_id) = parser.tokens.result_id(server_id) {
+                        bridge.send_request::<SemanticTokensFullDeltaRequest>(
+                            SemanticTokensDeltaParams {
+                                work_done_progress_params,
+                                partial_result_params,
+                                text_document,
+                                previous_result_id: result_id,
+                            },
+                            move |pa, result| {
+                                let Some(result) = result else {
+                                    return;
+                                };
+
+                                let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
+                                if let Some(server) = parser
+                                    .servers
+                                    .iter()
+                                    .find(|server| server.id() == server_id)
+                                    && let Some(cap) = server.capabilities()
+                                    && let Some(options) = &cap.semantic_tokens_provider
+                                {
+                                    use lsp_types::SemanticTokensFullDeltaResult::*;
+
+                                    match result {
+                                        Tokens(tokens) => {
+                                            let options = match options {
+                                                SemanticTokensOptions(options) => options,
+                                                SemanticTokensRegistrationOptions(options) => {
+                                                    &options.semantic_tokens_options
+                                                }
+                                            };
+
+                                            parser.tokens.apply_full(
+                                                buffer.text_mut().parts(),
+                                                tokens,
+                                                server_id,
+                                                &options.legend,
+                                            );
+                                        }
+                                        TokensDelta(delta) => parser.tokens.apply_delta(
+                                            buffer.text_mut().parts(),
+                                            delta,
+                                            server_id,
+                                        ),
+                                        PartialTokensDelta { .. } => todo!(),
+                                    }
                                 }
-                            }
-                        },
-                    );
+                            },
+                        );
+                    } else {
+                        bridge.send_request::<SemanticTokensFullRequest>(
+                            SemanticTokensParams {
+                                work_done_progress_params,
+                                partial_result_params,
+                                text_document,
+                            },
+                            move |pa, result| {
+                                let Some(SemanticTokensResult::Tokens(tokens)) = result else {
+                                    return;
+                                };
+
+                                let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
+                                if let Some(server) = parser
+                                    .servers
+                                    .iter()
+                                    .find(|server| server.id() == server_id)
+                                    && let Some(cap) = server.capabilities()
+                                    && let Some(options) = &cap.semantic_tokens_provider
+                                {
+                                    let options = match options {
+                                        SemanticTokensOptions(options) => options,
+                                        SemanticTokensRegistrationOptions(options) => {
+                                            &options.semantic_tokens_options
+                                        }
+                                    };
+
+                                    parser.tokens.apply_full(
+                                        buffer.text_mut().parts(),
+                                        tokens,
+                                        server_id,
+                                        &options.legend,
+                                    );
+                                }
+                            },
+                        );
+                    }
                 }
             })
         }
-        method => context::warn!("[a]{method}[] request not yet handled"),
+        _method => {} // context::warn!("[a]{method}[] request not yet handled"),
     }
 }
 

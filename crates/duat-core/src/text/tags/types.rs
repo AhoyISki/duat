@@ -125,12 +125,24 @@ pub trait Tag<Index>: Sized {
 /// [range]: TextRange
 /// [`Builder`]: crate::text::Builder
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FormTag(pub FormId, pub u8);
+pub struct FormTag {
+    /// The [`FormId`] that will be added.
+    pub id: FormId,
+    /// The priority with which it will be added.
+    ///
+    /// The priority determines which forms should affect a character,
+    /// given that multiple are used at the same time.
+    ///
+    /// For example, if a `FormTag` of priority 50 is applying a form
+    /// with a blue foreground, and another of priority 100 is
+    /// applying a red foreground, the latter one will be used.
+    pub priority: u8,
+}
 
 impl<I: TextRange> Tag<I> for FormTag {
     const IS_META: bool = false;
 
-	#[track_caller]
+    #[track_caller]
     fn get_raw(
         &mut self,
         _: &super::InnerTags,
@@ -138,10 +150,10 @@ impl<I: TextRange> Tag<I> for FormTag {
         max: usize,
         tagger: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
-        let FormTag(id, prio) = *self;
+        let FormTag { id, priority } = *self;
         let range = index.to_range(max);
         {
-            let s_tag = PushForm(tagger, id, prio);
+            let s_tag = PushForm(tagger, id, priority);
             let e_tag = PopForm(tagger, id);
             ((range.start, s_tag), Some((range.end, e_tag)))
         }

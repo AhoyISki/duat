@@ -13,14 +13,22 @@ use lsp_types::{
 };
 
 use crate::{
+    Encoding,
+    parser::semantic_tokens::BufferTokens,
     path_to_uri,
     server::{self, Server},
 };
 
+mod semantic_tokens;
+
 /// The struct responsible for updating each individual [`Buffer`].
 pub struct Parser {
     uri: Uri,
-    servers: Vec<Server>,
+    pub servers: Vec<Server>,
+    /// The [`SemanticToken`]s that have been applied to the `Buffer`.
+    ///
+    /// [`SemanticToken`]: lsp_types::SemanticToken
+    pub tokens: BufferTokens,
 }
 
 impl Parser {
@@ -31,11 +39,6 @@ impl Parser {
         handle: &'p Handle,
     ) -> Option<(&'p mut Parser, &'p mut Buffer)> {
         PARSERS.write(pa, handle)
-    }
-
-	/// The list of servers serving this `Parser`.
-    pub fn servers(&self) -> &[Server] {
-        &self.servers
     }
 }
 
@@ -71,7 +74,11 @@ pub fn setup_hooks() {
             }
 
             TRACKER.register_buffer(handle.write(pa));
-            PARSERS.register(pa, handle, Parser { uri, servers });
+            PARSERS.register(pa, handle, Parser {
+                uri,
+                servers,
+                tokens: BufferTokens::default(),
+            });
         }
     });
 
@@ -81,7 +88,11 @@ pub fn setup_hooks() {
             && parts.changes.len() > 0
         {
             for server in &parser.servers {
-                let bytes = server.position_encoding().num_bytes();
+                let bytes = server
+                    .capabilities()
+                    .map(Encoding::new)
+                    .unwrap_or_default()
+                    .num_bytes();
 
                 let notification = DidChangeTextDocumentParams {
                     text_document: VersionedTextDocumentIdentifier {
@@ -92,7 +103,7 @@ pub fn setup_hooks() {
                         .changes
                         .clone()
                         .map(|change| {
-                            let (start, end) = (change.start(), change.taken_end());
+                            let start = change.start();
 
                             TextDocumentContentChangeEvent {
                                 range: Some(lsp_types::Range {
@@ -101,8 +112,8 @@ pub fn setup_hooks() {
                                         character: (start.byte_col(parts.strs) / bytes) as u32,
                                     },
                                     end: lsp_types::Position {
-                                        line: end.line() as u32,
-                                        character: (end.byte_col(parts.strs) / bytes) as u32,
+                                        line: change.taken_end().line() as u32,
+                                        character: change.taken_byte_col(parts.strs) as u32,
                                     },
                                 }),
                                 range_length: None,

@@ -105,9 +105,7 @@ pub fn start(setup: fn() -> (Ui, Vec<TypeId>, BufferOpts)) -> std::io::Result<()
 
         let buffers = main_loop(ui, is_first_time);
         let structs = crate::storage::get_structs();
-        context::debug!("got structs");
         crate::process::wait_for_writers();
-        context::debug!("writers gone");
 
         ipc::send(MsgFromChild::FinalState(ipc::FinalState {
             buffers,

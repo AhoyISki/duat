@@ -286,12 +286,12 @@ impl Moment {
         }
     }
 
-    /// Returns the number of [`Change`]s in this `Moment`
+    /// Returns the number of [`Change`]s in this `Moment`.
     pub fn len(&self) -> usize {
         self.changes.len()
     }
 
-    /// Wether there are any [`Change`]s in this `Moment`
+    /// Wether there are any [`Change`]s in this `Moment`.
     ///
     /// This can happen when creating a [`Moment::default`].
     #[must_use]
@@ -300,7 +300,7 @@ impl Moment {
     }
 }
 
-/// A change in a buffer, with a start, taken text, and added text
+/// A change in a buffer, with a start, taken text, and added text.
 ///
 /// If you acquired this `Change` from a [`BufferTracker::parts`]
 /// call, you need not worry about adding it to the ranges that need
@@ -345,7 +345,7 @@ impl Change<'static, String> {
         }
     }
 
-    /// Returns a copyable [`Change`]
+    /// Returns a copyable [`Change`].
     pub fn as_ref(&self) -> Change<'_, &str> {
         Change {
             start: self.start,
@@ -358,7 +358,7 @@ impl Change<'static, String> {
     }
 
     /// In this function, it is assumed that `self` happened
-    /// _after_ `newer`
+    /// _after_ `newer`.
     ///
     /// If the merger fails, the older [`Change`] will be returned;
     pub fn try_merge(&mut self, mut older: Self) {
@@ -395,7 +395,7 @@ impl Change<'static, String> {
 }
 
 impl<'h> Change<'h> {
-    /// Creates a [`Change<String>`] from a [`Change<&str>`]
+    /// Creates a [`Change<String>`] from a [`Change<&str>`].
     pub fn to_string_change(&self) -> Change<'static, String> {
         Change {
             start: self.start,
@@ -421,7 +421,7 @@ impl<'h> Change<'h> {
 }
 
 impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
-    /// Returns a reversed version of this [`Change`]
+    /// Returns a reversed version of this [`Change`].
     pub fn reverse(self) -> Self {
         Self {
             start: self.start,
@@ -434,7 +434,7 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     }
 
     /// Gets a [`Range<Point>`], from the start to the end of the
-    /// affected lines
+    /// affected lines.
     ///
     /// For example, if you make an edit that transforms lines `1..=3`
     /// to lines `1..=5`, this function will return a [`Range`] that
@@ -460,42 +460,79 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
         }
     }
 
-    /// The [`Point`] at the start of the change
+    /// The [`Point`] at the start of the change.
     pub fn start(&self) -> Point {
         to_point(self.start)
     }
 
-    /// Returns the end of the [`Change`], before it was applied
+    /// Returns the end of the `Change`, before it was applied.
     pub fn taken_end(&self) -> Point {
         to_point(self.taken_end)
     }
 
-    /// Returns the end of the [`Change`], after it was applied
+    /// Returns the end of the `Change`, after it was applied.
     pub fn added_end(&self) -> Point {
         to_point(self.added_end)
     }
 
-    /// Returns the taken [`Range`]
+    /// Returns the taken [`Range`].
     pub fn taken_range(&self) -> Range<Point> {
         self.start()..self.taken_end()
     }
 
-    /// Returns the added [`Range`]
+    /// Returns the added [`Range`].
     pub fn added_range(&self) -> Range<Point> {
         self.start()..self.added_end()
     }
 
-    /// The text that was taken on this [`Change`]
+    /// The text that was taken on this `Change`.
     pub fn added_str(&self) -> &str {
         self.added.borrow()
     }
 
-    /// The text that was added by this [`Change`]
+    /// The text that was added by this `Change`.
     pub fn taken_str(&self) -> &str {
         self.taken.borrow()
     }
 
-    /// The total shift caused by this [`Change`]
+    /// The ending byte column before this `Change` took place.
+    ///
+    /// You shouldn't call `change.end_point().byte_col(strs)` because
+    /// that will calculate the byte column with the new state of the
+    /// [`Text`], when you should be doing so with the _old_ state.
+    ///
+    /// This function does that for you.
+    pub fn taken_byte_col(&self, strs: &Strs) -> usize {
+        let taken_str = self.taken_str();
+        let len = taken_str.lines().last().map(str::len).unwrap_or(0);
+
+        if taken_str.contains('\n') {
+            len
+        } else {
+            self.start().byte_col(strs) + len
+        }
+    }
+
+    /// The ending char column before thiss `Change` took place.
+    ///
+    /// You shouldn't call `change.end_point().char_col(strs)` because
+    /// that will calculate the byte column with the new state of the
+    /// [`Text`], when you should be doing so with the _old_ state.
+    ///
+    /// This function does that for you.
+    pub fn taken_char_col(&self, strs: &Strs) -> usize {
+        let taken_str = self.taken_str();
+        let lines = taken_str.lines();
+        let len = lines.last().into_iter().flat_map(str::chars).count();
+
+        if taken_str.contains('\n') {
+            len
+        } else {
+            self.start().char_col(strs) + len
+        }
+    }
+
+    /// The total shift caused by this `Change`.
     pub fn shift(&self) -> [i32; 3] {
         [
             self.added_end[0] - self.taken_end[0],
@@ -504,7 +541,7 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
         ]
     }
 
-    /// Shifts the [`Change`] by a "signed point"
+    /// Shifts the `Change` by a "signed point".
     pub(crate) fn shift_by(&mut self, shift: [i32; 3]) {
         self.start = add(self.start, shift);
         self.added_end = add(self.added_end, shift);
@@ -577,7 +614,7 @@ impl bincode::Encode for Change<'static, String> {
     }
 }
 
-/// A tracker to keep up to date on changes to [`Buffer`]s
+/// A tracker to keep up to date on changes to [`Buffer`]s.
 ///
 /// This struct is capable of tracking all the [`Change`]s that happen
 /// to any `Buffer`. That happens through the
@@ -585,7 +622,7 @@ impl bincode::Encode for Change<'static, String> {
 /// [`BufferParts`] struct, including the `Buffer`'s [`Strs`],
 /// [`Tags`], [`Selections`], as well as an [`ExactSizeIterator`] over
 /// the `Change`s that took place since the last call to this
-/// function, and a [`RangesToUpdate`] associated with the [`Buffer`]
+/// function, and a [`RangesToUpdate`] associated with the [`Buffer`].
 ///
 /// The [`RangesToUpdate`] is a struct that keeps track of the ranges
 /// where changes have taken place, and informs you on which ones need
@@ -606,11 +643,11 @@ pub struct BufferTracker {
 }
 
 impl BufferTracker {
-    /// Returns a new `ChangesFetcher`
+    /// Returns a new `ChangesFetcher`.
     ///
     /// This struct can be stored in a `static` variable, since this
     /// function is `const`. You can then use the same
-    /// `ChangesFetcher` to fetch [`Change`]s from all [`Buffer`]s
+    /// `ChangesFetcher` to fetch [`Change`]s from all [`Buffer`]s.
     pub const fn new() -> Self {
         Self {
             id: LazyLock::new(TrackerId::new),
@@ -618,7 +655,7 @@ impl BufferTracker {
         }
     }
 
-    /// Gets the [`BufferParts`] of a [`Buffer`]
+    /// Gets the [`BufferParts`] of a [`Buffer`].
     ///
     /// This struct consists of the normal [`TextParts`], ([`Strs`],
     /// [`Tags`], [`Selections`]), but it also includes an
@@ -686,7 +723,7 @@ impl BufferTracker {
     }
 
     /// Registers a [`Buffer`] on the list of those that should be
-    /// tracked
+    /// tracked.
     ///
     /// Does nothing if the `Buffer` was already registered.
     pub fn register_buffer(&self, buf: &mut Buffer) {
@@ -731,7 +768,7 @@ pub struct BufferParts<'b> {
     /// The [`Selections`] of the [`Buffer`].
     pub selections: &'b Selections,
     /// An [`ExactSizeIterator`] of all [`Change`]s that took place
-    /// since the last call to [`BufferTracker::parts`]
+    /// since the last call to [`BufferTracker::parts`].
     pub changes: Changes<'b>,
     /// A list of the ranges that need to be updated.
     ///
@@ -747,7 +784,7 @@ pub struct BufferParts<'b> {
 
 impl<'b> BufferParts<'b> {
     /// A struct representing how many changes took place since the
-    /// creation of this `Text`
+    /// creation of this `Text`.
     ///
     /// This struct tracks all [`Change`]s and [`Tag`]
     /// additions/removals, giving you information about wether this
@@ -768,22 +805,22 @@ impl<'b> BufferParts<'b> {
     }
 }
 
-/// If `lhs` contains the start of `rhs`
+/// If `lhs` contains the start of `rhs`.
 fn has_start_of(lhs: Range<Point>, rhs: Range<Point>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
 }
 
-/// Subtracts two `i32` arrays
+/// Subtracts two `i32` arrays.
 fn sub(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
     [lhs[0] - rhs[0], lhs[1] - rhs[1], lhs[2] - rhs[2]]
 }
 
-/// Converts an `[i32; 3]` to a [`Point`]
+/// Converts an `[i32; 3]` to a [`Point`].
 fn to_point(signed: [i32; 3]) -> Point {
     Point::from_raw(signed[0] as usize, signed[1] as usize, signed[2] as usize)
 }
 
-/// An [`Iterator`] over the [`Change`]s of a [`Moment`]
+/// An [`Iterator`] over the [`Change`]s of a [`Moment`].
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct Changes<'h> {
@@ -799,7 +836,7 @@ pub struct Changes<'h> {
 
 impl<'h> Changes<'h> {
     /// Converts this [`Iterator`] to one over the undone version of
-    /// the [`Change`]s
+    /// the [`Change`]s.
     ///
     /// It also resets iteration to the start, so that you aren't
     /// iterating over "done" and "undone" versions of the `Change`s
@@ -854,7 +891,7 @@ impl<'h> Iterator for Changes<'h> {
 impl<'h> ExactSizeIterator for Changes<'h> {}
 
 /// A list of [`Range<usize>`]s of byte indices in a [`Buffer`] that
-/// need to be updated
+/// need to be updated.
 ///
 /// The recommended way to use this struct is the following:
 ///
@@ -887,7 +924,7 @@ pub struct RangesToUpdate<'b> {
 }
 
 impl<'b> RangesToUpdate<'b> {
-    /// Adds ranges to the list of those that need updating
+    /// Adds ranges to the list of those that need updating.
     ///
     /// Later on, when duat prints on a range that intersects with
     /// these, you can call [`Handle::full_printed_range`] or
@@ -915,7 +952,7 @@ impl<'b> RangesToUpdate<'b> {
     }
 
     /// Declares that the ranges given by the iterator have been
-    /// updated
+    /// updated.
     ///
     /// The visible iterator here should come from one of the methods
     /// on the [`Handle<Buffer>`] which returns some list of visible
@@ -948,7 +985,7 @@ impl<'b> RangesToUpdate<'b> {
     }
 
     /// Declares that any range intersecting with any of those on the
-    /// iterator has been updated
+    /// iterator has been updated.
     ///
     /// The visible iterator here should come from one of the methods
     /// on the [`Handle<Buffer>`] which returns some list of visible
@@ -975,7 +1012,7 @@ impl<'b> RangesToUpdate<'b> {
     }
 
     /// Returns a list of intersections between the ranges that need
-    /// updating and those from an iterator
+    /// updating and those from an iterator.
     ///
     /// The visible iterator here should come from one of the methods
     /// on the [`Handle<Buffer>`] which returns some list of visible
@@ -1012,7 +1049,7 @@ impl<'b> RangesToUpdate<'b> {
     }
 
     /// Returns a list of all ranges that intersect with those from an
-    /// iterator
+    /// iterator.
     ///
     /// The visible iterator here should come from one of the methods
     /// on the [`Handle<Buffer>`] which returns some list of visible
@@ -1055,7 +1092,7 @@ impl<'b> RangesToUpdate<'b> {
     }
 
     /// Filters an iterator to a list of ranges that intersect with
-    /// those that need updating
+    /// those that need updating.
     ///
     /// The visible iterator here should come from one of the methods
     /// on the [`Handle<Buffer>`] which returns some list of visible

@@ -42,7 +42,7 @@ mod paths;
 mod words;
 
 static OPENED_PARAM_COMPLETION: Mutex<Option<Vec<TypeId>>> = Mutex::new(None);
-static TAGGER: LazyLock<Tagger> = Tagger::new_static();
+static TAGGER: LazyLock<Tagger> = Tagger::new_lazy();
 static COMPLETIONS: LazyLock<Mutex<HashMap<TypeId, (usize, ParamCompletions)>>> =
     LazyLock::new(Mutex::default);
 

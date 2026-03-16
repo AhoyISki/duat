@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use duat_core::Plugin;
-use lsp_types::Uri;
+use lsp_types::{ServerCapabilities, Uri};
 
 mod config;
 mod parser;
@@ -71,4 +71,34 @@ fn uri_to_path(uri: Uri) -> PathBuf {
     }
 
     PathBuf::from(decoded)
+}
+
+/// An encoding for text positions.
+#[derive(Default)]
+pub enum Encoding {
+    Utf8,
+    #[default]
+    Utf16,
+    Utf32,
+}
+
+impl Encoding {
+    /// Returns the `Encoding` being used by a server.
+    pub fn new(cap: &ServerCapabilities) -> Self {
+        match cap.position_encoding.as_ref().map(|enc| enc.as_str()) {
+            Some("utf-8") | None => Encoding::Utf8,
+            Some("utf-16") => Encoding::Utf16,
+            Some("utf-32") => Encoding::Utf32,
+            Some(_) => Encoding::Utf16,
+        }
+    }
+
+    /// The number of bytes occupied by a single code point.
+    pub fn num_bytes(&self) -> usize {
+        match self {
+            Encoding::Utf8 => 1,
+            Encoding::Utf16 => 2,
+            Encoding::Utf32 => 4,
+        }
+    }
 }

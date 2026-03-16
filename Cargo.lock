@@ -419,6 +419,7 @@ version = "0.1.0"
 dependencies = [
  "duat-core",
  "duat-filetype",
+ "gap-buf 0.5.0",
  "globset",
  "jsonrpc-lite",
  "lsp-types",

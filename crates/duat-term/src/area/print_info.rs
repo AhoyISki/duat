@@ -1,5 +1,5 @@
 use duat_core::{
-    context::{self, cache::{Decode, Encode}},
+    context::cache::{Decode, Encode},
     opts::PrintOpts,
     text::{Point, Text, TwoPoints},
 };

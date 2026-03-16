@@ -20,13 +20,13 @@ use duat_core::{
 };
 use jsonrpc_lite::{Id, JsonRpc};
 use lsp_types::{
-    InitializedParams,
+    CancelParams, InitializedParams, NumberOrString,
     notification::{Cancel, Initialized, Notification},
     request::{Initialize, Request},
 };
 use serde_json::Value;
 
-pub use crate::server::bridge::id::BridgeId;
+pub use crate::server::bridge::id::ServerId;
 use crate::{config::LanguageServerConfig, server::requests::handle_request};
 
 /// Communication abstraction for communication with language servers.
@@ -37,7 +37,7 @@ pub struct ServerBridge {
     server_tx: Sender<JsonRpcFn>,
     callbacks: Callbacks,
     initialize_backlog: Arc<Mutex<Option<Vec<JsonRpcFn>>>>,
-    bridge_id: BridgeId,
+    bridge_id: ServerId,
 }
 
 impl ServerBridge {
@@ -81,10 +81,11 @@ impl ServerBridge {
                 loop {
                     match stderr.read_line(&mut line) {
                         Ok(0) => break stderr,
-                        Ok(_) => {
-                            context::debug!("[log.bracket]([]{server_name}[log.bracket])[]{line}");
+                        Ok(_) if !line.contains("$/cancelRequest") => {
+                            context::error!("[log.bracket]([]{server_name}[log.bracket])[]{line}");
                             line.clear();
                         }
+                        Ok(_) => {}
                         Err(err) => context::error!("{err}"),
                     }
                 }
@@ -97,7 +98,7 @@ impl ServerBridge {
             server_tx,
             callbacks: Callbacks::default(),
             initialize_backlog: Arc::new(Mutex::new(is_initializing.then_some(Vec::new()))),
-            bridge_id: BridgeId::new(),
+            bridge_id: ServerId::new(),
         };
 
         std::thread::spawn({
@@ -111,6 +112,7 @@ impl ServerBridge {
 
         std::thread::spawn(move || {
             if let Err(err) = stdin_loop(server_rx, &mut stdin) {
+                duat_core::log_to_file!("{err}");
                 context::error!("{err}");
             }
             stdin
@@ -162,11 +164,18 @@ impl ServerBridge {
 
     pub fn cancel<R: Request>(&self) {
         let message = Box::new(move || {
-            Ok(JsonRpc::request_with_params(
+            let request_with_params = JsonRpc::request_with_params(
                 Id::Num(0),
                 Cancel::METHOD,
-                serde_json::to_value(method_id(R::METHOD).unwrap())?,
-            ))
+                serde_json::to_value(CancelParams {
+                    id: match method_id(R::METHOD).unwrap() {
+                        Id::Num(num) => NumberOrString::Number(num as i32),
+                        Id::Str(str) => NumberOrString::String(str),
+                        Id::None(()) => unreachable!(),
+                    },
+                })?,
+            );
+            Ok(request_with_params)
         });
 
         if let Some(backlog) = self.initialize_backlog.lock().unwrap().as_mut() {
@@ -224,7 +233,7 @@ impl ServerBridge {
     }
 
     /// A unique for a [`ServerBridge`].
-    pub fn id(&self) -> BridgeId {
+    pub fn id(&self) -> ServerId {
         self.bridge_id
     }
 }
@@ -262,8 +271,8 @@ fn stdin_loop(
     stdin: &mut PersistentWriter,
 ) -> std::io::Result<()> {
     for jsonrpc_fn in server_rx {
-        let content = serde_json::to_string(&jsonrpc_fn()?)?;
         stdin.on_writer(|writer| {
+            let content = serde_json::to_string(&jsonrpc_fn()?)?;
             write!(writer, "Content-Length: {}\r\n\r\n{content}", content.len())?;
             writer.flush()
         })?;
@@ -323,9 +332,9 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
                 match content {
                     JsonRpc::Request(request) => handle_request(&server_bridge, request),
                     JsonRpc::Notification(notif) => {
-                        if !notif.method.ends_with("progress") {
-                            context::debug!("Server notified: {notif:#?}");
-                        }
+                        // if !notif.method.ends_with("progress") {
+                        //     context::debug!("Server notified: {notif:#?}");
+                        // }
                     }
                     JsonRpc::Success(_) => {
                         if let Some(id) = content.get_id()
@@ -335,10 +344,11 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
                             context::queue(move |pa| callback(pa, value));
                         }
                     }
-                    JsonRpc::Error(content) => {
-                        context::error!("LSP: {content:#?}");
+                    JsonRpc::Error(err) if err.error.code != -32601 => {
+                        context::error!("LSP: {err:#?}");
                         continue;
                     }
+                    JsonRpc::Error(_) => {}
                 };
             }
             Err(err) => return Err(Error::other(format!("Failed to parse LSP message: {err}"))),
@@ -427,9 +437,9 @@ mod id {
     ///
     /// [`ServerBridge`]: super::ServerBridge
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct BridgeId(usize);
+    pub struct ServerId(usize);
 
-    impl BridgeId {
+    impl ServerId {
         /// Returns a new unique `BridgeId`.
         pub(super) fn new() -> Self {
             static BRIDGE_ID: AtomicUsize = AtomicUsize::new(0);

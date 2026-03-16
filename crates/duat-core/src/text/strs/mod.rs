@@ -152,6 +152,8 @@ impl Strs {
 
         if byte == self.len() {
             self.end_point()
+        } else if byte == 0 {
+            Point::default()
         } else {
             let slices = unsafe {
                 let (s0, s1) = formed.buf.gapbuf.as_slices();

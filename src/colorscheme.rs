@@ -131,6 +131,7 @@ macro_rules! add_colorschemes {
 
         const VARIANTS: &[&Colors] = &[
             $(&Colors {
+                variant_name: $variant,
                 $($color_name: $color_value),*
             }),+
         ];
@@ -157,6 +158,7 @@ macro_rules! add_colorschemes {
         #[allow(dead_code)]
         #[derive(Clone, Copy)]
         struct $struct {
+            variant_name: &'static str,
             $($color_name: &'static str),*
         }
     }
@@ -182,32 +184,32 @@ pub(crate) fn add_default() {
     add_colorschemes!(
         [
             ("catppuccin-latte", [
-                (rosewater, "#dd7878"),
-                (flamingo, "#ea76cb"),
-                (pink, "#8839ef"),
-                (mauve, "#d20f39"),
-                (red, "#e64553"),
-                (maroon, "#fe640b"),
-                (peach, "#df8e1d"),
-                (yellow, "#40a02b"),
-                (green, "#179299"),
-                (teal, "#04a5e5"),
-                (sky, "#209fb5"),
-                (sapphire, "#1e66f5"),
-                (blue, "#7287fd"),
-                (lavender, "#4c4f69"),
-                (text, "#5c5f77"),
-                (subtext1, "#6c6f85"),
-                (subtext0, "#7c7f93"),
-                (overlay2, "#8c8fa1"),
-                (overlay1, "#9ca0b0"),
-                (overlay0, "#acb0be"),
-                (surface2, "#bcc0cc"),
-                (surface1, "#ccd0da"),
-                (surface0, "#eff1f5"),
-                (base, "#e6e9ef"),
-                (mantle, "#dce0e8"),
-                (crust, "#dc8a78"),
+                (rosewater, "#dc8a78"),
+                (flamingo, "#dd7878"),
+                (pink, "#ea76cb"),
+                (mauve, "#8839ef"),
+                (red, "#d20f39"),
+                (maroon, "#e64553"),
+                (peach, "#fe640b"),
+                (yellow, "#df8e1d"),
+                (green, "#40a02b"),
+                (teal, "#179299"),
+                (sky, "#04a5e5"),
+                (sapphire, "#209fb5"),
+                (blue, "#1e66f5"),
+                (lavender, "#7287fd"),
+                (text, "#4c4f69"),
+                (subtext1, "#5c5f77"),
+                (subtext0, "#6c6f85"),
+                (overlay2, "#7c7f93"),
+                (overlay1, "#8c8fa1"),
+                (overlay0, "#9ca0b0"),
+                (surface2, "#acb0be"),
+                (surface1, "#bcc0cc"),
+                (surface0, "#ccd0da"),
+                (base, "#eff1f5"),
+                (mantle, "#e6e9ef"),
+                (crust, "#dce0e8"),
             ]),
             ("catppuccin-frappe", [
                 (rosewater, "#f2d5cf"),
@@ -318,7 +320,7 @@ pub(crate) fn add_default() {
                 ("selection.extra", Form::new().with(c.base).on(c.overlay0)),
                 ("cloak", Form::new().with(c.overlay1).on(c.base)),
                 ("character.control", Form::new().with(c.overlay1)),
-                ("replace", Form::new().with(c.surface0)),
+                ("replace", Form::new().with(c.overlay0)),
                 (
                     "replace.new_line.trailing",
                     Form::new().with(c.red).on(c.surface1),
@@ -336,21 +338,20 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.subtext0)),
                 ("prompt", Form::new().with(c.green)),
                 ("prompt.colon", Form::new().with(c.subtext0)),
-                ("default.StatusLine", default.on(c.surface0)),
-                ("default.LogBook", default.on(c.surface0)),
+                ("default.StatusLine", default.on(c.mantle)),
+                ("default.LogBook", default.on(c.mantle)),
                 ("default.VertRule", default.with(c.surface0)),
                 ("default.LineNumbers", default.with(c.overlay0)),
+                ("default.Completions", default.on(c.surface1)),
                 (
                     "matched_pair",
                     Form::new().with(c.peach).on(c.surface1).bold(),
                 ),
                 ("log_book.location", Form::new().with(c.subtext1)),
-                ("default.Completions", default.on(c.surface1)),
                 (
                     "selected.Completions",
                     Form::new().with(c.base).on(c.overlay0),
                 ),
-                ("default.WhichKey", default.with(c.text)),
                 ("key", Form::new().with(c.peach)),
                 ("key.special", Form::new().with(c.teal)),
                 // For duatmode
@@ -363,12 +364,13 @@ pub(crate) fn add_default() {
                 ("caret.extra.Insert", Form::new().with(c.base).on(c.yellow)),
                 ("param", Form::new().with(c.lavender)),
                 ("param.flag", Form::new().with(c.pink)),
-                // Tree sitter Forms
+                // Tree sitter/LSP Forms
                 ("variable", Form::new().with(c.text)),
                 ("variable.builtin", Form::new().with(c.peach)),
                 ("variable.member", Form::new().with(c.lavender)),
-                ("constant", Form::new().with(c.peach)),
-                ("constant.builtin", Form::new().with(c.peach)),
+                ("constant", Form::new().with(c.peach).reset()),
+                ("constant.builtin", Form::new().with(c.peach).reset()),
+                ("static", Form::new().with(c.peach).reset()),
                 ("module", Form::new().with(c.blue).italic()),
                 ("label", Form::new().with(c.green)),
                 ("string", Form::new().with(c.green)),
@@ -379,8 +381,11 @@ pub(crate) fn add_default() {
                 ("number", Form::new().with(c.peach)),
                 ("type", Form::new().with(c.yellow).italic()),
                 ("type.builtin", Form::new().with(c.yellow).reset()),
+                ("type.enum", Form::new().with(c.yellow).reset()),
+                ("type.enum.variant", Form::new().with(c.peach).italic()),
+                ("interface", Form::new().with(c.text).bold().reset()),
                 ("attribute", Form::new().with(c.green)),
-                ("property", Form::new().with(c.text)),
+                ("property", Form::new().with(c.lavender)),
                 ("function", Form::new().with(c.blue).reset()),
                 ("function.macro", Form::new().with(c.lavender).italic()),
                 ("constructor", Form::new().with(c.peach)),
@@ -409,6 +414,7 @@ pub(crate) fn add_default() {
                 ("diff.delta", Form::new().with(c.blue)),
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
+                ("unresolved", Form::new().underlined().underline(c.red)),
             ]
         }
     );
@@ -512,9 +518,9 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.dark3)),
                 ("prompt", Form::new().with(c.green)),
                 ("prompt.colon", Form::new().with(c.dark3)),
-                ("default.StatusLine", default.on(c.bg_highlight)),
-                ("default.LogBook", default.on(c.bg_highlight)),
-                ("default.VertRule", default.with(c.bg_highlight)),
+                ("default.StatusLine", default.on(c.bg_dark)),
+                ("default.LogBook", default.on(c.bg_dark)),
+                ("default.VertRule", default.with(c.bg_dark)),
                 ("default.LineNumbers", default.with(c.dark3)),
                 (
                     "matched_pair",
@@ -522,19 +528,13 @@ pub(crate) fn add_default() {
                 ),
                 ("log_book.location", Form::new().with(c.fg_dark)),
                 ("default.Completions", default.on(c.terminal_black)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.bg).on(c.dark5),
-                ),
+                ("selected.Completions", Form::new().with(c.bg).on(c.dark5)),
                 ("default.WhichKey", default.with(c.text)),
                 ("key", Form::new().with(c.orange)),
                 ("key.special", Form::new().with(c.teal)),
                 // For duatmode
                 ("caret.main.Normal", Form::new().with(c.bg).on(c.text)),
-                (
-                    "caret.extra.Normal",
-                    Form::new().with(c.bg).on(c.blue1),
-                ),
+                ("caret.extra.Normal", Form::new().with(c.bg).on(c.blue1)),
                 ("caret.main.Insert", Form::new().with(c.bg).on(c.magenta)),
                 ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
@@ -545,6 +545,7 @@ pub(crate) fn add_default() {
                 ("variable.member", Form::new().with(c.green1)),
                 ("constant", Form::new().with(c.orange)),
                 ("constant.builtin", Form::new().with(c.orange)),
+                ("static", Form::new().with(c.orange).reset()),
                 ("module", Form::new().with(c.blue).italic()),
                 ("label", Form::new().with(c.blue)),
                 ("string", Form::new().with(c.green)),
@@ -555,6 +556,8 @@ pub(crate) fn add_default() {
                 ("number", Form::new().with(c.orange)),
                 ("type", Form::new().with(c.blue1).italic()),
                 ("type.builtin", Form::new().with(c.blue1).reset()),
+                ("type.enum", Form::new().with(c.blue1).reset()),
+                ("type.enum.variant", Form::new().with(c.orange).italic()),
                 ("attribute", Form::new().with(c.yellow)),
                 ("property", Form::new().with(c.green1)),
                 ("function", Form::new().with(c.blue).reset()),
@@ -585,6 +588,7 @@ pub(crate) fn add_default() {
                 ("diff.delta", Form::new().with(c.blue)),
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
+                ("unresolved", Form::new().underlined().underline(c.red)),
             ]
         }
     );
@@ -670,8 +674,8 @@ pub(crate) fn add_default() {
                 ("notifs.colon", Form::new().with(c.text_muted)),
                 ("prompt", Form::new().with(c.green)),
                 ("prompt.colon", Form::new().with(c.text_muted)),
-                ("default.StatusLine", default.on(c.bg_overlay)),
-                ("default.LogBook", default.on(c.bg_overlay)),
+                ("default.StatusLine", default.on(c.bg_subtle)),
+                ("default.LogBook", default.on(c.bg_subtle)),
                 ("default.VertRule", default.with(c.bg_subtle)),
                 ("default.LineNumbers", default.with(c.text_subtle)),
                 (
@@ -680,19 +684,13 @@ pub(crate) fn add_default() {
                 ),
                 ("log_book.location", Form::new().with(c.text_muted)),
                 ("default.Completions", default.on(c.bg_overlay)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.bg).on(c.blue),
-                ),
+                ("selected.Completions", Form::new().with(c.bg).on(c.blue)),
                 ("default.WhichKey", default.with(c.text)),
                 ("key", Form::new().with(c.orange)),
                 ("key.special", Form::new().with(c.teal)),
                 // For duatmode
                 ("caret.main.Normal", Form::new().with(c.bg).on(c.text)),
-                (
-                    "caret.extra.Normal",
-                    Form::new().with(c.bg).on(c.teal),
-                ),
+                ("caret.extra.Normal", Form::new().with(c.bg).on(c.teal)),
                 ("caret.main.Insert", Form::new().with(c.bg).on(c.purple)),
                 ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
@@ -703,6 +701,7 @@ pub(crate) fn add_default() {
                 ("variable.member", Form::new().with(c.blue)),
                 ("constant", Form::new().with(c.number_color)),
                 ("constant.builtin", Form::new().with(c.number_color)),
+                ("static", Form::new().with(c.number_color).reset()),
                 ("module", Form::new().with(c.blue).italic()),
                 ("label", Form::new().with(c.green)),
                 ("string", Form::new().with(c.string_color)),
@@ -713,6 +712,8 @@ pub(crate) fn add_default() {
                 ("number", Form::new().with(c.number_color)),
                 ("type", Form::new().with(c.teal).italic()),
                 ("type.builtin", Form::new().with(c.teal).reset()),
+                ("type.enum", Form::new().with(c.teal).reset()),
+                ("type.enum.variant", Form::new().with(c.orange).italic()),
                 ("attribute", Form::new().with(c.yellow)),
                 ("property", Form::new().with(c.text_muted)),
                 ("function", Form::new().with(c.purple).reset()),
@@ -723,7 +724,10 @@ pub(crate) fn add_default() {
                 ("punctuation.bracket", Form::new().with(c.text_subtle)),
                 ("punctuation.delimiter", Form::new().with(c.text_subtle)),
                 ("comment", Form::new().with(c.text_muted)),
-                ("comment.documentation", Form::new().with(c.text_muted).bold()),
+                (
+                    "comment.documentation",
+                    Form::new().with(c.text_muted).bold(),
+                ),
                 ("markup", Form::new()),
                 ("markup.strong", Form::new().with(c.red).bold()),
                 ("markup.italic", Form::new().with(c.red).italic()),
@@ -743,26 +747,25 @@ pub(crate) fn add_default() {
                 ("diff.delta", Form::new().with(c.blue)),
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
+                ("unresolved", Form::new().underlined().underline(c.red)),
             ]
         }
     );
 
     add_colorschemes!(
-        [
-            ("dracula", [
-                (bg, "#282a36"),
-                (current_line, "#44475a"),
-                (fg, "#f8f8f2"),
-                (comment, "#6272a4"),
-                (cyan, "#8be9fd"),
-                (green, "#50fa7b"),
-                (orange, "#ffb86c"),
-                (pink, "#ff79c6"),
-                (purple, "#bd93f9"),
-                (red, "#ff5555"),
-                (yellow, "#f1fa8c"),
-            ]),
-        ],
+        [("dracula", [
+            (bg, "#282a36"),
+            (current_line, "#44475a"),
+            (fg, "#f8f8f2"),
+            (comment, "#6272a4"),
+            (cyan, "#8be9fd"),
+            (green, "#50fa7b"),
+            (orange, "#ffb86c"),
+            (pink, "#ff79c6"),
+            (purple, "#bd93f9"),
+            (red, "#ff5555"),
+            (yellow, "#f1fa8c"),
+        ]),],
         |c, has_background| {
             let default = if has_background {
                 Form::new().with(c.fg).on(c.bg)
@@ -815,19 +818,13 @@ pub(crate) fn add_default() {
                 ),
                 ("log_book.location", Form::new().with(c.comment)),
                 ("default.Completions", default.on(c.current_line)),
-                (
-                    "selected.Completions",
-                    Form::new().with(c.bg).on(c.purple),
-                ),
+                ("selected.Completions", Form::new().with(c.bg).on(c.purple)),
                 ("default.WhichKey", default.with(c.fg)),
                 ("key", Form::new().with(c.orange)),
                 ("key.special", Form::new().with(c.cyan)),
                 // For duatmode
                 ("caret.main.Normal", Form::new().with(c.bg).on(c.fg)),
-                (
-                    "caret.extra.Normal",
-                    Form::new().with(c.bg).on(c.cyan),
-                ),
+                ("caret.extra.Normal", Form::new().with(c.bg).on(c.cyan)),
                 ("caret.main.Insert", Form::new().with(c.bg).on(c.pink)),
                 ("caret.extra.Insert", Form::new().with(c.bg).on(c.yellow)),
                 ("param", Form::new().with(c.purple)),
@@ -838,6 +835,7 @@ pub(crate) fn add_default() {
                 ("variable.member", Form::new().with(c.fg)),
                 ("constant", Form::new().with(c.purple)),
                 ("constant.builtin", Form::new().with(c.purple)),
+                ("static", Form::new().with(c.purple).reset()),
                 ("module", Form::new().with(c.cyan).italic()),
                 ("label", Form::new().with(c.cyan)),
                 ("string", Form::new().with(c.yellow)),
@@ -848,6 +846,8 @@ pub(crate) fn add_default() {
                 ("number", Form::new().with(c.purple)),
                 ("type", Form::new().with(c.cyan).italic()),
                 ("type.builtin", Form::new().with(c.cyan).reset()),
+                ("type.enum", Form::new().with(c.cyan).reset()),
+                ("type.enum.variant", Form::new().with(c.purple).italic()),
                 ("attribute", Form::new().with(c.green)),
                 ("property", Form::new().with(c.fg)),
                 ("function", Form::new().with(c.green).reset()),
@@ -878,6 +878,7 @@ pub(crate) fn add_default() {
                 ("diff.delta", Form::new().with(c.cyan)),
                 ("diff.delta.renamed", Form::new().with(c.yellow)),
                 ("diff.minus", Form::new().with(c.red)),
+                ("unresolved", Form::new().underlined().underline(c.red)),
             ]
         }
     );

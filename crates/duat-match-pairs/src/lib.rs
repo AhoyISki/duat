@@ -325,7 +325,7 @@ impl MatchPairsRef<'_> {
     }
 }
 
-static PAREN_TAGGER: LazyLock<Tagger> = Tagger::new_static();
+static PAREN_TAGGER: LazyLock<Tagger> = Tagger::new_lazy();
 
 /// Escapes regex pattern characters.
 fn escape(str: &'static [u8]) -> &'static str {

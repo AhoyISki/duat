@@ -738,7 +738,7 @@ pub(crate) fn sync_parse<'p>(
 
 /// The Key for tree-sitter
 fn ts_tagger() -> Tagger {
-    static TAGGER: LazyLock<Tagger> = Tagger::new_static();
+    static TAGGER: LazyLock<Tagger> = Tagger::new_lazy();
     *TAGGER
 }
 

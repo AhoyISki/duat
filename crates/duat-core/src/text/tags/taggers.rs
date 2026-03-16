@@ -298,7 +298,7 @@ impl Tagger {
     }
 
     /// Returns a new [`LazyLock<Tagger>`]
-    pub const fn new_static() -> LazyLock<Self> {
+    pub const fn new_lazy() -> LazyLock<Self> {
         LazyLock::new(Self::new)
     }
 

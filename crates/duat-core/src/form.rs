@@ -531,7 +531,7 @@ impl FormId {
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
     pub const fn to_tag(self, prio: u8) -> FormTag {
-        FormTag(self, prio)
+        FormTag { id: self, priority: prio }
     }
 
     /// The internal id of the [`FormId`]
@@ -763,13 +763,13 @@ impl Form {
     /// attributes will change as the mimicked color does, but the
     /// underline color won't.
     pub fn underline(mut self, color: &str) -> Form {
-        self.style.background_color = match str_to_color(color) {
+        self.style.underline_color = match str_to_color(color) {
             Ok(color) => Some(color),
             Err(_) => panic!("Ill-formed color"),
         };
 
         if let FormKind::Ref(_, style) = &mut self.kind {
-            style.background_color = self.style.background_color;
+            style.underline_color = self.style.underline_color;
         }
 
         self
