@@ -187,6 +187,7 @@ pub mod notify {
         collections::HashMap,
         path::{Path, PathBuf},
         sync::{LazyLock, Mutex},
+        time::{Duration, Instant},
     };
 
     pub use notify::event;
@@ -195,7 +196,15 @@ pub mod notify {
         event::{AccessKind, AccessMode, Event, EventKind},
     };
 
-    static DUAT_WRITES: LazyLock<Mutex<HashMap<PathBuf, usize>>> = LazyLock::new(Mutex::default);
+    static DUAT_WRITES: LazyLock<Mutex<HashMap<PathBuf, DuatWrite>>> =
+        LazyLock::new(Mutex::default);
+
+    /// A record of write events that came from Duat.
+    #[derive(Default)]
+    struct DuatWrite {
+        count: usize,
+        last: Option<Instant>,
+    }
 
     /// Wether an event came from Duat or not.
     ///
@@ -252,14 +261,19 @@ pub mod notify {
                     }) = &event
                         && !paths.is_empty()
                     {
+                        let now = Instant::now();
                         let mut duat_writes = DUAT_WRITES.lock().unwrap();
                         let mut all_are_from_duat = true;
 
                         for path in paths {
-                            if let Some(count) = duat_writes.get_mut(path)
-                                && *count > 0
+                            if let Some(dw) = duat_writes.get_mut(path)
+                                && (dw.count > 0
+                                    || dw.last.is_some_and(|instant| {
+                                        now.duration_since(instant) < Duration::from_millis(2)
+                                    }))
                             {
-                                *count -= 1;
+                                dw.count = dw.count.saturating_sub(1);
+                                dw.last = Some(now);
                             } else {
                                 all_are_from_duat = false;
                             }
@@ -326,15 +340,15 @@ pub mod notify {
     /// Declares that the next write event actually came from Duat,
     /// for a given path.
     pub(crate) fn set_next_write_as_from_duat(path: PathBuf) {
-        *DUAT_WRITES.lock().unwrap().entry(path).or_insert(0) += 1;
+        DUAT_WRITES.lock().unwrap().entry(path).or_default().count += 1;
     }
 
     /// Declares that the next write event didn't come from Duat,
     /// for a given path.
     pub(crate) fn unset_next_write_as_from_duat(path: PathBuf) {
         let mut duat_writes = DUAT_WRITES.lock().unwrap();
-        let count = duat_writes.entry(path).or_insert(0);
-        *count = count.saturating_sub(1);
+        let dw = duat_writes.entry(path).or_default();
+        dw.count = dw.count.saturating_sub(1);
     }
 }
 

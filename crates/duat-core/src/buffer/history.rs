@@ -15,6 +15,7 @@ use std::{
     iter::{Chain, Enumerate},
     marker::PhantomData,
     ops::Range,
+    path::PathBuf,
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -23,7 +24,7 @@ use gap_buf::GapBuffer;
 use super::{Point, Text};
 use crate::{
     Ranges,
-    buffer::{Buffer, BufferId, BufferOpts},
+    buffer::{Buffer, BufferId, BufferOpts, PathKind},
     mode::Selections,
     text::{Strs, Tags, TextRange, TextVersion},
     utils::{add_shifts as add, merging_range_by_guess_and_lazy_shift},
@@ -504,7 +505,12 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     /// This function does that for you.
     pub fn taken_byte_col(&self, strs: &Strs) -> usize {
         let taken_str = self.taken_str();
-        let len = taken_str.lines().last().map(str::len).unwrap_or(0);
+        if taken_str.ends_with('\n') {
+            return 0;
+        }
+
+        let mut lines = taken_str.split_inclusive('\n');
+        let len = lines.next_back().map(str::len).unwrap_or(0);
 
         if taken_str.contains('\n') {
             len
@@ -522,8 +528,12 @@ impl<'s, S: std::borrow::Borrow<str>> Change<'s, S> {
     /// This function does that for you.
     pub fn taken_char_col(&self, strs: &Strs) -> usize {
         let taken_str = self.taken_str();
-        let lines = taken_str.lines();
-        let len = lines.last().into_iter().flat_map(str::chars).count();
+        if taken_str.ends_with('\n') {
+            return 0;
+        }
+
+        let mut lines = taken_str.split_inclusive('\n');
+        let len = lines.next_back().into_iter().flat_map(str::chars).count();
 
         if taken_str.contains('\n') {
             len
@@ -719,6 +729,7 @@ impl BufferTracker {
                 _ghost: PhantomData,
             },
             opts: &buf.opts,
+            path: &buf.path,
         })
     }
 
@@ -780,6 +791,8 @@ pub struct BufferParts<'b> {
     pub ranges_to_update: RangesToUpdate<'b>,
     /// The [`BufferOpts`] of the `Buffer` in question.
     pub opts: &'b BufferOpts,
+    /// The [`PathKind`] of the `Buffer in question.
+    path: &'b PathKind,
 }
 
 impl<'b> BufferParts<'b> {
@@ -802,6 +815,89 @@ impl<'b> BufferParts<'b> {
             tags,
             meta_tags,
         }
+    }
+
+    /// The full path of the buffer.
+    ///
+    /// If there is no set path, returns `"*scratch buffer*#{id}"`.
+    pub fn path(&self) -> PathBuf {
+        self.path.path()
+    }
+
+    /// The full path of the buffer.
+    ///
+    /// Returns [`None`] if the path has not been set yet, i.e., if
+    /// the buffer is a scratch buffer.
+    pub fn path_set(&self) -> Option<PathBuf> {
+        self.path.path_set()
+    }
+
+    /// A [`Text`] from the full path of this [`PathKind`]
+    ///
+    /// # Formatting
+    ///
+    /// If the buffer's `path` was set:
+    ///
+    /// ```text
+    /// [buffer]{path}
+    /// ```
+    ///
+    /// If the buffer's `path` was not set:
+    ///
+    /// ```text
+    /// [buffer.new.scratch]*scratch buffer #{id}*
+    /// ```
+    pub fn path_txt(&self) -> Text {
+        self.path_kind().path_txt()
+    }
+
+    /// The buffer's name.
+    ///
+    /// If there is no set path, returns `"*scratch buffer #{id}*"`.
+    pub fn name(&self) -> String {
+        self.path.name()
+    }
+
+    /// The buffer's name.
+    ///
+    /// Returns [`None`] if the path has not been set yet, i.e., if
+    /// the buffer is a scratch buffer.
+    pub fn name_set(&self) -> Option<String> {
+        self.path.name_set()
+    }
+
+    /// A [`Text`] from the name of this [`PathKind`]
+    ///
+    /// The name of a [`Buffer`] widget is the same as the path, but
+    /// it strips away the current directory. If it can't, it will
+    /// try to strip away the home directory, replacing it with
+    /// `"~"`. If that also fails, it will just show the full
+    /// path.
+    ///
+    /// # Formatting
+    ///
+    /// If the buffer's `name` was set:
+    ///
+    /// ```text
+    /// [buffer]{name}
+    /// ```
+    ///
+    /// If the buffer's `name` was not set:
+    ///
+    /// ```text
+    /// [buffer.new.scratch]*scratch buffer #{id}*
+    /// ```
+    pub fn name_txt(&self) -> Text {
+        self.path.name_txt()
+    }
+
+    /// The type of [`PathBuf`]
+    ///
+    /// This represents the three possible states for a `Buffer`'s
+    /// `PathBuf`, as it could either represent a real `Buffer`,
+    /// not exist, or not have been defined yet.
+    pub fn path_kind(&self) -> PathKind {
+        self.path.clone()
     }
 }
 

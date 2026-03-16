@@ -4,7 +4,7 @@ use std::{
 };
 
 use duat_core::{
-    context::{self},
+    context::{self, Handle},
     data::Pass,
     hook::{self, ConfigUnloaded},
     storage::{
@@ -22,6 +22,7 @@ use lsp_types::{
 pub use crate::server::bridge::ServerId;
 use crate::{
     config::{self, LanguageServerConfig, get_initialize_params},
+    parser::Parser,
     server::bridge::ServerBridge,
 };
 
@@ -89,6 +90,13 @@ impl Server {
     /// The `ServerId` of the `Server`.
     pub fn id(&self) -> ServerId {
         self.bridge.id()
+    }
+
+    /// Send a request to refresh the semantic tokens of a given
+    /// [`Handle`].
+    pub fn send_semantic_tokens_request(&self, path: PathBuf, handle: &Handle, parser: &Parser) {
+        self.bridge
+            .send_semantic_tokens_request(path, handle, parser);
     }
 
     /// Sends the initialization requests for a given [`Path`].
@@ -210,16 +218,13 @@ fn defer_store(server: &Server) {
     hook::add::<ConfigUnloaded>(move |pa, is_quitting| {
         if !is_quitting
             && let Some(init_parts) = server.init_parts.get()
-            && let Ok(_) = storage::store(
-                pa,
-                ServerParts {
-                    capabilities: init_parts.capabilities.clone(),
-                    info: init_parts.info.clone(),
-                    offset_encoding: init_parts.offset_encoding.clone(),
-                    roots: server.roots.lock().unwrap().clone(),
-                    bridge: server.bridge.clone(),
-                },
-            )
+            && let Ok(_) = storage::store(pa, ServerParts {
+                capabilities: init_parts.capabilities.clone(),
+                info: init_parts.info.clone(),
+                offset_encoding: init_parts.offset_encoding.clone(),
+                roots: server.roots.lock().unwrap().clone(),
+                bridge: server.bridge.clone(),
+            })
         {
         } else {
             server.bridge.send_request::<Shutdown>((), |_, _| {});

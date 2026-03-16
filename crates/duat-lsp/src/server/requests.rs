@@ -3,7 +3,10 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use duat_core::{context, notify::Watcher};
+use duat_core::{
+    context::{self, Handle},
+    notify::Watcher,
+};
 use globset::{Glob, GlobMatcher};
 use lsp_types::{
     DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
@@ -123,121 +126,129 @@ pub fn handle_request(bridge: &ServerBridge, request: jsonrpc_lite::Request) {
             }
         }
         SemanticTokensRefresh::METHOD => {
-            use lsp_types::SemanticTokensServerCapabilities::*;
             let bridge = bridge.clone();
 
             context::queue(move |pa| {
-                let server_id = bridge.id();
                 for handle in context::buffers(pa) {
                     let Some((parser, buffer)) = Parser::write_for(pa, &handle) else {
-                        continue;
+                        return;
                     };
 
-                    if !parser
-                        .servers
-                        .iter()
-                        .any(|server| server.bridge.id() == bridge.id())
-                    {
-                        continue;
-                    }
-
-                    let work_done_progress_params =
-                        WorkDoneProgressParams { work_done_token: None };
-                    let partial_result_params = PartialResultParams { partial_result_token: None };
-                    let text_document = TextDocumentIdentifier {
-                        uri: crate::path_to_uri(&buffer.path()).unwrap(),
-                    };
-
-                    if let Some(result_id) = parser.tokens.result_id(server_id) {
-                        bridge.send_request::<SemanticTokensFullDeltaRequest>(
-                            SemanticTokensDeltaParams {
-                                work_done_progress_params,
-                                partial_result_params,
-                                text_document,
-                                previous_result_id: result_id,
-                            },
-                            move |pa, result| {
-                                let Some(result) = result else {
-                                    return;
-                                };
-
-                                let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
-                                if let Some(server) = parser
-                                    .servers
-                                    .iter()
-                                    .find(|server| server.id() == server_id)
-                                    && let Some(cap) = server.capabilities()
-                                    && let Some(options) = &cap.semantic_tokens_provider
-                                {
-                                    use lsp_types::SemanticTokensFullDeltaResult::*;
-
-                                    match result {
-                                        Tokens(tokens) => {
-                                            let options = match options {
-                                                SemanticTokensOptions(options) => options,
-                                                SemanticTokensRegistrationOptions(options) => {
-                                                    &options.semantic_tokens_options
-                                                }
-                                            };
-
-                                            parser.tokens.apply_full(
-                                                buffer.text_mut().parts(),
-                                                tokens,
-                                                server_id,
-                                                &options.legend,
-                                            );
-                                        }
-                                        TokensDelta(delta) => parser.tokens.apply_delta(
-                                            buffer.text_mut().parts(),
-                                            delta,
-                                            server_id,
-                                        ),
-                                        PartialTokensDelta { .. } => todo!(),
-                                    }
-                                }
-                            },
-                        );
-                    } else {
-                        bridge.send_request::<SemanticTokensFullRequest>(
-                            SemanticTokensParams {
-                                work_done_progress_params,
-                                partial_result_params,
-                                text_document,
-                            },
-                            move |pa, result| {
-                                let Some(SemanticTokensResult::Tokens(tokens)) = result else {
-                                    return;
-                                };
-
-                                let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
-                                if let Some(server) = parser
-                                    .servers
-                                    .iter()
-                                    .find(|server| server.id() == server_id)
-                                    && let Some(cap) = server.capabilities()
-                                    && let Some(options) = &cap.semantic_tokens_provider
-                                {
-                                    let options = match options {
-                                        SemanticTokensOptions(options) => options,
-                                        SemanticTokensRegistrationOptions(options) => {
-                                            &options.semantic_tokens_options
-                                        }
-                                    };
-
-                                    parser.tokens.apply_full(
-                                        buffer.text_mut().parts(),
-                                        tokens,
-                                        server_id,
-                                        &options.legend,
-                                    );
-                                }
-                            },
-                        );
-                    }
+                    bridge.send_semantic_tokens_request(buffer.path(), &handle, parser);
                 }
             })
         }
-        _method => {} // context::warn!("[a]{method}[] request not yet handled"),
+        method if method.contains("workDoneProgress") => {}
+        method => {} // context::warn!("[a]{method}[] request not yet handled"),
+    }
+}
+
+/// Send a request for the semantic tokens to a given server.
+impl ServerBridge {
+    pub fn send_semantic_tokens_request(&self, path: PathBuf, handle: &Handle, parser: &Parser) {
+        use lsp_types::SemanticTokensServerCapabilities::*;
+
+        let server_id = self.id();
+        if !parser
+            .servers
+            .iter()
+            .any(|server| server.bridge.id() == server_id)
+        {
+            return;
+        }
+
+        let work_done_progress_params = WorkDoneProgressParams { work_done_token: None };
+        let partial_result_params = PartialResultParams { partial_result_token: None };
+        let text_document = TextDocumentIdentifier { uri: crate::path_to_uri(&path).unwrap() };
+        let handle = handle.clone();
+
+        if let Some(result_id) = parser.tokens.result_id(self.id()) {
+            context::debug!("Sent delta request for {result_id:?}");
+            self.send_request::<SemanticTokensFullDeltaRequest>(
+                SemanticTokensDeltaParams {
+                    work_done_progress_params,
+                    partial_result_params,
+                    text_document,
+                    previous_result_id: result_id,
+                },
+                move |pa, result| {
+                    let Some(result) = result else {
+                        return;
+                    };
+
+                    let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
+                    if let Some(server) = parser
+                        .servers
+                        .iter()
+                        .find(|server| server.id() == server_id)
+                        && let Some(cap) = server.capabilities()
+                        && let Some(options) = &cap.semantic_tokens_provider
+                    {
+                        use lsp_types::SemanticTokensFullDeltaResult::*;
+
+                        match result {
+                            Tokens(tokens) => {
+                                let options = match options {
+                                    SemanticTokensOptions(options) => options,
+                                    SemanticTokensRegistrationOptions(options) => {
+                                        &options.semantic_tokens_options
+                                    }
+                                };
+
+                                parser.tokens.apply_full(
+                                    buffer.text_mut().parts(),
+                                    tokens,
+                                    server_id,
+                                    &options.legend,
+                                );
+                            }
+                            TokensDelta(delta) => parser.tokens.apply_delta(
+                                buffer.text_mut().parts(),
+                                delta,
+                                server_id,
+                            ),
+                            PartialTokensDelta { .. } => todo!(),
+                        }
+                    }
+                },
+            );
+        } else {
+            self.send_request::<SemanticTokensFullRequest>(
+                SemanticTokensParams {
+                    work_done_progress_params,
+                    partial_result_params,
+                    text_document,
+                },
+                move |pa, result| {
+                    let Some(SemanticTokensResult::Tokens(tokens)) = result else {
+                        return;
+                    };
+
+                    let (parser, buffer) = Parser::write_for(pa, &handle).unwrap();
+                    if let Some(server) = parser
+                        .servers
+                        .iter()
+                        .find(|server| server.id() == server_id)
+                        && let Some(cap) = server.capabilities()
+                        && let Some(options) = &cap.semantic_tokens_provider
+                    {
+                        let options = match options {
+                            SemanticTokensOptions(options) => options,
+                            SemanticTokensRegistrationOptions(options) => {
+                                &options.semantic_tokens_options
+                            }
+                        };
+
+                        parser.tokens.apply_full(
+                            buffer.text_mut().parts(),
+                            tokens,
+                            server_id,
+                            &options.legend,
+                        );
+                    }
+                },
+            );
+        }
     }
 }
 

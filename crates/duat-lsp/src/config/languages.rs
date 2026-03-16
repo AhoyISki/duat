@@ -495,11 +495,6 @@ static DEFAULT_CONFIGS: LazyLock<Mutex<HashMap<&str, (LspList, bool)>>> = LazyLo
         [rust-analyzer]
         root_globs = ["Cargo.toml"]
         single_instance = true
-        [rust-analyzer.experimental]
-        commands.commands = ["rust-analyzer.runSingle"]
-        hoverActions = true
-        [rust-analyzer.settings]
-        rust-analyzer.check.command = "clippy"
         [rust-analyzer.symbol_kinds]
         Constant = "const"
         Enum = "enum"
