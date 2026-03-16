@@ -320,7 +320,8 @@ setup_duat!(setup);
 
 fn setup() {
     hook::add::<BufferOpened>(|pa, handle| {
-        let status = if handle.read(pa).path().contains(".config/duat") {
+        let status = if let Ok(crate_dir) = duat::utils::crate_dir()
+            && handle.read(pa).path().starts_with(crate_dir) {
             status!("{name_txt}[config] []{Spacer}{main_txt}")
         } else {
             status!("{name_txt}{Spacer}{main_txt}")

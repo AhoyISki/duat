@@ -122,7 +122,6 @@ impl ServerBridge {
     }
 
     /// Sends a request alongside its parameters.
-    #[track_caller]
     pub fn send_request<R: Request + 'static>(
         &self,
         params: R::Params,

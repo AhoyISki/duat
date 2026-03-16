@@ -5,6 +5,7 @@ use std::{
 
 use duat_core::{
     context::{self},
+    data::Pass,
     hook::{self, ConfigUnloaded},
     storage::{
         self,
@@ -15,7 +16,7 @@ use duat_filetype::FileType;
 use lsp_types::{
     ServerCapabilities, ServerInfo,
     notification::{Exit, Notification},
-    request::{Initialize, Shutdown},
+    request::{Initialize, Request, Shutdown},
 };
 
 pub use crate::server::bridge::ServerId;
@@ -68,6 +69,15 @@ impl Server {
 
     pub fn send_notification<N: Notification>(&self, params: N::Params) {
         self.bridge.send_notification::<N>(params);
+    }
+
+    /// Sends a request alongside its parameters.
+    pub fn send_request<R: Request + 'static>(
+        &self,
+        params: R::Params,
+        callback: impl FnOnce(&mut Pass, R::Result) + Send + 'static,
+    ) {
+        self.bridge.send_request::<R>(params, callback)
     }
 
     /// Try to get the [`ServerCapabilities`], will fail if they
@@ -200,13 +210,16 @@ fn defer_store(server: &Server) {
     hook::add::<ConfigUnloaded>(move |pa, is_quitting| {
         if !is_quitting
             && let Some(init_parts) = server.init_parts.get()
-            && let Ok(_) = storage::store(pa, ServerParts {
-                capabilities: init_parts.capabilities.clone(),
-                info: init_parts.info.clone(),
-                offset_encoding: init_parts.offset_encoding.clone(),
-                roots: server.roots.lock().unwrap().clone(),
-                bridge: server.bridge.clone(),
-            })
+            && let Ok(_) = storage::store(
+                pa,
+                ServerParts {
+                    capabilities: init_parts.capabilities.clone(),
+                    info: init_parts.info.clone(),
+                    offset_encoding: init_parts.offset_encoding.clone(),
+                    roots: server.roots.lock().unwrap().clone(),
+                    bridge: server.bridge.clone(),
+                },
+            )
         {
         } else {
             server.bridge.send_request::<Shutdown>((), |_, _| {});
