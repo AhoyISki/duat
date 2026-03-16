@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7a6f72b5.js";
+            window.path_to_searchindex_js = "../searchindex-361da70c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-74f781a9.js"></script>
@@ -443,7 +443,8 @@ depending on the <code>Buffer</code>?</p>
 
 fn setup() {
     hook::add::&lt;BufferOpened&gt;(|pa, handle| {
-        let status = if handle.read(pa).path().contains(".config/duat") {
+        let status = if let Ok(crate_dir) = duat::utils::crate_dir()
+            &amp;&amp; handle.read(pa).path().starts_with(crate_dir) {
             status!("{name_txt}[config] []{Spacer}{main_txt}")
         } else {
             status!("{name_txt}{Spacer}{main_txt}")
