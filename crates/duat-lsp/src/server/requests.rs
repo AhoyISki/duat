@@ -163,7 +163,6 @@ impl ServerBridge {
         let handle = handle.clone();
 
         if let Some(result_id) = parser.tokens.result_id(self.id()) {
-            context::debug!("Sent delta request for {result_id:?}");
             self.send_request::<SemanticTokensFullDeltaRequest>(
                 SemanticTokensDeltaParams {
                     work_done_progress_params,

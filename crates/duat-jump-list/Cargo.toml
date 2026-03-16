@@ -12,4 +12,4 @@ edition = "2024"
 
 [dependencies]
 duat-core = { version = "0.9.0", path = "../duat-core" }
-gap-buf = "0.1.0"
+gap-buf = "0.6.1"

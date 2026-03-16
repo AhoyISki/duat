@@ -53,7 +53,6 @@ impl BufferTokens {
         id: ServerId,
         legend: &SemanticTokensLegend,
     ) {
-        duat_core::debug!("Applying full");
         let server_tokens = self.tokens_by_server.entry(id).or_insert_with(|| {
             let map = TOKEN_MAP.lock().unwrap();
 
@@ -104,12 +103,11 @@ impl BufferTokens {
         mut delta: SemanticTokensDelta,
         id: ServerId,
     ) {
-        duat_core::debug!("Applying delta for {delta:#?}");
         let server_tokens = self.tokens_by_server.get_mut(&id).unwrap();
 
-        let mut delta_from = server_tokens.applied.len();
-        let mut line = parts.strs.end_point().line();
-        let mut byte = parts.strs.len();
+        let mut delta_from = 0;
+        let mut line = 0;
+        let mut byte = 0;
 
         delta
             .edits
