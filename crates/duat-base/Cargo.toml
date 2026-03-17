@@ -1,0 +1,22 @@
+[package]
+name = "duat-base"
+version = "0.9.0"
+edition = "2024"
+authors = ["AhoyISki"]
+description = "Basic components common in Duat, included by default on duat"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-base"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "text", "application", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+
+[lints.rust]
+missing_docs = "warn"
+
+[dependencies]
+format-like = "0.7.0"
+duat-core = { version = "0.9.0", path = "../duat-core" }
+regex-syntax = "0.8.8"
+
+duat-term = { version = "0.9.0", path = "../duat-term" }
+duat-filetype = { version = "0.4.0", path = "../duat-filetype" }

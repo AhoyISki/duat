@@ -1,0 +1,66 @@
+name: Bug Report
+description: File a bug report.
+title: "[Bug]: "
+labels: ["bug"]
+assignees:
+  - AhoyISki
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filling out this bug report!
+  - type: checkboxes
+    id: is-duat-related
+    attributes:
+      label: Is this issue duat related? Or is it related to some plugin or extension?
+      description: |
+        For example, if your issue is about syntax highlighting, it is probably related
+        to [`duat-treesitter`](https://github.com/AhoyISki/duat-treesitter), not duat.      
+      options:
+        - label: Yes, it is most closely related to duat.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: How did duat mess up this time? How did you expect duat _not_ to mess up?
+      placeholder: Duat bad
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: What version of duat are you using?
+      description: For now, the recommended version is the latest one from github.
+      options:
+        - Latest from github
+        - Latest from crates.io
+        - Something else 🤨
+      default: 0
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        If you installed with `--featues git-deps`, try running the `reload --clear` command inside duat.
+        That should remove the `~/.config/duat/target`, `~/.local/share/duat` and `~/.cache/duat` directories,
+        which should essentially rebuild the latest version of everything, while also removing potentially
+        incompatible cache entries. **NOTE** Rebuilding everything may take a little bit of time, so be patient.
+  - type: input
+    id: os
+    attributes:
+      label: What operating system(s) are you using?
+      description: |
+        Currently, support for OSX is spotty, and support for Windows is untested and likely not working
+        outside of WSL.
+      placeholder: linux
+      value: linux
+    validations:
+      required: true
+  - type: textarea
+    id: more-info
+    attributes:
+      label: Additional context
+      description: |
+        What other bits of information do you think are worth mentioning?
+      placeholder: Not much, hbu

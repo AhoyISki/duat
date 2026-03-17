@@ -1,0 +1,702 @@
+//! Types for convenience and efficiency
+//!
+//! There are two "types" of tag: [`Tag`]s and [`RawTag`]s. [`Tag`]s
+//! are what is show to the end user, being convenient in the way they
+//! include extra information, like a whole function in the case of
+//! [`StartToggle`]. [`RawTag`]s, on the other hand, are meant to
+//! be as small as possible in order not to waste memory, as they will
+//! be stored in the [`Text`]. As such, they have as little
+//! information as possible, occupying only 8 bytes.
+use std::sync::Arc;
+
+use RawTag::*;
+use crossterm::event::MouseEventKind;
+
+use super::{GhostId, SpawnId, Tagger, ToggleId};
+use crate::{
+    context::{self, Handle},
+    data::Pass,
+    form::FormId,
+    text::{Point, Text, TextRange},
+    ui::{Coord, DynSpawnSpecs, Widget},
+};
+
+macro_rules! simple_impl_Tag {
+    ($self:ident : $tag:ty, $tagger:ident, $raw_tag:expr, $is_meta:literal) => {
+        impl Tag<usize> for $tag {
+            const IS_META: bool = $is_meta;
+
+            #[allow(unused_variables)]
+            fn get_raw(
+                &mut self,
+                _: &super::InnerTags,
+                byte: usize,
+                max: usize,
+                $tagger: Tagger,
+            ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+                let $self = self;
+                assert!(
+                    byte <= max,
+                    "byte out of bounds: the len is {max}, but the byte is {byte}",
+                );
+                ((byte, $raw_tag), None)
+            }
+        }
+
+        impl Tag<Point> for $tag {
+            const IS_META: bool = $is_meta;
+
+            fn get_raw(
+                &mut self,
+                tags: &super::InnerTags,
+                point: Point,
+                max: usize,
+                tagger: Tagger,
+            ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+                let byte = point.byte();
+                self.get_raw(tags, byte, max, tagger)
+            }
+        }
+    };
+}
+
+/// [`Tag`]s are used for every visual modification to [`Text`]
+///
+/// [`Tag`]s allow for all sorts of configuration on the [`Text`],
+/// like changing colors throug [`Form`]s, or text alignment, or
+/// [`Spacer`]s, or even concealing and ghost [`Text`].
+///
+/// Currently, these are the [`Tag`]s in Duat:
+///
+/// - [`FormTag`]: Applies a [`Form`] on a [range]; [`Text`]. Can be
+///   an actual `caret` or just a temporary [`Form`];
+/// - [`Spacer`]: Lets you put arbitrary equally sized spaces on a
+///   line;
+/// - [`Ghost`]: Places "ghost [`Text`]" on the [`Text`]. This is
+///   [`Text`] that can be easily ignored when parsing the regular
+///   [`Text`], and `caret`s can't interact with;
+/// - [`Conceal`]: Hides a [range] in the [`Text`], mostly only useful
+///   in the [`Buffer`] [`Widget`];
+///
+/// Additionally, there is also a `Toggle` internal [`Tag`], but it is
+/// not currently implemented.
+///
+/// [`Form`]: crate::form::Form
+/// [range]: TextRange
+/// [`Buffer`]: crate::buffer::Buffer
+/// [`Widget`]: crate::ui::Widget
+pub trait Tag<Index>: Sized {
+    /// A meta `Tag` is one that changes the layout of the [`Text`]
+    /// itself
+    ///
+    /// The only meta `Tag`s are [`Ghost`], [`Conceal`] and [`Spacer`]
+    const IS_META: bool;
+
+    /// Gets the [`RawTag`]s and a possible return id from the `Tag`
+    #[doc(hidden)]
+    fn get_raw(
+        &mut self,
+        tags: &super::InnerTags,
+        index: Index,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>);
+
+    /// An action to take place if the [`RawTag`]s are successfully
+    /// added
+    #[doc(hidden)]
+    #[allow(unused_variables)]
+    fn on_insertion(self, tags: &mut super::InnerTags) {}
+}
+
+////////// Form-like InnerTags
+
+/// [`Tag`]: Applies a [`Form`] to a given [range] in the [`Text`]
+///
+/// This struct can be created from the [`FormId::to_tag`] method,
+/// granting it a priority that is used to properly order the
+/// [`RawTag`]s within.
+///
+/// The [`Form`] is able to intersect with other [`Form`]s, which,
+/// unlike when pushing [`Form`]s to a [`Builder`], interfere
+/// constructively, with the latest attributes and colors winning out.
+///
+/// [`Form`]: crate::form::Form
+/// [range]: TextRange
+/// [`Builder`]: crate::text::Builder
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormTag(pub FormId, pub u8);
+
+impl<I: TextRange> Tag<I> for FormTag {
+    const IS_META: bool = false;
+
+	#[track_caller]
+    fn get_raw(
+        &mut self,
+        _: &super::InnerTags,
+        index: I,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let FormTag(id, prio) = *self;
+        let range = index.to_range(max);
+        {
+            let s_tag = PushForm(tagger, id, prio);
+            let e_tag = PopForm(tagger, id);
+            ((range.start, s_tag), Some((range.end, e_tag)))
+        }
+    }
+}
+
+////////// Meta Tags
+
+/// [`Tag`]: A spacer for more advanced alignment
+///
+/// When printing this screen line (one row on screen, i.e. until
+/// it wraps), Instead of following the current alignment, will
+/// put spacing between the next and previous characters. The
+/// length of the space will be roughly equal to the available
+/// space on this line divided by the number of [`Spacer`]s on it.
+///
+/// # Example
+///
+/// Let's say that this is the line being printed:
+///
+/// ```
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
+/// txt!("This is my line,please,pretend it has tags");
+/// ```
+///
+/// If we were to print it with `{Spacer}` like this:
+///
+/// ```
+/// # duat_core::doc_duat!(duat);
+/// # use duat::prelude::*;
+/// txt!("This is my line,{Spacer}please,{Spacer}pretend it has tags");
+/// ```
+///
+/// In a region with a width of 50, it would come out like:
+///
+/// ```text
+/// This is my line,    please,    pretend it has tags
+/// ```
+///
+/// [`Builder`]: crate::text::Builder
+#[derive(Debug, Clone, Copy)]
+pub struct Spacer;
+simple_impl_Tag!(tag: Spacer, tagger, RawTag::Spacer(tagger), false);
+
+/// [`Builder`] part and [`Tag`]: Places ghost text
+///
+/// This is useful when, for example, creating command line prompts,
+/// since the text is non interactable.
+///
+/// [`Builder`]: crate::text::Builder
+#[derive(Debug, Clone)]
+pub struct Ghost {
+    text: Arc<Text>,
+    id: Option<GhostId>,
+    is_new: bool,
+    is_inlay: bool,
+}
+
+impl Ghost {
+    /// Returns a new `Ghost`, which can be inserted on [`Text`]
+    #[track_caller]
+    pub fn new(value: impl Into<Text>) -> Self {
+        let text = value.into();
+
+        assert!(
+            text.0.tags.ghosts.is_empty(),
+            "Can't place Ghosts inside of Ghosts"
+        );
+
+        Self {
+            text: Arc::new(text),
+            id: None,
+            is_new: false,
+            is_inlay: false,
+        }
+    }
+
+    /// Returns a new "inlay" type `Ghost`
+    ///
+    /// This `Ghost` type, instead of being printed in the same byte
+    /// that it was placed, will instead be printed at the end of the
+    /// line where it was placed. Inlay text will also never be
+    /// wrapped, if it is too long, it will simply be truncated when
+    /// printed.
+    ///
+    /// You can use this to place text on the right border of lines,
+    /// without interrupting the flow of other things.
+    ///
+    /// Note that earlier positioned inlay `Ghost`s are printed before
+    /// latter ones, when those are placed on the same line.
+    #[track_caller]
+    pub fn inlay(value: impl Into<Text>) -> Self {
+        Self { is_inlay: true, ..Self::new(value) }
+    }
+
+    /// The [`Text`] of this `Ghost`
+    pub fn text(&self) -> &Text {
+        &self.text
+    }
+}
+
+impl Tag<usize> for Ghost {
+    const IS_META: bool = true;
+
+    fn get_raw(
+        &mut self,
+        tags: &super::InnerTags,
+        byte: usize,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        assert!(
+            byte <= max,
+            "index out of bounds: the len is {max}, but the index is {byte}",
+        );
+        let id = if let Some((id, _)) = tags
+            .ghosts
+            .iter()
+            .find(|(_, arc)| Arc::ptr_eq(arc, &self.text))
+        {
+            self.is_new = false;
+            *id
+        } else {
+            self.is_new = true;
+            GhostId::new()
+        };
+
+        self.id = Some(id);
+        if self.is_inlay {
+            ((byte, RawTag::Inlay(tagger, id)), None)
+        } else {
+            ((byte, RawTag::Ghost(tagger, id)), None)
+        }
+    }
+
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        if self.is_new {
+            tags.ghosts.push((self.id.unwrap(), self.text.clone()))
+        }
+    }
+}
+
+impl Tag<Point> for Ghost {
+    const IS_META: bool = true;
+
+    fn get_raw(
+        &mut self,
+        tags: &super::InnerTags,
+        point: Point,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let byte = point.byte();
+        self.get_raw(tags, byte, max, tagger)
+    }
+
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        if self.is_new {
+            tags.ghosts.push((self.id.unwrap(), self.text))
+        }
+    }
+}
+
+/// [`Tag`]: Conceals a [range] in the [`Text`]
+///
+/// This range is completely arbitrary, being able to partially
+/// contain lines, as long as it is contained within the length of the
+/// [`Text`].
+///
+/// [range]: TextRange
+#[derive(Debug, Clone, Copy)]
+pub struct Conceal;
+impl<I: TextRange> Tag<I> for Conceal {
+    const IS_META: bool = true;
+
+    fn get_raw(
+        &mut self,
+        _: &super::InnerTags,
+        index: I,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        let range = index.to_range(max);
+        (
+            (range.start, (RawTag::StartConceal)(tagger)),
+            Some((range.end, (RawTag::EndConceal)(tagger))),
+        )
+    }
+}
+
+/// [`Tag`]: Swaps the next printed character
+///
+/// If this `Tag` is placed in the nth byte, then the character at the
+/// nth byte will be replaced when being printed. This is capable of
+/// canceling out the wrapping of a `\n` char, or make a non `\n` wrap
+/// around by replacing it with a `\n`.
+///
+/// However, if the character at the nth byte is a `\t`, this tag will
+/// replace the first space of the tab. If it is then followed by more
+/// `SwapChar`s, the other spaces of the tab will be replaced.
+#[derive(Debug, Clone, Copy)]
+pub struct SwapChar(char);
+
+impl SwapChar {
+    #[track_caller]
+    /// Returns a new `SwapChar`, which will print a character
+    /// differently
+    ///
+    /// The replacement `char` can't be a control character
+    pub fn new(char: char) -> Self {
+        assert!(
+            !char.is_control(),
+            "The replacement char can't be a control character"
+        );
+        Self(char)
+    }
+}
+simple_impl_Tag!(tag: SwapChar, tagger, RawTag::SwapChar(tagger, tag.0), true);
+
+////////// Layout modification Tags
+
+/// [`Tag`]: Spawns a [`Widget`] in the [`Text`]
+///
+/// The [`Widget`] will be placed according to the [`DynSpawnSpecs`],
+/// and should move automatically as the `SpawnTag` moves around the
+/// screen.
+pub struct SpawnTag(
+    SpawnId,
+    Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>,
+);
+
+impl SpawnTag {
+    /// Returns a new instance of `SpawnTag`
+    ///
+    /// You can then place this [`Tag`] inside of the [`Text`] via
+    /// [`Text::insert_tag`] or [`Tags::insert`], and the [`Widget`]
+    /// should be placed according to the [`DynSpawnSpecs`], and
+    /// should move around automatically reflecting where the
+    /// `Tag` is at.
+    ///
+    /// Do note that this [`Widget`] will only be added to Duat and be
+    /// able to be printed to the screen once the [`Text`] itself
+    /// is printed. And it will be removed once the [`RawTag`] within
+    /// gets dropped, either by being removed from the `Text`, or by
+    /// the `Text` itself being dropped.
+    ///
+    /// > [!NOTE]
+    /// >
+    /// > For now, if you clone a [`Text`] with spawned [`Widget`]s
+    /// > within, those `Widget`s will not be cloned to the new
+    /// > `Text`, and the [`RawTag::SpawnedWidget`]s within will also
+    /// > be removed.
+    ///
+    /// [`Tags::insert`]: super::Tags::insert
+    pub fn new(widget: impl Widget, specs: DynSpawnSpecs) -> Self {
+        let id = SpawnId::new();
+        Self(
+            id,
+            Box::new(move |pa, win, master| {
+                context::windows().spawn_on_text(pa, (id, specs), widget, win, master);
+            }),
+        )
+    }
+}
+
+impl Tag<Point> for SpawnTag {
+    const IS_META: bool = false;
+
+    fn get_raw(
+        &mut self,
+        _: &super::InnerTags,
+        index: Point,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        (
+            (index.byte().min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            None,
+        )
+    }
+
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        tags.spawns.push(super::SpawnCell(self.0));
+        tags.spawn_fns.0.push(self.1);
+    }
+}
+
+impl Tag<usize> for SpawnTag {
+    const IS_META: bool = false;
+
+    fn get_raw(
+        &mut self,
+        _: &super::InnerTags,
+        index: usize,
+        max: usize,
+        tagger: Tagger,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>) {
+        (
+            (index.min(max), RawTag::SpawnedWidget(tagger, self.0)),
+            None,
+        )
+    }
+
+    fn on_insertion(self, tags: &mut super::InnerTags) {
+        tags.spawns.push(super::SpawnCell(self.0));
+        tags.spawn_fns.0.push(self.1);
+    }
+}
+
+/// An internal representation of [`Tag`]s
+///
+/// Unlike [`Tag`]s, however, each variant here is only placed in a
+/// single position, and [`Tag`]s that occupy a range are replaced by
+/// two [`RawTag`]s, like [`PushForm`] and [`PopForm`], for example.
+#[derive(Clone, Copy, Eq)]
+pub enum RawTag {
+    // Implemented:
+    /// Appends a form to the stack.
+    PushForm(Tagger, FormId, u8),
+    /// Removes a form from the stack. It won't always be the last
+    /// one.
+    PopForm(Tagger, FormId),
+
+    /// A spacer for the current screen line, replaces alignment.
+    Spacer(Tagger),
+
+    /// Starts concealing the [`Text`], skipping all [`Tag`]s and
+    /// [`char`]s until the [`EndConceal`] tag shows up.
+    ///
+    /// [`Text`]: super::Text
+    /// [`EndConceal`]: RawTag::EndConceal
+    StartConceal(Tagger),
+    /// Stops concealing the [`Text`], returning the iteration process
+    /// back to the regular [`Text`] iterator.
+    ///
+    /// [`Text`]: super::Text
+    EndConceal(Tagger),
+
+    // TODO: Deal with the consequences of changing this from a usize.
+    /// More direct skipping method, allowing for full skips without
+    /// the iteration, which could be slow.
+    ///
+    /// This variant is not actually stored in the buffer, but is
+    /// created when iterating.
+    ConcealUntil(u32),
+
+    /// Text that shows up on screen, but is ignored otherwise.
+    Ghost(Tagger, GhostId),
+    /// Text that shows up on screen, after the end of the line.
+    Inlay(Tagger, GhostId),
+    /// Replaces a printed character or
+    /// part of a `\t`
+    SwapChar(Tagger, char),
+
+    /// A spawned floating [`Widget`]
+    SpawnedWidget(Tagger, SpawnId),
+
+    // Not Implemented:
+    /// Begins a toggleable section in the text.
+    StartToggle(Tagger, ToggleId),
+    /// Ends a toggleable section in the text.
+    EndToggle(Tagger, ToggleId),
+}
+
+impl RawTag {
+    /// Inverts a [`RawTag`] that occupies a range
+    pub fn inverse(&self) -> Option<Self> {
+        match self {
+            Self::PushForm(tagger, id, _) => Some(Self::PopForm(*tagger, *id)),
+            Self::PopForm(tagger, id) => Some(Self::PushForm(*tagger, *id, 0)),
+            Self::StartToggle(tagger, id) => Some(Self::EndToggle(*tagger, *id)),
+            Self::EndToggle(tagger, id) => Some(Self::StartToggle(*tagger, *id)),
+            Self::StartConceal(tagger) => Some(Self::EndConceal(*tagger)),
+            Self::EndConceal(tagger) => Some(Self::StartConceal(*tagger)),
+            _ => None,
+        }
+    }
+
+    /// Wether this [`RawTag`] ends with another
+    pub fn ends_with(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::PushForm(l_tagger, l_id, _), Self::PopForm(r_tagger, r_id)) => {
+                l_id == r_id && l_tagger == r_tagger
+            }
+            (Self::StartToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
+                l_id == r_id && l_tagger == r_tagger
+            }
+            (Self::StartConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
+            _ => false,
+        }
+    }
+
+    /// Wether this [`RawTag`] is the start of a range
+    pub fn is_start(&self) -> bool {
+        matches!(
+            self,
+            Self::PushForm(..) | Self::StartToggle(..) | Self::StartConceal(_)
+        )
+    }
+
+    /// Wether this [`RawTag`] is the end of a range
+    pub fn is_end(&self) -> bool {
+        matches!(
+            self,
+            Self::PopForm(..) | Self::EndToggle(..) | Self::EndConceal(_)
+        )
+    }
+
+    /// Wether this is a "meta" tag, that is, wether it alters the
+    /// structure of the text itself
+    pub fn is_meta(&self) -> bool {
+        matches!(
+            self,
+            Self::StartConceal(_) | Self::EndConceal(_) | Self::Ghost(..) | Self::SwapChar(..)
+        )
+    }
+
+    /// The [`Tagger`] of this [`RawTag`]
+    pub(in crate::text) fn tagger(&self) -> Tagger {
+        match self.get_tagger() {
+            Some(tagger) => tagger,
+            None => unreachable!(
+                "This method should only be used on stored tags, this not being one of them."
+            ),
+        }
+    }
+
+    /// Gets the [`Tagger`] of this [`RawTag`], if it is not
+    /// [`ConcealUntil`], since that one is never actually stored in
+    /// [`InnerTags`]
+    ///
+    /// [`InnerTags`]: super::InnerTags
+    fn get_tagger(&self) -> Option<Tagger> {
+        match self {
+            Self::PushForm(tagger, ..)
+            | Self::PopForm(tagger, _)
+            | Self::Spacer(tagger)
+            | Self::StartConceal(tagger)
+            | Self::EndConceal(tagger)
+            | Self::Ghost(tagger, _)
+            | Self::Inlay(tagger, _)
+            | Self::SwapChar(tagger, _)
+            | Self::StartToggle(tagger, _)
+            | Self::EndToggle(tagger, _)
+            | Self::SpawnedWidget(tagger, _) => Some(*tagger),
+            Self::ConcealUntil(_) => None,
+        }
+    }
+
+    /// The prioriy of this [`RawTag`], only varies with [`Form`]
+    /// [`RawTag`]s
+    ///
+    /// [`Form`]: crate::form::Form
+    pub(super) fn priority(&self) -> u8 {
+        match self {
+            Self::PushForm(.., priority) => *priority + 5,
+            Self::PopForm(..) => 1,
+            Self::StartConceal(..)
+            | Self::StartToggle(..)
+            | Self::SwapChar(..)
+            | Self::SpawnedWidget(..) => 3,
+            Self::Spacer(..) | Self::EndConceal(..) | Self::EndToggle(..) => 0,
+            Self::Ghost(..) | Self::Inlay(..) => 2,
+            Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
+        }
+    }
+}
+
+impl PartialEq for RawTag {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::PushForm(l_tagger, l_id, _), Self::PushForm(r_tagger, r_id, _)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::PopForm(l_tagger, l_id), Self::PopForm(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
+            (Self::SwapChar(l_tagger, l_char), Self::SwapChar(r_tagger, r_char)) => {
+                l_tagger == r_tagger && l_char == r_char
+            }
+            (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
+            (Self::Ghost(l_tagger, l_id), Self::Ghost(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::StartToggle(l_tagger, l_id), Self::StartToggle(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::EndToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            _ => false,
+        }
+    }
+}
+
+#[allow(clippy::non_canonical_partial_ord_impl)]
+impl PartialOrd for RawTag {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(match (self, other) {
+            (PushForm(l_tagger, l_id, l_prio), PushForm(r_tagger, r_id, r_prio)) => l_prio
+                .cmp(r_prio)
+                .then(l_id.cmp(r_id))
+                .then(l_tagger.cmp(r_tagger)),
+            (PopForm(l_tagger, l_id), PopForm(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            (RawTag::Spacer(l_tagger), RawTag::Spacer(r_tagger))
+            | (StartConceal(l_tagger), StartConceal(r_tagger))
+            | (EndConceal(l_tagger), EndConceal(r_tagger)) => l_tagger.cmp(r_tagger),
+            (ConcealUntil(l_byte), ConcealUntil(r_byte)) => l_byte.cmp(r_byte),
+            (RawTag::Ghost(l_tagger, l_id), RawTag::Ghost(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            (StartToggle(l_tagger, l_id), StartToggle(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            (EndToggle(l_tagger, l_id), EndToggle(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            _ => self.priority().cmp(&other.priority()),
+        })
+    }
+}
+
+impl Ord for RawTag {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl std::fmt::Debug for RawTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PushForm(tagger, id, prio) => {
+                write!(f, "PushForm({tagger:?}, {}, {prio})", id.name())
+            }
+            Self::PopForm(tagger, id) => write!(f, "PopForm({tagger:?}, {})", id.name()),
+            Self::Spacer(tagger) => write!(f, "Spacer({tagger:?})"),
+            Self::StartConceal(tagger) => write!(f, "StartConceal({tagger:?})"),
+            Self::EndConceal(tagger) => write!(f, "EndConceal({tagger:?})"),
+            Self::ConcealUntil(tagger) => write!(f, "ConcealUntil({tagger:?})"),
+            Self::Ghost(tagger, id) => write!(f, "Ghost({tagger:?}, {id:?})"),
+            Self::Inlay(tagger, id) => write!(f, "Inlay({tagger:?}, {id:?})"),
+            Self::SwapChar(tagger, char) => write!(f, "SwapChar({tagger:?}, {char:?})"),
+            Self::StartToggle(tagger, id) => write!(f, "ToggleStart({tagger:?}), {id:?})"),
+            Self::EndToggle(tagger, id) => write!(f, "ToggleEnd({tagger:?}, {id:?})"),
+            Self::SpawnedWidget(tagger, id) => write!(f, "SpawnedWidget({tagger:?}, {id:?}"),
+        }
+    }
+}
+
+/// A toggleable function in a range of [`Text`], kind of like a
+/// button
+pub type Toggle = Arc<dyn Fn(Point, Coord, MouseEventKind) + 'static + Send + Sync>;

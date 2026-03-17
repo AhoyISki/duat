@@ -1,0 +1,116 @@
+FOR NEXT UPDATE:
+[ ] Start work on duat-lsp.
+  [x] Start process comunications.
+  [ ] Send messages back and forth.
+  [ ] Send changes.
+  [ ] Receive and process semantic tokens.
+  [ ] Highlight references.
+[ ] `z` and `q` keys for duatmode.
+[x] Make the 'e' and 'v' traverse words and spaces.
+[x] Add autocommenting.
+[x] Augment forms.
+  [/] Add the Color struct.
+  [x] Add copying and interpolation.
+  [x] Remove generics.
+  [ ] Make masks a Tag.
+[ ] Remove Widget argument from Modes.
+[ ] Add registers possibly.
+[x] ReplaceChar Tags!
+[x] Inlay tags!
+[x] BufferOpts.
+  [x] BufferOptsParser.
+    [x] Indent lines.
+    [x] Space replacements.
+    [x] New line replacements.
+[x] Get rid of the print_iter api.
+[x] Do the libloading hacks.
+[ ] Strs improvement.
+  [ ] More fundamental functions.
+  [ ] Better search functionality.
+[x] Use a lines based system for large enough text.
+[x] Get rid of Lender entirely.
+[x] Lean up the dependency tree.
+[x] Make Bytes private 🤯.
+[ ] Make Inlay text much more powerful.
+[x] File watching.
+[x] File tracking.
+[x] Persistent process spawning.
+[x] Turn the config into a separate process I guess...
+
+KNOWN BUGS:
+ HIGH PRIORITY:
+  [ ] Get rid of Text::selections_mut.
+  [ ] Modification of Text in BufferUpdated hook should be disallowed.
+  [ ] Indentation is inefficient.
+  [ ] Some strange slowdowns on Buffer switching and reindentation.
+ LOW PRIORITY:
+  [ ] Selections struct that holds a reference to the Bytes.
+    [ ] Also make the Bytes-less version inaccessible.
+  [ ] statics remain as the program reloads.
+  [ ] Perfect print iterators.
+    [ ] Perfect words iterator.
+  [ ] tree-sitter-duat-text is not being used.
+  [ ] For now, on Windows, duat can only reload if there is only one instance open.
+  [ ] Locking a Mutex on every Change is surely slow.
+
+FUTURE UPDATES:
+[ ] Cleanup of cache API.
+[ ] An API like search but for chars.
+[ ] Hover to reveal full shell expansion.
+[ ] Add a little button next to tree-sitter injections to download them.
+[ ] Add a HandleMut or something like that.
+[ ] Add a simplified KDL based configuration, in systems where people don't want to have to install cargo.
+[ ] Named StatusParts.
+[ ] Flags parameter macro.
+[ ] An Align Tag?
+[ ] Stop eagerly merging Selections.
+[ ] Get started on a Vim mode.
+[ ] Create a fun lil' spinner.
+[ ] Turn the History into a tree.
+[ ] Remove requirement of Clone on Modes.
+[ ] Get rid of Widget::needs_update?
+[ ] Coordinates based tagging.
+[ ] Use track_caller on TextBuilder.
+[ ] Anonymous Forms, which index based on hashing the Form itself.
+[ ] Add Form interpolation and Form::copy.
+[ ] Use Tags for masks.
+[ ] Keep information of PushSpecs and SpawnSpecs on the Handles.
+[ ] Initial installation configuration menu.
+[ ] Print only changed lines.
+[ ] Handle mostly utf-8 strings.
+[ ] Add a failure mode for remapping.
+[ ] Additive Forms.
+[ ] Remapping on `Mode` creation.
+[ ] FileBuilder::push_detached!
+[ ] Split suggested max range by conceals.
+[ ] A MapForm Tag!
+[ ] macro_mode! or something like that.
+[ ] Fuzzy path detection should be rule based, not on what buffers are open.
+[ ] rustc_on_unimplemented for State.
+[ ] Crumple zone tags (?).
+[ ] Document print.rs (jesus christ man)
+[ ] Custom error messages for unimplemented on status!.
+[ ] It is technically possible to reverse iterate without going over the whole line, if you know where in the screen said line ends.
+[ ] add options to the build script, about which type of UI you want, and where to get your config files.
+[ ] general undo/redo, that can delete/create files.
+[ ] ghosts 👻 on doc comments for tests.
+[ ] mouse drag binding to resize widgets.
+[ ] adaptive widget size.
+[ ] transition the ranges system to 4 lists.
+[ ] Least common denominator for showing paths.
+[ ] An updater function that returns true if a certain hook was triggered.
+[ ] File statics.
+[ ] No wrapping Tag.
+[ ] Search bar widget that shows up when you hover over a tooltip.
+[ ] Go to reference should popup a list of references, while swapping the whole screen as you scroll.
+[ ] Completion lists should have automatic triggers.
+[ ] Compilation should automatically plug plugins.
+[ ] Completion/hover panels should allow you to press tab to go to the next element and search for it.
+[ ] fixed_file and dyn_file should only call for updates if the File has actually changed at all.
+[ ] LSP option to show function arguments only when parenthesis is typed.
+[ ] Use the format-like modif to modify forms on the fly.
+[ ] `m` key could act on additional pairs if cursor is in specific chars.
+[ ] Option to show colored text on the txt! macro.
+
+PERFORMANCE IDEAS:
+[ ] Try not iterating over every character in scroll_vertically.

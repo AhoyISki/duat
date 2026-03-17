@@ -1,0 +1,4 @@
+contact_links:
+  - name: Discussion board
+    url: https://github.com/AhoyISki/duat/discussions
+    about: For any questions about how to use duat, post them here, instead of filing an issue.

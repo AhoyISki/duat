@@ -1,13 +1,76 @@
+[package]
+name = "duat"
+version = "0.9.1"
+edition = "2024"
+authors = ["AhoyISki"]
+description = "A modern, very customizable text editor, configured in rust."
+repository = "https://github.com/AhoyISki/duat"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "text", "application", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+include = ["src/**", "templates/*"]
+
 [workspace]
-members = [
-    "parsec-core",
-    "parsec-term",
-    "parsec-kak",
-]
+resolver = "3"
+members = ["crates/*"]
 
-exclude = [
-	"example",
-	"testing"
-]
+[lints.rust]
+missing_docs = "warn"
 
-resolver = "2"
+[lints.clippy]
+unit_arg = "allow"
+
+[dependencies]
+duat-core = { version = "0.9.0", path = "crates/duat-core" }
+dirs-next = "2.0.0"
+dissimilar = "1.0.10"
+
+# Possible Ui implementations (only terminal for now).
+duat-term = { version = "0.9.0", path = "crates/duat-term", optional = true }
+
+# Default plugins
+duat-base = { version = "0.9.0", path = "crates/duat-base" }
+duat-filetype = { version = "0.4.0", path = "crates/duat-filetype" }
+duatmode = { version = "0.9.0", path = "crates/duatmode" }
+duat-treesitter = { version = "0.5.0", path = "crates/duat-treesitter", optional = true }
+duat-match-pairs = { version = "0.4.0", path = "crates/duat-match-pairs", optional = true }
+
+# App dependencies
+clap = { version = "4.5.53", features = ["derive"], optional = true }
+convert_case = { version = "0.10.0", optional = true }
+notify = { version = "8.2.0", optional = true }
+globset = { version = "0.4.18", default-features = false, features = ["serde1"] }
+interprocess = "2.4.0"
+
+[target.'cfg(not(target_os = "android"))'.dependencies.arboard]
+version = "3.6.1"
+default-features = false
+features = ["wayland-data-control"]
+optional = true
+
+[target.'cfg(target_os = "android")'.dependencies.android_clipboard]
+version = "0.1.0"
+optional = true
+
+[features]
+default = ["term-ui", "treesitter", "app"]
+term-ui = ["dep:duat-term"]
+treesitter = ["dep:duat-treesitter", "dep:duat-match-pairs"]
+app = ["dep:clap", "dep:convert_case", "dep:notify", "dep:arboard", "dep:android_clipboard"]
+
+[[bin]]
+name = "duat"
+path = "bin/main.rs"
+
+[lib]
+name = "duat"
+path = "src/lib.rs"
+
+[profile.release]
+panic = "abort"
+
+[profile.lto-optimized]
+codegen-units = 1
+lto = true
+inherits = "release"

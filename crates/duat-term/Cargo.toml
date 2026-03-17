@@ -1,0 +1,21 @@
+[package]
+name = "duat-term"
+version = "0.9.0"
+edition = "2024"
+authors = ["AhoyISki"]
+description = "A frontend for Duat for the terminal"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-term"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "terminal", "text", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+
+[dependencies]
+duat-core = { version = "0.9.0", path = "../duat-core" }
+unicode-width = "0.2.2"
+kasuari = "0.4.11"
+
+[dependencies.crossterm]
+version = "0.29.0"
+default-features = false
+features = ["events", "windows"]

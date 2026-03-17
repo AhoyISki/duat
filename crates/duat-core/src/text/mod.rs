@@ -1,0 +1,1103 @@
+//! The primary data structure in Duat.
+//!
+//! This struct is responsible for all of the text that will be
+//! printed to the screen, as well as any modifications on it.
+//!
+//! The [`Text`] is a very versatile holder for characters, below is a
+//! list of some of its capabilities:
+//!
+//! - Be cheaply* edited at any point, due to its two [gap buffers].
+//! - Be [colored] in any way, at any point.
+//! - Have any arbitrary range concealed, that is, hidden from view,
+//!   but still in there.
+//! - Arbitrary [ghost text], that is, [`Text`] that shows up, but is
+//!   not actually part of the `Text`, i.e., it can be easily ignored
+//!   by external modifiers (like an LSP or tree-sitter) of the
+//!   buffer, without any special checks.
+//! - [Spacers] for even more advanced alignment (also implemented by
+//!   the [Ui]).
+//! - In the future, button ranges that can interact with the mouse.
+//!
+//! The [`Text`] struct is created in two different ways:
+//!
+//! - By calling [`Text::new`] or one of its [`From`] implementations;
+//! - By building it with the [`txt!`] macro;
+//!
+//! The first method is recommended if you want a [`Text`] that will
+//! be modified by input. This is often the case if your [`Widget`] is
+//! some sort of text box, chief of which is the [`Buffer`], which is
+//! the central `Widget` of every text editor.
+//!
+//! The second method is what should be used most of the time, as it
+//! lets you quickly create formatted [`Widget`]s/[`StatusLine`] parts
+//! in a very modular way:
+//!
+//! ```rust
+//! # duat_core::doc_duat!(duat);
+//! use duat::prelude::*;
+//!
+//! fn number_of_horses(count: usize) -> Text {
+//!     if count == 1 {
+//!         txt!("[horses.count]1[horses] horse")
+//!     } else {
+//!         txt!("[horses.count]{}[horses] horses", count)
+//!     }
+//! }
+//!
+//! fn inlined_number_of_horses(count: usize) -> Text {
+//!     txt!(
+//!         "[horses.count]{count} [horses]{}",
+//!         if count == 1 { "horse" } else { "horses" }
+//!     )
+//! }
+//! ```
+//!
+//! You can use this whenever you need to update a widget, for
+//! example, just create a new [`Text`] to printed to the screen.
+//!
+//! However, when recreating the entire [`Text`] with a [`txt!`]
+//! macro would be too expensive, you can use [`Text`] modifying
+//! functions:
+//!
+//! ```rust
+//! # duat_core::doc_duat!(duat);
+//! use duat::prelude::*;
+//!
+//! let mut prompted = txt!("[prompt]type a key: ");
+//! let end = prompted.len();
+//! prompted.replace_range(end..end, "a")
+//! ```
+//!
+//! A general rule of thumb for "too expensive" is this: if your
+//! [`Text`] can't scroll more than a few lines, it is not too
+//! expensive to rebuild. This way of editing the [`Text`] is mostly
+//! used on the [`Buffer`] widget and other textbox-like [`Widget`]s.
+//!
+//! [Spacers]: Spacer
+//! [gap buffers]: gap_buf::GapBuffer
+//! [colored]: crate::form::Form
+//! [ghost text]: Ghost
+//! [Ui]: crate::ui::traits::RawUi
+//! [`Buffer`]: crate::buffer::Buffer
+//! [`Widget`]: crate::ui::Widget
+//! [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
+//! [`Mode`]: crate::mode::Mode
+pub(crate) use crate::text::strs::StrsBuf;
+use crate::{
+    buffer::{Change, History},
+    context::Handle,
+    data::Pass,
+    mode::{Selection, Selections},
+    text::{
+        tags::{FwdTags, InnerTags, RevTags},
+        utils::implPartialEq,
+    },
+    ui::{SpawnId, Widget},
+};
+pub use crate::{
+    text::{
+        builder::{AsBuilderPart, Builder, BuilderPart},
+        iter::{FwdIter, RevIter, TextPart, TextPlace},
+        search::{Matches, RegexHaystack, RegexPattern},
+        strs::{Lines, Strs},
+        tags::{
+            Conceal, FormTag, Ghost, GhostId, RawTag, Spacer, SpawnTag, SwapChar, Tag, Tagger,
+            Tags, ToggleId,
+        },
+        utils::{Point, TextIndex, TextRange, TextRangeOrIndex, TwoPoints, utf8_char_width},
+    },
+    txt,
+};
+
+mod builder;
+mod iter;
+mod search;
+mod shift_list;
+mod strs;
+mod tags;
+mod utils;
+
+/// The text of a given [`Widget`].
+///
+/// The [`Text`] is the backbone of Duat. It is the thing responsible
+/// for everything that shows up on screen.
+///
+/// You can build a `Text` manually, by using [`Text::new`], or with
+/// some convenience, by using the [`txt!`] macro, making use of a
+/// [`Builder`].
+///
+/// [`Widget`]: crate::ui::Widget
+pub struct Text(Box<InnerText>);
+
+#[derive(Clone)]
+struct InnerText {
+    buf: StrsBuf,
+    tags: InnerTags,
+    selections: Selections,
+    has_unsaved_changes: bool,
+}
+
+impl Text {
+    ////////// Creation and Destruction of Text
+
+    /// Returns a new empty `Text`.
+    pub fn new() -> Self {
+        Self::from_parts(StrsBuf::new(String::new()), Selections::new_empty())
+    }
+
+    /// Returns a new empty [`Text`] with [`Selections`] enabled.
+    pub fn with_default_main_selection() -> Self {
+        Self::from_parts(
+            StrsBuf::new(String::new()),
+            Selections::new(Selection::default()),
+        )
+    }
+
+    /// Creates a `Text` from a [`String`].
+    pub(crate) fn from_parts(buf: StrsBuf, mut selections: Selections) -> Self {
+        let tags = InnerTags::new(buf.len());
+
+        let selections = if selections.iter().any(|(sel, _)| {
+            [Some(sel.caret()), sel.anchor()]
+                .into_iter()
+                .flatten()
+                .any(|point| point >= buf.end_point())
+        }) {
+            Selections::new(Selection::default())
+        } else {
+            selections.correct_all(&buf);
+            selections
+        };
+
+        Self(Box::new(InnerText {
+            buf,
+            tags,
+            selections,
+            has_unsaved_changes: false,
+        }))
+    }
+
+    /// Returns a [`Builder`] for [`Text`].
+    ///
+    /// This builder can be used to iteratively create text, by
+    /// assuming that the user wants no* [`Tag`] overlap, and that
+    /// they want to construct the [`Text`] in [`Tag`]/content pairs.
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    /// let mut builder = Text::builder();
+    /// ```
+    pub fn builder() -> Builder {
+        Builder::new()
+    }
+
+    ////////// Querying functions
+
+    /// Whether or not there are any characters in the [`Text`],
+    /// besides the final `b'\n'`.
+    ///
+    /// # Note
+    ///
+    /// This does not check for tags, so with a [`Ghost`],
+    /// there could actually be a "string" of characters on the
+    /// [`Text`], it just wouldn't be considered real "text". If you
+    /// want to check for the `InnerTags`'b possible emptyness as
+    /// well, see [`Text::is_empty_empty`].
+    pub fn is_empty(&self) -> bool {
+        let [s0, s1] = self.to_array();
+        (s0 == "\n" && s1.is_empty()) || (s0.is_empty() && s1 == "\n")
+    }
+
+    /// Whether the [`Strs`] and `InnerTags` are empty.
+    ///
+    /// This ignores the last `'\n'` in the [`Text`], since it is
+    /// always there no matter what.
+    ///
+    /// If you only want to check for the [`Strs`], ignoring possible
+    /// [`Ghost`]s, see [`is_empty`].
+    ///
+    /// [`is_empty`]: Strs::is_empty
+    pub fn is_empty_empty(&self) -> bool {
+        self.0.buf.is_empty() && self.0.tags.is_empty()
+    }
+
+    /// The parts that make up a [`Text`].
+    ///
+    /// This function is used when you want to [insert]/[remove]
+    /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
+    /// [`Tags`]), while still being able to read from the
+    /// [`Strs`] and [`Selections`].
+    ///
+    /// [insert]: Tags::insert
+    /// [remove]: Tags::remove
+    pub fn parts(&mut self) -> TextParts<'_> {
+        TextParts {
+            strs: &self.0.buf,
+            tags: self.0.tags.tags(),
+            selections: &self.0.selections,
+        }
+    }
+
+    /// Returns the [`TextMut`] for this `Text`.
+    ///
+    /// This function is used by [`Widget::text_mut`], since that
+    /// function is not supposed to allow the user to swap the
+    /// [`Text`], which could break the history of the [`Buffer`].
+    ///
+    /// For the `Buffer` specifically, it also attaches that `Buffer`
+    /// s `History` to it, which lets one undo and redo things.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn as_mut(&mut self) -> TextMut<'_> {
+        TextMut { text: self, history: None }
+    }
+
+    ////////// Tag related query functions
+
+    /// The maximum [points] in the `at`th byte.
+    ///
+    /// This point is essentially the [point] at that byte, plus the
+    /// last possible [`Point`] of any [`Ghost`]s in that
+    /// position.
+    ///
+    /// [points]: TwoPoints
+    /// [point]: Strs::point_at_byte
+    #[track_caller]
+    pub fn ghost_max_points_at(&self, b: usize) -> TwoPoints {
+        let point = self.point_at_byte(b);
+        if let Some(total_ghost) = self.0.tags.ghosts_total_at(point.byte()) {
+            TwoPoints::new(point, total_ghost)
+        } else {
+            TwoPoints::new_after_ghost(point)
+        }
+    }
+
+    /// The [points] at the end of the text.
+    ///
+    /// This will essentially return the [last point] of the text,
+    /// alongside the last possible [`Point`] of any [`Ghost`] at the
+    /// end of the text.
+    ///
+    /// [points]: TwoPoints
+    /// [last point]: Strs::len
+    pub fn len_points(&self) -> TwoPoints {
+        self.ghost_max_points_at(self.len())
+    }
+
+    /// Points visually after the [`TwoPoints`].
+    ///
+    /// If the [`TwoPoints`] in question is concealed, treats the
+    /// next visible character as the first character, and returns
+    /// the points of the next visible character.
+    ///
+    /// This method is useful if you want to iterator reversibly
+    /// right after a certain point, thus including the character
+    /// of said point.
+    #[track_caller]
+    pub fn points_after(&self, tp: TwoPoints) -> Option<TwoPoints> {
+        self.iter_fwd(tp)
+            .filter_map(|item| item.part.as_char().map(|_| item.points()))
+            .chain([self.len_points()])
+            .nth(1)
+    }
+
+    /// The visual start of the line.
+    ///
+    /// This point is defined not by where the line actually begins,
+    /// but by where the last '\n' was located. For example, if
+    /// [`Tag`]s create ghost text or omit text from multiple
+    /// different lines, this point may differ from where in the
+    /// [`Text`] the real line actually begins.
+    ///
+    /// The `skip` value is how many `\n` should be skipped before
+    /// returning.
+    pub fn visual_line_start(&self, mut points: TwoPoints, skip: usize) -> TwoPoints {
+        let mut iter = self.iter_rev(points).peekable();
+        let mut total_seen = 0;
+        while let Some(peek) = iter.peek() {
+            match peek.part {
+                TextPart::Char('\n') => {
+                    if total_seen == skip {
+                        return points;
+                    } else {
+                        total_seen += 1;
+                    }
+                }
+                TextPart::Char(_) => points = iter.next().unwrap().points(),
+                _ => _ = iter.next(),
+            }
+        }
+
+        points
+    }
+
+    /// Gets the [`Ghost`] of a given [`GhostId`]
+    pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
+        self.0.tags.get_ghost(id)
+    }
+
+    ////////// Modification functions
+
+    /// Replaces a [range] in the `Text`.
+    ///
+    /// # [`TextRange`] behavior:
+    ///
+    /// If you give a single [`usize`]/[`Point`], it will be
+    /// interpreted as a range from.
+    ///
+    /// [range]: TextRange
+    pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
+        let range = range.to_range(self.len());
+        let (start, end) = (
+            self.point_at_byte(range.start),
+            self.point_at_byte(range.end),
+        );
+        let change = Change::new(edit, start..end, self);
+
+        self.0.buf.increment_version();
+        self.apply_change(0, change.as_ref());
+    }
+
+    /// Merges `String`s with the body of text, given a range to
+    /// replace.
+    fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
+        self.0.buf.apply_change(change);
+        self.0.tags.transform(
+            change.start().byte()..change.taken_end().byte(),
+            change.added_end().byte(),
+        );
+
+        self.0.has_unsaved_changes = true;
+        self.0.selections.apply_change(guess_i, change)
+    }
+
+    /// Inserts a `Text` into this `Text`, in a specific [`Point`].
+    pub fn insert_text(&mut self, p: impl TextIndex, text: &Text) {
+        let b = p.to_byte_index().min(self.last_point().byte());
+        let cap = text.last_point().byte();
+
+        let added_str = text.0.buf[..cap].to_string();
+        let point = self.point_at_byte(b);
+        let change = Change::str_insert(&added_str, point);
+        self.apply_change(0, change);
+
+        self.0.tags.insert_tags(point, cap, &text.0.tags);
+    }
+
+    fn apply_and_process_changes<'a>(
+        &mut self,
+        changes: impl ExactSizeIterator<Item = Change<'a, &'a str>>,
+    ) {
+        self.0.selections.clear();
+
+        let len = changes.len();
+        for (i, change) in changes.enumerate() {
+            self.apply_change(0, change);
+
+            let start = change.start().min(self.last_point());
+            let added_end = match change.added_str().chars().next_back() {
+                Some(last) => change.added_end().rev(last),
+                None => start,
+            };
+
+            let selection = Selection::new(added_end, (start != added_end).then_some(start));
+            self.0.selections.insert(i, selection, i == len - 1);
+        }
+    }
+
+    ////////// Writing functions
+
+    /// Writes the contents of this `Text` to a [writer].
+    ///
+    /// [writer]: std::io::Write
+    pub fn save_on(&mut self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
+        self.0.has_unsaved_changes = false;
+
+        let [s0, s1] = self.0.buf.slices(..);
+        Ok(writer.write(s0)? + writer.write(s1)?)
+    }
+
+    /// Wether or not the content has changed since the last [save].
+    ///
+    /// Returns `true` only if the actual buf of the [`Text`] have
+    /// been changed, ignoring [`Tag`]s and all the other things,
+    /// since those are not written to the filesystem.
+    ///
+    /// [save]: Text::save_on
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.0.has_unsaved_changes
+    }
+
+    ////////// Tag addition/deletion functions
+
+    /// Inserts a [`Tag`] at the given position.
+    #[track_caller]
+    pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.tags.insert_inner(tagger, idx, tag, false)
+    }
+
+    /// Like [`insert_tag`], but does it after other [`Tag`]s with the
+    /// same priority.
+    ///
+    /// [`insert_tag`]: Self::insert_tag
+    pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.0.tags.insert_inner(tagger, idx, tag, true)
+    }
+
+    /// Removes the [`Tag`]s of a [`Tagger`] from a region.
+    ///
+    /// The input can either be a byte index, a [`Point`], or a
+    /// [range] of byte indices/[`Point`]s. If you are implementing a
+    /// [`Buffer`] updating hook through [`BufferUpdated`], it can be
+    /// very useful to just "undo" all of the [`Tag`] additions done
+    /// by previous updates, you can do that efficiently with this
+    /// function:
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    /// setup_duat!(setup);
+    ///
+    /// fn setup() {
+    ///     let tagger = Tagger::new();
+    ///
+    ///     hook::add::<BufferUpdated>(move |pa, handle| {
+    ///         let buf = handle.write(pa);
+    ///         // Removing on the whole Buffer
+    ///         buf.text_mut().remove_tags(tagger, ..);
+    ///         // Logic to add Tags with tagger...
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// [range]: std::ops::RangeBounds
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len() + 1);
+        self.0.tags.remove_from(tagger, range)
+    }
+
+    /// Just like [`Text::remove_tags`] but excludes ends on the start
+    /// and starts on the end.
+    ///
+    /// In the regular [`remove_tags`] function, if you remove from a
+    /// range `x..y`, tag ranges that end in `x` or start in `y -
+    /// 1` (exclusive range) will also be removed.
+    ///
+    /// If you don't want that to happen, you can use this function
+    /// instead.
+    ///
+    /// [`remove_tags`]: Self::remove_tags
+    pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len() + 1);
+        self.0.tags.remove_from_excl(tagger, range)
+    }
+
+    /// Like [`Text::remove_tags`], but removes base on a predicate.
+    ///
+    /// If the function returns `true`, then the tag is removed. Note
+    /// that every [`RawTag`] in here is guaranteed to have the same
+    /// [`Tagger`] as the one passed to the function, so you don't
+    /// need to chack for that.
+    pub fn remove_tags_if(
+        &mut self,
+        tagger: Tagger,
+        from: impl TextRangeOrIndex,
+        filter: impl FnMut(usize, RawTag) -> bool,
+    ) {
+        let range = from.to_range(self.len() + 1);
+        self.0.tags.remove_from_if(tagger, range, filter)
+    }
+
+    /// Removes all [`Tag`]s.
+    ///
+    /// Refrain from using this function on [`Buffer`]s, as there may
+    /// be other [`Tag`] providers, and you should avoid messing
+    /// with their tags.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn clear_tags(&mut self) {
+        self.0.tags = InnerTags::new(self.0.buf.len());
+    }
+
+    /////////// Internal synchronization functions
+
+    /// Prepares the `Text` for reloading, to be used on [`Buffer`]s.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub(crate) fn prepare_for_reloading(&mut self) {
+        self.clear_tags();
+    }
+
+    /////////// Iterator methods
+
+    /// A forward iterator of the [chars and tags] of the [`Text`].
+    ///
+    /// [chars and tags]: TextPart
+    #[track_caller]
+    pub fn iter_fwd(&self, at: TwoPoints) -> FwdIter<'_> {
+        FwdIter::new_at(self, at, false)
+    }
+
+    /// A reverse iterator of the [chars and tags] of the [`Text`]
+    ///
+    /// [chars and tags]: TextPart
+    pub fn iter_rev(&self, at: TwoPoints) -> RevIter<'_> {
+        RevIter::new_at(self, at)
+    }
+
+    /// A forward iterator over the [`Tag`]s of the [`Text`].
+    ///
+    /// This iterator will consider some [`Tag`]s before `b`, since
+    /// their ranges may overlap with `b`.
+    ///
+    /// The amount of tags to look for behind depeds on the internal
+    /// `min_len` factor. You can override by providing a lookaround,
+    /// which will tell Duat how many `Tag`s to look behind. If you
+    /// set it to `Some(0)`, lookaround will be disabled.
+    ///
+    /// # Note
+    ///
+    /// Duat works fine with [`Tag`]s in the middle of a codepoint,
+    /// but external utilizers may not, so keep that in mind.
+    pub fn tags_fwd(&self, b: usize, lookaround: Option<usize>) -> FwdTags<'_> {
+        self.0.tags.fwd_at(b, lookaround)
+    }
+
+    /// An reverse iterator over the [`Tag`]s of the [`Text`].
+    ///
+    /// This iterator will consider some `Tag`s ahead of `b`, since
+    /// their ranges may overlap with `b`.
+    ///
+    /// The amount of tags to look for ahead depeds on the internal
+    /// `min_len` factor. You can override by providing a lookaround,
+    /// which will tell Duat how many `Tag`s to look ahead. If you set
+    /// it to `Some(0)`, lookaround will be disabled.
+    ///
+    /// # Note
+    ///
+    /// Duat works fine with [`Tag`]s in the middle of a codepoint,
+    /// but external utilizers may not, so keep that in mind.
+    pub fn tags_rev(&self, b: usize, lookaround: Option<usize>) -> RevTags<'_> {
+        self.0.tags.rev_at(b, lookaround)
+    }
+
+    /// A forward [`Iterator`] over the [`RawTag`]s.
+    ///
+    /// This [`Iterator`] does not take into account [`Tag`] ranges
+    /// that intersect with the starting point, unlike
+    /// [`Text::tags_fwd`]
+    pub fn raw_tags_fwd(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
+        self.0.tags.raw_fwd_at(b)
+    }
+
+    /// A reverse [`Iterator`] over the [`RawTag`]s.
+    ///
+    /// This [`Iterator`] does not take into account [`Tag`] ranges
+    /// that intersect with the starting point, unlike
+    /// [`Text::tags_rev`]
+    pub fn raw_tags_rev(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
+        self.0.tags.raw_rev_at(b)
+    }
+
+    /// The [`Selections`] printed to this `Text`, if they exist.
+    pub fn selections(&self) -> &Selections {
+        &self.0.selections
+    }
+
+    /// A mut reference to this `Text`'s [`Selections`] if they
+    /// exist.
+    pub fn selections_mut(&mut self) -> &mut Selections {
+        &mut self.0.selections
+    }
+
+    /// Gets the main [`Selection`], if there is one.
+    ///
+    /// If you want a method that doesn't return an [`Option`] (for
+    /// convenience), see [`Text::main_sel`].
+    pub fn get_main_sel(&self) -> Option<&Selection> {
+        self.0.selections.get_main()
+    }
+
+    /// Gets the main [`Selection`].
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if there are no `Selection`s. If you
+    /// want a non-panicking method, see [`Text::get_main_sel`].
+    #[track_caller]
+    pub fn main_sel(&self) -> &Selection {
+        self.0.selections.main()
+    }
+
+    /// A list of all [`SpawnId`]s that belong to this `Text`
+    pub fn get_spawned_ids(&self) -> impl Iterator<Item = SpawnId> {
+        self.0.tags.get_spawned_ids()
+    }
+
+    /// Returns a [`String`], but without the `\n` at the end of the
+    /// `Text`.
+    ///
+    /// Normally, when you call `Text::to_string`, (which is actually
+    /// [deref'd] into [`Strs::to_string`]), it will also include the
+    /// last `\n` character, which is always a part of the `Text`
+    /// no matter what. This function doesn't do that.
+    ///
+    /// [deref'd]: https://doc.rust-lang.org/std/ops/trait.Deref.html
+    /// [`Strs::to_string`]: ToString::to_string
+    pub fn to_string_no_last_nl(&self) -> String {
+        let mut string = self.to_string();
+        string.pop();
+        string
+    }
+
+    /// A struct representing how many changes took place since the
+    /// creation of this `Text`
+    ///
+    /// This struct tracks all [`Change`]s and [`Tag`]
+    /// additions/removals, giving you information about wether this
+    /// `Text` has changed, when comparing this to previous
+    /// [`TextVersion`]s of the same `Text`.
+    ///
+    /// This _does_ also include things like undoing and redoing. This
+    /// is done to keep track of all changes that took place, even to
+    /// previously extant states of the text.
+    pub fn version(&self) -> TextVersion {
+        let (tags, meta_tags) = self.0.tags.versions();
+
+        TextVersion {
+            strs: self.0.buf.version(),
+            tags,
+            meta_tags,
+        }
+    }
+
+    /// Take the reloaded parts off of this `Text`.
+    pub(crate) fn take_reload_parts(&mut self) -> (StrsBuf, Selections) {
+        (
+            std::mem::take(&mut self.0.buf),
+            std::mem::replace(&mut self.0.selections, Selections::new_empty()),
+        )
+    }
+}
+
+impl std::ops::Deref for Text {
+    type Target = Strs;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.buf
+    }
+}
+
+/// A struct that allows for [`Text`] modifications from the
+/// [`Widget::text_mut`] function.
+///
+/// It is pretty much identical to `&mut Text`, the difference is that
+/// you can't reassign it to a new [`Text`]. This is done in order to
+/// prevent radical changes to the `Text` of the [`Buffer`] from the
+/// outside.
+///
+/// [`Buffer`]: crate::buffer::Buffer
+#[derive(Debug)]
+pub struct TextMut<'t> {
+    text: &'t mut Text,
+    history: Option<&'t mut History>,
+}
+
+impl<'t> TextMut<'t> {
+    /// Replaces a [range] in the `Text`.
+    ///
+    /// # [`TextRange`] behavior:
+    ///
+    /// If you give a single [`usize`]/[`Point`], it will be
+    /// interpreted as a range from.
+    ///
+    /// [range]: TextRange
+    pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
+        let range = range.to_range(self.len());
+        let (start, end) = (
+            self.point_at_byte(range.start),
+            self.point_at_byte(range.end),
+        );
+        let change = Change::new(edit, start..end, self);
+
+        self.text.0.buf.increment_version();
+        self.text.apply_change(0, change.as_ref());
+        self.history.as_mut().map(|h| h.apply_change(None, change));
+    }
+
+    /// Applies a [`Change`] to the `Text`.
+    pub(crate) fn apply_change(
+        &mut self,
+        guess_i: Option<usize>,
+        change: Change<'static, String>,
+    ) -> (Option<usize>, usize) {
+        self.text.0.buf.increment_version();
+        let selections_taken = self
+            .text
+            .apply_change(guess_i.unwrap_or(0), change.as_ref());
+        let history = self.history.as_mut();
+        let insertion_i = history.map(|h| h.apply_change(guess_i, change));
+        (insertion_i, selections_taken)
+    }
+
+    ////////// Functions for Tag modifications
+
+    /// The parts that make up a [`Text`].
+    ///
+    /// This function is used when you want to [insert]/[remove]
+    /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
+    /// [`Tags`]), while still being able to read from the
+    /// [`Strs`] and [`Selections`].
+    ///
+    /// [insert]: Tags::insert
+    /// [remove]: Tags::remove
+    pub fn parts(self) -> TextParts<'t> {
+        self.text.parts()
+    }
+
+    /// Inserts a [`Tag`] at the given position.
+    pub fn insert_tag<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.text.insert_tag(tagger, idx, tag)
+    }
+
+    /// Like [`insert_tag`], but does it after other [`Tag`]s with the
+    /// same priority.
+    ///
+    /// [`insert_tag`]: Self::insert_tag
+    pub fn insert_tag_after<Idx>(&mut self, tagger: Tagger, idx: Idx, tag: impl Tag<Idx>) {
+        self.text.insert_tag_after(tagger, idx, tag)
+    }
+
+    /// Removes the [`Tag`]s of a [`Tagger`] from a region.
+    ///
+    /// The input can either be a byte index, a [`Point`], or a
+    /// [range] of byte indices/[`Point`]s. If you are implementing a
+    /// [`Buffer`] updating hook through [`BufferUpdated`], it can be
+    /// very useful to just "undo" all of the [`Tag`] additions done
+    /// by previous updates, you can do that efficiently with this
+    /// function:
+    ///
+    /// ```rust
+    /// # duat_core::doc_duat!(duat);
+    /// use duat::prelude::*;
+    /// setup_duat!(setup);
+    ///
+    /// fn setup() {
+    ///     let tagger = Tagger::new();
+    ///
+    ///     hook::add::<BufferUpdated>(move |pa, handle| {
+    ///         let buf = handle.write(pa);
+    ///         // Removing on the whole Buffer
+    ///         buf.text_mut().remove_tags(tagger, ..);
+    ///         // Logic to add Tags with tagger...
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// [range]: std::ops::RangeBounds
+    /// [`Buffer`]: crate::buffer::Buffer
+    /// [`BufferUpdated`]: crate::hook::BufferUpdated
+    pub fn remove_tags(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len() + 1);
+        self.text.remove_tags(tagger, range)
+    }
+
+    /// Just like [`TextMut::remove_tags`] but excludes ends on the
+    /// start and starts on the end.
+    ///
+    /// In the regular [`remove_tags`] function, if you remove from a
+    /// range `x..y`, tag ranges that end in `x` or start in `y -
+    /// 1` (exclusive range) will also be removed.
+    ///
+    /// If you don't want that to happen, you can use this function
+    /// instead.
+    ///
+    /// [`remove_tags`]: Self::remove_tags
+    pub fn remove_tags_excl(&mut self, tagger: Tagger, range: impl TextRangeOrIndex) {
+        let range = range.to_range(self.len() + 1);
+        self.text.remove_tags_excl(tagger, range)
+    }
+
+    /// Like [`TextMut::remove_tags`], but removes base on a
+    /// predicate.
+    ///
+    /// If the function returns `true`, then the tag is removed. Note
+    /// that every [`RawTag`] in here is guaranteed to have the same
+    /// [`Tagger`] as the one passed to the function, so you don't
+    /// need to chack for that.
+    pub fn remove_tags_if(
+        &mut self,
+        tagger: Tagger,
+        from: impl TextRangeOrIndex,
+        filter: impl FnMut(usize, RawTag) -> bool,
+    ) {
+        let range = from.to_range(self.len() + 1);
+        self.text.remove_tags_if(tagger, range, filter)
+    }
+
+    /// Removes all [`Tag`]s.
+    ///
+    /// Refrain from using this function on [`Buffer`]s, as there may
+    /// be other [`Tag`] providers, and you should avoid messing
+    /// with their tags.
+    ///
+    /// [`Buffer`]: crate::buffer::Buffer
+    pub fn clear_tags(&mut self) {
+        self.text.clear_tags();
+    }
+
+    ////////// Internal methods
+
+    /// Updates bounds, so that [`Tag`] ranges can visibly cross the
+    /// screen.
+    ///
+    /// This is used in order to allow for very long [`Tag`] ranges
+    /// (say, a [`Form`] being applied on the range `3..999`) to show
+    /// up properly without having to lookback a bazillion [`Tag`]s
+    /// which could be in the way.
+    ///
+    /// [`Form`]: crate::form::Form
+    pub(crate) fn update_bounds(&mut self) {
+        self.text.0.tags.update_bounds();
+    }
+
+    /// Functions to add  all [`Widget`]s that were spawned in this
+    /// `Text`.
+    ///
+    /// This function should only be called right before printing,
+    /// where it is "known" that `Widget`s can no longer get rid of
+    /// the [`SpawnTag`]s
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    pub(crate) fn get_widget_spawns(
+        &mut self,
+    ) -> Vec<Box<dyn FnOnce(&mut Pass, usize, Handle<dyn Widget>) + Send>> {
+        std::mem::take(&mut self.text.0.tags.spawn_fns.0)
+    }
+
+    ////////// History functions
+
+    /// Undoes the last moment, if there was one.
+    pub fn undo(&mut self) {
+        if let Some(history) = &mut self.history
+            && let Some((changes, saved_moment)) = history.move_backwards()
+        {
+            self.text.apply_and_process_changes(changes);
+            self.text.0.buf.increment_version();
+            self.text.0.has_unsaved_changes = !saved_moment;
+        }
+    }
+
+    /// Redoes the last moment in the history, if there is one.
+    pub fn redo(&mut self) {
+        if let Some(history) = &mut self.history
+            && let Some((changes, saved_moment)) = history.move_forward()
+        {
+            self.text.apply_and_process_changes(changes);
+            self.text.0.buf.increment_version();
+            self.text.0.has_unsaved_changes = !saved_moment;
+        }
+    }
+
+    /// Finishes the current moment and adds a new one to the history.
+    pub fn new_moment(&mut self) {
+        if let Some(h) = &mut self.history {
+            h.new_moment()
+        }
+    }
+
+    /// Attaches a history to this `TextMut`.
+    pub(crate) fn attach_history(&mut self, history: &'t mut History) {
+        self.history = Some(history);
+    }
+
+    ////////// Selections functions
+
+    /// A mut reference to this `Text`'s [`Selections`] if they
+    /// exist.
+    pub fn selections_mut(self) -> &'t mut Selections {
+        &mut self.text.0.selections
+    }
+}
+
+impl<'t> std::ops::Deref for TextMut<'t> {
+    type Target = Text;
+
+    fn deref(&self) -> &Self::Target {
+        self.text
+    }
+}
+
+impl AsRef<Strs> for Text {
+    fn as_ref(&self) -> &Strs {
+        &self.0.buf
+    }
+}
+
+/// The Parts that make up a [`Text`].
+pub struct TextParts<'a> {
+    /// The [`Strs`] of the whole [`Text`].
+    pub strs: &'a Strs,
+    /// The [`Tags`] of the [`Text`].
+    ///
+    /// This, unlike the previous field, allows mutation in the form
+    /// of [adding] and [removing] [`Tag`]s.
+    ///
+    /// [adding]: Tags::insert
+    /// [removing]: Tags::remove
+    pub tags: Tags<'a>,
+    /// The [`Selections`] of the [`Text`].
+    ///
+    /// For most [`Widget`]s, there should be no [`Selection`], since
+    /// they are just visual.
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    pub selections: &'a Selections,
+}
+
+impl<'a> TextParts<'a> {
+    /// A struct representing how many changes took place since the
+    /// creation of this `Text`
+    ///
+    /// This struct tracks all [`Change`]s and [`Tag`]
+    /// additions/removals, giving you information about wether this
+    /// `Text` has changed, when comparing this to previous
+    /// [`TextVersion`]s of the same `Text`.
+    ///
+    /// This _does_ also include things like undoing and redoing. This
+    /// is done to keep track of all changes that took place, even to
+    /// previously extant states of the text.
+    pub fn version(&self) -> TextVersion {
+        let (tags, meta_tags) = self.tags.versions();
+
+        TextVersion {
+            strs: self.strs.version(),
+            tags,
+            meta_tags,
+        }
+    }
+}
+
+/// A representation of how many changes took place in a [`Text`].
+///
+/// The purpose of this struct is merely to be compared with
+/// previously acquired instances of itself, to just quickly check if
+/// certain properties of the `Text` have changed.
+///
+/// Note that this is a [`Text`] agnostic struct, comparing the
+/// `TextVersion`s from two different `Text`s is pointless.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextVersion {
+    /// The current version of the [`Strs`].
+    ///
+    /// Any change to the `Strs`, even undoing, will incur a version
+    /// increment.
+    pub strs: u64,
+    /// the current version of [`Tags`].
+    ///
+    /// Any change to the `Tags`, be it addition or removal of
+    /// [`Tag`]s, will incur a version increment.
+    pub tags: u64,
+    /// The current version of meta [`Tag`]s.
+    ///
+    /// Meta tags are those that can change what is even shown on the
+    /// screen, all else being equal. Any addition or removal of meta
+    /// `Tag`s will incur a version increment.
+    pub meta_tags: u64,
+}
+
+impl TextVersion {
+    /// Wether there have been _any_ changes to the [`Text`] since
+    /// this previous instance.
+    pub fn has_changed_since(&self, other: Self) -> bool {
+        self.strs > other.strs || self.tags > other.tags || self.meta_tags > other.meta_tags
+    }
+
+    /// Wether the [`Strs`] have changed since this previous instance.
+    pub fn strs_have_changed_since(&self, other: Self) -> bool {
+        self.strs > other.strs
+    }
+
+    /// Wether the [`Tags`] have changed since this previous instance.
+    ///
+    /// Note that this only tracks if [`Tag`]s have been
+    /// added/removed. So if, for example, you [replace a range] where
+    /// no `Tag`s existed, this would return `false`, even though the
+    /// position of `Tag`s have changed internally.
+    ///
+    /// [replace a range]: Text::replace_range
+    pub fn tags_have_changed_since(&self, other: Self) -> bool {
+        self.tags > other.tags
+    }
+
+    /// Wether this [`Text`] has "structurally changed" since this
+    /// previous instance.
+    ///
+    /// A `Text` has structurally changed when printing it from the
+    /// same point could result in a different characters being
+    /// printed. This not only happens when the [`Strs`] change, but
+    /// also with certain [`Tag`]s, like [`Ghost`] and [`Conceal`],
+    /// which also add and remove characters to be printed.
+    ///
+    /// These `Tag`s are called "meta tags" internally, since they
+    /// change the very structure of what `Text` has been printed.
+    pub fn has_structurally_changed_since(&self, other: Self) -> bool {
+        self.strs > other.strs || self.meta_tags > other.meta_tags
+    }
+}
+
+////////// Standard impls
+
+impl Default for Text {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: ToString> From<T> for Text {
+    fn from(value: T) -> Self {
+        Self::from_parts(StrsBuf::new(value.to_string()), Selections::new_empty())
+    }
+}
+
+impl std::fmt::Debug for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Text")
+            .field("buf", &self.0.buf)
+            .field("tags", &self.0.tags)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for Text {
+    fn clone(&self) -> Self {
+        let mut text = Self(self.0.clone());
+        if text.bytes().next_back().is_none_or(|b| b != b'\n') {
+            let end = text.end_point();
+            text.apply_change(0, Change::str_insert("\n", end));
+        }
+
+        text
+    }
+}
+
+impl Eq for Text {}
+implPartialEq!(text: Text, other: Text,
+    text.0.buf == other.0.buf && text.0.tags == other.0.tags
+);
+implPartialEq!(text: Text, other: &str, text.0.buf == *other);
+implPartialEq!(text: Text, other: String, text.0.buf == *other);
+implPartialEq!(str: &str, text: Text, text.0.buf == **str);
+implPartialEq!(str: String, text: Text, text.0.buf == **str);
+
+impl Eq for TextMut<'_> {}
+implPartialEq!(text_mut: TextMut<'_>, other: TextMut<'_>, text_mut.text == other.text);
+implPartialEq!(text_mut: TextMut<'_>, other: Text, text_mut.text == other);
+implPartialEq!(text_mut: TextMut<'_>, other: &str, text_mut.text.0.buf == *other);
+implPartialEq!(text_mut: TextMut<'_>, other: String, text_mut.text.0.buf == *other);
+implPartialEq!(text: Text, other: TextMut<'_>, *text == other.text);
+implPartialEq!(str: &str, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);
+implPartialEq!(str: String, text_mut: TextMut<'_>, text_mut.text.0.buf == **str);

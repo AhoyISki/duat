@@ -1,0 +1,20 @@
+[package]
+# Don't change the package's name. Duat depends on it.
+name = "duat"
+version = "1.0.0"
+edition = "2024"
+# Please don't post your configuration crate to crates.io.
+# If you want to keep it somewhere, try a repository website,
+# like github or gitlab
+publish = false
+
+[profile.release]
+split-debuginfo = "unpacked"
+incremental = true
+lto = "off"
+
+[dependencies.duat]
+git = "https://github.com/AhoyISki/duat"
+version = "0.9.0"
+default-features = false
+features = ["term-ui", "treesitter"]
