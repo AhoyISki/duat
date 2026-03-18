@@ -23,6 +23,7 @@ pub use self::{
         CommandsCompletions, Completions, CompletionsBuilder, CompletionsKind, CompletionsList,
         CompletionsProvider,
     },
+    gutter::{GetGuttered, Gutter, GutterEntryBuilder, GutteredBuffer, Gutterer},
     info::Info,
     line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookOpts},
@@ -33,6 +34,7 @@ pub use self::{
 };
 
 mod completions;
+mod gutter;
 mod info;
 mod line_numbers;
 mod log_book;

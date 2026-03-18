@@ -240,7 +240,7 @@ fn default_fmt(rec: Record) -> Text {
 fn default_get_mask(rec: Record) -> &'static str {
     match rec.level() {
         context::Level::Error => "error",
-        context::Level::Warn => "warn",
+        context::Level::Warn => "warning",
         context::Level::Info => "info",
         context::Level::Debug => "debug",
         context::Level::Trace => unreachable!(),

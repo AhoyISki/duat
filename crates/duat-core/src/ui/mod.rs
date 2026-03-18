@@ -669,7 +669,7 @@ pub trait PushTarget {
     fn try_downcast<W: Widget>(&self) -> Option<Handle<W>>;
 }
 
-impl<W: Widget + ?Sized> PushTarget for Handle<W> {
+impl<W: Widget> PushTarget for Handle<W> {
     #[doc(hidden)]
     fn push_inner<PW: Widget>(&self, pa: &mut Pass, widget: PW, specs: PushSpecs) -> Handle<PW> {
         self.push_inner_widget(pa, widget, specs)

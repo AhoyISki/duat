@@ -74,15 +74,11 @@ pub fn setup_hooks() {
             }
 
             TRACKER.register_buffer(handle.write(pa));
-            let (parser, buffer) = PARSERS.register(
-                pa,
-                handle,
-                Parser {
-                    uri,
-                    servers: servers.clone(),
-                    tokens: BufferTokens::default(),
-                },
-            );
+            let (parser, buffer) = PARSERS.register(pa, handle, Parser {
+                uri,
+                servers: servers.clone(),
+                tokens: BufferTokens::default(),
+            });
 
             for server in servers {
                 server.send_semantic_tokens_request(buffer.path(), handle, parser);
@@ -131,7 +127,7 @@ pub fn setup_hooks() {
                         .collect(),
                 };
                 server.send_notification::<DidChangeTextDocument>(notification);
-                
+
                 server.send_semantic_tokens_request(parts.path(), handle, parser);
             }
         }

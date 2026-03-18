@@ -232,6 +232,10 @@ impl LineNumbersOpts {
     }
 
     /// Push the [`LineNumbers`] to a [`Handle`]
+    ///
+    /// The [`Widget`] will be pushed on the "outside". That is, if
+    /// there are other widgets pushed on the buffer, this one will be
+    /// placed around them.
     pub fn push_on(self, pa: &mut Pass, handle: &Handle) -> Handle<LineNumbers> {
         let mut line_numbers = LineNumbers {
             buffer: handle.clone(),

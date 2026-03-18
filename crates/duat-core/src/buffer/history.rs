@@ -699,7 +699,6 @@ impl BufferTracker {
             .unwrap();
 
         if unread.has_been_read {
-            unread.has_been_read = false;
             unread.moment = Moment::new();
         } else {
             unread.has_been_read = true;

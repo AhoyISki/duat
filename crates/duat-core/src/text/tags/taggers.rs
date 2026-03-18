@@ -131,7 +131,9 @@ impl TaggerExtents {
     /// Which ranges should be checked, given a removal of this
     /// [`Range`]
     ///
-    /// This function should be used when you don't know if the `RawTag`s in question will actually be removed, so you can't remove their respective extents.
+    /// This function should be used when you don't know if the
+    /// `RawTag`s in question will actually be removed, so you can't
+    /// remove their respective extents.
     pub fn iter_over(&self, range: Range<usize>, tagger: Tagger) -> Vec<Range<usize>> {
         const MAX_FOR_JOINING: usize = 32;
 

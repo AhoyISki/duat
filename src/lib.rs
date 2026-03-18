@@ -595,7 +595,7 @@ pub mod prelude {
             Text, txt,
         },
         ui::{self, Area, Widget},
-        widgets::*,
+        widgets::{self, status},
     };
 
     /// Adds a plugin to Duat

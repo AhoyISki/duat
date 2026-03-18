@@ -187,7 +187,7 @@ mod global {
         WINDOWS.get().unwrap()
     }
 
-	/// Try to get the [`Windows`].
+    /// Try to get the [`Windows`].
     pub(crate) fn get_windows() -> Option<&'static Windows> {
         WINDOWS.get().cloned()
     }

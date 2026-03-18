@@ -161,7 +161,7 @@ impl Plugin for DuatBase {
         // Setup for the LogBook
         form::set_weak("default.LogBook", Form::new().on_dark_grey());
         form::set_weak("log_book.error", Form::mimic("default.error"));
-        form::set_weak("log_book.warn", Form::mimic("default.warn"));
+        form::set_weak("log_book.warn", Form::mimic("default.warninging"));
         form::set_weak("log_book.info", Form::mimic("default.info"));
         form::set_weak("log_book.debug", Form::mimic("default.debug"));
         form::set_weak("log_book.colon", Form::mimic("prompt.colon"));

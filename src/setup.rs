@@ -12,7 +12,7 @@ use std::{
 
 use duat_base::{
     modes::Pager,
-    widgets::{FooterWidgets, LogBook, WhichKey, status},
+    widgets::{FooterWidgets, Gutter, LogBook, WhichKey, status},
 };
 use duat_core::{
     buffer::{BufferOpts, History},
@@ -95,11 +95,12 @@ pub fn pre_setup() -> Ui {
     mode::set_default(Pager::<LogBook>::new());
 
     // Layout hooks
-
     hook::add::<BufferOpened>(|pa, handle| {
         #[cfg(feature = "term-ui")]
         VertRule::builder().push_on(pa, handle);
         OPTS.lock().unwrap().line_numbers.push_on(pa, handle);
+        VertRule::builder().push_on(pa, handle);
+        Gutter::builder().push_on(pa, handle);
     })
     .grouped("BufferWidgets");
 
@@ -157,7 +158,6 @@ pub fn pre_setup() -> Ui {
     .grouped("LogBook");
 
     // Cache hooks
-
     hook::add::<BufferUnloaded>(|pa, handle| {
         let buffer = handle.write(pa);
 

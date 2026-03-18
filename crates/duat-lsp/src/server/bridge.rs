@@ -332,8 +332,8 @@ fn stdout_loop(server_bridge: ServerBridge, stdout: &mut impl BufRead) -> std::i
                     JsonRpc::Request(request) => handle_request(&server_bridge, request),
                     JsonRpc::Notification(notif) => {
                         // if !notif.method.ends_with("progress") {
-                        //     context::debug!("Server notified: {notif:#?}");
-                        // }
+                        //     context::debug!("Server notified:
+                        // {notif:#?}"); }
                     }
                     JsonRpc::Success(_) => {
                         if let Some(id) = content.get_id()

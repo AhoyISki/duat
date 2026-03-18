@@ -120,6 +120,7 @@ impl Windows {
         pa: &mut Pass,
         (target, specs): (&RwArea, DynSpawnSpecs),
         widget: W,
+        callback: impl FnOnce(&mut Pass, Handle<dyn Widget>),
     ) -> Option<Handle<W>> {
         let (win, cluster_master, master) =
             self.inner
@@ -168,6 +169,8 @@ impl Windows {
         self.inner.write(pa).list.insert(win, window);
 
         hook::trigger(pa, WidgetOpened(node.handle().try_downcast::<W>().unwrap()));
+
+        callback(pa, node.handle().clone());
 
         node.handle().try_downcast()
     }
@@ -620,7 +623,7 @@ impl Windows {
     /// An entry for a widget of a specific type.
     ///
     /// Returns the index of the window, the index of the [`Widget`],
-    /// and the [`Widget`]'s [`Node`]
+    /// and the [`Widget`]'s [`Node`].
     pub(crate) fn node_of<'a, W: Widget>(&'a self, pa: &'a Pass) -> Result<&'a Node, Text> {
         let handle = context::current_buffer(pa);
 

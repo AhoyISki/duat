@@ -50,7 +50,11 @@ impl StrsBuf {
 
         let records = LineRanges::new(slices);
 
-        let mut buf = Self { gapbuf: buf, line_ranges: records, version: 0 };
+        let mut buf = Self {
+            gapbuf: buf,
+            line_ranges: records,
+            version: 0,
+        };
 
         if buf.bytes().next_back().is_none_or(|b| b != b'\n') {
             let end = buf.end_point();
@@ -236,7 +240,10 @@ impl std::fmt::Debug for StrsBuf {
 #[track_caller]
 pub fn assert_utf8_boundary(bytes: &StrsBuf, idx: usize) {
     assert!(
-        bytes.gapbuf.get(idx).is_none_or(|b| utf8_char_width(*b) != 0),
+        bytes
+            .gapbuf
+            .get(idx)
+            .is_none_or(|b| utf8_char_width(*b) != 0),
         "byte index {} is not a valid char boundary; it is inside '{}'",
         idx,
         {

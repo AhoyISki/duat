@@ -154,7 +154,7 @@ pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer> {
     widget: RwData<W>,
     pub(crate) area: RwArea,
     mask: Arc<Mutex<&'static str>>,
-    related: RelatedWidgets,
+    related: RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>,
     is_closed: RwData<bool>,
     master: Option<Box<Handle<dyn Widget>>>,
     pub(crate) update_requested: Arc<AtomicBool>,
@@ -172,7 +172,7 @@ impl<W: Widget + ?Sized> Handle<W> {
             widget,
             area,
             mask,
-            related: RelatedWidgets(RwData::default()),
+            related: RwData::default(),
             is_closed: RwData::new(false),
             master: master.map(Box::new),
             update_requested: Arc::new(AtomicBool::new(false)),
@@ -610,7 +610,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.read_as(pa)
             .map(|w| (w, self.area().read(pa), WidgetRelation::Main))
             .into_iter()
-            .chain(self.related.0.read(pa).iter().filter_map(|(handle, rel)| {
+            .chain(self.related.read(pa).iter().filter_map(|(handle, rel)| {
                 handle
                     .read_as(pa)
                     .map(|w| (w, handle.area().read(pa), *rel))
@@ -630,7 +630,6 @@ impl<W: Widget + ?Sized> Handle<W> {
             .into_iter()
             .chain(
                 self.related
-                    .0
                     .read(pa)
                     .iter()
                     .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel))),
@@ -639,11 +638,31 @@ impl<W: Widget + ?Sized> Handle<W> {
 
     /// Raw access to the related widgets.
     pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>> {
-        &self.related.0
+        &self.related
     }
 
     ////////// Other methods
 
+    /// Closes this `Handle`, removing the [`Widget`] from the.
+    /// [`Window`]
+    ///
+    /// [`Window`]: crate::ui::Window
+    pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
+        context::windows().close(pa, self)
+    }
+
+    /// Wether this `Handle` was already closed.
+    pub fn is_closed(&self, pa: &Pass) -> bool {
+        *self.is_closed.read(pa)
+    }
+
+    /// Declares that this `Handle` has been closed.
+    pub(crate) fn declare_closed(&self, pa: &mut Pass) {
+        *self.is_closed.write(pa) = true;
+    }
+}
+
+impl<W: Widget> Handle<W> {
     /// Pushes a [`Widget`] around this one.
     ///
     /// This `Widget` will be placed internally, i.e., around the
@@ -692,9 +711,31 @@ impl<W: Widget + ?Sized> Handle<W> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW> {
-        context::windows()
+        let handle = context::windows()
             .push_widget(pa, (&self.area, None, specs), widget, Some(&self.area))
-            .unwrap()
+            .unwrap();
+
+        let related = self.related.write(pa);
+
+        related.push((handle.to_dyn(), WidgetRelation::Pushed));
+
+        if let Some((main, _)) = related
+            .iter_mut()
+            .find(|(_, relation)| *relation == WidgetRelation::Main)
+            .cloned()
+        {
+            main.related
+                .write(pa)
+                .push((handle.to_dyn(), WidgetRelation::Pushed));
+            handle.related.write(pa).push((main, WidgetRelation::Main));
+        } else {
+            handle
+                .related
+                .write(pa)
+                .push((self.to_dyn(), WidgetRelation::Main));
+        }
+
+        handle
     }
 
     /// Pushes a [`Widget`] around the "cluster master" of this one.
@@ -745,7 +786,7 @@ impl<W: Widget + ?Sized> Handle<W> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW> {
-        if let Some(master) = self.area().get_cluster_master(pa) {
+        let handle = if let Some(master) = self.area().get_cluster_master(pa) {
             context::windows()
                 .push_widget(pa, (&master, None, specs), widget, Some(self.area()))
                 .unwrap()
@@ -753,7 +794,29 @@ impl<W: Widget + ?Sized> Handle<W> {
             context::windows()
                 .push_widget(pa, (&self.area, None, specs), widget, Some(self.area()))
                 .unwrap()
+        };
+
+        let related = self.related.write(pa);
+
+        related.push((handle.to_dyn(), WidgetRelation::Pushed));
+
+        if let Some((main, _)) = related
+            .iter_mut()
+            .find(|(_, relation)| *relation == WidgetRelation::Main)
+            .cloned()
+        {
+            main.related
+                .write(pa)
+                .push((handle.to_dyn(), WidgetRelation::Pushed));
+            handle.related.write(pa).push((main, WidgetRelation::Main));
+        } else {
+            handle
+                .related
+                .write(pa)
+                .push((self.to_dyn(), WidgetRelation::Main));
         }
+
+        handle
     }
 
     /// Spawns a floating [`Widget`].
@@ -763,34 +826,34 @@ impl<W: Widget + ?Sized> Handle<W> {
         widget: SW,
         specs: DynSpawnSpecs,
     ) -> Option<Handle<SW>> {
-        context::windows().spawn_on_widget(pa, (&self.area, specs), widget)
+        let self_handle = self.to_dyn();
+        context::windows().spawn_on_widget(pa, (&self.area, specs), widget, move |pa, handle| {
+            let related = self_handle.related.write(pa);
+
+            related.push((handle.clone(), WidgetRelation::Spawned));
+
+            if let Some((main, _)) = related
+                .iter_mut()
+                .find(|(_, relation)| *relation == WidgetRelation::Main)
+                .cloned()
+            {
+                main.related
+                    .write(pa)
+                    .push((handle.clone(), WidgetRelation::Spawned));
+                handle.related.write(pa).push((main, WidgetRelation::Main));
+            } else {
+                handle
+                    .related
+                    .write(pa)
+                    .push((self_handle, WidgetRelation::Main));
+            }
+        })
     }
 
-    /// Closes this `Handle`, removing the [`Widget`] from the.
-    /// [`Window`]
-    ///
-    /// [`Window`]: crate::ui::Window
-    pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
-        context::windows().close(pa, self)
-    }
-
-    /// Wether this `Handle` was already closed.
-    pub fn is_closed(&self, pa: &Pass) -> bool {
-        *self.is_closed.read(pa)
-    }
-
-    /// Declares that this `Handle` has been closed.
-    pub(crate) fn declare_closed(&self, pa: &mut Pass) {
-        *self.is_closed.write(pa) = true;
-    }
-}
-
-impl<W: Widget> Handle<W> {
     /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`].
     pub fn to_dyn(&self) -> Handle<dyn Widget> {
         Handle {
             widget: self.widget.to_dyn_widget(),
-            // TODO: Arc wrapper, and Area: !Clone
             area: self.area.clone(),
             mask: self.mask.clone(),
             related: self.related.clone(),
@@ -839,11 +902,8 @@ impl<W: Widget + ?Sized> std::fmt::Debug for Handle<W> {
     }
 }
 
-#[derive(Clone)]
-struct RelatedWidgets(RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>);
-
 /// What relation this [`Widget`] has to its parent.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WidgetRelation {
     /// The main widget of the cluster, most commonly a [`Buffer`].
     ///
@@ -852,9 +912,9 @@ pub enum WidgetRelation {
     /// A [`Widget`] that was pushed around the main `Widget`, e.g.
     /// [`LineNumbers`].
     ///
-    /// [`LineNumbers`]: docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
+    /// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
     Pushed,
-    /// A [`Widget`] that was spawned on the `Widget`, e.g. completion.
-    /// lists
+    /// A [`Widget`] that was spawned on the `Widget`, e.g.
+    /// completion. lists
     Spawned,
 }

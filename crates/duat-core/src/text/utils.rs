@@ -292,6 +292,7 @@ impl std::ops::SubAssign for Point {
 /// sake.
 ///
 /// [`Text`]: super::Text
+#[doc(hidden)]
 pub trait TextIndex: Clone + Copy + std::fmt::Debug {
     /// Converts this type into a byte index.
     fn to_byte_index(self) -> usize;
@@ -371,6 +372,7 @@ impl TextRange for RangeFull {
 /// [`Tags::remove`]: super::Tags::remove
 /// [`Text::remove_tags`]: super::Text::remove_tags
 /// [`Text`]: super::Text
+#[doc(hidden)]
 pub trait TextRangeOrIndex {
     /// Transforms `self` into a [`Range<usize>`]
     fn to_range(self, max: usize) -> Range<usize>;
