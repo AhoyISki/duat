@@ -8,18 +8,15 @@
 //! errors to a `Buffer`.
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
-use std::{
-    collections::HashMap,
-    ops::Range,
-    sync::{LazyLock, Once},
-};
+use std::{collections::HashMap, ops::Range, sync::Once};
 
 use duat_core::{
     context::{Handle, WidgetRelation},
     data::Pass,
     form::{self, Form, FormId},
     hook::{self, BufferUpdated},
-    text::{Tagger, Text, TextParts, TextRange},
+    text::{Ghost, Tagger, Text, TextParts, TextRange},
+    txt,
     ui::{PushSpecs, Side, Widget},
 };
 
@@ -32,7 +29,7 @@ use duat_core::{
 /// [`Buffer`]: duat_core::buffer::Buffer
 pub struct Gutter {
     text: Text,
-    entries: HashMap<Gutterer, HashMap<usize, Vec<Entry>>>,
+    entries: HashMap<Gutterer, HashMap<usize, Vec<GutterEntry>>>,
     opts: GutterOpts,
 }
 
@@ -40,7 +37,6 @@ impl Gutter {
     /// A builder for a `Gutter`.
     pub fn builder() -> GutterOpts {
         static ONCE: Once = Once::new();
-        static TAGGER: LazyLock<Tagger> = Tagger::new_lazy();
 
         ONCE.call_once(|| {
             form::set_weak("gutter.hint", Form::mimic("default.hint"));
@@ -75,20 +71,7 @@ impl Gutter {
                 symbol: '*',
                 display: GutterDisplay::OwnLines(false),
             },
-            renderer: Some(Box::new(|entries, opts, mut parts| {
-                let tagger = *TAGGER;
-
-                for entry in &entries.list {
-                    let form_tag = match entry.kind {
-                        EntryKind::Hint => form::id_of!("buffer.hint").to_tag(190),
-                        EntryKind::Warning => form::id_of!("buffer.warning").to_tag(191),
-                        EntryKind::Error => form::id_of!("buffer.error").to_tag(192),
-                        EntryKind::Custom(.., text_form) => text_form.to_tag(193),
-                    };
-
-                    parts.tags.insert(tagger, entry.range.clone(), form_tag);
-                }
-            })),
+            renderer: Some(Box::new(default_renderer)),
         }
     }
 
@@ -229,15 +212,21 @@ pub struct GutterSymbolOpts {
     pub display: GutterDisplay,
 }
 
-struct RelatedEntries {
-    list: Vec<Entry>,
-    display: GutterDisplay,
+/// Related entries on the [`Gutter`].
+pub struct GutterEntries {
+    /// The entries that are related.
+    pub list: Vec<GutterEntry>,
+    /// How to display the entry's message.
+    pub display: GutterDisplay,
 }
 
-struct Entry {
-    line: usize,
-    range: Range<usize>,
-    msg: Text,
+/// An entry in the [`Gutter`].
+///
+/// This contains a range in the [`Text`] and a message, in the form
+/// of a `Text`.
+pub struct GutterEntry {
+    pub range: Range<usize>,
+    pub msg: Text,
     kind: EntryKind,
 }
 
@@ -304,7 +293,7 @@ pub enum Corner {
 pub struct GutterEntryBuilder<'p> {
     gutterer: Gutterer,
     gbuf: &'p mut GutteredBuffer<'p>,
-    entries: RelatedEntries,
+    entries: GutterEntries,
 }
 
 impl<'g> GutterEntryBuilder<'g> {
@@ -315,11 +304,10 @@ impl<'g> GutterEntryBuilder<'g> {
     pub fn add_related_hint(mut self, range: impl TextRange, msg: Text) -> Self {
         let text = self.gbuf.buffer.text(self.gbuf.pa);
         let range = range.to_range(text.len());
-        let line = text.point_at_byte(range.start).line();
 
         self.entries
             .list
-            .push(Entry { line, range, msg, kind: EntryKind::Hint });
+            .push(GutterEntry { range, msg, kind: EntryKind::Hint });
 
         self
     }
@@ -328,14 +316,10 @@ impl<'g> GutterEntryBuilder<'g> {
     pub fn add_related_warning(mut self, range: impl TextRange, msg: Text) -> Self {
         let text = self.gbuf.buffer.text(self.gbuf.pa);
         let range = range.to_range(text.len());
-        let line = text.point_at_byte(range.start).line();
 
-        self.entries.list.push(Entry {
-            line,
-            range,
-            msg,
-            kind: EntryKind::Warning,
-        });
+        self.entries
+            .list
+            .push(GutterEntry { range, msg, kind: EntryKind::Warning });
 
         self
     }
@@ -348,11 +332,10 @@ impl<'g> GutterEntryBuilder<'g> {
     pub fn add_related_error(mut self, range: impl TextRange, msg: Text) -> Self {
         let text = self.gbuf.buffer.text(self.gbuf.pa);
         let range = range.to_range(text.len());
-        let line = text.point_at_byte(range.start).line();
 
         self.entries
             .list
-            .push(Entry { line, range, msg, kind: EntryKind::Error });
+            .push(GutterEntry { range, msg, kind: EntryKind::Error });
 
         self
     }
@@ -360,18 +343,20 @@ impl<'g> GutterEntryBuilder<'g> {
 
 impl<'g> Drop for GutterEntryBuilder<'g> {
     fn drop(&mut self) {
-        let (buffer, gutter) = self
+        let (buf, gutter) = self
             .gbuf
             .pa
             .write_many((self.gbuf.buffer, &self.gbuf.gutter));
 
         let mut renderer = gutter.opts.renderer.take().unwrap();
-        renderer(&self.entries, &gutter.opts, buffer.text_mut().parts());
+        renderer(&self.entries, self.gutterer, buf.text_mut().parts());
         gutter.opts.renderer = Some(renderer);
 
+        let map = gutter.entries.entry(self.gutterer).or_default();
+
         for entry in std::mem::take(&mut self.entries.list) {
-            let map = gutter.entries.entry(self.gutterer).or_default();
-            map.entry(entry.line).or_default().push(entry);
+            let line = buf.text().point_at_byte(entry.range.start).line();
+            map.entry(line).or_default().push(entry);
         }
     }
 }
@@ -398,14 +383,13 @@ impl<'g> GutteredBuffer<'g> {
     pub fn add_hint(&'g mut self, range: impl TextRange, msg: Text) -> GutterEntryBuilder<'g> {
         let text = self.buffer.text(self.pa);
         let range = range.to_range(text.len());
-        let line = text.point_at_byte(range.start).line();
         let display = self.gutter.read(self.pa).opts.hint.display;
 
         GutterEntryBuilder {
             gutterer: self.gutterer,
             gbuf: self,
-            entries: RelatedEntries {
-                list: vec![Entry { line, range, msg, kind: EntryKind::Hint }],
+            entries: GutterEntries {
+                list: vec![GutterEntry { range, msg, kind: EntryKind::Hint }],
                 display,
             },
         }
@@ -419,19 +403,13 @@ impl<'g> GutteredBuffer<'g> {
     pub fn add_warning(&'g mut self, range: impl TextRange, msg: Text) -> GutterEntryBuilder<'g> {
         let text = self.buffer.text(self.pa);
         let range = range.to_range(text.len());
-        let line = text.point_at_byte(range.start).line();
         let display = self.gutter.read(self.pa).opts.warning.display;
 
         GutterEntryBuilder {
             gutterer: self.gutterer,
             gbuf: self,
-            entries: RelatedEntries {
-                list: vec![Entry {
-                    line,
-                    range,
-                    msg,
-                    kind: EntryKind::Warning,
-                }],
+            entries: GutterEntries {
+                list: vec![GutterEntry { range, msg, kind: EntryKind::Warning }],
                 display,
             },
         }
@@ -444,14 +422,13 @@ impl<'g> GutteredBuffer<'g> {
     pub fn add_error(&'g mut self, range: impl TextRange, msg: Text) -> GutterEntryBuilder<'g> {
         let text = self.buffer.text(self.pa);
         let range = range.to_range(text.len());
-        let line = text.point_at_byte(range.start).line();
         let display = self.gutter.read(self.pa).opts.error.display;
 
         GutterEntryBuilder {
             gutterer: self.gutterer,
             gbuf: self,
-            entries: RelatedEntries {
-                list: vec![Entry { line, range, msg, kind: EntryKind::Error }],
+            entries: GutterEntries {
+                list: vec![GutterEntry { range, msg, kind: EntryKind::Error }],
                 display,
             },
         }
@@ -490,19 +467,58 @@ impl GetGuttered for Handle {
     }
 }
 
-type Renderer = dyn FnMut(&RelatedEntries, &GutterOpts, TextParts<'_>) + 'static + Send;
+/// The default [`Gutter`] renderer.
+///
+/// You can use this if you want to render things differently in some
+/// situations, but not all.
+pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: TextParts<'_>) {
+    let tagger = gutterer.0;
+
+    for entry in &entries.list {
+        let form_tag = match entry.kind {
+            EntryKind::Hint => form::id_of!("buffer.hint").to_tag(190),
+            EntryKind::Warning => form::id_of!("buffer.warning").to_tag(191),
+            EntryKind::Error => form::id_of!("buffer.error").to_tag(192),
+            EntryKind::Custom(.., text_form) => text_form.to_tag(193),
+        };
+
+        parts.tags.insert(tagger, entry.range.clone(), form_tag);
+
+        match entries.display {
+            GutterDisplay::Inline(_) => {},
+            GutterDisplay::Spawn(_) => {},
+            GutterDisplay::SpawnCorner(..) => {},
+            GutterDisplay::OwnLines(_) => {
+                let msg_start = parts
+                    .strs
+                    .line(parts.strs.point_at_byte(entry.range.end).line())
+                    .end_point();
+                parts
+                    .tags
+                    .insert(tagger, msg_start, Ghost::new(txt!("{entry.msg}\n")));
+            }
+        }
+    }
+}
+
+type Renderer = dyn FnMut(&GutterEntries, Gutterer, TextParts<'_>) + 'static + Send;
 type OnlyOnHover = bool;
 type OnWindow = bool;
 
+/// A namesapce for [`Gutter`] entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Gutterer(usize);
+pub struct Gutterer(Tagger);
 
 impl Gutterer {
     /// Returns a new [`Gutterer`], a struct for adding/removing
     /// [`Gutter`] entries.
     pub fn new() -> Self {
-        use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        Self(COUNT.fetch_add(1, Relaxed))
+        Self(Tagger::new())
+    }
+}
+
+impl Default for Gutterer {
+    fn default() -> Self {
+        Self::new()
     }
 }

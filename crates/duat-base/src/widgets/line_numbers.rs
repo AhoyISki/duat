@@ -83,7 +83,7 @@ impl LineNumbers {
 
         let mut builder = Text::builder();
 
-        for (index, line) in printed_line_numbers.iter().enumerate() {
+        for (idx, line) in printed_line_numbers.iter().enumerate() {
             let align = if line.number == main_line_num {
                 self.main_align
             } else {
@@ -101,7 +101,7 @@ impl LineNumbers {
                 (true, true) => builder.push(form::id_of!("linenum.wrapped.main")),
             }
 
-            let is_wrapped = line.is_wrapped && index > 0;
+            let is_wrapped = line.is_wrapped && idx > 0;
             push_text(&mut builder, line.number, main_line_num, is_wrapped, self);
 
             if align == Alignment::Center {

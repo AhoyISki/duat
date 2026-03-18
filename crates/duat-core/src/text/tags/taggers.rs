@@ -290,7 +290,7 @@ static TAGGER_COUNT: AtomicU16 = AtomicU16::new(2);
 /// [`Buffer`]: crate::buffer::Buffer
 /// [`Text::insert_tag`]: super::Text::insert_tag
 /// [`Text::remove_tags`]: super::Text::remove_tags
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Tagger(pub(super) u16);
 
 impl Tagger {
