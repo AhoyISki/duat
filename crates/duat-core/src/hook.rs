@@ -172,7 +172,12 @@
 //! [`hook::add`]: add
 //! [`SearchPerformed`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchPerformed.html
 //! [`SearchUpdated`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchUpdated.html
-use std::{any::TypeId, cell::RefCell, collections::HashMap, sync::Mutex};
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::HashMap,
+    sync::Mutex,
+};
 
 use crossterm::event::MouseEventKind;
 
@@ -922,13 +927,59 @@ impl Hookable for FocusChanged {
 ///
 /// - The previous mode.
 /// - The current mode.
-pub struct ModeSwitched(pub(crate) (&'static str, &'static str));
+pub struct ModeSwitched {
+    pub(crate) old: (&'static str, Box<dyn Any>),
+    pub(crate) new: (&'static str, Box<dyn Any>),
+}
 
 impl Hookable for ModeSwitched {
-    type Input<'h> = (&'static str, &'static str);
+    type Input<'h> = ModeSwitch<'h>;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        self.0
+        ModeSwitch {
+            old: ModeParts {
+                name: self.old.0,
+                mode: self.old.1.as_mut(),
+            },
+            new: ModeParts {
+                name: self.new.0,
+                mode: self.new.1.as_mut(),
+            },
+        }
+    }
+}
+
+/// An event representing a [`Mode`] switch, is the argument for the
+/// [`ModeSwitched`] [`hook`].
+///
+/// [`hook`]: self
+pub struct ModeSwitch<'h> {
+    /// The name of the previous [`Mode`].
+    pub old: ModeParts<'h>,
+    /// The name of the current [`Mode`].
+    pub new: ModeParts<'h>,
+}
+
+/// Parts of a [`Mode`], used on the [`ModeSwitched`] [`hook`].
+///
+/// [`hook`]: self
+pub struct ModeParts<'h> {
+    /// The name of this [`Mode`].
+    pub name: &'static str,
+    pub(crate) mode: &'h mut dyn Any,
+}
+
+impl ModeParts<'_> {
+    /// Try to downcast the [`Mode`].
+    ///
+    /// Returns [`Some`] if the mode is of the correct type.
+    pub fn get_as<M: 'static>(&mut self) -> Option<&mut M> {
+        self.mode.downcast_mut()
+    }
+
+    /// Check if the [`Mode`] is of a given type.
+    pub fn is<M: 'static>(&self) -> bool {
+        self.mode.is::<M>()
     }
 }
 

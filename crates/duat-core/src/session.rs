@@ -147,10 +147,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
     let pa = unsafe { &mut Pass::new() };
 
     hook::trigger(pa, ConfigLoaded(is_first_time));
-
-    if mode::reset::<Buffer>(pa).is_none() {
-        unreachable!("Somebody forgot to set a default mode, I'm looking at you, duat!");
-    };
+    mode::reset::<Buffer>(pa);
 
     let mut reload_requested = false;
     let mut reprint_screen = false;

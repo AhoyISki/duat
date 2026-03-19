@@ -1027,8 +1027,6 @@ impl InnerPalette {
         let (_, form) = self.forms[refed as usize];
         let (idx, _) = position_and_form(&mut self.forms, name);
 
-        // For weak refs, no checks are done, since a form is only set if it
-        // doesn't exist, and for there to be refs to it, it must exist.
         let (_, f) = &mut self.forms[idx];
         if let FormKind::Weakest | FormKind::WeakestRef(..) = f.kind {
             *f = form;

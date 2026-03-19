@@ -253,7 +253,7 @@ impl Mode for Insert {
                 handle.text_mut(pa).new_moment();
                 mode::set(pa, Normal::new());
             }
-            alt!(';') => _ = mode::set(pa, Normal::only_one_action()),
+            alt!(';') => mode::set(pa, Normal::only_one_action()),
             ctrl!('u') => handle.text_mut(pa).new_moment(),
             _ => {}
         }

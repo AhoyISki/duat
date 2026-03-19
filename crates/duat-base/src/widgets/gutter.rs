@@ -39,7 +39,7 @@ impl Gutter {
         static ONCE: Once = Once::new();
 
         ONCE.call_once(|| {
-            form::set_weak("gutter.hint", Form::mimic("default.hint"));
+            form::set_weak("gutter.hint", Form::mimic("default.info"));
             form::set_weak("gutter.warning", Form::mimic("default.warning"));
             form::set_weak("gutter.error", Form::mimic("default.error"));
             form::set_weak("buffer.hint", Form::new().underline_grey().underlined());
@@ -98,9 +98,11 @@ impl Gutter {
 
             if let Some(kind) = kind {
                 let (symbol, symbol_form) = match kind {
-                    EntryKind::Hint => (self.opts.hint.symbol, form::id_of!("self.hint")),
-                    EntryKind::Warning => (self.opts.warning.symbol, form::id_of!("self.warning")),
-                    EntryKind::Error => (self.opts.error.symbol, form::id_of!("self.error")),
+                    EntryKind::Hint => (self.opts.hint.symbol, form::id_of!("gutter.hint")),
+                    EntryKind::Warning => {
+                        (self.opts.warning.symbol, form::id_of!("gutter.warning"))
+                    }
+                    EntryKind::Error => (self.opts.error.symbol, form::id_of!("gutter.error")),
                     EntryKind::Custom(symbol, symbol_form, _) => (symbol, symbol_form),
                 };
 
@@ -174,7 +176,6 @@ pub struct GutterOpts {
     /// `buffer.error` `Form`.
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
-    /// [`Ghost`]: duat_core::text::Ghost
     pub error: GutterSymbolOpts,
     renderer: Option<Box<Renderer>>,
 }
@@ -375,6 +376,14 @@ pub struct GutteredBuffer<'g> {
 }
 
 impl<'g> GutteredBuffer<'g> {
+    /// Remove all [`GutterEntry`]s from a given [`Gutterer`].
+    pub fn remove_entries(&mut self, gutterer: Gutterer) {
+        self.gutter.write(self.pa).entries.remove(&gutterer);
+        self.buffer
+            .text_mut(self.pa)
+            .remove_tags(gutterer.tagger, ..);
+    }
+
     /// Add a hint to the [`Gutter`].
     ///
     /// This could just be useful information, like the fact that
@@ -472,7 +481,7 @@ impl GetGuttered for Handle {
 /// You can use this if you want to render things differently in some
 /// situations, but not all.
 pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: TextParts<'_>) {
-    let tagger = gutterer.0;
+    let tagger = gutterer.tagger;
 
     for entry in &entries.list {
         let form_tag = match entry.kind {
@@ -485,9 +494,9 @@ pub fn default_renderer(entries: &GutterEntries, gutterer: Gutterer, mut parts: 
         parts.tags.insert(tagger, entry.range.clone(), form_tag);
 
         match entries.display {
-            GutterDisplay::Inline(_) => {},
-            GutterDisplay::Spawn(_) => {},
-            GutterDisplay::SpawnCorner(..) => {},
+            GutterDisplay::Inline(_) => {}
+            GutterDisplay::Spawn(_) => {}
+            GutterDisplay::SpawnCorner(..) => {}
             GutterDisplay::OwnLines(_) => {
                 let msg_start = parts
                     .strs
@@ -507,13 +516,22 @@ type OnWindow = bool;
 
 /// A namesapce for [`Gutter`] entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Gutterer(Tagger);
+pub struct Gutterer {
+    /// The [`Tagger`] of this `Gutterer`.
+    ///
+    /// Will be used when adding [`Ghost`]s or [`SpawnTag`]s to the
+    /// [`Buffer`].
+    ///
+    /// [`SpawnTag`]: duat_core::text::SpawnTag
+    /// [`Buffer`]: duat_core::buffer::Buffer
+    pub tagger: Tagger,
+}
 
 impl Gutterer {
     /// Returns a new [`Gutterer`], a struct for adding/removing
     /// [`Gutter`] entries.
     pub fn new() -> Self {
-        Self(Tagger::new())
+        Self { tagger: Tagger::new() }
     }
 }
 

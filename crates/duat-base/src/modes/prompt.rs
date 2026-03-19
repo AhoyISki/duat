@@ -27,7 +27,7 @@
 use std::{
     any::TypeId,
     io::Write,
-    sync::{Arc, LazyLock, Mutex, Once},
+    sync::{LazyLock, Mutex, Once},
 };
 
 use duat_core::{
@@ -77,7 +77,6 @@ pub struct Prompt {
     mode: Box<dyn PromptMode>,
     starting_text: String,
     ty: TypeId,
-    clone_fn: Arc<Mutex<ModeCloneFn>>,
     reset_fn: fn(pa: &mut Pass),
     history_index: Option<usize>,
 }
@@ -88,18 +87,12 @@ impl Prompt {
     /// For convenience, you should make it so `new` methods in
     /// [`PromptMode`] implementors return a [`Prompt<Self>`],
     /// rather than the [`PromptMode`] itself.
-    pub fn new<M: PromptMode + Clone>(mode: M) -> Self {
-        let clone_fn = Arc::new(Mutex::new({
-            let mode = mode.clone();
-            move || -> Box<dyn PromptMode> { Box::new(mode.clone()) }
-        }));
-
+    pub fn new<M: PromptMode>(mode: M) -> Self {
         Self {
             mode: Box::new(mode),
             starting_text: String::new(),
             ty: TypeId::of::<M>(),
-            clone_fn,
-            reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
+            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -110,18 +103,12 @@ impl Prompt {
     /// text already in it.
     ///
     /// [`Mode`]: mode::Mode
-    pub fn new_with<M: PromptMode + Clone>(mode: M, initial: impl ToString) -> Self {
-        let clone_fn = Arc::new(Mutex::new({
-            let mode = mode.clone();
-            move || -> Box<dyn PromptMode> { Box::new(mode.clone()) }
-        }));
-
+    pub fn new_with<M: PromptMode>(mode: M, initial: impl ToString) -> Self {
         Self {
             mode: Box::new(mode),
             starting_text: initial.to_string(),
             ty: TypeId::of::<M>(),
-            clone_fn,
-            reset_fn: |pa| _ = mode::reset::<M::ExitWidget>(pa),
+            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
             history_index: None,
         }
     }
@@ -355,19 +342,6 @@ impl mode::Mode for Prompt {
     }
 }
 
-impl Clone for Prompt {
-    fn clone(&self) -> Self {
-        Self {
-            mode: self.clone_fn.lock().unwrap()(),
-            starting_text: self.starting_text.clone(),
-            ty: self.ty,
-            clone_fn: self.clone_fn.clone(),
-            reset_fn: self.reset_fn,
-            history_index: None,
-        }
-    }
-}
-
 /// A mode to control the [`Prompt`]
 ///
 /// Through the [`Pass`], one can act on the entirety of Duat's shared
@@ -378,7 +352,7 @@ impl Clone for Prompt {
 /// # use duat_base::modes::PromptMode;
 /// use duat::prelude::*;
 ///
-/// #[derive(Default, Clone)]
+/// #[derive(Default)]
 /// struct RealTimeSwitch {
 ///     initial: Option<String>,
 ///     current: Option<String>,
@@ -488,7 +462,7 @@ pub trait PromptMode: Send + 'static {
 /// [`Parameter`]s
 ///
 /// [`Parameter`]: duat_core::cmd::Parameter
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct RunCommands(Option<Completion>);
 
 impl RunCommands {
@@ -691,8 +665,6 @@ impl PromptMode for PipeSelections {
         txt!("[prompt]pipe")
     }
 }
-
-type ModeCloneFn = dyn Fn() -> Box<dyn PromptMode> + Send;
 
 #[derive(Clone, Eq)]
 enum Completion {

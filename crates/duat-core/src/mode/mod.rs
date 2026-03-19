@@ -428,7 +428,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`&mut Selections`]: Selections
 /// [mask]: Handle::set_mask
 #[allow(unused_variables)]
-pub trait Mode: Sized + Clone + Send + 'static {
+pub trait Mode: Sized + Send + 'static {
     /// The [`Widget`] that this [`Mode`] controls
     type Widget: Widget;
 
@@ -526,12 +526,6 @@ pub trait Mode: Sized + Clone + Send + 'static {
             _ => txt!("No key binding declarations, implement [function]Mode::bindings"),
         })
     }
-
-    /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
-    #[doc(hidden)]
-    fn just_keys(&self) -> Option<&str> {
-        None
-    }
 }
 
 /// A mouse event, representing a click, drag, hover, etc
@@ -580,15 +574,15 @@ pub fn key_events<const LEN: usize>(str: &str, modif: KeyMod) -> [KeyEvent; LEN]
 
 // This implementation exists only to allow &strs to be passed to
 // remaps.
-impl Mode for &'static str {
-    // Doesn't matter
-    type Widget = Buffer;
-
-    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
-        unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
-    }
-
-    fn just_keys(&self) -> Option<&str> {
-        Some(self)
-    }
-}
+// impl Mode for &'static str {
+//     // Doesn't matter
+//     type Widget = Buffer;
+//
+//     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _:
+// Handle<Self::Widget>) {         unreachable!("&strs are only meant
+// to be sent as AsGives, turning into keys");     }
+//
+//     fn just_keys(&self) -> Option<&str> {
+//         Some(self)
+//     }
+// }

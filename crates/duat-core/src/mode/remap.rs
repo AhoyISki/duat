@@ -6,7 +6,12 @@
 //! order to properly document everything.
 //!
 //! [`bindings`]: super::bindings
-use std::{any::TypeId, collections::HashMap, slice, sync::LazyLock};
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    slice,
+    sync::{LazyLock, Mutex},
+};
 
 use crossterm::event::KeyEvent;
 
@@ -31,7 +36,7 @@ mod global {
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
-    use super::{Gives, Remapper};
+    use super::{MapsTo, Remapper};
     use crate::{
         data::{BulkDataWriter, DataMap, Pass, RwData},
         mode::{Description, MappedBindings, Mode},
@@ -57,10 +62,10 @@ mod global {
     /// [dropped]: Drop::drop
     pub struct RemapBuilder {
         pub(super) takes: Vec<KeyEvent>,
-        pub(super) gives: Gives,
+        pub(super) gives: MapsTo,
         pub(super) is_alias: bool,
         pub(super) doc: Option<Text>,
-        pub(super) remap: fn(&mut Remapper, Vec<KeyEvent>, Gives, bool, Option<Text>),
+        pub(super) remap: fn(&mut Remapper, Vec<KeyEvent>, MapsTo, bool, Option<Text>),
     }
 
     impl RemapBuilder {
@@ -81,7 +86,7 @@ mod global {
         fn drop(&mut self) {
             let remap = self.remap;
             let takes = std::mem::take(&mut self.takes);
-            let gives = std::mem::replace(&mut self.gives, Gives::Keys(Vec::new()));
+            let gives = std::mem::replace(&mut self.gives, MapsTo::Keys(Vec::new()));
             let is_alias = self.is_alias;
             let doc = self.doc.take();
             REMAPPER.mutate(move |remapper| remap(remapper, takes, gives, is_alias, doc));
@@ -124,11 +129,11 @@ mod global {
     /// If another sequence already exists on the same mode which
     /// would intersect with this one, the new sequence will not be
     /// added.
-    pub fn map<M: Mode>(takes: &str, gives: impl IntoGives) -> RemapBuilder {
+    pub fn map<M: Mode>(takes: &str, gives: impl IntoMapsTo) -> RemapBuilder {
         let takes = str_to_keys(takes);
         RemapBuilder {
             takes,
-            gives: gives.into_gives(),
+            gives: gives.into_maps_to(),
             is_alias: false,
             doc: None,
             remap: |remapper, takes, gives, is_alias, doc| {
@@ -160,11 +165,11 @@ mod global {
     ///
     /// [ghost text]: crate::text::Ghost
     /// [form]: crate::form::Form
-    pub fn alias<M: Mode>(takes: &str, gives: impl IntoGives) -> RemapBuilder {
+    pub fn alias<M: Mode>(takes: &str, gives: impl IntoMapsTo) -> RemapBuilder {
         let takes = str_to_keys(takes);
         RemapBuilder {
             takes,
-            gives: gives.into_gives(),
+            gives: gives.into_maps_to(),
             is_alias: true,
             doc: None,
             remap: |remapper, takes, gives, is_alias, doc| {
@@ -543,17 +548,19 @@ mod global {
 
     /// Trait to distinguish [`Mode`]s from [`KeyEvent`]s
     #[doc(hidden)]
-    pub trait IntoGives: Send + 'static {
-        fn into_gives(self) -> Gives;
+    pub trait IntoMapsTo: Send + 'static {
+        fn into_maps_to(self) -> MapsTo;
     }
 
-    impl<M: Mode> IntoGives for M {
-        fn into_gives(self) -> Gives {
-            if let Some(keys) = self.just_keys() {
-                Gives::Keys(str_to_keys(keys))
-            } else {
-                Gives::Mode(super::GivenMode::new(self))
-            }
+    impl IntoMapsTo for &'static str {
+        fn into_maps_to(self) -> MapsTo {
+            MapsTo::Keys(str_to_keys(self))
+        }
+    }
+
+    impl<F: FnMut(&mut Pass) + Send + 'static> IntoMapsTo for F {
+        fn into_maps_to(self) -> MapsTo {
+            MapsTo::Function(Box::new(Mutex::new(self)))
         }
     }
 
@@ -593,7 +600,7 @@ impl Remapper {
     fn remap<M: Mode>(
         &mut self,
         takes: Vec<KeyEvent>,
-        gives: Gives,
+        gives: MapsTo,
         is_alias: bool,
         doc: Option<Text>,
     ) {
@@ -601,7 +608,7 @@ impl Remapper {
             inner: &mut Remapper,
             ty: TypeId,
             takes: Vec<KeyEvent>,
-            gives: Gives,
+            gives: MapsTo,
             is_alias: bool,
             doc: Option<Text>,
         ) {
@@ -667,7 +674,7 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                 let remap = mapped_bindings.get_mut(&ty).unwrap().remaps.remove(i);
 
                 match &remap.gives {
-                    Gives::Keys(keys) => {
+                    MapsTo::Keys(keys) => {
                         let keys = keys.clone();
                         let mapped_bindings = &mut bdw.write(pa).mapped_bindings;
                         mapped_bindings
@@ -677,8 +684,8 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
                             .insert(i, remap);
                         keys
                     }
-                    Gives::Mode(given) => {
-                        (given.setter)(pa);
+                    MapsTo::Function(function) => {
+                        function.lock().unwrap()(pa);
                         let mapped_bindings = &mut bdw.write(pa).mapped_bindings;
                         mapped_bindings
                             .get_mut(&ty)
@@ -723,54 +730,33 @@ fn send_key<M: Mode>(bdw: &BulkDataWriter<Remapper>, pa: &mut Pass, key: KeyEven
 #[derive(Debug)]
 struct Remap {
     takes: Vec<KeyEvent>,
-    gives: Gives,
+    gives: MapsTo,
     is_alias: bool,
     desc: Option<Text>,
 }
 
 impl Remap {
     /// Returns a new `Remap`
-    pub fn new(takes: Vec<KeyEvent>, gives: Gives, is_alias: bool, desc: Option<Text>) -> Self {
+    pub fn new(takes: Vec<KeyEvent>, gives: MapsTo, is_alias: bool, desc: Option<Text>) -> Self {
         Self { takes, gives, is_alias, desc }
     }
 }
 
 /// What a [`map`] or [`alias`] gives, can be a sequence of
 /// [`KeyEvent`]s or a [`Mode`]
-#[derive(Debug)]
-pub enum Gives {
+pub enum MapsTo {
     /// A sequence of [`KeyEvent`]s that a remap maps to
     Keys(Vec<KeyEvent>),
     /// A [`Mode`] that a remap switches to
-    Mode(GivenMode),
+    Function(Box<Mutex<dyn FnMut(&mut Pass) + Send>>),
 }
 
-/// A [`Mode`] that is "given" by a remap
-pub struct GivenMode {
-    setter: Box<dyn Fn(&mut Pass) + Send>,
-    name: &'static str,
-}
-
-impl GivenMode {
-    /// Returns a new `GiveMode`
-    fn new<M: Mode>(mode: M) -> Self {
-        Self {
-            setter: Box::new(move |pa| _ = crate::mode::set(pa, mode.clone())),
-            name: crate::utils::duat_name::<M>(),
-        }
-    }
-
-    /// The name of the [`Mode`]
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
-}
-
-impl std::fmt::Debug for GivenMode {
+impl std::fmt::Debug for MapsTo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GivenMode")
-            .field("name", &self.name)
-            .finish()
+        match self {
+            Self::Keys(arg0) => f.debug_tuple("Keys").field(arg0).finish(),
+            Self::Function(_) => f.debug_tuple("Function").finish_non_exhaustive(),
+        }
     }
 }
 
@@ -853,7 +839,7 @@ impl MappedBindings {
                             return true;
                         }
 
-                        if let (Gives::Keys(gives), Some(bindings)) = (&remap.gives, bindings)
+                        if let (MapsTo::Keys(gives), Some(bindings)) = (&remap.gives, bindings)
                             && gives.len() == 1
                             && bindings
                                 .list
@@ -867,7 +853,7 @@ impl MappedBindings {
                     })
                     .map(|remap| Description {
                         text: remap.desc.as_ref().or_else(|| {
-                            if let Gives::Keys(keys) = &remap.gives {
+                            if let MapsTo::Keys(keys) = &remap.gives {
                                 self.bindings.description_for(keys)
                             } else {
                                 None
@@ -931,7 +917,7 @@ pub enum KeyDescription<'a> {
     /// struct
     Binding(Binding),
     /// A remapped sequence, comes from [`map`] or [`alias`]
-    Remap(&'a [KeyEvent], &'a Gives),
+    Remap(&'a [KeyEvent], &'a MapsTo),
 }
 
 /// An [`Iterator`] over the possible patterns that match a
@@ -1007,7 +993,7 @@ impl<'a> Iterator for KeyDescriptions<'a> {
                 deprefixed.find_map(|(remap, takes)| {
                     if remap.takes.starts_with(self.seq)
                         && remap.desc.is_none()
-                        && let Gives::Keys(given_keys) = &remap.gives
+                        && let MapsTo::Keys(given_keys) = &remap.gives
                         && given_keys.len() == 1
                         && pats.iter().any(|pat| pat.matches(given_keys[0]))
                     {

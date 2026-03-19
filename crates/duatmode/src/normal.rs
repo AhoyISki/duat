@@ -1042,14 +1042,14 @@ impl Mode for Normal {
             }
 
             ////////// Search keys
-            event!('/') => _ = mode::set(pa, IncSearch::new(SearchFwd)),
-            alt!('/') => _ = mode::set(pa, IncSearch::new(SearchRev)),
-            event!('?') => _ = mode::set(pa, IncSearch::new(ExtendFwd)),
-            alt!('?') => _ = mode::set(pa, IncSearch::new(ExtendRev)),
-            event!('s') => _ = mode::set(pa, IncSearch::new(Select)),
-            event!('S') => _ = mode::set(pa, IncSearch::new(Split)),
-            alt!('k') => _ = mode::set(pa, IncSearch::new(KeepMatching(true))),
-            alt!('K') => _ = mode::set(pa, IncSearch::new(KeepMatching(false))),
+            event!('/') => mode::set(pa, IncSearch::new(SearchFwd)),
+            alt!('/') => mode::set(pa, IncSearch::new(SearchRev)),
+            event!('?') => mode::set(pa, IncSearch::new(ExtendFwd)),
+            alt!('?') => mode::set(pa, IncSearch::new(ExtendRev)),
+            event!('s') => mode::set(pa, IncSearch::new(Select)),
+            event!('S') => mode::set(pa, IncSearch::new(Split)),
+            alt!('k') => mode::set(pa, IncSearch::new(KeepMatching(true))),
+            alt!('K') => mode::set(pa, IncSearch::new(KeepMatching(false))),
 
             event!('n') | alt!('n') => {
                 let search = SEARCH.lock().unwrap();
@@ -1168,8 +1168,8 @@ impl Mode for Normal {
             ctrl!('i') | event!(Tab) => jump_list::jump_by(pa, &handle, 1),
 
             ////////// Other mode changing keys
-            event!(':') => _ = mode::set(pa, RunCommands::new()),
-            event!('|') => _ = mode::set(pa, PipeSelections::new()),
+            event!(':') => mode::set(pa, RunCommands::new()),
+            event!('|') => mode::set(pa, PipeSelections::new()),
             event!('g') if param_was_set => {
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
@@ -1190,7 +1190,7 @@ impl Mode for Normal {
                 jump_list::register(pa, &handle, 5);
             }
             event!('G') => self.one_key = Some(OneKey::GoTo(SelType::Extend)),
-            event!(' ') => _ = mode::set(pa, mode::User),
+            event!(' ') => mode::set(pa, mode::User),
 
             ////////// History manipulation
             event!('u') => handle.text_mut(pa).undo(),

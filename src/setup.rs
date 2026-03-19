@@ -291,7 +291,8 @@ pub fn pre_setup() -> Ui {
     form::enable_mask("info");
     form::enable_mask("inactive");
 
-    mode::map::<mode::User>("L", Pager::<LogBook>::new()).doc(txt!("Open [mode]Logs"));
+    mode::map::<mode::User>("L", |pa| mode::set(pa, Pager::<LogBook>::new()))
+        .doc(txt!("Open [mode]Logs"));
 
     #[cfg(feature = "treesitter")]
     {
