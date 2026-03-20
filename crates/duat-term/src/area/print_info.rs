@@ -29,7 +29,7 @@ impl PrintInfo {
         opts: PrintOpts,
     ) -> TwoPoints {
         let points = if let Some(s_points) = self.s_points
-            && s_points <= text.len_points()
+            && s_points <= text.end_points()
             && coords.width() == self.prev_coords.width()
             && coords.height() == self.prev_coords.height()
             && is_starting_points(text, s_points, coords.width(), opts)
@@ -69,7 +69,7 @@ impl PrintInfo {
             y += wrap as u32;
             (y > coords.height()).then_some(item.points())
         })
-        .unwrap_or_else(|| text.len_points())
+        .unwrap_or_else(|| text.end_points())
     }
 
     /// Prepares this [`PrintInfo`] for caching
@@ -176,7 +176,7 @@ impl PrintInfo {
         let points = text.ghost_max_points_at(p.byte().min(text.len()));
         let after = text
             .points_after(points)
-            .unwrap_or_else(|| text.len_points());
+            .unwrap_or_else(|| text.end_points());
 
         let cap = opts.wrap_width(coords.width()).unwrap_or(coords.width());
 
@@ -220,7 +220,7 @@ impl PrintInfo {
             let points = text.ghost_max_points_at(p.byte().min(text.len()));
             let after = text
                 .points_after(points)
-                .unwrap_or_else(|| text.len_points());
+                .unwrap_or_else(|| text.end_points());
 
             let mut iter = rev_print_iter(text, after, width, opts);
 
@@ -259,7 +259,7 @@ impl PrintInfo {
         let points = text.ghost_max_points_at(self.prev_main.byte().min(text.len()));
         let after = text
             .points_after(points)
-            .unwrap_or_else(|| text.len_points());
+            .unwrap_or_else(|| text.end_points());
 
         let mut lines_traversed: u32 = 0;
 
@@ -287,7 +287,7 @@ impl PrintInfo {
 }
 
 fn max_s_points(text: &Text, opts: PrintOpts, height: u32, cap: u32) -> TwoPoints {
-    rev_print_iter(text, text.len_points(), cap, opts)
+    rev_print_iter(text, text.end_points(), cap, opts)
         .filter_map(|(place, item)| place.wrap.then_some(item.points()))
         .nth(if opts.allow_overscroll {
             opts.scrolloff.y.saturating_sub(1) as usize

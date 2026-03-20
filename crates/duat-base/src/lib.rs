@@ -144,6 +144,7 @@ pub struct DuatBase;
 impl Plugin for DuatBase {
     fn plug(self, _: &duat_core::Plugins) {
         widgets::setup_completions();
+        modes::add_prompt_hook();
         buffer_parser::enable_parser();
 
         // Setup for the LineNumbers

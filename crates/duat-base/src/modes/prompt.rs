@@ -36,6 +36,7 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
+    hook::{self, OnModeSwitch},
     mode::{self, KeyEvent, event, shift},
     text::{Ghost, Tagger, Text, txt},
     ui::{RwArea, Widget},
@@ -47,6 +48,55 @@ static HISTORY: Mutex<Vec<(TypeId, Vec<String>)>> = Mutex::new(Vec::new());
 static PROMPT_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 static PREVIEW_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+
+/// Add the [`Prompt`] hook.
+pub fn add_prompt_hook() {
+    hook::add::<OnModeSwitch>(|pa, mut switch| {
+        if let Some(prompt) = switch.new.get_as::<Prompt>() {
+            let Some(promptline) = context::handle_of::<PromptLine>(pa) else {
+                return;
+            };
+
+            let text = {
+                let pl = promptline.write(pa);
+                pl.text = Text::with_default_main_selection();
+                pl.text_mut().replace_range(0..0, &prompt.starting_text);
+
+                let tag = Ghost::new(match pl.prompt_of_id(prompt.ty) {
+                    Some(text) => txt!("{text}[prompt.colon]:"),
+                    None => txt!("{}[prompt.colon]:", prompt.mode.prompt()),
+                });
+                pl.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
+
+                std::mem::take(&mut pl.text)
+            };
+
+            let text = prompt.mode.on_switch(pa, text, promptline.area());
+
+            promptline.write(pa).text = text;
+
+            prompt.show_preview(pa, promptline);
+        } else if let Some(prompt) = switch.old.get_as::<Prompt>() {
+            let Some(promptline) = context::handle_of::<PromptLine>(pa) else {
+                return;
+            };
+
+            let text = std::mem::take(&mut promptline.write(pa).text);
+            if !text.is_empty() {
+                let mut history = HISTORY.lock().unwrap();
+                if let Some((_, ty_history)) = history.iter_mut().find(|(ty, _)| *ty == prompt.ty) {
+                    if ty_history.last().is_none_or(|last| last != &text) {
+                        ty_history.push(text.to_string());
+                    }
+                } else {
+                    history.push((prompt.ty, vec![text.to_string()]));
+                }
+            }
+
+            prompt.mode.before_exit(pa, text, promptline.area());
+        }
+    });
+}
 
 /// A [`Mode`] for the [`PromptLine`]
 ///
@@ -301,44 +351,6 @@ impl mode::Mode for Prompt {
 
         self.mode.post_update(pa, &handle);
         self.show_preview(pa, handle);
-    }
-
-    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
-        let text = {
-            let pl = handle.write(pa);
-            pl.text = Text::with_default_main_selection();
-            pl.text_mut().replace_range(0..0, &self.starting_text);
-
-            let tag = Ghost::new(match pl.prompt_of_id(self.ty) {
-                Some(text) => txt!("{text}[prompt.colon]:"),
-                None => txt!("{}[prompt.colon]:", self.mode.prompt()),
-            });
-            pl.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
-
-            std::mem::take(&mut pl.text)
-        };
-
-        let text = self.mode.on_switch(pa, text, handle.area());
-
-        handle.write(pa).text = text;
-
-        self.show_preview(pa, handle);
-    }
-
-    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {
-        let text = std::mem::take(&mut handle.write(pa).text);
-        if !text.is_empty() {
-            let mut history = HISTORY.lock().unwrap();
-            if let Some((_, ty_history)) = history.iter_mut().find(|(ty, _)| *ty == self.ty) {
-                if ty_history.last().is_none_or(|last| last != &text) {
-                    ty_history.push(text.to_string());
-                }
-            } else {
-                history.push((self.ty, vec![text.to_string()]));
-            }
-        }
-
-        self.mode.before_exit(pa, text, handle.area());
     }
 }
 

@@ -51,7 +51,7 @@ mod global {
     use crate::{
         context,
         form::FormKind,
-        hook::{self, ColorSchemeSet},
+        hook::{self, ColorschemeSet},
     };
 
     static PALETTE: LazyLock<Palette> = LazyLock::new(Palette::new);
@@ -455,7 +455,7 @@ mod global {
             let pairs = pairs();
             set_many(pairs.iter().cloned().map(|(name, form)| (name, Some(form))));
             context::queue(move |pa| {
-                _ = hook::trigger(pa, ColorSchemeSet((name.to_string(), pairs)))
+                _ = hook::trigger(pa, ColorschemeSet((name.to_string(), pairs)))
             });
         } else {
             context::error!("The colorscheme [a]{name}[] was not found");

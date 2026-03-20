@@ -150,7 +150,7 @@ use crate::{
 /// [`alt!`]: crate::mode::alt
 /// [`ctrl!`]: crate::mode::ctrl
 /// [`shift!`]: crate::mode::shift
-pub struct Handle<W: Widget + ?Sized = crate::buffer::Buffer> {
+pub struct Handle<W: ?Sized = crate::buffer::Buffer> {
     widget: RwData<W>,
     pub(crate) area: RwArea,
     mask: Arc<Mutex<&'static str>>,
@@ -180,7 +180,7 @@ impl<W: Widget + ?Sized> Handle<W> {
     }
 }
 
-impl<W: Widget + ?Sized> Handle<W> {
+impl<W: 'static + ?Sized> Handle<W> {
     ////////// Read and write access functions
 
     /// Reads from the [`Widget`], making use of a [`Pass`].
@@ -282,6 +282,172 @@ impl<W: Widget + ?Sized> Handle<W> {
         })
     }
 
+    ////////// Querying functions
+
+    /// This [`Handle`]'s [`Widget`].
+    pub fn widget(&self) -> &RwData<W> {
+        &self.widget
+    }
+
+    /// This [`Handle`]'s [`RwArea`]
+    pub fn area(&self) -> &RwArea {
+        &self.area
+    }
+
+    /// Gets this [`Handle`]'s mask.
+    ///
+    /// This mask is going to be used to map [`Form`]s to other
+    /// `Form`s when printing. To see more about how masks work, see
+    /// [`form::enable_mask`].
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`form::enable_mask`]: crate::form::enable_mask
+    pub fn mask(&self) -> &Arc<Mutex<&'static str>> {
+        &self.mask
+    }
+
+    /// Sets this [`Handle`]'s mask, returning the previous one.
+    ///
+    /// This mask is going to be used to map [`Form`]s to other
+    /// `Form`s when printing. To see more about how masks work, see
+    /// [`form::enable_mask`].
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`form::enable_mask`]: crate::form::enable_mask
+    pub fn set_mask(&self, mask: &'static str) -> &'static str {
+        self.widget.declare_written();
+        std::mem::replace(&mut self.mask.lock().unwrap(), mask)
+    }
+
+    /// Wether someone else called [`write`] or [`write_as`] since the
+    /// last [`read`] or `write`.
+    ///
+    /// Do note that this *DOES NOT* mean that the value inside has
+    /// actually been changed, it just means a mutable reference was
+    /// acquired after the last call to [`has_changed`].
+    ///
+    /// Some types like [`Text`], and traits like [`Widget`] offer
+    /// [`needs_update`] methods, you should try to determine what
+    /// parts to look for changes.
+    ///
+    /// Generally though, you can use this method to gauge that.
+    ///
+    /// [`write`]: RwData::write
+    /// [`write_as`]: RwData::write_as
+    /// [`read`]: RwData::read
+    /// [`has_changed`]: RwData::has_changed
+    /// [`Text`]: crate::text::Text
+    /// [`Widget`]: crate::ui::Widget
+    /// [`needs_update`]: crate::ui::Widget::needs_update
+    pub fn has_changed(&self, pa: &Pass) -> bool {
+        self.widget.has_changed() || self.area.has_changed(pa)
+    }
+
+    /// Wether the [`RwData`] within and another point to the same
+    /// value.
+    pub fn ptr_eq<T: ?Sized>(&self, other: &RwData<T>) -> bool {
+        self.widget.ptr_eq(other)
+    }
+
+    /// Request that this [`Handle`] be updated.
+    ///
+    /// You can use this to request updates from other threads.
+    pub fn request_update(&self) {
+        self.update_requested.store(true, Ordering::Relaxed);
+    }
+
+    ////////// Related Handles
+
+    /// Returns the [`Handle`] this one was pushed to, if it was
+    /// pushed to another.
+    ///
+    /// Will return [`Some`] if this `self` was created by calling
+    /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
+    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
+    /// on the master's [`Text`].
+    ///
+    /// [spawned]: crate::text::SpawnTag
+    pub fn master(&self) -> Result<&Handle<dyn Widget>, Text> {
+        self.master
+            .as_ref()
+            .map(|handle| handle.as_ref())
+            .ok_or_else(|| txt!("Widget was not pushed to another"))
+    }
+
+    /// Returns the [`Handle<Buffer>`] this one was pushed to, if it
+    /// was pushed to one.
+    ///
+    /// Will return [`Some`] if this `self` was created by calling
+    /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
+    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
+    /// on the master's [`Text`].
+    ///
+    /// [spawned]: crate::text::SpawnTag
+    pub fn buffer(&self) -> Result<Handle, Text> {
+        self.master
+            .as_ref()
+            .and_then(|handle| handle.try_downcast())
+            .ok_or_else(|| txt!("Widget was not pushed to a [a]Buffer"))
+    }
+
+    /// Reads related [`Widget`]s of type `W2`, as well as its
+    /// [`Area`].
+    ///
+    /// This can also be done by calling [`Handle::get_related`], and
+    /// [`Handle::read`], but this function should generally be
+    /// faster, since there is no cloning of [`Arc`]s going on.
+    pub fn read_related<'a, W2: Widget>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = (&'a W2, &'a Area, WidgetRelation)> {
+        self.read_as(pa)
+            .map(|w| (w, self.area().read(pa), WidgetRelation::Main))
+            .into_iter()
+            .chain(self.related.read(pa).iter().filter_map(|(handle, rel)| {
+                handle
+                    .read_as(pa)
+                    .map(|w| (w, handle.area().read(pa), *rel))
+            }))
+    }
+
+    /// Gets related [`Handle`]s of type [`Widget`].
+    ///
+    /// If you are doing this just to read the [`Widget`] and
+    /// [`Area`], consider using [`Handle::read_related`].
+    pub fn get_related<'a, W2: Widget>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> impl Iterator<Item = (Handle<W2>, WidgetRelation)> + 'a {
+        self.try_downcast()
+            .zip(Some(WidgetRelation::Main))
+            .into_iter()
+            .chain(
+                self.related
+                    .read(pa)
+                    .iter()
+                    .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel))),
+            )
+    }
+
+    /// Raw access to the related widgets.
+    pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>> {
+        &self.related
+    }
+
+    ////////// Other methods
+
+    /// Wether this `Handle` was already closed.
+    pub fn is_closed(&self, pa: &Pass) -> bool {
+        *self.is_closed.read(pa)
+    }
+
+    /// Declares that this `Handle` has been closed.
+    pub(crate) fn declare_closed(&self, pa: &mut Pass) {
+        *self.is_closed.write(pa) = true;
+    }
+}
+
+impl<W: Widget + ?Sized> Handle<W> {
     ////////// Refined access functions
 
     /// A shared reference to the [`Text`] of the [`Widget`].
@@ -484,164 +650,10 @@ impl<W: Widget + ?Sized> Handle<W> {
         self.area.end_points(pa, widget.text(), widget.print_opts())
     }
 
-    ////////// Querying functions
-
-    /// This [`Handle`]'s [`Widget`].
-    pub fn widget(&self) -> &RwData<W> {
-        &self.widget
-    }
-
-    /// This [`Handle`]'s [`RwArea`]
-    pub fn area(&self) -> &RwArea {
-        &self.area
-    }
-
-    /// Gets this [`Handle`]'s mask.
-    ///
-    /// This mask is going to be used to map [`Form`]s to other
-    /// `Form`s when printing. To see more about how masks work, see
-    /// [`form::enable_mask`].
-    ///
-    /// [`Form`]: crate::form::Form
-    /// [`form::enable_mask`]: crate::form::enable_mask
-    pub fn mask(&self) -> &Arc<Mutex<&'static str>> {
-        &self.mask
-    }
-
-    /// Sets this [`Handle`]'s mask, returning the previous one.
-    ///
-    /// This mask is going to be used to map [`Form`]s to other
-    /// `Form`s when printing. To see more about how masks work, see
-    /// [`form::enable_mask`].
-    ///
-    /// [`Form`]: crate::form::Form
-    /// [`form::enable_mask`]: crate::form::enable_mask
-    pub fn set_mask(&self, mask: &'static str) -> &'static str {
-        self.widget.declare_written();
-        std::mem::replace(&mut self.mask.lock().unwrap(), mask)
-    }
-
-    /// Wether someone else called [`write`] or [`write_as`] since the
-    /// last [`read`] or `write`.
-    ///
-    /// Do note that this *DOES NOT* mean that the value inside has
-    /// actually been changed, it just means a mutable reference was
-    /// acquired after the last call to [`has_changed`].
-    ///
-    /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`needs_update`] methods, you should try to determine what
-    /// parts to look for changes.
-    ///
-    /// Generally though, you can use this method to gauge that.
-    ///
-    /// [`write`]: RwData::write
-    /// [`write_as`]: RwData::write_as
-    /// [`read`]: RwData::read
-    /// [`has_changed`]: RwData::has_changed
-    /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::ui::Widget
-    /// [`needs_update`]: crate::ui::Widget::needs_update
-    pub fn has_changed(&self, pa: &Pass) -> bool {
-        self.widget.has_changed() || self.area.has_changed(pa)
-    }
-
-    /// Wether the [`RwData`] within and another point to the same
-    /// value.
-    pub fn ptr_eq<T: ?Sized>(&self, other: &RwData<T>) -> bool {
-        self.widget.ptr_eq(other)
-    }
-
     /// The [`Widget`]'s [`PrintOpts`].
     pub fn opts(&self, pa: &Pass) -> PrintOpts {
         self.widget.read(pa).print_opts()
     }
-
-    /// Request that this [`Handle`] be updated.
-    ///
-    /// You can use this to request updates from other threads.
-    pub fn request_update(&self) {
-        self.update_requested.store(true, Ordering::Relaxed);
-    }
-
-    ////////// Related Handles
-
-    /// Returns the [`Handle`] this one was pushed to, if it was
-    /// pushed to another.
-    ///
-    /// Will return [`Some`] if this `self` was created by calling
-    /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
-    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
-    /// on the master's [`Text`].
-    ///
-    /// [spawned]: crate::text::SpawnTag
-    pub fn master(&self) -> Result<&Handle<dyn Widget>, Text> {
-        self.master
-            .as_ref()
-            .map(|handle| handle.as_ref())
-            .ok_or_else(|| txt!("Widget was not pushed to another"))
-    }
-
-    /// Returns the [`Handle<Buffer>`] this one was pushed to, if it
-    /// was pushed to one.
-    ///
-    /// Will return [`Some`] if this `self` was created by calling
-    /// [`Handle::push_outer_widget`], [`Handle::push_inner_widget`],
-    /// [`Handle::spawn_widget`], or if the [`Widget`] was [spawned]
-    /// on the master's [`Text`].
-    ///
-    /// [spawned]: crate::text::SpawnTag
-    pub fn buffer(&self) -> Result<Handle, Text> {
-        self.master
-            .as_ref()
-            .and_then(|handle| handle.try_downcast())
-            .ok_or_else(|| txt!("Widget was not pushed to a [a]Buffer"))
-    }
-
-    /// Reads related [`Widget`]s of type `W2`, as well as its
-    /// [`Area`].
-    ///
-    /// This can also be done by calling [`Handle::get_related`], and
-    /// [`Handle::read`], but this function should generally be
-    /// faster, since there is no cloning of [`Arc`]s going on.
-    pub fn read_related<'a, W2: Widget>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl Iterator<Item = (&'a W2, &'a Area, WidgetRelation)> {
-        self.read_as(pa)
-            .map(|w| (w, self.area().read(pa), WidgetRelation::Main))
-            .into_iter()
-            .chain(self.related.read(pa).iter().filter_map(|(handle, rel)| {
-                handle
-                    .read_as(pa)
-                    .map(|w| (w, handle.area().read(pa), *rel))
-            }))
-    }
-
-    /// Gets related [`Handle`]s of type [`Widget`].
-    ///
-    /// If you are doing this just to read the [`Widget`] and
-    /// [`Area`], consider using [`Handle::read_related`].
-    pub fn get_related<'a, W2: Widget>(
-        &'a self,
-        pa: &'a Pass,
-    ) -> impl Iterator<Item = (Handle<W2>, WidgetRelation)> + 'a {
-        self.try_downcast()
-            .zip(Some(WidgetRelation::Main))
-            .into_iter()
-            .chain(
-                self.related
-                    .read(pa)
-                    .iter()
-                    .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel))),
-            )
-    }
-
-    /// Raw access to the related widgets.
-    pub(crate) fn related(&self) -> &RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>> {
-        &self.related
-    }
-
-    ////////// Other methods
 
     /// Closes this `Handle`, removing the [`Widget`] from the.
     /// [`Window`]
@@ -649,16 +661,6 @@ impl<W: Widget + ?Sized> Handle<W> {
     /// [`Window`]: crate::ui::Window
     pub fn close(&self, pa: &mut Pass) -> Result<(), Text> {
         context::windows().close(pa, self)
-    }
-
-    /// Wether this `Handle` was already closed.
-    pub fn is_closed(&self, pa: &Pass) -> bool {
-        *self.is_closed.read(pa)
-    }
-
-    /// Declares that this `Handle` has been closed.
-    pub(crate) fn declare_closed(&self, pa: &mut Pass) {
-        *self.is_closed.write(pa) = true;
     }
 }
 
@@ -786,13 +788,13 @@ impl<W: Widget> Handle<W> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW> {
-        let handle = if let Some(master) = self.area().get_cluster_master(pa) {
+        let handle = if let Some(master) = self.area.get_cluster_master(pa) {
             context::windows()
-                .push_widget(pa, (&master, None, specs), widget, Some(self.area()))
+                .push_widget(pa, (&master, None, specs), widget, Some(&self.area))
                 .unwrap()
         } else {
             context::windows()
-                .push_widget(pa, (&self.area, None, specs), widget, Some(self.area()))
+                .push_widget(pa, (&self.area, None, specs), widget, Some(&self.area))
                 .unwrap()
         };
 
@@ -867,20 +869,16 @@ impl<W: Widget> Handle<W> {
 // SAFETY: The only parts that are accessible from other threads are
 // the atomic counters from the Arcs. Everything else can only be
 // acquired when there is a Pass, i.e., on the main thread.
-unsafe impl<W: Widget + ?Sized> Send for Handle<W> {}
-unsafe impl<W: Widget + ?Sized> Sync for Handle<W> {}
+unsafe impl<W: ?Sized> Send for Handle<W> {}
+unsafe impl<W: ?Sized> Sync for Handle<W> {}
 
-impl<W1, W2> PartialEq<Handle<W2>> for Handle<W1>
-where
-    W1: Widget + ?Sized,
-    W2: Widget + ?Sized,
-{
+impl<W1: ?Sized, W2: ?Sized> PartialEq<Handle<W2>> for Handle<W1> {
     fn eq(&self, other: &Handle<W2>) -> bool {
-        self.widget().ptr_eq(other.widget())
+        self.widget.ptr_eq(&other.widget)
     }
 }
 
-impl<W: Widget + ?Sized> Clone for Handle<W> {
+impl<W: ?Sized> Clone for Handle<W> {
     fn clone(&self) -> Self {
         Self {
             widget: self.widget.clone(),
@@ -894,7 +892,7 @@ impl<W: Widget + ?Sized> Clone for Handle<W> {
     }
 }
 
-impl<W: Widget + ?Sized> std::fmt::Debug for Handle<W> {
+impl<W: ?Sized> std::fmt::Debug for Handle<W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Handle")
             .field("mask", &self.mask)

@@ -147,9 +147,7 @@ impl StatusLine {
     pub fn builder() -> StatusLineFmt {
         StatusLineFmt { fns: None, ..Default::default() }
     }
-}
 
-impl Widget for StatusLine {
     fn update(pa: &mut Pass, handle: &Handle<Self>) {
         if let BufferHandle::Dynamic(dyn_file) = &mut handle.write(pa).buffer_handle {
             dyn_file.swap_to_current();
@@ -168,7 +166,9 @@ impl Widget for StatusLine {
             BufferHandle::Dynamic(dyn_file) => dyn_file.declare_as_read(),
         }
     }
+}
 
+impl Widget for StatusLine {
     fn needs_update(&self, pa: &Pass) -> bool {
         let buffer_changed = match &self.buffer_handle {
             BufferHandle::Fixed(handle) => handle.has_changed(pa),

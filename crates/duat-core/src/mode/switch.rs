@@ -16,7 +16,7 @@ use crate::{
     buffer::Buffer,
     context::{self, Handle},
     data::{Pass, RwData},
-    hook::{self, FocusChanged, KeySent, KeySentTo, ModeSwitched},
+    hook::{self, FocusChanged, KeySent, OnModeSwitch},
     ui::{Node, Widget},
     utils::{catch_panic, duat_name},
 };
@@ -113,7 +113,7 @@ pub fn set<M: Mode>(pa: &mut Pass, mode: M) {
     let mode = if let Some(old_mode) = MODE.write(pa).take() {
         let new = (new_name, Box::new(mode) as Box<dyn Any>);
         let old = (old_name, old_mode);
-        let ms = hook::trigger(pa, ModeSwitched { old, new });
+        let ms = hook::trigger(pa, OnModeSwitch { old, new });
         ms.new.1
     } else {
         Box::new(mode)
@@ -219,13 +219,10 @@ fn send_key_fn<M: Mode>(pa: &mut Pass, key_event: KeyEvent) {
 
     catch_panic(|| mode.send_key(pa, key_event, handle.clone()));
 
-    hook::trigger(pa, KeySentTo::<M>((key_event, handle.clone())));
     hook::trigger(pa, KeySent(key_event));
 
     let mode_box = MODE.write(pa);
     if mode_box.is_none() {
         *mode_box = Some(mode);
-    } else {
-        mode.before_exit(pa, handle);
     }
 }

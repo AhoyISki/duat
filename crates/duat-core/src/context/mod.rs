@@ -158,6 +158,20 @@ mod global {
         Ok(handle)
     }
 
+    /// Get the "most appropriate" [`Handle`] for a given [`Widget`].
+    ///
+    /// The "most appropriate" `Handle` is determined like this:
+    ///
+    /// 1. Try to look for those pushed around the current [`Buffer`].
+    /// 2. Try to look for those pushed around the current [`Window`].
+    /// 3. Try to look for those pushed around other [`Window`]s.
+    pub fn handle_of<W: Widget>(pa: &Pass) -> Option<Handle<W>> {
+        windows()
+            .node_of::<W>(pa)
+            .ok()
+            .and_then(|node| node.try_downcast())
+    }
+
     /// Returns the current active [`Handle`].
     ///
     /// Unlike [`current_buffer`], this function will return a
@@ -312,9 +326,9 @@ impl DuatSender {
 pub struct DuatReceiver(mpsc::Receiver<DuatEvent>, &'static AtomicUsize);
 
 impl DuatReceiver {
-    pub(crate) fn recv_timeout(&self, timeout: std::time::Duration) -> Option<DuatEvent> {
+    pub(crate) fn recv(&self) -> Option<DuatEvent> {
         self.0
-            .recv_timeout(timeout)
+            .recv()
             .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
             .ok()
     }
@@ -468,17 +482,6 @@ impl CurWidgetNode {
     /// [`Widget`]s.
     pub(crate) fn mutate_data<R>(&self, pa: &Pass, f: impl FnOnce(&Handle<dyn Widget>) -> R) -> R {
         f(self.0.read(pa).handle())
-    }
-
-    /// Mutates the [`RwData<dyn Widget>`] as `W`, its [`Area`], and
-    /// related [`Widget`]s.
-    pub(crate) fn mutate_data_as<W: Widget, R>(
-        &self,
-        pa: &Pass,
-        f: impl FnOnce(&Handle<W>) -> R,
-    ) -> Option<R> {
-        let inner = self.0.read(pa);
-        Some(f(&inner.try_downcast()?))
     }
 
     /// The inner [`Node`].

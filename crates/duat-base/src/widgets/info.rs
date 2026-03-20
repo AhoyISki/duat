@@ -3,10 +3,13 @@
 //! This is a very simple `Widget`, it basically just exists so I
 //! don't have to define a new `Widget` every time I want to show
 //! static information.
+use std::sync::Once;
+
 use duat_core::{
     context::Handle,
     data::Pass,
-    mode::{MouseEvent, MouseEventKind},
+    hook::{self, OnMouseEvent},
+    mode::MouseEventKind,
     opts::PrintOpts,
     text::{Text, TextMut},
     ui::Widget,
@@ -24,7 +27,7 @@ use duat_core::{
 /// [`StaticSpawnSpecs`]: duat_core::ui::StaticSpawnSpecs
 pub struct Info {
     /// The [`Text`] that will be shown by this widget
-    pub text: Text,
+    text: Text,
 }
 
 impl Info {
@@ -36,40 +39,39 @@ impl Info {
     /// specific locations, so they don't offer a `new` method, which
     /// could be used in order to place them willy nilly.
     pub fn new(text: Text) -> Self {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            use MouseEventKind::{ScrollDown, ScrollUp};
+            hook::add::<OnMouseEvent<Info>>(|pa, (info, event)| match event.kind {
+                ScrollDown | ScrollUp => {
+                    let (info, area) = info.write_with_area(pa);
+                    let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
+                    area.scroll_ver(&info.text, scroll, info.print_opts());
+                }
+                _ => {}
+            });
+        });
+
         Self { text }
     }
-}
 
-impl Widget for Info {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let (info, area) = handle.write_with_area(pa);
+    pub fn set_text(pa: &mut Pass, info: &Handle<Self>, func: impl FnOnce(&mut Text)) {
+        let (info, area) = info.write_with_area(pa);
+        func(&mut info.text);
+
         let size = area.size_of_text(info.print_opts(), &info.text).unwrap();
         _ = area.set_width(size.x);
         _ = area.set_height(size.y);
     }
+}
 
-    fn needs_update(&self, _: &Pass) -> bool {
-        false
-    }
-
+impl Widget for Info {
     fn text(&self) -> &Text {
         &self.text
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
         self.text.as_mut()
-    }
-
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
-        use MouseEventKind::{ScrollDown, ScrollUp};
-        match event.kind {
-            ScrollDown | ScrollUp => {
-                let (info, area) = handle.write_with_area(pa);
-                let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-                area.scroll_ver(&info.text, scroll, info.print_opts());
-            }
-            _ => {}
-        }
     }
 
     fn print_opts(&self) -> PrintOpts {

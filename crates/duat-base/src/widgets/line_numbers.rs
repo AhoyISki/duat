@@ -10,13 +10,15 @@
 //! selection's line number.
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
-use std::fmt::Alignment;
+use std::{fmt::Alignment, sync::Once};
 
 use duat_core::{
+    buffer::Buffer,
     context::Handle,
     data::Pass,
     form,
-    mode::{MouseButton, MouseEvent, MouseEventKind},
+    hook::{self, BufferUpdated, OnMouseEvent},
+    mode::{MouseButton, MouseEventKind},
     text::{Builder, Spacer, Text, TextMut},
     ui::{PushSpecs, Side, Widget},
 };
@@ -34,7 +36,6 @@ use duat_core::{
 /// [`Buffer`]: duat_core::buffer::Buffer
 /// [removing]: duat_core::hook::remove
 pub struct LineNumbers {
-    buffer: Handle,
     text: Text,
     /// Wether to show relative numbering
     ///
@@ -58,19 +59,79 @@ impl LineNumbers {
     /// Returns a [`LineNumbersOpts`], used to create a new
     /// `LineNumbers`
     pub fn builder() -> LineNumbersOpts {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            hook::add::<BufferUpdated>(|pa, buffer| {
+                let handles: Vec<_> = buffer.get_related::<LineNumbers>(pa).collect();
+                for (linenumbers, _) in handles {
+                    let width = linenumbers.read(pa).calculate_width(pa, buffer);
+                    linenumbers.area().set_width(pa, width + 1.0).unwrap();
+
+                    linenumbers.write(pa).text = linenumbers.read(pa).form_text(pa, buffer);
+                }
+            });
+
+            hook::add::<OnMouseEvent<LineNumbers>>(|pa, (linenumbers, event)| {
+                let line = |pa, handle: &Handle| {
+                    let lines = handle.printed_line_numbers(pa);
+                    event
+                        .points
+                        .and_then(|tpp| lines.get(tpp.points().real.line()))
+                        .map(|line| line.number)
+                        .unwrap_or(handle.text(pa).end_point().line())
+                };
+
+                let (buffer, _) = linenumbers.get_related::<Buffer>(pa).next().unwrap();
+
+                match event.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let line = line(pa, &buffer);
+
+                        buffer.selections_mut(pa).remove_extras();
+                        buffer.edit_main(pa, |mut c| {
+                            c.unset_anchor();
+                            c.move_to_coords(line, 0)
+                        })
+                    }
+                    MouseEventKind::Drag(MouseButton::Left) => {
+                        let line = line(pa, &buffer);
+
+                        buffer.selections_mut(pa).remove_extras();
+                        buffer.edit_main(pa, |mut c| {
+                            c.set_anchor_if_needed();
+                            c.move_to_coords(line, 0)
+                        })
+                    }
+                    MouseEventKind::ScrollDown => {
+                        let opts = buffer.opts(pa);
+                        let (buf, area) = buffer.write_with_area(pa);
+
+                        area.scroll_ver(buf.text(), 3, opts);
+                    }
+                    MouseEventKind::ScrollUp => {
+                        let opts = buffer.opts(pa);
+                        let (buf, area) = buffer.write_with_area(pa);
+
+                        area.scroll_ver(buf.text(), -3, opts);
+                    }
+                    _ => {}
+                }
+            });
+        });
+
         LineNumbersOpts::default()
     }
 
     /// The minimum width that would be needed to show the last line.
-    fn calculate_width(&self, pa: &Pass) -> f32 {
-        let len = self.buffer.read(pa).text().end_point().line();
+    fn calculate_width(&self, pa: &Pass, buffer: &Handle) -> f32 {
+        let len = buffer.read(pa).text().end_point().line();
         len.ilog10() as f32
     }
 
-    fn form_text(&self, pa: &Pass) -> Text {
+    fn form_text(&self, pa: &Pass, buffer: &Handle) -> Text {
         let (main_line_num, printed_line_numbers) = {
-            let printed_line_numbers = self.buffer.printed_line_numbers(pa);
-            let buf = self.buffer.read(pa);
+            let printed_line_numbers = buffer.printed_line_numbers(pa);
+            let buf = buffer.read(pa);
 
             let main_line = if buf.selections().is_empty() {
                 usize::MAX
@@ -117,71 +178,12 @@ impl LineNumbers {
 }
 
 impl Widget for LineNumbers {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let width = handle.read(pa).calculate_width(pa);
-        handle.area().set_width(pa, width + 1.0).unwrap();
-
-        handle.write(pa).text = handle.read(pa).form_text(pa);
-    }
-
-    fn needs_update(&self, pa: &Pass) -> bool {
-        self.buffer.has_changed(pa)
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
         self.text.as_mut()
-    }
-
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
-        let line = |pa, handle: &Handle| {
-            let lines = handle.printed_line_numbers(pa);
-            event
-                .points
-                .and_then(|tpp| lines.get(tpp.points().real.line()))
-                .map(|line| line.number)
-                .unwrap_or(handle.text(pa).end_point().line())
-        };
-        match event.kind {
-            MouseEventKind::Down(MouseButton::Left) => {
-                let line = line(pa, &handle.read(pa).buffer);
-                let handle = handle.read(pa).buffer.clone();
-
-                handle.selections_mut(pa).remove_extras();
-                handle.edit_main(pa, |mut c| {
-                    c.unset_anchor();
-                    c.move_to_coords(line, 0)
-                })
-            }
-            MouseEventKind::Drag(MouseButton::Left) => {
-                let line = line(pa, &handle.read(pa).buffer);
-                let handle = handle.read(pa).buffer.clone();
-
-                handle.selections_mut(pa).remove_extras();
-                handle.edit_main(pa, |mut c| {
-                    c.set_anchor_if_needed();
-                    c.move_to_coords(line, 0)
-                })
-            }
-            MouseEventKind::ScrollDown => {
-                let handle = handle.read(pa).buffer.clone();
-                let opts = handle.opts(pa);
-                let (buffer, area) = handle.write_with_area(pa);
-
-                area.scroll_ver(buffer.text(), 3, opts);
-            }
-            MouseEventKind::ScrollUp => {
-                let handle = handle.read(pa).buffer.clone();
-                let opts = handle.opts(pa);
-                let (buffer, area) = handle.write_with_area(pa);
-
-                area.scroll_ver(buffer.text(), -3, opts);
-            }
-            _ => {}
-        }
     }
 }
 
@@ -236,16 +238,15 @@ impl LineNumbersOpts {
     /// The [`Widget`] will be pushed on the "outside". That is, if
     /// there are other widgets pushed on the buffer, this one will be
     /// placed around them.
-    pub fn push_on(self, pa: &mut Pass, handle: &Handle) -> Handle<LineNumbers> {
+    pub fn push_on(self, pa: &mut Pass, buffer: &Handle) -> Handle<LineNumbers> {
         let mut line_numbers = LineNumbers {
-            buffer: handle.clone(),
             text: Text::default(),
             relative: self.relative,
             align: self.align,
             main_align: self.main_align,
             show_wraps: self.show_wraps,
         };
-        line_numbers.text = line_numbers.form_text(pa);
+        line_numbers.text = line_numbers.form_text(pa, buffer);
 
         let specs = PushSpecs {
             side: if self.on_the_right {
@@ -256,7 +257,7 @@ impl LineNumbersOpts {
             ..Default::default()
         };
 
-        handle.push_outer_widget(pa, line_numbers, specs)
+        buffer.push_outer_widget(pa, line_numbers, specs)
     }
 }
 

@@ -47,12 +47,13 @@
 //! - [`FocusedOn`] triggers when a [widget] is focused.
 //! - [`UnfocusedFrom`] triggers when a [widget] is unfocused.
 //! - [`FocusChanged`] is like [`FocusedOn`], but on [dyn `Widget`]s.
+//! - [`OnModeSwitch`] triggers when you change [`Mode`].
 //! - [`KeySent`] triggers when a keys are sent.
-//! - [`KeySentTo`] same, but on a specific [widget].
 //! - [`KeyTyped`] triggers when keys are _typed_, not _sent_.
 //! - [`OnMouseEvent`] triggers with mouse events.
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
-//! - [`ModeSwitched`] triggers when you change [`Mode`].
+//! - [`ColorschemeSet`] triggers whenever a [colorscheme is set].
+//! - [`MsgLogged`] triggers after logginng macros like [`debug!`].
 //!
 //! # Basic makeout
 //!
@@ -172,6 +173,8 @@
 //! [`hook::add`]: add
 //! [`SearchPerformed`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchPerformed.html
 //! [`SearchUpdated`]: https://docs.rs/duat/latest/duat/hooks/struct.SearchUpdated.html
+//! [`debug!`]: crate::context::debug
+//! [colorscheme is set]: crate::form::set_colorscheme
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
@@ -187,7 +190,7 @@ use crate::{
     context::Handle,
     data::Pass,
     form::{Form, FormId},
-    mode::{KeyEvent, Mode, MouseEvent},
+    mode::{KeyEvent, MouseEvent},
     ui::{Widget, Window},
     utils::catch_panic,
 };
@@ -424,66 +427,6 @@ impl<S: ToString> From<S> for InnerGroupId {
     }
 }
 
-/// [`Hookable`]: Triggers when Duat opens or reloads.
-///
-/// This trigger will also happen after a few other initial setups of
-/// Duat. Notably, it takes place after all [`Buffer`]s are
-/// registered, and their [`BufferOpened`] hooks are triggered.
-///
-/// # Arguments
-///
-/// - Wether duat has just opened.
-pub struct ConfigLoaded(pub(crate) bool);
-
-impl Hookable for ConfigLoaded {
-    type Input<'h> = bool;
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        self.0
-    }
-}
-
-/// [`Hookable`]: Triggers when Duat closes or has to reload.
-///
-/// # Arguments
-///
-/// - Wether duat is in the process of quitting.
-pub struct ConfigUnloaded(pub(crate) bool);
-
-impl Hookable for ConfigUnloaded {
-    type Input<'h> = bool;
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        self.0
-    }
-}
-
-/// [`Hookable`]: Triggers when Duat is refocused.
-///
-/// # Arguments
-///
-/// There are no arguments
-pub struct FocusedOnDuat(pub(crate) ());
-
-impl Hookable for FocusedOnDuat {
-    type Input<'h> = ();
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
-}
-
-/// [`Hookable`]: Triggers when Duat is unfocused.
-///
-/// # Arguments
-///
-/// There are no arguments
-pub struct UnfocusedFromDuat(pub(crate) ());
-
-impl Hookable for UnfocusedFromDuat {
-    type Input<'h> = ();
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
-}
-
 /// [`Hookable`]: Triggers when a [`Widget`] is created.
 ///
 /// # Arguments
@@ -543,9 +486,9 @@ impl Hookable for UnfocusedFromDuat {
 /// [direction]: crate::ui::PushSpecs
 /// [`LineNumbers`]: https://docs.rs/duat/latest/duat/widgets/struct.LineNumbers.html
 /// [`VertRule`]: https://docs.rs/duat_term/latest/duat-term/struct.VertRule.html
-pub struct WidgetOpened<W: Widget>(pub(crate) Handle<W>);
+pub struct WidgetOpened<W>(pub(crate) Handle<W>);
 
-impl<W: Widget> Hookable for WidgetOpened<W> {
+impl<W: 'static> Hookable for WidgetOpened<W> {
     type Input<'h> = &'h Handle<W>;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -555,6 +498,25 @@ impl<W: Widget> Hookable for WidgetOpened<W> {
 
 /// An alias for [`WidgetOpened<Buffer>`].
 pub type BufferOpened = WidgetOpened<Buffer>;
+
+/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`].
+///
+/// Only triggers if the buffer was actually updated.
+///
+/// # Arguments
+///
+/// - The [`Handle`] of said [`Buffer`]
+/// - Wether the `Buffer` will be closed (happens when calling the
+///   `wq` or `waq` commands)
+pub struct BufferSaved(pub(crate) (Handle, bool));
+
+impl Hookable for BufferSaved {
+    type Input<'h> = (&'h Handle, bool);
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        (&self.0.0, self.0.1)
+    }
+}
 
 /// [`Hookable`]: Triggers when a new window is opened.
 ///
@@ -835,6 +797,66 @@ impl Hookable for BufferSwitched {
     }
 }
 
+/// [`Hookable`]: Triggers when Duat opens or reloads.
+///
+/// This trigger will also happen after a few other initial setups of
+/// Duat. Notably, it takes place after all [`Buffer`]s are
+/// registered, and their [`BufferOpened`] hooks are triggered.
+///
+/// # Arguments
+///
+/// - Wether duat has just opened.
+pub struct ConfigLoaded(pub(crate) bool);
+
+impl Hookable for ConfigLoaded {
+    type Input<'h> = bool;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        self.0
+    }
+}
+
+/// [`Hookable`]: Triggers when Duat closes or has to reload.
+///
+/// # Arguments
+///
+/// - Wether duat is in the process of quitting.
+pub struct ConfigUnloaded(pub(crate) bool);
+
+impl Hookable for ConfigUnloaded {
+    type Input<'h> = bool;
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
+        self.0
+    }
+}
+
+/// [`Hookable`]: Triggers when Duat is refocused.
+///
+/// # Arguments
+///
+/// There are no arguments
+pub struct FocusedOnDuat(pub(crate) ());
+
+impl Hookable for FocusedOnDuat {
+    type Input<'h> = ();
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
+}
+
+/// [`Hookable`]: Triggers when Duat is unfocused.
+///
+/// # Arguments
+///
+/// There are no arguments
+pub struct UnfocusedFromDuat(pub(crate) ());
+
+impl Hookable for UnfocusedFromDuat {
+    type Input<'h> = ();
+
+    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {}
+}
+
 /// [`Hookable`]: Triggers when the [`Widget`] is focused.
 ///
 /// # Arguments
@@ -848,9 +870,9 @@ impl Hookable for BufferSwitched {
 ///
 /// - By a focused [`Handle<_>`].
 /// - By a `(Handle<_>, Handle<_>)` pair.
-pub struct FocusedOn<W: Widget>(pub(crate) (Handle<dyn Widget>, Handle<W>));
+pub struct FocusedOn<W>(pub(crate) (Handle<dyn Widget>, Handle<W>));
 
-impl<W: Widget> Hookable for FocusedOn<W> {
+impl<W: 'static> Hookable for FocusedOn<W> {
     type Input<'h> = &'h (Handle<dyn Widget>, Handle<W>);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -858,7 +880,7 @@ impl<W: Widget> Hookable for FocusedOn<W> {
     }
 }
 
-impl<W1: Widget, W2: Widget + ?Sized> PartialEq<Handle<W2>> for FocusedOn<W1> {
+impl<W1, W2: ?Sized> PartialEq<Handle<W2>> for FocusedOn<W1> {
     fn eq(&self, other: &Handle<W2>) -> bool {
         self.0.1 == *other
     }
@@ -927,12 +949,12 @@ impl Hookable for FocusChanged {
 ///
 /// - The previous mode.
 /// - The current mode.
-pub struct ModeSwitched {
+pub struct OnModeSwitch {
     pub(crate) old: (&'static str, Box<dyn Any>),
     pub(crate) new: (&'static str, Box<dyn Any>),
 }
 
-impl Hookable for ModeSwitched {
+impl Hookable for OnModeSwitch {
     type Input<'h> = ModeSwitch<'h>;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -1009,24 +1031,6 @@ impl Hookable for KeySent {
     }
 }
 
-/// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`].
-///
-/// # Arguments
-///
-/// - The sent [key].
-/// - An [`Handle<W>`] for the widget.
-///
-/// [key]: KeyEvent
-pub struct KeySentTo<M: Mode>(pub(crate) (KeyEvent, Handle<M::Widget>));
-
-impl<M: Mode> Hookable for KeySentTo<M> {
-    type Input<'h> = (KeyEvent, &'h Handle<M::Widget>);
-
-    fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (self.0.0, &self.0.1)
-    }
-}
-
 /// [`Hookable`]: Triggers whenever a [key] is typed.
 ///
 /// [`KeyEvent`]s are "typed" when typing keys _or_ when calling the
@@ -1065,29 +1069,29 @@ impl PartialEq<KeyEvent> for KeyTyped {
 ///
 /// - The [`Handle<dyn Widget>`] under the mouse.
 /// - The [`MouseEvent`] itself.
-pub struct OnMouseEvent(pub(crate) (Handle<dyn Widget>, MouseEvent));
+pub struct OnMouseEvent<W: ?Sized>(pub(crate) (Handle<W>, MouseEvent));
 
-impl Hookable for OnMouseEvent {
-    type Input<'h> = (&'h Handle<dyn Widget>, MouseEvent);
+impl<W: 'static + ?Sized> Hookable for OnMouseEvent<W> {
+    type Input<'h> = (&'h Handle<W>, MouseEvent);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
         (&self.0.0, self.0.1)
     }
 }
 
-impl PartialEq<MouseEvent> for OnMouseEvent {
+impl<W: 'static + ?Sized> PartialEq<MouseEvent> for OnMouseEvent<W> {
     fn eq(&self, other: &MouseEvent) -> bool {
         self.0.1 == *other
     }
 }
 
-impl PartialEq<MouseEventKind> for OnMouseEvent {
+impl<W: 'static + ?Sized> PartialEq<MouseEventKind> for OnMouseEvent<W> {
     fn eq(&self, other: &MouseEventKind) -> bool {
         self.0.1.kind == *other
     }
 }
 
-impl<W: Widget> PartialEq<Handle<W>> for OnMouseEvent {
+impl<W: 'static + ?Sized> PartialEq<Handle<W>> for OnMouseEvent<W> {
     fn eq(&self, other: &Handle<W>) -> bool {
         self.0.0.ptr_eq(other.widget())
     }
@@ -1116,16 +1120,13 @@ impl Hookable for FormSet {
 
 /// [`Hookable`]: Triggers when a colorscheme is set.
 ///
-/// Since [`Form`]s are set asynchronously, this may happen before the
-/// `ColorScheme` is done with its changes.
-///
 /// # Arguments
 ///
 /// - The name of the `ColorScheme`.
 /// - The list of form name/form value pairs.
-pub struct ColorSchemeSet(pub(crate) (String, Vec<(String, Form)>));
+pub struct ColorschemeSet(pub(crate) (String, Vec<(String, Form)>));
 
-impl Hookable for ColorSchemeSet {
+impl Hookable for ColorschemeSet {
     type Input<'h> = (&'h str, &'h [(String, Form)]);
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
@@ -1133,22 +1134,21 @@ impl Hookable for ColorSchemeSet {
     }
 }
 
-/// [`Hookable`]: Triggers after [`Handle::save`] or [`Handle::save_to`].
-///
-/// Only triggers if the buffer was actually updated.
+/// [`Hookable`]: Triggers when messages are logged (e.g. via [`warn!`].
 ///
 /// # Arguments
 ///
-/// - The [`Handle`] of said [`Buffer`]
-/// - Wether the `Buffer` will be closed (happens when calling the
-///   `wq` or `waq` commands)
-pub struct BufferSaved(pub(crate) (Handle, bool));
+/// - The [`Record`] that was logged.
+///
+/// [`warn!`]: crate::context::warn
+/// [`Record`]: crate::context::Record
+pub struct MsgLogged(pub(crate) crate::context::Record);
 
-impl Hookable for BufferSaved {
-    type Input<'h> = (&'h Handle, bool);
+impl Hookable for MsgLogged {
+    type Input<'h> = crate::context::Record;
 
     fn get_input<'h>(&'h mut self, _: &mut Pass) -> Self::Input<'h> {
-        (&self.0.0, self.0.1)
+        self.0.clone()
     }
 }
 

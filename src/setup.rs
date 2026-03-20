@@ -18,7 +18,7 @@ use duat_core::{
     buffer::{BufferOpts, History},
     context::{self, cache},
     data::Pass,
-    hook::{BufferOpened, KeyTyped, ModeSwitched},
+    hook::{BufferOpened, KeyTyped, OnModeSwitch},
     notify::{FromDuat, Watcher},
     text::txt,
     ui::{DynSpawnSpecs, Orientation, Ui},
@@ -239,7 +239,7 @@ pub fn pre_setup() -> Ui {
         }
     })
     .grouped("WhichKey");
-    hook::add::<ModeSwitched>(move |pa, _| {
+    hook::add::<OnModeSwitch>(move |pa, _| {
         let opts = OPTS.lock().unwrap();
         if opts
             .whichkey
@@ -291,7 +291,7 @@ pub fn pre_setup() -> Ui {
     form::enable_mask("info");
     form::enable_mask("inactive");
 
-    mode::map::<mode::User>("L", |pa| mode::set(pa, Pager::<LogBook>::new()))
+    mode::map::<mode::User>("L", |pa: &mut _| mode::set(pa, Pager::<LogBook>::new()))
         .doc(txt!("Open [mode]Logs"));
 
     #[cfg(feature = "treesitter")]

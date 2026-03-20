@@ -15,10 +15,67 @@ use std::sync::{
 use duat_core::{
     context::{self, Handle, Level, Record},
     data::Pass,
-    hook::{self, KeySent},
+    hook::{self, KeySent, MsgLogged},
     text::{Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
+
+pub fn add_notifications_hook() {
+    hook::add::<MsgLogged>(|pa, rec| {
+        let Some(notifications) = context::handle_of::<Notifications>(pa) else {
+            return;
+        };
+
+        let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
+        let notifs = notifications.write(pa);
+
+        if notifs.levels.contains(&rec.level()) {
+            let mut global_fmt = GLOBAL_FMT.lock().unwrap();
+            let mut global_get_mask = GLOBAL_GET_MASK.lock().unwrap();
+
+            notifications.set_mask(if let Some(get_mask) = notifs.get_mask.as_mut() {
+                get_mask(rec.clone())
+            } else if let Some(get_mask) = global_get_mask.as_mut() {
+                get_mask(rec.clone())
+            } else {
+                default_get_mask(rec.clone())
+            });
+
+            notifs.text = if let Some(fmt) = notifs.fmt.as_mut() {
+                fmt(rec)
+            } else if let Some(fmt) = global_fmt.as_mut() {
+                fmt(rec)
+            } else {
+                default_fmt(rec)
+            };
+
+            if notifs.request_width {
+                let notifs = notifications.read(pa);
+                let size = notifications
+                    .area()
+                    .size_of_text(pa, notifs.print_opts(), &notifs.text)
+                    .unwrap();
+                notifications.area().set_width(pa, size.x).unwrap();
+                notifications.area().set_height(pa, size.y).unwrap();
+            }
+        } else if clear_notifs {
+            notifications.set_mask("");
+            if !notifs.text.is_empty_empty() {
+                notifs.text = Text::new();
+
+                if notifs.request_width {
+                    let notifs = notifications.read(pa);
+                    let size = notifications
+                        .area()
+                        .size_of_text(pa, notifs.print_opts(), &notifs.text)
+                        .unwrap();
+                    notifications.area().set_width(pa, size.x).unwrap();
+                    notifications.area().set_height(pa, size.y).unwrap();
+                }
+            }
+        }
+    });
+}
 
 /// A [`Widget`] to show notifications
 ///
@@ -53,11 +110,9 @@ use duat_core::{
 /// [hook]: duat_core::hook
 /// [`opts::set_notifs`]: https://docs.rs/duat/latest/duat/opts/fn.set_notifs.html
 pub struct Notifications {
-    logs: context::Logs,
     text: Text,
     fmt: Option<Box<dyn FnMut(Record) -> Text + Send>>,
     levels: Vec<Level>,
-    last_rec: Option<usize>,
     get_mask: Option<Box<dyn FnMut(Record) -> &'static str + Send>>,
     request_width: bool,
 }
@@ -82,71 +137,12 @@ impl Notifications {
 }
 
 impl Widget for Notifications {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
-        let notifs = handle.write(pa);
-
-        if notifs.logs.has_changed()
-            && let Some((i, rec)) = notifs.logs.last_with_levels(&notifs.levels)
-            && notifs.last_rec.is_none_or(|last_i| last_i < i)
-        {
-            let mut global_fmt = GLOBAL_FMT.lock().unwrap();
-            let mut global_get_mask = GLOBAL_GET_MASK.lock().unwrap();
-
-            handle.set_mask(if let Some(get_mask) = notifs.get_mask.as_mut() {
-                get_mask(rec.clone())
-            } else if let Some(get_mask) = global_get_mask.as_mut() {
-                get_mask(rec.clone())
-            } else {
-                default_get_mask(rec.clone())
-            });
-
-            notifs.text = if let Some(fmt) = notifs.fmt.as_mut() {
-                fmt(rec)
-            } else if let Some(fmt) = global_fmt.as_mut() {
-                fmt(rec)
-            } else {
-                default_fmt(rec)
-            };
-            notifs.last_rec = Some(i);
-
-            if notifs.request_width {
-                let notifs = handle.read(pa);
-                let size = handle
-                    .area()
-                    .size_of_text(pa, notifs.print_opts(), &notifs.text)
-                    .unwrap();
-                handle.area().set_width(pa, size.x).unwrap();
-                handle.area().set_height(pa, size.y).unwrap();
-            }
-        } else if clear_notifs {
-            handle.set_mask("");
-            if notifs.text != Text::new() {
-                notifs.text = Text::new();
-
-                if notifs.request_width {
-                    let notifs = handle.read(pa);
-                    let size = handle
-                        .area()
-                        .size_of_text(pa, notifs.print_opts(), &notifs.text)
-                        .unwrap();
-                    handle.area().set_width(pa, size.x).unwrap();
-                    handle.area().set_height(pa, size.y).unwrap();
-                }
-            }
-        }
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
         self.text.as_mut()
-    }
-
-    fn needs_update(&self, _: &Pass) -> bool {
-        self.logs.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
     }
 }
 
@@ -172,12 +168,10 @@ impl NotificationsOpts {
     /// Pushes the [`Notifications`] to another [`Widget`]
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<Notifications> {
         let notifications = Notifications {
-            logs: context::logs(),
             text: Text::new(),
             fmt: None,
             get_mask: None,
             levels: self.allowed_levels,
-            last_rec: None,
             request_width: self.request_width,
         };
         let specs = PushSpecs {

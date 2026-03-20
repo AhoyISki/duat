@@ -381,6 +381,12 @@ impl Logs {
     /// Pushes a new [`Record`] to Duat
     #[doc(hidden)]
     pub fn push_record(&self, rec: Record) {
+        crate::context::queue({
+            use crate::hook;
+            let rec = rec.clone();
+            |pa| _ = hook::trigger(pa, hook::MsgLogged(rec))
+        });
+
         self.cur_state.fetch_add(1, Ordering::Relaxed);
         self.list.lock().unwrap().push(rec)
     }

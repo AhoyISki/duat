@@ -20,12 +20,43 @@ use std::{any::TypeId, collections::HashMap};
 use duat_core::{
     context::Handle,
     data::Pass,
+    hook::{self, FocusedOn, KeySent, UnfocusedFrom},
     opts::PrintOpts,
     text::{Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
 
 use crate::modes::PromptMode;
+
+/// Add the [`PromptLine`] hooks.
+pub fn add_promptline_hooks() {
+    let group = hook::GroupId::new();
+
+    hook::add::<FocusedOn<PromptLine>>(move |_, (_, promptline)| {
+        let promptline = promptline.clone();
+
+        hook::add::<KeySent>(move |pa, _| {
+            let (pl, area) = promptline.write_with_area(pa);
+
+            if pl.request_width {
+                let width = area.size_of_text(pl.print_opts(), &pl.text).unwrap().x;
+                area.set_width(width + pl.print_opts().scrolloff.x as f32)
+                    .unwrap();
+            }
+
+            if let Some(main) = pl.text.selections().get_main() {
+                area.scroll_around_points(
+                    &pl.text,
+                    main.caret().to_two_points_after(),
+                    pl.print_opts(),
+                );
+            }
+        })
+        .grouped(group);
+    });
+
+    hook::add::<UnfocusedFrom<PromptLine>>(move |_, _| hook::remove(group));
+}
 
 /// A multi purpose text [`Widget`]
 ///
@@ -78,28 +109,6 @@ impl PromptLine {
 }
 
 impl Widget for PromptLine {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let (pl, area) = handle.write_with_area(pa);
-
-        if pl.request_width {
-            let width = area.size_of_text(pl.print_opts(), &pl.text).unwrap().x;
-            area.set_width(width + pl.print_opts().scrolloff.x as f32)
-                .unwrap();
-        }
-
-        if let Some(main) = pl.text.selections().get_main() {
-            area.scroll_around_points(
-                &pl.text,
-                main.caret().to_two_points_after(),
-                pl.print_opts(),
-            );
-        }
-    }
-
-    fn needs_update(&self, _: &Pass) -> bool {
-        false
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }

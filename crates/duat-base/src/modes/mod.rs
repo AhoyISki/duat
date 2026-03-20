@@ -43,7 +43,8 @@ use std::sync::Mutex;
 
 use duat_core::{buffer::Buffer, context::Handle, data::Pass};
 
-pub use self::{
+pub(crate) use crate::modes::prompt::add_prompt_hook;
+pub use crate::modes::{
     inc_search::{ExtendFwd, ExtendRev, IncSearch, IncSearcher, SearchFwd, SearchRev},
     pager::{Pager, PagerSearch},
     prompt::{PipeSelections, Prompt, PromptMode, RunCommands},

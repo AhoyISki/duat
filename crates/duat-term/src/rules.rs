@@ -9,9 +9,50 @@
 use duat_core::{
     context::Handle,
     data::Pass,
+    hook::{self, BufferUpdated},
     text::{Text, TextMut, txt},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
+
+/// Add a [`VertRule`] hook.
+pub fn add_vertrule_hook() {
+    hook::add::<BufferUpdated>(|pa, buffer| {
+        let vertrules: Vec<_> = buffer.get_related::<VertRule>(pa).collect();
+        for (vertrule, _) in vertrules {
+            let (buf, vr, area) = (buffer.read(pa), &vertrule.read(pa), vertrule.area());
+
+            let text = if let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char {
+                let lines = buffer.printed_line_numbers(pa);
+                let (upper, middle, lower) = {
+                    if let Some(main) = buf.selections().get_main() {
+                        let main = main.caret().line();
+                        let upper = lines.iter().filter(|&line| line.number < main).count();
+                        let middle = lines.iter().filter(|&line| line.number == main).count();
+                        let lower = lines.iter().filter(|&line| line.number > main).count();
+                        (upper, middle, lower)
+                    } else {
+                        (0, lines.len(), 0)
+                    }
+                };
+
+                let chars = vr.sep_char.chars();
+                txt!(
+                    "[rule.upper]{}[]{}[rule.lower]{}",
+                    form_string(chars[0], upper),
+                    form_string(chars[1], middle),
+                    form_string(chars[2], lower)
+                )
+            } else {
+                let full_line =
+                    format!("{}\n", vr.sep_char.chars()[1]).repeat(area.height(pa) as usize);
+
+                txt!("{full_line}")
+            };
+
+            vertrule.write(pa).text = text;
+        }
+    });
+}
 
 /// A vertical line on screen, useful, for example, for the separation
 /// of a [`Buffer`] and [`LineNumbers`].
@@ -31,7 +72,6 @@ use duat_core::{
 /// [`Buffer`]: duat_core::buffer::Buffer
 /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 pub struct VertRule {
-    handle: Option<Handle>,
     text: Text,
     pub sep_char: SepChar,
 }
@@ -45,49 +85,6 @@ impl VertRule {
 }
 
 impl Widget for VertRule {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let vr = handle.read(pa);
-
-        let text = if let Some(handle) = vr.handle.as_ref()
-            && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char
-        {
-            let lines = handle.printed_line_numbers(pa);
-            let (upper, middle, lower) = {
-                let buffer = handle.read(pa);
-
-                if let Some(main) = buffer.selections().get_main() {
-                    let main = main.caret().line();
-                    let upper = lines.iter().filter(|&line| line.number < main).count();
-                    let middle = lines.iter().filter(|&line| line.number == main).count();
-                    let lower = lines.iter().filter(|&line| line.number > main).count();
-                    (upper, middle, lower)
-                } else {
-                    (0, lines.len(), 0)
-                }
-            };
-
-            let chars = vr.sep_char.chars();
-            txt!(
-                "[rule.upper]{}[]{}[rule.lower]{}",
-                form_string(chars[0], upper),
-                form_string(chars[1], middle),
-                form_string(chars[2], lower)
-            )
-        } else {
-            let full_line =
-                format!("{}\n", vr.sep_char.chars()[1]).repeat(handle.area().height(pa) as usize);
-
-            txt!("{full_line}")
-        };
-
-        handle.write(pa).text = text;
-    }
-
-    fn needs_update(&self, pa: &Pass) -> bool {
-        matches!(self.sep_char, SepChar::ThreeWay(..) | SepChar::TwoWay(..))
-            && self.handle.as_ref().is_some_and(|fh| fh.has_changed(pa))
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
@@ -108,7 +105,6 @@ impl VertRuleBuilder {
     /// Pushes a [`VertRule`] to a [`PushTarget`]
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<VertRule> {
         let vert_rule = VertRule {
-            handle: push_target.try_downcast(),
             text: Text::default(),
             sep_char: self.sep_char,
         };

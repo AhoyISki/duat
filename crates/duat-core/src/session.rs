@@ -10,7 +10,6 @@ use std::{
     any::TypeId,
     path::PathBuf,
     sync::{Mutex, OnceLock},
-    time::Duration,
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
@@ -167,7 +166,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
 
                 let cur_win = context::current_win_index(pa);
                 for (_, node) in new_additions.iter().filter(|(win, _)| *win == cur_win) {
-                    node.update_and_print(pa, cur_win);
+                    node.print(pa, cur_win);
                 }
 
                 *windows_nodes = get_windows_nodes(pa);
@@ -191,7 +190,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
             for node in window {
                 let windows_changed = cur_win != last_win || cur_win_len != last_win_len;
                 if force || windows_changed || node.needs_update(pa) {
-                    node.update_and_print(pa, last_win);
+                    node.print(pa, last_win);
                     printed_at_least_one = true;
                 }
             }
@@ -210,7 +209,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
     print_screen(pa, true);
 
     loop {
-        if let Some(event) = duat_rx.recv_timeout(Duration::from_millis(10)) {
+        if let Some(event) = duat_rx.recv() {
             match event {
                 DuatEvent::KeyEventSent(key_event) => {
                     mode::send_key_event(pa, key_event);

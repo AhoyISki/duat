@@ -625,9 +625,9 @@ impl Windows {
     /// Returns the index of the window, the index of the [`Widget`],
     /// and the [`Widget`]'s [`Node`].
     pub(crate) fn node_of<'a, W: Widget>(&'a self, pa: &'a Pass) -> Result<&'a Node, Text> {
-        let handle = context::current_buffer(pa);
+        let buffer = context::current_buffer(pa);
 
-        if let Some((handle, _)) = handle.get_related::<W>(pa).next() {
+        if let Some((handle, _)) = buffer.get_related::<W>(pa).next() {
             self.entries(pa)
                 .find_map(|(.., node)| node.ptr_eq(handle.widget()).then_some(node))
         } else {

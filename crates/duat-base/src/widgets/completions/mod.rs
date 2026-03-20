@@ -14,7 +14,7 @@
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
-    sync::{LazyLock, Mutex, Once},
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
@@ -24,8 +24,8 @@ use duat_core::{
     },
     context::{self, Handle},
     data::Pass,
-    hook::{self, FocusChanged, WidgetOpened},
-    mode::{MouseEvent, MouseEventKind},
+    hook::{self, FocusChanged, KeySent, OnMouseEvent, WidgetOpened},
+    mode::MouseEventKind,
     text::{Point, SpawnTag, Strs, Tagger, Text, TextMut, txt},
     ui::{Area, DynSpawnSpecs, Orientation, Side, Widget},
 };
@@ -100,6 +100,33 @@ pub fn setup_completions() {
     Completions::set_for_parameter::<ColorSchemeArg>(50, |_, builder| {
         builder.with_provider(duat_core::form::colorscheme_list())
     });
+
+    let group = hook::GroupId::new();
+
+    hook::add::<WidgetOpened<Completions>>(move |pa, completions| {
+        Completions::set_frame(pa, completions);
+
+        let completions = completions.clone();
+        hook::add::<KeySent>(move |pa, _| {
+            Completions::update_text_and_position(pa, &completions, 0);
+            let master_completions = completions.master().unwrap();
+            completions.write(pa).last_caret = master_completions.selections(pa).main().caret();
+
+            Completions::set_frame(pa, &completions);
+        })
+        .grouped(group);
+    });
+
+    hook::add::<FocusChanged>(move |pa, (prev, _)| {
+        hook::remove(group);
+        prev.text_mut(pa).remove_tags(*TAGGER, ..)
+    });
+
+    hook::add::<OnMouseEvent<Completions>>(|pa, (_, event)| match event.kind {
+        MouseEventKind::ScrollDown => _ = Completions::scroll(pa, 1),
+        MouseEventKind::ScrollUp => _ = Completions::scroll(pa, -1),
+        _ => {}
+    });
 }
 
 /// A builder for [`Completions`], a [`Widget`] to show word
@@ -143,12 +170,6 @@ impl CompletionsBuilder {
     ///
     /// [`Selection`]: duat_core::mode::Selection
     pub fn open(self, pa: &mut Pass) {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            hook::add::<WidgetOpened<Completions>>(Completions::set_frame);
-            hook::add::<FocusChanged>(|pa, (prev, _)| prev.text_mut(pa).remove_tags(*TAGGER, ..));
-        });
-
         let handle = context::current_widget(pa).clone();
         handle.text_mut(pa).remove_tags(*TAGGER, ..);
 
@@ -410,7 +431,7 @@ impl Completions {
 
                 if let Some((info_text, orientation)) = info_text {
                     let info_handle = if let Some(info) = handle.read(pa).info_handle.clone() {
-                        info.write(pa).text = info_text;
+                        Info::set_text(pa, &info, |text| *text = info_text);
                         Some(info)
                     } else {
                         let specs = DynSpawnSpecs {
@@ -517,37 +538,12 @@ impl Completions {
 }
 
 impl Widget for Completions {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        Self::update_text_and_position(pa, handle, 0);
-        let master_handle = handle.master().unwrap();
-        handle.write(pa).last_caret = master_handle.selections(pa).main().caret();
-
-        Completions::set_frame(pa, handle);
-    }
-
-    fn needs_update(&self, pa: &Pass) -> bool {
-        let text = self.master.has_changed(pa).then_some(self.master.text(pa));
-        let main_moved = text
-            .as_ref()
-            .is_some_and(|text| text.get_main_sel().unwrap().caret() != self.last_caret);
-
-        main_moved || self.providers.iter().any(|inner| inner.has_changed(text))
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
         self.text.as_mut()
-    }
-
-    fn on_mouse_event(pa: &mut Pass, _: &Handle<Self>, event: MouseEvent) {
-        match event.kind {
-            MouseEventKind::ScrollDown => _ = Self::scroll(pa, 1),
-            MouseEventKind::ScrollUp => _ = Self::scroll(pa, -1),
-            _ => {}
-        }
     }
 }
 

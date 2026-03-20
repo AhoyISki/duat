@@ -3,13 +3,27 @@ use std::sync::{Mutex, atomic::Ordering};
 use duat_base::widgets::Completions;
 use duat_core::{
     buffer::Buffer,
-    context::Handle,
+    context::{self, Handle},
     data::Pass,
+    hook::{self, OnModeSwitch},
     mode::{self, Cursor, KeyEvent, KeyMod, Mode, alt, ctrl, event, shift},
 };
 use duat_filetype::AutoPrefix;
 
 use crate::{Normal, opts::INSERT_TABS, set_anchor_if_needed};
+
+pub fn add_insert_hook() {
+    hook::add::<OnModeSwitch>(|pa, switch| {
+        if switch.new.is::<Insert>() {
+            INSERT_EVENTS.lock().unwrap().clear();
+            Completions::open_default(pa);
+            let buffer = context::current_buffer(pa);
+            buffer.set_mask("Insert");
+        } else if switch.old.is::<Insert>() {
+            Completions::close(pa);
+        }
+    });
+}
 
 #[derive(Clone, Copy)]
 pub struct Insert;
@@ -257,16 +271,6 @@ impl Mode for Insert {
             ctrl!('u') => handle.text_mut(pa).new_moment(),
             _ => {}
         }
-    }
-
-    fn on_switch(&mut self, pa: &mut Pass, handle: Handle) {
-        INSERT_EVENTS.lock().unwrap().clear();
-        Completions::open_default(pa);
-        handle.set_mask("Insert");
-    }
-
-    fn before_exit(&mut self, pa: &mut Pass, _: Handle<Self::Widget>) {
-        Completions::close(pa)
     }
 }
 

@@ -119,12 +119,6 @@ impl Gutter {
 }
 
 impl Widget for Gutter {
-    fn update(_: &mut Pass, _: &Handle<Self>) {}
-
-    fn needs_update(&self, _: &Pass) -> bool {
-        false
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }

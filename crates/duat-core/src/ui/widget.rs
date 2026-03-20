@@ -27,7 +27,6 @@
 //! [`Buffer`]. It is the quitessential `Widget` for a text editor,
 //! being the part that is modified by user input.
 //!
-//! [`Buffer`]: crate::buffer::Buffer
 //! [`Window`]: super::Window
 //! [`Window::push_inner`]: super::Window::push_inner
 //! [`Window::push_outer`]: super::Window::push_outer
@@ -39,6 +38,7 @@
 use std::sync::{Arc, Mutex, atomic::Ordering};
 
 use crate::{
+    buffer::Buffer,
     context::Handle,
     data::{Pass, RwData},
     form,
@@ -48,7 +48,6 @@ use crate::{
     session::UiMouseEvent,
     text::{Text, TextMut},
     ui::{PrintInfo, RwArea},
-    utils::catch_panic,
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -62,103 +61,6 @@ use crate::{
 /// [`Mode`]: crate::mode::Mode
 #[allow(unused)]
 pub trait Widget: Send + 'static {
-    ////////// Stateful functions
-
-    /// Updates the widget alongside its [`RwArea`] in the [`Handle`]
-    ///
-    /// This function will be triggered when Duat deems that a change
-    /// has happened to this [`Widget`], which is when
-    /// [`Widget::needs_update`] returns `true`.
-    ///
-    /// It can also happen if [`RwData<Self>::has_changed`] or
-    /// [`RwData::has_changed`] return `true`. This can happen
-    /// from many places, like [hooks], [commands], editing by
-    /// [`Mode`]s, etc.
-    ///
-    /// Importantly, [`update`] should be able to handle any number of
-    /// changes that have taken place in this [`Widget`], so you
-    /// should avoid depending on state which may become
-    /// desynchronized.
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    ///
-    /// [hooks]: crate::hook
-    /// [commands]: crate::cmd
-    /// [`Mode`]: crate::mode::Mode
-    /// [`update`]: Widget::update
-    fn update(pa: &mut Pass, handle: &Handle<Self>)
-    where
-        Self: Sized;
-
-    /// Actions to do whenever this [`Widget`] is focused
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    fn on_focus(pa: &mut Pass, handle: &Handle<Self>)
-    where
-        Self: Sized,
-    {
-    }
-
-    /// Actions to do whenever this [`Widget`] is unfocused
-    ///
-    /// When implementing this, you are free to remove the `where`
-    /// clause.
-    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self>)
-    where
-        Self: Sized,
-    {
-    }
-
-    /// How to handle a [`MouseEvent`]
-    ///
-    /// Normally, nothing will be done, with the exception of button
-    /// [`Tag`]s which are triggered normally.
-    ///
-    /// [`Tag`]: crate::text::Tag
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent)
-    where
-        Self: Sized,
-    {
-    }
-
-    /// Tells Duat that this [`Widget`] should be updated
-    ///
-    /// Determining wether a [`Widget`] should be updated, for a good
-    /// chunk of them, will require some code like this:
-    ///
-    /// ```rust
-    /// # duat_core::doc_duat!(duat);
-    /// use duat::prelude::*;
-    ///
-    /// struct MyWidget(Handle<Buffer>);
-    ///
-    /// impl Widget for MyWidget {
-    /// #   fn update(_: &mut Pass, handle: &Handle<Self>) { todo!() }
-    /// #   fn text(&self) -> &Text { todo!() }
-    /// #   fn text_mut(&mut self) -> TextMut<'_> { todo!() }
-    ///     // ...
-    ///     fn needs_update(&self, pa: &Pass) -> bool {
-    ///         self.0.has_changed(pa)
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// In this case, `MyWidget` is telling Duat that it should be
-    /// updated whenever the buffer in the [`Handle<Buffer>`] gets
-    /// changed.
-    ///
-    /// One interesting use case of this function is the
-    /// [`StatusLine`], which can be altered if any of its parts
-    /// get changed, some of them depend on a [`Handle<Buffer>`],
-    /// but a lot of others depend on checking other [`data`] types in
-    /// order to figure out if an update is needed.
-    ///
-    /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat/widgets/struct.StatusLine.html
-    /// [`data`]: crate::data
-    fn needs_update(&self, pa: &Pass) -> bool;
-
     /// The text that this widget prints out
     fn text(&self) -> &Text;
 
@@ -180,7 +82,6 @@ pub trait Widget: Send + 'static {
 #[derive(Clone)]
 pub(crate) struct Node {
     handle: Handle<dyn Widget>,
-    update: Arc<dyn Fn(&mut Pass) + Send + Sync>,
     print: Arc<dyn Fn(&mut Pass, &Handle<dyn Widget>) + Send + Sync>,
     on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
     on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget>) + Send + Sync>,
@@ -201,15 +102,12 @@ impl Node {
     pub(crate) fn from_handle<W: Widget>(handle: Handle<W>) -> Self {
         Self {
             handle: handle.to_dyn(),
-            update: Arc::new({
-                let handle = handle.clone();
-                move |pa| _ = catch_panic(|| W::update(pa, &handle))
-            }),
-            print: Arc::new({
+            print: if let Some(buffer) = handle.try_downcast::<Buffer>() {
                 let handle = handle.clone();
                 let buf_handle = handle.try_downcast();
 
-                move |pa, orig_handle| {
+                Arc::new(move |pa, orig_handle| {
+                    Buffer::update(pa, &buffer);
                     let painter =
                         form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
 
@@ -222,24 +120,35 @@ impl Node {
                         orig_handle.declare_as_read();
                         orig_handle.area().0.declare_as_read();
                     }
-                }
-            }),
+                })
+            } else {
+                let handle = handle.clone();
+                let buf_handle = handle.try_downcast();
+
+                Arc::new(move |pa, orig_handle| {
+                    let painter =
+                        form::painter_with_widget_and_mask::<W>(*handle.mask().lock().unwrap());
+
+                    handle
+                        .area
+                        .print(pa, handle.text(pa), handle.opts(pa), painter);
+
+                    if let Some(buf_handle) = buf_handle.clone() {
+                        hook::trigger(pa, BufferPrinted(buf_handle));
+                        orig_handle.declare_as_read();
+                        orig_handle.area().0.declare_as_read();
+                    }
+                })
+            },
             on_focus: Arc::new({
                 let handle = handle.clone();
-                move |pa, old| {
-                    hook::trigger(pa, FocusedOn((old, handle.clone())));
-                    catch_panic(|| W::on_focus(pa, &handle));
-                }
+                move |pa, old| _ = hook::trigger(pa, FocusedOn((old, handle.clone())))
             }),
             on_unfocus: Arc::new({
                 let handle = handle.clone();
-                move |pa, new| {
-                    hook::trigger(pa, UnfocusedFrom((handle.clone(), new)));
-                    catch_panic(|| W::on_unfocus(pa, &handle));
-                }
+                move |pa, new| _ = hook::trigger(pa, UnfocusedFrom((handle.clone(), new)))
             }),
             on_mouse_event: Arc::new({
-                let dyn_handle = handle.to_dyn();
                 let handle = handle.clone();
                 move |pa, event| {
                     let opts = handle.opts(pa);
@@ -251,10 +160,7 @@ impl Node {
                         modifiers: event.modifiers,
                     };
 
-                    catch_panic(|| {
-                        hook::trigger(pa, OnMouseEvent((dyn_handle.clone(), event)));
-                        W::on_mouse_event(pa, &handle, event);
-                    });
+                    hook::trigger(pa, OnMouseEvent((handle.clone(), event)));
                 }
             }),
         }
@@ -303,19 +209,13 @@ impl Node {
         self.handle.update_requested.load(Ordering::Relaxed)
             || self.handle.widget().has_changed()
             || self.handle.area.has_changed(pa)
-            || self.handle.read(pa).needs_update(pa)
     }
 
     ////////// Eventful functions
 
     /// Updates and prints this [`Node`]
-    pub(crate) fn update_and_print(&self, pa: &mut Pass, win: usize) {
+    pub(crate) fn print(&self, pa: &mut Pass, win: usize) {
         self.handle.update_requested.store(false, Ordering::Relaxed);
-        if self.handle().is_closed(pa) {
-            return;
-        }
-
-        (self.update)(pa);
 
         crate::context::windows().cleanup_despawned(pa);
         if self.handle().is_closed(pa) {

@@ -17,7 +17,7 @@ use std::{
     fs,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, Mutex, MutexGuard},
+    sync::{LazyLock, Mutex, MutexGuard, Once},
 };
 
 use crossterm::event::{MouseButton, MouseEventKind};
@@ -30,8 +30,8 @@ pub use crate::buffer::{
 use crate::{
     context::{self, Handle, cache},
     data::{Pass, RwData, WriteableTuple},
-    hook::{self, BufferSaved, BufferUpdated},
-    mode::{Cursor, MouseEvent, Selections},
+    hook::{self, BufferSaved, BufferUpdated, OnMouseEvent},
+    mode::{Cursor, Selections},
     opts::PrintOpts,
     session::TwoPointsPlace,
     text::{Point, Strs, StrsBuf, Text, TextMut, TextVersion, txt},
@@ -61,6 +61,56 @@ pub struct Buffer {
 impl Buffer {
     /// Returns a new [`Buffer`], private for now.
     pub(crate) fn new(path: Option<PathBuf>, opts: BufferOpts) -> Self {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            hook::add::<OnMouseEvent<Buffer>>(|pa, (buffer, event)| match event.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    let point = match event.points {
+                        Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
+                            points.real
+                        }
+                        _ => buffer.text(pa).last_point(),
+                    };
+
+                    buffer.selections_mut(pa).remove_extras();
+                    buffer.edit_main(pa, |mut c| {
+                        c.unset_anchor();
+                        c.move_to(point)
+                    })
+                }
+                MouseEventKind::Down(_) => {}
+                MouseEventKind::Up(_) => {}
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    let point = match event.points {
+                        Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
+                            points.real
+                        }
+                        _ => buffer.text(pa).last_point(),
+                    };
+
+                    buffer.selections_mut(pa).remove_extras();
+                    buffer.edit_main(pa, |mut c| {
+                        c.set_anchor_if_needed();
+                        c.move_to(point);
+                    })
+                }
+                MouseEventKind::Drag(_) => {}
+                MouseEventKind::Moved => {}
+                MouseEventKind::ScrollDown => {
+                    let opts = buffer.opts(pa);
+                    let (widget, area) = buffer.write_with_area(pa);
+                    area.scroll_ver(widget.text(), 3, opts);
+                }
+                MouseEventKind::ScrollUp => {
+                    let opts = buffer.opts(pa);
+                    let (widget, area) = buffer.write_with_area(pa);
+                    area.scroll_ver(widget.text(), -3, opts);
+                }
+                MouseEventKind::ScrollLeft => {}
+                MouseEventKind::ScrollRight => {}
+            });
+        });
+
         let (text, path) = match path {
             Some(path) => {
                 let canon_path = path.canonicalize();
@@ -340,10 +390,9 @@ impl Buffer {
             std::mem::replace(&mut self.history, History::new()),
         )
     }
-}
 
-impl Widget for Buffer {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
+    /// The update function for [`Buffer`]s.
+    pub(crate) fn update(pa: &mut Pass, handle: &Handle<Self>) {
         // Asynchronous updating of opts
         let (buffer, area) = handle.write_with_area(pa);
 
@@ -361,11 +410,9 @@ impl Widget for Buffer {
 
         handle.text_mut(pa).update_bounds();
     }
+}
 
-    fn needs_update(&self, _: &Pass) -> bool {
-        false
-    }
-
+impl Widget for Buffer {
     fn text(&self) -> &Text {
         &self.text
     }
@@ -378,55 +425,6 @@ impl Widget for Buffer {
 
     fn print_opts(&self) -> PrintOpts {
         self.opts.to_print_opts()
-    }
-
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
-        match event.kind {
-            MouseEventKind::Down(MouseButton::Left) => {
-                let point = match event.points {
-                    Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
-                        points.real
-                    }
-                    _ => handle.text(pa).last_point(),
-                };
-
-                handle.selections_mut(pa).remove_extras();
-                handle.edit_main(pa, |mut c| {
-                    c.unset_anchor();
-                    c.move_to(point)
-                })
-            }
-            MouseEventKind::Down(_) => {}
-            MouseEventKind::Up(_) => {}
-            MouseEventKind::Drag(MouseButton::Left) => {
-                let point = match event.points {
-                    Some(TwoPointsPlace::Within(points) | TwoPointsPlace::AheadOf(points)) => {
-                        points.real
-                    }
-                    _ => handle.text(pa).last_point(),
-                };
-
-                handle.selections_mut(pa).remove_extras();
-                handle.edit_main(pa, |mut c| {
-                    c.set_anchor_if_needed();
-                    c.move_to(point);
-                })
-            }
-            MouseEventKind::Drag(_) => {}
-            MouseEventKind::Moved => {}
-            MouseEventKind::ScrollDown => {
-                let opts = handle.opts(pa);
-                let (widget, area) = handle.write_with_area(pa);
-                area.scroll_ver(widget.text(), 3, opts);
-            }
-            MouseEventKind::ScrollUp => {
-                let opts = handle.opts(pa);
-                let (widget, area) = handle.write_with_area(pa);
-                area.scroll_ver(widget.text(), -3, opts);
-            }
-            MouseEventKind::ScrollLeft => {}
-            MouseEventKind::ScrollRight => {}
-        }
     }
 }
 

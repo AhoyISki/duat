@@ -169,7 +169,13 @@ pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {
             let bridge = match ServerBridge::new(server_name, &config) {
                 Ok(bridge) => bridge,
                 Err(err) if user_provided => {
-                    context::error!("{err}");
+                    duat_core::__log__!(
+                        duat_core::context::Level::Error,
+                        duat_core::context::Location::from_panic_location(
+                            ::std::panic::Location::caller()
+                        ),
+                        "{err}"
+                    );
                     return None;
                 }
                 Err(_) => return None,

@@ -10,24 +10,71 @@
 use std::sync::Mutex;
 
 use duat_core::{
-    context::{self, Handle, Logs, Record},
+    context::{self, Handle, Record},
     data::Pass,
-    mode::{MouseEvent, MouseEventKind},
+    hook::{self, FocusedOn, MsgLogged, OnMouseEvent, UnfocusedFrom},
     opts::PrintOpts,
     text::{Spacer, Text, TextMut, txt},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
+
+pub fn add_logbook_hooks() {
+    use duat_core::mode::MouseEventKind::*;
+    hook::add::<MsgLogged>(|pa, rec| {
+        let Some(logbook) = context::handle_of::<LogBook>(pa) else {
+            return;
+        };
+
+        let (lb, area) = logbook.write_with_area(pa);
+
+        let at_the_bottom = area.end_points(&lb.text, lb.print_opts()) == lb.text.end_points();
+
+        let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
+            if let Some(rec_text) = fmt(rec) {
+                lb.text.insert_text(lb.text.len(), &rec_text);
+            }
+        };
+
+        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
+
+        if let Some(fmt) = lb.fmt.as_mut() {
+            fmt_recs(fmt);
+        } else if let Some(fmt) = global_fmt.as_mut() {
+            fmt_recs(fmt);
+        } else {
+            fmt_recs(&mut |rec| default_fmt(lb.show_source, rec));
+        }
+
+        if at_the_bottom {
+            area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
+        }
+    });
+
+    hook::add::<FocusedOn<LogBook>>(|pa, (_, logbook)| logbook.area().reveal(pa).unwrap());
+
+    hook::add::<UnfocusedFrom<LogBook>>(|pa, (logbook, _)| {
+        if logbook.read(pa).close_on_unfocus {
+            logbook.area().hide(pa).unwrap()
+        }
+    });
+
+    hook::add::<OnMouseEvent<LogBook>>(|pa, (logbook, event)| match event.kind {
+        ScrollDown | ScrollUp => {
+            let (lb, area) = logbook.write_with_area(pa);
+            let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
+            area.scroll_ver(&lb.text, scroll, lb.print_opts());
+        }
+        _ => {}
+    });
+}
 
 #[allow(clippy::type_complexity)]
 static GLOBAL_FMT: Mutex<Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>> = Mutex::new(None);
 
 /// A [`Widget`] to display [`Logs`] sent to Duat
 pub struct LogBook {
-    logs: Logs,
-    len_of_taken: usize,
     text: Text,
     fmt: Option<Box<dyn FnMut(Record) -> Option<Text> + Send>>,
-    has_updated_once: bool,
     /// Wether to close this [`Widget`] after unfocusing, `true` by
     /// default
     pub close_on_unfocus: bool,
@@ -53,44 +100,6 @@ impl LogBook {
 }
 
 impl Widget for LogBook {
-    fn update(pa: &mut Pass, handle: &Handle<Self>) {
-        let (lb, area) = handle.write_with_area(pa);
-
-        let Some(new_records) = lb.logs.get(lb.len_of_taken..) else {
-            return;
-        };
-
-        let records_were_added = !new_records.is_empty();
-        lb.len_of_taken += new_records.len();
-
-        let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
-            for rec_text in new_records.into_iter().filter_map(fmt) {
-                lb.text.insert_text(lb.text.len(), &rec_text);
-            }
-        };
-
-        let mut global_fmt = GLOBAL_FMT.lock().unwrap();
-
-        if let Some(fmt) = lb.fmt.as_mut() {
-            fmt_recs(fmt);
-        } else if let Some(fmt) = global_fmt.as_mut() {
-            fmt_recs(fmt);
-        } else {
-            fmt_recs(&mut |rec| default_fmt(lb.show_source, rec));
-        }
-
-        if !lb.has_updated_once {
-            area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
-            lb.has_updated_once = true;
-        } else if records_were_added {
-            area.scroll_ver(&lb.text, i32::MAX, lb.print_opts());
-        }
-    }
-
-    fn needs_update(&self, _: &Pass) -> bool {
-        self.logs.has_changed()
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
@@ -104,31 +113,6 @@ impl Widget for LogBook {
         opts.wrap_lines = true;
         opts.wrap_on_word = true;
         opts
-    }
-
-    fn on_focus(pa: &mut Pass, handle: &Handle<Self>) {
-        handle.area().reveal(pa).unwrap();
-    }
-
-    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self>) {
-        if handle.read(pa).close_on_unfocus {
-            handle.area().hide(pa).unwrap()
-        }
-    }
-
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
-        match event.kind {
-            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
-                let (lb, area) = handle.write_with_area(pa);
-                let scroll = if let MouseEventKind::ScrollDown = event.kind {
-                    3
-                } else {
-                    -3
-                };
-                area.scroll_ver(&lb.text, scroll, lb.print_opts());
-            }
-            _ => {}
-        }
     }
 }
 
@@ -164,7 +148,6 @@ impl LogBookOpts {
         let mut text = Text::new();
 
         let records = logs.get(..).unwrap();
-        let len_of_taken = records.len();
 
         let fmt_recs = |fmt: &mut dyn FnMut(Record) -> Option<Text>| {
             for rec_text in records.into_iter().filter_map(fmt) {
@@ -181,14 +164,12 @@ impl LogBookOpts {
         }
 
         let log_book = LogBook {
-            logs,
-            len_of_taken,
             text,
-            has_updated_once: false,
             fmt: None,
             show_source: self.show_source,
             close_on_unfocus: self.close_on_unfocus,
         };
+
         let specs = match self.side {
             Side::Right | Side::Left => PushSpecs {
                 side: self.side,

@@ -118,6 +118,7 @@ impl RawUi for Ui {
     fn load(duat_tx: DuatSender) -> Self {
         form::set_weak("rule.upper", Form::mimic("default.VertRule"));
         form::set_weak("rule.lower", Form::mimic("default.VertRule"));
+        rules::add_vertrule_hook();
 
         let (term_tx, term_rx) = mpsc::channel();
 

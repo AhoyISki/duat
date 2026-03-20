@@ -435,33 +435,6 @@ pub trait Mode: Sized + Send + 'static {
     /// Sends a [`KeyEvent`] to this [`Mode`]
     fn send_key(&mut self, pa: &mut Pass, key_event: KeyEvent, handle: Handle<Self::Widget>);
 
-    /// A function to trigger after switching to this [`Mode`]
-    ///
-    /// This can be some initial setup, like adding [`Tag`]s to the
-    /// [`Text`] in order to show some important visual help for that
-    /// specific [`Mode`].
-    ///
-    /// [`Tag`]: crate::text::Tag
-    /// [`Text`]: crate::text::Text
-    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {}
-
-    /// A function to trigger before switching off this [`Mode`]
-    ///
-    /// This can be some final cleanup like removing the [`Text`]
-    /// entirely, for example.
-    ///
-    /// You might think "Wait, can't I just do these things before
-    /// calling [`mode::set`] or [`mode::reset`]?". Yeah, you could,
-    /// but these functions can fail, so you would do cleanup without
-    /// actually leaving the [`Mode`]. [`before_exit`] _only_ triggers
-    /// if the switch was actually successful.
-    ///
-    /// [`Text`]: crate::text::Text
-    /// [`mode::set`]: set
-    /// [`mode::reset`]: reset
-    /// [`before_exit`]: Mode::before_exit
-    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget>) {}
-
     /// A list of all available keybindings for this `Mode`
     ///
     /// The [`Bindings`] struct serves the purpose of documenting the

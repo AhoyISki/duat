@@ -281,7 +281,7 @@ impl Text {
     ///
     /// [points]: TwoPoints
     /// [last point]: Strs::len
-    pub fn len_points(&self) -> TwoPoints {
+    pub fn end_points(&self) -> TwoPoints {
         self.ghost_max_points_at(self.len())
     }
 
@@ -298,7 +298,7 @@ impl Text {
     pub fn points_after(&self, tp: TwoPoints) -> Option<TwoPoints> {
         self.iter_fwd(tp)
             .filter_map(|item| item.part.as_char().map(|_| item.points()))
-            .chain([self.len_points()])
+            .chain([self.end_points()])
             .nth(1)
     }
 

@@ -558,7 +558,7 @@ mod global {
         }
     }
 
-    impl<F: FnMut(&mut Pass) + Send + 'static> IntoMapsTo for F {
+    impl<F: for<'p> FnMut(&'p mut Pass) + Send + 'static> IntoMapsTo for F {
         fn into_maps_to(self) -> MapsTo {
             MapsTo::Function(Box::new(Mutex::new(self)))
         }

@@ -9,12 +9,50 @@ use duat_core::{
     context::{self, Handle},
     data::Pass,
     form::{self, Form},
-    hook::{self, FocusChanged, KeyTyped},
-    mode::{self, Description, MouseEvent, MouseEventKind},
+    hook::{self, FocusChanged, KeyTyped, OnMouseEvent},
+    mode::{self, Description, MouseEventKind},
     text::{Text, TextMut, txt},
     ui::{DynSpawnSpecs, PushSpecs, Side, Widget},
 };
 use duat_term::Frame;
+
+pub fn add_whichkey_hooks() {
+    hook::add::<OnMouseEvent<WhichKey>>(move |pa, (whichkey, event)| {
+        use MouseEventKind::{ScrollDown, ScrollUp};
+        match event.kind {
+            ScrollDown | ScrollUp => {
+                let (wk, area) = whichkey.write_with_area(pa);
+                let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
+                area.scroll_ver(&wk.0, scroll, wk.print_opts());
+
+                let whichkey_desc = wk.1.clone().unwrap();
+                let (wkd, area) = whichkey_desc.write_with_area(pa);
+                area.scroll_ver(&wkd.0, scroll, wkd.print_opts());
+            }
+            _ => {}
+        }
+    });
+
+    hook::add::<OnMouseEvent<WhichKeyDescriptions>>(move |pa, (whichkey_desc, event)| {
+        use MouseEventKind::{ScrollDown, ScrollUp};
+        match event.kind {
+            ScrollDown | ScrollUp => {
+                let (wkd, area) = whichkey_desc.write_with_area(pa);
+                let scroll = if let MouseEventKind::ScrollDown = event.kind {
+                    3
+                } else {
+                    -3
+                };
+                area.scroll_ver(&wkd.0, scroll, wkd.print_opts());
+
+                let whichkey = wkd.1.clone().unwrap();
+                let (wk, area) = whichkey.write_with_area(pa);
+                area.scroll_ver(&wk.0, scroll, wk.print_opts());
+            }
+            _ => {}
+        }
+    });
+}
 
 /// A [`Widget`] to display what [keys] will do
 ///
@@ -126,6 +164,7 @@ impl WhichKey {
                 _ = descs_handle.close(pa);
             }
         });
+
         hook::add_once::<FocusChanged>(move |pa, _| {
             _ = keys_handle.close(pa);
             _ = descs_handle.close(pa);
@@ -134,70 +173,23 @@ impl WhichKey {
 }
 
 impl Widget for WhichKey {
-    fn update(_: &mut Pass, _: &Handle<Self>) {}
-
-    fn needs_update(&self, _: &Pass) -> bool {
-        false
-    }
-
     fn text(&self) -> &Text {
         &self.0
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
         self.0.as_mut()
-    }
-
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
-        use MouseEventKind::{ScrollDown, ScrollUp};
-        match event.kind {
-            ScrollDown | ScrollUp => {
-                let (keys, area) = handle.write_with_area(pa);
-                let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-                area.scroll_ver(&keys.0, scroll, keys.print_opts());
-
-                let handle = keys.1.clone().unwrap();
-                let (descs, area) = handle.write_with_area(pa);
-                area.scroll_ver(&descs.0, scroll, descs.print_opts());
-            }
-            _ => {}
-        }
     }
 }
 
 struct WhichKeyDescriptions(Text, Option<Handle<WhichKey>>);
 
 impl Widget for WhichKeyDescriptions {
-    fn update(_: &mut Pass, _: &Handle<Self>) {}
-
-    fn needs_update(&self, _: &Pass) -> bool {
-        false
-    }
-
     fn text(&self) -> &Text {
         &self.0
     }
 
     fn text_mut(&mut self) -> TextMut<'_> {
         self.0.as_mut()
-    }
-
-    fn on_mouse_event(pa: &mut Pass, handle: &Handle<Self>, event: MouseEvent) {
-        match event.kind {
-            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
-                let (descs, area) = handle.write_with_area(pa);
-                let scroll = if let MouseEventKind::ScrollDown = event.kind {
-                    3
-                } else {
-                    -3
-                };
-                area.scroll_ver(&descs.0, scroll, descs.print_opts());
-
-                let handle = descs.1.clone().unwrap();
-                let (keys, area) = handle.write_with_area(pa);
-                area.scroll_ver(&keys.0, scroll, keys.print_opts());
-            }
-            _ => {}
-        }
     }
 }
