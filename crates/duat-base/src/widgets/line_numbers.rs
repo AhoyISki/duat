@@ -59,66 +59,6 @@ impl LineNumbers {
     /// Returns a [`LineNumbersOpts`], used to create a new
     /// `LineNumbers`
     pub fn builder() -> LineNumbersOpts {
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            hook::add::<BufferUpdated>(|pa, buffer| {
-                let handles: Vec<_> = buffer.get_related::<LineNumbers>(pa).collect();
-                for (linenumbers, _) in handles {
-                    let width = linenumbers.read(pa).calculate_width(pa, buffer);
-                    linenumbers.area().set_width(pa, width + 1.0).unwrap();
-
-                    linenumbers.write(pa).text = linenumbers.read(pa).form_text(pa, buffer);
-                }
-            });
-
-            hook::add::<OnMouseEvent<LineNumbers>>(|pa, (linenumbers, event)| {
-                let line = |pa, handle: &Handle| {
-                    let lines = handle.printed_line_numbers(pa);
-                    event
-                        .points
-                        .and_then(|tpp| lines.get(tpp.points().real.line()))
-                        .map(|line| line.number)
-                        .unwrap_or(handle.text(pa).end_point().line())
-                };
-
-                let (buffer, _) = linenumbers.get_related::<Buffer>(pa).next().unwrap();
-
-                match event.kind {
-                    MouseEventKind::Down(MouseButton::Left) => {
-                        let line = line(pa, &buffer);
-
-                        buffer.selections_mut(pa).remove_extras();
-                        buffer.edit_main(pa, |mut c| {
-                            c.unset_anchor();
-                            c.move_to_coords(line, 0)
-                        })
-                    }
-                    MouseEventKind::Drag(MouseButton::Left) => {
-                        let line = line(pa, &buffer);
-
-                        buffer.selections_mut(pa).remove_extras();
-                        buffer.edit_main(pa, |mut c| {
-                            c.set_anchor_if_needed();
-                            c.move_to_coords(line, 0)
-                        })
-                    }
-                    MouseEventKind::ScrollDown => {
-                        let opts = buffer.opts(pa);
-                        let (buf, area) = buffer.write_with_area(pa);
-
-                        area.scroll_ver(buf.text(), 3, opts);
-                    }
-                    MouseEventKind::ScrollUp => {
-                        let opts = buffer.opts(pa);
-                        let (buf, area) = buffer.write_with_area(pa);
-
-                        area.scroll_ver(buf.text(), -3, opts);
-                    }
-                    _ => {}
-                }
-            });
-        });
-
         LineNumbersOpts::default()
     }
 
@@ -239,14 +179,73 @@ impl LineNumbersOpts {
     /// there are other widgets pushed on the buffer, this one will be
     /// placed around them.
     pub fn push_on(self, pa: &mut Pass, buffer: &Handle) -> Handle<LineNumbers> {
-        let mut line_numbers = LineNumbers {
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            hook::add::<BufferUpdated>(|pa, buffer| {
+                for (linenumbers, _) in buffer.get_related::<LineNumbers>(pa) {
+                    let width = linenumbers.read(pa).calculate_width(pa, buffer);
+                    linenumbers.area().set_width(pa, width + 1.0).unwrap();
+
+                    linenumbers.write(pa).text = linenumbers.read(pa).form_text(pa, buffer);
+                }
+            });
+
+            hook::add::<OnMouseEvent<LineNumbers>>(|pa, (linenumbers, event)| {
+                let line = |pa, handle: &Handle| {
+                    let lines = handle.printed_line_numbers(pa);
+                    event
+                        .points
+                        .and_then(|tpp| lines.get(tpp.points().real.line()))
+                        .map(|line| line.number)
+                        .unwrap_or(handle.text(pa).end_point().line())
+                };
+
+                let (buffer, _) = linenumbers.get_related::<Buffer>(pa).remove(0);
+
+                match event.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let line = line(pa, &buffer);
+
+                        buffer.selections_mut(pa).remove_extras();
+                        buffer.edit_main(pa, |mut c| {
+                            c.unset_anchor();
+                            c.move_to_coords(line, 0)
+                        })
+                    }
+                    MouseEventKind::Drag(MouseButton::Left) => {
+                        let line = line(pa, &buffer);
+
+                        buffer.selections_mut(pa).remove_extras();
+                        buffer.edit_main(pa, |mut c| {
+                            c.set_anchor_if_needed();
+                            c.move_to_coords(line, 0)
+                        })
+                    }
+                    MouseEventKind::ScrollDown => {
+                        let opts = buffer.opts(pa);
+                        let (buf, area) = buffer.write_with_area(pa);
+
+                        area.scroll_ver(buf.text(), 3, opts);
+                    }
+                    MouseEventKind::ScrollUp => {
+                        let opts = buffer.opts(pa);
+                        let (buf, area) = buffer.write_with_area(pa);
+
+                        area.scroll_ver(buf.text(), -3, opts);
+                    }
+                    _ => {}
+                }
+            });
+        });
+
+        let mut linenumbers = LineNumbers {
             text: Text::default(),
             relative: self.relative,
             align: self.align,
             main_align: self.main_align,
             show_wraps: self.show_wraps,
         };
-        line_numbers.text = line_numbers.form_text(pa, buffer);
+        linenumbers.text = linenumbers.form_text(pa, buffer);
 
         let specs = PushSpecs {
             side: if self.on_the_right {
@@ -257,7 +256,12 @@ impl LineNumbersOpts {
             ..Default::default()
         };
 
-        buffer.push_outer_widget(pa, line_numbers, specs)
+        let linenumbers = buffer.push_outer_widget(pa, linenumbers, specs);
+
+        let width = linenumbers.read(pa).calculate_width(pa, buffer);
+        linenumbers.area().set_width(pa, width + 1.0).unwrap();
+
+        linenumbers
     }
 }
 

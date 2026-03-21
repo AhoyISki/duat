@@ -105,8 +105,8 @@ impl Mode for User {
         })
     }
 
-    fn send_key(&mut self, pa: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
-        reset::<Buffer>(pa);
+    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget>) {
+        reset::<Buffer>();
     }
 }
 

@@ -14,8 +14,7 @@ use duat_core::{
     utils::expand_path,
 };
 
-use super::CompletionsList;
-use crate::widgets::{CompletionsKind, CompletionsProvider};
+use crate::widgets::CompletionsProvider;
 
 pub struct PathCompletions {
     for_parameters: bool,
@@ -40,30 +39,18 @@ impl CompletionsProvider for PathCompletions {
         txt!("[path.Completions]{entry}{Spacer}")
     }
 
-    fn completions(
-        &mut self,
-        _: &Text,
-        _: Point,
-        prefix: &str,
-        target_changed: bool,
-    ) -> CompletionsList<Self> {
+    fn matches(&mut self, _: &Text, _: Point, prefix: &str) -> Vec<(String, Self::Info)> {
         let prefix = match prefix.strip_prefix("'") {
             Some(prefix) => prefix,
             None => prefix,
         };
 
-        let Some((cur_dir, prefix, entries)) =
-            get_entries(prefix, self.for_parameters, target_changed)
-        else {
-            return CompletionsList {
-                entries: Vec::new(),
-                kind: CompletionsKind::UnfinishedFiltered,
-            };
+        let Some((cur_dir, prefix, entries)) = get_entries(prefix, self.for_parameters) else {
+            return Vec::new();
         };
 
-        let mut entries: Vec<_> = entries
-            .filter_map(|entry| entry.ok())
-            .filter_map(|entry| {
+        let mut entries =
+            Vec::from_iter(entries.filter_map(|entry| entry.ok()).filter_map(|entry| {
                 let path = entry.path();
 
                 let mut path = if let Some(cur_dir) = &cur_dir {
@@ -81,8 +68,7 @@ impl CompletionsProvider for PathCompletions {
                 }
 
                 super::string_cmp(&prefix, &path).map(|_| (path.to_string(), ()))
-            })
-            .collect();
+            }));
 
         entries.sort();
         entries.sort_by_key(|(path, _)| {
@@ -92,10 +78,7 @@ impl CompletionsProvider for PathCompletions {
             )
         });
 
-        CompletionsList {
-            entries,
-            kind: CompletionsKind::UnfinishedFiltered,
-        }
+        entries
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -131,21 +114,13 @@ impl CompletionsProvider for PathCompletions {
                 .map(|range| range.start)
         }
     }
-
-    fn has_changed(&self) -> bool {
-        false
-    }
 }
 
-fn get_entries(
-    prefix: &str,
-    for_parameters: bool,
-    target_changed: bool,
-) -> Option<(Option<PathBuf>, String, ReadDir)> {
+fn get_entries(prefix: &str, for_parameters: bool) -> Option<(Option<PathBuf>, String, ReadDir)> {
     let expanded = expand_path(prefix).ok()?.to_string();
     let path = Path::new(&expanded);
 
-    if target_changed && prefix.ends_with(possible_separators()) && path.is_dir() {
+    if prefix.ends_with(possible_separators()) && path.is_dir() {
         let read_dir = path.read_dir().ok()?;
         Some((None, expanded, read_dir))
     } else if let Some(parent) = path.parent()

@@ -272,7 +272,7 @@ impl Mode for Normal {
             let (sel_type, succeeded) = one_key.send_key(pa, key_event, &handle);
             self.sel_type = sel_type;
             if self.only_one_action {
-                mode::set(pa, crate::Insert);
+                mode::set(crate::Insert);
             }
 
             if succeeded {
@@ -618,7 +618,7 @@ impl Mode for Normal {
             event!('i') => {
                 handle.edit_all(pa, |mut c| _ = c.set_caret_on_start());
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Insert);
-                mode::set(pa, crate::Insert);
+                mode::set(crate::Insert);
             }
             event!('I') => {
                 if opts.indent_on_capital_i {
@@ -636,7 +636,7 @@ impl Mode for Normal {
                 });
 
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::InsertStart);
-                mode::set(pa, crate::Insert);
+                mode::set(crate::Insert);
             }
             event!('a') => {
                 handle.edit_all(pa, |mut c| {
@@ -644,7 +644,7 @@ impl Mode for Normal {
                     c.move_hor(1);
                 });
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Append);
-                mode::set(pa, crate::Insert);
+                mode::set(crate::Insert);
             }
             event!('A') => {
                 handle.edit_all(pa, |mut c| {
@@ -652,14 +652,14 @@ impl Mode for Normal {
                     c.move_to_col(usize::MAX);
                 });
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::AppendEnd);
-                mode::set(pa, crate::Insert);
+                mode::set(crate::Insert);
             }
             // TODO: Implement parameter
             event!('o') | alt!('o') => {
                 open_new_line_below(pa);
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineBelow);
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(pa, crate::Insert);
+                    mode::set(crate::Insert);
                 }
             }
             // TODO: Implement parameter
@@ -667,7 +667,7 @@ impl Mode for Normal {
                 open_new_line_above(pa);
                 *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::NewLineAbove);
                 if key_event.modifiers == KeyMod::NONE {
-                    mode::set(pa, crate::Insert);
+                    mode::set(crate::Insert);
                 }
             }
             event!('.') => {
@@ -944,7 +944,7 @@ impl Mode for Normal {
                 delete_selections(pa);
                 if char == 'c' {
                     *LAST_INSERT_KEY.lock().unwrap() = Some(InsertKey::Change);
-                    mode::set(pa, crate::Insert);
+                    mode::set(crate::Insert);
                 }
             }
             event!(char @ ('p' | 'P')) => {
@@ -1051,14 +1051,14 @@ impl Mode for Normal {
             }
 
             ////////// Search keys
-            event!('/') => mode::set(pa, IncSearch::new(SearchFwd)),
-            alt!('/') => mode::set(pa, IncSearch::new(SearchRev)),
-            event!('?') => mode::set(pa, IncSearch::new(ExtendFwd)),
-            alt!('?') => mode::set(pa, IncSearch::new(ExtendRev)),
-            event!('s') => mode::set(pa, IncSearch::new(Select)),
-            event!('S') => mode::set(pa, IncSearch::new(Split)),
-            alt!('k') => mode::set(pa, IncSearch::new(KeepMatching(true))),
-            alt!('K') => mode::set(pa, IncSearch::new(KeepMatching(false))),
+            event!('/') => mode::set(IncSearch::new(SearchFwd)),
+            alt!('/') => mode::set(IncSearch::new(SearchRev)),
+            event!('?') => mode::set(IncSearch::new(ExtendFwd)),
+            alt!('?') => mode::set(IncSearch::new(ExtendRev)),
+            event!('s') => mode::set(IncSearch::new(Select)),
+            event!('S') => mode::set(IncSearch::new(Split)),
+            alt!('k') => mode::set(IncSearch::new(KeepMatching(true))),
+            alt!('K') => mode::set(IncSearch::new(KeepMatching(false))),
 
             event!('n') | alt!('n') => {
                 let search = SEARCH.lock().unwrap();
@@ -1177,8 +1177,8 @@ impl Mode for Normal {
             ctrl!('i') | event!(Tab) => jump_list::jump_by(pa, &handle, 1),
 
             ////////// Other mode changing keys
-            event!(':') => mode::set(pa, RunCommands::new()),
-            event!('|') => mode::set(pa, PipeSelections::new()),
+            event!(':') => mode::set(RunCommands::new()),
+            event!('|') => mode::set(PipeSelections::new()),
             event!('g') if param_was_set => {
                 handle.selections_mut(pa).remove_extras();
                 handle.edit_main(pa, |mut c| {
@@ -1199,7 +1199,7 @@ impl Mode for Normal {
                 jump_list::register(pa, &handle, 5);
             }
             event!('G') => self.one_key = Some(OneKey::GoTo(SelType::Extend)),
-            event!(' ') => mode::set(pa, mode::User),
+            event!(' ') => mode::set(mode::User),
 
             ////////// History manipulation
             event!('u') => handle.text_mut(pa).undo(),
@@ -1208,7 +1208,7 @@ impl Mode for Normal {
         }
 
         if self.one_key.is_none() && self.only_one_action {
-            mode::set(pa, crate::Insert);
+            mode::set(crate::Insert);
         }
     }
 }

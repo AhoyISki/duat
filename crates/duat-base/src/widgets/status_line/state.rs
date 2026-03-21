@@ -15,7 +15,7 @@
 //! [`status!`]: super::status
 //! [`Buffer`]: super::Buffer
 //! [data]: crate::data
-use std::{fmt::Display, marker::PhantomData};
+use std::{fmt::Display, marker::PhantomData, sync::Arc};
 
 use duat_core::{
     buffer::Buffer,
@@ -46,7 +46,7 @@ enum Appender<Part: AsBuilderPart<D, _T> = String, _T = (), D: Display = String>
 #[doc(hidden)]
 pub struct State<_T1 = (), Part: AsBuilderPart<D, _T2> = String, _T2 = (), D: Display = String> {
     appender: Appender<Part, _T2, D>,
-    checker: Option<CheckerFn>,
+    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
     ghost: PhantomData<_T1>,
 }
 
@@ -68,7 +68,7 @@ where
                     Box::new(move |_, b, _| b.push_builder_part(part.as_builder_part()))
                 }
             },
-            Box::new(move |pa| self.checker.as_ref().is_some_and(|check| check(pa))),
+            Arc::new(move || self.checker.as_ref().is_some_and(|check| check())),
         )
     }
 }
@@ -98,7 +98,7 @@ impl<D: Display + 'static> From<RwData<D>> for State<DataArg<D>, D, D, D> {
         let checker = value.checker();
         Self {
             appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.read(pa)))),
-            checker: Some(Box::new(move |_| checker())),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
@@ -109,7 +109,7 @@ impl From<RwData<Text>> for State<DataArg<()>, Text> {
         let checker = value.checker();
         Self {
             appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.read(pa).clone()))),
-            checker: Some(Box::new(move |_| checker())),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
@@ -120,7 +120,7 @@ impl<I: ?Sized, O: Display> From<DataMap<I, O>> for State<DataArg<O>, O, O, O> {
         let checker = value.checker();
         State {
             appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.call(pa)))),
-            checker: Some(Box::new(move |_| checker())),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
@@ -131,7 +131,7 @@ impl<I: ?Sized> From<DataMap<I, Text>> for State<DataArg<Text>, Text> {
         let checker = value.checker();
         State {
             appender: Appender::FromFn(Box::new(move |pa, b, _| b.push(value.call(pa)))),
-            checker: Some(Box::new(move |_| checker())),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
@@ -287,4 +287,4 @@ impl<Args, T> Clone for FnArg<Args, T> {
 unsafe impl<Args, T> Send for FnArg<Args, T> {}
 
 type BuilderFn = Box<dyn Fn(&Pass, &mut Builder, &Handle) + Send>;
-type StateFns = (BuilderFn, Box<dyn Fn(&Pass) -> bool + Send>);
+type StateFns = (BuilderFn, CheckerFn);

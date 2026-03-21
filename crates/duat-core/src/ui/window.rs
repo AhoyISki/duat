@@ -131,9 +131,7 @@ impl Windows {
                 .find_map(|(win, window)| {
                     let inner = window.0.read(pa);
                     let master = window.nodes(pa).find_map(|node| {
-                        node.area()
-                            .area_is_eq(pa, target)
-                            .then(|| node.handle().clone())
+                        node.area().is_eq(pa, target).then(|| node.handle().clone())
                     });
 
                     if inner.master_area.is_master_of(pa, target) {
@@ -289,7 +287,7 @@ impl Windows {
         } else if let Some((id, _)) = inner_window
             .spawned
             .iter()
-            .find(|(_, node)| node.area().area_is_eq(pa, target))
+            .find(|(_, node)| node.area().is_eq(pa, target))
         {
             Location::Spawned(*id)
         } else {
@@ -304,11 +302,8 @@ impl Windows {
             target.push(pa, path.as_ref().map(|p| p.as_ref()), specs, on_buffers)?;
 
         let master = master.and_then(|area| {
-            self.entries(pa).find_map(|(.., node)| {
-                node.area()
-                    .area_is_eq(pa, area)
-                    .then(|| node.handle().clone())
-            })
+            self.entries(pa)
+                .find_map(|(.., node)| node.area().is_eq(pa, area).then(|| node.handle().clone()))
         });
 
         let node = Node::new(widget, pushed, master);
@@ -627,7 +622,7 @@ impl Windows {
     pub(crate) fn node_of<'a, W: Widget>(&'a self, pa: &'a Pass) -> Result<&'a Node, Text> {
         let buffer = context::current_buffer(pa);
 
-        if let Some((handle, _)) = buffer.get_related::<W>(pa).next() {
+        if let Some((handle, _)) = buffer.get_related::<W>(pa).first() {
             self.entries(pa)
                 .find_map(|(.., node)| node.ptr_eq(handle.widget()).then_some(node))
         } else {
@@ -1101,10 +1096,7 @@ impl Window {
         };
 
         nodes.retain(|node| {
-            if rm_areas
-                .iter()
-                .any(|a| a.area_is_eq(pa, node.handle().area()))
-            {
+            if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
                 node.handle().declare_closed(pa);
                 false
             } else {
@@ -1112,10 +1104,7 @@ impl Window {
             }
         });
         spawned.retain(|(_, node)| {
-            if rm_areas
-                .iter()
-                .any(|a| a.area_is_eq(pa, node.handle().area()))
-            {
+            if rm_areas.iter().any(|a| a.is_eq(pa, node.handle().area())) {
                 node.handle().declare_closed(pa);
                 false
             } else {

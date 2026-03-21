@@ -11,7 +11,11 @@
 //! fuzzy search in order to improve matching.
 //!
 //! [`Buffer`]: duat_core::buffer::Buffer
-use std::{collections::BTreeMap, ops::Range, sync::Mutex};
+use std::{
+    collections::BTreeMap,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
 
 use duat_core::{
     buffer::{BufferTracker, Change},
@@ -21,9 +25,7 @@ use duat_core::{
     text::{Point, RegexHaystack, Spacer, Strs, Text, txt},
 };
 
-use crate::widgets::completions::{
-    CompletionsKind, CompletionsList, CompletionsProvider, string_cmp,
-};
+use crate::widgets::completions::{CompletionsProvider, string_cmp};
 
 static TRACKER: BufferTracker = BufferTracker::new();
 static BUFFER_WORDS: Mutex<BTreeMap<String, WordInfo>> = Mutex::new(BTreeMap::new());
@@ -40,16 +42,10 @@ impl CompletionsProvider for WordCompletions {
         )
     }
 
-    fn completions(
-        &mut self,
-        text: &Text,
-        caret: Point,
-        prefix: &str,
-        _: bool,
-    ) -> CompletionsList<Self> {
+    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(String, Self::Info)> {
         let suffix = &text[text.search(r"\A\w*").range(caret..).next().unwrap()];
 
-        let mut entries: Vec<_> = BUFFER_WORDS
+        let mut matches: Vec<_> = BUFFER_WORDS
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .iter()
@@ -63,12 +59,9 @@ impl CompletionsProvider for WordCompletions {
             .map(|(entry, info)| (entry.clone(), info.clone()))
             .collect();
 
-        entries.sort_by_key(|(entry, _)| (string_cmp(prefix, entry), entry.len()));
+        matches.sort_by_key(|(entry, _)| (string_cmp(prefix, entry), entry.len()));
 
-        CompletionsList {
-            entries,
-            kind: CompletionsKind::UnfinishedFiltered,
-        }
+        matches
     }
 
     fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
@@ -77,17 +70,13 @@ impl CompletionsProvider for WordCompletions {
             .next_back()
             .map(|r| r.start)
     }
-
-    fn has_changed(&self) -> bool {
-        false
-    }
 }
 
 /// Information about an entry in the [`WordCompletions`]
 #[derive(Clone, Debug)]
 pub struct WordInfo {
     /// The first [`Buffer`] in which this word was found
-    pub source: String,
+    pub source: Arc<str>,
     /// How many times this word appears, always greater than 0
     pub count: usize,
 }
@@ -99,11 +88,12 @@ pub(super) fn track_words() {
         TRACKER.register_buffer(handle.write(pa));
         let mut words = BUFFER_WORDS.lock().unwrap();
         let buffer = handle.read(pa);
+        let source: Arc<str> = buffer.name().into();
         for range in buffer.text().search(r"\w{3,}") {
             let word = buffer.text()[range].to_string();
             let info = words
                 .entry(word)
-                .or_insert_with(|| WordInfo { source: buffer.name(), count: 0 });
+                .or_insert_with(|| WordInfo { source: source.clone(), count: 0 });
 
             info.count += 1;
         }
@@ -117,7 +107,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
         |range| (range.clone(), &str[range])
     }
 
-    let name = handle.read(pa).name();
+    let source: Arc<str> = handle.read(pa).name().into();
     let parts = TRACKER.parts(handle.write(pa)).unwrap();
 
     if parts.changes.len() == 0 {
@@ -159,7 +149,7 @@ fn update_counts(pa: &mut Pass, handle: &Handle) {
             (Some(info), false) => info.count += 1,
             (None, false) => {
                 buffer_words.insert(word.to_string(), WordInfo {
-                    source: name.clone(),
+                    source: source.clone(),
                     count: 1,
                 });
             }

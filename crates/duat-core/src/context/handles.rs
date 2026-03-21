@@ -12,7 +12,7 @@ use crate::{
     data::{Pass, RwData, WriteableTuple},
     mode::{Cursor, ModSelection, Selection, Selections},
     opts::PrintOpts,
-    text::{Text, TextMut, TextParts, TwoPoints, txt},
+    text::{Text, TextMut, TextParts, TwoPoints},
     ui::{Area, DynSpawnSpecs, PushSpecs, RwArea, Widget},
 };
 
@@ -156,7 +156,6 @@ pub struct Handle<W: ?Sized = crate::buffer::Buffer> {
     mask: Arc<Mutex<&'static str>>,
     related: RwData<Vec<(Handle<dyn Widget>, WidgetRelation)>>,
     is_closed: RwData<bool>,
-    master: Option<Box<Handle<dyn Widget>>>,
     pub(crate) update_requested: Arc<AtomicBool>,
 }
 
@@ -166,15 +165,18 @@ impl<W: Widget + ?Sized> Handle<W> {
         widget: RwData<W>,
         area: RwArea,
         mask: Arc<Mutex<&'static str>>,
-        master: Option<Handle<dyn Widget>>,
+        main: Option<Handle<dyn Widget>>,
     ) -> Self {
         Self {
             widget,
             area,
             mask,
-            related: RwData::default(),
+            related: RwData::new(
+                main.map(|handle| (handle, WidgetRelation::Main))
+                    .into_iter()
+                    .collect(),
+            ),
             is_closed: RwData::new(false),
-            master: master.map(Box::new),
             update_requested: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -277,7 +279,6 @@ impl<W: 'static + ?Sized> Handle<W> {
             mask: self.mask.clone(),
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
-            master: self.master.clone(),
             update_requested: self.update_requested.clone(),
         })
     }
@@ -367,11 +368,10 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// on the master's [`Text`].
     ///
     /// [spawned]: crate::text::SpawnTag
-    pub fn master(&self) -> Result<&Handle<dyn Widget>, Text> {
-        self.master
-            .as_ref()
-            .map(|handle| handle.as_ref())
-            .ok_or_else(|| txt!("Widget was not pushed to another"))
+    pub fn master(&self, pa: &Pass) -> Option<Handle<dyn Widget>> {
+        self.related.read(pa).iter().find_map(|(handle, relation)| {
+            (*relation == WidgetRelation::Main).then_some(handle.clone())
+        })
     }
 
     /// Returns the [`Handle<Buffer>`] this one was pushed to, if it
@@ -383,11 +383,12 @@ impl<W: 'static + ?Sized> Handle<W> {
     /// on the master's [`Text`].
     ///
     /// [spawned]: crate::text::SpawnTag
-    pub fn buffer(&self) -> Result<Handle, Text> {
-        self.master
-            .as_ref()
-            .and_then(|handle| handle.try_downcast())
-            .ok_or_else(|| txt!("Widget was not pushed to a [a]Buffer"))
+    pub fn buffer(&self, pa: &Pass) -> Option<Handle> {
+        self.related.read(pa).iter().find_map(|(handle, relation)| {
+            handle
+                .try_downcast()
+                .filter(|_| *relation == WidgetRelation::Main)
+        })
     }
 
     /// Reads related [`Widget`]s of type `W2`, as well as its
@@ -417,16 +418,12 @@ impl<W: 'static + ?Sized> Handle<W> {
     pub fn get_related<'a, W2: Widget>(
         &'a self,
         pa: &'a Pass,
-    ) -> impl Iterator<Item = (Handle<W2>, WidgetRelation)> + 'a {
-        self.try_downcast()
-            .zip(Some(WidgetRelation::Main))
-            .into_iter()
-            .chain(
-                self.related
-                    .read(pa)
-                    .iter()
-                    .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel))),
-            )
+    ) -> Vec<(Handle<W2>, WidgetRelation)> {
+        self.related
+            .read(pa)
+            .iter()
+            .filter_map(|(handle, rel)| handle.try_downcast().zip(Some(*rel)))
+            .collect()
     }
 
     /// Raw access to the related widgets.
@@ -713,29 +710,24 @@ impl<W: Widget> Handle<W> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW> {
+        let main = if let Some((main, _)) = self
+            .related
+            .read(pa)
+            .iter()
+            .find(|(_, relation)| *relation == WidgetRelation::Main)
+        {
+            main.clone()
+        } else {
+            self.to_dyn()
+        };
+
         let handle = context::windows()
             .push_widget(pa, (&self.area, None, specs), widget, Some(&self.area))
             .unwrap();
 
-        let related = self.related.write(pa);
-
-        related.push((handle.to_dyn(), WidgetRelation::Pushed));
-
-        if let Some((main, _)) = related
-            .iter_mut()
-            .find(|(_, relation)| *relation == WidgetRelation::Main)
-            .cloned()
-        {
-            main.related
-                .write(pa)
-                .push((handle.to_dyn(), WidgetRelation::Pushed));
-            handle.related.write(pa).push((main, WidgetRelation::Main));
-        } else {
-            handle
-                .related
-                .write(pa)
-                .push((self.to_dyn(), WidgetRelation::Main));
-        }
+        main.related
+            .write(pa)
+            .push((handle.to_dyn(), WidgetRelation::Pushed));
 
         handle
     }
@@ -788,35 +780,30 @@ impl<W: Widget> Handle<W> {
         widget: PW,
         specs: PushSpecs,
     ) -> Handle<PW> {
+        let main = if let Some((main, _)) = self
+            .related
+            .read(pa)
+            .iter()
+            .find(|(_, relation)| *relation == WidgetRelation::Main)
+        {
+            main.clone()
+        } else {
+            self.to_dyn()
+        };
+
         let handle = if let Some(master) = self.area.get_cluster_master(pa) {
             context::windows()
-                .push_widget(pa, (&master, None, specs), widget, Some(&self.area))
+                .push_widget(pa, (&master, None, specs), widget, Some(main.area()))
                 .unwrap()
         } else {
             context::windows()
-                .push_widget(pa, (&self.area, None, specs), widget, Some(&self.area))
+                .push_widget(pa, (&self.area, None, specs), widget, Some(main.area()))
                 .unwrap()
         };
 
-        let related = self.related.write(pa);
-
-        related.push((handle.to_dyn(), WidgetRelation::Pushed));
-
-        if let Some((main, _)) = related
-            .iter_mut()
-            .find(|(_, relation)| *relation == WidgetRelation::Main)
-            .cloned()
-        {
-            main.related
-                .write(pa)
-                .push((handle.to_dyn(), WidgetRelation::Pushed));
-            handle.related.write(pa).push((main, WidgetRelation::Main));
-        } else {
-            handle
-                .related
-                .write(pa)
-                .push((self.to_dyn(), WidgetRelation::Main));
-        }
+        main.related
+            .write(pa)
+            .push((handle.to_dyn(), WidgetRelation::Pushed));
 
         handle
     }
@@ -860,7 +847,6 @@ impl<W: Widget> Handle<W> {
             mask: self.mask.clone(),
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
-            master: self.master.clone(),
             update_requested: self.update_requested.clone(),
         }
     }
@@ -886,7 +872,6 @@ impl<W: ?Sized> Clone for Handle<W> {
             mask: self.mask.clone(),
             related: self.related.clone(),
             is_closed: self.is_closed.clone(),
-            master: self.master.clone(),
             update_requested: self.update_requested.clone(),
         }
     }

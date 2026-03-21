@@ -10,6 +10,7 @@ use std::{
     any::TypeId,
     path::PathBuf,
     sync::{Mutex, OnceLock},
+    time::Instant,
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers, MouseEventKind};
@@ -146,10 +147,11 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
     let pa = unsafe { &mut Pass::new() };
 
     hook::trigger(pa, ConfigLoaded(is_first_time));
-    mode::reset::<Buffer>(pa);
+    mode::reset::<Buffer>();
 
     let mut reload_requested = false;
     let mut reprint_screen = false;
+    let mut chain_events_instant = Instant::now();
 
     ui.flush_layout();
 
@@ -209,7 +211,7 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
     print_screen(pa, true);
 
     loop {
-        if let Some(event) = duat_rx.recv() {
+        if let Some(event) = duat_rx.recv(chain_events_instant) {
             match event {
                 DuatEvent::KeyEventSent(key_event) => {
                     mode::send_key_event(pa, key_event);
@@ -221,6 +223,9 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                     context::current_window(pa)
                         .clone()
                         .send_mouse_event(pa, mouse_event);
+                    if mode::keys_were_sent(pa) {
+                        continue;
+                    }
                 }
                 DuatEvent::KeyEventsSent(keys) => {
                     for key in keys {
@@ -232,6 +237,9 @@ fn main_loop(ui: Ui, is_first_time: bool) -> Vec<Vec<ReloadedBuffer>> {
                 }
                 DuatEvent::QueuedFunction(f) => _ = catch_panic(|| f(pa)),
                 DuatEvent::Resized | DuatEvent::FormChange => {
+                    if !reprint_screen {
+                        chain_events_instant = Instant::now();
+                    }
                     reprint_screen = true;
                     continue;
                 }

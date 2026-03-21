@@ -569,7 +569,7 @@ mod global {
 
     /// The description for a Duat command, which can be executed in
     /// the `PromptLine`
-    #[derive(Clone)]
+    #[derive(Debug, Clone)]
     pub struct CmdDoc {
         /// The caller for the command
         pub caller: Arc<str>,

@@ -53,6 +53,7 @@ static PREVIEW_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 pub fn add_prompt_hook() {
     hook::add::<OnModeSwitch>(|pa, mut switch| {
         if let Some(prompt) = switch.new.get_as::<Prompt>() {
+
             let Some(promptline) = context::handle_of::<PromptLine>(pa) else {
                 return;
             };
@@ -127,7 +128,7 @@ pub struct Prompt {
     mode: Box<dyn PromptMode>,
     starting_text: String,
     ty: TypeId,
-    reset_fn: fn(pa: &mut Pass),
+    reset_fn: fn(),
     history_index: Option<usize>,
 }
 
@@ -142,7 +143,7 @@ impl Prompt {
             mode: Box::new(mode),
             starting_text: String::new(),
             ty: TypeId::of::<M>(),
-            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
+            reset_fn: || mode::reset::<M::ExitWidget>(),
             history_index: None,
         }
     }
@@ -158,7 +159,7 @@ impl Prompt {
             mode: Box::new(mode),
             starting_text: initial.to_string(),
             ty: TypeId::of::<M>(),
-            reset_fn: |pa| mode::reset::<M::ExitWidget>(pa),
+            reset_fn: || mode::reset::<M::ExitWidget>(),
             history_index: None,
         }
     }
@@ -209,7 +210,7 @@ impl mode::Mode for Prompt {
             if let Some(ret_handle) = prompt.mode.return_handle() {
                 mode::reset_to(pa, &ret_handle);
             } else {
-                (prompt.reset_fn)(pa);
+                (prompt.reset_fn)();
             }
         };
 
@@ -233,7 +234,7 @@ impl mode::Mode for Prompt {
                     if let Some(ret_handle) = self.mode.return_handle() {
                         mode::reset_to(pa, &ret_handle);
                     } else {
-                        (self.reset_fn)(pa);
+                        (self.reset_fn)();
                     }
                 } else {
                     handle.edit_main(pa, |mut c| {

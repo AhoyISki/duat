@@ -16,6 +16,7 @@ use duat_core::{
 };
 use duat_term::Frame;
 
+/// Add the hooks for the [`WhichKey`].
 pub fn add_whichkey_hooks() {
     hook::add::<OnMouseEvent<WhichKey>>(move |pa, (whichkey, event)| {
         use MouseEventKind::{ScrollDown, ScrollUp};

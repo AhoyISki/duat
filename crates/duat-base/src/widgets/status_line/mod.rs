@@ -15,9 +15,12 @@
 //!
 //! [data]: crate::data
 //! [`Buffer`]: duat_core::buffer::Buffer
+use std::sync::{Arc, LazyLock, mpsc};
+
 use duat_core::{
     context::{self, DynBuffer, Handle},
     data::Pass,
+    hook::{self, BufferClosed, BufferUpdated},
     text::{Builder, Spacer, Text, TextMut},
     ui::{PushSpecs, PushTarget, Side, Widget},
 };
@@ -98,7 +101,7 @@ pub struct StatusLine {
     buffer_handle: BufferHandle,
     text_fn: TextFn,
     text: Text,
-    checker: Box<dyn Fn(&Pass) -> bool + Send>,
+    checker: CheckerFn,
 }
 
 impl StatusLine {
@@ -128,7 +131,7 @@ impl StatusLine {
                 builder_fn(pa, builder, fh)
             }),
             text: Text::new(),
-            checker: Box::new(checker),
+            checker,
         }
     }
 
@@ -169,16 +172,6 @@ impl StatusLine {
 }
 
 impl Widget for StatusLine {
-    fn needs_update(&self, pa: &Pass) -> bool {
-        let buffer_changed = match &self.buffer_handle {
-            BufferHandle::Fixed(handle) => handle.has_changed(pa),
-            BufferHandle::Dynamic(dyn_buf) => dyn_buf.has_changed(pa),
-        };
-        let checkered = (self.checker)(pa);
-
-        buffer_changed || checkered
-    }
-
     fn text(&self) -> &Text {
         &self.text
     }
@@ -210,13 +203,79 @@ impl StatusLineFmt {
     ///
     /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<StatusLine> {
+        static SENDER: LazyLock<mpsc::Sender<StatusLineEvent>> = LazyLock::new(|| {
+            hook::add::<BufferUpdated>(|pa, buffer| {
+                let handles = buffer.get_related::<StatusLine>(pa);
+                for (statusline, _) in &handles {
+                    StatusLine::update(pa, statusline);
+                }
+
+                let handles: Vec<Handle<StatusLine>> = context::current_window(pa)
+                    .handles(pa)
+                    .filter_map(Handle::try_downcast)
+                    .filter(|statusline| !handles.iter().any(|(other, _)| other == statusline))
+                    .collect();
+
+                for statusline in handles {
+                    let sl = statusline.read(pa);
+                    let buffer_changed = match &sl.buffer_handle {
+                        BufferHandle::Fixed(handle) => handle.has_changed(pa),
+                        BufferHandle::Dynamic(dyn_buf) => dyn_buf.has_changed(pa),
+                    };
+
+                    if buffer_changed || (sl.checker)() {
+                        StatusLine::update(pa, &statusline);
+                    }
+                }
+            });
+
+            hook::add::<BufferClosed>(|pa, buffer| {
+                for (statusline, _) in buffer.get_related::<StatusLine>(pa) {
+                    SENDER.send(StatusLineEvent::Closed(statusline)).unwrap();
+                }
+            });
+
+            let (tx, rx) = mpsc::channel();
+
+            std::thread::spawn(move || {
+                let mut entries = Vec::new();
+                loop {
+                    match rx.recv_timeout(std::time::Duration::from_millis(50)) {
+                        Ok(StatusLineEvent::Opened(statusline, checker)) => {
+                            entries.push((statusline, checker));
+                        }
+                        Ok(StatusLineEvent::Closed(rm_statusline)) => {
+                            entries.retain(|(statusline, ..)| *statusline != rm_statusline);
+                        }
+                        Err(_) => {}
+                    }
+
+                    for (statusline, checker) in &entries {
+                        if checker() {
+                            let statusline = statusline.clone();
+                            context::queue(move |pa| StatusLine::update(pa, &statusline))
+                        }
+                    }
+                }
+            });
+
+            tx
+        });
+
         let specs = self.specs;
-        let status_line = StatusLine::new(self, match push_target.try_downcast() {
+        let statusline = StatusLine::new(self, match push_target.try_downcast() {
             Some(handle) => BufferHandle::Fixed(handle),
             None => BufferHandle::Dynamic(context::dynamic_buffer(pa)),
         });
 
-        push_target.push_outer(pa, status_line, specs)
+        let checker = statusline.checker.clone();
+        let statusline = push_target.push_outer(pa, statusline, specs);
+
+        SENDER
+            .send(StatusLineEvent::Opened(statusline.clone(), checker))
+            .unwrap();
+
+        statusline
     }
 
     /// Returns a new `StatusLineFmt`, meant to be called only be the
@@ -264,12 +323,17 @@ impl Default for StatusLineFmt {
     }
 }
 
-type TextFn = Box<dyn Fn(&Pass, &Handle) -> Text + Send>;
-type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle) -> Text + Send>;
-type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;
-
 #[derive(Clone)]
 enum BufferHandle {
     Fixed(Handle),
     Dynamic(DynBuffer),
 }
+
+enum StatusLineEvent {
+    Opened(Handle<StatusLine>, CheckerFn),
+    Closed(Handle<StatusLine>),
+}
+
+type TextFn = Box<dyn Fn(&Pass, &Handle) -> Text + Send>;
+type BuilderFn = Box<dyn Fn(&Pass, Builder, &Handle) -> Text + Send>;
+type CheckerFn = Arc<dyn Fn() -> bool + Send + Sync>;

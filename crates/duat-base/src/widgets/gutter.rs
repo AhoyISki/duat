@@ -50,7 +50,7 @@ impl Gutter {
             form::set_weak("buffer.error", Form::new().underline_red().underlined());
 
             hook::add::<BufferUpdated>(|pa, buffer| {
-                let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).next() else {
+                let Some((gutter, _)) = buffer.get_related::<Gutter>(pa).first().cloned() else {
                     return;
                 };
 
@@ -461,7 +461,7 @@ impl GetGuttered for Handle {
         pa: &'g mut Pass,
         gutterer: Gutterer,
     ) -> Option<GutteredBuffer<'g>> {
-        let gutter = self.get_related(pa).next();
+        let gutter = self.get_related(pa).first().cloned();
         if let Some((gutter, WidgetRelation::Pushed)) = gutter {
             Some(GutteredBuffer { gutterer, pa, buffer: self, gutter })
         } else {

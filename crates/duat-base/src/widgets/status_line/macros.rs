@@ -161,9 +161,10 @@ macro_rules! __status__ {
         };
         #[allow(unused_imports)]
         use $crate::{__parse_form__, __parse_status_part__, __parse_str__};
+        use ::std::sync::Arc;
 
         let text_fn = |_: &Pass, _: &mut Builder, _: &Handle| {};
-        let checker = |_: &Pass| false;
+        let checker = || false;
 
         let (text_fn, checker) = format_like!(
             __parse_str__,
@@ -179,7 +180,7 @@ macro_rules! __status__ {
                     text_fn(pa, &mut builder, &handle);
                     builder.build()
                 }),
-                Box::new(checker)
+                Arc::new(checker)
             ),
         )
     }}
@@ -219,7 +220,7 @@ macro_rules! __parse_status_part__ {
         let (mut appender, checker) = $status_line;
         let (ap, ch) = State::from($part).fns();
 
-        let checker = move |pa: &Pass| checker(pa) || ch(pa);
+        let checker = move || checker() || ch();
 
         let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
             appender(pa, builder, handle);
@@ -237,7 +238,7 @@ macro_rules! __parse_status_part__ {
         let (mut appender, checker) = $status_line;
         let (ap, ch) = State::from(format!(concat!("{:", $modif, "}"), $part)).fns();
 
-        let checker = move |pa: &Pass| checker(pa) || ch(pa);
+        let checker = move || checker() || ch();
 
         let appender = move |pa: &Pass, builder: &mut Builder, handle: &Handle| {
             appender(pa, builder, handle);

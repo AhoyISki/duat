@@ -8,12 +8,33 @@ use std::sync::Once;
 use duat_core::{
     context::Handle,
     data::Pass,
-    hook::{self, OnMouseEvent},
+    hook::{self, OnMouseEvent, WidgetOpened},
     mode::MouseEventKind,
     opts::PrintOpts,
     text::{Text, TextMut},
     ui::Widget,
 };
+
+/// Adds the hooks for the [`Info`] widget.
+pub fn add_info_hooks() {
+    use MouseEventKind::{ScrollDown, ScrollUp};
+
+    hook::add::<OnMouseEvent<Info>>(|pa, (info, event)| match event.kind {
+        ScrollDown | ScrollUp => {
+            let (info, area) = info.write_with_area(pa);
+            let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
+            area.scroll_ver(&info.text, scroll, info.print_opts());
+        }
+        _ => {}
+    });
+
+    hook::add::<WidgetOpened<Info>>(|pa, info| {
+        let (info, area) = info.write_with_area(pa);
+        let size = area.size_of_text(info.print_opts(), &info.text).unwrap();
+        _ = area.set_width(size.x);
+        _ = area.set_height(size.y);
+    });
+}
 
 /// A simple static widget, meant to just convey information
 ///
@@ -40,21 +61,15 @@ impl Info {
     /// could be used in order to place them willy nilly.
     pub fn new(text: Text) -> Self {
         static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            use MouseEventKind::{ScrollDown, ScrollUp};
-            hook::add::<OnMouseEvent<Info>>(|pa, (info, event)| match event.kind {
-                ScrollDown | ScrollUp => {
-                    let (info, area) = info.write_with_area(pa);
-                    let scroll = if let ScrollDown = event.kind { 3 } else { -3 };
-                    area.scroll_ver(&info.text, scroll, info.print_opts());
-                }
-                _ => {}
-            });
-        });
+        ONCE.call_once(|| {});
 
         Self { text }
     }
 
+    /// Mutate the [`Text`] of this `Info`.
+    ///
+    /// This will also resize the widget to fit as much of it as
+    /// possible.
     pub fn set_text(pa: &mut Pass, info: &Handle<Self>, func: impl FnOnce(&mut Text)) {
         let (info, area) = info.write_with_area(pa);
         func(&mut info.text);

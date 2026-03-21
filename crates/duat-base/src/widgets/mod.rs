@@ -17,20 +17,21 @@ use duat_core::{
     ui::PushTarget,
 };
 
-pub(crate) use self::completions::setup_completions;
+pub(crate) use self::{
+    completions::setup_completions, info::add_info_hooks, log_book::add_logbook_hooks,
+    notifications::add_notifications_hook, promptline::add_promptline_hooks,
+    whichkey::add_whichkey_hooks,
+};
 pub use self::{
-    completions::{
-        CommandsCompletions, Completions, CompletionsBuilder, CompletionsKind, CompletionsList,
-        CompletionsProvider,
-    },
+    completions::{CommandsCompletions, Completions, CompletionsBuilder, CompletionsProvider},
     gutter::{GetGuttered, Gutter, GutterEntryBuilder, GutteredBuffer, Gutterer},
     info::Info,
     line_numbers::{LineNumbers, LineNumbersOpts},
     log_book::{LogBook, LogBookOpts},
     notifications::{Notifications, NotificationsOpts},
-    prompt_line::{PromptLine, PromptLineBuilder},
+    promptline::{PromptLine, PromptLineBuilder},
     status_line::{State, StatusLine, StatusLineFmt, status},
-    which_key::WhichKey,
+    whichkey::WhichKey,
 };
 
 mod completions;
@@ -39,9 +40,9 @@ mod info;
 mod line_numbers;
 mod log_book;
 mod notifications;
-mod prompt_line;
+mod promptline;
 mod status_line;
-mod which_key;
+mod whichkey;
 
 /// A group of [`Widget`]s consisting of a [`StatusLine`],
 /// [`PromptLine`] and [`Notifications`] combo

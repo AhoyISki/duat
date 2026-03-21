@@ -29,11 +29,13 @@
 //!     entries and add new providers via the [`CompletionsProvider`]
 //!     trait. Right now, the only `CompletionsProvider` is the words
 //!     provider.
+//!   - [`Gutter`] Sits on the side of each `Buffer`, showing
+//!     diagnostic information about each line of the `Buffer`.
 //!   - [`WhichKey`] shows what each key will do. It shows up
 //!     automatically as you are typing and multi key sequences are
 //!     expected (e.g. Vim's `c`, `d`, `f` and others).
 //!   - [`Info`] just shows static information, resizing itself to
-//!     properly show as much as possible of it.
+//!     properly show as much of it as possible.
 //!
 //! - 2 [`modes`]:
 //!   - [`Prompt`] is a multitool that can serve many purposes,
@@ -116,9 +118,9 @@
 //! [`CompletionsProvider`]: widgets::CompletionsProvider
 //! [`WhichKey`]: widgets::WhichKey
 //! [`Info`]: widgets::Info
+//! [`Gutter`]: widgets::Gutter
 use duat_core::{
     Plugin, cmd,
-    data::Pass,
     form::{self, Form},
     mode,
     text::{Tagger, Text, txt},
@@ -143,7 +145,13 @@ pub struct DuatBase;
 
 impl Plugin for DuatBase {
     fn plug(self, _: &duat_core::Plugins) {
+        widgets::add_info_hooks();
+        widgets::add_logbook_hooks();
+        widgets::add_notifications_hook();
+        widgets::add_promptline_hooks();
+        widgets::add_whichkey_hooks();
         widgets::setup_completions();
+
         modes::add_prompt_hook();
         buffer_parser::enable_parser();
 
@@ -183,8 +191,8 @@ impl Plugin for DuatBase {
         form::set_weak("key.special", Form::new().yellow());
         form::set_weak("remap", Form::new().italic());
 
-        cmd::add("logs", |pa: &mut Pass| {
-            mode::set(pa, Pager::<LogBook>::new());
+        cmd::add("logs", |_: &mut _| {
+            mode::set(Pager::<LogBook>::new());
             Ok(None)
         })
         .doc(

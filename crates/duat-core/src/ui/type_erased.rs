@@ -561,7 +561,7 @@ impl RwArea {
     }
 
     /// Wether this [`Area`] is the same as another
-    pub fn area_is_eq(&self, pa: &Pass, other: &RwArea) -> bool {
+    pub fn is_eq(&self, pa: &Pass, other: &RwArea) -> bool {
         self.0.read(pa).area_is_eq(other.0.read(pa))
     }
 }

@@ -31,13 +31,14 @@ use duat_core::{
 };
 use duat_term::Frame;
 
-pub use self::{commands::CommandsCompletions, fixed::ExhaustiveCompletionsList};
+pub use self::{commands::CommandsCompletions, lists::ExhaustiveCompletionsList};
 use crate::widgets::{
     Info,
     completions::{paths::PathCompletions, words::WordCompletions},
 };
 
 mod commands;
+mod lists;
 mod paths;
 mod words;
 
@@ -107,10 +108,11 @@ pub fn setup_completions() {
         Completions::set_frame(pa, completions);
 
         let completions = completions.clone();
+
         hook::add::<KeySent>(move |pa, _| {
             Completions::update_text_and_position(pa, &completions, 0);
-            let master_completions = completions.master().unwrap();
-            completions.write(pa).last_caret = master_completions.selections(pa).main().caret();
+            let completions_master = completions.master(pa).unwrap();
+            completions.write(pa).last_caret = completions_master.selections(pa).main().caret();
 
             Completions::set_frame(pa, &completions);
         })
@@ -187,7 +189,6 @@ impl CompletionsBuilder {
         let (text, sidebar) = entries.unwrap_or_default();
 
         let completions = Completions {
-            master: handle.clone(),
             providers,
             text,
             sidebar,
@@ -232,7 +233,6 @@ impl CompletionsBuilder {
 
 /// A list of completions, used to quickly fill in matches
 pub struct Completions {
-    master: Handle<dyn Widget>,
     providers: Vec<Box<dyn ErasedInnerProvider>>,
     text: Text,
     sidebar: Text,
@@ -354,12 +354,15 @@ impl Completions {
 
     fn update_text_and_position(
         pa: &mut Pass,
-        handle: &Handle<Self>,
+        completions: &Handle<Self>,
         scroll: i32,
     ) -> Option<(String, String)> {
-        let master_handle = handle.master().unwrap();
-        let (master, area, comp) =
-            pa.write_many((master_handle.widget(), handle.area(), handle.widget()));
+        let master_handle = completions.master(pa).unwrap();
+        let (master, area, comp) = pa.write_many((
+            master_handle.widget(),
+            completions.area(),
+            completions.widget(),
+        ));
 
         let mat = {
             let mut lists: Vec<_> = comp
@@ -430,7 +433,7 @@ impl Completions {
                 });
 
                 if let Some((info_text, orientation)) = info_text {
-                    let info_handle = if let Some(info) = handle.read(pa).info_handle.clone() {
+                    let info_handle = if let Some(info) = completions.read(pa).info_handle.clone() {
                         Info::set_text(pa, &info, |text| *text = info_text);
                         Some(info)
                     } else {
@@ -441,8 +444,8 @@ impl Completions {
                             ..Default::default()
                         };
 
-                        let info_handle = handle.spawn_widget(pa, Info::new(info_text), specs);
-                        handle.write(pa).info_handle = info_handle.clone();
+                        let info_handle = completions.spawn_widget(pa, Info::new(info_text), specs);
+                        completions.write(pa).info_handle = info_handle.clone();
                         info_handle
                     };
 
@@ -461,19 +464,18 @@ impl Completions {
                         });
                         area.set_frame(frame);
                     }
-                } else if let Some(prev) = handle.write(pa).info_handle.take() {
+                } else if let Some(prev) = completions.write(pa).info_handle.take() {
                     let _ = prev.close(pa);
                 }
             } else {
                 drop(start_fn);
             }
 
-            let comp = handle.write(pa);
+            let comp = completions.write(pa);
 
             // In this case, move the Completions to a new location
             if start_byte != comp.start_byte {
                 let new_comp = Self {
-                    master: handle.master().unwrap().clone(),
                     providers: std::mem::take(&mut comp.providers),
                     text: std::mem::take(&mut comp.text),
                     sidebar: std::mem::take(&mut comp.sidebar),
@@ -500,12 +502,7 @@ impl Completions {
             None
         };
 
-        let (comp, area) = handle.write_with_area(pa);
-        let height = comp.text.end_point().line() as f32;
-
-        area.set_height(if comp.text.is_empty() { 0.0 } else { height })
-            .unwrap();
-        Completions::set_frame(pa, handle);
+        Completions::set_frame(pa, completions);
 
         main_repl
     }
@@ -534,6 +531,10 @@ impl Completions {
                 .max(40.0),
         )
         .unwrap();
+
+        let height = comp.text.end_point().line() as f32;
+        area.set_height(if comp.text.is_empty() { 0.0 } else { height })
+            .unwrap();
     }
 }
 
@@ -560,7 +561,7 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// This information is supposed to be displayed alongside the
     /// entry itself, usually on the right side.
-    type Info: Clone + Send;
+    type Info: Send;
 
     /// The default formatting for entries from this provider
     ///
@@ -571,34 +572,23 @@ pub trait CompletionsProvider: Send + Sized + 'static {
 
     /// Get all completions at a given [`Point`] in the [`Text`]
     ///
-    /// This returns a [`CompletionsList`], which contains a list of
-    /// all words that should be listed as well as information
-    /// regarding the ["completeness"] of the list.
+    /// This function should return a list of all possible matches,
+    /// given the prefix and surrounding context. It should be sorted
+    /// in an appropriate manner (e.g. by word proximity or
+    /// frequency).
     ///
     /// The `caret` is the position where the main cursor's [caret]
     /// lies, And the `prefix` and `suffix` are .
     ///
-    /// If the `Vec` within is empty, then the next
-    /// `CompletionsProvider` will be selected to provide the required
-    /// completions. If all of them return empty `Iterator`s, then no
-    /// completions will be shown.
+    /// If the returned [`Vec`] is empty, then the next provider will
+    /// be selected to return a list of matches.
     ///
-    /// The `target_changed` parameter determines that the prefix has
-    /// changed from what was previously selected, either by the user
-    /// typing more characters or by some other external factor. This
-    /// is useful in circumstances where you want to show completions
-    /// based on what the user typed, and not from the entries that
-    /// were sent.
+    /// This function is only called if the prefix changes, which
+    /// would happen if the user types something, deletes something,
+    /// or moves the cursor around.
     ///
     /// [caret]: duat_core::mode::Selection::caret
-    /// ["completeness"]: CompletionsKind
-    fn completions(
-        &mut self,
-        text: &Text,
-        caret: Point,
-        prefix: &str,
-        has_changed: bool,
-    ) -> CompletionsList<Self>;
+    fn matches(&mut self, text: &Text, caret: Point, prefix: &str) -> Vec<(String, Self::Info)>;
 
     /// Get the starting byte for this completions
     ///
@@ -608,80 +598,33 @@ pub trait CompletionsProvider: Send + Sized + 'static {
     ///
     /// For example, if you're completing words, you should logially
     /// look for the start of the word that intersects with the
-    /// `from`th byte.
-    fn get_start(&self, text: &Text, caret: Point) -> Option<usize>;
-
-    /// Wether the list of completion entries has been updated
+    /// `from`th byte:
     ///
-    /// This is particularly useful if the `CompletionsProvider` could
-    /// be slow, such as one from an LSP or things of the sort.
-    fn has_changed(&self) -> bool;
+    /// ```text
+    ///         v------ starting byte index.
+    /// This is bein|g typed.
+    ///             ^-- main cursor caret.
+    /// ```
+    ///
+    /// If you're typing arguments in a command, you'd return the byte
+    /// index of the current argument:
+    ///
+    /// ```text
+    ///       v--------------------------- starting byte index.
+    /// :edit 'This is a quoted argum|ent
+    ///                              ^---< main cursor caret.
+    /// ```
+    ///
+    /// This function is used in order to determine which providers
+    /// should be prioritized, giving higher priority to the ones that
+    /// have longer matches.
+    fn get_start(&self, text: &Text, caret: Point) -> Option<usize>;
 
     /// Additional information about an entry, which can be shown when
     /// it is selected.
     fn default_info_on(&self, _: (&str, &Self::Info)) -> Option<(Text, Orientation)> {
         None
     }
-}
-
-/// A list of entries for completion
-///
-/// This list is created by a [`CompletionsProvider`], and is used by
-/// the [`Completions`] [`Widget`] (or other similar `Widget`s) to
-/// provide tab completions to users.
-pub struct CompletionsList<P: CompletionsProvider> {
-    /// The list of entries to be received by [`completions`]
-    ///
-    /// [`completions`]: CompletionsProvider::completions
-    pub entries: Vec<(String, P::Info)>,
-    /// What kind of completion entries have been provided
-    pub kind: CompletionsKind,
-}
-
-/// What kind of completions was given by [`completions`]
-///
-/// [`completions`]: CompletionsProvider::completions
-#[derive(Clone, Copy)]
-pub enum CompletionsKind {
-    /// Indicates that the entries that were sent are _all_ entries
-    /// that exist
-    ///
-    /// This means that, if the user types any new [completion]
-    /// characters or deletes old ones, this list will remain
-    /// unaltered.
-    ///
-    /// In this case, the [`Completions`] widget will take that
-    /// initial list and apply filtering to it in order to narrow down
-    /// possible choices.
-    ///
-    /// [completion]: CompletionsProvider::get_start
-    Finished,
-    /// Indicates that the entries that were sent are not all entries,
-    /// but they're already filtered
-    ///
-    /// This means that, if the user types any new [completion]
-    /// characters or deletes old ones, a new list will have to be
-    /// acquired.
-    ///
-    /// Unlike in [`CompletionsKind::Finished`] and
-    /// [`CompletionsKind::UnfinishedUnfiltered`], the [`Completions`]
-    /// widget will not do any filtering of the entries sent.
-    ///
-    /// [completion]: CompletionsProvider::get_start
-    UnfinishedFiltered,
-    /// Indicates that the entries that were sent are not all entries,
-    /// and they're not filtered
-    ///
-    /// This means that, if the user types any new [completion]
-    /// characters or deletes old ones, a new list will have to be
-    /// acquired.
-    ///
-    /// In this case, the [`Completions`] widget will take this list
-    /// and apply filtering to it in order to narrow down possible
-    /// choices.
-    ///
-    /// [completion]: CompletionsProvider::get_start
-    UnfinishedUnfiltered,
 }
 
 trait ErasedInnerProvider: Any + Send {
@@ -698,8 +641,6 @@ trait ErasedInnerProvider: Any + Send {
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     );
 
-    fn has_changed(&self, text: Option<&Text>) -> bool;
-
     #[allow(clippy::type_complexity)]
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_>;
 }
@@ -712,8 +653,7 @@ struct InnerProvider<P: CompletionsProvider> {
     orig_prefix: String,
     current: Option<(String, usize)>,
 
-    filtered_entries: FilteredEntries<P>,
-    entries: Vec<(String, P::Info)>,
+    matches: Vec<(String, P::Info)>,
 }
 
 impl<P: CompletionsProvider> InnerProvider<P> {
@@ -729,34 +669,13 @@ impl<P: CompletionsProvider> InnerProvider<P> {
 
         let orig_prefix = text[start..main_caret.byte()].to_string();
 
-        let completions = provider.completions(text, main_caret, &orig_prefix, false);
-
-        let filtered_entries = match completions.kind {
-            CompletionsKind::Finished => FilteredEntries::UnfilteredFinished(
-                completions
-                    .entries
-                    .iter()
-                    .filter(|(entry, _)| string_cmp(&orig_prefix, entry).is_some())
-                    .map(|(entry, info)| (entry.clone(), info.clone()))
-                    .collect(),
-            ),
-            CompletionsKind::UnfinishedFiltered => FilteredEntries::FilteredUnfinished,
-            CompletionsKind::UnfinishedUnfiltered => FilteredEntries::UnfilteredUnfinished({
-                completions
-                    .entries
-                    .iter()
-                    .filter(|(entry, _)| string_cmp(&orig_prefix, entry).is_some())
-                    .map(|(entry, info)| (entry.clone(), info.clone()))
-                    .collect()
-            }),
-        };
+        let matches = provider.matches(text, main_caret, &orig_prefix);
 
         let mut inner = Self {
             provider,
             orig_prefix,
             current: None,
-            filtered_entries,
-            entries: completions.entries,
+            matches,
             fmt: Box::new(P::default_fmt),
         };
 
@@ -778,7 +697,6 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         usize,
         Option<((Text, Text), Option<(String, Option<(Text, Orientation)>)>)>,
     ) {
-        use FilteredEntries::*;
         let Some(caret) = text.get_main_sel().map(|sel| sel.caret()) else {
             panic!("Tried to spawn completions on a Text with no main selection");
         };
@@ -794,43 +712,19 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let target_changed = self.current.as_ref().is_some_and(|(c, _)| *c != prefix)
             || (self.current.is_none() && self.orig_prefix != prefix);
 
-        if let UnfilteredUnfinished(_) | FilteredUnfinished = &self.filtered_entries
-            && target_changed
-        {
-            self.entries = self
-                .provider
-                .completions(text, caret, &prefix, true)
-                .entries;
-        }
-
-        let entries = match (&mut self.filtered_entries, target_changed) {
-            (UnfilteredFinished(entries) | UnfilteredUnfinished(entries), false) => entries,
-            (UnfilteredFinished(entries) | UnfilteredUnfinished(entries), true) => {
-                *entries = self
-                    .entries
-                    .iter()
-                    .filter(|(entry, _)| string_cmp(&prefix, entry).is_some())
-                    .map(|(entry, info)| (entry.clone(), info.clone()))
-                    .collect();
-
-                entries
-            }
-            (FilteredUnfinished, _) => &self.entries,
-        };
-
-        // If the word was edited, we need to reset the completions.
-        if target_changed || entries.is_empty() {
+        if target_changed {
+            self.matches = self.provider.matches(text, caret, &prefix);
             self.current = None;
             self.orig_prefix = prefix;
         }
 
-        if entries.is_empty() || (start == caret.byte() && !show_without_prefix) {
+        if self.matches.is_empty() || (start == caret.byte() && !show_without_prefix) {
             self.current = None;
             return (start, None);
         }
 
         let height = if let Some(area) = area {
-            area.set_height(entries.len().min(max_height) as f32)
+            area.set_height(self.matches.len().min(max_height) as f32)
                 .unwrap();
             area.height() as usize
         } else {
@@ -843,22 +737,24 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             self.current = (|| -> Option<(String, usize)> {
                 if let Some((prev, dist)) = &self.current {
                     let dist = dist.saturating_add_signed(scroll as isize).min(height - 1);
-                    let prev_i = entries.iter().position(|(w, _)| w == prev)?;
-                    let (word, info) = entries.get(prev_i.checked_add_signed(scroll as isize)?)?;
+                    let prev_i = self.matches.iter().position(|(w, _)| w == prev)?;
+                    let (word, info) = self
+                        .matches
+                        .get(prev_i.checked_add_signed(scroll as isize)?)?;
 
                     ret_info = Some(info);
                     Some((word.clone(), dist))
                 } else if scroll > 0 {
                     let scroll = scroll.unsigned_abs() as usize - 1;
                     let dist = (scroll).min(height - 1);
-                    let (word, info) = entries.get(scroll)?;
+                    let (word, info) = self.matches.get(scroll)?;
 
                     ret_info = Some(info);
                     Some((word.clone(), dist))
                 } else {
                     let scroll = scroll.unsigned_abs() as usize;
                     let dist = height.saturating_sub(scroll);
-                    let (word, info) = entries.get(entries.len().checked_sub(scroll)?)?;
+                    let (word, info) = self.matches.get(self.matches.len().checked_sub(scroll)?)?;
 
                     ret_info = Some(info);
                     Some((word.clone(), dist))
@@ -870,12 +766,12 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
         let mut sidebar_builder = Text::builder();
 
         if let Some((word, dist)) = &mut self.current
-            && let Some(word_i) = entries.iter().position(|(w, _)| w == word)
+            && let Some(word_i) = self.matches.iter().position(|(w, _)| w == word)
         {
             *dist = (*dist).min(height - 1);
 
             let top_i = word_i.saturating_sub(*dist);
-            for (i, (entry, info)) in entries.iter().enumerate().skip(top_i).take(height) {
+            for (i, (entry, info)) in self.matches.iter().enumerate().skip(top_i).take(height) {
                 if i == word_i {
                     entries_builder
                         .push(txt!("[selected.Completions]{}\n", (self.fmt)(entry, info)));
@@ -886,7 +782,7 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
                 }
             }
         } else {
-            for (entry, info) in entries.iter().take(height) {
+            for (entry, info) in self.matches.iter().take(height) {
                 entries_builder.push(txt!("{}\n", (self.fmt)(entry, info)));
                 sidebar_builder.push(txt!("[default.Completions] \n"));
             }
@@ -904,43 +800,14 @@ impl<P: CompletionsProvider> ErasedInnerProvider for InnerProvider<P> {
             None
         };
 
-        let entries = entries_builder.build_no_double_nl();
-        let sidebar = sidebar_builder.build_no_double_nl();
-        (start, Some(((entries, sidebar), replacement)))
-    }
-
-    fn has_changed(&self, text: Option<&Text>) -> bool {
-        let Some(main) = text.and_then(|text| text.get_main_sel()) else {
-            return false;
-        };
-
-        let word_has_changed = text.is_some_and(|text| {
-            let start = self
-                .provider
-                .get_start(text, main.caret())
-                .unwrap_or(main.caret().byte());
-            let prefix = &text[start..main.caret().byte()];
-
-            prefix
-                != self
-                    .current
-                    .as_ref()
-                    .map(|(str, _)| str.as_str())
-                    .unwrap_or(&self.orig_prefix)
-        });
-
-        word_has_changed || self.provider.has_changed()
+        let entries_text = entries_builder.build_no_double_nl();
+        let sidebar_text = sidebar_builder.build_no_double_nl();
+        (start, Some(((entries_text, sidebar_text), replacement)))
     }
 
     fn start_fn(&self) -> Box<dyn Fn(&Text, Point) -> usize + '_> {
         Box::new(|text, caret| self.provider.get_start(text, caret).unwrap_or(caret.byte()))
     }
-}
-
-enum FilteredEntries<P: CompletionsProvider> {
-    UnfilteredFinished(Vec<(String, P::Info)>),
-    UnfilteredUnfinished(Vec<(String, P::Info)>),
-    FilteredUnfinished,
 }
 
 /// A simple [`String`] comparison function, which prioritizes matched
@@ -990,159 +857,3 @@ type ProvidersFn = Box<
 >;
 type ParamCompletions =
     Box<Mutex<dyn FnMut(&Pass, CompletionsBuilder) -> CompletionsBuilder + Send + Sync>>;
-
-mod fixed {
-    use duat_core::text::{Point, RegexHaystack, Spacer, Text, txt};
-
-    use crate::widgets::{
-        CompletionsKind, CompletionsList, CompletionsProvider, completions::string_cmp,
-    };
-
-    impl<S: AsRef<str> + Send + 'static> CompletionsProvider for Vec<S> {
-        type Info = ();
-
-        fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-            txt!("{entry}{Spacer}")
-        }
-
-        fn completions(
-            &mut self,
-            _: &Text,
-            _: Point,
-            prefix: &str,
-            _: bool,
-        ) -> CompletionsList<Self> {
-            let mut entries: Vec<_> = self
-                .iter()
-                .filter_map(|entry| {
-                    string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
-                })
-                .collect();
-
-            entries.sort_by(|(lhs, _), (rhs, _)| {
-                string_cmp(prefix, lhs)
-                    .unwrap()
-                    .cmp(&string_cmp(prefix, rhs).unwrap())
-            });
-
-            CompletionsList {
-                entries,
-                kind: CompletionsKind::UnfinishedFiltered,
-            }
-        }
-
-        fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-            Some(text.search(r"\S*").range(..caret).next_back()?.start)
-        }
-
-        fn has_changed(&self) -> bool {
-            false
-        }
-    }
-
-    impl<const N: usize, S: AsRef<str> + Send + 'static> CompletionsProvider for [S; N] {
-        type Info = ();
-
-        fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-            txt!("{entry}{Spacer}")
-        }
-
-        fn completions(
-            &mut self,
-            _: &Text,
-            _: Point,
-            prefix: &str,
-            _: bool,
-        ) -> CompletionsList<Self> {
-            let mut entries: Vec<_> = self
-                .iter()
-                .filter_map(|entry| {
-                    string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
-                })
-                .collect();
-
-            entries.sort_by(|(lhs, _), (rhs, _)| {
-                string_cmp(prefix, lhs)
-                    .unwrap()
-                    .cmp(&string_cmp(prefix, rhs).unwrap())
-            });
-
-            CompletionsList {
-                entries,
-                kind: CompletionsKind::UnfinishedFiltered,
-            }
-        }
-
-        fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-            Some(text.search(r"\S*").range(..caret).next_back()?.start)
-        }
-
-        fn has_changed(&self) -> bool {
-            false
-        }
-    }
-
-    /// A list of words that can be completed with no replacement
-    ///
-    /// This list will show completions for all flags words haven't
-    /// been previously typed on the call.
-    pub struct ExhaustiveCompletionsList<S: AsRef<str> + Send + 'static> {
-        pub list: Vec<S>,
-        pub only_one: bool,
-    }
-
-    impl<S: AsRef<str> + Send + 'static> CompletionsProvider for ExhaustiveCompletionsList<S> {
-        type Info = ();
-
-        fn default_fmt(entry: &str, _: &Self::Info) -> Text {
-            txt!("{entry}{Spacer}")
-        }
-
-        fn completions(
-            &mut self,
-            text: &Text,
-            caret: Point,
-            prefix: &str,
-            _: bool,
-        ) -> CompletionsList<Self> {
-            let yet_to_be_typed: Vec<_> = self
-                .list
-                .iter()
-                .filter(|word| !text[..caret].contains_pat(word.as_ref()).unwrap())
-                .collect();
-
-            if yet_to_be_typed.len() < self.list.len() && self.only_one {
-                return CompletionsList {
-                    entries: Vec::new(),
-                    kind: CompletionsKind::UnfinishedFiltered,
-                };
-            }
-
-            let mut entries: Vec<_> = yet_to_be_typed
-                .iter()
-                .filter_map(|entry| {
-                    string_cmp(prefix, entry.as_ref()).map(|_| (entry.as_ref().to_string(), ()))
-                })
-                .collect();
-
-            entries.sort_by(|(lhs, _), (rhs, _)| {
-                string_cmp(prefix, lhs)
-                    .unwrap()
-                    .cmp(&string_cmp(prefix, rhs).unwrap())
-            });
-
-            CompletionsList {
-                entries,
-                kind: CompletionsKind::UnfinishedFiltered,
-            }
-        }
-
-        fn get_start(&self, text: &Text, caret: Point) -> Option<usize> {
-            Some(text.search(r"\S*").range(..caret).next_back()?.start)
-        }
-
-        fn has_changed(&self) -> bool {
-            false
-        }
-    }
-}

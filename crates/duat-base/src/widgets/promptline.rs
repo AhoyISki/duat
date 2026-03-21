@@ -156,13 +156,13 @@ impl PromptLineBuilder {
     /// [`Window`]: duat_core::ui::Window
     /// [`Buffer`]: duat_core::buffer::Buffer
     pub fn push_on(self, pa: &mut Pass, push_target: &impl PushTarget) -> Handle<PromptLine> {
-        let prompt_line = PromptLine {
+        let promptline = PromptLine {
             text: Text::default(),
             prompts: self.prompts.unwrap_or_default(),
             request_width: self.request_width,
         };
 
-        push_target.push_outer(pa, prompt_line, self.specs)
+        push_target.push_outer(pa, promptline, self.specs)
     }
 
     /// Changes the default [prompt] for a given [mode]

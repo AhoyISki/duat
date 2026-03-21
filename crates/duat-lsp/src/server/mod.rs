@@ -4,7 +4,7 @@ use std::{
 };
 
 use duat_core::{
-    context::{self, Handle},
+    context::Handle,
     data::Pass,
     hook::{self, ConfigUnloaded},
     storage::{
@@ -169,13 +169,7 @@ pub fn get_servers_for(path: &Path) -> Option<Vec<Server>> {
             let bridge = match ServerBridge::new(server_name, &config) {
                 Ok(bridge) => bridge,
                 Err(err) if user_provided => {
-                    duat_core::__log__!(
-                        duat_core::context::Level::Error,
-                        duat_core::context::Location::from_panic_location(
-                            ::std::panic::Location::caller()
-                        ),
-                        "{err}"
-                    );
+                    duat_core::error!("{err}");
                     return None;
                 }
                 Err(_) => return None,

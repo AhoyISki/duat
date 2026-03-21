@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         mpsc,
     },
+    time::{Duration, Instant},
 };
 
 use crossterm::event::KeyEvent;
@@ -326,11 +327,25 @@ impl DuatSender {
 pub struct DuatReceiver(mpsc::Receiver<DuatEvent>, &'static AtomicUsize);
 
 impl DuatReceiver {
-    pub(crate) fn recv(&self) -> Option<DuatEvent> {
-        self.0
-            .recv()
-            .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
-            .ok()
+    /// Receive a [`DuatEvent`].
+    ///
+    /// If less than 5 milliseconds have passed since the [`Instant`]
+    /// for chained events, then it will attempt to receive until said
+    /// timeout.
+    ///
+    /// Otherwise, it will wait until an event shows up.
+    pub(crate) fn recv(&self, instant: Instant) -> Option<DuatEvent> {
+        if let Some(duration) = Duration::from_millis(5).checked_sub(instant.elapsed()) {
+            self.0
+                .recv_timeout(duration)
+                .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
+                .ok()
+        } else {
+            self.0
+                .recv()
+                .inspect(|_| _ = self.1.fetch_sub(1, Relaxed))
+                .ok()
+        }
     }
 }
 

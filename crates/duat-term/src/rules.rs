@@ -17,8 +17,7 @@ use duat_core::{
 /// Add a [`VertRule`] hook.
 pub fn add_vertrule_hook() {
     hook::add::<BufferUpdated>(|pa, buffer| {
-        let vertrules: Vec<_> = buffer.get_related::<VertRule>(pa).collect();
-        for (vertrule, _) in vertrules {
+        for (vertrule, _) in buffer.get_related::<VertRule>(pa) {
             let (buf, vr, area) = (buffer.read(pa), &vertrule.read(pa), vertrule.area());
 
             let text = if let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char {
