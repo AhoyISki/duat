@@ -97,7 +97,6 @@ pub struct Area {
     prev_print_info: Arc<Mutex<PrintInfo>>,
     layouts: Layouts,
     id: AreaId,
-    set_frame: fn(&mut Self, Frame),
 }
 
 impl PartialEq for Area {
@@ -113,11 +112,6 @@ impl Area {
             prev_print_info: Arc::new(Mutex::default()),
             layouts,
             id,
-            set_frame: |area, frame| {
-                if !area.layouts.set_frame(area.id, frame) {
-                    context::warn!("This Area was already deleted");
-                }
-            },
         }
     }
 
@@ -125,8 +119,11 @@ impl Area {
     ///
     /// This function will fail if the `Area` was either deleted or is
     /// not a spawned `Area`.
+    #[track_caller]
     pub fn set_frame(&mut self, frame: Frame) {
-        (self.set_frame)(self, frame)
+        if !self.layouts.set_frame(self.id, frame) {
+            context::warn!("This Area was already deleted");
+        }
     }
 
     /// Prints the `Text`
@@ -177,6 +174,9 @@ impl Area {
         };
 
         let spawns = text.get_spawned_ids();
+
+		// To prevent deadlocks while sending spawned lines.
+        drop(painter);
 
         self.layouts
             .send_lines(self.id, lines, spawns, &observed_spawns);
@@ -609,11 +609,6 @@ impl RawArea for Area {
             prev_print_info: Arc::default(),
             layouts: self.layouts.clone(),
             id,
-            set_frame: |area, frame| {
-                if !area.layouts.set_frame(area.id, frame) {
-                    context::warn!("This Area was already deleted");
-                }
-            },
         })
     }
 
